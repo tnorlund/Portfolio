@@ -13,6 +13,6 @@ for image in "$IMAGE_DIR"*.{jpg,jpeg,png,gif}; do
         echo "Processing $image"
         output_file="out/$(basename "$image" | sed 's/\.[^.]*$//')"
         echo "Writing to $output_file"
-        tesseract "$image" "$output_file" -c tessedit_create_hocr=0 makebox
+        tesseract "$image" "$output_file" -l eng -c tessedit_create_hocr=0 makebox
     fi
 done
