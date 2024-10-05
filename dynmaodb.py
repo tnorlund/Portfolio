@@ -24,7 +24,7 @@ def upload_box_file_to_dynamodb(box_file_path, dynamodb_table_name, aws_region="
                         x1, y1, x2, y2 = map(int, components[1:5])
                         current_time = str(datetime.now(timezone.utc).isoformat())
 
-                        PK = f'{box_file_path}#{character}'
+                        PK = f'{box_file_path}#{character}#{current_time}'
                         SK = f'{current_time}'
 
                         # Prepare the item to insert into DynamoDB
