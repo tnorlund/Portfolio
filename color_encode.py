@@ -1,8 +1,7 @@
-import cv2
 import base64
 
 # Step 1: Read and encode the PNG image
-png_image_path = "pic/Rec.png"
+png_image_path = "/Users/tnorlund/GitHub/example/resize/Resized_Rec.png"
 with open(png_image_path, "rb") as image_file:
     encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
 
