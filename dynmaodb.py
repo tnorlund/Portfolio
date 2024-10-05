@@ -21,12 +21,9 @@ def upload_box_file_to_dynamodb(box_file_path, dynamodb_table_name, aws_region="
                 if len(components) == 6:
                     character = components[0]
                     x1, y1, x2, y2 = map(int, components[1:5])
-                    # page_number = int(components[5])
-                    # get the Z format date
-                    # Get the current date and time in ISO 8601 format with Z
                     current_time = str(datetime.now(timezone.utc).isoformat())
 
-                    PK = f'{file_path}#{character}'  # Partition Key
+                    PK = f'{box_file_path}#{character}'  # Partition Key
                     SK = f'{current_time}'
 
                     # Prepare the item to insert into DynamoDB
@@ -51,15 +48,29 @@ def upload_box_file_to_dynamodb(box_file_path, dynamodb_table_name, aws_region="
     except Exception as e:
         print(f"Error uploading to DynamoDB: {e}")
 
+# read all characters from DynamoDB
+def read_characters_from_dynamodb(dynamodb_table_name, aws_region="us-east-1"):
+    # Initialize a DynamoDB resource using boto3
+    dynamodb = boto3.resource('dynamodb', region_name=aws_region)
+    table = dynamodb.Table(dynamodb_table_name)
+
+    try:
+        # Scan the table to get all items
+        response = table.scan()
+        items = response.get('Items', [])
+
+        for item in items:
+            print(item)
+
+    except Exception as e:
+        print(f"Error reading from DynamoDB: {e}")
+
+
+
 # Example usage
 dynamodb_table_name = 'rec'
 
 # iterate over the box files in the "out/" directory and upload them to DynamoDB
 directory_path = 'out/'
 
-# Upload the first .box file to DynamoDB
-for filename in os.listdir(directory_path):
-    if filename.endswith('.box'):
-        file_path = os.path.join(directory_path, filename)
-        upload_box_file_to_dynamodb(file_path, dynamodb_table_name)
-        break  # Only upload the first .box file
+read_characters_from_dynamodb(dynamodb_table_name)
