@@ -13,37 +13,35 @@ def upload_box_file_to_dynamodb(box_file_path, dynamodb_table_name, aws_region="
     try:
         # Open the .box file and read each line
         with open(box_file_path, 'r') as box_file:
-            for line in box_file:
-                # Each line in the .box file is structured as:
-                # character x1 y1 x2 y2 page_number
-                components = line.strip().split()
-                
-                if len(components) == 6:
-                    character = components[0]
-                    x1, y1, x2, y2 = map(int, components[1:5])
-                    current_time = str(datetime.now(timezone.utc).isoformat())
+            with table.batch_writer() as batch:
+                for line in box_file:
+                    # Each line in the .box file is structured as:
+                    # character x1 y1 x2 y2 page_number
+                    components = line.strip().split()
+                    
+                    if len(components) == 6:
+                        character = components[0]
+                        x1, y1, x2, y2 = map(int, components[1:5])
+                        current_time = str(datetime.now(timezone.utc).isoformat())
 
-                    PK = f'{box_file_path}#{character}'  # Partition Key
-                    SK = f'{current_time}'
+                        PK = f'{box_file_path}#{character}'
+                        SK = f'{current_time}'
 
-                    # Prepare the item to insert into DynamoDB
-                    item = {
-                        'PK': PK,           # Partition Key
-                        'SK': SK,        # Sort Key or an attribute
-                        'file': box_file_path,
-                        'BoundingBox': {
-                            'X1': x1,
-                            'Y1': y1,
-                            'X2': x2,
-                            'Y2': y2
+                        # Prepare the item to insert into DynamoDB
+                        item = {
+                            'PK': PK,           # Partition Key
+                            'SK': SK,        # Sort Key or an attribute
+                            'file': box_file_path,
+                            'BoundingBox': {
+                                'X1': x1,
+                                'Y1': y1,
+                                'X2': x2,
+                                'Y2': y2
+                            }
                         }
-                    }
-
-                    # Insert the item into DynamoDB
-                    table.put_item(Item=item)
-                    print(f"Uploaded character '{character}' on page {box_file_path} with bounding box ({x1}, {y1}, {x2}, {y2})")
-                else:
-                    print(f"Skipping invalid line: {line}")
+                        batch.put_item(Item=item)
+                    else:
+                        print(f"Skipping invalid line: {line}")
 
     except Exception as e:
         print(f"Error uploading to DynamoDB: {e}")
@@ -73,4 +71,4 @@ dynamodb_table_name = 'rec'
 # iterate over the box files in the "out/" directory and upload them to DynamoDB
 directory_path = 'out/'
 
-read_characters_from_dynamodb(dynamodb_table_name)
+upload_box_file_to_dynamodb('out/Rec86.box', dynamodb_table_name)
