@@ -1,8 +1,18 @@
 import boto3
-import os
 from datetime import datetime
 from datetime import timezone
+import pulumi.automation as auto
 
+def get_stack_output(stack_name:str, project_name:str="tnorlund"):
+    try:
+        # Create or select the stack
+        stack = auto.select_stack(stack_name, project_name, program=lambda: None)
+        # Get the stack outputs
+        outputs = stack.outputs()
+        
+        return outputs
+    except Exception as e:
+        print(f"Error getting stack output: {e}")
 
 # Function to read a .box file and upload to DynamoDB
 def upload_box_file_to_dynamodb(box_file_path, dynamodb_table_name, aws_region="us-east-1"):
@@ -66,9 +76,11 @@ def read_characters_from_dynamodb(dynamodb_table_name, aws_region="us-east-1"):
 
 
 # Example usage
-dynamodb_table_name = 'rec'
+stack_name = "tnorlund/development/dev"
+stack_outputs = get_stack_output(stack_name)
+
 
 # iterate over the box files in the "out/" directory and upload them to DynamoDB
 directory_path = 'out/'
 
-upload_box_file_to_dynamodb('out/Rec86.box', dynamodb_table_name)
+upload_box_file_to_dynamodb('out/Rec86.box', stack_outputs['table_name'].value, stack_outputs['region'].value)
