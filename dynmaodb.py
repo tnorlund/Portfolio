@@ -2,6 +2,16 @@ import boto3
 from datetime import datetime
 from datetime import timezone
 import pulumi.automation as auto
+import os
+from dotenv import load_dotenv, dotenv_values
+from pathlib import Path
+
+# Load environment variables from .env file
+env_vars = dotenv_values('.env')
+# set the pulumi access token
+os.environ['PULUMI_ACCESS_TOKEN'] = env_vars['PULUMI_ACCESS_TOKEN']
+
+
 
 def get_stack_output(stack_name:str, project_name:str="tnorlund"):
     try:
@@ -78,7 +88,6 @@ def read_characters_from_dynamodb(dynamodb_table_name, aws_region="us-east-1"):
 # Example usage
 stack_name = "tnorlund/development/dev"
 stack_outputs = get_stack_output(stack_name)
-
 
 # iterate over the box files in the "out/" directory and upload them to DynamoDB
 directory_path = 'out/'
