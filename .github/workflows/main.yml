@@ -3,7 +3,7 @@ name: Deploy Pulumi to Development
 on:
   push:
     branches:
-      - development
+      - main
 
 jobs:
   deploy:
