@@ -8,6 +8,7 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}",
+            "envFile": "${workspaceFolder}/.env"
         }
     ]
 }
