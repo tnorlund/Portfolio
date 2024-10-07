@@ -1,0 +1,11 @@
+name: development
+runtime:
+  name: python
+  options:
+    toolchain: pip
+    virtualenv: venv
+description: a dynamodb instance
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: https://www.pulumi.com/ai/api/project/4fe4d058-6c29-4b0d-b7d0-cbbbc0d03603.zip
