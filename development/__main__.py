@@ -29,3 +29,8 @@ dynamodb_table = aws.dynamodb.Table(
 )
 
 pulumi.export("table_name", dynamodb_table.name)
+pulumi.export("region", aws.config.region)
+
+# open template readme and read contents into stack output
+with open('./Pulumi.README.md') as f:
+    pulumi.export('readme', f.read())
