@@ -1,0 +1,4 @@
+environment:
+  - development/prod
+config:
+  aws:region: us-east-1
