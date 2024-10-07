@@ -5,11 +5,16 @@ dynamodb_table = aws.dynamodb.Table(
     "GHActionTable",
     attributes=[
         aws.dynamodb.TableAttributeArgs(
-            name="Id",
+            name="PK",
+            type="S",
+        )
+        aws.dynamodb.TableAttributeArgs(
+            name="SK",
             type="S",
         )
     ],
-    hash_key="Id",
+    hash_key="PK",
+    range_key="SK",
     billing_mode="PAY_PER_REQUEST",
     ttl=aws.dynamodb.TableTtlArgs(
         attribute_name="TimeToLive",
