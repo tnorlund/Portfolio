@@ -7,7 +7,7 @@ dynamodb_table = aws.dynamodb.Table(
         aws.dynamodb.TableAttributeArgs(
             name="PK",
             type="S",
-        )
+        ),
         aws.dynamodb.TableAttributeArgs(
             name="SK",
             type="S",
