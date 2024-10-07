@@ -5,7 +5,6 @@ png_image_path = "/Users/tnorlund/GitHub/example/resize/Resized_Rec.png"
 with open(png_image_path, "rb") as image_file:
     encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
 
-print(type(encoded_string))
 # get length of string in KB
 image_size_kb = len(encoded_string) / 1024
 print(f"Image size: {image_size_kb} KB")
