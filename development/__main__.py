@@ -59,7 +59,7 @@ cdn = aws.cloudfront.Distribution(
     "cdnDistribution",
     origins=[
         aws.cloudfront.DistributionOriginArgs(
-            domain_name=website_bucket.bucket_website_domain_name,
+            domain_name=website_bucket.bucket_regional_domain_name,
             origin_id=website_bucket.arn,
         )
     ],
@@ -96,7 +96,7 @@ cdn = aws.cloudfront.Distribution(
 # Export the URLs of the bucket and the CloudFront distribution
 pulumi.export(
     "bucket_url",
-    pulumi.Output.concat("http://", website_bucket.bucket_website_domain_name),
+    pulumi.Output.concat("http://", website_bucket.bucket_regional_domain_name),
 )
 pulumi.export("cdn_url", pulumi.Output.concat("https://", cdn.domain_name))
 
