@@ -6,3 +6,4 @@ This is the Pulumi used to generate the static site and the backend API. The sta
 
 ## URLs
 1. [Bucket URL](${websiteUrl})
+2. [CDN URL](${cdnUrl})
