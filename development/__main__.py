@@ -34,25 +34,31 @@ pulumi.export("region", aws.config.region)
 
 # An S3 bucket that hosts the static website
 website_bucket = aws.s3.Bucket(
-    "s3-website-bucket",
-    website=aws.s3.BucketWebsiteArgs(
-        index_document="index.html", error_document="error.html"
-    ),
+    "s3-website-bucket", website=aws.s3.BucketWebsiteArgs(index_document="index.html")
 )
 
-# Upload the index and error documents to the bucket
-index_html = aws.s3.BucketObject(
-    "index.html",
-    bucket=website_bucket.id,
-    source=pulumi.FileAsset("index.html"),
-    content_type="text/html",
-)
-error_html = aws.s3.BucketObject(
-    "error.html",
-    bucket=website_bucket.id,
-    source=pulumi.FileAsset("error.html"),
-    content_type="text/html",
-)
+# Upload local React build files to the bucket with correct MIME types
+build_files = ["index.html", "error.html"]
+bucket_objects = []
+for file in build_files:
+    content_type = (
+        "text/html"
+        if file == "index.html"
+        else (
+            "text/javascript"
+            if file == "bundle.js"
+            else "text/css" if file == "styles.css" else "application/octet-stream"
+        )
+    )
+
+    bucket_objects.append(
+        aws.s3.BucketObject(
+            file,
+            bucket=website_bucket.id,
+            source=pulumi.FileAsset(f"./build/{file}"),
+            content_type=content_type,
+        )
+    )
 
 # Create a CloudFront distribution for the bucket
 cdn = aws.cloudfront.Distribution(
@@ -60,14 +66,17 @@ cdn = aws.cloudfront.Distribution(
     origins=[
         aws.cloudfront.DistributionOriginArgs(
             domain_name=website_bucket.bucket_regional_domain_name,
-            origin_id=website_bucket.arn,
+            origin_id=website_bucket.id,
+            s3_origin_config=aws.cloudfront.DistributionOriginS3OriginConfigArgs(
+                origin_access_identity=""
+            ),
         )
     ],
     enabled=True,
     default_root_object="index.html",
     default_cache_behavior=aws.cloudfront.DistributionDefaultCacheBehaviorArgs(
-        target_origin_id=website_bucket.arn,
-        viewer_protocol_policy="allow-all",
+        target_origin_id=website_bucket.id,
+        viewer_protocol_policy="redirect-to-https",
         allowed_methods=["GET", "HEAD"],
         cached_methods=["GET", "HEAD"],
         forwarded_values=aws.cloudfront.DistributionDefaultCacheBehaviorForwardedValuesArgs(
