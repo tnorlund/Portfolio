@@ -1,5 +1,6 @@
 import pulumi
 import pulumi_aws as aws
+import json
 
 # The DynamoDB table
 dynamodb_table = aws.dynamodb.Table(
@@ -32,82 +33,54 @@ dynamodb_table = aws.dynamodb.Table(
 pulumi.export("table_name", dynamodb_table.name)
 pulumi.export("region", aws.config.region)
 
-# An S3 bucket that hosts the static website
-website_bucket = aws.s3.Bucket(
-    "s3-website-bucket", website=aws.s3.BucketWebsiteArgs(index_document="index.html")
+
+# Create an S3 bucket with website configuration
+site_bucket = aws.s3.Bucket("siteBucket",
+    website={
+        "indexDocument": "index.html",
+        "errorDocument": "error.html",
+    }
 )
 
-# Upload local React build files to the bucket with correct MIME types
-build_files = ["index.html", "error.html"]
-bucket_objects = []
-for file in build_files:
-    content_type = (
-        "text/html"
-        if file == "index.html"
-        else (
-            "text/javascript"
-            if file == "bundle.js"
-            else "text/css" if file == "styles.css" else "application/octet-stream"
-        )
+# Upload index.html and error.html to the bucket
+index_html = aws.s3.BucketObject("index.html",
+    bucket=site_bucket.id,
+    source=pulumi.FileAsset("index.html"),  # Assumes you have an index.html file in your project directory
+    content_type="text/html"
+)
+
+error_html = aws.s3.BucketObject("error.html",
+    bucket=site_bucket.id,
+    source=pulumi.FileAsset("error.html"),  # Assumes you have an error.html file in your project directory
+    content_type="text/html"
+)
+
+# Define a bucket policy to make the bucket objects publicly readable
+bucket_policy = aws.s3.BucketPolicy("bucketPolicy",
+    bucket=site_bucket.bucket,
+    policy=site_bucket.bucket.apply(
+        lambda bucket_name: json.dumps({
+            "Version": "2012-10-17",
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": "*",
+                "Action": "s3:GetObject",
+                "Resource": f"arn:aws:s3:::{bucket_name}/*",
+            }],
+        })
     )
-
-    bucket_objects.append(
-        aws.s3.BucketObject(
-            file,
-            bucket=website_bucket.id,
-            source=pulumi.FileAsset(f"./build/{file}"),
-            content_type=content_type,
-        )
-    )
-
-# Create a CloudFront distribution for the bucket
-cdn = aws.cloudfront.Distribution(
-    "cdnDistribution",
-    origins=[
-        aws.cloudfront.DistributionOriginArgs(
-            domain_name=website_bucket.bucket_regional_domain_name,
-            origin_id=website_bucket.id,
-            s3_origin_config=aws.cloudfront.DistributionOriginS3OriginConfigArgs(
-                origin_access_identity=""
-            ),
-        )
-    ],
-    enabled=True,
-    default_root_object="index.html",
-    default_cache_behavior=aws.cloudfront.DistributionDefaultCacheBehaviorArgs(
-        target_origin_id=website_bucket.id,
-        viewer_protocol_policy="redirect-to-https",
-        allowed_methods=["GET", "HEAD"],
-        cached_methods=["GET", "HEAD"],
-        forwarded_values=aws.cloudfront.DistributionDefaultCacheBehaviorForwardedValuesArgs(
-            query_string=False,
-            cookies=aws.cloudfront.DistributionDefaultCacheBehaviorForwardedValuesCookiesArgs(
-                forward="none"
-            ),
-        ),
-    ),
-    price_class="PriceClass_100",
-    custom_error_responses=[
-        aws.cloudfront.DistributionCustomErrorResponseArgs(
-            error_code=404, response_code=404, response_page_path="/error.html"
-        )
-    ],
-    restrictions=aws.cloudfront.DistributionRestrictionsArgs(
-        geo_restriction=aws.cloudfront.DistributionRestrictionsGeoRestrictionArgs(
-            restriction_type="none"
-        )
-    ),
-    viewer_certificate=aws.cloudfront.DistributionViewerCertificateArgs(
-        cloudfront_default_certificate=True
-    ),
 )
 
-# Export the URLs of the bucket and the CloudFront distribution
-pulumi.export(
-    "bucket_url",
-    pulumi.Output.concat("http://", website_bucket.bucket_regional_domain_name),
+# Configure the BucketPublicAccessBlock to allow public policies
+public_access_block = aws.s3.BucketPublicAccessBlock("publicAccessBlock",
+    bucket=site_bucket.id,
+    block_public_acls=False,
+    ignore_public_acls=False,
+    block_public_policy=False,
+    restrict_public_buckets=False
 )
-pulumi.export("cdn_url", pulumi.Output.concat("https://", cdn.domain_name))
+
+pulumi.export('websiteUrl', site_bucket.website_endpoint)
 
 # open template readme and read contents into stack output
 with open("./Pulumi.README.md") as f:
