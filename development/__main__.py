@@ -80,7 +80,40 @@ public_access_block = aws.s3.BucketPublicAccessBlock("publicAccessBlock",
     restrict_public_buckets=False
 )
 
+# Create a CloudFront distribution
+cdn = aws.cloudfront.Distribution("cdn",
+    origins=[{
+        "domainName": site_bucket.bucket_regional_domain_name,
+        "originId": site_bucket.id,
+    }],
+    enabled=True,
+    default_root_object="index.html",
+    default_cache_behavior={
+        "allowedMethods": ["GET", "HEAD"],
+        "cachedMethods": ["GET", "HEAD"],
+        "targetOriginId": site_bucket.id,
+        "viewerProtocolPolicy": "redirect-to-https",
+        "forwardedValues": {
+            "cookies": {"forward": "none"},
+            "queryString": False,
+        },
+        "minTtl": 0,
+        "defaultTtl": 3600,
+        "maxTtl": 86400,
+    },
+    price_class="PriceClass_100",
+    restrictions={
+        "geoRestriction": {
+            "restrictionType": "none",
+        },
+    },
+    viewer_certificate={
+        "cloudfrontDefaultCertificate": True,
+    }
+)
+
 pulumi.export('websiteUrl', site_bucket.website_endpoint)
+pulumi.export('cdnUrl', cdn.domain_name)
 
 # open template readme and read contents into stack output
 with open("./Pulumi.README.md") as f:
