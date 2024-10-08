@@ -3,6 +3,7 @@
         "boto",
         "opencv",
         "pulumi",
-        "runtimes"
+        "runtimes",
+        "tesseract"
     ]
 }
