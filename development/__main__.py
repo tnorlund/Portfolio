@@ -1,6 +1,6 @@
 import pulumi
 import pulumi_aws as aws
-import s3_website  # Import the new file
+import s3_website
 
 # The DynamoDB table
 dynamodb_table = aws.dynamodb.Table(
