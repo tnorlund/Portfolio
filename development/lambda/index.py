@@ -28,7 +28,7 @@ def read_characters_from_dynamodb(dynamodb_table_name, aws_region="us-east-1"):
         print(f"Error reading from DynamoDB: {e}")
 
 def lambda_handler(event, context):
-    read_characters_from_dynamodb(DYNAMODB_TABLE_NAME)
+    # read_characters_from_dynamodb(DYNAMODB_TABLE_NAME)
 
     print("triggered Lambda Function!")
     logger.info("Received event: %s", event)
