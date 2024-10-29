@@ -4,6 +4,7 @@ import s3_website  # noqa: F401
 import os
 import subprocess
 import shutil
+import json
 
 # The DynamoDB table
 dynamodb_table = aws.dynamodb.Table(
@@ -36,7 +37,178 @@ dynamodb_table = aws.dynamodb.Table(
 pulumi.export("table_name", dynamodb_table.name)
 pulumi.export("region", aws.config.region)
 
+# Create an IAM role for Lambda
+lambda_role = aws.iam.Role(
+    "lambda_role",
+    assume_role_policy="""{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Action": "sts:AssumeRole",
+            "Principal": {
+                "Service": "lambda.amazonaws.com"
+            },
+            "Effect": "Allow",
+            "Sid": ""
+        }
+    ]
+}
+""",
+)
 
-# open template readme and read contents into stack output
+# Attach policies to the role
+role_policy = aws.iam.RolePolicy(
+    "lambda_policy",
+    role=lambda_role.id,
+    policy=dynamodb_table.arn.apply(
+        lambda table_arn: f"""{{
+    "Version": "2012-10-17",
+    "Statement": [
+        {{
+            "Action": [
+                "dynamodb:*"
+            ],
+            "Effect": "Allow",
+            "Resource": "{table_arn}"
+        }}
+    ]
+}}
+"""
+    ),
+)
+
+# Create the Lambda function
+lambda_function = aws.lambda_.Function(
+    "my_lambda_function",
+    runtime="python3.8",
+    role=lambda_role.arn,
+    handler="lambda_function.lambda_handler",
+    code=pulumi.AssetArchive(
+        {
+            ".": pulumi.FileArchive(
+                "./lambda"
+            )  # Assumes `./lambda` directory contains your lambda code
+        }
+    ),
+    environment=aws.lambda_.FunctionEnvironmentArgs(
+        variables={"TABLE_NAME": dynamodb_table.name}
+    ),
+)
+
+# Create a CloudWatch Log Group for the Lambda function
+log_group = aws.cloudwatch.LogGroup(
+    "lambda_log_group",
+    name=lambda_function.name.apply(lambda name: f"/aws/lambda/{name}"),
+    retention_in_days=14,  # Adjust the retention period as needed
+)
+
+# Define the API Gateway
+api = aws.apigatewayv2.Api("my-api",
+    protocol_type="HTTP",
+)
+
+# Create an Integration for the Lambda function
+lambda_integration = aws.apigatewayv2.Integration(
+    "lambda_integration",
+    api_id=api.id,
+    integration_type="AWS_PROXY",
+    integration_uri=lambda_function.invoke_arn,
+    integration_method="POST",
+    payload_format_version="2.0",
+)
+
+# Define a route for the health check endpoint
+health_check_route = aws.apigatewayv2.Route(
+    "health_check_route",
+    api_id=api.id,
+    route_key="GET /health_check",
+    target=lambda_integration.id.apply(lambda id: f"integrations/{id}"),
+)
+
+# Define a CloudWatch Log Group for API Gateway logs
+log_group = aws.cloudwatch.LogGroup(
+    "api_gateway_log_group",
+    name=api.id.apply(lambda id: f"API-Gateway-Execution-Logs_{id}_default"),
+    retention_in_days=14,  # Adjust the retention period as needed
+)
+
+# Ensure permissions for CloudWatch Logs
+log_group_policy = aws.iam.Policy(
+    "log_group_policy",
+    description="Policy to allow API Gateway to write logs to CloudWatch",
+    policy=log_group.arn.apply(lambda arn: json.dumps({
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": [
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                ],
+                "Resource": f"{arn}:*"
+            }
+        ]
+    }))
+)
+
+log_group_role = aws.iam.Role(
+    "log_group_role",
+    assume_role_policy=json.dumps({
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Principal": {
+                    "Service": "apigateway.amazonaws.com"
+                },
+                "Action": "sts:AssumeRole"
+            }
+        ]
+    })
+)
+
+log_group_role_policy_attachment = aws.iam.RolePolicyAttachment(
+    "log_group_role_policy_attachment",
+    role=log_group_role.name,
+    policy_arn=log_group_policy.arn
+)
+
+# Define the API Gateway stage with logging and detailed metrics enabled
+stage = aws.apigatewayv2.Stage(
+    "api_stage",
+    api_id=api.id,
+    name="$default",
+    route_settings=[
+        aws.apigatewayv2.StageRouteSettingArgs(
+            route_key="GET /health_check",
+            throttling_burst_limit=5000,
+            throttling_rate_limit=10000,
+        )
+    ],
+    auto_deploy=True,
+    access_log_settings=aws.apigatewayv2.StageAccessLogSettingsArgs(
+        destination_arn=log_group.arn,
+        format='{"requestId":"$context.requestId","ip":"$context.identity.sourceIp","caller":"$context.identity.caller","user":"$context.identity.user","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","resourcePath":"$context.resourcePath","status":"$context.status","protocol":"$context.protocol","responseLength":"$context.responseLength"}',
+    ),
+    default_route_settings=aws.apigatewayv2.StageDefaultRouteSettingsArgs(
+        detailed_metrics_enabled=True,
+        logging_level="INFO",
+        data_trace_enabled=True,
+    ),
+)
+
+# Add permission for API Gateway to invoke the Lambda function
+lambda_permission = aws.lambda_.Permission(
+    "lambda_permission",
+    action="lambda:InvokeFunction",
+    function=lambda_function.name,
+    principal="apigateway.amazonaws.com",
+    source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
+)
+
+# Export the URL of the API Gateway
+pulumi.export('api_url', api.api_endpoint)
+
+# Open template readme and read contents into stack output
 with open("./Pulumi.README.md") as f:
     pulumi.export("readme", f.read())
