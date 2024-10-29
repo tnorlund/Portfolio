@@ -12,12 +12,3 @@ def lambda_handler(event, context):
             'statusCode': 200,
             'body': 'Health check passed'
         }
-    # if event['httpMethod'] == 'GET' and event['path'] == '/health_check':
-    #     return {
-    #         'statusCode': 200,
-    #         'body': 'Health check passed'
-    #     }
-    # return {
-    #     'statusCode': 400,
-    #     'body': 'Bad request'
-    # }

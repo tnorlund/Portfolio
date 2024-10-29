@@ -37,62 +37,37 @@ dynamodb_table = aws.dynamodb.Table(
 pulumi.export("table_name", dynamodb_table.name)
 pulumi.export("region", aws.config.region)
 
-# Create an IAM role for Lambda
-lambda_role = aws.iam.Role(
-    "lambda_role",
+# Define the IAM role for the Lambda function
+lambda_role = aws.iam.Role("lambdaRole",
     assume_role_policy="""{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Action": "sts:AssumeRole",
-            "Principal": {
-                "Service": "lambda.amazonaws.com"
-            },
-            "Effect": "Allow",
-            "Sid": ""
-        }
-    ]
-}
-""",
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Action": "sts:AssumeRole",
+                "Principal": {
+                    "Service": "lambda.amazonaws.com"
+                },
+                "Effect": "Allow",
+                "Sid": ""
+            }
+        ]
+    }"""
 )
 
-# Attach policies to the role
-role_policy = aws.iam.RolePolicy(
-    "lambda_policy",
-    role=lambda_role.id,
-    policy=dynamodb_table.arn.apply(
-        lambda table_arn: f"""{{
-    "Version": "2012-10-17",
-    "Statement": [
-        {{
-            "Action": [
-                "dynamodb:*"
-            ],
-            "Effect": "Allow",
-            "Resource": "{table_arn}"
-        }}
-    ]
-}}
-"""
-    ),
+# Attach the necessary policies to the role
+aws.iam.RolePolicyAttachment("lambdaLoggingPolicy",
+    role=lambda_role.name,
+    policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 )
 
-# Create the Lambda function
-lambda_function = aws.lambda_.Function(
-    "my_lambda_function",
-    runtime="python3.8",
+# Define the Lambda function
+lambda_function = aws.lambda_.Function("myLambdaFunction",
     role=lambda_role.arn,
-    handler="lambda_function.lambda_handler",
-    code=pulumi.AssetArchive(
-        {
-            ".": pulumi.FileArchive(
-                "./lambda"
-            )  # Assumes `./lambda` directory contains your lambda code
-        }
-    ),
-    environment=aws.lambda_.FunctionEnvironmentArgs(
-        variables={"TABLE_NAME": dynamodb_table.name}
-    ),
+    runtime="python3.8",
+    handler="index.lambda_handler",
+    code=pulumi.AssetArchive({
+        ".": pulumi.FileArchive("./lambda")
+    })
 )
 
 # Create a CloudWatch Log Group for the Lambda function
