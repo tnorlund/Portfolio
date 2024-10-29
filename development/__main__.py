@@ -37,7 +37,7 @@ dynamodb_table = aws.dynamodb.Table(
 pulumi.export("table_name", dynamodb_table.name)
 pulumi.export("region", aws.config.region)
 
-# Define the IAM role for the Lambda function
+# Define the IAM role for the Lambda function with permissions for the DynamoDB table
 lambda_role = aws.iam.Role("lambdaRole",
     assume_role_policy="""{
         "Version": "2012-10-17",
@@ -55,19 +55,51 @@ lambda_role = aws.iam.Role("lambdaRole",
 )
 
 # Attach the necessary policies to the role
+lambda_policy = aws.iam.Policy("lambdaPolicy",
+    description="IAM policy for Lambda to access DynamoDB",
+    policy=dynamodb_table.arn.apply(lambda arn: json.dumps({
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": [
+                    "dynamodb:GetItem",
+                    "dynamodb:PutItem",
+                    "dynamodb:UpdateItem",
+                    "dynamodb:DeleteItem",
+                    "dynamodb:Scan",
+                    "dynamodb:Query"
+                ],
+                "Resource": arn
+            }
+        ]
+    }))
+)
+
+lambda_role_policy_attachment = aws.iam.RolePolicyAttachment("lambdaRolePolicyAttachment",
+    role=lambda_role.name,
+    policy_arn=lambda_policy.arn
+)
+
+# Attach the necessary policies to the role
 aws.iam.RolePolicyAttachment("lambdaLoggingPolicy",
     role=lambda_role.name,
     policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 )
 
-# Define the Lambda function
+# Define the Lambda function and add the DynamoDB table as an environment variable
 lambda_function = aws.lambda_.Function("myLambdaFunction",
     role=lambda_role.arn,
     runtime="python3.8",
     handler="index.lambda_handler",
     code=pulumi.AssetArchive({
         ".": pulumi.FileArchive("./lambda")
-    })
+    }),
+    environment=aws.lambda_.FunctionEnvironmentArgs(
+        variables={
+            "DYNAMODB_TABLE_NAME": dynamodb_table.name,
+        },
+    ),
 )
 
 # Create a CloudWatch Log Group for the Lambda function
@@ -163,11 +195,6 @@ stage = aws.apigatewayv2.Stage("api_stage",
     access_log_settings=aws.apigatewayv2.StageAccessLogSettingsArgs(
         destination_arn=log_group.arn,
         format='{"requestId":"$context.requestId","ip":"$context.identity.sourceIp","caller":"$context.identity.caller","user":"$context.identity.user","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","resourcePath":"$context.resourcePath","status":"$context.status","protocol":"$context.protocol","responseLength":"$context.responseLength"}',
-    ),
-    default_route_settings=aws.apigatewayv2.StageDefaultRouteSettingsArgs(
-        detailed_metrics_enabled=True,
-        logging_level="INFO",
-        data_trace_enabled=True,
     ),
 )
 
