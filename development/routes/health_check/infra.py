@@ -13,9 +13,6 @@ ROUTE_NAME = os.path.basename(os.path.dirname(__file__))
 # Get the DynamoDB table name
 DYNAMODB_TABLE_NAME = dynamodb_table.name
 
-print(f"HANDLER_DIR: {HANDLER_DIR}")
-print(f"ROUTE_NAME: {ROUTE_NAME}")
-
 
 # Define the IAM role for the Lambda function with permissions for the DynamoDB table
 lambda_role = aws.iam.Role(
