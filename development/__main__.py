@@ -1,87 +1,11 @@
 import pulumi
 import pulumi_aws as aws
 import s3_website  # noqa: F401
+from routes.health_check.infra import health_check_lambda
 from dynamo_db import dynamodb_table
 import json
 
 pulumi.export("region", aws.config.region)
-
-# Define the IAM role for the Lambda function with permissions for the DynamoDB table
-lambda_role = aws.iam.Role(
-    "lambdaRole",
-    assume_role_policy="""{
-        "Version": "2012-10-17",
-        "Statement": [
-            {
-                "Action": "sts:AssumeRole",
-                "Principal": {
-                    "Service": "lambda.amazonaws.com"
-                },
-                "Effect": "Allow",
-                "Sid": ""
-            }
-        ]
-    }""",
-)
-
-# Attach the necessary policies to the role
-lambda_policy = aws.iam.Policy(
-    "lambdaPolicy",
-    description="IAM policy for Lambda to access DynamoDB",
-    policy=dynamodb_table.arn.apply(
-        lambda arn: json.dumps(
-            {
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Effect": "Allow",
-                        "Action": [
-                            "dynamodb:GetItem",
-                            "dynamodb:PutItem",
-                            "dynamodb:UpdateItem",
-                            "dynamodb:DeleteItem",
-                            "dynamodb:Scan",
-                            "dynamodb:Query",
-                        ],
-                        "Resource": arn,
-                    }
-                ],
-            }
-        )
-    ),
-)
-
-lambda_role_policy_attachment = aws.iam.RolePolicyAttachment(
-    "lambdaRolePolicyAttachment", role=lambda_role.name, policy_arn=lambda_policy.arn
-)
-
-# Attach the necessary policies to the role
-aws.iam.RolePolicyAttachment(
-    "lambdaLoggingPolicy",
-    role=lambda_role.name,
-    policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
-)
-
-# Define the Lambda function and add the DynamoDB table as an environment variable
-lambda_function = aws.lambda_.Function(
-    "myLambdaFunction",
-    role=lambda_role.arn,
-    runtime="python3.8",
-    handler="index.lambda_handler",
-    code=pulumi.AssetArchive({".": pulumi.FileArchive("./lambda")}),
-    environment=aws.lambda_.FunctionEnvironmentArgs(
-        variables={
-            "DYNAMODB_TABLE_NAME": dynamodb_table.name,
-        },
-    ),
-)
-
-# Create a CloudWatch Log Group for the Lambda function
-log_group = aws.cloudwatch.LogGroup(
-    "lambda_log_group",
-    name=lambda_function.name.apply(lambda name: f"/aws/lambda/{name}"),
-    retention_in_days=14,  # Adjust the retention period as needed
-)
 
 # Define the API Gateway
 api = aws.apigatewayv2.Api(
@@ -94,7 +18,7 @@ integration = aws.apigatewayv2.Integration(
     "lambda_integration",
     api_id=api.id,
     integration_type="AWS_PROXY",
-    integration_uri=lambda_function.invoke_arn,
+    integration_uri=health_check_lambda.invoke_arn,
     integration_method="POST",
     payload_format_version="2.0",
 )
@@ -182,7 +106,7 @@ stage = aws.apigatewayv2.Stage(
 lambda_permission = aws.lambda_.Permission(
     "lambda_permission",
     action="lambda:InvokeFunction",
-    function=lambda_function.name,
+    function=health_check_lambda.name,
     principal="apigateway.amazonaws.com",
     source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
 )
