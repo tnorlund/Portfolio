@@ -41,6 +41,7 @@ def test_to_item():
     assert image.to_item() == {
         "PK": {"S": "IMAGE#00001"},
         "SK": {"S": "IMAGE"},
+        "Type": {"S": "IMAGE"},
         "Width": {"N": "10"},
         "Height": {"N": "20"},
         "TimestampAdded": {"S": "2021-01-01T00:00:00"},
@@ -87,6 +88,7 @@ def test_itemToImage():
     item = {
         "PK": {"S": "IMAGE#1"},
         "SK": {"S": "IMAGE"},
+        "Type": {"S": "IMAGE"},
         "Width": {"N": "10"},
         "Height": {"N": "20"},
         "TimestampAdded": {"S": "2021-01-01T00:00:00"},
@@ -98,6 +100,7 @@ def test_itemToImage():
     item = {
         "PK": {"S": "IMAGE#1"},
         "SK": {"S": "IMAGE"},
+        "Type": {"S": "IMAGE"},
         "Width": {"N": "10"},
     }
     with pytest.raises(ValueError):
@@ -105,6 +108,7 @@ def test_itemToImage():
     item = {
         "PK": {"S": "IMAGE#1"},
         "SK": {"S": "IMAGE"},
+        "Type": {"S": "IMAGE"},
         "Height": {"N": "20"},
     }
     with pytest.raises(ValueError):
@@ -118,6 +122,7 @@ def test_itemToImage():
     item = {
         "PK": {"S": "IMAGE#1"},
         "SK": {"S": "IMAGE"},
+        "Type": {"S": "IMAGE"},
         "Width": {"N": "10"},
         "Height": {"N": "20"},
         "TimestampAdded": {"S": "2021-01-01T00:00:00"},
@@ -129,6 +134,7 @@ def test_itemToImage():
     item = {
         "PK": {"S": "IMAGE#1"},
         "SK": {"S": "IMAGE"},
+        "Type": {"S": "IMAGE"},
         "Width": {"N": "10"},
         "Height": {"N": "20"},
         "TimestampAdded": {"S": "2021-01-01T00:00:00"},
@@ -140,6 +146,7 @@ def test_itemToImage():
     item = {
         "PK": {"S": "IMAGE#1"},
         "SK": {"S": "IMAGE"},
+        "Type": {"S": "IMAGE"},
         "Width": {"N": "10"},
         "Height": {"N": "20"},
         "TimestampAdded": {"S": "2021-01-01T00:00:00"},
