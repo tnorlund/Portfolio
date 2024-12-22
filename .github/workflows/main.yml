@@ -5,10 +5,21 @@ on:
       - main
 jobs:
   up:
-    name: Pulumi Up to Production
+    name: Build React app and Pulumi Up to Production
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+      - name: Use Node
+        uses: actions/setup-node@v2
+        with:
+          node-version: '16'
+      - name: Install Dependencies
+        run: npm install
+        working-directory: my-app
+      - name: Build React app
+        run: npm run build
+        working-directory: my-app
       - uses: pulumi/actions@v6
         with:
           command: up
