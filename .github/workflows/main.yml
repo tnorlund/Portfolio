@@ -20,6 +20,10 @@ jobs:
         run: pip install -r requirements-dev.txt
         working-directory: lambda_layer/python
 
+      - name: Install package
+        run: pip install -e .
+        working-directory: lambda_layer/python
+
       - name: Run tests
         run: pytest
         working-directory: lambda_layer/python
