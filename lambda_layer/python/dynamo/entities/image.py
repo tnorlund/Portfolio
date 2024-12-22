@@ -21,7 +21,7 @@ class Image:
         # Ensure the ID is a positive integer
         if id <= 0:
             raise ValueError("id must be a positive integer")
-        self.id = id
+        self.id = f"{id:05d}" # Zero pad the ID to 5 digits
         # Ensure the width and height are positive integers
         if (
             width <= 0
@@ -59,7 +59,7 @@ class Image:
         Returns:
             str: The string representation of the Image object
         """
-        return f"Image(id={self.id}, width={self.width}, height={self.height})"
+        return f"Image(id={int(self.id)}, width={self.width}, height={self.height})"
 
     def __iter__(self) -> Generator[Tuple[str, int], None, None]:
         """Returns an iterator over the Image object
@@ -67,7 +67,7 @@ class Image:
         Returns:
             dict: The iterator over the Image object
         """
-        yield "id", self.id
+        yield "id", int(self.id)
         yield "width", self.width
         yield "height", self.height
 
@@ -83,7 +83,7 @@ class Image:
         if not isinstance(other, Image):
             return NotImplemented
         return (
-            self.id == other.id
+            int(self.id) == int(other.id)
             and self.width == other.width
             and self.height == other.height
         )
