@@ -34,3 +34,17 @@ jobs:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Get Pulumi outputs
+        id: pulumi-outputs
+        run: |
+            BUCKET_NAME=$(pulumi stack output bucketName --stack tnorlund/development/prod)
+            AWS_REGION_FROM_PULUMI=$(pulumi stack output region --stack tnorlund/development/prod)
+            echo "bucketName=$BUCKET_NAME" >> $GITHUB_ENV
+            echo "awsRegion=$AWS_REGION_FROM_PULUMI" >> $GITHUB_ENV
+        working-directory: development
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
