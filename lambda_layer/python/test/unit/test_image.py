@@ -32,15 +32,18 @@ def test_to_item():
         "Height": {"N": "20"},
     }
 
+
 def test_repr():
     """Test the Image.__repr__() method"""
     image = Image(1, 10, 20)
     assert repr(image) == "Image(id=1, width=10, height=20)"
 
+
 def test_iter():
     """Test the Image.__iter__() method"""
     image = Image(1, 10, 20)
     assert dict(image) == {"id": 1, "width": 10, "height": 20}
+
 
 def test_eq():
     """Test the Image.__eq__() method"""
@@ -54,6 +57,7 @@ def test_eq():
     image5 = Image(1, 10, 30)
     assert image1 != image5
     assert image1 != 42
+
 
 def test_itemToImage():
     """Test the itemToImage() function"""
