@@ -35,7 +35,7 @@ class _Image:
         try:
             response = self._client.get_item(
                 TableName=self.table_name,
-                Key={"PK": {"S": f"IMAGE#{image_id}"}, "SK": {"S": "IMAGE"}},
+                Key={"PK": {"S": f"IMAGE#{image_id:05d}"}, "SK": {"S": "IMAGE"}},
             )
             return itemToImage(response["Item"])
         except KeyError:
