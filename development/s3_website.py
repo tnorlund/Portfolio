@@ -6,21 +6,7 @@ import json
 site_bucket = aws.s3.Bucket("siteBucket",
     website={
         "indexDocument": "index.html",
-        "errorDocument": "error.html",
     }
-)
-
-# Upload index.html and error.html to the bucket
-index_html = aws.s3.BucketObject("index.html",
-    bucket=site_bucket.id,
-    source=pulumi.FileAsset("index.html"),  # Assumes you have an index.html file in your project directory
-    content_type="text/html"
-)
-
-error_html = aws.s3.BucketObject("error.html",
-    bucket=site_bucket.id,
-    source=pulumi.FileAsset("error.html"),  # Assumes you have an error.html file in your project directory
-    content_type="text/html"
 )
 
 # Define a bucket policy to make the bucket objects publicly readable
