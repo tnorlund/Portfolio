@@ -80,5 +80,6 @@ cdn = aws.cloudfront.Distribution("cdn",
     }
 )
 
+pulumi.export('bucketName', site_bucket.id)
 pulumi.export('websiteUrl', site_bucket.website_endpoint)
 pulumi.export('cdnUrl', cdn.domain_name)
