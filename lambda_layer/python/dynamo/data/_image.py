@@ -40,3 +40,15 @@ class _Image:
             return itemToImage(response["Item"])
         except KeyError:
             raise ValueError(f"Image with ID {image_id} not found")
+
+    def listImages(self) -> list[Image]:
+        response = self._client.scan(
+            TableName=self.table_name,
+            ScanFilter={
+                "SK": {
+                    "AttributeValueList": [{"S": "IMAGE"}],
+                    "ComparisonOperator": "EQ",
+                }
+            },
+        )
+        return [itemToImage(item) for item in response["Items"]]

@@ -51,3 +51,21 @@ def test_get_image(dynamodb_table: Literal["MyMockedTable"]):
 
     # Assert
     assert retrieved_image == image
+
+def test_listImages(dynamodb_table: Literal["MyMockedTable"]):
+    # Arrange
+    client = DynamoClient(dynamodb_table)
+    image_id = 1
+    image_width = 10
+    image_height = 20
+    image_1 = Image(1, 10, 20)
+    image_2 = Image(2, 30, 40)
+    client.addImage(image_1)
+    client.addImage(image_2)
+
+    # Act
+    images = client.listImages()
+
+    # Assert
+    assert image_1 in images
+    assert image_2 in images
