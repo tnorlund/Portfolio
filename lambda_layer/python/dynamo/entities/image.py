@@ -66,6 +66,7 @@ class Image:
         """
         return {
             **self.key(),
+            "Type": {"S": "IMAGE"},
             "Width": {"N": str(self.width)},
             "Height": {"N": str(self.height)},
             "TimestampAdded": {"S": self.timestamp_added},
@@ -127,7 +128,7 @@ def itemToImage(item: dict) -> Image:
     Raises:
         ValueError: When the item format is invalid
     """
-    if item.keys() != {"PK", "SK", "Width", "Height", "TimestampAdded", "S3Bucket", "S3Key"}:
+    if item.keys() != {"PK", "SK", "Type", "Width", "Height", "TimestampAdded", "S3Bucket", "S3Key"}:
         raise ValueError("Invalid item format")
     try:
         return Image(
