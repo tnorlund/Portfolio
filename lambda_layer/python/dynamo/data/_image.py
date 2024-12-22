@@ -1,4 +1,4 @@
-from dynamo.entities import Image
+from dynamo import Image, itemToImage
 from botocore.exceptions import ClientError
 
 
@@ -29,3 +29,13 @@ class _Image:
             )
         except ClientError as e:
             raise ValueError(f"Image with ID {image.id} already exists")
+        
+    def getImage(self, image_id: int) -> Image:
+        try:
+            response = self._client.get_item(
+                TableName=self.table_name,
+                Key={"PK": {"S": f"IMAGE#{image_id}"}, "SK": {"S": "IMAGE"}}
+            )
+            return itemToImage(response["Item"])
+        except KeyError:
+            raise ValueError(f"Image with ID {image_id} not found")
