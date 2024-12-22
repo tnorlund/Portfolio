@@ -16,7 +16,7 @@ def test_add_image(dynamodb_table: Literal["MyMockedTable"]):
     client.addImage(image)
 
     # Assert
-    response = boto3.client("dynamodb").get_item(
+    response = boto3.client("dynamodb", region_name="us-east-1").get_item(
         TableName=dynamodb_table,
         Key={"PK": {"S": f"IMAGE#{image_id}"}, "SK": {"S": "IMAGE"}},
     )
