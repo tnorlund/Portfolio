@@ -17,6 +17,9 @@ class Image:
         if id <= 0:
             raise ValueError("id must be a positive integer")
         self.id = id
+        # Ensure the width and height are positive integers
+        if width <= 0 or height <= 0 or not isinstance(width, int) or not isinstance(height, int):
+            raise ValueError("width and height must be positive integers")
         self.width = width
         self.height = height
 
@@ -53,3 +56,36 @@ class Image:
         yield "id", self.id
         yield "width", self.width
         yield "height", self.height
+
+    def __eq__(self, other) -> bool:
+        """Checks if two Image objects are equal
+
+        Args:
+            other (Image): The other Image object to compare
+
+        Returns:
+            bool: True if the Image objects are equal, False otherwise
+        """
+        if not isinstance(other, Image):
+            return NotImplemented
+        return self.id == other.id and self.width == other.width and self.height == other.height
+    
+def itemToImage(item: dict) -> Image:
+    """Converts a DynamoDB item to an Image object
+
+    Args:
+        item (dict): The DynamoDB item to convert
+
+    Returns:
+        Image: The Image object represented by the DynamoDB item
+    """
+    if item.keys() != {"PK", "SK", "Width", "Height"}:
+        raise ValueError("Invalid item format")
+    try:
+        return Image(
+            id=int(item["PK"]["S"].split("#")[1]),
+            width=int(item["Width"]["N"]),
+            height=int(item["Height"]["N"])
+        )
+    except KeyError:
+        raise ValueError("Invalid item format")
