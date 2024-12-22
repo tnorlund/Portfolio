@@ -34,7 +34,7 @@ class Image:
         Returns:
             dict: The DynamoDB item representation of the Image
         """
-        return {**self.key(), "Width": {"N": self.width}, "Height": {"N": self.height}}
+        return {**self.key(), "Width": {"N": str(self.width)}, "Height": {"N": str(self.height)}}
 
     def __repr__(self) -> str:
         """Returns a string representation of the Image object
