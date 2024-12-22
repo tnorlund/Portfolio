@@ -10,6 +10,11 @@ class Image:
             width (int): The width of the image in pixels
             height (int): The height of the image in pixels
 
+        Attributes:
+            id (int): Number identifying the image
+            width (int): The width of the image in pixels
+            height (int): The height of the image in pixels
+
         Raises:
             ValueError: When the ID is not a positive integer
         """
@@ -18,7 +23,12 @@ class Image:
             raise ValueError("id must be a positive integer")
         self.id = id
         # Ensure the width and height are positive integers
-        if width <= 0 or height <= 0 or not isinstance(width, int) or not isinstance(height, int):
+        if (
+            width <= 0
+            or height <= 0
+            or not isinstance(width, int)
+            or not isinstance(height, int)
+        ):
             raise ValueError("width and height must be positive integers")
         self.width = width
         self.height = height
@@ -27,7 +37,7 @@ class Image:
         """Generates the primary key for the image
 
         Returns:
-            str: The primary key for the image
+            dict: The primary key for the image
         """
         return {"PK": {"S": f"IMAGE#{self.id}"}, "SK": {"S": "IMAGE"}}
 
@@ -37,7 +47,11 @@ class Image:
         Returns:
             dict: The DynamoDB item representation of the Image
         """
-        return {**self.key(), "Width": {"N": str(self.width)}, "Height": {"N": str(self.height)}}
+        return {
+            **self.key(),
+            "Width": {"N": str(self.width)},
+            "Height": {"N": str(self.height)},
+        }
 
     def __repr__(self) -> str:
         """Returns a string representation of the Image object
@@ -68,8 +82,13 @@ class Image:
         """
         if not isinstance(other, Image):
             return NotImplemented
-        return self.id == other.id and self.width == other.width and self.height == other.height
-    
+        return (
+            self.id == other.id
+            and self.width == other.width
+            and self.height == other.height
+        )
+
+
 def itemToImage(item: dict) -> Image:
     """Converts a DynamoDB item to an Image object
 
@@ -78,6 +97,9 @@ def itemToImage(item: dict) -> Image:
 
     Returns:
         Image: The Image object represented by the DynamoDB item
+
+    Raises:
+        ValueError: When the item format is invalid
     """
     if item.keys() != {"PK", "SK", "Width", "Height"}:
         raise ValueError("Invalid item format")
@@ -85,7 +107,7 @@ def itemToImage(item: dict) -> Image:
         return Image(
             id=int(item["PK"]["S"].split("#")[1]),
             width=int(item["Width"]["N"]),
-            height=int(item["Height"]["N"])
+            height=int(item["Height"]["N"]),
         )
     except KeyError:
         raise ValueError("Invalid item format")

@@ -22,6 +22,7 @@ def test_add_image(dynamodb_table: Literal["MyMockedTable"]):
     )
     assert response["Item"] == image.to_item()
 
+
 def test_add_image_error(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -34,6 +35,7 @@ def test_add_image_error(dynamodb_table: Literal["MyMockedTable"]):
     client.addImage(image)
     with pytest.raises(Exception):
         client.addImage(image)
+
 
 def test_get_image(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
