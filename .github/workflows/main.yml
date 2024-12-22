@@ -4,6 +4,25 @@ on:
     branches:
       - main
 jobs:
+  pytest:
+    name: Run tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.12
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+        working-directory: lambda_layer/python
+
+      - name: Run tests
+        run: pytest
+        working-directory: lambda_layer/python
   up:
     name: Build React app and Pulumi Up to Production
     runs-on: ubuntu-latest
