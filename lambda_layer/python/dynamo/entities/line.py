@@ -129,6 +129,7 @@ class Line:
             "PK": {"S": f"IMAGE#{self.image_id:05d}"},
             "SK": {"S": f"LINE#{self.id:05d}"},
             "Type": {"S": "LINE"},
+            "Text": {"S": self.text},
             "X": {"N": _format_float(self.x, 20, 22)},
             "Y": {"N": _format_float(self.y, 20, 22)},
             "Width": {"N": _format_float(self.width, 20, 22)},
@@ -151,6 +152,7 @@ class Line:
         Returns:
             dict: The iterator over the Line object
         """
+        yield "image_id", self.image_id
         yield "id", self.id
         yield "text", self.text
         yield "x", self.x
@@ -197,7 +199,7 @@ def itemToLine(item: dict) -> Line:
     return Line(
         int(item["PK"]["S"][6:]),
         int(item["SK"]["S"][6:]),
-        item.get("Text", {}).get("S", ""),
+        item["Text"]["S"],
         float(item.get("X", {}).get("N", 0)),
         float(item.get("Y", {}).get("N", 0)),
         float(item.get("Width", {}).get("N", 0)),

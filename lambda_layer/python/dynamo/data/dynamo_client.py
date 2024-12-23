@@ -1,9 +1,9 @@
 import boto3
 from dynamo.data._image import _Image
-from dynamo.entities import Image
+from dynamo.data._line import _Line
 
 
-class DynamoClient(_Image):
+class DynamoClient(_Image, _Line):
     """A class used to represent a DynamoDB client."""
 
     def __init__(self, table_name: str, region: str = "us-east-1"):
