@@ -1,7 +1,7 @@
 from typing import Literal
 import pytest
 import boto3
-from dynamo import Image, DynamoClient
+from dynamo import Image, Line, DynamoClient
 
 
 def test_add_image(dynamodb_table: Literal["MyMockedTable"]):
@@ -62,6 +62,32 @@ def test_get_image(dynamodb_table: Literal["MyMockedTable"]):
 
     # Assert
     assert retrieved_image == image
+
+def test_get_imageDetails(dynamodb_table: Literal["MyMockedTable"]):
+    # Arrange
+    client = DynamoClient(dynamodb_table)
+    image_id = 1
+    image = Image(1, 10, 20, "2021-01-01T00:00:00", "bucket", "key1")
+    line = Line(
+        1,
+        1,
+        "06\/27\/2024",
+        0.14956954529503239,
+        0.8868912353567051,
+        0.0872786737257435,
+        0.024234482472679675,
+        7.7517295,
+        1,
+    )
+    client.addImage(image)
+    client.addLine(line)
+
+    # Act
+    retrieved_image, lines = client.getImageDetails(image_id)
+
+    # Assert
+    assert retrieved_image == image
+    assert lines == [line]
 
 
 def test_listImages(dynamodb_table: Literal["MyMockedTable"]):
