@@ -194,7 +194,6 @@ def itemToLine(item: dict) -> Line:
 
     Returns:
         Line: The Line object represented by the DynamoDB item
-
     """
     return Line(
         int(item["PK"]["S"][6:]),
