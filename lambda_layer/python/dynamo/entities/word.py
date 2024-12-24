@@ -150,7 +150,7 @@ def itemToWord(item: dict) -> Word:
     return Word(
         int(item["PK"]["S"].split("#")[1]),
         int(item["SK"]["S"].split("#")[1]),
-        int(item["SK"]["S"].split("#")[2]),
+        int(item["SK"]["S"].split("#")[3]),
         item["text"]["S"],
         float(item["x"]["N"]),
         float(item["y"]["N"]),
