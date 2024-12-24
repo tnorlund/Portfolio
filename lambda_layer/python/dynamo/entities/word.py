@@ -69,8 +69,8 @@ class Word:
         if not isinstance(angle, float):
             raise ValueError("angle must be a float")
         self.angle = angle
-        if not isinstance(confidence, float):
-            raise ValueError("confidence must be a float")
+        if confidence <= 0 or confidence > 1:
+            raise ValueError("confidence must be a float between 0 and 1")
         self.confidence = confidence
     
     def key(self) -> dict:
@@ -90,5 +90,72 @@ class Word:
             "angle": {"N": _format_float(self.angle, 10, 12)},
             "confidence": {"N": _format_float(self.confidence, 2, 2)}
         }
+
+    def __repr__(self):
+        """Returns a string representation of the Word object
+        
+        Returns:
+            str: The string representation of the Word object
+        """
+        return f"Word(id={int(self.id)}, text='{self.text}')"
     
-# TODO: Implement a itemToWord Function
+    def __iter__(self) -> Generator[Tuple[str, str], None, None]:
+        yield "PK", f"IMAGE#{self.image_id:05d}"
+        yield "SK", f"LINE#{self.line_id:05d}#WORD#{self.id:05d}"
+        yield "text", self.text
+        yield "x", _format_float(self.x, 20, 22)
+        yield "y", _format_float(self.y, 20, 22)
+        yield "width", _format_float(self.width, 20, 22)
+        yield "height", _format_float(self.height, 20, 22)
+        yield "angle", _format_float(self.angle, 10, 12)
+        yield "confidence", _format_float(self.confidence, 2, 2)
+
+    def __eq__(self, other: object) -> bool:
+        """Compares two Word objects
+        
+        Args:
+            other (object): The object to compare
+        
+        Returns:
+            bool: True if the objects are equal, False otherwise
+        """
+        if not isinstance(other, Word):
+            return False
+        return all(
+            getattr(self, attr) == getattr(other, attr)
+            for attr in [
+                "image_id",
+                "line_id",
+                "id",
+                "text",
+                "x",
+                "y",
+                "width",
+                "height",
+                "angle",
+                "confidence"
+            ]
+        )
+        
+    
+def itemToWord(item: dict) -> Word:
+    """Converts a DynamoDB item to a Word object
+    
+    Args:
+        item (dict): The DynamoDB item to convert
+    
+    Returns:
+        Word: The Word object created from the item
+    """
+    return Word(
+        int(item["PK"]["S"].split("#")[1]),
+        int(item["SK"]["S"].split("#")[1]),
+        int(item["SK"]["S"].split("#")[2]),
+        item["text"]["S"],
+        float(item["x"]["N"]),
+        float(item["y"]["N"]),
+        float(item["width"]["N"]),
+        float(item["height"]["N"]),
+        float(item["angle"]["N"]),
+        float(item["confidence"]["N"])
+    )
