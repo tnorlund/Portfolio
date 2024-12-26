@@ -82,13 +82,14 @@ class Word:
     def to_item(self) -> dict:
         return {
             **self.key(),
-            "text": {"S": self.text},
-            "x": {"N": _format_float(self.x, 20, 22)},
-            "y": {"N": _format_float(self.y, 20, 22)},
-            "width": {"N": _format_float(self.width, 20, 22)},
-            "height": {"N": _format_float(self.height, 20, 22)},
-            "angle": {"N": _format_float(self.angle, 10, 12)},
-            "confidence": {"N": _format_float(self.confidence, 2, 2)}
+            "Type": {"S": "WORD"},
+            "Text": {"S": self.text},
+            "X": {"N": _format_float(self.x, 20, 22)},
+            "Y": {"N": _format_float(self.y, 20, 22)},
+            "Width": {"N": _format_float(self.width, 20, 22)},
+            "Height": {"N": _format_float(self.height, 20, 22)},
+            "Angle": {"N": _format_float(self.angle, 10, 12)},
+            "Confidence": {"N": _format_float(self.confidence, 2, 2)}
         }
 
     def __repr__(self):
@@ -151,11 +152,11 @@ def itemToWord(item: dict) -> Word:
         int(item["PK"]["S"].split("#")[1]),
         int(item["SK"]["S"].split("#")[1]),
         int(item["SK"]["S"].split("#")[3]),
-        item["text"]["S"],
-        float(item["x"]["N"]),
-        float(item["y"]["N"]),
-        float(item["width"]["N"]),
-        float(item["height"]["N"]),
-        float(item["angle"]["N"]),
-        float(item["confidence"]["N"])
+        item["Text"]["S"],
+        float(item["X"]["N"]),
+        float(item["Y"]["N"]),
+        float(item["Width"]["N"]),
+        float(item["Height"]["N"]),
+        float(item["Angle"]["N"]),
+        float(item["Confidence"]["N"])
     )
