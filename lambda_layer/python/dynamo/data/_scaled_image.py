@@ -52,9 +52,13 @@ class _ScaledImage:
         
     def getScaledImage(self, image_id: int, scale:float) -> ScaledImage:
         try:
+            formatted_pk = f"IMAGE#{self.image_id:05d}"
+            formatted_sk = (
+                f"IMAGE_SCALE#{_format_float(self.scale, 4, 6).replace('.', '_')}"
+            )
             response = self._client.get_item(
                 TableName=self.table_name,
-                Key={"PK": {"S": f"IMAGE#{image_id:05d}"}, "SK": {"S": f"IMAGE_SCALE#{_format_float(scale, 4, 6).replace(".", "_")}"}},
+                Key={"PK": {"S": formatted_pk}, "SK": {"S": formatted_sk}},
             )
             return ItemToScaledImage(response["Item"])
         except KeyError:
