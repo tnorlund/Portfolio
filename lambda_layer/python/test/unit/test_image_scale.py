@@ -1,5 +1,5 @@
 import pytest
-from dynamo import ScaledImage, itemToImageScale
+from dynamo import ScaledImage, ItemToScaledImage
 
 def test_init():
     """Test the ScaledImage constructor
@@ -98,8 +98,8 @@ def test_eq():
     scaled_image8 = ScaledImage(1, 248, 350, "2021-01-01T00:00:00", "Example_long_string", 0.2)
     assert scaled_image1 != scaled_image8, "scale is different"
 
-def test_itemToImageScale():
-    """Test the itemToImageScale() function"""
+def test_ItemToScaledImage():
+    """Test the ItemToScaledImage() function"""
     item = {
         "PK": {"S": "IMAGE#00001"},
         "SK": {"S": "IMAGE_SCALE#0_1000"},
@@ -110,7 +110,7 @@ def test_itemToImageScale():
         "Base64": {"S": "Example_long_string"},
         "Scale": {"N": "0.1"},
     }
-    scaled_image = itemToImageScale(item)
+    scaled_image = ItemToScaledImage(item)
     assert scaled_image.image_id == 1
     assert scaled_image.width == 248
     assert scaled_image.height == 350
