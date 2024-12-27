@@ -3,8 +3,9 @@ from dynamo.data._image import _Image
 from dynamo.data._line import _Line
 from dynamo.data._word import _Word
 from dynamo.data._letter import _Letter
+from dynamo.data._scaled_image import _ScaledImage
 
-class DynamoClient(_Image, _Line, _Word, _Letter):
+class DynamoClient(_Image, _Line, _Word, _Letter, _ScaledImage):
     """A class used to represent a DynamoDB client."""
 
     def __init__(self, table_name: str, region: str = "us-east-1"):
