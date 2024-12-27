@@ -105,7 +105,7 @@ class ScaledImage:
             and self.scale == value.scale
         )
     
-def itemToImageScale(item: dict) -> ScaledImage:
+def ItemToScaledImage(item: dict) -> ScaledImage:
     return ScaledImage(
         image_id=int(item["PK"]["S"].split("#")[1]),
         width=int(item["Width"]["N"]),
