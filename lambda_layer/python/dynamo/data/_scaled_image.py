@@ -52,9 +52,9 @@ class _ScaledImage:
         
     def getScaledImage(self, image_id: int, scale:float) -> ScaledImage:
         try:
-            formatted_pk = f"IMAGE#{self.image_id:05d}"
+            formatted_pk = f"IMAGE#{image_id:05d}"
             formatted_sk = (
-                f"IMAGE_SCALE#{_format_float(self.scale, 4, 6).replace('.', '_')}"
+                f"IMAGE_SCALE#{_format_float(scale, 4, 6).replace('.', '_')}"
             )
             response = self._client.get_item(
                 TableName=self.table_name,
