@@ -1,7 +1,7 @@
 from typing import Literal
 import pytest
 import boto3
-from dynamo import Image, Line, DynamoClient
+from dynamo import Image, Line, Word, Letter, DynamoClient
 
 
 def test_add_image(dynamodb_table: Literal["MyMockedTable"]):
@@ -79,15 +79,44 @@ def test_get_imageDetails(dynamodb_table: Literal["MyMockedTable"]):
         7.7517295,
         1,
     )
+    word = Word(
+        1,
+        1,
+        1,
+        "06\/27\/2024",
+        0.1495695452950324,
+        0.8868912353567051,
+        0.08727867372574347,
+        0.024234482472679675,
+        7.7517295,
+        1,
+    )
+    letter = Letter(
+        1,
+        1,
+        1,
+        1,
+        "0",
+        0.1495695452950324,
+        0.8868912353567051,
+        0.08727867372574347,
+        0.024234482472679675,
+        7.7517295,
+        1,
+    )
     client.addImage(image)
     client.addLine(line)
+    client.addWord(word)
+    client.addLetter(letter)
 
     # Act
-    retrieved_image, lines = client.getImageDetails(image_id)
+    retrieved_image, lines, words, letters = client.getImageDetails(image_id)
 
     # Assert
     assert retrieved_image == image
     assert lines == [line]
+    assert words == [word]
+    assert letters == [letter]
 
 
 def test_listImages(dynamodb_table: Literal["MyMockedTable"]):
