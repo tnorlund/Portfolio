@@ -1,4 +1,4 @@
-from dynamo import Image, Line, itemToImage, itemToLine
+from dynamo import Image, Line, Letter, Word, itemToImage, itemToLine, itemToWord, itemToLetter
 from botocore.exceptions import ClientError
 
 
@@ -41,7 +41,7 @@ class _Image:
         except KeyError:
             raise ValueError(f"Image with ID {image_id} not found")
 
-    def getImageDetails(self, image_id: int) ->  tuple[Image, list[Line]]:
+    def getImageDetails(self, image_id: int) -> tuple[Image, list[Line], list[Word], list[Letter]]:
         """Gets the details of an image from the database. This includes all lines associated with the image."""
         try:
             response = self._client.query(
@@ -57,13 +57,19 @@ class _Image:
             # Parse all items in the response as either image or line
             image = None
             lines = []
+            words = []
+            letters = []
             for item in response["Items"]:
                 if item["SK"]["S"] == "IMAGE":
                     image = itemToImage(item)
-                elif item["SK"]["S"].startswith("LINE"):
+                elif item["SK"]["S"].startswith("LINE") and "WORD" not in item["SK"]["S"]:
                     lines.append(itemToLine(item))
+                elif item["SK"]["S"].startswith("LINE") and "WORD" in item["SK"]["S"] and "LETTER" not in item["SK"]["S"]:
+                    words.append(itemToWord(item))
+                elif item["SK"]["S"].startswith("LINE") and "WORD" in item["SK"]["S"] and "LETTER" in item["SK"]["S"]:
+                    letters.append(itemToLetter(item))
             
-            return image, lines
+            return image, lines, words, letters
         except Exception as e:
             raise Exception(f"Error getting image details: {e}")
             # raise ValueError(f"Image with ID {image_id} not found")
