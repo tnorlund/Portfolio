@@ -30,7 +30,7 @@ class Image:
         # Ensure the ID is a positive integer
         if id <= 0:
             raise ValueError("id must be a positive integer")
-        self.id = f"{id:05d}"  # Zero pad the ID to 5 digits
+        self.id = id
         # Ensure the width and height are positive integers
         if (
             width <= 0
@@ -56,7 +56,7 @@ class Image:
         Returns:
             dict: The primary key for the image
         """
-        return {"PK": {"S": f"IMAGE#{self.id}"}, "SK": {"S": "IMAGE"}}
+        return {"PK": {"S": f"IMAGE#{self.id:05d}"}, "SK": {"S": "IMAGE"}}
 
     def to_item(self) -> dict:
         """Converts the Image object to a DynamoDB item
