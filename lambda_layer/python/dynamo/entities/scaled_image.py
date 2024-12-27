@@ -66,11 +66,14 @@ class ScaledImage:
         self.scale = scale
 
     def key(self) -> dict:
+        formatted_pk = f"IMAGE#{self.image_id:05d}"
+        formatted_sk = (
+            f"IMAGE_SCALE#{_format_float(self.scale, 4, 6).replace('.', '_')}"
+        )
+
         return {
-            "PK": {"S": f"IMAGE#{self.image_id:05d}"},
-            "SK": {
-                "S": f"IMAGE_SCALE#{_format_float(self.scale, 4, 6).replace(".", "_")}"
-            },
+            "PK": {"S": formatted_pk},
+            "SK": {"S": formatted_sk},
         }
 
     def to_item(self) -> dict:
@@ -86,7 +89,7 @@ class ScaledImage:
 
     def __repr__(self):
         return f"ScaledImage(image_id={int(self.image_id)}, scale={self.scale})"
-    
+
     def __iter__(self) -> Generator[Tuple[str, int], None, None]:
         yield "image_id", self.image_id
         yield "width", self.width
@@ -104,7 +107,8 @@ class ScaledImage:
             and self.base64 == value.base64
             and self.scale == value.scale
         )
-    
+
+
 def ItemToScaledImage(item: dict) -> ScaledImage:
     return ScaledImage(
         image_id=int(item["PK"]["S"].split("#")[1]),
