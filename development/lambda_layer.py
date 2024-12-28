@@ -13,6 +13,7 @@ UPLOAD_DIR = os.path.join(PROJECT_DIR, "upload")
 ZIP_FILE_PATH = os.path.join(PROJECT_DIR, "upload.zip")
 PACKAGE_NAME = os.path.join(LAMBDA_LAYER_DIR, "python")
 PYTHON_TARGET = os.path.join(UPLOAD_DIR, "python")
+S3_BUCKET_NAME = "lambdalayerpulumi"
 
 def ensure_directory_exists(directory):
     """Ensure the directory exists."""
@@ -45,6 +46,16 @@ def create_zip_file():
                 relative_path = os.path.relpath(abs_path, UPLOAD_DIR)
                 zipf.write(abs_path, relative_path)
 
+def upload_to_s3():
+    """Uploads the packaged .zip file to the specified S3 bucket."""
+    s3_object = aws.s3.BucketObject(
+        "lambda-layer-zip",
+        bucket=S3_BUCKET_NAME,
+        source=ZIP_FILE_PATH,
+        key=os.path.basename(ZIP_FILE_PATH)
+    )
+    return s3_object.bucket, s3_object.key
+
 
 def prepare_lambda_layer():
     """Prepare the Lambda Layer package."""
@@ -63,13 +74,13 @@ compatible_runtimes = ["python3.9"]  # Adjust runtime as needed
 
 # # Prepare the Lambda layer package
 prepare_lambda_layer()
+s3_bucket, s3_key = upload_to_s3()
 
 lambda_layer = aws.lambda_.LayerVersion(
     layer_name,
     layer_name=layer_name,
     compatible_runtimes=compatible_runtimes,
-    code=pulumi.AssetArchive({
-        ".": pulumi.FileArchive(ZIP_FILE_PATH)
-    }),
+    s3_bucket=s3_bucket,
+    s3_key=s3_key,
     description="Lambda Layer for accessing the DynamoDB table",
 )
