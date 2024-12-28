@@ -5,6 +5,8 @@ import pulumi_aws as aws
 from pulumi import AssetArchive, FileArchive
 # Import the DynamoDB table name from the dynamo_db module
 from dynamo_db import dynamodb_table
+# Import the Lambda Layer from the lambda_layer module
+from lambda_layer import lambda_layer
 
 # Reference the directory containing index.py
 HANDLER_DIR = os.path.join(os.path.dirname(__file__), "handler")
@@ -87,6 +89,7 @@ health_check_lambda = aws.lambda_.Function(
             "DYNAMODB_TABLE_NAME": DYNAMODB_TABLE_NAME,
         }
     },
+    layers=[lambda_layer.arn],
 )
 
 # CloudWatch log group for the Lambda function
