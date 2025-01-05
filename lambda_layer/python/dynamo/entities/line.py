@@ -100,8 +100,10 @@ class Line:
         if height <= 0 or not isinstance(height, float):
             raise ValueError("height must be a positive float")
         self.height = height
+        if isinstance(angle, int):
+            angle = float(angle)
         if not isinstance(angle, float):
-            raise ValueError("angle must be a float")
+            raise ValueError("angle must be a float or int")
         self.angle = angle
         # Ensure the confidence is a float between 0 and 1
         if confidence <= 0 or confidence > 1:
