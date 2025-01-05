@@ -70,8 +70,10 @@ class Letter:
         if not isinstance(height, float):
             raise ValueError("height must be a float")
         self.height = height
+        if isinstance(angle, int):
+            angle = float(angle)
         if not isinstance(angle, float):
-            raise ValueError("angle must be a float")
+            raise ValueError("angle must be a float or int")
         self.angle = angle
         if confidence <= 0 or confidence > 1:
             raise ValueError("confidence must be a float between 0 and 1")
