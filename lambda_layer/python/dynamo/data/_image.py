@@ -73,7 +73,20 @@ class _Image:
         except Exception as e:
             raise Exception(f"Error getting image details: {e}")
             # raise ValueError(f"Image with ID {image_id} not found")
-        
+
+    def deleteImage(self, image_id: int):
+        """Deletes an image from the database
+
+        Args:
+            image_id (int): The ID of the image to delete
+        """
+        try:
+            self._client.delete_item(
+                TableName=self.table_name,
+                Key={"PK": {"S": f"IMAGE#{image_id:05d}"}, "SK": {"S": "IMAGE"}},
+            )
+        except ClientError as e:
+            raise ValueError(f"Image with ID {image_id} not found")
 
     def listImages(self) -> list[Image]:
         response = self._client.scan(
