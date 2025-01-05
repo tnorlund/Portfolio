@@ -3,7 +3,7 @@ import pulumi_aws as aws
 
 # The DynamoDB table
 dynamodb_table = aws.dynamodb.Table(
-    "GHActionTable",
+    "ReceiptsTable",
     attributes=[
         aws.dynamodb.TableAttributeArgs(
             name="PK",
@@ -25,7 +25,7 @@ dynamodb_table = aws.dynamodb.Table(
     stream_view_type="NEW_IMAGE",
     tags={
         "Environment": "dev",
-        "Name": "GHActionTable",
+        "Name": "ReceiptsTable",
     },
 )
 
