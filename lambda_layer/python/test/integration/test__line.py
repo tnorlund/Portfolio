@@ -30,6 +30,7 @@ def test_add_line(dynamodb_table: Literal["MyMockedTable"]):
     assert "Item" in response, f"Item not found. response: {response}"
     assert response["Item"] == line.to_item()
 
+
 def test_add_line_error(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -49,6 +50,7 @@ def test_add_line_error(dynamodb_table: Literal["MyMockedTable"]):
     client.addLine(line)
     with pytest.raises(ValueError):
         client.addLine(line)
+
 
 def test_add_lines(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
@@ -94,6 +96,90 @@ def test_add_lines(dynamodb_table: Literal["MyMockedTable"]):
     assert "Item" in response, f"Item not found. response: {response}"
     assert response["Item"] == line_2.to_item()
 
+
+def test_delete_line(dynamodb_table: Literal["MyMockedTable"]):
+    # Arrange
+    client = DynamoClient(dynamodb_table)
+    line = Line(
+        1,
+        1,
+        "06\/27\/2024",
+        0.14956954529503239,
+        0.8868912353567051,
+        0.0872786737257435,
+        0.024234482472679675,
+        7.7517295,
+        1,
+    )
+    client.addLine(line)
+
+    # Act
+    client.deleteLine(1, 1)
+
+    # Assert
+    with pytest.raises(ValueError):
+        client.getLine(1, 1)
+
+
+def test_delete_line_error(dynamodb_table: Literal["MyMockedTable"]):
+    # Arrange
+    client = DynamoClient(dynamodb_table)
+    line = Line(
+        1,
+        1,
+        "06\/27\/2024",
+        0.14956954529503239,
+        0.8868912353567051,
+        0.0872786737257435,
+        0.024234482472679675,
+        7.7517295,
+        1,
+    )
+    client.addLine(line)
+
+    # Act
+    with pytest.raises(ValueError):
+        client.deleteLine(1, 2)
+
+
+def test_delete_lines(dynamodb_table: Literal["MyMockedTable"]):
+    # Arrange
+    client = DynamoClient(dynamodb_table)
+    line_1 = Line(
+        1,
+        1,
+        "06\/27\/2024",
+        0.14956954529503239,
+        0.8868912353567051,
+        0.0872786737257435,
+        0.024234482472679675,
+        7.7517295,
+        1,
+    )
+    line_2 = Line(
+        1,
+        2,
+        "A New Line",
+        0.14956954529503239,
+        0.8868912353567051,
+        0.0872786737257435,
+        0.024234482472679675,
+        7.7517295,
+        1,
+    )
+    client.addLine(line_1)
+    client.addLine(line_2)
+
+    # Act
+    client.deleteLines(1)
+
+    # Assert
+    with pytest.raises(ValueError):
+        client.getLine(1, 1)
+    with pytest.raises(ValueError):
+        client.getLine(1, 2)
+
+
 def test_get_line(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -116,6 +202,7 @@ def test_get_line(dynamodb_table: Literal["MyMockedTable"]):
     # Assert
     assert retrieved_line == line
 
+
 def test_get_line_error(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -135,6 +222,7 @@ def test_get_line_error(dynamodb_table: Literal["MyMockedTable"]):
     # Act
     with pytest.raises(ValueError):
         client.getLine(1, 2)
+
 
 def test_listLines(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
@@ -171,6 +259,7 @@ def test_listLines(dynamodb_table: Literal["MyMockedTable"]):
     assert line_1 in lines
     assert line_2 in lines
 
+
 def test_listLinesEmpty(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -180,6 +269,7 @@ def test_listLinesEmpty(dynamodb_table: Literal["MyMockedTable"]):
 
     # Assert
     assert len(lines) == 0
+
 
 def test_listLinesFromImage(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
