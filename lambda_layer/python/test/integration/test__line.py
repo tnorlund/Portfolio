@@ -50,6 +50,50 @@ def test_add_line_error(dynamodb_table: Literal["MyMockedTable"]):
     with pytest.raises(ValueError):
         client.addLine(line)
 
+def test_add_lines(dynamodb_table: Literal["MyMockedTable"]):
+    # Arrange
+    client = DynamoClient(dynamodb_table)
+    line_1 = Line(
+        1,
+        1,
+        "06\/27\/2024",
+        0.14956954529503239,
+        0.8868912353567051,
+        0.0872786737257435,
+        0.024234482472679675,
+        7.7517295,
+        1,
+    )
+    line_2 = Line(
+        1,
+        2,
+        "A New Line",
+        0.14956954529503239,
+        0.8868912353567051,
+        0.0872786737257435,
+        0.024234482472679675,
+        7.7517295,
+        1,
+    )
+
+    # Act
+    client.addLines([line_1, line_2])
+
+    # Assert
+    response = boto3.client("dynamodb", region_name="us-east-1").get_item(
+        TableName=dynamodb_table,
+        Key=line_1.key(),
+    )
+    assert "Item" in response, f"Item not found. response: {response}"
+    assert response["Item"] == line_1.to_item()
+
+    response = boto3.client("dynamodb", region_name="us-east-1").get_item(
+        TableName=dynamodb_table,
+        Key=line_2.key(),
+    )
+    assert "Item" in response, f"Item not found. response: {response}"
+    assert response["Item"] == line_2.to_item()
+
 def test_get_line(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
