@@ -74,7 +74,7 @@ class Line:
             ValueError: When Y is not a positive float
             ValueError: When width is not a positive float
             ValueError: When height is not a positive float
-            ValueError: When angle is not a positive float
+            ValueError: When angle is not a float
             ValueError: When confidence is not a float between 0 and 1
         """
         # Ensure the Image ID is a positive integer
@@ -100,8 +100,8 @@ class Line:
         if height <= 0 or not isinstance(height, float):
             raise ValueError("height must be a positive float")
         self.height = height
-        if angle <= 0 or not isinstance(angle, float):
-            raise ValueError("angle must be a positive float")
+        if not isinstance(angle, float):
+            raise ValueError("angle must be a float")
         self.angle = angle
         # Ensure the confidence is a float between 0 and 1
         if confidence <= 0 or confidence > 1:
