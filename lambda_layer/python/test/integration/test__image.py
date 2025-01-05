@@ -119,6 +119,19 @@ def test_get_imageDetails(dynamodb_table: Literal["MyMockedTable"]):
     assert letters == [letter]
 
 
+def test_deleteImage(dynamodb_table: Literal["MyMockedTable"]):
+    # Arrange
+    client = DynamoClient(dynamodb_table)
+    image = Image(1, 10, 20, "2021-01-01T00:00:00", "bucket", "key1")
+    client.addImage(image)
+
+    # Act
+    client.deleteImage(image.id)
+
+    # Assert
+    with pytest.raises(ValueError):
+        client.getImage(1)
+
 def test_listImages(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
