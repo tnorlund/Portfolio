@@ -101,6 +101,94 @@ def test_addLetters(dynamodb_table: Literal["MyMockedTable"]):
     assert "Item" in response, f"Item not found. response: {response}"
     assert response["Item"] == letter2.to_item()
 
+def test_deleteLetter(dynamodb_table: Literal["MyMockedTable"]):
+    # Arrange
+    client = DynamoClient(dynamodb_table)
+    letter = Letter(
+        1,
+        1,
+        1,
+        1,
+        "0",
+        0.1495695452950324,
+        0.8868912353567051,
+        0.08727867372574347,
+        0.024234482472679675,
+        7.7517295,
+        1,
+    )
+
+    # Act
+    client.addLetter(letter)
+    client.deleteLetter(1, 1, 1, 1)
+
+    # Assert
+    with pytest.raises(ValueError):
+        client.getLetter(1, 1, 1, 1)
+
+def test_deleteLetter_error(dynamodb_table: Literal["MyMockedTable"]):
+    # Arrange
+    client = DynamoClient(dynamodb_table)
+    letter = Letter(
+        1,
+        1,
+        1,
+        1,
+        "0",
+        0.1495695452950324,
+        0.8868912353567051,
+        0.08727867372574347,
+        0.024234482472679675,
+        7.7517295,
+        1,
+    )
+
+    # Act
+    client.addLetter(letter)
+    with pytest.raises(ValueError):
+        client.deleteLetter(1, 1, 1, 2)
+
+def test_deleteLettersFromWord(dynamodb_table: Literal["MyMockedTable"]):
+    # Arrange
+    client = DynamoClient(dynamodb_table)
+    letter1 = Letter(
+        1,
+        1,
+        1,
+        1,
+        "0",
+        0.1495695452950324,
+        0.8868912353567051,
+        0.08727867372574347,
+        0.024234482472679675,
+        7.7517295,
+        1,
+    )
+    letter2 = Letter(
+        1,
+        1,
+        1,
+        2,
+        "0",
+        0.1495695452950324,
+        0.8868912353567051,
+        0.08727867372574347,
+        0.024234482472679675,
+        7.7517295,
+        1,
+    )
+    client.addLetter(letter1)
+    client.addLetter(letter2)
+
+    # Act
+    client.deleteLettersFromWord(1, 1, 1)
+
+    # Assert
+    with pytest.raises(ValueError):
+        client.getLetter(1, 1, 1, 1)
+    with pytest.raises(ValueError):
+        client.getLetter(1, 1, 1, 2)
+
 def test_getLetter(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)

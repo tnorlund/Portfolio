@@ -62,6 +62,62 @@ class _Word:
         except ClientError as e:
             raise ValueError("Could not add words to the database")
 
+    def deleteWord(self, image_id: int, line_id: int, word_id: int):
+        """Deletes a word from the database
+
+        Args:
+            image_id (int): The ID of the image the word belongs to
+            line_id (int): The ID of the line the word belongs to
+            word_id (int): The ID of the word to delete
+        """
+        try:
+            self._client.delete_item(
+                TableName=self.table_name,
+                Key={
+                    "PK": {"S": f"IMAGE#{image_id:05d}"},
+                    "SK": {"S": f"LINE#{line_id:05d}#WORD#{word_id:05d}"},
+                },
+                ConditionExpression="attribute_exists(PK)",
+            )
+        except ClientError as e:
+            raise ValueError(f"Word with ID {word_id} not found")
+
+    def deleteWordsFromLine(self, image_id: int, line_id: int):
+        """Deletes all words from a line
+
+        Args:
+            image_id (int): The ID of the image the line belongs to
+            line_id (int): The ID of the line to delete words from
+        """
+        try:
+            # Get all words from the line
+            words = self.listWordsFromLine(image_id, line_id)
+            # Use batch_write_item to delete all lines
+            for i in range(0, len(words), CHUNK_SIZE):
+                chunk = words[i : i + CHUNK_SIZE]
+                request_items = [
+                    {
+                        "DeleteRequest": {
+                            "Key": {
+                                "PK": {"S": f"IMAGE#{image_id:05d}"},
+                                "SK": {"S": f"LINE#{line_id:05d}#WORD#{word.id:05d}"},
+                            }
+                        }
+                    }
+                    for word in chunk
+                ]
+                response = self._client.batch_write_item(
+                    RequestItems={self.table_name: request_items}
+                )
+                # Handle unprocessed items if they exist
+                unprocessed = response.get("UnprocessedItems", {})
+                while unprocessed.get(self.table_name):
+                    # If there are unprocessed items, retry them
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    unprocessed = response.get("UnprocessedItems", {})
+        except ClientError as e:
+            raise ValueError(f"Could not delete words from line {line_id}")
+
     def getWord(self, image_id: int, line_id: int, word_id: int) -> Word:
         try:
             response = self._client.get_item(
