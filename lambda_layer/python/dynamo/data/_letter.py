@@ -1,6 +1,10 @@
 from dynamo import Letter, itemToLetter
 from botocore.exceptions import ClientError
 
+# DynamoDB batch_write_item can only handle up to 25 items per call
+# So let's chunk the items in groups of 25
+CHUNK_SIZE = 25
+
 class _Letter:
     """
     A class used to represent a Letter in the database.
@@ -28,6 +32,32 @@ class _Letter:
             )
         except ClientError as e:
             raise ValueError(f"Letter with ID {letter.id} already exists")
+        
+    def addLetters(self, letters: list[Letter]):
+        """Adds a list of letters to the database
+
+        Args:
+            letters (list[Letter]): The letters to add to the database
+
+        Raises:
+            ValueError: When a letter with the same ID already exists
+        """
+        try:
+            for i in range(0, len(letters), CHUNK_SIZE):
+                chunk = letters[i : i + CHUNK_SIZE]
+                request_items = [
+                    {"PutRequest": {"Item": letter.to_item()}} for letter in chunk
+                ]
+                response = self._client.batch_write_item(
+                    RequestItems={self.table_name: request_items}
+                )
+                # Handle unprocessed items if they exist
+                unprocessed = response.get("UnprocessedItems", {})
+                while unprocessed.get(self.table_name):
+                    # If there are unprocessed items, retry them
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
+        except ClientError as e:
+            raise ValueError("Could not add letters to the database")
         
     def getLetter(self, image_id: int, line_id: int, word_id: int, letter_id: int) -> Letter:
         try:
