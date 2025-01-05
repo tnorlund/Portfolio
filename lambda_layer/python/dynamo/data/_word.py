@@ -1,6 +1,10 @@
 from dynamo import Word, itemToWord
 from botocore.exceptions import ClientError
 
+# DynamoDB batch_write_item can only handle up to 25 items per call
+# So let's chunk the items in groups of 25
+CHUNK_SIZE = 25
+
 
 class _Word:
     """
@@ -30,6 +34,33 @@ class _Word:
             )
         except ClientError as e:
             raise ValueError(f"Word with ID {word.id} already exists")
+
+    def addWords(self, words: list[Word]):
+        """Adds a list of words to the database
+
+        Args:
+            words (list[Word]): The words to add to the database
+
+        Raises:
+            ValueError: When a word with the same ID already
+        """
+        try:
+            for i in range(0, len(words), CHUNK_SIZE):
+                chunk = words[i : i + CHUNK_SIZE]
+                request_items = [
+                    {"PutRequest": {"Item": word.to_item()}} for word in chunk
+                ]
+                response = self._client.batch_write_item(
+                    RequestItems={self.table_name: request_items}
+                )
+                # Handle unprocessed items if they exist
+                unprocessed = response.get("UnprocessedItems", {})
+                while unprocessed.get(self.table_name):
+                    # If there are unprocessed items, retry them
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    unprocessed = response.get("UnprocessedItems", {})
+        except ClientError as e:
+            raise ValueError("Could not add words to the database")
 
     def getWord(self, image_id: int, line_id: int, word_id: int) -> Word:
         try:

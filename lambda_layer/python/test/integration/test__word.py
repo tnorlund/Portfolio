@@ -52,6 +52,52 @@ def test_add_word_error(dynamodb_table: Literal["MyMockedTable"]):
     with pytest.raises(ValueError):
         client.addWord(word)
 
+def test_addWords(dynamodb_table: Literal["MyMockedTable"]):
+    # Arrange
+    client = DynamoClient(dynamodb_table)
+    word1 = Word(
+        1,
+        1,
+        1,
+        "06\/27\/2024",
+        0.1495695452950324,
+        0.8868912353567051,
+        0.08727867372574347,
+        0.024234482472679675,
+        7.7517295,
+        1,
+    )
+    word2 = Word(
+        1,
+        1,
+        2,
+        "06\/27\/2024",
+        0.1495695452950324,
+        0.8868912353567051,
+        0.08727867372574347,
+        0.024234482472679675,
+        7.7517295,
+        1,
+    )
+
+    # Act
+    client.addWords([word1, word2])
+
+    # Assert
+    response = boto3.client("dynamodb", region_name="us-east-1").get_item(
+        TableName=dynamodb_table,
+        Key=word1.key(),
+    )
+    assert "Item" in response, f"Item not found. response: {response}"
+    assert response["Item"] == word1.to_item()
+
+    response = boto3.client("dynamodb", region_name="us-east-1").get_item(
+        TableName=dynamodb_table,
+        Key=word2.key(),
+    )
+    assert "Item" in response, f"Item not found. response: {response}"
+    assert response["Item"] == word2.to_item()
+
 def test_getWord(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
