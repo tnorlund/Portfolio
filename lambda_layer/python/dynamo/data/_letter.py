@@ -58,6 +58,48 @@ class _Letter:
                     response = self._client.batch_write_item(RequestItems=unprocessed)
         except ClientError as e:
             raise ValueError("Could not add letters to the database")
+    
+    def deleteLetter(self, image_id: int, line_id: int, word_id: int, letter_id: int):
+        try:
+            self._client.delete_item(
+                TableName=self.table_name,
+                Key={
+                    "PK": {"S": f"IMAGE#{image_id:05d}"},
+                    "SK": {"S": f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"},
+                },
+                ConditionExpression="attribute_exists(PK)",
+            )
+        except ClientError as e:
+            raise ValueError(f"Letter with ID {letter_id} not found")
+    
+    def deleteLettersFromWord(self, image_id: int, line_id: int, word_id: int):
+        """Deletes all letters from a word
+
+        Args:
+            image_id (int): The ID of the image the word belongs to
+            line_id (int): The ID of the line the word belongs to
+            word_id (int): The ID of the word to delete letters from
+        """
+        try:
+            # Get all letters from the word
+            letters = self.listLettersFromWord(image_id, line_id, word_id)
+            # Use batch write to delete all letters
+            for i in range(0, len(letters), CHUNK_SIZE):
+                chunk = letters[i : i + CHUNK_SIZE]
+                request_items = [
+                    {"DeleteRequest": {"Key": letter.key()}} for letter in chunk
+                ]
+                response = self._client.batch_write_item(
+                    RequestItems={self.table_name: request_items}
+                )
+                # Handle unprocessed items if they exist
+                unprocessed = response.get("UnprocessedItems", {})
+                while unprocessed.get(self.table_name):
+                    # If there are unprocessed items, retry them
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    unprocessed = response.get("UnprocessedItems", {})
+        except ClientError as e:
+            raise ValueError(f"Could not delete letters from word with ID {word_id}")
         
     def getLetter(self, image_id: int, line_id: int, word_id: int, letter_id: int) -> Letter:
         try:

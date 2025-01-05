@@ -98,6 +98,78 @@ def test_addWords(dynamodb_table: Literal["MyMockedTable"]):
     assert "Item" in response, f"Item not found. response: {response}"
     assert response["Item"] == word2.to_item()
 
+def test_deleteWord(dynamodb_table: Literal["MyMockedTable"]):
+    # Arrange
+    client = DynamoClient(dynamodb_table)
+    word = Word(
+        1,
+        1,
+        1,
+        "06\/27\/2024",
+        0.1495695452950324,
+        0.8868912353567051,
+        0.08727867372574347,
+        0.024234482472679675,
+        7.7517295,
+        1,
+    )
+    client.addWord(word)
+
+    # Act
+    client.deleteWord(1, 1, 1)
+
+    # Assert
+    with pytest.raises(ValueError):
+        client.getWord(1, 1, 1)
+
+def test_deleteWord_error(dynamodb_table: Literal["MyMockedTable"]):
+    """Raises exception when word is not found"""
+    # Arrange
+    client = DynamoClient(dynamodb_table)
+
+    # Act
+    with pytest.raises(ValueError):
+        client.deleteWord(1, 1, 1)
+
+def test_deleteWordsFromLine(dynamodb_table: Literal["MyMockedTable"]):
+    # Arrange
+    client = DynamoClient(dynamodb_table)
+    word1 = Word(
+        1,
+        1,
+        1,
+        "06\/27\/2024",
+        0.1495695452950324,
+        0.8868912353567051,
+        0.08727867372574347,
+        0.024234482472679675,
+        7.7517295,
+        1,
+    )
+    word2 = Word(
+        1,
+        1,
+        2,
+        "06\/27\/2024",
+        0.1495695452950324,
+        0.8868912353567051,
+        0.08727867372574347,
+        0.024234482472679675,
+        7.7517295,
+        1,
+    )
+    client.addWord(word1)
+    client.addWord(word2)
+
+    # Act
+    client.deleteWordsFromLine(1, 1)
+
+    # Assert
+    with pytest.raises(ValueError):
+        client.getWord(1, 1, 1)
+    with pytest.raises(ValueError):
+        client.getWord(1, 1, 2)
+
 def test_getWord(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
