@@ -37,7 +37,9 @@ def test_add_image_error(dynamodb_table: Literal["MyMockedTable"]):
     timestamp_added = "2021-01-01T00:00:00"
     s3_bucket = "bucket"
     s3_key = "key"
-    image = Image(image_id, image_width, image_height, timestamp_added, s3_bucket, s3_key)
+    image = Image(
+        image_id, image_width, image_height, timestamp_added, s3_bucket, s3_key
+    )
 
     # Act
     client.addImage(image)
@@ -54,7 +56,9 @@ def test_get_image(dynamodb_table: Literal["MyMockedTable"]):
     timestamp_added = "2021-01-01T00:00:00"
     s3_bucket = "bucket"
     s3_key = "key"
-    image = Image(image_id, image_width, image_height, timestamp_added, s3_bucket, s3_key)
+    image = Image(
+        image_id, image_width, image_height, timestamp_added, s3_bucket, s3_key
+    )
     client.addImage(image)
 
     # Act
@@ -62,6 +66,7 @@ def test_get_image(dynamodb_table: Literal["MyMockedTable"]):
 
     # Assert
     assert retrieved_image == image
+
 
 def test_get_imageDetails(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
@@ -131,6 +136,17 @@ def test_deleteImage(dynamodb_table: Literal["MyMockedTable"]):
     # Assert
     with pytest.raises(ValueError):
         client.getImage(1)
+
+
+def test_deleteImage_error(dynamodb_table: Literal["MyMockedTable"]):
+    # Arrange
+    client = DynamoClient(dynamodb_table)
+    image = Image(1, 10, 20, "2021-01-01T00:00:00", "bucket", "key1")
+
+    # Act
+    with pytest.raises(ValueError):
+        client.deleteImage(image.id)
+
 
 def test_listImages(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange

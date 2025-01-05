@@ -1,4 +1,13 @@
-from dynamo import Image, Line, Letter, Word, itemToImage, itemToLine, itemToWord, itemToLetter
+from dynamo import (
+    Image,
+    Line,
+    Letter,
+    Word,
+    itemToImage,
+    itemToLine,
+    itemToWord,
+    itemToLetter,
+)
 from botocore.exceptions import ClientError
 
 
@@ -41,7 +50,9 @@ class _Image:
         except KeyError:
             raise ValueError(f"Image with ID {image_id} not found")
 
-    def getImageDetails(self, image_id: int) -> tuple[Image, list[Line], list[Word], list[Letter]]:
+    def getImageDetails(
+        self, image_id: int
+    ) -> tuple[Image, list[Line], list[Word], list[Letter]]:
         """Gets the details of an image from the database. This includes all lines associated with the image."""
         try:
             response = self._client.query(
@@ -62,13 +73,23 @@ class _Image:
             for item in response["Items"]:
                 if item["SK"]["S"] == "IMAGE":
                     image = itemToImage(item)
-                elif item["SK"]["S"].startswith("LINE") and "WORD" not in item["SK"]["S"]:
+                elif (
+                    item["SK"]["S"].startswith("LINE") and "WORD" not in item["SK"]["S"]
+                ):
                     lines.append(itemToLine(item))
-                elif item["SK"]["S"].startswith("LINE") and "WORD" in item["SK"]["S"] and "LETTER" not in item["SK"]["S"]:
+                elif (
+                    item["SK"]["S"].startswith("LINE")
+                    and "WORD" in item["SK"]["S"]
+                    and "LETTER" not in item["SK"]["S"]
+                ):
                     words.append(itemToWord(item))
-                elif item["SK"]["S"].startswith("LINE") and "WORD" in item["SK"]["S"] and "LETTER" in item["SK"]["S"]:
+                elif (
+                    item["SK"]["S"].startswith("LINE")
+                    and "WORD" in item["SK"]["S"]
+                    and "LETTER" in item["SK"]["S"]
+                ):
                     letters.append(itemToLetter(item))
-            
+
             return image, lines, words, letters
         except Exception as e:
             raise Exception(f"Error getting image details: {e}")
@@ -84,9 +105,13 @@ class _Image:
             self._client.delete_item(
                 TableName=self.table_name,
                 Key={"PK": {"S": f"IMAGE#{image_id:05d}"}, "SK": {"S": "IMAGE"}},
+                ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            raise ValueError(f"Image with ID {image_id} not found")
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                raise ValueError(f"Image with ID {image_id} not found")
+            else:
+                raise Exception(f"Error deleting image: {e}")
 
     def listImages(self) -> list[Image]:
         response = self._client.scan(
