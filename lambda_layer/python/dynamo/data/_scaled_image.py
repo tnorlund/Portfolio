@@ -50,12 +50,10 @@ class _ScaledImage:
         except ClientError as e:
             raise ValueError(f"Scaled image with ID {scaled_image.image_id} already exists")
         
-    def getScaledImage(self, image_id: int, scale:float) -> ScaledImage:
+    def getScaledImage(self, image_id: int, quality:int) -> ScaledImage:
         try:
             formatted_pk = f"IMAGE#{image_id:05d}"
-            formatted_sk = (
-                f"IMAGE_SCALE#{_format_float(scale, 4, 6).replace('.', '_')}"
-            )
+            formatted_sk = f"IMAGE_SCALE#{quality:05d}"
             response = self._client.get_item(
                 TableName=self.table_name,
                 Key={"PK": {"S": formatted_pk}, "SK": {"S": formatted_sk}},
