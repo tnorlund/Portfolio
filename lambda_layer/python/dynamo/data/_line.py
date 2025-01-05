@@ -5,6 +5,7 @@ from botocore.exceptions import ClientError
 # So let's chunk the items in groups of 25
 CHUNK_SIZE = 25
 
+
 class _Line:
     """
     A class used to represent a Line in the database.
@@ -33,7 +34,7 @@ class _Line:
             )
         except ClientError as e:
             raise ValueError(f"Line with ID {line.id} already exists")
-    
+
     def addLines(self, lines: list[Line]):
         """Adds a list of lines to the database
 
@@ -65,12 +66,15 @@ class _Line:
         try:
             response = self._client.get_item(
                 TableName=self.table_name,
-                Key={"PK": {"S": f"IMAGE#{image_id:05d}"}, "SK": {"S": f"LINE#{line_id:05d}"}},
+                Key={
+                    "PK": {"S": f"IMAGE#{image_id:05d}"},
+                    "SK": {"S": f"LINE#{line_id:05d}"},
+                },
             )
             return itemToLine(response["Item"])
         except KeyError:
             raise ValueError(f"Line with ID {line_id} not found")
-        
+
     def listLines(self) -> list[Line]:
         response = self._client.scan(
             TableName=self.table_name,
