@@ -1,6 +1,9 @@
 from dynamo import Line, itemToLine
 from botocore.exceptions import ClientError
 
+# DynamoDB batch_write_item can only handle up to 25 items per call
+# So let's chunk the items in groups of 25
+CHUNK_SIZE = 25
 
 class _Line:
     """
@@ -30,6 +33,33 @@ class _Line:
             )
         except ClientError as e:
             raise ValueError(f"Line with ID {line.id} already exists")
+    
+    def addLines(self, lines: list[Line]):
+        """Adds a list of lines to the database
+
+        Args:
+            lines (list[Line]): The lines to add to the database
+
+        Raises:
+            ValueError: When a line with the same ID already
+        """
+        try:
+            for i in range(0, len(lines), CHUNK_SIZE):
+                chunk = lines[i : i + CHUNK_SIZE]
+                request_items = [
+                    {"PutRequest": {"Item": line.to_item()}} for line in chunk
+                ]
+                response = self._client.batch_write_item(
+                    RequestItems={self.table_name: request_items}
+                )
+                # Handle unprocessed items if they exist
+                unprocessed = response.get("UnprocessedItems", {})
+                while unprocessed.get(self.table_name):
+                    # If there are unprocessed items, retry them
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    unprocessed = response.get("UnprocessedItems", {})
+        except ClientError as e:
+            raise ValueError(f"Could not add lines to the database")
 
     def getLine(self, image_id: int, line_id: int) -> Line:
         try:
