@@ -7,7 +7,7 @@
         "tesseract"
     ],
     "python.testing.pytestArgs": [
-        "lambda_layer/python/test"
+        "Tests"
     ],
     "python.testing.unittestEnabled": false,
     "python.testing.pytestEnabled": true
