@@ -81,16 +81,13 @@ class _Line:
         except ClientError as e:
             raise ValueError(f"Line with ID {line_id} not found")
     
-    def deleteLines(self, image_id: int):
-        """Deletes all lines from an image
+    def deleteLines(self, lines: list[Line]):
+        """Deletes a list of lines from the database
 
         Args:
-            image_id (int): The ID of the image to delete lines from
+            lines (list[Line]): The lines to delete
         """
-        # Get all lines from the image
         try:
-            lines = self.listLinesFromImage(image_id)
-            # Use batch_write_item to delete all lines
             for i in range(0, len(lines), CHUNK_SIZE):
                 chunk = lines[i : i + CHUNK_SIZE]
                 request_items = [
@@ -105,9 +102,17 @@ class _Line:
                     # If there are unprocessed items, retry them
                     response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
-            
         except ClientError as e:
-            raise ValueError(f"Could not delete lines from image {image_id}")
+            raise ValueError(f"Could not delete lines from the database")
+    
+    def deleteLinesFromImage(self, image_id: int):
+        """Deletes all lines from an image
+
+        Args:
+            image_id (int): The ID of the image to delete lines from
+        """
+        lines = self.listLinesFromImage(image_id)
+        self.deleteLines(lines)
 
     def getLine(self, image_id: int, line_id: int) -> Line:
         try:
