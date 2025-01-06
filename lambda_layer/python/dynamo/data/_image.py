@@ -3,10 +3,12 @@ from dynamo import (
     Line,
     Letter,
     Word,
+    ScaledImage,
     itemToImage,
     itemToLine,
     itemToWord,
     itemToLetter,
+    ItemToScaledImage,
 )
 from botocore.exceptions import ClientError
 
@@ -70,6 +72,7 @@ class _Image:
             lines = []
             words = []
             letters = []
+            scaled_images = []
             for item in response["Items"]:
                 if item["SK"]["S"] == "IMAGE":
                     image = itemToImage(item)
@@ -89,11 +92,12 @@ class _Image:
                     and "LETTER" in item["SK"]["S"]
                 ):
                     letters.append(itemToLetter(item))
+                elif item["SK"]["S"].startswith("IMAGE_SCALE"):
+                    scaled_images.append(ItemToScaledImage(item))
 
-            return image, lines, words, letters
+            return image, lines, words, letters, scaled_images
         except Exception as e:
             raise Exception(f"Error getting image details: {e}")
-            # raise ValueError(f"Image with ID {image_id} not found")
 
     def deleteImage(self, image_id: int):
         """Deletes an image from the database
