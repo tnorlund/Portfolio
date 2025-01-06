@@ -9,6 +9,21 @@ from routes.image_details.infra import image_details_lambda
 api = aws.apigatewayv2.Api(
     "my-api",
     protocol_type="HTTP",
+    cors_configuration=aws.apigatewayv2.ApiCorsConfigurationArgs(
+        # Allow your local dev URL or "*" for all
+        allow_origins=["*"],
+        # Which HTTP methods to allow (GET, POST, OPTIONS, etc.)
+        allow_methods=["GET", "POST", "OPTIONS"],
+        # Which headers can be sent by the client
+        allow_headers=["Content-Type", "Authorization"],
+        # Whether or not the browser should expose response headers
+        # to client-side JavaScript
+        expose_headers=["Content-Length", "Content-Type"],
+        # Whether or not cookies or Authorization headers are allowed
+        allow_credentials=False,
+        # How long (in seconds) to cache the response of a preflight request
+        max_age=86400,  # 1 day
+    ),
 )
 
 # /health_check
