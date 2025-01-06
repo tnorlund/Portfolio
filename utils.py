@@ -23,19 +23,14 @@ def encode_image_below_size(
 
         # Check the size
         size_kb = len(encoded_str) / 1024
-        print(f"Trying quality={quality}, size={size_kb:.2f} KB")
 
         if size_kb <= max_size_kb:
-            print(f"Success with quality={quality}, final size={size_kb:.2f} KB")
             return encoded_str, quality  # Return the Base64 string at this quality
 
         # Decrease quality and try again
         quality -= step
 
     # If we exit the loop, we couldn't get below max_size_kb at min_quality.
-    print(
-        "Warning: Could not reduce image below the desired size with the given constraints."
-    )
     return -1  # Return -1 if we couldn't get below the desired size
 
 def get_max_index_in_images(client: DynamoClient) -> int:
@@ -45,7 +40,13 @@ def get_max_index_in_images(client: DynamoClient) -> int:
     images = client.listImages()
     if not images:
         return 0
-    return max([image.id for image in images])
+    image_indexes = [image.id for image in images]
+    image_indexes.sort()
+    # Find where the indexes are not consecutive
+    for i, index in enumerate(image_indexes):
+        if i + 1 != index:
+            return i + 1
+    return len(image_indexes) + 1
 
 def process_ocr_dict(ocr_data: dict, image_id: int) -> Tuple[list, list, list]:
     """
