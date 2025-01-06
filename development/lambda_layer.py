@@ -72,7 +72,7 @@ def prepare_lambda_layer():
 layer_name = "dynamo-receipt"
 compatible_runtimes = ["python3.9"]  # Adjust runtime as needed
 
-# # Prepare the Lambda layer package
+# Prepare the Lambda layer package
 prepare_lambda_layer()
 s3_bucket, s3_key = upload_to_s3()
 

@@ -86,6 +86,7 @@ image_details_lambda = aws.lambda_.Function(
             "DYNAMODB_TABLE_NAME": DYNAMODB_TABLE_NAME,
         }
     },
+    memory_size=1024,  # Increase the RAM to 1024 MB
 )
 
 # CloudWatch log group for the Lambda function
