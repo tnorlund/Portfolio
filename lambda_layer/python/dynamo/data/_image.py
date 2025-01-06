@@ -67,13 +67,27 @@ class _Image:
                     ":pk_value": {"S": f"IMAGE#{image_id:05d}"},
                 },
             )
+            items = response["Items"]
+            # Keep querying until there is no LastEvaluatedKey
+            while "LastEvaluatedKey" in response and response["LastEvaluatedKey"]:
+                response = self._client.query(
+                    TableName=self.table_name,
+                    KeyConditionExpression="#pk = :pk_value",
+                    ExpressionAttributeNames={"#pk": "PK"},
+                    ExpressionAttributeValues={
+                        ":pk_value": {"S": f"IMAGE#{image_id:05d}"},
+                    },
+                    ExclusiveStartKey=response["LastEvaluatedKey"],
+                )
+                items += response["Items"]  # Accumulate items
+
             # Parse all items in the response as either image or line
             image = None
             lines = []
             words = []
             letters = []
             scaled_images = []
-            for item in response["Items"]:
+            for item in items:
                 if item["SK"]["S"] == "IMAGE":
                     image = itemToImage(item)
                 elif (
@@ -118,13 +132,37 @@ class _Image:
                 raise Exception(f"Error deleting image: {e}")
 
     def listImages(self) -> list[Image]:
-        response = self._client.scan(
-            TableName=self.table_name,
-            ScanFilter={
-                "SK": {
-                    "AttributeValueList": [{"S": "IMAGE"}],
-                    "ComparisonOperator": "EQ",
-                }
-            },
-        )
-        return [itemToImage(item) for item in response["Items"]]
+        try:
+            all_items = []
+
+            # Initial scan
+            response = self._client.scan(
+                TableName=self.table_name,
+                ScanFilter={
+                    "SK": {
+                        "AttributeValueList": [{"S": "IMAGE"}],
+                        "ComparisonOperator": "EQ",
+                    }
+                },
+            )
+            all_items.extend(response["Items"])
+
+            # Keep scanning while there's more data
+            while "LastEvaluatedKey" in response and response["LastEvaluatedKey"]:
+                response = self._client.scan(
+                    TableName=self.table_name,
+                    ScanFilter={
+                        "SK": {
+                            "AttributeValueList": [{"S": "IMAGE"}],
+                            "ComparisonOperator": "EQ",
+                        }
+                    },
+                    ExclusiveStartKey=response["LastEvaluatedKey"],
+                )
+                all_items.extend(response["Items"])
+
+            # Convert items to Image objects
+            return [itemToImage(item) for item in all_items]
+
+        except Exception as e:
+            raise Exception(f"Error listing images: {e}")
