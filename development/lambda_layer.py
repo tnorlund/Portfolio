@@ -80,7 +80,6 @@ lambda_layer = aws.lambda_.LayerVersion(
     layer_name,
     layer_name=layer_name,
     compatible_runtimes=compatible_runtimes,
-    s3_bucket=s3_bucket,
-    s3_key=s3_key,
+    code=pulumi.FileArchive(ZIP_FILE_PATH),
     description="Lambda Layer for accessing the DynamoDB table",
 )
