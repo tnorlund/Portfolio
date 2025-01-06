@@ -26,6 +26,18 @@ class _ScaledImage:
             raise ValueError(
                 f"Scaled image with ID {scaled_image.image_id} already exists"
             )
+    
+    def deleteScaledImage(self, image_id: int, quality: int):
+        try:
+            formatted_pk = f"IMAGE#{image_id:05d}"
+            formatted_sk = f"IMAGE_SCALE#{quality:05d}"
+            self._client.delete_item(
+                TableName=self.table_name,
+                Key={"PK": {"S": formatted_pk}, "SK": {"S": formatted_sk}},
+                ConditionExpression="attribute_exists(PK)",
+            )
+        except ClientError as e:
+            raise ValueError(f"Could not delete scaled image with ID {image_id}")
 
     def getScaledImage(self, image_id: int, quality: int) -> ScaledImage:
         try:
