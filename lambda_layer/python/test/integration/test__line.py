@@ -142,7 +142,7 @@ def test_delete_line_error(dynamodb_table: Literal["MyMockedTable"]):
         client.deleteLine(1, 2)
 
 
-def test_delete_lines(dynamodb_table: Literal["MyMockedTable"]):
+def test_deleteLines(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
     line_1 = Line(
@@ -171,7 +171,7 @@ def test_delete_lines(dynamodb_table: Literal["MyMockedTable"]):
     client.addLine(line_2)
 
     # Act
-    client.deleteLines(1)
+    client.deleteLines([line_1, line_2])
 
     # Assert
     with pytest.raises(ValueError):
