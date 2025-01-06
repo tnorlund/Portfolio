@@ -3,6 +3,7 @@ import pulumi_aws as aws
 # Import the different routes
 from routes.health_check.infra import health_check_lambda
 from routes.images.infra import images_lambda
+from routes.image_details.infra import image_details_lambda
 
 api = aws.apigatewayv2.Api(
     "my-api",
@@ -57,6 +58,30 @@ lambda_permission_images = aws.lambda_.Permission(
     source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
 )
 
+# /image_details
+integration_image_details = aws.apigatewayv2.Integration(
+    "image_details_lambda_integration",
+    api_id=api.id,
+    integration_type="AWS_PROXY",
+    integration_uri=images_lambda.invoke_arn,
+    integration_method="POST",
+    payload_format_version="2.0",
+)
+route_image_details = aws.apigatewayv2.Route(
+    "image_details_route",
+    api_id=api.id,
+    route_key="GET /image_details",
+    target=integration_images.id.apply(lambda id: f"integrations/{id}"),
+    opts=pulumi.ResourceOptions(replace_on_changes=["route_key", "target"]),
+)
+lambda_permission_image_details = aws.lambda_.Permission(
+    "image_details_lambda_permission",
+    action="lambda:InvokeFunction",
+    function=images_lambda.name,
+    principal="apigateway.amazonaws.com",
+    source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
+)
+
 # DEPLOYMENT
 log_group = aws.cloudwatch.LogGroup(
     "api_gateway_log_group",
@@ -76,6 +101,11 @@ stage = aws.apigatewayv2.Stage(
         },
         {
             "routeKey": route_images.route_key,
+            "throttlingBurstLimit": 5000,
+            "throttlingRateLimit": 10000,
+        },
+        {
+            "routeKey": route_image_details.route_key,
             "throttlingBurstLimit": 5000,
             "throttlingRateLimit": 10000,
         },
