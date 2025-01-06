@@ -1,5 +1,7 @@
 import os
+import subprocess
 import json
+from time import sleep
 import cv2
 from datetime import datetime
 from dotenv import load_dotenv
@@ -31,7 +33,7 @@ missing_images = set(s3_keys_in_s3) - set(s3_keys_in_dynamodb)
 print(f"Found {len(missing_images)} missing images in the bucket")
 
 for missing_image in missing_images:
-    print("Processing missing image: ", missing_image)
+    print(f"Processing missing image: {missing_image} at {get_max_index_in_images(dynamo_client)}")
     temporary_file_path = f"/tmp/{os.path.basename(missing_image)}"
     temporary_json_path = (
         f"/tmp/{os.path.basename(missing_image.replace('.png', ''))}.json"
@@ -43,7 +45,16 @@ for missing_image in missing_images:
         f.write(image_data)
 
     # Run the swift script to process the image OCR data
-    os.system(f"swift OCRSwift.swift {temporary_file_path} {temporary_json_path}")
+    try:
+        subprocess.run(
+            ["swift", "OCRSwift.swift", temporary_file_path, temporary_json_path],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except subprocess.CalledProcessError as e:
+        print(f"Error running swift script: {e}")
+        continue
 
     # Read the JSON file and add the image to the DynamoDB table
     with open(temporary_json_path, "r") as json_file:
@@ -54,7 +65,7 @@ for missing_image in missing_images:
 
     # Create DynamoDB objects from the OCR data
     image = Image(
-        get_max_index_in_images(dynamo_client) + 1,
+        get_max_index_in_images(dynamo_client),
         image_cv.shape[1],
         image_cv.shape[0],
         datetime.now().isoformat(),
@@ -92,4 +103,5 @@ for missing_image in missing_images:
     # remove the temporary files
     os.remove(temporary_file_path)
     os.remove(temporary_json_path)
+    sleep(1)
 
