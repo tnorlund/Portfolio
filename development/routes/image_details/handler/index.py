@@ -17,14 +17,17 @@ def handler(event, context):
     if http_method == 'GET':
         query_params = event.get("queryStringParameters") or {}
         image_id = query_params.get("image_id")
-        if image_id is not None:
+        if image_id is None or image_id == "":
             return {
                 'statusCode': 400,
                 'body': 'Bad request: image_id is required'
             }
         try:
+            logger.info(f"Getting image details for image_id: {image_id}")
             client = DynamoClient(dynamodb_table_name)
-            image, lines, words, letters, scaled_images = client.getImageDetails(int(image_id))
+            logger.info("Attempting to get image details")
+            image_details = client.getImageDetails(int(image_id))
+            image, lines, words, letters, scaled_images = image_details
             return {
                 'statusCode': 200,
                 'body': json.dumps({
