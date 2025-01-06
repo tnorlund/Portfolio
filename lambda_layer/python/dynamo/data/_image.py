@@ -54,7 +54,7 @@ class _Image:
 
     def getImageDetails(
         self, image_id: int
-    ) -> tuple[Image, list[Line], list[Word], list[Letter]]:
+    ) -> tuple[Image, list[Line], list[Word], list[Letter], list[ScaledImage]]:
         """Gets the details of an image from the database. This includes all lines associated with the image."""
         try:
             response = self._client.query(
