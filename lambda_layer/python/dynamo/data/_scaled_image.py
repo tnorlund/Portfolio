@@ -1,6 +1,10 @@
 from dynamo import ScaledImage, ItemToScaledImage
 from botocore.exceptions import ClientError
 
+# DynamoDB batch_write_item can only handle up to 25 items per call
+# So let's chunk the items in groups of 25
+CHUNK_SIZE = 25
+
 
 class _ScaledImage:
     """
@@ -26,7 +30,7 @@ class _ScaledImage:
             raise ValueError(
                 f"Scaled image with ID {scaled_image.image_id} already exists"
             )
-    
+
     def deleteScaledImage(self, image_id: int, quality: int):
         try:
             formatted_pk = f"IMAGE#{image_id:05d}"
@@ -38,6 +42,31 @@ class _ScaledImage:
             )
         except ClientError as e:
             raise ValueError(f"Could not delete scaled image with ID {image_id}")
+    
+    def deleteScaledImages(self, scaled_images: list[ScaledImage]):
+        """Deletes a list of scaled images from the database"""
+        try:
+            for i in range(0, len(scaled_images), CHUNK_SIZE):
+                chunk = scaled_images[i : i + CHUNK_SIZE]
+                request_items = [
+                    {"DeleteRequest": {"Key": scaled_image.key()}}
+                    for scaled_image in chunk
+                ]
+                response = self._client.batch_write_item(
+                    RequestItems={self.table_name: request_items}
+                )
+                # Handle unprocessed items if they exist
+                unprocessed = response.get("UnprocessedItems", {})
+                while unprocessed.get(self.table_name):
+                    # If there are unprocessed items, retry them
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
+        except ClientError as e:
+            raise ValueError("Could not delete scaled images from the database")
+
+    def deleteScaledImageFromImage(self, image_id: int):
+        """Deletes all scaled images associated with an image"""
+        scaled_images = self.listScaledImagesFromImage(image_id)
+        self.deleteScaledImages(scaled_images)
 
     def getScaledImage(self, image_id: int, quality: int) -> ScaledImage:
         try:
@@ -50,6 +79,24 @@ class _ScaledImage:
             return ItemToScaledImage(response["Item"])
         except KeyError:
             raise ValueError(f"Scaled image with ID {image_id} not found")
+
+    def listScaledImagesFromImage(self, image_id: int) -> list[ScaledImage]:
+        formatted_pk = f"IMAGE#{image_id:05d}"
+        try:
+            response = self._client.query(
+                TableName=self.table_name,
+                KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
+                ExpressionAttributeValues={
+                    ":pk": {"S": formatted_pk},
+                    ":sk": {"S": "IMAGE_SCALE#"},  # Match all scaled images
+                },
+                ScanIndexForward=False,
+            )
+            return [ItemToScaledImage(item) for item in response["Items"]]
+        except ClientError as e:
+            raise ValueError(
+                f"Could not list scaled images for image with ID {image_id}"
+            )
 
     def listScaledImages(self) -> list[ScaledImage]:
         response = self._client.scan(
