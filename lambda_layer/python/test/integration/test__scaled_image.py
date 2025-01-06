@@ -33,6 +33,32 @@ def test_addScaledImage_error(dynamodb_table: Literal["MyMockedTable"]):
     with pytest.raises(ValueError):
         client.addScaledImage(scaled_image)
 
+def test_deleteScaledImage(dynamodb_table: Literal["MyMockedTable"]):
+    # Arrange
+    client = DynamoClient(dynamodb_table)
+    scaled_image = ScaledImage(
+        1, "2021-01-01T00:00:00", "Example_long_string", 90
+    )
+    client.addScaledImage(scaled_image)
+
+    # Act
+    client.deleteScaledImage(scaled_image.image_id, scaled_image.quality)
+
+    # Assert
+    with pytest.raises(ValueError):
+        client.getScaledImage(scaled_image.image_id, scaled_image.quality)
+
+def test_deleteScaledImage_error(dynamodb_table: Literal["MyMockedTable"]):
+    # Arrange
+    client = DynamoClient(dynamodb_table)
+    scaled_image = ScaledImage(
+        1, "2021-01-01T00:00:00", "Example_long_string", 90
+    )
+
+    # Act
+    with pytest.raises(ValueError):
+        client.deleteScaledImage(scaled_image.image_id, scaled_image.quality)
+
 def test_getScaledImage(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
