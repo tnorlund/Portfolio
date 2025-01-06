@@ -81,30 +81,14 @@ class _Word:
             )
         except ClientError as e:
             raise ValueError(f"Word with ID {word_id} not found")
-
-    def deleteWordsFromLine(self, image_id: int, line_id: int):
-        """Deletes all words from a line
-
-        Args:
-            image_id (int): The ID of the image the line belongs to
-            line_id (int): The ID of the line to delete words from
-        """
+    
+    def deleteWords(self, words: list[Word]):
+        """Deletes a list of words from the database"""
         try:
-            # Get all words from the line
-            words = self.listWordsFromLine(image_id, line_id)
-            # Use batch_write_item to delete all lines
             for i in range(0, len(words), CHUNK_SIZE):
                 chunk = words[i : i + CHUNK_SIZE]
                 request_items = [
-                    {
-                        "DeleteRequest": {
-                            "Key": {
-                                "PK": {"S": f"IMAGE#{image_id:05d}"},
-                                "SK": {"S": f"LINE#{line_id:05d}#WORD#{word.id:05d}"},
-                            }
-                        }
-                    }
-                    for word in chunk
+                    {"DeleteRequest": {"Key": word.key()}} for word in chunk
                 ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
@@ -116,7 +100,17 @@ class _Word:
                     response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
-            raise ValueError(f"Could not delete words from line {line_id}")
+            raise ValueError("Could not delete words from the database")
+
+    def deleteWordsFromLine(self, image_id: int, line_id: int):
+        """Deletes all words from a line
+
+        Args:
+            image_id (int): The ID of the image the line belongs to
+            line_id (int): The ID of the line to delete words from
+        """
+        words = self.listWordsFromLine(image_id, line_id)
+        self.deleteWords(words)
 
     def getWord(self, image_id: int, line_id: int, word_id: int) -> Word:
         try:
