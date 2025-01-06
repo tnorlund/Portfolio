@@ -1,7 +1,7 @@
 from typing import Literal
 import pytest
 import boto3
-from dynamo import Image, Line, Word, Letter, DynamoClient
+from dynamo import Image, Line, Word, Letter, ScaledImage, DynamoClient
 
 
 def test_add_image(dynamodb_table: Literal["MyMockedTable"]):
@@ -109,19 +109,24 @@ def test_get_imageDetails(dynamodb_table: Literal["MyMockedTable"]):
         7.7517295,
         1,
     )
+    scaled_image = ScaledImage(
+        1, "2021-01-01T00:00:00", "Example_long_string", 90
+    )
     client.addImage(image)
     client.addLine(line)
     client.addWord(word)
     client.addLetter(letter)
+    client.addScaledImage(scaled_image)
 
     # Act
-    retrieved_image, lines, words, letters = client.getImageDetails(image_id)
+    retrieved_image, lines, words, letters, scaled_images = client.getImageDetails(image_id)
 
     # Assert
     assert retrieved_image == image
     assert lines == [line]
     assert words == [word]
     assert letters == [letter]
+    assert scaled_images == [scaled_image]
 
 
 def test_deleteImage(dynamodb_table: Literal["MyMockedTable"]):
