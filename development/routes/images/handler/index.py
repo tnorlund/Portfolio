@@ -15,7 +15,7 @@ def handler(event, _):
 
     if http_method == 'GET':
         client = DynamoClient(dynamodb_table_name)
-        images = client.listImages()
+        images, lek = client.listImages()
         return {
             'statusCode': 200,
             'body': json.dumps({'images': [dict(image) for image in images]})

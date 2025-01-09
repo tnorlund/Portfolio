@@ -13,6 +13,14 @@ dynamodb_table = aws.dynamodb.Table(
             name="SK",
             type="S",
         ),
+        aws.dynamodb.TableAttributeArgs(
+            name="GSI1PK",
+            type="S",
+        ),
+        aws.dynamodb.TableAttributeArgs(
+            name="GSI1SK",
+            type="S",
+        ),
     ],
     hash_key="PK",
     range_key="SK",
@@ -23,6 +31,14 @@ dynamodb_table = aws.dynamodb.Table(
     ),
     stream_enabled=True,
     stream_view_type="NEW_IMAGE",
+    global_secondary_indexes=[
+        aws.dynamodb.TableGlobalSecondaryIndexArgs(
+            name="GSI1",
+            hash_key="GSI1PK",
+            range_key="GSI1SK",
+            projection_type="ALL",
+        ),
+    ],
     tags={
         "Environment": "dev",
         "Name": "ReceiptsTable",
