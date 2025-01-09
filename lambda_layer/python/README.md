@@ -4,11 +4,65 @@ This is a Python Lambda Layer that helps with accessing DynamoDB for receipt dat
 
 ## Table Design
 
-| Item Type | PK | SK | Attributes |
-| --- | --- | --- | --- |
-| Image | `IMAGE#<image_id>` | `#IMAGE` | width, height, timestampAdded, s3Bucket, s3Key |
-| Line | `IMAGE#<image_id>` | `LINE#<line_id>` | text, x, y, width, height, angle, confidence |
-| Word | `IMAGE#<image_id>` | `LINE#<line_id>WORD#<word_id>` | text, x, y, width, height, angle, confidence |
-| Letter | `IMAGE#<image_id>` | `LINE#<line_id>WORD#<word_id>LETTER#<letter_id>` | text, x, y, width, height, angle, confidence |
-| Scaled Image | `IMAGE#<image_id>` | `#SCALED#<quality>` |  timestampAdded, base64, quality |
-| Receipt | `IMAGE#<image_id>` | `RECEIPT#<receipt_id>` | timestampAdded |
+| Item Type          | PK                      | SK                                          | GSI PK              | GSI SK              | Attributes                          |
+|---------------------|-------------------------|---------------------------------------------|---------------------|---------------------|-------------------------------------|
+| Image              | `IMAGE#<image_id>`     | `#IMAGE`                                    |                     |                     | width, height, timestampAdded, s3Bucket, s3Key |
+| Line               | `IMAGE#<image_id>`     | `LINE#<line_id>`                            |                     |                     | text, x, y, width, height, angle, confidence |
+| Word               | `IMAGE#<image_id>`     | `LINE#<line_id>WORD#<word_id>`              |                     |                     | text, tags, x, y, width, height, angle, confidence |
+| Word Tag           | `IMAGE#<image_id>`     | `TAG#<UPPER_TAG>#WORD#<word_id>`            | `TAG#<UPPER_TAG>`   | `WORD#<word_id>`    | tag_name (always UPPERCASE)         |
+| Letter             | `IMAGE#<image_id>`     | `LINE#<line_id>WORD#<word_id>LETTER#<letter_id>` |                     |                     | text, x, y, width, height, angle, confidence |
+| Scaled Image       | `IMAGE#<image_id>`     | `#SCALED#<quality>`                         |                     |                     | timestampAdded, base64, quality     |
+| Receipt            | `IMAGE#<image_id>`     | `RECEIPT#<receipt_id>`                      |                     |                     | timestampAdded, totalAmount, notes |
+| Receipt Line       | `IMAGE#<image_id>`     | `RECEIPT#<receipt_id>#LINE#<line_id>`       |                     |                     | text, x, y, width, height, angle, confidence |
+| Receipt Word       | `IMAGE#<image_id>`     | `RECEIPT#<receipt_id>#LINE#<line_id>WORD#<word_id>` |                     |                     | text, tags, x, y, width, height, angle, confidence |
+| Receipt Word Tag   | `IMAGE#<image_id>`     | `TAG#<UPPER_TAG>#RECEIPT#<receipt_id>#WORD#<word_id>` | `TAG#<UPPER_TAG>`   | `RECEIPT#<receipt_id>#WORD#<word_id>` | tag_name (always UPPERCASE) |
+| Receipt Letter     | `IMAGE#<image_id>`     | `RECEIPT#<receipt_id>#LINE#<line_id>WORD#<word_id>LETTER#<letter_id>` |                     |                     | text, x, y, width, height, angle, confidence |
+| Receipt Scaled Image | `IMAGE#<image_id>`   | `RECEIPT#<receipt_id>#SCALED#<quality>`     |                     |                     | timestampAdded, base64, quality     |
+
+## Key Design Notes
+
+1. **Unified Partition Key**:
+   - All items related to an image (lines, words, word tags, receipts) share the same partition key (`PK = IMAGE#<image_id>`).
+
+2. **Uppercased Tags**:
+   - All tags are stored in **UPPERCASE** to enforce consistency and avoid issues with case sensitivity.
+   - Example:
+     - Word Tag: `TAG#FOOD#WORD#1`
+     - Receipt-Word Tag: `TAG#FOOD#RECEIPT#1#WORD#1`
+
+3. **Embedded Tags**:
+   - The `Word` and `Receipt-Word` tables include a `tags` attribute, which is a list of all tags (in UPPERCASE) associated with them.
+   - Example:
+     - Word: `tags: ["FOOD", "DAIRY"]`
+     - Receipt-Word: `tags: ["GROCERY", "DISCOUNTED"]`
+
+4. **Scalable Many-to-Many Relationships**:
+   - A tag can apply to multiple words or receipt-words, and a word or receipt-word can have multiple tags.
+
+## Query Patterns
+
+### Get All Image Details (Including Tags)
+
+To retrieve all details for an image, including lines, words, receipt-words, and tags, query the partition key (`PK = IMAGE#<image_id>`):
+
+```python
+response = dynamodb.query(
+    TableName='YourTableName',
+    KeyConditionExpression='PK = :image_id',
+    ExpressionAttributeValues={':image_id': 'IMAGE#123'}
+)
+```
+
+### Get All Words with a Specific Tag
+
+To fetch all words tagged with a specific tag (e.g., FOOD), query the Word Tag table for items where SK starts with `TAG#<tag_id>`:
+
+```python
+response = dynamodb.query(
+    TableName='YourTableName',
+    KeyConditionExpression='begins_with(SK, :tag_id)',
+    ExpressionAttributeValues={
+        ':tag_id': 'TAG#FOOD'
+    }
+)
+```
