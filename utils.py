@@ -1,4 +1,5 @@
 import base64
+import hashlib
 from typing import Tuple
 import cv2
 from dynamo import DynamoClient, Line, Word, Letter
@@ -101,3 +102,21 @@ def process_ocr_dict(ocr_data: dict, image_id: int) -> Tuple[list, list, list]:
                 )
                 letters.append(letter_obj)
     return lines, words, letters
+
+import hashlib
+
+def calculate_sha256(file_path):
+    """
+    Calculate the SHA-256 hash of a file.
+    
+    Example
+    -------
+    png_file_path = "example.png"  # Replace with your PNG file path
+    hash_value = calculate_sha256(png_file_path)
+    print(f"SHA-256: {hash_value}")
+    """
+    sha256_hash = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        for byte_block in iter(lambda: f.read(4096), b""):
+            sha256_hash.update(byte_block)
+    return sha256_hash.hexdigest()
