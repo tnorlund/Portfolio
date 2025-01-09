@@ -57,6 +57,14 @@ class Image:
             dict: The primary key for the image
         """
         return {"PK": {"S": f"IMAGE#{self.id:05d}"}, "SK": {"S": "IMAGE"}}
+    
+    def gsi1_key(self) -> dict:
+        """Generates the GSI1 key for the image
+
+        Returns:
+            dict: The GSI1 key for the image
+        """
+        return {"GSI1PK": {"S": "IMAGE"}, "GSI1SK": {"S": f"IMAGE#{self.id:05d}"}}
 
     def to_item(self) -> dict:
         """Converts the Image object to a DynamoDB item
@@ -66,6 +74,7 @@ class Image:
         """
         return {
             **self.key(),
+            **self.gsi1_key(),
             "Type": {"S": "IMAGE"},
             "Width": {"N": str(self.width)},
             "Height": {"N": str(self.height)},
@@ -128,7 +137,7 @@ def itemToImage(item: dict) -> Image:
     Raises:
         ValueError: When the item format is invalid
     """
-    if item.keys() != {"PK", "SK", "Type", "Width", "Height", "TimestampAdded", "S3Bucket", "S3Key"}:
+    if item.keys() != {"PK", "SK", "GSI1PK", "GSI1SK", "Type", "Width", "Height", "TimestampAdded", "S3Bucket", "S3Key"}:
         raise ValueError("Invalid item format")
     try:
         return Image(

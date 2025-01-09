@@ -34,6 +34,11 @@ def test_key():
     image = Image(1, 10, 20, "2021-01-01T00:00:00", "bucket", "key")
     assert image.key() == {"PK": {"S": "IMAGE#00001"}, "SK": {"S": "IMAGE"}}
 
+def test_gsi1_key():
+    """Test the Image.gsi1_key() method"""
+    image = Image(1, 10, 20, "2021-01-01T00:00:00", "bucket", "key")
+    assert image.gsi1_key() == {"GSI1PK": {"S": "IMAGE"}, "GSI1SK": {"S": "IMAGE#00001"}}
+
 
 def test_to_item():
     """Test the Image.to_item() method"""
@@ -41,6 +46,8 @@ def test_to_item():
     assert image.to_item() == {
         "PK": {"S": "IMAGE#00001"},
         "SK": {"S": "IMAGE"},
+        "GSI1PK": {"S": "IMAGE"},
+        "GSI1SK": {"S": "IMAGE#00001"},
         "Type": {"S": "IMAGE"},
         "Width": {"N": "10"},
         "Height": {"N": "20"},
@@ -86,8 +93,10 @@ def test_eq():
 def test_itemToImage():
     """Test the itemToImage() function"""
     item = {
-        "PK": {"S": "IMAGE#1"},
+        "PK": {"S": "IMAGE#00001"},
         "SK": {"S": "IMAGE"},
+        "GSI1PK": {"S": "IMAGE"},
+        "GSI1SK": {"S": "IMAGE#00001"},
         "Type": {"S": "IMAGE"},
         "Width": {"N": "10"},
         "Height": {"N": "20"},
