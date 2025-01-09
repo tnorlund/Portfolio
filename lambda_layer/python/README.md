@@ -10,3 +10,5 @@ This is a Python Lambda Layer that helps with accessing DynamoDB for receipt dat
 | Line | `IMAGE#<image_id>` | `LINE#<line_id>` | text, x, y, width, height, angle, confidence |
 | Word | `LINE#<line_id>` | `LINE#<line_id>WORD#<word_id>` | text, x, y, width, height, angle, confidence |
 | Letter | `LINE#<line_id>WORD#<word_id>` | `LINE#<line_id>WORD#<word_id>LETTER#<letter_id>` | text, x, y, width, height, angle, confidence |
+| Scaled Image | `IMAGE#<image_id>` | `#SCALED#<quality>` |  timestampAdded, base64, quality |
+| Receipt | `IMAGE#<image_id>` | `RECEIPT#<receipt_id>` | timestampAdded |
