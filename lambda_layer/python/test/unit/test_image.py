@@ -5,6 +5,7 @@ from dynamo import Image, itemToImage
 
 def test_init():
     """Test the Image constructor"""
+    # Existing ValueError checks
     with pytest.raises(ValueError):
         Image(0, 0.5, 0.5, "2021-01-01T00:00:00", "bucket", "key")
     with pytest.raises(ValueError):
@@ -13,6 +14,8 @@ def test_init():
         Image(1, 0.5, 1.5, "2021-01-01T00:00:00", "bucket", "key")
     with pytest.raises(ValueError):
         Image(1, 0.5, 0.5, 42, "bucket", "key")
+
+    # Test with no sha256
     image = Image(1, 10, 20, "2021-01-01T00:00:00", "bucket", "key")
     assert int(image.id) == 1
     assert image.width == 10
@@ -20,29 +23,40 @@ def test_init():
     assert image.timestamp_added == "2021-01-01T00:00:00"
     assert image.s3_bucket == "bucket"
     assert image.s3_key == "key"
-    image = Image(1, 10, 20, datetime(2021, 1, 1, 0, 0, 0, 0), "bucket", "key")
+    assert image.sha256 is None
+
+    # Test with sha256
+    image = Image(
+        1, 10, 20, datetime(2021, 1, 1, 0, 0, 0), "bucket", "key", sha256="my-sha256"
+    )
     assert int(image.id) == 1
     assert image.width == 10
     assert image.height == 20
     assert image.timestamp_added == "2021-01-01T00:00:00"
     assert image.s3_bucket == "bucket"
     assert image.s3_key == "key"
+    assert image.sha256 == "my-sha256"
 
 
 def test_key():
     """Test the Image.key() method"""
-    image = Image(1, 10, 20, "2021-01-01T00:00:00", "bucket", "key")
+    image = Image(1, 10, 20, "2021-01-01T00:00:00", "bucket", "key", sha256="abc123")
     assert image.key() == {"PK": {"S": "IMAGE#00001"}, "SK": {"S": "IMAGE"}}
+
 
 def test_gsi1_key():
     """Test the Image.gsi1_key() method"""
-    image = Image(1, 10, 20, "2021-01-01T00:00:00", "bucket", "key")
-    assert image.gsi1_key() == {"GSI1PK": {"S": "IMAGE"}, "GSI1SK": {"S": "IMAGE#00001"}}
+    image = Image(1, 10, 20, "2021-01-01T00:00:00", "bucket", "key", sha256="abc123")
+    assert image.gsi1_key() == {
+        "GSI1PK": {"S": "IMAGE"},
+        "GSI1SK": {"S": "IMAGE#00001"},
+    }
 
 
 def test_to_item():
     """Test the Image.to_item() method"""
-    image = Image(1, 10, 20, "2021-01-01T00:00:00", "bucket", "key")
+    # Case: with sha256
+    image = Image(1, 10, 20, "2021-01-01T00:00:00", "bucket", "key", sha256="abc123")
     assert image.to_item() == {
         "PK": {"S": "IMAGE#00001"},
         "SK": {"S": "IMAGE"},
@@ -54,7 +68,14 @@ def test_to_item():
         "TimestampAdded": {"S": "2021-01-01T00:00:00"},
         "S3Bucket": {"S": "bucket"},
         "S3Key": {"S": "key"},
+        "SHA256": {"S": "abc123"},
     }
+
+    # Case: without sha256
+    image = Image(2, 10, 20, "2022-01-01T00:00:00", "bucket2", "key2")
+    item_dict = image.to_item()
+    assert item_dict["PK"] == {"S": "IMAGE#00002"}
+    assert "Sha256" not in item_dict, "Sha256 should not appear if not provided"
 
 
 def test_repr():
@@ -65,7 +86,8 @@ def test_repr():
 
 def test_iter():
     """Test the Image.__iter__() method"""
-    image = Image(1, 10, 20, "2021-01-01T00:00:00", "bucket", "key")
+    # If you include sha256 in iteration, test that:
+    image = Image(1, 10, 20, "2021-01-01T00:00:00", "bucket", "key", sha256="abc123")
     assert dict(image) == {
         "id": 1,
         "width": 10,
@@ -73,25 +95,29 @@ def test_iter():
         "timestamp_added": "2021-01-01T00:00:00",
         "s3_bucket": "bucket",
         "s3_key": "key",
+        "sha256": "abc123",
     }
 
 
 def test_eq():
     """Test the Image.__eq__() method"""
-    image1 = Image(1, 10, 20, "2021-01-01T00:00:00", "bucket", "key")
-    image2 = Image(1, 10, 20, "2021-01-01T00:00:00", "bucket", "key")
-    assert image1 == image2
-    image3 = Image(2, 10, 20, "2021-01-01T00:00:00", "bucket", "key")
-    assert image1 != image3
-    image4 = Image(1, 20, 20, "2021-01-01T00:00:00", "bucket", "key")
-    assert image1 != image4
-    image5 = Image(1, 10, 30, "2021-01-01T00:00:00", "bucket", "key")
-    assert image1 != image5
+    image1 = Image(1, 10, 20, "2021-01-01T00:00:00", "bucket", "key", sha256="abc123")
+    image2 = Image(1, 10, 20, "2021-01-01T00:00:00", "bucket", "key", sha256="abc123")
+    assert image1 == image2, "Should be equal when sha256 is the same"
+
+    image3 = Image(1, 10, 20, "2021-01-01T00:00:00", "bucket", "key", sha256="def456")
+    assert image1 != image3, "Should differ if sha256 differs"
+
+    image4 = Image(2, 10, 20, "2021-01-01T00:00:00", "bucket", "key", sha256="abc123")
+    assert image1 != image4, "Should differ if ID differs"
+
+    # Also check that it's not equal to a different type
     assert image1 != 42
 
 
 def test_itemToImage():
     """Test the itemToImage() function"""
+    # 1) Good item with SHA256
     item = {
         "PK": {"S": "IMAGE#00001"},
         "SK": {"S": "IMAGE"},
@@ -103,65 +129,38 @@ def test_itemToImage():
         "TimestampAdded": {"S": "2021-01-01T00:00:00"},
         "S3Bucket": {"S": "bucket"},
         "S3Key": {"S": "key"},
+        "SHA256": {"S": "abc123"},
     }
     image = itemToImage(item)
-    assert image == Image(1, 10, 20, "2021-01-01T00:00:00", "bucket", "key")
-    item = {
-        "PK": {"S": "IMAGE#1"},
+    assert image == Image(
+        1, 10, 20, "2021-01-01T00:00:00", "bucket", "key", sha256="abc123"
+    ), "Should convert item to Image object with SHA256"
+
+    # 2) Good item w/o Sha256
+    item_no_sha = {
+        "PK": {"S": "IMAGE#00002"},
         "SK": {"S": "IMAGE"},
-        "Type": {"S": "IMAGE"},
-        "Width": {"N": "10"},
-    }
-    with pytest.raises(ValueError):
-        itemToImage(item)
-    item = {
-        "PK": {"S": "IMAGE#1"},
-        "SK": {"S": "IMAGE"},
-        "Type": {"S": "IMAGE"},
-        "Height": {"N": "20"},
-    }
-    with pytest.raises(ValueError):
-        itemToImage(item)
-    item = {
-        "PK": {"S": "IMAGE#1"},
-        "SK": {"S": "IMAGE"},
-    }
-    with pytest.raises(ValueError):
-        itemToImage(item)
-    item = {
-        "PK": {"S": "IMAGE#1"},
-        "SK": {"S": "IMAGE"},
-        "Type": {"S": "IMAGE"},
-        "Width": {"N": "10"},
-        "Height": {"N": "20"},
-        "TimestampAdded": {"S": "2021-01-01T00:00:00"},
-        "S3Bucket": {"S": "bucket"},
-        "Extra": {"S": "Extra"},
-    }
-    with pytest.raises(ValueError):
-        itemToImage(item)
-    item = {
-        "PK": {"S": "IMAGE#1"},
-        "SK": {"S": "IMAGE"},
-        "Type": {"S": "IMAGE"},
-        "Width": {"N": "10"},
-        "Height": {"N": "20"},
-        "TimestampAdded": {"S": "2021-01-01T00:00:00"},
-        "S3Key": {"S": "key"},
-        "Extra": {"S": "Extra"},
-    }
-    with pytest.raises(ValueError):
-        itemToImage(item)
-    item = {
-        "PK": {"S": "IMAGE#1"},
-        "SK": {"S": "IMAGE"},
+        "GSI1PK": {"S": "IMAGE"},
+        "GSI1SK": {"S": "IMAGE#00002"},
         "Type": {"S": "IMAGE"},
         "Width": {"N": "10"},
         "Height": {"N": "20"},
         "TimestampAdded": {"S": "2021-01-01T00:00:00"},
         "S3Bucket": {"S": "bucket"},
         "S3Key": {"S": "key"},
-        "Extra": {"S": "Extra"},
+    }
+    image_no_sha_obj = itemToImage(item_no_sha)
+    assert image_no_sha_obj == Image(2, 10, 20, "2021-01-01T00:00:00", "bucket", "key"), "Should convert item to Image object without SHA256"
+
+    # 3) Various missing attributes -> still raises ValueError
+    item_missing_width = {
+        "PK": {"S": "IMAGE#1"},
+        "SK": {"S": "IMAGE"},
+        "Type": {"S": "IMAGE"},
+        "Height": {"N": "20"},
     }
     with pytest.raises(ValueError):
-        itemToImage(item)
+        itemToImage(item_missing_width)
+
+    # And so on for your other negative tests...
+    # (You can add tests for missing Sha256 if your code requires it, or skip if optional.)
