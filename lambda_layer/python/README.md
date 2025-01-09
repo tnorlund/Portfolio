@@ -4,33 +4,36 @@ This is a Python Lambda Layer that helps with accessing DynamoDB for receipt dat
 
 ## Table Design
 
-| Item Type          | PK                      | SK                                          | GSI PK              | GSI SK              | Attributes                          |
-|---------------------|-------------------------|---------------------------------------------|---------------------|---------------------|-------------------------------------|
-| Image              | `IMAGE#<image_id>`     | `#IMAGE`                                    |                     |                     | width, height, timestampAdded, s3Bucket, s3Key |
-| Line               | `IMAGE#<image_id>`     | `LINE#<line_id>`                            |                     |                     | text, x, y, width, height, angle, confidence |
-| Word               | `IMAGE#<image_id>`     | `LINE#<line_id>WORD#<word_id>`              |                     |                     | text, tags, x, y, width, height, angle, confidence |
-| Word Tag           | `IMAGE#<image_id>`     | `TAG#<UPPER_TAG>#WORD#<word_id>`            | `TAG#<UPPER_TAG>`   | `WORD#<word_id>`    | tag_name (always UPPERCASE)         |
-| Letter             | `IMAGE#<image_id>`     | `LINE#<line_id>WORD#<word_id>LETTER#<letter_id>` |                     |                     | text, x, y, width, height, angle, confidence |
-| Scaled Image       | `IMAGE#<image_id>`     | `#SCALED#<quality>`                         |                     |                     | timestampAdded, base64, quality     |
-| Receipt            | `IMAGE#<image_id>`     | `RECEIPT#<receipt_id>`                      |                     |                     | timestampAdded, totalAmount, notes |
-| Receipt Line       | `IMAGE#<image_id>`     | `RECEIPT#<receipt_id>#LINE#<line_id>`       |                     |                     | text, x, y, width, height, angle, confidence |
-| Receipt Word       | `IMAGE#<image_id>`     | `RECEIPT#<receipt_id>#LINE#<line_id>WORD#<word_id>` |                     |                     | text, tags, x, y, width, height, angle, confidence |
-| Receipt Word Tag   | `IMAGE#<image_id>`     | `TAG#<UPPER_TAG>#RECEIPT#<receipt_id>#WORD#<word_id>` | `TAG#<UPPER_TAG>`   | `RECEIPT#<receipt_id>#WORD#<word_id>` | tag_name (always UPPERCASE) |
-| Receipt Letter     | `IMAGE#<image_id>`     | `RECEIPT#<receipt_id>#LINE#<line_id>WORD#<word_id>LETTER#<letter_id>` |                     |                     | text, x, y, width, height, angle, confidence |
-| Receipt Scaled Image | `IMAGE#<image_id>`   | `RECEIPT#<receipt_id>#SCALED#<quality>`     |                     |                     | timestampAdded, base64, quality     |
+| Item Type            | PK                 | SK                                                                    | GSI PK            | GSI SK                                | Attributes                                         |
+| -------------------- | ------------------ | --------------------------------------------------------------------- | ----------------- | ------------------------------------- | -------------------------------------------------- | ---------------------------------------------- |
+| Image                | `IMAGE#<image_id>` | `IMAGE`                                                               | `IMAGE`           | `IMAGE#<image_id>`                    | width, height, timestampAdded, s3Bucket, s3Key     | width, height, timestampAdded, s3Bucket, s3Key |
+| Line                 | `IMAGE#<image_id>` | `LINE#<line_id>`                                                      |                   |                                       | text, x, y, width, height, angle, confidence       |
+| Word                 | `IMAGE#<image_id>` | `LINE#<line_id>WORD#<word_id>`                                        |                   |                                       | text, tags, x, y, width, height, angle, confidence |
+| Word Tag             | `IMAGE#<image_id>` | `TAG#<UPPER_TAG>#WORD#<word_id>`                                      | `TAG#<UPPER_TAG>` | `WORD#<word_id>`                      | tag_name (always UPPERCASE)                        |
+| Letter               | `IMAGE#<image_id>` | `LINE#<line_id>WORD#<word_id>LETTER#<letter_id>`                      |                   |                                       | text, x, y, width, height, angle, confidence       |
+| Scaled Image         | `IMAGE#<image_id>` | `#SCALED#<quality>`                                                   |                   |                                       | timestampAdded, base64, quality                    |
+| Receipt              | `IMAGE#<image_id>` | `RECEIPT#<receipt_id>`                                                |                   |                                       | timestampAdded, totalAmount, notes                 |
+| Receipt Line         | `IMAGE#<image_id>` | `RECEIPT#<receipt_id>#LINE#<line_id>`                                 |                   |                                       | text, x, y, width, height, angle, confidence       |
+| Receipt Word         | `IMAGE#<image_id>` | `RECEIPT#<receipt_id>#LINE#<line_id>WORD#<word_id>`                   |                   |                                       | text, tags, x, y, width, height, angle, confidence |
+| Receipt Word Tag     | `IMAGE#<image_id>` | `TAG#<UPPER_TAG>#RECEIPT#<receipt_id>#WORD#<word_id>`                 | `TAG#<UPPER_TAG>` | `RECEIPT#<receipt_id>#WORD#<word_id>` | tag_name (always UPPERCASE)                        |
+| Receipt Letter       | `IMAGE#<image_id>` | `RECEIPT#<receipt_id>#LINE#<line_id>WORD#<word_id>LETTER#<letter_id>` |                   |                                       | text, x, y, width, height, angle, confidence       |
+| Receipt Scaled Image | `IMAGE#<image_id>` | `RECEIPT#<receipt_id>#SCALED#<quality>`                               |                   |                                       | timestampAdded, base64, quality                    |
 
 ## Key Design Notes
 
 1. **Unified Partition Key**:
+
    - All items related to an image (lines, words, word tags, receipts) share the same partition key (`PK = IMAGE#<image_id>`).
 
 2. **Uppercased Tags**:
+
    - All tags are stored in **UPPERCASE** to enforce consistency and avoid issues with case sensitivity.
    - Example:
      - Word Tag: `TAG#FOOD#WORD#1`
      - Receipt-Word Tag: `TAG#FOOD#RECEIPT#1#WORD#1`
 
 3. **Embedded Tags**:
+
    - The `Word` and `Receipt-Word` tables include a `tags` attribute, which is a list of all tags (in UPPERCASE) associated with them.
    - Example:
      - Word: `tags: ["FOOD", "DAIRY"]`
