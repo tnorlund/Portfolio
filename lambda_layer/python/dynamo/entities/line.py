@@ -88,11 +88,11 @@ class Line:
         if not isinstance(text, str):
             raise ValueError("text must be a string")
         self.text = text
-        if x <= 0 or not isinstance(x, float):
-            raise ValueError("x must be a positive float")
+        if not isinstance(x, float):
+            raise ValueError("x must be a float")
         self.x = x
-        if y <= 0 or not isinstance(y, float):
-            raise ValueError("y must be a positive float")
+        if not isinstance(y, float):
+            raise ValueError("y must be a float")
         self.y = y
         if width <= 0 or not isinstance(width, float):
             raise ValueError("width must be a positive float")
