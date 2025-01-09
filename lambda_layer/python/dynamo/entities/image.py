@@ -11,6 +11,7 @@ class Image:
         timestamp_added: datetime,
         s3_bucket: str,
         s3_key: str,
+        sha256: str = None
     ):
         """Constructs a new Image object for DynamoDB
 
@@ -18,14 +19,24 @@ class Image:
             id (int): Number identifying the image
             width (int): The width of the image in pixels
             height (int): The height of the image in pixels
+            timestamp_added (datetime): The timestamp the image was added
+            s3_bucket (str): The S3 bucket where the image is stored
+            s3_key (str): The S3 key where the image is stored
+            sha256 (str): The SHA256 hash of the image
 
         Attributes:
             id (int): Number identifying the image
             width (int): The width of the image in pixels
             height (int): The height of the image in pixels
+            timestamp_added (datetime): The timestamp the image was added
+            s3_bucket (str): The S3 bucket where the image is stored
+            s3_key (str): The S3 key where the image is stored
+            sha256 (str): The SHA256 hash of the image
 
         Raises:
             ValueError: When the ID is not a positive integer
+            ValueError: When the width or height are not positive integers
+            ValueError: When the timestamp_added is not a datetime object or a string
         """
         # Ensure the ID is a positive integer
         if id <= 0:
@@ -49,6 +60,9 @@ class Image:
             raise ValueError("timestamp_added must be a datetime object or a string")
         self.s3_bucket = s3_bucket
         self.s3_key = s3_key
+        if sha256 and not isinstance(sha256, str):
+            raise ValueError("sha256 must be a string")
+        self.sha256 = sha256
 
     def key(self) -> dict:
         """Generates the primary key for the image
@@ -81,6 +95,7 @@ class Image:
             "TimestampAdded": {"S": self.timestamp_added},
             "S3Bucket": {"S": self.s3_bucket},
             "S3Key": {"S": self.s3_key},
+            "SHA256": {"S": self.sha256} if self.sha256 else None
         }
 
     def __repr__(self) -> str:
@@ -103,6 +118,7 @@ class Image:
         yield "timestamp_added", self.timestamp_added
         yield "s3_bucket", self.s3_bucket
         yield "s3_key", self.s3_key
+        yield "sha256", self.sha256
 
     def __eq__(self, other) -> bool:
         """Checks if two Image objects are equal
@@ -122,6 +138,7 @@ class Image:
             and self.timestamp_added == other.timestamp_added
             and self.s3_bucket == other.s3_bucket
             and self.s3_key == other.s3_key
+            and self.sha256 == other.sha256
         )
 
 
@@ -137,7 +154,8 @@ def itemToImage(item: dict) -> Image:
     Raises:
         ValueError: When the item format is invalid
     """
-    if item.keys() != {"PK", "SK", "GSI1PK", "GSI1SK", "Type", "Width", "Height", "TimestampAdded", "S3Bucket", "S3Key"}:
+    required_keys = {"PK", "SK", "GSI1PK", "GSI1SK", "Type", "Width", "Height", "TimestampAdded", "S3Bucket", "S3Key"}
+    if not required_keys.issubset(item.keys()):
         raise ValueError("Invalid item format")
     try:
         return Image(
@@ -147,6 +165,7 @@ def itemToImage(item: dict) -> Image:
             timestamp_added=datetime.fromisoformat(item["TimestampAdded"]["S"]),
             s3_bucket=item["S3Bucket"]["S"],
             s3_key=item["S3Key"]["S"],
+            sha256=item.get("SHA256", {}).get("S")
         )
     except KeyError:
         raise ValueError("Invalid item format")
