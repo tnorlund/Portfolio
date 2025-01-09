@@ -40,7 +40,8 @@ class Word:
         width: float,
         height: float,
         angle: float,
-        confidence: float
+        confidence: float,
+        tags: list[str] = None
     ):
         if image_id <= 0 or not isinstance(image_id, int):
             raise ValueError("image_id must be a positive integer")
@@ -74,6 +75,7 @@ class Word:
         if confidence <= 0 or confidence > 1:
             raise ValueError("confidence must be a float between 0 and 1")
         self.confidence = confidence
+        self.tags = tags if tags is not None else []
     
     def key(self) -> dict:
         return {
@@ -86,6 +88,7 @@ class Word:
             **self.key(),
             "Type": {"S": "WORD"},
             "Text": {"S": self.text},
+            "Tags": {"SS": self.tags},
             "X": {"N": _format_float(self.x, 20, 22)},
             "Y": {"N": _format_float(self.y, 20, 22)},
             "Width": {"N": _format_float(self.width, 20, 22)},
@@ -106,6 +109,7 @@ class Word:
         yield "PK", f"IMAGE#{self.image_id:05d}"
         yield "SK", f"LINE#{self.line_id:05d}#WORD#{self.id:05d}"
         yield "text", self.text
+        yield "tags", self.tags
         yield "x", _format_float(self.x, 20, 22)
         yield "y", _format_float(self.y, 20, 22)
         yield "width", _format_float(self.width, 20, 22)
@@ -136,7 +140,8 @@ class Word:
                 "width",
                 "height",
                 "angle",
-                "confidence"
+                "confidence",
+                "tags"
             ]
         )
         
@@ -160,5 +165,6 @@ def itemToWord(item: dict) -> Word:
         float(item["Width"]["N"]),
         float(item["Height"]["N"]),
         float(item["Angle"]["N"]),
-        float(item["Confidence"]["N"])
+        float(item["Confidence"]["N"]),
+        item.get("Tags", {}).get("SS", [])
     )
