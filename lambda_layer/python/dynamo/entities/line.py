@@ -139,6 +139,14 @@ class Line:
             "Angle": {"N": _format_float(self.angle, 10, 12)},
             "Confidence": {"N": _format_float(self.confidence, 2, 2)},
         }
+    
+    def calculate_centroid(self) -> Tuple[float, float]:
+        """Calculates the centroid of the line
+
+        Returns:
+            Tuple[float, float]: The x and y coordinates of the centroid
+        """
+        return self.x + self.width / 2, self.y + self.height / 2
 
     def __repr__(self) -> str:
         """Returns a string representation of the Line object
