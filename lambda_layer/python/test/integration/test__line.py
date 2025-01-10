@@ -3,21 +3,30 @@ import pytest
 import boto3
 from dynamo import Line, DynamoClient
 
+correct_line_params = {
+    "image_id": 1,
+    "id": 1,
+    "text": "07\/03\/2024",
+    "boundingBox": {
+        "x": 0.4454263367632384,
+        "height": 0.022867568134581906,
+        "width": 0.08690182470506236,
+        "y": 0.9167082878750482,
+    },
+    "topRight": {"y": 0.9307722198001792, "x": 0.5323281614683008},
+    "topLeft": {"y": 0.9395758560096301, "x": 0.44837726658954413},
+    "bottomRight": {"x": 0.529377231641995, "y": 0.9167082878750482},
+    "bottomLeft": {"x": 0.4454263367632384, "y": 0.9255119240844992},
+    "angleDegrees": -5.986527,
+    "angleRadians": -0.10448461,
+    "confidence": 1,
+}
+
 
 def test_add_line(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    line = Line(
-        1,
-        1,
-        "06\/27\/2024",
-        0.14956954529503239,
-        0.8868912353567051,
-        0.0872786737257435,
-        0.024234482472679675,
-        7.7517295,
-        1,
-    )
+    line = Line(**correct_line_params)
 
     # Act
     client.addLine(line)
@@ -34,17 +43,7 @@ def test_add_line(dynamodb_table: Literal["MyMockedTable"]):
 def test_add_line_error(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    line = Line(
-        1,
-        1,
-        "06\/27\/2024",
-        0.14956954529503239,
-        0.8868912353567051,
-        0.0872786737257435,
-        0.024234482472679675,
-        7.7517295,
-        1,
-    )
+    line = Line(**correct_line_params)
 
     # Act
     client.addLine(line)
@@ -55,28 +54,11 @@ def test_add_line_error(dynamodb_table: Literal["MyMockedTable"]):
 def test_add_lines(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    line_1 = Line(
-        1,
-        1,
-        "06\/27\/2024",
-        0.14956954529503239,
-        0.8868912353567051,
-        0.0872786737257435,
-        0.024234482472679675,
-        7.7517295,
-        1,
-    )
-    line_2 = Line(
-        1,
-        2,
-        "A New Line",
-        0.14956954529503239,
-        0.8868912353567051,
-        0.0872786737257435,
-        0.024234482472679675,
-        7.7517295,
-        1,
-    )
+    line_1 = Line(**correct_line_params)
+    line_2_params = correct_line_params.copy()
+    line_2_params["id"] = 2
+    line_2_params["text"] = "A New Line"
+    line_2 = Line(**line_2_params)
 
     # Act
     client.addLines([line_1, line_2])
@@ -100,17 +82,7 @@ def test_add_lines(dynamodb_table: Literal["MyMockedTable"]):
 def test_delete_line(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    line = Line(
-        1,
-        1,
-        "06\/27\/2024",
-        0.14956954529503239,
-        0.8868912353567051,
-        0.0872786737257435,
-        0.024234482472679675,
-        7.7517295,
-        1,
-    )
+    line = Line(**correct_line_params)
     client.addLine(line)
 
     # Act
@@ -124,17 +96,7 @@ def test_delete_line(dynamodb_table: Literal["MyMockedTable"]):
 def test_delete_line_error(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    line = Line(
-        1,
-        1,
-        "06\/27\/2024",
-        0.14956954529503239,
-        0.8868912353567051,
-        0.0872786737257435,
-        0.024234482472679675,
-        7.7517295,
-        1,
-    )
+    line = Line(**correct_line_params)
     client.addLine(line)
 
     # Act
@@ -145,28 +107,11 @@ def test_delete_line_error(dynamodb_table: Literal["MyMockedTable"]):
 def test_deleteLines(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    line_1 = Line(
-        1,
-        1,
-        "06\/27\/2024",
-        0.14956954529503239,
-        0.8868912353567051,
-        0.0872786737257435,
-        0.024234482472679675,
-        7.7517295,
-        1,
-    )
-    line_2 = Line(
-        1,
-        2,
-        "A New Line",
-        0.14956954529503239,
-        0.8868912353567051,
-        0.0872786737257435,
-        0.024234482472679675,
-        7.7517295,
-        1,
-    )
+    line_1 = Line(**correct_line_params)
+    line_2_params = correct_line_params.copy()
+    line_2_params["id"] = 2
+    line_2_params["text"] = "A New Line"
+    line_2 = Line(**line_2_params)
     client.addLine(line_1)
     client.addLine(line_2)
 
@@ -183,17 +128,7 @@ def test_deleteLines(dynamodb_table: Literal["MyMockedTable"]):
 def test_get_line(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    line = Line(
-        1,
-        1,
-        "Tyler",
-        0.14956954529503239,
-        0.8868912353567051,
-        0.0872786737257435,
-        0.024234482472679675,
-        7.7517295,
-        1,
-    )
+    line = Line(**correct_line_params)
     client.addLine(line)
 
     # Act
@@ -206,17 +141,7 @@ def test_get_line(dynamodb_table: Literal["MyMockedTable"]):
 def test_get_line_error(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    line = Line(
-        1,
-        1,
-        "Tyler",
-        0.14956954529503239,
-        0.8868912353567051,
-        0.0872786737257435,
-        0.024234482472679675,
-        7.7517295,
-        1,
-    )
+    line = Line(**correct_line_params)
     client.addLine(line)
 
     # Act
@@ -227,28 +152,11 @@ def test_get_line_error(dynamodb_table: Literal["MyMockedTable"]):
 def test_listLines(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    line_1 = Line(
-        1,
-        1,
-        "06\/27\/2024",
-        0.14956954529503239,
-        0.8868912353567051,
-        0.0872786737257435,
-        0.024234482472679675,
-        7.7517295,
-        1,
-    )
-    line_2 = Line(
-        1,
-        2,
-        "A New Line",
-        0.14956954529503239,
-        0.8868912353567051,
-        0.0872786737257435,
-        0.024234482472679675,
-        7.7517295,
-        1,
-    )
+    line_1 = Line(**correct_line_params)
+    line_2_params = correct_line_params.copy()
+    line_2_params["id"] = 2
+    line_2_params["text"] = "A New Line"
+    line_2 = Line(**line_2_params)
     client.addLine(line_1)
     client.addLine(line_2)
 
@@ -274,28 +182,11 @@ def test_listLinesEmpty(dynamodb_table: Literal["MyMockedTable"]):
 def test_listLinesFromImage(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    line_1 = Line(
-        1,
-        1,
-        "06\/27\/2024",
-        0.14956954529503239,
-        0.8868912353567051,
-        0.0872786737257435,
-        0.024234482472679675,
-        7.7517295,
-        1,
-    )
-    line_2 = Line(
-        1,
-        2,
-        "A New Line",
-        0.14956954529503239,
-        0.8868912353567051,
-        0.0872786737257435,
-        0.024234482472679675,
-        7.7517295,
-        1,
-    )
+    line_1 = Line(**correct_line_params)
+    line_2_params = correct_line_params.copy()
+    line_2_params["id"] = 2
+    line_2_params["text"] = "A New Line"
+    line_2 = Line(**line_2_params)
     client.addLine(line_1)
     client.addLine(line_2)
 
