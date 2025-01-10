@@ -75,6 +75,8 @@ class Word:
         if confidence <= 0 or confidence > 1:
             raise ValueError("confidence must be a float between 0 and 1")
         self.confidence = confidence
+        if tags is not None and not isinstance(tags, list):
+            raise ValueError("tags must be a list")
         self.tags = tags if tags is not None else []
     
     def key(self) -> dict:
@@ -84,18 +86,20 @@ class Word:
         }
     
     def to_item(self) -> dict:
-        return {
+        item = {
             **self.key(),
             "Type": {"S": "WORD"},
             "Text": {"S": self.text},
-            "Tags": {"SS": self.tags},
             "X": {"N": _format_float(self.x, 20, 22)},
             "Y": {"N": _format_float(self.y, 20, 22)},
             "Width": {"N": _format_float(self.width, 20, 22)},
             "Height": {"N": _format_float(self.height, 20, 22)},
             "Angle": {"N": _format_float(self.angle, 10, 12)},
-            "Confidence": {"N": _format_float(self.confidence, 2, 2)}
+            "Confidence": {"N": _format_float(self.confidence, 2, 2)},
         }
+        if self.tags:
+            item["Tags"] = {"SS": self.tags}
+        return item
 
     def __repr__(self):
         """Returns a string representation of the Word object
