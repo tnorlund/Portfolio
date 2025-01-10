@@ -150,7 +150,9 @@ def test_itemToImage():
         "S3Key": {"S": "key"},
     }
     image_no_sha_obj = itemToImage(item_no_sha)
-    assert image_no_sha_obj == Image(2, 10, 20, "2021-01-01T00:00:00", "bucket", "key"), "Should convert item to Image object without SHA256"
+    assert image_no_sha_obj == Image(
+        2, 10, 20, "2021-01-01T00:00:00", "bucket", "key"
+    ), "Should convert item to Image object without SHA256"
 
     # 3) Various missing attributes -> still raises ValueError
     item_missing_width = {
@@ -162,5 +164,24 @@ def test_itemToImage():
     with pytest.raises(ValueError):
         itemToImage(item_missing_width)
 
+    item_missing_height = {
+        "PK": {"S": "IMAGE#00078"},
+        "SK": {"S": "IMAGE"},
+        "Type": {"S": "IMAGE"},
+        "Width": {"N": "2480"},
+        "Height": {"N": "3508"},
+        "TimestampAdded": {"S": "2025-01-05T19:02:12.010520"},
+        "S3Bucket": {"S": "raw-image-bucket-c779c32"},
+        "S3Key": {"S": "raw/d20141ee-180f-4484-9d3d-7886b78fd019.png"},
+    }
+    image = itemToImage(item_missing_height)
+    assert image == Image(
+        78,
+        2480,
+        3508,
+        "2025-01-05T19:02:12.010520",
+        "raw-image-bucket-c779c32",
+        "raw/d20141ee-180f-4484-9d3d-7886b78fd019.png",
+    ), "Should convert old item with no GSI1 keys to Image object"
     # And so on for your other negative tests...
     # (You can add tests for missing Sha256 if your code requires it, or skip if optional.)
