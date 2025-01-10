@@ -58,6 +58,24 @@ class _Letter:
                     response = self._client.batch_write_item(RequestItems=unprocessed)
         except ClientError as e:
             raise ValueError("Could not add letters to the database")
+        
+    def updateLetter(self, letter: Letter):
+        """Updates a letter in the database
+
+        Args:
+            letter (Letter): The letter to update in the database
+
+        Raises:
+            ValueError: When the letter does not exist
+        """
+        try:
+            self._client.put_item(
+                TableName=self.table_name,
+                Item=letter.to_item(),
+                ConditionExpression="attribute_exists(PK)",
+            )
+        except ClientError as e:
+            raise ValueError(f"Letter with ID {letter.id} not found")
     
     def deleteLetter(self, image_id: int, line_id: int, word_id: int, letter_id: int):
         try:
