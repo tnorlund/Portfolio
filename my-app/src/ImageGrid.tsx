@@ -126,7 +126,7 @@ export default function ImageGrid() {
     <div style={{ display: "flex", flexWrap: "wrap" }}>
       {images.map((img) => {
         // Example: fixed base width of 200, scale height accordingly
-        const baseWidth = 150;
+        const baseWidth = 500;
         const aspectRatio = img.height / img.width;
         const scaledHeight = baseWidth * aspectRatio;
 
@@ -168,49 +168,41 @@ export default function ImageGrid() {
             />
             {/* Draw bounding boxes for each line */}
             {lines?.map((line) => {
-              // Scale the normalized positions and dimensions
-              // Assume line.x, line.y, line.width, line.height ∈ [0, 1]
-              const rectX = line.x * baseWidth;
-              const rectWidth = line.width * baseWidth;
+              // X and Y are normalized to [0, 1] in the Vision API
+              // They are the bottom left corner of the bounding box
+              const x = line.x * baseWidth;
+              const y = line.y * scaledHeight;
+              // The angle is in degrees
+              const angleRad = (Math.PI / 180) * line.angle;
+              // flip the Y coordinate
+              const flippedY = scaledHeight - y;
+              const bottomLeft = { x, y: flippedY };
 
-              const rectY = line.y * scaledHeight;
-              const rectHeight = line.height * scaledHeight;
+              // Calculate the bottom right corner of the box
+              const bottomRight = {
+                x: bottomLeft.x + line.width * baseWidth * Math.cos(angleRad),
+                y: bottomLeft.y + line.width * baseWidth * Math.sin(angleRad),
+              };
 
-              // Flip Y because Vision uses bottom-left as origin
-              const flippedRectY = scaledHeight - rectY - rectHeight;
-
-              // Rotate around the center of the box
-              const centerX = rectX + rectWidth / 2;
-              const centerY = flippedRectY + rectHeight / 2;
-
-              const angleDeg = 180 - line.angle;
-
-              const topRightX = rectX + rectWidth;
-              const topRightY = flippedRectY;
-
-              const bottomLeftX = rectX;
-              const bottomLeftY = flippedRectY + rectHeight;
 
               return (
                 <>
-                  <rect
-                    key={line.id}
-                    x={rectX}
-                    y={flippedRectY}
-                    width={rectWidth}
-                    height={rectHeight}
-                    fill="none"
+                  <line
+                    x1={bottomLeft.x}
+                    y1={bottomLeft.y}
+                    x2={bottomRight.x}
+                    y2={bottomRight.y}
                     stroke="grey"
                     strokeWidth={1}
-                    // Use the angle directly, flipping sign if needed
-                    transform={`rotate(${angleDeg}, ${centerX}, ${centerY})`}
                   />
-                  <circle cx={centerX} cy={centerY} r={2} fill="grey" />
-                  <circle cx={topRightX} cy={topRightY} r={1} fill="green" />
-                  <circle cx={bottomLeftX} cy={bottomLeftY} r={1} fill="red" />
                 </>
               );
             })}
+
+            {/* Add the image ID to the SVG */}
+            <text x={5} y={scaledHeight - 5} fill="black">
+              {img.id}
+            </text>
           </svg>
         );
       })}
