@@ -6,6 +6,12 @@ import AppKit
 
 // MARK: - Data Models
 
+/// A simple wrapper to store a point that can be encoded/decoded as JSON.
+struct Point: Codable {
+    let x: CGFloat
+    let y: CGFloat
+}
+
 /// A rectangle in normalized Vision coordinates (0–1)
 struct NormalizedRect: Codable {
     let x: CGFloat
@@ -18,15 +24,23 @@ struct NormalizedRect: Codable {
 struct Letter: Codable {
     let text: String       // the letter itself
     let boundingBox: NormalizedRect
-    let angle: Float       // approximate rotation in degrees
-    let confidence: Float  // reusing line-level confidence as Vision doesn't split letter confidences
+    
+    // Both degrees and radians
+    let angleDegrees: Float
+    let angleRadians: Float
+    
+    // Reusing line-level confidence (Vision doesn't split letter confidences)
+    let confidence: Float
 }
 
 /// Each recognized word
 struct Word: Codable {
     let text: String
     let boundingBox: NormalizedRect
-    let angle: Float
+    
+    let angleDegrees: Float
+    let angleRadians: Float
+    
     let confidence: Float
     let letters: [Letter]  // detailed breakdown of letters
 }
@@ -35,7 +49,17 @@ struct Word: Codable {
 struct Line: Codable {
     let text: String
     let boundingBox: NormalizedRect
-    let angle: Float
+    
+    // Now storing the four corners in the JSON
+    let topLeft: Point
+    let topRight: Point
+    let bottomLeft: Point
+    let bottomRight: Point
+
+    // Both degrees and radians
+    let angleDegrees: Float
+    let angleRadians: Float
+
     let confidence: Float
     let words: [Word]
 }
@@ -56,13 +80,10 @@ func cgImage(from nsImage: NSImage) -> CGImage? {
     return bitmap.cgImage
 }
 
-/// Converts a Vision rectangle (with corners) into an approximate rotation angle in degrees.
-///
-/// We compute the angle based on the top edge's slope.
+/// Computes both degrees and radians based on the top edge’s slope (from topLeft to topRight).
 /// - Parameter rectObs: The VNRectangleObservation
-/// - Returns: Angle in degrees, where 0 means horizontally aligned text.
-private func rotationAngle(rectObs: VNRectangleObservation) -> Float {
-    // The corners are in normalized image coordinates (origin at bottom-left).
+/// - Returns: (degrees, radians)
+private func angles(for rectObs: VNRectangleObservation) -> (degrees: Float, radians: Float) {
     let topLeft = rectObs.topLeft
     let topRight = rectObs.topRight
     
@@ -71,7 +92,7 @@ private func rotationAngle(rectObs: VNRectangleObservation) -> Float {
     let angleRadians = atan2(dy, dx)
     let angleDegrees = angleRadians * 180.0 / .pi
     
-    return Float(angleDegrees)
+    return (Float(angleDegrees), Float(angleRadians))
 }
 
 /// Converts the bounding box of a `VNRectangleObservation` into a `NormalizedRect`.
@@ -82,6 +103,11 @@ private func normalizedRect(from rectObs: VNRectangleObservation) -> NormalizedR
                           y: bb.origin.y,
                           width: bb.size.width,
                           height: bb.size.height)
+}
+
+/// Convenience: converts a CGPoint into a `Point` struct.
+private func codablePoint(from cgPoint: CGPoint) -> Point {
+    return Point(x: cgPoint.x, y: cgPoint.y)
 }
 
 /// Convenience to convert a partial-range bounding box from a recognized text candidate
@@ -138,8 +164,16 @@ func performOCR(
             // Store line-level data
             let lineText = candidate.string
             let lineConfidence = candidate.confidence
-            let lineAngle = rotationAngle(rectObs: obs)
+            
+            // Extract degrees/radians for this line
+            let (lineDegrees, lineRadians) = angles(for: obs)
             let lineBoundingBox = normalizedRect(from: obs)
+            
+            // Corners in normalized coordinates
+            let lineTopLeft     = codablePoint(from: obs.topLeft)
+            let lineTopRight    = codablePoint(from: obs.topRight)
+            let lineBottomLeft  = codablePoint(from: obs.bottomLeft)
+            let lineBottomRight = codablePoint(from: obs.bottomRight)
             
             // Break the line text into words (naive approach: split by whitespace).
             let wordsArray = lineText.components(separatedBy: .whitespacesAndNewlines)
@@ -149,16 +183,16 @@ func performOCR(
             
             for w in wordsArray where !w.isEmpty {
                 // Find the substring range in the entire line text
-                guard let range = lineText.range(of: w,
-                                                 range: runningIndex..<lineText.endIndex)
+                guard let range = lineText.range(of: w, range: runningIndex..<lineText.endIndex)
                 else { continue }
                 
                 // Attempt to get bounding box for this word range
                 let wordRectObs = rectangleObservation(in: candidate, range: range)
                 
-                // Create the Word object
-                let wordAngle = wordRectObs.map(rotationAngle) ?? 0
-                let wordBox = wordRectObs.map(normalizedRect) ?? NormalizedRect(x: 0, y: 0, width: 0, height: 0)
+                // Compute angles for this word
+                let (wordDegrees, wordRadians) = wordRectObs.map(angles(for:)) ?? (0, 0)
+                let wordBox = wordRectObs.map(normalizedRect) ??
+                    NormalizedRect(x: 0, y: 0, width: 0, height: 0)
                 
                 // Break word into letters
                 var letterModels: [Letter] = []
@@ -169,13 +203,15 @@ func performOCR(
                     let globalLetterRange = globalLetterStart..<lineText.index(globalLetterStart, offsetBy: 1)
                     
                     let letterRectObs = rectangleObservation(in: candidate, range: globalLetterRange)
-                    let letterAngle   = letterRectObs.map(rotationAngle) ?? 0
-                    let letterBox     = letterRectObs.map(normalizedRect) ?? NormalizedRect(x: 0, y: 0, width: 0, height: 0)
+                    let (letterDegrees, letterRadians) = letterRectObs.map(angles(for:)) ?? (0, 0)
+                    let letterBox = letterRectObs.map(normalizedRect) ??
+                        NormalizedRect(x: 0, y: 0, width: 0, height: 0)
                     
                     let letterModel = Letter(
                         text: String(w[i]),
                         boundingBox: letterBox,
-                        angle: letterAngle,
+                        angleDegrees: letterDegrees,
+                        angleRadians: letterRadians,
                         confidence: lineConfidence // Vision only provides line-level confidence
                     )
                     letterModels.append(letterModel)
@@ -184,7 +220,8 @@ func performOCR(
                 let wordModel = Word(
                     text: w,
                     boundingBox: wordBox,
-                    angle: wordAngle,
+                    angleDegrees: wordDegrees,
+                    angleRadians: wordRadians,
                     confidence: lineConfidence,
                     letters: letterModels
                 )
@@ -194,10 +231,16 @@ func performOCR(
                 runningIndex = range.upperBound
             }
             
+            // Build the final line model
             let lineModel = Line(
                 text: lineText,
                 boundingBox: lineBoundingBox,
-                angle: lineAngle,
+                topLeft: lineTopLeft,
+                topRight: lineTopRight,
+                bottomLeft: lineBottomLeft,
+                bottomRight: lineBottomRight,
+                angleDegrees: lineDegrees,
+                angleRadians: lineRadians,
                 confidence: lineConfidence,
                 words: wordModels
             )
@@ -205,14 +248,15 @@ func performOCR(
             return lineModel
         }
         
+        // If we get here, we have an array of lines
         completion(.success(lines))
     }
     
     // Configure the request
     request.recognitionLevel = .accurate
     request.usesLanguageCorrection = true
-    
-    // Execute
+
+    // Execute the request
     do {
         try requestHandler.perform([request])
     } catch {
