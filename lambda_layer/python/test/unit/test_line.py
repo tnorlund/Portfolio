@@ -1,8 +1,6 @@
 import pytest
 from dynamo import Line, itemToLine
 
-# from dynamo.entities._utils import map_to_dict
-
 
 def test_init():
     """Test the Line constructor"""
@@ -73,7 +71,7 @@ def test_init():
             -0.10448461,
             1,
         )
-    
+
     # Test bad Line ID
     with pytest.raises(ValueError):
         Line(
@@ -94,7 +92,7 @@ def test_init():
             -0.10448461,
             1,
         )
-    
+
     # Test bad Text
     with pytest.raises(ValueError):
         Line(
@@ -135,7 +133,7 @@ def test_init():
             -0.10448461,
             1,
         )
-    
+
     # Test bad TopRight
     with pytest.raises(ValueError):
         Line(
@@ -156,7 +154,7 @@ def test_init():
             -0.10448461,
             1,
         )
-    
+
     # Test bad TopLeft
     with pytest.raises(ValueError):
         Line(
@@ -177,7 +175,7 @@ def test_init():
             -0.10448461,
             1,
         )
-    
+
     # Test bad BottomRight
     with pytest.raises(ValueError):
         Line(
@@ -198,7 +196,7 @@ def test_init():
             -0.10448461,
             1,
         )
-    
+
     # Test bad BottomLeft
     with pytest.raises(ValueError):
         Line(
@@ -219,7 +217,7 @@ def test_init():
             -0.10448461,
             1,
         )
-    
+
     # Test bad AngleDegrees
     with pytest.raises(ValueError):
         Line(
@@ -240,7 +238,7 @@ def test_init():
             -0.10448461,
             1,
         )
-    
+
     # Test bad AngleRadians
     with pytest.raises(ValueError):
         Line(
@@ -261,7 +259,6 @@ def test_init():
             "-0.10448461",
             1,
         )
-        
 
 
 def test_key():
@@ -458,7 +455,7 @@ def map_to_dict(map):
     """
     Convert a DynamoDB map to a dictionary.
     """
-    return {key: float(value["N"]) for key, value in map.items() }
+    return {key: float(value["N"]) for key, value in map.items()}
 
 
 def test_map_to_dict():
@@ -472,7 +469,7 @@ def test_map_to_dict():
             }
         },
     }
-    assert map_to_dict(mapped_item["BoundingBox"]['M']) == {
+    assert map_to_dict(mapped_item["BoundingBox"]["M"]) == {
         "x": 0.4454263367632384,
         "height": 0.022867568134581906,
         "width": 0.08690182470506236,
