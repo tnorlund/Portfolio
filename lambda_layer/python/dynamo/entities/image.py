@@ -154,7 +154,7 @@ def itemToImage(item: dict) -> Image:
     Raises:
         ValueError: When the item format is invalid
     """
-    required_keys = {"PK", "SK", "GSI1PK", "GSI1SK", "Type", "Width", "Height", "TimestampAdded", "S3Bucket", "S3Key"}
+    required_keys = {"PK", "SK", "Type", "Width", "Height", "TimestampAdded", "S3Bucket", "S3Key"}
     if not required_keys.issubset(item.keys()):
         raise ValueError("Invalid item format")
     try:
