@@ -34,6 +34,7 @@ def encode_image_below_size(
     # If we exit the loop, we couldn't get below max_size_kb at min_quality.
     return -1  # Return -1 if we couldn't get below the desired size
 
+
 def get_max_index_in_images(client: DynamoClient) -> int:
     """
     Get the maximum index in the list of images.
@@ -48,6 +49,7 @@ def get_max_index_in_images(client: DynamoClient) -> int:
         if i + 1 != index:
             return i + 1
     return len(image_indexes) + 1
+
 
 def process_ocr_dict(ocr_data: dict, image_id: int) -> Tuple[list, list, list]:
     """
@@ -103,12 +105,14 @@ def process_ocr_dict(ocr_data: dict, image_id: int) -> Tuple[list, list, list]:
                 letters.append(letter_obj)
     return lines, words, letters
 
+
 import hashlib
+
 
 def calculate_sha256(file_path):
     """
     Calculate the SHA-256 hash of a file.
-    
+
     Example
     -------
     png_file_path = "example.png"  # Replace with your PNG file path
@@ -120,3 +124,15 @@ def calculate_sha256(file_path):
         for byte_block in iter(lambda: f.read(4096), b""):
             sha256_hash.update(byte_block)
     return sha256_hash.hexdigest()
+
+
+{
+    "S3Key": {"S": "raw/accb5c7c-381d-4f1e-b18a-f9d28abb625d.png"},
+    "TimestampAdded": {"S": "2025-01-05T18:53:06.294508"},
+    "Width": {"N": "2480"},
+    "S3Bucket": {"S": "raw-image-bucket-c779c32"},
+    "SK": {"S": "IMAGE"},
+    "Height": {"N": "3508"},
+    "PK": {"S": "IMAGE#00042"},
+    "Type": {"S": "IMAGE"},
+}
