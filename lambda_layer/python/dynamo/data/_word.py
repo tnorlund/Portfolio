@@ -61,6 +61,27 @@ class _Word:
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             raise ValueError("Could not add words to the database")
+        
+    def updateWord(self, word: Word):
+        """Updates a word in the database
+
+        Args:
+            word (Word): The word to update in the database
+
+        Raises:
+            ValueError: When a word with the same ID does not exist
+        """
+        try:
+            self._client.put_item(
+                TableName=self.table_name,
+                Item=word.to_item(),
+                ConditionExpression="attribute_exists(PK)",
+            )
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                raise ValueError(f"Word with ID {word.id} not found")
+            else:
+                raise Exception(f"Error updating word: {e}")
 
     def deleteWord(self, image_id: int, line_id: int, word_id: int):
         """Deletes a word from the database
