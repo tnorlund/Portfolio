@@ -95,7 +95,7 @@ class Image:
             "TimestampAdded": {"S": self.timestamp_added},
             "S3Bucket": {"S": self.s3_bucket},
             "S3Key": {"S": self.s3_key},
-            "SHA256": {"S": self.sha256} if self.sha256 else None
+            "SHA256": {"S": self.sha256 if self.sha256 else ""}
         }
 
     def __repr__(self) -> str:
@@ -158,6 +158,7 @@ def itemToImage(item: dict) -> Image:
     if not required_keys.issubset(item.keys()):
         raise ValueError("Invalid item format")
     try:
+        sha256 = item.get("SHA256", {}).get("S")
         return Image(
             id=int(item["PK"]["S"].split("#")[1]),
             width=int(item["Width"]["N"]),
@@ -165,7 +166,7 @@ def itemToImage(item: dict) -> Image:
             timestamp_added=datetime.fromisoformat(item["TimestampAdded"]["S"]),
             s3_bucket=item["S3Bucket"]["S"],
             s3_key=item["S3Key"]["S"],
-            sha256=item.get("SHA256", {}).get("S")
+            sha256=sha256 if sha256 else None
         )
     except KeyError:
         raise ValueError("Invalid item format")

@@ -254,6 +254,21 @@ def test_init():
             7.7517295,
             1.1,
         )
+    # tags
+    with pytest.raises(ValueError):
+        Word(
+            1,
+            1,
+            1,
+            "06\/27\/2024",
+            0.1495695452950324,
+            0.8868912353567051,
+            0.08727867372574347,
+            0.024234482472679675,
+            7.7517295,
+            1,
+            "Not a list",
+        )
     word = Word(
         1,
         1,
@@ -280,6 +295,22 @@ def test_init():
     ), "height should be 0.024234482472679675"
     assert float(word.angle) == 7.7517295, "angle should be 7.7517295"
     assert float(word.confidence) == 1, "confidence should be 1.0"
+    assert word.tags == [], "tags should be an empty list"
+    # Test with tags
+    word = Word(
+        1,
+        1,
+        1,
+        "06\/27\/2024",
+        0.1495695452950324,
+        0.8868912353567051,
+        0.08727867372574347,
+        0.024234482472679675,
+        7.7517295,
+        1,
+        ["tag1", "tag2"],
+    )
+    assert word.tags == ["tag1", "tag2"], "tags should be ['tag1', 'tag2']"
 
 
 def test_key():
@@ -305,6 +336,7 @@ def test_key():
 
 def test_to_item():
     """Test the Word to_item method"""
+    # Test with no tags
     word = Word(
         1,
         1,
@@ -328,9 +360,36 @@ def test_to_item():
         "Width": {"N": "0.08727867372574347000"},
         "Height": {"N": "0.02423448247267967500"},
         "Angle": {"N": "7.7517295000"},
+        "Confidence": {"N": "1.00"}
+    }
+    # Test with tags
+    word = Word(
+        1,
+        1,
+        1,
+        "06\/27\/2024",
+        0.1495695452950324,
+        0.8868912353567051,
+        0.08727867372574347,
+        0.024234482472679675,
+        7.7517295,
+        1,
+        ["tag1", "tag2"],
+    )
+    item = word.to_item()
+    assert item == {
+        "PK": {"S": "IMAGE#00001"},
+        "SK": {"S": "LINE#00001#WORD#00001"},
+        "Type": {"S": "WORD"},
+        "Text": {"S": "06\/27\/2024"},
+        "X": {"N": "0.14956954529503240000"},
+        "Y": {"N": "0.88689123535670510000"},
+        "Width": {"N": "0.08727867372574347000"},
+        "Height": {"N": "0.02423448247267967500"},
+        "Angle": {"N": "7.7517295000"},
         "Confidence": {"N": "1.00"},
-    }, "The item should be {'PK': 'IMAGE#00001', 'SK': 'LINE#00001#WORD#00001', 'text': '06\/27\/2024', 'x': 0.1495695452950324, 'y': 0.8868912353567051, 'width': 0.08727867372574347, 'height': 0.024234482472679675, 'angle': 7.7517295, 'confidence': 1.0}"
-
+        "Tags": {"SS": ["tag1", "tag2"]},
+    }
 
 def test_repr():
     """Test the Word __repr__ method"""
@@ -373,7 +432,8 @@ def test_iter():
         "height": "0.02423448247267967500",
         "angle": "7.7517295000",
         "confidence": "1.00",
-    }, "The items should be {'PK': 'IMAGE#00001', 'SK': 'LINE#00001#WORD#00002', 'text': '06\/27\/2024', 'x': 0.1495695452950324, 'y': 0.8868912353567051, 'width': 0.08727867372574347, 'height': 0.024234482472679675, 'angle': 7.7517295, 'confidence': 1.0}"
+        "tags": [],
+    }
 
 
 def test_eq():
