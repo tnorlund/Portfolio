@@ -58,9 +58,13 @@ class Letter:
         if text is None or len(text) != 1 or not isinstance(text, str):
             raise ValueError("text must be exactly one character")
         self.text = text
+        if x == 0:
+            x = 0.0
         if not isinstance(x, float):
-            raise ValueError("x must be a float")
+            raise ValueError(f"x must be a float! {x}")
         self.x = x
+        if y == 0:
+            y = 0.0
         if not isinstance(y, float):
             raise ValueError("y must be a float")
         self.y = y

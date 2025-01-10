@@ -61,6 +61,24 @@ class _Line:
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             raise ValueError(f"Could not add lines to the database")
+    
+    def updateLine(self, line: Line):
+        """Updates a line in the database
+
+        Args:
+            line (Line): The line to update in the database
+        """
+        try:
+            self._client.put_item(
+                TableName=self.table_name,
+                Item=line.to_item(),
+                ConditionExpression="attribute_exists(PK)",
+            )
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                raise ValueError(f"Line with ID {line.id} not found")
+            else:
+                raise Exception(f"Error updating line: {e}")
 
     def deleteLine(self, image_id: int, line_id: int):
         """Deletes a line from the database
