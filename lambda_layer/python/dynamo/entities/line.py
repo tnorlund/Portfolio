@@ -2,6 +2,41 @@ from typing import Generator, Tuple
 from decimal import Decimal, ROUND_HALF_UP
 
 
+def assert_valid_boundingBox(boundingBox):
+    """
+    Assert that the bounding box is valid.
+    """
+    if not isinstance(boundingBox, dict):
+        raise ValueError("boundingBox must be a dictionary")
+    for key in ["x", "y", "width", "height"]:
+        if key not in boundingBox:
+            raise ValueError(f"boundingBox must contain the key '{key}'")
+        if not isinstance(boundingBox[key], (int, float)):
+            raise ValueError(f"boundingBox['{key}'] must be a number")
+    return boundingBox
+
+
+def assert_valid_point(point):
+    """
+    Assert that the point is valid.
+    """
+    if not isinstance(point, dict):
+        raise ValueError("point must be a dictionary")
+    for key in ["x", "y"]:
+        if key not in point:
+            raise ValueError(f"point must contain the key '{key}'")
+        if not isinstance(point[key], (int, float)):
+            raise ValueError(f"point['{key}'] must be a number")
+    return point
+
+
+def map_to_dict(map):
+    """
+    Convert a DynamoDB map to a dictionary.
+    """
+    return {key: float(value["N"]) for key, value in map.items()}
+
+
 def _format_float(
     value: float, decimal_places: int = 10, total_length: int = 20
 ) -> str:
@@ -35,47 +70,55 @@ class Line:
         image_id: int,
         id: int,
         text: str,
-        x: float,
-        y: float,
-        width: float,
-        height: float,
-        angle: float,
+        boundingBox: dict,
+        topRight: dict,
+        topLeft: dict,
+        bottomRight: dict,
+        bottomLeft: dict,
+        angleDegrees: float,
+        angleRadians: float,
         confidence: float,
     ):
-        """Constructs a new Line object for DynamoDB
+        """Initializes a new Line object for DynamoDB
 
         Args:
-            image_id (int): Number identifying the image
-            id (int): Number identifying the line
-            text (str): The text of the line
-            x (float): The x-coordinate of the starting point. This is at most 20 characters long.
-            y (float): The y-coordinate of the starting point. This is at most 20 characters long.
-            width (float): The width of the line. This is at most 20 characters long.
-            height (float): The height of the line. This is at most 20 characters long.
-            angle (float): The angle of the line. This is at most 10 characters long.
-            confidence (float): The confidence of the line
+            image_id (int): Identifier for the image
+            id (int): Identifier for the line
+            text (str): The text content of the line
+            boundingBox (dict): The bounding box of the line
+            topRight (dict): The top-right point of the line
+            topLeft (dict): The top-left point of the line
+            bottomRight (dict): The bottom-right point of the line
+            bottomLeft (dict): The bottom-left point of the line
+            angleDegrees (float): The angle of the line in degrees
+            angleRadians (float): The angle of the line in radians
+            confidence (float): The confidence level of the line
 
         Attributes:
-            image_id (int): Number identifying the image
-            id (int): Number identifying the line
-            text (str): The text of the line
-            x (float): The x-coordinate of the starting point. This is at most 20 characters long.
-            y (float): The y-coordinate of the starting point. This is at most 20 characters long.
-            width (float): The width of the line. This is at most 20 characters long.
-            height (float): The height of the line. This is at most 20 characters long.
-            angle (float): The angle of the line. This is at most 10 characters long.
-            confidence (float): The confidence of the line. This is exactly 2 characters long.
+            image_id (int): Identifier for the image
+            id (int): Identifier for the line
+            text (str): The text content of the line
+            boundingBox (dict): The bounding box of the line
+            topRight (dict): The top-right point of the line
+            topLeft (dict): The top-left point of the line
+            bottomRight (dict): The bottom-right point of the line
+            bottomLeft (dict): The bottom-left point of the line
+            angleDegrees (float): The angle of the line in degrees
+            angleRadians (float): The angle of the line in radians
+            confidence (float): The confidence level of the line
 
         Raises:
-            ValueError: When the Image ID is not a positive integer
-            ValueError: When the ID is not a positive integer
-            ValueError: When text is not a string
-            ValueError: When X is not a positive float
-            ValueError: When Y is not a positive float
-            ValueError: When width is not a positive float
-            ValueError: When height is not a positive float
-            ValueError: When angle is not a float
-            ValueError: When confidence is not a float between 0 and 1
+            ValueError: If image_id is not a positive integer
+            ValueError: If id is not a positive integer
+            ValueError: If text is not a string
+            ValueError: If boundingBox is not valid
+            ValueError: If topRight is not valid
+            ValueError: If topLeft is not valid
+            ValueError: If bottomRight is not valid
+            ValueError: If bottomLeft is not valid
+            ValueError: If angleDegrees is not a float
+            ValueError: If angleRadians is not a float
+            ValueError: If confidence is not a float between 0 and 1
         """
         # Ensure the Image ID is a positive integer
         if image_id <= 0 or not isinstance(image_id, int):
@@ -88,23 +131,24 @@ class Line:
         if not isinstance(text, str):
             raise ValueError("text must be a string")
         self.text = text
-        if not isinstance(x, float):
-            raise ValueError("x must be a float")
-        self.x = x
-        if not isinstance(y, float):
-            raise ValueError("y must be a float")
-        self.y = y
-        if width <= 0 or not isinstance(width, float):
-            raise ValueError("width must be a positive float")
-        self.width = width
-        if height <= 0 or not isinstance(height, float):
-            raise ValueError("height must be a positive float")
-        self.height = height
-        if isinstance(angle, int):
-            angle = float(angle)
-        if not isinstance(angle, float):
-            raise ValueError("angle must be a float or int")
-        self.angle = angle
+        assert_valid_boundingBox(boundingBox)
+        self.boundingBox = boundingBox
+        assert_valid_point(topRight)
+        self.topRight = topRight
+        assert_valid_point(topLeft)
+        self.topLeft = topLeft
+        assert_valid_point(bottomRight)
+        self.bottomRight = bottomRight
+        assert_valid_point(bottomLeft)
+        self.bottomLeft = bottomLeft
+        # Ensure the angleDegree is a float
+        if not isinstance(angleDegrees, float):
+            raise ValueError("angleDegrees must be a float")
+        self.angleDegrees = angleDegrees
+        # Ensure the angleRadians is a float
+        if not isinstance(angleRadians, float):
+            raise ValueError("angleRadians must be a float")
+        self.angleRadians = angleRadians
         # Ensure the confidence is a float between 0 and 1
         if confidence <= 0 or confidence > 1:
             raise ValueError("confidence must be a float between 0 and 1")
@@ -132,14 +176,43 @@ class Line:
             "SK": {"S": f"LINE#{self.id:05d}"},
             "Type": {"S": "LINE"},
             "Text": {"S": self.text},
-            "X": {"N": _format_float(self.x, 20, 22)},
-            "Y": {"N": _format_float(self.y, 20, 22)},
-            "Width": {"N": _format_float(self.width, 20, 22)},
-            "Height": {"N": _format_float(self.height, 20, 22)},
-            "Angle": {"N": _format_float(self.angle, 10, 12)},
+            "BoundingBox": {
+                "M": {
+                    "x": {"N": _format_float(self.boundingBox["x"], 18, 20)},
+                    "y": {"N": _format_float(self.boundingBox["y"], 18, 20)},
+                    "width": {"N": _format_float(self.boundingBox["width"], 18, 20)},
+                    "height": {"N": _format_float(self.boundingBox["height"], 18, 20)},
+                }
+            },
+            "TopRight": {
+                "M": {
+                    "x": {"N": _format_float(self.topRight["x"], 18, 20)},
+                    "y": {"N": _format_float(self.topRight["y"], 18, 20)},
+                }
+            },
+            "TopLeft": {
+                "M": {
+                    "x": {"N": _format_float(self.topLeft["x"], 18, 20)},
+                    "y": {"N": _format_float(self.topLeft["y"], 18, 20)},
+                }
+            },
+            "BottomRight": {
+                "M": {
+                    "x": {"N": _format_float(self.bottomRight["x"], 18, 20)},
+                    "y": {"N": _format_float(self.bottomRight["y"], 18, 20)},
+                }
+            },
+            "BottomLeft": {
+                "M": {
+                    "x": {"N": _format_float(self.bottomLeft["x"], 18, 20)},
+                    "y": {"N": _format_float(self.bottomLeft["y"], 18, 20)},
+                }
+            },
+            "AngleDegrees": {"N": _format_float(self.angleDegrees, 10, 12)},
+            "AngleRadians": {"N": _format_float(self.angleRadians, 10, 12)},
             "Confidence": {"N": _format_float(self.confidence, 2, 2)},
         }
-    
+
     def calculate_centroid(self) -> Tuple[float, float]:
         """Calculates the centroid of the line
 
@@ -165,11 +238,13 @@ class Line:
         yield "image_id", self.image_id
         yield "id", self.id
         yield "text", self.text
-        yield "x", self.x
-        yield "y", self.y
-        yield "width", self.width
-        yield "height", self.height
-        yield "angle", self.angle
+        yield "boundingBox", self.boundingBox
+        yield "topRight", self.topRight
+        yield "topLeft", self.topLeft
+        yield "bottomRight", self.bottomRight
+        yield "bottomLeft", self.bottomLeft
+        yield "angleDegrees", self.angleDegrees
+        yield "angleRadians", self.angleRadians
         yield "confidence", self.confidence
 
     def __eq__(self, other: object) -> bool:
@@ -187,11 +262,13 @@ class Line:
             self.image_id == other.image_id
             and self.id == other.id
             and self.text == other.text
-            and self.x == other.x
-            and self.y == other.y
-            and self.width == other.width
-            and self.height == other.height
-            and self.angle == other.angle
+            and self.boundingBox == other.boundingBox
+            and self.topRight == other.topRight
+            and self.topLeft == other.topLeft
+            and self.bottomRight == other.bottomRight
+            and self.bottomLeft == other.bottomLeft
+            and self.angleDegrees == other.angleDegrees
+            and self.angleRadians == other.angleRadians
             and self.confidence == other.confidence
         )
 
@@ -205,14 +282,17 @@ def itemToLine(item: dict) -> Line:
     Returns:
         Line: The Line object represented by the DynamoDB item
     """
+    print(map_to_dict(item["BoundingBox"]["M"]))
     return Line(
         int(item["PK"]["S"][6:]),
         int(item["SK"]["S"][6:]),
         item["Text"]["S"],
-        float(item.get("X", {}).get("N", 0)),
-        float(item.get("Y", {}).get("N", 0)),
-        float(item.get("Width", {}).get("N", 0)),
-        float(item.get("Height", {}).get("N", 0)),
-        float(item.get("Angle", {}).get("N", 0)),
-        float(item.get("Confidence", {}).get("N", 0)),
+        map_to_dict(item["BoundingBox"]["M"]),
+        map_to_dict(item["TopRight"]["M"]),
+        map_to_dict(item["TopLeft"]["M"]),
+        map_to_dict(item["BottomRight"]["M"]),
+        map_to_dict(item["BottomLeft"]["M"]),
+        float(item["AngleDegrees"]["N"]),
+        float(item["AngleRadians"]["N"]),
+        float(item["Confidence"]["N"]),
     )
