@@ -52,6 +52,20 @@ class _Image:
             return itemToImage(response["Item"])
         except KeyError:
             raise ValueError(f"Image with ID {image_id} not found")
+        
+    def updateImage(self, image: Image):
+        """Updates an image in the database."""
+        try:
+            self._client.put_item(
+                TableName=self.table_name,
+                Item=image.to_item(),
+                ConditionExpression="attribute_exists(PK)",
+            )
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                raise ValueError(f"Image with ID {image.id} not found")
+            else:
+                raise Exception(f"Error updating image: {e}")
 
     def getImageDetails(
         self, image_id: int
