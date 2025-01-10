@@ -1,5 +1,6 @@
 // ImageGrid.tsx
 import React, { useEffect, useState } from "react";
+import BoundingBox from "./boundingBox";
 
 /** Interface for each image in the initial list */
 interface ImageItem {
@@ -16,11 +17,11 @@ interface LineItem {
   image_id: number;
   id: number;
   text: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  angle: number;
+  x: number; // normalized [0..1]
+  y: number; // normalized [0..1], presumably bottom-left from OCR
+  width: number; // normalized [0..1]
+  height: number; // normalized [0..1]
+  angle: number; // degrees
   confidence: number;
 }
 
@@ -42,6 +43,66 @@ interface ImageDetailsResponse {
 /** Interface describing the entire API response object for the image list */
 interface ImagesApiResponse {
   images: ImageItem[];
+}
+
+function FittableText({
+  text,
+  x,
+  y,
+  angleDeg,
+  boxWidth,
+  boxHeight,
+  opacity,
+  initialSize = 50,
+}: {
+  text: string;
+  x: number;
+  y: number;
+  angleDeg: number;    // in degrees
+  boxWidth: number;    // bounding box width in SVG units
+  boxHeight: number;   // bounding box height in SVG units
+  opacity?: number;
+  initialSize?: number; // optional initial font size
+}) {
+  const [fontSize, setFontSize] = React.useState(initialSize);
+  const textRef = React.useRef<SVGTextElement>(null);
+
+  React.useEffect(() => {
+    if (textRef.current) {
+      const bbox = textRef.current.getBBox();
+      const boxAspectRatio = boxWidth / boxHeight;
+      if (bbox.width > 0 && bbox.height > 0) {
+        // How many times bigger do we need to scale to fill the box width or height?
+        const scaleW = boxWidth / bbox.width;
+        const scaleH = boxHeight / bbox.height;
+
+        // Pick the larger scale so the text will reach EITHER top/bottom OR left/right
+        // This may cause overflow in the smaller dimension.
+        const scale = Math.min(scaleW, scaleH);
+
+        // Allow the text to grow above initialSize if needed
+        if (scale !== 1) {
+          setFontSize((prev) => prev * scale);
+        }
+      }
+    }
+    // Re-run if the text or box size changes
+  }, [text, boxWidth, boxHeight]);
+  return (
+    <text
+      ref={textRef}
+      x={x}
+      y={y}
+      textAnchor="middle"
+      alignmentBaseline="middle"
+      fontSize={fontSize}
+      opacity={opacity}
+      fill="black"
+      transform={`rotate(${angleDeg}, ${x}, ${y})`}
+    >
+      {text}
+    </text>
+  );
 }
 
 /** Fetch the main list of images */
@@ -68,27 +129,22 @@ async function fetchImageDetails(
     throw new Error(`Failed to fetch details for image ${imageId}`);
   }
   const data = (await response.json()) as ImageDetailsResponse;
-  return data; // Return just the base64 string
+  return data;
 }
 
 /**
  * ImageGrid component
  * 1. Fetches the main list of images from the API
- * 2. Renders a gray rectangle for each image (scaled by aspect ratio)
- * 3. For each image, fetches the base64 data and embeds it in an SVG
+ * 2. Renders a scaled rectangle for each image
+ * 3. For each image, fetches the base64 data and embeds it in an <svg>
  */
 export default function ImageGrid() {
-  /** Holds the list of images from the first API call */
   const [images, setImages] = useState<ImageItem[]>([]);
-
-  // Now it stores the entire ImageDetailsResponse interface by image ID
   const [imageDetails, setImageDetails] = useState<
     Record<number, ImageDetailsResponse>
   >({});
 
-  /**
-   * 1. On mount, fetch the main list of images
-   */
+  // On mount, fetch the main list of images
   useEffect(() => {
     fetchImages()
       .then((res) => {
@@ -99,17 +155,12 @@ export default function ImageGrid() {
       });
   }, []);
 
-  /**
-   * 2. Whenever "images" changes (i.e., after they’re loaded),
-   *    fetch details for each one. Each fetch updates the imageDetails state.
-   */
+  // Whenever "images" changes, fetch details for each one
   useEffect(() => {
     images.forEach((img) => {
-      // Only fetch if we don't already have details in state
       if (!imageDetails[img.id]) {
         fetchImageDetails(img.id)
           .then((details) => {
-            // details is of type ImageDetailsResponse
             setImageDetails((prev) => ({
               ...prev,
               [img.id]: details,
@@ -125,7 +176,7 @@ export default function ImageGrid() {
   return (
     <div style={{ display: "flex", flexWrap: "wrap" }}>
       {images.map((img) => {
-        // Example: fixed base width of 200, scale height accordingly
+        // We’ll display each image in a 500px wide container, scaled in height.
         const baseWidth = 500;
         const aspectRatio = img.height / img.width;
         const scaledHeight = baseWidth * aspectRatio;
@@ -147,60 +198,145 @@ export default function ImageGrid() {
           );
         }
 
-        // Once the base64 data arrives, embed it in an <svg>
-        // with an <image> tag referencing the base64 string
+        // Render an SVG with a viewBox that matches the original image’s pixel size
         return (
           <svg
             key={img.id}
             width={baseWidth}
             height={scaledHeight}
-            style={{
-              margin: "8px",
-              backgroundColor: "gray",
-            }}
+            style={{ margin: "8px", backgroundColor: "gray" }}
+            viewBox={`0 0 ${img.width} ${img.height}`}
+            preserveAspectRatio="xMidYMid meet"
             xmlns="http://www.w3.org/2000/svg"
           >
             <image
-              width={baseWidth}
-              height={scaledHeight}
-              // Use xlinkHref for inline SVG in React (some older browsers):
+              width={img.width}
+              height={img.height}
+              preserveAspectRatio="xMidYMid meet"
               xlinkHref={`data:image/jpeg;base64,${base64Data}`}
             />
             {/* Draw bounding boxes for each line */}
-            {lines?.map((line) => {
-              // X and Y are normalized to [0, 1] in the Vision API
-              // They are the bottom left corner of the bounding box
-              const x = line.x * baseWidth;
-              const y = line.y * scaledHeight;
-              // The angle is in degrees
-              const angleRad = (Math.PI / 180) * line.angle;
-              // flip the Y coordinate
-              const flippedY = scaledHeight - y;
+            {lines?.map((line, idx) => {
+              // Convert from normalized [0..1] to image pixels
+              // If line.y is bottom-left-based, we flip it to top-left for SVG:
+              const x = line.x * img.width;
+              const y = line.y * img.height;
+              const flippedY = img.height - y;
               const bottomLeft = { x, y: flippedY };
 
-              // Calculate the bottom right corner of the box
+              // Convert angle from degrees, and negate if Vision is CCW but we want a different orientation
+              const angleRad = -(Math.PI / 180) * line.angle;
+              const angleDeg = -line.angle;
+
+              // Box width & height in image pixels:
+              const boxW = line.width * img.width;
+              const boxH = line.height * img.height;
+
+              // Bottom-right corner
               const bottomRight = {
-                x: bottomLeft.x + line.width * baseWidth * Math.cos(angleRad),
-                y: bottomLeft.y + line.width * baseWidth * Math.sin(angleRad),
+                x: bottomLeft.x + boxW * Math.cos(angleRad),
+                y: bottomLeft.y + boxW * Math.sin(angleRad),
               };
 
+              // Top-left corner
+              const topLeft = {
+                x: bottomLeft.x - boxH * Math.sin(angleRad),
+                y: bottomLeft.y + boxH * Math.cos(angleRad),
+              };
 
+              // Top-right corner
+              const topRight = {
+                x: bottomRight.x - boxH * Math.sin(angleRad),
+                y: bottomRight.y + boxH * Math.cos(angleRad),
+              };
+
+              const centroid = {
+                x: (topLeft.x + topRight.x + bottomLeft.x + bottomRight.x) / 4,
+                y: (topLeft.y + topRight.y + bottomLeft.y + bottomRight.y) / 4,
+              };
+
+              // calculate the distance between the top-left and top-right corners
+              const width = Math.sqrt(
+                Math.pow(topRight.x - topLeft.x, 2) +
+                  Math.pow(topRight.y - topLeft.y, 2)
+              );
+              // calculate the distance between the top-left and bottom-left corners
+              const height = Math.sqrt(
+                Math.pow(bottomLeft.x - topLeft.x, 2) +
+                  Math.pow(bottomLeft.y - topLeft.y, 2)
+              );
+
+              // Example: draw circles at bottom-left & bottom-right
               return (
-                <>
+                <React.Fragment key={idx}>
+                  {/* diagonal */}
+                  <line
+                    x1={bottomLeft.x}
+                    y1={bottomLeft.y}
+                    x2={topRight.x}
+                    y2={topRight.y}
+                    stroke="gray"
+                    strokeWidth={1}
+                    opacity={line.confidence}
+                  />
+                  <line
+                    x1={topLeft.x}
+                    y1={topLeft.y}
+                    x2={bottomRight.x}
+                    y2={bottomRight.y}
+                    stroke="gray"
+                    strokeWidth={1}
+                    opacity={line.confidence}
+                  />
+                  {/* horizontal */}
+                  <line
+                    x1={topLeft.x}
+                    y1={topLeft.y}
+                    x2={topRight.x}
+                    y2={topRight.y}
+                    stroke="gray"
+                    strokeWidth={3}
+                    opacity={line.confidence}
+                  />
                   <line
                     x1={bottomLeft.x}
                     y1={bottomLeft.y}
                     x2={bottomRight.x}
                     y2={bottomRight.y}
-                    stroke="grey"
-                    strokeWidth={1}
+                    stroke="gray"
+                    strokeWidth={3}
+                    opacity={line.confidence}
                   />
-                </>
+                  {/* vertical */}
+                  <line
+                    x1={topLeft.x}
+                    y1={topLeft.y}
+                    x2={bottomLeft.x}
+                    y2={bottomLeft.y}
+                    stroke="gray"
+                    strokeWidth={3}
+                    opacity={line.confidence}
+                  />
+                  <line
+                    x1={topRight.x}
+                    y1={topRight.y}
+                    x2={bottomRight.x}
+                    y2={bottomRight.y}
+                    stroke="gray"
+                    strokeWidth={3}
+                    opacity={line.confidence}
+                  />
+                </React.Fragment>
               );
             })}
-
-            {/* Add the image ID to the SVG */}
-            <text x={5} y={scaledHeight - 5} fill="black">
+            {/* Label the image ID */}
+            <text
+              x={10}
+              y={250}
+              fill="black"
+              fontSize={250}
+              style={{ pointerEvents: "none" }}
+            >
               {img.id}
             </text>
           </svg>
