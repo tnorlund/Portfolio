@@ -39,7 +39,7 @@ lambda_role = aws.iam.Role(
 # Attach the necessary policies to the role
 lambda_policy = aws.iam.Policy(
     f"api_{ROUTE_NAME}_lambda_policy",
-    description="IAM policy for Lambda to access DynamoDB",
+    description="IAM policy for '/images' route Lambda to query DynamoDB",
     policy=dynamodb_table.arn.apply(
         lambda arn: json.dumps(
             {
@@ -47,8 +47,8 @@ lambda_policy = aws.iam.Policy(
                 "Statement": [
                     {
                         "Effect": "Allow",
-                        "Action": ["dynamodb:Scan"],
-                        "Resource": arn,
+                        "Action": ["dynamodb:Query"],
+                        "Resource": [arn, f"{arn}/index/GSI1"],
                     }
                 ],
             }
@@ -94,3 +94,6 @@ log_group = aws.cloudwatch.LogGroup(
     f"api_{ROUTE_NAME}_lambda_log_group",
     retention_in_days=30,
 )
+
+# Add a test for the Lambda Handler
+
