@@ -9,7 +9,13 @@ import tempfile
 import cv2
 from math import sin, cos
 
-IMAGE_ID = 15
+IMAGE_ID = 9
+S3_BUCKET = "raw-image-bucket-c779c32"
+
+
+def euclidean_dist(a, b):
+    return math.dist(a, b)
+
 
 def rotate_point(x, y, cx, cy, theta):
     """
@@ -27,6 +33,7 @@ def rotate_point(x, y, cx, cy, theta):
     # Translate back
     return (x_rot + cx, y_rot + cy)
 
+
 def get_axis_aligned_bbox(points):
     """
     Given a list of (x, y) points, return (min_x, max_x, min_y, max_y).
@@ -35,9 +42,15 @@ def get_axis_aligned_bbox(points):
     ys = [p[1] for p in points]
     return min(xs), max(xs), min(ys), max(ys)
 
+
 # Dynamo / custom imports
 from dynamo import DynamoClient, Image, Line, Word, Letter, ScaledImage, itemToImage
-from utils import encode_image_below_size, get_max_index_in_images, process_ocr_dict, calculate_sha256
+from utils import (
+    encode_image_below_size,
+    get_max_index_in_images,
+    process_ocr_dict,
+    calculate_sha256,
+)
 
 # 1) Load environment variables from .env
 load_dotenv()
@@ -74,6 +87,14 @@ for line in lines:
 # print the number of clusters
 print(f"Found {len(receipt_dict)} receipts")
 
+# Download the image from S3
+s3_client = boto3.client("s3")
+with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp:
+    s3_client.download_file(image.s3_bucket, image.s3_key, temp.name)
+    local_image_path = temp.name
+img_cv = cv2.imread(local_image_path)
+
+
 # 8) Find the bounding boxes for each receipt
 for cluster_id, cluster_lines in receipt_dict.items():
     # 1) Compute the cluster’s centroid based on the average of each line’s centroid.
@@ -94,29 +115,33 @@ for cluster_id, cluster_lines in receipt_dict.items():
         ln.translate(dx, dy)
 
     # 3) Rotate the cluster around (0.5, 0.5) by -avg_angle (in radians).
-    avg_angle_radians = sum(ln.angleRadians for ln in cluster_lines) / len(cluster_lines)
+    avg_angle_radians = sum(ln.angleRadians for ln in cluster_lines) / len(
+        cluster_lines
+    )
     for ln in cluster_lines:
         # Negative average angle => rotate(-avg_angle_radians, 0.5, 0.5)
         ln.rotate(-avg_angle_radians, 0.5, 0.5, use_radians=True)
-    
+
     # 4) Compute a bounding box from the now-transformed corners.
     all_points = []
     for ln in cluster_lines:
-        all_points.extend([
-            (ln.topLeft["x"],    ln.topLeft["y"]),
-            (ln.topRight["x"],   ln.topRight["y"]),
-            (ln.bottomLeft["x"], ln.bottomLeft["y"]),
-            (ln.bottomRight["x"],ln.bottomRight["y"]),
-        ])
-    
+        all_points.extend(
+            [
+                (ln.topLeft["x"], ln.topLeft["y"]),
+                (ln.topRight["x"], ln.topRight["y"]),
+                (ln.bottomLeft["x"], ln.bottomLeft["y"]),
+                (ln.bottomRight["x"], ln.bottomRight["y"]),
+            ]
+        )
+
     min_x = min(pt[0] for pt in all_points)
     max_x = max(pt[0] for pt in all_points)
     min_y = min(pt[1] for pt in all_points)
     max_y = max(pt[1] for pt in all_points)
 
-    top_left     = (min_x, min_y)
-    top_right    = (max_x, min_y)
-    bottom_left  = (min_x, max_y)
+    top_left = (min_x, min_y)
+    top_right = (max_x, min_y)
+    bottom_left = (min_x, max_y)
     bottom_right = (max_x, max_y)
 
     # 5) Scale the lines to fit within a 1x1 box.
@@ -132,29 +157,93 @@ for cluster_id, cluster_lines in receipt_dict.items():
         # 2) Scale so the bounding box fits in [0, 1] in both dimensions
         ln.scale(scale_x, scale_y)
         # TODO: Turn these into ReceiptWord entities for DynamoDB
-    
+
     # 6) Reverse the transformations to get the original bounding box
     original_corners = []
     for corner in [top_left, top_right, bottom_left, bottom_right]:
         # 1) Rotate back by +avg_angle_radians around (0.5, 0.5)
         x_rot, y_rot = rotate_point(
-            corner[0], 
+            corner[0],
             corner[1],
             0.5,
             0.5,
-            +avg_angle_radians  # opposite sign of the earlier -avg_angle_radians
+            +avg_angle_radians,  # opposite sign of the earlier -avg_angle_radians
         )
         # 2) Translate back by (-dx, -dy)
         x_orig = x_rot - dx
         y_orig = y_rot - dy
-        
+
         original_corners.append((x_orig, y_orig))
 
-    orig_top_left, orig_top_right, orig_bottom_left, orig_bottom_right = original_corners
-    print("Bounding box corners back in original coordinates:")
-    print("  top_left     =", orig_top_left)
-    print("  top_right    =", orig_top_right)
-    print("  bottom_left  =", orig_bottom_left)
-    print("  bottom_right =", orig_bottom_right)
+    orig_top_left, orig_top_right, orig_bottom_left, orig_bottom_right = (
+        original_corners
+    )
 
-    
+    pt_bl = (orig_top_left[0] * image.width, (1 - orig_top_left[1]) * image.height)
+    pt_br = (orig_top_right[0] * image.width, (1 - orig_top_right[1]) * image.height)
+    pt_tl = (
+        orig_bottom_left[0] * image.width,
+        (1 - orig_bottom_left[1]) * image.height,
+    )
+    pt_tr = (
+        orig_bottom_right[0] * image.width,
+        (1 - orig_bottom_right[1]) * image.height,
+    )
+
+    width_top = euclidean_dist(pt_tl, pt_tr)
+    width_bot = euclidean_dist(pt_bl, pt_br)
+    height_left = euclidean_dist(pt_tl, pt_bl)
+    height_right = euclidean_dist(pt_tr, pt_br)
+
+    dst_width = int((width_top + width_bot) / 2.0)
+    dst_height = int((height_left + height_right) / 2.0)
+
+    # Destination corners (x,y) for the resulting image
+    dst_tl = (0, 0)
+    dst_tr = (dst_width - 1, 0)
+    dst_bl = (0, dst_height - 1)
+    dst_br = (dst_width - 1, dst_height - 1)
+
+    src_pts = np.float32([pt_tl, pt_tr, pt_bl, pt_br])  # original image corners
+    dst_pts = np.float32([dst_tl, dst_tr, dst_bl, dst_br])  # new upright rectangle
+
+    M = cv2.getPerspectiveTransform(src_pts, dst_pts)
+
+    warped = cv2.warpPerspective(img_cv, M, (dst_width, dst_height))
+
+    # TODO: Remove drawing the circles to the image
+    # Draw the centroids of the cluster_lines
+    for ln in cluster_lines:
+        corrected_x = int(ln.calculate_centroid()[0] * dst_width)
+        corrected_y = int((1 - ln.calculate_centroid()[1]) * dst_height)
+        cv2.circle(
+            warped,
+            (corrected_x, corrected_y),
+            20,
+            (255, 0, 0),
+            -1,
+        )
+        ln_centroid = ln.calculate_centroid()
+        print(f"{ln.text}: {corrected_x}, {corrected_y}")
+
+    output_path = (
+        f"{image.s3_key.split('/')[-1].replace('.png', f'_cluster_{cluster_id}.png')}"
+    )
+    cv2.imwrite(output_path, warped)
+
+    # Draw circles on the original image for the bounding box
+    for corner in [orig_top_left, orig_top_right, orig_bottom_left, orig_bottom_right]:
+        cv2.circle(
+            img_cv,
+            (
+                int(corner[0] * image.width),
+                int((1 - corner[1]) * image.height),
+            ),
+            20,
+            (255, 0, 0),
+            -1,
+        )
+
+output_path = f"{image.s3_key.split('/')[-1].replace('.png', f'_bounding_box.png')}"
+cv2.imwrite(output_path, img_cv)
+print(f"Saved receipt image to {output_path}")
