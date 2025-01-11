@@ -142,12 +142,12 @@ class Line:
         assert_valid_point(bottomLeft)
         self.bottomLeft = bottomLeft
         # Ensure the angleDegree is a float
-        if not isinstance(angleDegrees, float):
-            raise ValueError("angleDegrees must be a float")
+        if not isinstance(angleDegrees, (float, int)):
+            raise ValueError(f"angleDegrees must be a float or int got: {angleDegrees}")
         self.angleDegrees = angleDegrees
         # Ensure the angleRadians is a float
-        if not isinstance(angleRadians, float):
-            raise ValueError("angleRadians must be a float")
+        if not isinstance(angleRadians, (float, int)):
+            raise ValueError("angleRadians must be a float or int got: ", angleRadians)
         self.angleRadians = angleRadians
         # Ensure the confidence is a float between 0 and 1
         if confidence <= 0 or confidence > 1:
