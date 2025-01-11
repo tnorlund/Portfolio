@@ -20,3 +20,4 @@ DYNAMO_DB_TABLE = os.getenv("DYNAMO_DB_TABLE")
 update_all_from_s3(S3_BUCKET, DYNAMO_DB_TABLE, dir="raw")
 # raw/755b0ef1-26f3-49b4-be03-2167de443b6e.png
 # raw/315e61e1-eb11-4e5d-a934-0ff1d0868714.png
+

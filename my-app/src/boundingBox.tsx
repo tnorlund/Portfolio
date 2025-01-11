@@ -9,47 +9,60 @@ interface ImageItem {
   s3_key: string;
 }
 
+interface BoundingBoxInterface {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+
+interface Point {
+    x: number;
+    y: number;
+}
+
 interface LineItem {
   image_id: number;
   id: number;
   text: string;
-  x: number; // normalized [0..1]
-  y: number; // normalized [0..1], presumably bottom-left from OCR
-  width: number; // normalized [0..1]
-  height: number; // normalized [0..1]
+  boundingBox: BoundingBoxInterface;
+    topLeft: Point;
+    topRight: Point;
+    bottomLeft: Point;
+    bottomRight: Point;
   angle: number; // degrees
   confidence: number;
 }
 
-function BoundingBox(line: LineItem, img: ImageItem) {
-  const x = line.x * img.width;
-  const y = line.y * img.height;
-  const flippedY = img.height - y;
-  // Box width & height in image pixels:
-  const boxW = line.width * img.width;
-  const boxH = line.height * img.height;
-  const angleRad = -(Math.PI / 180) * line.angle;
-  const bottomLeft = { x, y: flippedY };
+function scalePointByImage(point: Point, img: ImageItem) {
+    return {
+        x: point.x * img.width,
+        y: point.y * img.height,
+    };
+}
 
+function invert_y(point: Point) {
+    return {
+        x: point.x,
+        y: 1-point.y,
+    };
+}
+
+function BoundingBox(line: LineItem, img: ImageItem) {
+
+    const bottomLeft = scalePointByImage(invert_y(line.bottomLeft), img);
   // Bottom-right corner
-  const bottomRight = {
-    x: bottomLeft.x + boxW * Math.cos(angleRad),
-    y: bottomLeft.y + boxW * Math.sin(angleRad),
-  };
+  const bottomRight = scalePointByImage(invert_y(line.bottomRight), img);
 
   // Top-left corner
-  const topLeft = {
-    x: bottomLeft.x - boxH * Math.sin(angleRad),
-    y: bottomLeft.y + boxH * Math.cos(angleRad),
-  };
+  const topLeft = scalePointByImage(invert_y(line.topLeft), img);
 
   // Top-right corner
-  const topRight = {
-    x: bottomRight.x - boxH * Math.sin(angleRad),
-    y: bottomRight.y + boxH * Math.cos(angleRad),
-  };
+  const topRight = scalePointByImage(invert_y(line.topRight), img);
   return (
-    <React.Fragment>
+    <React.Fragment
+        key={line.id}
+    >
       <line
         x1={bottomLeft.x}
         y1={bottomLeft.y}
