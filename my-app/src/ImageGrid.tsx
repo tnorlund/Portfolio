@@ -12,15 +12,28 @@ interface ImageItem {
   s3_key: string;
 }
 
+interface BoundingBoxInterface {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface Point {
+  x: number;
+  y: number;
+}
+
 /** Interface for each line from OCR */
 interface LineItem {
   image_id: number;
   id: number;
   text: string;
-  x: number; // normalized [0..1]
-  y: number; // normalized [0..1], presumably bottom-left from OCR
-  width: number; // normalized [0..1]
-  height: number; // normalized [0..1]
+  boundingBox: BoundingBoxInterface;
+    topLeft: Point;
+    topRight: Point;
+    bottomLeft: Point;
+    bottomRight: Point;
   angle: number; // degrees
   confidence: number;
 }
@@ -48,7 +61,7 @@ interface ImagesApiResponse {
 /** Fetch the main list of images */
 async function fetchImages(): Promise<ImagesApiResponse> {
   const response = await fetch(
-    "https://wso2tnfiie.execute-api.us-east-1.amazonaws.com/images"
+    "https://wso2tnfiie.execute-api.us-east-1.amazonaws.com/images?limit=10"
   );
   if (!response.ok) {
     throw new Error("Network response was not ok");
@@ -150,6 +163,7 @@ export default function ImageGrid() {
             xmlns="http://www.w3.org/2000/svg"
           >
             <image
+              key={img.id}
               width={img.width}
               height={img.height}
               preserveAspectRatio="xMidYMid meet"
