@@ -1,16 +1,14 @@
 import os
-import subprocess
-import json
-from time import sleep
-import cv2
-from datetime import datetime
 from dotenv import load_dotenv
 from sklearn.cluster import DBSCAN
 import numpy as np
 from collections import defaultdict
-import tempfile
 import math
+import boto3
+import tempfile
+import cv2
 
+IMAGE_ID = 15
 
 def rotate_point(point, center, angle_rad):
     """
@@ -57,7 +55,7 @@ DYNAMO_DB_TABLE = os.getenv("DYNAMO_DB_TABLE")
 
 # 3) Initialize DynamoClient and get image details
 dynamo_client = DynamoClient(DYNAMO_DB_TABLE)
-image, lines, words, letters, scaled_images = dynamo_client.getImageDetails(9)
+image, lines, words, letters, scaled_images = dynamo_client.getImageDetails(IMAGE_ID)
 
 # 4) Assemble X coordinates for DBSCAN: we take the centroid's x-value
 #    (line.calculate_centroid()[0]) for each line
@@ -135,3 +133,26 @@ for cluster_id, cluster_lines in receipt_dict.items():
     print(f"    bottomRight = {br}")
     print(f"    bottomLeft  = {bl}")
     print()
+
+    # 9) Rotate and scale the image
+    s3_client = boto3.client("s3")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        local_image_path = os.path.join(tmpdir, "image.png")
+        response = s3_client.get_object(Bucket=image.s3_bucket, Key=image.s3_key)
+        with open(local_image_path, "wb") as f:
+            f.write(response["Body"].read())
+        print(f"Downloaded image to {local_image_path}")
+        image_cv = cv2.imread(local_image_path)
+        # Rotate the image by the average angle
+        h, w = image_cv.shape[:2]
+        M = cv2.getRotationMatrix2D((w/2, h/2), -avg_angle_deg, 1)
+        image_cv = cv2.warpAffine(image_cv, M, (w, h))
+
+        # Draw the bounding box on the image
+        # cv2.line(image_cv, (int(tl[0] * image.width), int((1 - tl[1]) * image.height)), (int(tr[0] * image.width), int((1 - tr[1]) * image.height)), (0, 255, 0), 2)
+        # cv2.line(image_cv, (int(tr[0] * image.width), int((1 - tr[1]) * image.height)), (int(br[0] * image.width), int((1 - br[1]) * image.height)), (0, 255, 0), 2)
+        # cv2.line(image_cv, (int(br[0] * image.width), int((1 - br[1]) * image.height)), (int(bl[0] * image.width), int((1 - bl[1]) * image.height)), (0, 255, 0), 2)
+        # cv2.line(image_cv, (int(bl[0] * image.width), int((1 - bl[1]) * image.height)), (int(tl[0] * image.width), int((1 - tl[1]) * image.height)), (0, 255, 0), 2)
+        
+        # cv2.imwrite(f"{image.id}_cluster_{cluster_id}.png", image_cv)
+
