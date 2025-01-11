@@ -270,7 +270,13 @@ class Line:
     ) -> None:
         """
         Rotates the line by the specified angle around (rotate_origin_x, rotate_origin_y).
-        Updates topRight, topLeft, bottomRight, bottomLeft in-place.
+        ONLY rotates if angle is within:
+        - [-90°, 90°], if use_radians=False
+        - [-π/2, π/2], if use_radians=True
+        Otherwise, raises ValueError.
+
+        Updates topRight, topLeft, bottomRight, bottomLeft in-place,
+        and also updates angleDegrees/angleRadians.
 
         Args:
             angle (float): The angle by which to rotate the line.
@@ -279,23 +285,24 @@ class Line:
             use_radians (bool): If True, `angle` is in radians. Otherwise, degrees.
         """
 
-        # Normalize the angle
+        # 1) Check allowed range
         if use_radians:
-            # Ensure the angle is within [0, 2π)
-            if angle < 0:
-                angle += 2 * pi
-            else:
-                angle = angle % (2 * pi)
+            # Allowed range is [-π/2, π/2]
+            if not (-pi/2 <= angle <= pi/2):
+                raise ValueError(
+                    f"Angle {angle} (radians) is outside the allowed range [-π/2, π/2]."
+                )
             angle_radians = angle
         else:
-            # Ensure the angle is within [0, 360)
-            if angle < 0:
-                angle += 360
-            else:
-                angle = angle % 360
+            # Allowed range is [-90, 90] degrees
+            if not (-90 <= angle <= 90):
+                raise ValueError(
+                    f"Angle {angle} (degrees) is outside the allowed range [-90°, 90°]."
+                )
+            # Convert to radians
             angle_radians = radians(angle)
 
-        # Helper function to rotate a single point around the origin
+        # 2) Rotate each corner
         def rotate_point(px, py, ox, oy, theta):
             """
             Rotates point (px, py) around (ox, oy) by theta radians.
@@ -314,7 +321,6 @@ class Line:
             final_y = rotated_y + oy
             return final_x, final_y
 
-        # Rotate each corner
         corners = [self.topRight, self.topLeft, self.bottomRight, self.bottomLeft]
         for corner in corners:
             x_new, y_new = rotate_point(
@@ -327,21 +333,18 @@ class Line:
             corner["x"] = x_new
             corner["y"] = y_new
 
-        # Optionally, update angleDegrees/angleRadians
-        # Example: increase existing angles by `angle` (in degrees/radians):
+        # 3) Update angleDegrees and angleRadians
         if use_radians:
-            self.angleRadians = (self.angleRadians + angle_radians) % (2 * pi)
-            # Convert new radians to degrees:
-            self.angleDegrees = (self.angleRadians * 180 / pi) % 360
+            # Accumulate the rotation in angleRadians
+            self.angleRadians += angle_radians
+            self.angleDegrees += (angle_radians * 180.0 / pi)
         else:
-            # Convert degrees to radians:
-            angle_radians = radians(angle)
-            self.angleRadians = (self.angleRadians + angle_radians) % (2 * pi)
-            self.angleDegrees = (self.angleDegrees + angle) % 360
+            # If it was in degrees, accumulate in degrees
+            self.angleDegrees += angle
+            # Convert that addition to radians
+            self.angleRadians += radians(angle)
 
-        # As noted, this function does NOT update the bounding box.
-        # If you need to adjust boundingBox to match the new orientation,
-        # implement that calculation here.
+        # 4) Warn that the bounding box is not updated
         Warning("This function does not update the bounding box")
 
     def __repr__(self) -> str:
