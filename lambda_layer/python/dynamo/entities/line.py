@@ -282,7 +282,6 @@ def itemToLine(item: dict) -> Line:
     Returns:
         Line: The Line object represented by the DynamoDB item
     """
-    print(map_to_dict(item["BoundingBox"]["M"]))
     return Line(
         int(item["PK"]["S"][6:]),
         int(item["SK"]["S"][6:]),
