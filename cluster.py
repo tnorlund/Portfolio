@@ -7,14 +7,15 @@ import math
 import boto3
 import tempfile
 import cv2
-from math import sin, cos
+from math import sin, cos, dist
+from dynamo import DynamoClient
 
 IMAGE_ID = 9
 S3_BUCKET = "raw-image-bucket-c779c32"
 
 
 def euclidean_dist(a, b):
-    return math.dist(a, b)
+    return dist(a, b)
 
 
 def rotate_point(x, y, cx, cy, theta):
@@ -43,14 +44,6 @@ def get_axis_aligned_bbox(points):
     return min(xs), max(xs), min(ys), max(ys)
 
 
-# Dynamo / custom imports
-from dynamo import DynamoClient, Image, Line, Word, Letter, ScaledImage, itemToImage
-from utils import (
-    encode_image_below_size,
-    get_max_index_in_images,
-    process_ocr_dict,
-    calculate_sha256,
-)
 
 # 1) Load environment variables from .env
 load_dotenv()
