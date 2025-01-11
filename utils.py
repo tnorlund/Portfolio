@@ -6,7 +6,7 @@ from dynamo import DynamoClient, Line, Word, Letter
 
 
 def encode_image_below_size(
-    image, max_size_kb=380, min_quality=10, step=10
+    image, max_size_kb=380, min_quality=5, step=5
 ) -> Tuple[str, int]:
     """
     Compress the image (JPEG) to ensure the final Base64 string is <= max_size_kb.
@@ -131,14 +131,3 @@ def calculate_sha256(file_path):
             sha256_hash.update(byte_block)
     return sha256_hash.hexdigest()
 
-
-{
-    "S3Key": {"S": "raw/accb5c7c-381d-4f1e-b18a-f9d28abb625d.png"},
-    "TimestampAdded": {"S": "2025-01-05T18:53:06.294508"},
-    "Width": {"N": "2480"},
-    "S3Bucket": {"S": "raw-image-bucket-c779c32"},
-    "SK": {"S": "IMAGE"},
-    "Height": {"N": "3508"},
-    "PK": {"S": "IMAGE#00042"},
-    "Type": {"S": "IMAGE"},
-}
