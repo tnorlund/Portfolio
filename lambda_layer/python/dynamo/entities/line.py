@@ -219,7 +219,9 @@ class Line:
         Returns:
             Tuple[float, float]: The x and y coordinates of the centroid
         """
-        return self.x + self.width / 2, self.y + self.height / 2
+        x = (self.topRight["x"] + self.topLeft["x"] + self.bottomRight["x"] + self.bottomLeft["x"]) / 4
+        y = (self.topRight["y"] + self.topLeft["y"] + self.bottomRight["y"] + self.bottomLeft["y"]) / 4
+        return x, y
 
     def __repr__(self) -> str:
         """Returns a string representation of the Line object
