@@ -22,3 +22,8 @@ class DynamoClient(_Image, _Line, _Word, _Letter, _ScaledImage):
 
         self._client = boto3.client("dynamodb", region_name=region)
         self.table_name = table_name
+        # Ensure the table already exists
+        try:
+            self._client.describe_table(TableName=self.table_name)
+        except self._client.exceptions.ResourceNotFoundException:
+            raise ValueError(f"The table '{self.table_name}' does not exist in region '{region}'.")
