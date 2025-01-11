@@ -7,32 +7,25 @@ import math
 import boto3
 import tempfile
 import cv2
+from math import sin, cos
 
 IMAGE_ID = 15
 
-def rotate_point(point, center, angle_rad):
+def rotate_point(x, y, cx, cy, theta):
     """
-    Rotate 'point' around 'center' by 'angle_rad' (in radians).
-    point, center = (x, y).
+    Rotate (x,y) around center (cx,cy) by 'theta' radians.
     Returns (x_rot, y_rot).
     """
-    px, py = point
-    cx, cy = center
-    s = math.sin(angle_rad)
-    c = math.cos(angle_rad)
-
-    # Translate point back to origin:
-    px -= cx
-    py -= cy
+    # Translate to origin
+    x_trans = x - cx
+    y_trans = y - cy
 
     # Rotate
-    xnew = px * c - py * s
-    ynew = px * s + py * c
+    x_rot = x_trans * cos(theta) - y_trans * sin(theta)
+    y_rot = x_trans * sin(theta) + y_trans * cos(theta)
 
-    # Translate forward
-    xrot = xnew + cx
-    yrot = ynew + cy
-    return (xrot, yrot)
+    # Translate back
+    return (x_rot + cx, y_rot + cy)
 
 def get_axis_aligned_bbox(points):
     """
@@ -83,76 +76,85 @@ print(f"Found {len(receipt_dict)} receipts")
 
 # 8) Find the bounding boxes for each receipt
 for cluster_id, cluster_lines in receipt_dict.items():
-    # 1) Gather all corner points
+    # 1) Compute the cluster’s centroid based on the average of each line’s centroid.
+    sum_x = 0.0
+    sum_y = 0.0
+    for ln in cluster_lines:
+        cx, cy = ln.calculate_centroid()  # e.g. (mean_x_of_corners, mean_y_of_corners)
+        sum_x += cx
+        sum_y += cy
+
+    cluster_center_x = sum_x / len(cluster_lines)
+    cluster_center_y = sum_y / len(cluster_lines)
+
+    # 2) Translate all lines so the cluster centroid moves to (0.5, 0.5).
+    dx = 0.5 - cluster_center_x
+    dy = 0.5 - cluster_center_y
+    for ln in cluster_lines:
+        ln.translate(dx, dy)
+
+    # 3) Rotate the cluster around (0.5, 0.5) by -avg_angle (in radians).
+    avg_angle_radians = sum(ln.angleRadians for ln in cluster_lines) / len(cluster_lines)
+    for ln in cluster_lines:
+        # Negative average angle => rotate(-avg_angle_radians, 0.5, 0.5)
+        ln.rotate(-avg_angle_radians, 0.5, 0.5, use_radians=True)
+    
+    # 4) Compute a bounding box from the now-transformed corners.
     all_points = []
     for ln in cluster_lines:
-        all_points.append((ln.topLeft["x"],    ln.topLeft["y"]))
-        all_points.append((ln.topRight["x"],   ln.topRight["y"]))
-        all_points.append((ln.bottomLeft["x"], ln.bottomLeft["y"]))
-        all_points.append((ln.bottomRight["x"],ln.bottomRight["y"]))
+        all_points.extend([
+            (ln.topLeft["x"],    ln.topLeft["y"]),
+            (ln.topRight["x"],   ln.topRight["y"]),
+            (ln.bottomLeft["x"], ln.bottomLeft["y"]),
+            (ln.bottomRight["x"],ln.bottomRight["y"]),
+        ])
+    
+    min_x = min(pt[0] for pt in all_points)
+    max_x = max(pt[0] for pt in all_points)
+    min_y = min(pt[1] for pt in all_points)
+    max_y = max(pt[1] for pt in all_points)
 
-    # 2) Compute the average angle in degrees
-    avg_angle_deg = np.mean([ln.angleDegrees for ln in cluster_lines])
-    avg_angle_rad = math.radians(avg_angle_deg)
+    top_left     = (min_x, min_y)
+    top_right    = (max_x, min_y)
+    bottom_left  = (min_x, max_y)
+    bottom_right = (max_x, max_y)
 
-    # 3) Choose a pivot (the "cluster center" or just (0,0))
-    #    For a "cluster center", we might do the average of all x, y
-    if all_points:
-        mean_x = np.mean([p[0] for p in all_points])
-        mean_y = np.mean([p[1] for p in all_points])
-        cluster_center = (mean_x, mean_y)
-    else:
-        cluster_center = (0, 0)
+    # 5) Scale the lines to fit within a 1x1 box.
+    range_x = max_x - min_x
+    range_y = max_y - min_y
 
-    # 4) Rotate all points by -avg_angle (to align them horizontally)
-    rotated_points = [
-        rotate_point(p, cluster_center, -avg_angle_rad) for p in all_points
-    ]
+    scale_x = 1.0 / range_x
+    scale_y = 1.0 / range_y
 
-    # 5) Compute axis-aligned bbox in the rotated space
-    min_x, max_x, min_y, max_y = get_axis_aligned_bbox(rotated_points)
-
-    # 6) Reconstruct the four corners in rotated space
-    #    top-left, top-right, bottom-left, bottom-right
-    tl_rot = (min_x, min_y)
-    tr_rot = (max_x, min_y)
-    br_rot = (max_x, max_y)
-    bl_rot = (min_x, max_y)
-
-    # 7) Rotate those corners back by +avg_angle
-    tl = rotate_point(tl_rot, cluster_center, avg_angle_rad)
-    tr = rotate_point(tr_rot, cluster_center, avg_angle_rad)
-    br = rotate_point(br_rot, cluster_center, avg_angle_rad)
-    bl = rotate_point(bl_rot, cluster_center, avg_angle_rad)
-
-    # 8) Now we have a bounding box that aligns with the average text angle
-    print(f"Cluster {cluster_id} average line angle = {avg_angle_deg:.2f} deg")
-    print("  Oriented bounding box corners:")
-    print(f"    topLeft     = {tl}")
-    print(f"    topRight    = {tr}")
-    print(f"    bottomRight = {br}")
-    print(f"    bottomLeft  = {bl}")
-    print()
-
-    # 9) Rotate and scale the image
-    s3_client = boto3.client("s3")
-    with tempfile.TemporaryDirectory() as tmpdir:
-        local_image_path = os.path.join(tmpdir, "image.png")
-        response = s3_client.get_object(Bucket=image.s3_bucket, Key=image.s3_key)
-        with open(local_image_path, "wb") as f:
-            f.write(response["Body"].read())
-        print(f"Downloaded image to {local_image_path}")
-        image_cv = cv2.imread(local_image_path)
-        # Rotate the image by the average angle
-        h, w = image_cv.shape[:2]
-        M = cv2.getRotationMatrix2D((w/2, h/2), -avg_angle_deg, 1)
-        image_cv = cv2.warpAffine(image_cv, M, (w, h))
-
-        # Draw the bounding box on the image
-        # cv2.line(image_cv, (int(tl[0] * image.width), int((1 - tl[1]) * image.height)), (int(tr[0] * image.width), int((1 - tr[1]) * image.height)), (0, 255, 0), 2)
-        # cv2.line(image_cv, (int(tr[0] * image.width), int((1 - tr[1]) * image.height)), (int(br[0] * image.width), int((1 - br[1]) * image.height)), (0, 255, 0), 2)
-        # cv2.line(image_cv, (int(br[0] * image.width), int((1 - br[1]) * image.height)), (int(bl[0] * image.width), int((1 - bl[1]) * image.height)), (0, 255, 0), 2)
-        # cv2.line(image_cv, (int(bl[0] * image.width), int((1 - bl[1]) * image.height)), (int(tl[0] * image.width), int((1 - tl[1]) * image.height)), (0, 255, 0), 2)
+    for ln in cluster_lines:
+        # 1) Translate so min_x/min_y become 0,0
+        ln.translate(-min_x, -min_y)
+        # 2) Scale so the bounding box fits in [0, 1] in both dimensions
+        ln.scale(scale_x, scale_y)
+        # TODO: Turn these into ReceiptWord entities for DynamoDB
+    
+    # 6) Reverse the transformations to get the original bounding box
+    original_corners = []
+    for corner in [top_left, top_right, bottom_left, bottom_right]:
+        # 1) Rotate back by +avg_angle_radians around (0.5, 0.5)
+        x_rot, y_rot = rotate_point(
+            corner[0], 
+            corner[1],
+            0.5,
+            0.5,
+            +avg_angle_radians  # opposite sign of the earlier -avg_angle_radians
+        )
+        # 2) Translate back by (-dx, -dy)
+        x_orig = x_rot - dx
+        y_orig = y_rot - dy
         
-        # cv2.imwrite(f"{image.id}_cluster_{cluster_id}.png", image_cv)
+        original_corners.append((x_orig, y_orig))
 
+    orig_top_left, orig_top_right, orig_bottom_left, orig_bottom_right = original_corners
+    print("Bounding box corners back in original coordinates:")
+    print("  top_left     =", orig_top_left)
+    print("  top_right    =", orig_top_right)
+    print("  bottom_left  =", orig_bottom_left)
+    print("  bottom_right =", orig_bottom_right)
+
+    
