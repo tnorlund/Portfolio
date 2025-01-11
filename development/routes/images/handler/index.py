@@ -15,11 +15,27 @@ def handler(event, _):
 
     if http_method == 'GET':
         client = DynamoClient(dynamodb_table_name)
-        images, lek = client.listImages()
-        return {
-            'statusCode': 200,
-            'body': json.dumps({'images': [dict(image) for image in images]})
-        }
+        query_params = event.get("queryStringParameters") or {}
+        if "limit" not in query_params:
+            images, _ = client.listImages()
+            return {
+                'statusCode': 200,
+                'body': json.dumps({'images': [dict(image) for image in images]})
+            }
+        else:
+            limit = int(query_params["limit"])
+            if "last_evaluated_key" in query_params:
+                last_evaluated_key = json.loads(query_params["last_evaluated_key"])
+                images, last_evaluated_key = client.listImages(limit, last_evaluated_key)
+                return {
+                    'statusCode': 200,
+                    'body': json.dumps({'images': [dict(image) for image in images], 'last_evaluated_key': last_evaluated_key})
+                }
+            images, last_evaluated_key = client.listImages(limit)
+            return {
+                'statusCode': 200,
+                'body': json.dumps({'images': [dict(image) for image in images], 'last_evaluated_key': last_evaluated_key})
+            }
     elif http_method == 'POST':
         return {
             'statusCode': 405,
