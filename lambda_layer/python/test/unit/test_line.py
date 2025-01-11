@@ -462,83 +462,127 @@ def test_scale(sx, sy):
     assert line.angleRadians == 0.0
 
 
+def create_test_line():
+    """A helper function that returns a test Line object."""
+    return Line(
+        image_id=1,
+        id=1,
+        text="Test",
+        boundingBox={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+        topRight={"x": 15.0, "y": 20.0},
+        topLeft={"x": 10.0, "y": 20.0},
+        bottomRight={"x": 15.0, "y": 22.0},
+        bottomLeft={"x": 10.0, "y": 22.0},
+        angleDegrees=0.0,
+        angleRadians=0.0,
+        confidence=1.0,
+    )
+
+
 @pytest.mark.parametrize(
-    "angle, origin, use_radians",
+    "angle, use_radians, should_raise",
     [
-        (90, (0, 0), False),  # Rotate 90° about origin in degrees
-        (math.pi / 2, (0, 0), True),  # Same rotation in radians
-        (180, (10, 20), False),  # Rotate 180° about (10, 20)
+        # Degrees in the valid range
+        (90, False, False),
+        (-90, False, False),
+        (45, False, False),
+        (0, False, False),
+        # Degrees outside the valid range => expect ValueError
+        (91, False, True),
+        (-91, False, True),
+        (180, False, True),
+        # Radians in the valid range ([-π/2, π/2])
+        (math.pi / 2, True, False),
+        (-math.pi / 2, True, False),
+        (0, True, False),
+        (0.5, True, False),
+        # Radians outside the valid range => expect ValueError
+        (math.pi / 2 + 0.01, True, True),
+        (-math.pi / 2 - 0.01, True, True),
+        (math.pi, True, True),
     ],
 )
-def test_rotate(angle, origin, use_radians):
+def test_rotate_limited_range(angle, use_radians, should_raise):
     """
-    Test that rotate(angle, origin_x, origin_y) rotates the corners as expected
-    and updates angleDegrees / angleRadians. boundingBox should remain unchanged.
+    Test that rotate(angle, origin_x, origin_y, use_radians) only rotates if angle is in
+    [-90, 90] degrees or [-π/2, π/2] radians. Otherwise, raises ValueError.
     """
     line = create_test_line()
-
-    # Keep a copy of original corners
     orig_corners = {
         "topRight": line.topRight.copy(),
         "topLeft": line.topLeft.copy(),
         "bottomRight": line.bottomRight.copy(),
         "bottomLeft": line.bottomLeft.copy(),
     }
-    orig_bb = line.boundingBox.copy()
+    orig_angle_degrees = line.angleDegrees
+    orig_angle_radians = line.angleRadians
 
-    # Perform rotation
-    line.rotate(angle, origin[0], origin[1], use_radians=use_radians)
+    if should_raise:
+        with pytest.raises(ValueError):
+            line.rotate(angle, 0, 0, use_radians=use_radians)
 
-    # boundingBox should remain unchanged
-    assert line.boundingBox == orig_bb
-
-    # Check angles. The final angle should be original + `angle`.
-    # Since original angle is 0, the final angle should be exactly `angle`.
-    # But recall that in rotate, if `use_radians=False`, we convert `angle` to radians internally.
-    # So we'll compare line.angleRadians vs the “converted” total, and line.angleDegrees vs the same “converted” total.
-    if use_radians:
-        # If we used radians, angle is already in radians
-        expected_angle_radians = angle % (2 * math.pi)
-        expected_angle_degrees = (expected_angle_radians * 180.0 / math.pi) % 360
-    else:
-        # If we used degrees
-        expected_angle_degrees = angle % 360
-        expected_angle_radians = math.radians(expected_angle_degrees)
-
-    assert line.angleRadians == pytest.approx(expected_angle_radians, abs=1e-9)
-    assert line.angleDegrees == pytest.approx(expected_angle_degrees, abs=1e-9)
-
-    # For the actual corner positions, you could do more detailed checks:
-    #
-    # Example: If rotating 90 degrees around (0,0), you can compare each point
-    # to its expected new position. If rotating 180 degrees around (10,20),
-    # you can check that each point is essentially mirrored about that origin.
-    #
-    # This can be more involved, so here we simply ensure the corner coordinates
-    # have changed (unless angle=0). If you want exact checks, compute the
-    # rotation manually for each point and compare to the line’s corners.
-
-    if angle not in (0, 360, 2 * math.pi, -360):
-        # At least one corner coordinate should differ if a real rotation took place
-        # (or all corners if 180°, etc.). This is a minimal sanity check.
-        corners_changed = (
-            any(line.topRight[k] != orig_corners["topRight"][k] for k in ["x", "y"])
-            or any(line.topLeft[k] != orig_corners["topLeft"][k] for k in ["x", "y"])
-            or any(
-                line.bottomRight[k] != orig_corners["bottomRight"][k]
-                for k in ["x", "y"]
-            )
-            or any(
-                line.bottomLeft[k] != orig_corners["bottomLeft"][k] for k in ["x", "y"]
-            )
-        )
-        assert corners_changed, "Expected corners to change after rotation."
-    else:
-        # If angle is effectively 0, corners should not have changed
+        # Corners and angles should remain unchanged after the exception
         assert line.topRight == orig_corners["topRight"]
         assert line.topLeft == orig_corners["topLeft"]
         assert line.bottomRight == orig_corners["bottomRight"]
         assert line.bottomLeft == orig_corners["bottomLeft"]
+        assert line.angleDegrees == orig_angle_degrees
+        assert line.angleRadians == orig_angle_radians
+
+    else:
+        # Rotation should succeed without error
+        line.rotate(angle, 0, 0, use_radians=use_radians)
+
+        # The bounding box remains unchanged
+        assert line.boundingBox["x"] == 10.0
+        assert line.boundingBox["y"] == 20.0
+        assert line.boundingBox["width"] == 5.0
+        assert line.boundingBox["height"] == 2.0
+
+        # Some corners must change unless angle=0
+        if angle not in (0, 0.0):
+            corners_changed = (
+                any(line.topRight[k] != orig_corners["topRight"][k] for k in ["x", "y"])
+                or any(
+                    line.topLeft[k] != orig_corners["topLeft"][k] for k in ["x", "y"]
+                )
+                or any(
+                    line.bottomRight[k] != orig_corners["bottomRight"][k]
+                    for k in ["x", "y"]
+                )
+                or any(
+                    line.bottomLeft[k] != orig_corners["bottomLeft"][k]
+                    for k in ["x", "y"]
+                )
+            )
+            assert corners_changed, "Expected corners to change after valid rotation."
+        else:
+            # angle=0 => no corner change
+            assert line.topRight == orig_corners["topRight"]
+            assert line.topLeft == orig_corners["topLeft"]
+            assert line.bottomRight == orig_corners["bottomRight"]
+            assert line.bottomLeft == orig_corners["bottomLeft"]
+
+        # Angles should have incremented
+        if use_radians:
+            # Should have increased angleRadians by `angle`
+            assert line.angleRadians == pytest.approx(
+                orig_angle_radians + angle, abs=1e-9
+            )
+            # angleDegrees should be old + angle*(180/π)
+            deg_from_radians = angle * 180.0 / math.pi
+            assert line.angleDegrees == pytest.approx(
+                orig_angle_degrees + deg_from_radians, abs=1e-9
+            )
+        else:
+            # Should have increased angleDegrees by `angle`
+            assert line.angleDegrees == pytest.approx(
+                orig_angle_degrees + angle, abs=1e-9
+            )
+            # angleRadians should be old + radians(angle)
+            assert line.angleRadians == pytest.approx(
+                orig_angle_radians + math.radians(angle), abs=1e-9
+            )
 
 
 def test_repr():
