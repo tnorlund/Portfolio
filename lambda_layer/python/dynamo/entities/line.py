@@ -165,6 +165,17 @@ class Line:
             "PK": {"S": f"IMAGE#{self.image_id:05d}"},
             "SK": {"S": f"LINE#{self.id:05d}"},
         }
+    
+    def gsi1_key(self) -> dict:
+        """Generates the GSI1 key for the line
+
+        Returns:
+            dict: The GSI1 key for the line
+        """
+        return {
+            "GSI1PK": {"S": f"IMAGE#{self.image_id:05d}"},
+            "GSI1SK": {"S": f"IMAGE#{self.image_id:05d}#LINE#{self.id:05d}"},
+        }
 
     def to_item(self) -> dict:
         """Converts the Line object to a DynamoDB item
@@ -173,8 +184,8 @@ class Line:
             dict: The Line object as a DynamoDB item
         """
         return {
-            "PK": {"S": f"IMAGE#{self.image_id:05d}"},
-            "SK": {"S": f"LINE#{self.id:05d}"},
+            **self.key(),
+            **self.gsi1_key(),
             "Type": {"S": "LINE"},
             "Text": {"S": self.text},
             "BoundingBox": {
