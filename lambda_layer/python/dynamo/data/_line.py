@@ -149,7 +149,7 @@ class _Line:
         response = self._client.scan(
             TableName=self.table_name,
             ScanFilter={
-                "Type": {
+                "TYPE": {
                     "AttributeValueList": [{"S": "LINE"}],
                     "ComparisonOperator": "EQ",
                 }

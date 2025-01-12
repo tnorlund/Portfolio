@@ -3,18 +3,18 @@ from decimal import Decimal, ROUND_HALF_UP
 from math import sin, cos, pi, radians
 
 
-def assert_valid_boundingBox(boundingBox):
+def assert_valid_bounding_box(bounding_box):
     """
     Assert that the bounding box is valid.
     """
-    if not isinstance(boundingBox, dict):
-        raise ValueError("boundingBox must be a dictionary")
+    if not isinstance(bounding_box, dict):
+        raise ValueError("bounding_box must be a dictionary")
     for key in ["x", "y", "width", "height"]:
-        if key not in boundingBox:
-            raise ValueError(f"boundingBox must contain the key '{key}'")
-        if not isinstance(boundingBox[key], (int, float)):
-            raise ValueError(f"boundingBox['{key}'] must be a number")
-    return boundingBox
+        if key not in bounding_box:
+            raise ValueError(f"bounding_box must contain the key '{key}'")
+        if not isinstance(bounding_box[key], (int, float)):
+            raise ValueError(f"bounding_box['{key}'] must be a number")
+    return bounding_box
 
 
 def assert_valid_point(point):
@@ -71,7 +71,7 @@ class Line:
         image_id: int,
         id: int,
         text: str,
-        boundingBox: dict,
+        bounding_box: dict,
         top_right: dict,
         top_left: dict,
         bottom_right: dict,
@@ -86,7 +86,7 @@ class Line:
             image_id (int): Identifier for the image
             id (int): Identifier for the line
             text (str): The text content of the line
-            boundingBox (dict): The bounding box of the line
+            bounding_box (dict): The bounding box of the line
             top_right (dict): The top-right point of the line
             top_left (dict): The top-left point of the line
             bottom_right (dict): The bottom-right point of the line
@@ -99,7 +99,7 @@ class Line:
             image_id (int): Identifier for the image
             id (int): Identifier for the line
             text (str): The text content of the line
-            boundingBox (dict): The bounding box of the line
+            bounding_box (dict): The bounding box of the line
             top_right (dict): The top-right point of the line
             top_left (dict): The top-left point of the line
             bottom_right (dict): The bottom-right point of the line
@@ -112,7 +112,7 @@ class Line:
             ValueError: If image_id is not a positive integer
             ValueError: If id is not a positive integer
             ValueError: If text is not a string
-            ValueError: If boundingBox is not valid
+            ValueError: If bounding_box is not valid
             ValueError: If top_right is not valid
             ValueError: If top_left is not valid
             ValueError: If bottom_right is not valid
@@ -132,8 +132,8 @@ class Line:
         if not isinstance(text, str):
             raise ValueError("text must be a string")
         self.text = text
-        assert_valid_boundingBox(boundingBox)
-        self.boundingBox = boundingBox
+        assert_valid_bounding_box(bounding_box)
+        self.bounding_box = bounding_box
         assert_valid_point(top_right)
         self.top_right = top_right
         assert_valid_point(top_left)
@@ -186,43 +186,43 @@ class Line:
         return {
             **self.key(),
             **self.gsi1_key(),
-            "Type": {"S": "LINE"},
-            "Text": {"S": self.text},
-            "BoundingBox": {
+            "TYPE": {"S": "LINE"},
+            "text": {"S": self.text},
+            "bounding_box": {
                 "M": {
-                    "x": {"N": _format_float(self.boundingBox["x"], 18, 20)},
-                    "y": {"N": _format_float(self.boundingBox["y"], 18, 20)},
-                    "width": {"N": _format_float(self.boundingBox["width"], 18, 20)},
-                    "height": {"N": _format_float(self.boundingBox["height"], 18, 20)},
+                    "x": {"N": _format_float(self.bounding_box["x"], 18, 20)},
+                    "y": {"N": _format_float(self.bounding_box["y"], 18, 20)},
+                    "width": {"N": _format_float(self.bounding_box["width"], 18, 20)},
+                    "height": {"N": _format_float(self.bounding_box["height"], 18, 20)},
                 }
             },
-            "TopRight": {
+            "top_right": {
                 "M": {
                     "x": {"N": _format_float(self.top_right["x"], 18, 20)},
                     "y": {"N": _format_float(self.top_right["y"], 18, 20)},
                 }
             },
-            "TopLeft": {
+            "top_left": {
                 "M": {
                     "x": {"N": _format_float(self.top_left["x"], 18, 20)},
                     "y": {"N": _format_float(self.top_left["y"], 18, 20)},
                 }
             },
-            "BottomRight": {
+            "bottom_right": {
                 "M": {
                     "x": {"N": _format_float(self.bottom_right["x"], 18, 20)},
                     "y": {"N": _format_float(self.bottom_right["y"], 18, 20)},
                 }
             },
-            "BottomLeft": {
+            "bottom_left": {
                 "M": {
                     "x": {"N": _format_float(self.bottom_left["x"], 18, 20)},
                     "y": {"N": _format_float(self.bottom_left["y"], 18, 20)},
                 }
             },
-            "AngleDegrees": {"N": _format_float(self.angle_degrees, 10, 12)},
-            "AngleRadians": {"N": _format_float(self.angle_radians, 10, 12)},
-            "Confidence": {"N": _format_float(self.confidence, 2, 2)},
+            "angle_degrees": {"N": _format_float(self.angle_degrees, 10, 12)},
+            "angle_radians": {"N": _format_float(self.angle_radians, 10, 12)},
+            "confidence": {"N": _format_float(self.confidence, 2, 2)},
         }
 
     def calculate_centroid(self) -> Tuple[float, float]:
@@ -267,10 +267,10 @@ class Line:
         self.bottom_right["y"] *= sy
         self.bottom_left["x"] *= sx
         self.bottom_left["y"] *= sy
-        self.boundingBox["x"] *= sx
-        self.boundingBox["y"] *= sy
-        self.boundingBox["width"] *= sx
-        self.boundingBox["height"] *= sy
+        self.bounding_box["x"] *= sx
+        self.bounding_box["y"] *= sy
+        self.bounding_box["width"] *= sx
+        self.bounding_box["height"] *= sy
 
     def rotate(
         self,
@@ -286,7 +286,7 @@ class Line:
         - [-π/2, π/2], if use_radians=True
         Otherwise, raises ValueError.
 
-        Updates topRight, topLeft, bottomRight, bottomLeft in-place,
+        Updates top_right, topLeft, bottomRight, bottomLeft in-place,
         and also updates angleDegrees/angleRadians.
 
         Args:
@@ -375,13 +375,13 @@ class Line:
         yield "image_id", self.image_id
         yield "id", self.id
         yield "text", self.text
-        yield "boundingBox", self.boundingBox
-        yield "topRight", self.top_right
-        yield "topLeft", self.top_left
-        yield "bottomRight", self.bottom_right
-        yield "bottomLeft", self.bottom_left
-        yield "angleDegrees", self.angle_degrees
-        yield "angleRadians", self.angle_radians
+        yield "bounding_box", self.bounding_box
+        yield "top_right", self.top_right
+        yield "top_left", self.top_left
+        yield "bottom_right", self.bottom_right
+        yield "bottom_left", self.bottom_left
+        yield "angle_degrees", self.angle_degrees
+        yield "angle_radians", self.angle_radians
         yield "confidence", self.confidence
 
     def __eq__(self, other: object) -> bool:
@@ -399,7 +399,7 @@ class Line:
             self.image_id == other.image_id
             and self.id == other.id
             and self.text == other.text
-            and self.boundingBox == other.boundingBox
+            and self.bounding_box == other.bounding_box
             and self.top_right == other.top_right
             and self.top_left == other.top_left
             and self.bottom_right == other.bottom_right
@@ -422,16 +422,15 @@ def itemToLine(item: dict) -> Line:
     required_keys = {
         "PK",
         "SK",
-        "Type",
-        "Text",
-        "BoundingBox",
-        "TopRight",
-        "TopLeft",
-        "BottomRight",
-        "BottomLeft",
-        "AngleDegrees",
-        "AngleRadians",
-        "Confidence",
+        "text",
+        "bounding_box",
+        "top_right",
+        "top_left",
+        "bottom_right",
+        "bottom_left",
+        "angle_degrees",
+        "angle_radians",
+        "confidence",
     }
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - set(item.keys())
@@ -440,27 +439,27 @@ def itemToLine(item: dict) -> Line:
         return Line(
             image_id=int(item["PK"]["S"][6:]),
             id=int(item["SK"]["S"][6:]),
-            text=item["Text"]["S"],
-            boundingBox={
+            text=item["text"]["S"],
+            bounding_box={
                 key: float(value["N"])
-                for key, value in item["BoundingBox"]["M"].items()
+                for key, value in item["bounding_box"]["M"].items()
             },
             top_right={
-                key: float(value["N"]) for key, value in item["TopRight"]["M"].items()
+                key: float(value["N"]) for key, value in item["top_right"]["M"].items()
             },
             top_left={
-                key: float(value["N"]) for key, value in item["TopLeft"]["M"].items()
+                key: float(value["N"]) for key, value in item["top_left"]["M"].items()
             },
             bottom_right={
                 key: float(value["N"])
-                for key, value in item["BottomRight"]["M"].items()
+                for key, value in item["bottom_right"]["M"].items()
             },
             bottom_left={
-                key: float(value["N"]) for key, value in item["BottomLeft"]["M"].items()
+                key: float(value["N"]) for key, value in item["bottom_left"]["M"].items()
             },
-            angle_degrees=float(item["AngleDegrees"]["N"]),
-            angle_radians=float(item["AngleRadians"]["N"]),
-            confidence=float(item["Confidence"]["N"]),
+            angle_degrees=float(item["angle_degrees"]["N"]),
+            angle_radians=float(item["angle_radians"]["N"]),
+            confidence=float(item["confidence"]["N"]),
         )
     except KeyError as e:
         raise ValueError(f"Error converting item to Line: {e}")

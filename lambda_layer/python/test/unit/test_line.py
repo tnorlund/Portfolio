@@ -6,7 +6,7 @@ correct_line_params = {
     "image_id": 1,
     "id": 1,
     "text": "Test",
-    "boundingBox": {
+    "bounding_box": {
         "x": 10.0,
         "y": 20.0,
         "width": 5.0,
@@ -28,7 +28,7 @@ def test_init():
     assert int(line.image_id) == 1
     assert int(line.id) == 1
     assert line.text == "Test"
-    assert line.boundingBox == {
+    assert line.bounding_box == {
         "x": 10.0,
         "y": 20.0,
         "width": 5.0,
@@ -54,12 +54,12 @@ def test_init():
     with pytest.raises(ValueError):
         Line(**{**correct_line_params, "text": 1})
 
-    # Test bad BoundingBox
+    # Test bad bounding_box
     with pytest.raises(ValueError):
         Line(
             **{
                 **correct_line_params,
-                "boundingBox": {"x": 10.0, "height": 2.0, "width": 5.0},
+                "bounding_box": {"x": 10.0, "height": 2.0, "width": 5.0},
             }
         )
 
@@ -109,9 +109,9 @@ def test_to_item():
         "SK": {"S": "LINE#00001"},
         "GSI1PK": {"S": "IMAGE"},
         "GSI1SK": {"S": "IMAGE#00001#LINE#00001"},
-        "Type": {"S": "LINE"},
-        "Text": {"S": "Test"},
-        "BoundingBox": {
+        "TYPE": {"S": "LINE"},
+        "text": {"S": "Test"},
+        "bounding_box": {
             "M": {
                 "height": {"N": "2.000000000000000000"},
                 "width": {"N": "5.000000000000000000"},
@@ -119,33 +119,33 @@ def test_to_item():
                 "y": {"N": "20.000000000000000000"},
             }
         },
-        "TopRight": {
+        "top_right": {
             "M": {
                 "x": {"N": "15.000000000000000000"},
                 "y": {"N": "20.000000000000000000"},
             }
         },
-        "TopLeft": {
+        "top_left": {
             "M": {
                 "x": {"N": "10.000000000000000000"},
                 "y": {"N": "20.000000000000000000"},
             }
         },
-        "BottomRight": {
+        "bottom_right": {
             "M": {
                 "x": {"N": "15.000000000000000000"},
                 "y": {"N": "22.000000000000000000"},
             }
         },
-        "BottomLeft": {
+        "bottom_left": {
             "M": {
                 "x": {"N": "10.000000000000000000"},
                 "y": {"N": "22.000000000000000000"},
             }
         },
-        "AngleDegrees": {"N": "1.0000000000"},
-        "AngleRadians": {"N": "5.0000000000"},
-        "Confidence": {"N": "0.90"},
+        "angle_degrees": {"N": "1.0000000000"},
+        "angle_radians": {"N": "5.0000000000"},
+        "confidence": {"N": "0.90"},
     }
 
 
@@ -158,7 +158,7 @@ def create_test_line():
         image_id=1,
         id=1,
         text="Test",
-        boundingBox={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
         top_right={"x": 15.0, "y": 20.0},
         top_left={"x": 10.0, "y": 20.0},
         bottom_right={"x": 15.0, "y": 22.0},
@@ -180,7 +180,7 @@ def create_test_line():
 def test_translate(dx, dy):
     """
     Test that translate(dx, dy) shifts the corner points correctly
-    and does NOT update boundingBox or angles.
+    and does NOT update bounding_box or angles.
     """
     line = create_test_line()
 
@@ -189,7 +189,7 @@ def test_translate(dx, dy):
     orig_top_left = line.top_left.copy()
     orig_bottom_right = line.bottom_right.copy()
     orig_bottom_left = line.bottom_left.copy()
-    orig_bb = line.boundingBox.copy()  # boundingBox is not updated in translate
+    orig_bb = line.bounding_box.copy()  # bounding_box is not updated in translate
 
     # Translate
     line.translate(dx, dy)
@@ -207,8 +207,8 @@ def test_translate(dx, dy):
     assert line.bottom_left["x"] == pytest.approx(orig_bottom_left["x"] + dx)
     assert line.bottom_left["y"] == pytest.approx(orig_bottom_left["y"] + dy)
 
-    # Check boundingBox (should not change)
-    assert line.boundingBox == orig_bb
+    # Check bounding_box (should not change)
+    assert line.bounding_box == orig_bb
 
     # Angles should not change
     assert line.angle_degrees == 0.0
@@ -225,7 +225,7 @@ def test_translate(dx, dy):
 )
 def test_scale(sx, sy):
     """
-    Test that scale(sx, sy) scales both the corner points and the boundingBox,
+    Test that scale(sx, sy) scales both the corner points and the bounding_box,
     and does NOT modify angles.
     """
     line = create_test_line()
@@ -235,7 +235,7 @@ def test_scale(sx, sy):
     orig_top_left = line.top_left.copy()
     orig_bottom_right = line.bottom_right.copy()
     orig_bottom_left = line.bottom_left.copy()
-    orig_bb = line.boundingBox.copy()
+    orig_bb = line.bounding_box.copy()
 
     line.scale(sx, sy)
 
@@ -252,11 +252,11 @@ def test_scale(sx, sy):
     assert line.bottom_left["x"] == pytest.approx(orig_bottom_left["x"] * sx)
     assert line.bottom_left["y"] == pytest.approx(orig_bottom_left["y"] * sy)
 
-    # Check boundingBox
-    assert line.boundingBox["x"] == pytest.approx(orig_bb["x"] * sx)
-    assert line.boundingBox["y"] == pytest.approx(orig_bb["y"] * sy)
-    assert line.boundingBox["width"] == pytest.approx(orig_bb["width"] * sx)
-    assert line.boundingBox["height"] == pytest.approx(orig_bb["height"] * sy)
+    # Check bounding_box
+    assert line.bounding_box["x"] == pytest.approx(orig_bb["x"] * sx)
+    assert line.bounding_box["y"] == pytest.approx(orig_bb["y"] * sy)
+    assert line.bounding_box["width"] == pytest.approx(orig_bb["width"] * sx)
+    assert line.bounding_box["height"] == pytest.approx(orig_bb["height"] * sy)
 
     # Angles should not change
     assert line.angle_degrees == 0.0
@@ -269,7 +269,7 @@ def create_test_line():
         image_id=1,
         id=1,
         text="Test",
-        boundingBox={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
         top_right={"x": 15.0, "y": 20.0},
         top_left={"x": 10.0, "y": 20.0},
         bottom_right={"x": 15.0, "y": 22.0},
@@ -335,10 +335,10 @@ def test_rotate_limited_range(angle, use_radians, should_raise):
         line.rotate(angle, 0, 0, use_radians=use_radians)
 
         # The bounding box remains unchanged
-        assert line.boundingBox["x"] == 10.0
-        assert line.boundingBox["y"] == 20.0
-        assert line.boundingBox["width"] == 5.0
-        assert line.boundingBox["height"] == 2.0
+        assert line.bounding_box["x"] == 10.0
+        assert line.bounding_box["y"] == 20.0
+        assert line.bounding_box["width"] == 5.0
+        assert line.bounding_box["height"] == 2.0
 
         # Some corners must change unless angle=0
         if angle not in (0, 0.0):
@@ -436,18 +436,18 @@ def test_iter():
         "image_id": 1,
         "id": 1,
         "text": "07\/03\/2024",
-        "boundingBox": {
+        "bounding_box": {
             "x": 0.4454263367632384,
             "height": 0.022867568134581906,
             "width": 0.08690182470506236,
             "y": 0.9167082878750482,
         },
-        "topRight": {"y": 0.9307722198001792, "x": 0.5323281614683008},
-        "topLeft": {"y": 0.9395758560096301, "x": 0.44837726658954413},
-        "bottomRight": {"x": 0.529377231641995, "y": 0.9167082878750482},
-        "bottomLeft": {"x": 0.4454263367632384, "y": 0.9255119240844992},
-        "angleDegrees": -5.986527,
-        "angleRadians": -0.10448461,
+        "top_right": {"y": 0.9307722198001792, "x": 0.5323281614683008},
+        "top_left": {"y": 0.9395758560096301, "x": 0.44837726658954413},
+        "bottom_right": {"x": 0.529377231641995, "y": 0.9167082878750482},
+        "bottom_left": {"x": 0.4454263367632384, "y": 0.9255119240844992},
+        "angle_degrees": -5.986527,
+        "angle_radians": -0.10448461,
         "confidence": 1,
     }
 
@@ -502,7 +502,7 @@ def map_to_dict(map):
 
 def test_map_to_dict():
     mapped_item = {
-        "BoundingBox": {
+        "bounding_box": {
             "M": {
                 "x": {"N": "0.445426336763238400"},
                 "height": {"N": "0.022867568134581906"},
@@ -511,7 +511,7 @@ def test_map_to_dict():
             }
         },
     }
-    assert map_to_dict(mapped_item["BoundingBox"]["M"]) == {
+    assert map_to_dict(mapped_item["bounding_box"]["M"]) == {
         "x": 0.4454263367632384,
         "height": 0.022867568134581906,
         "width": 0.08690182470506236,
@@ -523,9 +523,9 @@ def test_itemToLine():
     item = {
         "PK": {"S": "IMAGE#00001"},
         "SK": {"S": "LINE#00001"},
-        "Type": {"S": "LINE"},
-        "Text": {"S": "07\/03\/2024"},
-        "BoundingBox": {
+        "TYPE": {"S": "LINE"},
+        "text": {"S": "07\/03\/2024"},
+        "bounding_box": {
             "M": {
                 "x": {"N": "0.445426336763238400"},
                 "height": {"N": "0.022867568134581906"},
@@ -533,33 +533,33 @@ def test_itemToLine():
                 "y": {"N": "0.916708287875048200"},
             }
         },
-        "TopRight": {
+        "top_right": {
             "M": {
                 "y": {"N": "0.930772219800179200"},
                 "x": {"N": "0.532328161468300800"},
             }
         },
-        "TopLeft": {
+        "top_left": {
             "M": {
                 "y": {"N": "0.939575856009630100"},
                 "x": {"N": "0.448377266589544130"},
             }
         },
-        "BottomRight": {
+        "bottom_right": {
             "M": {
                 "x": {"N": "0.529377231641995000"},
                 "y": {"N": "0.916708287875048200"},
             }
         },
-        "BottomLeft": {
+        "bottom_left": {
             "M": {
                 "x": {"N": "0.445426336763238400"},
                 "y": {"N": "0.925511924084499200"},
             }
         },
-        "AngleDegrees": {"N": "-5.9865270000"},
-        "AngleRadians": {"N": "-0.1044846100"},
-        "Confidence": {"N": "1.00"},
+        "angle_degrees": {"N": "-5.9865270000"},
+        "angle_radians": {"N": "-0.1044846100"},
+        "confidence": {"N": "1.00"},
     }
     assert Line(
         1,

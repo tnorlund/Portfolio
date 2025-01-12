@@ -7,7 +7,7 @@ correct_line_params = {
     "image_id": 1,
     "id": 1,
     "text": "07\/03\/2024",
-    "boundingBox": {
+    "bounding_box": {
         "x": 0.4454263367632384,
         "height": 0.022867568134581906,
         "width": 0.08690182470506236,
