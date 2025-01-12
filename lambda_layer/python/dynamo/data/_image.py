@@ -4,12 +4,10 @@ from dynamo import (
     Line,
     Letter,
     Word,
-    ScaledImage,
     itemToImage,
     itemToLine,
     itemToWord,
     itemToLetter,
-    ItemToScaledImage,
 )
 from botocore.exceptions import ClientError
 
@@ -69,7 +67,7 @@ class _Image:
 
     def getImageDetails(
         self, image_id: int
-    ) -> tuple[Image, list[Line], list[Word], list[Letter], list[ScaledImage]]:
+    ) -> tuple[Image, list[Line], list[Word], list[Letter]]:
         """
         Gets the details of an image from the database. This includes all lines,
         words, letters, and scaled images associated with the image.
@@ -121,8 +119,6 @@ class _Image:
                     and "LETTER" in sk_value
                 ):
                     letters.append(itemToLetter(item))
-                elif sk_value.startswith("IMAGE_SCALE"):
-                    scaled_images.append(ItemToScaledImage(item))
 
             return image, lines, words, letters, scaled_images
 
