@@ -1,8 +1,32 @@
 from typing import Literal
 import pytest
 import boto3
-from dynamo import Image, Line, Word, Letter, DynamoClient
+from dynamo import Image, Line, Word, Letter, Receipt, DynamoClient
+from datetime import datetime
 
+correct_receipt_params = {
+    "id": 1,
+    "image_id": 1,
+    "width": 10,
+    "height": 20,
+    "timestamp_added": datetime.now().isoformat(),
+    "s3_bucket": "bucket",
+    "s3_key": "key",
+    "top_left": {"x": 0, "y": 0},
+    "top_right": {"x": 10, "y": 0},
+    "bottom_left": {"x": 0, "y": 20},
+    "bottom_right": {"x": 10, "y": 20},
+    "sha256": "sha256",
+}
+
+correct_image_params = {
+    "id": 1,
+    "width": 10,
+    "height": 20,
+    "timestamp_added": datetime.now().isoformat(),
+    "s3_bucket": "bucket",
+    "s3_key": "key"
+}
 
 def test_add_image(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange

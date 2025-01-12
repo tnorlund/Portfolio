@@ -4,6 +4,7 @@ from dynamo import (
     Line,
     Letter,
     Word,
+    Receipt,
     itemToImage,
     itemToLine,
     itemToWord,
