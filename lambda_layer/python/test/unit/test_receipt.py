@@ -114,7 +114,7 @@ def test_gsi1_key_generation(valid_receipt_args):
     """Test that the GSI1 key is correctly generated."""
     r = Receipt(**valid_receipt_args)
     expected_key = {
-        "GSI1PK": {"S": "IMAGE#00001"},
+        "GSI1PK": {"S": "IMAGE"},
         "GSI1SK": {"S": "IMAGE#00001#RECEIPT#00001"},
     }
     assert r.gsi1_key() == expected_key
