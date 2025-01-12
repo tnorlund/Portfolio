@@ -44,7 +44,6 @@ def get_axis_aligned_bbox(points):
     return min(xs), max(xs), min(ys), max(ys)
 
 
-
 # 1) Load environment variables from .env
 load_dotenv()
 

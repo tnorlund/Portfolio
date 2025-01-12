@@ -143,7 +143,9 @@ class Line:
         assert_valid_point(bottom_left)
         self.bottom_left = bottom_left
         if not isinstance(angle_degrees, (float, int)):
-            raise ValueError(f"angle_degrees must be a float or int got: {angle_degrees}")
+            raise ValueError(
+                f"angle_degrees must be a float or int got: {angle_degrees}"
+            )
         self.angle_degrees = angle_degrees
         if not isinstance(angle_radians, (float, int)):
             raise ValueError("angleRadians must be a float or int got: ", angle_radians)
@@ -163,7 +165,7 @@ class Line:
             "PK": {"S": f"IMAGE#{self.image_id:05d}"},
             "SK": {"S": f"LINE#{self.id:05d}"},
         }
-    
+
     def gsi1_key(self) -> dict:
         """Generates the GSI1 key for the line
 
@@ -297,7 +299,7 @@ class Line:
         # 1) Check allowed range
         if use_radians:
             # Allowed range is [-π/2, π/2]
-            if not (-pi/2 <= angle <= pi/2):
+            if not (-pi / 2 <= angle <= pi / 2):
                 raise ValueError(
                     f"Angle {angle} (radians) is outside the allowed range [-π/2, π/2]."
                 )
@@ -346,7 +348,7 @@ class Line:
         if use_radians:
             # Accumulate the rotation in angleRadians
             self.angle_radians += angle_radians
-            self.angle_degrees += (angle_radians * 180.0 / pi)
+            self.angle_degrees += angle_radians * 180.0 / pi
         else:
             # If it was in degrees, accumulate in degrees
             self.angle_degrees += angle
@@ -440,7 +442,8 @@ def itemToLine(item: dict) -> Line:
             id=int(item["SK"]["S"][6:]),
             text=item["Text"]["S"],
             boundingBox={
-                key: float(value["N"]) for key, value in item["BoundingBox"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["BoundingBox"]["M"].items()
             },
             top_right={
                 key: float(value["N"]) for key, value in item["TopRight"]["M"].items()
@@ -449,7 +452,8 @@ def itemToLine(item: dict) -> Line:
                 key: float(value["N"]) for key, value in item["TopLeft"]["M"].items()
             },
             bottom_right={
-                key: float(value["N"]) for key, value in item["BottomRight"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["BottomRight"]["M"].items()
             },
             bottom_left={
                 key: float(value["N"]) for key, value in item["BottomLeft"]["M"].items()

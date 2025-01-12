@@ -26,7 +26,7 @@ correct_image_params = {
     "height": 20,
     "timestamp_added": datetime.now().isoformat(),
     "s3_bucket": "bucket",
-    "s3_key": "key"
+    "s3_key": "key",
 }
 
 
@@ -283,6 +283,7 @@ def test_deleteReceiptsFromImage(dynamodb_table: str):
     with pytest.raises(ValueError):
         dynamo_client.getReceipt(receipt.image_id, receipt.id)
 
+
 def test_deleteReceiptsFromImage_error_no_receipts_in_image(dynamodb_table: str):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
@@ -291,6 +292,7 @@ def test_deleteReceiptsFromImage_error_no_receipts_in_image(dynamodb_table: str)
     # Act
     with pytest.raises(ValueError):
         dynamo_client.deleteReceiptsFromImage(image_id)
+
 
 def test_getReceipt(dynamodb_table: str):
     # Arrange
@@ -304,6 +306,7 @@ def test_getReceipt(dynamodb_table: str):
     # Assert
     assert retrieved_receipt == receipt
 
+
 def test_getReceipt_error_receipt_not_exists(dynamodb_table: str):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
@@ -313,13 +316,14 @@ def test_getReceipt_error_receipt_not_exists(dynamodb_table: str):
     with pytest.raises(ValueError):
         dynamo_client.getReceipt(receipt.image_id, receipt.id)
 
+
 def test_getReceiptsFromImage(dynamodb_table: str):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
     receipt = Receipt(**correct_receipt_params)
     receipt_same_image = Receipt(**{**correct_receipt_params, "id": 2})
     receipt_different_image = Receipt(**{**correct_receipt_params, "image_id": 2})
-    dynamo_client.addReceipts([receipt,receipt_same_image, receipt_different_image])
+    dynamo_client.addReceipts([receipt, receipt_same_image, receipt_different_image])
 
     # Act
     retrieved_receipts = dynamo_client.getReceiptsFromImage(receipt.image_id)

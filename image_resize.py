@@ -1,9 +1,9 @@
 import cv2
 import base64
 
-factor =10
+factor = 10
 
-image_file = 'pic/Rec.png'
+image_file = "pic/Rec.png"
 
 print(f"Scaling image by: {1/factor}")
 
@@ -24,9 +24,9 @@ image_size_kb = image.size / 1024
 print(f"Image resize: {image_size_kb} KB")
 
 # write the image
-cv2.imwrite('resize/Resized_Rec.png', image)
+cv2.imwrite("resize/Resized_Rec.png", image)
 
 
 # convert the image to a base64-encoded string and write it to a text file in the same directory
-with open('resize/encoded_image.txt', 'w') as encoded_file:
-    encoded_file.write(base64.b64encode(image).decode('utf-8')) 
+with open("resize/encoded_image.txt", "w") as encoded_file:
+    encoded_file.write(base64.b64encode(image).decode("utf-8"))

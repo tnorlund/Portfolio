@@ -24,19 +24,14 @@ correct_line_params = {
     "id": 1,
     "image_id": 1,
     "text": "test",
-    "boundingBox": {
-        "x": 0.0,
-        "y": 0.0,
-        "width": 0.0,
-        "height": 0.0
-    },
+    "boundingBox": {"x": 0.0, "y": 0.0, "width": 0.0, "height": 0.0},
     "top_right": {"x": 0.0, "y": 0.0},
     "top_left": {"x": 0.0, "y": 0.0},
     "bottom_right": {"x": 0.0, "y": 0.0},
     "bottom_left": {"x": 0.0, "y": 0.0},
     "angle_degrees": 0,
     "angle_radians": 0,
-    "confidence": 1
+    "confidence": 1,
 }
 
 correct_image_params = {
@@ -45,8 +40,9 @@ correct_image_params = {
     "height": 20,
     "timestamp_added": datetime.now().isoformat(),
     "s3_bucket": "bucket",
-    "s3_key": "key"
+    "s3_key": "key",
 }
+
 
 def test_add_image(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
@@ -156,23 +152,23 @@ def test_get_imageDetails(dynamodb_table: Literal["MyMockedTable"]):
     )
     letter = Letter(
         1,
-    1,
-     1,
-     1,
-    "0",
-     {
-        "height": 0.022867568333804766,
-        "width": 0.08688726243285705,
-        "x": 0.4454336178993411,
-        "y": 0.9167082877754368,
-    },
-    {"x": 0.5323208803321982, "y": 0.930772983660083},
-     {"x": 0.44837726707985254, "y": 0.9395758561092415},
-     {"x": 0.5293772311516867, "y": 0.9167082877754368},
-     {"x": 0.4454336178993411, "y": 0.9255111602245953},
-     -5.986527,
-     -0.1044846,
-     1,
+        1,
+        1,
+        1,
+        "0",
+        {
+            "height": 0.022867568333804766,
+            "width": 0.08688726243285705,
+            "x": 0.4454336178993411,
+            "y": 0.9167082877754368,
+        },
+        {"x": 0.5323208803321982, "y": 0.930772983660083},
+        {"x": 0.44837726707985254, "y": 0.9395758561092415},
+        {"x": 0.5293772311516867, "y": 0.9167082877754368},
+        {"x": 0.4454336178993411, "y": 0.9255111602245953},
+        -5.986527,
+        -0.1044846,
+        1,
     )
     client.addImage(image)
     client.addLine(line)
@@ -227,7 +223,7 @@ def test_listImages(dynamodb_table: Literal["MyMockedTable"]):
     # Add Lines with same image_ids
     lines_in_image_1 = [
         Line(**correct_line_params),
-        Line(**{**correct_line_params, "id": 2})
+        Line(**{**correct_line_params, "id": 2}),
     ]
     lines_in_image_2 = [
         Line(**{**correct_line_params, "id": 1, "image_id": 2}),
@@ -267,7 +263,6 @@ def test_listImages(dynamodb_table: Literal["MyMockedTable"]):
     assert receipts_in_image_2 == payload[2]["receipts"]
 
 
-
 def test_listImages_pagination_returns_page_and_token(
     dynamodb_table: Literal["MyMockedTable"],
 ):
@@ -298,7 +293,9 @@ def test_listImages_pagination_returns_page_and_token(
         assert img in images_created, f"Image {img.id} should be in the original set"
 
 
-def test_listImages_pagination_uses_lastEvaluatedKey(dynamodb_table: Literal["MyMockedTable"]):
+def test_listImages_pagination_uses_lastEvaluatedKey(
+    dynamodb_table: Literal["MyMockedTable"],
+):
     # Arrange
     client = DynamoClient(dynamodb_table)
 
@@ -342,10 +339,14 @@ def test_listImages_pagination_uses_lastEvaluatedKey(dynamodb_table: Literal["My
     # Combine them
     all_returned = page_1_images + page_2_images + page_3_images
     # Sort & compare
-    assert sorted(all_returned, key=lambda x: x.id) == sorted(images_created, key=lambda x: x.id)
+    assert sorted(all_returned, key=lambda x: x.id) == sorted(
+        images_created, key=lambda x: x.id
+    )
 
 
-def test_listImages_pagination_no_limit_returns_all(dynamodb_table: Literal["MyMockedTable"]):
+def test_listImages_pagination_no_limit_returns_all(
+    dynamodb_table: Literal["MyMockedTable"],
+):
     """
     Verifies that calling listImages() with limit=None (and no lastEvaluatedKey)
     returns *all* images at once.
@@ -381,7 +382,9 @@ def test_listImages_pagination_no_limit_returns_all(dynamodb_table: Literal["MyM
         assert i in returned_images
 
 
-def test_listImages_pagination_with_limit_exceeds_count(dynamodb_table: Literal["MyMockedTable"]):
+def test_listImages_pagination_with_limit_exceeds_count(
+    dynamodb_table: Literal["MyMockedTable"],
+):
     """
     If we request a limit bigger than the total number of images,
     DynamoDB should return all images and no lastEvaluatedKey.
@@ -405,7 +408,9 @@ def test_listImages_pagination_with_limit_exceeds_count(dynamodb_table: Literal[
     returned_images = extract_images(payload)
 
     # Assert
-    assert len(returned_images) == 2, "Should return all images if limit exceeds total count"
+    assert (
+        len(returned_images) == 2
+    ), "Should return all images if limit exceeds total count"
     assert lek is None, "Should not return a lastEvaluatedKey if no more pages remain"
 
     # Ensure our 2 newly-added images are in the returned set
@@ -427,6 +432,7 @@ def test_listImages_pagination_empty_table(dynamodb_table: Literal["MyMockedTabl
     # Check that 'payload' is an empty dict
     assert len(payload) == 0, "Should return empty dictionary if no images exist"
     assert lek is None, "No next token if no images"
+
 
 def test_listImages_lek_structure_and_usage(dynamodb_table: Literal["MyMockedTable"]):
     """
@@ -452,7 +458,9 @@ def test_listImages_lek_structure_and_usage(dynamodb_table: Literal["MyMockedTab
     # Check that LEK has the correct DynamoDB key shape
     # Typically looks like: {'PK': {'S': 'IMAGE#00002'}, 'SK': {'S': 'IMAGE'}} or similar
     assert isinstance(lek_1, dict), "LEK should be a dictionary"
-    assert "PK" in lek_1 and "SK" in lek_1, "LEK dictionary should contain both PK and SK"
+    assert (
+        "PK" in lek_1 and "SK" in lek_1
+    ), "LEK dictionary should contain both PK and SK"
 
     # 2) Page 2: use lek_1
     payload_2, lek_2 = client.listImages(limit=2, last_evaluated_key=lek_1)
@@ -470,5 +478,11 @@ def test_listImages_lek_structure_and_usage(dynamodb_table: Literal["MyMockedTab
     def extract_images(payload_dict):
         return [v["image"] for v in payload_dict.values() if "image" in v]
 
-    all_returned = extract_images(payload_1) + extract_images(payload_2) + extract_images(payload_3)
-    assert sorted(all_returned, key=lambda x: x.id) == sorted(images_created, key=lambda x: x.id)
+    all_returned = (
+        extract_images(payload_1)
+        + extract_images(payload_2)
+        + extract_images(payload_3)
+    )
+    assert sorted(all_returned, key=lambda x: x.id) == sorted(
+        images_created, key=lambda x: x.id
+    )
