@@ -1,16 +1,21 @@
-from typing import Optional, List, Tuple, Dict
+from typing import Optional, List, Tuple, Dict, Union
 from dynamo import (
     Image,
     Line,
     Letter,
     Word,
     Receipt,
+    itemToReceipt,
     itemToImage,
     itemToLine,
     itemToWord,
     itemToLetter,
 )
 from botocore.exceptions import ClientError
+
+# DynamoDB batch_write_item can only handle up to 25 items per call
+# So let's chunk the items in groups of 25
+CHUNK_SIZE = 25
 
 
 class _Image:
@@ -40,6 +45,33 @@ class _Image:
             )
         except ClientError as e:
             raise ValueError(f"Image with ID {image.id} already exists")
+
+    def addImages(self, images: List[Image]):
+        """Adds a list of images to the database
+
+        Args:
+            images (list[Image]): The images to add to the database
+
+        Raises:
+            ValueError: When an image with the same ID already exists
+        """
+        try:
+            for i in range(0, len(images), CHUNK_SIZE):
+                chunk = images[i : i + CHUNK_SIZE]
+                request_items = [
+                    {"PutRequest": {"Item": image.to_item()}} for image in chunk
+                ]
+                response = self._client.batch_write_item(
+                    RequestItems={self.table_name: request_items}
+                )
+                # Handle unprocessed items if they exist
+                unprocessed = response.get("UnprocessedItems", {})
+                while unprocessed.get(self.table_name):
+                    # If there are unprocessed items, retry them
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    unprocessed = response.get("UnprocessedItems", {})
+        except ClientError as e:
+            raise ValueError(f"Error adding images: {e}")
 
     def getImage(self, image_id: int) -> Image:
         """Fetches a single Image item by its ID."""
@@ -142,7 +174,7 @@ class _Image:
 
     def listImages(
         self, limit: Optional[int] = None, last_evaluated_key: Optional[Dict] = None
-    ) -> Tuple[List[Image], Optional[Dict]]:
+    ) -> Tuple[Dict[int, Dict[str, Union[Image, List[Receipt], List[Line]]]], Optional[Dict]]:
         """
         Lists images using the GSI on GSI1PK='IMAGE'. When both 'limit' and
         'last_evaluated_key' are None, it will return *all* images (the current
@@ -156,7 +188,7 @@ class _Image:
                                    Defaults to None (start from the beginning).
 
         Returns:
-            tuple: (list_of_images, last_evaluated_key)
+            tuple: (payload, last_evaluated_key)
         """
         # If no limit or key is given, return *all* images (old behavior)
         if limit is None and last_evaluated_key is None:
@@ -194,8 +226,28 @@ class _Image:
                     or not response["LastEvaluatedKey"]
                 ):
                     break
+            payload = {}
+            for item in all_items:
+                if item["SK"]["S"] == "IMAGE":
+                    image = itemToImage(item)
+                    payload[image.id] = {'image': image}
+                elif item["SK"]["S"].startswith("RECEIPT"):
+                    receipt = itemToReceipt(item)
+                    if receipt.image_id in payload:
+                        if 'receipts' in payload[receipt.image_id]:
+                            payload[receipt.image_id]['receipts'].append(receipt)
+                        else:
+                            payload[receipt.image_id]['receipts'] = [receipt]
+                elif item["SK"]["S"].startswith("LINE"):
+                    line = itemToLine(item)
+                    if line.image_id in payload:
+                        if 'lines' in payload[line.image_id]:
+                            payload[line.image_id]['lines'].append(line)
+                        else:
+                            payload[line.image_id]['lines'] = [line]
+                    
 
-            return [itemToImage(item) for item in all_items], None
+            return payload, None
 
         # Otherwise, do a 'single-page' query for pagination
         try:
@@ -216,9 +268,27 @@ class _Image:
             response = self._client.query(**query_params)
             items = response.get("Items", [])
             lek = response.get("LastEvaluatedKey", None)
-            images = [itemToImage(item) for item in items]
+            payload = {}
+            for item in items:
+                if item["SK"]["S"] == "IMAGE":
+                    image = itemToImage(item)
+                    payload[image.id] = {'image': image}
+                elif item["SK"]["S"].startswith("RECEIPT"):
+                    receipt = itemToReceipt(item)
+                    if receipt.image_id in payload:
+                        if 'receipts' in payload[receipt.image_id]:
+                            payload[receipt.image_id]['receipts'].append(receipt)
+                        else:
+                            payload[receipt.image_id]['receipts'] = [receipt]
+                elif item["SK"]["S"].startswith("LINE"):
+                    line = itemToLine(item)
+                    if line.image_id in payload:
+                        if 'lines' in payload[line.image_id]:
+                            payload[line.image_id]['lines'].append(line)
+                        else:
+                            payload[line.image_id]['lines'] = [line]
 
-            return images, lek
+            return payload, lek
 
         except Exception as e:
             raise Exception(f"Error listing images with LastEvaluatedKey: {e}")

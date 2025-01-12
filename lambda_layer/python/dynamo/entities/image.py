@@ -11,7 +11,7 @@ class Image:
         timestamp_added: datetime,
         s3_bucket: str,
         s3_key: str,
-        sha256: str = None
+        sha256: str = None,
     ):
         """Constructs a new Image object for DynamoDB
 
@@ -71,7 +71,7 @@ class Image:
             dict: The primary key for the image
         """
         return {"PK": {"S": f"IMAGE#{self.id:05d}"}, "SK": {"S": "IMAGE"}}
-    
+
     def gsi1_key(self) -> dict:
         """Generates the GSI1 key for the image
 
@@ -95,7 +95,7 @@ class Image:
             "TimestampAdded": {"S": self.timestamp_added},
             "S3Bucket": {"S": self.s3_bucket},
             "S3Key": {"S": self.s3_key},
-            "SHA256": {"S": self.sha256 if self.sha256 else ""}
+            "SHA256": {"S": self.sha256 if self.sha256 else ""},
         }
 
     def __repr__(self) -> str:
@@ -154,9 +154,22 @@ def itemToImage(item: dict) -> Image:
     Raises:
         ValueError: When the item format is invalid
     """
-    required_keys = {"PK", "SK", "Type", "Width", "Height", "TimestampAdded", "S3Bucket", "S3Key"}
+    required_keys = {
+        "PK",
+        "SK",
+        "Type",
+        "Width",
+        "Height",
+        "TimestampAdded",
+        "S3Bucket",
+        "S3Key",
+    }
     if not required_keys.issubset(item.keys()):
-        raise ValueError("Invalid item format")
+        missing_keys = required_keys - item.keys()
+        additional_keys = item.keys() - required_keys
+        raise ValueError(
+            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
+        )
     try:
         sha256 = item.get("SHA256", {}).get("S")
         return Image(
@@ -166,7 +179,7 @@ def itemToImage(item: dict) -> Image:
             timestamp_added=datetime.fromisoformat(item["TimestampAdded"]["S"]),
             s3_bucket=item["S3Bucket"]["S"],
             s3_key=item["S3Key"]["S"],
-            sha256=sha256 if sha256 else None
+            sha256=sha256 if sha256 else None,
         )
     except KeyError:
         raise ValueError("Invalid item format")
