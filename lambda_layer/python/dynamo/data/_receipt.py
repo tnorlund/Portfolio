@@ -22,7 +22,7 @@ class _Receipt:
                 Item=receipt.to_item(),
                 ConditionExpression="attribute_not_exists(PK)",
             )
-        except ClientError as e:
+        except ClientError:
             raise ValueError(f"Receipt with ID {receipt.id} already exists")
 
     def addReceipts(self, receipts: list[Receipt]):
@@ -109,7 +109,7 @@ class _Receipt:
         try:
             self._client.delete_item(
                 TableName=self.table_name,
-                Key=receipt.to_key(),
+                Key=receipt.key(),
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
@@ -128,7 +128,7 @@ class _Receipt:
             for i in range(0, len(receipts), CHUNK_SIZE):
                 chunk = receipts[i : i + CHUNK_SIZE]
                 request_items = [
-                    {"DeleteRequest": {"Key": receipt.to_key()}} for receipt in chunk
+                    {"DeleteRequest": {"Key": receipt.key()}} for receipt in chunk
                 ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
@@ -147,14 +147,22 @@ class _Receipt:
 
         Args:
             image_id (int): The ID of the image to delete receipts from
+
+        Raises:
+            ValueError: When there is an error deleting receipts from the image or no receipts found
         """
         try:
             response = self._client.query(
                 TableName=self.table_name,
-                KeyConditionExpression="PK = :pk",
-                ExpressionAttributeValues={":pk": {"S": f"IMAGE#{image_id:05d}"}},
+                KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
+                ExpressionAttributeValues={
+                    ":pk": {"S": f"IMAGE#{image_id:05d}"},
+                    ":sk": {"S": "RECEIPT#"},
+                },
             )
             receipts = [itemToReceipt(item) for item in response["Items"]]
+            if not receipts:
+                raise ValueError(f"No receipts found for image ID {image_id}")
             self.deleteReceipts(receipts)
         except ClientError as e:
             raise ValueError(f"Error deleting receipts from image: {e}")
@@ -178,10 +186,10 @@ class _Receipt:
                 },
             )
             return itemToReceipt(response["Item"])
-        except ClientError as e:
+        except KeyError:
             raise ValueError(f"Receipt with ID {receipt_id} not found")
-        
-    def listReceiptsFromImage(self, image_id: int) -> list[Receipt]:
+
+    def getReceiptsFromImage(self, image_id: int) -> list[Receipt]:
         """List all receipts from an image using the GSI
 
         Args:
@@ -193,11 +201,11 @@ class _Receipt:
         try:
             response = self._client.query(
                 TableName=self.table_name,
-                IndexName="GSI1",  # Assuming the GSI is named "GSI1"
-                KeyConditionExpression="GSI1PK = :gsi1pk AND begins_with(GSI1SK, :gsi1sk)",
+                IndexName="GSI1",
+                KeyConditionExpression="GSI1PK = :gsi1pk AND begins_with(GSI1SK, :skval)",
                 ExpressionAttributeValues={
-                    ":gsi1pk": {"S": f"IMAGE#{image_id:05d}"},
-                    ":gsi1sk": {"S": f"IMAGE#{image_id:05d}#RECEIPT#"},
+                    ":gsi1pk": {"S": f"IMAGE#{image_id:05d}"},  # literal "IMAGE"
+                    ":skval": {"S": f"IMAGE#{image_id:05d}#RECEIPT#"},
                 },
             )
             return [itemToReceipt(item) for item in response["Items"]]
