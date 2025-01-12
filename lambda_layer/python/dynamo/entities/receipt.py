@@ -2,6 +2,7 @@ from typing import Generator, Tuple
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 
+
 def assert_valid_point(point):
     """
     Assert that the point is valid.
@@ -14,6 +15,7 @@ def assert_valid_point(point):
         if not isinstance(point[key], (int, float)):
             raise ValueError(f"point['{key}'] must be a number")
     return point
+
 
 def _format_float(
     value: float, decimal_places: int = 10, total_length: int = 20
@@ -41,6 +43,7 @@ def _format_float(
 
     return formatted
 
+
 class Receipt:
     def __init__(
         self,
@@ -55,7 +58,7 @@ class Receipt:
         top_right: dict,
         bottom_left: dict,
         bottom_right: dict,
-        sha256: str = None
+        sha256: str = None,
     ):
         """Constructs a new Receipt object for DynamoDB
 
@@ -72,7 +75,7 @@ class Receipt:
             bottom_left (dict): The bottom left corner of the bounding box
             bottom_right (dict): The bottom right corner of the bounding box
             sha256 (str): The SHA256 hash of the receipt
-        
+
         Attributes:
         """
         # Ensure the Image ID is a positive integer
@@ -123,7 +126,7 @@ class Receipt:
             "PK": {"S": f"IMAGE#{self.image_id:05d}"},
             "SK": {"S": f"RECEIPT#{self.id:05d}"},
         }
-    
+
     def gsi1_key(self) -> dict:
         """Generates the GSI1 key for the receipt
 
@@ -134,7 +137,7 @@ class Receipt:
             "GSI1PK": {"S": f"IMAGE#{self.image_id:05d}"},
             "GSI1SK": {"S": f"IMAGE#{self.image_id:05d}#RECEIPT#{self.id:05d}"},
         }
-    
+
     def to_item(self) -> dict:
         """Converts the Receipt object to a DynamoDB item
 
@@ -155,10 +158,12 @@ class Receipt:
                     "y": {"N": _format_float(self.topLeft["y"], 18, 20)},
                 }
             },
-            "topRight": {"M": {
+            "topRight": {
+                "M": {
                     "x": {"N": _format_float(self.topRight["x"], 18, 20)},
                     "y": {"N": _format_float(self.topRight["y"], 18, 20)},
-                }},
+                }
+            },
             "bottomLeft": {
                 "M": {
                     "x": {"N": _format_float(self.bottomLeft["x"], 18, 20)},
@@ -173,7 +178,7 @@ class Receipt:
             },
             "sha256": {"S": self.sha256} if self.sha256 else {"NULL": True},
         }
-    
+
     def __repr__(self) -> str:
         """Returns a string representation of the Receipt object
 
@@ -181,7 +186,7 @@ class Receipt:
             str: The string representation of the Receipt object
         """
         return f"Receipt(id={int(self.id)}, s3_key={self.s3_key})"
-    
+
     def __iter__(self) -> Generator[Tuple[str, int], None, None]:
         """Returns an iterator over the Receipt object
 
@@ -225,6 +230,7 @@ class Receipt:
             and self.sha256 == other.sha256
         )
 
+
 def itemToReceipt(item: dict) -> Receipt:
     """Converts a DynamoDB item to a Receipt object
 
@@ -234,7 +240,19 @@ def itemToReceipt(item: dict) -> Receipt:
     Returns:
         Receipt: The Receipt object
     """
-    required_keys = ["PK", "SK", "width", "height", "timestamp_added", "s3_bucket", "s3_key", "topLeft", "topRight", "bottomLeft", "bottomRight"]
+    required_keys = {
+        "PK",
+        "SK",
+        "width",
+        "height",
+        "timestamp_added",
+        "s3_bucket",
+        "s3_key",
+        "topLeft",
+        "topRight",
+        "bottomLeft",
+        "bottomRight",
+    }
     if not required_keys.issubset(item.keys()):
         raise ValueError("Invalid item format")
     try:
@@ -246,11 +264,11 @@ def itemToReceipt(item: dict) -> Receipt:
             timestamp_added=item["timestamp_added"]["S"],
             s3_bucket=item["s3_bucket"]["S"],
             s3_key=item["s3_key"]["S"],
-            top_left=item["topLeft"]["M"],
-            top_right=item["topRight"]["M"],
-            bottom_left=item["bottomLeft"]["M"],
-            bottom_right=item["bottomRight"]["M"],
-            sha256=item["sha256"]["S"] if "sha256" in item else None
+            top_left={key: float(value["N"]) for key, value in item["topLeft"]["M"].items()},
+            top_right={key: float(value["N"]) for key, value in item["topRight"]["M"].items()},
+            bottom_left={key: float(value["N"]) for key, value in item["bottomLeft"]["M"].items()},
+            bottom_right={key: float(value["N"]) for key, value in item["bottomRight"]["M"].items()},
+            sha256=item["sha256"]["S"] if "sha256" in item else None,
         )
     except Exception as e:
         raise ValueError("Invalid item format") from e
