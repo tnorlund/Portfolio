@@ -152,18 +152,10 @@ class _Receipt:
             ValueError: When there is an error deleting receipts from the image or no receipts found
         """
         try:
-            response = self._client.query(
-                TableName=self.table_name,
-                KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
-                ExpressionAttributeValues={
-                    ":pk": {"S": f"IMAGE#{image_id:05d}"},
-                    ":sk": {"S": "RECEIPT#"},
-                },
-            )
-            receipts = [itemToReceipt(item) for item in response["Items"]]
-            if not receipts:
+            receipts_from_image = self.getReceiptsFromImage(image_id)
+            if not receipts_from_image:
                 raise ValueError(f"No receipts found for image ID {image_id}")
-            self.deleteReceipts(receipts)
+            self.deleteReceipts(receipts_from_image)
         except ClientError as e:
             raise ValueError(f"Error deleting receipts from image: {e}")
 
@@ -201,11 +193,10 @@ class _Receipt:
         try:
             response = self._client.query(
                 TableName=self.table_name,
-                IndexName="GSI1",
-                KeyConditionExpression="GSI1PK = :gsi1pk AND begins_with(GSI1SK, :skval)",
+                KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
                 ExpressionAttributeValues={
-                    ":gsi1pk": {"S": f"IMAGE#{image_id:05d}"},  # literal "IMAGE"
-                    ":skval": {"S": f"IMAGE#{image_id:05d}#RECEIPT#"},
+                    ":pk": {"S": f"IMAGE#{image_id:05d}"},
+                    ":sk": {"S": "RECEIPT#"},
                 },
             )
             return [itemToReceipt(item) for item in response["Items"]]
