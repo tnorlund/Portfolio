@@ -32,24 +32,24 @@ def test_init():
         "width": 0.08690182470506236,
         "y": 0.9167082878750482,
     }
-    assert line.topRight == {
+    assert line.top_right == {
         "y": 0.9307722198001792,
         "x": 0.5323281614683008,
-    }, "topRight"
-    assert line.topLeft == {
+    }, "top_right"
+    assert line.top_left == {
         "y": 0.9395758560096301,
         "x": 0.44837726658954413,
-    }, "topLeft"
-    assert line.bottomRight == {
+    }, "top_left"
+    assert line.bottom_right == {
         "x": 0.529377231641995,
         "y": 0.9167082878750482,
-    }, "bottomRight"
-    assert line.bottomLeft == {
+    }, "bottom_right"
+    assert line.bottom_left == {
         "x": 0.4454263367632384,
         "y": 0.9255119240844992,
-    }, "bottomLeft"
-    assert line.angleDegrees == -5.986527
-    assert line.angleRadians == -0.10448461
+    }, "bottom_left"
+    assert line.angle_degrees == -5.986527
+    assert line.angle_radians == -0.10448461
     assert line.confidence == 1.00
 
     # Test bad Image ID
@@ -135,7 +135,7 @@ def test_init():
             1,
         )
 
-    # Test bad TopRight
+    # Test bad top_right
     with pytest.raises(ValueError):
         Line(
             1,
@@ -156,7 +156,7 @@ def test_init():
             1,
         )
 
-    # Test bad TopLeft
+    # Test bad top_left
     with pytest.raises(ValueError):
         Line(
             1,
@@ -177,7 +177,7 @@ def test_init():
             1,
         )
 
-    # Test bad BottomRight
+    # Test bad bottom_right
     with pytest.raises(ValueError):
         Line(
             1,
@@ -198,7 +198,7 @@ def test_init():
             1,
         )
 
-    # Test bad BottomLeft
+    # Test bad bottom_left
     with pytest.raises(ValueError):
         Line(
             1,
@@ -219,7 +219,7 @@ def test_init():
             1,
         )
 
-    # Test bad AngleDegrees
+    # Test bad angle_degrees
     with pytest.raises(ValueError):
         Line(
             1,
@@ -240,7 +240,7 @@ def test_init():
             1,
         )
 
-    # Test bad AngleRadians
+    # Test bad angle_radians
     with pytest.raises(ValueError):
         Line(
             1,
@@ -360,12 +360,12 @@ def create_test_line():
         id=1,
         text="Test",
         boundingBox={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        topRight={"x": 15.0, "y": 20.0},
-        topLeft={"x": 10.0, "y": 20.0},
-        bottomRight={"x": 15.0, "y": 22.0},
-        bottomLeft={"x": 10.0, "y": 22.0},
-        angleDegrees=0.0,
-        angleRadians=0.0,
+        top_right={"x": 15.0, "y": 20.0},
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 15.0, "y": 22.0},
+        bottom_left={"x": 10.0, "y": 22.0},
+        angle_degrees=0.0,
+        angle_radians=0.0,
         confidence=1.0,
     )
 
@@ -386,34 +386,34 @@ def test_translate(dx, dy):
     line = create_test_line()
 
     # Original corners and bounding box
-    orig_top_right = line.topRight.copy()
-    orig_top_left = line.topLeft.copy()
-    orig_bottom_right = line.bottomRight.copy()
-    orig_bottom_left = line.bottomLeft.copy()
+    orig_top_right = line.top_right.copy()
+    orig_top_left = line.top_left.copy()
+    orig_bottom_right = line.bottom_right.copy()
+    orig_bottom_left = line.bottom_left.copy()
     orig_bb = line.boundingBox.copy()  # boundingBox is not updated in translate
 
     # Translate
     line.translate(dx, dy)
 
     # Check corners
-    assert line.topRight["x"] == pytest.approx(orig_top_right["x"] + dx)
-    assert line.topRight["y"] == pytest.approx(orig_top_right["y"] + dy)
+    assert line.top_right["x"] == pytest.approx(orig_top_right["x"] + dx)
+    assert line.top_right["y"] == pytest.approx(orig_top_right["y"] + dy)
 
-    assert line.topLeft["x"] == pytest.approx(orig_top_left["x"] + dx)
-    assert line.topLeft["y"] == pytest.approx(orig_top_left["y"] + dy)
+    assert line.top_left["x"] == pytest.approx(orig_top_left["x"] + dx)
+    assert line.top_left["y"] == pytest.approx(orig_top_left["y"] + dy)
 
-    assert line.bottomRight["x"] == pytest.approx(orig_bottom_right["x"] + dx)
-    assert line.bottomRight["y"] == pytest.approx(orig_bottom_right["y"] + dy)
+    assert line.bottom_right["x"] == pytest.approx(orig_bottom_right["x"] + dx)
+    assert line.bottom_right["y"] == pytest.approx(orig_bottom_right["y"] + dy)
 
-    assert line.bottomLeft["x"] == pytest.approx(orig_bottom_left["x"] + dx)
-    assert line.bottomLeft["y"] == pytest.approx(orig_bottom_left["y"] + dy)
+    assert line.bottom_left["x"] == pytest.approx(orig_bottom_left["x"] + dx)
+    assert line.bottom_left["y"] == pytest.approx(orig_bottom_left["y"] + dy)
 
     # Check boundingBox (should not change)
     assert line.boundingBox == orig_bb
 
     # Angles should not change
-    assert line.angleDegrees == 0.0
-    assert line.angleRadians == 0.0
+    assert line.angle_degrees == 0.0
+    assert line.angle_radians == 0.0
 
 
 @pytest.mark.parametrize(
@@ -432,26 +432,26 @@ def test_scale(sx, sy):
     line = create_test_line()
 
     # Original corners and bounding box
-    orig_top_right = line.topRight.copy()
-    orig_top_left = line.topLeft.copy()
-    orig_bottom_right = line.bottomRight.copy()
-    orig_bottom_left = line.bottomLeft.copy()
+    orig_top_right = line.top_right.copy()
+    orig_top_left = line.top_left.copy()
+    orig_bottom_right = line.bottom_right.copy()
+    orig_bottom_left = line.bottom_left.copy()
     orig_bb = line.boundingBox.copy()
 
     line.scale(sx, sy)
 
     # Check corners
-    assert line.topRight["x"] == pytest.approx(orig_top_right["x"] * sx)
-    assert line.topRight["y"] == pytest.approx(orig_top_right["y"] * sy)
+    assert line.top_right["x"] == pytest.approx(orig_top_right["x"] * sx)
+    assert line.top_right["y"] == pytest.approx(orig_top_right["y"] * sy)
 
-    assert line.topLeft["x"] == pytest.approx(orig_top_left["x"] * sx)
-    assert line.topLeft["y"] == pytest.approx(orig_top_left["y"] * sy)
+    assert line.top_left["x"] == pytest.approx(orig_top_left["x"] * sx)
+    assert line.top_left["y"] == pytest.approx(orig_top_left["y"] * sy)
 
-    assert line.bottomRight["x"] == pytest.approx(orig_bottom_right["x"] * sx)
-    assert line.bottomRight["y"] == pytest.approx(orig_bottom_right["y"] * sy)
+    assert line.bottom_right["x"] == pytest.approx(orig_bottom_right["x"] * sx)
+    assert line.bottom_right["y"] == pytest.approx(orig_bottom_right["y"] * sy)
 
-    assert line.bottomLeft["x"] == pytest.approx(orig_bottom_left["x"] * sx)
-    assert line.bottomLeft["y"] == pytest.approx(orig_bottom_left["y"] * sy)
+    assert line.bottom_left["x"] == pytest.approx(orig_bottom_left["x"] * sx)
+    assert line.bottom_left["y"] == pytest.approx(orig_bottom_left["y"] * sy)
 
     # Check boundingBox
     assert line.boundingBox["x"] == pytest.approx(orig_bb["x"] * sx)
@@ -460,8 +460,8 @@ def test_scale(sx, sy):
     assert line.boundingBox["height"] == pytest.approx(orig_bb["height"] * sy)
 
     # Angles should not change
-    assert line.angleDegrees == 0.0
-    assert line.angleRadians == 0.0
+    assert line.angle_degrees == 0.0
+    assert line.angle_radians == 0.0
 
 
 def create_test_line():
@@ -471,12 +471,12 @@ def create_test_line():
         id=1,
         text="Test",
         boundingBox={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        topRight={"x": 15.0, "y": 20.0},
-        topLeft={"x": 10.0, "y": 20.0},
-        bottomRight={"x": 15.0, "y": 22.0},
-        bottomLeft={"x": 10.0, "y": 22.0},
-        angleDegrees=0.0,
-        angleRadians=0.0,
+        top_right={"x": 15.0, "y": 20.0},
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 15.0, "y": 22.0},
+        bottom_left={"x": 10.0, "y": 22.0},
+        angle_degrees=0.0,
+        angle_radians=0.0,
         confidence=1.0,
     )
 
@@ -511,25 +511,25 @@ def test_rotate_limited_range(angle, use_radians, should_raise):
     """
     line = create_test_line()
     orig_corners = {
-        "topRight": line.topRight.copy(),
-        "topLeft": line.topLeft.copy(),
-        "bottomRight": line.bottomRight.copy(),
-        "bottomLeft": line.bottomLeft.copy(),
+        "top_right": line.top_right.copy(),
+        "top_left": line.top_left.copy(),
+        "bottom_right": line.bottom_right.copy(),
+        "bottom_left": line.bottom_left.copy(),
     }
-    orig_angle_degrees = line.angleDegrees
-    orig_angle_radians = line.angleRadians
+    orig_angle_degrees = line.angle_degrees
+    orig_angle_radians = line.angle_radians
 
     if should_raise:
         with pytest.raises(ValueError):
             line.rotate(angle, 0, 0, use_radians=use_radians)
 
         # Corners and angles should remain unchanged after the exception
-        assert line.topRight == orig_corners["topRight"]
-        assert line.topLeft == orig_corners["topLeft"]
-        assert line.bottomRight == orig_corners["bottomRight"]
-        assert line.bottomLeft == orig_corners["bottomLeft"]
-        assert line.angleDegrees == orig_angle_degrees
-        assert line.angleRadians == orig_angle_radians
+        assert line.top_right == orig_corners["top_right"]
+        assert line.top_left == orig_corners["top_left"]
+        assert line.bottom_right == orig_corners["bottom_right"]
+        assert line.bottom_left == orig_corners["bottom_left"]
+        assert line.angle_degrees == orig_angle_degrees
+        assert line.angle_radians == orig_angle_radians
 
     else:
         # Rotation should succeed without error
@@ -544,45 +544,45 @@ def test_rotate_limited_range(angle, use_radians, should_raise):
         # Some corners must change unless angle=0
         if angle not in (0, 0.0):
             corners_changed = (
-                any(line.topRight[k] != orig_corners["topRight"][k] for k in ["x", "y"])
+                any(line.top_right[k] != orig_corners["top_right"][k] for k in ["x", "y"])
                 or any(
-                    line.topLeft[k] != orig_corners["topLeft"][k] for k in ["x", "y"]
+                    line.top_left[k] != orig_corners["top_left"][k] for k in ["x", "y"]
                 )
                 or any(
-                    line.bottomRight[k] != orig_corners["bottomRight"][k]
+                    line.bottom_right[k] != orig_corners["bottom_right"][k]
                     for k in ["x", "y"]
                 )
                 or any(
-                    line.bottomLeft[k] != orig_corners["bottomLeft"][k]
+                    line.bottom_left[k] != orig_corners["bottom_left"][k]
                     for k in ["x", "y"]
                 )
             )
             assert corners_changed, "Expected corners to change after valid rotation."
         else:
             # angle=0 => no corner change
-            assert line.topRight == orig_corners["topRight"]
-            assert line.topLeft == orig_corners["topLeft"]
-            assert line.bottomRight == orig_corners["bottomRight"]
-            assert line.bottomLeft == orig_corners["bottomLeft"]
+            assert line.top_right == orig_corners["top_right"]
+            assert line.top_left == orig_corners["top_left"]
+            assert line.bottom_right == orig_corners["bottom_right"]
+            assert line.bottom_left == orig_corners["bottom_left"]
 
         # Angles should have incremented
         if use_radians:
-            # Should have increased angleRadians by `angle`
-            assert line.angleRadians == pytest.approx(
+            # Should have increased angle_radians by `angle`
+            assert line.angle_radians == pytest.approx(
                 orig_angle_radians + angle, abs=1e-9
             )
-            # angleDegrees should be old + angle*(180/π)
+            # angle_degrees should be old + angle*(180/π)
             deg_from_radians = angle * 180.0 / math.pi
-            assert line.angleDegrees == pytest.approx(
+            assert line.angle_degrees == pytest.approx(
                 orig_angle_degrees + deg_from_radians, abs=1e-9
             )
         else:
-            # Should have increased angleDegrees by `angle`
-            assert line.angleDegrees == pytest.approx(
+            # Should have increased angle_degrees by `angle`
+            assert line.angle_degrees == pytest.approx(
                 orig_angle_degrees + angle, abs=1e-9
             )
-            # angleRadians should be old + radians(angle)
-            assert line.angleRadians == pytest.approx(
+            # angle_radians should be old + radians(angle)
+            assert line.angle_radians == pytest.approx(
                 orig_angle_radians + math.radians(angle), abs=1e-9
             )
 

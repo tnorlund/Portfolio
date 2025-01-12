@@ -162,6 +162,10 @@ def test_receipt_equality(valid_receipt_args):
     r3 = Receipt(**args)
     assert r1 != r3
 
+    # Change the image ID
+    r3 = Receipt(**{**valid_receipt_args, "image_id": 2})
+    assert r1 != r3
+
 
 def test_item_to_receipt_valid(valid_receipt_args):
     """Test itemToReceipt with a valid DynamoDB item."""
