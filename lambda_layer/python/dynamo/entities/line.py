@@ -72,12 +72,12 @@ class Line:
         id: int,
         text: str,
         boundingBox: dict,
-        topRight: dict,
-        topLeft: dict,
-        bottomRight: dict,
-        bottomLeft: dict,
-        angleDegrees: float,
-        angleRadians: float,
+        top_right: dict,
+        top_left: dict,
+        bottom_right: dict,
+        bottom_left: dict,
+        angle_degrees: float,
+        angle_radians: float,
         confidence: float,
     ):
         """Initializes a new Line object for DynamoDB
@@ -87,12 +87,12 @@ class Line:
             id (int): Identifier for the line
             text (str): The text content of the line
             boundingBox (dict): The bounding box of the line
-            topRight (dict): The top-right point of the line
-            topLeft (dict): The top-left point of the line
-            bottomRight (dict): The bottom-right point of the line
-            bottomLeft (dict): The bottom-left point of the line
-            angleDegrees (float): The angle of the line in degrees
-            angleRadians (float): The angle of the line in radians
+            top_right (dict): The top-right point of the line
+            top_left (dict): The top-left point of the line
+            bottom_right (dict): The bottom-right point of the line
+            bottom_left (dict): The bottom-left point of the line
+            angle_degrees (float): The angle of the line in degrees
+            angle_radians (float): The angle of the line in radians
             confidence (float): The confidence level of the line
 
         Attributes:
@@ -100,12 +100,12 @@ class Line:
             id (int): Identifier for the line
             text (str): The text content of the line
             boundingBox (dict): The bounding box of the line
-            topRight (dict): The top-right point of the line
-            topLeft (dict): The top-left point of the line
-            bottomRight (dict): The bottom-right point of the line
-            bottomLeft (dict): The bottom-left point of the line
-            angleDegrees (float): The angle of the line in degrees
-            angleRadians (float): The angle of the line in radians
+            top_right (dict): The top-right point of the line
+            top_left (dict): The top-left point of the line
+            bottom_right (dict): The bottom-right point of the line
+            bottom_left (dict): The bottom-left point of the line
+            angle_degrees (float): The angle of the line in degrees
+            angle_radians (float): The angle of the line in radians
             confidence (float): The confidence level of the line
 
         Raises:
@@ -113,12 +113,12 @@ class Line:
             ValueError: If id is not a positive integer
             ValueError: If text is not a string
             ValueError: If boundingBox is not valid
-            ValueError: If topRight is not valid
-            ValueError: If topLeft is not valid
-            ValueError: If bottomRight is not valid
-            ValueError: If bottomLeft is not valid
-            ValueError: If angleDegrees is not a float
-            ValueError: If angleRadians is not a float
+            ValueError: If top_right is not valid
+            ValueError: If top_left is not valid
+            ValueError: If bottom_right is not valid
+            ValueError: If bottom_left is not valid
+            ValueError: If angle_degrees is not a float
+            ValueError: If angle_radians is not a float
             ValueError: If confidence is not a float between 0 and 1
         """
         # Ensure the Image ID is a positive integer
@@ -134,22 +134,20 @@ class Line:
         self.text = text
         assert_valid_boundingBox(boundingBox)
         self.boundingBox = boundingBox
-        assert_valid_point(topRight)
-        self.topRight = topRight
-        assert_valid_point(topLeft)
-        self.topLeft = topLeft
-        assert_valid_point(bottomRight)
-        self.bottomRight = bottomRight
-        assert_valid_point(bottomLeft)
-        self.bottomLeft = bottomLeft
-        # Ensure the angleDegree is a float
-        if not isinstance(angleDegrees, (float, int)):
-            raise ValueError(f"angleDegrees must be a float or int got: {angleDegrees}")
-        self.angleDegrees = angleDegrees
-        # Ensure the angleRadians is a float
-        if not isinstance(angleRadians, (float, int)):
-            raise ValueError("angleRadians must be a float or int got: ", angleRadians)
-        self.angleRadians = angleRadians
+        assert_valid_point(top_right)
+        self.top_right = top_right
+        assert_valid_point(top_left)
+        self.top_left = top_left
+        assert_valid_point(bottom_right)
+        self.bottom_right = bottom_right
+        assert_valid_point(bottom_left)
+        self.bottom_left = bottom_left
+        if not isinstance(angle_degrees, (float, int)):
+            raise ValueError(f"angle_degrees must be a float or int got: {angle_degrees}")
+        self.angle_degrees = angle_degrees
+        if not isinstance(angle_radians, (float, int)):
+            raise ValueError("angleRadians must be a float or int got: ", angle_radians)
+        self.angle_radians = angle_radians
         # Ensure the confidence is a float between 0 and 1
         if confidence <= 0 or confidence > 1:
             raise ValueError("confidence must be a float between 0 and 1")
@@ -198,30 +196,30 @@ class Line:
             },
             "TopRight": {
                 "M": {
-                    "x": {"N": _format_float(self.topRight["x"], 18, 20)},
-                    "y": {"N": _format_float(self.topRight["y"], 18, 20)},
+                    "x": {"N": _format_float(self.top_right["x"], 18, 20)},
+                    "y": {"N": _format_float(self.top_right["y"], 18, 20)},
                 }
             },
             "TopLeft": {
                 "M": {
-                    "x": {"N": _format_float(self.topLeft["x"], 18, 20)},
-                    "y": {"N": _format_float(self.topLeft["y"], 18, 20)},
+                    "x": {"N": _format_float(self.top_left["x"], 18, 20)},
+                    "y": {"N": _format_float(self.top_left["y"], 18, 20)},
                 }
             },
             "BottomRight": {
                 "M": {
-                    "x": {"N": _format_float(self.bottomRight["x"], 18, 20)},
-                    "y": {"N": _format_float(self.bottomRight["y"], 18, 20)},
+                    "x": {"N": _format_float(self.bottom_right["x"], 18, 20)},
+                    "y": {"N": _format_float(self.bottom_right["y"], 18, 20)},
                 }
             },
             "BottomLeft": {
                 "M": {
-                    "x": {"N": _format_float(self.bottomLeft["x"], 18, 20)},
-                    "y": {"N": _format_float(self.bottomLeft["y"], 18, 20)},
+                    "x": {"N": _format_float(self.bottom_left["x"], 18, 20)},
+                    "y": {"N": _format_float(self.bottom_left["y"], 18, 20)},
                 }
             },
-            "AngleDegrees": {"N": _format_float(self.angleDegrees, 10, 12)},
-            "AngleRadians": {"N": _format_float(self.angleRadians, 10, 12)},
+            "AngleDegrees": {"N": _format_float(self.angle_degrees, 10, 12)},
+            "AngleRadians": {"N": _format_float(self.angle_radians, 10, 12)},
             "Confidence": {"N": _format_float(self.confidence, 2, 2)},
         }
 
@@ -232,41 +230,41 @@ class Line:
             Tuple[float, float]: The x and y coordinates of the centroid
         """
         x = (
-            self.topRight["x"]
-            + self.topLeft["x"]
-            + self.bottomRight["x"]
-            + self.bottomLeft["x"]
+            self.top_right["x"]
+            + self.top_left["x"]
+            + self.bottom_right["x"]
+            + self.bottom_left["x"]
         ) / 4
         y = (
-            self.topRight["y"]
-            + self.topLeft["y"]
-            + self.bottomRight["y"]
-            + self.bottomLeft["y"]
+            self.top_right["y"]
+            + self.top_left["y"]
+            + self.bottom_right["y"]
+            + self.bottom_left["y"]
         ) / 4
         return x, y
 
     def translate(self, x: float, y: float) -> None:
         """Translates the x, y position"""
-        self.topRight["x"] += x
-        self.topRight["y"] += y
-        self.topLeft["x"] += x
-        self.topLeft["y"] += y
-        self.bottomRight["x"] += x
-        self.bottomRight["y"] += y
-        self.bottomLeft["x"] += x
-        self.bottomLeft["y"] += y
+        self.top_right["x"] += x
+        self.top_right["y"] += y
+        self.top_left["x"] += x
+        self.top_left["y"] += y
+        self.bottom_right["x"] += x
+        self.bottom_right["y"] += y
+        self.bottom_left["x"] += x
+        self.bottom_left["y"] += y
         Warning("This function does not update the bounding box")
 
     def scale(self, sx: float, sy: float) -> None:
         """Scales the line by the x and y factors"""
-        self.topRight["x"] *= sx
-        self.topRight["y"] *= sy
-        self.topLeft["x"] *= sx
-        self.topLeft["y"] *= sy
-        self.bottomRight["x"] *= sx
-        self.bottomRight["y"] *= sy
-        self.bottomLeft["x"] *= sx
-        self.bottomLeft["y"] *= sy
+        self.top_right["x"] *= sx
+        self.top_right["y"] *= sy
+        self.top_left["x"] *= sx
+        self.top_left["y"] *= sy
+        self.bottom_right["x"] *= sx
+        self.bottom_right["y"] *= sy
+        self.bottom_left["x"] *= sx
+        self.bottom_left["y"] *= sy
         self.boundingBox["x"] *= sx
         self.boundingBox["y"] *= sy
         self.boundingBox["width"] *= sx
@@ -332,7 +330,7 @@ class Line:
             final_y = rotated_y + oy
             return final_x, final_y
 
-        corners = [self.topRight, self.topLeft, self.bottomRight, self.bottomLeft]
+        corners = [self.top_right, self.top_left, self.bottom_right, self.bottom_left]
         for corner in corners:
             x_new, y_new = rotate_point(
                 corner["x"],
@@ -347,13 +345,13 @@ class Line:
         # 3) Update angleDegrees and angleRadians
         if use_radians:
             # Accumulate the rotation in angleRadians
-            self.angleRadians += angle_radians
-            self.angleDegrees += (angle_radians * 180.0 / pi)
+            self.angle_radians += angle_radians
+            self.angle_degrees += (angle_radians * 180.0 / pi)
         else:
             # If it was in degrees, accumulate in degrees
-            self.angleDegrees += angle
+            self.angle_degrees += angle
             # Convert that addition to radians
-            self.angleRadians += radians(angle)
+            self.angle_radians += radians(angle)
 
         # 4) Warn that the bounding box is not updated
         Warning("This function does not update the bounding box")
@@ -376,12 +374,12 @@ class Line:
         yield "id", self.id
         yield "text", self.text
         yield "boundingBox", self.boundingBox
-        yield "topRight", self.topRight
-        yield "topLeft", self.topLeft
-        yield "bottomRight", self.bottomRight
-        yield "bottomLeft", self.bottomLeft
-        yield "angleDegrees", self.angleDegrees
-        yield "angleRadians", self.angleRadians
+        yield "topRight", self.top_right
+        yield "topLeft", self.top_left
+        yield "bottomRight", self.bottom_right
+        yield "bottomLeft", self.bottom_left
+        yield "angleDegrees", self.angle_degrees
+        yield "angleRadians", self.angle_radians
         yield "confidence", self.confidence
 
     def __eq__(self, other: object) -> bool:
@@ -400,12 +398,12 @@ class Line:
             and self.id == other.id
             and self.text == other.text
             and self.boundingBox == other.boundingBox
-            and self.topRight == other.topRight
-            and self.topLeft == other.topLeft
-            and self.bottomRight == other.bottomRight
-            and self.bottomLeft == other.bottomLeft
-            and self.angleDegrees == other.angleDegrees
-            and self.angleRadians == other.angleRadians
+            and self.top_right == other.top_right
+            and self.top_left == other.top_left
+            and self.bottom_right == other.bottom_right
+            and self.bottom_left == other.bottom_left
+            and self.angle_degrees == other.angle_degrees
+            and self.angle_radians == other.angle_radians
             and self.confidence == other.confidence
         )
 
@@ -419,16 +417,57 @@ def itemToLine(item: dict) -> Line:
     Returns:
         Line: The Line object represented by the DynamoDB item
     """
-    return Line(
-        int(item["PK"]["S"][6:]),
-        int(item["SK"]["S"][6:]),
-        item["Text"]["S"],
-        map_to_dict(item["BoundingBox"]["M"]),
-        map_to_dict(item["TopRight"]["M"]),
-        map_to_dict(item["TopLeft"]["M"]),
-        map_to_dict(item["BottomRight"]["M"]),
-        map_to_dict(item["BottomLeft"]["M"]),
-        float(item["AngleDegrees"]["N"]),
-        float(item["AngleRadians"]["N"]),
-        float(item["Confidence"]["N"]),
-    )
+    required_keys = {
+        "PK",
+        "SK",
+        "Type",
+        "Text",
+        "BoundingBox",
+        "TopRight",
+        "TopLeft",
+        "BottomRight",
+        "BottomLeft",
+        "AngleDegrees",
+        "AngleRadians",
+        "Confidence",
+    }
+    if not required_keys.issubset(item.keys()):
+        missing_keys = required_keys - set(item.keys())
+        raise ValueError("Item is missing required keys", missing_keys)
+    try:
+        return Line(
+            image_id=int(item["PK"]["S"][6:]),
+            id=int(item["SK"]["S"][6:]),
+            text=item["Text"]["S"],
+            boundingBox={
+                key: float(value["N"]) for key, value in item["BoundingBox"]["M"].items()
+            },
+            top_right={
+                key: float(value["N"]) for key, value in item["TopRight"]["M"].items()
+            },
+            top_left={
+                key: float(value["N"]) for key, value in item["TopLeft"]["M"].items()
+            },
+            bottom_right={
+                key: float(value["N"]) for key, value in item["BottomRight"]["M"].items()
+            },
+            bottom_left={
+                key: float(value["N"]) for key, value in item["BottomLeft"]["M"].items()
+            },
+            angle_degrees=float(item["AngleDegrees"]["N"]),
+            angle_radians=float(item["AngleRadians"]["N"]),
+            confidence=float(item["Confidence"]["N"]),
+            # int(item["PK"]["S"][6:]),
+            # int(item["SK"]["S"][6:]),
+            # item["Text"]["S"],
+            # map_to_dict(item["BoundingBox"]["M"]),
+            # map_to_dict(item["TopRight"]["M"]),
+            # map_to_dict(item["TopLeft"]["M"]),
+            # map_to_dict(item["BottomRight"]["M"]),
+            # map_to_dict(item["BottomLeft"]["M"]),
+            # float(item["AngleDegrees"]["N"]),
+            # float(item["AngleRadians"]["N"]),
+            # float(item["Confidence"]["N"]),
+        )
+    except KeyError as e:
+        raise ValueError(f"Error converting item to Line: {e}")

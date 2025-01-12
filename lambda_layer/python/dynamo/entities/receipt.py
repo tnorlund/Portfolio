@@ -185,7 +185,7 @@ class Receipt:
         Returns:
             str: The string representation of the Receipt object
         """
-        return f"Receipt(id={int(self.id)}, s3_key={self.s3_key})"
+        return f"Receipt(id={int(self.id)}, image_id={int(self.image_id)} s3_key={self.s3_key})"
 
     def __iter__(self) -> Generator[Tuple[str, int], None, None]:
         """Returns an iterator over the Receipt object
@@ -218,6 +218,7 @@ class Receipt:
             return NotImplemented
         return (
             int(self.id) == int(other.id)
+            and self.image_id == other.image_id
             and self.width == other.width
             and self.height == other.height
             and self.timestamp_added == other.timestamp_added
