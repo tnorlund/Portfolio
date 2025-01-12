@@ -83,7 +83,7 @@ class _Image:
             return itemToImage(response["Item"])
         except KeyError:
             raise ValueError(f"Image with ID {image_id} not found")
-        
+
     def updateImage(self, image: Image):
         """Updates an image in the database."""
         try:
@@ -174,7 +174,9 @@ class _Image:
 
     def listImages(
         self, limit: Optional[int] = None, last_evaluated_key: Optional[Dict] = None
-    ) -> Tuple[Dict[int, Dict[str, Union[Image, List[Receipt], List[Line]]]], Optional[Dict]]:
+    ) -> Tuple[
+        Dict[int, Dict[str, Union[Image, List[Receipt], List[Line]]]], Optional[Dict]
+    ]:
         """
         Lists images using the GSI on GSI1PK='IMAGE'. When both 'limit' and
         'last_evaluated_key' are None, it will return *all* images (the current
@@ -230,22 +232,21 @@ class _Image:
             for item in all_items:
                 if item["SK"]["S"] == "IMAGE":
                     image = itemToImage(item)
-                    payload[image.id] = {'image': image}
+                    payload[image.id] = {"image": image}
                 elif item["SK"]["S"].startswith("RECEIPT"):
                     receipt = itemToReceipt(item)
                     if receipt.image_id in payload:
-                        if 'receipts' in payload[receipt.image_id]:
-                            payload[receipt.image_id]['receipts'].append(receipt)
+                        if "receipts" in payload[receipt.image_id]:
+                            payload[receipt.image_id]["receipts"].append(receipt)
                         else:
-                            payload[receipt.image_id]['receipts'] = [receipt]
+                            payload[receipt.image_id]["receipts"] = [receipt]
                 elif item["SK"]["S"].startswith("LINE"):
                     line = itemToLine(item)
                     if line.image_id in payload:
-                        if 'lines' in payload[line.image_id]:
-                            payload[line.image_id]['lines'].append(line)
+                        if "lines" in payload[line.image_id]:
+                            payload[line.image_id]["lines"].append(line)
                         else:
-                            payload[line.image_id]['lines'] = [line]
-                    
+                            payload[line.image_id]["lines"] = [line]
 
             return payload, None
 
@@ -272,21 +273,21 @@ class _Image:
             for item in items:
                 if item["SK"]["S"] == "IMAGE":
                     image = itemToImage(item)
-                    payload[image.id] = {'image': image}
+                    payload[image.id] = {"image": image}
                 elif item["SK"]["S"].startswith("RECEIPT"):
                     receipt = itemToReceipt(item)
                     if receipt.image_id in payload:
-                        if 'receipts' in payload[receipt.image_id]:
-                            payload[receipt.image_id]['receipts'].append(receipt)
+                        if "receipts" in payload[receipt.image_id]:
+                            payload[receipt.image_id]["receipts"].append(receipt)
                         else:
-                            payload[receipt.image_id]['receipts'] = [receipt]
+                            payload[receipt.image_id]["receipts"] = [receipt]
                 elif item["SK"]["S"].startswith("LINE"):
                     line = itemToLine(item)
                     if line.image_id in payload:
-                        if 'lines' in payload[line.image_id]:
-                            payload[line.image_id]['lines'].append(line)
+                        if "lines" in payload[line.image_id]:
+                            payload[line.image_id]["lines"].append(line)
                         else:
-                            payload[line.image_id]['lines'] = [line]
+                            payload[line.image_id]["lines"] = [line]
 
             return payload, lek
 

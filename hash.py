@@ -8,8 +8,14 @@ from dotenv import load_dotenv
 import boto3
 
 from dynamo import DynamoClient, Image, Line, Word, Letter, ScaledImage, itemToImage
-from utils import encode_image_below_size, get_max_index_in_images, process_ocr_dict, calculate_sha256
+from utils import (
+    encode_image_below_size,
+    get_max_index_in_images,
+    process_ocr_dict,
+    calculate_sha256,
+)
 import tempfile
+
 # Load environment variables from .env file
 load_dotenv()
 # Use the environment variables

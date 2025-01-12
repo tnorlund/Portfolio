@@ -7,7 +7,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Get environment variables
-DYNAMODB_TABLE_NAME = os.environ['DYNAMODB_TABLE_NAME']
+DYNAMODB_TABLE_NAME = os.environ["DYNAMODB_TABLE_NAME"]
 
 
 # read all characters from DynamoDB
@@ -27,12 +27,10 @@ def read_characters_from_dynamodb(dynamodb_table_name, aws_region="us-east-1"):
     except Exception as e:
         print(f"Error reading from DynamoDB: {e}")
 
+
 def lambda_handler(event, context):
     # read_characters_from_dynamodb(DYNAMODB_TABLE_NAME)
 
     print("triggered Lambda Function!")
     logger.info("Received event: %s", event)
-    return {
-            'statusCode': 200,
-            'body': 'Health check passed'
-        }
+    return {"statusCode": 200, "body": "Health check passed"}

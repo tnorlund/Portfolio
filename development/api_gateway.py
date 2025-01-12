@@ -40,7 +40,10 @@ route_health_check = aws.apigatewayv2.Route(
     api_id=api.id,
     route_key="GET /health_check",
     target=integration_health_check.id.apply(lambda id: f"integrations/{id}"),
-    opts=pulumi.ResourceOptions(replace_on_changes=["route_key", "target"], delete_before_replace=True,),
+    opts=pulumi.ResourceOptions(
+        replace_on_changes=["route_key", "target"],
+        delete_before_replace=True,
+    ),
 )
 lambda_permission_health_check = aws.lambda_.Permission(
     "health_check_lambda_permission",
@@ -64,7 +67,10 @@ route_images = aws.apigatewayv2.Route(
     api_id=api.id,
     route_key="GET /images",
     target=integration_images.id.apply(lambda id: f"integrations/{id}"),
-    opts=pulumi.ResourceOptions(replace_on_changes=["route_key", "target"], delete_before_replace=True,),
+    opts=pulumi.ResourceOptions(
+        replace_on_changes=["route_key", "target"],
+        delete_before_replace=True,
+    ),
 )
 lambda_permission_images = aws.lambda_.Permission(
     "images_lambda_permission",

@@ -5,6 +5,7 @@ from dynamo.data._word import _Word
 from dynamo.data._letter import _Letter
 from dynamo.data._receipt import _Receipt
 
+
 class DynamoClient(_Image, _Line, _Word, _Letter, _Receipt):
     """A class used to represent a DynamoDB client."""
 
@@ -26,4 +27,6 @@ class DynamoClient(_Image, _Line, _Word, _Letter, _Receipt):
         try:
             self._client.describe_table(TableName=self.table_name)
         except self._client.exceptions.ResourceNotFoundException:
-            raise ValueError(f"The table '{self.table_name}' does not exist in region '{region}'.")
+            raise ValueError(
+                f"The table '{self.table_name}' does not exist in region '{region}'."
+            )

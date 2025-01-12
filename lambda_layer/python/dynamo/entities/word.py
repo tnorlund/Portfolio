@@ -1,6 +1,7 @@
 from typing import Generator, Tuple
 from decimal import Decimal, ROUND_HALF_UP
 
+
 def assert_valid_boundingBox(boundingBox):
     """
     Assert that the bounding box is valid.
@@ -35,6 +36,7 @@ def map_to_dict(map):
     """
     return {key: float(value["N"]) for key, value in map.items()}
 
+
 def _format_float(
     value: float, decimal_places: int = 10, total_length: int = 20
 ) -> str:
@@ -61,6 +63,7 @@ def _format_float(
 
     return formatted
 
+
 class Word:
     def __init__(
         self,
@@ -76,7 +79,7 @@ class Word:
         angleDegrees: float,
         angleRadians: float,
         confidence: float,
-        tags: list[str] = None
+        tags: list[str] = None,
     ):
         if image_id <= 0 or not isinstance(image_id, int):
             raise ValueError("image_id must be a positive integer")
@@ -112,13 +115,13 @@ class Word:
         if tags is not None and not isinstance(tags, list):
             raise ValueError("tags must be a list")
         self.tags = tags if tags is not None else []
-    
+
     def key(self) -> dict:
         return {
             "PK": {"S": f"IMAGE#{self.image_id:05d}"},
-            "SK": {"S": f"LINE#{self.line_id:05d}#WORD#{self.id:05d}"}
+            "SK": {"S": f"LINE#{self.line_id:05d}#WORD#{self.id:05d}"},
         }
-    
+
     def to_item(self) -> dict:
         item = {
             **self.key(),
@@ -166,12 +169,12 @@ class Word:
 
     def __repr__(self):
         """Returns a string representation of the Word object
-        
+
         Returns:
             str: The string representation of the Word object
         """
         return f"Word(id={int(self.id)}, text='{self.text}')"
-    
+
     def __iter__(self) -> Generator[Tuple[str, str], None, None]:
         yield "image_id", self.image_id
         yield "line_id", self.line_id
@@ -190,10 +193,10 @@ class Word:
 
     def __eq__(self, other: object) -> bool:
         """Compares two Word objects
-        
+
         Args:
             other (object): The object to compare
-        
+
         Returns:
             bool: True if the objects are equal, False otherwise
         """
@@ -214,14 +217,14 @@ class Word:
             and self.confidence == other.confidence
             and self.tags == other.tags
         )
-        
-    
+
+
 def itemToWord(item: dict) -> Word:
     """Converts a DynamoDB item to a Word object
-    
+
     Args:
         item (dict): The DynamoDB item to convert
-    
+
     Returns:
         Word: The Word object created from the item
     """
@@ -238,5 +241,5 @@ def itemToWord(item: dict) -> Word:
         float(item["AngleDegrees"]["N"]),
         float(item["AngleRadians"]["N"]),
         float(item["Confidence"]["N"]),
-        item.get("Tags", {}).get("SS", [])
+        item.get("Tags", {}).get("SS", []),
     )
