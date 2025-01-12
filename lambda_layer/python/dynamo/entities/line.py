@@ -461,17 +461,6 @@ def itemToLine(item: dict) -> Line:
             angle_degrees=float(item["AngleDegrees"]["N"]),
             angle_radians=float(item["AngleRadians"]["N"]),
             confidence=float(item["Confidence"]["N"]),
-            # int(item["PK"]["S"][6:]),
-            # int(item["SK"]["S"][6:]),
-            # item["Text"]["S"],
-            # map_to_dict(item["BoundingBox"]["M"]),
-            # map_to_dict(item["TopRight"]["M"]),
-            # map_to_dict(item["TopLeft"]["M"]),
-            # map_to_dict(item["BottomRight"]["M"]),
-            # map_to_dict(item["BottomLeft"]["M"]),
-            # float(item["AngleDegrees"]["N"]),
-            # float(item["AngleRadians"]["N"]),
-            # float(item["Confidence"]["N"]),
         )
     except KeyError as e:
         raise ValueError(f"Error converting item to Line: {e}")

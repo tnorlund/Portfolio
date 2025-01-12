@@ -144,7 +144,7 @@ class _Letter:
         response = self._client.scan(
             TableName=self.table_name,
             ScanFilter={
-                "Type": {
+                "TYPE": {
                     "AttributeValueList": [{"S": "LETTER"}],
                     "ComparisonOperator": "EQ",
                 }
@@ -158,7 +158,7 @@ class _Letter:
         response = self._client.scan(
             TableName=self.table_name,
             ScanFilter={
-                "Type": {
+                "TYPE": {
                     "AttributeValueList": [{"S": "LETTER"}],
                     "ComparisonOperator": "EQ",
                 },

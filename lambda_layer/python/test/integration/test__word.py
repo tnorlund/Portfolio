@@ -8,18 +8,18 @@ correct_word_params = {
     "line_id": 2,
     "id": 3,
     "text": "07\/03\/2024",
-    "boundingBox": {
+    "bounding_box": {
         "y": 0.9167082878750482,
         "width": 0.08690182470506236,
         "x": 0.4454263367632384,
         "height": 0.022867568134581906,
     },
-    "topRight": {"y": 0.9307722198001792, "x": 0.5323281614683008},
-    "topLeft": {"x": 0.44837726658954413, "y": 0.9395758560096301},
-    "bottomRight": {"y": 0.9167082878750482, "x": 0.529377231641995},
-    "bottomLeft": {"x": 0.4454263367632384, "y": 0.9255119240844992},
-    "angleDegrees": -5.986527,
-    "angleRadians": -0.10448461,
+    "top_right": {"y": 0.9307722198001792, "x": 0.5323281614683008},
+    "top_left": {"x": 0.44837726658954413, "y": 0.9395758560096301},
+    "bottom_right": {"y": 0.9167082878750482, "x": 0.529377231641995},
+    "bottom_left": {"x": 0.4454263367632384, "y": 0.9255119240844992},
+    "angle_degrees": -5.986527,
+    "angle_radians": -0.10448461,
     "confidence": 1,
 }
 
@@ -166,19 +166,17 @@ def test_getWord_error(dynamodb_table: Literal["MyMockedTable"]):
 def test_listWords(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    word1 = Word(**correct_word_params)
-    word2_params = correct_word_params.copy()
-    word2_params["id"] = 4
-    word2 = Word(**word2_params)
-    client.addWord(word1)
-    client.addWord(word2)
+    words = [
+        Word(**correct_word_params),
+        Word(**{**correct_word_params, 'id': 4}),
+    ]
+    client.addWords(words)
 
     # Act
-    words = client.listWords()
+    words_retrieved = client.listWords()
 
     # Assert
-    assert word1 in words
-    assert word2 in words
+    assert words_retrieved == words
 
 
 def test_listWordsFromLine(dynamodb_table: Literal["MyMockedTable"]):
