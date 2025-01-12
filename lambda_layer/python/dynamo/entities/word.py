@@ -71,13 +71,13 @@ class Word:
         line_id: int,
         id: int,
         text: str,
-        boundingBox: dict,
-        topRight: dict,
-        topLeft: dict,
-        bottomRight: dict,
-        bottomLeft: dict,
-        angleDegrees: float,
-        angleRadians: float,
+        bounding_box: dict,
+        top_right: dict,
+        top_left: dict,
+        bottom_right: dict,
+        bottom_left: dict,
+        angle_degrees: float,
+        angle_radians: float,
         confidence: float,
         tags: list[str] = None,
     ):
@@ -93,22 +93,26 @@ class Word:
         if not isinstance(text, str):
             raise ValueError("text must be a string")
         self.text = text
-        assert_valid_boundingBox(boundingBox)
-        self.boundingBox = boundingBox
-        assert_valid_point(topRight)
-        self.topRight = topRight
-        assert_valid_point(topLeft)
-        self.topLeft = topLeft
-        assert_valid_point(bottomRight)
-        self.bottomRight = bottomRight
-        assert_valid_point(bottomLeft)
-        self.bottomLeft = bottomLeft
-        if not isinstance(angleDegrees, (float, int)):
-            raise ValueError(f"angleDegrees must be a float or int got: {angleDegrees}")
-        self.angleDegrees = angleDegrees
-        if not isinstance(angleRadians, (float, int)):
-            raise ValueError("angleRadians must be a float or int got: ", angleRadians)
-        self.angleRadians = angleRadians
+        assert_valid_boundingBox(bounding_box)
+        self.bounding_box = bounding_box
+        assert_valid_point(top_right)
+        self.top_right = top_right
+        assert_valid_point(top_left)
+        self.top_left = top_left
+        assert_valid_point(bottom_right)
+        self.bottom_right = bottom_right
+        assert_valid_point(bottom_left)
+        self.bottom_left = bottom_left
+        if not isinstance(angle_degrees, (float, int)):
+            raise ValueError(
+                f"angle_degrees must be a float or int got: {angle_degrees}"
+            )
+        self.angle_degrees = angle_degrees
+        if not isinstance(angle_radians, (float, int)):
+            raise ValueError(
+                "angle_radians must be a float or int got: ", angle_radians
+            )
+        self.angle_radians = angle_radians
         if confidence <= 0 or confidence > 1:
             raise ValueError("confidence must be a float between 0 and 1")
         self.confidence = confidence
@@ -125,46 +129,46 @@ class Word:
     def to_item(self) -> dict:
         item = {
             **self.key(),
-            "Type": {"S": "WORD"},
-            "Text": {"S": self.text},
-            "BoundingBox": {
+            "TYPE": {"S": "WORD"},
+            "text": {"S": self.text},
+            "bounding_box": {
                 "M": {
-                    "x": {"N": _format_float(self.boundingBox["x"], 18, 20)},
-                    "y": {"N": _format_float(self.boundingBox["y"], 18, 20)},
-                    "width": {"N": _format_float(self.boundingBox["width"], 18, 20)},
-                    "height": {"N": _format_float(self.boundingBox["height"], 18, 20)},
+                    "x": {"N": _format_float(self.bounding_box["x"], 18, 20)},
+                    "y": {"N": _format_float(self.bounding_box["y"], 18, 20)},
+                    "width": {"N": _format_float(self.bounding_box["width"], 18, 20)},
+                    "height": {"N": _format_float(self.bounding_box["height"], 18, 20)},
                 }
             },
-            "TopRight": {
+            "top_right": {
                 "M": {
-                    "x": {"N": _format_float(self.topRight["x"], 18, 20)},
-                    "y": {"N": _format_float(self.topRight["y"], 18, 20)},
+                    "x": {"N": _format_float(self.top_right["x"], 18, 20)},
+                    "y": {"N": _format_float(self.top_right["y"], 18, 20)},
                 }
             },
-            "TopLeft": {
+            "top_left": {
                 "M": {
-                    "x": {"N": _format_float(self.topLeft["x"], 18, 20)},
-                    "y": {"N": _format_float(self.topLeft["y"], 18, 20)},
+                    "x": {"N": _format_float(self.top_left["x"], 18, 20)},
+                    "y": {"N": _format_float(self.top_left["y"], 18, 20)},
                 }
             },
-            "BottomRight": {
+            "bottom_right": {
                 "M": {
-                    "x": {"N": _format_float(self.bottomRight["x"], 18, 20)},
-                    "y": {"N": _format_float(self.bottomRight["y"], 18, 20)},
+                    "x": {"N": _format_float(self.bottom_right["x"], 18, 20)},
+                    "y": {"N": _format_float(self.bottom_right["y"], 18, 20)},
                 }
             },
-            "BottomLeft": {
+            "bottom_left": {
                 "M": {
-                    "x": {"N": _format_float(self.bottomLeft["x"], 18, 20)},
-                    "y": {"N": _format_float(self.bottomLeft["y"], 18, 20)},
+                    "x": {"N": _format_float(self.bottom_left["x"], 18, 20)},
+                    "y": {"N": _format_float(self.bottom_left["y"], 18, 20)},
                 }
             },
-            "AngleDegrees": {"N": _format_float(self.angleDegrees, 10, 12)},
-            "AngleRadians": {"N": _format_float(self.angleRadians, 10, 12)},
-            "Confidence": {"N": _format_float(self.confidence, 2, 2)},
+            "angle_degrees": {"N": _format_float(self.angle_degrees, 10, 12)},
+            "angle_radians": {"N": _format_float(self.angle_radians, 10, 12)},
+            "confidence": {"N": _format_float(self.confidence, 2, 2)},
         }
         if self.tags:
-            item["Tags"] = {"SS": self.tags}
+            item["tags"] = {"SS": self.tags}
         return item
 
     def __repr__(self):
@@ -181,13 +185,13 @@ class Word:
         yield "id", self.id
         yield "text", self.text
         yield "tags", self.tags
-        yield "boundingBox", self.boundingBox
-        yield "topRight", self.topRight
-        yield "topLeft", self.topLeft
-        yield "bottomRight", self.bottomRight
-        yield "bottomLeft", self.bottomLeft
-        yield "angleDegrees", self.angleDegrees
-        yield "angleRadians", self.angleRadians
+        yield "bounding_box", self.bounding_box
+        yield "top_right", self.top_right
+        yield "top_left", self.top_left
+        yield "bottom_right", self.bottom_right
+        yield "bottom_left", self.bottom_left
+        yield "angle_degrees", self.angle_degrees
+        yield "angle_radians", self.angle_radians
         yield "tags", self.tags
         yield "confidence", self.confidence
 
@@ -207,13 +211,13 @@ class Word:
             and self.line_id == other.line_id
             and self.id == other.id
             and self.text == other.text
-            and self.boundingBox == other.boundingBox
-            and self.topRight == other.topRight
-            and self.topLeft == other.topLeft
-            and self.bottomRight == other.bottomRight
-            and self.bottomLeft == other.bottomLeft
-            and self.angleDegrees == other.angleDegrees
-            and self.angleRadians == other.angleRadians
+            and self.bounding_box == other.bounding_box
+            and self.top_right == other.top_right
+            and self.top_left == other.top_left
+            and self.bottom_right == other.bottom_right
+            and self.bottom_left == other.bottom_left
+            and self.angle_degrees == other.angle_degrees
+            and self.angle_radians == other.angle_radians
             and self.confidence == other.confidence
             and self.tags == other.tags
         )
@@ -229,17 +233,27 @@ def itemToWord(item: dict) -> Word:
         Word: The Word object created from the item
     """
     return Word(
-        int(item["PK"]["S"].split("#")[1]),
-        int(item["SK"]["S"].split("#")[1]),
-        int(item["SK"]["S"].split("#")[3]),
-        item["Text"]["S"],
-        map_to_dict(item["BoundingBox"]["M"]),
-        map_to_dict(item["TopRight"]["M"]),
-        map_to_dict(item["TopLeft"]["M"]),
-        map_to_dict(item["BottomRight"]["M"]),
-        map_to_dict(item["BottomLeft"]["M"]),
-        float(item["AngleDegrees"]["N"]),
-        float(item["AngleRadians"]["N"]),
-        float(item["Confidence"]["N"]),
-        item.get("Tags", {}).get("SS", []),
+        image_id=int(item["PK"]["S"][6:]),
+        line_id=int(item["SK"]["S"].split("#")[1]),
+        id=int(item["SK"]["S"].split("#")[3]),
+        text=item["text"]["S"],
+        bounding_box={
+            key: float(value["N"]) for key, value in item["bounding_box"]["M"].items()
+        },
+        top_right={
+            key: float(value["N"]) for key, value in item["top_right"]["M"].items()
+        },
+        top_left={
+            key: float(value["N"]) for key, value in item["top_left"]["M"].items()
+        },
+        bottom_right={
+            key: float(value["N"]) for key, value in item["bottom_right"]["M"].items()
+        },
+        bottom_left={
+            key: float(value["N"]) for key, value in item["bottom_left"]["M"].items()
+        },
+        angle_degrees=float(item["angle_degrees"]["N"]),
+        angle_radians=float(item["angle_radians"]["N"]),
+        confidence=float(item["confidence"]["N"]),
+        tags=item.get("tags", {}).get("SS", []),
     )

@@ -150,7 +150,7 @@ class _Word:
         response = self._client.scan(
             TableName=self.table_name,
             ScanFilter={
-                "Type": {
+                "TYPE": {
                     "AttributeValueList": [{"S": "WORD"}],
                     "ComparisonOperator": "EQ",
                 }

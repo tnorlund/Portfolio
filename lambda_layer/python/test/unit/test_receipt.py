@@ -136,10 +136,10 @@ def test_to_item(valid_receipt_args):
     assert "timestamp_added" in item
     assert "s3_bucket" in item
     assert "s3_key" in item
-    assert "topLeft" in item
-    assert "topRight" in item
-    assert "bottomLeft" in item
-    assert "bottomRight" in item
+    assert "top_left" in item
+    assert "top_right" in item
+    assert "bottom_left" in item
+    assert "bottom_right" in item
     assert "sha256" in item
 
     # Check numeric values
@@ -147,8 +147,8 @@ def test_to_item(valid_receipt_args):
     assert item["height"]["N"] == "100"
 
     # Check float formatting in topLeft x & y
-    assert "N" in item["topLeft"]["M"]["x"]
-    assert "N" in item["topLeft"]["M"]["y"]
+    assert "N" in item["top_left"]["M"]["x"]
+    assert "N" in item["top_left"]["M"]["y"]
 
 
 def test_receipt_equality(valid_receipt_args):
