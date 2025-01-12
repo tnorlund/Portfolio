@@ -308,6 +308,8 @@ def test_to_item():
     assert line.to_item() == {
         "PK": {"S": "IMAGE#00001"},
         "SK": {"S": "LINE#00001"},
+        "GSI1PK": {"S": "IMAGE#00001"},
+        "GSI1SK": {"S": "IMAGE#00001#LINE#00001"},
         "Type": {"S": "LINE"},
         "Text": {"S": "07\/03\/2024"},
         "BoundingBox": {
