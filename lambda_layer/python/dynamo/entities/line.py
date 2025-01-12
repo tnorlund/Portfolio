@@ -171,7 +171,7 @@ class Line:
             dict: The GSI1 key for the line
         """
         return {
-            "GSI1PK": {"S": f"IMAGE#{self.image_id:05d}"},
+            "GSI1PK": {"S": f"IMAGE"},
             "GSI1SK": {"S": f"IMAGE#{self.image_id:05d}#LINE#{self.id:05d}"},
         }
 
