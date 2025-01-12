@@ -24,7 +24,7 @@ correct_line_params = {
     "id": 1,
     "image_id": 1,
     "text": "test",
-    "boundingBox": {"x": 0.0, "y": 0.0, "width": 0.0, "height": 0.0},
+    "bounding_box": {"x": 0.0, "y": 0.0, "width": 0.0, "height": 0.0},
     "top_right": {"x": 0.0, "y": 0.0},
     "top_left": {"x": 0.0, "y": 0.0},
     "bottom_right": {"x": 0.0, "y": 0.0},
