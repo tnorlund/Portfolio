@@ -264,10 +264,19 @@ def itemToReceipt(item: dict) -> Receipt:
             timestamp_added=item["timestamp_added"]["S"],
             s3_bucket=item["s3_bucket"]["S"],
             s3_key=item["s3_key"]["S"],
-            top_left={key: float(value["N"]) for key, value in item["topLeft"]["M"].items()},
-            top_right={key: float(value["N"]) for key, value in item["topRight"]["M"].items()},
-            bottom_left={key: float(value["N"]) for key, value in item["bottomLeft"]["M"].items()},
-            bottom_right={key: float(value["N"]) for key, value in item["bottomRight"]["M"].items()},
+            top_left={
+                key: float(value["N"]) for key, value in item["topLeft"]["M"].items()
+            },
+            top_right={
+                key: float(value["N"]) for key, value in item["topRight"]["M"].items()
+            },
+            bottom_left={
+                key: float(value["N"]) for key, value in item["bottomLeft"]["M"].items()
+            },
+            bottom_right={
+                key: float(value["N"])
+                for key, value in item["bottomRight"]["M"].items()
+            },
             sha256=item["sha256"]["S"] if "sha256" in item else None,
         )
     except Exception as e:
