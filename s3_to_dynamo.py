@@ -9,6 +9,7 @@ import boto3
 
 from dynamo import DynamoClient, Image, Line, Word, Letter, ScaledImage
 from utils import encode_image_below_size, get_max_index_in_images, process_ocr_dict
+
 # Load environment variables from .env file
 load_dotenv()
 # Use the environment variables
@@ -33,7 +34,9 @@ missing_images = set(s3_keys_in_s3) - set(s3_keys_in_dynamodb)
 print(f"Found {len(missing_images)} missing images in the bucket")
 
 for missing_image in missing_images:
-    print(f"Processing missing image: {missing_image} at {get_max_index_in_images(dynamo_client)}")
+    print(
+        f"Processing missing image: {missing_image} at {get_max_index_in_images(dynamo_client)}"
+    )
     temporary_file_path = f"/tmp/{os.path.basename(missing_image)}"
     temporary_json_path = (
         f"/tmp/{os.path.basename(missing_image.replace('.png', ''))}.json"
@@ -59,7 +62,7 @@ for missing_image in missing_images:
     # Read the JSON file and add the image to the DynamoDB table
     with open(temporary_json_path, "r") as json_file:
         ocr_data = json.load(json_file)
-    
+
     # Read the image using OpenCV
     image_cv = cv2.imread(temporary_file_path)
 
@@ -104,4 +107,3 @@ for missing_image in missing_images:
     os.remove(temporary_file_path)
     os.remove(temporary_json_path)
     sleep(1)
-

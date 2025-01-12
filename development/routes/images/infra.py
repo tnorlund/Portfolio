@@ -96,4 +96,3 @@ log_group = aws.cloudwatch.LogGroup(
 )
 
 # Add a test for the Lambda Handler
-

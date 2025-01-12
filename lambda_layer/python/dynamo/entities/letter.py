@@ -36,6 +36,7 @@ def map_to_dict(map):
     """
     return {key: float(value["N"]) for key, value in map.items()}
 
+
 def _format_float(
     value: float, decimal_places: int = 10, total_length: int = 20
 ) -> str:
@@ -62,6 +63,7 @@ def _format_float(
 
     return formatted
 
+
 class Letter:
     def __init__(
         self,
@@ -77,7 +79,7 @@ class Letter:
         bottomLeft: dict,
         angleDegrees: float,
         angleRadians: float,
-        confidence: float
+        confidence: float,
     ):
         if image_id <= 0 or not isinstance(image_id, int):
             raise ValueError("image_id must be a positive integer")
@@ -117,9 +119,11 @@ class Letter:
     def key(self) -> dict:
         return {
             "PK": {"S": f"IMAGE#{self.image_id:05d}"},
-            "SK": {"S": f"LINE#{self.line_id:05d}#WORD#{self.word_id:05d}#LETTER#{self.id:05d}"}
+            "SK": {
+                "S": f"LINE#{self.line_id:05d}#WORD#{self.word_id:05d}#LETTER#{self.id:05d}"
+            },
         }
-    
+
     def to_item(self) -> dict:
         return {
             **self.key(),
@@ -161,18 +165,17 @@ class Letter:
             "AngleRadians": {"N": _format_float(self.angleRadians, 10, 12)},
             "Confidence": {"N": _format_float(self.confidence, 2, 2)},
         }
-    
+
     def __repr__(self):
         """Returns a string representation of the Letter object
-        
+
         Returns:
             str: The string representation of the Letter object
         """
         return f"Letter(id={self.id}, text='{self.text}')"
-    
+
     def __iter__(self) -> Generator[Tuple[str, dict], None, None]:
-        """Yields the Letter object as a series of key-value pairs
-        """
+        """Yields the Letter object as a series of key-value pairs"""
         yield "image_id", self.image_id
         yield "word_id", self.word_id
         yield "line_id", self.line_id
@@ -189,10 +192,10 @@ class Letter:
 
     def __eq__(self, other: object) -> bool:
         """Compares two Letter objects for equality
-        
+
         Args:
             other (object): The object to compare
-        
+
         Returns:
             bool: True if the objects are equal, False otherwise"""
         if not isinstance(other, Letter):
@@ -212,7 +215,8 @@ class Letter:
             and self.angleRadians == other.angleRadians
             and self.confidence == other.confidence
         )
-    
+
+
 def itemToLetter(item: dict) -> Letter:
     return Letter(
         int(item["PK"]["S"].split("#")[1]),

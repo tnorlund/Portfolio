@@ -24,6 +24,7 @@ correct_letter_params = {
     "confidence": 1,
 }
 
+
 def test_addLetter(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -40,6 +41,7 @@ def test_addLetter(dynamodb_table: Literal["MyMockedTable"]):
     assert "Item" in response, f"Item not found. response: {response}"
     assert response["Item"] == letter.to_item()
 
+
 def test_addLetter_error(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -49,6 +51,7 @@ def test_addLetter_error(dynamodb_table: Literal["MyMockedTable"]):
     client.addLetter(letter)
     with pytest.raises(ValueError):
         client.addLetter(letter)
+
 
 def test_addLetters(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
@@ -77,6 +80,7 @@ def test_addLetters(dynamodb_table: Literal["MyMockedTable"]):
     assert "Item" in response, f"Item not found. response: {response}"
     assert response["Item"] == letter2.to_item()
 
+
 def test_deleteLetter(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -90,6 +94,7 @@ def test_deleteLetter(dynamodb_table: Literal["MyMockedTable"]):
     with pytest.raises(ValueError):
         client.getLetter(1, 1, 1, 1)
 
+
 def test_deleteLetter_error(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -99,6 +104,7 @@ def test_deleteLetter_error(dynamodb_table: Literal["MyMockedTable"]):
     client.addLetter(letter)
     with pytest.raises(ValueError):
         client.deleteLetter(1, 1, 1, 2)
+
 
 def test_deleteLettersFromWord(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
@@ -120,6 +126,7 @@ def test_deleteLettersFromWord(dynamodb_table: Literal["MyMockedTable"]):
     with pytest.raises(ValueError):
         client.getLetter(1, 1, 1, 2)
 
+
 def test_getLetter(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -132,16 +139,17 @@ def test_getLetter(dynamodb_table: Literal["MyMockedTable"]):
     # Assert
     assert response == letter
 
+
 def test_getLetter_error(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    letter = Letter(**correct_letter_params
-    )
+    letter = Letter(**correct_letter_params)
 
     # Act
     client.addLetter(letter)
     with pytest.raises(ValueError):
         client.getLetter(1, 1, 1, 2)
+
 
 def test_listLetters(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
@@ -161,6 +169,7 @@ def test_listLetters(dynamodb_table: Literal["MyMockedTable"]):
     assert letter1 in letters
     assert letter2 in letters
 
+
 def test_listLettersFromWord(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -169,7 +178,7 @@ def test_listLettersFromWord(dynamodb_table: Literal["MyMockedTable"]):
     letter2_params["word_id"] = 2
     letter2_params["text"] = "1"
     letter2 = Letter(**letter2_params)
-    
+
     client.addLetter(letter1)
     client.addLetter(letter2)
 

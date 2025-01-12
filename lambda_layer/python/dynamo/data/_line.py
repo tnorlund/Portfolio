@@ -61,7 +61,7 @@ class _Line:
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             raise ValueError(f"Could not add lines to the database")
-    
+
     def updateLine(self, line: Line):
         """Updates a line in the database
 
@@ -98,7 +98,7 @@ class _Line:
             )
         except ClientError as e:
             raise ValueError(f"Line with ID {line_id} not found")
-    
+
     def deleteLines(self, lines: list[Line]):
         """Deletes a list of lines from the database
 
@@ -122,7 +122,7 @@ class _Line:
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             raise ValueError(f"Could not delete lines from the database")
-    
+
     def deleteLinesFromImage(self, image_id: int):
         """Deletes all lines from an image
 

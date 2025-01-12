@@ -3,6 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 from dynamo import Receipt, itemToReceipt
 
+
 @pytest.fixture
 def valid_receipt_args():
     """Provides a dictionary of valid constructor arguments for Receipt."""
@@ -19,7 +20,7 @@ def valid_receipt_args():
         "top_right": {"x": 200.0, "y": 0.0},
         "bottom_left": {"x": 0.0, "y": 100.0},
         "bottom_right": {"x": 200.0, "y": 100.0},
-        "sha256": "abc123"
+        "sha256": "abc123",
     }
 
 
@@ -31,7 +32,7 @@ def test_receipt_construction_valid(valid_receipt_args):
     assert r.id == 1
     assert r.width == 200
     assert r.height == 100
-    
+
     # Check that the date in the string matches today's date
     now = valid_receipt_args["timestamp_added"]
     assert r.timestamp_added.startswith(str(now.date()))
