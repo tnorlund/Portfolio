@@ -147,30 +147,31 @@ class Receipt:
         return {
             **self.key(),
             **self.gsi1_key(),
+            "TYPE": {"S": "RECEIPT"},
             "width": {"N": str(self.width)},
             "height": {"N": str(self.height)},
             "timestamp_added": {"S": self.timestamp_added},
             "s3_bucket": {"S": self.s3_bucket},
             "s3_key": {"S": self.s3_key},
-            "topLeft": {
+            "top_left": {
                 "M": {
                     "x": {"N": _format_float(self.topLeft["x"], 18, 20)},
                     "y": {"N": _format_float(self.topLeft["y"], 18, 20)},
                 }
             },
-            "topRight": {
+            "top_right": {
                 "M": {
                     "x": {"N": _format_float(self.topRight["x"], 18, 20)},
                     "y": {"N": _format_float(self.topRight["y"], 18, 20)},
                 }
             },
-            "bottomLeft": {
+            "bottom_left": {
                 "M": {
                     "x": {"N": _format_float(self.bottomLeft["x"], 18, 20)},
                     "y": {"N": _format_float(self.bottomLeft["y"], 18, 20)},
                 }
             },
-            "bottomRight": {
+            "bottom_right": {
                 "M": {
                     "x": {"N": _format_float(self.bottomRight["x"], 18, 20)},
                     "y": {"N": _format_float(self.bottomRight["y"], 18, 20)},
@@ -249,10 +250,10 @@ def itemToReceipt(item: dict) -> Receipt:
         "timestamp_added",
         "s3_bucket",
         "s3_key",
-        "topLeft",
-        "topRight",
-        "bottomLeft",
-        "bottomRight",
+        "top_left",
+        "top_right",
+        "bottom_left",
+        "bottom_right",
     }
     if not required_keys.issubset(item.keys()):
         raise ValueError("Invalid item format")
@@ -266,17 +267,17 @@ def itemToReceipt(item: dict) -> Receipt:
             s3_bucket=item["s3_bucket"]["S"],
             s3_key=item["s3_key"]["S"],
             top_left={
-                key: float(value["N"]) for key, value in item["topLeft"]["M"].items()
+                key: float(value["N"]) for key, value in item["top_left"]["M"].items()
             },
             top_right={
-                key: float(value["N"]) for key, value in item["topRight"]["M"].items()
+                key: float(value["N"]) for key, value in item["top_right"]["M"].items()
             },
             bottom_left={
-                key: float(value["N"]) for key, value in item["bottomLeft"]["M"].items()
+                key: float(value["N"]) for key, value in item["bottom_left"]["M"].items()
             },
             bottom_right={
                 key: float(value["N"])
-                for key, value in item["bottomRight"]["M"].items()
+                for key, value in item["bottom_right"]["M"].items()
             },
             sha256=item["sha256"]["S"] if "sha256" in item else None,
         )

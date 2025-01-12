@@ -2,18 +2,18 @@ from typing import Generator, Tuple
 from decimal import Decimal, ROUND_HALF_UP
 
 
-def assert_valid_boundingBox(boundingBox):
+def assert_valid_bounding_box(bounding_box):
     """
     Assert that the bounding box is valid.
     """
-    if not isinstance(boundingBox, dict):
-        raise ValueError("boundingBox must be a dictionary")
+    if not isinstance(bounding_box, dict):
+        raise ValueError("bounding_box must be a dictionary")
     for key in ["x", "y", "width", "height"]:
-        if key not in boundingBox:
-            raise ValueError(f"boundingBox must contain the key '{key}'")
-        if not isinstance(boundingBox[key], (int, float)):
-            raise ValueError(f"boundingBox['{key}'] must be a number")
-    return boundingBox
+        if key not in bounding_box:
+            raise ValueError(f"bounding_box must contain the key '{key}'")
+        if not isinstance(bounding_box[key], (int, float)):
+            raise ValueError(f"bounding_box['{key}'] must be a number")
+    return bounding_box
 
 
 def assert_valid_point(point):
@@ -72,13 +72,13 @@ class Letter:
         word_id: int,
         id: int,
         text: str,
-        boundingBox: dict,
-        topRight: dict,
-        topLeft: dict,
-        bottomRight: dict,
-        bottomLeft: dict,
-        angleDegrees: float,
-        angleRadians: float,
+        bounding_box: dict,
+        top_right: dict,
+        top_left: dict,
+        bottom_right: dict,
+        bottom_left: dict,
+        angle_degrees: float,
+        angle_radians: float,
         confidence: float,
     ):
         if image_id <= 0 or not isinstance(image_id, int):
@@ -96,22 +96,26 @@ class Letter:
         if text is None or len(text) != 1 or not isinstance(text, str):
             raise ValueError("text must be exactly one character")
         self.text = text
-        assert_valid_boundingBox(boundingBox)
-        self.boundingBox = boundingBox
-        assert_valid_point(topRight)
-        self.topRight = topRight
-        assert_valid_point(topLeft)
-        self.topLeft = topLeft
-        assert_valid_point(bottomRight)
-        self.bottomRight = bottomRight
-        assert_valid_point(bottomLeft)
-        self.bottomLeft = bottomLeft
-        if not isinstance(angleDegrees, (float, int)):
-            raise ValueError(f"angleDegrees must be a float or int got: {angleDegrees}")
-        self.angleDegrees = angleDegrees
-        if not isinstance(angleRadians, (float, int)):
-            raise ValueError("angleRadians must be a float or int got: ", angleRadians)
-        self.angleRadians = angleRadians
+        assert_valid_bounding_box(bounding_box)
+        self.bounding_box = bounding_box
+        assert_valid_point(top_right)
+        self.top_right = top_right
+        assert_valid_point(top_left)
+        self.top_left = top_left
+        assert_valid_point(bottom_right)
+        self.bottom_right = bottom_right
+        assert_valid_point(bottom_left)
+        self.bottom_left = bottom_left
+        if not isinstance(angle_degrees, (float, int)):
+            raise ValueError(
+                f"angle_degrees must be a float or int got: {angle_degrees}"
+            )
+        self.angle_degrees = angle_degrees
+        if not isinstance(angle_radians, (float, int)):
+            raise ValueError(
+                "angle_radians must be a float or int got: ", angle_radians
+            )
+        self.angle_radians = angle_radians
         if confidence <= 0 or confidence > 1:
             raise ValueError("confidence must be a float between 0 and 1")
         self.confidence = confidence
@@ -127,43 +131,43 @@ class Letter:
     def to_item(self) -> dict:
         return {
             **self.key(),
-            "Type": {"S": "LETTER"},
-            "Text": {"S": self.text},
-            "BoundingBox": {
+            "TYPE": {"S": "LETTER"},
+            "text": {"S": self.text},
+            "bounding_box": {
                 "M": {
-                    "x": {"N": _format_float(self.boundingBox["x"], 18, 20)},
-                    "y": {"N": _format_float(self.boundingBox["y"], 18, 20)},
-                    "width": {"N": _format_float(self.boundingBox["width"], 18, 20)},
-                    "height": {"N": _format_float(self.boundingBox["height"], 18, 20)},
+                    "x": {"N": _format_float(self.bounding_box["x"], 18, 20)},
+                    "y": {"N": _format_float(self.bounding_box["y"], 18, 20)},
+                    "width": {"N": _format_float(self.bounding_box["width"], 18, 20)},
+                    "height": {"N": _format_float(self.bounding_box["height"], 18, 20)},
                 }
             },
-            "TopRight": {
+            "top_right": {
                 "M": {
-                    "x": {"N": _format_float(self.topRight["x"], 18, 20)},
-                    "y": {"N": _format_float(self.topRight["y"], 18, 20)},
+                    "x": {"N": _format_float(self.top_right["x"], 18, 20)},
+                    "y": {"N": _format_float(self.top_right["y"], 18, 20)},
                 }
             },
-            "TopLeft": {
+            "top_left": {
                 "M": {
-                    "x": {"N": _format_float(self.topLeft["x"], 18, 20)},
-                    "y": {"N": _format_float(self.topLeft["y"], 18, 20)},
+                    "x": {"N": _format_float(self.top_left["x"], 18, 20)},
+                    "y": {"N": _format_float(self.top_left["y"], 18, 20)},
                 }
             },
-            "BottomRight": {
+            "bottom_right": {
                 "M": {
-                    "x": {"N": _format_float(self.bottomRight["x"], 18, 20)},
-                    "y": {"N": _format_float(self.bottomRight["y"], 18, 20)},
+                    "x": {"N": _format_float(self.bottom_right["x"], 18, 20)},
+                    "y": {"N": _format_float(self.bottom_right["y"], 18, 20)},
                 }
             },
-            "BottomLeft": {
+            "bottom_left": {
                 "M": {
-                    "x": {"N": _format_float(self.bottomLeft["x"], 18, 20)},
-                    "y": {"N": _format_float(self.bottomLeft["y"], 18, 20)},
+                    "x": {"N": _format_float(self.bottom_left["x"], 18, 20)},
+                    "y": {"N": _format_float(self.bottom_left["y"], 18, 20)},
                 }
             },
-            "AngleDegrees": {"N": _format_float(self.angleDegrees, 10, 12)},
-            "AngleRadians": {"N": _format_float(self.angleRadians, 10, 12)},
-            "Confidence": {"N": _format_float(self.confidence, 2, 2)},
+            "angle_degrees": {"N": _format_float(self.angle_degrees, 10, 12)},
+            "angle_radians": {"N": _format_float(self.angle_radians, 10, 12)},
+            "confidence": {"N": _format_float(self.confidence, 2, 2)},
         }
 
     def __repr__(self):
@@ -181,13 +185,13 @@ class Letter:
         yield "line_id", self.line_id
         yield "id", self.id
         yield "text", self.text
-        yield "boundingBox", self.boundingBox
-        yield "topRight", self.topRight
-        yield "topLeft", self.topLeft
-        yield "bottomRight", self.bottomRight
-        yield "bottomLeft", self.bottomLeft
-        yield "angleDegrees", self.angleDegrees
-        yield "angleRadians", self.angleRadians
+        yield "bounding_box", self.bounding_box
+        yield "top_right", self.top_right
+        yield "top_left", self.top_left
+        yield "bottom_right", self.bottom_right
+        yield "bottom_left", self.bottom_left
+        yield "angle_degrees", self.angle_degrees
+        yield "angle_radians", self.angle_radians
         yield "confidence", self.confidence
 
     def __eq__(self, other: object) -> bool:
@@ -206,30 +210,59 @@ class Letter:
             and self.word_id == other.word_id
             and self.id == other.id
             and self.text == other.text
-            and self.boundingBox == other.boundingBox
-            and self.topRight == other.topRight
-            and self.topLeft == other.topLeft
-            and self.bottomRight == other.bottomRight
-            and self.bottomLeft == other.bottomLeft
-            and self.angleDegrees == other.angleDegrees
-            and self.angleRadians == other.angleRadians
+            and self.bounding_box == other.bounding_box
+            and self.top_right == other.top_right
+            and self.top_left == other.top_left
+            and self.bottom_right == other.bottom_right
+            and self.bottom_left == other.bottom_left
+            and self.angle_degrees == other.angle_degrees
+            and self.angle_radians == other.angle_radians
             and self.confidence == other.confidence
         )
 
 
 def itemToLetter(item: dict) -> Letter:
-    return Letter(
-        int(item["PK"]["S"].split("#")[1]),
-        int(item["SK"]["S"].split("#")[1]),
-        int(item["SK"]["S"].split("#")[3]),
-        int(item["SK"]["S"].split("#")[5]),
-        item["Text"]["S"],
-        map_to_dict(item["BoundingBox"]["M"]),
-        map_to_dict(item["TopRight"]["M"]),
-        map_to_dict(item["TopLeft"]["M"]),
-        map_to_dict(item["BottomRight"]["M"]),
-        map_to_dict(item["BottomLeft"]["M"]),
-        float(item["AngleDegrees"]["N"]),
-        float(item["AngleRadians"]["N"]),
-        float(item["Confidence"]["N"]),
-    )
+    required_keys = {
+        "PK",
+        "SK",
+        "text",
+        "bounding_box",
+        "top_right",
+        "top_left",
+        "bottom_right",
+        "bottom_left",
+        "angle_degrees",
+        "angle_radians",
+        "confidence",
+    }
+    if not required_keys.issubset(item.keys()):
+        missing_keys = required_keys - set(item.keys())
+        raise ValueError("Item is missing required keys", missing_keys)
+    try:
+        return Letter(
+            id=int(item["SK"]["S"].split("#")[5]),
+            image_id=int(item["PK"]["S"][6:]),
+            line_id=int(item["SK"]["S"].split("#")[1]),
+            word_id=int(item["SK"]["S"].split("#")[3]),
+            text=item["text"]["S"],
+            bounding_box={
+                key: float(value["N"]) for key, value in item["bounding_box"]["M"].items()
+            },
+            top_right={
+                key: float(value["N"]) for key, value in item["top_right"]["M"].items()
+            },
+            top_left={
+                key: float(value["N"]) for key, value in item["top_left"]["M"].items()
+            },
+            bottom_right={
+                key: float(value["N"]) for key, value in item["bottom_right"]["M"].items()
+            },
+            bottom_left={
+                key: float(value["N"]) for key, value in item["bottom_left"]["M"].items()
+            },
+            angle_degrees=float(item["angle_degrees"]["N"]),
+            angle_radians=float(item["angle_radians"]["N"]),
+            confidence=float(item["confidence"]["N"]),
+        )
+    except KeyError as e:
+        raise ValueError(f"Error converting item to Letter: {e}")
