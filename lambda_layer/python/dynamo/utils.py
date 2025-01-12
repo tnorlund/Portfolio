@@ -15,6 +15,7 @@ import hashlib
 import base64
 from time import sleep
 
+
 def calculate_sha256(file_path):
     """
     Calculate the SHA-256 hash of a file.
@@ -30,6 +31,7 @@ def calculate_sha256(file_path):
         for byte_block in iter(lambda: f.read(4096), b""):
             sha256_hash.update(byte_block)
     return sha256_hash.hexdigest()
+
 
 def encode_image_below_size(
     image, max_size_kb=380, min_quality=10, step=10
@@ -60,6 +62,7 @@ def encode_image_below_size(
     # If we exit the loop, we couldn't get below max_size_kb at min_quality.
     return -1  # Return -1 if we couldn't get below the desired size
 
+
 def nextImageIndex(client: DynamoClient) -> int:
     """
     Get the maximum index in the list of images.
@@ -75,7 +78,10 @@ def nextImageIndex(client: DynamoClient) -> int:
             return i + 1
     return len(image_indexes) + 1
 
-def update_all_from_s3(s3_bucket: str, dynamo_table_name: str, dir: str = "raw") -> None:
+
+def update_all_from_s3(
+    s3_bucket: str, dynamo_table_name: str, dir: str = "raw"
+) -> None:
     """
     Update all the data in DynamoDB from the OCR data.
 
@@ -101,9 +107,17 @@ def update_all_from_s3(s3_bucket: str, dynamo_table_name: str, dir: str = "raw")
     # Get the keys that are in the bucket but not in the DynamoDB table
     missing_images = set(s3_keys_in_s3) - set(s3_keys_in_dynamodb)
     for missing_image_key in missing_images:
-        create_dynamo_entities_from_s3(s3_client, s3_bucket, dynamo_client, [missing_image_key])
+        create_dynamo_entities_from_s3(
+            s3_client, s3_bucket, dynamo_client, [missing_image_key]
+        )
 
-def create_dynamo_entities_from_s3(s3_client: boto3.client, s3_bucket: str, dynamo_client: DynamoClient, keys: list[str]) -> None:
+
+def create_dynamo_entities_from_s3(
+    s3_client: boto3.client,
+    s3_bucket: str,
+    dynamo_client: DynamoClient,
+    keys: list[str],
+) -> None:
     """
     Create Dynamo entities from S3 data.
 
@@ -119,15 +133,22 @@ def create_dynamo_entities_from_s3(s3_client: boto3.client, s3_bucket: str, dyna
             # Download the image from the bucket
             response = s3_client.get_object(Bucket=s3_bucket, Key=key)
             no_rotate_image_path = f"{temporary_directory}/{key.split('/')[-1]}"
-            no_rotate_json_path = f"{temporary_directory}/{key.split('/')[-1].replace('.png', '')}.json"
+            no_rotate_json_path = (
+                f"{temporary_directory}/{key.split('/')[-1].replace('.png', '')}.json"
+            )
             rotate_image_path = f"{temporary_directory}/{key.split('/')[-1].replace('.png', '')}_rotated.png"
             rotate_json_path = f"{temporary_directory}/{key.split('/')[-1].replace('.png', '')}_rotated.json"
-            with open(no_rotate_image_path, 'wb') as file:
-                file.write(response['Body'].read())
+            with open(no_rotate_image_path, "wb") as file:
+                file.write(response["Body"].read())
             # Run the swift script to process the image OCR data
             try:
                 subprocess.run(
-                    ["swift", "OCRSwift.swift", no_rotate_image_path, no_rotate_json_path],
+                    [
+                        "swift",
+                        "OCRSwift.swift",
+                        no_rotate_image_path,
+                        no_rotate_json_path,
+                    ],
                     check=True,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
@@ -138,7 +159,9 @@ def create_dynamo_entities_from_s3(s3_client: boto3.client, s3_bucket: str, dyna
             # Read the JSON file and add the image to the DynamoDB table
             with open(no_rotate_json_path, "r") as json_file:
                 ocr_data = json.load(json_file)
-            lines_no_rotate, words_no_rotate, letters_no_rotate = process_ocr_dict(ocr_data, nextImageIndex(dynamo_client))
+            lines_no_rotate, words_no_rotate, letters_no_rotate = process_ocr_dict(
+                ocr_data, nextImageIndex(dynamo_client)
+            )
             # Rotate the image
             image_cv = cv2.imread(no_rotate_image_path)
             image_cv_rotate = cv2.rotate(image_cv, cv2.ROTATE_180)
@@ -157,18 +180,22 @@ def create_dynamo_entities_from_s3(s3_client: boto3.client, s3_bucket: str, dyna
             # Read the JSON file and add the image to the DynamoDB table
             with open(rotate_json_path, "r") as json_file:
                 ocr_data = json.load(json_file)
-            lines_rotate, words_rotate, letters_rotate = process_ocr_dict(ocr_data, nextImageIndex(dynamo_client))
+            lines_rotate, words_rotate, letters_rotate = process_ocr_dict(
+                ocr_data, nextImageIndex(dynamo_client)
+            )
             # Compare the angles of the lines. Get the one that is more horizontal
-            avg_angle_no_rotate = sum([line.angleRadians for line in lines_no_rotate]) / len(lines_no_rotate)
-            avg_angle_rotate = sum([line.angleRadians for line in lines_rotate]) / len(lines_rotate)
+            avg_angle_no_rotate = sum(
+                [line.angleRadians for line in lines_no_rotate]
+            ) / len(lines_no_rotate)
+            avg_angle_rotate = sum([line.angleRadians for line in lines_rotate]) / len(
+                lines_rotate
+            )
             # Determine the most upright rotation based on the average angle
             if abs(avg_angle_no_rotate) > abs(avg_angle_rotate):
                 print("Using rotated data")
                 # Rotate the image and update the image in S3
                 response = s3_client.put_object(
-                    Bucket=s3_bucket,
-                    Key=key,
-                    Body=open(rotate_image_path, 'rb')
+                    Bucket=s3_bucket, Key=key, Body=open(rotate_image_path, "rb")
                 )
                 image = Image(
                     nextImageIndex(dynamo_client),
@@ -198,9 +225,7 @@ def create_dynamo_entities_from_s3(s3_client: boto3.client, s3_bucket: str, dyna
                 print("Using non-rotated data")
                 # Update the image in S3
                 response = s3_client.put_object(
-                    Bucket=s3_bucket,
-                    Key=key,
-                    Body=open(no_rotate_image_path, 'rb')
+                    Bucket=s3_bucket, Key=key, Body=open(no_rotate_image_path, "rb")
                 )
                 image = Image(
                     nextImageIndex(dynamo_client),
@@ -231,9 +256,6 @@ def create_dynamo_entities_from_s3(s3_client: boto3.client, s3_bucket: str, dyna
             dynamo_client.addWords(words)
             dynamo_client.addLetters(letters)
             sleep(1)
-                
-                
-        
 
 
 def process_ocr_dict(ocr_data: dict, image_id: int) -> Tuple[list, list, list]:

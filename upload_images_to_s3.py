@@ -4,9 +4,11 @@ import boto3
 from botocore.exceptions import ClientError
 
 from dotenv import load_dotenv
+
 # Load environment variables from .env file
 load_dotenv()
 RAW_IMAGE_BUCKET = os.getenv("RAW_IMAGE_BUCKET")
+
 
 def upload_png_files_with_uuid(directory, bucket_name):
     """
@@ -19,10 +21,10 @@ def upload_png_files_with_uuid(directory, bucket_name):
         # Only process .png files
         if file_name.lower().endswith(".png"):
             local_file_path = os.path.join(directory, file_name)
-            
+
             # Generate a UUID-based S3 object name
             s3_object_name = f"raw/{uuid.uuid4()}.png"
-            
+
             # Check if the object name already exists
             try:
                 s3.head_object(Bucket=bucket_name, Key=s3_object_name)
@@ -39,6 +41,7 @@ def upload_png_files_with_uuid(directory, bucket_name):
             # Upload the file to S3 using the new UUID name
             s3.upload_file(local_file_path, bucket_name, s3_object_name)
             print(f"Uploaded {local_file_path} -> s3://{bucket_name}/{s3_object_name}")
+
 
 if __name__ == "__main__":
     # Update these variables

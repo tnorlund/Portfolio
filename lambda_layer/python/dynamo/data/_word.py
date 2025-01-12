@@ -61,7 +61,7 @@ class _Word:
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             raise ValueError("Could not add words to the database")
-        
+
     def updateWord(self, word: Word):
         """Updates a word in the database
 
@@ -102,7 +102,7 @@ class _Word:
             )
         except ClientError as e:
             raise ValueError(f"Word with ID {word_id} not found")
-    
+
     def deleteWords(self, words: list[Word]):
         """Deletes a list of words from the database"""
         try:
