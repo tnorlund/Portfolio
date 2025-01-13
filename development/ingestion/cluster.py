@@ -1,17 +1,20 @@
 import os
-from dotenv import load_dotenv
+import json
 from sklearn.cluster import DBSCAN
 import numpy as np
 from collections import defaultdict
-import math
 import boto3
 import tempfile
 import cv2
 from math import sin, cos, dist
 from dynamo import DynamoClient
 
-IMAGE_ID = 9
-S3_BUCKET = "raw-image-bucket-c779c32"
+# Load environment variables
+S3_BUCKET = os.getenv("S3_BUCKET")
+DYNAMO_DB_TABLE = os.getenv("DYNAMO_DB_TABLE")
+IMAGE_ID = os.getenv("IMAGE_ID")
+if not S3_BUCKET or not DYNAMO_DB_TABLE or not IMAGE_ID:
+    raise ValueError("Missing environment variables")
 
 
 def euclidean_dist(a, b):
@@ -42,14 +45,6 @@ def get_axis_aligned_bbox(points):
     xs = [p[0] for p in points]
     ys = [p[1] for p in points]
     return min(xs), max(xs), min(ys), max(ys)
-
-
-# 1) Load environment variables from .env
-load_dotenv()
-
-# 2) Retrieve environment variables
-S3_BUCKET = os.getenv("RAW_IMAGE_BUCKET")
-DYNAMO_DB_TABLE = os.getenv("DYNAMO_DB_TABLE")
 
 # 3) Initialize DynamoClient and get image details
 dynamo_client = DynamoClient(DYNAMO_DB_TABLE)
@@ -257,3 +252,9 @@ for cluster_id, cluster_lines in receipt_dict.items():
 output_path = f"{image.s3_key.split('/')[-1].replace('.png', f'_bounding_box.png')}"
 cv2.imwrite(output_path, img_cv)
 print(f"Saved receipt image to {output_path}")
+
+def lambda_handler(event, context):
+    return {
+        "statusCode": 200,
+        "body": json.dumps("Hello from Lambda!"),
+    }
