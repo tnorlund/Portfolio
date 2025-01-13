@@ -6,7 +6,7 @@ from dynamo import Line, DynamoClient
 correct_line_params = {
     "image_id": 1,
     "id": 1,
-    "text": "07\/03\/2024",
+    "text": "test_string",
     "bounding_box": {
         "x": 0.4454263367632384,
         "height": 0.022867568134581906,
