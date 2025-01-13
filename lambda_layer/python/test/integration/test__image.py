@@ -116,7 +116,7 @@ def test_get_imageDetails(dynamodb_table: Literal["MyMockedTable"]):
     line = Line(
         1,
         1,
-        "07\/03\/2024",
+        "test_string",
         {
             "x": 0.4454263367632384,
             "height": 0.022867568134581906,
@@ -135,7 +135,7 @@ def test_get_imageDetails(dynamodb_table: Literal["MyMockedTable"]):
         1,
         2,
         3,
-        "07\/03\/2024",
+        "test_string",
         {
             "y": 0.9167082878750482,
             "width": 0.08690182470506236,
