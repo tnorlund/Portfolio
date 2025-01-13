@@ -8,7 +8,7 @@ import pulumi_aws as aws
 
 # Constants
 PROJECT_DIR = os.path.dirname(__file__)
-LAMBDA_LAYER_DIR = os.path.abspath(os.path.join(PROJECT_DIR, "../lambda_layer"))
+LAMBDA_LAYER_DIR = os.path.abspath(os.path.join(PROJECT_DIR, "lambda_layer"))
 UPLOAD_DIR = os.path.join(PROJECT_DIR, "upload")
 ZIP_FILE_PATH = os.path.join(PROJECT_DIR, "upload.zip")
 PACKAGE_NAME = os.path.join(LAMBDA_LAYER_DIR, "python")
