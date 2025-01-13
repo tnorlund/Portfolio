@@ -62,13 +62,15 @@ def test_to_item():
         "SK": {"S": "IMAGE"},
         "GSI1PK": {"S": "IMAGE"},
         "GSI1SK": {"S": "IMAGE#00001"},
-        "Type": {"S": "IMAGE"},
-        "Width": {"N": "10"},
-        "Height": {"N": "20"},
-        "TimestampAdded": {"S": "2021-01-01T00:00:00"},
-        "S3Bucket": {"S": "bucket"},
-        "S3Key": {"S": "key"},
-        "SHA256": {"S": "abc123"},
+        "TYPE": {"S": "IMAGE"},
+        "width": {"N": "10"},
+        "height": {"N": "20"},
+        "timestamp_added": {"S": "2021-01-01T00:00:00"},
+        "s3_bucket": {"S": "bucket"},
+        "s3_key": {"S": "key"},
+        "sha256": {"S": "abc123"},
+        "cdn_s3_bucket": {"S": ""},
+        "cdn_s3_key": {"S": ""},
     }
 
     # Case: without sha256
@@ -123,13 +125,13 @@ def test_itemToImage():
         "SK": {"S": "IMAGE"},
         "GSI1PK": {"S": "IMAGE"},
         "GSI1SK": {"S": "IMAGE#00001"},
-        "Type": {"S": "IMAGE"},
-        "Width": {"N": "10"},
-        "Height": {"N": "20"},
-        "TimestampAdded": {"S": "2021-01-01T00:00:00"},
-        "S3Bucket": {"S": "bucket"},
-        "S3Key": {"S": "key"},
-        "SHA256": {"S": "abc123"},
+        "TYPE": {"S": "IMAGE"},
+        "width": {"N": "10"},
+        "height": {"N": "20"},
+        "timestamp_added": {"S": "2021-01-01T00:00:00"},
+        "s3_bucket": {"S": "bucket"},
+        "s3_key": {"S": "key"},
+        "sha256": {"S": "abc123"},
     }
     image = itemToImage(item)
     assert image == Image(
@@ -142,12 +144,12 @@ def test_itemToImage():
         "SK": {"S": "IMAGE"},
         "GSI1PK": {"S": "IMAGE"},
         "GSI1SK": {"S": "IMAGE#00002"},
-        "Type": {"S": "IMAGE"},
-        "Width": {"N": "10"},
-        "Height": {"N": "20"},
-        "TimestampAdded": {"S": "2021-01-01T00:00:00"},
-        "S3Bucket": {"S": "bucket"},
-        "S3Key": {"S": "key"},
+        "TYPE": {"S": "IMAGE"},
+        "width": {"N": "10"},
+        "height": {"N": "20"},
+        "timestamp_added": {"S": "2021-01-01T00:00:00"},
+        "s3_bucket": {"S": "bucket"},
+        "s3_key": {"S": "key"},
     }
     image_no_sha_obj = itemToImage(item_no_sha)
     assert image_no_sha_obj == Image(
@@ -158,8 +160,8 @@ def test_itemToImage():
     item_missing_width = {
         "PK": {"S": "IMAGE#1"},
         "SK": {"S": "IMAGE"},
-        "Type": {"S": "IMAGE"},
-        "Height": {"N": "20"},
+        "TYPE": {"S": "IMAGE"},
+        "height": {"N": "20"},
     }
     with pytest.raises(ValueError):
         itemToImage(item_missing_width)
@@ -167,12 +169,12 @@ def test_itemToImage():
     item_missing_height = {
         "PK": {"S": "IMAGE#00078"},
         "SK": {"S": "IMAGE"},
-        "Type": {"S": "IMAGE"},
-        "Width": {"N": "2480"},
-        "Height": {"N": "3508"},
-        "TimestampAdded": {"S": "2025-01-05T19:02:12.010520"},
-        "S3Bucket": {"S": "raw-image-bucket-c779c32"},
-        "S3Key": {"S": "raw/d20141ee-180f-4484-9d3d-7886b78fd019.png"},
+        "TYPE": {"S": "IMAGE"},
+        "width": {"N": "2480"},
+        "height": {"N": "3508"},
+        "timestamp_added": {"S": "2025-01-05T19:02:12.010520"},
+        "s3_bucket": {"S": "raw-image-bucket-c779c32"},
+        "s3_key": {"S": "raw/d20141ee-180f-4484-9d3d-7886b78fd019.png"},
     }
     image = itemToImage(item_missing_height)
     assert image == Image(
@@ -183,5 +185,3 @@ def test_itemToImage():
         "raw-image-bucket-c779c32",
         "raw/d20141ee-180f-4484-9d3d-7886b78fd019.png",
     ), "Should convert old item with no GSI1 keys to Image object"
-    # And so on for your other negative tests...
-    # (You can add tests for missing Sha256 if your code requires it, or skip if optional.)
