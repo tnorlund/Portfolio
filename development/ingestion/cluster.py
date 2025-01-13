@@ -1,3 +1,7 @@
+#!/usr/bin/env python3
+"""Clusters and groups lines of text into receipts then uploads to Dynamodb.
+
+"""
 import os
 import json
 from sklearn.cluster import DBSCAN
@@ -13,8 +17,34 @@ from dynamo import DynamoClient
 S3_BUCKET = os.getenv("S3_BUCKET")
 DYNAMO_DB_TABLE = os.getenv("DYNAMO_DB_TABLE")
 IMAGE_ID = os.getenv("IMAGE_ID")
-if not S3_BUCKET or not DYNAMO_DB_TABLE or not IMAGE_ID:
-    raise ValueError("Missing environment variables")
+JSON_BUCKET = os.getenv("JSON_BUCKET")
+JSON_KEY = os.getenv("JSON_KEY")
+PNG_BUCKET = os.getenv("PNG_BUCKET")
+PNG_KEY = os.getenv("PNG_KEY")
+
+if (
+    not S3_BUCKET
+    or not DYNAMO_DB_TABLE
+    or not IMAGE_ID
+    or not JSON_BUCKET
+    or not JSON_KEY
+    or not PNG_BUCKET
+    or not PNG_KEY
+):
+    missing_vars = [
+        var_name
+        for var_name, var_value in [
+            ("S3_BUCKET", S3_BUCKET),
+            ("DYNAMO_DB_TABLE", DYNAMO_DB_TABLE),
+            ("IMAGE_ID", IMAGE_ID),
+            ("JSON_BUCKET", JSON_BUCKET),
+            ("JSON_KEY", JSON_KEY),
+            ("PNG_BUCKET", PNG_BUCKET),
+            ("PNG_KEY", PNG_KEY),
+        ]
+        if not var_value
+    ]
+    raise ValueError(f"Missing environment variables: {', '.join(missing_vars)}")
 
 
 def euclidean_dist(a, b):
@@ -45,6 +75,7 @@ def get_axis_aligned_bbox(points):
     xs = [p[0] for p in points]
     ys = [p[1] for p in points]
     return min(xs), max(xs), min(ys), max(ys)
+
 
 # 3) Initialize DynamoClient and get image details
 dynamo_client = DynamoClient(DYNAMO_DB_TABLE)
@@ -145,7 +176,9 @@ for cluster_id, cluster_lines in receipt_dict.items():
         ln.scale(scale_x, scale_y)
         # TODO: Turn these into ReceiptLine entities for DynamoDB
         ln.to_receipt_line()
-    cluster_words = [word for word in words if word.line_id in [ln.id for ln in cluster_lines]]
+    cluster_words = [
+        word for word in words if word.line_id in [ln.id for ln in cluster_lines]
+    ]
     for word in cluster_words:
         # 1) Translate so min_x/min_y become 0,0
         word.translate(-min_x, -min_y)
@@ -153,7 +186,11 @@ for cluster_id, cluster_lines in receipt_dict.items():
         word.scale(scale_x, scale_y)
         # TODO: Turn these into ReceiptWord entities for DynamoDB
         word.to_receipt_word()
-    cluster_letters = [letter for letter in letters if letter.word_id in [word.id for word in cluster_words]]
+    cluster_letters = [
+        letter
+        for letter in letters
+        if letter.word_id in [word.id for word in cluster_words]
+    ]
     for letter in cluster_letters:
         # 1) Translate so min_x/min_y become 0,0
         letter.translate(-min_x, -min_y)
@@ -161,7 +198,6 @@ for cluster_id, cluster_lines in receipt_dict.items():
         letter.scale(scale_x, scale_y)
         # TODO: Turn these into ReceiptLetter entities for DynamoDB
         letter.to_receipt_letter()
-
 
     # 6) Reverse the transformations to get the original bounding box
     original_corners = []
@@ -252,6 +288,7 @@ for cluster_id, cluster_lines in receipt_dict.items():
 output_path = f"{image.s3_key.split('/')[-1].replace('.png', f'_bounding_box.png')}"
 cv2.imwrite(output_path, img_cv)
 print(f"Saved receipt image to {output_path}")
+
 
 def lambda_handler(event, context):
     return {
