@@ -8,4 +8,4 @@ RUN pip install --no-cache-dir opencv-python-headless scikit-learn
 COPY cluster.py ${LAMBDA_TASK_ROOT}
 
 # Command for the Lambda function
-CMD ["cluster.lambda_handler"]  # Replace 'lambda_handler' with your function name
+CMD ["cluster.lambda_handler"]
