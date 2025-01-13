@@ -148,7 +148,25 @@ for cluster_id, cluster_lines in receipt_dict.items():
         ln.translate(-min_x, -min_y)
         # 2) Scale so the bounding box fits in [0, 1] in both dimensions
         ln.scale(scale_x, scale_y)
+        # TODO: Turn these into ReceiptLine entities for DynamoDB
+        ln.to_receipt_line()
+    cluster_words = [word for word in words if word.line_id in [ln.id for ln in cluster_lines]]
+    for word in cluster_words:
+        # 1) Translate so min_x/min_y become 0,0
+        word.translate(-min_x, -min_y)
+        # 2) Scale so the bounding box fits in [0, 1] in both dimensions
+        word.scale(scale_x, scale_y)
         # TODO: Turn these into ReceiptWord entities for DynamoDB
+        word.to_receipt_word()
+    cluster_letters = [letter for letter in letters if letter.word_id in [word.id for word in cluster_words]]
+    for letter in cluster_letters:
+        # 1) Translate so min_x/min_y become 0,0
+        letter.translate(-min_x, -min_y)
+        # 2) Scale so the bounding box fits in [0, 1] in both dimensions
+        letter.scale(scale_x, scale_y)
+        # TODO: Turn these into ReceiptLetter entities for DynamoDB
+        letter.to_receipt_letter()
+
 
     # 6) Reverse the transformations to get the original bounding box
     original_corners = []
