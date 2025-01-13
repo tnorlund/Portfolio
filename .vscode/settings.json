@@ -1,6 +1,6 @@
 {
     "python.testing.pytestArgs": [
-        "lambda_layer/python/test"
+        "development/lambda_layer/python/test"
     ],
     "python.testing.unittestEnabled": false,
     "python.testing.pytestEnabled": true
