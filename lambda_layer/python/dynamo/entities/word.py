@@ -1,7 +1,6 @@
 from typing import Generator, Tuple
 from decimal import Decimal, ROUND_HALF_UP
 from math import sin, cos, pi, radians
-from dynamo import ReceiptWord
 
 
 def assert_valid_boundingBox(boundingBox):
@@ -173,22 +172,22 @@ class Word:
             item["tags"] = {"SS": self.tags}
         return item
     
-    def to_receipt_word(self) -> ReceiptWord:
-        return ReceiptWord(
-            image_id=self.image_id,
-            line_id=self.line_id,
-            id=self.id,
-            text=self.text,
-            bounding_box=self.bounding_box,
-            top_right=self.top_right,
-            top_left=self.top_left,
-            bottom_right=self.bottom_right,
-            bottom_left=self.bottom_left,
-            angle_degrees=self.angle_degrees,
-            angle_radians=self.angle_radians,
-            confidence=self.confidence,
-            tags=self.tags,
-        )
+    # def to_receipt_word(self) -> ReceiptWord:
+    #     return ReceiptWord(
+    #         image_id=self.image_id,
+    #         line_id=self.line_id,
+    #         id=self.id,
+    #         text=self.text,
+    #         bounding_box=self.bounding_box,
+    #         top_right=self.top_right,
+    #         top_left=self.top_left,
+    #         bottom_right=self.bottom_right,
+    #         bottom_left=self.bottom_left,
+    #         angle_degrees=self.angle_degrees,
+    #         angle_radians=self.angle_radians,
+    #         confidence=self.confidence,
+    #         tags=self.tags,
+    #     )
 
 
     def calculate_centroid(self) -> Tuple[float, float]:
