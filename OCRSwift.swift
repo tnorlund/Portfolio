@@ -317,6 +317,7 @@ performOCR(from: imageURL) { result in
         do {
             let ocrResult = OCRResult(lines: lines)
             let encoder = JSONEncoder()
+            encoder.keyEncodingStrategy = .convertToSnakeCase
             encoder.outputFormatting = .prettyPrinted
             let jsonData = try encoder.encode(ocrResult)
             

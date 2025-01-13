@@ -1,48 +1,17 @@
-import base64
 import hashlib
 from typing import Tuple
-import cv2
 from dynamo import DynamoClient, Line, Word, Letter
-
-
-def encode_image_below_size(
-    image, max_size_kb=380, min_quality=5, step=5
-) -> Tuple[str, int]:
-    """
-    Compress the image (JPEG) to ensure the final Base64 string is <= max_size_kb.
-    Gradually lowers the JPEG quality in steps until the size requirement is met or
-    the minimum quality is reached.
-    """
-    quality = 90  # start from a high quality
-    while quality >= min_quality:
-        retval, buffer = cv2.imencode(
-            ".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, quality]
-        )
-
-        # Base64-encode the compressed image
-        encoded_str = base64.b64encode(buffer).decode("utf-8")
-
-        # Check the size
-        size_kb = len(encoded_str) / 1024
-
-        if size_kb <= max_size_kb:
-            return encoded_str, quality  # Return the Base64 string at this quality
-
-        # Decrease quality and try again
-        quality -= step
-
-    # If we exit the loop, we couldn't get below max_size_kb at min_quality.
-    return -1  # Return -1 if we couldn't get below the desired size
+import hashlib
 
 
 def get_max_index_in_images(client: DynamoClient) -> int:
     """
     Get the maximum index in the list of images.
     """
-    images, lek = client.listImages()
+    images, _ = client.listImages()
     if not images:
         return 0
-    image_indexes = [image.id for image in images]
+    image_indexes = [index for index in images.keys()]
     image_indexes.sort()
     # Find where the indexes are not consecutive
     for i, index in enumerate(image_indexes):
@@ -64,13 +33,13 @@ def process_ocr_dict(ocr_data: dict, image_id: int) -> Tuple[list, list, list]:
             image_id=image_id,
             id=line_id,
             text=line_data["text"],
-            boundingBox=line_data["boundingBox"],
-            topRight=line_data["topRight"],
-            topLeft=line_data["topLeft"],
-            bottomRight=line_data["bottomRight"],
-            bottomLeft=line_data["bottomLeft"],
-            angleDegrees=line_data["angleDegrees"],
-            angleRadians=line_data["angleRadians"],
+            bounding_box=line_data["bounding_box"],
+            top_right=line_data["top_right"],
+            top_left=line_data["top_left"],
+            bottom_right=line_data["bottom_right"],
+            bottom_left=line_data["bottom_left"],
+            angle_degrees=line_data["angle_degrees"],
+            angle_radians=line_data["angle_radians"],
             confidence=line_data["confidence"],
         )
         lines.append(line_obj)
@@ -81,13 +50,13 @@ def process_ocr_dict(ocr_data: dict, image_id: int) -> Tuple[list, list, list]:
                 line_id=line_id,
                 id=word_id,
                 text=word_data["text"],
-                boundingBox=word_data["boundingBox"],
-                topRight=word_data["topRight"],
-                topLeft=word_data["topLeft"],
-                bottomRight=word_data["bottomRight"],
-                bottomLeft=word_data["bottomLeft"],
-                angleDegrees=word_data["angleDegrees"],
-                angleRadians=word_data["angleRadians"],
+                bounding_box=word_data["bounding_box"],
+                top_right=word_data["top_right"],
+                top_left=word_data["top_left"],
+                bottom_right=word_data["bottom_right"],
+                bottom_left=word_data["bottom_left"],
+                angle_degrees=word_data["angle_degrees"],
+                angle_radians=word_data["angle_radians"],
                 confidence=word_data["confidence"],
             )
             words.append(word_obj)
@@ -99,20 +68,17 @@ def process_ocr_dict(ocr_data: dict, image_id: int) -> Tuple[list, list, list]:
                     word_id=word_id,
                     id=letter_id,
                     text=letter_data["text"],
-                    boundingBox=letter_data["boundingBox"],
-                    topRight=letter_data["topRight"],
-                    topLeft=letter_data["topLeft"],
-                    bottomRight=letter_data["bottomRight"],
-                    bottomLeft=letter_data["bottomLeft"],
-                    angleDegrees=letter_data["angleDegrees"],
-                    angleRadians=letter_data["angleRadians"],
+                    bounding_box=letter_data["bounding_box"],
+                    top_right=letter_data["top_right"],
+                    top_left=letter_data["top_left"],
+                    bottom_right=letter_data["bottom_right"],
+                    bottom_left=letter_data["bottom_left"],
+                    angle_degrees=letter_data["angle_degrees"],
+                    angle_radians=letter_data["angle_radians"],
                     confidence=letter_data["confidence"],
                 )
                 letters.append(letter_obj)
     return lines, words, letters
-
-
-import hashlib
 
 
 def calculate_sha256(file_path):
