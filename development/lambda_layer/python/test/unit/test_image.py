@@ -69,8 +69,8 @@ def test_to_item():
         "s3_bucket": {"S": "bucket"},
         "s3_key": {"S": "key"},
         "sha256": {"S": "abc123"},
-        "cdn_s3_bucket": {"S": ""},
-        "cdn_s3_key": {"S": ""},
+        "cdn_s3_bucket": {"NULL": True},
+        "cdn_s3_key": {"NULL": True},
     }
 
     # Case: without sha256

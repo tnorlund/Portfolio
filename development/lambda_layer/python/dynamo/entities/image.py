@@ -107,9 +107,11 @@ class Image:
             "timestamp_added": {"S": self.timestamp_added},
             "s3_bucket": {"S": self.s3_bucket},
             "s3_key": {"S": self.s3_key},
-            "sha256": {"S": self.sha256 if self.sha256 else ""},
-            "cdn_s3_bucket": {"S": self.cdn_s3_bucket if self.cdn_s3_bucket else ""},
-            "cdn_s3_key": {"S": self.cdn_s3_key if self.cdn_s3_key else ""},
+            "sha256": {"S": self.sha256} if self.sha256 else {"NULL": True},
+            "cdn_s3_bucket": (
+                {"S": self.cdn_s3_bucket} if self.cdn_s3_bucket else {"NULL": True}
+            ),
+            "cdn_s3_key": {"S": self.cdn_s3_key} if self.cdn_s3_key else {"NULL": True},
         }
 
     def __repr__(self) -> str:
