@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import BoundingBox from "./boundingBox";
 
-/** Interface for each image in the initial list */
+/** Represents a single image from the API */
 interface ImageItem {
   id: number;
   width: number;
@@ -12,6 +12,13 @@ interface ImageItem {
   s3_key: string;
 }
 
+/** A point in 2D space */
+interface Point {
+  x: number;
+  y: number;
+}
+
+/** A bounding box (x, y, width, height) */
 interface BoundingBoxInterface {
   x: number;
   y: number;
@@ -19,159 +26,177 @@ interface BoundingBoxInterface {
   height: number;
 }
 
-interface Point {
-  x: number;
-  y: number;
-}
-
-/** Interface for each line from OCR */
+/** Represents a line of OCR text */
 interface LineItem {
   image_id: number;
   id: number;
   text: string;
-  boundingBox: BoundingBoxInterface;
-    topLeft: Point;
-    topRight: Point;
-    bottomLeft: Point;
-    bottomRight: Point;
-  angle: number; // degrees
+  bounding_box: BoundingBoxInterface;
+  top_left: Point;
+  top_right: Point;
+  bottom_left: Point;
+  bottom_right: Point;
+  angle_degrees: number; 
+  angle_radians: number;
   confidence: number;
 }
 
-/** Interface for Scaled Image */
-interface ScaledImage {
+/** Represents a receipt annotation on the image */
+interface Receipt {
+  id: number;
   image_id: number;
+  width: number;
+  height: number;
   timestamp_added: string;
-  base64: string;
-  quality: number;
+  s3_bucket: string;
+  s3_key: string;
+  top_left: Point;
+  top_right: Point;
+  bottom_left: Point;
+  bottom_right: Point;
 }
 
-/** Interface for the details response of a single image */
-interface ImageDetailsResponse {
-  image: ImageItem;
+export interface ImagePayload {
+  id: number;
+  width: number;
+  height: number;
+  timestamp_added: string;
+  s3_bucket: string;
+  s3_key: string;
+  sha256: string;
+}
+
+/** PayloadItem now includes the arrays of `receipts` and `lines` */
+export interface PayloadItem {
+  image: ImagePayload;
   lines: LineItem[];
-  scaled_images: ScaledImage[];
+  receipts: Receipt[];
 }
 
-/** Interface describing the entire API response object for the image list */
-interface ImagesApiResponse {
-  images: ImageItem[];
+export interface RootPayload {
+  [key: string]: PayloadItem; // e.g. "1", "2", "3", etc.
 }
 
-/** Fetch the main list of images */
-async function fetchImages(): Promise<ImagesApiResponse> {
-  const response = await fetch(
-    "https://wso2tnfiie.execute-api.us-east-1.amazonaws.com/images?limit=10"
-  );
+export interface ApiResponse {
+  payload: RootPayload;
+  last_evaluated_key: null | string; // or null | number, depending on usage
+}
+
+/** A tuple type: [ImageItem, Receipt[], LineItem[]]. */
+type ImageReceiptsLines = [ImageItem, Receipt[], LineItem[]];
+
+/**
+ * Convert RootPayload into an array of [ImageItem, Receipt[], LineItem[]].
+ */
+export function mapPayloadToImages(payload: RootPayload): ImageReceiptsLines[] {
+  return Object.values(payload).map((item) => {
+    const image: ImageItem = {
+      id: item.image.id,
+      width: item.image.width,
+      height: item.image.height,
+      timestamp_added: item.image.timestamp_added,
+      s3_bucket: item.image.s3_bucket,
+      s3_key: item.image.s3_key,
+      // If you want sha256 in your ImageItem, add it here
+      // sha256: item.image.sha256,
+    };
+
+    const receipts = item.receipts || [];
+    const lines = item.lines || [];
+
+    return [image, receipts, lines];
+  });
+}
+
+/** Fetches the main list of images from the new API shape and returns the tuple array */
+async function fetchImages(): Promise<ImageReceiptsLines[]> {
+  const response = await fetch("https://wso2tnfiie.execute-api.us-east-1.amazonaws.com/images");
   if (!response.ok) {
-    throw new Error("Network response was not ok");
+    throw new Error(`Network response was not ok (status: ${response.status})`);
   }
-  // Cast the returned JSON to our ImagesApiResponse interface
-  const data = (await response.json()) as ImagesApiResponse;
-  return data;
-}
 
-/** Fetch the details for a single image */
-async function fetchImageDetails(
-  imageId: number
-): Promise<ImageDetailsResponse> {
-  const response = await fetch(
-    `https://wso2tnfiie.execute-api.us-east-1.amazonaws.com/image_details?image_id=${imageId}`
-  );
-  if (!response.ok) {
-    throw new Error(`Failed to fetch details for image ${imageId}`);
-  }
-  const data = (await response.json()) as ImageDetailsResponse;
-  return data;
+  const data = (await response.json()) as ApiResponse;
+  return mapPayloadToImages(data.payload);
 }
 
 /**
  * ImageGrid component
- * 1. Fetches the main list of images from the API
+ * 1. Fetches the main list of images ([image, receipts, lines] tuples)
  * 2. Renders a scaled rectangle for each image
- * 3. For each image, fetches the base64 data and embeds it in an <svg>
+ * 3. Potentially uses receipts/lines to draw bounding boxes (if desired)
  */
 export default function ImageGrid() {
-  const [images, setImages] = useState<ImageItem[]>([]);
-  const [imageDetails, setImageDetails] = useState<
-    Record<number, ImageDetailsResponse>
-  >({});
+  const [imageReceiptLines, setImageReceiptLines] = useState<ImageReceiptsLines[]>([]);
 
-  // On mount, fetch the main list of images
   useEffect(() => {
     fetchImages()
-      .then((res) => {
-        setImages(res.images);
+      .then((imageItems) => {
+        setImageReceiptLines(imageItems);
       })
       .catch((err) => {
         console.error("Error fetching images:", err);
       });
   }, []);
 
-  // Whenever "images" changes, fetch details for each one
-  useEffect(() => {
-    images.forEach((img) => {
-      if (!imageDetails[img.id]) {
-        fetchImageDetails(img.id)
-          .then((details) => {
-            setImageDetails((prev) => ({
-              ...prev,
-              [img.id]: details,
-            }));
-          })
-          .catch((err) => {
-            console.error(`Error fetching details for image ${img.id}:`, err);
-          });
-      }
-    });
-  }, [images, imageDetails]);
-
   return (
     <div style={{ display: "flex", flexWrap: "wrap" }}>
-      {images.map((img) => {
-        // We’ll display each image in a 500px wide container, scaled in height.
+      {/**
+       * Because each element is a tuple [image, receipts, lines],
+       * we destructure them like so:
+       */}
+      {imageReceiptLines.map(([image, receipts, lines]) => {
+        const s3_path = image.s3_key.replace("raw/", "");
+        const cdn_url = `https://d3izz2n0uhacrm.cloudfront.net/example/${s3_path}`;
+        
+        // We’ll display each image in a 500px-wide container, scaled in height.
         const baseWidth = 500;
-        const aspectRatio = img.height / img.width;
+        const aspectRatio = image.height / image.width;
         const scaledHeight = baseWidth * aspectRatio;
 
-        // If the base64 data isn't loaded yet, just show a gray rectangle
-        const base64Data = imageDetails[img.id]?.scaled_images?.[0]?.base64;
-        const lines = imageDetails[img.id]?.lines;
-        if (!base64Data) {
-          return (
-            <div
-              key={img.id}
-              style={{
-                width: baseWidth,
-                height: scaledHeight,
-                margin: "8px",
-                backgroundColor: "gray",
-              }}
-            />
-          );
+        if (!image ) {
+          return <text>Loading</text>;
         }
 
-        // Render an SVG with a viewBox that matches the original image’s pixel size
         return (
           <svg
-            key={img.id}
+            key={image.id}
             width={baseWidth}
             height={scaledHeight}
             style={{ margin: "8px", backgroundColor: "gray" }}
-            viewBox={`0 0 ${img.width} ${img.height}`}
+            viewBox={`0 0 ${image.width} ${image.height}`}
             preserveAspectRatio="xMidYMid meet"
             xmlns="http://www.w3.org/2000/svg"
           >
+            {/* The image itself */}
             <image
-              key={img.id}
-              width={img.width}
-              height={img.height}
+              width={image.width}
+              height={image.height}
               preserveAspectRatio="xMidYMid meet"
-              xlinkHref={`data:image/jpeg;base64,${base64Data}`}
+              xlinkHref={cdn_url}
             />
-            {/* Draw bounding boxes for each line */}
-            {lines?.map((line, idx) => BoundingBox(line, img))}
-            {/* Label the image ID */}
+
+            {/* Example: if you want to draw bounding boxes for receipts */}
+            {receipts.map((receipt) => (
+              <rect
+                key={`receipt-${receipt.id}`}
+                x={receipt.top_left.x}
+                y={receipt.top_left.y}
+                width={receipt.width}
+                height={receipt.height}
+                fill="rgba(255, 0, 0, 0.25)"
+                stroke="red"
+                strokeWidth={10}
+              />
+            ))}
+
+            {/* Example: if you want to draw bounding boxes for lines */}
+            {lines.map((line) => (
+              <React.Fragment key={`line-${line.id}`}>
+                {BoundingBox(line, image)}
+              </React.Fragment>
+            ))}
+
+            {/* A simple text label with the image ID */}
             <text
               x={10}
               y={250}
@@ -179,7 +204,7 @@ export default function ImageGrid() {
               fontSize={250}
               style={{ pointerEvents: "none" }}
             >
-              {img.id}
+              {image.id}
             </text>
           </svg>
         );
