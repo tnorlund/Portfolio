@@ -59,6 +59,8 @@ class Receipt:
         bottom_left: dict,
         bottom_right: dict,
         sha256: str = None,
+        cdn_s3_bucket: str = None,
+        cdn_s3_key: str = None,
     ):
         """Constructs a new Receipt object for DynamoDB
 
@@ -115,6 +117,12 @@ class Receipt:
         if sha256 and not isinstance(sha256, str):
             raise ValueError("sha256 must be a string")
         self.sha256 = sha256
+        if cdn_s3_bucket and not isinstance(cdn_s3_bucket, str):
+            raise ValueError("cdn_s3_bucket must be a string")
+        self.cdn_s3_bucket = cdn_s3_bucket
+        if cdn_s3_key and not isinstance(cdn_s3_key, str):
+            raise ValueError("cdn_s3_key must be a string")
+        self.cdn_s3_key = cdn_s3_key
 
     def key(self) -> dict:
         """Generates the primary key for the line
@@ -178,6 +186,10 @@ class Receipt:
                 }
             },
             "sha256": {"S": self.sha256} if self.sha256 else {"NULL": True},
+            "cdn_s3_bucket": (
+                {"S": self.cdn_s3_bucket} if self.cdn_s3_bucket else {"NULL": True}
+            ),
+            "cdn_s3_key": {"S": self.cdn_s3_key} if self.cdn_s3_key else {"NULL": True},
         }
 
     def __repr__(self) -> str:
@@ -205,6 +217,8 @@ class Receipt:
         yield "bottomLeft", self.bottomLeft
         yield "bottomRight", self.bottomRight
         yield "sha256", self.sha256
+        yield "cdn_s3_bucket", self.cdn_s3_bucket
+        yield "cdn_s3_key", self.cdn_s3_key
 
     def __eq__(self, other) -> bool:
         """Checks if two Receipt objects are equal
@@ -230,6 +244,8 @@ class Receipt:
             and self.bottomLeft == other.bottomLeft
             and self.bottomRight == other.bottomRight
             and self.sha256 == other.sha256
+            and self.cdn_s3_bucket == other.cdn_s3_bucket
+            and self.cdn_s3_key == other.cdn_s3_key
         )
 
 
@@ -273,13 +289,28 @@ def itemToReceipt(item: dict) -> Receipt:
                 key: float(value["N"]) for key, value in item["top_right"]["M"].items()
             },
             bottom_left={
-                key: float(value["N"]) for key, value in item["bottom_left"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["bottom_left"]["M"].items()
             },
             bottom_right={
                 key: float(value["N"])
                 for key, value in item["bottom_right"]["M"].items()
             },
-            sha256=item["sha256"]["S"] if "sha256" in item else None,
+            sha256=(
+                item["sha256"]["S"]
+                if "sha256" in item and "S" in item["sha256"]
+                else None
+            ),
+            cdn_s3_bucket=(
+                item["cdn_s3_bucket"]["S"]
+                if "cdn_s3_bucket" in item and "S" in item["cdn_s3_bucket"]
+                else None
+            ),
+            cdn_s3_key=(
+                item["cdn_s3_key"]["S"]
+                if "cdn_s3_key" in item and "S" in item["cdn_s3_key"]
+                else None
+            ),
         )
     except Exception as e:
-        raise ValueError("Invalid item format") from e
+        raise ValueError(f"Invalid item format {e}")
