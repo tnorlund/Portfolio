@@ -25,12 +25,13 @@ interface LineItem {
   image_id: number;
   id: number;
   text: string;
-  boundingBox: BoundingBoxInterface;
-    topLeft: Point;
-    topRight: Point;
-    bottomLeft: Point;
-    bottomRight: Point;
-  angle: number; // degrees
+  bounding_box: BoundingBoxInterface;
+  top_left: Point;
+  top_right: Point;
+  bottom_left: Point;
+  bottom_right: Point;
+  angle_degrees: number; 
+  angle_radians: number;
   confidence: number;
 }
 
@@ -50,15 +51,15 @@ function invert_y(point: Point) {
 
 function BoundingBox(line: LineItem, img: ImageItem) {
 
-    const bottomLeft = scalePointByImage(invert_y(line.bottomLeft), img);
+    const bottomLeft = scalePointByImage(invert_y(line.bottom_left), img);
   // Bottom-right corner
-  const bottomRight = scalePointByImage(invert_y(line.bottomRight), img);
+  const bottomRight = scalePointByImage(invert_y(line.bottom_right), img);
 
   // Top-left corner
-  const topLeft = scalePointByImage(invert_y(line.topLeft), img);
+  const topLeft = scalePointByImage(invert_y(line.top_left), img);
 
   // Top-right corner
-  const topRight = scalePointByImage(invert_y(line.topRight), img);
+  const topRight = scalePointByImage(invert_y(line.top_right), img);
   return (
     <React.Fragment
         key={line.id}
