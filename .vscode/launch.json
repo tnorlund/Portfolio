@@ -12,9 +12,9 @@
           "--maxfail=1",
           "--disable-warnings",
           // You can also specify tests or directories here, e.g.:
-          // "lambda_layer/python/test"
+          // "development/lambda_layer/python/test"
           // Coverage settings:
-          "--cov=lambda_layer/python",
+          "--cov=development/lambda_layer/python",
           // optionally:
           "--cov-report=term-missing",
           // or --cov-report=html, etc.
