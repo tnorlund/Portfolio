@@ -7,7 +7,7 @@ correct_word_params = {
     "image_id": 1,
     "line_id": 2,
     "id": 3,
-    "text": "07\/03\/2024",
+    "text": "test_string",
     "bounding_box": {
         "y": 0.9167082878750482,
         "width": 0.08690182470506236,

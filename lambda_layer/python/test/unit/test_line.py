@@ -394,7 +394,7 @@ def test_repr():
     line = Line(
         1,
         1,
-        "07\/03\/2024",
+        "test_string",
         {
             "x": 0.4454263367632384,
             "height": 0.022867568134581906,
@@ -409,7 +409,7 @@ def test_repr():
         -0.10448461,
         1,
     )
-    assert repr(line) == "Line(id=1, text='07\/03\/2024')"
+    assert repr(line) == "Line(id=1, text='test_string')"
 
 
 def test_iter():
@@ -417,7 +417,7 @@ def test_iter():
     line = Line(
         1,
         1,
-        "07\/03\/2024",
+        "test_string",
         {
             "x": 0.4454263367632384,
             "height": 0.022867568134581906,
@@ -435,7 +435,7 @@ def test_iter():
     assert dict(line) == {
         "image_id": 1,
         "id": 1,
-        "text": "07\/03\/2024",
+        "text": "test_string",
         "bounding_box": {
             "x": 0.4454263367632384,
             "height": 0.022867568134581906,
@@ -457,7 +457,7 @@ def test_eq():
     line1 = Line(
         1,
         1,
-        "07\/03\/2024",
+        "test_string",
         {
             "x": 0.4454263367632384,
             "height": 0.022867568134581906,
@@ -475,7 +475,7 @@ def test_eq():
     line2 = Line(
         1,
         1,
-        "07\/03\/2024",
+        "test_string",
         {
             "x": 0.4454263367632384,
             "height": 0.022867568134581906,
@@ -524,7 +524,7 @@ def test_itemToLine():
         "PK": {"S": "IMAGE#00001"},
         "SK": {"S": "LINE#00001"},
         "TYPE": {"S": "LINE"},
-        "text": {"S": "07\/03\/2024"},
+        "text": {"S": "test_string"},
         "bounding_box": {
             "M": {
                 "x": {"N": "0.445426336763238400"},
@@ -564,7 +564,7 @@ def test_itemToLine():
     assert Line(
         1,
         1,
-        "07\/03\/2024",
+        "test_string",
         {
             "x": 0.4454263367632384,
             "height": 0.022867568134581906,

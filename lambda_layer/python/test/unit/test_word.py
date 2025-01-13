@@ -6,7 +6,7 @@ correct_word_params = {
     "image_id": 1,
     "line_id": 2,
     "id": 3,
-    "text": "07\/03\/2024",
+    "text": "test_string",
     "bounding_box": {
         "y": 0.9167082878750482,
         "width": 0.08690182470506236,
@@ -28,7 +28,7 @@ def test_init():
     assert word.image_id == 1
     assert word.line_id == 2
     assert word.id == 3
-    assert word.text == "07\/03\/2024"
+    assert word.text == "test_string"
     assert word.bounding_box == {
         "y": 0.9167082878750482,
         "width": 0.08690182470506236,
@@ -65,7 +65,7 @@ def test_to_item():
         "PK": {"S": "IMAGE#00001"},
         "SK": {"S": "LINE#00002#WORD#00003"},
         "TYPE": {"S": "WORD"},
-        "text": {"S": "07\/03\/2024"},
+        "text": {"S": "test_string"},
         "bounding_box": {
             "M": {
                 "x": {"N": "0.445426336763238400"},
@@ -109,7 +109,7 @@ def test_to_item():
         "PK": {"S": "IMAGE#00001"},
         "SK": {"S": "LINE#00002#WORD#00003"},
         "TYPE": {"S": "WORD"},
-        "text": {"S": "07\/03\/2024"},
+        "text": {"S": "test_string"},
         "bounding_box": {
             "M": {
                 "x": {"N": "0.445426336763238400"},
@@ -152,7 +152,7 @@ def test_to_item():
 def test_repr():
     """Test the Word __repr__ method"""
     word = Word(**correct_word_params)
-    assert repr(word) == "Word(id=3, text='07\\/03\\/2024')"
+    assert repr(word) == "Word(id=3, text='test_string')"
 
 
 def test_iter():
@@ -162,7 +162,7 @@ def test_iter():
         "image_id": 1,
         "line_id": 2,
         "id": 3,
-        "text": "07\/03\/2024",
+        "text": "test_string",
         "bounding_box": {
             "x": 0.4454263367632384,
             "y": 0.9167082878750482,
@@ -193,7 +193,7 @@ def test_itemToWord():
         "PK": {"S": "IMAGE#00001"},
         "SK": {"S": "LINE#00002#WORD#00003"},
         "TYPE": {"S": "WORD"},
-        "text": {"S": "07\/03\/2024"},
+        "text": {"S": "test_string"},
         "bounding_box": {
             "M": {
                 "x": {"N": "0.445426336763238400"},
