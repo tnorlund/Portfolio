@@ -1,6 +1,7 @@
 from typing import Generator, Tuple
 from decimal import Decimal, ROUND_HALF_UP
 from math import pi, radians, sin, cos
+from dynamo import ReceiptLetter
 
 
 def assert_valid_bounding_box(bounding_box):
@@ -170,6 +171,23 @@ class Letter:
             "angle_radians": {"N": _format_float(self.angle_radians, 10, 12)},
             "confidence": {"N": _format_float(self.confidence, 2, 2)},
         }
+    
+    def to_receipt_letter(self) -> ReceiptLetter:
+        return ReceiptLetter(
+            image_id=self.image_id,
+            line_id=self.line_id,
+            word_id=self.word_id,
+            id=self.id,
+            text=self.text,
+            bounding_box=self.bounding_box,
+            top_right=self.top_right,
+            top_left=self.top_left,
+            bottom_right=self.bottom_right,
+            bottom_left=self.bottom_left,
+            angle_degrees=self.angle_degrees,
+            angle_radians=self.angle_radians,
+            confidence=self.confidence,
+        )
 
     def calculate_centroid(self) -> Tuple[float, float]:
         """Calculates the centroid of the line
