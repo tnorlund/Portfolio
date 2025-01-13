@@ -1,5 +1,6 @@
 from typing import Generator, Tuple
 from decimal import Decimal, ROUND_HALF_UP
+from math import pi, radians, sin, cos
 
 
 def assert_valid_bounding_box(bounding_box):
@@ -169,6 +170,139 @@ class Letter:
             "angle_radians": {"N": _format_float(self.angle_radians, 10, 12)},
             "confidence": {"N": _format_float(self.confidence, 2, 2)},
         }
+
+    def calculate_centroid(self) -> Tuple[float, float]:
+        """Calculates the centroid of the line
+
+        Returns:
+            Tuple[float, float]: The x and y coordinates of the centroid
+        """
+        x = (
+            self.top_right["x"]
+            + self.top_left["x"]
+            + self.bottom_right["x"]
+            + self.bottom_left["x"]
+        ) / 4
+        y = (
+            self.top_right["y"]
+            + self.top_left["y"]
+            + self.bottom_right["y"]
+            + self.bottom_left["y"]
+        ) / 4
+        return x, y
+    
+    def translate(self, x: float, y: float) -> None:
+        """Translates the x, y position"""
+        self.top_right["x"] += x
+        self.top_right["y"] += y
+        self.top_left["x"] += x
+        self.top_left["y"] += y
+        self.bottom_right["x"] += x
+        self.bottom_right["y"] += y
+        self.bottom_left["x"] += x
+        self.bottom_left["y"] += y
+        Warning("This function does not update the bounding box")
+
+    def scale(self, sx: float, sy: float) -> None:
+        """Scales the line by the x and y factors"""
+        self.top_right["x"] *= sx
+        self.top_right["y"] *= sy
+        self.top_left["x"] *= sx
+        self.top_left["y"] *= sy
+        self.bottom_right["x"] *= sx
+        self.bottom_right["y"] *= sy
+        self.bottom_left["x"] *= sx
+        self.bottom_left["y"] *= sy
+        self.bounding_box["x"] *= sx
+        self.bounding_box["y"] *= sy
+        self.bounding_box["width"] *= sx
+        self.bounding_box["height"] *= sy
+
+    def rotate(
+        self,
+        angle: float,
+        rotate_origin_x: float,
+        rotate_origin_y: float,
+        use_radians: bool = True,
+    ) -> None:
+        """
+        Rotates the line by the specified angle around (rotate_origin_x, rotate_origin_y).
+        ONLY rotates if angle is within:
+        - [-90°, 90°], if use_radians=False
+        - [-π/2, π/2], if use_radians=True
+        Otherwise, raises ValueError.
+
+        Updates top_right, topLeft, bottomRight, bottomLeft in-place,
+        and also updates angleDegrees/angleRadians.
+
+        Args:
+            angle (float): The angle by which to rotate the line.
+            rotate_origin_x (float): The x-coordinate of the rotation origin.
+            rotate_origin_y (float): The y-coordinate of the rotation origin.
+            use_radians (bool): If True, `angle` is in radians. Otherwise, degrees.
+        """
+
+        # 1) Check allowed range
+        if use_radians:
+            # Allowed range is [-π/2, π/2]
+            if not (-pi / 2 <= angle <= pi / 2):
+                raise ValueError(
+                    f"Angle {angle} (radians) is outside the allowed range [-π/2, π/2]."
+                )
+            angle_radians = angle
+        else:
+            # Allowed range is [-90, 90] degrees
+            if not (-90 <= angle <= 90):
+                raise ValueError(
+                    f"Angle {angle} (degrees) is outside the allowed range [-90°, 90°]."
+                )
+            # Convert to radians
+            angle_radians = radians(angle)
+
+        # 2) Rotate each corner
+        def rotate_point(px, py, ox, oy, theta):
+            """
+            Rotates point (px, py) around (ox, oy) by theta radians.
+            Returns the new (x, y) coordinates.
+            """
+            # Translate point so that (ox, oy) becomes the origin
+            translated_x = px - ox
+            translated_y = py - oy
+
+            # Apply the rotation
+            rotated_x = translated_x * cos(theta) - translated_y * sin(theta)
+            rotated_y = translated_x * sin(theta) + translated_y * cos(theta)
+
+            # Translate back
+            final_x = rotated_x + ox
+            final_y = rotated_y + oy
+            return final_x, final_y
+
+        corners = [self.top_right, self.top_left, self.bottom_right, self.bottom_left]
+        for corner in corners:
+            x_new, y_new = rotate_point(
+                corner["x"],
+                corner["y"],
+                rotate_origin_x,
+                rotate_origin_y,
+                angle_radians,
+            )
+            corner["x"] = x_new
+            corner["y"] = y_new
+
+        # 3) Update angleDegrees and angleRadians
+        if use_radians:
+            # Accumulate the rotation in angleRadians
+            self.angle_radians += angle_radians
+            self.angle_degrees += angle_radians * 180.0 / pi
+        else:
+            # If it was in degrees, accumulate in degrees
+            self.angle_degrees += angle
+            # Convert that addition to radians
+            self.angle_radians += radians(angle)
+
+        # 4) Warn that the bounding box is not updated
+        Warning("This function does not update the bounding box")
 
     def __repr__(self):
         """Returns a string representation of the Letter object
