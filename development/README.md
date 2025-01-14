@@ -5,6 +5,7 @@
 export REGION='us-east-2'
 export ACCOUNT_ID=`aws sts get-caller-identity --query "Account" --output text --region ${REGION}`
 export PULUMI_STACK_NAME=`pulumi stack --show-name`
+aws ecr get-login-password --region ${REGION} | docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com
 if ! aws ecr describe-repositories --repository-names cluster-ocr > /dev/null 2>&1; then
     aws ecr create-repository --repository-name cluster-ocr
 fi

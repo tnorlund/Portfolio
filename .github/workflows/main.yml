@@ -47,7 +47,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-2
+          aws-region: ${{ env.awsRegion }}
 
       - name: Install dependencies (Yarn)
         run: yarn install
@@ -59,8 +59,8 @@ jobs:
 
       - name: Build and push Docker image
         run: |
-          export REGION='us-east-2'
           export ACCOUNT_ID=`aws sts get-caller-identity --query "Account" --output text --region ${REGION}`
+          aws ecr get-login-password --region ${REGION} | docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com
           if ! aws ecr describe-repositories --repository-names cluster-ocr > /dev/null 2>&1; then
               aws ecr create-repository --repository-name cluster-ocr
           fi
@@ -71,6 +71,7 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          REGION: ${{ env.awsRegion }}
 
       - name: Pulumi Up
         uses: pulumi/actions@v6
@@ -95,13 +96,6 @@ jobs:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.awsRegion }}
 
       - name: Sync files to S3
         run: |
