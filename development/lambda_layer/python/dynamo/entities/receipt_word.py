@@ -1,6 +1,6 @@
 from typing import Generator, Tuple
 from decimal import Decimal, ROUND_HALF_UP
-from math import sin, cos, pi, radians
+
 
 def _format_float(
     value: float, decimal_places: int = 10, total_length: int = 20
@@ -62,6 +62,7 @@ def map_to_dict(map):
     Convert a DynamoDB map to a dictionary.
     """
     return {key: float(value["N"]) for key, value in map.items()}
+
 
 class ReceiptWord:
     def __init__(
@@ -126,9 +127,11 @@ class ReceiptWord:
     def key(self) -> dict:
         return {
             "PK": {"S": f"IMAGE#{self.image_id:05d}"},
-            "SK": {"S": f"RECEIPT#{self.receipt_id:05d}LINE#{self.line_id:05d}#WORD#{self.id:05d}"},
+            "SK": {
+                "S": f"RECEIPT#{self.receipt_id:05d}#LINE#{self.line_id:05d}#WORD#{self.id:05d}"
+            },
         }
-    
+
     def to_item(self) -> dict:
         item = {
             **self.key(),
@@ -173,7 +176,7 @@ class ReceiptWord:
         if self.tags:
             item["tags"] = {"SS": self.tags}
         return item
-    
+
     def __iter__(self) -> Generator[Tuple[str, str], None, None]:
         yield "image_id", self.image_id
         yield "line_id", self.line_id
@@ -189,6 +192,7 @@ class ReceiptWord:
         yield "angle_radians", self.angle_radians
         yield "tags", self.tags
         yield "confidence", self.confidence
+
 
 def itemToReceiptWord(item: dict) -> ReceiptWord:
     required_keys = {
@@ -209,10 +213,10 @@ def itemToReceiptWord(item: dict) -> ReceiptWord:
         raise ValueError(f"Item is missing required keys: {missing_keys}")
     try:
         return ReceiptWord(
-            receipt_id=int(item["PK"]["S"].split("#")[2]),
+            receipt_id=int(item["SK"]["S"].split("#")[1]),
             image_id=int(item["PK"]["S"].split("#")[1]),
-            line_id=int(item["SK"]["S"].split("#")[2]),
-            id=int(item["SK"]["S"].split("#")[4]),
+            line_id=int(item["SK"]["S"].split("#")[3]),
+            id=int(item["SK"]["S"].split("#")[5]),
             text=item["text"]["S"],
             bounding_box=map_to_dict(item["bounding_box"]["M"]),
             top_right=map_to_dict(item["top_right"]["M"]),
