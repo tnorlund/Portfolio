@@ -1,6 +1,6 @@
 from typing import Generator, Tuple
 from decimal import Decimal, ROUND_HALF_UP
-from math import sin, cos, pi, radians
+
 
 def _format_float(
     value: float, decimal_places: int = 10, total_length: int = 20
@@ -27,6 +27,7 @@ def _format_float(
     # formatted = formatted.ljust(total_length, '0')
 
     return formatted
+
 
 def assert_valid_bounding_box(bounding_box):
     """
@@ -62,9 +63,10 @@ def map_to_dict(map):
     """
     return {key: float(value["N"]) for key, value in map.items()}
 
+
 class ReceiptLetter:
     def __init__(
-            self,
+        self,
         receipt_id: int,
         image_id: int,
         line_id: int,
@@ -127,9 +129,11 @@ class ReceiptLetter:
     def key(self) -> dict:
         return {
             "PK": {"S": f"IMAGE#{self.image_id:05d}"},
-            "SK": {"S": f"RECEIPT#{self.receipt_id:05d}LINE#{self.line_id:05d}#WORD#{self.id:05d}#LETTER#{self.word_id:05d}"},
+            "SK": {
+                "S": f"RECEIPT#{self.receipt_id:05d}#LINE#{self.line_id:05d}#WORD#{self.word_id:05d}#LETTER#{self.id:05d}"
+            },
         }
-    
+
     def to_item(self) -> dict:
         return {
             **self.key(),
@@ -171,7 +175,7 @@ class ReceiptLetter:
             "angle_radians": {"N": _format_float(self.angle_radians, 10, 12)},
             "confidence": {"N": _format_float(self.confidence, 2, 2)},
         }
-    
+
     def __iter__(self) -> Generator[Tuple[str, str], None, None]:
         yield "image_id", self.image_id
         yield "line_id", self.line_id
@@ -187,6 +191,7 @@ class ReceiptLetter:
         yield "angle_degrees", self.angle_degrees
         yield "angle_radians", self.angle_radians
         yield "confidence", self.confidence
+
 
 def itemToReceiptLetter(item: dict) -> ReceiptLetter:
     required_keys = {
