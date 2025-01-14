@@ -168,6 +168,47 @@ def test_receipt_word_to_item():
     assert item["SK"]["S"] == "RECEIPT#00001#LINE#00003#WORD#00004"
     assert item["bounding_box"]["M"]["x"]["N"]  # numeric
     assert "SS" in item["tags"]
+   
+def test_equal_receipt_word():
+    """Test that two ReceiptWords with the same attributes are equal."""
+    bounding_box = {"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4}
+    point = {"x": 1.0, "y": 2.0}
+
+    word1 = ReceiptWord(
+        receipt_id=1,
+        image_id=2,
+        line_id=3,
+        id=4,
+        text="Test",
+        bounding_box=bounding_box,
+        top_right=point,
+        top_left=point,
+        bottom_right=point,
+        bottom_left=point,
+        angle_degrees=45.0,
+        angle_radians=0.785398,
+        confidence=0.99,
+        tags=["example", "word"],
+    )
+    word2 = ReceiptWord(
+        receipt_id=1,
+        image_id=2,
+        line_id=3,
+        id=4,
+        text="Test",
+        bounding_box=bounding_box,
+        top_right=point,
+        top_left=point,
+        bottom_right=point,
+        bottom_left=point,
+        angle_degrees=45.0,
+        angle_radians=0.785398,
+        confidence=0.99,
+        tags=["example", "word"],
+    )
+
+    assert word1 == word2
+
 
 def test_item_to_receipt_word_round_trip():
     """Test that converting an item to ReceiptWord and back is consistent."""

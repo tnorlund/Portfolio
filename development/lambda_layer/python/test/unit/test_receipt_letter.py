@@ -63,6 +63,41 @@ def test_receipt_letter_to_item():
     assert "text" in item
     assert item["confidence"]["N"] == "0.99"
 
+def test_equal_receipt_letter():
+    letter1 = ReceiptLetter(
+        receipt_id=1,
+        image_id=2,
+        line_id=3,
+        word_id=4,
+        id=5,
+        text="B",
+        bounding_box={"x": 0.05, "y": 0.10, "width": 0.05, "height": 0.05},
+        top_right={"x": 0.15, "y": 0.25},
+        top_left={"x": 0.1, "y": 0.25},
+        bottom_right={"x": 0.15, "y": 0.2},
+        bottom_left={"x": 0.1, "y": 0.2},
+        angle_degrees=0.0,
+        angle_radians=0.0,
+        confidence=0.99
+    )
+    letter2 = ReceiptLetter(
+        receipt_id=1,
+        image_id=2,
+        line_id=3,
+        word_id=4,
+        id=5,
+        text="B",
+        bounding_box={"x": 0.05, "y": 0.10, "width": 0.05, "height": 0.05},
+        top_right={"x": 0.15, "y": 0.25},
+        top_left={"x": 0.1, "y": 0.25},
+        bottom_right={"x": 0.15, "y": 0.2},
+        bottom_left={"x": 0.1, "y": 0.2},
+        angle_degrees=0.0,
+        angle_radians=0.0,
+        confidence=0.99
+    )
+    assert letter1 == letter2
+
 def test_item_to_receipt_letter_round_trip():
     item = {
         "PK": {"S": "IMAGE#00002"},
