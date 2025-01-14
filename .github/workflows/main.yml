@@ -46,6 +46,24 @@ jobs:
       - name: Build React app
         run: yarn build
         working-directory: my-app
+      
+      - name: Set up Docker
+        uses: docker/setup-buildx-action@v1
+
+      - name: Build and push Docker image
+        run: |
+          export ACCOUNT_ID=`aws sts get-caller-identity --query "Account" --output text`
+          export REGION='us-east-2'
+          if ! aws ecr describe-repositories --repository-names cluster-ocr > /dev/null 2>&1; then
+              aws ecr create-repository --repository-name cluster-ocr
+          fi
+          docker buildx build --platform=linux/amd64 -t cluster-ocr -f ingestion/Dockerfile .
+          docker tag cluster-ocr:prod ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/cluster-ocr:prod
+          docker push ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/cluster-ocr:prod
+        working-directory: development
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
       - name: Pulumi Up
         uses: pulumi/actions@v6
