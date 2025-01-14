@@ -1,6 +1,6 @@
 from typing import Generator, Tuple
 from decimal import Decimal, ROUND_HALF_UP
-from math import sin, cos, pi, radians
+
 
 def _format_float(
     value: float, decimal_places: int = 10, total_length: int = 20
@@ -27,6 +27,7 @@ def _format_float(
     # formatted = formatted.ljust(total_length, '0')
 
     return formatted
+
 
 def assert_valid_bounding_box(bounding_box):
     """
@@ -61,6 +62,7 @@ def map_to_dict(map):
     Convert a DynamoDB map to a dictionary.
     """
     return {key: float(value["N"]) for key, value in map.items()}
+
 
 class ReceiptLine:
     def __init__(
@@ -121,11 +123,10 @@ class ReceiptLine:
             "PK": f"IMAGE#{self.image_id:05d}",
             "SK": f"RECEIPT#{self.receipt_id:05d}#LINE#{self.id:05d}",
         }
-    
+
     def to_item(self) -> dict:
         return {
             **self.key(),
-            **self.gsi1_key(),
             "TYPE": {"S": "RECEIPT_LINE"},
             "text": {"S": self.text},
             "bounding_box": {
@@ -164,7 +165,7 @@ class ReceiptLine:
             "angle_radians": {"N": _format_float(self.angle_radians, 10, 12)},
             "confidence": {"N": _format_float(self.confidence, 2, 2)},
         }
-    
+
     def __iter__(self) -> Generator[Tuple[str, str], None, None]:
         yield "image_id", self.image_id
         yield "receipt_id", self.receipt_id
@@ -199,18 +200,18 @@ def itemToReceiptLine(item: dict) -> ReceiptLine:
         raise ValueError(f"Item is missing required keys: {missing_keys}")
     try:
         return ReceiptLine(
-            image_id=int(item["PK"].split("#")[1]),
-            receipt_id=int(item["SK"].split("#")[1]),
-            id=int(item["SK"].split("#")[2]),
-            text=item["text"],
-            bounding_box=item["bounding_box"],
-            top_right=item["top_right"],
-            top_left=item["top_left"],
-            bottom_right=item["bottom_right"],
-            bottom_left=item["bottom_left"],
-            angle_degrees=item["angle_degrees"],
-            angle_radians=item["angle_radians"],
-            confidence=item["confidence"],
+            image_id=int(item["PK"]["S"].split("#")[1]),
+            receipt_id=int(item["SK"]["S"].split("#")[1]),
+            id=int(item["SK"]["S"].split("#")[3]),
+            text=item["text"]["S"],
+            bounding_box=map_to_dict(item["bounding_box"]["M"]),
+            top_right=map_to_dict(item["top_right"]["M"]),
+            top_left=map_to_dict(item["top_left"]["M"]),
+            bottom_right=map_to_dict(item["bottom_right"]["M"]),
+            bottom_left=map_to_dict(item["bottom_left"]["M"]),
+            angle_degrees=float(item["angle_degrees"]["N"]),
+            angle_radians=float(item["angle_radians"]["N"]),
+            confidence=float(item["confidence"]["N"]),
         )
     except (KeyError, IndexError) as e:
         raise ValueError("Error converting item to ReceiptLine") from e
