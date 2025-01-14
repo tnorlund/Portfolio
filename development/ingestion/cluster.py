@@ -30,23 +30,20 @@ import hashlib
 from datetime import datetime
 
 # Load environment variables
-S3_BUCKET = os.getenv("S3_BUCKET")
 DYNAMO_DB_TABLE = os.getenv("DYNAMO_DB_TABLE")
-IMAGE_ID = os.getenv("IMAGE_ID")
-JSON_BUCKET = os.getenv("JSON_BUCKET")
-JSON_KEY = os.getenv("JSON_KEY")
-PNG_BUCKET = os.getenv("PNG_BUCKET")
-PNG_KEY = os.getenv("PNG_KEY")
+S3_BUCKET = os.getenv("S3_BUCKET")
 CDN_S3_BUCKET = os.getenv("CDN_S3_BUCKET")
+
+IMAGE_ID = os.getenv("IMAGE_ID")
+JSON_KEY = os.getenv("JSON_KEY")
+PNG_KEY = os.getenv("PNG_KEY")
 CDN_S3_KEY = os.getenv("CDN_S3_KEY")
 
 if (
     not S3_BUCKET
     or not DYNAMO_DB_TABLE
     or not IMAGE_ID
-    or not JSON_BUCKET
     or not JSON_KEY
-    or not PNG_BUCKET
     or not PNG_KEY
 ):
     missing_vars = [
@@ -54,9 +51,8 @@ if (
         for var_name, var_value in [
             ("DYNAMO_DB_TABLE", DYNAMO_DB_TABLE),
             ("IMAGE_ID", IMAGE_ID),
-            ("JSON_BUCKET", JSON_BUCKET),
             ("JSON_KEY", JSON_KEY),
-            ("PNG_BUCKET", PNG_BUCKET),
+            ("S3_BUCKET", S3_BUCKET),
             ("PNG_KEY", PNG_KEY),
         ]
         if not var_value
@@ -219,7 +215,7 @@ def add_initial_image() -> Tuple[Image, list[Line], list[Word], list[Letter]]:
     # Download the PNG from S3 to calculate the SHA256
     s3_client = boto3.client("s3")
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp:
-        s3_client.download_file(PNG_BUCKET, PNG_KEY, temp.name)
+        s3_client.download_file(S3_BUCKET, PNG_KEY, temp.name)
         sha256 = calculate_sha256(temp.name)
         img_cv = cv2.imread(temp.name)
         height, width, _ = img_cv.shape
@@ -229,7 +225,7 @@ def add_initial_image() -> Tuple[Image, list[Line], list[Word], list[Letter]]:
             width=width,
             height=height,
             timestamp_added=datetime.now(datetime.timezone.utc).isoformat(),
-            s3_bucket=PNG_BUCKET,
+            s3_bucket=S3_BUCKET,
             s3_key=PNG_KEY,
             sha256=sha256,
             cdn_s3_bucket=CDN_S3_BUCKET,
@@ -238,7 +234,7 @@ def add_initial_image() -> Tuple[Image, list[Line], list[Word], list[Letter]]:
     )
     # Read JSON file from S3
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as temp:
-        s3_client.download_file(JSON_BUCKET, JSON_KEY, temp.name)
+        s3_client.download_file(S3_BUCKET, JSON_KEY, temp.name)
         with open(temp.name, "r") as f:
             ocr_data = json.load(f)
     lines, words, letters = process_ocr_dict(ocr_data, IMAGE_ID)

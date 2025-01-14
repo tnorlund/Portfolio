@@ -1,29 +1,77 @@
 import pulumi
 import pulumi_aws as aws
 from dynamo_db import dynamodb_table
+from s3_website import site_bucket
+from dynamo_db import dynamodb_table
 
-region = aws.config.region 
+region = aws.config.region
 caller_identity = aws.get_caller_identity()
 account_id = caller_identity.account_id
 pulumi_stack_name = pulumi.get_stack()
-ecr_image_uri = f"{account_id}.dkr.ecr.{region}.amazonaws.com/cluster-ocr:{pulumi_stack_name}"
-
-# 1. Create an IAM Role for the Lambda function
-lambda_role = aws.iam.Role(
-    "lambda-execution-role",
-    assume_role_policy=pulumi.Output.json_dumps({
-        "Version": "2012-10-17",
-        "Statement": [
-            {
-                "Action": "sts:AssumeRole",
-                "Principal": {"Service": "lambda.amazonaws.com"},
-                "Effect": "Allow",
-            }
-        ],
-    }),
+ecr_image_uri = (
+    f"{account_id}.dkr.ecr.{region}.amazonaws.com/cluster-ocr:{pulumi_stack_name}"
 )
 
-# Attach the AWSLambdaBasicExecutionRole policy
+bucket = aws.s3.Bucket("raw-image-bucket")
+pulumi.export("image_bucket_name", bucket.bucket)
+
+
+lambda_role = aws.iam.Role(
+    "lambda-execution-role",
+    # Only define the trust policy here
+    assume_role_policy=pulumi.Output.json_dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Action": "sts:AssumeRole",
+                    "Principal": {"Service": "lambda.amazonaws.com"},
+                    "Effect": "Allow",
+                },
+            ],
+        }
+    ),
+)
+
+lambda_role_policy = aws.iam.RolePolicy(
+    "lambda-execution-role-policy",
+    role=lambda_role.name,
+    policy=pulumi.Output.json_dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Action": [
+                        "s3:GetObject",
+                    ],
+                    "Effect": "Allow",
+                    "Resource": pulumi.Output.concat(bucket.arn, "/*"),
+                },
+                {
+                    "Action": [
+                        "s3:PutObject",
+                    ],
+                    "Effect": "Allow",
+                    "Resource": pulumi.Output.concat(site_bucket.arn, "/*"),
+                },
+                {
+                    "Action": [
+                        "dynamodb:Query",
+                        "dynamodb:DescribeTable",
+                        "dynamodb:PutItem",
+                        "dynamodb:BatchWriteItem",
+                    ],
+                    "Resource": [
+                        dynamodb_table.arn,
+                        f"{dynamodb_table.arn}/index/GSI1",
+                    ],
+                    "Effect": "Allow",
+                },
+            ],
+        }
+    ),
+)
+
 aws.iam.RolePolicyAttachment(
     "lambda-basic-execution-policy",
     role=lambda_role.name,
@@ -41,6 +89,8 @@ lambda_function = aws.lambda_.Function(
     environment={
         "variables": {
             "DYNAMO_DB_TABLE": dynamodb_table.name,  # Add environment variables if needed
+            "S3_BUCKET": bucket._name,
+            "CDN_S3_BUCKET": site_bucket._name,
         }
     },
 )
