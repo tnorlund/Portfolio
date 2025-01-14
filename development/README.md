@@ -2,8 +2,8 @@
 
 ### ECR
 ```bash
-export ACCOUNT_ID=`aws sts get-caller-identity --query "Account" --output text`
 export REGION='us-east-2'
+export ACCOUNT_ID=`aws sts get-caller-identity --query "Account" --output text --region ${REGION}`
 export PULUMI_STACK_NAME=`pulumi stack --show-name`
 if ! aws ecr describe-repositories --repository-names cluster-ocr > /dev/null 2>&1; then
     aws ecr create-repository --repository-name cluster-ocr

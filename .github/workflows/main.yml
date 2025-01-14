@@ -39,6 +39,16 @@ jobs:
         with:
           node-version: 18
 
+      - name: Set up Docker
+        uses: docker/setup-buildx-action@v1
+      
+      - name: Set up AWS CLI
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-2
+
       - name: Install dependencies (Yarn)
         run: yarn install
         working-directory: my-app
@@ -46,14 +56,11 @@ jobs:
       - name: Build React app
         run: yarn build
         working-directory: my-app
-      
-      - name: Set up Docker
-        uses: docker/setup-buildx-action@v1
 
       - name: Build and push Docker image
         run: |
-          export ACCOUNT_ID=`aws sts get-caller-identity --query "Account" --output text`
           export REGION='us-east-2'
+          export ACCOUNT_ID=`aws sts get-caller-identity --query "Account" --output text --region ${REGION}`
           if ! aws ecr describe-repositories --repository-names cluster-ocr > /dev/null 2>&1; then
               aws ecr create-repository --repository-name cluster-ocr
           fi
