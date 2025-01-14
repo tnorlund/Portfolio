@@ -18,7 +18,6 @@ pulumi.export("image_bucket_name", bucket.bucket)
 
 lambda_role = aws.iam.Role(
     "lambda-execution-role",
-    # Only define the trust policy here
     assume_role_policy=pulumi.Output.json_dumps(
         {
             "Version": "2012-10-17",
@@ -63,7 +62,7 @@ lambda_role_policy = aws.iam.RolePolicy(
                     ],
                     "Resource": [
                         dynamodb_table.arn,
-                        f"{dynamodb_table.arn}/index/GSI1",
+                        pulumi.Output.concat(dynamodb_table.arn, "/index/GSI1"),
                     ],
                     "Effect": "Allow",
                 },
@@ -78,7 +77,6 @@ aws.iam.RolePolicyAttachment(
     policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
 )
 
-# 2. Create the Lambda function
 lambda_function = aws.lambda_.Function(
     "cluster-lambda",
     package_type="Image",
@@ -88,13 +86,12 @@ lambda_function = aws.lambda_.Function(
     timeout=60 * 2,  # 2 minutes
     environment={
         "variables": {
-            "DYNAMO_DB_TABLE": dynamodb_table.name,  # Add environment variables if needed
+            "DYNAMO_DB_TABLE": dynamodb_table.name,
             "S3_BUCKET": bucket._name,
             "CDN_S3_BUCKET": site_bucket._name,
         }
     },
 )
 
-# 3. Export the Lambda function name and ARN
 pulumi.export("lambda_function_name", lambda_function.name)
 pulumi.export("lambda_function_arn", lambda_function.arn)
