@@ -60,6 +60,37 @@ def test_receipt_line_to_item():
     assert "SK" in item
     assert "bounding_box" in item
 
+def test_equal_receipt_line():
+    line1 = ReceiptLine(
+        receipt_id=1,
+        image_id=2,
+        id=3,
+        text="Line text",
+        bounding_box={"x": 0.1, "y": 0.2, "width": 0.5, "height": 0.2},
+        top_left={"x": 0.1, "y": 0.2},
+        top_right={"x": 0.6, "y": 0.2},
+        bottom_left={"x": 0.1, "y": 0.4},
+        bottom_right={"x": 0.6, "y": 0.4},
+        angle_degrees=10.0,
+        angle_radians=0.174533,
+        confidence=0.90
+    )
+    line2 = ReceiptLine(
+        receipt_id=1,
+        image_id=2,
+        id=3,
+        text="Line text",
+        bounding_box={"x": 0.1, "y": 0.2, "width": 0.5, "height": 0.2},
+        top_left={"x": 0.1, "y": 0.2},
+        top_right={"x": 0.6, "y": 0.2},
+        bottom_left={"x": 0.1, "y": 0.4},
+        bottom_right={"x": 0.6, "y": 0.4},
+        angle_degrees=10.0,
+        angle_radians=0.174533,
+        confidence=0.90
+    )
+    assert line1 == line2
+
 def test_item_to_receipt_line_round_trip():
     # Example item structure
     item = {

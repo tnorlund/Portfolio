@@ -175,6 +175,25 @@ class ReceiptLetter:
             "angle_radians": {"N": _format_float(self.angle_radians, 10, 12)},
             "confidence": {"N": _format_float(self.confidence, 2, 2)},
         }
+    
+    def __eq__(self, other):
+        if not isinstance(other, ReceiptLetter):
+            return False
+        return (
+            self.receipt_id == other.receipt_id
+            and self.image_id == other.image_id
+            and self.line_id == other.line_id
+            and self.word_id == other.word_id
+            and self.id == other.id
+            and self.text == other.text
+            and self.bounding_box == other.bounding_box
+            and self.top_right == other.top_right
+            and self.top_left == other.top_left
+            and self.bottom_right == other.bottom_right
+            and self.bottom_left == other.bottom_left
+            and self.angle_degrees == other.angle_degrees
+            and self.angle_radians == other.angle_radians
+        )
 
     def __iter__(self) -> Generator[Tuple[str, str], None, None]:
         yield "image_id", self.image_id
