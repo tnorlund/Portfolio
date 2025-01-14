@@ -2,7 +2,7 @@
 
 ### ECR
 ```bash
-export REGION='us-east-2'
+export REGION='us-east-1'
 export ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text --region ${REGION})
 export PULUMI_STACK_NAME=$(pulumi stack --show-name)
 
