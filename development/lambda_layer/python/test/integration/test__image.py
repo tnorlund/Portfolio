@@ -211,7 +211,7 @@ def test_deleteImage_error(dynamodb_table: Literal["MyMockedTable"]):
         client.deleteImage(image.id)
 
 
-def test_listImages(dynamodb_table: Literal["MyMockedTable"]):
+def test_listImageDetails(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
     # Add multiple images
@@ -250,7 +250,7 @@ def test_listImages(dynamodb_table: Literal["MyMockedTable"]):
     client.addReceipts(receipts_different_image)
 
     # Act
-    payload, lek = client.listImages()  # Return type is (List[Image], Optional[Dict])
+    payload, lek = client.listImageDetails()  # Return type is (List[Image], Optional[Dict])
 
     # Assert
     assert len(payload) == 2, "both images should be returned"
@@ -263,11 +263,11 @@ def test_listImages(dynamodb_table: Literal["MyMockedTable"]):
     assert receipts_in_image_2 == payload[2]["receipts"]
 
 
-def test_listImages_pagination_returns_page_and_token(
+def test_listImageDetails_pagination_returns_page_and_token(
     dynamodb_table: Literal["MyMockedTable"],
 ):
     """
-    Verifies that when we provide a limit to listImages, it returns
+    Verifies that when we provide a limit to listImageDetails, it returns
     only 'limit' items plus a valid lastEvaluatedKey if there are more.
     """
     # Arrange
@@ -281,7 +281,7 @@ def test_listImages_pagination_returns_page_and_token(
         images_created.append(img)
 
     # Act: Request only 2 items
-    payload, lek = client.listImages(limit=2)
+    payload, lek = client.listImageDetails(limit=2)
 
     # Assert
     assert len(payload) == 2, "Should only return 'limit' items"
@@ -293,7 +293,7 @@ def test_listImages_pagination_returns_page_and_token(
         assert img in images_created, f"Image {img.id} should be in the original set"
 
 
-def test_listImages_pagination_uses_lastEvaluatedKey(
+def test_listImageDetails_pagination_uses_lastEvaluatedKey(
     dynamodb_table: Literal["MyMockedTable"],
 ):
     # Arrange
@@ -307,11 +307,11 @@ def test_listImages_pagination_uses_lastEvaluatedKey(
         images_created.append(img)
 
     # Act: Request page 1 (limit=2)
-    page_1_payload, lek_1 = client.listImages(limit=2)
+    page_1_payload, lek_1 = client.listImageDetails(limit=2)
     # Request page 2
-    page_2_payload, lek_2 = client.listImages(limit=2, last_evaluated_key=lek_1)
+    page_2_payload, lek_2 = client.listImageDetails(limit=2, last_evaluated_key=lek_1)
     # Request page 3
-    page_3_payload, lek_3 = client.listImages(limit=2, last_evaluated_key=lek_2)
+    page_3_payload, lek_3 = client.listImageDetails(limit=2, last_evaluated_key=lek_2)
 
     # Helper function to extract just the Image objects from the dictionary
     def extract_images(payload_dict):
@@ -344,11 +344,11 @@ def test_listImages_pagination_uses_lastEvaluatedKey(
     )
 
 
-def test_listImages_pagination_no_limit_returns_all(
+def test_listImageDetails_pagination_no_limit_returns_all(
     dynamodb_table: Literal["MyMockedTable"],
 ):
     """
-    Verifies that calling listImages() with limit=None (and no lastEvaluatedKey)
+    Verifies that calling listImageDetails() with limit=None (and no lastEvaluatedKey)
     returns *all* images at once.
     """
     # Arrange
@@ -364,8 +364,8 @@ def test_listImages_pagination_no_limit_returns_all(
     client.addImage(image_3)
 
     # Act
-    # listImages() now returns (dict, lek), not (list, lek)
-    payload, lek = client.listImages()  # No limit, no lastEvaluatedKey
+    # listImageDetails() now returns (dict, lek), not (list, lek)
+    payload, lek = client.listImageDetails()  # No limit, no lastEvaluatedKey
 
     # Flatten the dictionary to a list of Image objects
     def extract_images(payload_dict):
@@ -382,7 +382,7 @@ def test_listImages_pagination_no_limit_returns_all(
         assert i in returned_images
 
 
-def test_listImages_pagination_with_limit_exceeds_count(
+def test_listImageDetails_pagination_with_limit_exceeds_count(
     dynamodb_table: Literal["MyMockedTable"],
 ):
     """
@@ -399,7 +399,7 @@ def test_listImages_pagination_with_limit_exceeds_count(
     client.addImage(image_2)
 
     # Act: limit=10 but only 2 images in the table
-    payload, lek = client.listImages(limit=10)
+    payload, lek = client.listImageDetails(limit=10)
 
     # Flatten the dictionary to a list of Image objects
     def extract_images(payload_dict):
@@ -418,15 +418,15 @@ def test_listImages_pagination_with_limit_exceeds_count(
     assert image_2 in returned_images
 
 
-def test_listImages_pagination_empty_table(dynamodb_table: Literal["MyMockedTable"]):
+def test_listImageDetails_pagination_empty_table(dynamodb_table: Literal["MyMockedTable"]):
     """
-    If the table is empty, listImages should return an empty dict and no token.
+    If the table is empty, listImageDetails should return an empty dict and no token.
     """
     # Arrange
     client = DynamoClient(dynamodb_table)
 
     # Act
-    payload, lek = client.listImages(limit=5)
+    payload, lek = client.listImageDetails(limit=5)
 
     # Assert
     # Check that 'payload' is an empty dict
@@ -434,7 +434,7 @@ def test_listImages_pagination_empty_table(dynamodb_table: Literal["MyMockedTabl
     assert lek is None, "No next token if no images"
 
 
-def test_listImages_lek_structure_and_usage(dynamodb_table: Literal["MyMockedTable"]):
+def test_listImageDetails_lek_structure_and_usage(dynamodb_table: Literal["MyMockedTable"]):
     """
     Demonstrates that the LEK (LastEvaluatedKey) we get back:
       1) Has the correct shape for a DynamoDB key
@@ -450,7 +450,7 @@ def test_listImages_lek_structure_and_usage(dynamodb_table: Literal["MyMockedTab
         images_created.append(img)
 
     # 1) Page 1: limit=2
-    payload_1, lek_1 = client.listImages(limit=2)
+    payload_1, lek_1 = client.listImageDetails(limit=2)
     # We expect 2 images returned and a non-null LEK
     assert len(payload_1) == 2, "First page should contain 2 images"
     assert lek_1 is not None, "First page should return a valid LastEvaluatedKey"
@@ -463,13 +463,13 @@ def test_listImages_lek_structure_and_usage(dynamodb_table: Literal["MyMockedTab
     ), "LEK dictionary should contain both PK and SK"
 
     # 2) Page 2: use lek_1
-    payload_2, lek_2 = client.listImages(limit=2, last_evaluated_key=lek_1)
+    payload_2, lek_2 = client.listImageDetails(limit=2, last_evaluated_key=lek_1)
     assert len(payload_2) == 2, "Second page should contain the next 2 images"
     # We still have 1 more image to go (5 total, 2 + 2 = 4 so far), so LEK should be non-null again
     assert lek_2 is not None, "Second page should return another valid LastEvaluatedKey"
 
     # 3) Page 3: use lek_2
-    payload_3, lek_3 = client.listImages(limit=2, last_evaluated_key=lek_2)
+    payload_3, lek_3 = client.listImageDetails(limit=2, last_evaluated_key=lek_2)
     assert len(payload_3) == 1, "Third page should contain the last remaining image"
     # No more items left, so LEK should be None
     assert lek_3 is None, "Third page should have no further pages"
@@ -486,3 +486,17 @@ def test_listImages_lek_structure_and_usage(dynamodb_table: Literal["MyMockedTab
     assert sorted(all_returned, key=lambda x: x.id) == sorted(
         images_created, key=lambda x: x.id
     )
+
+def test_listImages(dynamodb_table: Literal["MyMockedTable"]):
+    # Arrange
+    client = DynamoClient(dynamodb_table)
+    # Add 100 images
+    images = [Image(**{**correct_image_params, "id": i}) for i in range(1, 1001)]
+    client.addImages(images)
+
+    # Act
+    images = client.listImages()  # Return type is (List[Image], Optional[Dict])
+
+    # Assert
+    assert len(images) == 1000, "all images should be returned"
+    assert all(isinstance(image, Image) for image in images), "All items should be Image instances"

@@ -23,9 +23,9 @@ class _ReceiptLine:
     getReceiptLine(receipt_id: int, image_id: int, line_id: int) -> ReceiptLine
         Retrieves a single receipt-line by IDs.
     listReceiptLines() -> list[ReceiptLine]
-        Scans all receipt-lines in the table.
+        Returns all ReceiptLines from the table.
     listReceiptLinesFromReceipt(receipt_id: int, image_id: int) -> list[ReceiptLine]
-        Scans all lines for a particular receipt/image.
+        Returns all lines under a specific receipt/image.
     """
 
     def addReceiptLine(self, line: ReceiptLine):
@@ -120,31 +120,65 @@ class _ReceiptLine:
             raise ValueError(f"ReceiptLine with ID {line_id} not found")
 
     def listReceiptLines(self) -> list[ReceiptLine]:
-        """Returns all ReceiptLines from the table (scan for TYPE == 'RECEIPT_LINE')."""
-        response = self._client.scan(
-            TableName=self.table_name,
-            ScanFilter={
-                "TYPE": {
-                    "AttributeValueList": [{"S": "RECEIPT_LINE"}],
-                    "ComparisonOperator": "EQ",
-                }
-            },
-        )
-        return [itemToReceiptLine(item) for item in response["Items"]]
+        """Returns all ReceiptLines from the table."""
+        receipt_lines = []
+        try:
+            response = self._client.query(
+                TableName=self.table_name,
+                IndexName="GSITYPE",
+                KeyConditionExpression="#pk = :pk_val AND #type = :type_val",
+                ExpressionAttributeNames={"#pk": "GSITYPE", "#type": "TYPE"},
+                ExpressionAttributeValues={
+                    ":pk_val": {"S": "RECEIPT_LINE"},
+                    ":type_val": {"S": "RECEIPT_LINE"},
+                },
+            )
+            receipt_lines.extend([itemToReceiptLine(item) for item in response["Items"]])
+
+            while "LastEvaluatedKey" in response:
+                response = self._client.query(
+                    TableName=self.table_name,
+                    IndexName="GSITYPE",
+                    KeyConditionExpression="#pk = :pk_val AND #type = :type_val",
+                    ExpressionAttributeNames={"#pk": "GSITYPE", "#type": "TYPE"},
+                    ExpressionAttributeValues={
+                        ":pk_val": {"S": "RECEIPT_LINE"},
+                        ":type_val": {"S": "RECEIPT_LINE"},
+                    },
+                    ExclusiveStartKey=response["LastEvaluatedKey"],
+                )
+                receipt_lines.extend([itemToReceiptLine(item) for item in response["Items"]])
+
+            return receipt_lines
+        except ClientError as e:
+            raise ValueError("Could not list ReceiptLines from the database") from e
 
     def listReceiptLinesFromReceipt(self, receipt_id: int, image_id: int) -> list[ReceiptLine]:
-        """Returns all lines under a specific receipt/image (PK=IMAGE#NNN, SK begins with RECEIPT#NNN#LINE#)."""
-        response = self._client.scan(
-            TableName=self.table_name,
-            ScanFilter={
-                "PK": {
-                    "AttributeValueList": [{"S": f"IMAGE#{image_id:05d}"}],
-                    "ComparisonOperator": "EQ",
+        """Returns all lines under a specific receipt/image."""
+        receipt_lines = []
+        try:
+            response = self._client.query(
+                TableName=self.table_name,
+                KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
+                ExpressionAttributeValues={
+                    ":pk": {"S": f"IMAGE#{image_id:05d}"},
+                    ":sk": {"S": f"RECEIPT#{receipt_id:05d}#LINE#"},
                 },
-                "SK": {
-                    "AttributeValueList": [{"S": f"RECEIPT#{receipt_id:05d}#LINE#"}],
-                    "ComparisonOperator": "BEGINS_WITH",
-                },
-            },
-        )
-        return [itemToReceiptLine(item) for item in response["Items"]]
+            )
+            receipt_lines.extend([itemToReceiptLine(item) for item in response["Items"]])
+
+            while "LastEvaluatedKey" in response:
+                response = self._client.query(
+                    TableName=self.table_name,
+                    KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
+                    ExpressionAttributeValues={
+                        ":pk": {"S": f"IMAGE#{image_id:05d}"},
+                        ":sk": {"S": f"RECEIPT#{receipt_id:05d}#LINE#"},
+                    },
+                    ExclusiveStartKey=response["LastEvaluatedKey"],
+                )
+                receipt_lines.extend([itemToReceiptLine(item) for item in response["Items"]])
+
+            return receipt_lines
+        except ClientError as e:
+            raise ValueError("Could not list ReceiptLines from the database") from e

@@ -6,8 +6,8 @@ from moto import mock_aws
 @pytest.fixture
 def dynamodb_table():
     """
-    Spins up a mock DynamoDB instance, creates a table (with a GSI),
-    waits until both the table and the GSI are active, then yields
+    Spins up a mock DynamoDB instance, creates a table (with 2 GSIs: GSI1 and GSITYPE),
+    waits until both the table and the GSIs are active, then yields
     the table name for tests.
 
     After the tests, everything is torn down automatically.
@@ -16,7 +16,7 @@ def dynamodb_table():
         dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
 
         table_name = "MyMockedTable"
-        table = dynamodb.create_table(
+        dynamodb.create_table(
             TableName=table_name,
             KeySchema=[
                 {"AttributeName": "PK", "KeyType": "HASH"},
@@ -27,6 +27,7 @@ def dynamodb_table():
                 {"AttributeName": "SK", "AttributeType": "S"},
                 {"AttributeName": "GSI1PK", "AttributeType": "S"},
                 {"AttributeName": "GSI1SK", "AttributeType": "S"},
+                {"AttributeName": "TYPE", "AttributeType": "S"},
             ],
             ProvisionedThroughput={"ReadCapacityUnits": 5, "WriteCapacityUnits": 5},
             GlobalSecondaryIndexes=[
@@ -41,9 +42,22 @@ def dynamodb_table():
                         "ReadCapacityUnits": 5,
                         "WriteCapacityUnits": 5,
                     },
-                }
+                },
+                {
+                    "IndexName": "GSITYPE",
+                    "KeySchema": [
+                        {"AttributeName": "TYPE", "KeyType": "HASH"},
+                    ],
+                    "Projection": {"ProjectionType": "ALL"},
+                    "ProvisionedThroughput": {
+                        "ReadCapacityUnits": 5,
+                        "WriteCapacityUnits": 5,
+                    },
+                },
             ],
         )
+
+        # Wait for the table to be created
         dynamodb.meta.client.get_waiter("table_exists").wait(TableName=table_name)
 
         # Yield the table name so your tests can reference it

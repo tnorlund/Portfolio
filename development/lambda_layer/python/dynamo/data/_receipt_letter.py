@@ -23,9 +23,9 @@ class _ReceiptLetter:
     getReceiptLetter(receipt_id: int, image_id: int, line_id: int, word_id: int, letter_id: int) -> ReceiptLetter
         Retrieves a single receipt-letter by IDs.
     listReceiptLetters() -> list[ReceiptLetter]
-        Scans all receipt-letters in the table.
+        Returns all ReceiptLetters from the table.
     listReceiptLettersFromWord(receipt_id: int, image_id: int, line_id: int, word_id: int) -> list[ReceiptLetter]
-        Scans all letters from a specific word.
+        Returns all ReceiptLetters for a given word.
     """
 
     def addReceiptLetter(self, letter: ReceiptLetter):
@@ -128,42 +128,81 @@ class _ReceiptLetter:
             raise ValueError(f"ReceiptLetter with ID {letter_id} not found")
 
     def listReceiptLetters(self) -> list[ReceiptLetter]:
-        """Returns all ReceiptLetters from the table (scan for TYPE == 'RECEIPT_LETTER')."""
-        response = self._client.scan(
-            TableName=self.table_name,
-            ScanFilter={
-                "TYPE": {
-                    "AttributeValueList": [{"S": "RECEIPT_LETTER"}],
-                    "ComparisonOperator": "EQ",
-                }
-            },
-        )
-        return [itemToReceiptLetter(item) for item in response["Items"]]
+        """Returns all ReceiptLetters from the table."""
+        receipt_letters = []
+        try:
+            response = self._client.query(
+                TableName=self.table_name,
+                IndexName="GSITYPE",
+                KeyConditionExpression="#pk = :pk_val AND #type = :type_val",
+                ExpressionAttributeNames={"#pk": "GSITYPE", "#type": "TYPE"},
+                ExpressionAttributeValues={
+                    ":pk_val": {"S": "RECEIPT_LETTER"},
+                    ":type_val": {"S": "RECEIPT_LETTER"},
+                },
+            )
+            receipt_letters.extend([itemToReceiptLetter(item) for item in response["Items"]])
+
+            while "LastEvaluatedKey" in response:
+                response = self._client.query(
+                    TableName=self.table_name,
+                    IndexName="GSITYPE",
+                    KeyConditionExpression="#pk = :pk_val AND #type = :type_val",
+                    ExpressionAttributeNames={"#pk": "GSITYPE", "#type": "TYPE"},
+                    ExpressionAttributeValues={
+                        ":pk_val": {"S": "RECEIPT_LETTER"},
+                        ":type_val": {"S": "RECEIPT_LETTER"},
+                    },
+                    ExclusiveStartKey=response["LastEvaluatedKey"],
+                )
+                receipt_letters.extend([itemToReceiptLetter(item) for item in response["Items"]])
+
+            return receipt_letters
+        except ClientError as e:
+            raise ValueError("Could not list ReceiptLetters from the database") from e
 
     def listReceiptLettersFromWord(
         self, receipt_id: int, image_id: int, line_id: int, word_id: int
     ) -> list[ReceiptLetter]:
-        """Returns all ReceiptLetters for a given word (PK=IMAGE#NNN, SK begins with RECEIPT#NNN#LINE#NNN#WORD#NNN#LETTER#)."""
-        response = self._client.scan(
-            TableName=self.table_name,
-            ScanFilter={
-                "PK": {
-                    "AttributeValueList": [{"S": f"IMAGE#{image_id:05d}"}],
-                    "ComparisonOperator": "EQ",
+        """Returns all ReceiptLetters for a given word."""
+        receipt_letters = []
+        try:
+            response = self._client.query(
+                TableName=self.table_name,
+                KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
+                ExpressionAttributeValues={
+                    ":pkVal": {"S": f"IMAGE#{image_id:05d}"},
+                    ":skPrefix": {
+                        "S": (
+                            f"RECEIPT#{receipt_id:05d}"
+                            f"#LINE#{line_id:05d}"
+                            f"#WORD#{word_id:05d}"
+                            f"#LETTER#"
+                        )
+                    },
                 },
-                "SK": {
-                    "AttributeValueList": [
-                        {
+            )
+            receipt_letters.extend([itemToReceiptLetter(item) for item in response["Items"]])
+
+            while "LastEvaluatedKey" in response:
+                response = self._client.query(
+                    TableName=self.table_name,
+                    KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
+                    ExpressionAttributeValues={
+                        ":pkVal": {"S": f"IMAGE#{image_id:05d}"},
+                        ":skPrefix": {
                             "S": (
                                 f"RECEIPT#{receipt_id:05d}"
                                 f"#LINE#{line_id:05d}"
                                 f"#WORD#{word_id:05d}"
                                 f"#LETTER#"
                             )
-                        }
-                    ],
-                    "ComparisonOperator": "BEGINS_WITH",
-                },
-            },
-        )
-        return [itemToReceiptLetter(item) for item in response["Items"]]
+                        },
+                    },
+                    ExclusiveStartKey=response["LastEvaluatedKey"],
+                )
+                receipt_letters.extend([itemToReceiptLetter(item) for item in response["Items"]])        
+            return receipt_letters
+    
+        except ClientError as e:
+            raise ValueError("Could not list ReceiptLetters from the database") from e

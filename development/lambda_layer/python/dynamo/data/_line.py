@@ -146,25 +146,66 @@ class _Line:
             raise ValueError(f"Line with ID {line_id} not found")
 
     def listLines(self) -> list[Line]:
-        response = self._client.scan(
-            TableName=self.table_name,
-            ScanFilter={
-                "TYPE": {
-                    "AttributeValueList": [{"S": "LINE"}],
-                    "ComparisonOperator": "EQ",
-                }
-            },
-        )
-        return [itemToLine(item) for item in response["Items"]]
+        """Lists all lines in the database"""
+        lines = []
+        try:
+            response = self._client.query(
+                TableName=self.table_name,
+                IndexName="GSITYPE",
+                KeyConditionExpression="#pk = :pk_val AND #type = :type_val",
+                ExpressionAttributeNames={"#pk": "GSITYPE", "#type": "TYPE"},
+                ExpressionAttributeValues={
+                    ":pk_val": {"S": "LINE"},
+                    ":type_val": {"S": "LINE"},
+                },
+            )
+            lines.extend([itemToLine(item) for item in response["Items"]])
+
+            while "LastEvaluatedKey" in response:
+                response = self._client.query(
+                    TableName=self.table_name,
+                    IndexName="GSITYPE",
+                    KeyConditionExpression="#pk = :pk_val AND #type = :type_val",
+                    ExpressionAttributeNames={"#pk": "GSITYPE", "#type": "TYPE"},
+                    ExpressionAttributeValues={
+                        ":pk_val": {"S": "LINE"},
+                        ":type_val": {"S": "LINE"},
+                    },
+                    ExclusiveStartKey=response["LastEvaluatedKey"],
+                )
+                lines.extend([itemToLine(item) for item in response["Items"]])
+            return lines
+
+        except ClientError as e:
+            raise ValueError("Could not list lines from the database") from e
 
     def listLinesFromImage(self, image_id: int) -> list[Line]:
-        response = self._client.scan(
-            TableName=self.table_name,
-            ScanFilter={
-                "PK": {
-                    "AttributeValueList": [{"S": f"IMAGE#{image_id:05d}"}],
-                    "ComparisonOperator": "EQ",
-                }
-            },
-        )
-        return [itemToLine(item) for item in response["Items"]]
+        """Lists all lines from an image"""
+        lines = []
+        try:
+            response = self._client.query(
+                TableName=self.table_name,
+                KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
+                ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
+                ExpressionAttributeValues={
+                    ":pk_val": {"S": f"IMAGE#{image_id:05d}"},
+                    ":sk_val": {"S": "LINE#"},
+                },
+            )
+            lines.extend([itemToLine(item) for item in response["Items"]])
+
+            while "LastEvaluatedKey" in response:
+                response = self._client.query(
+                    TableName=self.table_name,
+                    KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
+                    ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
+                    ExpressionAttributeValues={
+                        ":pk_val": {"S": f"IMAGE#{image_id:05d}"},
+                        ":sk_val": {"S": "LINE#"},
+                    },
+                    ExclusiveStartKey=response["LastEvaluatedKey"],
+                )
+                lines.extend([itemToLine(item) for item in response["Items"]])
+            return lines
+        except ClientError as e:
+            raise ValueError("Could not list lines from the database") from e

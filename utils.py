@@ -8,7 +8,7 @@ def get_max_index_in_images(client: DynamoClient) -> int:
     """
     Get the maximum index in the list of images.
     """
-    images, _ = client.listImages()
+    images, _ = client.listImageDetails()
     if not images:
         return 0
     image_indexes = [index for index in images.keys()]

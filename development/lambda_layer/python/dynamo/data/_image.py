@@ -172,7 +172,7 @@ class _Image:
             else:
                 raise Exception(f"Error deleting image: {e}")
 
-    def listImages(
+    def listImageDetails(
         self, limit: Optional[int] = None, last_evaluated_key: Optional[Dict] = None
     ) -> Tuple[
         Dict[int, Dict[str, Union[Image, List[Receipt], List[Line]]]], Optional[Dict]
@@ -293,3 +293,37 @@ class _Image:
 
         except Exception as e:
             raise Exception(f"Error listing images with LastEvaluatedKey: {e}")
+
+    def listImages(self) -> List[Image]:
+        """Lists all images in the database."""
+        images = []
+        try:
+            response = self._client.query(
+                TableName=self.table_name,
+                IndexName="GSITYPE",
+                KeyConditionExpression="#pk = :pk_val AND #type = :type_val",
+                ExpressionAttributeNames={"#pk": "GSITYPE", "#type": "TYPE"},
+                ExpressionAttributeValues={
+                    ":pk_val": {"S": "IMAGE"},
+                    ":type_val": {"S": "IMAGE"},
+                },
+            )
+            images.extend([itemToImage(item) for item in response["Items"]])
+
+            while "LastEvaluatedKey" in response:
+                response = self._client.query(
+                    TableName=self.table_name,
+                    IndexName="GSITYPE",
+                    KeyConditionExpression="#pk = :pk_val AND #type = :type_val",
+                    ExpressionAttributeNames={"#pk": "GSITYPE", "#type": "TYPE"},
+                    ExpressionAttributeValues={
+                        ":pk_val": {"S": "IMAGE"},
+                        ":type_val": {"S": "IMAGE"},
+                    },
+                    ExclusiveStartKey=response["LastEvaluatedKey"],
+                )
+                images.extend([itemToImage(item) for item in response["Items"]])
+
+            return images
+        except Exception as e:
+            raise Exception(f"Error listing images: {e}")
