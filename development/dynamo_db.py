@@ -22,10 +22,6 @@ dynamodb_table = aws.dynamodb.Table(
             type="S",
         ),
         aws.dynamodb.TableAttributeArgs(
-            name="TimeToLive",
-            type="N",
-        ),
-        aws.dynamodb.TableAttributeArgs(
             name="TYPE",
             type="S",
         ),
