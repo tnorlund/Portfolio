@@ -24,7 +24,7 @@ def get_image_indexes(client: DynamoClient, number_images: int) -> list[int]:
         list[int]: A list of image IDs to assign to the images
     """
     # Get existing images and their indexes (IDs)
-    images, _ = client.listImages()
+    images = client.listImages()
 
     # If there are no images, just start from 1
     if not images:
