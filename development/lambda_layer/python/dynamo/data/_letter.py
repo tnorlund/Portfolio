@@ -147,12 +147,9 @@ class _Letter:
             response = self._client.query(
                 TableName=self.table_name,
                 IndexName="GSITYPE",
-                KeyConditionExpression="#pk = :pk_val AND #type = :type_val",
-                ExpressionAttributeNames={"#pk": "GSITYPE", "#type": "TYPE"},
-                ExpressionAttributeValues={
-                    ":pk_val": {"S": "LETTER"},
-                    ":type_val": {"S": "LETTER"},
-                },
+                KeyConditionExpression="#t = :val",
+                ExpressionAttributeNames={"#t": "TYPE"},
+                ExpressionAttributeValues={":val": {"S": "LETTER"}},
             )
             letters.extend([itemToLetter(item) for item in response["Items"]])
 
@@ -160,12 +157,9 @@ class _Letter:
                 response = self._client.query(
                     TableName=self.table_name,
                     IndexName="GSITYPE",
-                    KeyConditionExpression="#pk = :pk_val AND #type = :type_val",
-                    ExpressionAttributeNames={"#pk": "GSITYPE", "#type": "TYPE"},
-                    ExpressionAttributeValues={
-                        ":pk_val": {"S": "LETTER"},
-                        ":type_val": {"S": "LETTER"},
-                    },
+                    KeyConditionExpression="#t = :val",
+                    ExpressionAttributeNames={"#t": "TYPE"},
+                    ExpressionAttributeValues={":val": {"S": "LETTER"}},
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                 )
                 letters.extend([itemToLetter(item) for item in response["Items"]])
@@ -184,7 +178,9 @@ class _Letter:
                 KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
                 ExpressionAttributeValues={
                     ":pkVal": {"S": f"IMAGE#{image_id:05d}"},
-                    ":skPrefix": {"S": f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#"},
+                    ":skPrefix": {
+                        "S": f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#"
+                    },
                 },
             )
             letters.extend([itemToLetter(item) for item in response["Items"]])
@@ -195,13 +191,14 @@ class _Letter:
                     KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
                     ExpressionAttributeValues={
                         ":pkVal": {"S": f"IMAGE#{image_id:05d}"},
-                        ":skPrefix": {"S": f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#"},
+                        ":skPrefix": {
+                            "S": f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#"
+                        },
                     },
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                 )
                 letters.extend([itemToLetter(item) for item in response["Items"]])
-                               
+
             return letters
         except ClientError as e:
             raise ValueError("Could not list letters from word") from e
-

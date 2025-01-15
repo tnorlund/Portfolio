@@ -7,6 +7,26 @@ import json
 from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 from dynamo import DynamoClient
+import hashlib
+
+
+DEBUG = True
+
+def calculate_sha256(file_path: str):
+    """
+    Calculate the SHA-256 hash of a file.
+
+    Args:
+    file_path (str): The path to the file to hash.
+
+    Returns:
+    str: The SHA-256 hash of the file.
+    """
+    sha256_hash = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        for byte_block in iter(lambda: f.read(4096), b""):
+            sha256_hash.update(byte_block)
+    return sha256_hash.hexdigest()
 
 
 def get_image_indexes(client: DynamoClient, number_images: int) -> list[int]:
@@ -108,6 +128,22 @@ def check_if_already_in_s3(bucket_name, s3_image_object_name):
         if e.response["Error"]["Code"] != "404":
             # Some other error occurred; raise it.
             raise e
+        
+def compare_local(bucket_name, local_files, dynamo_table_name) -> list[str]:
+    """Compares local files to DynamoDB.
+
+    Compares the sha256 and file names with what's in DynamoDB. If a file is found it is not uploaded.
+    
+    Returns:
+    list[str]: The files that should actually be uploaded
+    """
+    dynamo_client = DynamoClient(dynamo_table_name)
+    hashes_in_dynamo = [image.sha256 for image in dynamo_client.listImages()]
+    hashes_local = [calculate_sha256(file) for file in local_files]
+    duplicates = set(hashes_local).intersection(hashes_in_dynamo)
+    print(f"Found {len(duplicates)} duplicates in DynamoDB.")
+    return [file for file in local_files if calculate_sha256(file) not in duplicates]
+
 
 
 def upload_files_with_uuid_in_batches(
@@ -126,13 +162,19 @@ def upload_files_with_uuid_in_batches(
     # Get the full path of all PNG files in the directory
     all_png_files = [
         os.path.join(directory, f) for f in os.listdir(directory) if f.endswith(".png")
-    ][:5]
+    ]
+    files_to_upload = compare_local(bucket_name, all_png_files, dynamodb_table_name)
+    print(f"Found {len(files_to_upload)} files to upload.")
+    if not files_to_upload:
+        print("No files to upload.")
+        return
+    # Compare all local PNG files with the ones in DynamoDB and the S3 bucket
     image_indexes = get_image_indexes(
-        DynamoClient(dynamodb_table_name), len(all_png_files)
+        DynamoClient(dynamodb_table_name), len(files_to_upload)
     )
 
-    # Split all_png_files into batches
-    for batch_index, batch in enumerate(chunked(all_png_files, batch_size), start=1):
+    # Split files_to_upload into batches
+    for batch_index, batch in enumerate(chunked(files_to_upload, batch_size), start=1):
         print(f"\nProcessing batch #{batch_index} with up to {batch_size} files...")
 
         # Make a temporary working directory
@@ -195,6 +237,18 @@ if __name__ == "__main__":
     RAW_IMAGE_BUCKET, LAMBDA_FUNCTION, DYNAMO_DB_TABLE = load_env()
     # Update these variables
     directory_to_upload = "/Users/tnorlund/Example_to_delete"
+
+    if DEBUG:
+        print("Deleting all items from DynamoDB tables...")
+        dynamo_client = DynamoClient(DYNAMO_DB_TABLE)
+        dynamo_client.deleteImages(dynamo_client.listImages())
+        dynamo_client.deleteLines(dynamo_client.listLines())
+        dynamo_client.deleteWords(dynamo_client.listWords())
+        dynamo_client.deleteLetters(dynamo_client.listLetters())
+        dynamo_client.deleteReceipts(dynamo_client.listReceipts())
+        dynamo_client.deleteReceiptLines(dynamo_client.listReceiptLines())
+        dynamo_client.deleteReceiptWords(dynamo_client.listReceiptWords())
+        dynamo_client.deleteReceiptLetters(dynamo_client.listReceiptLetters())
 
     upload_files_with_uuid_in_batches(
         directory_to_upload, RAW_IMAGE_BUCKET, LAMBDA_FUNCTION, DYNAMO_DB_TABLE

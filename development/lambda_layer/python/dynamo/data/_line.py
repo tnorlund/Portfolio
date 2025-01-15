@@ -152,12 +152,9 @@ class _Line:
             response = self._client.query(
                 TableName=self.table_name,
                 IndexName="GSITYPE",
-                KeyConditionExpression="#pk = :pk_val AND #type = :type_val",
-                ExpressionAttributeNames={"#pk": "GSITYPE", "#type": "TYPE"},
-                ExpressionAttributeValues={
-                    ":pk_val": {"S": "LINE"},
-                    ":type_val": {"S": "LINE"},
-                },
+                KeyConditionExpression="#t = :val",
+                ExpressionAttributeNames={"#t": "TYPE"},
+                ExpressionAttributeValues={":val": {"S": "LINE"}},
             )
             lines.extend([itemToLine(item) for item in response["Items"]])
 
@@ -165,12 +162,9 @@ class _Line:
                 response = self._client.query(
                     TableName=self.table_name,
                     IndexName="GSITYPE",
-                    KeyConditionExpression="#pk = :pk_val AND #type = :type_val",
-                    ExpressionAttributeNames={"#pk": "GSITYPE", "#type": "TYPE"},
-                    ExpressionAttributeValues={
-                        ":pk_val": {"S": "LINE"},
-                        ":type_val": {"S": "LINE"},
-                    },
+                    KeyConditionExpression="#t = :val",
+                    ExpressionAttributeNames={"#t": "TYPE"},
+                    ExpressionAttributeValues={":val": {"S": "LINE"}},
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                 )
                 lines.extend([itemToLine(item) for item in response["Items"]])

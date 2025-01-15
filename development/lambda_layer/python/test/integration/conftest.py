@@ -45,9 +45,7 @@ def dynamodb_table():
                 },
                 {
                     "IndexName": "GSITYPE",
-                    "KeySchema": [
-                        {"AttributeName": "TYPE", "KeyType": "HASH"},
-                    ],
+                    "KeySchema": [{"AttributeName": "TYPE", "KeyType": "HASH"}],
                     "Projection": {"ProjectionType": "ALL"},
                     "ProvisionedThroughput": {
                         "ReadCapacityUnits": 5,

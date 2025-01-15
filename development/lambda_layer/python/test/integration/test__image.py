@@ -210,6 +210,19 @@ def test_deleteImage_error(dynamodb_table: Literal["MyMockedTable"]):
     with pytest.raises(ValueError):
         client.deleteImage(image.id)
 
+def test_deleteImages(dynamodb_table: Literal["MyMockedTable"]):
+    # Arrange
+    client = DynamoClient(dynamodb_table)
+    images = [Image(**{**correct_image_params, "id": i}) for i in range(1, 1001)]
+    client.addImages(images)
+
+    # Act
+    client.deleteImages(images)
+    
+    # Assert
+    response_images = client.listImages()
+    assert len(response_images) == 0, "all images should be deleted"
+
 
 def test_listImageDetails(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange

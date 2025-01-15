@@ -10,6 +10,7 @@ interface ImageItem {
   timestamp_added: string;
   s3_bucket: string;
   s3_key: string;
+  cdn_s3_key: string;
 }
 
 /** A point in 2D space */
@@ -54,6 +55,7 @@ interface Receipt {
   top_right: Point;
   bottom_left: Point;
   bottom_right: Point;
+  cdn_s3_key: string;
 }
 
 export interface ImagePayload {
@@ -64,6 +66,7 @@ export interface ImagePayload {
   s3_bucket: string;
   s3_key: string;
   sha256: string;
+  cdn_s3_key: string;
 }
 
 /** PayloadItem now includes the arrays of `receipts` and `lines` */
@@ -97,6 +100,7 @@ export function mapPayloadToImages(payload: RootPayload): ImageReceiptsLines[] {
       timestamp_added: item.image.timestamp_added,
       s3_bucket: item.image.s3_bucket,
       s3_key: item.image.s3_key,
+      cdn_s3_key: item.image.cdn_s3_key,
       // If you want sha256 in your ImageItem, add it here
       // sha256: item.image.sha256,
     };
@@ -146,7 +150,9 @@ export default function ImageGrid() {
        */}
       {imageReceiptLines.map(([image, receipts, lines]) => {
         const s3_path = image.s3_key.replace("raw/", "");
-        const cdn_url = `https://d3izz2n0uhacrm.cloudfront.net/example/${s3_path}`;
+        const cdn_url = `https://d3izz2n0uhacrm.cloudfront.net/${image.cdn_s3_key}`;
+
+        console.log(cdn_url)
         
         // We’ll display each image in a 500px-wide container, scaled in height.
         const baseWidth = 500;
@@ -177,22 +183,25 @@ export default function ImageGrid() {
 
             {/* Example: if you want to draw bounding boxes for receipts */}
             {receipts.map((receipt) => (
-              <rect
-                key={`receipt-${receipt.id}`}
-                x={receipt.top_left.x}
-                y={receipt.top_left.y}
-                width={receipt.width}
-                height={receipt.height}
-                fill="rgba(255, 0, 0, 0.25)"
-                stroke="red"
-                strokeWidth={10}
-              />
-            ))}
+              console.log(`receipt: ${receipt}`),
+              // <rect
+              //   key={`receipt-${receipt.id}`}
+              //   x={receipt.top_left.x}
+              //   y={receipt.top_left.y}
+              //   // width={receipt.width}
+              //   // height={receipt.height}
+              //   fill="rgba(255, 0, 0, 0.25)"
+              //   stroke="red"
+              //   strokeWidth={10}
+              // />
+              <></>
+            ))
+            }
 
             {/* Example: if you want to draw bounding boxes for lines */}
             {lines.map((line) => (
               <React.Fragment key={`line-${line.id}`}>
-                {BoundingBox(line, image)}
+                {BoundingBox(line, image, 'gray')}
               </React.Fragment>
             ))}
 
