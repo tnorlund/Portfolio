@@ -12,15 +12,15 @@ class _ReceiptWord:
     Methods
     -------
     addReceiptWord(word: ReceiptWord)
-        Adds a single ReceiptWord to DynamoDB.
+        Adds a single ReceiptWord.
     addReceiptWords(words: list[ReceiptWord])
-        Adds multiple ReceiptWords to DynamoDB in batches of CHUNK_SIZE.
+        Adds multiple ReceiptWords.
     updateReceiptWord(word: ReceiptWord)
-        Updates an existing ReceiptWord in DynamoDB.
+        Updates a ReceiptWord.
     deleteReceiptWord(receipt_id: int, image_id: int, line_id: int, word_id: int)
         Deletes a single ReceiptWord by IDs.
     deleteReceiptWords(words: list[ReceiptWord])
-        Deletes multiple ReceiptWords in batch.
+        Deletes multiple ReceiptWords.
     deleteReceiptWordsFromLine(receipt_id: int, image_id: int, line_id: int)
         Deletes all ReceiptWords from a given line within a receipt/image.
     getReceiptWord(receipt_id: int, image_id: int, line_id: int, word_id: int) -> ReceiptWord
@@ -76,7 +76,9 @@ class _ReceiptWord:
             else:
                 raise
 
-    def deleteReceiptWord(self, receipt_id: int, image_id: int, line_id: int, word_id: int):
+    def deleteReceiptWord(
+        self, receipt_id: int, image_id: int, line_id: int, word_id: int
+    ):
         """Deletes a single ReceiptWord by IDs."""
         try:
             self._client.delete_item(
@@ -141,28 +143,26 @@ class _ReceiptWord:
             response = self._client.query(
                 TableName=self.table_name,
                 IndexName="GSITYPE",
-                KeyConditionExpression="#pk = :pk_val AND #type = :type_val",
-                ExpressionAttributeNames={"#pk": "GSITYPE", "#type": "TYPE"},
-                ExpressionAttributeValues={
-                    ":pk_val": {"S": "RECEIPT_WORD"},
-                    ":type_val": {"S": "RECEIPT_WORD"},
-                },
+                KeyConditionExpression="#t = :val",
+                ExpressionAttributeNames={"#t": "TYPE"},
+                ExpressionAttributeValues={":val": {"S": "RECEIPT_WORD"}},
             )
-            receipt_words.extend([itemToReceiptWord(item) for item in response["Items"]])
+            receipt_words.extend(
+                [itemToReceiptWord(item) for item in response["Items"]]
+            )
 
             while "LastEvaluatedKey" in response:
                 response = self._client.query(
                     TableName=self.table_name,
                     IndexName="GSITYPE",
-                    KeyConditionExpression="#pk = :pk_val AND #type = :type_val",
-                    ExpressionAttributeNames={"#pk": "GSITYPE", "#type": "TYPE"},
-                    ExpressionAttributeValues={
-                        ":pk_val": {"S": "RECEIPT_WORD"},
-                        ":type_val": {"S": "RECEIPT_WORD"},
-                    },
+                    KeyConditionExpression="#t = :val",
+                    ExpressionAttributeNames={"#t": "TYPE"},
+                    ExpressionAttributeValues={":val": {"S": "RECEIPT_WORD"}},
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                 )
-                receipt_words.extend([itemToReceiptWord(item) for item in response["Items"]])
+                receipt_words.extend(
+                    [itemToReceiptWord(item) for item in response["Items"]]
+                )
             return receipt_words
         except ClientError as e:
             raise ValueError("Could not list ReceiptWords from the database") from e
@@ -179,10 +179,14 @@ class _ReceiptWord:
                 ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
                 ExpressionAttributeValues={
                     ":pk_val": {"S": f"IMAGE#{image_id:05d}"},
-                    ":sk_val": {"S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#"},
+                    ":sk_val": {
+                        "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#"
+                    },
                 },
             )
-            receipt_words.extend([itemToReceiptWord(item) for item in response["Items"]])
+            receipt_words.extend(
+                [itemToReceiptWord(item) for item in response["Items"]]
+            )
 
             while "LastEvaluatedKey" in response:
                 response = self._client.query(
@@ -191,12 +195,15 @@ class _ReceiptWord:
                     ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
                     ExpressionAttributeValues={
                         ":pk_val": {"S": f"IMAGE#{image_id:05d}"},
-                        ":sk_val": {"S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#"},
+                        ":sk_val": {
+                            "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#"
+                        },
                     },
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                 )
-                receipt_words.extend([itemToReceiptWord(item) for item in response["Items"]])
+                receipt_words.extend(
+                    [itemToReceiptWord(item) for item in response["Items"]]
+                )
             return receipt_words
         except ClientError as e:
             raise ValueError("Could not list ReceiptWords from the database") from e
-

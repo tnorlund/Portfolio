@@ -172,6 +172,24 @@ class _Image:
             else:
                 raise Exception(f"Error deleting image: {e}")
 
+    def deleteImages(self, images: list[Image]):
+        """ "Deletes a list of images"""
+        try:
+            for i in range(0, len(images), CHUNK_SIZE):
+                chunk = images[i : i + CHUNK_SIZE]
+                request_items = [
+                    {"DeleteRequest": {"Key": image.key()}} for image in chunk
+                ]
+                response = self._client.batch_write_item(
+                    RequestItems={self.table_name: request_items}
+                )
+                unprocessed = response.get("UnprocessedItems", {})
+                while unprocessed.get(self.table_name):
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    unprocessed = response.get("UnprocessedItems", {})
+        except ClientError as e:
+            raise ValueError("Could not delete images from the database") from e
+
     def listImageDetails(
         self, limit: Optional[int] = None, last_evaluated_key: Optional[Dict] = None
     ) -> Tuple[
@@ -301,12 +319,9 @@ class _Image:
             response = self._client.query(
                 TableName=self.table_name,
                 IndexName="GSITYPE",
-                KeyConditionExpression="#pk = :pk_val AND #type = :type_val",
-                ExpressionAttributeNames={"#pk": "GSITYPE", "#type": "TYPE"},
-                ExpressionAttributeValues={
-                    ":pk_val": {"S": "IMAGE"},
-                    ":type_val": {"S": "IMAGE"},
-                },
+                KeyConditionExpression="#t = :val",
+                ExpressionAttributeNames={"#t": "TYPE"},
+                ExpressionAttributeValues={":val": {"S": "IMAGE"}},
             )
             images.extend([itemToImage(item) for item in response["Items"]])
 
@@ -314,12 +329,9 @@ class _Image:
                 response = self._client.query(
                     TableName=self.table_name,
                     IndexName="GSITYPE",
-                    KeyConditionExpression="#pk = :pk_val AND #type = :type_val",
-                    ExpressionAttributeNames={"#pk": "GSITYPE", "#type": "TYPE"},
-                    ExpressionAttributeValues={
-                        ":pk_val": {"S": "IMAGE"},
-                        ":type_val": {"S": "IMAGE"},
-                    },
+                    KeyConditionExpression="#t = :val",
+                    ExpressionAttributeNames={"#t": "TYPE"},
+                    ExpressionAttributeValues={":val": {"S": "IMAGE"}},
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                 )
                 images.extend([itemToImage(item) for item in response["Items"]])

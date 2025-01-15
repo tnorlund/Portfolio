@@ -105,7 +105,9 @@ class _ReceiptLine:
         except ClientError as e:
             raise ValueError("Could not delete ReceiptLines from the database") from e
 
-    def getReceiptLine(self, receipt_id: int, image_id: int, line_id: int) -> ReceiptLine:
+    def getReceiptLine(
+        self, receipt_id: int, image_id: int, line_id: int
+    ) -> ReceiptLine:
         """Retrieves a single ReceiptLine by IDs."""
         try:
             response = self._client.get_item(
@@ -126,34 +128,34 @@ class _ReceiptLine:
             response = self._client.query(
                 TableName=self.table_name,
                 IndexName="GSITYPE",
-                KeyConditionExpression="#pk = :pk_val AND #type = :type_val",
-                ExpressionAttributeNames={"#pk": "GSITYPE", "#type": "TYPE"},
-                ExpressionAttributeValues={
-                    ":pk_val": {"S": "RECEIPT_LINE"},
-                    ":type_val": {"S": "RECEIPT_LINE"},
-                },
+                KeyConditionExpression="#t = :val",
+                ExpressionAttributeNames={"#t": "TYPE"},
+                ExpressionAttributeValues={":val": {"S": "RECEIPT_LINE"}},
             )
-            receipt_lines.extend([itemToReceiptLine(item) for item in response["Items"]])
+            receipt_lines.extend(
+                [itemToReceiptLine(item) for item in response["Items"]]
+            )
 
             while "LastEvaluatedKey" in response:
                 response = self._client.query(
                     TableName=self.table_name,
                     IndexName="GSITYPE",
-                    KeyConditionExpression="#pk = :pk_val AND #type = :type_val",
-                    ExpressionAttributeNames={"#pk": "GSITYPE", "#type": "TYPE"},
-                    ExpressionAttributeValues={
-                        ":pk_val": {"S": "RECEIPT_LINE"},
-                        ":type_val": {"S": "RECEIPT_LINE"},
-                    },
+                    KeyConditionExpression="#t = :val",
+                    ExpressionAttributeNames={"#t": "TYPE"},
+                    ExpressionAttributeValues={":val": {"S": "RECEIPT_LINE"}},
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                 )
-                receipt_lines.extend([itemToReceiptLine(item) for item in response["Items"]])
+                receipt_lines.extend(
+                    [itemToReceiptLine(item) for item in response["Items"]]
+                )
 
             return receipt_lines
         except ClientError as e:
             raise ValueError("Could not list ReceiptLines from the database") from e
 
-    def listReceiptLinesFromReceipt(self, receipt_id: int, image_id: int) -> list[ReceiptLine]:
+    def listReceiptLinesFromReceipt(
+        self, receipt_id: int, image_id: int
+    ) -> list[ReceiptLine]:
         """Returns all lines under a specific receipt/image."""
         receipt_lines = []
         try:
@@ -165,7 +167,9 @@ class _ReceiptLine:
                     ":sk": {"S": f"RECEIPT#{receipt_id:05d}#LINE#"},
                 },
             )
-            receipt_lines.extend([itemToReceiptLine(item) for item in response["Items"]])
+            receipt_lines.extend(
+                [itemToReceiptLine(item) for item in response["Items"]]
+            )
 
             while "LastEvaluatedKey" in response:
                 response = self._client.query(
@@ -177,7 +181,9 @@ class _ReceiptLine:
                     },
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                 )
-                receipt_lines.extend([itemToReceiptLine(item) for item in response["Items"]])
+                receipt_lines.extend(
+                    [itemToReceiptLine(item) for item in response["Items"]]
+                )
 
             return receipt_lines
         except ClientError as e:

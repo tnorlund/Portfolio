@@ -134,28 +134,26 @@ class _ReceiptLetter:
             response = self._client.query(
                 TableName=self.table_name,
                 IndexName="GSITYPE",
-                KeyConditionExpression="#pk = :pk_val AND #type = :type_val",
-                ExpressionAttributeNames={"#pk": "GSITYPE", "#type": "TYPE"},
-                ExpressionAttributeValues={
-                    ":pk_val": {"S": "RECEIPT_LETTER"},
-                    ":type_val": {"S": "RECEIPT_LETTER"},
-                },
+                KeyConditionExpression="#t = :val",
+                ExpressionAttributeNames={"#t": "TYPE"},
+                ExpressionAttributeValues={":val": {"S": "RECEIPT_LETTER"}},
             )
-            receipt_letters.extend([itemToReceiptLetter(item) for item in response["Items"]])
+            receipt_letters.extend(
+                [itemToReceiptLetter(item) for item in response["Items"]]
+            )
 
             while "LastEvaluatedKey" in response:
                 response = self._client.query(
                     TableName=self.table_name,
                     IndexName="GSITYPE",
-                    KeyConditionExpression="#pk = :pk_val AND #type = :type_val",
-                    ExpressionAttributeNames={"#pk": "GSITYPE", "#type": "TYPE"},
-                    ExpressionAttributeValues={
-                        ":pk_val": {"S": "RECEIPT_LETTER"},
-                        ":type_val": {"S": "RECEIPT_LETTER"},
-                    },
+                    KeyConditionExpression="#t = :val",
+                    ExpressionAttributeNames={"#t": "TYPE"},
+                    ExpressionAttributeValues={":val": {"S": "RECEIPT_LETTER"}},
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                 )
-                receipt_letters.extend([itemToReceiptLetter(item) for item in response["Items"]])
+                receipt_letters.extend(
+                    [itemToReceiptLetter(item) for item in response["Items"]]
+                )
 
             return receipt_letters
         except ClientError as e:
@@ -182,7 +180,9 @@ class _ReceiptLetter:
                     },
                 },
             )
-            receipt_letters.extend([itemToReceiptLetter(item) for item in response["Items"]])
+            receipt_letters.extend(
+                [itemToReceiptLetter(item) for item in response["Items"]]
+            )
 
             while "LastEvaluatedKey" in response:
                 response = self._client.query(
@@ -201,8 +201,10 @@ class _ReceiptLetter:
                     },
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                 )
-                receipt_letters.extend([itemToReceiptLetter(item) for item in response["Items"]])        
+                receipt_letters.extend(
+                    [itemToReceiptLetter(item) for item in response["Items"]]
+                )
             return receipt_letters
-    
+
         except ClientError as e:
             raise ValueError("Could not list ReceiptLetters from the database") from e

@@ -204,12 +204,14 @@ def add_initial_image(
     # Download the PNG from S3 to calculate the SHA256
     s3_client = boto3.client("s3")
     png_key = f"{s3_path}{uuid}.png"
+    cdn_path = f"{cdn_path}{uuid}.png"
     print(f"Downloading {png_key} from S3...")
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp:
         s3_client.download_file(S3_BUCKET, png_key, temp.name)
         sha256 = calculate_sha256(temp.name)
         img_cv = cv2.imread(temp.name)
         height, width, _ = img_cv.shape
+        s3_client.upload_file(temp.name, CDN_S3_BUCKET, cdn_path)
     image = Image(
         id=image_id,
         width=width,
@@ -423,7 +425,7 @@ def transform_cluster(
         bottom_right={"x": pt_br[0], "y": pt_br[1]},
         sha256=sha256,
         cdn_s3_bucket=CDN_S3_BUCKET,
-        cdn_s3_key=cdn_s3_key,
+        cdn_s3_key=f"{cdn_s3_key}{image.s3_key}",
     )
     dynamo_client = DynamoClient(DYNAMO_DB_TABLE)
     dynamo_client.addReceipt(receipt)
