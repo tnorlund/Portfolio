@@ -80,9 +80,11 @@ class Receipt:
 
         Attributes:
         """
+        if not isinstance(image_id, int):
+            raise ValueError("image_id must be an integer")
         # Ensure the Image ID is a positive integer
-        if image_id <= 0 or not isinstance(image_id, int):
-            raise ValueError("image_id must be a positive integer")
+        if image_id <= 0:
+            raise ValueError("image_id must be positive")
         self.image_id = image_id
         # Ensure the ID is a positive integer
         if id <= 0 or not isinstance(id, int):

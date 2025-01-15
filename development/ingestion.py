@@ -44,14 +44,14 @@ lambda_role_policy = aws.iam.RolePolicy(
                         "s3:GetObject",
                     ],
                     "Effect": "Allow",
-                    "Resource": pulumi.Output.concat(bucket.arn, "/*"),
+                    "Resource": [bucket.arn, pulumi.Output.concat(bucket.arn, "/*")],
                 },
                 {
                     "Action": [
                         "s3:PutObject",
                     ],
                     "Effect": "Allow",
-                    "Resource": pulumi.Output.concat(site_bucket.arn, "/*"),
+                    "Resource": [site_bucket.arn, pulumi.Output.concat(site_bucket.arn, "/*")],
                 },
                 {
                     "Action": [
@@ -82,16 +82,15 @@ lambda_function = aws.lambda_.Function(
     package_type="Image",
     image_uri=ecr_image_uri,
     role=lambda_role.arn,
-    memory_size=1024,
-    timeout=60 * 2,  # 2 minutes
+    memory_size=1024,  # Memory size is in MB (megabytes)
+    timeout=60 * 4,  # 3 minutes
     environment={
         "variables": {
             "DYNAMO_DB_TABLE": dynamodb_table.name,
-            "S3_BUCKET": bucket._name,
-            "CDN_S3_BUCKET": site_bucket._name,
+            "S3_BUCKET": bucket.bucket,
+            "CDN_S3_BUCKET": site_bucket.bucket,
         }
     },
 )
 
-pulumi.export("lambda_function_name", lambda_function.name)
-pulumi.export("lambda_function_arn", lambda_function.arn)
+pulumi.export("cluster_lambda_function_name", lambda_function.name)
