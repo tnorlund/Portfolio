@@ -10,7 +10,7 @@ logger.setLevel(logging.INFO)
 dynamodb_table_name = os.environ["DYNAMODB_TABLE_NAME"]
 
 
-def serialize_listImages_payload(
+def serialize_listImageDetails_payload(
     payload: dict[int, dict[str, object]]
 ) -> dict[int, dict[str, object]]:
     """
@@ -45,12 +45,12 @@ def handler(event, _):
         client = DynamoClient(dynamodb_table_name)
         query_params = event.get("queryStringParameters") or {}
         if "limit" not in query_params:
-            payload, last_evaluated_key = client.listImages()
+            payload, last_evaluated_key = client.listImageDetails()
             return {
                 "statusCode": 200,
                 "body": json.dumps(
                     {
-                        "payload": serialize_listImages_payload(payload),
+                        "payload": serialize_listImageDetails_payload(payload),
                         "last_evaluated_key": last_evaluated_key,
                     }
                 ),
@@ -59,24 +59,24 @@ def handler(event, _):
             limit = int(query_params["limit"])
             if "last_evaluated_key" in query_params:
                 last_evaluated_key = json.loads(query_params["last_evaluated_key"])
-                payload, last_evaluated_key = client.listImages(
+                payload, last_evaluated_key = client.listImageDetails(
                     limit, last_evaluated_key
                 )
                 return {
                     "statusCode": 200,
                     "body": json.dumps(
                         {
-                            "payload": serialize_listImages_payload(payload),
+                            "payload": serialize_listImageDetails_payload(payload),
                             "last_evaluated_key": last_evaluated_key,
                         }
                     ),
                 }
-            images, last_evaluated_key = client.listImages(limit)
+            images, last_evaluated_key = client.listImageDetails(limit)
             return {
                 "statusCode": 200,
                 "body": json.dumps(
                     {
-                        "payload": serialize_listImages_payload(payload),
+                        "payload": serialize_listImageDetails_payload(payload),
                         "last_evaluated_key": last_evaluated_key,
                     }
                 ),

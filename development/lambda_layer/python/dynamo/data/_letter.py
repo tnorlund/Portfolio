@@ -141,37 +141,67 @@ class _Letter:
             raise ValueError(f"Letter with ID {letter_id} not found")
 
     def listLetters(self) -> list[Letter]:
-        response = self._client.scan(
-            TableName=self.table_name,
-            ScanFilter={
-                "TYPE": {
-                    "AttributeValueList": [{"S": "LETTER"}],
-                    "ComparisonOperator": "EQ",
-                }
-            },
-        )
-        return [itemToLetter(item) for item in response["Items"]]
+        """Lists all letters in the database"""
+        letters = []
+        try:
+            response = self._client.query(
+                TableName=self.table_name,
+                IndexName="GSITYPE",
+                KeyConditionExpression="#pk = :pk_val AND #type = :type_val",
+                ExpressionAttributeNames={"#pk": "GSITYPE", "#type": "TYPE"},
+                ExpressionAttributeValues={
+                    ":pk_val": {"S": "LETTER"},
+                    ":type_val": {"S": "LETTER"},
+                },
+            )
+            letters.extend([itemToLetter(item) for item in response["Items"]])
+
+            while "LastEvaluatedKey" in response:
+                response = self._client.query(
+                    TableName=self.table_name,
+                    IndexName="GSITYPE",
+                    KeyConditionExpression="#pk = :pk_val AND #type = :type_val",
+                    ExpressionAttributeNames={"#pk": "GSITYPE", "#type": "TYPE"},
+                    ExpressionAttributeValues={
+                        ":pk_val": {"S": "LETTER"},
+                        ":type_val": {"S": "LETTER"},
+                    },
+                    ExclusiveStartKey=response["LastEvaluatedKey"],
+                )
+                letters.extend([itemToLetter(item) for item in response["Items"]])
+            return letters
+
+        except ClientError as e:
+            raise ValueError("Could not list letters from the database") from e
 
     def listLettersFromWord(
         self, image_id: int, line_id: int, word_id: int
     ) -> list[Letter]:
-        response = self._client.scan(
-            TableName=self.table_name,
-            ScanFilter={
-                "TYPE": {
-                    "AttributeValueList": [{"S": "LETTER"}],
-                    "ComparisonOperator": "EQ",
+        letters = []
+        try:
+            response = self._client.query(
+                TableName=self.table_name,
+                KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
+                ExpressionAttributeValues={
+                    ":pkVal": {"S": f"IMAGE#{image_id:05d}"},
+                    ":skPrefix": {"S": f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#"},
                 },
-                "PK": {
-                    "AttributeValueList": [{"S": f"IMAGE#{image_id:05d}"}],
-                    "ComparisonOperator": "BEGINS_WITH",
-                },
-                "SK": {
-                    "AttributeValueList": [
-                        {"S": f"LINE#{line_id:05d}#WORD#{word_id:05d}"}
-                    ],
-                    "ComparisonOperator": "BEGINS_WITH",
-                },
-            },
-        )
-        return [itemToLetter(item) for item in response["Items"]]
+            )
+            letters.extend([itemToLetter(item) for item in response["Items"]])
+
+            while "LastEvaluatedKey" in response:
+                response = self._client.query(
+                    TableName=self.table_name,
+                    KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
+                    ExpressionAttributeValues={
+                        ":pkVal": {"S": f"IMAGE#{image_id:05d}"},
+                        ":skPrefix": {"S": f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#"},
+                    },
+                    ExclusiveStartKey=response["LastEvaluatedKey"],
+                )
+                letters.extend([itemToLetter(item) for item in response["Items"]])
+                               
+            return letters
+        except ClientError as e:
+            raise ValueError("Could not list letters from word") from e
+

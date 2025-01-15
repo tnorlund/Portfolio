@@ -147,29 +147,59 @@ class _Word:
             raise ValueError(f"Word with ID {word_id} not found")
 
     def listWords(self) -> list[Word]:
-        response = self._client.scan(
-            TableName=self.table_name,
-            ScanFilter={
-                "TYPE": {
-                    "AttributeValueList": [{"S": "WORD"}],
-                    "ComparisonOperator": "EQ",
-                }
-            },
-        )
-        return [itemToWord(item) for item in response["Items"]]
+        words = []
+        try:
+            response = self._client.query(
+                TableName=self.table_name,
+                IndexName="GSITYPE",
+                KeyConditionExpression="#pk = :pk_val AND #type = :type_val",
+                ExpressionAttributeNames={"#pk": "GSITYPE", "#type": "TYPE"},
+                ExpressionAttributeValues={
+                    ":pk_val": {"S": "WORD"},
+                    ":type_val": {"S": "WORD"},
+                },
+            )
+            words.extend([itemToWord(item) for item in response["Items"]])
+            while "LastEvaluatedKey" in response:
+                response = self._client.query(
+                    TableName=self.table_name,
+                    IndexName="GSITYPE",
+                    KeyConditionExpression="#pk = :pk_val AND #type = :type_val",
+                    ExpressionAttributeNames={"#pk": "GSITYPE", "#type": "TYPE"},
+                    ExpressionAttributeValues={
+                        ":pk_val": {"S": "WORD"},
+                        ":type_val": {"S": "WORD"},
+                    },
+                    ExclusiveStartKey=response["LastEvaluatedKey"],
+                )
+                words.extend([itemToWord(item) for item in response["Items"]])
+            return words
+        except ClientError as e:
+            raise ValueError("Could not list words from the database") from e
 
     def listWordsFromLine(self, image_id: int, line_id: int) -> list[Word]:
-        response = self._client.scan(
-            TableName=self.table_name,
-            ScanFilter={
-                "PK": {
-                    "AttributeValueList": [{"S": f"IMAGE#{image_id:05d}"}],
-                    "ComparisonOperator": "EQ",
+        words = []
+        try:
+            response = self._client.query(
+                TableName=self.table_name,
+                KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
+                ExpressionAttributeValues={
+                    ":pkVal": {"S": f"IMAGE#{image_id:05d}"},
+                    ":skPrefix": {"S": f"LINE#{line_id:05d}#WORD#"},
                 },
-                "SK": {
-                    "AttributeValueList": [{"S": f"LINE#{line_id:05d}"}],
-                    "ComparisonOperator": "BEGINS_WITH",
-                },
-            },
-        )
-        return [itemToWord(item) for item in response["Items"]]
+            )
+            words.extend([itemToWord(item) for item in response["Items"]])
+            while "LastEvaluatedKey" in response:
+                response = self._client.query(
+                    TableName=self.table_name,
+                    KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
+                    ExpressionAttributeValues={
+                        ":pkVal": {"S": f"IMAGE#{image_id:05d}"},
+                        ":skPrefix": {"S": f"LINE#{line_id:05d}#WORD#"},
+                    },
+                    ExclusiveStartKey=response["LastEvaluatedKey"],
+                )
+                words.extend([itemToWord(item) for item in response["Items"]])
+            return words
+        except ClientError as e:
+            raise ValueError("Could not list words from the database") from e

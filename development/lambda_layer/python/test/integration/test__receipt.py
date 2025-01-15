@@ -39,21 +39,8 @@ def test_addReceipt(dynamodb_table: Literal["MyMockedTable"]):
     dynamo_client.addReceipt(receipt)
 
     # Assert
-    response = boto3.client("dynamodb", region_name="us-east-1").get_item(
-        TableName=dynamodb_table,
-        Key={
-            "PK": {"S": f"IMAGE#{receipt.image_id:05d}"},
-            "SK": {"S": f"RECEIPT#{receipt.id:05d}"},
-        },
-    )
-    if "Item" not in response:
-        scan_response = boto3.client("dynamodb", region_name="us-east-1").scan(
-            TableName=dynamodb_table
-        )
-    assert (
-        "Item" in response
-    ), f"Item not found.\nresponse: {json.dumps(response, indent=2)}\nscan_response: {json.dumps(scan_response, indent=2)}"
-    assert response["Item"] == receipt.to_item()
+    response_receipt = dynamo_client.getReceipt(receipt.image_id, receipt.id)
+    assert response_receipt == receipt
 
 
 def test_addReceipt_error_receipt_that_exists(dynamodb_table: str):
@@ -79,22 +66,8 @@ def test_addReceipts(dynamodb_table: str):
     dynamo_client.addReceipts(receipts)
 
     # Assert
-    for receipt in receipts:
-        response = boto3.client("dynamodb", region_name="us-east-1").get_item(
-            TableName=dynamodb_table,
-            Key={
-                "PK": {"S": f"IMAGE#{receipt.image_id:05d}"},
-                "SK": {"S": f"RECEIPT#{receipt.id:05d}"},
-            },
-        )
-        if "Item" not in response:
-            scan_response = boto3.client("dynamodb", region_name="us-east-1").scan(
-                TableName=dynamodb_table
-            )
-        assert (
-            "Item" in response
-        ), f"Item not found.\nresponse: {json.dumps(response, indent=2)}\nscan_response: {json.dumps(scan_response, indent=2)}"
-        assert response["Item"] == receipt.to_item()
+    response_receipts = dynamo_client.listReceipts()
+    assert receipts == response_receipts
 
 
 def test_addReceipts_error_receipt_that_exists(dynamodb_table: str):
@@ -122,14 +95,8 @@ def test_updateReceipt(dynamodb_table: str):
     dynamo_client.updateReceipt(receipt)
 
     # Assert
-    response = boto3.client("dynamodb", region_name="us-east-1").get_item(
-        TableName=dynamodb_table,
-        Key={
-            "PK": {"S": f"IMAGE#{receipt.image_id:05d}"},
-            "SK": {"S": f"RECEIPT#{receipt.id:05d}"},
-        },
-    )
-    assert response["Item"]["s3_key"]["S"] == "new/path"
+    response_receipt = dynamo_client.getReceipt(receipt.image_id, receipt.id)
+    assert response_receipt == receipt
 
 
 def test_updateReceipt_error_receipt_not_exists(dynamodb_table: str):
@@ -157,15 +124,7 @@ def test_updateReceipts(dynamodb_table: str):
     dynamo_client.updateReceipts(receipts)
 
     # Assert
-    for receipt in receipts:
-        response = boto3.client("dynamodb", region_name="us-east-1").get_item(
-            TableName=dynamodb_table,
-            Key={
-                "PK": {"S": f"IMAGE#{receipt.image_id:05d}"},
-                "SK": {"S": f"RECEIPT#{receipt.id:05d}"},
-            },
-        )
-        assert response["Item"]["s3_key"]["S"] == "new/path"
+    assert dynamo_client.listReceipts() == receipts
 
 
 def test_updateReceipts_error_receipt_not_exists(dynamodb_table: str):
@@ -191,20 +150,8 @@ def test_deleteReceipt(dynamodb_table: str):
     dynamo_client.deleteReceipt(receipt)
 
     # Assert
-    response = boto3.client("dynamodb", region_name="us-east-1").get_item(
-        TableName=dynamodb_table,
-        Key={
-            "PK": {"S": f"IMAGE#{receipt.image_id:05d}"},
-            "SK": {"S": f"RECEIPT#{receipt.id:05d}"},
-        },
-    )
-    if "Item" not in response:
-        scan_response = boto3.client("dynamodb", region_name="us-east-1").scan(
-            TableName=dynamodb_table
-        )
-    assert (
-        "Item" not in response
-    ), f"Item found.\nresponse: {json.dumps(response, indent=2)}\nscan_response: {json.dumps(scan_response, indent=2)}"
+    response_receipts = dynamo_client.listReceipts()
+    assert receipt not in response_receipts
 
 
 def test_deleteReceipt_error_receipt_not_exists(dynamodb_table: str):
@@ -230,21 +177,8 @@ def test_deleteReceipts(dynamodb_table: str):
     dynamo_client.deleteReceipts(receipts)
 
     # Assert
-    for receipt in receipts:
-        response = boto3.client("dynamodb", region_name="us-east-1").get_item(
-            TableName=dynamodb_table,
-            Key={
-                "PK": {"S": f"IMAGE#{receipt.image_id:05d}"},
-                "SK": {"S": f"RECEIPT#{receipt.id:05d}"},
-            },
-        )
-        if "Item" not in response:
-            scan_response = boto3.client("dynamodb", region_name="us-east-1").scan(
-                TableName=dynamodb_table
-            )
-        assert (
-            "Item" not in response
-        ), f"Item found.\nresponse: {json.dumps(response, indent=2)}\nscan_response: {json.dumps(scan_response, indent=2)}"
+    response_receipts = dynamo_client.listReceipts()
+    assert not response_receipts
 
 
 def test_deleteReceipts_error_receipt_not_exists(dynamodb_table: str):

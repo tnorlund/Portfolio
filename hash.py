@@ -29,7 +29,7 @@ dynamo_client = DynamoClient(DYNAMO_DB_TABLE)
 # scaled_images = dynamo_client.listScaledImages()
 # print(scaled_images)
 # # print(scaled_images)
-images_in_dynamodb, lek = dynamo_client.listImages()
+images_in_dynamodb, lek = dynamo_client.listImageDetails()
 
 # print(images_in_dynamodb)
 # Get all images that don't have a SHA256 hash

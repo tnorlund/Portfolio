@@ -180,6 +180,39 @@ class _Receipt:
             return itemToReceipt(response["Item"])
         except KeyError:
             raise ValueError(f"Receipt with ID {receipt_id} not found")
+        
+    def listReceipts(self) -> list[Receipt]:
+        """List all receipts from the table"""
+        receipts = []
+        try:
+            response = self._client.query(
+                TableName=self.table_name,
+                IndexName="GSITYPE",
+                KeyConditionExpression="#pk = :pk_val AND #type = :type_val",
+                ExpressionAttributeNames={"#pk": "GSITYPE", "#type": "TYPE"},
+                ExpressionAttributeValues={
+                    ":pk_val": {"S": "RECEIPT"},
+                    ":type_val": {"S": "RECEIPT"},
+                },
+            )
+            receipts.extend([itemToReceipt(item) for item in response["Items"]])
+
+            while "LastEvaluatedKey" in response:
+                response = self._client.query(
+                    TableName=self.table_name,
+                    IndexName="GSITYPE",
+                    KeyConditionExpression="#pk = :pk_val AND #type = :type_val",
+                    ExpressionAttributeNames={"#pk": "GSITYPE", "#type": "TYPE"},
+                    ExpressionAttributeValues={
+                        ":pk_val": {"S": "RECEIPT"},
+                        ":type_val": {"S": "RECEIPT"},
+                    },
+                    ExclusiveStartKey=response["LastEvaluatedKey"],
+                )
+                receipts.extend([itemToReceipt(item) for item in response["Items"]])
+            return receipts
+        except ClientError as e:
+            raise ValueError("Could not list receipts from the database") from e
 
     def getReceiptsFromImage(self, image_id: int) -> list[Receipt]:
         """List all receipts from an image using the GSI
@@ -190,6 +223,7 @@ class _Receipt:
         Returns:
             list[Receipt]: A list of receipts from the image
         """
+        receipts = []
         try:
             response = self._client.query(
                 TableName=self.table_name,
@@ -199,6 +233,18 @@ class _Receipt:
                     ":sk": {"S": "RECEIPT#"},
                 },
             )
-            return [itemToReceipt(item) for item in response["Items"]]
+            receipts.extend([itemToReceipt(item) for item in response["Items"]])
+
+            while "LastEvaluatedKey" in response:
+                response = self._client.query(
+                    TableName=self.table_name,
+                    KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
+                    ExpressionAttributeValues={
+                        ":pk": {"S": f"IMAGE#{image_id:05d}"},
+                        ":sk": {"S": "RECEIPT#"},
+                    },
+                )
+                receipts.extend([itemToReceipt(item) for item in response["Items"]])
+            return receipts
         except ClientError as e:
             raise ValueError(f"Error listing receipts from image: {e}")

@@ -7,28 +7,28 @@ CHUNK_SIZE = 25
 
 class _ReceiptWord:
     """
-    A class used to represent a ReceiptWord in the database (similar to _word.py).
+    A class used to represent a ReceiptWord in the database.
 
     Methods
     -------
     addReceiptWord(word: ReceiptWord)
-        Adds a receipt-word to the database.
+        Adds a single ReceiptWord to DynamoDB.
     addReceiptWords(words: list[ReceiptWord])
-        Adds multiple receipt-words in batch.
+        Adds multiple ReceiptWords to DynamoDB in batches of CHUNK_SIZE.
     updateReceiptWord(word: ReceiptWord)
-        Updates an existing receipt-word.
+        Updates an existing ReceiptWord in DynamoDB.
     deleteReceiptWord(receipt_id: int, image_id: int, line_id: int, word_id: int)
-        Deletes a specific receipt-word by IDs.
+        Deletes a single ReceiptWord by IDs.
     deleteReceiptWords(words: list[ReceiptWord])
-        Deletes multiple receipt-words in batch.
+        Deletes multiple ReceiptWords in batch.
     deleteReceiptWordsFromLine(receipt_id: int, image_id: int, line_id: int)
-        Deletes all words for the given receipt-line.
+        Deletes all ReceiptWords from a given line within a receipt/image.
     getReceiptWord(receipt_id: int, image_id: int, line_id: int, word_id: int) -> ReceiptWord
-        Retrieves a single receipt-word by IDs.
+        Retrieves a single ReceiptWord by IDs.
     listReceiptWords() -> list[ReceiptWord]
-        Scans all receipt-words in the table.
+        Returns all ReceiptWords from the table.
     listReceiptWordsFromLine(receipt_id: int, image_id: int, line_id: int) -> list[ReceiptWord]
-        Scans all words from a specific receipt-line.
+        Returns all ReceiptWords that match the given receipt/image/line IDs.
     """
 
     def addReceiptWord(self, word: ReceiptWord):
@@ -135,36 +135,68 @@ class _ReceiptWord:
             raise ValueError(f"ReceiptWord with ID {word_id} not found")
 
     def listReceiptWords(self) -> list[ReceiptWord]:
-        """Returns all ReceiptWords from the table (scans for TYPE == 'RECEIPT_WORD')."""
-        response = self._client.scan(
-            TableName=self.table_name,
-            ScanFilter={
-                "TYPE": {
-                    "AttributeValueList": [{"S": "RECEIPT_WORD"}],
-                    "ComparisonOperator": "EQ",
-                }
-            },
-        )
-        return [itemToReceiptWord(item) for item in response["Items"]]
+        """Returns all ReceiptWords from the table."""
+        receipt_words = []
+        try:
+            response = self._client.query(
+                TableName=self.table_name,
+                IndexName="GSITYPE",
+                KeyConditionExpression="#pk = :pk_val AND #type = :type_val",
+                ExpressionAttributeNames={"#pk": "GSITYPE", "#type": "TYPE"},
+                ExpressionAttributeValues={
+                    ":pk_val": {"S": "RECEIPT_WORD"},
+                    ":type_val": {"S": "RECEIPT_WORD"},
+                },
+            )
+            receipt_words.extend([itemToReceiptWord(item) for item in response["Items"]])
+
+            while "LastEvaluatedKey" in response:
+                response = self._client.query(
+                    TableName=self.table_name,
+                    IndexName="GSITYPE",
+                    KeyConditionExpression="#pk = :pk_val AND #type = :type_val",
+                    ExpressionAttributeNames={"#pk": "GSITYPE", "#type": "TYPE"},
+                    ExpressionAttributeValues={
+                        ":pk_val": {"S": "RECEIPT_WORD"},
+                        ":type_val": {"S": "RECEIPT_WORD"},
+                    },
+                    ExclusiveStartKey=response["LastEvaluatedKey"],
+                )
+                receipt_words.extend([itemToReceiptWord(item) for item in response["Items"]])
+            return receipt_words
+        except ClientError as e:
+            raise ValueError("Could not list ReceiptWords from the database") from e
 
     def listReceiptWordsFromLine(
         self, receipt_id: int, image_id: int, line_id: int
     ) -> list[ReceiptWord]:
         """Returns all ReceiptWords that match the given receipt/image/line IDs."""
-        # Note: This uses a ScanFilter with PK=IMAGE#NNN and SK begins with RECEIPT#...LINE#...
-        response = self._client.scan(
-            TableName=self.table_name,
-            ScanFilter={
-                "PK": {
-                    "AttributeValueList": [{"S": f"IMAGE#{image_id:05d}"}],
-                    "ComparisonOperator": "EQ",
+        receipt_words = []
+        try:
+            response = self._client.query(
+                TableName=self.table_name,
+                KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
+                ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
+                ExpressionAttributeValues={
+                    ":pk_val": {"S": f"IMAGE#{image_id:05d}"},
+                    ":sk_val": {"S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#"},
                 },
-                "SK": {
-                    "AttributeValueList": [
-                        {"S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"}
-                    ],
-                    "ComparisonOperator": "BEGINS_WITH",
-                },
-            },
-        )
-        return [itemToReceiptWord(item) for item in response["Items"]]
+            )
+            receipt_words.extend([itemToReceiptWord(item) for item in response["Items"]])
+
+            while "LastEvaluatedKey" in response:
+                response = self._client.query(
+                    TableName=self.table_name,
+                    KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
+                    ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
+                    ExpressionAttributeValues={
+                        ":pk_val": {"S": f"IMAGE#{image_id:05d}"},
+                        ":sk_val": {"S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#"},
+                    },
+                    ExclusiveStartKey=response["LastEvaluatedKey"],
+                )
+                receipt_words.extend([itemToReceiptWord(item) for item in response["Items"]])
+            return receipt_words
+        except ClientError as e:
+            raise ValueError("Could not list ReceiptWords from the database") from e
+
