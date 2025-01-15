@@ -82,9 +82,11 @@ class ReceiptLetter:
         angle_radians: float,
         confidence: float,
     ):
+        if not isinstance(receipt_id, int):
+            raise ValueError("receipt_id must be an integer")
         # Ensure the Receipt ID is a positive integer
-        if receipt_id <= 0 or not isinstance(receipt_id, int):
-            raise ValueError("receipt_id must be a positive integer")
+        if receipt_id <= 0:
+            raise ValueError("receipt_id must be positive")
         self.receipt_id = receipt_id
         # Ensure the Image ID is a positive integer
         if image_id <= 0 or not isinstance(image_id, int):
@@ -175,7 +177,7 @@ class ReceiptLetter:
             "angle_radians": {"N": _format_float(self.angle_radians, 10, 12)},
             "confidence": {"N": _format_float(self.confidence, 2, 2)},
         }
-    
+
     def __eq__(self, other):
         if not isinstance(other, ReceiptLetter):
             return False
