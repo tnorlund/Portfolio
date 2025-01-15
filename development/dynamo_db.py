@@ -21,6 +21,14 @@ dynamodb_table = aws.dynamodb.Table(
             name="GSI1SK",
             type="S",
         ),
+        aws.dynamodb.TableAttributeArgs(
+            name="TimeToLive",
+            type="N",
+        ),
+        aws.dynamodb.TableAttributeArgs(
+            name="TYPE",
+            type="S",
+        ),
     ],
     hash_key="PK",
     range_key="SK",
@@ -36,6 +44,11 @@ dynamodb_table = aws.dynamodb.Table(
             name="GSI1",
             hash_key="GSI1PK",
             range_key="GSI1SK",
+            projection_type="ALL",
+        ),
+        aws.dynamodb.TableGlobalSecondaryIndexArgs(
+            name="GSITYPE",
+            hash_key="TYPE",
             projection_type="ALL",
         ),
     ],

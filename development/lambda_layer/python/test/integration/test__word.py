@@ -182,22 +182,17 @@ def test_listWords(dynamodb_table: Literal["MyMockedTable"]):
 def test_listWordsFromLine(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    word1 = Word(**correct_word_params)
-    word2_params = correct_word_params.copy()
-    word2_params["id"] = 4
-    word2 = Word(**word2_params)
-    word3_params = correct_word_params.copy()
-    word3_params["id"] = 5
-    word3_params["line_id"] = 3
-    word3 = Word(**word3_params)
-    client.addWord(word1)
-    client.addWord(word2)
-    client.addWord(word3)
+    words = [
+        Word(**correct_word_params),
+        Word(**{**correct_word_params, 'id': 1}),
+        Word(**{**correct_word_params, 'id': 2})
+    ]
+    client.addWords(words)
+    # sort words by id
+    words = sorted(words, key=lambda x: x.id)
 
     # Act
-    words = client.listWordsFromLine(1, 2)
+    response = client.listWordsFromLine(1, 2)
 
     # Assert
-    assert word1 in words
-    assert word2 in words
-    assert word3 not in words
+    assert words == response

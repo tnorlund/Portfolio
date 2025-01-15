@@ -67,7 +67,7 @@ def nextImageIndex(client: DynamoClient) -> int:
     """
     Get the maximum index in the list of images.
     """
-    images, _ = client.listImages()
+    images, _ = client.listImageDetails()
     if images == []:
         return 1
     image_indexes = [image.id for image in images]
@@ -99,7 +99,7 @@ def update_all_from_s3(
 
     # Get all images from DynamoDB
     dynamo_client = DynamoClient(dynamo_table_name)
-    images_in_dynamodb, _ = dynamo_client.listImages()
+    images_in_dynamodb, _ = dynamo_client.listImageDetails()
 
     # Compare the S3 locations in the DynamoDB table with the S3 locations in the bucket
     s3_keys_in_dynamodb = [image.s3_key for image in images_in_dynamodb]
