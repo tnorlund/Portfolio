@@ -134,6 +134,8 @@ class Image:
         yield "timestamp_added", self.timestamp_added
         yield "s3_bucket", self.s3_bucket
         yield "s3_key", self.s3_key
+        yield "cdn_s3_bucket", self.cdn_s3_bucket
+        yield "cdn_s3_key", self.cdn_s3_key
         yield "sha256", self.sha256
 
     def __eq__(self, other) -> bool:

@@ -180,7 +180,7 @@ class _Receipt:
             return itemToReceipt(response["Item"])
         except KeyError:
             raise ValueError(f"Receipt with ID {receipt_id} not found")
-        
+
     def listReceipts(self) -> list[Receipt]:
         """List all receipts from the table"""
         receipts = []
@@ -188,12 +188,9 @@ class _Receipt:
             response = self._client.query(
                 TableName=self.table_name,
                 IndexName="GSITYPE",
-                KeyConditionExpression="#pk = :pk_val AND #type = :type_val",
-                ExpressionAttributeNames={"#pk": "GSITYPE", "#type": "TYPE"},
-                ExpressionAttributeValues={
-                    ":pk_val": {"S": "RECEIPT"},
-                    ":type_val": {"S": "RECEIPT"},
-                },
+                KeyConditionExpression="#t = :val",
+                ExpressionAttributeNames={"#t": "TYPE"},
+                ExpressionAttributeValues={":val": {"S": "RECEIPT"}},
             )
             receipts.extend([itemToReceipt(item) for item in response["Items"]])
 
@@ -201,12 +198,9 @@ class _Receipt:
                 response = self._client.query(
                     TableName=self.table_name,
                     IndexName="GSITYPE",
-                    KeyConditionExpression="#pk = :pk_val AND #type = :type_val",
-                    ExpressionAttributeNames={"#pk": "GSITYPE", "#type": "TYPE"},
-                    ExpressionAttributeValues={
-                        ":pk_val": {"S": "RECEIPT"},
-                        ":type_val": {"S": "RECEIPT"},
-                    },
+                    KeyConditionExpression="#t = :val",
+                    ExpressionAttributeNames={"#t": "TYPE"},
+                    ExpressionAttributeValues={":val": {"S": "RECEIPT"}},
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                 )
                 receipts.extend([itemToReceipt(item) for item in response["Items"]])

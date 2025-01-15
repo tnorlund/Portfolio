@@ -49,9 +49,9 @@ function invert_y(point: Point) {
     };
 }
 
-function BoundingBox(line: LineItem, img: ImageItem) {
+function BoundingBox(line: LineItem, img: ImageItem, color: string) {
 
-    const bottomLeft = scalePointByImage(invert_y(line.bottom_left), img);
+  const bottomLeft = scalePointByImage(invert_y(line.bottom_left), img);
   // Bottom-right corner
   const bottomRight = scalePointByImage(invert_y(line.bottom_right), img);
 
@@ -69,7 +69,7 @@ function BoundingBox(line: LineItem, img: ImageItem) {
         y1={bottomLeft.y}
         x2={topRight.x}
         y2={topRight.y}
-        stroke="gray"
+        stroke={color}
         strokeWidth={1}
         opacity={line.confidence}
       />
@@ -78,7 +78,7 @@ function BoundingBox(line: LineItem, img: ImageItem) {
         y1={topLeft.y}
         x2={bottomRight.x}
         y2={bottomRight.y}
-        stroke="gray"
+        stroke={color}
         strokeWidth={1}
         opacity={line.confidence}
       />
@@ -88,7 +88,7 @@ function BoundingBox(line: LineItem, img: ImageItem) {
         y1={topLeft.y}
         x2={topRight.x}
         y2={topRight.y}
-        stroke="gray"
+        stroke={color}
         strokeWidth={3}
         opacity={line.confidence}
       />
@@ -97,7 +97,7 @@ function BoundingBox(line: LineItem, img: ImageItem) {
         y1={bottomLeft.y}
         x2={bottomRight.x}
         y2={bottomRight.y}
-        stroke="gray"
+        stroke={color}
         strokeWidth={3}
         opacity={line.confidence}
       />
@@ -107,7 +107,7 @@ function BoundingBox(line: LineItem, img: ImageItem) {
         y1={topLeft.y}
         x2={bottomLeft.x}
         y2={bottomLeft.y}
-        stroke="gray"
+        stroke={color}
         strokeWidth={3}
         opacity={line.confidence}
       />
@@ -116,7 +116,7 @@ function BoundingBox(line: LineItem, img: ImageItem) {
         y1={topRight.y}
         x2={bottomRight.x}
         y2={bottomRight.y}
-        stroke="gray"
+        stroke={color}
         strokeWidth={3}
         opacity={line.confidence}
       />
