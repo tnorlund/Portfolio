@@ -1,5 +1,6 @@
 import os
 import tempfile
+from time import sleep
 from uuid import uuid4
 import subprocess
 import boto3
@@ -9,18 +10,18 @@ from dotenv import load_dotenv
 from dynamo import DynamoClient
 import hashlib
 
-
 DEBUG = True
+
 
 def calculate_sha256(file_path: str):
     """
     Calculate the SHA-256 hash of a file.
 
     Args:
-    file_path (str): The path to the file to hash.
+        file_path (str): The path to the file to hash.
 
     Returns:
-    str: The SHA-256 hash of the file.
+        str: The SHA-256 hash of the file.
     """
     sha256_hash = hashlib.sha256()
     with open(file_path, "rb") as f:
@@ -51,7 +52,7 @@ def get_image_indexes(client: DynamoClient, number_images: int) -> list[int]:
         return list(range(1, number_images + 1))
 
     # Extract existing IDs and sort them
-    existing_ids = sorted(images.keys())  # or sorted(list(images.keys()))
+    existing_ids = sorted([image.id for image in images])  # or sorted(list(images.keys()))
 
     # Convert existing IDs into a set for O(1) lookups
     existing_ids_set = set(existing_ids)
@@ -78,7 +79,9 @@ def chunked(iterable, n):
 
 
 def load_env():
-    """Loads the .env file in the current directory and returns the value of the RAW_IMAGE_BUCKET environment variable.
+    """
+    Loads the .env file in the current directory and returns the value of the
+    RAW_IMAGE_BUCKET environment variable.
 
     Returns:
         str: The value of the RAW_IMAGE_BUCKET environment variable
@@ -121,21 +124,25 @@ def check_if_already_in_s3(bucket_name, s3_image_object_name):
         s3.head_object(Bucket=bucket_name, Key=s3_image_object_name)
         # If no exception is thrown, the object exists
         raise FileExistsError(
-            f"The object '{s3_image_object_name}' already exists in bucket '{bucket_name}'. Aborting."
+            f"The object '{s3_image_object_name}' already exists in "
+            f"bucket '{bucket_name}'. Aborting."
         )
     except ClientError as e:
         # If we get a 404 error, the object does not exist, and we can upload.
         if e.response["Error"]["Code"] != "404":
             # Some other error occurred; raise it.
             raise e
-        
-def compare_local(bucket_name, local_files, dynamo_table_name) -> list[str]:
-    """Compares local files to DynamoDB.
 
-    Compares the sha256 and file names with what's in DynamoDB. If a file is found it is not uploaded.
-    
+
+def compare_local(bucket_name, local_files, dynamo_table_name) -> list[str]:
+    """
+    Compares local files to DynamoDB.
+
+    Compares the sha256 and file names with what's in DynamoDB. If a file is found it
+    is not uploaded.
+
     Returns:
-    list[str]: The files that should actually be uploaded
+        list[str]: The files that should actually be uploaded
     """
     dynamo_client = DynamoClient(dynamo_table_name)
     hashes_in_dynamo = [image.sha256 for image in dynamo_client.listImages()]
@@ -145,18 +152,17 @@ def compare_local(bucket_name, local_files, dynamo_table_name) -> list[str]:
     return [file for file in local_files if calculate_sha256(file) not in duplicates]
 
 
-
 def upload_files_with_uuid_in_batches(
     directory,
     bucket_name,
     lambda_function,
     dynamodb_table_name,
-    path="test/",
+    path="raw/",
     batch_size=10,
 ):
     """
-    Uploads png and json files in the given directory to the specified S3 bucket with a UUID-based
-    object name, but processes them in batches of size `batch_size`.
+    Uploads png and json files in the given directory to the specified S3 bucket
+    with a UUID-based object name, but processes them in batches of size `batch_size`.
     """
     s3 = boto3.client("s3")
     # Get the full path of all PNG files in the directory
@@ -204,20 +210,18 @@ def upload_files_with_uuid_in_batches(
             print(f"Uploading {file:<41} to S3 -> {path}{file}")
             s3.upload_file(os.path.join(temp_dir, file), bucket_name, f"{path}{file}")
 
-        uuids = list(set([file.split(".")[0] for file in os.listdir(temp_dir)]))
+        uuids = list({file.split(".")[0] for file in os.listdir(temp_dir)})
 
         # Delete the temporary working directory
         for file in os.listdir(temp_dir):
             os.remove(os.path.join(temp_dir, file))
         os.rmdir(temp_dir)
 
-        # invoke Lambda function
+        # Invoke Lambda function
         lambda_client = boto3.client("lambda")
         for index, uuid in enumerate(uuids):
             image_id = image_indexes[(batch_index - 1) * batch_size + index]
-            print(
-                f"Invoking Lambda function for UUID {uuid} and Image ID {image_id}..."
-            )
+            print(f"Invoking Lambda function for UUID {uuid} and Image ID {image_id}...")
             response = lambda_client.invoke(
                 FunctionName=lambda_function,
                 InvocationType="Event",
@@ -249,6 +253,7 @@ if __name__ == "__main__":
         dynamo_client.deleteReceiptLines(dynamo_client.listReceiptLines())
         dynamo_client.deleteReceiptWords(dynamo_client.listReceiptWords())
         dynamo_client.deleteReceiptLetters(dynamo_client.listReceiptLetters())
+        sleep(1)
 
     upload_files_with_uuid_in_batches(
         directory_to_upload, RAW_IMAGE_BUCKET, LAMBDA_FUNCTION, DYNAMO_DB_TABLE
