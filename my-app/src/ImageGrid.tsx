@@ -149,7 +149,6 @@ export default function ImageGrid() {
        * we destructure them like so:
        */}
       {imageReceiptLines.map(([image, receipts, lines]) => {
-        const s3_path = image.s3_key.replace("raw/", "");
         const cdn_url = `https://d3izz2n0uhacrm.cloudfront.net/${image.cdn_s3_key}`;
 
         console.log(cdn_url)
