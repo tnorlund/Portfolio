@@ -21,8 +21,8 @@ def test_init():
     assert image.width == 10
     assert image.height == 20
     assert image.timestamp_added == "2021-01-01T00:00:00"
-    assert image.s3_bucket == "bucket"
-    assert image.s3_key == "key"
+    assert image.raw_s3_bucket == "bucket"
+    assert image.raw_s3_key == "key"
     assert image.sha256 is None
 
     # Test with sha256
@@ -33,8 +33,8 @@ def test_init():
     assert image.width == 10
     assert image.height == 20
     assert image.timestamp_added == "2021-01-01T00:00:00"
-    assert image.s3_bucket == "bucket"
-    assert image.s3_key == "key"
+    assert image.raw_s3_bucket == "bucket"
+    assert image.raw_s3_key == "key"
     assert image.sha256 == "my-sha256"
 
 
@@ -66,8 +66,8 @@ def test_to_item():
         "width": {"N": "10"},
         "height": {"N": "20"},
         "timestamp_added": {"S": "2021-01-01T00:00:00"},
-        "s3_bucket": {"S": "bucket"},
-        "s3_key": {"S": "key"},
+        "raw_s3_bucket": {"S": "bucket"},
+        "raw_s3_key": {"S": "key"},
         "sha256": {"S": "abc123"},
         "cdn_s3_bucket": {"NULL": True},
         "cdn_s3_key": {"NULL": True},
@@ -95,9 +95,11 @@ def test_iter():
         "width": 10,
         "height": 20,
         "timestamp_added": "2021-01-01T00:00:00",
-        "s3_bucket": "bucket",
-        "s3_key": "key",
+        "raw_s3_bucket": "bucket",
+        "raw_s3_key": "key",
         "sha256": "abc123",
+        "cdn_s3_bucket": None,
+        "cdn_s3_key": None,
     }
 
 
@@ -129,8 +131,8 @@ def test_itemToImage():
         "width": {"N": "10"},
         "height": {"N": "20"},
         "timestamp_added": {"S": "2021-01-01T00:00:00"},
-        "s3_bucket": {"S": "bucket"},
-        "s3_key": {"S": "key"},
+        "raw_s3_bucket": {"S": "bucket"},
+        "raw_s3_key": {"S": "key"},
         "sha256": {"S": "abc123"},
     }
     image = itemToImage(item)
@@ -148,8 +150,8 @@ def test_itemToImage():
         "width": {"N": "10"},
         "height": {"N": "20"},
         "timestamp_added": {"S": "2021-01-01T00:00:00"},
-        "s3_bucket": {"S": "bucket"},
-        "s3_key": {"S": "key"},
+        "raw_s3_bucket": {"S": "bucket"},
+        "raw_s3_key": {"S": "key"},
     }
     image_no_sha_obj = itemToImage(item_no_sha)
     assert image_no_sha_obj == Image(
@@ -173,8 +175,8 @@ def test_itemToImage():
         "width": {"N": "2480"},
         "height": {"N": "3508"},
         "timestamp_added": {"S": "2025-01-05T19:02:12.010520"},
-        "s3_bucket": {"S": "raw-image-bucket-c779c32"},
-        "s3_key": {"S": "raw/d20141ee-180f-4484-9d3d-7886b78fd019.png"},
+        "raw_s3_bucket": {"S": "raw-image-bucket-c779c32"},
+        "raw_s3_key": {"S": "raw/d20141ee-180f-4484-9d3d-7886b78fd019.png"},
     }
     image = itemToImage(item_missing_height)
     assert image == Image(

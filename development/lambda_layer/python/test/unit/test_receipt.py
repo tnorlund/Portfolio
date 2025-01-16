@@ -14,8 +14,8 @@ def valid_receipt_args():
         "width": 200,
         "height": 100,
         "timestamp_added": now,
-        "s3_bucket": "test-bucket",
-        "s3_key": "test/key/receipt.jpg",
+        "raw_s3_bucket": "test-bucket",
+        "raw_s3_key": "test/key/receipt.jpg",
         "top_left": {"x": 0.0, "y": 0.0},
         "top_right": {"x": 200.0, "y": 0.0},
         "bottom_left": {"x": 0.0, "y": 100.0},
@@ -37,8 +37,8 @@ def test_receipt_construction_valid(valid_receipt_args):
     now = valid_receipt_args["timestamp_added"]
     assert r.timestamp_added.startswith(str(now.date()))
 
-    assert r.s3_bucket == "test-bucket"
-    assert r.s3_key == "test/key/receipt.jpg"
+    assert r.raw_s3_bucket == "test-bucket"
+    assert r.raw_s3_key == "test/key/receipt.jpg"
     assert r.topLeft == {"x": 0.0, "y": 0.0}
     assert r.topRight == {"x": 200.0, "y": 0.0}
     assert r.bottomLeft == {"x": 0.0, "y": 100.0}
@@ -134,8 +134,8 @@ def test_to_item(valid_receipt_args):
     assert "width" in item
     assert "height" in item
     assert "timestamp_added" in item
-    assert "s3_bucket" in item
-    assert "s3_key" in item
+    assert "raw_s3_bucket" in item
+    assert "raw_s3_key" in item
     assert "top_left" in item
     assert "top_right" in item
     assert "bottom_left" in item
