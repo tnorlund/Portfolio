@@ -8,8 +8,8 @@ interface ImageItem {
   width: number;
   height: number;
   timestamp_added: string;
-  s3_bucket: string;
-  s3_key: string;
+  raw_s3_bucket: string;
+  raw_s3_key: string;
   cdn_s3_key: string;
 }
 
@@ -49,8 +49,8 @@ interface Receipt {
   width: number;
   height: number;
   timestamp_added: string;
-  s3_bucket: string;
-  s3_key: string;
+  raw_s3_bucket: string;
+  raw_s3_key: string;
   top_left: Point;
   top_right: Point;
   bottom_left: Point;
@@ -63,8 +63,8 @@ export interface ImagePayload {
   width: number;
   height: number;
   timestamp_added: string;
-  s3_bucket: string;
-  s3_key: string;
+  raw_s3_bucket: string;
+  raw_s3_key: string;
   sha256: string;
   cdn_s3_key: string;
 }
@@ -98,8 +98,8 @@ export function mapPayloadToImages(payload: RootPayload): ImageReceiptsLines[] {
       width: item.image.width,
       height: item.image.height,
       timestamp_added: item.image.timestamp_added,
-      s3_bucket: item.image.s3_bucket,
-      s3_key: item.image.s3_key,
+      raw_s3_bucket: item.image.raw_s3_bucket,
+      raw_s3_key: item.image.raw_s3_key,
       cdn_s3_key: item.image.cdn_s3_key,
       // If you want sha256 in your ImageItem, add it here
       // sha256: item.image.sha256,
@@ -149,6 +149,7 @@ export default function ImageGrid() {
        * we destructure them like so:
        */}
       {imageReceiptLines.map(([image, receipts, lines]) => {
+        console.log(image)
         const cdn_url = `https://d3izz2n0uhacrm.cloudfront.net/${image.cdn_s3_key}`;
 
         console.log(cdn_url)
@@ -181,7 +182,7 @@ export default function ImageGrid() {
             />
 
             {/* Example: if you want to draw bounding boxes for receipts */}
-            {receipts.map((receipt) => (
+            {/* {receipts.map((receipt) => (
               console.log(`receipt: ${receipt}`),
               // <rect
               //   key={`receipt-${receipt.id}`}
@@ -195,7 +196,7 @@ export default function ImageGrid() {
               // />
               <></>
             ))
-            }
+            } */}
 
             {/* Example: if you want to draw bounding boxes for lines */}
             {lines.map((line) => (

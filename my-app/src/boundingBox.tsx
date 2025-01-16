@@ -5,8 +5,8 @@ interface ImageItem {
   width: number;
   height: number;
   timestamp_added: string;
-  s3_bucket: string;
-  s3_key: string;
+  raw_s3_bucket: string;
+  raw_s3_key: string;
 }
 
 interface BoundingBoxInterface {

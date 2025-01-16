@@ -89,8 +89,10 @@ lambda_function = aws.lambda_.Function(
             "DYNAMO_DB_TABLE": dynamodb_table.name,
             "S3_BUCKET": bucket.bucket,
             "CDN_S3_BUCKET": site_bucket.bucket,
+            "CDN_PATH": "assets/",
         }
     },
 )
 
+pulumi.export("CDN_PATH", "assets/")
 pulumi.export("cluster_lambda_function_name", lambda_function.name)
