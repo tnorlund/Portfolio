@@ -1,20 +1,35 @@
 #!/usr/bin/env python3
-"""Clusters and groups lines of text into receipts then uploads to Dynamodb.
-
-This script starts with a ".png" and ".json" file in an S3 bucket. The ".json" has the OCR results from the SwiftOCR model. The image, lines, words, and letters entities are first added to Dynamodb. The lines are then clustered using DBSCAN. The lines are grouped into receipts based on the cluster_id. The receipts are then transformed to fit within a 1x1 box. The bounding box is then scaled to fit within a 1x1 box. The bounding box is then rotated to be axis-aligned. The bounding box is then scaled back to the original size. The bounding box is then drawn on the image and saved to a new S3 bucket.
-
 """
+Clusters and groups lines of text into receipts, then uploads them to DynamoDB.
+
+This script expects a PNG image and a corresponding JSON file in an S3 bucket:
+- The PNG file is the input image.
+- The JSON file contains OCR results (from a SwiftOCR model).
+
+Steps:
+1. The image, lines, words, and letters entities are added to DynamoDB.
+2. Lines are then clustered using DBSCAN (sklearn) to identify receipts.
+3. Each cluster (receipt) is transformed to fit into a 1x1 box.
+4. The bounding box is cropped/warped from the original image and uploaded to another S3 bucket.
+5. Receipt-level entities (receipt lines, words, letters) are added to DynamoDB.
+"""
+
 import os
 import json
-from sklearn.cluster import DBSCAN
-import numpy as np
-from collections import defaultdict
-import boto3
+import hashlib
+import logging
 import tempfile
-import cv2
+from datetime import datetime, timezone
 from math import sin, cos, dist
-from dynamo import DynamoClient
-from typing import Tuple
+from typing import Any, Dict, List, Tuple
+
+import boto3
+import cv2
+import numpy as np
+from sklearn.cluster import DBSCAN
+from botocore.exceptions import ClientError
+
+# Local imports (assuming these modules exist in the same project)
 from dynamo import (
     DynamoClient,
     Line,
@@ -26,46 +41,49 @@ from dynamo import (
     ReceiptWord,
     ReceiptLetter,
 )
-import hashlib
-from datetime import datetime, timezone
 
-# Load environment variables
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Read environment variables
 DYNAMO_DB_TABLE = os.getenv("DYNAMO_DB_TABLE")
 S3_BUCKET = os.getenv("S3_BUCKET")
 CDN_S3_BUCKET = os.getenv("CDN_S3_BUCKET")
+CDN_PATH = os.getenv("CDN_PATH")
 
-if not S3_BUCKET or not DYNAMO_DB_TABLE or not CDN_S3_BUCKET:
+if not all([DYNAMO_DB_TABLE, S3_BUCKET, CDN_S3_BUCKET, CDN_PATH]):
     missing_vars = [
-        var_name
-        for var_name, var_value in [
+        name
+        for name, val in [
             ("DYNAMO_DB_TABLE", DYNAMO_DB_TABLE),
             ("S3_BUCKET", S3_BUCKET),
             ("CDN_S3_BUCKET", CDN_S3_BUCKET),
+            ("CDN_PATH", CDN_PATH),
         ]
-        if not var_value
+        if not val
     ]
     raise ValueError(f"Missing environment variables: {', '.join(missing_vars)}")
 
 
-def process_ocr_dict(ocr_data: dict, image_id: int) -> Tuple[list, list, list]:
+def process_ocr_dict(
+    ocr_data: Dict[str, Any], image_id: int
+) -> Tuple[List[Line], List[Word], List[Letter]]:
     """
-    Process the OCR data and return lists of lines, words, and letters.
+    Convert OCR data from SwiftOCR into lists of Line, Word, and Letter objects.
 
     Args:
-    ocr_data (dict): The OCR data from the SwiftOCR model.
-    image_id (int): The ID of the image.
+        ocr_data: A dictionary containing OCR information.
+        image_id: Unique ID for the image these lines/words/letters belong to.
 
     Returns:
-    Tuple[list, list, list]: A tuple of lists containing Line, Word, and Letter objects.
+        A tuple of (lines, words, letters).
     """
-    lines = []
-    words = []
-    letters = []
-    for line_id, line_data in enumerate(ocr_data["lines"]):
-        line_id = line_id + 1
+    lines, words, letters = [], [], []
+    for line_idx, line_data in enumerate(ocr_data.get("lines", []), start=1):
         line_obj = Line(
             image_id=image_id,
-            id=line_id,
+            id=line_idx,
             text=line_data["text"],
             bounding_box=line_data["bounding_box"],
             top_right=line_data["top_right"],
@@ -77,12 +95,12 @@ def process_ocr_dict(ocr_data: dict, image_id: int) -> Tuple[list, list, list]:
             confidence=line_data["confidence"],
         )
         lines.append(line_obj)
-        for word_id, word_data in enumerate(line_data["words"]):
-            word_id = word_id + 1
+
+        for word_idx, word_data in enumerate(line_data.get("words", []), start=1):
             word_obj = Word(
                 image_id=image_id,
-                line_id=line_id,
-                id=word_id,
+                line_id=line_idx,
+                id=word_idx,
                 text=word_data["text"],
                 bounding_box=word_data["bounding_box"],
                 top_right=word_data["top_right"],
@@ -94,13 +112,15 @@ def process_ocr_dict(ocr_data: dict, image_id: int) -> Tuple[list, list, list]:
                 confidence=word_data["confidence"],
             )
             words.append(word_obj)
-            for letter_id, letter_data in enumerate(word_data["letters"]):
-                letter_id = letter_id + 1
+
+            for letter_idx, letter_data in enumerate(
+                word_data.get("letters", []), start=1
+            ):
                 letter_obj = Letter(
                     image_id=image_id,
-                    line_id=line_id,
-                    word_id=word_id,
-                    id=letter_id,
+                    line_id=line_idx,
+                    word_id=word_idx,
+                    id=letter_idx,
                     text=letter_data["text"],
                     bounding_box=letter_data["bounding_box"],
                     top_right=letter_data["top_right"],
@@ -112,77 +132,19 @@ def process_ocr_dict(ocr_data: dict, image_id: int) -> Tuple[list, list, list]:
                     confidence=letter_data["confidence"],
                 )
                 letters.append(letter_obj)
+
     return lines, words, letters
 
 
-def euclidean_dist(a: float, b: float) -> float:
-    """
-    Calculate the Euclidean distance between two points.
-
-    Args:
-    a (float): The first point.
-    b (float): The second point.
-
-    Returns:
-    float: The Euclidean distance between the two points.
-    """
-    return dist(a, b)
-
-
-def rotate_point(
-    x: float, y: float, cx: float, cy: float, theta: float
-) -> Tuple[float, float]:
-    """
-    Rotate a point around a center by a given angle.
-
-    Args:
-    x (float): The x-coordinate of the point.
-    y (float): The y-coordinate of the point.
-    cx (float): The x-coordinate of the center.
-    cy (float): The y-coordinate of the center.
-    theta (float): The angle in radians to rotate by.
-
-    Returns:
-    Tuple[float, float]: The rotated point.
-    """
-    # Translate to origin
-    x_trans = x - cx
-    y_trans = y - cy
-
-    # Rotate
-    x_rot = x_trans * cos(theta) - y_trans * sin(theta)
-    y_rot = x_trans * sin(theta) + y_trans * cos(theta)
-
-    # Translate back
-    return (x_rot + cx, y_rot + cy)
-
-
-def get_axis_aligned_bbox(
-    points: Tuple[Tuple[float, float]]
-) -> Tuple[float, float, float, float]:
-    """
-    Get the axis-aligned bounding box for a set of points.
-
-    Args:
-    points (Tuple[Tuple[float, float]]): The points to get the bounding box for.
-
-    Returns:
-    Tuple[float, float, float, float]: The axis-aligned bounding box.
-    """
-    xs = [p[0] for p in points]
-    ys = [p[1] for p in points]
-    return min(xs), max(xs), min(ys), max(ys)
-
-
-def calculate_sha256(file_path: str):
+def calculate_sha256(file_path: str) -> str:
     """
     Calculate the SHA-256 hash of a file.
 
     Args:
-    file_path (str): The path to the file to hash.
+        file_path: The path to the file to hash.
 
     Returns:
-    str: The SHA-256 hash of the file.
+        The SHA-256 hash in hexadecimal format.
     """
     sha256_hash = hashlib.sha256()
     with open(file_path, "rb") as f:
@@ -191,264 +153,204 @@ def calculate_sha256(file_path: str):
     return sha256_hash.hexdigest()
 
 
-def add_initial_image(
-    s3_path: str, uuid: str, image_id: int, cdn_path: str
-) -> Tuple[Image, list[Line], list[Word], list[Letter]]:
+def euclidean_dist(a: Tuple[float, float], b: Tuple[float, float]) -> float:
+    """Return the Euclidean distance between two points a and b."""
+    return dist(a, b)
+
+
+def rotate_point(
+    x: float, y: float, cx: float, cy: float, theta: float
+) -> Tuple[float, float]:
     """
-    Add the initial image to the database.
+    Rotate point (x, y) around center (cx, cy) by theta radians.
 
     Returns:
-    Image: The image object.
+        (x_rot, y_rot): The rotated x, y coordinates.
+    """
+    # Translate to origin
+    x_trans = x - cx
+    y_trans = y - cy
+    # Rotate
+    x_rot = x_trans * cos(theta) - y_trans * sin(theta)
+    y_rot = x_trans * sin(theta) + y_trans * cos(theta)
+    # Translate back
+    return (x_rot + cx, y_rot + cy)
+
+
+def add_initial_image(
+    s3_path: str, uuid: str, image_id: int, cdn_path: str
+) -> Tuple[Image, List[Line], List[Word], List[Letter]]:
+    """
+    Download image & OCR data from S3, compute SHA-256, and store them in DynamoDB.
+
+    Args:
+        s3_path: The path (prefix) to the .json file in S3.
+        uuid: Unique identifier for the file names.
+        image_id: Unique ID for this image in DynamoDB.
+        cdn_path: The path (prefix) to use when uploading to the CDN bucket.
+
+    Returns:
+        A tuple of:
+            (image_object, list_of_lines, list_of_words, list_of_letters)
     """
     dynamo_client = DynamoClient(DYNAMO_DB_TABLE)
-    # Download the PNG from S3 to calculate the SHA256
     s3_client = boto3.client("s3")
+
+    # Download the PNG from S3 to a temp file
     png_key = f"{s3_path}{uuid}.png"
-    cdn_path = f"{cdn_path}{uuid}.png"
-    print(f"Downloading {png_key} from S3...")
-    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp:
-        s3_client.download_file(S3_BUCKET, png_key, temp.name)
-        sha256 = calculate_sha256(temp.name)
-        img_cv = cv2.imread(temp.name)
-        height, width, _ = img_cv.shape
-        s3_client.upload_file(temp.name, CDN_S3_BUCKET, cdn_path)
+    local_png_path = None
+    print(f"s3_path: {s3_path}")
+    print(f"uuid: {uuid}")
+    print(f"image_id: {image_id}")
+    print(f"cdn_path: {cdn_path}")
+
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_png:
+            local_png_path = temp_png.name
+            print(f"Downloading {png_key} from s3://{S3_BUCKET}/...")
+            logger.info(f"Downloading {png_key} from s3://{S3_BUCKET}/...")
+            s3_client.download_file(S3_BUCKET, png_key, local_png_path)
+    except ClientError as exc:
+        logger.error(f"Failed to download PNG from S3: {exc}")
+        raise
+
+    if local_png_path is None:
+        raise ValueError("Temporary PNG file was not created.")
+
+    # Compute SHA256 and read image size
+    sha256 = calculate_sha256(local_png_path)
+    img_cv = cv2.imread(local_png_path)
+    if img_cv is None:
+        raise ValueError("Downloaded image is invalid or cannot be opened by OpenCV.")
+
+    height, width, _ = img_cv.shape
+
+    # Upload the original image to the CDN bucket
+    cdn_s3_key = f"{cdn_path}{uuid}.png"
+    try:
+        s3_client.upload_file(local_png_path, CDN_S3_BUCKET, cdn_s3_key)
+        logger.info(f"Uploaded file to s3://{CDN_S3_BUCKET}/{cdn_s3_key}")
+    except ClientError as exc:
+        logger.error(f"Failed to upload PNG to CDN bucket: {exc}")
+        raise
+
+    # Create and store Image in DynamoDB
     image = Image(
         id=image_id,
         width=width,
         height=height,
         timestamp_added=datetime.now(timezone.utc).isoformat(),
-        s3_bucket=S3_BUCKET,
-        s3_key=png_key,
+        raw_s3_bucket=S3_BUCKET,
+        raw_s3_key=png_key,
         sha256=sha256,
         cdn_s3_bucket=CDN_S3_BUCKET,
-        cdn_s3_key=cdn_path,
+        cdn_s3_key=cdn_s3_key,
     )
     dynamo_client.addImage(image)
-    # Read JSON file from S3
+
+    # Read the JSON (OCR data) from S3
     json_key = f"{s3_path}{uuid}.json"
-    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as temp:
-        s3_client.download_file(S3_BUCKET, json_key, temp.name)
-        with open(temp.name, "r") as f:
-            ocr_data = json.load(f)
+    local_json_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as temp_json:
+            local_json_path = temp_json.name
+            print(f"Downloading {json_key} from s3://{S3_BUCKET}/...")
+            logger.info(f"Downloading {json_key} from s3://{S3_BUCKET}/...")
+            s3_client.download_file(S3_BUCKET, json_key, local_json_path)
+    except ClientError as exc:
+        logger.error(f"Failed to download JSON from S3: {exc}")
+        raise
+
+    if local_json_path is None:
+        raise ValueError("Temporary JSON file was not created.")
+
+    with open(local_json_path, "r", encoding="utf-8") as f:
+        ocr_data = json.load(f)
+
     lines, words, letters = process_ocr_dict(ocr_data, image_id)
-    print(
-        f"Adding {len(lines)} lines, {len(words)} words, {len(letters)} letters, and image to DynamoDB"
+    logger.info(
+        "Adding %d lines, %d words, %d letters, and the image to DynamoDB.",
+        len(lines),
+        len(words),
+        len(letters),
     )
     dynamo_client.addLines(lines)
     dynamo_client.addWords(words)
     dynamo_client.addLetters(letters)
+
     return image, lines, words, letters
 
 
-def cluster_image(lines: list[Line]) -> dict[int, list[Line]]:
+def cluster_image(lines: List[Line]) -> Dict[int, List[Line]]:
     """
-    Cluster the lines of text into receipts.
-
-    Args:
-    lines (list[Line]): The lines of text to cluster.
+    Cluster lines of text using DBSCAN based on their x-centroids.
 
     Returns:
-    dict[int, list[Line]]: A dictionary of cluster_id to list of lines.
+        A dictionary mapping cluster_id -> list_of_lines.
     """
-    # 1) Assembly X coordinates for DBSCAN: we take the centroid's x-value
-    X = np.array([line.calculate_centroid()[0] for line in lines]).reshape(-1, 1)
-    # 2) Run DBSCAN
+    if not lines:
+        return {}
+
+    # Calculate average angle to roughly align text horizontally
+    avg_angle = sum(ln.angle_radians for ln in lines) / len(lines)
+
+    # Rotate lines so they are axis-aligned
+    rotated_lines = lines.copy()
+    for ln in rotated_lines:
+        ln.rotate(-avg_angle, 0.5, 0.5, use_radians=True)
+
+    # Gather x-coordinates of centroids for DBSCAN
+    X = np.array([line.calculate_centroid()[0] for line in rotated_lines]).reshape(
+        -1, 1
+    )
+
+    # Run DBSCAN
     db = DBSCAN(eps=0.08, min_samples=2)
     db.fit(X)
     labels = db.labels_
-    # 3) Assign a cluster_id to each line
-    offset_labels = []
-    for label in labels:
-        if label == -1:
-            offset_labels.append(-1)
-        else:
-            offset_labels.append(label + 1)
+
+    # Adjust labels so -1 stays -1, but other labels become positive and 1-indexed
+    offset_labels = [label if label == -1 else label + 1 for label in labels]
+
+    # Assign cluster_ids back to original lines
     for i, line in enumerate(lines):
         line.cluster_id = offset_labels[i]
-    # 4) Group lines by cluster
-    cluster_dict = {}
+
+    # Group lines by cluster_id
+    cluster_dict: Dict[int, List[Line]] = {}
     for line in lines:
         if line.cluster_id == -1:
-            continue
+            continue  # skip noise
         if line.cluster_id not in cluster_dict:
             cluster_dict[line.cluster_id] = []
         cluster_dict[line.cluster_id].append(line)
-    print(f"Found {len(cluster_dict)} receipts")
+
+    logger.info("Found %d receipts (clusters).", len(cluster_dict))
     return cluster_dict
 
 
-def transform_cluster(
-    cluster_id: int,
-    cluster_lines: list[Line],
-    cluster_words: list[Word],
-    cluster_letters: list[Letter],
-    image_cv: np.ndarray,
-    image: Image,
-):
-    """Transform the cluster of lines into a bounding box."""
-    # 1) Compute the cluster’s centroid based on the average of each line’s centroid.
-    sum_x = 0.0
-    sum_y = 0.0
-    for ln in cluster_lines:
-        cx, cy = ln.calculate_centroid()
-        sum_x += cx
-        sum_y += cy
-    cluster_center_x = sum_x / len(cluster_lines)
-    cluster_center_y = sum_y / len(cluster_lines)
-
-    # 2) Translate all lines so the cluster centroid moves to (0.5, 0.5).
-    dx = 0.5 - cluster_center_x
-    dy = 0.5 - cluster_center_y
-    for ln in cluster_lines:
-        ln.translate(dx, dy)
-
-    # 3) Rotate the cluster around (0.5, 0.5) by -avg_angle (in radians).
-    avg_angle_radians = sum(ln.angle_radians for ln in cluster_lines) / len(
-        cluster_lines
-    )
-    for ln in cluster_lines:
-        # Negative average angle => rotate(-avg_angle_radians, 0.5, 0.5)
-        ln.rotate(-avg_angle_radians, 0.5, 0.5, use_radians=True)
-
-    # 4) Compute a bounding box from the now-transformed corners.
-    all_points = []
-    for ln in cluster_lines:
-        all_points.extend(
-            [
-                (ln.top_left["x"], ln.top_left["y"]),
-                (ln.top_right["x"], ln.top_right["y"]),
-                (ln.bottom_left["x"], ln.bottom_left["y"]),
-                (ln.bottom_right["x"], ln.bottom_right["y"]),
-            ]
-        )
-    min_x = min(pt[0] for pt in all_points)
-    max_x = max(pt[0] for pt in all_points)
-    min_y = min(pt[1] for pt in all_points)
-    max_y = max(pt[1] for pt in all_points)
-    top_left = (min_x, min_y)
-    top_right = (max_x, min_y)
-    bottom_left = (min_x, max_y)
-    bottom_right = (max_x, max_y)
-
-    # 5) Scale the lines to fit within a 1x1 box.
-    range_x = max_x - min_x
-    range_y = max_y - min_y
-    scale_x = 1.0 / range_x
-    scale_y = 1.0 / range_y
-
-    print(f"Before original_entities_to_receipt_entities {cluster_id}")
-    original_entities_to_receipt_entities(
-        (cluster_lines, cluster_words, cluster_letters),
-        min_x,
-        min_y,
-        scale_x,
-        scale_y,
-        cluster_id,
-    )
-
-    # 6) Reverse the transformations to get the original bounding box
-    original_corners = []
-    for corner in [top_left, top_right, bottom_left, bottom_right]:
-        # 1) Rotate back by +avg_angle_radians around (0.5, 0.5)
-        x_rot, y_rot = rotate_point(
-            corner[0],
-            corner[1],
-            0.5,
-            0.5,
-            +avg_angle_radians,  # opposite sign of the earlier -avg_angle_radians
-        )
-        # 2) Translate back by (-dx, -dy)
-        x_orig = x_rot - dx
-        y_orig = y_rot - dy
-
-        original_corners.append((x_orig, y_orig))
-
-    orig_top_left, orig_top_right, orig_bottom_left, orig_bottom_right = (
-        original_corners
-    )
-    pt_bl = (orig_top_left[0] * image.width, (1 - orig_top_left[1]) * image.height)
-    pt_br = (orig_top_right[0] * image.width, (1 - orig_top_right[1]) * image.height)
-    pt_tl = (
-        orig_bottom_left[0] * image.width,
-        (1 - orig_bottom_left[1]) * image.height,
-    )
-    pt_tr = (
-        orig_bottom_right[0] * image.width,
-        (1 - orig_bottom_right[1]) * image.height,
-    )
-    width_top = euclidean_dist(pt_tl, pt_tr)
-    width_bot = euclidean_dist(pt_bl, pt_br)
-    height_left = euclidean_dist(pt_tl, pt_bl)
-    height_right = euclidean_dist(pt_tr, pt_br)
-
-    dst_width = int((width_top + width_bot) / 2.0)
-    dst_height = int((height_left + height_right) / 2.0)
-
-    # Destination corners (x,y) for the resulting image
-    dst_tl = (0, 0)
-    dst_tr = (dst_width - 1, 0)
-    dst_bl = (0, dst_height - 1)
-    dst_br = (dst_width - 1, dst_height - 1)
-
-    src_pts = np.float32([pt_tl, pt_tr, pt_bl, pt_br])  # original image corners
-    dst_pts = np.float32([dst_tl, dst_tr, dst_bl, dst_br])  # new upright rectangle
-
-    M = cv2.getPerspectiveTransform(src_pts, dst_pts)
-
-    print(f"image_cv.shape: {image_cv.shape}")
-    print(f"M shape: {M.shape}")
-    print(f"dst_width: {dst_width}, dst_height: {dst_height}")
-    warped = cv2.warpPerspective(image_cv, M, (dst_width, dst_height))
-    height, width, _ = warped.shape
-
-    # 7) Add the cropped image to the CDN S3
-    s3_client = boto3.client("s3")
-
-    cdn_s3_key = image.cdn_s3_key.replace(".png", f"_cluster_{int(cluster_id):05d}.png")
-    with tempfile.NamedTemporaryFile(suffix=".png", delete=True) as temp:
-        cv2.imwrite(temp.name, warped)
-        s3_client.upload_file(temp.name, CDN_S3_BUCKET, cdn_s3_key)
-        sha256 = calculate_sha256(temp.name)
-
-    # 8) Add the receipt to DynamoDB
-    receipt = Receipt(
-        id=int(cluster_id),
-        width=width,
-        height=height,
-        image_id=image.id,
-        timestamp_added=datetime.now(timezone.utc).isoformat(),
-        s3_bucket=image.s3_bucket,
-        s3_key=image.s3_key,
-        top_left={"x": pt_tl[0], "y": pt_tl[1]},
-        top_right={"x": pt_tr[0], "y": pt_tr[1]},
-        bottom_left={"x": pt_bl[0], "y": pt_bl[1]},
-        bottom_right={"x": pt_br[0], "y": pt_br[1]},
-        sha256=sha256,
-        cdn_s3_bucket=CDN_S3_BUCKET,
-        cdn_s3_key=f"{cdn_s3_key}{image.s3_key}",
-    )
-    dynamo_client = DynamoClient(DYNAMO_DB_TABLE)
-    dynamo_client.addReceipt(receipt)
-
-
 def original_entities_to_receipt_entities(
-    cluster_entities: Tuple[list[Line], list[Word], list[Letter]],
+    cluster_entities: Tuple[List[Line], List[Word], List[Letter]],
     min_x: float,
     min_y: float,
     scale_x: float,
     scale_y: float,
     cluster_id: int,
-):
-    """Transform the original entities to receipt entities."""
-    print(f"""Transforming cluster {cluster_id} to receipt entities""")
+) -> None:
+    """
+    Transform Lines, Words, Letters into the coordinate space of a single receipt.
+    Then write them as ReceiptLine, ReceiptWord, ReceiptLetter to DynamoDB.
+    """
+    logger.info("Transforming cluster %d to receipt entities.", cluster_id)
     cluster_lines, cluster_words, cluster_letters = cluster_entities
-    receipt_lines = []
-    receipt_words = []
-    receipt_letters = []
+
+    receipt_lines: List[ReceiptLine] = []
+    receipt_words: List[ReceiptWord] = []
+    receipt_letters: List[ReceiptLetter] = []
+
+    # Lines
     for ln in cluster_lines:
-        # 1) Translate so min_x/min_y become 0,0
         ln.translate(-min_x, -min_y)
-        # 2) Scale so the bounding box fits in [0, 1] in both dimensions
         ln.scale(scale_x, scale_y)
         receipt_lines.append(
             ReceiptLine(
@@ -466,54 +368,58 @@ def original_entities_to_receipt_entities(
                 confidence=ln.confidence,
             )
         )
-    for word in cluster_words:
-        # 1) Translate so min_x/min_y become 0,0
-        word.translate(-min_x, -min_y)
-        # 2) Scale so the bounding box fits in [0, 1] in both dimensions
-        word.scale(scale_x, scale_y)
+
+    # Words
+    for wd in cluster_words:
+        wd.translate(-min_x, -min_y)
+        wd.scale(scale_x, scale_y)
         receipt_words.append(
             ReceiptWord(
                 receipt_id=int(cluster_id),
-                image_id=word.image_id,
-                line_id=word.line_id,
-                id=word.id,
-                text=word.text,
-                bounding_box=word.bounding_box,
-                top_right=word.top_right,
-                top_left=word.top_left,
-                bottom_right=word.bottom_right,
-                bottom_left=word.bottom_left,
-                angle_degrees=word.angle_degrees,
-                angle_radians=word.angle_radians,
-                confidence=word.confidence,
-                tags=word.tags,
+                image_id=wd.image_id,
+                line_id=wd.line_id,
+                id=wd.id,
+                text=wd.text,
+                bounding_box=wd.bounding_box,
+                top_right=wd.top_right,
+                top_left=wd.top_left,
+                bottom_right=wd.bottom_right,
+                bottom_left=wd.bottom_left,
+                angle_degrees=wd.angle_degrees,
+                angle_radians=wd.angle_radians,
+                confidence=wd.confidence,
+                tags=wd.tags,
             )
         )
-    for letter in cluster_letters:
-        # 1) Translate so min_x/min_y become 0,0
-        letter.translate(-min_x, -min_y)
-        # 2) Scale so the bounding box fits in [0, 1] in both dimensions
-        letter.scale(scale_x, scale_y)
+
+    # Letters
+    for lt in cluster_letters:
+        lt.translate(-min_x, -min_y)
+        lt.scale(scale_x, scale_y)
         receipt_letters.append(
             ReceiptLetter(
                 receipt_id=int(cluster_id),
-                image_id=letter.image_id,
-                line_id=letter.line_id,
-                word_id=letter.word_id,
-                id=letter.id,
-                text=letter.text,
-                bounding_box=letter.bounding_box,
-                top_right=letter.top_right,
-                top_left=letter.top_left,
-                bottom_right=letter.bottom_right,
-                bottom_left=letter.bottom_left,
-                angle_degrees=letter.angle_degrees,
-                angle_radians=letter.angle_radians,
-                confidence=letter.confidence,
+                image_id=lt.image_id,
+                line_id=lt.line_id,
+                word_id=lt.word_id,
+                id=lt.id,
+                text=lt.text,
+                bounding_box=lt.bounding_box,
+                top_right=lt.top_right,
+                top_left=lt.top_left,
+                bottom_right=lt.bottom_right,
+                bottom_left=lt.bottom_left,
+                angle_degrees=lt.angle_degrees,
+                angle_radians=lt.angle_radians,
+                confidence=lt.confidence,
             )
         )
-    print(
-        f"Adding {len(receipt_lines)} receipt lines, {len(receipt_words)} receipt words, and {len(receipt_letters)} receipt letters to DynamoDB"
+
+    logger.info(
+        "Adding %d receipt lines, %d receipt words, and %d receipt letters to DynamoDB.",
+        len(receipt_lines),
+        len(receipt_words),
+        len(receipt_letters),
     )
     dynamo_client = DynamoClient(DYNAMO_DB_TABLE)
     dynamo_client.addReceiptLines(receipt_lines)
@@ -521,45 +427,220 @@ def original_entities_to_receipt_entities(
     dynamo_client.addReceiptLetters(receipt_letters)
 
 
-def lambda_handler(event, _):
-    """Lambda handler function."""
-    uuid = event.get("uuid")  # or event["uuid"]
-    s3_path = event.get("s3_path")  # or event["s3_path"]
-    image_id = event.get("image_id")  # or event["image_id"]
-    # Ensure the event has the required keys
-    if not all([uuid, s3_path, image_id]):
-        raise ValueError("Missing required keys in event")
+def transform_cluster(
+    cluster_id: int,
+    cluster_lines: List[Line],
+    cluster_words: List[Word],
+    cluster_letters: List[Letter],
+    image_cv: np.ndarray,
+    image_obj: Image,
+) -> None:
+    """
+    Given a cluster of lines, create a bounding box transform that crops and warps
+    the corresponding region from the original image. Upload the cropped image to S3,
+    then store a Receipt object in DynamoDB.
+    """
+    logger.info("Transforming cluster %d into bounding box.", cluster_id)
+    # Compute cluster’s centroid from line centroids
+    sum_x = 0.0
+    sum_y = 0.0
+    for ln in cluster_lines:
+        cx, cy = ln.calculate_centroid()
+        sum_x += cx
+        sum_y += cy
 
-    image, lines, words, letters = add_initial_image(s3_path, uuid, image_id, "test/")
-    cluster_dict = cluster_image(lines)
-    # Read the image from S3
-    s3_client = boto3.client("s3")
-    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp:
-        s3_client.download_file(image.s3_bucket, image.s3_key, temp.name)
-        img_cv = cv2.imread(temp.name)
-        # Check to see that img_cv is an image
-        if img_cv is None:
-            raise ValueError("Image is not a valid image")
-    for cluster_id, cluster_lines in cluster_dict.items():
-        if cluster_id == -1:
-            continue
-        cluster_line_ids = [ln.id for ln in cluster_lines]
-        # Get all the words and letters in the cluster
-        cluster_words = [word for word in words if word.line_id in cluster_line_ids]
-        cluster_letters = [
-            letter for letter in letters if letter.line_id in cluster_line_ids
-        ]
-        print(f"Adding cluster {cluster_id} to DynamoDB")
-        transform_cluster(
-            cluster_id,
-            cluster_lines,
-            cluster_words,
-            cluster_letters,
-            img_cv,
-            image,
+    cluster_center_x = sum_x / len(cluster_lines)
+    cluster_center_y = sum_y / len(cluster_lines)
+
+    # Translate lines so centroid moves to (0.5, 0.5)
+    dx = 0.5 - cluster_center_x
+    dy = 0.5 - cluster_center_y
+    for ln in cluster_lines:
+        ln.translate(dx, dy)
+
+    # Rotate around (0.5, 0.5) by -avg_angle
+    avg_angle_radians = sum(ln.angle_radians for ln in cluster_lines) / len(
+        cluster_lines
+    )
+    for ln in cluster_lines:
+        ln.rotate(-avg_angle_radians, 0.5, 0.5, use_radians=True)
+
+    # Compute bounding box in transformed space
+    all_points = []
+    for ln in cluster_lines:
+        all_points.extend(
+            [
+                (ln.top_left["x"], ln.top_left["y"]),
+                (ln.top_right["x"], ln.top_right["y"]),
+                (ln.bottom_left["x"], ln.bottom_left["y"]),
+                (ln.bottom_right["x"], ln.bottom_right["y"]),
+            ]
         )
+
+    min_x = min(pt[0] for pt in all_points)
+    max_x = max(pt[0] for pt in all_points)
+    min_y = min(pt[1] for pt in all_points)
+    max_y = max(pt[1] for pt in all_points)
+
+    # Scale lines so bounding box fits within [0, 1]
+    range_x = max_x - min_x
+    range_y = max_y - min_y
+    scale_x = 1.0 / range_x if range_x != 0 else 1.0
+    scale_y = 1.0 / range_y if range_y != 0 else 1.0
+
+    logger.debug(
+        "Cluster %d bounding box before scale: (%f, %f, %f, %f)",
+        cluster_id,
+        min_x,
+        max_x,
+        min_y,
+        max_y,
+    )
+    original_entities_to_receipt_entities(
+        (cluster_lines, cluster_words, cluster_letters),
+        min_x,
+        min_y,
+        scale_x,
+        scale_y,
+        cluster_id,
+    )
+
+    # Reverse transformations to find original bounding box corners
+    def reverse_transform(point: Tuple[float, float]) -> Tuple[float, float]:
+        """
+        1) Rotate back by +avg_angle_radians around (0.5, 0.5)
+        2) Translate back by (-dx, -dy)
+        """
+        x_rot, y_rot = rotate_point(point[0], point[1], 0.5, 0.5, +avg_angle_radians)
+        return x_rot - dx, y_rot - dy
+
+    top_left = reverse_transform((min_x, min_y))
+    top_right = reverse_transform((max_x, min_y))
+    bottom_left = reverse_transform((min_x, max_y))
+    bottom_right = reverse_transform((max_x, max_y))
+
+    # Convert normalized points to absolute image coordinates
+    pt_bl = (top_left[0] * image_obj.width, (1 - top_left[1]) * image_obj.height)
+    pt_br = (top_right[0] * image_obj.width, (1 - top_right[1]) * image_obj.height)
+    pt_tl = (bottom_left[0] * image_obj.width, (1 - bottom_left[1]) * image_obj.height)
+    pt_tr = (
+        bottom_right[0] * image_obj.width,
+        (1 - bottom_right[1]) * image_obj.height,
+    )
+
+    width_top = euclidean_dist(pt_tl, pt_tr)
+    width_bot = euclidean_dist(pt_bl, pt_br)
+    height_left = euclidean_dist(pt_tl, pt_bl)
+    height_right = euclidean_dist(pt_tr, pt_br)
+
+    dst_width = int((width_top + width_bot) / 2.0)
+    dst_height = int((height_left + height_right) / 2.0)
+
+    src_pts = np.float32([pt_tl, pt_tr, pt_bl, pt_br])
+    dst_pts = np.float32(
+        [
+            (0, 0),
+            (dst_width - 1, 0),
+            (0, dst_height - 1),
+            (dst_width - 1, dst_height - 1),
+        ]
+    )
+    M = cv2.getPerspectiveTransform(src_pts, dst_pts)
+
+    # Warp the original image
+    warped = cv2.warpPerspective(image_cv, M, (dst_width, dst_height))
+    height, width, _ = warped.shape
+
+    # Save the warped image to a temporary file
+    s3_client = boto3.client("s3")
+    cdn_s3_key = image_obj.cdn_s3_key.replace(".png", f"_cluster_{cluster_id:05d}.png")
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=True) as temp:
+        cv2.imwrite(temp.name, warped)
+        try:
+            s3_client.upload_file(temp.name, CDN_S3_BUCKET, cdn_s3_key)
+        except ClientError as exc:
+            logger.error(f"Failed to upload warped cluster image to S3: {exc}")
+            raise
+        sha256 = calculate_sha256(temp.name)
+
+    # Store the Receipt in DynamoDB
+    receipt = Receipt(
+        image_id=image_obj.id,
+        id=int(cluster_id),
+        width=width,
+        height=height,
+        timestamp_added=datetime.now(timezone.utc).isoformat(),
+        raw_s3_bucket=image_obj.raw_s3_bucket,
+        raw_s3_key=image_obj.raw_s3_key,
+        top_left={"x": pt_tl[0], "y": pt_tl[1]},
+        top_right={"x": pt_tr[0], "y": pt_tr[1]},
+        bottom_left={"x": pt_bl[0], "y": pt_bl[1]},
+        bottom_right={"x": pt_br[0], "y": pt_br[1]},
+        sha256=sha256,
+        cdn_s3_bucket=CDN_S3_BUCKET,
+        # Just an example, you may prefer a separate field
+        cdn_s3_key=f"{cdn_s3_key}{image_obj.raw_s3_key}",
+    )
+    dynamo_client = DynamoClient(DYNAMO_DB_TABLE)
+    dynamo_client.addReceipt(receipt)
+
+
+def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+    """
+    AWS Lambda entry point.
+
+    Expects an event dictionary with:
+      - uuid: The unique identifier for the file (str).
+      - s3_path: The prefix for the OCR JSON file in S3 (str).
+      - image_id: An integer ID for the image in DynamoDB (int).
+    """
+    uuid = event.get("uuid")
+    s3_path = event.get("s3_path")
+    image_id = event.get("image_id")
+
+    if not all([uuid, s3_path, image_id]):
+        raise ValueError("Missing required keys in event: uuid, s3_path, image_id")
+
+    logger.info("Starting cluster process for uuid=%s, image_id=%d", uuid, image_id)
+    image_obj, lines, words, letters = add_initial_image(
+        s3_path, uuid, image_id, cdn_path=CDN_PATH
+    )
+    cluster_dict = cluster_image(lines)
+
+    # Download the original image for warping
+    s3_client = boto3.client("s3")
+    local_original_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp:
+            local_original_path = temp.name
+            s3_client.download_file(
+                image_obj.raw_s3_bucket, image_obj.raw_s3_key, local_original_path
+            )
+    except ClientError as exc:
+        logger.error(f"Failed to download original image for warping: {exc}")
+        raise
+
+    if local_original_path is None:
+        raise ValueError("Temporary file for original image was not created.")
+
+    img_cv = cv2.imread(local_original_path)
+    if img_cv is None:
+        raise ValueError("Original image is invalid or cannot be opened by OpenCV.")
+
+    # Transform and store each cluster
+    for c_id, c_lines in cluster_dict.items():
+        if c_id == -1:
+            continue  # skip outliers
+        line_ids = [ln.id for ln in c_lines]
+        c_words = [w for w in words if w.line_id in line_ids]
+        c_letters = [lt for lt in letters if lt.line_id in line_ids]
+
+        logger.info("Processing cluster %d with %d lines.", c_id, len(c_lines))
+        transform_cluster(c_id, c_lines, c_words, c_letters, img_cv, image_obj)
 
     return {
         "statusCode": 200,
-        "body": json.dumps("Hello from Lambda!"),
+        "body": json.dumps(
+            f"Processed {len(cluster_dict)} clusters for image_id={image_id}"
+        ),
     }
