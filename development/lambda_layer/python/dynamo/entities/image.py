@@ -9,8 +9,8 @@ class Image:
         width: int,
         height: int,
         timestamp_added: datetime,
-        s3_bucket: str,
-        s3_key: str,
+        raw_s3_bucket: str,
+        raw_s3_key: str,
         sha256: str = None,
         cdn_s3_bucket: str = None,
         cdn_s3_key: str = None,
@@ -22,8 +22,8 @@ class Image:
             width (int): The width of the image in pixels
             height (int): The height of the image in pixels
             timestamp_added (datetime): The timestamp the image was added
-            s3_bucket (str): The S3 bucket where the image is stored
-            s3_key (str): The S3 key where the image is stored
+            raw_s3_bucket (str): The S3 bucket where the image is initially stored
+            raw_s3_key (str): The S3 key where the image is initially stored
             sha256 (str): The SHA256 hash of the image
             cdn_s3_bucket (str): The S3 bucket where the image is stored in the CDN
             cdn_s3_key (str): The S3 key where the image is stored in the CDN
@@ -33,8 +33,8 @@ class Image:
             width (int): The width of the image in pixels
             height (int): The height of the image in pixels
             timestamp_added (datetime): The timestamp the image was added
-            s3_bucket (str): The S3 bucket where the image is stored
-            s3_key (str): The S3 key where the image is stored
+            raw_s3_bucket (str): The S3 bucket where the image is initially stored
+            raw_s3_key (str): The S3 key where the image is initially stored
             sha256 (str): The SHA256 hash of the image
             cdn_s3_bucket (str): The S3 bucket where the image is stored in the CDN
             cdn_s3_key (str): The S3 key where the image is stored in the CDN
@@ -64,8 +64,8 @@ class Image:
             self.timestamp_added = timestamp_added
         else:
             raise ValueError("timestamp_added must be a datetime object or a string")
-        self.s3_bucket = s3_bucket
-        self.s3_key = s3_key
+        self.raw_s3_bucket = raw_s3_bucket
+        self.raw_s3_key = raw_s3_key
         if sha256 and not isinstance(sha256, str):
             raise ValueError("sha256 must be a string")
         self.sha256 = sha256
@@ -105,8 +105,8 @@ class Image:
             "width": {"N": str(self.width)},
             "height": {"N": str(self.height)},
             "timestamp_added": {"S": self.timestamp_added},
-            "s3_bucket": {"S": self.s3_bucket},
-            "s3_key": {"S": self.s3_key},
+            "raw_s3_bucket": {"S": self.raw_s3_bucket},
+            "raw_s3_key": {"S": self.raw_s3_key},
             "sha256": {"S": self.sha256} if self.sha256 else {"NULL": True},
             "cdn_s3_bucket": (
                 {"S": self.cdn_s3_bucket} if self.cdn_s3_bucket else {"NULL": True}
@@ -120,7 +120,7 @@ class Image:
         Returns:
             str: The string representation of the Image object
         """
-        return f"Image(id={int(self.id)}, s3_key={self.s3_key})"
+        return f"Image(id={int(self.id)}, s3_key={self.raw_s3_key})"
 
     def __iter__(self) -> Generator[Tuple[str, int], None, None]:
         """Returns an iterator over the Image object
@@ -132,8 +132,8 @@ class Image:
         yield "width", self.width
         yield "height", self.height
         yield "timestamp_added", self.timestamp_added
-        yield "s3_bucket", self.s3_bucket
-        yield "s3_key", self.s3_key
+        yield "raw_s3_bucket", self.raw_s3_bucket
+        yield "raw_s3_key", self.raw_s3_key
         yield "cdn_s3_bucket", self.cdn_s3_bucket
         yield "cdn_s3_key", self.cdn_s3_key
         yield "sha256", self.sha256
@@ -154,8 +154,8 @@ class Image:
             and self.width == other.width
             and self.height == other.height
             and self.timestamp_added == other.timestamp_added
-            and self.s3_bucket == other.s3_bucket
-            and self.s3_key == other.s3_key
+            and self.raw_s3_bucket == other.raw_s3_bucket
+            and self.raw_s3_key == other.raw_s3_key
             and self.sha256 == other.sha256
             and self.cdn_s3_bucket == other.cdn_s3_bucket
             and self.cdn_s3_key == other.cdn_s3_key
@@ -181,8 +181,8 @@ def itemToImage(item: dict) -> Image:
         "width",
         "height",
         "timestamp_added",
-        "s3_bucket",
-        "s3_key",
+        "raw_s3_bucket",
+        "raw_s3_key",
     }
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - item.keys()
@@ -199,8 +199,8 @@ def itemToImage(item: dict) -> Image:
             width=int(item["width"]["N"]),
             height=int(item["height"]["N"]),
             timestamp_added=datetime.fromisoformat(item["timestamp_added"]["S"]),
-            s3_bucket=item["s3_bucket"]["S"],
-            s3_key=item["s3_key"]["S"],
+            raw_s3_bucket=item["raw_s3_bucket"]["S"],
+            raw_s3_key=item["raw_s3_key"]["S"],
             sha256=sha256 if sha256 else None,
             cdn_s3_bucket=cdn_s3_bucket if cdn_s3_bucket else None,
             cdn_s3_key=cdn_s3_key if cdn_s3_key else None,

@@ -52,8 +52,8 @@ class Receipt:
         width: int,
         height: int,
         timestamp_added: datetime,
-        s3_bucket: str,
-        s3_key: str,
+        raw_s3_bucket: str,
+        raw_s3_key: str,
         top_left: dict,
         top_right: dict,
         bottom_left: dict,
@@ -70,8 +70,8 @@ class Receipt:
             width (int): The width of the receipt in pixels
             height (int): The height of the receipt in pixels
             timestamp_added (datetime): The timestamp the receipt was added
-            s3_bucket (str): The S3 bucket where the receipt is stored
-            s3_key (str): The S3 key where the receipt is stored
+            raw_s3_bucket (str): The S3 bucket where the receipt is stored
+            raw_s3_key (str): The S3 key where the receipt is stored
             top_left (dict): The top left corner of the bounding box
             top_right (dict): The top right corner of the bounding box
             bottom_left (dict): The bottom left corner of the bounding box
@@ -106,8 +106,8 @@ class Receipt:
             self.timestamp_added = timestamp_added
         else:
             raise ValueError("timestamp_added must be a datetime object or a string")
-        self.s3_bucket = s3_bucket
-        self.s3_key = s3_key
+        self.raw_s3_bucket = raw_s3_bucket
+        self.raw_s3_key = raw_s3_key
         assert_valid_point(top_right)
         self.topRight = top_right
         assert_valid_point(top_left)
@@ -161,8 +161,8 @@ class Receipt:
             "width": {"N": str(self.width)},
             "height": {"N": str(self.height)},
             "timestamp_added": {"S": self.timestamp_added},
-            "s3_bucket": {"S": self.s3_bucket},
-            "s3_key": {"S": self.s3_key},
+            "raw_s3_bucket": {"S": self.raw_s3_bucket},
+            "raw_s3_key": {"S": self.raw_s3_key},
             "top_left": {
                 "M": {
                     "x": {"N": _format_float(self.topLeft["x"], 18, 20)},
@@ -200,7 +200,7 @@ class Receipt:
         Returns:
             str: The string representation of the Receipt object
         """
-        return f"Receipt(id={int(self.id)}, image_id={int(self.image_id)} s3_key={self.s3_key})"
+        return f"Receipt(id={int(self.id)}, image_id={int(self.image_id)} s3_key={self.raw_s3_key})"
 
     def __iter__(self) -> Generator[Tuple[str, int], None, None]:
         """Returns an iterator over the Receipt object
@@ -212,8 +212,8 @@ class Receipt:
         yield "width", self.width
         yield "height", self.height
         yield "timestamp_added", self.timestamp_added
-        yield "s3_bucket", self.s3_bucket
-        yield "s3_key", self.s3_key
+        yield "raw_s3_bucket", self.raw_s3_bucket
+        yield "raw_s3_key", self.raw_s3_key
         yield "topLeft", self.topLeft
         yield "topRight", self.topRight
         yield "bottomLeft", self.bottomLeft
@@ -239,8 +239,8 @@ class Receipt:
             and self.width == other.width
             and self.height == other.height
             and self.timestamp_added == other.timestamp_added
-            and self.s3_bucket == other.s3_bucket
-            and self.s3_key == other.s3_key
+            and self.raw_s3_bucket == other.raw_s3_bucket
+            and self.raw_s3_key == other.raw_s3_key
             and self.topLeft == other.topLeft
             and self.topRight == other.topRight
             and self.bottomLeft == other.bottomLeft
@@ -266,8 +266,8 @@ def itemToReceipt(item: dict) -> Receipt:
         "width",
         "height",
         "timestamp_added",
-        "s3_bucket",
-        "s3_key",
+        "raw_s3_bucket",
+        "raw_s3_key",
         "top_left",
         "top_right",
         "bottom_left",
@@ -282,8 +282,8 @@ def itemToReceipt(item: dict) -> Receipt:
             width=int(item["width"]["N"]),
             height=int(item["height"]["N"]),
             timestamp_added=item["timestamp_added"]["S"],
-            s3_bucket=item["s3_bucket"]["S"],
-            s3_key=item["s3_key"]["S"],
+            raw_s3_bucket=item["raw_s3_bucket"]["S"],
+            raw_s3_key=item["raw_s3_key"]["S"],
             top_left={
                 key: float(value["N"]) for key, value in item["top_left"]["M"].items()
             },
