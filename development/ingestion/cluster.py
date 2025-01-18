@@ -7,7 +7,7 @@ This script expects a PNG image and a corresponding JSON file in an S3 bucket:
 - The JSON file contains OCR results (from a SwiftOCR model).
 
 Steps:
-1. The image, lines, words, and letters entities are added to DynamoDB.
+1. The image, lines, words, and letters items are added to DynamoDB. The original image is uploaded to a CDN bucket.
 2. Lines are then clustered using DBSCAN (sklearn) to identify receipts.
 3. Each cluster (receipt) is transformed to fit into a 1x1 box.
 4. The bounding box is cropped/warped from the original image and uploaded to another S3 bucket.
@@ -43,7 +43,11 @@ from dynamo import (
 )
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s %(asctime)s - %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S"
+)
 logger = logging.getLogger(__name__)
 
 # Read environment variables
@@ -199,15 +203,10 @@ def add_initial_image(
     # Download the PNG from S3 to a temp file
     png_key = f"{s3_path}{uuid}.png"
     local_png_path = None
-    print(f"s3_path: {s3_path}")
-    print(f"uuid: {uuid}")
-    print(f"image_id: {image_id}")
-    print(f"cdn_path: {cdn_path}")
 
     try:
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_png:
             local_png_path = temp_png.name
-            print(f"Downloading {png_key} from s3://{S3_BUCKET}/...")
             logger.info(f"Downloading {png_key} from s3://{S3_BUCKET}/...")
             s3_client.download_file(S3_BUCKET, png_key, local_png_path)
     except ClientError as exc:
@@ -254,7 +253,6 @@ def add_initial_image(
     try:
         with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as temp_json:
             local_json_path = temp_json.name
-            print(f"Downloading {json_key} from s3://{S3_BUCKET}/...")
             logger.info(f"Downloading {json_key} from s3://{S3_BUCKET}/...")
             s3_client.download_file(S3_BUCKET, json_key, local_json_path)
     except ClientError as exc:
@@ -585,6 +583,41 @@ def transform_cluster(
     dynamo_client.addReceipt(receipt)
 
 
+def write_results(image_id: int) -> None:
+    """Write the results as a JSON to the raw S3 bucket."""
+    image, lines, words, letters, receipts = DynamoClient(
+        DYNAMO_DB_TABLE
+    ).getImageDetails(image_id)
+    s3_client = boto3.client("s3")
+    s3_key = image.raw_s3_key.replace(".png", "_results.json")
+    logger.info(f"Writing results JSON to S3 for image_id={image_id} at {s3_key}")
+    try:
+        s3_client.put_object(
+            Bucket=image.raw_s3_bucket,
+            Key=s3_key,
+            Body=json.dumps(
+                {
+                    "images": dict(image),
+                    "lines": [dict(line) for line in lines],
+                    "words": [dict(word) for word in words],
+                    "letters": [dict(letter) for letter in letters],
+                    "receipts": [
+                        {
+                            "receipt": dict(receipt["receipt"]),
+                            "lines": [dict(line) for line in receipt["lines"]],
+                            "words": [dict(word) for word in receipt["words"]],
+                            "letters": [dict(letter) for letter in receipt["letters"]],
+                        }
+                        for receipt in receipts
+                    ],
+                }
+            ),
+        )
+    except ClientError as exc:
+        logger.error(f"Failed to upload results JSON to S3: {exc}")
+        raise
+
+
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     AWS Lambda entry point.
@@ -594,6 +627,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
       - s3_path: The prefix for the OCR JSON file in S3 (str).
       - image_id: An integer ID for the image in DynamoDB (int).
     """
+    logger.info("Lambda handler invoked! Checking environment ...")
     uuid = event.get("uuid")
     s3_path = event.get("s3_path")
     image_id = event.get("image_id")
@@ -637,6 +671,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         logger.info("Processing cluster %d with %d lines.", c_id, len(c_lines))
         transform_cluster(c_id, c_lines, c_words, c_letters, img_cv, image_obj)
+    # Write the results back to S3
+    write_results(image_id)
 
     return {
         "statusCode": 200,
