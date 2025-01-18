@@ -71,7 +71,7 @@ def handler(event, _):
                         }
                     ),
                 }
-            images, last_evaluated_key = client.listImageDetails(limit)
+            payload, last_evaluated_key = client.listImageDetails(limit)
             return {
                 "statusCode": 200,
                 "body": json.dumps(
