@@ -6,6 +6,9 @@ from dynamo import (
     Word,
     Receipt,
     itemToReceipt,
+    itemToReceiptLine,
+    itemToReceiptWord,
+    itemToReceiptLetter,
     itemToImage,
     itemToLine,
     itemToWord,
@@ -98,9 +101,13 @@ class _Image:
             else:
                 raise Exception(f"Error updating image: {e}")
 
-    def getImageDetails(
-        self, image_id: int
-    ) -> tuple[Image, list[Line], list[Word], list[Letter]]:
+    def getImageDetails(self, image_id: int) -> tuple[
+        Image,
+        list[Line],
+        list[Word],
+        list[Letter],
+        list[Dict[str, Union[Receipt, list[Line], list[Word], list[Letter]]]],
+    ]:
         """
         Gets the details of an image from the database. This includes all lines,
         words, letters, and scaled images associated with the image.
@@ -132,7 +139,7 @@ class _Image:
             lines = []
             words = []
             letters = []
-            scaled_images = []
+            receipts = []
 
             for item in items:
                 sk_value = item["SK"]["S"]
@@ -152,8 +159,26 @@ class _Image:
                     and "LETTER" in sk_value
                 ):
                     letters.append(itemToLetter(item))
+                elif item["TYPE"]["S"] == "RECEIPT":
+                    receipts.append(
+                        {
+                            "receipt": itemToReceipt(item),
+                            "lines": [],
+                            "words": [],
+                            "letters": [],
+                        }
+                    )
+                elif item["TYPE"]["S"] == "RECEIPT_LINE":
+                    this_line = itemToReceiptLine(dict(item))
+                    receipts[this_line.receipt_id - 1]["lines"].append(this_line)
+                elif item["TYPE"]["S"] == "RECEIPT_WORD":
+                    this_word = itemToReceiptWord(item)
+                    receipts[this_word.receipt_id - 1]["words"].append(this_word)
+                elif item["TYPE"]["S"] == "RECEIPT_LETTER":
+                    this_letter = itemToReceiptLetter(item)
+                    receipts[this_letter.receipt_id - 1]["letters"].append(this_letter)
 
-            return image, lines, words, letters, scaled_images
+            return image, lines, words, letters, receipts
 
         except Exception as e:
             raise Exception(f"Error getting image details: {e}")

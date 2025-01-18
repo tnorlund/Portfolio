@@ -207,7 +207,7 @@ def upload_files_with_uuid_in_batches(
 
         # Upload all files in the temporary directory to S3
         for file in os.listdir(temp_dir):
-            print(f"Uploading {file:<41} to S3 -> {path}{file}")
+            print(f"Uploading {file:<41} to S3 -> s3://{bucket_name}/{path}{file}")
             s3.upload_file(os.path.join(temp_dir, file), bucket_name, f"{path}{file}")
 
         uuids = list({file.split(".")[0] for file in os.listdir(temp_dir)})
