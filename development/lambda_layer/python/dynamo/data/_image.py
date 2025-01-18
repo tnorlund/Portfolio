@@ -295,47 +295,86 @@ class _Image:
 
         # Otherwise, do a 'single-page' query for pagination
         try:
-            query_params = {
-                "TableName": self.table_name,
-                "IndexName": "GSI1",
-                "KeyConditionExpression": "#pk = :pk_val",
-                "ExpressionAttributeNames": {"#pk": "GSI1PK"},
-                "ExpressionAttributeValues": {":pk_val": {"S": "IMAGE"}},
-            }
 
-            if limit is not None:
-                query_params["Limit"] = limit
-
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
-
-            response = self._client.query(**query_params)
-            items = response.get("Items", [])
-            lek = response.get("LastEvaluatedKey", None)
             payload = {}
-            for item in items:
-                if item["SK"]["S"] == "IMAGE":
-                    image = itemToImage(item)
-                    payload[image.id] = {"image": image}
-                elif item["SK"]["S"].startswith("RECEIPT"):
-                    receipt = itemToReceipt(item)
-                    if receipt.image_id in payload:
-                        if "receipts" in payload[receipt.image_id]:
-                            payload[receipt.image_id]["receipts"].append(receipt)
-                        else:
-                            payload[receipt.image_id]["receipts"] = [receipt]
-                elif item["SK"]["S"].startswith("LINE"):
-                    line = itemToLine(item)
-                    if line.image_id in payload:
-                        if "lines" in payload[line.image_id]:
-                            payload[line.image_id]["lines"].append(line)
-                        else:
-                            payload[line.image_id]["lines"] = [line]
+            images_found = 0
+            lek_to_return = None
 
-            return payload, lek
+            next_key = last_evaluated_key
+            # Keep fetching chunks from Dynamo until we have `limit` images or run out
+            while True:
+                query_params = {
+                    "TableName": self.table_name,
+                    "IndexName": "GSI1",
+                    "KeyConditionExpression": "#pk = :pk_val",
+                    "ExpressionAttributeNames": {"#pk": "GSI1PK"},
+                    "ExpressionAttributeValues": {":pk_val": {"S": "IMAGE"}},
+                    "Limit": 100,  # fetch up to 100 items at a time
+                }
+                if next_key:
+                    query_params["ExclusiveStartKey"] = next_key
 
+                response = self._client.query(**query_params)
+                items = response.get("Items", [])
+                next_key = response.get("LastEvaluatedKey")  # for the next chunk
+
+                # Walk through these items in order
+                for i, item in enumerate(items):
+                    sk = item["SK"]["S"]
+
+                    # If this item is a new image
+                    if sk == "IMAGE":
+                        # Are we about to exceed the user's limit of distinct images?
+                        if images_found == limit:
+                            # We just encountered the (limit+1)-th image; stop here.
+                            # We'll return this item as part of the next page.
+                            # So we need to build a LEK that points to THIS item.
+
+                            item_type = item["TYPE"]["S"]
+                            if item_type == "IMAGE":
+                                image = itemToImage(item)
+                                image.id = int(image.id) - 1 
+                                lek_to_return = {**image.key(), **image.gsi1_key()}
+                            if item_type == "LINE":
+                                line = itemToLine(item)
+                                lek_to_return = {**line.key(), **line.gsi1_key()}
+                            if item_type == "RECEIPT":
+                                receipt = itemToReceipt(item)
+                                lek_to_return = {**receipt.key(), **receipt.gsi1_key()}
+                            return payload, lek_to_return
+
+                        # Otherwise, this is the next image we want to include.
+                        image = itemToImage(item)
+                        payload[image.id] = {"image": image}
+                        images_found += 1
+
+                    # If it's a line or receipt for an image we've already included
+                    elif sk.startswith("LINE"):
+                        line = itemToLine(item)
+                        if line.image_id in payload:  # belongs to a currently included image
+                            payload[line.image_id].setdefault("lines", []).append(line)
+
+                    elif sk.startswith("RECEIPT"):
+                        receipt = itemToReceipt(item)
+                        if receipt.image_id in payload:
+                            payload[receipt.image_id].setdefault("receipts", []).append(receipt)
+
+                    # else: ignore other items or unknown SK patterns
+
+                # If we processed the entire chunk and we STILL have fewer than `limit` images,
+                # but we do have a next_key, we should fetch the next chunk.
+                # If no next_key => no more data in the table.
+                if images_found < limit and next_key:
+                    continue  # go get the next chunk
+                else:
+                    # We either reached the limit, or we ran out of data
+                    # If we haven't reached the limit but there's no next_key => done
+                    lek_to_return = next_key  # might be None or an actual key
+                    break
+
+            return payload, lek_to_return
         except Exception as e:
-            raise Exception(f"Error listing images with LastEvaluatedKey: {e}")
+            raise Exception(f"Error listing images: {e}")
 
     def listImages(self) -> List[Image]:
         """Lists all images in the database."""
