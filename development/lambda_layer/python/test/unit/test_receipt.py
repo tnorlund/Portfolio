@@ -39,10 +39,10 @@ def test_receipt_construction_valid(valid_receipt_args):
 
     assert r.raw_s3_bucket == "test-bucket"
     assert r.raw_s3_key == "test/key/receipt.jpg"
-    assert r.topLeft == {"x": 0.0, "y": 0.0}
-    assert r.topRight == {"x": 200.0, "y": 0.0}
-    assert r.bottomLeft == {"x": 0.0, "y": 100.0}
-    assert r.bottomRight == {"x": 200.0, "y": 100.0}
+    assert r.top_left == {"x": 0.0, "y": 0.0}
+    assert r.top_right == {"x": 200.0, "y": 0.0}
+    assert r.bottom_left == {"x": 0.0, "y": 100.0}
+    assert r.bottom_right == {"x": 200.0, "y": 100.0}
     assert r.sha256 == "abc123"
 
 

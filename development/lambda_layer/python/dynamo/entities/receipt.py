@@ -109,13 +109,13 @@ class Receipt:
         self.raw_s3_bucket = raw_s3_bucket
         self.raw_s3_key = raw_s3_key
         assert_valid_point(top_right)
-        self.topRight = top_right
+        self.top_right = top_right
         assert_valid_point(top_left)
-        self.topLeft = top_left
+        self.top_left = top_left
         assert_valid_point(bottom_left)
-        self.bottomLeft = bottom_left
+        self.bottom_left = bottom_left
         assert_valid_point(bottom_right)
-        self.bottomRight = bottom_right
+        self.bottom_right = bottom_right
         if sha256 and not isinstance(sha256, str):
             raise ValueError("sha256 must be a string")
         self.sha256 = sha256
@@ -177,26 +177,26 @@ class Receipt:
             "raw_s3_key": {"S": self.raw_s3_key},
             "top_left": {
                 "M": {
-                    "x": {"N": _format_float(self.topLeft["x"], 18, 20)},
-                    "y": {"N": _format_float(self.topLeft["y"], 18, 20)},
+                    "x": {"N": _format_float(self.top_left["x"], 18, 20)},
+                    "y": {"N": _format_float(self.top_left["y"], 18, 20)},
                 }
             },
             "top_right": {
                 "M": {
-                    "x": {"N": _format_float(self.topRight["x"], 18, 20)},
-                    "y": {"N": _format_float(self.topRight["y"], 18, 20)},
+                    "x": {"N": _format_float(self.top_right["x"], 18, 20)},
+                    "y": {"N": _format_float(self.top_right["y"], 18, 20)},
                 }
             },
             "bottom_left": {
                 "M": {
-                    "x": {"N": _format_float(self.bottomLeft["x"], 18, 20)},
-                    "y": {"N": _format_float(self.bottomLeft["y"], 18, 20)},
+                    "x": {"N": _format_float(self.bottom_left["x"], 18, 20)},
+                    "y": {"N": _format_float(self.bottom_left["y"], 18, 20)},
                 }
             },
             "bottom_right": {
                 "M": {
-                    "x": {"N": _format_float(self.bottomRight["x"], 18, 20)},
-                    "y": {"N": _format_float(self.bottomRight["y"], 18, 20)},
+                    "x": {"N": _format_float(self.bottom_right["x"], 18, 20)},
+                    "y": {"N": _format_float(self.bottom_right["y"], 18, 20)},
                 }
             },
             "sha256": {"S": self.sha256} if self.sha256 else {"NULL": True},
@@ -226,10 +226,10 @@ class Receipt:
         yield "timestamp_added", self.timestamp_added
         yield "raw_s3_bucket", self.raw_s3_bucket
         yield "raw_s3_key", self.raw_s3_key
-        yield "topLeft", self.topLeft
-        yield "topRight", self.topRight
-        yield "bottomLeft", self.bottomLeft
-        yield "bottomRight", self.bottomRight
+        yield "top_left", self.top_left
+        yield "top_right", self.top_right
+        yield "bottom_left", self.bottom_left
+        yield "bottom_right", self.bottom_right
         yield "sha256", self.sha256
         yield "cdn_s3_bucket", self.cdn_s3_bucket
         yield "cdn_s3_key", self.cdn_s3_key
@@ -253,10 +253,10 @@ class Receipt:
             and self.timestamp_added == other.timestamp_added
             and self.raw_s3_bucket == other.raw_s3_bucket
             and self.raw_s3_key == other.raw_s3_key
-            and self.topLeft == other.topLeft
-            and self.topRight == other.topRight
-            and self.bottomLeft == other.bottomLeft
-            and self.bottomRight == other.bottomRight
+            and self.top_left == other.top_left
+            and self.top_right == other.top_right
+            and self.bottom_left == other.bottom_left
+            and self.bottom_right == other.bottom_right
             and self.sha256 == other.sha256
             and self.cdn_s3_bucket == other.cdn_s3_bucket
             and self.cdn_s3_key == other.cdn_s3_key
