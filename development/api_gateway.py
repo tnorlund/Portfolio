@@ -16,7 +16,7 @@ BASE_DOMAIN = "tylernorlund.com"
 if stack == "prod":
     api_domain_name = f"api.{BASE_DOMAIN}"
 else:
-    api_domain_name = f"dev-api.{BASE_DOMAIN}"
+    api_domain_name = f"{stack}-api.{BASE_DOMAIN}"
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # 1. MAIN API DEFINITION
