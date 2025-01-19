@@ -1,6 +1,6 @@
 // ImageGrid.tsx
 import React, { useEffect, useState } from "react";
-import BoundingBox from "./boundingBox";
+import {BoundingBoxLine, BoundingBoxReceipt} from "./boundingBox";
 
 /** Represents a single image from the API */
 interface ImageItem {
@@ -55,6 +55,7 @@ interface Receipt {
   top_right: Point;
   bottom_left: Point;
   bottom_right: Point;
+  cdn_s3_bucket: string;
   cdn_s3_key: string;
 }
 
@@ -114,7 +115,7 @@ export function mapPayloadToImages(payload: RootPayload): ImageReceiptsLines[] {
 
 /** Fetches the main list of images from the new API shape and returns the tuple array */
 async function fetchImages(): Promise<ImageReceiptsLines[]> {
-  const response = await fetch("https://wso2tnfiie.execute-api.us-east-1.amazonaws.com/images");
+  const response = await fetch("https://wso2tnfiie.execute-api.us-east-1.amazonaws.com/images?limit=25");
   if (!response.ok) {
     throw new Error(`Network response was not ok (status: ${response.status})`);
   }
@@ -149,10 +150,8 @@ export default function ImageGrid() {
        * we destructure them like so:
        */}
       {imageReceiptLines.map(([image, receipts, lines]) => {
-        console.log(image)
         const cdn_url = `https://d3izz2n0uhacrm.cloudfront.net/${image.cdn_s3_key}`;
 
-        console.log(cdn_url)
         
         // We’ll display each image in a 500px-wide container, scaled in height.
         const baseWidth = 500;
@@ -182,26 +181,17 @@ export default function ImageGrid() {
             />
 
             {/* Example: if you want to draw bounding boxes for receipts */}
-            {/* {receipts.map((receipt) => (
-              console.log(`receipt: ${receipt}`),
-              // <rect
-              //   key={`receipt-${receipt.id}`}
-              //   x={receipt.top_left.x}
-              //   y={receipt.top_left.y}
-              //   // width={receipt.width}
-              //   // height={receipt.height}
-              //   fill="rgba(255, 0, 0, 0.25)"
-              //   stroke="red"
-              //   strokeWidth={10}
-              // />
-              <></>
+            {receipts.map((receipt) => (
+              <React.Fragment key={`receipt-${receipt.id}`}>
+                {BoundingBoxReceipt(receipt, 'red')}
+              </React.Fragment>
             ))
-            } */}
+            }
 
             {/* Example: if you want to draw bounding boxes for lines */}
             {lines.map((line) => (
               <React.Fragment key={`line-${line.id}`}>
-                {BoundingBox(line, image, 'gray')}
+                {BoundingBoxLine(line, image, 'gray')}
               </React.Fragment>
             ))}
 
