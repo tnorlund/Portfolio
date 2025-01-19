@@ -1,31 +1,41 @@
 import pulumi
 import pulumi_aws as aws
 
-# Import the different routes
+# Import your Lambda/route definitions
 from routes.health_check.infra import health_check_lambda
 from routes.images.infra import images_lambda
 from routes.image_details.infra import image_details_lambda
 
+# Detect the current Pulumi stack
+stack = pulumi.get_stack()
+
+BASE_DOMAIN = "tylernorlund.com"
+
+# For "prod" => api.tylernorlund.com
+# otherwise   => dev-api.tylernorlund.com
+if stack == "prod":
+    api_domain_name = f"api.{BASE_DOMAIN}"
+else:
+    api_domain_name = f"dev-api.{BASE_DOMAIN}"
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# 1. MAIN API DEFINITION
+# ─────────────────────────────────────────────────────────────────────────────────
 api = aws.apigatewayv2.Api(
     "my-api",
     protocol_type="HTTP",
     cors_configuration=aws.apigatewayv2.ApiCorsConfigurationArgs(
-        # Allow your local dev URL or "*" for all
         allow_origins=["*"],
-        # Which HTTP methods to allow (GET, POST, OPTIONS, etc.)
         allow_methods=["GET", "POST", "OPTIONS"],
-        # Which headers can be sent by the client
         allow_headers=["Content-Type", "Authorization"],
-        # Whether or not the browser should expose response headers
-        # to client-side JavaScript
         expose_headers=["Content-Length", "Content-Type"],
-        # Whether or not cookies or Authorization headers are allowed
         allow_credentials=False,
-        # How long (in seconds) to cache the response of a preflight request
-        max_age=86400,  # 1 day
+        max_age=86400,
     ),
 )
 
+# Define your integrations and routes
+# ------------------------------------------------------------------------------
 # /health_check
 integration_health_check = aws.apigatewayv2.Integration(
     "health_check_lambda_integration",
@@ -107,11 +117,13 @@ lambda_permission_image_details = aws.lambda_.Permission(
     source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
 )
 
-# DEPLOYMENT
+# ─────────────────────────────────────────────────────────────────────────────────
+# 2. DEPLOYMENT + LOGGING
+# ─────────────────────────────────────────────────────────────────────────────────
 log_group = aws.cloudwatch.LogGroup(
     "api_gateway_log_group",
     name=api.id.apply(lambda id: f"API-Gateway-Execution-Logs_{id}_default"),
-    retention_in_days=14,  # Adjust the retention period as needed
+    retention_in_days=14,
 )
 
 stage = aws.apigatewayv2.Stage(
@@ -142,4 +154,81 @@ stage = aws.apigatewayv2.Stage(
     ),
 )
 
+# Export the default stage URL (no custom domain)
 pulumi.export("api_endpoint", api.api_endpoint)
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# 3. CUSTOM DOMAIN SETUP
+# ─────────────────────────────────────────────────────────────────────────────────
+
+# Lookup your existing Route 53 hosted zone for tylernorlund.com
+hosted_zone = aws.route53.get_zone(name=BASE_DOMAIN)
+
+# We need an ACM certificate in us-east-1 for an API Gateway custom domain
+# (HTTP APIs are Regional, so the certificate must match the same region as your API, 
+# which is typically the same region your Pulumi AWS provider is using. 
+# If your stack is using a different region, adjust accordingly.)
+us_east_1 = aws.Provider("usEast1", region="us-east-1")
+
+api_certificate = aws.acm.Certificate(
+    "apiCertificate",
+    domain_name=api_domain_name,
+    validation_method="DNS",
+    opts=pulumi.ResourceOptions(provider=us_east_1),
+)
+
+# Create a DNS validation record
+api_cert_validation_options = api_certificate.domain_validation_options[0]
+api_cert_validation_record = aws.route53.Record(
+    "apiCertValidationRecord",
+    zone_id=hosted_zone.zone_id,
+    name=api_cert_validation_options.resource_record_name,
+    type=api_cert_validation_options.resource_record_type,
+    records=[api_cert_validation_options.resource_record_value],
+    ttl=60,
+)
+
+api_certificate_validation = aws.acm.CertificateValidation(
+    "apiCertificateValidation",
+    certificate_arn=api_certificate.arn,
+    validation_record_fqdns=[api_cert_validation_record.fqdn],
+    opts=pulumi.ResourceOptions(provider=us_east_1),
+)
+
+# Create the actual custom domain in API Gateway v2
+api_custom_domain = aws.apigatewayv2.DomainName(
+    "apiCustomDomain",
+    domain_name=api_domain_name,
+    domain_name_configuration=aws.apigatewayv2.DomainNameDomainNameConfigurationArgs(
+        certificate_arn=api_certificate_validation.certificate_arn,
+        endpoint_type="REGIONAL",  # HTTP APIs only support REGIONAL
+        security_policy="TLS_1_2",
+    ),
+    opts=pulumi.ResourceOptions(depends_on=[api_certificate_validation]),
+)
+
+# Map your API + stage to this new domain (base path = empty string => "https://api.example.com/")
+api_mapping = aws.apigatewayv2.ApiMapping(
+    "apiBasePathMapping",
+    api_id=api.id,
+    domain_name=api_custom_domain.id,
+    stage=stage.id,  # or "$default"
+)
+
+# Create a Route 53 alias to point "api.tylernorlund.com" or "dev-api.tylernorlund.com" -> the API domain
+api_alias_record = aws.route53.Record(
+    "apiAliasRecord",
+    zone_id=hosted_zone.zone_id,
+    name=api_domain_name,
+    type="A",
+    aliases=[
+        {
+            "name": api_custom_domain.domain_name_configuration.target_domain_name,
+            "zone_id": api_custom_domain.domain_name_configuration.hosted_zone_id,
+            "evaluateTargetHealth": True,
+        }
+    ],
+)
+
+# Finally, export your custom domain
+pulumi.export("customDomainUrl", f"https://{api_domain_name}")
