@@ -1,5 +1,4 @@
 from typing import Generator, Tuple
-from datetime import datetime
 
 
 class WordTag:
@@ -50,7 +49,7 @@ class WordTag:
         }
 
 
-def WordTagFromItem(item: dict) -> WordTag:
+def itemToWordTag(item: dict) -> WordTag:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - item.keys()

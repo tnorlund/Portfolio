@@ -131,10 +131,17 @@ class ReceiptWord:
                 "S": f"RECEIPT#{self.receipt_id:05d}#LINE#{self.line_id:05d}#WORD#{self.id:05d}"
             },
         }
+    
+    def gsi2_key(self) -> dict:
+        return {
+            "GSI2PK": {"S": f"RECEIPT"},
+            "GSI2SK": {"S": f"IMAGE#{self.image_id:05d}#RECEIPT#{self.receipt_id:05d}#LINE#{self.line_id:05d}#WORD#{self.id:05d}"},
+        }
 
     def to_item(self) -> dict:
         item = {
             **self.key(),
+            **self.gsi2_key(),
             "TYPE": {"S": "RECEIPT_WORD"},
             "text": {"S": self.text},
             "bounding_box": {
@@ -176,6 +183,9 @@ class ReceiptWord:
         if self.tags:
             item["tags"] = {"SS": self.tags}
         return item
+    
+    def __repr__(self) -> str:
+        return f"ReceiptWord(id={self.id}, text='{self.text}')"
     
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, ReceiptWord):

@@ -1,9 +1,35 @@
-from dynamo import Receipt, itemToReceipt
+from typing import Dict, List, Optional, Tuple, Union
+from dynamo import (
+    Receipt,
+    ReceiptWord,
+    ReceiptWordTag,
+    itemToReceipt,
+    itemToReceiptWord,
+    itemToReceiptWordTag,
+)
 from botocore.exceptions import ClientError
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 # So let's chunk the items in groups of 25
 CHUNK_SIZE = 25
+
+
+def _parse_receipt_details(
+    items: list[dict], receipt_index: int = 1
+) -> Dict[int, Dict[str, Union[Receipt, List[ReceiptWord], List[ReceiptWordTag]]]]:
+    payload = {}
+    for item in items:
+        if item["TYPE"]["S"] == "RECEIPT":
+            receipt = itemToReceipt(item)
+            payload[receipt_index] = {
+                "receipt": receipt,
+                "words": [],
+            }
+            receipt_index += 1
+        elif item["TYPE"]["S"] == "RECEIPT_WORD":
+            word = itemToReceiptWord(item)
+            payload[receipt_index - 1]["words"].append(word)
+    return payload
 
 
 class _Receipt:
@@ -242,3 +268,128 @@ class _Receipt:
             return receipts
         except ClientError as e:
             raise ValueError(f"Error listing receipts from image: {e}")
+
+    def listReceiptDetails(
+        self, limit: Optional[int] = None, last_evaluated_key: Optional[dict] = None
+    ) -> Tuple[
+        Dict[int, Dict[str, Union[Receipt, List[ReceiptWord], List[ReceiptWordTag]]]],
+        Optional[Dict],
+    ]:
+        """List all receipts with their details
+
+        Args:
+            limit (Optional[int], optional): The number of receipts and respective ReceiptWords and ReceiptWordTags to return. Defaults to None.
+            last_evaluated_key (Optional[dict], optional): The key to start the query from. Defaults to None.
+
+        Returns:
+            list[dict]: A list of receipts with their details
+        """
+        if limit is None and last_evaluated_key is None:
+            all_items = []
+            try:
+                response = self._client.query(
+                    TableName=self.table_name,
+                    IndexName="GSI2",
+                    KeyConditionExpression="#pk = :pk_value",
+                    ExpressionAttributeNames={"#pk": "GSI2PK"},
+                    ExpressionAttributeValues={
+                        ":pk_value": {"S": f"RECEIPT"},
+                    },
+                    ScanIndexForward=True,  # This ensures the sorting by GSI2SK in ascending order
+                )
+                all_items.extend(response["Items"])
+                while "LastEvaluatedKey" in response:
+                    response = self._client.query(
+                        TableName=self.table_name,
+                        IndexName="GSI2",
+                        KeyConditionExpression="#pk = :pk_value",
+                        ExpressionAttributeNames={"#pk": "GSI2PK"},
+                        ExpressionAttributeValues={
+                            ":pk_value": {"S": f"RECEIPT"},
+                        },
+                        ScanIndexForward=True,
+                        ExclusiveStartKey=response["LastEvaluatedKey"],
+                    )
+                    all_items.extend(response["Items"])
+                payload = _parse_receipt_details(all_items)
+                return payload, None
+
+            except ClientError as e:
+                raise ValueError(
+                    "Could not list receipt details from the database"
+                ) from e
+        else:
+            query_params = {
+                "TableName": self.table_name,
+                "IndexName": "GSI2",
+                "KeyConditionExpression": "#pk = :pk_value",
+                "ExpressionAttributeNames": {"#pk": "GSI2PK"},
+                "ExpressionAttributeValues": {":pk_value": {"S": f"RECEIPT"}},
+                "ScanIndexForward": True,
+            }
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
+            response = self._client.query(**query_params)
+            receipts = [
+                itemToReceipt(item)
+                for item in response["Items"]
+                if item["TYPE"]["S"] == "RECEIPT"
+            ]
+            receipt_words = [
+                itemToReceiptWord(item)
+                for item in response["Items"]
+                if item["TYPE"]["S"] == "RECEIPT_WORD"
+            ]
+            # sort Receipt Words by receipt_id and line_id and word_id
+            receipt_words.sort(key=lambda x: (x.receipt_id, x.line_id, x.id))
+            num_receipts = len(receipts)
+            if num_receipts > limit and "LastEvaluatedKey" not in response:
+                payload = {}
+                for i, receipt in enumerate(receipts[:limit]):
+                    payload[i + 1] = {
+                        "receipt": receipt,
+                        "words": [
+                            word
+                            for word in receipt_words
+                            if word.receipt_id == receipt.id
+                            and word.image_id == receipt.image_id
+                        ],
+                    }
+                last_word = payload[limit]["words"][-1]
+                last_evaluated_key = {**last_word.key(), **last_word.gsi2_key()}
+                return payload, last_evaluated_key
+            else:
+                while num_receipts < limit and "LastEvaluatedKey" in response:
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    response = self._client.query(**query_params)
+                    receipts.extend(
+                        [
+                            itemToReceipt(item)
+                            for item in response["Items"]
+                            if item["TYPE"]["S"] == "RECEIPT"
+                        ]
+                    )
+                    receipt_words.extend(
+                        [
+                            itemToReceiptWord(item)
+                            for item in response["Items"]
+                            if item["TYPE"]["S"] == "RECEIPT_WORD"
+                        ]
+                    )
+                    receipt_words.sort(key=lambda x: (x.receipt_id, x.line_id, x.id))
+                    num_receipts = len(receipts)
+                payload = {}
+                for i, receipt in enumerate(receipts[:limit]):
+                    payload[i + 1] = {
+                        "receipt": receipt,
+                        "words": [
+                            word
+                            for word in receipt_words
+                            if word.receipt_id == receipt.id
+                            and word.image_id == receipt.image_id
+                        ],
+                    }
+                last_word = payload[len(payload)]["words"][-1]
+                last_evaluated_key = {**last_word.key(), **last_word.gsi2_key()}
+                return payload, last_evaluated_key
+                

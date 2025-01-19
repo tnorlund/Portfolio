@@ -321,40 +321,31 @@ class _Image:
                 # Walk through these items in order
                 for i, item in enumerate(items):
                     sk = item["SK"]["S"]
+                    item_type = item["TYPE"]["S"]
 
                     # If this item is a new image
                     if sk == "IMAGE":
+                        image = itemToImage(item)
                         # Are we about to exceed the user's limit of distinct images?
                         if images_found == limit:
                             # We just encountered the (limit+1)-th image; stop here.
                             # We'll return this item as part of the next page.
                             # So we need to build a LEK that points to THIS item.
-
-                            item_type = item["TYPE"]["S"]
-                            if item_type == "IMAGE":
-                                image = itemToImage(item)
-                                image.id = int(image.id) - 1 
-                                lek_to_return = {**image.key(), **image.gsi1_key()}
-                            if item_type == "LINE":
-                                line = itemToLine(item)
-                                lek_to_return = {**line.key(), **line.gsi1_key()}
-                            if item_type == "RECEIPT":
-                                receipt = itemToReceipt(item)
-                                lek_to_return = {**receipt.key(), **receipt.gsi1_key()}
+                            image.id = int(image.id) - 1
+                            lek_to_return = {**image.key(), **image.gsi1_key()}
                             return payload, lek_to_return
 
                         # Otherwise, this is the next image we want to include.
-                        image = itemToImage(item)
                         payload[image.id] = {"image": image}
                         images_found += 1
 
                     # If it's a line or receipt for an image we've already included
-                    elif sk.startswith("LINE"):
+                    elif item_type == "LINE":
                         line = itemToLine(item)
                         if line.image_id in payload:  # belongs to a currently included image
                             payload[line.image_id].setdefault("lines", []).append(line)
 
-                    elif sk.startswith("RECEIPT"):
+                    elif item_type == "RECEIPT":
                         receipt = itemToReceipt(item)
                         if receipt.image_id in payload:
                             payload[receipt.image_id].setdefault("receipts", []).append(receipt)
