@@ -142,6 +142,7 @@ export function BoundingBoxReceipt(receipt: Receipt, image: ImageItem,  color: s
   return (
     <React.Fragment key={`receipt-${receipt.id}`}>
       {/* Draw edges of the rectangle in a similar style */}
+      <circle cx={tl.x} cy={tl.y} r={20} fill={color} />
       <line
         x1={tl.x}
         y1={tl.y}
