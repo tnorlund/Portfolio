@@ -115,7 +115,11 @@ export function mapPayloadToImages(payload: RootPayload): ImageReceiptsLines[] {
 
 /** Fetches the main list of images from the new API shape and returns the tuple array */
 async function fetchImages(): Promise<ImageReceiptsLines[]> {
-  const response = await fetch("https://wso2tnfiie.execute-api.us-east-1.amazonaws.com/images?limit=25");
+  const apiUrl = process.env.NODE_ENV === 'development' 
+    ? "https://dev-api.tylernorlund.com/images?limit=25" 
+    : "https://api.tylernorlund.com/images?limit=25";
+
+  const response = await fetch(apiUrl);
   if (!response.ok) {
     throw new Error(`Network response was not ok (status: ${response.status})`);
   }
