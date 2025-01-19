@@ -1,5 +1,20 @@
 import React from "react";
 
+interface Receipt {
+  id: number;
+  width: number;
+  height: number;
+  timestamp_added: string;
+  raw_s3_bucket: string;
+  raw_s3_key: string;
+  // And so on ...
+  top_left: Point;
+  top_right: Point;
+  bottom_left: Point;
+  bottom_right: Point;
+  // Possibly more fields...
+}
+
 interface ImageItem {
   id: number;
   width: number;
@@ -49,21 +64,15 @@ function invert_y(point: Point) {
     };
 }
 
-function BoundingBox(line: LineItem, img: ImageItem, color: string) {
-
+export function BoundingBoxLine(line: LineItem, img: ImageItem, color: string) {
   const bottomLeft = scalePointByImage(invert_y(line.bottom_left), img);
-  // Bottom-right corner
   const bottomRight = scalePointByImage(invert_y(line.bottom_right), img);
-
-  // Top-left corner
   const topLeft = scalePointByImage(invert_y(line.top_left), img);
-
-  // Top-right corner
   const topRight = scalePointByImage(invert_y(line.top_right), img);
+
   return (
-    <React.Fragment
-        key={line.id}
-    >
+    <React.Fragment key={`line-${line.id}`}>
+      {/* Diagonals (if you want them) */}
       <line
         x1={bottomLeft.x}
         y1={bottomLeft.y}
@@ -82,7 +91,7 @@ function BoundingBox(line: LineItem, img: ImageItem, color: string) {
         strokeWidth={1}
         opacity={line.confidence}
       />
-      {/* horizontal */}
+      {/* Horizontal edges */}
       <line
         x1={topLeft.x}
         y1={topLeft.y}
@@ -101,7 +110,7 @@ function BoundingBox(line: LineItem, img: ImageItem, color: string) {
         strokeWidth={3}
         opacity={line.confidence}
       />
-      {/* vertical */}
+      {/* Vertical edges */}
       <line
         x1={topLeft.x}
         y1={topLeft.y}
@@ -124,4 +133,49 @@ function BoundingBox(line: LineItem, img: ImageItem, color: string) {
   );
 }
 
-export default BoundingBox;
+export function BoundingBoxReceipt(receipt: Receipt, color: string) {
+  const tl = receipt.top_left;
+  const tr = receipt.top_right;
+  const bl = receipt.bottom_left;
+  const br = receipt.bottom_right;
+  console.log("tl", tl);
+
+  return (
+    <React.Fragment key={`receipt-${receipt.id}`}>
+      {/* Draw edges of the rectangle in a similar style */}
+      <line
+        x1={tl.x}
+        y1={tl.y}
+        x2={tr.x}
+        y2={tr.y}
+        stroke={color}
+        strokeWidth={3}
+      />
+      <line
+        x1={tr.x}
+        y1={tr.y}
+        x2={br.x}
+        y2={br.y}
+        stroke={color}
+        strokeWidth={3}
+      />
+      <line
+        x1={br.x}
+        y1={br.y}
+        x2={bl.x}
+        y2={bl.y}
+        stroke={color}
+        strokeWidth={3}
+      />
+      <line
+        x1={bl.x}
+        y1={bl.y}
+        x2={tl.x}
+        y2={tl.y}
+        stroke={color}
+        strokeWidth={3}
+      />
+    </React.Fragment>
+  );
+}
+
