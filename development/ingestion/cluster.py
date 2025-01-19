@@ -427,11 +427,11 @@ def store_cluster_entities(
     for wd in words:
         tl_abs = (wd.top_left["x"] * image_obj.width,
                   (1 - wd.top_left["y"]) * image_obj.height)
-        tr_abs = (ln.top_right["x"] * image_obj.width,
+        tr_abs = (wd.top_right["x"] * image_obj.width,
                   (1 - wd.top_right["y"]) * image_obj.height)
-        bl_abs = (ln.bottom_left["x"] * image_obj.width,
+        bl_abs = (wd.bottom_left["x"] * image_obj.width,
                   (1 - wd.bottom_left["y"]) * image_obj.height)
-        br_abs = (ln.bottom_right["x"] * image_obj.width,
+        br_abs = (wd.bottom_right["x"] * image_obj.width,
                   (1 - wd.bottom_right["y"]) * image_obj.height)
 
         # Warp each corner
@@ -623,8 +623,10 @@ def transform_cluster(
     box_ordered = order_points(box)  # see function above
     w = int(rect[1][0])
     h = int(rect[1][1])
-    # You might want to check if w < h and possibly swap them
-    # so that the receipt is "portrait" rather than "landscape."
+
+    # Ensure width is always less than height
+    if w > h:
+        w, h = h, w
     
     dst_pts = np.array([
         [0,     0],
