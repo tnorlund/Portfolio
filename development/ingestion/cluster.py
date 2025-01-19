@@ -20,7 +20,7 @@ import hashlib
 import logging
 import tempfile
 from datetime import datetime, timezone
-from math import atan2, sin, cos, dist, atan
+from math import atan2, degrees, sin, cos, dist, atan
 from typing import Any, Dict, List, Tuple
 
 import boto3
@@ -284,28 +284,17 @@ def cluster_image(lines: List[Line]) -> Dict[int, List[Line]]:
     if not lines:
         return {}
 
-    # Calculate average angle to roughly align text horizontally
-    avg_angle = sum(ln.angle_radians for ln in lines) / len(lines)
+    # Just gather X-coordinates for clustering (no rotation yet)
+    X = np.array([line.calculate_centroid()[0] for line in lines]).reshape(-1, 1)
 
-    # Rotate lines so they are axis-aligned
-    rotated_lines = lines.copy()
-    for ln in rotated_lines:
-        ln.rotate(-avg_angle, 0.5, 0.5, use_radians=True)
-
-    # Gather x-coordinates of centroids for DBSCAN
-    X = np.array([line.calculate_centroid()[0] for line in rotated_lines]).reshape(
-        -1, 1
-    )
-
-    # Run DBSCAN
     db = DBSCAN(eps=0.08, min_samples=2)
     db.fit(X)
     labels = db.labels_
 
-    # Adjust labels so -1 stays -1, but other labels become positive and 1-indexed
+    # Adjust labels so -1 stays -1, but other labels become +1
     offset_labels = [label if label == -1 else label + 1 for label in labels]
 
-    # Assign cluster_ids back to original lines
+    # Assign cluster IDs back to the original lines
     for i, line in enumerate(lines):
         line.cluster_id = offset_labels[i]
 
@@ -314,111 +303,287 @@ def cluster_image(lines: List[Line]) -> Dict[int, List[Line]]:
     for line in lines:
         if line.cluster_id == -1:
             continue  # skip noise
-        if line.cluster_id not in cluster_dict:
-            cluster_dict[line.cluster_id] = []
-        cluster_dict[line.cluster_id].append(line)
+        cluster_dict.setdefault(line.cluster_id, []).append(line)
 
     logger.info("Found %d receipts (clusters).", len(cluster_dict))
     return cluster_dict
 
 
-def original_entities_to_receipt_entities(
-    cluster_entities: Tuple[List[Line], List[Word], List[Letter]],
-    min_x: float,
-    min_y: float,
-    scale_x: float,
-    scale_y: float,
+def store_cluster_entities(
     cluster_id: int,
+    image_id: int,
+    lines: List[Line],
+    words: List[Word],
+    letters: List[Letter],
+    M: np.ndarray,
+    receipt_width: int,
+    receipt_height: int,
+    table_name: str,
+    image_obj: Image,
 ) -> None:
     """
-    Transform Lines, Words, Letters into the coordinate space of a single receipt.
-    Then write them as ReceiptLine, ReceiptWord, ReceiptLetter to DynamoDB.
+    Given a single cluster's lines/words/letters from the *original* image,
+    warp them into the cluster's local coordinate space (using the perspective
+    transform matrix M), then store them as ReceiptLine, ReceiptWord,
+    and ReceiptLetter in DynamoDB.
+
+    Args:
+        cluster_id: The integer ID you want to use for 'receipt_id'.
+        image_id: The integer ID for the original image.
+        lines, words, letters: The original OCR items that belong to this cluster.
+        M: The perspective transform matrix from cv2.getPerspectiveTransform()
+        receipt_width, receipt_height: The final width/height of the warped cluster.
+        table_name: Name of your DynamoDB table with the "ReceiptLine," etc.
     """
-    logger.info("Transforming cluster %d to receipt entities.", cluster_id)
-    cluster_lines, cluster_words, cluster_letters = cluster_entities
+    def warp_point(x_abs, y_abs, M):
+        arr = np.array([[[x_abs, y_abs]]], dtype="float32")
+        warped = cv2.perspectiveTransform(arr, M)
+        return (float(warped[0][0][0]), float(warped[0][0][1]))
 
-    receipt_lines: List[ReceiptLine] = []
-    receipt_words: List[ReceiptWord] = []
-    receipt_letters: List[ReceiptLetter] = []
+    def compute_angle_in_warped_space(w_tl, w_tr):
+        """
+        Compute angle (in radians/degrees) of the top edge,
+        given top-left and top-right points in the *warped* coordinate system.
+        """
+        dx = w_tr[0] - w_tl[0]
+        dy = w_tr[1] - w_tl[1]
+        angle_radians = atan2(dy, dx)
+        angle_degrees = degrees(angle_radians)
+        return angle_degrees, angle_radians
 
-    # Lines
-    for ln in cluster_lines:
-        ln.translate(-min_x, -min_y)
-        ln.scale(scale_x, scale_y)
-        receipt_lines.append(
-            ReceiptLine(
-                receipt_id=int(cluster_id),
-                image_id=ln.image_id,
-                id=ln.id,
-                text=ln.text,
-                bounding_box=ln.bounding_box,
-                top_right=ln.top_right,
-                top_left=ln.top_left,
-                bottom_right=ln.bottom_right,
-                bottom_left=ln.bottom_left,
-                angle_degrees=ln.angle_degrees,
-                angle_radians=ln.angle_radians,
-                confidence=ln.confidence,
-            )
+    dynamo_client = DynamoClient(table_name)
+
+    receipt_lines = []
+    receipt_words = []
+    receipt_letters = []
+
+    # For each original line/word/letter, transform the bounding corners:
+    # top_left, top_right, bottom_left, bottom_right.
+
+    for ln in lines:
+        tl_abs = (ln.top_left["x"] * image_obj.width,
+                  (1 - ln.top_left["y"]) * image_obj.height)
+        tr_abs = (ln.top_right["x"] * image_obj.width,
+                  (1 - ln.top_right["y"]) * image_obj.height)
+        bl_abs = (ln.bottom_left["x"] * image_obj.width,
+                  (1 - ln.bottom_left["y"]) * image_obj.height)
+        br_abs = (ln.bottom_right["x"] * image_obj.width,
+                  (1 - ln.bottom_right["y"]) * image_obj.height)
+
+        # Warp each corner
+        w_tl = warp_point(*tl_abs, M)
+        w_tr = warp_point(*tr_abs, M)
+        w_bl = warp_point(*bl_abs, M)
+        w_br = warp_point(*br_abs, M)
+
+        angle_degrees, angle_radians = compute_angle_in_warped_space(w_tl, w_tr)
+
+        top_left = {
+            "x": w_tl[0] / receipt_width,
+            "y": 1.0 - (w_tl[1] / receipt_height),
+        }
+        top_right = {
+            "x": w_tr[0] / receipt_width,
+            "y": 1.0 - (w_tr[1] / receipt_height),
+        }
+        bottom_left = {
+            "x": w_bl[0] / receipt_width,
+            "y": 1.0 - (w_bl[1] / receipt_height),
+        }
+        bottom_right = {
+            "x": w_br[0] / receipt_width,
+            "y": 1.0 - (w_br[1] / receipt_height),
+        }
+
+        min_x = min(top_left["x"], top_right["x"], bottom_left["x"], bottom_right["x"])
+        max_x = max(top_left["x"], top_right["x"], bottom_left["x"], bottom_right["x"])
+        min_y = min(top_left["y"], top_right["y"], bottom_left["y"], bottom_right["y"])
+        max_y = max(top_left["y"], top_right["y"], bottom_left["y"], bottom_right["y"])
+        bounding_box = {
+            "x": min_x,
+            "y": min_y,
+            "width": (max_x - min_x),
+            "height": (max_y - min_y),
+        }
+
+        # Create a ReceiptLine that references “cluster_id” as the receipt_id
+        receipt_line = ReceiptLine(
+            receipt_id=int(cluster_id),
+            image_id=image_id,
+            id=ln.id,  # or reassign new IDs if you prefer
+            text=ln.text,
+            bounding_box=bounding_box,
+            top_right=top_right,
+            top_left=top_left,
+            bottom_right=bottom_right,
+            bottom_left=bottom_left,
+            angle_degrees=angle_degrees,
+            angle_radians=angle_radians,
+            confidence=ln.confidence,
         )
+        receipt_lines.append(receipt_line)
 
-    # Words
-    for wd in cluster_words:
-        wd.translate(-min_x, -min_y)
-        wd.scale(scale_x, scale_y)
-        receipt_words.append(
-            ReceiptWord(
-                receipt_id=int(cluster_id),
-                image_id=wd.image_id,
-                line_id=wd.line_id,
-                id=wd.id,
-                text=wd.text,
-                bounding_box=wd.bounding_box,
-                top_right=wd.top_right,
-                top_left=wd.top_left,
-                bottom_right=wd.bottom_right,
-                bottom_left=wd.bottom_left,
-                angle_degrees=wd.angle_degrees,
-                angle_radians=wd.angle_radians,
-                confidence=wd.confidence,
-                tags=wd.tags,
-            )
+    # Repeat the same approach for Words:
+    for wd in words:
+        tl_abs = (wd.top_left["x"] * image_obj.width,
+                  (1 - wd.top_left["y"]) * image_obj.height)
+        tr_abs = (ln.top_right["x"] * image_obj.width,
+                  (1 - wd.top_right["y"]) * image_obj.height)
+        bl_abs = (ln.bottom_left["x"] * image_obj.width,
+                  (1 - wd.bottom_left["y"]) * image_obj.height)
+        br_abs = (ln.bottom_right["x"] * image_obj.width,
+                  (1 - wd.bottom_right["y"]) * image_obj.height)
+
+        # Warp each corner
+        w_tl = warp_point(*tl_abs, M)
+        w_tr = warp_point(*tr_abs, M)
+        w_bl = warp_point(*bl_abs, M)
+        w_br = warp_point(*br_abs, M)
+
+        angle_degrees, angle_radians = compute_angle_in_warped_space(w_tl, w_tr)
+
+        top_left = {
+            "x": w_tl[0] / receipt_width,
+            "y": 1.0 - (w_tl[1] / receipt_height),
+        }
+        top_right = {
+            "x": w_tr[0] / receipt_width,
+            "y": 1.0 - (w_tr[1] / receipt_height),
+        }
+        bottom_left = {
+            "x": w_bl[0] / receipt_width,
+            "y": 1.0 - (w_bl[1] / receipt_height),
+        }
+        bottom_right = {
+            "x": w_br[0] / receipt_width,
+            "y": 1.0 - (w_br[1] / receipt_height),
+        }
+
+        min_x = min(top_left["x"], top_right["x"], bottom_left["x"], bottom_right["x"])
+        max_x = max(top_left["x"], top_right["x"], bottom_left["x"], bottom_right["x"])
+        min_y = min(top_left["y"], top_right["y"], bottom_left["y"], bottom_right["y"])
+        max_y = max(top_left["y"], top_right["y"], bottom_left["y"], bottom_right["y"])
+        bounding_box = {
+            "x": min_x,
+            "y": min_y,
+            "width": (max_x - min_x),
+            "height": (max_y - min_y),
+        }
+
+        # Create a ReceiptWord that references “cluster_id” as the receipt_id
+        receipt_word = ReceiptWord(
+            receipt_id=int(cluster_id),
+            image_id=image_id,
+            line_id=wd.line_id,
+            id=wd.id,  # or reassign new IDs if you prefer
+            text=wd.text,
+            bounding_box=bounding_box,
+            top_right=top_right,
+            top_left=top_left,
+            bottom_right=bottom_right,
+            bottom_left=bottom_left,
+            angle_degrees=angle_degrees,
+            angle_radians=angle_radians,
+            confidence=wd.confidence,
         )
+        receipt_words.append(receipt_word)
 
-    # Letters
-    for lt in cluster_letters:
-        lt.translate(-min_x, -min_y)
-        lt.scale(scale_x, scale_y)
-        receipt_letters.append(
-            ReceiptLetter(
-                receipt_id=int(cluster_id),
-                image_id=lt.image_id,
-                line_id=lt.line_id,
-                word_id=lt.word_id,
-                id=lt.id,
-                text=lt.text,
-                bounding_box=lt.bounding_box,
-                top_right=lt.top_right,
-                top_left=lt.top_left,
-                bottom_right=lt.bottom_right,
-                bottom_left=lt.bottom_left,
-                angle_degrees=lt.angle_degrees,
-                angle_radians=lt.angle_radians,
-                confidence=lt.confidence,
-            )
+    # And for Letters:
+    for lt in letters:
+        tl_abs = (lt.top_left["x"] * image_obj.width,
+                  (1 - lt.top_left["y"]) * image_obj.height)
+        tr_abs = (ln.top_right["x"] * image_obj.width,
+                  (1 - lt.top_right["y"]) * image_obj.height)
+        bl_abs = (ln.bottom_left["x"] * image_obj.width,
+                  (1 - lt.bottom_left["y"]) * image_obj.height)
+        br_abs = (ln.bottom_right["x"] * image_obj.width,
+                  (1 - lt.bottom_right["y"]) * image_obj.height)
+
+        # Warp each corner
+        w_tl = warp_point(*tl_abs, M)
+        w_tr = warp_point(*tr_abs, M)
+        w_bl = warp_point(*bl_abs, M)
+        w_br = warp_point(*br_abs, M)
+
+        angle_degrees, angle_radians = compute_angle_in_warped_space(w_tl, w_tr)
+
+        top_left = {
+            "x": w_tl[0] / receipt_width,
+            "y": 1.0 - (w_tl[1] / receipt_height),
+        }
+        top_right = {
+            "x": w_tr[0] / receipt_width,
+            "y": 1.0 - (w_tr[1] / receipt_height),
+        }
+        bottom_left = {
+            "x": w_bl[0] / receipt_width,
+            "y": 1.0 - (w_bl[1] / receipt_height),
+        }
+        bottom_right = {
+            "x": w_br[0] / receipt_width,
+            "y": 1.0 - (w_br[1] / receipt_height),
+        }
+
+        min_x = min(top_left["x"], top_right["x"], bottom_left["x"], bottom_right["x"])
+        max_x = max(top_left["x"], top_right["x"], bottom_left["x"], bottom_right["x"])
+        min_y = min(top_left["y"], top_right["y"], bottom_left["y"], bottom_right["y"])
+        max_y = max(top_left["y"], top_right["y"], bottom_left["y"], bottom_right["y"])
+        bounding_box = {
+            "x": min_x,
+            "y": min_y,
+            "width": (max_x - min_x),
+            "height": (max_y - min_y),
+        }
+
+        # Create a ReceiptLetter that references “cluster_id” as the receipt_id
+        receipt_letter = ReceiptLetter(
+            receipt_id=int(cluster_id),
+            image_id=image_id,
+            line_id=lt.line_id,
+            word_id=lt.word_id,
+            id=lt.id,  # or reassign new IDs if you prefer
+            text=lt.text,
+            bounding_box=bounding_box,
+            top_right=top_right,
+            top_left=top_left,
+            bottom_right=bottom_right,
+            bottom_left=bottom_left,
+            angle_degrees=angle_degrees,
+            angle_radians=angle_radians,
+            confidence=lt.confidence,
         )
+        receipt_letters.append(receipt_letter)
 
-    logger.info(
-        "Adding %d receipt lines, %d receipt words, and %d receipt letters to DynamoDB.",
-        len(receipt_lines),
-        len(receipt_words),
-        len(receipt_letters),
-    )
-    dynamo_client = DynamoClient(DYNAMO_DB_TABLE)
     dynamo_client.addReceiptLines(receipt_lines)
     dynamo_client.addReceiptWords(receipt_words)
     dynamo_client.addReceiptLetters(receipt_letters)
 
+    print(f"Added {len(receipt_lines)} receipt lines, "
+          f"{len(receipt_words)} words, and "
+          f"{len(receipt_letters)} letters for receipt {cluster_id}.")
+
+def order_points(pts_4):
+    # pts_4: shape (4,2)
+    # Returns: array of shape (4,2) in order: TL, TR, BR, BL
+    rect = np.zeros((4, 2), dtype="float32")
+
+    # sort by y first, then x
+    s = sorted(pts_4, key=lambda x: (x[1], x[0]))
+    top_two = s[0:2]
+    bottom_two = s[2:4]
+
+    # top_two: left is TL, right is TR
+    # bottom_two: left is BL, right is BR
+    if top_two[0][0] < top_two[1][0]:
+        rect[0], rect[1] = top_two[0], top_two[1]
+    else:
+        rect[0], rect[1] = top_two[1], top_two[0]
+
+    if bottom_two[0][0] < bottom_two[1][0]:
+        rect[3], rect[2] = bottom_two[0], bottom_two[1]
+    else:
+        rect[3], rect[2] = bottom_two[1], bottom_two[0]
+    return rect
 
 def transform_cluster(
     cluster_id: int,
@@ -434,136 +599,93 @@ def transform_cluster(
     then store a Receipt object in DynamoDB.
     """
     logger.info("Transforming cluster %d into bounding box.", cluster_id)
-    # Compute cluster’s centroid from line centroids
-    sum_x = 0.0
-    sum_y = 0.0
+    # 1) Gather all line corners in absolute pixel space
+    points_abs = []
     for ln in cluster_lines:
-        cx, cy = ln.calculate_centroid()
-        sum_x += cx
-        sum_y += cy
+        for corner in [ln.top_left, ln.top_right, ln.bottom_left, ln.bottom_right]:
+            # corner is e.g. {"x": 0.22, "y": 0.77}
+            x_abs = corner["x"] * image_obj.width
+            y_abs = (1 - corner["y"]) * image_obj.height  # note 1 - y if top=0
+            points_abs.append((x_abs, y_abs))
+    
+    if not points_abs:
+        logger.warning("No corners for cluster %d, skipping warp.", cluster_id)
+        return
 
-    cluster_center_x = sum_x / len(cluster_lines)
-    cluster_center_y = sum_y / len(cluster_lines)
+    pts = np.array(points_abs, dtype=np.float32)
 
-    # Translate lines so centroid moves to (0.5, 0.5)
-    dx = 0.5 - cluster_center_x
-    dy = 0.5 - cluster_center_y
-    for ln in cluster_lines:
-        ln.translate(dx, dy)
+    # 2) Compute min-area bounding rect
+    rect = cv2.minAreaRect(pts)     # (center, (w, h), angle)
+    box = cv2.boxPoints(rect)       # 4 corner points
+    box = np.array(box, dtype=np.float32)
 
-    # Rotate around (0.5, 0.5) by -avg_angle
-    avg_angle_radians = sum(ln.angle_radians for ln in cluster_lines) / len(
-        cluster_lines
-    )
-    for ln in cluster_lines:
-        ln.rotate(-avg_angle_radians, 0.5, 0.5, use_radians=True)
+    # 3) Order points, warp to upright rectangle
+    box_ordered = order_points(box)  # see function above
+    w = int(rect[1][0])
+    h = int(rect[1][1])
+    # You might want to check if w < h and possibly swap them
+    # so that the receipt is "portrait" rather than "landscape."
+    
+    dst_pts = np.array([
+        [0,     0],
+        [w - 1, 0],
+        [w - 1, h - 1],
+        [0,     h - 1]
+    ], dtype="float32")
 
-    # Compute bounding box in transformed space
-    all_points = []
-    for ln in cluster_lines:
-        all_points.extend(
-            [
-                (ln.top_left["x"], ln.top_left["y"]),
-                (ln.top_right["x"], ln.top_right["y"]),
-                (ln.bottom_left["x"], ln.bottom_left["y"]),
-                (ln.bottom_right["x"], ln.bottom_right["y"]),
-            ]
-        )
+    M = cv2.getPerspectiveTransform(box_ordered, dst_pts)
+    warped = cv2.warpPerspective(image_cv, M, (w, h))
 
-    min_x = min(pt[0] for pt in all_points)
-    max_x = max(pt[0] for pt in all_points)
-    min_y = min(pt[1] for pt in all_points)
-    max_y = max(pt[1] for pt in all_points)
-
-    # Scale lines so bounding box fits within [0, 1]
-    range_x = max_x - min_x
-    range_y = max_y - min_y
-    scale_x = 1.0 / range_x if range_x != 0 else 1.0
-    scale_y = 1.0 / range_y if range_y != 0 else 1.0
-
-    original_entities_to_receipt_entities(
-        (cluster_lines, cluster_words, cluster_letters),
-        min_x,
-        min_y,
-        scale_x,
-        scale_y,
-        cluster_id,
-    )
-
-    # Reverse transformations to find original bounding box corners
-    def reverse_transform(point: Tuple[float, float]) -> Tuple[float, float]:
-        """
-        1) Rotate back by +avg_angle_radians around (0.5, 0.5)
-        2) Translate back by (-dx, -dy)
-        """
-        x_rot, y_rot = rotate_point(point[0], point[1], 0.5, 0.5, +avg_angle_radians)
-        return x_rot - dx, y_rot - dy
-
-    top_left = reverse_transform((min_x, min_y))
-    top_right = reverse_transform((max_x, min_y))
-    bottom_left = reverse_transform((min_x, max_y))
-    bottom_right = reverse_transform((max_x, max_y))
-
-    # Convert normalized points to absolute image coordinates
-    pt_bl = (top_left[0] * image_obj.width, (1 - top_left[1]) * image_obj.height)
-    pt_br = (top_right[0] * image_obj.width, (1 - top_right[1]) * image_obj.height)
-    pt_tl = (bottom_left[0] * image_obj.width, (1 - bottom_left[1]) * image_obj.height)
-    pt_tr = (
-        bottom_right[0] * image_obj.width,
-        (1 - bottom_right[1]) * image_obj.height,
-    )
-
-    width_top = euclidean_dist(pt_tl, pt_tr)
-    width_bot = euclidean_dist(pt_bl, pt_br)
-    height_left = euclidean_dist(pt_tl, pt_bl)
-    height_right = euclidean_dist(pt_tr, pt_br)
-
-    dst_width = int((width_top + width_bot) / 2.0)
-    dst_height = int((height_left + height_right) / 2.0)
-
-    src_pts = np.float32([pt_tl, pt_tr, pt_bl, pt_br])
-    dst_pts = np.float32(
-        [
-            (0, 0),
-            (dst_width - 1, 0),
-            (0, dst_height - 1),
-            (dst_width - 1, dst_height - 1),
-        ]
-    )
-    M = cv2.getPerspectiveTransform(src_pts, dst_pts)
-
-    # Warp the original image
-    warped = cv2.warpPerspective(image_cv, M, (dst_width, dst_height))
-    height, width, _ = warped.shape
-
-    # Save the warped image to a temporary file
-    s3_client = boto3.client("s3")
-    cdn_s3_key = image_obj.cdn_s3_key.replace(".png", f"_cluster_{cluster_id:05d}.png")
-    with tempfile.NamedTemporaryFile(suffix=".png", delete=True) as temp:
-        cv2.imwrite(temp.name, warped)
-        try:
-            s3_client.upload_file(temp.name, CDN_S3_BUCKET, cdn_s3_key)
-        except ClientError as exc:
-            logger.error(f"Failed to upload warped cluster image to S3: {exc}")
-            raise
-        sha256 = calculate_sha256(temp.name)
-
-    # Store the Receipt in DynamoDB
-    receipt = Receipt(
+    store_cluster_entities(
+        cluster_id=cluster_id,
         image_id=image_obj.id,
-        id=int(cluster_id),
-        width=width,
-        height=height,
-        timestamp_added=datetime.now(timezone.utc).isoformat(),
-        raw_s3_bucket=image_obj.raw_s3_bucket,
-        raw_s3_key=image_obj.raw_s3_key,
-        top_left={"x": top_left[0], "y": top_left[1]},
-        top_right={"x": top_right[0], "y": top_right[1]},
-        bottom_left={"x": bottom_left[0], "y": bottom_left[1]},
-        bottom_right={"x": bottom_right[0], "y": bottom_right[1]},
-        sha256=sha256,
-        cdn_s3_bucket=CDN_S3_BUCKET,
-        cdn_s3_key=cdn_s3_key,
+        lines=cluster_lines,
+        words=cluster_words,
+        letters=cluster_letters,
+        M=M,
+        receipt_width=w,
+        receipt_height=h,
+        table_name=DYNAMO_DB_TABLE,
+        image_obj=image_obj,
+    )
+
+    # 4) Save to temp, upload to S3, compute sha256
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp:
+        cv2.imwrite(temp.name, warped)
+        s3_client = boto3.client("s3")
+        receipt_key = image_obj.cdn_s3_key.replace(
+            ".png", f"_cluster_{cluster_id:05d}.png"
+        )
+        try:
+            s3_client.upload_file(temp.name, CDN_S3_BUCKET, receipt_key)
+        except ClientError as exc:
+            logger.error("Failed to upload cluster image: %s", exc)
+            raise
+        # compute sha
+        receipt_sha256 = calculate_sha256(temp.name)
+
+    # 5) Store as a Receipt item in DynamoDB
+    receipt_width, receipt_height = warped.shape[1], warped.shape[0]
+    receipt = Receipt(
+        image_id = image_obj.id,
+        id = int(cluster_id),
+        width = int(receipt_width),
+        height = int(receipt_height),
+        timestamp_added = datetime.now(timezone.utc).isoformat(),
+        raw_s3_bucket = image_obj.raw_s3_bucket,
+        raw_s3_key = image_obj.raw_s3_key,
+        # For reference, store the corners in normalized coords if you want
+        top_left     = { "x": float(box_ordered[0][0] / image_obj.width),
+                         "y": 1 - float(box_ordered[0][1] / image_obj.height) },
+        top_right    = { "x": float(box_ordered[1][0] / image_obj.width),
+                         "y": 1 - float(box_ordered[1][1] / image_obj.height) },
+        bottom_right = { "x": float(box_ordered[2][0] / image_obj.width),
+                         "y": 1 - float(box_ordered[2][1] / image_obj.height) },
+        bottom_left  = { "x": float(box_ordered[3][0] / image_obj.width),
+                         "y": 1 - float(box_ordered[3][1] / image_obj.height) },
+        sha256 = receipt_sha256,
+        cdn_s3_bucket = CDN_S3_BUCKET,
+        cdn_s3_key = receipt_key,
     )
     dynamo_client = DynamoClient(DYNAMO_DB_TABLE)
     dynamo_client.addReceipt(receipt)
