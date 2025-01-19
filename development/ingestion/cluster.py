@@ -20,7 +20,7 @@ import hashlib
 import logging
 import tempfile
 from datetime import datetime, timezone
-from math import sin, cos, dist
+from math import atan2, sin, cos, dist, atan
 from typing import Any, Dict, List, Tuple
 
 import boto3
@@ -42,13 +42,8 @@ from dynamo import (
     ReceiptLetter,
 )
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(levelname)s %(asctime)s - %(message)s",
-    datefmt="%Y-%m-%dT%H:%M:%S"
-)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 # Read environment variables
 DYNAMO_DB_TABLE = os.getenv("DYNAMO_DB_TABLE")
@@ -486,14 +481,6 @@ def transform_cluster(
     scale_x = 1.0 / range_x if range_x != 0 else 1.0
     scale_y = 1.0 / range_y if range_y != 0 else 1.0
 
-    logger.debug(
-        "Cluster %d bounding box before scale: (%f, %f, %f, %f)",
-        cluster_id,
-        min_x,
-        max_x,
-        min_y,
-        max_y,
-    )
     original_entities_to_receipt_entities(
         (cluster_lines, cluster_words, cluster_letters),
         min_x,
@@ -570,14 +557,13 @@ def transform_cluster(
         timestamp_added=datetime.now(timezone.utc).isoformat(),
         raw_s3_bucket=image_obj.raw_s3_bucket,
         raw_s3_key=image_obj.raw_s3_key,
-        top_left={"x": pt_tl[0], "y": pt_tl[1]},
-        top_right={"x": pt_tr[0], "y": pt_tr[1]},
-        bottom_left={"x": pt_bl[0], "y": pt_bl[1]},
-        bottom_right={"x": pt_br[0], "y": pt_br[1]},
+        top_left={"x": top_left[0], "y": top_left[1]},
+        top_right={"x": top_right[0], "y": top_right[1]},
+        bottom_left={"x": bottom_left[0], "y": bottom_left[1]},
+        bottom_right={"x": bottom_right[0], "y": bottom_right[1]},
         sha256=sha256,
         cdn_s3_bucket=CDN_S3_BUCKET,
-        # Just an example, you may prefer a separate field
-        cdn_s3_key=f"{cdn_s3_key}{image_obj.raw_s3_key}",
+        cdn_s3_key=cdn_s3_key,
     )
     dynamo_client = DynamoClient(DYNAMO_DB_TABLE)
     dynamo_client.addReceipt(receipt)
