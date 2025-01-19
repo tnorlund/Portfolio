@@ -10,7 +10,7 @@ BASE_DOMAIN = "tylernorlund.com"
 
 # Decide site domain based on the stack
 if stack == "prod":
-    site_domain = BASE_DOMAIN  # e.g., "tylernorlund.com"
+    site_domain = f"www.{BASE_DOMAIN}"  # e.g., "www.tylernorlund.com"
 else:
     site_domain = f"{stack}.{BASE_DOMAIN}"  # e.g., "dev.tylernorlund.com"
 
