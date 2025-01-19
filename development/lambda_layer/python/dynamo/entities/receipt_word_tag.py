@@ -54,7 +54,7 @@ class ReceiptWordTag:
         }
 
 
-def ReceiptWordTagFromItem(item: dict) -> ReceiptWordTag:
+def itemToReceiptWordTag(item: dict) -> ReceiptWordTag:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - item.keys()

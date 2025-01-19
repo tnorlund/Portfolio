@@ -74,7 +74,23 @@ class _ReceiptWord:
             if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 raise ValueError(f"ReceiptWord with ID {word.id} does not exist")
             else:
-                raise
+                raise Exception("Could not update ReceiptWord in the database") from e
+    
+    def updateReceiptWords(self, words: list[ReceiptWord]):
+        """Updates multiple existing ReceiptWords in DynamoDB."""
+        try:
+            for i in range(0, len(words), CHUNK_SIZE):
+                chunk = words[i : i + CHUNK_SIZE]
+                request_items = [{"PutRequest": {"Item": w.to_item()}} for w in chunk]
+                response = self._client.batch_write_item(
+                    RequestItems={self.table_name: request_items}
+                )
+                unprocessed = response.get("UnprocessedItems", {})
+                while unprocessed.get(self.table_name):
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    unprocessed = response.get("UnprocessedItems", {})
+        except ClientError as e:
+            raise ValueError("Could not update ReceiptWords in the database") from e
 
     def deleteReceiptWord(
         self, receipt_id: int, image_id: int, line_id: int, word_id: int
