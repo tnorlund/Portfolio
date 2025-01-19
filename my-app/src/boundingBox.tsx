@@ -133,12 +133,11 @@ export function BoundingBoxLine(line: LineItem, img: ImageItem, color: string) {
   );
 }
 
-export function BoundingBoxReceipt(receipt: Receipt, color: string) {
-  const tl = receipt.top_left;
-  const tr = receipt.top_right;
-  const bl = receipt.bottom_left;
-  const br = receipt.bottom_right;
-  console.log("tl", tl);
+export function BoundingBoxReceipt(receipt: Receipt, image: ImageItem,  color: string) {
+  const bl = scalePointByImage(invert_y(receipt.bottom_left), image);
+  const br = scalePointByImage(invert_y(receipt.bottom_right), image);
+  const tl = scalePointByImage(invert_y(receipt.top_left), image);
+  const tr = scalePointByImage(invert_y(receipt.top_right), image);
 
   return (
     <React.Fragment key={`receipt-${receipt.id}`}>

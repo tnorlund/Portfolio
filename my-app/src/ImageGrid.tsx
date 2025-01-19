@@ -183,7 +183,7 @@ export default function ImageGrid() {
             {/* Example: if you want to draw bounding boxes for receipts */}
             {receipts.map((receipt) => (
               <React.Fragment key={`receipt-${receipt.id}`}>
-                {BoundingBoxReceipt(receipt, 'red')}
+                {BoundingBoxReceipt(receipt, image, 'red')}
               </React.Fragment>
             ))
             }
