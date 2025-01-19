@@ -9,6 +9,7 @@ from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 from dynamo import DynamoClient
 import hashlib
+import argparse
 
 DEBUG = True
 
@@ -222,7 +223,7 @@ def upload_files_with_uuid_in_batches(
         for index, uuid in enumerate(uuids):
             image_id = image_indexes[(batch_index - 1) * batch_size + index]
             print(f"Invoking Lambda function for UUID {uuid} and Image ID {image_id}...")
-            response = lambda_client.invoke(
+            lambda_client.invoke(
                 FunctionName=lambda_function,
                 InvocationType="Event",
                 Payload=json.dumps(
@@ -238,23 +239,35 @@ def upload_files_with_uuid_in_batches(
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Upload images to S3")
+    parser.add_argument(
+        "directory_to_upload", type=str, help="Directory containing images to upload"
+    )
+    args = parser.parse_args()
+
     RAW_IMAGE_BUCKET, LAMBDA_FUNCTION, DYNAMO_DB_TABLE = load_env()
-    # Update these variables
-    directory_to_upload = "/Users/tnorlund/Example_to_delete"
 
     if DEBUG:
         print("Deleting all items from DynamoDB tables...")
         dynamo_client = DynamoClient(DYNAMO_DB_TABLE)
+        print("Deleting images...")
         dynamo_client.deleteImages(dynamo_client.listImages())
+        print("Deleting lines...")
         dynamo_client.deleteLines(dynamo_client.listLines())
+        print("Deleting words...")
         dynamo_client.deleteWords(dynamo_client.listWords())
+        print("Deleting letters...")
         dynamo_client.deleteLetters(dynamo_client.listLetters())
+        print("Deleting receipts...")
         dynamo_client.deleteReceipts(dynamo_client.listReceipts())
+        print("Deleting receipt lines...")
         dynamo_client.deleteReceiptLines(dynamo_client.listReceiptLines())
+        print("Deleting receipt words...")
         dynamo_client.deleteReceiptWords(dynamo_client.listReceiptWords())
+        print("Deleting receipt letters...")
         dynamo_client.deleteReceiptLetters(dynamo_client.listReceiptLetters())
         sleep(1)
 
     upload_files_with_uuid_in_batches(
-        directory_to_upload, RAW_IMAGE_BUCKET, LAMBDA_FUNCTION, DYNAMO_DB_TABLE
+        args.directory_to_upload, RAW_IMAGE_BUCKET, LAMBDA_FUNCTION, DYNAMO_DB_TABLE
     )
