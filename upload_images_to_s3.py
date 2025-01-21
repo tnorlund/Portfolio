@@ -1,17 +1,15 @@
+from typing import Generator
 import os
-import tempfile
 from time import sleep
 from uuid import uuid4
 import subprocess
 import boto3
 import json
 from botocore.exceptions import ClientError
-from dotenv import load_dotenv
 from dynamo import DynamoClient
 import hashlib
 import argparse
-
-DEBUG = True
+from pulumi.automation import select_stack
 
 
 def calculate_sha256(file_path: str):
@@ -53,7 +51,9 @@ def get_image_indexes(client: DynamoClient, number_images: int) -> list[int]:
         return list(range(1, number_images + 1))
 
     # Extract existing IDs and sort them
-    existing_ids = sorted([image.id for image in images])  # or sorted(list(images.keys()))
+    existing_ids = sorted(
+        [image.id for image in images]
+    )  # or sorted(list(images.keys()))
 
     # Convert existing IDs into a set for O(1) lookups
     existing_ids_set = set(existing_ids)
@@ -73,36 +73,55 @@ def get_image_indexes(client: DynamoClient, number_images: int) -> list[int]:
     return new_ids
 
 
-def chunked(iterable, n):
+
+
+def chunked(iterable, n: int) -> Generator:
     """Yield successive n-sized chunks from an iterable."""
     for i in range(0, len(iterable), n):
         yield iterable[i : i + n]
 
 
-def load_env():
+def load_env(env: str = "dev") -> tuple[str, str, str]:
     """
-    Loads the .env file in the current directory and returns the value of the
-    RAW_IMAGE_BUCKET environment variable.
+    Uses pulumi to get the values of the RAW_IMAGE_BUCKET, LAMBDA_FUNCTION, DYNAMO_DB_TABLE.
 
     Returns:
-        str: The value of the RAW_IMAGE_BUCKET environment variable
+        tuple[str, str, str]: The value of the RAW_IMAGE_BUCKET, LAMBDA_FUNCTION, DYNAMO_DB_TABLE from pulumi.
     """
-    dotenv_path = os.path.join(os.path.dirname(__file__), ".env")
-    # Clear the environment variables before loading the .env file
-    os.environ.pop("RAW_IMAGE_BUCKET", None)
-    os.environ.pop("LAMBDA_FUNCTION", None)
-    os.environ.pop("DYNAMO_DB_TABLE", None)
-    load_dotenv(dotenv_path)
-    return (
-        os.getenv("RAW_IMAGE_BUCKET"),
-        os.getenv("LAMBDA_FUNCTION"),
-        os.getenv("DYNAMO_DB_TABLE"),
+    # The working directory is in the "development" directory next to this script. Get the full path
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    work_dir = os.path.join(script_dir, "development")
+
+    if not env:
+        raise ValueError("The ENV environment variable is not set")
+    stack_name = env.lower()
+    project_name = "development"
+    stack = select_stack(
+        stack_name=stack_name,      # Your stack name
+        project_name=project_name,  # Your project name from Pulumi.yaml
+        work_dir=work_dir,          # Path to the Pulumi project (if needed)
     )
+    outputs = stack.outputs()
+    raw_bucket = str(outputs["image_bucket_name"].value)
+    lambda_function = str(outputs["cluster_lambda_function_name"].value)
+    dynamo_db_table = str(outputs["table_name"].value)
+    return raw_bucket, lambda_function, dynamo_db_table
 
 
-def run_swift_script(output_directory, list_of_image_paths) -> bool:
+def run_swift_script(output_directory: str, list_of_image_paths: list[str]) -> bool:
+    """
+    Run the Swift script to process the images.
+
+    Args:
+        output_directory (str): The directory where the output JSON files will be saved.
+        list_of_image_paths (list[str]): A list of image paths to process.
+
+    Returns:
+        bool: True if the script ran successfully, False otherwise.
+    """
+    swift_script = os.path.join(os.path.dirname(__file__), "OCRSwift.swift")
     try:
-        swift_args = ["swift", "OCRSwift.swift", output_directory] + list_of_image_paths
+        swift_args = ["swift", swift_script, output_directory] + list_of_image_paths
         subprocess.run(swift_args, check=True)
     except subprocess.CalledProcessError as e:
         print(f"Error running swift script: {e}")
@@ -110,7 +129,7 @@ def run_swift_script(output_directory, list_of_image_paths) -> bool:
     return True
 
 
-def calc_avg_angle_degrees(json_path) -> float:
+def calc_avg_angle_degrees(json_path: str) -> float:
     with open(json_path, "r") as json_file:
         ocr_data = json.load(json_file)
         total_angle_degrees = 0
@@ -119,7 +138,7 @@ def calc_avg_angle_degrees(json_path) -> float:
         return total_angle_degrees / len(ocr_data["lines"])
 
 
-def check_if_already_in_s3(bucket_name, s3_image_object_name):
+def check_if_already_in_s3(bucket_name: str, s3_image_object_name: str):
     s3 = boto3.client("s3")
     try:
         s3.head_object(Bucket=bucket_name, Key=s3_image_object_name)
@@ -222,7 +241,9 @@ def upload_files_with_uuid_in_batches(
         lambda_client = boto3.client("lambda")
         for index, uuid in enumerate(uuids):
             image_id = image_indexes[(batch_index - 1) * batch_size + index]
-            print(f"Invoking Lambda function for UUID {uuid} and Image ID {image_id}...")
+            print(
+                f"Invoking Lambda function for UUID {uuid} and Image ID {image_id}..."
+            )
             lambda_client.invoke(
                 FunctionName=lambda_function,
                 InvocationType="Event",
@@ -241,13 +262,25 @@ def upload_files_with_uuid_in_batches(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Upload images to S3")
     parser.add_argument(
-        "directory_to_upload", type=str, help="Directory containing images to upload"
+        "--directory_to_upload", type=str, help="Directory containing images to upload"
+    )
+    parser.add_argument(
+        "--env",
+        type=str,
+        help="The environment to use (e.g., 'dev', 'prod')",
+        default="dev",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Delete all items from DynamoDB tables before uploading",
+        default=False,
     )
     args = parser.parse_args()
 
-    RAW_IMAGE_BUCKET, LAMBDA_FUNCTION, DYNAMO_DB_TABLE = load_env()
+    RAW_IMAGE_BUCKET, LAMBDA_FUNCTION, DYNAMO_DB_TABLE = load_env(args.env)
 
-    if DEBUG:
+    if args.debug:
         print("Deleting all items from DynamoDB tables...")
         dynamo_client = DynamoClient(DYNAMO_DB_TABLE)
         print("Deleting images...")
