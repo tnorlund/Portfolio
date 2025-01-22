@@ -1,6 +1,9 @@
 import pulumi
 import pulumi_aws as aws
 
+stack = pulumi.get_stack()
+
+
 # The DynamoDB table
 dynamodb_table = aws.dynamodb.Table(
     "ReceiptsTable",
@@ -63,6 +66,8 @@ dynamodb_table = aws.dynamodb.Table(
         ),
     ],
     tags={
+        "Pulumi_Stack": stack,
+        "Pulumi_Project": pulumi.get_project(),
         "Environment": "dev",
         "Name": "ReceiptsTable",
     },
