@@ -34,7 +34,7 @@ def install_dependencies():
     """Install the dependencies for the Lambda Layer."""
     try:
         subprocess.check_call(
-            ["pip", "install", PACKAGE_NAME, "--target", PYTHON_TARGET],
+            ["pip3", "install", PACKAGE_NAME, "--target", PYTHON_TARGET],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -78,7 +78,7 @@ def prepare_lambda_layer():
 
 
 layer_name = "dynamo-receipt"
-compatible_runtimes = ["python3.9"]  # Adjust runtime as needed
+compatible_runtimes = ["python3.13"]
 
 # Prepare the Lambda layer package
 prepare_lambda_layer()
