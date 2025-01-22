@@ -1,9 +1,12 @@
+from __future__ import annotations
+
+import json
 import hashlib
 from typing import Tuple
 from pathlib import Path
 from dynamo import DynamoClient, Line, Word, Letter
 from pulumi.automation import select_stack
-import hashlib
+from dynamo import Receipt, ReceiptWord
 
 
 def load_env(env: str = "dev") -> tuple[str, str, str]:
@@ -132,3 +135,71 @@ def calculate_sha256(file_path):
         for byte_block in iter(lambda: f.read(4096), b""):
             sha256_hash.update(byte_block)
     return sha256_hash.hexdigest()
+
+def llm_prompt(receipt: Receipt, words: list[ReceiptWord]) -> str:
+    ocr_text = json.dumps(
+    {
+        "receipt": dict(receipt),
+        "words": [
+            {
+                "text": word.text,
+                "centroid": {
+                    "x": word.calculate_centroid()[0],
+                    "y": word.calculate_centroid()[1],
+                },
+            }
+            for word in words
+        ],
+    }
+)
+    return f"""
+You are a helpful assistant that extracts structured data from a receipt.
+The receipt's OCR text is:
+
+{ocr_text}
+
+**Your task**: Identify the following fields and output them as valid JSON:
+    - store_name (string)
+    - date (string)
+    - time (string)
+    - phone_number (string)
+    - total_amount (number)
+    - items (array of objects with fields: "item_name" (string) and "price" (number))
+    - taxes (number)
+    - any other relevant details
+
+Additionally, for **every field** you return, **please include**:
+1) The field's **value** (e.g. "SPROUTS FARMERS MARKET").
+2) An array of "word_centroids" that correspond to the OCR words. 
+     - This array should list the (x, y) coordinates of each word that you used to form that field's value.
+     - Use the same centroids from the "words" array above.
+
+If a particular field is not found, return an empty string or null for that field.
+
+**The JSON structure** should look like this (conceptually):
+```json
+{{
+"store_name": {{
+    "value": "...",
+    "word_centroids": [
+      {{"x": ..., "y": ...}},
+      ...
+    ]
+  }},
+...
+"items": [
+        {{
+            "item_name": {{
+                "value": "...",
+                "word_centroids": [...]
+            }},
+            "price": {{
+                "value": 0.0,
+                "word_centroids": [...]
+            }}
+        }}
+    ],
+}}
+```
+IMPORTANT: Make sure your output is valid JSON, with double quotes around keys and strings.
+"""
