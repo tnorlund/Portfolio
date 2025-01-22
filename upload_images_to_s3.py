@@ -97,7 +97,7 @@ def run_swift_script(output_directory: Path, image_paths: list[str]) -> bool:
     swift_script = Path(__file__).parent / "OCRSwift.swift"
     try:
         swift_args = ["swift", str(swift_script), str(output_directory)] + image_paths
-        subprocess.run(swift_args, check=True)
+        subprocess.run(swift_args, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except subprocess.CalledProcessError as e:
         print(f"Error running swift script: {e}")
         return False
