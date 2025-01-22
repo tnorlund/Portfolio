@@ -7,11 +7,7 @@ import ingestion  # noqa: F401
 from routes.health_check.infra import health_check_lambda
 from dynamo_db import dynamodb_table
 
-
-
-
 pulumi.export("region", aws.config.region)
-
 
 # Open template readme and read contents into stack output
 with open("./Pulumi.README.md") as f:
