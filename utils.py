@@ -1,7 +1,43 @@
 import hashlib
 from typing import Tuple
+from pathlib import Path
 from dynamo import DynamoClient, Line, Word, Letter
+from pulumi.automation import select_stack
 import hashlib
+
+
+def load_env(env: str = "dev") -> tuple[str, str, str]:
+    """
+    Uses Pulumi to get the values of the RAW_IMAGE_BUCKET, LAMBDA_FUNCTION, and DYNAMO_DB_TABLE
+    from the specified stack.
+
+    Args:
+        env: The name of the Pulumi stack/environment (e.g. 'dev', 'prod').
+
+    Returns:
+        A tuple of (raw_bucket_name, lambda_function_name, dynamo_db_table_name).
+    """
+    # The working directory is in the "development" directory next to this script.
+    script_dir = Path(__file__).parent.resolve()
+    work_dir = script_dir / "development"
+
+    if not env:
+        raise ValueError("The ENV environment variable is not set")
+
+    stack_name = env.lower()
+    project_name = "development"  # Adjust if your Pulumi project name differs
+
+    stack = select_stack(
+        stack_name=stack_name,
+        project_name=project_name,
+        work_dir=str(work_dir),
+    )
+    outputs = stack.outputs()
+    raw_bucket = str(outputs["image_bucket_name"].value)
+    lambda_function = str(outputs["cluster_lambda_function_name"].value)
+    dynamo_db_table = str(outputs["table_name"].value)
+
+    return raw_bucket, lambda_function, dynamo_db_table
 
 
 def get_max_index_in_images(client: DynamoClient) -> int:
