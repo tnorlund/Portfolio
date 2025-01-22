@@ -171,3 +171,6 @@ development/upload*
 
 # Swift build folder
 .build/
+
+# LLM
+data_labeling_*
