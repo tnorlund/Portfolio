@@ -1,3 +1,4 @@
+from math import atan2
 from typing import Generator, Tuple
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -222,6 +223,42 @@ class ReceiptWord:
         yield "angle_radians", self.angle_radians
         yield "tags", self.tags
         yield "confidence", self.confidence
+    
+    def calculate_centroid(self) -> Tuple[float, float]:
+        """Calculates the centroid of the line
+
+        Returns:
+            Tuple[float, float]: The x and y coordinates of the centroid
+        """
+        x = (
+            self.top_right["x"]
+            + self.top_left["x"]
+            + self.bottom_right["x"]
+            + self.bottom_left["x"]
+        ) / 4
+        y = (
+            self.top_right["y"]
+            + self.top_left["y"]
+            + self.bottom_right["y"]
+            + self.bottom_left["y"]
+        ) / 4
+        return x, y
+    
+    def distance_and_angle_from_ReceiptWord(self, other) -> Tuple[float, float]:
+        """Calculates the distance and the angle between the two words
+
+        Args:
+            other (ReceiptWord): The other word
+
+        Returns:
+            Tuple[float, float]: The distance and angle between the two words
+        """
+        x1, y1 = self.calculate_centroid()
+        x2, y2 = other.calculate_centroid()
+        distance = ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
+        angle = atan2(y2 - y1, x2 - x1)
+        return distance, angle
+        
 
 
 def itemToReceiptWord(item: dict) -> ReceiptWord:
