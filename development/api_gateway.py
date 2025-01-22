@@ -164,17 +164,10 @@ pulumi.export("api_endpoint", api.api_endpoint)
 # Lookup your existing Route 53 hosted zone for tylernorlund.com
 hosted_zone = aws.route53.get_zone(name=BASE_DOMAIN)
 
-# We need an ACM certificate in us-east-1 for an API Gateway custom domain
-# (HTTP APIs are Regional, so the certificate must match the same region as your API, 
-# which is typically the same region your Pulumi AWS provider is using. 
-# If your stack is using a different region, adjust accordingly.)
-us_east_1 = aws.Provider("usEast1", region="us-east-1")
-
 api_certificate = aws.acm.Certificate(
     "apiCertificate",
     domain_name=api_domain_name,
     validation_method="DNS",
-    opts=pulumi.ResourceOptions(provider=us_east_1),
 )
 
 # Create a DNS validation record
@@ -192,7 +185,6 @@ api_certificate_validation = aws.acm.CertificateValidation(
     "apiCertificateValidation",
     certificate_arn=api_certificate.arn,
     validation_record_fqdns=[api_cert_validation_record.fqdn],
-    opts=pulumi.ResourceOptions(provider=us_east_1),
 )
 
 # Create the actual custom domain in API Gateway v2

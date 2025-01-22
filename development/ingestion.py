@@ -88,7 +88,7 @@ lambda_function = aws.lambda_.Function(
     image_uri=ecr_image_uri,
     role=lambda_role.arn,
     memory_size=512,  # Memory size is in MB (megabytes)
-    timeout=60 * 3,  # 3 minutes
+    timeout=60 * 4,  # 4 minutes
     environment={
         "variables": {
             "DYNAMO_DB_TABLE": dynamodb_table.name,
@@ -96,6 +96,11 @@ lambda_function = aws.lambda_.Function(
             "CDN_S3_BUCKET": site_bucket.bucket,
             "CDN_PATH": "assets/",
         }
+    },
+    tags={
+        "Name": "cluster-ocr",
+        "Pulumi_Stack": pulumi_stack_name,
+        "Pulumi_Project": pulumi.get_project(),
     },
 )
 
