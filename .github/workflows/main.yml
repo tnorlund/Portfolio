@@ -51,11 +51,11 @@ jobs:
 
       - name: Install dependencies (Yarn)
         run: yarn install
-        working-directory: my-app
+        working-directory: portfolio
 
       - name: Build React app
         run: yarn build
-        working-directory: my-app
+        working-directory: portfolio
 
       - name: Build and push Docker image
         run: |
@@ -107,4 +107,4 @@ jobs:
 
       - name: Sync files to S3
         run: |
-          aws s3 sync my-app/build "s3://${{ env.bucketName }}"
+          aws s3 sync portfolio/build "s3://${{ env.bucketName }}"
