@@ -1,7 +1,11 @@
-# example
+# Portfolio
 
 This project will read receipts and extract the information from them.
 
-1. Upload the image to S3
-2. Use OCR to grab letters and convert to Base64
-3. Store the Base64, letters, and S3 location in DynamoDB
+# Infrastructure
+
+This is handled by pulumi. It's in the `infra` directory. 
+
+# React
+
+This generates the frontend. It's in the `portfolio` directory.
