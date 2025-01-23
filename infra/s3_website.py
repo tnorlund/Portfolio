@@ -140,10 +140,15 @@ cdn = aws.cloudfront.Distribution(
     },
     custom_error_responses=[
         {
-            "errorCode": 404,
-            "responseCode": 200,
-            "responsePagePath": "/index.html",
-        }
+        "errorCode": 403,
+        "responseCode": 200,
+        "responsePagePath": "/index.html",
+    },
+    {
+        "errorCode": 404,
+        "responseCode": 200,
+        "responsePagePath": "/index.html",
+    },
     ],
     # Add all domain names in 'aliases'
     aliases=site_domains,
