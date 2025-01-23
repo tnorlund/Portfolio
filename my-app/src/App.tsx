@@ -1,20 +1,44 @@
-import React from 'react';
+import { Routes, Route, Link } from 'react-router-dom';
 import './App.css';
+import Resume from './Resume'; // import the Resume component
 
 function App() {
   return (
-    <div className="App">
-      <header className="App-header">
-      <h1>Tyler Norlund</h1>
-      <p>Data Person</p>
-      <img src="/face.jpg" alt="Tyler Norlund" style={{
-            borderRadius: '50%',
-            width: '200px',       // pick whatever size you want
-            height: '200px',      // same as width for a perfect circle
-            objectFit: 'cover',   // ensures the image fully covers the circle
-          }} />
-      {/* <button>Resume</button> */}
+    <div>
+      <header>
+        <h1>
+          <Link to="/">Tyler Norlund</Link>
+        </h1>
       </header>
+      <div className="resume-container">
+      <Routes>
+        <Route
+          path="/"
+          element={
+            <main>
+              <img
+                src="/face.png"
+                alt="Tyler Norlund"
+                style={{
+                  borderRadius: '50%',
+                  width: '200px',
+                  height: '200px',
+                  objectFit: 'cover',
+                  marginTop: '1rem',
+                }}
+              />
+
+                <button onClick={() => window.location.href = '/resume'}>
+                  Résumé
+                </button>
+            </main>
+          }
+        />
+        
+        {/* Resume route */}
+        <Route path="/resume" element={<Resume />} />
+      </Routes>
+      </div>
     </div>
   );
 }

@@ -1,38 +1,160 @@
-.App {
-  text-align: center;
+:root {
+  /* Light / default mode variables */
+  --background-color: #ffffff;
+  --text-color: #000000;
+
+  --header-background: #000000;
+  --header-text: #ffffff;
+
+  --button-background: #1a1a1a;
+  --button-text: #ffffff;
+  --button-background-hover: #ffffff;
+  --button-text-hover: #1a1a1a;
 }
 
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
-  }
-}
-
-.App-header {
-  background-color: #282c34;
-  min-height: 100vh;
+main {
+  flex: 1; /* take up all available space */
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-size: calc(10px + 2vmin);
-  color: white;
 }
 
-.App-link {
-  color: #61dafb;
+header {
+  background-color: var(--header-background);
+  color: var(--header-text);
+  text-align: center;
+  padding: 0.1rem;
 }
 
-@keyframes App-logo-spin {
-  from {
-    transform: rotate(0deg);
+header h1 a {
+  color: inherit;
+  text-decoration: none;
+}
+
+h1 {
+  font-size: 1.75rem;
+  margin-top: 2rem;
+  margin-bottom: 1rem;
+  font-weight: 700;
+}
+
+body {
+  font-size: 16px;         /* or 17px, depending on taste */
+  line-height: 1.6;        /* adds breathing room between lines */
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  margin: 0;
+  background-color: var(--background-color);
+  color: var(--text-color);
+}
+
+button {
+  background-color: var(--button-background);
+  color: var(--button-text);
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  font-weight: bold;             /* Make text bold */
+  border: 1px solid var(--button-text);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin: 1rem;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2); 
+}
+
+button:hover {
+  background-color: var(--button-background-hover);
+  color: var(--button-text-hover);
+  border-color: var(--button-text-hover);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+}
+
+hr {
+  border: none;  /* remove the default border */
+  border-top: 0.5px solid var(--text-color);  /* add a custom border */
+}
+
+.resume-box {
+  display: flex;
+  justify-content: space-between;
+  margin: 0.5rem 0;
+  font-size: 1.1rem;  /* slightly larger than body */
+  /* font-weight: 600; */
+}
+
+ul {
+  margin: 0 0 1rem;
+  padding-left: 1.5rem; /* increase indentation to separate bullet text from edges */
+}
+
+li {
+  margin-bottom: 0.75rem; /* more vertical spacing */
+  line-height: 1.4;       /* or 1.6, depending on your global line-height */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background-color: #121212;
+    --text-color: #ffffff;
+
+    --header-background: #1f1f1f;
+    --header-text: #ffffff;
+
+    --button-background: #333333;
+    --button-text: #ffffff;
+    --button-background-hover: #555555;
+    --button-text-hover: #ffffff;
   }
-  to {
-    transform: rotate(360deg);
+}
+
+/* Center the container and give it a default max-width */
+.resume-container {
+  margin: 0 auto;       /* center horizontally */
+  padding: 2rem;        /* some breathing room */
+  max-width: 1024px;    /* default “tablet/desktop” width */
+  text-align: left;     /* or 'center' if you want text centered too */
+}
+
+/* MOBILE (portrait) - up to 480px */
+@media (max-width: 480px) {
+  .resume-container {
+    max-width: 90%;  /* shrink to fit smaller screens */
+    padding: 1rem;
+  }
+}
+
+/* MOBILE (landscape) - up to 768px */
+@media (max-width: 768px) {
+  .resume-container {
+    max-width: 600px;
+  }
+}
+
+/* TABLET (portrait) - up to 834px (slightly bigger than 768) */
+@media (max-width: 834px) {
+  .resume-container {
+    max-width: 700px;
+  }
+}
+
+/* TABLET (landscape) - up to 1024px */
+@media (max-width: 1024px) {
+  .resume-container {
+    max-width: 900px;
+  }
+}
+
+/* LAPTOP - up to 1440px */
+@media (max-width: 1440px) {
+  .resume-container {
+    max-width: 1024px;
+  }
+}
+
+/* DESKTOP - above 1440px */
+@media (min-width: 1441px) {
+  .resume-container {
+    max-width: 1200px; /* or larger if you prefer */
   }
 }
