@@ -167,7 +167,7 @@ cython_debug/
 *tree.txt
 
 # Pulumi File Assets
-development/upload*
+infra/upload*
 
 # Swift build folder
 .build/
