@@ -34,8 +34,6 @@ function App() {
             </main>
           }
         />
-        
-        {/* Resume route */}
         <Route path="/resume" element={<Resume />} />
       </Routes>
       </div>
