@@ -18,15 +18,15 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
-        working-directory: development/lambda_layer/python
+        working-directory: infra/lambda_layer/python
 
       - name: Install package
         run: pip install -e .
-        working-directory: development/lambda_layer/python
+        working-directory: infra/lambda_layer/python
 
       - name: Run tests
         run: pytest
-        working-directory: development/lambda_layer/python
+        working-directory: infra/lambda_layer/python
   up:
     name: Build React app and Pulumi Up to Production
     runs-on: ubuntu-24.04
