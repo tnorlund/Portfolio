@@ -11,8 +11,13 @@
       "src": "face.png",
       "type": "image/jpg",
       "sizes": "926x926"
+    },
+    {
+      "src": "maskable_icon.png",
+      "sizes": "150x150",
+      "type": "image/png",
+      "purpose": "maskable"
     }
-
   ],
   "start_url": ".",
   "display": "standalone",
