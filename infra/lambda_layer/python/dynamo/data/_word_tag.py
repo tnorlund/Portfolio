@@ -195,6 +195,46 @@ class _WordTag:
             )
         except ClientError as e:
             raise Exception(f"Error getting WordTag: {e}")
+    
+    def getWordTags(self, tag: str) -> list[WordTag]:
+        """
+        Retrieves all WordTag items with a given tag from the database,
+        using GSI1 (where GSI1PK = "TAG#<padded_tag>").
+        """
+        # Match how WordTag.gsi1_key() pads the tag:
+        # If your code uses uppercase or something else, follow that same pattern.
+        spaced_tag_upper = f"{tag:_>20}"
+
+        word_tags = []
+        try:
+            # Initial query
+            response = self._client.query(
+                TableName=self.table_name,
+                IndexName="GSI1",  # Make sure this is the correct GSI name
+                KeyConditionExpression="GSI1PK = :gsi1pk",
+                ExpressionAttributeValues={
+                    ":gsi1pk": {"S": f"TAG#{spaced_tag_upper}"}
+                },
+            )
+            word_tags.extend([itemToWordTag(item) for item in response["Items"]])
+
+            # Paginate if necessary
+            while "LastEvaluatedKey" in response:
+                response = self._client.query(
+                    TableName=self.table_name,
+                    IndexName="GSI1",
+                    KeyConditionExpression="GSI1PK = :gsi1pk",
+                    ExpressionAttributeValues={
+                        ":gsi1pk": {"S": f"TAG#{spaced_tag_upper}"}
+                    },
+                    ExclusiveStartKey=response["LastEvaluatedKey"],
+                )
+                word_tags.extend([itemToWordTag(item) for item in response["Items"]])
+
+            return word_tags
+
+        except ClientError as e:
+            raise ValueError("Could not list WordTags from the database") from e
 
     def listWordTags(self) -> list[WordTag]:
         """
