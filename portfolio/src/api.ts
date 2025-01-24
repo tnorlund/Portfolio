@@ -1,20 +1,37 @@
-import { ApiResponse, ImageReceiptsLines, RootPayload, PayloadItem } from './interfaces';
+import { ImageApiResponse, ImageReceiptsLines, RootPayload, PayloadItem, ReceiptApiResponse } from './interfaces';
 
 const isDevelopment = process.env.NODE_ENV === 'development';
-const apiUrl = isDevelopment
-  ? 'https://dev-api.tylernorlund.com/images?limit=25'
-  : 'https://api.tylernorlund.com/images?limit=25';
 
 /** Fetch images from the API and return a list of tuples */
-export async function fetchImages(): Promise<ImageReceiptsLines[]> {
+export async function fetchImages(limit=5): Promise<ImageReceiptsLines[]> {
+  const apiUrl = isDevelopment
+  ? `https://dev-api.tylernorlund.com/images?limit=${limit}`
+  : `https://api.tylernorlund.com/images?limit=${limit}`;
   const response = await fetch(apiUrl);
 
   if (!response.ok) {
     throw new Error(`Network response was not ok (status: ${response.status})`);
   }
 
-  const data: ApiResponse = await response.json();
+  const data: ImageApiResponse = await response.json();
   return mapPayloadToImages(data.payload);
+}
+
+export async function fetchReceipts(limit=5): Promise<ReceiptApiResponse> {
+  // Customize the endpoint to match your receipts API
+  const baseUrl = isDevelopment
+    ? `https://dev-api.tylernorlund.com/receipts?limit=${limit}`
+    : `https://api.tylernorlund.com/receipts?limit=${limit}`;
+
+  const response = await fetch(baseUrl);
+
+  if (!response.ok) {
+    throw new Error(`Network response was not ok (status: ${response.status})`);
+  }
+
+  // Parse JSON as our ReceiptApiResponse
+  const data: ReceiptApiResponse = await response.json();
+  return data;
 }
 
 /** Map RootPayload to [ImagePayload, Receipt[], LineItem[]] tuples */
