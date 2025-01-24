@@ -1,47 +1,9 @@
 from typing import Generator, Tuple
 from datetime import datetime
-from decimal import Decimal, ROUND_HALF_UP
-
-
-def assert_valid_point(point):
-    """
-    Assert that the point is valid.
-    """
-    if not isinstance(point, dict):
-        raise ValueError("point must be a dictionary")
-    for key in ["x", "y"]:
-        if key not in point:
-            raise ValueError(f"point must contain the key '{key}'")
-        if not isinstance(point[key], (int, float)):
-            raise ValueError(f"point['{key}'] must be a number")
-    return point
-
-
-def _format_float(
-    value: float, decimal_places: int = 10, total_length: int = 20
-) -> str:
-    # Convert float → string → Decimal to avoid float binary representation issues
-    d_value = Decimal(str(value))
-
-    # Create a "quantizer" for the desired number of decimal digits
-    # e.g. decimal_places=10 → quantizer = Decimal('1.0000000000')
-    quantizer = Decimal("1." + "0" * decimal_places)
-
-    # Round using the chosen rounding mode (e.g. HALF_UP)
-    d_rounded = d_value.quantize(quantizer, rounding=ROUND_HALF_UP)
-
-    # Format as a string with exactly `decimal_places` decimals
-    formatted = f"{d_rounded:.{decimal_places}f}"
-
-    # Optional: Pad to `total_length` characters
-    # If you want leading zeros:
-    if len(formatted) < total_length:
-        formatted = formatted.zfill(total_length)
-
-    # If instead you wanted trailing zeros, you could do:
-    # formatted = formatted.ljust(total_length, '0')
-
-    return formatted
+from dynamo.entities.util import (
+    assert_valid_point,
+    _format_float,
+)
 
 
 class Receipt:
