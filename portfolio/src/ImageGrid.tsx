@@ -1,214 +1,55 @@
-// ImageGrid.tsx
-import React, { useEffect, useState } from "react";
-import {BoundingBoxLine, BoundingBoxReceipt} from "./boundingBox";
+import React, { useEffect, useState } from 'react';
+import { fetchImages } from './api';
+import { ImageReceiptsLines, Receipt, LineItem } from './interfaces';
+import {BoundingBoxLine, BoundingBoxReceipt} from './boundingBox';
 
-/** Represents a single image from the API */
-interface ImageItem {
-  id: number;
-  width: number;
-  height: number;
-  timestamp_added: string;
-  raw_s3_bucket: string;
-  raw_s3_key: string;
-  cdn_s3_key: string;
-}
-
-/** A point in 2D space */
-interface Point {
-  x: number;
-  y: number;
-}
-
-/** A bounding box (x, y, width, height) */
-interface BoundingBoxInterface {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-/** Represents a line of OCR text */
-interface LineItem {
-  image_id: number;
-  id: number;
-  text: string;
-  bounding_box: BoundingBoxInterface;
-  top_left: Point;
-  top_right: Point;
-  bottom_left: Point;
-  bottom_right: Point;
-  angle_degrees: number; 
-  angle_radians: number;
-  confidence: number;
-}
-
-/** Represents a receipt annotation on the image */
-interface Receipt {
-  id: number;
-  image_id: number;
-  width: number;
-  height: number;
-  timestamp_added: string;
-  raw_s3_bucket: string;
-  raw_s3_key: string;
-  top_left: Point;
-  top_right: Point;
-  bottom_left: Point;
-  bottom_right: Point;
-  cdn_s3_bucket: string;
-  cdn_s3_key: string;
-}
-
-export interface ImagePayload {
-  id: number;
-  width: number;
-  height: number;
-  timestamp_added: string;
-  raw_s3_bucket: string;
-  raw_s3_key: string;
-  sha256: string;
-  cdn_s3_key: string;
-}
-
-/** PayloadItem now includes the arrays of `receipts` and `lines` */
-export interface PayloadItem {
-  image: ImagePayload;
-  lines: LineItem[];
-  receipts: Receipt[];
-}
-
-export interface RootPayload {
-  [key: string]: PayloadItem; // e.g. "1", "2", "3", etc.
-}
-
-export interface ApiResponse {
-  payload: RootPayload;
-  last_evaluated_key: null | string; // or null | number, depending on usage
-}
-
-/** A tuple type: [ImageItem, Receipt[], LineItem[]]. */
-type ImageReceiptsLines = [ImageItem, Receipt[], LineItem[]];
-
-/**
- * Convert RootPayload into an array of [ImageItem, Receipt[], LineItem[]].
- */
-export function mapPayloadToImages(payload: RootPayload): ImageReceiptsLines[] {
-  return Object.values(payload).map((item) => {
-    const image: ImageItem = {
-      id: item.image.id,
-      width: item.image.width,
-      height: item.image.height,
-      timestamp_added: item.image.timestamp_added,
-      raw_s3_bucket: item.image.raw_s3_bucket,
-      raw_s3_key: item.image.raw_s3_key,
-      cdn_s3_key: item.image.cdn_s3_key,
-      // If you want sha256 in your ImageItem, add it here
-      // sha256: item.image.sha256,
-    };
-
-    const receipts = item.receipts || [];
-    const lines = item.lines || [];
-
-    return [image, receipts, lines];
-  });
-}
-
-/** Fetches the main list of images from the new API shape and returns the tuple array */
-async function fetchImages(): Promise<ImageReceiptsLines[]> {
-  const apiUrl = process.env.NODE_ENV === 'development' 
-    ? "https://dev-api.tylernorlund.com/images?limit=25" 
-    : "https://api.tylernorlund.com/images?limit=25";
-
-  const response = await fetch(apiUrl);
-  if (!response.ok) {
-    throw new Error(`Network response was not ok (status: ${response.status})`);
-  }
-
-  const data = (await response.json()) as ApiResponse;
-  return mapPayloadToImages(data.payload);
-}
-
-/**
- * ImageGrid component
- * 1. Fetches the main list of images ([image, receipts, lines] tuples)
- * 2. Renders a scaled rectangle for each image
- * 3. Potentially uses receipts/lines to draw bounding boxes (if desired)
- */
 export default function ImageGrid() {
   const [imageReceiptLines, setImageReceiptLines] = useState<ImageReceiptsLines[]>([]);
 
   useEffect(() => {
     fetchImages()
-      .then((imageItems) => {
-        setImageReceiptLines(imageItems);
-      })
-      .catch((err) => {
-        console.error("Error fetching images:", err);
-      });
+      .then((imageItems) => setImageReceiptLines(imageItems))
+      .catch((error) => console.error('Error fetching images:', error));
   }, []);
 
   return (
-    <div style={{ display: "flex", flexWrap: "wrap" }}>
-      {/**
-       * Because each element is a tuple [image, receipts, lines],
-       * we destructure them like so:
-       */}
+    <div style={{ display: 'flex', flexWrap: 'wrap' }}>
       {imageReceiptLines.map(([image, receipts, lines]) => {
-        const cdn_url = `https://d3izz2n0uhacrm.cloudfront.net/${image.cdn_s3_key}`;
-
-        
-        // We’ll display each image in a 500px-wide container, scaled in height.
+        const isDevelopment = process.env.NODE_ENV === 'development';
+        const cdnUrl = isDevelopment
+        ? `https://dev.tylernorlund.com/${image.cdn_s3_key}`
+        : `https://www.tylernorlund.com/${image.cdn_s3_key}`;
         const baseWidth = 500;
         const aspectRatio = image.height / image.width;
         const scaledHeight = baseWidth * aspectRatio;
-
-        if (!image ) {
-          return <text>Loading</text>;
-        }
 
         return (
           <svg
             key={image.id}
             width={baseWidth}
             height={scaledHeight}
-            style={{ margin: "8px", backgroundColor: "gray" }}
+            style={{ margin: '8px', backgroundColor: 'gray' }}
             viewBox={`0 0 ${image.width} ${image.height}`}
             preserveAspectRatio="xMidYMid meet"
             xmlns="http://www.w3.org/2000/svg"
           >
-            {/* The image itself */}
+            {/* Render the image */}
             <image
               width={image.width}
               height={image.height}
               preserveAspectRatio="xMidYMid meet"
-              xlinkHref={cdn_url}
+              xlinkHref={cdnUrl}
             />
 
-            {/* Example: if you want to draw bounding boxes for receipts */}
-            {receipts.map((receipt) => (
-              <React.Fragment key={`receipt-${receipt.id}`}>
-                {BoundingBoxReceipt(receipt, image, 'red')}
-              </React.Fragment>
-            ))
-            }
-
-            {/* Example: if you want to draw bounding boxes for lines */}
-            {lines.map((line) => (
-              <React.Fragment key={`line-${line.id}`}>
-                {BoundingBoxLine(line, image, 'gray')}
-              </React.Fragment>
+            {/* Render receipts as bounding boxes */}
+            {receipts.map((receipt: Receipt) => (
+              BoundingBoxReceipt(receipt, image, 'red')
             ))}
 
-            {/* A simple text label with the image ID */}
-            <text
-              x={10}
-              y={250}
-              fill="black"
-              fontSize={250}
-              style={{ pointerEvents: "none" }}
-            >
-              {image.id}
-            </text>
+            {/* Render text lines as bounding boxes */}
+            {lines.map((line: LineItem) => (
+              BoundingBoxLine(line, image, 'blue')
+            ))}
           </svg>
         );
       })}
