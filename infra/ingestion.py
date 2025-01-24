@@ -87,8 +87,8 @@ lambda_function = aws.lambda_.Function(
     package_type="Image",
     image_uri=ecr_image_uri,
     role=lambda_role.arn,
-    memory_size=512,  # Memory size is in MB (megabytes)
-    timeout=60 * 4,  # 4 minutes
+    memory_size=1024,  # 1 GB
+    timeout=60 * 5,    # 5 minutes
     environment={
         "variables": {
             "DYNAMO_DB_TABLE": dynamodb_table.name,

@@ -60,21 +60,24 @@ def load_env(env: str = "dev") -> tuple[str, str, str]:
     Returns:
         A tuple of (raw_bucket_name, lambda_function_name, dynamo_db_table_name).
     """
-    # The working directory is in the "development" directory next to this script.
+    # The working directory is in the "infra" directory next to this script.
     script_dir = Path(__file__).parent.resolve()
-    work_dir = script_dir / "development"
+    work_dir = script_dir / "infra"
 
     if not env:
         raise ValueError("The ENV environment variable is not set")
 
     stack_name = env.lower()
     project_name = "development"  # Adjust if your Pulumi project name differs
-
-    stack = select_stack(
-        stack_name=stack_name,
-        project_name=project_name,
-        work_dir=str(work_dir),
-    )
+    try:
+        stack = select_stack(
+            stack_name=stack_name,
+            project_name=project_name,
+            work_dir=str(work_dir),
+        )
+    except Exception as e:
+        print(f"Error selecting stack: {e}")
+        return None, None, None
     outputs = stack.outputs()
     raw_bucket = str(outputs["image_bucket_name"].value)
     lambda_function = str(outputs["cluster_lambda_function_name"].value)
