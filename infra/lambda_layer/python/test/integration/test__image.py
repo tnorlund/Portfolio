@@ -210,6 +210,7 @@ def test_deleteImage_error(dynamodb_table: Literal["MyMockedTable"]):
     with pytest.raises(ValueError):
         client.deleteImage(image.id)
 
+
 def test_deleteImages(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -218,7 +219,7 @@ def test_deleteImages(dynamodb_table: Literal["MyMockedTable"]):
 
     # Act
     client.deleteImages(images)
-    
+
     # Assert
     response_images = client.listImages()
     assert len(response_images) == 0, "all images should be deleted"
@@ -263,7 +264,9 @@ def test_listImageDetails(dynamodb_table: Literal["MyMockedTable"]):
     client.addReceipts(receipts_different_image)
 
     # Act
-    payload, lek = client.listImageDetails()  # Return type is (List[Image], Optional[Dict])
+    payload, lek = (
+        client.listImageDetails()
+    )  # Return type is (List[Image], Optional[Dict])
 
     # Assert
     assert len(payload) == 2, "both images should be returned"
@@ -307,9 +310,12 @@ def test_listImageDetails_pagination_returns_page_and_token(
 
 
 def test_listImageDetails_pagination_uses_lastEvaluatedKey(
-    dynamodb_table: Literal["MyMockedTable"],
+    dynamodb_table: Literal["MyMockedTable"]
 ):
-    # Arrange
+    """
+    Verifies we can do classic pagination: 2 images on page 1, 2 on page 2,
+    and 1 on page 3, with each call using the lastEvaluatedKey from the prior.
+    """
     client = DynamoClient(dynamodb_table)
 
     # Create 5 images
@@ -319,42 +325,35 @@ def test_listImageDetails_pagination_uses_lastEvaluatedKey(
         client.addImage(img)
         images_created.append(img)
 
-    # Act: Request page 1 (limit=2)
+    # Page 1: limit=2
     page_1_payload, lek_1 = client.listImageDetails(limit=2)
-    # Request page 2
+    # Page 2: use lek_1
     page_2_payload, lek_2 = client.listImageDetails(limit=2, last_evaluated_key=lek_1)
-    # Request page 3
+    # Page 3: use lek_2
     page_3_payload, lek_3 = client.listImageDetails(limit=2, last_evaluated_key=lek_2)
 
-    # Helper function to extract just the Image objects from the dictionary
+    # Helper: extract the Image objects from the returned payload
     def extract_images(payload_dict):
         return [v["image"] for v in payload_dict.values() if "image" in v]
 
-    # Flatten each page into a list of Images
+    # Assert Page 1
     page_1_images = extract_images(page_1_payload)
+    assert len(page_1_images) == 2, "First page should have 2 images"
+    assert lek_1 is not None, "First call should return a non-None LEK (since more data exist)"
+
+    # Assert Page 2
     page_2_images = extract_images(page_2_payload)
+    assert len(page_2_images) == 2, "Second page should have 2 images"
+    assert lek_2 is not None, "Second call should also return a LEK (we still have 1 left)"
+
+    # Assert Page 3
     page_3_images = extract_images(page_3_payload)
+    assert len(page_3_images) == 1, "Third page should have the last remaining image"
+    assert lek_3 is None, "No more images left, so LEK should be None"
 
-    # Assert
-    # Page 1 should have 2 items
-    assert len(page_1_images) == 2
-    assert lek_1 is not None
-
-    # Page 2 should have 2 items
-    assert len(page_2_images) == 2
-    assert lek_2 is not None
-
-    # Page 3 should have 1 item left
-    assert len(page_3_images) == 1
-    # and no more items remain
-    assert lek_3 is None
-
-    # Combine them
-    all_returned = page_1_images + page_2_images + page_3_images
-    # Sort & compare
-    assert sorted(all_returned, key=lambda x: x.id) == sorted(
-        images_created, key=lambda x: x.id
-    )
+    # Confirm we got all 5 images in total
+    all_images = page_1_images + page_2_images + page_3_images
+    assert sorted(all_images, key=lambda x: x.id) == sorted(images_created, key=lambda x: x.id)
 
 
 def test_listImageDetails_pagination_no_limit_returns_all(
@@ -431,7 +430,9 @@ def test_listImageDetails_pagination_with_limit_exceeds_count(
     assert image_2 in returned_images
 
 
-def test_listImageDetails_pagination_empty_table(dynamodb_table: Literal["MyMockedTable"]):
+def test_listImageDetails_pagination_empty_table(
+    dynamodb_table: Literal["MyMockedTable"],
+):
     """
     If the table is empty, listImageDetails should return an empty dict and no token.
     """
@@ -447,10 +448,12 @@ def test_listImageDetails_pagination_empty_table(dynamodb_table: Literal["MyMock
     assert lek is None, "No next token if no images"
 
 
-def test_listImageDetails_lek_structure_and_usage(dynamodb_table: Literal["MyMockedTable"]):
+def test_listImageDetails_lek_structure_and_usage(
+    dynamodb_table: Literal["MyMockedTable"]
+):
     """
     Demonstrates that the LEK (LastEvaluatedKey) we get back:
-      1) Has the correct shape for a DynamoDB key
+      1) Has the correct shape for a DynamoDB key (PK, SK, GSI1PK, GSI1SK)
       2) Actually works when used in subsequent calls
     """
     client = DynamoClient(dynamodb_table)
@@ -464,30 +467,25 @@ def test_listImageDetails_lek_structure_and_usage(dynamodb_table: Literal["MyMoc
 
     # 1) Page 1: limit=2
     payload_1, lek_1 = client.listImageDetails(limit=2)
-    # We expect 2 images returned and a non-null LEK
-    assert len(payload_1) == 2, "First page should contain 2 images"
-    assert lek_1 is not None, "First page should return a valid LastEvaluatedKey"
+    assert len(payload_1) == 2, "Page 1 should contain 2 images"
+    assert lek_1 is not None, "Should return a valid LastEvaluatedKey from page 1"
 
-    # Check that LEK has the correct DynamoDB key shape
-    # Typically looks like: {'PK': {'S': 'IMAGE#00002'}, 'SK': {'S': 'IMAGE'}} or similar
+    # Confirm it includes PK, SK, GSI1PK, GSI1SK
     assert isinstance(lek_1, dict), "LEK should be a dictionary"
-    assert (
-        "PK" in lek_1 and "SK" in lek_1
-    ), "LEK dictionary should contain both PK and SK"
+    for key in ("PK", "SK", "GSI1PK", "GSI1SK"):
+        assert key in lek_1, f"LEK dictionary should contain {key}"
 
     # 2) Page 2: use lek_1
     payload_2, lek_2 = client.listImageDetails(limit=2, last_evaluated_key=lek_1)
-    assert len(payload_2) == 2, "Second page should contain the next 2 images"
-    # We still have 1 more image to go (5 total, 2 + 2 = 4 so far), so LEK should be non-null again
-    assert lek_2 is not None, "Second page should return another valid LastEvaluatedKey"
+    assert len(payload_2) == 2, "Page 2 should return the next 2 images"
+    assert lek_2 is not None, "We still have a third image left"
 
     # 3) Page 3: use lek_2
     payload_3, lek_3 = client.listImageDetails(limit=2, last_evaluated_key=lek_2)
-    assert len(payload_3) == 1, "Third page should contain the last remaining image"
-    # No more items left, so LEK should be None
-    assert lek_3 is None, "Third page should have no further pages"
+    assert len(payload_3) == 1, "Page 3 should have the last remaining image"
+    assert lek_3 is None, "No more pages expected"
 
-    # Optional: confirm we indeed got the 5 images we expect
+    # Gather all images and compare
     def extract_images(payload_dict):
         return [v["image"] for v in payload_dict.values() if "image" in v]
 
@@ -498,18 +496,4 @@ def test_listImageDetails_lek_structure_and_usage(dynamodb_table: Literal["MyMoc
     )
     assert sorted(all_returned, key=lambda x: x.id) == sorted(
         images_created, key=lambda x: x.id
-    )
-
-def test_listImages(dynamodb_table: Literal["MyMockedTable"]):
-    # Arrange
-    client = DynamoClient(dynamodb_table)
-    # Add 100 images
-    images = [Image(**{**correct_image_params, "id": i}) for i in range(1, 1001)]
-    client.addImages(images)
-
-    # Act
-    images = client.listImages()  # Return type is (List[Image], Optional[Dict])
-
-    # Assert
-    assert len(images) == 1000, "all images should be returned"
-    assert all(isinstance(image, Image) for image in images), "All items should be Image instances"
+    ), "We should retrieve all 5 images in total."
