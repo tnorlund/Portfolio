@@ -7,10 +7,21 @@ from dynamo.data._receipt import _Receipt
 from dynamo.data._receipt_line import _ReceiptLine
 from dynamo.data._receipt_word import _ReceiptWord
 from dynamo.data._receipt_letter import _ReceiptLetter
+from dynamo.data._word_tag import _WordTag
+from dynamo.data._receipt_word_tag import _ReceiptWordTag
 
 
 class DynamoClient(
-    _Image, _Line, _Word, _Letter, _Receipt, _ReceiptLine, _ReceiptWord, _ReceiptLetter
+    _Image,
+    _Line,
+    _Word,
+    _Letter,
+    _Receipt,
+    _ReceiptLine,
+    _ReceiptWord,
+    _ReceiptLetter,
+    _WordTag,
+    _ReceiptWordTag,
 ):
     """A class used to represent a DynamoDB client."""
 

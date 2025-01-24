@@ -20,9 +20,9 @@ def load_env(env: str = "dev") -> tuple[str, str, str]:
     Returns:
         A tuple of (raw_bucket_name, lambda_function_name, dynamo_db_table_name).
     """
-    # The working directory is in the "development" directory next to this script.
+    # The working directory is in the "infra" directory next to this script.
     script_dir = Path(__file__).parent.resolve()
-    work_dir = script_dir / "development"
+    work_dir = script_dir / "infra"
 
     if not env:
         raise ValueError("The ENV environment variable is not set")
