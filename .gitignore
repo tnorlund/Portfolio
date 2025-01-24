@@ -168,6 +168,7 @@ cython_debug/
 
 # Pulumi File Assets
 infra/upload*
+infra/upload
 
 # Swift build folder
 .build/
