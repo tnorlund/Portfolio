@@ -5,40 +5,44 @@ class WordTag:
     def __init__(
         self,
         image_id: int,
+        line_id: int,
         word_id: int,
         tag: str,
     ):
         """Constructs a new WordTag object for DynamoDB"""
         self.image_id = image_id
+        self.line_id = line_id
         self.word_id = word_id
         self.tag = tag.strip()
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, WordTag):
             return False
-        return self.word_id == other.word_id and self.tag == other.tag
+        return self.word_id == other.word_id and self.tag == other.tag and self.line_id == other.line_id and self.image_id == other.image_id
 
     def __iter__(self) -> Generator[Tuple[str, str], None, None]:
+        yield "image_id", self.image_id
+        yield "line_id", self.line_id
         yield "word_id", self.word_id
         yield "tag", self.tag
 
     def __repr__(self) -> str:
-        return f"WordTag(word_id={self.word_id}, tag={self.tag})"
+        return f"WordTag(image_id={self.image_id}, line_id={self.line_id} word_id={self.word_id}, tag={self.tag})"
 
     def key(self) -> dict:
-        tag_upper = self.tag.upper()
+        tag_upper = self.tag
         spaced_tag_upper = f"{tag_upper:_>20}"
         return {
             "PK": {"S": f"IMAGE#{self.image_id:05d}"},
-            "SK": {"S": f"TAG#{spaced_tag_upper}#WORD#{self.word_id:05d}"},
+            "SK": {"S": f"TAG#{spaced_tag_upper}#LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"},
         }
 
     def gsi1_key(self) -> dict:
-        tag_upper = self.tag.upper()
+        tag_upper = self.tag
         spaced_tag_upper = f"{tag_upper:_>20}"
         return {
             "GSI1PK": {"S": f"TAG#{spaced_tag_upper}"},
-            "GSI1SK": {"S": f"WORD#{self.word_id:05d}"},
+            "GSI1SK": {"S": f"IMAGE#{self.image_id:05d}#LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"},
         }
 
     def to_item(self) -> dict:
@@ -57,10 +61,14 @@ def itemToWordTag(item: dict) -> WordTag:
     try:
         pk_parts = item["PK"]["S"].split("#")
         sk_parts = item["SK"]["S"].split("#")
+        gsi1pk_parts = item["GSI1PK"]["S"].split("#")
+        
+        tag = gsi1pk_parts[1].lstrip('_').strip()
         return WordTag(
             image_id=int(pk_parts[1]),
-            word_id=int(sk_parts[3]),
-            tag=sk_parts[1].replace("_", "").strip(),
+            line_id=int(sk_parts[3]),
+            word_id=int(sk_parts[5]),
+            tag=tag,
         )
     except (IndexError, ValueError) as e:
         raise ValueError(f"Item is missing required values: {e}") from e

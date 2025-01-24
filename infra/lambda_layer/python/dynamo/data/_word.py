@@ -145,6 +145,52 @@ class _Word:
             return itemToWord(response["Item"])
         except KeyError:
             raise ValueError(f"Word with ID {word_id} not found")
+        
+    def getWords(self, keys: list[dict]) -> list[Word]:
+        """Get a list of words using a list of keys"""
+        # Check the validity of the keys
+        for key in keys:
+            if not {"PK", "SK"}.issubset(key.keys()):
+                raise ValueError("Keys must contain 'PK' and 'SK'")
+            if not key["PK"]["S"].startswith("IMAGE#"):
+                raise ValueError("PK must start with 'IMAGE#'")
+            if not key["SK"]["S"].startswith("LINE#"):
+                raise ValueError("SK must start with 'LINE#'")
+            if not key["SK"]["S"].split("#")[-2] == "WORD":
+                raise ValueError("SK must contain 'WORD'")
+        results = []
+
+        # Split keys into chunks of up to 100
+        for i in range(0, len(keys), CHUNK_SIZE):
+            chunk = keys[i : i + CHUNK_SIZE]
+            
+            # Prepare parameters for BatchGetItem
+            request = {
+                "RequestItems": {
+                    self.table_name: {
+                        "Keys": chunk,
+                        # (Optional) "ProjectionExpression": "..." if you only want certain attributes
+                    }
+                }
+            }
+            
+            # Perform BatchGet
+            response = self._client.batch_get_item(**request)
+            print(f"response: {response}")
+            
+            # Combine all found items
+            batch_items = response["Responses"].get(self.table_name, [])
+            results.extend(batch_items)
+            
+            # Retry unprocessed keys if any
+            unprocessed = response.get("UnprocessedKeys", {})
+            while unprocessed.get(self.table_name, {}).get("Keys"):
+                response = self._client.batch_get_item(RequestItems=unprocessed)
+                batch_items = response["Responses"].get(self.table_name, [])
+                results.extend(batch_items)
+                unprocessed = response.get("UnprocessedKeys", {})
+        
+        return [itemToWord(result) for result in results]
 
     def listWords(self) -> list[Word]:
         words = []
