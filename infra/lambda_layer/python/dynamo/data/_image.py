@@ -240,9 +240,9 @@ class _Image:
             2) The LastEvaluatedKey dict if there are more images, otherwise None.
         """
 
-        # --------
-        # CASE 1: No limit + no starting key => return *all* images
-        # --------
+        # -------------------------------------------------------------
+        # CASE 1: No limit + no starting key => Return *all* images
+        # -------------------------------------------------------------
         if limit is None and last_evaluated_key is None:
             all_items = []
             response = None
@@ -257,6 +257,7 @@ class _Image:
                         ScanIndexForward=True,
                     )
                 else:
+                    # If there's no LastEvaluatedKey, we've paged through all items
                     if not response.get("LastEvaluatedKey"):
                         break
                     response = self._client.query(
@@ -279,8 +280,8 @@ class _Image:
                 sk = item["SK"]["S"]
                 item_type = item["TYPE"]["S"]
                 if sk == "IMAGE":
-                    image = itemToImage(item)
-                    payload[image.id] = {"image": image}
+                    img = itemToImage(item)
+                    payload[img.id] = {"image": img}
                 elif sk.startswith("RECEIPT") and item_type == "RECEIPT":
                     receipt = itemToReceipt(item)
                     if receipt.image_id in payload:
@@ -292,9 +293,9 @@ class _Image:
 
             return payload, None
 
-        # --------
-        # CASE 2: Paginated approach => Return exactly 'limit' images (if available)
-        # --------
+        # -------------------------------------------------------------
+        # CASE 2: Paginated => Return exactly 'limit' images (if available)
+        # -------------------------------------------------------------
         payload: Dict[int, Dict[str, Union[Image, List[Receipt], List[Line]]]] = {}
         included_image_ids = set()
         images_found = 0
@@ -302,8 +303,10 @@ class _Image:
 
         next_key = last_evaluated_key
 
+        # We'll keep looping until we've either found our 'limit' images
+        # OR run out of items in Dynamo, etc.
         while True:
-            # Ask Dynamo for limit+1 so we can detect if there's an extra image left.
+            # Build query params, including the ExclusiveStartKey if we have one
             query_params = {
                 "TableName": self.table_name,
                 "IndexName": "GSI1",
@@ -312,91 +315,113 @@ class _Image:
                 "ExpressionAttributeValues": {":pk_val": {"S": "IMAGE"}},
                 "ScanIndexForward": True,
             }
+            # We ask for limit+1 so we can detect a leftover image
             if limit is not None:
                 query_params["Limit"] = limit + 1
 
             if next_key:
                 query_params["ExclusiveStartKey"] = next_key
 
-            leftover_image_id = None  # or a sentinel like -1
             response = self._client.query(**query_params)
             items = response.get("Items", [])
-            next_key = response.get("LastEvaluatedKey")  # This might be None or another key
+            next_key = response.get("LastEvaluatedKey")  # might be None or another dict
 
-            # We'll track if we need to break out of the outer loop
-            # (e.g. if we found the limit+1-th image in this chunk)
-            break_out_early = False
+            # We keep track of leftover_image_id if we encounter a (limit+1)-th image
+            leftover_image_id = None
+            leftover_image_key = None
 
+            # We'll also store the last image we actually included:
+            last_consumed_image_key = None
+
+            # Process all items in this batch
             for item in items:
+                sk = item["SK"]["S"]
                 item_type = item["TYPE"]["S"]
 
-                if item_type == "IMAGE":
-                    # Only increment our 'images_found' count for image items
+                # -- 1) IMAGE Items --
+                if sk == "IMAGE":
                     if images_found < limit:
-                        # We have capacity to add one more image to this page
-                        image = itemToImage(item)
-                        payload[image.id] = {"image": image}
-                        included_image_ids.add(image.id)
+                        # Include this image in the current page
+                        img = itemToImage(item)
+                        payload[img.id] = {"image": img}
+                        included_image_ids.add(img.id)
                         images_found += 1
+
+                        # Track the key of the last consumed image
                         last_consumed_image_key = {
-                            **image.key(),    # PK, SK
-                            **image.gsi1_key()
+                            **img.key(),      # PK, SK
+                            **img.gsi1_key()  # GSI1PK, GSI1SK
                         }
+
                     else:
-                        # We have encountered the (limit+1)-th image
-                        # => we stop reading further,
-                        # but the leftover key we give back is the last *consumed* item.
-                        lek_to_return = last_consumed_image_key
-                        break_out_early = True
-                        break
+                        # This is the (limit+1)-th image => leftover
+                        leftover_img = itemToImage(item)
+                        leftover_image_id = leftover_img.id
+                        leftover_image_key = {
+                            **leftover_img.key(),
+                            **leftover_img.gsi1_key()
+                        }
+                        # Do NOT "consume" it. We don't break right away because
+                        # we still want to process lines/receipts for previously included images.
+                
+                # -- 2) LINE / RECEIPT Items --
+                elif item_type in ("LINE", "RECEIPT"):
+                    # If we've identified a leftover image, skip lines/receipts for it
+                    # but still attach lines/receipts for any included images in the batch.
+                    if leftover_image_id:
+                        # We need to check if this belongs to an included image or the leftover image
+                        if item_type == "LINE":
+                            ln = itemToLine(item)
+                            if ln.image_id in included_image_ids:
+                                payload[ln.image_id].setdefault("lines", []).append(ln)
+                            # else belongs to leftover_image_id => skip
+                        else:
+                            rcpt = itemToReceipt(item)
+                            if rcpt.image_id in included_image_ids:
+                                payload[rcpt.image_id].setdefault("receipts", []).append(rcpt)
+                            # else skip
+                    else:
+                        # Normal case: No leftover identified yet, so if it belongs
+                        # to an included image, attach it
+                        if item_type == "LINE":
+                            ln = itemToLine(item)
+                            if ln.image_id in included_image_ids:
+                                payload[ln.image_id].setdefault("lines", []).append(ln)
+                        else:
+                            rcpt = itemToReceipt(item)
+                            if rcpt.image_id in included_image_ids:
+                                payload[rcpt.image_id].setdefault("receipts", []).append(rcpt)
 
-                elif item_type == "LINE":
-                    # Add lines only if they belong to an image we're including in this page
-                    line = itemToLine(item)
-                    if line.image_id in included_image_ids:
-                        payload[line.image_id].setdefault("lines", []).append(line)
+                # (If you have other types like WORD, LETTER, etc., handle them similarly.)
 
-                elif item_type == "RECEIPT":
-                    # Add receipts only if they belong to an image included in this page
-                    receipt = itemToReceipt(item)
-                    if receipt.image_id in included_image_ids:
-                        payload[receipt.image_id].setdefault("receipts", []).append(receipt)
+            # End of for-loop: we've consumed all items in this batch.
 
-                # (Handle additional types like WORD, LETTER, etc. if needed.)
+            # If we found a leftover image (the (limit+1)-th), that means we are done
+            # for this page. We set the LEK to the *last consumed* image (the limit-th).
+            if leftover_image_id is not None:
+                lek_to_return = last_consumed_image_key
+                break  # Done with this page
 
-            if break_out_early:
-                # We found the extra image in *this* chunk, so we must stop now.
-                break
-
-            # If we haven't yet reached 'limit' images in this chunk,
-            # but next_key is None => no more data in the table => we are done.
+            # If leftover_image_id is not set, then we haven't exceeded 'limit' yet in this batch
+            # or we exactly reached it but no leftover was discovered.
             if images_found < limit:
+                # We still need more images if there's any left. If next_key is None => no more data.
                 if next_key is None:
-                    # No more data => done.
+                    # No more data in Dynamo => done
                     break
                 else:
-                    # More data is available => keep querying.
+                    # More data in Dynamo => keep reading next batch
                     continue
             else:
-                # We have exactly 'limit' images so far. We should check if there's a leftover
-                # in the *next chunk* (i.e. if we do another query). If next_key is None, that means
-                # there's no next chunk. So we are done. If next_key is not None, we do
-                # one more pass to see if there's a leftover image.
-                if next_key is None:
-                    # We are done: exactly limit, and no leftover.
-                    break
-                # else, let's keep going to see if we encounter that leftover image
-                # in the next chunk. So just continue the loop.
-                continue
+                # We have exactly 'limit' images. If next_key is None => done entirely. 
+                # If next_key is not None => we can set LEK to next_key or last_consumed_image_key
+                # Typically, if we haven't seen a leftover, we just set LEK = next_key
+                # so the next page starts after the last consumed item.
+                if next_key is not None:
+                    lek_to_return = next_key
+                break
 
-        # After we exit the while loop, we check:
-        # If we have exactly 'limit' images but never assigned `lek_to_return` => 
-        # it means we might have more data (next_key != None) but haven't seen the leftover image yet.
-        # If next_key is not None, let's set that as the leftover key:
-        if images_found == limit and lek_to_return is None and next_key:
-            lek_to_return = next_key
-
-        # Return the final dictionary + leftover key
+        # Return the final payload plus leftover key (if any)
         return payload, lek_to_return
 
     def listImages(self) -> List[Image]:
