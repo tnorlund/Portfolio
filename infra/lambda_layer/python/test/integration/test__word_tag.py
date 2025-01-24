@@ -119,3 +119,80 @@ def test_list_word_tags_from_image(dynamodb_table: Literal["MyMockedTable"]):
     for wt in same_image_tags:
         assert wt in found_tags
     assert different_image_tag not in found_tags
+
+@pytest.fixture
+def sample_word_tags():
+    """
+    Returns two groups of WordTag items:
+      - Group A has tag="FOO" (underscore-padded to "FOO" eventually)
+      - Group B has tag="BAR"
+    """
+    return [
+        WordTag(image_id=1, line_id=10, word_id=100, tag="FOO"),
+        WordTag(image_id=1, line_id=11, word_id=101, tag="FOO"),
+        WordTag(image_id=2, line_id=20, word_id=200, tag="BAR"),
+        WordTag(image_id=3, line_id=30, word_id=300, tag="FOO"),
+    ]
+
+def test_get_word_tags(
+    dynamodb_table: Literal["MyMockedTable"], 
+    sample_word_tags: list[WordTag]
+):
+    # Arrange
+    client = DynamoClient(dynamodb_table)
+    # Add them all
+    client.addWordTags(sample_word_tags)
+
+    # Act: Retrieve all WordTags with tag="FOO"
+    foo_tags = client.getWordTags("FOO")
+
+    # Assert: We expect 3 items with tag=FOO
+    # Convert objects to sets of (image_id, line_id, word_id, tag) to compare easily
+    foo_expected = {
+        (1, 10, 100, "FOO"),
+        (1, 11, 101, "FOO"),
+        (3, 30, 300, "FOO"),
+    }
+    foo_returned = {(w.image_id, w.line_id, w.word_id, w.tag) for w in foo_tags}
+    assert foo_returned == foo_expected
+
+    # Also check that "BAR" is distinct
+    bar_tags = client.getWordTags("BAR")
+    bar_expected = {
+        (2, 20, 200, "BAR"),
+    }
+    bar_returned = {(w.image_id, w.line_id, w.word_id, w.tag) for w in bar_tags}
+    assert bar_returned == bar_expected
+
+
+def test_get_word_tags_no_results(dynamodb_table: Literal["MyMockedTable"]):
+    """
+    If we request a tag that doesn't exist, we should get an empty list.
+    """
+    client = DynamoClient(dynamodb_table)
+    # No items added
+    results = client.getWordTags("NONEXISTENT")
+    assert results == []
+
+
+def test_get_word_tags_pagination(dynamodb_table: Literal["MyMockedTable"]):
+    """
+    Test pagination by adding more than one 'page' (the default DynamoDB
+    Query limit can be around 1 MB or 1k items). We'll just add ~30 items
+    all with tag='PAGE'.
+    """
+    client = DynamoClient(dynamodb_table)
+
+    big_list = []
+    for i in range(30):
+        big_list.append(WordTag(image_id=1, line_id=1, word_id=i, tag="PAGE"))
+
+    client.addWordTags(big_list)
+
+    results = client.getWordTags("PAGE")
+    # Should retrieve all 30
+    assert len(results) == 30
+    # Compare sets
+    returned_ids = {(r.image_id, r.line_id, r.word_id) for r in results}
+    expected_ids = {(1, 1, i) for i in range(30)}
+    assert returned_ids == expected_ids
