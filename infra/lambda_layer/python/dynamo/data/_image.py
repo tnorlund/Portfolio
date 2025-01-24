@@ -216,44 +216,48 @@ class _Image:
             raise ValueError("Could not delete images from the database") from e
 
     def listImageDetails(
-        self, limit: Optional[int] = None, last_evaluated_key: Optional[Dict] = None
+        self,
+        limit: Optional[int] = None,
+        last_evaluated_key: Optional[Dict] = None
     ) -> Tuple[
-        Dict[int, Dict[str, Union[Image, List[Receipt], List[Line]]]], Optional[Dict]
+        Dict[int, Dict[str, Union[Image, List[Receipt], List[Line]]]],
+        Optional[Dict]
     ]:
         """
         Lists images using the GSI on GSI1PK='IMAGE'. When both 'limit' and
-        'last_evaluated_key' are None, it will return *all* images (the current
-        behavior). Otherwise, it returns a single 'page' of items plus a
-        LastEvaluatedKey for further pagination.
+        'last_evaluated_key' are None, it returns *all* images. Otherwise, it
+        returns exactly 'limit' images (with their lines/receipts) plus a
+        LastEvaluatedKey (LEK) if there are more images remaining.
 
         Args:
-            limit (int, optional): Max number of images to fetch.
-                                   Defaults to None (no max, return all).
-            last_evaluated_key (dict, optional): Where to continue from.
-                                   Defaults to None (start from the beginning).
+            limit (Optional[int]): The maximum number of images to return.
+            last_evaluated_key (Optional[Dict]): The DynamoDB key from where
+                the next page should start (for pagination).
 
         Returns:
-            tuple: (payload, last_evaluated_key)
+            A tuple:
+            1) A dictionary of image_id -> { "image": Image, "lines": [...], "receipts": [...] }
+            2) The LastEvaluatedKey dict if there are more images, otherwise None.
         """
-        # If no limit or key is given, return *all* images (old behavior)
+
+        # --------
+        # CASE 1: No limit + no starting key => return *all* images
+        # --------
         if limit is None and last_evaluated_key is None:
             all_items = []
             response = None
             while True:
                 if response is None:
-                    # first query
                     response = self._client.query(
                         TableName=self.table_name,
                         IndexName="GSI1",
                         KeyConditionExpression="#pk = :pk_val",
                         ExpressionAttributeNames={"#pk": "GSI1PK"},
                         ExpressionAttributeValues={":pk_val": {"S": "IMAGE"}},
+                        ScanIndexForward=True,
                     )
                 else:
-                    if (
-                        "LastEvaluatedKey" not in response
-                        or not response["LastEvaluatedKey"]
-                    ):
+                    if not response.get("LastEvaluatedKey"):
                         break
                     response = self._client.query(
                         TableName=self.table_name,
@@ -262,110 +266,137 @@ class _Image:
                         ExpressionAttributeNames={"#pk": "GSI1PK"},
                         ExpressionAttributeValues={":pk_val": {"S": "IMAGE"}},
                         ExclusiveStartKey=response["LastEvaluatedKey"],
+                        ScanIndexForward=True,
                     )
 
                 all_items.extend(response["Items"])
-
-                if (
-                    "LastEvaluatedKey" not in response
-                    or not response["LastEvaluatedKey"]
-                ):
+                if not response.get("LastEvaluatedKey"):
                     break
-            payload = {}
+
+            # Build the final payload
+            payload: Dict[int, Dict[str, Union[Image, List[Receipt], List[Line]]]] = {}
             for item in all_items:
-                if item["SK"]["S"] == "IMAGE":
+                sk = item["SK"]["S"]
+                item_type = item["TYPE"]["S"]
+                if sk == "IMAGE":
                     image = itemToImage(item)
                     payload[image.id] = {"image": image}
-                elif item["SK"]["S"].startswith("RECEIPT"):
+                elif sk.startswith("RECEIPT") and item_type == "RECEIPT":
                     receipt = itemToReceipt(item)
                     if receipt.image_id in payload:
-                        if "receipts" in payload[receipt.image_id]:
-                            payload[receipt.image_id]["receipts"].append(receipt)
-                        else:
-                            payload[receipt.image_id]["receipts"] = [receipt]
-                elif item["SK"]["S"].startswith("LINE"):
+                        payload[receipt.image_id].setdefault("receipts", []).append(receipt)
+                elif sk.startswith("LINE") and item_type == "LINE":
                     line = itemToLine(item)
                     if line.image_id in payload:
-                        if "lines" in payload[line.image_id]:
-                            payload[line.image_id]["lines"].append(line)
-                        else:
-                            payload[line.image_id]["lines"] = [line]
+                        payload[line.image_id].setdefault("lines", []).append(line)
 
             return payload, None
 
-        # Otherwise, do a 'single-page' query for pagination
-        try:
+        # --------
+        # CASE 2: Paginated approach => Return exactly 'limit' images (if available)
+        # --------
+        payload: Dict[int, Dict[str, Union[Image, List[Receipt], List[Line]]]] = {}
+        included_image_ids = set()
+        images_found = 0
+        lek_to_return = None
 
-            payload = {}
-            images_found = 0
-            lek_to_return = None
+        next_key = last_evaluated_key
 
-            next_key = last_evaluated_key
-            # Keep fetching chunks from Dynamo until we have `limit` images or run out
-            while True:
-                query_params = {
-                    "TableName": self.table_name,
-                    "IndexName": "GSI1",
-                    "KeyConditionExpression": "#pk = :pk_val",
-                    "ExpressionAttributeNames": {"#pk": "GSI1PK"},
-                    "ExpressionAttributeValues": {":pk_val": {"S": "IMAGE"}},
-                    "Limit": 100,  # fetch up to 100 items at a time
-                }
-                if next_key:
-                    query_params["ExclusiveStartKey"] = next_key
+        while True:
+            # Ask Dynamo for limit+1 so we can detect if there's an extra image left.
+            query_params = {
+                "TableName": self.table_name,
+                "IndexName": "GSI1",
+                "KeyConditionExpression": "#pk = :pk_val",
+                "ExpressionAttributeNames": {"#pk": "GSI1PK"},
+                "ExpressionAttributeValues": {":pk_val": {"S": "IMAGE"}},
+                "ScanIndexForward": True,
+            }
+            if limit is not None:
+                query_params["Limit"] = limit + 1
 
-                response = self._client.query(**query_params)
-                items = response.get("Items", [])
-                next_key = response.get("LastEvaluatedKey")  # for the next chunk
+            if next_key:
+                query_params["ExclusiveStartKey"] = next_key
 
-                # Walk through these items in order
-                for i, item in enumerate(items):
-                    sk = item["SK"]["S"]
-                    item_type = item["TYPE"]["S"]
+            response = self._client.query(**query_params)
+            items = response.get("Items", [])
+            next_key = response.get("LastEvaluatedKey")  # This might be None or another key
 
-                    # If this item is a new image
-                    if sk == "IMAGE":
+            # We'll track if we need to break out of the outer loop
+            # (e.g. if we found the limit+1-th image in this chunk)
+            break_out_early = False
+
+            for item in items:
+                item_type = item["TYPE"]["S"]
+
+                if item_type == "IMAGE":
+                    # Only increment our 'images_found' count for image items
+                    if images_found < limit:
+                        # We have capacity to add one more image to this page
                         image = itemToImage(item)
-                        # Are we about to exceed the user's limit of distinct images?
-                        if images_found == limit:
-                            # We just encountered the (limit+1)-th image; stop here.
-                            # We'll return this item as part of the next page.
-                            # So we need to build a LEK that points to THIS item.
-                            image.id = int(image.id) - 1
-                            lek_to_return = {**image.key(), **image.gsi1_key()}
-                            return payload, lek_to_return
-
-                        # Otherwise, this is the next image we want to include.
                         payload[image.id] = {"image": image}
+                        included_image_ids.add(image.id)
                         images_found += 1
+                        last_consumed_image_key = {
+                            **image.key(),    # PK, SK
+                            **image.gsi1_key()
+                        }
+                    else:
+                        # We have encountered the (limit+1)-th image
+                        # => we stop reading further,
+                        # but the leftover key we give back is the last *consumed* item.
+                        lek_to_return = last_consumed_image_key
+                        break_out_early = True
+                        break
 
-                    # If it's a line or receipt for an image we've already included
-                    elif item_type == "LINE":
-                        line = itemToLine(item)
-                        if line.image_id in payload:  # belongs to a currently included image
-                            payload[line.image_id].setdefault("lines", []).append(line)
+                elif item_type == "LINE":
+                    # Add lines only if they belong to an image we're including in this page
+                    line = itemToLine(item)
+                    if line.image_id in included_image_ids:
+                        payload[line.image_id].setdefault("lines", []).append(line)
 
-                    elif item_type == "RECEIPT":
-                        receipt = itemToReceipt(item)
-                        if receipt.image_id in payload:
-                            payload[receipt.image_id].setdefault("receipts", []).append(receipt)
+                elif item_type == "RECEIPT":
+                    # Add receipts only if they belong to an image included in this page
+                    receipt = itemToReceipt(item)
+                    if receipt.image_id in included_image_ids:
+                        payload[receipt.image_id].setdefault("receipts", []).append(receipt)
 
-                    # else: ignore other items or unknown SK patterns
+                # (Handle additional types like WORD, LETTER, etc. if needed.)
 
-                # If we processed the entire chunk and we STILL have fewer than `limit` images,
-                # but we do have a next_key, we should fetch the next chunk.
-                # If no next_key => no more data in the table.
-                if images_found < limit and next_key:
-                    continue  # go get the next chunk
-                else:
-                    # We either reached the limit, or we ran out of data
-                    # If we haven't reached the limit but there's no next_key => done
-                    lek_to_return = next_key  # might be None or an actual key
+            if break_out_early:
+                # We found the extra image in *this* chunk, so we must stop now.
+                break
+
+            # If we haven't yet reached 'limit' images in this chunk,
+            # but next_key is None => no more data in the table => we are done.
+            if images_found < limit:
+                if next_key is None:
+                    # No more data => done.
                     break
+                else:
+                    # More data is available => keep querying.
+                    continue
+            else:
+                # We have exactly 'limit' images so far. We should check if there's a leftover
+                # in the *next chunk* (i.e. if we do another query). If next_key is None, that means
+                # there's no next chunk. So we are done. If next_key is not None, we do
+                # one more pass to see if there's a leftover image.
+                if next_key is None:
+                    # We are done: exactly limit, and no leftover.
+                    break
+                # else, let's keep going to see if we encounter that leftover image
+                # in the next chunk. So just continue the loop.
+                continue
 
-            return payload, lek_to_return
-        except Exception as e:
-            raise Exception(f"Error listing images: {e}")
+        # After we exit the while loop, we check:
+        # If we have exactly 'limit' images but never assigned `lek_to_return` => 
+        # it means we might have more data (next_key != None) but haven't seen the leftover image yet.
+        # If next_key is not None, let's set that as the leftover key:
+        if images_found == limit and lek_to_return is None and next_key:
+            lek_to_return = next_key
+
+        # Return the final dictionary + leftover key
+        return payload, lek_to_return
 
     def listImages(self) -> List[Image]:
         """Lists all images in the database."""
