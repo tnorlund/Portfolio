@@ -67,10 +67,52 @@ export interface Point {
   export interface LastEvaluatedKey {
 
   };
+
+  export interface ReceiptWord {
+    // IDs indicating what this word is linked to
+    image_id: number;
+    line_id: number;
+    receipt_id: number;
+    id: number;
   
-  export interface ApiResponse {
+    // Basic text and geometry
+    text: string;
+    bounding_box: BoundingBoxInterface;
+    top_left: Point;
+    top_right: Point;
+    bottom_left: Point;
+    bottom_right: Point;
+    angle_degrees: number;
+    angle_radians: number;
+    confidence: number;
+  
+    // Additional fields found in the example
+    tags: string[];  
+    histogram: Record<string, number>;
+    num_chars: number;
+  }
+
+  export interface ReceiptPayloadEntry {
+    receipt?: Receipt;   // The single “receipt” object
+    words?: ReceiptWord[]; // The array of recognized word objects
+  }
+  
+  export interface ImageApiResponse {
     payload: RootPayload;
     last_evaluated_key: null | string;
   }
+  export interface LastEvaluatedKey {
+    PK?: { S: string };
+    SK?: { S: string };
+    GSI2PK?: { S: string };
+    GSI2SK?: { S: string };
+  }
+  export interface ReceiptPayload {
+    [receiptId: string]: ReceiptPayloadEntry;
+  }
   
   export type ImageReceiptsLines = [ImagePayload, Receipt[], LineItem[]];
+  export interface ReceiptApiResponse {
+    payload: ReceiptPayload;
+    last_evaluated_key: LastEvaluatedKey | null;
+  }
