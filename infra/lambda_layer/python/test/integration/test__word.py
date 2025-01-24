@@ -179,6 +179,38 @@ def test_getWords(dynamodb_table: Literal["MyMockedTable"]):
     assert words_retrieved == words
 
 
+def test_getWords_invalid_keys(dynamodb_table: Literal["MyMockedTable"]):
+    """
+    Shows how to test for invalid keys. We expect ValueError when PK or SK is invalid.
+    """
+    client = DynamoClient(dynamodb_table)
+
+    # A key missing 'PK'
+    bad_keys_missing_pk = [{"SK": {"S": "LINE#00002#WORD#00003"}}]
+    with pytest.raises(ValueError, match="Keys must contain 'PK' and 'SK'"):
+        client.getWords(bad_keys_missing_pk)
+
+    # A key with PK not starting with 'IMAGE#'
+    bad_keys_wrong_prefix = [
+        {
+            "PK": {"S": "FOO#00001"},
+            "SK": {"S": "LINE#00002#WORD#00003"},
+        }
+    ]
+    with pytest.raises(ValueError, match="PK must start with 'IMAGE#'"):
+        client.getWords(bad_keys_wrong_prefix)
+
+    # A key with SK missing 'WORD'
+    bad_keys_no_word = [
+        {
+            "PK": {"S": "IMAGE#00001"},
+            "SK": {"S": "LINE#00002#FOO#00003"},
+        }
+    ]
+    with pytest.raises(ValueError, match="SK must contain 'WORD'"):
+        client.getWords(bad_keys_no_word)
+
+
 def test_listWords(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
