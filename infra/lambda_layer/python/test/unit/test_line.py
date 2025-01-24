@@ -104,49 +104,50 @@ def test_key():
 def test_to_item():
     """Test the Line.to_item() method"""
     line = Line(**correct_line_params)
-    assert line.to_item() == {
-        "PK": {"S": "IMAGE#00001"},
-        "SK": {"S": "LINE#00001"},
-        "GSI1PK": {"S": "IMAGE"},
-        "GSI1SK": {"S": "IMAGE#00001#LINE#00001"},
-        "TYPE": {"S": "LINE"},
-        "text": {"S": "Test"},
-        "bounding_box": {
-            "M": {
-                "height": {"N": "2.000000000000000000"},
-                "width": {"N": "5.000000000000000000"},
-                "x": {"N": "10.000000000000000000"},
-                "y": {"N": "20.000000000000000000"},
-            }
-        },
-        "top_right": {
-            "M": {
-                "x": {"N": "15.000000000000000000"},
-                "y": {"N": "20.000000000000000000"},
-            }
-        },
-        "top_left": {
-            "M": {
-                "x": {"N": "10.000000000000000000"},
-                "y": {"N": "20.000000000000000000"},
-            }
-        },
-        "bottom_right": {
-            "M": {
-                "x": {"N": "15.000000000000000000"},
-                "y": {"N": "22.000000000000000000"},
-            }
-        },
-        "bottom_left": {
-            "M": {
-                "x": {"N": "10.000000000000000000"},
-                "y": {"N": "22.000000000000000000"},
-            }
-        },
-        "angle_degrees": {"N": "1.0000000000"},
-        "angle_radians": {"N": "5.0000000000"},
-        "confidence": {"N": "0.90"},
+    item = line.to_item()
+    assert item["PK"] == {"S": "IMAGE#00001"}
+    assert item["SK"] == {"S": "LINE#00001"}
+    assert item["GSI1PK"] == {"S": "IMAGE"}
+    assert item["GSI1SK"] == {"S": "IMAGE#00001#LINE#00001"}
+    assert item["TYPE"] == {"S": "LINE"}
+    assert item["text"] == {"S": "Test"}
+    assert item["bounding_box"] == {
+        "M": {
+            "height": {"N": "2.000000000000000000"},
+            "width": {"N": "5.000000000000000000"},
+            "x": {"N": "10.000000000000000000"},
+            "y": {"N": "20.000000000000000000"},
+        }
     }
+    assert item["top_right"] == {
+        "M": {
+            "x": {"N": "15.000000000000000000"},
+            "y": {"N": "20.000000000000000000"},
+        }
+    }
+    assert item["top_left"] == {
+        "M": {
+            "x": {"N": "10.000000000000000000"},
+            "y": {"N": "20.000000000000000000"},
+        }
+    }
+    assert item["bottom_right"] == {
+        "M": {
+            "x": {"N": "15.000000000000000000"},
+            "y": {"N": "22.000000000000000000"},
+        }
+    }
+    assert item["bottom_left"] == {
+        "M": {
+            "x": {"N": "10.000000000000000000"},
+            "y": {"N": "22.000000000000000000"},
+        }
+    }
+    assert item["angle_degrees"] == {"N": "1.0000000000"}
+    assert item["angle_radians"] == {"N": "5.0000000000"}
+    assert item["confidence"] == {"N": "0.90"}
+    assert "histogram" in item
+    assert "num_chars" in item
 
 
 def create_test_line():
@@ -432,24 +433,39 @@ def test_iter():
         -0.10448461,
         1,
     )
-    assert dict(line) == {
-        "image_id": 1,
-        "id": 1,
-        "text": "test_string",
-        "bounding_box": {
-            "x": 0.4454263367632384,
-            "height": 0.022867568134581906,
-            "width": 0.08690182470506236,
-            "y": 0.9167082878750482,
-        },
-        "top_right": {"y": 0.9307722198001792, "x": 0.5323281614683008},
-        "top_left": {"y": 0.9395758560096301, "x": 0.44837726658954413},
-        "bottom_right": {"x": 0.529377231641995, "y": 0.9167082878750482},
-        "bottom_left": {"x": 0.4454263367632384, "y": 0.9255119240844992},
-        "angle_degrees": -5.986527,
-        "angle_radians": -0.10448461,
-        "confidence": 1,
+    line_dict = dict(line)
+    expected_keys = {
+        "image_id",
+        "id",
+        "text",
+        "bounding_box",
+        "top_right",
+        "top_left",
+        "bottom_right",
+        "bottom_left",
+        "angle_degrees",
+        "angle_radians",
+        "confidence",
+        "histogram",
+        "num_chars",
     }
+    assert set(line_dict.keys()) == expected_keys
+    assert line_dict["image_id"] == 1
+    assert line_dict["id"] == 1
+    assert line_dict["text"] == "test_string"
+    assert line_dict["bounding_box"] == {
+        "x": 0.4454263367632384,
+        "height": 0.022867568134581906,
+        "width": 0.08690182470506236,
+        "y": 0.9167082878750482,
+    }
+    assert line_dict["top_right"] == {"y": 0.9307722198001792, "x": 0.5323281614683008}
+    assert line_dict["top_left"] == {"y": 0.9395758560096301, "x": 0.44837726658954413}
+    assert line_dict["bottom_right"] == {"x": 0.529377231641995, "y": 0.9167082878750482}
+    assert line_dict["bottom_left"] == {"x": 0.4454263367632384, "y": 0.9255119240844992}
+    assert line_dict["angle_degrees"] == -5.986527
+    assert line_dict["angle_radians"] == -0.10448461
+    assert line_dict["confidence"] == 1
 
 
 def test_eq():

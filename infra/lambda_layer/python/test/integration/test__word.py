@@ -163,12 +163,28 @@ def test_getWord_error(dynamodb_table: Literal["MyMockedTable"]):
         client.getWord(1, 2, 3)
 
 
+def test_getWords(dynamodb_table: Literal["MyMockedTable"]):
+    # Arrange
+    client = DynamoClient(dynamodb_table)
+    words = [
+        Word(**correct_word_params),
+        Word(**{**correct_word_params, "id": 4}),
+    ]
+    client.addWords(words)
+
+    # Act
+    words_retrieved = client.getWords([words[0].key(), words[1].key()])
+
+    # Assert
+    assert words_retrieved == words
+
+
 def test_listWords(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
     words = [
         Word(**correct_word_params),
-        Word(**{**correct_word_params, 'id': 4}),
+        Word(**{**correct_word_params, "id": 4}),
     ]
     client.addWords(words)
 
@@ -184,8 +200,8 @@ def test_listWordsFromLine(dynamodb_table: Literal["MyMockedTable"]):
     client = DynamoClient(dynamodb_table)
     words = [
         Word(**correct_word_params),
-        Word(**{**correct_word_params, 'id': 1}),
-        Word(**{**correct_word_params, 'id': 2})
+        Word(**{**correct_word_params, "id": 1}),
+        Word(**{**correct_word_params, "id": 2}),
     ]
     client.addWords(words)
     # sort words by id

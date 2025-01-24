@@ -61,92 +61,58 @@ def test_to_item():
     """Test the Word to_item method"""
     # Test with no tags
     word = Word(**correct_word_params)
-    assert word.to_item() == {
-        "PK": {"S": "IMAGE#00001"},
-        "SK": {"S": "LINE#00002#WORD#00003"},
-        "TYPE": {"S": "WORD"},
-        "text": {"S": "test_string"},
-        "bounding_box": {
-            "M": {
-                "x": {"N": "0.445426336763238400"},
-                "y": {"N": "0.916708287875048200"},
-                "width": {"N": "0.086901824705062360"},
-                "height": {"N": "0.022867568134581906"},
-            }
-        },
-        "top_right": {
-            "M": {
-                "x": {"N": "0.532328161468300800"},
-                "y": {"N": "0.930772219800179200"},
-            }
-        },
-        "top_left": {
-            "M": {
-                "x": {"N": "0.448377266589544130"},
-                "y": {"N": "0.939575856009630100"},
-            }
-        },
-        "bottom_right": {
-            "M": {
-                "x": {"N": "0.529377231641995000"},
-                "y": {"N": "0.916708287875048200"},
-            }
-        },
-        "bottom_left": {
-            "M": {
-                "x": {"N": "0.445426336763238400"},
-                "y": {"N": "0.925511924084499200"},
-            }
-        },
-        "angle_degrees": {"N": "-5.9865270000"},
-        "angle_radians": {"N": "-0.1044846100"},
-        "confidence": {"N": "1.00"},
-    }, "to_item without tags"
+    item = word.to_item()
+    assert item["PK"] == {"S": "IMAGE#00001"}
+    assert item["SK"] == {"S": "LINE#00002#WORD#00003"}
+    assert item["TYPE"] == {"S": "WORD"}
+    assert item["text"] == {"S": "test_string"}
+    assert item["bounding_box"] == {
+        "M": {
+            "height": {"N": "0.022867568134581906"},
+            "width": {"N": "0.086901824705062360"},
+            "x": {"N": "0.445426336763238400"},
+            "y": {"N": "0.916708287875048200"},
+        }
+    }
+    assert item["top_right"] == {
+        "M": {"x": {"N": "0.532328161468300800"}, "y": {"N": "0.930772219800179200"}}
+    }
+    assert item["top_left"] == {'M': {'x': {'N': '0.448377266589544130'}, 'y': {'N': '0.939575856009630100'}}}
+    assert item["bottom_right"] == {'M': {'x': {'N': '0.529377231641995000'}, 'y': {'N': '0.916708287875048200'}}}
+    assert item["bottom_left"] == {'M': {'x': {'N': '0.445426336763238400'}, 'y': {'N': '0.925511924084499200'}}}
+    assert item["angle_degrees"] == {'N': '-5.9865270000'}
+    assert item["angle_radians"] == {'N': '-0.1044846100'}
+    assert item["confidence"] == {"N": "1.00"}
+    assert "histogram" in item
+    assert "num_chars" in item
     # Test with tags
     word = Word(**correct_word_params, tags=["tag1", "tag2"])
     item = word.to_item()
-    assert item == {
-        "PK": {"S": "IMAGE#00001"},
-        "SK": {"S": "LINE#00002#WORD#00003"},
-        "TYPE": {"S": "WORD"},
-        "text": {"S": "test_string"},
-        "bounding_box": {
-            "M": {
-                "x": {"N": "0.445426336763238400"},
-                "y": {"N": "0.916708287875048200"},
-                "width": {"N": "0.086901824705062360"},
-                "height": {"N": "0.022867568134581906"},
-            }
-        },
-        "top_right": {
-            "M": {
-                "x": {"N": "0.532328161468300800"},
-                "y": {"N": "0.930772219800179200"},
-            }
-        },
-        "top_left": {
-            "M": {
-                "x": {"N": "0.448377266589544130"},
-                "y": {"N": "0.939575856009630100"},
-            }
-        },
-        "bottom_right": {
-            "M": {
-                "x": {"N": "0.529377231641995000"},
-                "y": {"N": "0.916708287875048200"},
-            }
-        },
-        "bottom_left": {
-            "M": {
-                "x": {"N": "0.445426336763238400"},
-                "y": {"N": "0.925511924084499200"},
-            }
-        },
-        "angle_degrees": {"N": "-5.9865270000"},
-        "angle_radians": {"N": "-0.1044846100"},
-        "confidence": {"N": "1.00"},
-        "tags": {"SS": ["tag1", "tag2"]},
+    assert item["PK"] == {"S": "IMAGE#00001"}
+    assert item["SK"] == {"S": "LINE#00002#WORD#00003"}
+    assert item["TYPE"] == {"S": "WORD"}
+    assert item["text"] == {"S": "test_string"}
+    assert item["bounding_box"] == {
+        "M": {
+            "height": {"N": "0.022867568134581906"},
+            "width": {"N": "0.086901824705062360"},
+            "x": {"N": "0.445426336763238400"},
+            "y": {"N": "0.916708287875048200"},
+        }
     }
+    assert item["top_right"] == {
+        "M": {"x": {"N": "0.532328161468300800"}, "y": {"N": "0.930772219800179200"}}
+    }
+    assert item["top_left"] == {'M': {'x': {'N': '0.448377266589544130'}, 'y': {'N': '0.939575856009630100'}}}
+    assert item["bottom_right"] == {'M': {'x': {'N': '0.529377231641995000'}, 'y': {'N': '0.916708287875048200'}}}
+    assert item["bottom_left"] == {'M': {'x': {'N': '0.445426336763238400'}, 'y': {'N': '0.925511924084499200'}}}
+    assert item["angle_degrees"] == {'N': '-5.9865270000'}
+    assert item["angle_radians"] == {'N': '-0.1044846100'}
+    assert item["confidence"] == {"N": "1.00"}
+    assert item["tags"] == {"SS": ["tag1", "tag2"]}
+    assert "histogram" in item
+    assert "num_chars" in item
+    
 
 
 def test_repr():
@@ -255,7 +221,7 @@ def create_test_word():
         bottom_left={"x": 10.0, "y": 22.0},
         angle_degrees=0.0,
         angle_radians=0.0,
-        confidence=1.0
+        confidence=1.0,
     )
 
 
