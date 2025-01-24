@@ -1,0 +1,43 @@
+/* Existing container for larger screens (flex) */
+.receipt-grid-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    justify-content: center;
+  }
+  
+  /* The wrapper around each receipt SVG */
+  .receipt-svg-wrapper {
+    max-width: 100%;
+    width: 100%;
+    background-color: lightgray;
+    margin: 8px;
+  }
+  
+  /* The <svg> itself for responsiveness */
+  .receipt-svg {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+  
+  /* ------------------------------------------------
+     At mobile width (<= 480px), override and use grid
+     with 2 columns. This ensures 2 receipts across.
+     ------------------------------------------------ */
+  @media (max-width: 768px) {
+    .receipt-grid-container {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1rem; /* keep some spacing */
+      justify-items: center; /* center the items in each cell */
+    }
+  
+    /* You can keep .receipt-svg-wrapper as is,
+       unless you want narrower widths, e.g.:
+       .receipt-svg-wrapper {
+         width: 100%;
+         max-width: 90%; 
+       }
+    */
+  }

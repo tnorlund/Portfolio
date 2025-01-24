@@ -24,7 +24,13 @@ header {
   background-color: var(--header-background);
   color: var(--header-text);
   text-align: center;
-  padding: 0.1rem;
+  display: flex;
+  justify-content: center;
+  padding: 1rem;
+}
+header h1 {
+  margin: 0;            /* remove default h1 margin */
+  padding: 0;
 }
 
 header h1 a {
@@ -60,14 +66,12 @@ button {
   cursor: pointer;
   transition: all 0.3s ease;
   margin: 1rem;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2); 
 }
 
 button:hover {
   background-color: var(--button-background-hover);
   color: var(--button-text-hover);
   border-color: var(--button-text-hover);
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
 }
 
 hr {
@@ -109,7 +113,7 @@ li {
 }
 
 /* Center the container and give it a default max-width */
-.resume-container {
+.container {
   margin: 0 auto;       /* center horizontally */
   padding: 2rem;        /* some breathing room */
   max-width: 1024px;    /* default “tablet/desktop” width */
@@ -118,7 +122,7 @@ li {
 
 /* MOBILE (portrait) - up to 480px */
 @media (max-width: 480px) {
-  .resume-container {
+  .container {
     max-width: 90%;  /* shrink to fit smaller screens */
     padding: 1rem;
   }
@@ -126,35 +130,35 @@ li {
 
 /* MOBILE (landscape) - up to 768px */
 @media (max-width: 768px) {
-  .resume-container {
+  .container {
     max-width: 600px;
   }
 }
 
 /* TABLET (portrait) - up to 834px (slightly bigger than 768) */
 @media (max-width: 834px) {
-  .resume-container {
+  .container {
     max-width: 700px;
   }
 }
 
 /* TABLET (landscape) - up to 1024px */
 @media (max-width: 1024px) {
-  .resume-container {
+  .container {
     max-width: 900px;
   }
 }
 
 /* LAPTOP - up to 1440px */
 @media (max-width: 1440px) {
-  .resume-container {
+  .container {
     max-width: 1024px;
   }
 }
 
 /* DESKTOP - above 1440px */
 @media (min-width: 1441px) {
-  .resume-container {
+  .container {
     max-width: 1200px; /* or larger if you prefer */
   }
 }

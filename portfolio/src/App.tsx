@@ -1,6 +1,7 @@
 import { Routes, Route, Link } from 'react-router-dom';
 import './App.css';
 import Resume from './Resume'; // import the Resume component
+import Receipt from './Receipt';
 
 function App() {
   return (
@@ -10,7 +11,7 @@ function App() {
           <Link to="/">Tyler Norlund</Link>
         </h1>
       </header>
-      <div className="resume-container">
+      <div className="container">
       <Routes>
         <Route
           path="/"
@@ -31,10 +32,14 @@ function App() {
                 <button onClick={() => window.location.href = '/resume'}>
                   Résumé
                 </button>
+                <button onClick={() => window.location.href = '/receipt'}>
+                  Receipt
+                </button>
             </main>
           }
         />
         <Route path="/resume" element={<Resume />} />
+        <Route path="/receipt" element={<Receipt />} />
       </Routes>
       </div>
     </div>
