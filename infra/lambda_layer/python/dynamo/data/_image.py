@@ -318,6 +318,7 @@ class _Image:
             if next_key:
                 query_params["ExclusiveStartKey"] = next_key
 
+            leftover_image_id = None  # or a sentinel like -1
             response = self._client.query(**query_params)
             items = response.get("Items", [])
             next_key = response.get("LastEvaluatedKey")  # This might be None or another key
