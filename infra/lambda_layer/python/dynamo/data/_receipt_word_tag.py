@@ -234,6 +234,47 @@ class _ReceiptWordTag:
             )
         except ClientError as e:
             raise Exception(f"Error getting ReceiptWordTag: {e}")
+        
+    def getReceiptWordTags(self, tag: str) -> list[ReceiptWordTag]:
+        """
+        Retrieves all ReceiptWordTag items with a given tag from the database,
+        using GSI1 (where GSI1PK = "TAG#<tag_underscore_padded>").
+        """
+        # Match how ReceiptWordTag.gsi1_key() pads the tag:
+        # (If your code also uses .upper(), do that here.)
+        spaced_tag = f"{tag:_>20}"
+
+        receipt_tags = []
+        try:
+            # 1) Query the GSI
+            response = self._client.query(
+                TableName=self.table_name,
+                IndexName="GSI1",  # Ensure this matches your actual GSI name
+                KeyConditionExpression="GSI1PK = :gsi1pk",
+                ExpressionAttributeValues={
+                    ":gsi1pk": {"S": f"TAG#{spaced_tag}"}
+                },
+            )
+            # 2) Convert each DynamoDB item to a ReceiptWordTag
+            receipt_tags.extend([itemToReceiptWordTag(item) for item in response["Items"]])
+
+            # 3) Handle pagination
+            while "LastEvaluatedKey" in response:
+                response = self._client.query(
+                    TableName=self.table_name,
+                    IndexName="GSI1",
+                    KeyConditionExpression="GSI1PK = :gsi1pk",
+                    ExpressionAttributeValues={
+                        ":gsi1pk": {"S": f"TAG#{spaced_tag}"}
+                    },
+                    ExclusiveStartKey=response["LastEvaluatedKey"],
+                )
+                receipt_tags.extend([itemToReceiptWordTag(item) for item in response["Items"]])
+
+            return receipt_tags
+
+        except ClientError as e:
+            raise ValueError("Could not list ReceiptWordTags from the database") from e
 
     def listReceiptWordTags(self) -> list[ReceiptWordTag]:
         """
