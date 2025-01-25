@@ -1,4 +1,4 @@
-name: development
+name: portfolio
 runtime:
   name: python
 description: a dynamodb instance
