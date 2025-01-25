@@ -10,6 +10,9 @@
   --button-text: #ffffff;
   --button-background-hover: #ffffff;
   --button-text-hover: #1a1a1a;
+
+  --safari-icon-top: #e8e8e8;
+  --safari-icon-bottom: #dcdcdc;
 }
 
 main {
@@ -109,6 +112,9 @@ li {
     --button-text: #ffffff;
     --button-background-hover: #555555;
     --button-text-hover: #ffffff;
+
+    --safari-icon-top: #1D1D1E;
+    --safari-icon-bottom: #111112;
   }
 }
 

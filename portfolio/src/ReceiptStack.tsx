@@ -90,7 +90,7 @@ const ReceiptStack: React.FC = () => {
         style={{
           position: "relative",
           width: "150px", // Stacking area width
-          minHeight: "450px",
+          minHeight: "475px",
         }}
       >
         {springs.map((styleProps, index) => {
