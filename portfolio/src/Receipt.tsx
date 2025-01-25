@@ -2,6 +2,7 @@
 import Diagram from "./Diagram";
 import Pulumi from "./Pulumi";
 import OpenAI from "./OpenAI";
+import ReceiptStack from "./ReceiptStack";
 import "./Receipt.css";
 
 function Receipt() {
@@ -50,6 +51,19 @@ function Receipt() {
       <Diagram />
       <p>
         With the data in DynamoDB, I created a React app to display the data. This is where a lot of the fine tuning went in. I refined how I was storing the data and how I was processing it. With the help of ChatGPT, I was able to write a lot of the code in a very short amount of time.
+      </p>
+      <ReceiptStack />
+      <p>
+        Now comes the data science... The data is there, but what can I do with it? I decided to now use OpenAI's ChatGPT API for data annotation. I defined a receipt as having:
+      </p>
+      <ul>
+        <li>Line Items</li>
+        <li>Date</li>
+        <li>Time</li>
+        <li>Subtotal</li>
+      </ul>
+      <p>
+        I use ChatGPT to label the different words in the OCR data. This process can be very expensive, but since the OCR has already been processed, I can send just the text and where it is on the receipt. This cost effective approach allows me to label the data in a very short amount of time.
       </p>
     </div>
   );
