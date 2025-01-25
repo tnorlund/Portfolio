@@ -102,10 +102,13 @@ jobs:
       - name: Get Pulumi outputs
         id: pulumi-outputs
         run: |
-            BUCKET_NAME=$(pulumi stack output bucketName --stack tnorlund/development/prod)
-            AWS_REGION_FROM_PULUMI=$(pulumi stack output region --stack tnorlund/development/prod)
-            echo "bucketName=$BUCKET_NAME" >> $GITHUB_ENV
-            echo "awsRegion=$AWS_REGION_FROM_PULUMI" >> $GITHUB_ENV
+          BUCKET_NAME=$(pulumi stack output bucketName --stack tnorlund/development/prod)
+          AWS_REGION_FROM_PULUMI=$(pulumi stack output region --stack tnorlund/development/prod)
+          DISTRIBUTION_ID=$(pulumi stack output distribution-id --stack tnorlund/development/prod)
+      
+          echo "bucketName=$BUCKET_NAME" >> $GITHUB_ENV
+          echo "awsRegion=$AWS_REGION_FROM_PULUMI" >> $GITHUB_ENV
+          echo "distributionId=$DISTRIBUTION_ID" >> $GITHUB_ENV
         working-directory: infra
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
@@ -115,3 +118,12 @@ jobs:
       - name: Sync files to S3
         run: |
           aws s3 sync portfolio/build "s3://${{ env.bucketName }}"
+
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ env.distributionId }} \
+            --paths "/*"
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
