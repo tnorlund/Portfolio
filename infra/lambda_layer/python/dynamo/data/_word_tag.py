@@ -273,39 +273,40 @@ class _WordTag:
         """
         Lists all WordTag items for a given image by querying:
             PK = "IMAGE#<image_id>"
-            AND begins_with(SK, "TAG#")
-
-        Args:
-            image_id (int): The ID of the image.
-
-        Returns:
-            list[WordTag]: A list of WordTag objects for the specified image.
+            AND begins_with(SK, "LINE#")
+        then filtering for items that have "#TAG#" in the SK.
         """
         word_tags = []
         try:
             response = self._client.query(
                 TableName=self.table_name,
                 KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
+                FilterExpression="contains(#sk, :tag_marker)",
                 ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
                 ExpressionAttributeValues={
                     ":pk_val": {"S": f"IMAGE#{image_id:05d}"},
-                    ":sk_val": {"S": "TAG#"},
+                    ":sk_val": {"S": "LINE#"},
+                    ":tag_marker": {"S": "#TAG#"},
                 },
             )
             word_tags.extend([itemToWordTag(item) for item in response["Items"]])
 
+            # Handle pagination
             while "LastEvaluatedKey" in response:
                 response = self._client.query(
                     TableName=self.table_name,
                     KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
+                    FilterExpression="contains(#sk, :tag_marker)",
                     ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
                     ExpressionAttributeValues={
                         ":pk_val": {"S": f"IMAGE#{image_id:05d}"},
-                        ":sk_val": {"S": "TAG#"},
+                        ":sk_val": {"S": "LINE#"},
+                        ":tag_marker": {"S": "#TAG#"},
                     },
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                 )
                 word_tags.extend([itemToWordTag(item) for item in response["Items"]])
             return word_tags
+
         except ClientError as e:
             raise ValueError("Could not list WordTags from the database") from e

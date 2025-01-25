@@ -1,10 +1,14 @@
 from typing import Dict, List, Optional, Tuple, Union
 from dynamo import (
     Receipt,
+    ReceiptLine,
     ReceiptWord,
     ReceiptWordTag,
+    ReceiptLetter,
     itemToReceipt,
+    itemToReceiptLine,
     itemToReceiptWord,
+    itemToReceiptLetter,
     itemToReceiptWordTag,
 )
 from botocore.exceptions import ClientError
@@ -207,6 +211,51 @@ class _Receipt:
         except KeyError:
             raise ValueError(f"Receipt with ID {receipt_id} not found")
 
+    def getReceiptDetails(self, image_id: int, receipt_id: int) -> Tuple[
+        Receipt,
+        list[ReceiptLine],
+        list[ReceiptWord],
+        list[ReceiptLetter],
+        list[ReceiptWordTag],
+    ]:
+        """Get a receipt with its details
+
+        Args:
+            image_id (int): The ID of the image the receipt belongs to
+            receipt_id (int): The ID of the receipt to get
+
+        Returns:
+            dict: A dictionary containing the receipt and its details
+        """
+        try:
+            response = self._client.query(
+                TableName=self.table_name,
+                KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
+                ExpressionAttributeValues={
+                    ":pk": {"S": f"IMAGE#{image_id:05d}"},
+                    ":sk": {"S": f"RECEIPT#{receipt_id:05d}"},
+                },
+            )
+            receipt = None
+            lines = []
+            words = []
+            letters = []
+            tags = []
+            for item in response["Items"]:
+                if item["TYPE"]["S"] == "RECEIPT":
+                    receipt = itemToReceipt(item)
+                elif item["TYPE"]["S"] == "RECEIPT_LINE":
+                    lines.append(itemToReceiptLine(item))
+                elif item["TYPE"]["S"] == "RECEIPT_WORD":
+                    words.append(itemToReceiptWord(item))
+                elif item["TYPE"]["S"] == "RECEIPT_LETTER":
+                    letters.append(itemToReceiptLetter(item))
+                elif item["TYPE"]["S"] == "RECEIPT_WORD_TAG":
+                    tags.append(itemToReceiptWordTag(item))
+            return receipt, lines, words, letters, tags
+        except ClientError as e:
+            raise ValueError(f"Error getting receipt details: {e}")
+
     def listReceipts(self) -> list[Receipt]:
         """List all receipts from the table"""
         receipts = []
@@ -392,4 +441,3 @@ class _Receipt:
                 last_word = payload[len(payload)]["words"][-1]
                 last_evaluated_key = {**last_word.key(), **last_word.gsi2_key()}
                 return payload, last_evaluated_key
-                
