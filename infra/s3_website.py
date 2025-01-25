@@ -156,6 +156,8 @@ cdn = aws.cloudfront.Distribution(
     opts=pulumi.ResourceOptions(depends_on=[certificate_validation]),
 )
 
+pulumi.export("distribution-id", cdn.id)
+
 ########################
 # 7) Route53 Alias Records
 ########################
