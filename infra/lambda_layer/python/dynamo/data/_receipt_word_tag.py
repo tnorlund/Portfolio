@@ -319,23 +319,20 @@ class _ReceiptWordTag:
         """
         Lists all ReceiptWordTag items for a given image by querying:
             PK = "IMAGE#<image_id>"
-            AND begins_with(SK, "TAG#")
-
-        Args:
-            image_id (int): The ID of the image.
-
-        Returns:
-            list[ReceiptWordTag]
+            AND begins_with(SK, "RECEIPT#")
+        and filtering only those whose SK contains "#TAG#".
         """
         receipt_word_tags = []
         try:
             response = self._client.query(
                 TableName=self.table_name,
                 KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
+                FilterExpression="contains(#sk, :tag_val)",
                 ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
                 ExpressionAttributeValues={
                     ":pk_val": {"S": f"IMAGE#{image_id:05d}"},
-                    ":sk_val": {"S": "TAG#"},
+                    ":sk_val": {"S": "RECEIPT#"},
+                    ":tag_val": {"S": "#TAG#"},   # Only SKs that include '#TAG#'
                 },
             )
             for item in response.get("Items", []):
@@ -345,10 +342,12 @@ class _ReceiptWordTag:
                 response = self._client.query(
                     TableName=self.table_name,
                     KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
+                    FilterExpression="contains(#sk, :tag_val)",
                     ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
                     ExpressionAttributeValues={
                         ":pk_val": {"S": f"IMAGE#{image_id:05d}"},
-                        ":sk_val": {"S": "TAG#"},
+                        ":sk_val": {"S": "RECEIPT#"},
+                        ":tag_val": {"S": "#TAG#"},
                     },
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                 )
@@ -358,6 +357,4 @@ class _ReceiptWordTag:
             return receipt_word_tags
 
         except ClientError as e:
-            raise ValueError(
-                "Could not list ReceiptWordTags from the database"
-            ) from e
+            raise ValueError("Could not list ReceiptWordTags from the database") from e

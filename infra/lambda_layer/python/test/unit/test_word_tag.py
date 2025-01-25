@@ -53,15 +53,11 @@ def test_word_tag_key(sample_word_tag):
     """
     Test that the main table key is generated as expected.
     PK = IMAGE#<image_id>
-    SK = TAG#<tag_upper_with_leading_underscores>#LINE#<line_id>#WORD#<word_id>
+    SK = LINE#<line_id>WORD#<word_id>#TAG#<tag>
     """
     result = sample_word_tag.key()
     assert result["PK"]["S"] == "IMAGE#00042"
-    # Tag is uppercased, 20 chars total with underscores
-    # "EXAMPLE" => '___________EXAMPLE' if the length is 7 + 13 underscores = 20
-    # Adjust your check if you require exactly 20 total width including the tag.
-    assert result["SK"]["S"].startswith("TAG#")
-    assert "#LINE#00007#WORD#00101" in result["SK"]["S"]
+    assert result["SK"]["S"] == "LINE#00007#WORD#00101#TAG#_____________example"
 
 
 def test_word_tag_gsi1_key(sample_word_tag):

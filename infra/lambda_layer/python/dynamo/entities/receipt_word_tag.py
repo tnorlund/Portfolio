@@ -81,9 +81,10 @@ class ReceiptWordTag:
             "PK": {"S": f"IMAGE#{self.image_id:05d}"},
             "SK": {
                 "S": (
-                    f"TAG#{spaced_tag_upper}"
-                    f"#RECEIPT#{self.receipt_id:05d}"
+                    f"RECEIPT#{self.receipt_id:05d}"
+                    f"#LINE#{self.line_id:05d}"
                     f"#WORD#{self.word_id:05d}"
+                    f"#TAG#{spaced_tag_upper}"
                 )
             },
         }
@@ -128,7 +129,7 @@ def itemToReceiptWordTag(item: dict) -> ReceiptWordTag:
 
     Expects:
       PK  = "IMAGE#<image_id>"
-      SK  = "TAG#<TAG_UPPER_20>#RECEIPT#<receipt_id>#WORD#<word_id>"
+      SK  = f"RECEIPT#<receipt_id>#LINE#<line_id>#WORD#<word_id>#TAG#<tag>"
       GSI1SK = "IMAGE#<image_id>#RECEIPT#<receipt_id>#LINE#<line_id>#WORD#<word_id>"
 
     Returns a ReceiptWordTag instance.
@@ -146,16 +147,11 @@ def itemToReceiptWordTag(item: dict) -> ReceiptWordTag:
 
         # Parse SK for tag & receipt_id & word_id
         sk_parts = item["SK"]["S"].split("#")
-        # e.g. ["TAG", "__________FOO", "RECEIPT", "00001", "WORD", "00010"]
-        # sk_parts[1] -> "__________FOO"
-        # sk_parts[3] -> "00001"
-        # sk_parts[5] -> "00010"
-
-        raw_tag = sk_parts[1]  # e.g. "__________FOO"
+        raw_tag = sk_parts[-1]  # e.g. "__________FOO"
         # remove underscores from the left:
         tag = raw_tag.lstrip("_").strip()  # "FOO"
 
-        receipt_id_str = sk_parts[3]
+        receipt_id_str = sk_parts[1]
         receipt_id = int(receipt_id_str)
 
         word_id_str = sk_parts[5]

@@ -1,9 +1,77 @@
 from typing import Literal
 from datetime import datetime
 import pytest
-import boto3
-from dynamo import Receipt, Image, DynamoClient
-import json
+from dynamo import (
+    Receipt,
+    ReceiptLine,
+    Image,
+    DynamoClient,
+    ReceiptWordTag,
+    ReceiptWord,
+    ReceiptLetter,
+)
+
+
+@pytest.fixture
+def sample_receipt_word_tag():
+    """
+    Provides a sample ReceiptWordTag for testing.
+    Adjust the IDs or tag text to fit your schema if needed.
+    """
+    return ReceiptWordTag(
+        image_id=1, receipt_id=100, line_id=5, word_id=42, tag="SampleTag"
+    )
+
+
+@pytest.fixture
+def sample_receipt():
+    """
+    Provides a sample Receipt for testing.
+    Adjust the IDs or tag text to fit your schema if needed.
+    """
+    return Receipt(
+        id=1,
+        image_id=1,
+        width=10,
+        height=20,
+        timestamp_added=datetime.now().isoformat(),
+        raw_s3_bucket="bucket",
+        raw_s3_key="key",
+        top_left={"x": 0, "y": 0},
+        top_right={"x": 10, "y": 0},
+        bottom_left={"x": 0, "y": 20},
+        bottom_right={"x": 10, "y": 20},
+        sha256="sha256",
+    )
+
+
+@pytest.fixture
+def sample_receipt_word():
+    """
+    Provides a sample ReceiptWord for testing.
+    Adjust the IDs or tag text to fit your schema if needed.
+    """
+    return ReceiptWord(
+        image_id=1,
+        receipt_id=1,
+        line_id=1,
+        word_id=1,
+        text="text",
+        bounding_box={
+            "x": 0,
+            "y": 0,
+            "width": 10,
+            "height": 20,
+        },
+        top_left={"x": 0, "y": 0},
+        top_right={"x": 10, "y": 0},
+        bottom_left={"x": 0, "y": 20},
+        bottom_right={"x": 10, "y": 20},
+        angle_degrees=0,
+        angle_radians=0,
+        confidence=1,
+    )
+
 
 correct_receipt_params = {
     "id": 1,
@@ -30,28 +98,30 @@ correct_image_params = {
 }
 
 
-def test_addReceipt(dynamodb_table: Literal["MyMockedTable"]):
+def test_addReceipt(dynamodb_table: Literal["MyMockedTable"], sample_receipt: Receipt):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
-    receipt = Receipt(**correct_receipt_params)
 
     # Act
-    dynamo_client.addReceipt(receipt)
+    dynamo_client.addReceipt(sample_receipt)
 
     # Assert
-    response_receipt = dynamo_client.getReceipt(receipt.image_id, receipt.id)
-    assert response_receipt == receipt
+    response_receipt = dynamo_client.getReceipt(
+        sample_receipt.image_id, sample_receipt.id
+    )
+    assert response_receipt == sample_receipt
 
 
-def test_addReceipt_error_receipt_that_exists(dynamodb_table: str):
+def test_addReceipt_error_receipt_that_exists(
+    dynamodb_table: Literal["MyMockedTable"], sample_receipt: Receipt
+):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
-    receipt = Receipt(**correct_receipt_params)
 
     # Act
-    dynamo_client.addReceipt(receipt)
+    dynamo_client.addReceipt(sample_receipt)
     with pytest.raises(ValueError):
-        dynamo_client.addReceipt(receipt)
+        dynamo_client.addReceipt(sample_receipt)
 
 
 def test_addReceipts(dynamodb_table: str):
@@ -266,3 +336,197 @@ def test_getReceiptsFromImage(dynamodb_table: str):
     assert receipt in retrieved_receipts
     assert receipt_same_image in retrieved_receipts
     assert receipt_different_image not in retrieved_receipts
+
+
+@pytest.fixture
+def sample_receipt_lines():
+    """
+    Provides a sample list of ReceiptWord for testing.
+    """
+    return [
+        ReceiptLine(
+            image_id=1,
+            receipt_id=1,
+            id=1,
+            text="line1",
+            bounding_box={"x": 0, "y": 0, "width": 10, "height": 20},
+            top_right={"x": 10, "y": 0},
+            top_left={"x": 0, "y": 0},
+            bottom_right={"x": 10, "y": 20},
+            bottom_left={"x": 0, "y": 20},
+            angle_degrees=0,
+            angle_radians=0,
+            confidence=1,
+        ),
+        ReceiptLine(
+            image_id=1,
+            receipt_id=1,
+            id=2,
+            text="line2",
+            bounding_box={"x": 0, "y": 0, "width": 10, "height": 20},
+            top_right={"x": 10, "y": 0},
+            top_left={"x": 0, "y": 0},
+            bottom_right={"x": 10, "y": 20},
+            bottom_left={"x": 0, "y": 20},
+            angle_degrees=0,
+            angle_radians=0,
+            confidence=1,
+        ),
+        ReceiptLine(
+            image_id=1,
+            receipt_id=1,
+            id=3,
+            text="line3",
+            bounding_box={"x": 0, "y": 0, "width": 10, "height": 20},
+            top_right={"x": 10, "y": 0},
+            top_left={"x": 0, "y": 0},
+            bottom_right={"x": 10, "y": 20},
+            bottom_left={"x": 0, "y": 20},
+            angle_degrees=0,
+            angle_radians=0,
+            confidence=1,
+        ),
+        ReceiptLine(
+            image_id=1,
+            receipt_id=1,
+            id=4,
+            text="line4",
+            bounding_box={"x": 0, "y": 0, "width": 10, "height": 20},
+            top_right={"x": 10, "y": 0},
+            top_left={"x": 0, "y": 0},
+            bottom_right={"x": 10, "y": 20},
+            bottom_left={"x": 0, "y": 20},
+            angle_degrees=0,
+            angle_radians=0,
+            confidence=1,
+        ),
+    ]
+
+@pytest.fixture
+def sample_receipt_words():
+    return [
+        ReceiptWord(
+            image_id=1,
+            receipt_id=1,
+            line_id=1,
+            id=1,
+            text="word1",
+            bounding_box={"x": 0, "y": 0, "width": 10, "height": 20},
+            top_right={"x": 10, "y": 0},
+            top_left={"x": 0, "y": 0},
+            bottom_right={"x": 10, "y": 20},
+            bottom_left={"x": 0, "y": 20},
+            angle_degrees=0,
+            angle_radians=0,
+            confidence=1,
+        ),
+        ReceiptWord(
+            image_id=1,
+            receipt_id=1,
+            line_id=1,
+            id=2,
+            text="word2",
+            bounding_box={"x": 0, "y": 0, "width": 10, "height": 20},
+            top_right={"x": 10, "y": 0},
+            top_left={"x": 0, "y": 0},
+            bottom_right={"x": 10, "y": 20},
+            bottom_left={"x": 0, "y": 20},
+            angle_degrees=0,
+            angle_radians=0,
+            confidence=1,
+        ),
+    ]
+
+@pytest.fixture
+def sample_receipt_word_tags():
+    return [
+        ReceiptWordTag(
+            image_id=1,
+            receipt_id=1,
+            line_id=1,
+            word_id=1,
+            tag="tag1",
+        ),
+        ReceiptWordTag(
+            image_id=1,
+            receipt_id=1,
+            line_id=1,
+            word_id=2,
+            tag="tag2",
+        ),
+    ]
+
+@pytest.fixture
+def sample_receipt_letters():
+    return [
+        ReceiptLetter(
+            image_id=1,
+            receipt_id=1,
+            line_id=1,
+            word_id=1,
+            id=1,
+            text="a",
+            bounding_box={"x": 0, "y": 0, "width": 10, "height": 20},
+            top_right={"x": 10, "y": 0},
+            top_left={"x": 0, "y": 0},
+            bottom_right={"x": 10, "y": 20},
+            bottom_left={"x": 0, "y": 20},
+            angle_degrees=0,
+            angle_radians=0,
+            confidence=1,
+        ),
+        ReceiptLetter(
+            image_id=1,
+            receipt_id=1,
+            line_id=1,
+            word_id=1,
+            id=2,
+            text="b",
+            bounding_box={"x": 0, "y": 0, "width": 10, "height": 20},
+            top_right={"x": 10, "y": 0},
+            top_left={"x": 0, "y": 0},
+            bottom_right={"x": 10, "y": 20},
+            bottom_left={"x": 0, "y": 20},
+            angle_degrees=0,
+            angle_radians=0,
+            confidence=1,
+        ),
+    ]
+
+
+def test_getReceiptDetails(
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt: Receipt,
+    sample_receipt_lines: list[ReceiptLine],
+    sample_receipt_words: list[ReceiptWord],
+    sample_receipt_word_tags: list[ReceiptWordTag],
+    sample_receipt_letters: list[ReceiptLetter],
+):
+    # Arrange
+    dynamo_client = DynamoClient(dynamodb_table)
+    dynamo_client.addReceipt(sample_receipt)
+    dynamo_client.addReceiptLines(sample_receipt_lines)
+    dynamo_client.addReceiptWords(sample_receipt_words)
+    dynamo_client.addReceiptWordTags(sample_receipt_word_tags)
+    dynamo_client.addReceiptLetters(sample_receipt_letters)
+
+    # Act
+
+    payload = dynamo_client.getReceiptDetails(
+        sample_receipt.image_id, sample_receipt.id
+    )
+
+    # Assert
+    len(payload) == 5
+    (
+        retrieved_receipt,
+        retrieved_lines,
+        retrieved_words,
+        retrieved_letters,
+        retrieved_tags,
+    ) = payload
+    assert retrieved_receipt == sample_receipt
+    assert retrieved_lines == sample_receipt_lines
+    assert retrieved_words == sample_receipt_words
+    assert retrieved_letters == sample_receipt_letters
+    assert retrieved_tags == sample_receipt_word_tags
