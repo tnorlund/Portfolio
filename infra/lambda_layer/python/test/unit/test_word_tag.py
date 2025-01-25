@@ -88,7 +88,7 @@ def test_item_to_word_tag():
     """
     item = {
         "PK": {"S": "IMAGE#00042"},
-        "SK": {"S": "TAG#___________example#LINE#00007#WORD#00101"},
+        "SK": {"S": "LINE#00007#WORD#00101#TAG#_____________example"},
         "GSI1PK": {"S": "TAG#___________example"},
         "GSI1SK": {"S": "IMAGE#00042#LINE#00007#WORD#00101"},
         "TYPE": {"S": "WORD_TAG"}
