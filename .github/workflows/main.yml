@@ -92,7 +92,7 @@ jobs:
         uses: pulumi/actions@v6
         with:
           command: up
-          stack-name: tnorlund/development/prod
+          stack-name: tnorlund/portfolio/prod
           work-dir: infra
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
@@ -102,9 +102,9 @@ jobs:
       - name: Get Pulumi outputs
         id: pulumi-outputs
         run: |
-          BUCKET_NAME=$(pulumi stack output bucketName --stack tnorlund/development/prod)
-          AWS_REGION_FROM_PULUMI=$(pulumi stack output region --stack tnorlund/development/prod)
-          DISTRIBUTION_ID=$(pulumi stack output distribution-id --stack tnorlund/development/prod)
+          BUCKET_NAME=$(pulumi stack output bucketName --stack tnorlund/portfolio/prod)
+          AWS_REGION_FROM_PULUMI=$(pulumi stack output region --stack tnorlund/portfolio/prod)
+          DISTRIBUTION_ID=$(pulumi stack output distribution-id --stack tnorlund/portfolio/prod)
       
           echo "bucketName=$BUCKET_NAME" >> $GITHUB_ENV
           echo "awsRegion=$AWS_REGION_FROM_PULUMI" >> $GITHUB_ENV

@@ -68,7 +68,7 @@ def load_env(env: str = "dev") -> tuple[str, str, str]:
         raise ValueError("The ENV environment variable is not set")
 
     stack_name = env.lower()
-    project_name = "development"  # Adjust if your Pulumi project name differs
+    project_name = "portfolio"
     try:
         stack = select_stack(
             stack_name=stack_name,
