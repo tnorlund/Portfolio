@@ -198,6 +198,23 @@ const Diagram = () => {
 
               <feBlend in="SourceGraphic" in2="blurOut" mode="normal" />
             </filter>
+
+            <linearGradient
+              id="safariDarkModeGradient"
+              x1="0"
+              y1="0"
+              x2="0"
+              y2="1"
+            >
+              <stop
+                offset="0%"
+                style={{ stopColor: "var(--safari-icon-top)" }}
+              />
+              <stop
+                offset="100%"
+                style={{ stopColor: "var(--safari-icon-bottom)" }}
+              />
+            </linearGradient>
           </defs>
 
           <animated.g
@@ -380,7 +397,7 @@ const Diagram = () => {
                   height="80"
                   rx="16.41"
                   ry="16.41"
-                  fill="#fff"
+                  fill="url(#safariDarkModeGradient)"
                 />
                 <circle
                   cx="149.92"
