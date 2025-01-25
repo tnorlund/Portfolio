@@ -18,7 +18,12 @@ class WordTag:
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, WordTag):
             return False
-        return self.word_id == other.word_id and self.tag == other.tag and self.line_id == other.line_id and self.image_id == other.image_id
+        return (
+            self.word_id == other.word_id
+            and self.tag == other.tag
+            and self.line_id == other.line_id
+            and self.image_id == other.image_id
+        )
 
     def __iter__(self) -> Generator[Tuple[str, str], None, None]:
         yield "image_id", self.image_id
@@ -34,7 +39,11 @@ class WordTag:
         spaced_tag_upper = f"{tag_upper:_>20}"
         return {
             "PK": {"S": f"IMAGE#{self.image_id:05d}"},
-            "SK": {"S": f"TAG#{spaced_tag_upper}#LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"},
+            "SK": {
+                "S": f"LINE#{self.line_id:05d}"
+                f"#WORD#{self.word_id:05d}"
+                f"#TAG#{spaced_tag_upper}"
+            },
         }
 
     def gsi1_key(self) -> dict:
@@ -42,7 +51,9 @@ class WordTag:
         spaced_tag_upper = f"{tag_upper:_>20}"
         return {
             "GSI1PK": {"S": f"TAG#{spaced_tag_upper}"},
-            "GSI1SK": {"S": f"IMAGE#{self.image_id:05d}#LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"},
+            "GSI1SK": {
+                "S": f"IMAGE#{self.image_id:05d}#LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"
+            },
         }
 
     def to_item(self) -> dict:
@@ -61,13 +72,12 @@ def itemToWordTag(item: dict) -> WordTag:
     try:
         pk_parts = item["PK"]["S"].split("#")
         sk_parts = item["SK"]["S"].split("#")
-        gsi1pk_parts = item["GSI1PK"]["S"].split("#")
-        
-        tag = gsi1pk_parts[1].lstrip('_').strip()
+
+        tag = sk_parts[-1].lstrip("_").strip()
         return WordTag(
             image_id=int(pk_parts[1]),
-            line_id=int(sk_parts[3]),
-            word_id=int(sk_parts[5]),
+            line_id=int(sk_parts[1]),
+            word_id=int(sk_parts[3]),
             tag=tag,
         )
     except (IndexError, ValueError) as e:

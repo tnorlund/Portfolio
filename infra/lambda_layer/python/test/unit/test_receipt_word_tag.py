@@ -78,15 +78,11 @@ def test_receipt_word_tag_key(example_receipt_word_tag):
     """
     Test that .key() returns the correct PK/SK.
       PK = "IMAGE#<image_id>"
-      SK = "TAG#<underscore_padded_tag>#RECEIPT#<receipt_id>#WORD#<word_id>"
+      SK  = "RECEIPT#<receipt_id>#LINE#<line_id>#WORD#<word_id>#TAG#<tag>"
     """
     item_key = example_receipt_word_tag.key()
     assert item_key["PK"]["S"] == "IMAGE#00123"
-    # tag="food" => uppercase => "FOOD" => underscore-padded to 20 chars => "________________FOOD" (some underscores).
-    # We'll just check it starts with "TAG#" and ends with "#RECEIPT#00045#WORD#00789"
-    sk_val = item_key["SK"]["S"]
-    assert sk_val.startswith("TAG#")
-    assert sk_val.endswith("#RECEIPT#00045#WORD#00789")
+    assert item_key["SK"]["S"] == "RECEIPT#00045#LINE#00006#WORD#00789#TAG#________________food"
 
 
 def test_receipt_word_tag_gsi1_key(example_receipt_word_tag):
@@ -125,11 +121,11 @@ def test_item_to_receipt_word_tag():
     """
     raw_item = {
         "PK": {"S": "IMAGE#00012"},
-        "SK": {"S": "TAG#____________FOOD#RECEIPT#00005#WORD#00099"},
+        "SK": {"S": "RECEIPT#00005#LINE#00002#WORD#00099#TAG#________________food"},
         "GSI1PK": {"S": "TAG#____________FOOD"},
         "GSI1SK": {"S": "IMAGE#00012#RECEIPT#00005#LINE#00002#WORD#00099"},
         "TYPE": {"S": "RECEIPT_WORD_TAG"},
-        "tag_name": {"S": "FOOD"},
+        "tag_name": {"S": "food"},
     }
 
     obj = itemToReceiptWordTag(raw_item)
@@ -137,7 +133,7 @@ def test_item_to_receipt_word_tag():
     assert obj.receipt_id == 5
     assert obj.line_id == 2
     assert obj.word_id == 99
-    assert obj.tag == "FOOD"
+    assert obj.tag == "food"
 
 
 def test_item_to_receipt_word_tag_missing_keys():
