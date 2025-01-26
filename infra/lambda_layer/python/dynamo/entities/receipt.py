@@ -183,6 +183,7 @@ class Receipt:
             dict: The iterator over the Receipt object
         """
         yield "id", int(self.id)
+        yield "image_id", int(self.image_id)
         yield "width", self.width
         yield "height", self.height
         yield "timestamp_added", self.timestamp_added
