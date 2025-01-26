@@ -335,6 +335,7 @@ def store_cluster_entities(
         receipt_width, receipt_height: The final width/height of the warped cluster.
         table_name: Name of your DynamoDB table with the "ReceiptLine," etc.
     """
+
     def warp_point(x_abs, y_abs, M):
         arr = np.array([[[x_abs, y_abs]]], dtype="float32")
         warped = cv2.perspectiveTransform(arr, M)
@@ -361,14 +362,22 @@ def store_cluster_entities(
     # top_left, top_right, bottom_left, bottom_right.
 
     for ln in lines:
-        tl_abs = (ln.top_left["x"] * image_obj.width,
-                  (1 - ln.top_left["y"]) * image_obj.height)
-        tr_abs = (ln.top_right["x"] * image_obj.width,
-                  (1 - ln.top_right["y"]) * image_obj.height)
-        bl_abs = (ln.bottom_left["x"] * image_obj.width,
-                  (1 - ln.bottom_left["y"]) * image_obj.height)
-        br_abs = (ln.bottom_right["x"] * image_obj.width,
-                  (1 - ln.bottom_right["y"]) * image_obj.height)
+        tl_abs = (
+            ln.top_left["x"] * image_obj.width,
+            (1 - ln.top_left["y"]) * image_obj.height,
+        )
+        tr_abs = (
+            ln.top_right["x"] * image_obj.width,
+            (1 - ln.top_right["y"]) * image_obj.height,
+        )
+        bl_abs = (
+            ln.bottom_left["x"] * image_obj.width,
+            (1 - ln.bottom_left["y"]) * image_obj.height,
+        )
+        br_abs = (
+            ln.bottom_right["x"] * image_obj.width,
+            (1 - ln.bottom_right["y"]) * image_obj.height,
+        )
 
         # Warp each corner
         w_tl = warp_point(*tl_abs, M)
@@ -425,14 +434,22 @@ def store_cluster_entities(
 
     # Repeat the same approach for Words:
     for wd in words:
-        tl_abs = (wd.top_left["x"] * image_obj.width,
-                  (1 - wd.top_left["y"]) * image_obj.height)
-        tr_abs = (wd.top_right["x"] * image_obj.width,
-                  (1 - wd.top_right["y"]) * image_obj.height)
-        bl_abs = (wd.bottom_left["x"] * image_obj.width,
-                  (1 - wd.bottom_left["y"]) * image_obj.height)
-        br_abs = (wd.bottom_right["x"] * image_obj.width,
-                  (1 - wd.bottom_right["y"]) * image_obj.height)
+        tl_abs = (
+            wd.top_left["x"] * image_obj.width,
+            (1 - wd.top_left["y"]) * image_obj.height,
+        )
+        tr_abs = (
+            wd.top_right["x"] * image_obj.width,
+            (1 - wd.top_right["y"]) * image_obj.height,
+        )
+        bl_abs = (
+            wd.bottom_left["x"] * image_obj.width,
+            (1 - wd.bottom_left["y"]) * image_obj.height,
+        )
+        br_abs = (
+            wd.bottom_right["x"] * image_obj.width,
+            (1 - wd.bottom_right["y"]) * image_obj.height,
+        )
 
         # Warp each corner
         w_tl = warp_point(*tl_abs, M)
@@ -490,14 +507,22 @@ def store_cluster_entities(
 
     # And for Letters:
     for lt in letters:
-        tl_abs = (lt.top_left["x"] * image_obj.width,
-                  (1 - lt.top_left["y"]) * image_obj.height)
-        tr_abs = (ln.top_right["x"] * image_obj.width,
-                  (1 - lt.top_right["y"]) * image_obj.height)
-        bl_abs = (ln.bottom_left["x"] * image_obj.width,
-                  (1 - lt.bottom_left["y"]) * image_obj.height)
-        br_abs = (ln.bottom_right["x"] * image_obj.width,
-                  (1 - lt.bottom_right["y"]) * image_obj.height)
+        tl_abs = (
+            lt.top_left["x"] * image_obj.width,
+            (1 - lt.top_left["y"]) * image_obj.height,
+        )
+        tr_abs = (
+            ln.top_right["x"] * image_obj.width,
+            (1 - lt.top_right["y"]) * image_obj.height,
+        )
+        bl_abs = (
+            ln.bottom_left["x"] * image_obj.width,
+            (1 - lt.bottom_left["y"]) * image_obj.height,
+        )
+        br_abs = (
+            ln.bottom_right["x"] * image_obj.width,
+            (1 - lt.bottom_right["y"]) * image_obj.height,
+        )
 
         # Warp each corner
         w_tl = warp_point(*tl_abs, M)
@@ -558,9 +583,12 @@ def store_cluster_entities(
     dynamo_client.addReceiptWords(receipt_words)
     dynamo_client.addReceiptLetters(receipt_letters)
 
-    print(f"Added {len(receipt_lines)} receipt lines, "
-          f"{len(receipt_words)} words, and "
-          f"{len(receipt_letters)} letters for receipt {cluster_id}.")
+    print(
+        f"Added {len(receipt_lines)} receipt lines, "
+        f"{len(receipt_words)} words, and "
+        f"{len(receipt_letters)} letters for receipt {cluster_id}."
+    )
+
 
 def order_points(pts_4):
     # pts_4: shape (4,2)
@@ -585,6 +613,7 @@ def order_points(pts_4):
         rect[3], rect[2] = bottom_two[1], bottom_two[0]
     return rect
 
+
 def transform_cluster(
     cluster_id: int,
     cluster_lines: List[Line],
@@ -607,7 +636,7 @@ def transform_cluster(
             x_abs = corner["x"] * image_obj.width
             y_abs = (1 - corner["y"]) * image_obj.height  # note 1 - y if top=0
             points_abs.append((x_abs, y_abs))
-    
+
     if not points_abs:
         logger.warning("No corners for cluster %d, skipping warp.", cluster_id)
         return
@@ -615,8 +644,8 @@ def transform_cluster(
     pts = np.array(points_abs, dtype=np.float32)
 
     # 2) Compute min-area bounding rect
-    rect = cv2.minAreaRect(pts)     # (center, (w, h), angle)
-    box = cv2.boxPoints(rect)       # 4 corner points
+    rect = cv2.minAreaRect(pts)  # (center, (w, h), angle)
+    box = cv2.boxPoints(rect)  # 4 corner points
     box = np.array(box, dtype=np.float32)
 
     # 3) Order points, warp to upright rectangle
@@ -627,13 +656,10 @@ def transform_cluster(
     # Ensure width is always less than height
     if w > h:
         w, h = h, w
-    
-    dst_pts = np.array([
-        [0,     0],
-        [w - 1, 0],
-        [w - 1, h - 1],
-        [0,     h - 1]
-    ], dtype="float32")
+
+    dst_pts = np.array(
+        [[0, 0], [w - 1, 0], [w - 1, h - 1], [0, h - 1]], dtype="float32"
+    )
 
     M = cv2.getPerspectiveTransform(box_ordered, dst_pts)
     warped = cv2.warpPerspective(image_cv, M, (w, h))
@@ -669,25 +695,33 @@ def transform_cluster(
     # 5) Store as a Receipt item in DynamoDB
     receipt_width, receipt_height = warped.shape[1], warped.shape[0]
     receipt = Receipt(
-        image_id = image_obj.id,
-        id = int(cluster_id),
-        width = int(receipt_width),
-        height = int(receipt_height),
-        timestamp_added = datetime.now(timezone.utc).isoformat(),
-        raw_s3_bucket = image_obj.raw_s3_bucket,
-        raw_s3_key = image_obj.raw_s3_key,
+        image_id=image_obj.id,
+        id=int(cluster_id),
+        width=int(receipt_width),
+        height=int(receipt_height),
+        timestamp_added=datetime.now(timezone.utc).isoformat(),
+        raw_s3_bucket=image_obj.raw_s3_bucket,
+        raw_s3_key=image_obj.raw_s3_key,
         # For reference, store the corners in normalized coords if you want
-        top_left     = { "x": float(box_ordered[0][0] / image_obj.width),
-                         "y": 1 - float(box_ordered[0][1] / image_obj.height) },
-        top_right    = { "x": float(box_ordered[1][0] / image_obj.width),
-                         "y": 1 - float(box_ordered[1][1] / image_obj.height) },
-        bottom_right = { "x": float(box_ordered[2][0] / image_obj.width),
-                         "y": 1 - float(box_ordered[2][1] / image_obj.height) },
-        bottom_left  = { "x": float(box_ordered[3][0] / image_obj.width),
-                         "y": 1 - float(box_ordered[3][1] / image_obj.height) },
-        sha256 = receipt_sha256,
-        cdn_s3_bucket = CDN_S3_BUCKET,
-        cdn_s3_key = receipt_key,
+        top_left={
+            "x": float(box_ordered[0][0] / image_obj.width),
+            "y": 1 - float(box_ordered[0][1] / image_obj.height),
+        },
+        top_right={
+            "x": float(box_ordered[1][0] / image_obj.width),
+            "y": 1 - float(box_ordered[1][1] / image_obj.height),
+        },
+        bottom_right={
+            "x": float(box_ordered[2][0] / image_obj.width),
+            "y": 1 - float(box_ordered[2][1] / image_obj.height),
+        },
+        bottom_left={
+            "x": float(box_ordered[3][0] / image_obj.width),
+            "y": 1 - float(box_ordered[3][1] / image_obj.height),
+        },
+        sha256=receipt_sha256,
+        cdn_s3_bucket=CDN_S3_BUCKET,
+        cdn_s3_key=receipt_key,
     )
     dynamo_client = DynamoClient(DYNAMO_DB_TABLE)
     dynamo_client.addReceipt(receipt)
@@ -708,14 +742,42 @@ def write_results(image_id: int) -> None:
             Body=json.dumps(
                 {
                     "images": dict(image),
-                    "lines": [dict(line) for line in lines],
-                    "words": [dict(word) for word in words],
+                    "lines": [
+                        {
+                            key: value
+                            for key, value in dict(line).items()
+                            if key not in ("histogram", "num_chars")
+                        }
+                        for line in lines
+                    ],
+                    "words": [
+                        {
+                            key: value
+                            for key, value in dict(word).items()
+                            if key not in ("histogram", "num_chars")
+                        }
+                        for word in words
+                    ],
                     "letters": [dict(letter) for letter in letters],
                     "receipts": [
                         {
                             "receipt": dict(receipt["receipt"]),
-                            "lines": [dict(line) for line in receipt["lines"]],
-                            "words": [dict(word) for word in receipt["words"]],
+                            "lines": [
+                                {
+                                    key: value
+                                    for key, value in dict(line).items()
+                                    if key not in ("histogram", "num_chars")
+                                }
+                                for line in receipt["lines"]
+                            ],
+                            "words": [
+                                {
+                                    key: value
+                                    for key, value in dict(word).items()
+                                    if key not in ("histogram", "num_chars")
+                                }
+                                for word in receipt["words"]
+                            ],
                             "letters": [dict(letter) for letter in receipt["letters"]],
                         }
                         for receipt in receipts
