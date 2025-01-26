@@ -60,28 +60,20 @@ def load_env(env: str = "dev") -> tuple[str, str, str]:
     Returns:
         A tuple of (raw_bucket_name, lambda_function_name, dynamo_db_table_name).
     """
-    # The working directory is in the "infra" directory next to this script.
-    script_dir = Path(__file__).parent.resolve()
-    work_dir = script_dir / "infra"
+    stack = select_stack(
+        stack_name=f"tnorlund/portfolio/{env}",
+        project_name="portfolio",
+        program=lambda: None,
+    )
 
-    if not env:
-        raise ValueError("The ENV environment variable is not set")
+    # Convert Pulumi OutputValue objects to raw Python values
+    raw_bucket = stack.outputs()["image_bucket_name"].value
+    lambda_function = stack.outputs()["cluster_lambda_function_name"].value
+    dynamo_db_table = stack.outputs()["table_name"].value
 
-    stack_name = env.lower()
-    project_name = "portfolio"
-    try:
-        stack = select_stack(
-            stack_name=stack_name,
-            project_name=project_name,
-            work_dir=str(work_dir),
-        )
-    except Exception as e:
-        print(f"Error selecting stack: {e}")
-        return None, None, None
-    outputs = stack.outputs()
-    raw_bucket = str(outputs["image_bucket_name"].value)
-    lambda_function = str(outputs["cluster_lambda_function_name"].value)
-    dynamo_db_table = str(outputs["table_name"].value)
+    # Raise an error if any of the values are None
+    if None in (raw_bucket, lambda_function, dynamo_db_table):
+        raise ValueError("One or more required values are None")
 
     return raw_bucket, lambda_function, dynamo_db_table
 
