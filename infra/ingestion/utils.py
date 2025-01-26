@@ -122,10 +122,6 @@ def get_cdn_keys(bucket_name: str) -> List[Tuple[str, List[str]]]:
 
     for page in page_iterator:
         for obj in page.get("Contents", []):
-            # Filter to only objects with StorageClass == 'STANDARD_IA'
-            if obj.get("StorageClass") != "STANDARD_IA":
-                continue
-
             key = obj["Key"]
             # We only care about .png
             if not key.lower().endswith(".png"):
