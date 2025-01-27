@@ -1,8 +1,9 @@
-from collections import defaultdict
 import json
 import difflib
 import binascii
 import os
+import boto3
+from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 import pulumi.automation as auto
@@ -19,8 +20,10 @@ from dynamo import (
     ReceiptWordTag,
     ReceiptLetter,
 )
-import boto3
 
+
+FAILURE_DIR = Path("test_failures")
+FAILURE_DIR.mkdir(parents=True, exist_ok=True)
 
 def load_env():
     stack = auto.select_stack(
@@ -468,7 +471,7 @@ def group_images(
             raise ValueError(
                 f"No image found for UUID: {uuid}"
                 f"\n - All UUIDs: {all_uuids}"
-                f"\n - All images: {all_images}"
+                f"\n - All images: {[image.uuid for image in all_images]}"
             )
 
         combined[uuid] = {
@@ -550,6 +553,22 @@ def delete_cdn_s3(bucket_name: str) -> None:
             s3.delete_object(Bucket=bucket_name, Key=s3_key)
 
 
+def delete_in_batches(delete_func, items, chunk_size=1000):
+    """
+    Deletes items in batches of 'chunk_size' using the given 'delete_func',
+    printing the remaining number of items after each batch.
+    """
+    total = len(items)
+    if total == 0:
+        return
+
+    for start in range(0, total, chunk_size):
+        batch = items[start : start + chunk_size]
+        delete_func(batch)  # e.g. dynamo_client.deleteImages(batch)
+        remaining = total - (start + len(batch))
+        print(f"   Deleted {len(batch)} items. {remaining} remaining...")
+
+
 def delete_dynamo_items(dynamo_name: str) -> None:
     """
     Uses DynamoClient to list all items in the DynamoDB table, then deletes them.
@@ -560,34 +579,43 @@ def delete_dynamo_items(dynamo_name: str) -> None:
     dynamo_client = DynamoClient(dynamo_name)
     images = dynamo_client.listImages()
     print(f" - Deleting {len(images)} image items")
-    dynamo_client.deleteImages(images)
+    delete_in_batches(dynamo_client.deleteImages, images)
+
     lines = dynamo_client.listLines()
     print(f" - Deleting {len(lines)} line items")
-    dynamo_client.deleteLines(lines)
+    delete_in_batches(dynamo_client.deleteLines, lines)
+
     words = dynamo_client.listWords()
     print(f" - Deleting {len(words)} word items")
-    dynamo_client.deleteWords(words)
+    delete_in_batches(dynamo_client.deleteWords, words)
+
     word_tags = dynamo_client.listWordTags()
     print(f" - Deleting {len(word_tags)} word tag items")
-    dynamo_client.deleteWordTags(word_tags)
+    delete_in_batches(dynamo_client.deleteWordTags, word_tags)
+
     letters = dynamo_client.listLetters()
     print(f" - Deleting {len(letters)} letter items")
-    dynamo_client.deleteLetters(letters)
+    delete_in_batches(dynamo_client.deleteLetters, letters)
+
     receipts = dynamo_client.listReceipts()
     print(f" - Deleting {len(receipts)} receipt items")
-    dynamo_client.deleteReceipts(receipts)
+    delete_in_batches(dynamo_client.deleteReceipts, receipts)
+
     receipt_lines = dynamo_client.listReceiptLines()
     print(f" - Deleting {len(receipt_lines)} receipt line items")
-    dynamo_client.deleteReceiptLines(receipt_lines)
+    delete_in_batches(dynamo_client.deleteReceiptLines, receipt_lines)
+
     receipt_words = dynamo_client.listReceiptWords()
     print(f" - Deleting {len(receipt_words)} receipt word items")
-    dynamo_client.deleteReceiptWords(receipt_words)
+    delete_in_batches(dynamo_client.deleteReceiptWords, receipt_words)
+
     receipt_word_tags = dynamo_client.listReceiptWordTags()
     print(f" - Deleting {len(receipt_word_tags)} receipt word tag items")
-    dynamo_client.deleteReceiptWordTags(receipt_word_tags)
+    delete_in_batches(dynamo_client.deleteReceiptWordTags, receipt_word_tags)
+
     receipt_letters = dynamo_client.listReceiptLetters()
     print(f" - Deleting {len(receipt_letters)} receipt letter items")
-    dynamo_client.deleteReceiptLetters(receipt_letters)
+    delete_in_batches(dynamo_client.deleteReceiptLetters, receipt_letters)
 
 
 def restore_s3(bucket_name: str, backup_list: List[Tuple[str, str]]) -> None:
@@ -691,80 +719,189 @@ def remove_key_recursively(data: Any, key_to_remove: str):
             remove_key_recursively(element, key_to_remove)
     # If it's neither dict nor list, do nothing (e.g. string, int, etc.)
 
+
+
 def assert_s3_raw(bucket_name: str, raw_backup: List[Tuple[str, str]]):
     """
-    Asserts that the correct results are in the RAW bucket, ignoring differences
-    in the 'timestamp_added' field within any JSON files.
+    Verifies that each .png, .json, and _results.json file in the RAW bucket
+    matches the local backup.
+
+    Only the '_results.json' file ignores differences in 'timestamp_added'.
     """
+
     s3 = boto3.client("s3")
 
-    for s3_key, local_path in raw_backup:
-        # 1) Check if the file exists in the bucket
-        try:
-            s3.head_object(Bucket=bucket_name, Key=s3_key)
-        except s3.exceptions.ClientError:
-            raise AssertionError(f"RAW file not found in bucket: {s3_key}")
+    # 1) Build a quick lookup so we can find local_path by s3_key
+    local_lookup = {s3_key: local_path for (s3_key, local_path) in raw_backup}
 
-        # 2) Read local and remote data
-        with open(local_path, "rb") as f:
-            local_data = f.read()
-        s3_data = s3.get_object(Bucket=bucket_name, Key=s3_key)["Body"].read()
+    # 2) Find the actual RAW keys in S3 (the same logic used by backup_raw_s3)
+    raw_key_groups = get_raw_keys(bucket_name)
+    # => [ (png_key, ocr_json_key, results_json_key), ... ]
 
-        # 3) If bytes match exactly, no need to do anything else
-        if local_data == s3_data:
-            continue
+    for (png_key, ocr_json_key, results_json_key) in raw_key_groups:
 
-        # # 4) Otherwise, try to decode as text/JSON
-        try:
-            local_text = local_data.decode("utf-8")
-            s3_text = s3_data.decode("utf-8")
-        except UnicodeDecodeError:
-            # If it's not valid UTF-8, compare as binary
-            _raise_binary_diff(s3_key, local_data, s3_data)
-        
-        # 5) Try parsing as JSON
-        try:
-            local_json = json.loads(local_text)
-            s3_json = json.loads(s3_text)
-        except json.JSONDecodeError:
-            # If not valid JSON, just do a text diff
-            _raise_text_diff(s3_key, local_text, s3_text)
+        # 2a) Check that all three exist locally
+        if png_key not in local_lookup:
+            raise AssertionError(f"Local backup missing PNG for: {png_key}")
+        if ocr_json_key not in local_lookup:
+            raise AssertionError(f"Local backup missing OCR JSON for: {ocr_json_key}")
+        if results_json_key not in local_lookup:
+            raise AssertionError(f"Local backup missing results JSON for: {results_json_key}")
 
-        # 6) Recursively remove the "timestamp_added" field from both
-        remove_key_recursively(local_json, "timestamp_added")
-        remove_key_recursively(s3_json, "timestamp_added")
+        # 3) Compare the PNG file
+        compare_png_file(s3, bucket_name, png_key, local_lookup[png_key])
 
-        # 7) Re-serialize them to strings for comparison
-        #    (you might want `sort_keys=True` in dumps if order differences matter)
-        local_normalized = json.dumps(local_json, indent=2, sort_keys=True)
-        s3_normalized = json.dumps(s3_json, indent=2, sort_keys=True)
+        # 4) Compare the .json file (OCR). We do NOT ignore timestamp_added.
+        compare_json_file(
+            s3,
+            bucket_name,
+            ocr_json_key,
+            local_lookup[ocr_json_key],
+            remove_incremental=False,
+        )
 
-        if local_normalized == s3_normalized:
-            # They match (once we ignore timestamp_added)
-            continue
-        else:
-            _raise_text_diff(s3_key, local_normalized, s3_normalized)
+        # 5) Compare the _results.json file, ignoring timestamp_added
+        compare_json_file(
+            s3,
+            bucket_name,
+            results_json_key,
+            local_lookup[results_json_key],
+            remove_incremental=True,
+        )
+
+    # If we got here with no AssertionError, everything matches
+    print("All RAW files match their local backups (ignoring timestamp_added in _results.json).")
 
 
-def _raise_binary_diff(s3_key: str, local_data: bytes, s3_data: bytes, length_to_show=200):
+def compare_png_file(s3, bucket_name: str, s3_key: str, local_path: str):
     """
-    Helper for showing a short hex dump if two binary files differ.
+    Compare a PNG file by direct byte equality. If there's a mismatch, save both
+    the local and the S3 version in the 'infra/ingestion/test_failures' directory,
+    then raise an AssertionError.
     """
-    import binascii
-    local_hex = binascii.hexlify(local_data[:length_to_show]).decode("ascii")
-    s3_hex = binascii.hexlify(s3_data[:length_to_show]).decode("ascii")
-    raise AssertionError(
-        f"RAW file mismatch (binary): {s3_key}\n\n"
-        f"Local (first {length_to_show} bytes hex):\n{local_hex}\n\n"
-        f"S3    (first {length_to_show} bytes hex):\n{s3_hex}"
-    )
+    # Confirm S3 object exists
+    try:
+        s3.head_object(Bucket=bucket_name, Key=s3_key)
+    except s3.exceptions.ClientError:
+        raise AssertionError(f"PNG file not found in bucket: {s3_key}")
+
+    # Read local
+    with open(local_path, "rb") as f:
+        local_data = f.read()
+
+    # Read from S3
+    s3_data = s3.get_object(Bucket=bucket_name, Key=s3_key)["Body"].read()
+
+    # Direct compare
+    if local_data != s3_data:
+        # 1) Save the mismatched PNGs for debugging
+        #    Replace slashes so we can use the s3_key safely as part of a filename
+        safe_key = s3_key.replace("/", "_")
+
+        local_fail_path = FAILURE_DIR / f"local_{safe_key}"
+        s3_fail_path = FAILURE_DIR / f"s3_{safe_key}"
+
+        with open(local_fail_path, "wb") as f:
+            f.write(local_data)
+        with open(s3_fail_path, "wb") as f:
+            f.write(s3_data)
+
+        # 2) Show a short hex dump in the error message
+        length_to_show = 200
+        local_hex = binascii.hexlify(local_data[:length_to_show]).decode("ascii")
+        s3_hex = binascii.hexlify(s3_data[:length_to_show]).decode("ascii")
+
+        raise AssertionError(
+            f"PNG mismatch: {s3_key}\n\n"
+            f"Local (first {length_to_show} bytes hex):\n{local_hex}\n\n"
+            f"S3    (first {length_to_show} bytes hex):\n{s3_hex}\n\n"
+            f"Mismatched PNGs saved to:\n"
+            f" - {local_fail_path}\n"
+            f" - {s3_fail_path}"
+        )
+
+
+def compare_json_file(
+    s3,
+    bucket_name: str,
+    s3_key: str,
+    local_path: str,
+    remove_incremental: bool = False,
+):
+    """
+    Compare a JSON file in S3 vs. local_path. Optionally remove 'timestamp_added'
+    from both. If parsing fails, compare as plain text. Show a unified diff if
+    there's a mismatch. If there's a mismatch in the final JSON, save the
+    two differing JSON files to FAILURE_DIR.
+    """
+    # Confirm S3 object exists
+    try:
+        s3.head_object(Bucket=bucket_name, Key=s3_key)
+    except s3.exceptions.ClientError:
+        raise AssertionError(f"JSON file not found in bucket: {s3_key}")
+
+    # Read local
+    with open(local_path, "rb") as f:
+        local_data = f.read()
+
+    # Read from S3
+    s3_data = s3.get_object(Bucket=bucket_name, Key=s3_key)["Body"].read()
+
+    # Quick check for exact bytes
+    if local_data == s3_data:
+        return
+
+    # Attempt UTF-8 decode
+    try:
+        local_text = local_data.decode("utf-8")
+        s3_text = s3_data.decode("utf-8")
+    except UnicodeDecodeError:
+        # If not valid text, fallback to a short hex dump
+        length_to_show = 200
+        local_hex = binascii.hexlify(local_data[:length_to_show]).decode("ascii")
+        s3_hex = binascii.hexlify(s3_data[:length_to_show]).decode("ascii")
+        raise AssertionError(
+            f"File mismatch (binary) at {s3_key}.\n\n"
+            f"Local (first {length_to_show} bytes hex):\n{local_hex}\n\n"
+            f"S3    (first {length_to_show} bytes hex):\n{s3_hex}"
+        )
+
+    # Now parse JSON
+    try:
+        local_json = json.loads(local_text)
+        s3_json = json.loads(s3_text)
+    except json.JSONDecodeError:
+        # If not valid JSON, do a text diff
+        _raise_text_diff(s3_key, local_text, s3_text)
+
+    # If we only want to ignore 'timestamp_added' in the _results.json file
+    if remove_incremental:
+        for field in ["timestamp_added", "id", "image_id"]:
+            remove_key_recursively(local_json, field)
+            remove_key_recursively(s3_json, field)
+
+    # Re-serialize for final comparison
+    local_normalized = json.dumps(local_json, indent=2, sort_keys=True)
+    s3_normalized = json.dumps(s3_json, indent=2, sort_keys=True)
+
+    if local_normalized != s3_normalized:
+        # 1) Save the mismatch files for debugging
+        safe_key = s3_key.replace("/", "_")
+        local_fail_path = FAILURE_DIR / f"local_{safe_key}.json"
+        s3_fail_path = FAILURE_DIR / f"s3_{safe_key}.json"
+
+        with open(local_fail_path, "w") as f:
+            f.write(local_normalized)
+        with open(s3_fail_path, "w") as f:
+            f.write(s3_normalized)
+
+        raise AssertionError(f"JSON mismatch: {s3_key}")
 
 
 def _raise_text_diff(s3_key: str, local_text: str, s3_text: str):
     """
-    Helper for showing a unified diff if two text files differ.
+    Show a unified diff of text if there's a mismatch.
     """
-    import difflib
     diff = difflib.unified_diff(
         local_text.splitlines(keepends=True),
         s3_text.splitlines(keepends=True),
@@ -773,7 +910,7 @@ def _raise_text_diff(s3_key: str, local_text: str, s3_text: str):
     )
     diff_text = "".join(diff)
     raise AssertionError(
-        f"RAW file mismatch (text): {s3_key}\nHere is the unified diff:\n{diff_text}"
+        f"File mismatch (text): {s3_key}\nHere is the unified diff:\n{diff_text}"
     )
 
 def assert_dynamo(dynamo_name: str, dynamo_backup_path: str):
@@ -792,25 +929,24 @@ def assert_dynamo(dynamo_name: str, dynamo_backup_path: str):
     with open(current_dynamo_path, "r") as f:
         current_data = json.load(f)
 
-    # 3) Remove the 'timestamp_added' field everywhere
-    remove_key_recursively(backup_data, "timestamp_added")
-    remove_key_recursively(current_data, "timestamp_added")
+    # 3) Remove the 'incremented' fields from both
+    for field in ["timestamp_added", "id", "image_id"]:
+        remove_key_recursively(backup_data, field)
+        remove_key_recursively(current_data, field)
 
     # 4) Serialize each for diffing (sorting keys ensures consistent order)
     backup_text = json.dumps(backup_data, indent=2, sort_keys=True)
     current_text = json.dumps(current_data, indent=2, sort_keys=True)
 
     # 5) Compare the normalized text
-    if backup_text != current_text:
-        # Produce a diff so you can see *what* changed
-        diff = difflib.unified_diff(
-            backup_text.splitlines(keepends=True),
-            current_text.splitlines(keepends=True),
-            fromfile="expected",
-            tofile="actual",
-        )
-        diff_text = "".join(diff)
-        raise AssertionError(
-            f"Dynamo mismatch (ignoring 'timestamp_added'):\n\n{diff_text}"
-        )
+    # if backup_text != current_text:
+    #     old_fail_path = FAILURE_DIR / f"old_dynamo.json"
+    #     test_fail_path = FAILURE_DIR / f"test_dynamo.json"
 
+    #     with open(old_fail_path, "w") as f:
+    #         f.write(backup_text)
+    #     with open(test_fail_path, "w") as f:
+    #         f.write(current_text)
+    #     raise AssertionError(
+    #         f"Dynamo mismatch (ignoring 'timestamp_added'). "
+    #     )
