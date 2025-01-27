@@ -9,7 +9,8 @@ def example_receipt_word_tag():
         receipt_id=45,
         line_id=6,
         word_id=789,
-        tag="food"
+        tag="food",
+        timestamp_added="2021-01-01T00:00:00"
     )
 
 def test_receipt_word_tag_init(example_receipt_word_tag):
@@ -24,20 +25,20 @@ def test_receipt_word_tag_init(example_receipt_word_tag):
 def test_receipt_word_tag_init_empty_tag():
     """Test constructor raises ValueError if tag is empty."""
     with pytest.raises(ValueError, match="tag must not be empty"):
-        ReceiptWordTag(1, 2, 3, 4, "")
+        ReceiptWordTag(1, 2, 3, 4, "", "2021-01-01T00:00:00")
 
 
 def test_receipt_word_tag_init_long_tag():
     """Test constructor raises ValueError if tag is too long (>20 chars)."""
     long_tag = "A" * 21
     with pytest.raises(ValueError, match="tag must not exceed 20 characters"):
-        ReceiptWordTag(1, 2, 3, 4, long_tag)
+        ReceiptWordTag(1, 2, 3, 4, long_tag, timestamp_added="2021-01-01T00:00:00")
 
 
 def test_receipt_word_tag_init_underscore_tag():
     """Test constructor raises ValueError if tag starts with underscore."""
     with pytest.raises(ValueError, match="tag must not start with an underscore"):
-        ReceiptWordTag(1, 2, 3, 4, "_bad")
+        ReceiptWordTag(1, 2, 3, 4, "_bad", timestamp_added="2021-01-01T00:00:00")
 
 
 def test_receipt_word_tag_eq():
@@ -45,9 +46,9 @@ def test_receipt_word_tag_eq():
     Test __eq__ method:
       - Two ReceiptWordTags are equal if (word_id, receipt_id, tag) match.
     """
-    rwt1 = ReceiptWordTag(10, 20, 30, 40, "TAG")
-    rwt2 = ReceiptWordTag(999, 20, 888, 40, "TAG")   # same receipt_id, word_id, tag
-    rwt3 = ReceiptWordTag(10, 20, 30, 999, "OTHER")
+    rwt1 = ReceiptWordTag(10, 20, 30, 40, "TAG", timestamp_added="2021-01-01T00:00:00")
+    rwt2 = ReceiptWordTag(999, 20, 888, 40, "TAG", timestamp_added="2021-01-01T00:00:00")   # same receipt_id, word_id, tag
+    rwt3 = ReceiptWordTag(10, 20, 30, 999, "OTHER", timestamp_added="2021-01-01T00:00:00")  # different word_id
 
     assert rwt1 == rwt2
     assert rwt1 != rwt3
@@ -112,7 +113,10 @@ def test_receipt_word_tag_to_item(example_receipt_word_tag):
     assert item["TYPE"]["S"] == "RECEIPT_WORD_TAG"
 
     # Check tag_name
-    assert item["tag_name"]["S"] == "FOOD"
+    assert item["tag_name"]["S"] == "food"
+
+    # Check timestamp_added
+    assert item["timestamp_added"]["S"] == "2021-01-01T00:00:00"
 
 
 def test_item_to_receipt_word_tag():
@@ -126,6 +130,7 @@ def test_item_to_receipt_word_tag():
         "GSI1SK": {"S": "IMAGE#00012#RECEIPT#00005#LINE#00002#WORD#00099"},
         "TYPE": {"S": "RECEIPT_WORD_TAG"},
         "tag_name": {"S": "food"},
+        "timestamp_added": {"S": "2021-01-01T00:00:00"},
     }
 
     obj = itemToReceiptWordTag(raw_item)

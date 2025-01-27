@@ -18,16 +18,6 @@ class _ReceiptWordTag:
       GSI1PK = "TAG#<tag_upper_padded>"
       GSI1SK = "IMAGE#<image_id>#RECEIPT#<receipt_id>#LINE#<line_id>#WORD#<word_id>"
     """
-
-    def __init__(self, client, table_name: str):
-        """
-        Args:
-            client: A boto3 DynamoDB client (e.g. boto3.client("dynamodb")).
-            table_name (str): The name of your DynamoDB table.
-        """
-        self._client = client
-        self.table_name = table_name
-
     def addReceiptWordTag(self, receipt_word_tag: ReceiptWordTag):
         """
         Adds a ReceiptWordTag to the database with a conditional check
@@ -53,6 +43,7 @@ class _ReceiptWordTag:
                     f"receipt_id={receipt_word_tag.receipt_id}, "
                     f"word_id={receipt_word_tag.word_id}, "
                     f"tag={receipt_word_tag.tag}"
+                    f"timestamp_added={receipt_word_tag.timestamp_added}"
                 ) from e
             else:
                 raise Exception(f"Error adding ReceiptWordTag: {e}")
@@ -133,6 +124,7 @@ class _ReceiptWordTag:
             line_id=line_id,
             word_id=word_id,
             tag=tag,
+            timestamp_added="2000-01-01T00:00:00" # placeholder
         )
         try:
             self._client.delete_item(
@@ -218,6 +210,7 @@ class _ReceiptWordTag:
             line_id=line_id,
             word_id=word_id,
             tag=tag,
+            timestamp_added="2000-01-01T00:00:00" # placeholder
         )
         try:
             response = self._client.get_item(

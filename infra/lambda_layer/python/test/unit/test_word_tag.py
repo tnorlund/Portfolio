@@ -8,7 +8,8 @@ def sample_word_tag():
         image_id=42,
         line_id=7,
         word_id=101,
-        tag="example"
+        tag="example",
+        timestamp_added="2021-01-01T00:00:00"
     )
 
 
@@ -23,7 +24,7 @@ def test_word_tag_init(sample_word_tag):
 def test_word_tag_eq(sample_word_tag):
     """Test __eq__ method—only comparing tag & word_id."""
     wt1 = sample_word_tag
-    wt2 = WordTag(999, 888, 101, "example")
+    wt2 = WordTag(999, 888, 101, "example", timestamp_added="2021-01-01T00:00:00")
 
     # WordTag equality depends on (word_id, tag)
     assert wt1 == sample_word_tag
@@ -91,7 +92,9 @@ def test_item_to_word_tag():
         "SK": {"S": "LINE#00007#WORD#00101#TAG#_____________example"},
         "GSI1PK": {"S": "TAG#___________example"},
         "GSI1SK": {"S": "IMAGE#00042#LINE#00007#WORD#00101"},
-        "TYPE": {"S": "WORD_TAG"}
+        "TYPE": {"S": "WORD_TAG"},
+        "tag_name": {"S": "example"},
+        "timestamp_added": {"S": "2021-01-01T00:00:00"}
     }
     wt = itemToWordTag(item)
     assert wt.image_id == 42
