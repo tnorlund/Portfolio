@@ -13,7 +13,7 @@ ecr_image_uri = (
 )
 
 bucket = aws.s3.Bucket("raw-image-bucket")
-pulumi.export("image_bucket_name", bucket.bucket)
+pulumi.export("raw_bucket_name", bucket.bucket)
 
 
 lambda_role = aws.iam.Role(
@@ -104,5 +104,4 @@ lambda_function = aws.lambda_.Function(
     },
 )
 
-pulumi.export("CDN_PATH", "assets/")
 pulumi.export("cluster_lambda_function_name", lambda_function.name)

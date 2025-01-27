@@ -48,9 +48,9 @@ def setup_and_cleanup(pulumi_outputs):
       4. Restores everything afterward.
     """
     print("\nBacking up existing data...")
-    raw_bucket = pulumi_outputs["image_bucket_name"]
-    cdn_bucket = pulumi_outputs["bucketName"]
-    dynamo_table = pulumi_outputs["table_name"]
+    raw_bucket = pulumi_outputs["raw_bucket_name"]
+    cdn_bucket = pulumi_outputs["cdn_bucket_name"]
+    dynamo_table = pulumi_outputs["dynamodb_table_name"]
 
     raw_keys = backup_raw_s3(raw_bucket)
     cdn_keys = backup_cdn_s3(cdn_bucket)
@@ -128,15 +128,15 @@ def test_e2e(monkeypatch, setup_and_cleanup, pulumi_outputs):
     # ACT: Upload images -> triggers ingestion + cluster + Dynamo insert
     upload_images_to_s3.upload_files_with_uuid_in_batches(
         directory=Path(temp_dir).resolve(),
-        bucket_name=pulumi_outputs["image_bucket_name"],
+        bucket_name=pulumi_outputs["raw_bucket_name"],
         lambda_function=pulumi_outputs["cluster_lambda_function_name"],
-        dynamodb_table_name=pulumi_outputs["table_name"],
+        dynamodb_table_name=pulumi_outputs["dynamodb_table_name"],
     )
 
     # Wait for the cluster lambda to finish in real usage
     time.sleep(10)
 
     # ASSERT: Compare final state (RAW, CDN, Dynamo) to the backups
-    assert_s3_raw(pulumi_outputs["image_bucket_name"], raw_keys)
-    assert_s3_cdn(pulumi_outputs["bucketName"], cdn_keys)
-    assert_dynamo(pulumi_outputs["table_name"], dynamo_backup_path)
+    assert_s3_raw(pulumi_outputs["raw_bucket_name"], raw_keys)
+    assert_s3_cdn(pulumi_outputs["cdn_bucket_name"], cdn_keys)
+    assert_dynamo(pulumi_outputs["dynamodb_table_name"], dynamo_backup_path)
