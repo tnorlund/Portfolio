@@ -1,13 +1,13 @@
-import shutil
-import boto3
-import pytest
-import pulumi.automation as auto
 import os
-import subprocess
+import time
+import shutil
+import pytest
+from pathlib import Path
 from collections import deque
 from tempfile import TemporaryDirectory
-import time
-from pathlib import Path
+
+import pulumi.automation as auto
+
 from .utils import (
     assert_dynamo,
     backup_raw_s3,
@@ -23,7 +23,6 @@ from .utils import (
     assert_s3_raw,
 )
 from . import upload_images_to_s3
-from dynamo import DynamoClient
 
 
 @pytest.fixture(scope="session")
@@ -36,66 +35,55 @@ def pulumi_outputs():
         project_name="portfolio",
         program=lambda: None,
     )
-
-    # Convert Pulumi OutputValue objects to raw Python values
     return {key: val.value for key, val in stack.outputs().items()}
 
 
 @pytest.fixture
 def setup_and_cleanup(pulumi_outputs):
     """
-    A fixture that:
-     1. Backs up existing S3 files (RAW and CDN) and DynamoDB items
-     2. Deletes them (so the environment is 'clean' for testing)
-     3. Yields the expected results to the test
-     4. Restores original data after the test
+    This fixture:
+      1. Backs up existing S3 files (RAW/CDN) + DynamoDB items.
+      2. Deletes them (clean environment).
+      3. Yields the data needed for testing.
+      4. Restores everything afterward.
     """
-    print()
-    # Retrieve references from Pulumi outputs
+    print("\nBacking up existing data...")
     raw_bucket = pulumi_outputs["image_bucket_name"]
     cdn_bucket = pulumi_outputs["bucketName"]
     dynamo_table = pulumi_outputs["table_name"]
 
-    # Backup existing data
-    print("Backing up existing data...")
     raw_keys = backup_raw_s3(raw_bucket)
     cdn_keys = backup_cdn_s3(cdn_bucket)
     dynamo_backup_path = backup_dynamo_items(dynamo_table)
 
-    # Delete existing data
     print("Deleting existing data...")
     delete_raw_s3(raw_bucket)
     delete_cdn_s3(cdn_bucket)
     delete_dynamo_items(dynamo_table)
 
-    # Yield control to the test
-    with TemporaryDirectory() as tmpdir:
-        # Group all backups by UUID
-        grouped = group_images(raw_keys, cdn_keys, dynamo_backup_path)
+    # Organize backups by UUID
+    grouped = group_images(raw_keys, cdn_keys, dynamo_backup_path)
 
-        # Copy only the RAW .png files to the temp directory,
-        # but remove any "raw_" prefix in the final filename.
+    # Create a temp directory for the test to use
+    with TemporaryDirectory() as tmpdir:
         for uuid, data in grouped.items():
             for local_file_path in data["raw"]:
                 if local_file_path.lower().endswith(".png"):
                     old_filename = os.path.basename(local_file_path)
-                    # For example: "raw_be4073b9-68f6-453a-9b43-e8a27ca42d4b.png"
                     if old_filename.startswith("raw_"):
-                        new_filename = old_filename[4:]  # drop "raw_"
+                        new_filename = old_filename[4:]
                     else:
                         new_filename = old_filename
-
                     dest = os.path.join(tmpdir, new_filename)
                     shutil.copy2(local_file_path, dest)
 
         yield (tmpdir, grouped, cdn_keys, raw_keys, dynamo_backup_path)
-    print()
-    print("Deleting test data...")
+
+    print("\nCleaning up test data...")
     delete_raw_s3(raw_bucket)
     delete_cdn_s3(cdn_bucket)
     delete_dynamo_items(dynamo_table)
 
-    # Restore original data
     print("Restoring original data...")
     restore_s3(raw_bucket, raw_keys)
     restore_s3(cdn_bucket, cdn_keys)
@@ -105,28 +93,21 @@ def setup_and_cleanup(pulumi_outputs):
 def test_e2e(monkeypatch, setup_and_cleanup, pulumi_outputs):
     """
     E2E test that:
-    1) Uses 'setup_and_cleanup' to back up/delete existing data, and yield (temp_dir, grouped).
-    2) Finds all .png files in 'temp_dir' -> each becomes a mock UUID.
-    3) Monkeypatches 'uuid.uuid4()' to return those UUIDs in sequence.
-    4) Runs your ingestion script, verifying each new "image" uses a predictable UUID.
-    5) Restores everything after the test.
+      1) Backs up/deletes existing data via `setup_and_cleanup`.
+      2) Collects .png files from the temp directory for testing.
+      3) Mocks out uuid.uuid4() calls to provide predictable UUIDs.
+      4) Calls the ingestion script to upload images + trigger cluster lambda + store in Dynamo.
+      5) Verifies final S3 (RAW/CDN) + Dynamo states match the originals.
+      6) Restores original data automatically after test completion.
     """
     temp_dir, grouped, cdn_keys, raw_keys, dynamo_backup_path = setup_and_cleanup
 
-    # -------------------------------------------------------------------------
-    # ARRANGE: Collect .png filenames -> parse out the UUID from each
-    # -------------------------------------------------------------------------
-    all_png_files = sorted(
-        f for f in os.listdir(temp_dir) if f.lower().endswith(".png")
-    )
+    all_png_files = sorted(f for f in os.listdir(temp_dir) if f.lower().endswith(".png"))
     if not all_png_files:
         pytest.skip("No .png files found in temp directory; nothing to test.")
 
     derived_uuids = [os.path.splitext(filename)[0] for filename in all_png_files]
-
     image_indexes = [grouped[uuid]["dynamo"]["image"].id for uuid in derived_uuids]
-
-    # We'll put them in a queue so each uuid.uuid4() call gets the "next" one.
     uuid_queue = deque(derived_uuids)
 
     def mock_uuid4():
@@ -139,24 +120,23 @@ def test_e2e(monkeypatch, setup_and_cleanup, pulumi_outputs):
     monkeypatch.setattr(upload_images_to_s3, "uuid4", mock_uuid4)
 
     def mock_get_image_indexes(client, number_images):
-        # We want the i-th PNG to get image_id=i (i.e. 1,2,3,...).
+        # Return the pre-collected image IDs (1 per PNG).
         return image_indexes
 
-    monkeypatch.setattr(
-        upload_images_to_s3, "get_image_indexes", mock_get_image_indexes
-    )
+    monkeypatch.setattr(upload_images_to_s3, "get_image_indexes", mock_get_image_indexes)
 
-    # Act
+    # ACT: Upload images -> triggers ingestion + cluster + Dynamo insert
     upload_images_to_s3.upload_files_with_uuid_in_batches(
         directory=Path(temp_dir).resolve(),
         bucket_name=pulumi_outputs["image_bucket_name"],
         lambda_function=pulumi_outputs["cluster_lambda_function_name"],
         dynamodb_table_name=pulumi_outputs["table_name"],
     )
-    # Wait for the lambda to finish
+
+    # Wait for the cluster lambda to finish in real usage
     time.sleep(10)
 
-    # Assert
+    # ASSERT: Compare final state (RAW, CDN, Dynamo) to the backups
     assert_s3_raw(pulumi_outputs["image_bucket_name"], raw_keys)
     assert_s3_cdn(pulumi_outputs["bucketName"], cdn_keys)
     assert_dynamo(pulumi_outputs["table_name"], dynamo_backup_path)
