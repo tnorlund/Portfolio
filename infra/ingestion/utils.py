@@ -1,5 +1,7 @@
 from collections import defaultdict
 import json
+import difflib
+import binascii
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -650,3 +652,165 @@ def restore_dynamo_items(dynamo_name: str, backup_path: str) -> None:
     dynamo_client.addReceiptLetters(receipt_letters)
 
     os.remove(backup_path)  # Clean up the local backup file
+
+
+def assert_s3_cdn(bucket_name: str, cdn_backup: List[Tuple[str, str]]):
+    """
+    Asserts that the correct results are in the CDN bucket.
+
+    This uses the CDN backup list to verify that the main PNG file and each cluster PNG file are in the bucket and that they match the expected results.
+    """
+    s3 = boto3.client("s3")
+    for s3_key, local_path in cdn_backup:
+        # Check if the file exists in the bucket
+        try:
+            s3.head_object(Bucket=bucket_name, Key=s3_key)
+        except s3.exceptions.ClientError:
+            raise AssertionError(f"CDN file not found in bucket: {s3_key}")
+
+        # Compare the local file to the S3 file
+        with open(local_path, "rb") as f:
+            local_data = f.read()
+        s3_data = s3.get_object(Bucket=bucket_name, Key=s3_key)["Body"].read()
+
+        if local_data != s3_data:
+            raise AssertionError(f"CDN file mismatch: {s3_key}")
+
+def remove_key_recursively(data: Any, key_to_remove: str):
+    """
+    Recursively remove a given key (e.g. "timestamp_added") from a Python dict/list structure.
+    """
+    if isinstance(data, dict):
+        # Pop the key if it exists at this level
+        data.pop(key_to_remove, None)
+        # Recursively handle nested dicts/lists
+        for value in data.values():
+            remove_key_recursively(value, key_to_remove)
+    elif isinstance(data, list):
+        for element in data:
+            remove_key_recursively(element, key_to_remove)
+    # If it's neither dict nor list, do nothing (e.g. string, int, etc.)
+
+def assert_s3_raw(bucket_name: str, raw_backup: List[Tuple[str, str]]):
+    """
+    Asserts that the correct results are in the RAW bucket, ignoring differences
+    in the 'timestamp_added' field within any JSON files.
+    """
+    s3 = boto3.client("s3")
+
+    for s3_key, local_path in raw_backup:
+        # 1) Check if the file exists in the bucket
+        try:
+            s3.head_object(Bucket=bucket_name, Key=s3_key)
+        except s3.exceptions.ClientError:
+            raise AssertionError(f"RAW file not found in bucket: {s3_key}")
+
+        # 2) Read local and remote data
+        with open(local_path, "rb") as f:
+            local_data = f.read()
+        s3_data = s3.get_object(Bucket=bucket_name, Key=s3_key)["Body"].read()
+
+        # 3) If bytes match exactly, no need to do anything else
+        if local_data == s3_data:
+            continue
+
+        # # 4) Otherwise, try to decode as text/JSON
+        try:
+            local_text = local_data.decode("utf-8")
+            s3_text = s3_data.decode("utf-8")
+        except UnicodeDecodeError:
+            # If it's not valid UTF-8, compare as binary
+            _raise_binary_diff(s3_key, local_data, s3_data)
+        
+        # 5) Try parsing as JSON
+        try:
+            local_json = json.loads(local_text)
+            s3_json = json.loads(s3_text)
+        except json.JSONDecodeError:
+            # If not valid JSON, just do a text diff
+            _raise_text_diff(s3_key, local_text, s3_text)
+
+        # 6) Recursively remove the "timestamp_added" field from both
+        remove_key_recursively(local_json, "timestamp_added")
+        remove_key_recursively(s3_json, "timestamp_added")
+
+        # 7) Re-serialize them to strings for comparison
+        #    (you might want `sort_keys=True` in dumps if order differences matter)
+        local_normalized = json.dumps(local_json, indent=2, sort_keys=True)
+        s3_normalized = json.dumps(s3_json, indent=2, sort_keys=True)
+
+        if local_normalized == s3_normalized:
+            # They match (once we ignore timestamp_added)
+            continue
+        else:
+            _raise_text_diff(s3_key, local_normalized, s3_normalized)
+
+
+def _raise_binary_diff(s3_key: str, local_data: bytes, s3_data: bytes, length_to_show=200):
+    """
+    Helper for showing a short hex dump if two binary files differ.
+    """
+    import binascii
+    local_hex = binascii.hexlify(local_data[:length_to_show]).decode("ascii")
+    s3_hex = binascii.hexlify(s3_data[:length_to_show]).decode("ascii")
+    raise AssertionError(
+        f"RAW file mismatch (binary): {s3_key}\n\n"
+        f"Local (first {length_to_show} bytes hex):\n{local_hex}\n\n"
+        f"S3    (first {length_to_show} bytes hex):\n{s3_hex}"
+    )
+
+
+def _raise_text_diff(s3_key: str, local_text: str, s3_text: str):
+    """
+    Helper for showing a unified diff if two text files differ.
+    """
+    import difflib
+    diff = difflib.unified_diff(
+        local_text.splitlines(keepends=True),
+        s3_text.splitlines(keepends=True),
+        fromfile="local",
+        tofile="s3",
+    )
+    diff_text = "".join(diff)
+    raise AssertionError(
+        f"RAW file mismatch (text): {s3_key}\nHere is the unified diff:\n{diff_text}"
+    )
+
+def assert_dynamo(dynamo_name: str, dynamo_backup_path: str):
+    """
+    Compares the expected DynamoDB items with the actual items in the database,
+    ignoring differences in the 'timestamp_added' field.
+    """
+    # 1) Backup the *current* Dynamo contents so we can compare them
+    current_dynamo_path = backup_dynamo_items(
+        dynamo_name, backup_dir="/tmp/current_dynamo"
+    )
+
+    # 2) Load both JSON files
+    with open(dynamo_backup_path, "r") as f:
+        backup_data = json.load(f)
+    with open(current_dynamo_path, "r") as f:
+        current_data = json.load(f)
+
+    # 3) Remove the 'timestamp_added' field everywhere
+    remove_key_recursively(backup_data, "timestamp_added")
+    remove_key_recursively(current_data, "timestamp_added")
+
+    # 4) Serialize each for diffing (sorting keys ensures consistent order)
+    backup_text = json.dumps(backup_data, indent=2, sort_keys=True)
+    current_text = json.dumps(current_data, indent=2, sort_keys=True)
+
+    # 5) Compare the normalized text
+    if backup_text != current_text:
+        # Produce a diff so you can see *what* changed
+        diff = difflib.unified_diff(
+            backup_text.splitlines(keepends=True),
+            current_text.splitlines(keepends=True),
+            fromfile="expected",
+            tofile="actual",
+        )
+        diff_text = "".join(diff)
+        raise AssertionError(
+            f"Dynamo mismatch (ignoring 'timestamp_added'):\n\n{diff_text}"
+        )
+

@@ -9,6 +9,7 @@ from tempfile import TemporaryDirectory
 import time
 from pathlib import Path
 from .utils import (
+    assert_dynamo,
     backup_raw_s3,
     backup_cdn_s3,
     backup_dynamo_items,
@@ -18,6 +19,8 @@ from .utils import (
     delete_dynamo_items,
     restore_s3,
     restore_dynamo_items,
+    assert_s3_cdn,
+    assert_s3_raw,
 )
 from . import upload_images_to_s3
 from dynamo import DynamoClient
@@ -85,7 +88,7 @@ def setup_and_cleanup(pulumi_outputs):
                     dest = os.path.join(tmpdir, new_filename)
                     shutil.copy2(local_file_path, dest)
 
-        yield (tmpdir, grouped)
+        yield (tmpdir, grouped, cdn_keys, raw_keys, dynamo_backup_path)
     print()
 
     # Restore original data
@@ -104,7 +107,7 @@ def test_e2e(monkeypatch, setup_and_cleanup, pulumi_outputs):
     4) Runs your ingestion script, verifying each new "image" uses a predictable UUID.
     5) Restores everything after the test.
     """
-    temp_dir, grouped = setup_and_cleanup
+    temp_dir, grouped, cdn_keys, raw_keys, dynamo_backup_path = setup_and_cleanup
 
     # -------------------------------------------------------------------------
     # ARRANGE: Collect .png filenames -> parse out the UUID from each
@@ -140,7 +143,10 @@ def test_e2e(monkeypatch, setup_and_cleanup, pulumi_outputs):
         lambda_function=pulumi_outputs["cluster_lambda_function_name"],
         dynamodb_table_name=pulumi_outputs["table_name"],
     )
+    # Wait for the lambda to finish
+    time.sleep(10)
 
     # Assert
-
-    print("[TEST] All expected UUIDs were used for newly uploaded images!")
+    assert_s3_raw(pulumi_outputs["image_bucket_name"], raw_keys)
+    assert_s3_cdn(pulumi_outputs["bucketName"], cdn_keys)
+    assert_dynamo(pulumi_outputs["table_name"], dynamo_backup_path)
