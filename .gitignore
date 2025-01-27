@@ -176,3 +176,6 @@ infra/upload*
 
 # LLM
 data_labeling_*
+
+# Testing
+infra/ingestion/test_failures*

@@ -90,6 +90,10 @@ def setup_and_cleanup(pulumi_outputs):
 
         yield (tmpdir, grouped, cdn_keys, raw_keys, dynamo_backup_path)
     print()
+    print("Deleting test data...")
+    delete_raw_s3(raw_bucket)
+    delete_cdn_s3(cdn_bucket)
+    delete_dynamo_items(dynamo_table)
 
     # Restore original data
     print("Restoring original data...")
@@ -112,11 +116,10 @@ def test_e2e(monkeypatch, setup_and_cleanup, pulumi_outputs):
     # -------------------------------------------------------------------------
     # ARRANGE: Collect .png filenames -> parse out the UUID from each
     # -------------------------------------------------------------------------
-    all_png_files = [
-        f
-        for f in os.listdir(temp_dir)
+    all_png_files = sorted(
+        f for f in os.listdir(temp_dir)
         if f.lower().endswith(".png")
-    ]
+    )
     if not all_png_files:
         pytest.skip("No .png files found in temp directory; nothing to test.")
 
