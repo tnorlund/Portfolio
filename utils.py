@@ -18,7 +18,7 @@ def load_env(env: str = "dev") -> tuple[str, str, str]:
         env: The name of the Pulumi stack/environment (e.g. 'dev', 'prod').
 
     Returns:
-        A tuple of (raw_bucket_name, lambda_function_name, dynamo_db_table_name).
+        A tuple of (cdn_bucket_name, lambda_function_name, dynamo_db_table_name).
     """
     # The working directory is in the "infra" directory next to this script.
     script_dir = Path(__file__).parent.resolve()
@@ -36,7 +36,7 @@ def load_env(env: str = "dev") -> tuple[str, str, str]:
         work_dir=str(work_dir),
     )
     outputs = stack.outputs()
-    raw_bucket = str(outputs["image_bucket_name"].value)
+    raw_bucket = str(outputs["raw_bucket_name"].value)
     lambda_function = str(outputs["cluster_lambda_function_name"].value)
     dynamo_db_table = str(outputs["table_name"].value)
 

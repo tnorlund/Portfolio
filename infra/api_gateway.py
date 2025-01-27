@@ -188,9 +188,6 @@ stage = aws.apigatewayv2.Stage(
     ),
 )
 
-# Export the default stage URL (no custom domain)
-pulumi.export("api_endpoint", api.api_endpoint)
-
 # ─────────────────────────────────────────────────────────────────────────────────
 # 3. CUSTOM DOMAIN SETUP
 # ─────────────────────────────────────────────────────────────────────────────────
@@ -257,4 +254,4 @@ api_alias_record = aws.route53.Record(
 )
 
 # Finally, export your custom domain
-pulumi.export("customDomainUrl", f"https://{api_domain_name}")
+pulumi.export("api_domain", f"https://{api_domain_name}")

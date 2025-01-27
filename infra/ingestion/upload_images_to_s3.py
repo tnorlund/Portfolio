@@ -58,7 +58,7 @@ def load_env(env: str = "dev") -> tuple[str, str, str]:
         env: The name of the Pulumi stack/environment (e.g. 'dev', 'prod').
 
     Returns:
-        A tuple of (raw_bucket_name, lambda_function_name, dynamo_db_table_name).
+        A tuple of (cdn_bucket_name, lambda_function_name, dynamodb_table_name).
     """
     stack = select_stack(
         stack_name=f"tnorlund/portfolio/{env}",
@@ -67,9 +67,9 @@ def load_env(env: str = "dev") -> tuple[str, str, str]:
     )
 
     # Convert Pulumi OutputValue objects to raw Python values
-    raw_bucket = stack.outputs()["image_bucket_name"].value
+    raw_bucket = stack.outputs()["raw_bucket_name"].value
     lambda_function = stack.outputs()["cluster_lambda_function_name"].value
-    dynamo_db_table = stack.outputs()["table_name"].value
+    dynamo_db_table = stack.outputs()["dynamodb_table_name"].value
 
     # Raise an error if any of the values are None
     if None in (raw_bucket, lambda_function, dynamo_db_table):

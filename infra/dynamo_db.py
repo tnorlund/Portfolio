@@ -73,4 +73,4 @@ dynamodb_table = aws.dynamodb.Table(
     },
 )
 
-pulumi.export("table_name", dynamodb_table.name)
+pulumi.export("dynamodb_table_name", dynamodb_table.name)
