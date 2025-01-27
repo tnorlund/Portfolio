@@ -201,10 +201,12 @@ def upload_files_with_uuid_in_batches(
         with tempfile.TemporaryDirectory() as tmp_dir_str:
             tmp_dir = Path(tmp_dir_str)
 
-            # Copy files to temp directory and rename them with UUIDs.
+            mapped_uuids = []   # hold (uuid_str, file_path) in the order created
             for file_path in batch:
-                new_file_path = tmp_dir / f"{uuid4()}.png"
+                new_uuid = str(uuid4())
+                new_file_path = tmp_dir / f"{new_uuid}.png"
                 shutil.copy2(file_path, new_file_path)
+                mapped_uuids.append(new_uuid)
 
             # Run Swift script over the new set of files.
             files_in_temp = [str(p) for p in tmp_dir.iterdir() if p.is_file()]
@@ -223,9 +225,9 @@ def upload_files_with_uuid_in_batches(
             uuids_list = list(uuids)
 
         # Invoke Lambda function for each new UUID.
-        for idx, uuid_str in enumerate(uuids_list):
+        # Now use the *same* order to assign image_ids
+        for idx, uuid_str in enumerate(mapped_uuids):
             image_id = image_indexes[(batch_index - 1) * batch_size + idx]
-            print(f"Invoking Lambda function for UUID={uuid_str} and image_id={image_id}...")
             payload = {"uuid": uuid_str, "s3_path": path_prefix, "image_id": image_id}
             lambda_client.invoke(
                 FunctionName=lambda_function,
@@ -234,6 +236,22 @@ def upload_files_with_uuid_in_batches(
             )
 
         print(f"Finished batch #{batch_index}.")
+
+
+def delete_in_batches(delete_func, items, chunk_size=1000):
+    """
+    Deletes items in batches of 'chunk_size' using the given 'delete_func',
+    printing the remaining number of items after each batch.
+    """
+    total = len(items)
+    if total == 0:
+        return
+
+    for start in range(0, total, chunk_size):
+        batch = items[start : start + chunk_size]
+        delete_func(batch)  # e.g. dynamo_client.deleteImages(batch)
+        remaining = total - (start + len(batch))
+        print(f"   Deleted {len(batch)} items. {remaining} remaining...")
 
 
 def main() -> None:
@@ -264,34 +282,43 @@ def main() -> None:
         dynamo_client = DynamoClient(dynamo_db_table)
         images = dynamo_client.listImages()
         print(f" - Deleting {len(images)} image items")
-        dynamo_client.deleteImages(images)
+        delete_in_batches(dynamo_client.deleteImages, images)
+
         lines = dynamo_client.listLines()
         print(f" - Deleting {len(lines)} line items")
-        dynamo_client.deleteLines(lines)
+        delete_in_batches(dynamo_client.deleteLines, lines)
+
         words = dynamo_client.listWords()
         print(f" - Deleting {len(words)} word items")
-        dynamo_client.deleteWords(words)
+        delete_in_batches(dynamo_client.deleteWords, words)
+
         word_tags = dynamo_client.listWordTags()
         print(f" - Deleting {len(word_tags)} word tag items")
-        dynamo_client.deleteWordTags(word_tags)
+        delete_in_batches(dynamo_client.deleteWordTags, word_tags)
+
         letters = dynamo_client.listLetters()
         print(f" - Deleting {len(letters)} letter items")
-        dynamo_client.deleteLetters(letters)
+        delete_in_batches(dynamo_client.deleteLetters, letters)
+
         receipts = dynamo_client.listReceipts()
         print(f" - Deleting {len(receipts)} receipt items")
-        dynamo_client.deleteReceipts(receipts)
+        delete_in_batches(dynamo_client.deleteReceipts, receipts)
+
         receipt_lines = dynamo_client.listReceiptLines()
         print(f" - Deleting {len(receipt_lines)} receipt line items")
-        dynamo_client.deleteReceiptLines(receipt_lines)
+        delete_in_batches(dynamo_client.deleteReceiptLines, receipt_lines)
+
         receipt_words = dynamo_client.listReceiptWords()
         print(f" - Deleting {len(receipt_words)} receipt word items")
-        dynamo_client.deleteReceiptWords(receipt_words)
+        delete_in_batches(dynamo_client.deleteReceiptWords, receipt_words)
+
         receipt_word_tags = dynamo_client.listReceiptWordTags()
         print(f" - Deleting {len(receipt_word_tags)} receipt word tag items")
-        dynamo_client.deleteReceiptWordTags(receipt_word_tags)
+        delete_in_batches(dynamo_client.deleteReceiptWordTags, receipt_word_tags)
+
         receipt_letters = dynamo_client.listReceiptLetters()
         print(f" - Deleting {len(receipt_letters)} receipt letter items")
-        dynamo_client.deleteReceiptLetters(receipt_letters)
+        delete_in_batches(dynamo_client.deleteReceiptLetters, receipt_letters)
         sleep(1)
 
     # Perform the actual upload in batches.
