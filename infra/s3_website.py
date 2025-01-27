@@ -156,7 +156,7 @@ cdn = aws.cloudfront.Distribution(
     opts=pulumi.ResourceOptions(depends_on=[certificate_validation]),
 )
 
-pulumi.export("distribution-id", cdn.id)
+pulumi.export("cdn_distribution_id", cdn.id)
 
 ########################
 # 7) Route53 Alias Records
@@ -181,6 +181,5 @@ for domain in site_domains:
 ########################
 # 8) Exports
 ########################
-pulumi.export("bucketName", site_bucket.bucket)
-pulumi.export("cloudFrontDomain", cdn.domain_name)
-pulumi.export("websiteDomain", site_domains)
+pulumi.export("cdn_bucket_name", site_bucket.bucket)
+pulumi.export("domains", site_domains)
