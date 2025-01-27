@@ -117,16 +117,14 @@ def test_e2e(monkeypatch, setup_and_cleanup, pulumi_outputs):
     # ARRANGE: Collect .png filenames -> parse out the UUID from each
     # -------------------------------------------------------------------------
     all_png_files = sorted(
-        f for f in os.listdir(temp_dir)
-        if f.lower().endswith(".png")
+        f for f in os.listdir(temp_dir) if f.lower().endswith(".png")
     )
     if not all_png_files:
         pytest.skip("No .png files found in temp directory; nothing to test.")
 
-    derived_uuids = [
-        os.path.splitext(filename)[0]
-        for filename in all_png_files
-    ]
+    derived_uuids = [os.path.splitext(filename)[0] for filename in all_png_files]
+
+    image_indexes = [grouped[uuid]["dynamo"]["image"].id for uuid in derived_uuids]
 
     # We'll put them in a queue so each uuid.uuid4() call gets the "next" one.
     uuid_queue = deque(derived_uuids)
@@ -137,7 +135,16 @@ def test_e2e(monkeypatch, setup_and_cleanup, pulumi_outputs):
                 "Ran out of mock UUIDs! Script called uuid.uuid4() more times than expected."
             )
         return uuid_queue.popleft()
+
     monkeypatch.setattr(upload_images_to_s3, "uuid4", mock_uuid4)
+
+    def mock_get_image_indexes(client, number_images):
+        # We want the i-th PNG to get image_id=i (i.e. 1,2,3,...).
+        return image_indexes
+
+    monkeypatch.setattr(
+        upload_images_to_s3, "get_image_indexes", mock_get_image_indexes
+    )
 
     # Act
     upload_images_to_s3.upload_files_with_uuid_in_batches(
