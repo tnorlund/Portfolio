@@ -25,6 +25,7 @@ from dynamo import (
 FAILURE_DIR = Path("test_failures")
 FAILURE_DIR.mkdir(parents=True, exist_ok=True)
 
+
 def load_env():
     stack = auto.select_stack(
         stack_name="tnorlund/portfolio/e2e",
@@ -492,12 +493,16 @@ def extract_uuid_from_key(s3_key: str) -> str:
     """
     import os
 
-    filename = os.path.basename(s3_key)          # => "218e0b40-7231-42fb-83c5-fc5d44970198_results.json"
-    base, _ = os.path.splitext(filename)         # => base="218e0b40-7231-42fb-83c5-fc5d44970198_results"
+    filename = os.path.basename(
+        s3_key
+    )  # => "218e0b40-7231-42fb-83c5-fc5d44970198_results.json"
+    base, _ = os.path.splitext(
+        filename
+    )  # => base="218e0b40-7231-42fb-83c5-fc5d44970198_results"
 
     # If it ends with '_results', strip it
     if base.endswith("_results"):
-        base = base[: -len("_results")]          # => "218e0b40-7231-42fb-83c5-fc5d44970198"
+        base = base[: -len("_results")]  # => "218e0b40-7231-42fb-83c5-fc5d44970198"
 
     # Handle '_cluster_' as before
     if "_cluster_" in base:
@@ -704,6 +709,7 @@ def assert_s3_cdn(bucket_name: str, cdn_backup: List[Tuple[str, str]]):
         if local_data != s3_data:
             raise AssertionError(f"CDN file mismatch: {s3_key}")
 
+
 def remove_key_recursively(data: Any, key_to_remove: str):
     """
     Recursively remove a given key (e.g. "timestamp_added") from a Python dict/list structure.
@@ -718,7 +724,6 @@ def remove_key_recursively(data: Any, key_to_remove: str):
         for element in data:
             remove_key_recursively(element, key_to_remove)
     # If it's neither dict nor list, do nothing (e.g. string, int, etc.)
-
 
 
 def assert_s3_raw(bucket_name: str, raw_backup: List[Tuple[str, str]]):
@@ -738,7 +743,7 @@ def assert_s3_raw(bucket_name: str, raw_backup: List[Tuple[str, str]]):
     raw_key_groups = get_raw_keys(bucket_name)
     # => [ (png_key, ocr_json_key, results_json_key), ... ]
 
-    for (png_key, ocr_json_key, results_json_key) in raw_key_groups:
+    for png_key, ocr_json_key, results_json_key in raw_key_groups:
 
         # 2a) Check that all three exist locally
         if png_key not in local_lookup:
@@ -746,7 +751,9 @@ def assert_s3_raw(bucket_name: str, raw_backup: List[Tuple[str, str]]):
         if ocr_json_key not in local_lookup:
             raise AssertionError(f"Local backup missing OCR JSON for: {ocr_json_key}")
         if results_json_key not in local_lookup:
-            raise AssertionError(f"Local backup missing results JSON for: {results_json_key}")
+            raise AssertionError(
+                f"Local backup missing results JSON for: {results_json_key}"
+            )
 
         # 3) Compare the PNG file
         compare_png_file(s3, bucket_name, png_key, local_lookup[png_key])
@@ -768,9 +775,6 @@ def assert_s3_raw(bucket_name: str, raw_backup: List[Tuple[str, str]]):
             local_lookup[results_json_key],
             remove_incremental=True,
         )
-
-    # If we got here with no AssertionError, everything matches
-    print("All RAW files match their local backups (ignoring timestamp_added in _results.json).")
 
 
 def compare_png_file(s3, bucket_name: str, s3_key: str, local_path: str):
@@ -876,9 +880,8 @@ def compare_json_file(
 
     # If we only want to ignore 'timestamp_added' in the _results.json file
     if remove_incremental:
-        for field in ["timestamp_added", "id", "image_id"]:
-            remove_key_recursively(local_json, field)
-            remove_key_recursively(s3_json, field)
+        remove_key_recursively(local_json, "timestamp_added")
+        remove_key_recursively(s3_json, "timestamp_added")
 
     # Re-serialize for final comparison
     local_normalized = json.dumps(local_json, indent=2, sort_keys=True)
@@ -913,6 +916,7 @@ def _raise_text_diff(s3_key: str, local_text: str, s3_text: str):
         f"File mismatch (text): {s3_key}\nHere is the unified diff:\n{diff_text}"
     )
 
+
 def assert_dynamo(dynamo_name: str, dynamo_backup_path: str):
     """
     Compares the expected DynamoDB items with the actual items in the database,
@@ -930,23 +934,22 @@ def assert_dynamo(dynamo_name: str, dynamo_backup_path: str):
         current_data = json.load(f)
 
     # 3) Remove the 'incremented' fields from both
-    for field in ["timestamp_added", "id", "image_id"]:
-        remove_key_recursively(backup_data, field)
-        remove_key_recursively(current_data, field)
+    remove_key_recursively(backup_data, "timestamp_added")
+    remove_key_recursively(current_data, "timestamp_added")
 
     # 4) Serialize each for diffing (sorting keys ensures consistent order)
     backup_text = json.dumps(backup_data, indent=2, sort_keys=True)
     current_text = json.dumps(current_data, indent=2, sort_keys=True)
 
     # 5) Compare the normalized text
-    # if backup_text != current_text:
-    #     old_fail_path = FAILURE_DIR / f"old_dynamo.json"
-    #     test_fail_path = FAILURE_DIR / f"test_dynamo.json"
+    if backup_text != current_text:
+        old_fail_path = FAILURE_DIR / f"old_dynamo.json"
+        test_fail_path = FAILURE_DIR / f"test_dynamo.json"
 
-    #     with open(old_fail_path, "w") as f:
-    #         f.write(backup_text)
-    #     with open(test_fail_path, "w") as f:
-    #         f.write(current_text)
-    #     raise AssertionError(
-    #         f"Dynamo mismatch (ignoring 'timestamp_added'). "
-    #     )
+        with open(old_fail_path, "w") as f:
+            f.write(backup_text)
+        with open(test_fail_path, "w") as f:
+            f.write(current_text)
+        raise AssertionError(
+            f"Dynamo mismatch (ignoring 'timestamp_added'). "
+        )
