@@ -20,7 +20,8 @@ def sample_receipt_word_tag():
         receipt_id=100,
         line_id=5,
         word_id=42,
-        tag="SampleTag"
+        tag="SampleTag",
+        timestamp_added="2021-01-01T00:00:00"
     )
 
 
@@ -109,7 +110,7 @@ def test_list_receipt_word_tags(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
     receipt_word_tags = [
-        ReceiptWordTag(image_id=1, receipt_id=10, line_id=1, word_id=i, tag=f"Tag{i}")
+        ReceiptWordTag(image_id=1, receipt_id=10, line_id=1, word_id=i, tag=f"Tag{i}", timestamp_added="2021-01-01T00:00:00")
         for i in range(1, 4)
     ]
     for rwt in receipt_word_tags:
