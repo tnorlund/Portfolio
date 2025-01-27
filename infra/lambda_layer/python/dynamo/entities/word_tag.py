@@ -1,5 +1,5 @@
 from typing import Generator, Tuple
-
+from datetime import datetime
 
 class WordTag:
     def __init__(
@@ -8,12 +8,17 @@ class WordTag:
         line_id: int,
         word_id: int,
         tag: str,
+        timestamp_added: datetime
     ):
         """Constructs a new WordTag object for DynamoDB"""
         self.image_id = image_id
         self.line_id = line_id
         self.word_id = word_id
         self.tag = tag.strip()
+        if isinstance(timestamp_added, datetime):
+            self.timestamp_added = timestamp_added.isoformat()
+        elif isinstance(timestamp_added, str):
+            self.timestamp_added = timestamp_added
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, WordTag):
@@ -30,6 +35,7 @@ class WordTag:
         yield "line_id", self.line_id
         yield "word_id", self.word_id
         yield "tag", self.tag
+        yield "timestamp_added", self.timestamp_added
 
     def __repr__(self) -> str:
         return f"WordTag(image_id={self.image_id}, line_id={self.line_id} word_id={self.word_id}, tag={self.tag})"
@@ -61,6 +67,8 @@ class WordTag:
             **self.key(),
             **self.gsi1_key(),
             "TYPE": {"S": "WORD_TAG"},
+            "tag_name": {"S": self.tag},
+            "timestamp_added": {"S": self.timestamp_added},
         }
 
 
@@ -79,6 +87,7 @@ def itemToWordTag(item: dict) -> WordTag:
             line_id=int(sk_parts[1]),
             word_id=int(sk_parts[3]),
             tag=tag,
+            timestamp_added=datetime.fromisoformat(item["timestamp_added"]["S"]),
         )
     except (IndexError, ValueError) as e:
         raise ValueError(f"Item is missing required values: {e}") from e
