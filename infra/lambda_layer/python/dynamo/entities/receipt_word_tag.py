@@ -1,4 +1,5 @@
 from typing import Generator, Tuple
+from datetime import datetime
 
 class ReceiptWordTag:
     def __init__(
@@ -8,6 +9,7 @@ class ReceiptWordTag:
         line_id: int,
         word_id: int,
         tag: str,
+        timestamp_added: datetime
     ):
         """
         Constructs a new ReceiptWordTag object for DynamoDB.
@@ -29,6 +31,10 @@ class ReceiptWordTag:
         if tag.startswith("_"):
             raise ValueError("tag must not start with an underscore")
         self.tag = tag.strip()
+        if isinstance(timestamp_added, datetime):
+            self.timestamp_added = timestamp_added.isoformat()
+        elif isinstance(timestamp_added, str):
+            self.timestamp_added = timestamp_added
 
     def __eq__(self, other: object) -> bool:
         """
@@ -119,7 +125,8 @@ class ReceiptWordTag:
             **self.key(),
             **self.gsi1_key(),
             "TYPE": {"S": "RECEIPT_WORD_TAG"},
-            "tag_name": {"S": self.tag.upper()},
+            "tag_name": {"S": self.tag},
+            "timestamp_added": {"S": self.timestamp_added},
         }
 
 
@@ -163,12 +170,15 @@ def itemToReceiptWordTag(item: dict) -> ReceiptWordTag:
         line_id_str = gsi1sk_parts[5]  # "00003"
         line_id = int(line_id_str)
 
+        timestamp_added = datetime.fromisoformat(item["timestamp_added"]["S"])
+
         return ReceiptWordTag(
             image_id=image_id,
             receipt_id=receipt_id,
             line_id=line_id,
             word_id=word_id,
             tag=tag,
+            timestamp_added=timestamp_added,
         )
 
     except (IndexError, ValueError) as e:

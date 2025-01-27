@@ -72,6 +72,10 @@ class _Word:
             ValueError: When a word with the same ID does not exist
         """
         try:
+            # Check to see if there a duplicates in the word tags
+            tags = word.tags
+            if len(tags) != len(set(tags)):
+                raise ValueError("Word tags must be unique")
             self._client.put_item(
                 TableName=self.table_name,
                 Item=word.to_item(),
