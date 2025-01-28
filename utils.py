@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
 import hashlib
-from typing import Tuple
+from typing import Dict, List, Tuple
 from pathlib import Path
 from dynamo import DynamoClient, Line, Word, Letter
 from pulumi.automation import select_stack
@@ -166,7 +167,7 @@ The receipt's OCR text is:
     - total_amount (number)
     - items (array of objects with fields: "item_name" (string) and "price" (number))
     - taxes (number)
-    - any other relevant details
+    - address (string)
 
 Additionally, for **every field** you return, **please include**:
 1) The field's **value** (e.g. "SPROUTS FARMERS MARKET").
@@ -203,3 +204,75 @@ If a particular field is not found, return an empty string or null for that fiel
 ```
 IMPORTANT: Make sure your output is valid JSON, with double quotes around keys and strings.
 """
+
+@dataclass
+class Centroid:
+    x: float
+    y: float
+
+@dataclass
+class WordTagResult:
+    key: str
+    value: str
+    tag: list[str]
+    word_centroids: List[Centroid]
+    num_word_centroids: int
+    line_item: bool = False
+    is_number: bool = False
+
+def parse_llm_results(data: dict) -> List[WordTagResult]:
+    # Prepare a list to hold the results
+    results = []
+
+    # Iterate over each top-level key in the JSON
+    for key, details in data.items():
+        if isinstance(details, dict):
+        # Extract the value and the word_centroids if present
+            if "value" and "word_centroids" in details:
+                value = details.get('value')
+                word_centroids = details.get('word_centroids', [])
+
+            # Count the number of word_centroids
+                num_word_centroids = len(word_centroids)
+
+            # Add the extracted data to our results list
+                results.append(WordTagResult(
+                    key=key,
+                    value=value,
+                    tag=[key],
+                    word_centroids=word_centroids,
+                    num_word_centroids=num_word_centroids,
+                    line_item=False,
+                    is_number=isinstance(value, (int, float))
+                ))
+        
+        if isinstance(details, list) and key == "items":
+            if "item_name" and "price" in details:
+                item_name = details.get('item_name')
+                price = details.get('price')
+                item_name_value = item_name.get('value')
+                item_name_word_centroids = item_name.get('word_centroids', [])
+                price_value = price.get('value')
+                price_word_centroids = price.get('word_centroids', [])
+                # Handle the price
+                results.append(WordTagResult(
+                    key=key,
+                    value=price_value,
+                    tag=["price", key],
+                    word_centroids=price_word_centroids,
+                    num_word_centroids=len(price_word_centroids),
+                    line_item=True,
+                    is_number=True
+                ))
+                # Handle the item name
+                results.append(WordTagResult(
+                    key=key,
+                    value=item_name_value,
+                    tag=["item_name", key],
+                    word_centroids=item_name_word_centroids,
+                    num_word_centroids=len(item_name_word_centroids),
+                    line_item=True,
+                    is_number=False
+                ))
+
+    return results
