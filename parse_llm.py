@@ -23,7 +23,8 @@ def parse_json_file(json_path):
                 'key': key,
                 'value': value,
                 'word_centroids': word_centroids,
-                'num_word_centroids': num_word_centroids
+                'num_word_centroids': num_word_centroids,
+                'line_item': False    
             })
         
         if isinstance(details, list):
