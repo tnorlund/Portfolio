@@ -68,12 +68,18 @@ def test_gpt_receipt(
     os.environ["OPENAI_API_KEY"] = "my-openai-api-key"
 
     def mock_gpt_request(self, receipt, receipt_words):
-        return MockGPTResponse(gpt_result, status_code=200)
+        return MockGPTResponse({"choices":[{"message":{"content":gpt_result}}]}, status_code=200)
 
     monkeypatch.setattr(DynamoClient, "_gpt_request", mock_gpt_request)
 
     # Act
     client.gpt_receipt(1)
+
+    # Assert
+    print()
+    tags = client.listWordTags()
+    for tag in tags:
+        print(tag)
 
 
 def test_gpt_receipt_bad_response(
