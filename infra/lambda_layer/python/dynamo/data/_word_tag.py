@@ -113,7 +113,13 @@ class _WordTag:
         # Build the same PK/SK used by WordTag
         # Remember to underscore-pad the tag if your WordTag class does so in SK
         # Here, we'll replicate minimal logic to find the padded tag
-        word_tag = WordTag(image_id, line_id, word_id, tag)
+        word_tag = WordTag(
+            image_id, 
+            line_id, 
+            word_id, 
+            tag,
+            timestamp_added="2021-01-01T00:00:00" # This is a placeholder value
+        )
 
         try:
             self._client.delete_item(
@@ -180,7 +186,13 @@ class _WordTag:
         Raises:
             ValueError: If the item does not exist.
         """
-        word_tag = WordTag(image_id, line_id, word_id, tag)
+        word_tag = WordTag(
+            image_id, 
+            line_id, 
+            word_id, 
+            tag, 
+            timestamp_added="2021-01-01T00:00:00" # This is a placeholder value
+            )
 
         try:
             response = self._client.get_item(
