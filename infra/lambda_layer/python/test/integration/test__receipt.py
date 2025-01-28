@@ -446,6 +446,7 @@ def sample_receipt_word_tags():
             line_id=1,
             word_id=1,
             tag="tag1",
+            timestamp_added="2021-01-01T00:00:00",
         ),
         ReceiptWordTag(
             image_id=1,
@@ -453,6 +454,7 @@ def sample_receipt_word_tags():
             line_id=1,
             word_id=2,
             tag="tag2",
+            timestamp_added="2021-01-01T00:00:00",
         ),
     ]
 
