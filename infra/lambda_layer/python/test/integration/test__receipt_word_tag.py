@@ -130,12 +130,12 @@ def test_list_receipt_word_tags_from_image(dynamodb_table: Literal["MyMockedTabl
 
     # ReceiptWordTags for image_id=1
     same_image_tags = [
-        ReceiptWordTag(image_id=1, receipt_id=10, line_id=2, word_id=i, tag=f"ImageTag{i}")
+        ReceiptWordTag(image_id=1, receipt_id=10, line_id=2, word_id=i, tag=f"ImageTag{i}", timestamp_added="2021-01-01T00:00:00")
         for i in range(1, 3)
     ]
     # Another ReceiptWordTag with a different image_id
     different_image_tag = ReceiptWordTag(
-        image_id=2, receipt_id=99, line_id=2, word_id=999, tag="OtherImage"
+        image_id=2, receipt_id=99, line_id=2, word_id=999, tag="OtherImage", timestamp_added="2021-01-01T00:00:00"
     )
 
     for rwt in same_image_tags + [different_image_tag]:
@@ -156,10 +156,10 @@ def sample_receipt_word_tags():
     Returns multiple ReceiptWordTag objects, with two distinct tags.
     """
     return [
-        ReceiptWordTag(image_id=1, receipt_id=100, line_id=10, word_id=10, tag="ALPHA"),
-        ReceiptWordTag(image_id=2, receipt_id=200, line_id=20, word_id=20, tag="BETA"),
-        ReceiptWordTag(image_id=3, receipt_id=300, line_id=30, word_id=30, tag="ALPHA"),
-        ReceiptWordTag(image_id=4, receipt_id=400, line_id=40, word_id=40, tag="BETA"),
+        ReceiptWordTag(image_id=1, receipt_id=100, line_id=10, word_id=10, tag="ALPHA", timestamp_added="2021-01-01T00:00:00"),
+        ReceiptWordTag(image_id=2, receipt_id=200, line_id=20, word_id=20, tag="BETA", timestamp_added="2021-01-01T00:00:00"),
+        ReceiptWordTag(image_id=3, receipt_id=300, line_id=30, word_id=30, tag="ALPHA", timestamp_added="2021-01-01T00:00:00"),
+        ReceiptWordTag(image_id=4, receipt_id=400, line_id=40, word_id=40, tag="BETA", timestamp_added="2021-01-01T00:00:00"),
     ]
 
 def test_get_receipt_word_tags(
@@ -215,7 +215,7 @@ def test_get_receipt_word_tags_pagination(dynamodb_table: Literal["MyMockedTable
     big_list = []
     for i in range(30):
         big_list.append(ReceiptWordTag(
-            image_id=1, receipt_id=1, line_id=i, word_id=i, tag="PAGE"
+            image_id=1, receipt_id=1, line_id=i, word_id=i, tag="PAGE", timestamp_added="2021-01-01T00:00:00"
         ))
 
     client.addReceiptWordTags(big_list)
