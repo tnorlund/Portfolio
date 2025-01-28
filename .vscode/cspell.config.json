@@ -1,0 +1,7 @@
+{
+    "ignorePaths": [
+      "**/node_modules/**",
+      "**/dist/**",
+      "infra/lambda_layer/python/test/integration/_fixtures.py"
+    ]
+  }
