@@ -1,6 +1,7 @@
 import boto3
 import os
 import requests
+from requests.models import Response
 import json
 from dynamo.data._image import _Image
 from dynamo.data._line import _Line
@@ -88,13 +89,13 @@ class DynamoClient(
             # Parse the response
             response_json = response.json()
 
-    def _gpt_request(self, receipt, receipt_words) -> dict:
+    def _gpt_request(self, receipt, receipt_words) -> Response:
         """Makes a request to the OpenAI API to label the receipt.
 
         Returns:
             dict: The response from the OpenAI API.
         """
-        if os.getenv("OPENAI_API_KEY") is None:
+        if not os.getenv("OPENAI_API_KEY"):
             raise ValueError("The OPENAI_API_KEY environment variable is not set.")
         url = "https://api.openai.com/v1/chat/completions"
         headers = {
