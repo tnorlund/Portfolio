@@ -86,6 +86,23 @@ class _Word:
                 raise ValueError(f"Word with ID {word.id} not found")
             else:
                 raise Exception(f"Error updating word: {e}")
+            
+    def updateWords(self, words: list[Word]):
+        """Updates multiple existing ReceiptWords in DynamoDB."""
+        try:
+            for i in range(0, len(words), CHUNK_SIZE):
+                chunk = words[i : i + CHUNK_SIZE]
+                request_items = [{"PutRequest": {"Item": w.to_item()}} for w in chunk]
+                response = self._client.batch_write_item(
+                    RequestItems={self.table_name: request_items}
+                )
+                unprocessed = response.get("UnprocessedItems", {})
+                while unprocessed.get(self.table_name):
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    unprocessed = response.get("UnprocessedItems", {})
+        except ClientError as e:
+            raise ValueError("Could not update Words in the database") from e
+
 
     def deleteWord(self, image_id: int, line_id: int, word_id: int):
         """Deletes a word from the database
