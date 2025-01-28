@@ -82,35 +82,45 @@ def test_gpt_receipt_bad_response(
     s3_bucket: Literal["raw-image-bucket"],
     monkeypatch,
 ):
+    (
+        images,
+        _,
+        _,
+        _,
+        receipts,
+        _,
+        _,
+        _,
+        _,
+    ) = sample_gpt_receipt
     client = DynamoClient(dynamodb_table)
+    _ = s3_bucket
 
-    # Load the fixture data, so we actually have a receipt with image_id=1
-    (images, lines, words, letters, receipts,
-     receipt_lines, receipt_words, receipt_letters, _) = sample_gpt_receipt
     client.addImages(images)
-    client.addLines(lines)
-    client.addWords(words)
-    client.addLetters(letters)
     client.addReceipts(receipts)
-    client.addReceiptLines(receipt_lines)
-    client.addReceiptWords(receipt_words)
-    client.addReceiptLetters(receipt_letters)
 
     os.environ["OPENAI_API_KEY"] = "my-openai-api-key"
 
     def mock_gpt_request(self, receipt, receipt_words):
+        _ = receipt, receipt_words
         return MockGPTResponse({}, status_code=500, text="Internal Server Error")
+
     monkeypatch.setattr(DynamoClient, "_gpt_request", mock_gpt_request)
 
     # 1) Call gpt_receipt(1), expecting a ValueError (non-200 code)
-    with pytest.raises(ValueError) as exc:
+    with pytest.raises(
+        ValueError,
+        match=f"An error occurred while making the request: Internal Server Error",
+    ) as exc:
         client.gpt_receipt(1)
 
     # 2) Verify the error message was what we expect
     assert "Internal Server Error" in str(exc.value)
 
     # 3) Check that the file was written to S3
-    s3_client = boto3.client("s3", region_name="us-east-1")  # or same region as your mock
+    s3_client = boto3.client(
+        "s3", region_name="us-east-1"
+    )  # or same region as your mock
     # We know there's exactly one Image with id=1 in the fixture, or whichever you’re testing
     test_image = images[0]  # or find the one with .id == 1
     # We also assume there's at least one Receipt with .id == 1, etc.
@@ -128,4 +138,19 @@ def test_gpt_receipt_bad_response(
     body_text = obj["Body"].read().decode("utf-8")
     assert body_text == "Internal Server Error"
 
-    
+
+def test_gpt_no_api_key(
+    sample_gpt_receipt,
+    dynamodb_table: Literal["MyMockedTable"],
+):
+    (_, _, _, _, receipts, _, _, _, _) = sample_gpt_receipt
+    client = DynamoClient(dynamodb_table)
+
+    client.addReceipts(receipts)
+
+    os.environ["OPENAI_API_KEY"] = ""  # Set to empty string
+
+    with pytest.raises(
+        ValueError, match="The OPENAI_API_KEY environment variable is not set."
+    ) as exc:
+        client.gpt_receipt(1)
