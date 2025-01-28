@@ -46,3 +46,6 @@ class DynamoClient(
             raise ValueError(
                 f"The table '{self.table_name}' does not exist in region '{region}'."
             )
+    
+    def gpt_receipt(receipt_id: int):
+        pass
