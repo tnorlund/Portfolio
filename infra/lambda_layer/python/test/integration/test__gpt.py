@@ -1,5 +1,6 @@
 # test__gpt.py
 
+import json
 import boto3
 import pytest
 import os
@@ -42,10 +43,9 @@ def test_gpt_receipt(
         list[ReceiptLetter],
     ],
     dynamodb_table: Literal["MyMockedTable"],
+    s3_bucket: Literal["raw-image-bucket"],
     monkeypatch,
 ):
-    # Arrange
-    client = DynamoClient(dynamodb_table)
     (
         images,
         lines,
@@ -57,6 +57,9 @@ def test_gpt_receipt(
         receipt_letters,
         gpt_result,
     ) = sample_gpt_receipt
+    _ = s3_bucket
+    client = DynamoClient(dynamodb_table)
+    # Arrange
     client.addImages(images)
     client.addLines(lines)
     client.addWords(words)
@@ -68,7 +71,7 @@ def test_gpt_receipt(
     os.environ["OPENAI_API_KEY"] = "my-openai-api-key"
 
     def mock_gpt_request(self, receipt, receipt_words):
-        return MockGPTResponse({"choices":[{"message":{"content":gpt_result}}]}, status_code=200)
+        return MockGPTResponse({"choices":[{"message":{"content":f"```json{json.dumps(gpt_result)}```"}}]}, status_code=200)
 
     monkeypatch.setattr(DynamoClient, "_gpt_request", mock_gpt_request)
 
@@ -76,10 +79,15 @@ def test_gpt_receipt(
     client.gpt_receipt(1)
 
     # Assert
-    print()
-    tags = client.listWordTags()
-    for tag in tags:
-        print(tag)
+    # Check that the GPT response was stored in S3
+    s3_client = boto3.client("s3", region_name="us-east-1")
+    s3_json_key = images[0].raw_s3_key.replace(
+                ".png",
+                f"_GPT_image_{images[0].id:05d}_receipt_{receipts[0].id:05d}.json",
+            )
+    obj = s3_client.get_object(Bucket=images[0].raw_s3_bucket, Key=s3_json_key)
+    body_text = obj["Body"].read().decode("utf-8")
+    assert body_text == json.dumps(gpt_result)
 
 
 def test_gpt_receipt_bad_response(
