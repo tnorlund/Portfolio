@@ -179,3 +179,5 @@ data_labeling_*
 
 # Testing
 infra/ingestion/test_failures*
+debug*
+failure*
