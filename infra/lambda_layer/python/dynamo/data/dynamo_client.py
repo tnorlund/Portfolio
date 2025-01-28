@@ -14,7 +14,7 @@ from dynamo.data._receipt_word import _ReceiptWord
 from dynamo.data._receipt_letter import _ReceiptLetter
 from dynamo.data._word_tag import _WordTag
 from dynamo.data._receipt_word_tag import _ReceiptWordTag
-from dynamo.entities import WordTag, ReceiptWordTag
+from dynamo.entities import WordTag, ReceiptWordTag, ReceiptWord, Word
 
 
 class DynamoClient(
@@ -89,9 +89,36 @@ class DynamoClient(
                 )
 
             raw_message = response.json()["choices"][0]["message"]["content"]
-            # TODO remove ```json\n``` from raw_message
-            # TODO convert raw_message to dict
-            results = raw_message
+            raw_message = raw_message.replace("```json", "").replace("```", "")
+            try:
+                results = json.loads(raw_message)
+            except json.JSONDecodeError:
+                failure_key = image.raw_s3_key.replace(
+                    ".png",
+                    f"_failure_image_{image.id:05d}_receipt_{receipt.id:05d}.txt",
+                )
+                s3 = boto3.client("s3")
+                s3.put_object(
+                    Bucket=image.raw_s3_bucket,
+                    Key=failure_key,
+                    Body=response.text,
+                    ContentType="text/plain",
+                )
+                raise ValueError(
+                    f"An error occurred while formatting the response: {response.text}"
+                )
+
+            s3_json_key = image.raw_s3_key.replace(
+                ".png",
+                f"_GPT_image_{image.id:05d}_receipt_{receipt.id:05d}.json",
+            )
+            s3 = boto3.client("s3")
+            s3.put_object(
+                Bucket=image.raw_s3_bucket,
+                Key=s3_json_key,
+                Body=raw_message,
+                ContentType="application/json",
+            )
 
             words_to_update = []
             word_tags_to_add = []
@@ -105,87 +132,45 @@ class DynamoClient(
                 ):
                     # The word in the GPT response is a string
                     if isinstance(details["value"], str):
-                        num_word_centroids = len(details["word_centroids"])
-                        num_words = len(details["value"].split(" "))
-                        if num_word_centroids != num_words:
-                            raise ValueError(
-                                f"Number of word centroids ({num_word_centroids}) does not match number of words ({num_words})."
-                            )
-                        for word_in_response, centroid_in_response in zip(
-                            details["value"].split(" "), details["word_centroids"]
-                        ):
-                            # Match the words in DynamoDB with the ones in the response
-                            matched_words = [
-                                receipt_word
-                                for receipt_word in receipt_words
-                                if receipt_word.calculate_centroid()[0]
-                                == centroid_in_response["x"]
-                                and receipt_word.calculate_centroid()[1]
-                                == centroid_in_response["y"]
-                            ]
-                            if len(matched_words) == 0:
-                                # TODO Save JSON response to S3
-                                raise Exception(
-                                    "Response did not have any matching centroids"
-                                )
-                            if len(matched_words) > 1:
-                                # TODO Save JSON response to S3
-                                raise Exception(
-                                    "Response had multiple matching centroids"
-                                )
-                            matched_word = matched_words[0]
-                            if word_tag_in_response in matched_word.tags:
-                                Warning(
-                                    f"Word {matched_word.text} already has tag {word_tag_in_response}"
-                                )
-                                continue
-                            # Update Receipt entities
-                            matched_word.tags.extend(word_tag_in_response)
-                            receipt_word_tag = ReceiptWordTag(
-                                receipt_id=receipt.id,
-                                image_id=image.id,
-                                line_id=matched_word.line_id,
-                                word_id=matched_word.id,
-                                tag=word_tag_in_response,
-                                timestamp_added=datetime.now().isoformat(),
-                            )
-                            receipt_words_to_update.append(matched_word)
-                            receipt_word_tags_to_add.append(receipt_word_tag)
-
-                            # Update Image entities
-                            matched_words = [
-                                word
-                                for word in words
-                                if word.id == matched_word.id
-                                and word.line_id == matched_word.line_id
-                            ]
-                            if len(matched_words) == 0:
-                                # TODO Save JSON response to S3
-                                raise Exception(
-                                    "Failed to match Word with Receipt Word. No words with the same ID"
-                                )
-                            if len(matched_words) > 1:
-                                # TODO Save JSON response to S3
-                                print(matched_words)
-                                raise Exception(
-                                    "Failed to match Word with Receipt Word. Multiple words with the same ID"
-                                )
-                            matched_word = matched_words[0]
-                            if word_tag_in_response in matched_word.tags:
-                                Warning(
-                                    f"Word {matched_word.text} already has tag {word_tag_in_response}"
-                                )
-                                continue
-                            matched_word.tags.extend(word_tag_in_response)
-                            word_tag = WordTag(
-                                image_id=image.id,
-                                line_id=matched_word.line_id,
-                                word_id=matched_word.id,
-                                tag=word_tag_in_response,
-                                timestamp_added=datetime.now().isoformat(),
-                            )
-                            words_to_update.append(matched_word)
-                            word_tags_to_add.append(word_tag)
+                        (
+                            receipt_words_to_update,
+                            receipt_word_tags_to_add,
+                            words_to_update,
+                            word_tags_to_add,
+                        ) = self._process_gpt_response(
+                            details["value"],
+                            details["word_centroids"],
+                            receipt_words,
+                            receipt,
+                            image,
+                            words,
+                            word_tag_in_response,
+                            receipt_words_to_update,
+                            receipt_word_tags_to_add,
+                            words_to_update,
+                            word_tags_to_add,
+                        )
+                    # The word in the GPT response is a number
+                    elif isinstance(details["value"], (int, float)):
+                        print(details)
+                        (
+                            receipt_words_to_update,
+                            receipt_word_tags_to_add,
+                            words_to_update,
+                            word_tags_to_add,
+                        ) = self._process_gpt_response(
+                            str(details["value"]),
+                            details["word_centroids"],
+                            receipt_words,
+                            receipt,
+                            image,
+                            words,
+                            word_tag_in_response,
+                            receipt_words_to_update,
+                            receipt_word_tags_to_add,
+                            words_to_update,
+                            word_tags_to_add,
+                        )
 
             # Update the Receipt entities
             self.updateReceiptWords(receipt_words_to_update)
@@ -282,4 +267,107 @@ class DynamoClient(
             "}\n"
             "```\n"
             "IMPORTANT: Make sure your output is valid JSON, with double quotes around keys and strings.\n"
+        )
+
+    def _process_gpt_response(
+        self,
+        value,
+        word_centroids,
+        receipt_words,
+        receipt,
+        image,
+        words,
+        word_tag_in_response,
+        receipt_words_to_update,
+        receipt_word_tags_to_add,
+        words_to_update,
+        word_tags_to_add,
+    ) -> tuple[list[ReceiptWord], list[ReceiptWordTag], list[Word], list[WordTag]]:
+        num_word_centroids = len(word_centroids)
+        if num_word_centroids == 0:
+            return (
+                receipt_words_to_update,
+                receipt_word_tags_to_add,
+                words_to_update,
+                word_tags_to_add,
+            )
+        num_words = len(value.split(" "))
+        if num_word_centroids != num_words:
+            raise ValueError(
+                f"Number of word centroids ({num_word_centroids}) does not match number of words ({num_words})."
+            )
+        for word_in_response, centroid_in_response in zip(
+            value.split(" "), word_centroids
+        ):
+            # Match the words in DynamoDB with the ones in the response
+            matched_words = [
+                receipt_word
+                for receipt_word in receipt_words
+                if receipt_word.calculate_centroid()[0] == centroid_in_response["x"]
+                and receipt_word.calculate_centroid()[1] == centroid_in_response["y"]
+            ]
+            if len(matched_words) == 0:
+                # TODO Save JSON response to S3
+                raise Exception("Response did not have any matching centroids")
+            if len(matched_words) > 1:
+                # TODO Save JSON response to S3
+                raise Exception("Response had multiple matching centroids")
+            matched_word = matched_words[0]
+            if word_tag_in_response in matched_word.tags:
+                Warning(
+                    f"Word {matched_word.text} already has tag {word_tag_in_response}"
+                )
+                continue
+            # Update Receipt entities
+            matched_word.tags.extend(word_tag_in_response)
+            receipt_word_tag = ReceiptWordTag(
+                receipt_id=receipt.id,
+                image_id=image.id,
+                line_id=matched_word.line_id,
+                word_id=matched_word.id,
+                tag=word_tag_in_response,
+                timestamp_added=datetime.now().isoformat(),
+            )
+            receipt_words_to_update.append(matched_word)
+            receipt_word_tags_to_add.append(receipt_word_tag)
+
+            # Update Image entities
+            matched_words = [
+                word
+                for word in words
+                if word.id == matched_word.id and word.line_id == matched_word.line_id
+            ]
+            if len(matched_words) == 0:
+                # TODO Save JSON response to S3
+                raise Exception(
+                    "Failed to match Word with Receipt Word. No words with the same ID"
+                )
+            if len(matched_words) > 1:
+                # TODO Save JSON response to S3
+                print(matched_words)
+                raise Exception(
+                    "Failed to match Word with Receipt Word. Multiple words with the same ID"
+                )
+            matched_word = matched_words[0]
+            if word_tag_in_response in matched_word.tags:
+                Warning(
+                    f"Word {matched_word.text} already has tag {word_tag_in_response}"
+                )
+                continue
+            matched_word.tags.extend(word_tag_in_response)
+            word_tag = WordTag(
+                image_id=image.id,
+                line_id=matched_word.line_id,
+                word_id=matched_word.id,
+                tag=word_tag_in_response,
+                timestamp_added=datetime.now().isoformat(),
+            )
+            words_to_update.append(matched_word)
+            word_tags_to_add.append(word_tag)
+
+        return (
+            receipt_words_to_update,
+            receipt_word_tags_to_add,
+            words_to_update,
+            word_tags_to_add,
         )
