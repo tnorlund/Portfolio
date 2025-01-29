@@ -4,10 +4,11 @@ import boto3
 from dynamo import Image, Line, Word, Letter, Receipt, DynamoClient
 from datetime import datetime
 import json
+from uuid import uuid4
 
 correct_receipt_params = {
     "id": 1,
-    "image_id": 1,
+    "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
     "width": 10,
     "height": 20,
     "timestamp_added": datetime.now().isoformat(),
@@ -22,7 +23,7 @@ correct_receipt_params = {
 
 correct_line_params = {
     "id": 1,
-    "image_id": 1,
+    "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
     "text": "test",
     "bounding_box": {"x": 0.0, "y": 0.0, "width": 0.0, "height": 0.0},
     "top_right": {"x": 0.0, "y": 0.0},
@@ -35,7 +36,7 @@ correct_line_params = {
 }
 
 correct_image_params = {
-    "id": 1,
+    "id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
     "width": 10,
     "height": 20,
     "timestamp_added": datetime.now().isoformat(),
@@ -47,7 +48,7 @@ correct_image_params = {
 def test_add_image(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    image_id = 1
+    image_id = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     image_width = 10
     image_height = 20
     timestamp_added = "2021-01-01T00:00:00"
@@ -63,7 +64,7 @@ def test_add_image(dynamodb_table: Literal["MyMockedTable"]):
     # Assert
     response = boto3.client("dynamodb", region_name="us-east-1").get_item(
         TableName=dynamodb_table,
-        Key={"PK": {"S": "IMAGE#00001"}, "SK": {"S": "IMAGE"}},
+        Key={"PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"}, "SK": {"S": "IMAGE"}},
     )
     assert response["Item"] == image.to_item()
 
@@ -71,7 +72,7 @@ def test_add_image(dynamodb_table: Literal["MyMockedTable"]):
 def test_add_image_error(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    image_id = 1
+    image_id = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     image_width = 10
     image_height = 20
     timestamp_added = "2021-01-01T00:00:00"
@@ -90,7 +91,7 @@ def test_add_image_error(dynamodb_table: Literal["MyMockedTable"]):
 def test_get_image(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    image_id = 1
+    image_id = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     image_width = 10
     image_height = 20
     timestamp_added = "2021-01-01T00:00:00"
@@ -111,10 +112,10 @@ def test_get_image(dynamodb_table: Literal["MyMockedTable"]):
 def test_get_imageDetails(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    image_id = 1
-    image = Image(1, 10, 20, "2021-01-01T00:00:00", "bucket", "key1")
+    image_id = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    image = Image("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 10, 20, "2021-01-01T00:00:00", "bucket", "key1")
     line = Line(
-        1,
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         1,
         "test_string",
         {
@@ -132,7 +133,7 @@ def test_get_imageDetails(dynamodb_table: Literal["MyMockedTable"]):
         1,
     )
     word = Word(
-        1,
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         2,
         3,
         "test_string",
@@ -151,7 +152,7 @@ def test_get_imageDetails(dynamodb_table: Literal["MyMockedTable"]):
         1,
     )
     letter = Letter(
-        1,
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         1,
         1,
         1,
@@ -190,7 +191,7 @@ def test_get_imageDetails(dynamodb_table: Literal["MyMockedTable"]):
 def test_deleteImage(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    image = Image(1, 10, 20, "2021-01-01T00:00:00", "bucket", "key1")
+    image = Image("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 10, 20, "2021-01-01T00:00:00", "bucket", "key1")
     client.addImage(image)
 
     # Act
@@ -204,7 +205,7 @@ def test_deleteImage(dynamodb_table: Literal["MyMockedTable"]):
 def test_deleteImage_error(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    image = Image(1, 10, 20, "2021-01-01T00:00:00", "bucket", "key1")
+    image = Image("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 10, 20, "2021-01-01T00:00:00", "bucket", "key1")
 
     # Act
     with pytest.raises(ValueError):
@@ -214,7 +215,12 @@ def test_deleteImage_error(dynamodb_table: Literal["MyMockedTable"]):
 def test_deleteImages(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    images = [Image(**{**correct_image_params, "id": i}) for i in range(1, 1001)]
+
+    # Generate 1000 images, each with a random UUID for the "id"
+    images = [
+        Image(**{**correct_image_params, "id": str(uuid4())})
+        for _ in range(1000)
+    ]
     client.addImages(images)
 
     # Act
@@ -228,55 +234,70 @@ def test_deleteImages(dynamodb_table: Literal["MyMockedTable"]):
 def test_listImageDetails(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
+
+    # Generate two UUIDs for actual images and one for the "different" image
+    image_id_1 = str(uuid4())
+    image_id_2 = str(uuid4())
+    image_id_3 = str(uuid4())  # No corresponding Image object => "different" image
+
     # Add multiple images
     images = [
-        Image(**correct_image_params),
-        Image(**{**correct_image_params, "id": 2}),
+        Image(**{**correct_image_params, "id": image_id_1}),
+        Image(**{**correct_image_params, "id": image_id_2}),
     ]
     client.addImages(images)
-    # Add Lines with same image_ids
+
+    # Add Lines for the two real images, plus one line for the "different" image_id_3
     lines_in_image_1 = [
-        Line(**correct_line_params),
-        Line(**{**correct_line_params, "id": 2}),
+        Line(**{**correct_line_params, "id": 1, "image_id": image_id_1}),
+        Line(**{**correct_line_params, "id": 2, "image_id": image_id_1}),
     ]
     lines_in_image_2 = [
-        Line(**{**correct_line_params, "id": 1, "image_id": 2}),
-        Line(**{**correct_line_params, "id": 2, "image_id": 2}),
-        Line(**{**correct_line_params, "id": 3, "image_id": 2}),
+        Line(**{**correct_line_params, "id": 1, "image_id": image_id_2}),
+        Line(**{**correct_line_params, "id": 2, "image_id": image_id_2}),
+        Line(**{**correct_line_params, "id": 3, "image_id": image_id_2}),
     ]
     lines_different_image = [
-        Line(**{**correct_line_params, "id": 4, "image_id": 3}),
+        Line(**{**correct_line_params, "id": 4, "image_id": image_id_3}),
     ]
     client.addLines(lines_in_image_1 + lines_in_image_2 + lines_different_image)
+
+    # Add Receipts for the two real images, plus one for the "different" image_id_3
     receipts_in_image_1 = [
-        Receipt(**correct_receipt_params),
-        Receipt(**{**correct_receipt_params, "id": 2}),
+        Receipt(**{**correct_receipt_params, "id": 1, "image_id": image_id_1}),
+        Receipt(**{**correct_receipt_params, "id": 2, "image_id": image_id_1}),
     ]
     receipts_in_image_2 = [
-        Receipt(**{**correct_receipt_params, "id": 1, "image_id": 2}),
-        Receipt(**{**correct_receipt_params, "id": 2, "image_id": 2}),
-        Receipt(**{**correct_receipt_params, "id": 3, "image_id": 2}),
+        Receipt(**{**correct_receipt_params, "id": 1, "image_id": image_id_2}),
+        Receipt(**{**correct_receipt_params, "id": 2, "image_id": image_id_2}),
+        Receipt(**{**correct_receipt_params, "id": 3, "image_id": image_id_2}),
+    ]
+    receipts_different_image = [
+        Receipt(**{**correct_receipt_params, "id": 4, "image_id": image_id_3}),
     ]
     client.addReceipts(receipts_in_image_1 + receipts_in_image_2)
-    receipts_different_image = [
-        Receipt(**{**correct_receipt_params, "id": 4, "image_id": 3}),
-    ]
     client.addReceipts(receipts_different_image)
 
     # Act
-    payload, lek = (
-        client.listImageDetails()
-    )  # Return type is (List[Image], Optional[Dict])
+    payload, lek = client.listImageDetails()  # Returns (Dict[str, Any], Optional[Dict])
 
     # Assert
     assert len(payload) == 2, "both images should be returned"
     assert lek is None, "No pagination token should be returned"
-    assert all(key in payload[1].keys() for key in ["image", "lines", "receipts"])
-    assert lines_in_image_1 == payload[1]["lines"]
-    assert receipts_in_image_1 == payload[1]["receipts"]
-    assert all(key in payload[2].keys() for key in ["image", "lines", "receipts"])
-    assert lines_in_image_2 == payload[2]["lines"]
-    assert receipts_in_image_2 == payload[2]["receipts"]
+
+    # Look up image details in the returned payload by their UUIDs
+    image_1_details = payload[image_id_1]
+    image_2_details = payload[image_id_2]
+
+    # Validate image_1
+    assert all(k in image_1_details for k in ["image", "lines", "receipts"])
+    assert lines_in_image_1 == image_1_details["lines"]
+    assert receipts_in_image_1 == image_1_details["receipts"]
+
+    # Validate image_2
+    assert all(k in image_2_details for k in ["image", "lines", "receipts"])
+    assert lines_in_image_2 == image_2_details["lines"]
+    assert receipts_in_image_2 == image_2_details["receipts"]
 
 
 def test_listImageDetails_pagination_returns_page_and_token(
@@ -405,8 +426,8 @@ def test_listImageDetails_pagination_with_limit_exceeds_count(
     client = DynamoClient(dynamodb_table)
 
     # Create 2 images
-    image_1 = Image(1, 10, 20, "2021-01-01T00:00:00", "bucket", "key1")
-    image_2 = Image(2, 30, 40, "2021-01-01T00:00:00", "bucket", "key2")
+    image_1 = Image("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 10, 20, "2021-01-01T00:00:00", "bucket", "key1")
+    image_2 = Image("3f52804b-2fad-4e00-92c8-b593da3a8ed2", 30, 40, "2021-01-01T00:00:00", "bucket", "key2")
     client.addImage(image_1)
     client.addImage(image_2)
 

@@ -160,8 +160,8 @@ def itemToReceiptWordTag(item: dict) -> ReceiptWordTag:
 
     try:
         # Parse PK for image_id
-        pk_parts = item["PK"]["S"].split("#")  # ["IMAGE", "00042"]
-        image_id_str = pk_parts[1]  # "00042"
+        pk_parts = item["PK"]["S"].split("#")  # ["IMAGE", "3f52804b-2fad-4e00-92c8-b593da3a8ed3"]
+        image_id_str = pk_parts[1]  # "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
         image_id = image_id_str
 
         # Parse SK for tag & receipt_id & word_id
