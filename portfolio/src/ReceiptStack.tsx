@@ -1,10 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { fetchReceipts } from "./api";
-import {
-  Receipt,
-  ReceiptApiResponse,
-  ReceiptPayloadEntry,
-} from "./interfaces";
+import { Receipt, ReceiptApiResponse } from "./interfaces";
 
 // Intersection Observer
 import { useInView } from "react-intersection-observer";
@@ -19,24 +15,19 @@ const ReceiptStack: React.FC = () => {
   const [rotations, setRotations] = useState<number[]>([]);
 
   const [ref, inView] = useInView({
-    threshold: 0.1,     // 10% visible
-    triggerOnce: true,  // animate only the first time it appears
+    threshold: 0.1, // 10% visible
+    triggerOnce: true, // animate only the first time it appears
   });
 
   useEffect(() => {
     const getReceipts = async () => {
       try {
-        const response: ReceiptApiResponse = await fetchReceipts(15);
+        const response: ReceiptApiResponse = await fetchReceipts(20);
+        // No need for `Object.values(response)` or `.map(entry => entry.receipt)` anymore
+        setReceipts(response);
 
-        // Extract the actual Receipt objects
-        const allReceipts: Receipt[] = Object.values(response.payload)
-          .map((entry: ReceiptPayloadEntry) => entry.receipt)
-          .filter((r): r is Receipt => !!r);
-
-        setReceipts(allReceipts);
-
-        // Random rotation between -25 and +25 degrees
-        const newRotations = allReceipts.map(() => Math.random() * 50 - 25);
+        // Generate random rotations for each receipt
+        const newRotations = response.map(() => Math.random() * 50 - 25);
         setRotations(newRotations);
       } catch (error) {
         console.error("Error fetching receipts:", error);
@@ -46,7 +37,6 @@ const ReceiptStack: React.FC = () => {
     getReceipts();
   }, []);
 
-  
   const [springs, api] = useSprings(receipts.length, (index) => ({
     from: {
       opacity: 0,
