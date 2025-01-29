@@ -360,22 +360,8 @@ class DynamoClient(
         words_to_update,
         word_tags_to_add,
     ) -> tuple[list[ReceiptWord], list[ReceiptWordTag], list[Word], list[WordTag]]:
-        num_word_centroids = len(word_centroids)
-        if num_word_centroids == 0:
-            return (
-                receipt_words_to_update,
-                receipt_word_tags_to_add,
-                words_to_update,
-                word_tags_to_add,
-            )
-        num_words = len(value.split(" "))
-        if num_word_centroids != num_words:
-            raise ValueError(
-                f"Number of word centroids ({num_word_centroids}) does not match number of words ({num_words})."
-            )
-        for word_in_response, centroid_in_response in zip(
-            value.split(" "), word_centroids
-        ):
+        """Processes the response from the ChatGPT API."""
+        for centroid_in_response in word_centroids:
             # Match the words in DynamoDB with the ones in the response
             matched_words = [
                 receipt_word

@@ -53,7 +53,10 @@ class _Image:
                 ConditionExpression="attribute_not_exists(PK)",
             )
         except ClientError as e:
-            raise ValueError(f"Image with ID {image.id} already exists")
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                raise ValueError(f"Image with ID {image.id} already exists")
+            else:
+                raise Exception(f"Error updating image: {e}")
 
     def addImages(self, images: List[Image]):
         """Adds a list of images to the database
@@ -92,6 +95,30 @@ class _Image:
             return itemToImage(response["Item"])
         except KeyError:
             raise ValueError(f"Image with ID {image_id} not found")
+    
+    def getMaxImageId(self) -> int:
+        """Fetches the maximum image ID from the database."""
+        try:
+            response = self._client.query(
+                TableName=self.table_name,
+                IndexName="GSI1",  # or whatever index you created
+                KeyConditionExpression="#pk = :pk_val",
+                ExpressionAttributeNames={"#pk": "GSI1PK"},
+                ExpressionAttributeValues={":pk_val": {"S": "IMAGE"}},
+                ScanIndexForward=False,  # Sort in descending order
+                Limit=1,                 # Grab only the top (largest) item
+            )
+            items = response.get("Items", [])
+            if not items:
+                return 0  # no images found at all
+
+            # Extract the image_id from the PK or SK, depending on your schema
+            # Example: PK = "IMAGE#00042", so we split on '#'
+            pk_str = items[0]["PK"]["S"]  # e.g. "IMAGE#00042"
+            image_id_str = pk_str.split("#")[1]  # "00042"
+            return int(image_id_str)
+        except Exception as e:
+            raise Exception(f"Error getting max image ID: {e}")
 
     def updateImage(self, image: Image):
         """Updates an image in the database."""
@@ -205,7 +232,7 @@ class _Image:
                 raise Exception(f"Error deleting image: {e}")
 
     def deleteImages(self, images: list[Image]):
-        """ "Deletes a list of images"""
+        """Deletes a list of images"""
         try:
             for i in range(0, len(images), CHUNK_SIZE):
                 chunk = images[i : i + CHUNK_SIZE]

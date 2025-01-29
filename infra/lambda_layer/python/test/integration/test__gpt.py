@@ -17,7 +17,7 @@ from dynamo import (
     ReceiptWord,
     ReceiptLetter,
 )
-from ._fixtures import sample_gpt_receipt
+from ._fixtures import sample_gpt_receipt_1, sample_gpt_receipt_46
 
 
 def assert_tags_on_word_and_receipt_word(
@@ -116,8 +116,8 @@ class MockGPTResponse:
         return self._json_data
 
 
-def test_gpt_receipt(
-    sample_gpt_receipt: Tuple[
+def test_gpt_receipt_1(
+    sample_gpt_receipt_1: Tuple[
         list[Image],
         list[Line],
         list[Word],
@@ -141,7 +141,7 @@ def test_gpt_receipt(
         receipt_words,
         receipt_letters,
         gpt_result,
-    ) = sample_gpt_receipt
+    ) = sample_gpt_receipt_1
     _ = s3_bucket
     client = DynamoClient(dynamodb_table)
     # Arrange
@@ -165,7 +165,10 @@ def test_gpt_receipt(
             status_code=200,
         )
 
-    monkeypatch.setattr(DynamoClient, "_gpt_request", mock_gpt_request)
+    monkeypatch.setattr(
+        "dynamo.data.dynamo_client.DynamoClient._gpt_request",
+        mock_gpt_request
+    )
 
     # Act
     client.gpt_receipt(1)
@@ -202,8 +205,92 @@ def test_gpt_receipt(
     # fmt: on
 
 
+def test_gpt_receipt_47(
+    sample_gpt_receipt_46: Tuple[
+        list[Image],
+        list[Line],
+        list[Word],
+        list[Letter],
+        list[Receipt],
+        list[ReceiptLine],
+        list[ReceiptWord],
+        list[ReceiptLetter],
+    ],
+    dynamodb_table: Literal["MyMockedTable"],
+    s3_bucket: Literal["raw-image-bucket"],
+    monkeypatch,
+):
+    (
+        images,
+        lines,
+        words,
+        letters,
+        receipts,
+        receipt_lines,
+        receipt_words,
+        receipt_letters,
+        gpt_result,
+    ) = sample_gpt_receipt_46
+    _ = s3_bucket
+    client = DynamoClient(dynamodb_table)
+    # Arrange
+    client.addImages(images)
+    client.addLines(lines)
+    client.addWords(words)
+    client.addLetters(letters)
+    client.addReceipts(receipts)
+    client.addReceiptLines(receipt_lines)
+    client.addReceiptWords(receipt_words)
+    client.addReceiptLetters(receipt_letters)
+    os.environ["OPENAI_API_KEY"] = "my-openai-api-key"
+
+    def mock_gpt_request(self, receipt, receipt_words):
+        return MockGPTResponse(
+            {
+                "choices": [
+                    {"message": {"content": f"```json{json.dumps(gpt_result)}```"}}
+                ]
+            },
+            status_code=200,
+        )
+
+    monkeypatch.setattr(
+        "dynamo.data.dynamo_client.DynamoClient._gpt_request",
+        mock_gpt_request
+    )
+
+    # Act
+    client.gpt_receipt(46)
+
+    # Assert
+    # Check that the GPT response was stored in S3
+    s3_client = boto3.client("s3", region_name="us-east-1")
+    s3_json_key = images[0].raw_s3_key.replace(
+        ".png",
+        f"_GPT_image_{images[0].id:05d}_receipt_{receipts[0].id:05d}.json",
+    )
+    obj = s3_client.get_object(Bucket=images[0].raw_s3_bucket, Key=s3_json_key)
+    body_text = obj["Body"].read().decode("utf-8")
+    assert body_text == json.dumps(gpt_result)
+
+    # Check that the Tags were set correctly
+    _, _, words, word_tags, _, receipt_details = client.getImageDetails(46)
+    # fmt: off
+    assert_tags_on_word_and_receipt_word(1, 1, ["line_item", "line_item_name"], words, word_tags, receipt_details[0])
+    assert_tags_on_word_and_receipt_word(2, 1, ["line_item", "line_item_price"], words, word_tags, receipt_details[0])
+    assert_tags_on_word_and_receipt_word(12, 1, ["store_name"], words, word_tags, receipt_details[0])
+    assert_tags_on_word_and_receipt_word(13, 1, ["store_name"], words, word_tags, receipt_details[0])
+    assert_tags_on_word_and_receipt_word(13, 2, ["store_name"], words, word_tags, receipt_details[0])
+    assert_tags_on_word_and_receipt_word(37, 3, ["time"], words, word_tags, receipt_details[0])
+    assert_tags_on_word_and_receipt_word(37, 4, ["time"], words, word_tags, receipt_details[0])
+    assert_tags_on_word_and_receipt_word(37, 5, ["time"], words, word_tags, receipt_details[0])
+    assert_tags_on_word_and_receipt_word(49, 1, ["date"], words, word_tags, receipt_details[0])
+    assert_tags_on_word_and_receipt_word(77, 1, ["total_amount"], words, word_tags, receipt_details[0])
+    assert_tags_on_word_and_receipt_word(77, 2, ["total_amount"], words, word_tags, receipt_details[0])
+    # fmt: on
+
 def test_gpt_receipt_bad_response(
-    sample_gpt_receipt,  # same fixture you used before
+    sample_gpt_receipt_1,
     dynamodb_table: Literal["MyMockedTable"],
     s3_bucket: Literal["raw-image-bucket"],
     monkeypatch,
@@ -218,7 +305,7 @@ def test_gpt_receipt_bad_response(
         _,
         _,
         _,
-    ) = sample_gpt_receipt
+    ) = sample_gpt_receipt_1
     client = DynamoClient(dynamodb_table)
     _ = s3_bucket
 
@@ -266,10 +353,10 @@ def test_gpt_receipt_bad_response(
 
 
 def test_gpt_no_api_key(
-    sample_gpt_receipt,
+    sample_gpt_receipt_1,
     dynamodb_table: Literal["MyMockedTable"],
 ):
-    (_, _, _, _, receipts, _, _, _, _) = sample_gpt_receipt
+    (_, _, _, _, receipts, _, _, _, _) = sample_gpt_receipt_1
     client = DynamoClient(dynamodb_table)
 
     client.addReceipts(receipts)

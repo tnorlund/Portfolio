@@ -44,7 +44,7 @@ class _ReceiptWord:
             if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 raise ValueError(f"ReceiptWord with ID {word.id} already exists")
             else:
-                raise
+                raise Exception(f"Could not add ReceiptWord to the database: {e}")
 
     def addReceiptWords(self, words: list[ReceiptWord]):
         """Adds multiple ReceiptWords to DynamoDB in batches of CHUNK_SIZE."""
@@ -60,7 +60,7 @@ class _ReceiptWord:
                     response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
-            raise ValueError("Could not add ReceiptWords to the database") from e
+            raise ValueError(f"Could not add ReceiptWords to the database: {e}")
 
     def updateReceiptWord(self, word: ReceiptWord):
         """Updates an existing ReceiptWord in DynamoDB."""
@@ -74,7 +74,7 @@ class _ReceiptWord:
             if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 raise ValueError(f"ReceiptWord with ID {word.id} does not exist")
             else:
-                raise Exception("Could not update ReceiptWord in the database") from e
+                raise Exception(f"Could not update ReceiptWord in the database: {e}")
     
     def updateReceiptWords(self, words: list[ReceiptWord]):
         """Updates multiple existing ReceiptWords in DynamoDB."""
@@ -90,7 +90,7 @@ class _ReceiptWord:
                     response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
-            raise ValueError("Could not update ReceiptWords in the database") from e
+            raise ValueError(f"Could not update ReceiptWords in the database: {e}")
 
     def deleteReceiptWord(
         self, receipt_id: int, image_id: int, line_id: int, word_id: int
@@ -127,7 +127,7 @@ class _ReceiptWord:
                     response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
-            raise ValueError("Could not delete ReceiptWords from the database") from e
+            raise ValueError(f"Could not delete ReceiptWords from the database: {e}")
 
     def deleteReceiptWordsFromLine(self, receipt_id: int, image_id: int, line_id: int):
         """Deletes all ReceiptWords from a given line within a receipt/image."""
@@ -181,7 +181,7 @@ class _ReceiptWord:
                 )
             return receipt_words
         except ClientError as e:
-            raise ValueError("Could not list ReceiptWords from the database") from e
+            raise ValueError(f"Could not list ReceiptWords from the database {e}")
 
     def listReceiptWordsFromLine(
         self, receipt_id: int, image_id: int, line_id: int
@@ -222,4 +222,4 @@ class _ReceiptWord:
                 )
             return receipt_words
         except ClientError as e:
-            raise ValueError("Could not list ReceiptWords from the database") from e
+            raise ValueError(f"Could not list ReceiptWords from the database: {e}")
