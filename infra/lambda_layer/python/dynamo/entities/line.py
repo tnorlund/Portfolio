@@ -1,5 +1,6 @@
 from typing import Generator, Tuple
 from dynamo.entities.util import (
+    assert_valid_uuid,
     histogram,
     assert_valid_bounding_box,
     assert_valid_point,
@@ -11,7 +12,7 @@ from math import sin, cos, pi, radians
 class Line:
     def __init__(
         self,
-        image_id: int,
+        image_id: str,
         id: int,
         text: str,
         bounding_box: dict,
@@ -26,7 +27,7 @@ class Line:
         """Initializes a new Line object for DynamoDB
 
         Args:
-            image_id (int): Identifier for the image
+            image_id (str): UUID identifying the image
             id (int): Identifier for the line
             text (str): The text content of the line
             bounding_box (dict): The bounding box of the line
@@ -39,7 +40,7 @@ class Line:
             confidence (float): The confidence level of the line
 
         Attributes:
-            image_id (int): Identifier for the image
+            image_id (str): UUID identifying the image
             id (int): Identifier for the line
             text (str): The text content of the line
             bounding_box (dict): The bounding box of the line
@@ -52,7 +53,7 @@ class Line:
             confidence (float): The confidence level of the line
 
         Raises:
-            ValueError: If image_id is not a positive integer
+            ValueError: If image_id is not a valid UUID
             ValueError: If id is not a positive integer
             ValueError: If text is not a string
             ValueError: If bounding_box is not valid
@@ -64,13 +65,13 @@ class Line:
             ValueError: If angle_radians is not a float
             ValueError: If confidence is not a float between 0 and 1
         """
-        # Ensure the Image ID is a positive integer
-        if image_id <= 0 or not isinstance(image_id, int):
-            raise ValueError("image_id must be a positive integer")
+        assert_valid_uuid(image_id)
         self.image_id = image_id
         # Ensure the ID is a positive integer
-        if id <= 0 or not isinstance(id, int):
-            raise ValueError("id must be a positive integer")
+        if not isinstance(id, int):
+            raise ValueError("id must be an integer")
+        if id <= 0:
+            raise ValueError("id must be positive")
         self.id = id
         if not isinstance(text, str):
             raise ValueError("text must be a string")
@@ -107,7 +108,7 @@ class Line:
             dict: The primary key for the line
         """
         return {
-            "PK": {"S": f"IMAGE#{self.image_id:05d}"},
+            "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {"S": f"LINE#{self.id:05d}"},
         }
 
@@ -119,7 +120,7 @@ class Line:
         """
         return {
             "GSI1PK": {"S": f"IMAGE"},
-            "GSI1SK": {"S": f"IMAGE#{self.image_id:05d}#LINE#{self.id:05d}"},
+            "GSI1SK": {"S": f"IMAGE#{self.image_id}#LINE#{self.id:05d}"},
         }
 
     def to_item(self) -> dict:
@@ -386,7 +387,7 @@ def itemToLine(item: dict) -> Line:
         raise ValueError("Item is missing required keys", missing_keys)
     try:
         return Line(
-            image_id=int(item["PK"]["S"][6:]),
+            image_id=item["PK"]["S"][6:],
             id=int(item["SK"]["S"][6:]),
             text=item["text"]["S"],
             bounding_box={

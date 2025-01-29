@@ -2,187 +2,138 @@ import pytest
 from dynamo import Letter, itemToLetter
 import math
 
-correct_letter_params = {
-    "image_id": 1,
-    "line_id": 1,
-    "word_id": 1,
-    "id": 1,
-    "text": "0",
-    "bounding_box": {
-        "height": 0.022867568333804766,
-        "width": 0.08688726243285705,
-        "x": 0.4454336178993411,
-        "y": 0.9167082877754368,
-    },
-    "top_right": {"x": 0.5323208803321982, "y": 0.930772983660083},
-    "top_left": {"x": 0.44837726707985254, "y": 0.9395758561092415},
-    "bottom_right": {"x": 0.5293772311516867, "y": 0.9167082877754368},
-    "bottom_left": {"x": 0.4454336178993411, "y": 0.9255111602245953},
-    "angle_degrees": -5.986527,
-    "angle_radians": -0.1044846,
-    "confidence": 1,
-}
+
+@pytest.fixture
+def example_letter():
+    return Letter(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=1,
+        word_id=2,
+        id=3,
+        text="0",
+        bounding_box={
+            "x": 10.0,
+            "y": 20.0,
+            "width": 5.0,
+            "height": 2.0,
+        },
+        top_right={"x": 15.0, "y": 20.0},
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 15.0, "y": 22.0},
+        bottom_left={"x": 10.0, "y": 22.0},
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=0.90,
+    )
 
 
-def test_init():
+def test_init(example_letter):
     """Test the Letter constructor"""
-    letter = Letter(**correct_letter_params)
-    assert letter.image_id == 1
-    assert letter.line_id == 1
-    assert letter.word_id == 1
-    assert letter.id == 1
-    assert letter.text == "0"
-    assert letter.bounding_box == {
-        "height": 0.022867568333804766,
-        "width": 0.08688726243285705,
-        "x": 0.4454336178993411,
-        "y": 0.9167082877754368,
+    assert example_letter.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    assert example_letter.line_id == 1
+    assert example_letter.word_id == 2
+    assert example_letter.id == 3
+    assert example_letter.text == "0"
+    assert example_letter.bounding_box == {
+        "x": 10.0,
+        "y": 20.0,
+        "width": 5.0,
+        "height": 2.0,
     }
-    assert letter.top_right == {"x": 0.5323208803321982, "y": 0.930772983660083}
-    assert letter.top_left == {"x": 0.44837726707985254, "y": 0.9395758561092415}
-    assert letter.bottom_right == {"x": 0.5293772311516867, "y": 0.9167082877754368}
-    assert letter.bottom_left == {"x": 0.4454336178993411, "y": 0.9255111602245953}
-    assert letter.angle_degrees == -5.986527
-    assert letter.angle_radians == -0.1044846
-    assert letter.confidence == 1
+    assert example_letter.top_right == {"x": 15.0, "y": 20.0}
+    assert example_letter.top_left == {"x": 10.0, "y": 20.0}
+    assert example_letter.bottom_right == {"x": 15.0, "y": 22.0}
+    assert example_letter.bottom_left == {"x": 10.0, "y": 22.0}
+    assert example_letter.angle_degrees == 1.0
+    assert example_letter.angle_radians == 5.0
+    assert example_letter.confidence == 0.90
 
 
-def test_key():
+def test_key(example_letter):
     """Test the Letter.key method"""
-    letter = Letter(**correct_letter_params)
-    assert letter.key() == {
-        "PK": {"S": "IMAGE#00001"},
-        "SK": {"S": "LINE#00001#WORD#00001#LETTER#00001"},
+    assert example_letter.key() == {
+        "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "SK": {"S": "LINE#00001#WORD#00002#LETTER#00003"},
     }
 
 
-def test_to_item():
+def test_to_item(example_letter):
     """Test the Letter.to_item method"""
-    letter = Letter(**correct_letter_params)
-    assert letter.to_item() == {
-        "PK": {"S": "IMAGE#00001"},
-        "SK": {"S": "LINE#00001#WORD#00001#LETTER#00001"},
+    assert example_letter.to_item() == {
+        "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "SK": {"S": "LINE#00001#WORD#00002#LETTER#00003"},
         "TYPE": {"S": "LETTER"},
         "text": {"S": "0"},
         "bounding_box": {
             "M": {
-                "x": {"N": "0.445433617899341100"},
-                "y": {"N": "0.916708287775436800"},
-                "width": {"N": "0.086887262432857050"},
-                "height": {"N": "0.022867568333804766"},
+                "height": {"N": "2.000000000000000000"},
+                "width": {"N": "5.000000000000000000"},
+                "x": {"N": "10.000000000000000000"},
+                "y": {"N": "20.000000000000000000"},
             }
         },
         "top_right": {
             "M": {
-                "x": {"N": "0.532320880332198200"},
-                "y": {"N": "0.930772983660083000"},
+                "x": {"N": "15.000000000000000000"},
+                "y": {"N": "20.000000000000000000"},
             }
         },
         "top_left": {
             "M": {
-                "x": {"N": "0.448377267079852540"},
-                "y": {"N": "0.939575856109241500"},
+                "x": {"N": "10.000000000000000000"},
+                "y": {"N": "20.000000000000000000"},
             }
         },
         "bottom_right": {
             "M": {
-                "x": {"N": "0.529377231151686700"},
-                "y": {"N": "0.916708287775436800"},
+                "x": {"N": "15.000000000000000000"},
+                "y": {"N": "22.000000000000000000"},
             }
         },
         "bottom_left": {
             "M": {
-                "x": {"N": "0.445433617899341100"},
-                "y": {"N": "0.925511160224595300"},
+                "x": {"N": "10.000000000000000000"},
+                "y": {"N": "22.000000000000000000"},
             }
         },
-        "angle_degrees": {"N": "-5.9865270000"},
-        "angle_radians": {"N": "-0.1044846000"},
-        "confidence": {"N": "1.00"},
+        "angle_degrees": {"N": "1.0000000000"},
+        "angle_radians": {"N": "5.0000000000"},
+        "confidence": {"N": "0.90"},
     }
 
 
-def test_repr():
+def test_repr(example_letter):
     """Test the Letter.__repr__ method"""
-    letter = Letter(**correct_letter_params)
-    assert repr(letter) == "Letter(id=1, text='0')"
+    assert repr(example_letter) == "Letter(id=3, text='0')"
 
 
-def test_iter():
+def test_iter(example_letter):
     """Test the Letter.__iter__ method"""
-    letter = Letter(**correct_letter_params)
-    assert dict(letter) == {
-        "image_id": 1,
+    assert dict(example_letter) == {
+        "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         "line_id": 1,
-        "word_id": 1,
-        "id": 1,
+        "word_id": 2,
+        "id": 3,
         "text": "0",
         "bounding_box": {
-            "height": 0.022867568333804766,
-            "width": 0.08688726243285705,
-            "x": 0.4454336178993411,
-            "y": 0.9167082877754368,
-        },
-        "top_right": {"x": 0.5323208803321982, "y": 0.930772983660083},
-        "top_left": {"x": 0.44837726707985254, "y": 0.9395758561092415},
-        "bottom_right": {"x": 0.5293772311516867, "y": 0.9167082877754368},
-        "bottom_left": {"x": 0.4454336178993411, "y": 0.9255111602245953},
-        "angle_degrees": -5.986527,
-        "angle_radians": -0.1044846,
-        "confidence": 1.00,
+        "x": 10.0,
+        "y": 20.0,
+        "width": 5.0,
+        "height": 2.0,
+    },
+        "top_right": {"x": 15.0, "y": 20.0},
+        "top_left": {"x": 10.0, "y": 20.0},
+        "bottom_right": {"x": 15.0, "y": 22.0},
+        "bottom_left": {"x": 10.0, "y": 22.0},
+        "angle_degrees": 1,
+        "angle_radians": 5,
+        "confidence": 0.90,
     }
 
 
-def test_eq():
-    letter1 = Letter(**correct_letter_params)
-    letter2 = Letter(**correct_letter_params)
-    assert letter1 == letter2, "The two Letter objects should be equal"
-
-
-def test_itemToLetter():
+def test_itemToLetter(example_letter):
     """Test the itemToLetter function"""
-    item = {
-        "PK": {"S": "IMAGE#00001"},
-        "SK": {"S": "LINE#00001#WORD#00001#LETTER#00001"},
-        "TYPE": {"S": "LETTER"},
-        "text": {"S": "0"},
-        "bounding_box": {
-            "M": {
-                "x": {"N": "0.445433617899341100"},
-                "y": {"N": "0.916708287775436800"},
-                "width": {"N": "0.086887262432857050"},
-                "height": {"N": "0.022867568333804766"},
-            }
-        },
-        "top_right": {
-            "M": {
-                "x": {"N": "0.532320880332198200"},
-                "y": {"N": "0.930772983660083000"},
-            }
-        },
-        "top_left": {
-            "M": {
-                "x": {"N": "0.448377267079852540"},
-                "y": {"N": "0.939575856109241500"},
-            }
-        },
-        "bottom_right": {
-            "M": {
-                "x": {"N": "0.529377231151686700"},
-                "y": {"N": "0.916708287775436800"},
-            }
-        },
-        "bottom_left": {
-            "M": {
-                "x": {"N": "0.445433617899341100"},
-                "y": {"N": "0.925511160224595300"},
-            }
-        },
-        "angle_degrees": {"N": "-5.9865270000"},
-        "angle_radians": {"N": "-0.1044846000"},
-        "confidence": {"N": "1.00"},
-    }
-    assert Letter(**correct_letter_params) == itemToLetter(item)
+    assert itemToLetter(example_letter.to_item()) == example_letter
 
 
 def create_test_letter():
@@ -191,7 +142,7 @@ def create_test_letter():
     with easily verifiable points for testing.
     """
     return Letter(
-        image_id=1,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=1,
         word_id=1,
         id=1,

@@ -203,7 +203,7 @@ class _Receipt:
             response = self._client.get_item(
                 TableName=self.table_name,
                 Key={
-                    "PK": {"S": f"IMAGE#{image_id:05d}"},
+                    "PK": {"S": f"IMAGE#{image_id}"},
                     "SK": {"S": f"RECEIPT#{receipt_id:05d}"},
                 },
             )
@@ -232,7 +232,7 @@ class _Receipt:
                 TableName=self.table_name,
                 KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
                 ExpressionAttributeValues={
-                    ":pk": {"S": f"IMAGE#{image_id:05d}"},
+                    ":pk": {"S": f"IMAGE#{image_id}"},
                     ":sk": {"S": f"RECEIPT#{receipt_id:05d}"},
                 },
             )
@@ -306,7 +306,7 @@ class _Receipt:
                 TableName=self.table_name,
                 KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
                 ExpressionAttributeValues={
-                    ":pk": {"S": f"IMAGE#{image_id:05d}"},
+                    ":pk": {"S": f"IMAGE#{image_id}"},
                     ":sk": {"S": "RECEIPT#"},
                 },
             )
@@ -317,7 +317,7 @@ class _Receipt:
                     TableName=self.table_name,
                     KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
                     ExpressionAttributeValues={
-                        ":pk": {"S": f"IMAGE#{image_id:05d}"},
+                        ":pk": {"S": f"IMAGE#{image_id}"},
                         ":sk": {"S": "RECEIPT#"},
                     },
                 )

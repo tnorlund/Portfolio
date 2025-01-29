@@ -1,4 +1,14 @@
 from decimal import Decimal, ROUND_HALF_UP
+import re
+
+# Regex for UUID version 4 (case-insensitive, enforcing the '4' and the [89AB] variant).
+UUID_V4_REGEX = re.compile(
+    r'^[0-9A-Fa-f]{8}-'
+    r'[0-9A-Fa-f]{4}-'
+    r'4[0-9A-Fa-f]{3}-'
+    r'[89ABab][0-9A-Fa-f]{3}-'
+    r'[0-9A-Fa-f]{12}$'
+)
 
 def histogram(text: str) -> dict:
     known_letters = [
@@ -165,3 +175,13 @@ def _format_float(
     # formatted = formatted.ljust(total_length, '0')
 
     return formatted
+
+
+def assert_valid_uuid(uuid) -> None:
+    """
+    Assert that the UUID is valid.
+    """
+    if not isinstance(uuid, str):
+        raise ValueError("uuid must be a string")
+    if not UUID_V4_REGEX.match(uuid):
+        raise ValueError("uuid must be a valid UUIDv4")

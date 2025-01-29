@@ -17,7 +17,7 @@ from dynamo import (
     ReceiptWord,
     ReceiptLetter,
 )
-from ._fixtures import sample_gpt_receipt_1, sample_gpt_receipt_46
+from ._fixtures import sample_gpt_receipt_1, sample_gpt_receipt_2
 
 
 def assert_tags_on_word_and_receipt_word(
@@ -171,21 +171,21 @@ def test_gpt_receipt_1(
     )
 
     # Act
-    client.gpt_receipt(1)
+    client.gpt_receipt("3f52804b-2fad-4e00-92c8-b593da3a8ed3")
 
     # Assert
     # Check that the GPT response was stored in S3
     s3_client = boto3.client("s3", region_name="us-east-1")
     s3_json_key = images[0].raw_s3_key.replace(
         ".png",
-        f"_GPT_image_{images[0].id:05d}_receipt_{receipts[0].id:05d}.json",
+        f"_GPT_image_{images[0].id}_receipt_{receipts[0].id:05d}.json",
     )
     obj = s3_client.get_object(Bucket=images[0].raw_s3_bucket, Key=s3_json_key)
     body_text = obj["Body"].read().decode("utf-8")
     assert body_text == json.dumps(gpt_result)
 
     # Check that the Tags were set correctly
-    _, _, words, word_tags, _, receipt_details = client.getImageDetails(1)
+    _, _, words, word_tags, _, receipt_details = client.getImageDetails("3f52804b-2fad-4e00-92c8-b593da3a8ed3")
     # fmt: off
     assert_tags_on_word_and_receipt_word(2, 1, ["store_name"], words, word_tags, receipt_details[0]) # VONS
     assert_tags_on_word_and_receipt_word(3, 3, ["address"], words, word_tags, receipt_details[0]) # 497-1921
@@ -205,8 +205,8 @@ def test_gpt_receipt_1(
     # fmt: on
 
 
-def test_gpt_receipt_47(
-    sample_gpt_receipt_46: Tuple[
+def test_gpt_receipt_2(
+    sample_gpt_receipt_2: Tuple[
         list[Image],
         list[Line],
         list[Word],
@@ -230,7 +230,7 @@ def test_gpt_receipt_47(
         receipt_words,
         receipt_letters,
         gpt_result,
-    ) = sample_gpt_receipt_46
+    ) = sample_gpt_receipt_2
     _ = s3_bucket
     client = DynamoClient(dynamodb_table)
     # Arrange
@@ -260,21 +260,21 @@ def test_gpt_receipt_47(
     )
 
     # Act
-    client.gpt_receipt(46)
+    client.gpt_receipt("3f52804b-2fad-4e00-92c8-b593da3a8ed4")
 
     # Assert
     # Check that the GPT response was stored in S3
     s3_client = boto3.client("s3", region_name="us-east-1")
     s3_json_key = images[0].raw_s3_key.replace(
         ".png",
-        f"_GPT_image_{images[0].id:05d}_receipt_{receipts[0].id:05d}.json",
+        f"_GPT_image_{images[0].id}_receipt_{receipts[0].id:05d}.json",
     )
     obj = s3_client.get_object(Bucket=images[0].raw_s3_bucket, Key=s3_json_key)
     body_text = obj["Body"].read().decode("utf-8")
     assert body_text == json.dumps(gpt_result)
 
     # Check that the Tags were set correctly
-    _, _, words, word_tags, _, receipt_details = client.getImageDetails(46)
+    _, _, words, word_tags, _, receipt_details = client.getImageDetails("3f52804b-2fad-4e00-92c8-b593da3a8ed4")
     # fmt: off
     assert_tags_on_word_and_receipt_word(1, 1, ["line_item", "line_item_name"], words, word_tags, receipt_details[0])
     assert_tags_on_word_and_receipt_word(2, 1, ["line_item", "line_item_price"], words, word_tags, receipt_details[0])
@@ -325,7 +325,7 @@ def test_gpt_receipt_bad_response(
         ValueError,
         match=f"An error occurred while making the request: Internal Server Error",
     ) as exc:
-        client.gpt_receipt(1)
+        client.gpt_receipt("3f52804b-2fad-4e00-92c8-b593da3a8ed3")
 
     # 2) Verify the error message was what we expect
     assert "Internal Server Error" in str(exc.value)
@@ -343,7 +343,7 @@ def test_gpt_receipt_bad_response(
     # Reproduce the failure_key logic in your code:
     failure_key = test_image.raw_s3_key.replace(
         ".png",
-        f"_failure_image_{test_image.id:05d}_receipt_{test_receipt.id:05d}.txt",
+        f"_failure_image_{test_image.id}_receipt_{test_receipt.id:05d}.txt",
     )
 
     # Now fetch from S3 and confirm the Body is what we expected
@@ -366,4 +366,4 @@ def test_gpt_no_api_key(
     with pytest.raises(
         ValueError, match="The OPENAI_API_KEY environment variable is not set."
     ) as exc:
-        client.gpt_receipt(1)
+        client.gpt_receipt("3f52804b-2fad-4e00-92c8-b593da3a8ed3")

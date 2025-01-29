@@ -66,7 +66,7 @@ if not all([DYNAMO_DB_TABLE, S3_BUCKET, CDN_S3_BUCKET, CDN_PATH]):
 
 
 def process_ocr_dict(
-    ocr_data: Dict[str, Any], image_id: int
+    ocr_data: Dict[str, Any], image_id: str
 ) -> Tuple[List[Line], List[Word], List[Letter]]:
     """
     Convert OCR data from SwiftOCR into lists of Line, Word, and Letter objects.
@@ -177,7 +177,7 @@ def rotate_point(
 
 
 def add_initial_image(
-    s3_path: str, uuid: str, image_id: int, cdn_path: str
+    s3_path: str, uuid: str, cdn_path: str
 ) -> Tuple[Image, List[Line], List[Word], List[Letter]]:
     """
     Download image & OCR data from S3, compute SHA-256, and store them in DynamoDB.
@@ -230,7 +230,7 @@ def add_initial_image(
 
     # Create and store Image in DynamoDB
     image = Image(
-        id=image_id,
+        id=uuid,
         width=width,
         height=height,
         timestamp_added=datetime.now(timezone.utc).isoformat(),
@@ -260,7 +260,7 @@ def add_initial_image(
     with open(local_json_path, "r", encoding="utf-8") as f:
         ocr_data = json.load(f)
 
-    lines, words, letters = process_ocr_dict(ocr_data, image_id)
+    lines, words, letters = process_ocr_dict(ocr_data, uuid)
     logger.info(
         "Adding %d lines, %d words, %d letters, and the image to DynamoDB.",
         len(lines),
@@ -311,7 +311,7 @@ def cluster_image(lines: List[Line]) -> Dict[int, List[Line]]:
 
 def store_cluster_entities(
     cluster_id: int,
-    image_id: int,
+    image_id: str,
     lines: List[Line],
     words: List[Word],
     letters: List[Letter],
@@ -582,13 +582,11 @@ def store_cluster_entities(
     dynamo_client.addReceiptLines(receipt_lines)
     dynamo_client.addReceiptWords(receipt_words)
     dynamo_client.addReceiptLetters(receipt_letters)
-
-    print(
+    logger.log(
         f"Added {len(receipt_lines)} receipt lines, "
         f"{len(receipt_words)} words, and "
         f"{len(receipt_letters)} letters for receipt {cluster_id}."
     )
-
 
 def order_points(pts_4):
     # pts_4: shape (4,2)
@@ -727,7 +725,7 @@ def transform_cluster(
     dynamo_client.addReceipt(receipt)
 
 
-def write_results(image_id: int) -> None:
+def write_results(image_id: str) -> None:
     """Write the results as a JSON to the raw S3 bucket."""
     image, lines, words, word_tags, letters, receipts = DynamoClient(
         DYNAMO_DB_TABLE
@@ -804,14 +802,13 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     logger.info("Lambda handler invoked! Checking environment ...")
     uuid = event.get("uuid")
     s3_path = event.get("s3_path")
-    image_id = event.get("image_id")
 
-    if not all([uuid, s3_path, image_id]):
-        raise ValueError("Missing required keys in event: uuid, s3_path, image_id")
+    if not all([uuid, s3_path]):
+        raise ValueError("Missing required keys in event: uuid, s3_path")
 
-    logger.info("Starting cluster process for uuid=%s, image_id=%d", uuid, image_id)
+    logger.info("Starting cluster process for uuid=%s", uuid)
     image_obj, lines, words, letters = add_initial_image(
-        s3_path, uuid, image_id, cdn_path=CDN_PATH
+        s3_path, uuid, cdn_path=CDN_PATH
     )
     cluster_dict = cluster_image(lines)
 
@@ -846,14 +843,14 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         logger.info("Processing cluster %d with %d lines.", c_id, len(c_lines))
         transform_cluster(c_id, c_lines, c_words, c_letters, img_cv, image_obj)
 
-    DynamoClient(DYNAMO_DB_TABLE).gpt_receipt(image_id)
+    DynamoClient(DYNAMO_DB_TABLE).gpt_receipt(uuid)
     # Write the results back to S3
-    write_results(image_id)
+    write_results(uuid)
 
 
     return {
         "statusCode": 200,
         "body": json.dumps(
-            f"Processed {len(cluster_dict)} clusters for image_id={image_id}"
+            f"Processed {len(cluster_dict)} clusters for image_id={uuid}"
         ),
     }

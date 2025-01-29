@@ -104,11 +104,11 @@ class _Word:
             raise ValueError("Could not update Words in the database") from e
 
 
-    def deleteWord(self, image_id: int, line_id: int, word_id: int):
+    def deleteWord(self, image_id: str, line_id: int, word_id: int):
         """Deletes a word from the database
 
         Args:
-            image_id (int): The ID of the image the word belongs to
+            image_id (str): The UUID of the image the word belongs to
             line_id (int): The ID of the line the word belongs to
             word_id (int): The ID of the word to delete
         """
@@ -116,7 +116,7 @@ class _Word:
             self._client.delete_item(
                 TableName=self.table_name,
                 Key={
-                    "PK": {"S": f"IMAGE#{image_id:05d}"},
+                    "PK": {"S": f"IMAGE#{image_id}"},
                     "SK": {"S": f"LINE#{line_id:05d}#WORD#{word_id:05d}"},
                 },
                 ConditionExpression="attribute_exists(PK)",
@@ -159,7 +159,7 @@ class _Word:
             response = self._client.get_item(
                 TableName=self.table_name,
                 Key={
-                    "PK": {"S": f"IMAGE#{image_id:05d}"},
+                    "PK": {"S": f"IMAGE#{image_id}"},
                     "SK": {"S": f"LINE#{line_id:05d}#WORD#{word_id:05d}"},
                 },
             )
@@ -245,7 +245,7 @@ class _Word:
                 TableName=self.table_name,
                 KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
                 ExpressionAttributeValues={
-                    ":pkVal": {"S": f"IMAGE#{image_id:05d}"},
+                    ":pkVal": {"S": f"IMAGE#{image_id}"},
                     ":skPrefix": {"S": f"LINE#{line_id:05d}#WORD#"},
                 },
             )
@@ -255,7 +255,7 @@ class _Word:
                     TableName=self.table_name,
                     KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
                     ExpressionAttributeValues={
-                        ":pkVal": {"S": f"IMAGE#{image_id:05d}"},
+                        ":pkVal": {"S": f"IMAGE#{image_id}"},
                         ":skPrefix": {"S": f"LINE#{line_id:05d}#WORD#"},
                     },
                     ExclusiveStartKey=response["LastEvaluatedKey"],

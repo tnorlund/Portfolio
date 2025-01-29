@@ -1,6 +1,7 @@
 from math import atan2
 from typing import Generator, Tuple
 from dynamo.entities.util import (
+    assert_valid_uuid,
     assert_valid_bounding_box,
     assert_valid_point,
     _format_float,
@@ -13,7 +14,7 @@ class ReceiptWord:
     def __init__(
         self,
         receipt_id: int,
-        image_id: int,
+        image_id: str,
         line_id: int,
         id: int,
         text: str,
@@ -32,8 +33,7 @@ class ReceiptWord:
             raise ValueError("receipt_id must be a positive integer")
         self.receipt_id = receipt_id
         # Ensure the Image ID is a positive integer
-        if image_id <= 0 or not isinstance(image_id, int):
-            raise ValueError("image_id must be a positive integer")
+        assert_valid_uuid(image_id)
         self.image_id = image_id
         if line_id <= 0 or not isinstance(line_id, int):
             raise ValueError("line_id must be a positive integer")
@@ -73,7 +73,7 @@ class ReceiptWord:
 
     def key(self) -> dict:
         return {
-            "PK": {"S": f"IMAGE#{self.image_id:05d}"},
+            "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {
                 "S": f"RECEIPT#{self.receipt_id:05d}#LINE#{self.line_id:05d}#WORD#{self.id:05d}"
             },
@@ -82,7 +82,7 @@ class ReceiptWord:
     def gsi2_key(self) -> dict:
         return {
             "GSI2PK": {"S": f"RECEIPT"},
-            "GSI2SK": {"S": f"IMAGE#{self.image_id:05d}#RECEIPT#{self.receipt_id:05d}#LINE#{self.line_id:05d}#WORD#{self.id:05d}"},
+            "GSI2SK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#LINE#{self.line_id:05d}#WORD#{self.id:05d}"},
         }
 
     def to_item(self) -> dict:
@@ -231,7 +231,7 @@ def itemToReceiptWord(item: dict) -> ReceiptWord:
     try:
         return ReceiptWord(
             receipt_id=int(item["SK"]["S"].split("#")[1]),
-            image_id=int(item["PK"]["S"].split("#")[1]),
+            image_id=item["PK"]["S"].split("#")[1],
             line_id=int(item["SK"]["S"].split("#")[3]),
             id=int(item["SK"]["S"].split("#")[5]),
             text=item["text"]["S"],

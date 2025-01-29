@@ -233,10 +233,6 @@ class _ReceiptWordTag:
         Retrieves all ReceiptWordTag items with a given tag from the database,
         using GSI1 (where GSI1PK = "TAG#<tag_underscore_padded>").
         """
-        # Match how ReceiptWordTag.gsi1_key() pads the tag:
-        # (If your code also uses .upper(), do that here.)
-        spaced_tag = f"{tag:_>20}"
-
         receipt_tags = []
         try:
             # 1) Query the GSI
@@ -245,7 +241,7 @@ class _ReceiptWordTag:
                 IndexName="GSI1",  # Ensure this matches your actual GSI name
                 KeyConditionExpression="GSI1PK = :gsi1pk",
                 ExpressionAttributeValues={
-                    ":gsi1pk": {"S": f"TAG#{spaced_tag}"}
+                    ":gsi1pk": {"S": f"TAG#{tag:_>40}"}
                 },
             )
             # 2) Convert each DynamoDB item to a ReceiptWordTag
@@ -258,7 +254,7 @@ class _ReceiptWordTag:
                     IndexName="GSI1",
                     KeyConditionExpression="GSI1PK = :gsi1pk",
                     ExpressionAttributeValues={
-                        ":gsi1pk": {"S": f"TAG#{spaced_tag}"}
+                        ":gsi1pk": {"S": f"TAG#{tag:_>40}"}
                     },
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                 )
@@ -323,7 +319,7 @@ class _ReceiptWordTag:
                 FilterExpression="contains(#sk, :tag_val)",
                 ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
                 ExpressionAttributeValues={
-                    ":pk_val": {"S": f"IMAGE#{image_id:05d}"},
+                    ":pk_val": {"S": f"IMAGE#{image_id}"},
                     ":sk_val": {"S": "RECEIPT#"},
                     ":tag_val": {"S": "#TAG#"},   # Only SKs that include '#TAG#'
                 },
@@ -338,7 +334,7 @@ class _ReceiptWordTag:
                     FilterExpression="contains(#sk, :tag_val)",
                     ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
                     ExpressionAttributeValues={
-                        ":pk_val": {"S": f"IMAGE#{image_id:05d}"},
+                        ":pk_val": {"S": f"IMAGE#{image_id}"},
                         ":sk_val": {"S": "RECEIPT#"},
                         ":tag_val": {"S": "#TAG#"},
                     },

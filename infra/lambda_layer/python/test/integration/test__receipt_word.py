@@ -6,7 +6,7 @@ from dynamo import ReceiptWord, DynamoClient
 def sample_receipt_word():
     return ReceiptWord(
         receipt_id=1,
-        image_id=1,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=10,
         id=5,
         text="Sample receipt word",
@@ -92,7 +92,7 @@ def test_list_receipt_words(dynamodb_table: Literal["MyMockedTable"]):
     words = [
         ReceiptWord(
             receipt_id=1,
-            image_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id=5,
             id=i,
             text=f"Word{i}",
@@ -124,7 +124,7 @@ def test_list_receipt_words_from_line(dynamodb_table: Literal["MyMockedTable"]):
     words_same_line = [
         ReceiptWord(
             receipt_id=1,
-            image_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id=10,
             id=i,
             text=f"LineWord{i}",
@@ -142,7 +142,7 @@ def test_list_receipt_words_from_line(dynamodb_table: Literal["MyMockedTable"]):
     # Another word in a different line
     another_word = ReceiptWord(
         receipt_id=1,
-        image_id=1,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=99,
         id=999,
         text="Different line word",
@@ -159,7 +159,7 @@ def test_list_receipt_words_from_line(dynamodb_table: Literal["MyMockedTable"]):
         client.addReceiptWord(w)
 
     # Act
-    found_words = client.listReceiptWordsFromLine(1, 1, 10)
+    found_words = client.listReceiptWordsFromLine(1, "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 10)
 
     # Assert
     assert len(found_words) == 2

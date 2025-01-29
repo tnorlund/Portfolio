@@ -1,11 +1,13 @@
 from typing import Generator, Tuple
 from datetime import datetime
-
+from dynamo.entities.util import (
+    assert_valid_uuid
+)
 
 class Image:
     def __init__(
         self,
-        id: int,
+        id: str,
         width: int,
         height: int,
         timestamp_added: datetime,
@@ -18,7 +20,7 @@ class Image:
         """Constructs a new Image object for DynamoDB
 
         Args:
-            id (int): Number identifying the image
+            id (str): UUID identifying the image
             width (int): The width of the image in pixels
             height (int): The height of the image in pixels
             timestamp_added (datetime): The timestamp the image was added
@@ -29,7 +31,7 @@ class Image:
             cdn_s3_key (str): The S3 key where the image is stored in the CDN
 
         Attributes:
-            id (int): Number identifying the image
+            id (str): UUID identifying the image
             width (int): The width of the image in pixels
             height (int): The height of the image in pixels
             timestamp_added (datetime): The timestamp the image was added
@@ -44,9 +46,7 @@ class Image:
             ValueError: When the width or height are not positive integers
             ValueError: When the timestamp_added is not a datetime object or a string
         """
-        # Ensure the ID is a positive integer
-        if id <= 0:
-            raise ValueError("id must be a positive integer")
+        assert_valid_uuid(id)
         self.id = id
         # Ensure the width and height are positive integers
         if (
@@ -63,7 +63,7 @@ class Image:
         elif isinstance(timestamp_added, str):
             self.timestamp_added = timestamp_added
         else:
-            raise ValueError("timestamp_added must be a datetime object or a string")
+            raise ValueError("timestamp_added must be a string or datetime")
         self.raw_s3_bucket = raw_s3_bucket
         self.raw_s3_key = raw_s3_key
         if sha256 and not isinstance(sha256, str):
@@ -82,7 +82,7 @@ class Image:
         Returns:
             dict: The primary key for the image
         """
-        return {"PK": {"S": f"IMAGE#{self.id:05d}"}, "SK": {"S": "IMAGE"}}
+        return {"PK": {"S": f"IMAGE#{self.id}"}, "SK": {"S": "IMAGE"}}
 
     def gsi1_key(self) -> dict:
         """Generates the GSI1 key for the image
@@ -90,7 +90,7 @@ class Image:
         Returns:
             dict: The GSI1 key for the image
         """
-        return {"GSI1PK": {"S": "IMAGE"}, "GSI1SK": {"S": f"IMAGE#{self.id:05d}"}}
+        return {"GSI1PK": {"S": "IMAGE"}, "GSI1SK": {"S": f"IMAGE#{self.id}"}}
 
     def to_item(self) -> dict:
         """Converts the Image object to a DynamoDB item
@@ -120,7 +120,7 @@ class Image:
         Returns:
             str: The string representation of the Image object
         """
-        return f"Image(id={int(self.id)}, s3_key={self.raw_s3_key})"
+        return f"Image(id='{self.id}')"
 
     def __iter__(self) -> Generator[Tuple[str, int], None, None]:
         """Returns an iterator over the Image object
@@ -128,7 +128,7 @@ class Image:
         Returns:
             dict: The iterator over the Image object
         """
-        yield "id", int(self.id)
+        yield "id", self.id
         yield "width", self.width
         yield "height", self.height
         yield "timestamp_added", self.timestamp_added
@@ -150,7 +150,7 @@ class Image:
         if not isinstance(other, Image):
             return NotImplemented
         return (
-            int(self.id) == int(other.id)
+            self.id == other.id
             and self.width == other.width
             and self.height == other.height
             and self.timestamp_added == other.timestamp_added
@@ -195,7 +195,7 @@ def itemToImage(item: dict) -> Image:
         cdn_s3_bucket = item.get("cdn_s3_bucket", {}).get("S")
         cdn_s3_key = item.get("cdn_s3_key", {}).get("S")
         return Image(
-            id=int(item["PK"]["S"].split("#")[1]),
+            id=item["PK"]["S"].split("#")[1],
             width=int(item["width"]["N"]),
             height=int(item["height"]["N"]),
             timestamp_added=datetime.fromisoformat(item["timestamp_added"]["S"]),
