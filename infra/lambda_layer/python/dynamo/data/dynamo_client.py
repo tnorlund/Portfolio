@@ -144,15 +144,18 @@ class DynamoClient(
                             receipt,
                             image,
                             words,
-                            word_tag_in_response,
+                            [word_tag_in_response],
                             receipt_words_to_update,
                             receipt_word_tags_to_add,
                             words_to_update,
                             word_tags_to_add,
                         )
                     # The word in the GPT response is a number
-                    elif isinstance(details["value"], (int, float)):
-                        print(details)
+                    elif (
+                        isinstance(details["value"], (int, float))
+                        and "value" in details
+                        and "word_centroids" in details
+                    ):
                         (
                             receipt_words_to_update,
                             receipt_word_tags_to_add,
@@ -165,7 +168,81 @@ class DynamoClient(
                             receipt,
                             image,
                             words,
-                            word_tag_in_response,
+                            [word_tag_in_response],
+                            receipt_words_to_update,
+                            receipt_word_tags_to_add,
+                            words_to_update,
+                            word_tags_to_add,
+                        )
+
+                elif (
+                    isinstance(details, list)
+                    and word_tag_in_response == "items"
+                ):
+                    # These are the line items. Iterate over each line item
+                    for line_item in details:
+                        if "item_name" not in line_item or  "price" not in line_item:
+                            s3_json_key = image.raw_s3_key.replace(
+                                ".png",
+                                f"_GPT_image_failure_{image.id:05d}_receipt_{receipt.id:05d}.json",
+                            )
+                            s3 = boto3.client("s3")
+                            s3.put_object(
+                                Bucket=image.raw_s3_bucket,
+                                Key=s3_json_key,
+                                Body=raw_message,
+                                ContentType="application/json",
+                            )
+                            ValueError("Item name or price missing")
+                        item_name = line_item["item_name"]
+                        price = line_item["price"]
+                        if ("value" not in item_name or "word_centroids" not in item_name) or ("value" not in price or "word_centroids" not in price):
+                            s3_json_key = image.raw_s3_key.replace(
+                                ".png",
+                                f"_GPT_image_failure_{image.id:05d}_receipt_{receipt.id:05d}.json",
+                            )
+                            s3 = boto3.client("s3")
+                            s3.put_object(
+                                Bucket=image.raw_s3_bucket,
+                                Key=s3_json_key,
+                                Body=raw_message,
+                                ContentType="application/json",
+                            )
+                            ValueError("Item name or price missing value or word_centroids")
+                        
+                        # Process the item name
+                        (
+                            receipt_words_to_update,
+                            receipt_word_tags_to_add,
+                            words_to_update,
+                            word_tags_to_add,
+                        ) = self._process_gpt_response(
+                            item_name["value"],
+                            item_name["word_centroids"],
+                            receipt_words,
+                            receipt,
+                            image,
+                            words,
+                            ["line_item_name", "line_item"],
+                            receipt_words_to_update,
+                            receipt_word_tags_to_add,
+                            words_to_update,
+                            word_tags_to_add,
+                        )
+                        # Process the price
+                        (
+                            receipt_words_to_update,
+                            receipt_word_tags_to_add,
+                            words_to_update,
+                            word_tags_to_add,
+                        ) = self._process_gpt_response(
+                            str(price["value"]),
+                            price["word_centroids"],
+                            receipt_words,
+                            receipt,
+                            image,
+                            words,
+                            ["line_item_price", "line_item"],
                             receipt_words_to_update,
                             receipt_word_tags_to_add,
                             words_to_update,
@@ -320,16 +397,18 @@ class DynamoClient(
                 continue
             # Update Receipt entities
             matched_word.tags.extend(word_tag_in_response)
-            receipt_word_tag = ReceiptWordTag(
-                receipt_id=receipt.id,
-                image_id=image.id,
-                line_id=matched_word.line_id,
-                word_id=matched_word.id,
-                tag=word_tag_in_response,
-                timestamp_added=datetime.now().isoformat(),
-            )
             receipt_words_to_update.append(matched_word)
-            receipt_word_tags_to_add.append(receipt_word_tag)
+            receipt_word_tags_to_add.extend([
+                 ReceiptWordTag(
+                    receipt_id=receipt.id,
+                    image_id=image.id,
+                    line_id=matched_word.line_id,
+                    word_id=matched_word.id,
+                    tag=tag,
+                    timestamp_added=datetime.now().isoformat(),
+                )
+                for tag in word_tag_in_response
+            ])
 
             # Update Image entities
             matched_words = [
@@ -355,15 +434,17 @@ class DynamoClient(
                 )
                 continue
             matched_word.tags.extend(word_tag_in_response)
-            word_tag = WordTag(
-                image_id=image.id,
-                line_id=matched_word.line_id,
-                word_id=matched_word.id,
-                tag=word_tag_in_response,
-                timestamp_added=datetime.now().isoformat(),
-            )
             words_to_update.append(matched_word)
-            word_tags_to_add.append(word_tag)
+            word_tags_to_add.extend([
+                WordTag(
+                    image_id=image.id,
+                    line_id=matched_word.line_id,
+                    word_id=matched_word.id,
+                    tag=tag,
+                    timestamp_added=datetime.now().isoformat(),
+                )
+                for tag in word_tag_in_response
+            ])
 
         return (
             receipt_words_to_update,
