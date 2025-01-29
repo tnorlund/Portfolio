@@ -11,6 +11,7 @@ pulumi_stack_name = pulumi.get_stack()
 ecr_image_uri = (
     f"{account_id}.dkr.ecr.{region}.amazonaws.com/cluster-ocr:{pulumi_stack_name}"
 )
+config = pulumi.Config()
 
 bucket = aws.s3.Bucket("raw-image-bucket")
 pulumi.export("raw_bucket_name", bucket.bucket)
@@ -95,6 +96,7 @@ lambda_function = aws.lambda_.Function(
             "S3_BUCKET": bucket.bucket,
             "CDN_S3_BUCKET": site_bucket.bucket,
             "CDN_PATH": "assets/",
+            "OPENAI_API_KEY": config.require_secret("OPENAI_API_KEY")
         }
     },
     tags={
