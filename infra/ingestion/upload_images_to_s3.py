@@ -16,7 +16,7 @@ import time
 import boto3
 from botocore.exceptions import ClientError
 from dynamo import DynamoClient
-from pulumi.automation import select_stack
+import pulumi.automation as auto
 
 
 def calculate_sha256(file_path: str) -> str:
@@ -62,22 +62,12 @@ def load_env(env: str = "dev") -> tuple[str, str, str]:
     Returns:
         A tuple of (cdn_bucket_name, lambda_function_name, dynamodb_table_name).
     """
-    stack = select_stack(
+    stack = auto.select_stack(
         stack_name=f"tnorlund/portfolio/{env}",
         project_name="portfolio",
         program=lambda: None,
     )
-
-    # Convert Pulumi OutputValue objects to raw Python values
-    raw_bucket = stack.outputs()["raw_bucket_name"].value
-    lambda_function = stack.outputs()["cluster_lambda_function_name"].value
-    dynamo_db_table = stack.outputs()["dynamodb_table_name"].value
-
-    # Raise an error if any of the values are None
-    if None in (raw_bucket, lambda_function, dynamo_db_table):
-        raise ValueError("One or more required values are None")
-
-    return raw_bucket, lambda_function, dynamo_db_table
+    return {key: val.value for key, val in stack.outputs().items()}
 
 
 def run_swift_script(output_directory: Path, image_paths: list[str]) -> bool:
@@ -349,18 +339,11 @@ def download_and_cleanup_logs(
     download_dir: Path,
     remove_from_s3: bool = True
 ) -> list[Path]:
-    """
-    List all objects in S3 under 'export_prefix', download them to 'download_dir',
-    and optionally delete them from the S3 bucket afterward.
-
-    Returns:
-        A list of local .gz files that were downloaded.
-    """
     s3 = boto3.client("s3")
     download_dir.mkdir(parents=True, exist_ok=True)
     downloaded_files = []
-
     continuation_token = None
+
     print(f"Downloading log files from s3://{bucket_name}/{export_prefix} to {download_dir} ...")
 
     while True:
@@ -381,8 +364,11 @@ def download_and_cleanup_logs(
         for obj in contents:
             key = obj["Key"]
             print(f"key: {key}")
-            filename = key.split("/")[-1] or "logfile.gz"
-            local_path = download_dir / filename
+
+            # Remove the export_prefix from the start of the key so we can recreate folder structure:
+            rel_path = key[len(export_prefix):].lstrip("/")  # e.g. "3917a2f5-e69c-4835-8913.../000000.gz"
+            local_path = download_dir / rel_path
+            local_path.parent.mkdir(parents=True, exist_ok=True)  # ensure subfolders exist
 
             print(f"  - Downloading {key} -> {local_path}")
             s3.download_file(bucket_name, key, str(local_path))
@@ -436,7 +422,12 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    raw_bucket, lambda_function, dynamo_db_table = load_env(args.env)
+    pulumi_output = load_env(args.env)
+    raw_bucket = pulumi_output["raw_bucket_name"]
+    lambda_function = pulumi_output["cluster_lambda_function_name"]
+    dynamo_db_table = pulumi_output["dynamodb_table_name"]
+
+    print(f"dynamo_db_table: {dynamo_db_table}")
 
     # If `--debug` is set, clear out relevant tables.
     if args.debug:
