@@ -8,10 +8,12 @@ from dynamo import (
     itemToReceipt,
     itemToReceiptLine,
     itemToReceiptWord,
+    itemToReceiptWordTag,
     itemToReceiptLetter,
     itemToImage,
     itemToLine,
     itemToWord,
+    itemToWordTag,
     itemToLetter,
 )
 from botocore.exceptions import ClientError
@@ -118,6 +120,7 @@ class _Image:
                 KeyConditionExpression="#pk = :pk_value",
                 ExpressionAttributeNames={"#pk": "PK"},
                 ExpressionAttributeValues={":pk_value": {"S": f"IMAGE#{image_id:05d}"}},
+                ScanIndexForward=True,
             )
             items = response["Items"]
 
@@ -131,6 +134,7 @@ class _Image:
                         ":pk_value": {"S": f"IMAGE#{image_id:05d}"},
                     },
                     ExclusiveStartKey=response["LastEvaluatedKey"],
+                    ScanIndexForward=True,
                 )
                 items += response["Items"]
 
@@ -138,26 +142,21 @@ class _Image:
             image = None
             lines = []
             words = []
+            word_tags = []
             letters = []
             receipts = []
 
             for item in items:
                 sk_value = item["SK"]["S"]
-                if sk_value == "IMAGE":
+                if item["TYPE"]["S"] == "IMAGE":
                     image = itemToImage(item)
-                elif sk_value.startswith("LINE") and "WORD" not in sk_value:
+                elif item["TYPE"]["S"] == "LINE":
                     lines.append(itemToLine(item))
-                elif (
-                    sk_value.startswith("LINE")
-                    and "WORD" in sk_value
-                    and "LETTER" not in sk_value
-                ):
+                elif item["TYPE"]["S"] == "WORD":
                     words.append(itemToWord(item))
-                elif (
-                    sk_value.startswith("LINE")
-                    and "WORD" in sk_value
-                    and "LETTER" in sk_value
-                ):
+                elif item["TYPE"]["S"] == "WORD_TAG":
+                    word_tags.append(itemToWordTag(item))
+                elif item["TYPE"]["S"] == "LETTER":
                     letters.append(itemToLetter(item))
                 elif item["TYPE"]["S"] == "RECEIPT":
                     receipts.append(
@@ -165,6 +164,7 @@ class _Image:
                             "receipt": itemToReceipt(item),
                             "lines": [],
                             "words": [],
+                            "word_tags": [],
                             "letters": [],
                         }
                     )
@@ -174,11 +174,14 @@ class _Image:
                 elif item["TYPE"]["S"] == "RECEIPT_WORD":
                     this_word = itemToReceiptWord(item)
                     receipts[this_word.receipt_id - 1]["words"].append(this_word)
+                elif item["TYPE"]["S"] == "RECEIPT_WORD_TAG":
+                    this_tag = itemToReceiptWordTag(item)
+                    receipts[this_tag.receipt_id - 1]["word_tags"].append(this_tag)
                 elif item["TYPE"]["S"] == "RECEIPT_LETTER":
                     this_letter = itemToReceiptLetter(item)
                     receipts[this_letter.receipt_id - 1]["letters"].append(this_letter)
 
-            return image, lines, words, letters, receipts
+            return image, lines, words, word_tags, letters, receipts
 
         except Exception as e:
             raise Exception(f"Error getting image details: {e}")

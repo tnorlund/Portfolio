@@ -176,7 +176,7 @@ def test_get_imageDetails(dynamodb_table: Literal["MyMockedTable"]):
     client.addLetter(letter)
 
     # Act
-    retrieved_image, lines, words, letters, scaled_images = client.getImageDetails(
+    retrieved_image, lines, words, word_tags, letters, receipts = client.getImageDetails(
         image_id
     )
 
