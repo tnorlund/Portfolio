@@ -1,6 +1,7 @@
 from typing import Generator, Tuple
 from datetime import datetime
 from dynamo.entities.util import (
+    assert_valid_uuid,
     assert_valid_point,
     _format_float,
 )
@@ -9,7 +10,7 @@ from dynamo.entities.util import (
 class Receipt:
     def __init__(
         self,
-        image_id: int,
+        image_id: str,
         id: int,
         width: int,
         height: int,
@@ -27,7 +28,7 @@ class Receipt:
         """Constructs a new Receipt object for DynamoDB
 
         Args:
-            image_id (int): Number identifying the image
+            image_id (str): UUID identifying the image
             id (int): Number identifying the receipt
             width (int): The width of the receipt in pixels
             height (int): The height of the receipt in pixels
@@ -42,15 +43,13 @@ class Receipt:
 
         Attributes:
         """
-        if not isinstance(image_id, int):
-            raise ValueError("image_id must be an integer")
-        # Ensure the Image ID is a positive integer
-        if image_id <= 0:
-            raise ValueError("image_id must be positive")
+        assert_valid_uuid(image_id)
         self.image_id = image_id
         # Ensure the ID is a positive integer
-        if id <= 0 or not isinstance(id, int):
-            raise ValueError("id must be a positive integer")
+        if not isinstance(id, int):
+            raise ValueError("id must be an integer")
+        if id <= 0:
+            raise ValueError("id must be positive")
         self.id = id
         # Ensure the width and height are positive integers
         if (
@@ -95,7 +94,7 @@ class Receipt:
             dict: The primary key for the line
         """
         return {
-            "PK": {"S": f"IMAGE#{self.image_id:05d}"},
+            "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {"S": f"RECEIPT#{self.id:05d}"},
         }
 
@@ -107,7 +106,7 @@ class Receipt:
         """
         return {
             "GSI1PK": {"S": "IMAGE"},
-            "GSI1SK": {"S": f"IMAGE#{self.image_id:05d}#RECEIPT#{self.id:05d}"},
+            "GSI1SK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.id:05d}"},
         }
 
     def gsi2_key(self) -> dict:
@@ -118,7 +117,7 @@ class Receipt:
         """
         return {
             "GSI2PK": {"S": "RECEIPT"},
-            "GSI2SK": {"S": f"IMAGE#{self.image_id:05d}#RECEIPT#{self.id:05d}"},
+            "GSI2SK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.id:05d}"},
         }
 
     def to_item(self) -> dict:
@@ -174,7 +173,7 @@ class Receipt:
         Returns:
             str: The string representation of the Receipt object
         """
-        return f"Receipt(id={int(self.id)}, image_id={int(self.image_id)} s3_key={self.raw_s3_key})"
+        return f"Receipt(id={int(self.id)}, image_id='{self.image_id}')"
 
     def __iter__(self) -> Generator[Tuple[str, int], None, None]:
         """Returns an iterator over the Receipt object
@@ -183,7 +182,7 @@ class Receipt:
             dict: The iterator over the Receipt object
         """
         yield "id", int(self.id)
-        yield "image_id", int(self.image_id)
+        yield "image_id", self.image_id
         yield "width", self.width
         yield "height", self.height
         yield "timestamp_added", self.timestamp_added
@@ -252,7 +251,7 @@ def itemToReceipt(item: dict) -> Receipt:
         raise ValueError("Invalid item format")
     try:
         return Receipt(
-            image_id=int(item["PK"]["S"].split("#")[1]),
+            image_id=item["PK"]["S"].split("#")[1],
             id=int(item["SK"]["S"].split("#")[1]),
             width=int(item["width"]["N"]),
             height=int(item["height"]["N"]),

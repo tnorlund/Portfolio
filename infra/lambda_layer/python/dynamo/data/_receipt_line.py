@@ -16,15 +16,15 @@ class _ReceiptLine:
         Adds multiple receipt-lines in batch.
     updateReceiptLine(line: ReceiptLine)
         Updates an existing receipt-line.
-    deleteReceiptLine(receipt_id: int, image_id: int, line_id: int)
+    deleteReceiptLine(receipt_id: int, image_id: str, line_id: int)
         Deletes a specific receipt-line by IDs.
     deleteReceiptLines(lines: list[ReceiptLine])
         Deletes multiple receipt-lines in batch.
-    getReceiptLine(receipt_id: int, image_id: int, line_id: int) -> ReceiptLine
+    getReceiptLine(receipt_id: int, image_id: str, line_id: int) -> ReceiptLine
         Retrieves a single receipt-line by IDs.
     listReceiptLines() -> list[ReceiptLine]
         Returns all ReceiptLines from the table.
-    listReceiptLinesFromReceipt(receipt_id: int, image_id: int) -> list[ReceiptLine]
+    listReceiptLinesFromReceipt(receipt_id: int, image_id: str) -> list[ReceiptLine]
         Returns all lines under a specific receipt/image.
     """
 
@@ -72,13 +72,13 @@ class _ReceiptLine:
             else:
                 raise
 
-    def deleteReceiptLine(self, receipt_id: int, image_id: int, line_id: int):
+    def deleteReceiptLine(self, receipt_id: int, image_id: str, line_id: int):
         """Deletes a single ReceiptLine by IDs."""
         try:
             self._client.delete_item(
                 TableName=self.table_name,
                 Key={
-                    "PK": {"S": f"IMAGE#{image_id:05d}"},
+                    "PK": {"S": f"IMAGE#{image_id}"},
                     "SK": {"S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"},
                 },
                 ConditionExpression="attribute_exists(PK)",
@@ -106,14 +106,14 @@ class _ReceiptLine:
             raise ValueError("Could not delete ReceiptLines from the database") from e
 
     def getReceiptLine(
-        self, receipt_id: int, image_id: int, line_id: int
+        self, receipt_id: int, image_id: str, line_id: int
     ) -> ReceiptLine:
         """Retrieves a single ReceiptLine by IDs."""
         try:
             response = self._client.get_item(
                 TableName=self.table_name,
                 Key={
-                    "PK": {"S": f"IMAGE#{image_id:05d}"},
+                    "PK": {"S": f"IMAGE#{image_id}"},
                     "SK": {"S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"},
                 },
             )
@@ -154,7 +154,7 @@ class _ReceiptLine:
             raise ValueError("Could not list ReceiptLines from the database") from e
 
     def listReceiptLinesFromReceipt(
-        self, receipt_id: int, image_id: int
+        self, receipt_id: int, image_id: str
     ) -> list[ReceiptLine]:
         """Returns all lines under a specific receipt/image."""
         receipt_lines = []
@@ -163,7 +163,7 @@ class _ReceiptLine:
                 TableName=self.table_name,
                 KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
                 ExpressionAttributeValues={
-                    ":pk": {"S": f"IMAGE#{image_id:05d}"},
+                    ":pk": {"S": f"IMAGE#{image_id}"},
                     ":sk": {"S": f"RECEIPT#{receipt_id:05d}#LINE#"},
                 },
             )
@@ -176,7 +176,7 @@ class _ReceiptLine:
                     TableName=self.table_name,
                     KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
                     ExpressionAttributeValues={
-                        ":pk": {"S": f"IMAGE#{image_id:05d}"},
+                        ":pk": {"S": f"IMAGE#{image_id}"},
                         ":sk": {"S": f"RECEIPT#{receipt_id:05d}#LINE#"},
                     },
                     ExclusiveStartKey=response["LastEvaluatedKey"],

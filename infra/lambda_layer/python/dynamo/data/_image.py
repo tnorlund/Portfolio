@@ -90,7 +90,7 @@ class _Image:
         try:
             response = self._client.get_item(
                 TableName=self.table_name,
-                Key={"PK": {"S": f"IMAGE#{image_id:05d}"}, "SK": {"S": "IMAGE"}},
+                Key={"PK": {"S": f"IMAGE#{image_id}"}, "SK": {"S": "IMAGE"}},
             )
             return itemToImage(response["Item"])
         except KeyError:
@@ -150,7 +150,7 @@ class _Image:
                 TableName=self.table_name,
                 KeyConditionExpression="#pk = :pk_value",
                 ExpressionAttributeNames={"#pk": "PK"},
-                ExpressionAttributeValues={":pk_value": {"S": f"IMAGE#{image_id:05d}"}},
+                ExpressionAttributeValues={":pk_value": {"S": f"IMAGE#{image_id}"}},
                 ScanIndexForward=True,
             )
             items = response["Items"]
@@ -162,7 +162,7 @@ class _Image:
                     KeyConditionExpression="#pk = :pk_value",
                     ExpressionAttributeNames={"#pk": "PK"},
                     ExpressionAttributeValues={
-                        ":pk_value": {"S": f"IMAGE#{image_id:05d}"},
+                        ":pk_value": {"S": f"IMAGE#{image_id}"},
                     },
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                     ScanIndexForward=True,
@@ -222,7 +222,7 @@ class _Image:
         try:
             self._client.delete_item(
                 TableName=self.table_name,
-                Key={"PK": {"S": f"IMAGE#{image_id:05d}"}, "SK": {"S": "IMAGE"}},
+                Key={"PK": {"S": f"IMAGE#{image_id}"}, "SK": {"S": "IMAGE"}},
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:

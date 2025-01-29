@@ -80,18 +80,18 @@ class _Line:
             else:
                 raise Exception(f"Error updating line: {e}")
 
-    def deleteLine(self, image_id: int, line_id: int):
+    def deleteLine(self, image_id: str, line_id: int):
         """Deletes a line from the database
 
         Args:
-            image_id (int): The ID of the image the line belongs to
+            image_id (str): The UUID of the image the line belongs to
             line_id (int): The ID of the line to delete
         """
         try:
             self._client.delete_item(
                 TableName=self.table_name,
                 Key={
-                    "PK": {"S": f"IMAGE#{image_id:05d}"},
+                    "PK": {"S": f"IMAGE#{image_id}"},
                     "SK": {"S": f"LINE#{line_id:05d}"},
                 },
                 ConditionExpression="attribute_exists(PK)",
@@ -137,7 +137,7 @@ class _Line:
             response = self._client.get_item(
                 TableName=self.table_name,
                 Key={
-                    "PK": {"S": f"IMAGE#{image_id:05d}"},
+                    "PK": {"S": f"IMAGE#{image_id}"},
                     "SK": {"S": f"LINE#{line_id:05d}"},
                 },
             )
@@ -182,7 +182,7 @@ class _Line:
                 KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
                 ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
                 ExpressionAttributeValues={
-                    ":pk_val": {"S": f"IMAGE#{image_id:05d}"},
+                    ":pk_val": {"S": f"IMAGE#{image_id}"},
                     ":sk_val": {"S": "LINE#"},
                 },
             )
@@ -194,7 +194,7 @@ class _Line:
                     KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
                     ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
                     ExpressionAttributeValues={
-                        ":pk_val": {"S": f"IMAGE#{image_id:05d}"},
+                        ":pk_val": {"S": f"IMAGE#{image_id}"},
                         ":sk_val": {"S": "LINE#"},
                     },
                     ExclusiveStartKey=response["LastEvaluatedKey"],
