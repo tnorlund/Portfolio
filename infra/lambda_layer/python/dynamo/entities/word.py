@@ -1,5 +1,6 @@
 from typing import Generator, Tuple
 from dynamo.entities.util import (
+    assert_valid_uuid,
     histogram,
     assert_valid_bounding_box,
     assert_valid_point,
@@ -11,7 +12,7 @@ from math import sin, cos, pi, radians
 class Word:
     def __init__(
         self,
-        image_id: int,
+        image_id: str,
         line_id: int,
         id: int,
         text: str,
@@ -25,8 +26,56 @@ class Word:
         confidence: float,
         tags: list[str] = None,
     ):
-        if image_id <= 0 or not isinstance(image_id, int):
-            raise ValueError("image_id must be a positive integer")
+        """Constructs a new Word object for DynamoDB
+
+        Args:
+            image_id (str): UUID identifying the image
+            line_id (int): The ID of the line the word is in
+            id (int): The ID of the word
+            text (str): The text of the word
+            bounding_box (dict): The bounding box of the word
+            top_right (dict): The top right corner of the word
+            top_left (dict): The top left corner of the word
+            bottom_right (dict): The bottom right corner of the word
+            bottom_left (dict): The bottom left corner of the word
+            angle_degrees (float): The angle of the word in degrees
+            angle_radians (float): The angle of the word in radians
+            confidence (float): The confidence of the word
+            tags (list[str]): The tags of the word
+        
+        Attributes:
+            image_id (str): UUID identifying the image
+            line_id (int): The ID of the line the word is in
+            id (int): The ID of the word
+            text (str): The text of the word
+            bounding_box (dict): The bounding box of the word
+            top_right (dict): The top right corner of the word
+            top_left (dict): The top left corner of the word
+            bottom_right (dict): The bottom right corner of the word
+            bottom_left (dict): The bottom left corner of the word
+            angle_degrees (float): The angle of the word in degrees
+            angle_radians (float): The angle of the word in radians
+            confidence (float): The confidence of the word
+            tags (list[str]): The tags of the word
+            histogram (dict): The histogram of the word
+            num_chars (int): The number of characters in the word
+        
+        Raises:
+            ValueError: When the image_id is not a valid UUID
+            ValueError: When the line_id is not a positive integer
+            ValueError: When the id is not a positive integer
+            ValueError: When the text is not a string
+            ValueError: When the bounding_box is not valid
+            ValueError: When the top_right is not valid
+            ValueError: When the top_left is not valid
+            ValueError: When the bottom_right is not valid
+            ValueError: When the bottom_left is not valid
+            ValueError: When the angle_degrees is not a float
+            ValueError: When the angle_radians is not a float
+            ValueError: When the confidence is not a float between 0 and 1
+            ValueError: When the tags is not a list
+        """
+        assert_valid_uuid(image_id)
         self.image_id = image_id
         if line_id <= 0 or not isinstance(line_id, int):
             raise ValueError("line_id must be a positive integer")
@@ -68,7 +117,7 @@ class Word:
 
     def key(self) -> dict:
         return {
-            "PK": {"S": f"IMAGE#{self.image_id:05d}"},
+            "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {"S": f"LINE#{self.line_id:05d}#WORD#{self.id:05d}"},
         }
 
@@ -272,8 +321,10 @@ class Word:
         yield "bottom_left", self.bottom_left
         yield "angle_degrees", self.angle_degrees
         yield "angle_radians", self.angle_radians
-        yield "tags", self.tags
         yield "confidence", self.confidence
+        yield "tags", self.tags
+        yield "histogram", self.histogram
+        yield "num_chars", self.num_chars
 
     def __eq__(self, other: object) -> bool:
         """Compares two Word objects
@@ -313,7 +364,7 @@ def itemToWord(item: dict) -> Word:
         Word: The Word object created from the item
     """
     return Word(
-        image_id=int(item["PK"]["S"][6:]),
+        image_id=item["PK"]["S"][6:],
         line_id=int(item["SK"]["S"].split("#")[1]),
         id=int(item["SK"]["S"].split("#")[3]),
         text=item["text"]["S"],
