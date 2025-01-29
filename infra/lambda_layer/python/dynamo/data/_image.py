@@ -5,6 +5,10 @@ from dynamo import (
     Letter,
     Word,
     Receipt,
+    ReceiptLine,
+    ReceiptWord,
+    ReceiptWordTag,
+    ReceiptLetter,
     itemToReceipt,
     itemToReceiptLine,
     itemToReceiptWord,
@@ -108,7 +112,7 @@ class _Image:
         list[Line],
         list[Word],
         list[Letter],
-        list[Dict[str, Union[Receipt, list[Line], list[Word], list[Letter]]]],
+        list[Dict[str, Union[Receipt, list[ReceiptLine], list[Word], list[Letter]]]],
     ]:
         """
         Gets the details of an image from the database. This includes all lines,
