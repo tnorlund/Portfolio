@@ -48,7 +48,7 @@ lambda_policy = aws.iam.Policy(
                     {
                         "Effect": "Allow",
                         "Action": ["dynamodb:Query", "dynamodb:DescribeTable"],
-                        "Resource": [arn, f"{arn}/index/GSI2"],
+                        "Resource": [arn, f"{arn}/index/GSITYPE"],
                     }
                 ],
             }
@@ -86,7 +86,8 @@ receipts_lambda = aws.lambda_.Function(
             "DYNAMODB_TABLE_NAME": DYNAMODB_TABLE_NAME,
         }
     },
-    memory_size=512,  # Increase RAM to 512 MB
+    memory_size=1024,  # Increase RAM to 512 MB
+    timeout=60 * 2,  # Increase timeout to 30 seconds
 )
 
 # CloudWatch log group for the Lambda function
