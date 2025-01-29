@@ -729,7 +729,7 @@ def transform_cluster(
 
 def write_results(image_id: int) -> None:
     """Write the results as a JSON to the raw S3 bucket."""
-    image, lines, words, letters, receipts = DynamoClient(
+    image, lines, words, word_tags, letters, receipts = DynamoClient(
         DYNAMO_DB_TABLE
     ).getImageDetails(image_id)
     s3_client = boto3.client("s3")
@@ -758,6 +758,7 @@ def write_results(image_id: int) -> None:
                         }
                         for word in words
                     ],
+                    "word_tags": [dict(word_tag) for word_tag in word_tags],
                     "letters": [dict(letter) for letter in letters],
                     "receipts": [
                         {
@@ -778,6 +779,7 @@ def write_results(image_id: int) -> None:
                                 }
                                 for word in receipt["words"]
                             ],
+                            "word_tags": [dict(word_tag) for word_tag in receipt["word_tags"]],
                             "letters": [dict(letter) for letter in receipt["letters"]],
                         }
                         for receipt in receipts
@@ -843,8 +845,11 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         logger.info("Processing cluster %d with %d lines.", c_id, len(c_lines))
         transform_cluster(c_id, c_lines, c_words, c_letters, img_cv, image_obj)
+
+    DynamoClient(DYNAMO_DB_TABLE).gpt_receipt(image_id)
     # Write the results back to S3
     write_results(image_id)
+
 
     return {
         "statusCode": 200,
