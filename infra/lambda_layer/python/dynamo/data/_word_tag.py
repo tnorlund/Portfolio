@@ -157,7 +157,7 @@ class _WordTag:
         except ClientError as e:
             raise ValueError("Could not delete WordTags from the database") from e
 
-    def deleteWordTagsFromImage(self, image_id: int):
+    def deleteWordTagsFromImage(self, image_id: str):
         """
         Deletes all WordTag items for a given image.
         Internally uses listWordTagsFromImage(...) then deleteWordTags(...).
@@ -213,11 +213,7 @@ class _WordTag:
         Retrieves all WordTag items with a given tag from the database,
         using GSI1 (where GSI1PK = "TAG#<padded_tag>").
         """
-        # Match how WordTag.gsi1_key() pads the tag:
-        # If your code uses uppercase or something else, follow that same pattern.
-        spaced_tag_upper = f"{tag:_>20}"
-
-        word_tags = []
+        word_tags: list[WordTag] = []
         try:
             # Initial query
             response = self._client.query(
@@ -225,7 +221,7 @@ class _WordTag:
                 IndexName="GSI1",  # Make sure this is the correct GSI name
                 KeyConditionExpression="GSI1PK = :gsi1pk",
                 ExpressionAttributeValues={
-                    ":gsi1pk": {"S": f"TAG#{spaced_tag_upper}"}
+                    ":gsi1pk": {"S": f"TAG#{tag:_>40}"}
                 },
             )
             word_tags.extend([itemToWordTag(item) for item in response["Items"]])
@@ -237,7 +233,7 @@ class _WordTag:
                     IndexName="GSI1",
                     KeyConditionExpression="GSI1PK = :gsi1pk",
                     ExpressionAttributeValues={
-                        ":gsi1pk": {"S": f"TAG#{spaced_tag_upper}"}
+                        ":gsi1pk": {"S": f"TAG#{tag:_>40}"}
                     },
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                 )
@@ -281,7 +277,7 @@ class _WordTag:
         except ClientError as e:
             raise ValueError("Could not list WordTags from the database") from e
 
-    def listWordTagsFromImage(self, image_id: int) -> list[WordTag]:
+    def listWordTagsFromImage(self, image_id: str) -> list[WordTag]:
         """
         Lists all WordTag items for a given image by querying:
             PK = "IMAGE#<image_id>"
@@ -296,7 +292,7 @@ class _WordTag:
                 FilterExpression="contains(#sk, :tag_marker)",
                 ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
                 ExpressionAttributeValues={
-                    ":pk_val": {"S": f"IMAGE#{image_id:05d}"},
+                    ":pk_val": {"S": f"IMAGE#{image_id}"},
                     ":sk_val": {"S": "LINE#"},
                     ":tag_marker": {"S": "#TAG#"},
                 },
@@ -311,7 +307,7 @@ class _WordTag:
                     FilterExpression="contains(#sk, :tag_marker)",
                     ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
                     ExpressionAttributeValues={
-                        ":pk_val": {"S": f"IMAGE#{image_id:05d}"},
+                        ":pk_val": {"S": f"IMAGE#{image_id}"},
                         ":sk_val": {"S": "LINE#"},
                         ":tag_marker": {"S": "#TAG#"},
                     },

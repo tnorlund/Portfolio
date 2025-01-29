@@ -1,5 +1,6 @@
 from typing import Generator, Tuple
 from dynamo.entities.util import (
+    assert_valid_uuid,
     assert_valid_bounding_box,
     assert_valid_point,
     _format_float,
@@ -11,7 +12,7 @@ class ReceiptLine:
     def __init__(
         self,
         receipt_id: int,
-        image_id: int,
+        image_id: str,
         id: int,
         text: str,
         bounding_box: dict,
@@ -29,9 +30,7 @@ class ReceiptLine:
         if receipt_id <= 0:
             raise ValueError("receipt_id must be a positive")
         self.receipt_id = receipt_id
-        # Ensure the Image ID is a positive integer
-        if image_id <= 0 or not isinstance(image_id, int):
-            raise ValueError("image_id must be a positive integer")
+        assert_valid_uuid(image_id)
         self.image_id = image_id
         # Ensure the ID is a positive integer
         if id <= 0 or not isinstance(id, int):
@@ -67,7 +66,7 @@ class ReceiptLine:
 
     def key(self):
         return {
-            "PK": {"S": f"IMAGE#{self.image_id:05d}"},
+            "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#LINE#{self.id:05d}"},
         }
 
@@ -169,7 +168,7 @@ def itemToReceiptLine(item: dict) -> ReceiptLine:
         raise ValueError(f"Item is missing required keys: {missing_keys}")
     try:
         return ReceiptLine(
-            image_id=int(item["PK"]["S"].split("#")[1]),
+            image_id=item["PK"]["S"].split("#")[1],
             receipt_id=int(item["SK"]["S"].split("#")[1]),
             id=int(item["SK"]["S"].split("#")[3]),
             text=item["text"]["S"],
