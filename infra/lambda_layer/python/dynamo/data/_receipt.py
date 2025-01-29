@@ -256,32 +256,40 @@ class _Receipt:
         except ClientError as e:
             raise ValueError(f"Error getting receipt details: {e}")
 
-    def listReceipts(self) -> list[Receipt]:
-        """List all receipts from the table"""
+    def listReceipts(self, limit: Optional[int] = None) -> list[Receipt]:
+        """List all receipts from the table, optionally limiting the total number returned."""
         receipts = []
+
         try:
-            response = self._client.query(
-                TableName=self.table_name,
-                IndexName="GSITYPE",
-                KeyConditionExpression="#t = :val",
-                ExpressionAttributeNames={"#t": "TYPE"},
-                ExpressionAttributeValues={":val": {"S": "RECEIPT"}},
-            )
+            # Initial query parameters
+            query_params = {
+                "TableName": self.table_name,
+                "IndexName": "GSITYPE",
+                "KeyConditionExpression": "#t = :val",
+                "ExpressionAttributeNames": {"#t": "TYPE"},
+                "ExpressionAttributeValues": {":val": {"S": "RECEIPT"}},
+            }
+
+            # First page
+            response = self._client.query(**query_params)
             receipts.extend([itemToReceipt(item) for item in response["Items"]])
 
-            while "LastEvaluatedKey" in response:
-                response = self._client.query(
-                    TableName=self.table_name,
-                    IndexName="GSITYPE",
-                    KeyConditionExpression="#t = :val",
-                    ExpressionAttributeNames={"#t": "TYPE"},
-                    ExpressionAttributeValues={":val": {"S": "RECEIPT"}},
-                    ExclusiveStartKey=response["LastEvaluatedKey"],
-                )
+            # Keep going only if:
+            #   1) There are more pages to read (LastEvaluatedKey exists), AND
+            #   2) We haven't yet reached the user's limit (if specified).
+            while "LastEvaluatedKey" in response and (limit is None or len(receipts) < limit):
+                query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                response = self._client.query(**query_params)
                 receipts.extend([itemToReceipt(item) for item in response["Items"]])
+
+            # If a limit is specified, slice the list down to that limit.
+            if limit is not None:
+                receipts = receipts[:limit]
+
             return receipts
+
         except ClientError as e:
-            raise ValueError("Could not list receipts from the database") from e
+            raise ValueError(f"Could not list receipts from the database: {e}")
 
     def getReceiptsFromImage(self, image_id: int) -> list[Receipt]:
         """List all receipts from an image using the GSI

@@ -1,3 +1,5 @@
+import Receipt from "./Receipt";
+
 // Shared interfaces
 export interface Point {
     x: number;
@@ -112,7 +114,4 @@ export interface Point {
   }
   
   export type ImageReceiptsLines = [ImagePayload, Receipt[], LineItem[]];
-  export interface ReceiptApiResponse {
-    payload: ReceiptPayload;
-    last_evaluated_key: LastEvaluatedKey | null;
-  }
+  export type ReceiptApiResponse = Receipt[];
