@@ -22,7 +22,7 @@ const ReceiptStack: React.FC = () => {
   useEffect(() => {
     const getReceipts = async () => {
       try {
-        const response: ReceiptApiResponse = await fetchReceipts(20);
+        const response: ReceiptApiResponse = await fetchReceipts(15);
         // No need for `Object.values(response)` or `.map(entry => entry.receipt)` anymore
         setReceipts(response);
 
