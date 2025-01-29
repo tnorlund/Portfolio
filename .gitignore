@@ -181,3 +181,6 @@ data_labeling_*
 infra/ingestion/test_failures*
 debug*
 failure*
+lambda_logs_prod*
+lambda_logs_dev*
+lambda_logs_e2e*
