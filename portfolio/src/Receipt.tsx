@@ -5,6 +5,68 @@ import OpenAI from "./OpenAI";
 import ReceiptStack from "./ReceiptStack";
 import "./Receipt.css";
 
+function GPTPrompt() {
+  const prompt = `You are a helpful assistant that extracts structured data from a receipt.
+The receipt's OCR text is:
+{
+  "receipt": { ... },
+  "words": [
+    {
+      "text": "SPROUTS",
+      "centroid": {"x": 0.1, "y": 0.1}
+    },
+    ...
+  ]
+}
+
+**Your task**: Identify the following fields and output them as valid JSON:
+    - store_name (string)
+    - date (string)
+    - time (string)
+    - phone_number (string)
+    - total_amount (number)
+    - items (array of objects with fields: "item_name" (string) and "price" (number))
+    - taxes (number)
+    - address (string)
+
+Additionally, for **every field** you return, **please include**:
+1) The field's **value** (e.g. "SPROUTS FARMERS MARKET").
+2) An array of "word_centroids" that correspond to the OCR words. 
+     - This array should list the (x, y) coordinates of each word that you used to form that field's value.
+     - Use the same centroids from the "words" array above.
+
+If a particular field is not found, return an empty string or null for that field.
+
+**The JSON structure** should look like this (conceptually):
+\`\`\`json
+{
+  "store_name": {
+    "value": "...",
+    "word_centroids": [
+      {"x": ..., "y": ...},
+      ...
+    ]
+  },
+  ...
+  "items": [
+    {
+      "item_name": {
+        "value": "...",
+        "word_centroids": [...]
+      },
+      "price": {
+        "value": 0.0,
+        "word_centroids": [...]
+      }
+    }
+  ],
+}
+\`\`\`
+IMPORTANT: Make sure your output is valid JSON, with double quotes around keys and strings.
+`;
+return <pre>{prompt}</pre>
+}
+
 function Receipt() {
   return (
     <div>
@@ -54,17 +116,9 @@ function Receipt() {
       </p>
       <ReceiptStack />
       <p>
-        Now comes the data science... The data is there, but what can I do with it? I decided to now use OpenAI's ChatGPT API for data annotation. I defined a receipt as having:
+        Now comes the data science… The data is there, but what can I do with it? I decided to use OpenAI's ChatGPT API for data annotation. My first task was creating a structured prompt—like the one below—so it would consistently return well-formatted JSON. After some prompt engineering research, I landed on a design that ties each field to specific word coordinates from the OCR output, allowing me to visualize and process the data accurately. 
       </p>
-      <ul>
-        <li>Line Items</li>
-        <li>Date</li>
-        <li>Time</li>
-        <li>Subtotal</li>
-      </ul>
-      <p>
-        I use ChatGPT to label the different words in the OCR data. This process can be very expensive, but since the OCR has already been processed, I can send just the text and where it is on the receipt. This cost effective approach allows me to label the data in a very short amount of time.
-      </p>
+      <code><GPTPrompt/></code>
     </div>
   );
 }
