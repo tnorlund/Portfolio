@@ -4,12 +4,13 @@ import json
 import boto3
 import pytest
 import os
-from typing import Literal, Tuple
+from typing import Dict, Literal, Tuple, Union
 from dynamo import (
     DynamoClient,
     Image,
     Line,
     Word,
+    WordTag,
     Letter,
     Receipt,
     ReceiptLine,
@@ -18,6 +19,64 @@ from dynamo import (
 )
 from ._fixtures import sample_gpt_receipt
 
+
+def assert_tags_on_word_and_receipt_word(
+    line_id: int,
+    word_id: int,
+    expected_tags: list[str],
+    words: list[Word],
+    word_tags: list[WordTag],
+    receipt_details,
+):
+    """
+    Assert that the Word and ReceiptWord objects have the expected tags and that the WordTag and ReceiptWordTags exist.
+    """
+
+    # Assert the word object has the expected tags
+    matching_words = [w for w in words if w.line_id == line_id and w.id == word_id]
+    assert len(matching_words) == 1, (
+        f"Expected exactly one Word with (line_id={line_id}, id={word_id}), "
+        f"but found {len(matching_words)}."
+    )
+    matching_word = matching_words[0]
+    assert matching_word.tags == expected_tags
+
+    # Assert the WordTag entries exist for each of the expected tags
+    matching_word_tags = [wt for wt in word_tags if wt.word_id == word_id and wt.line_id == line_id]
+    assert len(matching_word_tags) == len(expected_tags), (
+        f"Expected {len(expected_tags)} WordTag entries for Word with "
+        f"(line_id={line_id}, id={word_id}), but found {len(matching_word_tags)}."
+    )
+    matching_word_tags = sorted(matching_word_tags, key=lambda wt: wt.tag)
+    expected_tags = sorted(expected_tags)
+    for i, expected_tag in enumerate(expected_tags):
+        assert matching_word_tags[i].tag == expected_tag, (
+            f"Expected WordTag entry {i} to have tag '{expected_tag}', "
+            f"but found '{matching_word_tags[i].tag}'."
+        )
+    
+    # Assert the receipt_word object has the expected tags
+    matching_receipt_words = [rw for rw in receipt_details["words"] if rw.line_id == line_id and rw.id == word_id]
+    assert len(matching_receipt_words) == 1, (
+        f"Expected exactly one ReceiptWord with (line_id={line_id}, id={word_id}), "
+        f"but found {len(matching_receipt_words)}."
+    )
+    matching_receipt_word = matching_receipt_words[0]
+    assert matching_receipt_word.tags == expected_tags
+
+    # Assert the ReceiptWordTag entries exist for each of the expected tags
+    matching_receipt_word_tags = [rwt  for rwt in receipt_details["word_tags"] if rwt.word_id == word_id and rwt.line_id == line_id]
+    assert len(matching_receipt_word_tags) == len(expected_tags), (
+        f"Expected {len(expected_tags)} ReceiptWordTag entries for ReceiptWord with "
+        f"(line_id={line_id}, id={word_id}), but found {len(matching_receipt_word_tags)}."
+    )
+    matching_receipt_word_tags = sorted(matching_receipt_word_tags, key=lambda rwt: rwt.tag)
+    expected_tags = sorted(expected_tags)
+    for i, expected_tag in enumerate(expected_tags):
+        assert matching_receipt_word_tags[i].tag == expected_tag, (
+            f"Expected ReceiptWordTag entry {i} to have tag '{expected_tag}', "
+            f"but found '{matching_receipt_word_tags[i].tag}'."
+        )
 
 class MockGPTResponse:
     """A simple mock response class with .json() and .status_code."""
@@ -88,6 +147,33 @@ def test_gpt_receipt(
     obj = s3_client.get_object(Bucket=images[0].raw_s3_bucket, Key=s3_json_key)
     body_text = obj["Body"].read().decode("utf-8")
     assert body_text == json.dumps(gpt_result)
+
+    # Check that the Tags were set correctly
+    _, _, words, word_tags, _, receipt_details = client.getImageDetails(1)
+    assert_tags_on_word_and_receipt_word(2, 1, ["store_name"], words, word_tags, receipt_details[0]) # VONS
+    assert_tags_on_word_and_receipt_word(3, 3, ["address"], words, word_tags, receipt_details[0]) # 497-1921
+    assert_tags_on_word_and_receipt_word(4, 2, ["address"], words, word_tags, receipt_details[0]) # Agoura
+    assert_tags_on_word_and_receipt_word(4, 3, ["address"], words, word_tags, receipt_details[0]) # Road
+    assert_tags_on_word_and_receipt_word(5, 1, ["address"], words, word_tags, receipt_details[0]) # WESTLAKE
+    assert_tags_on_word_and_receipt_word(5, 2, ["address"], words, word_tags, receipt_details[0]) # CA
+    assert_tags_on_word_and_receipt_word(5, 3, ["address"], words, word_tags, receipt_details[0]) # 91360
+    assert_tags_on_word_and_receipt_word(8, 2, ["line_item_name", "line_item"], words, word_tags, receipt_details[0]) # PURE
+    assert_tags_on_word_and_receipt_word(8, 3, ["line_item_name", "line_item"], words, word_tags, receipt_details[0]) # LIFE
+    assert_tags_on_word_and_receipt_word(8, 4, ["line_item_name", "line_item"], words, word_tags, receipt_details[0]) # WATER
+    assert_tags_on_word_and_receipt_word(20, 3, ["date"], words, word_tags, receipt_details[0]) # 03/19/24
+    assert_tags_on_word_and_receipt_word(20, 4, ["time"], words, word_tags, receipt_details[0]) # 13:29
+    assert_tags_on_word_and_receipt_word(24, 1, ["line_item_price", "line_item"], words, word_tags, receipt_details[0]) # 3.60
+    assert_tags_on_word_and_receipt_word(33, 1, ["total_amount"], words, word_tags, receipt_details[0]) # 3.60
+    assert_tags_on_word_and_receipt_word(40, 1, ["phone_number"], words, word_tags, receipt_details[0]) # 877-276-9637
+
+    for word in [word for word in words if len(word.tags) > 0]:
+        print(
+            f"line_id: {word.line_id}\n"
+            f"word_id: {word.id}\n"
+            f"text: {word.text}\n"
+            f"tags: {word.tags}\n"
+        )
+
 
 
 def test_gpt_receipt_bad_response(
