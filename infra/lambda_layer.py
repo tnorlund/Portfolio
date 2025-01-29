@@ -13,6 +13,7 @@ UPLOAD_DIR = os.path.join(PROJECT_DIR, "upload")
 ZIP_FILE_PATH = os.path.join(PROJECT_DIR, "upload.zip")
 PACKAGE_NAME = os.path.join(LAMBDA_LAYER_DIR, "python")
 PYTHON_TARGET = os.path.join(UPLOAD_DIR, "python")
+REQUIREMENTS_PATH = os.path.join(PACKAGE_NAME, "requirements.txt")
 S3_BUCKET_NAME = "lambdalayerpulumi"
 
 
@@ -34,7 +35,7 @@ def install_dependencies():
     """Install the dependencies for the Lambda Layer."""
     try:
         subprocess.check_call(
-            ["pip3", "install", PACKAGE_NAME, "--target", PYTHON_TARGET],
+            ["pip3", "install", PACKAGE_NAME, "--target", PYTHON_TARGET, "-r", REQUIREMENTS_PATH],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
