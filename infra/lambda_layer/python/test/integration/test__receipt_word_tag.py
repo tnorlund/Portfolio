@@ -16,7 +16,7 @@ def sample_receipt_word_tag():
     Adjust the IDs or tag text to fit your schema if needed.
     """
     return ReceiptWordTag(
-        image_id=1,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         receipt_id=100,
         line_id=5,
         word_id=42,
@@ -110,7 +110,7 @@ def test_list_receipt_word_tags(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
     receipt_word_tags = [
-        ReceiptWordTag(image_id=1, receipt_id=10, line_id=1, word_id=i, tag=f"Tag{i}", timestamp_added="2021-01-01T00:00:00")
+        ReceiptWordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", receipt_id=10, line_id=1, word_id=i, tag=f"Tag{i}", timestamp_added="2021-01-01T00:00:00")
         for i in range(1, 4)
     ]
     for rwt in receipt_word_tags:
@@ -130,19 +130,19 @@ def test_list_receipt_word_tags_from_image(dynamodb_table: Literal["MyMockedTabl
 
     # ReceiptWordTags for image_id=1
     same_image_tags = [
-        ReceiptWordTag(image_id=1, receipt_id=10, line_id=2, word_id=i, tag=f"ImageTag{i}", timestamp_added="2021-01-01T00:00:00")
+        ReceiptWordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", receipt_id=10, line_id=2, word_id=i, tag=f"ImageTag{i}", timestamp_added="2021-01-01T00:00:00")
         for i in range(1, 3)
     ]
     # Another ReceiptWordTag with a different image_id
     different_image_tag = ReceiptWordTag(
-        image_id=2, receipt_id=99, line_id=2, word_id=999, tag="OtherImage", timestamp_added="2021-01-01T00:00:00"
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed4", receipt_id=99, line_id=2, word_id=999, tag="OtherImage", timestamp_added="2021-01-01T00:00:00"
     )
 
     for rwt in same_image_tags + [different_image_tag]:
         client.addReceiptWordTag(rwt)
 
     # Act
-    found_tags = client.listReceiptWordTagsFromImage(1)
+    found_tags = client.listReceiptWordTagsFromImage("3f52804b-2fad-4e00-92c8-b593da3a8ed3")
 
     # Assert
     assert len(found_tags) == len(same_image_tags)
@@ -156,10 +156,10 @@ def sample_receipt_word_tags():
     Returns multiple ReceiptWordTag objects, with two distinct tags.
     """
     return [
-        ReceiptWordTag(image_id=1, receipt_id=100, line_id=10, word_id=10, tag="ALPHA", timestamp_added="2021-01-01T00:00:00"),
-        ReceiptWordTag(image_id=2, receipt_id=200, line_id=20, word_id=20, tag="BETA", timestamp_added="2021-01-01T00:00:00"),
-        ReceiptWordTag(image_id=3, receipt_id=300, line_id=30, word_id=30, tag="ALPHA", timestamp_added="2021-01-01T00:00:00"),
-        ReceiptWordTag(image_id=4, receipt_id=400, line_id=40, word_id=40, tag="BETA", timestamp_added="2021-01-01T00:00:00"),
+        ReceiptWordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", receipt_id=100, line_id=10, word_id=10, tag="ALPHA", timestamp_added="2021-01-01T00:00:00"),
+        ReceiptWordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed4", receipt_id=200, line_id=20, word_id=20, tag="BETA", timestamp_added="2021-01-01T00:00:00"),
+        ReceiptWordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed5", receipt_id=300, line_id=30, word_id=30, tag="ALPHA", timestamp_added="2021-01-01T00:00:00"),
+        ReceiptWordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed6", receipt_id=400, line_id=40, word_id=40, tag="BETA", timestamp_added="2021-01-01T00:00:00"),
     ]
 
 def test_get_receipt_word_tags(
@@ -176,8 +176,8 @@ def test_get_receipt_word_tags(
     # Assert
     # The two we expect with ALPHA
     alpha_expected = {
-        (1, 100, 10, 10, "ALPHA"),
-        (3, 300, 30, 30, "ALPHA"),
+        ("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 100, 10, 10, "ALPHA"),
+        ("3f52804b-2fad-4e00-92c8-b593da3a8ed5", 300, 30, 30, "ALPHA"),
     }
     alpha_returned = {
         (x.image_id, x.receipt_id, x.line_id, x.word_id, x.tag) for x in alpha
@@ -187,8 +187,8 @@ def test_get_receipt_word_tags(
     # Check BETA
     beta = client.getReceiptWordTags("BETA")
     beta_expected = {
-        (2, 200, 20, 20, "BETA"),
-        (4, 400, 40, 40, "BETA"),
+        ("3f52804b-2fad-4e00-92c8-b593da3a8ed4", 200, 20, 20, "BETA"),
+        ("3f52804b-2fad-4e00-92c8-b593da3a8ed6", 400, 40, 40, "BETA"),
     }
     beta_returned = {
         (x.image_id, x.receipt_id, x.line_id, x.word_id, x.tag) for x in beta
@@ -215,7 +215,7 @@ def test_get_receipt_word_tags_pagination(dynamodb_table: Literal["MyMockedTable
     big_list = []
     for i in range(30):
         big_list.append(ReceiptWordTag(
-            image_id=1, receipt_id=1, line_id=i, word_id=i, tag="PAGE", timestamp_added="2021-01-01T00:00:00"
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed4", receipt_id=1, line_id=i, word_id=i, tag="PAGE", timestamp_added="2021-01-01T00:00:00"
         ))
 
     client.addReceiptWordTags(big_list)
@@ -226,5 +226,5 @@ def test_get_receipt_word_tags_pagination(dynamodb_table: Literal["MyMockedTable
     returned_tuples = {
         (r.image_id, r.receipt_id, r.line_id, r.word_id) for r in results
     }
-    expected_tuples = {(1, 1, i, i) for i in range(30)}
+    expected_tuples = {("3f52804b-2fad-4e00-92c8-b593da3a8ed4", 1, i, i) for i in range(30)}
     assert returned_tuples == expected_tuples

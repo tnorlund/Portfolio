@@ -4,7 +4,7 @@ import boto3
 from dynamo import Line, DynamoClient
 
 correct_line_params = {
-    "image_id": 1,
+    "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
     "id": 1,
     "text": "test_string",
     "bounding_box": {
@@ -86,11 +86,11 @@ def test_delete_line(dynamodb_table: Literal["MyMockedTable"]):
     client.addLine(line)
 
     # Act
-    client.deleteLine(1, 1)
+    client.deleteLine("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1)
 
     # Assert
     with pytest.raises(ValueError):
-        client.getLine(1, 1)
+        client.getLine("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1)
 
 
 def test_delete_line_error(dynamodb_table: Literal["MyMockedTable"]):
@@ -132,7 +132,7 @@ def test_get_line(dynamodb_table: Literal["MyMockedTable"]):
     client.addLine(line)
 
     # Act
-    retrieved_line = client.getLine(1, 1)
+    retrieved_line = client.getLine("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1)
 
     # Assert
     assert retrieved_line == line
@@ -191,7 +191,7 @@ def test_listLinesFromImage(dynamodb_table: Literal["MyMockedTable"]):
     client.addLine(line_2)
 
     # Act
-    lines = client.listLinesFromImage(1)
+    lines = client.listLinesFromImage("3f52804b-2fad-4e00-92c8-b593da3a8ed3")
 
     # Assert
     assert line_1 in lines

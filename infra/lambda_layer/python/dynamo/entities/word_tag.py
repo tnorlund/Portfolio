@@ -1,19 +1,40 @@
 from typing import Generator, Tuple
 from datetime import datetime
+from dynamo.entities.util import assert_valid_uuid
 
 class WordTag:
     def __init__(
         self,
-        image_id: int,
+        image_id: str,
         line_id: int,
         word_id: int,
         tag: str,
         timestamp_added: datetime
     ):
-        """Constructs a new WordTag object for DynamoDB"""
+        """Constructs a new WordTag object for DynamoDB
+
+        Args:
+            image_id (str): UUID identifying the image
+            line_id (int): The line number of the word
+            word_id (int): The word number of the word
+            tag (str): The tag to apply to the word
+            timestamp_added (datetime): The timestamp the tag was added
+        
+        Attributes:
+            image_id (str): UUID identifying the image
+            line_id (int): The line number of the word
+            word_id (int): The word number of the word
+            tag (str): The tag to apply to the word
+            timestamp_added (datetime): The timestamp the tag was added
+        """
+        assert_valid_uuid(image_id)
         self.image_id = image_id
         self.line_id = line_id
         self.word_id = word_id
+        if len(tag) > 40:
+            raise ValueError("tag must not exceed 40 characters")
+        if tag.startswith("_"):
+            raise ValueError("tag must not start with an underscore")
         self.tag = tag.strip()
         if isinstance(timestamp_added, datetime):
             self.timestamp_added = timestamp_added.isoformat()
@@ -38,13 +59,13 @@ class WordTag:
         yield "timestamp_added", self.timestamp_added
 
     def __repr__(self) -> str:
-        return f"WordTag(image_id={self.image_id}, line_id={self.line_id} word_id={self.word_id}, tag={self.tag})"
+        return f"WordTag(image_id='{self.image_id}', line_id={self.line_id} word_id={self.word_id}, tag='{self.tag}')"
 
     def key(self) -> dict:
         tag_upper = self.tag
-        spaced_tag_upper = f"{tag_upper:_>20}"
+        spaced_tag_upper = f"{tag_upper:_>40}"
         return {
-            "PK": {"S": f"IMAGE#{self.image_id:05d}"},
+            "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {
                 "S": f"LINE#{self.line_id:05d}"
                 f"#WORD#{self.word_id:05d}"
@@ -54,11 +75,11 @@ class WordTag:
 
     def gsi1_key(self) -> dict:
         tag_upper = self.tag
-        spaced_tag_upper = f"{tag_upper:_>20}"
+        spaced_tag_upper = f"{tag_upper:_>40}"
         return {
             "GSI1PK": {"S": f"TAG#{spaced_tag_upper}"},
             "GSI1SK": {
-                "S": f"IMAGE#{self.image_id:05d}#LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"
+                "S": f"IMAGE#{self.image_id}#LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"
             },
         }
 
@@ -83,7 +104,7 @@ def itemToWordTag(item: dict) -> WordTag:
 
         tag = sk_parts[-1].lstrip("_").strip()
         return WordTag(
-            image_id=int(pk_parts[1]),
+            image_id=pk_parts[1],
             line_id=int(sk_parts[1]),
             word_id=int(sk_parts[3]),
             tag=tag,

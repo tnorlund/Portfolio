@@ -4,7 +4,7 @@ from dynamo import ReceiptLine, itemToReceiptLine
 def test_receipt_line_valid_init():
     line = ReceiptLine(
         receipt_id=1,
-        image_id=2,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         id=10,
         text="Line text",
         bounding_box={"x": 0.1, "y": 0.2, "width": 0.5, "height": 0.2},
@@ -17,7 +17,7 @@ def test_receipt_line_valid_init():
         confidence=0.95
     )
     assert line.receipt_id == 1
-    assert line.image_id == 2
+    assert line.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert line.id == 10
     assert line.text == "Line text"
     assert line.bounding_box["x"] == 0.1
@@ -27,7 +27,7 @@ def test_receipt_line_invalid_id():
     with pytest.raises(ValueError):
         ReceiptLine(
             receipt_id=-1,  # invalid
-            image_id=2,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             id=1,
             text="Line text",
             bounding_box={"x": 0, "y": 0, "width": 1, "height": 1},
@@ -43,7 +43,7 @@ def test_receipt_line_invalid_id():
 def test_receipt_line_to_item():
     line = ReceiptLine(
         receipt_id=1,
-        image_id=2,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         id=3,
         text="Line text",
         bounding_box={"x": 0.1, "y": 0.2, "width": 0.5, "height": 0.2},
@@ -63,7 +63,7 @@ def test_receipt_line_to_item():
 def test_equal_receipt_line():
     line1 = ReceiptLine(
         receipt_id=1,
-        image_id=2,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         id=3,
         text="Line text",
         bounding_box={"x": 0.1, "y": 0.2, "width": 0.5, "height": 0.2},
@@ -77,7 +77,7 @@ def test_equal_receipt_line():
     )
     line2 = ReceiptLine(
         receipt_id=1,
-        image_id=2,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         id=3,
         text="Line text",
         bounding_box={"x": 0.1, "y": 0.2, "width": 0.5, "height": 0.2},
@@ -94,7 +94,7 @@ def test_equal_receipt_line():
 def test_item_to_receipt_line_round_trip():
     # Example item structure
     item = {
-        "PK": {"S": "IMAGE#00002"},
+        "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {"S": "RECEIPT#00001#LINE#00003"},
         "TYPE": {"S": "RECEIPT_LINE"},
         "text": {"S": "Line text"},
@@ -120,7 +120,7 @@ def test_item_to_receipt_line_round_trip():
     }
     line = itemToReceiptLine(item)
     assert line.receipt_id == 1
-    assert line.image_id == 2
+    assert line.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert line.id == 3
     assert line.text == "Line text"
     assert line.confidence == 0.90

@@ -116,38 +116,6 @@ def compare_local_files_with_dynamo(
     return new_files
 
 
-def get_image_indexes(client: DynamoClient, number_images: int) -> list[int]:
-    """
-    Assign IDs to new images based on the current IDs in the database.
-
-    This will fill in any "gaps" (missing IDs in the sequence) first, then
-    continue numbering after the highest existing ID if more are needed.
-
-    Args:
-        client: A DynamoClient for the images table.
-        number_images: The number of new images to upload.
-
-    Returns:
-        A list of image IDs to assign to the images.
-    """
-    images = client.listImages()
-    if not images:
-        return list(range(1, number_images + 1))
-
-    existing_ids = sorted([image.id for image in images])
-    existing_ids_set = set(existing_ids)
-
-    new_ids = []
-    candidate = 1
-
-    while len(new_ids) < number_images:
-        if candidate not in existing_ids_set:
-            new_ids.append(candidate)
-        candidate += 1
-
-    return new_ids
-
-
 def upload_files_with_uuid_in_batches(
     directory: Path,
     bucket_name: str,
@@ -180,9 +148,6 @@ def upload_files_with_uuid_in_batches(
     if not files_to_upload:
         print("No new files to upload.")
         return
-
-    # Determine ID assignment for each image.
-    image_indexes = get_image_indexes(dynamo_client, len(files_to_upload))
 
     # Process all files in chunks (batches).
     lambda_client = boto3.client("lambda")
@@ -219,9 +184,8 @@ def upload_files_with_uuid_in_batches(
         # Invoke Lambda function for each new UUID.
         # Now use the *same* order to assign image_ids
         for idx, uuid_str in enumerate(mapped_uuids):
-            print(f"Invoking Lambda for UUID: {uuid_str} (image_id: {image_indexes[(batch_index - 1) * batch_size + idx]})")
-            image_id = image_indexes[(batch_index - 1) * batch_size + idx]
-            payload = {"uuid": uuid_str, "s3_path": path_prefix, "image_id": image_id}
+            print(f"Invoking Lambda for UUID: {uuid_str}")
+            payload = {"uuid": uuid_str, "s3_path": path_prefix}
             lambda_client.invoke(
                 FunctionName=lambda_function,
                 InvocationType="Event",

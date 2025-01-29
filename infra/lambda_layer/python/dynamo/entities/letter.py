@@ -1,5 +1,6 @@
 from typing import Generator, Tuple
 from dynamo.entities.util import (
+    assert_valid_uuid,
     assert_valid_bounding_box,
     assert_valid_point,
     _format_float,
@@ -10,7 +11,7 @@ from math import pi, radians, sin, cos
 class Letter:
     def __init__(
         self,
-        image_id: int,
+        image_id: str,
         line_id: int,
         word_id: int,
         id: int,
@@ -24,8 +25,53 @@ class Letter:
         angle_radians: float,
         confidence: float,
     ):
-        if image_id <= 0 or not isinstance(image_id, int):
-            raise ValueError("image_id must be a positive integer")
+        """Constructs a new Letter object for DynamoDB
+        
+        Args:
+            image_id (str): The UUID of the image the letter belongs to
+            line_id (int): The ID of the line the letter belongs to
+            word_id (int): The ID of the word the letter belongs to
+            id (int): The ID of the letter
+            text (str): The text of the letter
+            bounding_box (dict): The bounding box of the letter
+            top_right (dict): The top right point of the letter
+            top_left (dict): The top left point of the letter
+            bottom_right (dict): The bottom right point of the letter
+            bottom_left (dict): The bottom left point of the letter
+            angle_degrees (float): The angle of the letter in degrees
+            angle_radians (float): The angle of the letter in radians
+            confidence (float): The confidence of the letter
+
+        Attributes:
+            image_id (str): The UUID of the image the letter belongs to
+            line_id (int): The ID of the line the letter belongs to
+            word_id (int): The ID of the word the letter belongs to
+            id (int): The ID of the letter
+            text (str): The text of the letter
+            bounding_box (dict): The bounding box of the letter
+            top_right (dict): The top right point of the letter
+            top_left (dict): The top left point of the letter
+            bottom_right (dict): The bottom right point of the letter
+            bottom_left (dict): The bottom left point of the letter
+            angle_degrees (float): The angle of the letter in degrees
+            angle_radians (float): The angle of the letter in radians
+            confidence (float): The confidence of the letter
+        
+        Raises:
+            ValueError: When the image_id is not a valid UUID
+            ValueError: When the line_id or word_id are not positive integers
+            ValueError: When the id is not a positive integer
+            ValueError: When the text is not a single character
+            ValueError: When the bounding_box is invalid
+            ValueError: When the top_right point is invalid
+            ValueError: When the top_left point is invalid
+            ValueError: When the bottom_right point is invalid
+            ValueError: When the bottom_left point is invalid
+            ValueError: When the angle_degrees is not a float or int
+            ValueError: When the angle_radians is not a float or int
+            ValueError: When the confidence is not a float between 0 and
+        """
+        assert_valid_uuid(image_id)
         self.image_id = image_id
         if line_id <= 0 or not isinstance(line_id, int):
             raise ValueError("line_id must be a positive integer")
@@ -65,7 +111,7 @@ class Letter:
 
     def key(self) -> dict:
         return {
-            "PK": {"S": f"IMAGE#{self.image_id:05d}"},
+            "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {
                 "S": f"LINE#{self.line_id:05d}#WORD#{self.word_id:05d}#LETTER#{self.id:05d}"
             },
@@ -316,8 +362,8 @@ def itemToLetter(item: dict) -> Letter:
         raise ValueError("Item is missing required keys", missing_keys)
     try:
         return Letter(
+            image_id=item["PK"]["S"][6:],
             id=int(item["SK"]["S"].split("#")[5]),
-            image_id=int(item["PK"]["S"][6:]),
             line_id=int(item["SK"]["S"].split("#")[1]),
             word_id=int(item["SK"]["S"].split("#")[3]),
             text=item["text"]["S"],

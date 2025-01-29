@@ -4,7 +4,7 @@ import boto3
 from dynamo import Letter, DynamoClient
 
 correct_letter_params = {
-    "image_id": 1,
+    "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
     "line_id": 1,
     "word_id": 1,
     "id": 1,
@@ -65,8 +65,8 @@ def test_addLetters(dynamodb_table: Literal["MyMockedTable"]):
     client.addLetters(letters)
 
     # Assert
-    assert letters[0] == client.getLetter(1, 1, 1, 1)
-    assert letters[1] == client.getLetter(1, 1, 1, 2)
+    assert letters[0] == client.getLetter("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 1)
+    assert letters[1] == client.getLetter("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 2)
 
 
 def test_deleteLetter(dynamodb_table: Literal["MyMockedTable"]):
@@ -76,11 +76,11 @@ def test_deleteLetter(dynamodb_table: Literal["MyMockedTable"]):
 
     # Act
     client.addLetter(letter)
-    client.deleteLetter(1, 1, 1, 1)
+    client.deleteLetter("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 1)
 
     # Assert
     with pytest.raises(ValueError):
-        client.getLetter(1, 1, 1, 1)
+        client.getLetter("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 1)
 
 
 def test_deleteLetter_error(dynamodb_table: Literal["MyMockedTable"]):
@@ -121,7 +121,7 @@ def test_getLetter(dynamodb_table: Literal["MyMockedTable"]):
 
     # Act
     client.addLetter(letter)
-    response = client.getLetter(1, 1, 1, 1)
+    response = client.getLetter("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 1)
 
     # Assert
     assert response == letter
@@ -167,7 +167,7 @@ def test_listLettersFromWord(dynamodb_table: Literal["MyMockedTable"]):
     client.addLetter(letter2)
 
     # Act
-    letters = client.listLettersFromWord(1, 1, 1)
+    letters = client.listLettersFromWord("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1)
 
     # Assert
     assert letter1 in letters
