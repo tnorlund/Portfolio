@@ -16,31 +16,31 @@ const Diagram = () => {
   // SPRING B: Lambda rectangle (scale from 0 to 1, for example)
   const [lambdaStyles, lambdaApi] = useSpring(() => ({
     scale: 0, // Start hidden
-    config: { tension: 120, friction: 14 },
+    config: { tension: 500, friction: 20 },
   }));
 
   // SPRING C: S3 rectangle
   const [s3Styles, s3Api] = useSpring(() => ({
     scale: 0, // Start hidden
-    config: { tension: 120, friction: 14 },
+    config: { tension: 500, friction: 20 },
   }));
 
   // SPRING D: DynamoDB rectangle
   const [dynamoStyles, dynamoApi] = useSpring(() => ({
     scale: 0, // Start hidden
-    config: { tension: 120, friction: 14 },
+    config: { tension: 500, friction: 20 },
   }));
 
   // SPRING E: API Gateway
   const [apiGatewayStyles, apiGatewayApi] = useSpring(() => ({
     scale: 0, // Start hidden
-    config: { tension: 120, friction: 14 },
+    config: { tension: 500, friction: 20 },
   }));
 
   // SPRING F: CloudFront
   const [cloudFrontStyles, cloudFrontApi] = useSpring(() => ({
     scale: 0, // Start hidden
-    config: { tension: 120, friction: 14 },
+    config: { tension: 500, friction: 20 },
   }));
 
   // SPRING G: Safari
@@ -56,11 +56,11 @@ const Diagram = () => {
         from: { rotate: 0, opacity: 0 },
         to: async (next) => {
           // 1) Fade in
-          await next({ opacity: 1, config: { duration: 400 } });
+          await next({ opacity: 1, config: { duration: 300 } });
           // 2) Rotation sequence
-          await next({ rotate: 30, config: { duration: 150 } });
-          await next({ rotate: -30, config: { duration: 150 } });
-          await next({ rotate: 0, config: { duration: 150 } });
+          await next({ rotate: 30, config: { duration: 75 } });
+          await next({ rotate: -30, config: { duration: 75 } });
+          await next({ rotate: 0, config: { duration: 75 } });
         },
         onResolve: () => {
           // Once Swift is done, trigger Lambda
@@ -68,7 +68,7 @@ const Diagram = () => {
             scale: 1,
             onResolve: () => {
               // Then S3 & DynamoDB
-              s3Api.start({ scale: 1 });
+              s3Api.start({ scale: 1});
               dynamoApi.start({
                 scale: 1,
                 onResolve: () => {
