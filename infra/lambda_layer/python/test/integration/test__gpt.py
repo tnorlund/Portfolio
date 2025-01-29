@@ -29,54 +29,80 @@ def assert_tags_on_word_and_receipt_word(
     receipt_details,
 ):
     """
-    Assert that the Word and ReceiptWord objects have the expected tags and that the WordTag and ReceiptWordTags exist.
+    Assert that the Word and ReceiptWord objects have the expected tags
+    (order-insensitive) and that the WordTag and ReceiptWordTag objects exist.
     """
 
-    # Assert the word object has the expected tags
+    # 1) Locate the single Word
     matching_words = [w for w in words if w.line_id == line_id and w.id == word_id]
     assert len(matching_words) == 1, (
         f"Expected exactly one Word with (line_id={line_id}, id={word_id}), "
         f"but found {len(matching_words)}."
     )
     matching_word = matching_words[0]
-    assert matching_word.tags == expected_tags
 
-    # Assert the WordTag entries exist for each of the expected tags
-    matching_word_tags = [wt for wt in word_tags if wt.word_id == word_id and wt.line_id == line_id]
+    # 2) Assert the Word's tags (ignore order by converting to a set)
+    assert set(matching_word.tags) == set(expected_tags), (
+        f"Word(line_id={line_id}, id={word_id}, text={matching_word.text}) has tags={matching_word.tags}, "
+        f"but expected tags={expected_tags} (order-insensitive)."
+    )
+
+    # 3) Assert the correct number of WordTag entries and that each tag is present
+    matching_word_tags = [
+        wt for wt in word_tags if wt.line_id == line_id and wt.word_id == word_id
+    ]
     assert len(matching_word_tags) == len(expected_tags), (
         f"Expected {len(expected_tags)} WordTag entries for Word with "
         f"(line_id={line_id}, id={word_id}), but found {len(matching_word_tags)}."
     )
-    matching_word_tags = sorted(matching_word_tags, key=lambda wt: wt.tag)
-    expected_tags = sorted(expected_tags)
-    for i, expected_tag in enumerate(expected_tags):
-        assert matching_word_tags[i].tag == expected_tag, (
+
+    # Sort the WordTag objects and expected_tags by tag
+    matching_word_tags_sorted = sorted(matching_word_tags, key=lambda wt: wt.tag)
+    expected_tags_sorted = sorted(expected_tags)
+    for i, expected_tag in enumerate(expected_tags_sorted):
+        assert matching_word_tags_sorted[i].tag == expected_tag, (
             f"Expected WordTag entry {i} to have tag '{expected_tag}', "
-            f"but found '{matching_word_tags[i].tag}'."
+            f"but found '{matching_word_tags_sorted[i].tag}'."
         )
-    
-    # Assert the receipt_word object has the expected tags
-    matching_receipt_words = [rw for rw in receipt_details["words"] if rw.line_id == line_id and rw.id == word_id]
+
+    # 4) Locate the single ReceiptWord
+    matching_receipt_words = [
+        rw
+        for rw in receipt_details["words"]
+        if rw.line_id == line_id and rw.id == word_id
+    ]
     assert len(matching_receipt_words) == 1, (
         f"Expected exactly one ReceiptWord with (line_id={line_id}, id={word_id}), "
         f"but found {len(matching_receipt_words)}."
     )
     matching_receipt_word = matching_receipt_words[0]
-    assert matching_receipt_word.tags == expected_tags
 
-    # Assert the ReceiptWordTag entries exist for each of the expected tags
-    matching_receipt_word_tags = [rwt  for rwt in receipt_details["word_tags"] if rwt.word_id == word_id and rwt.line_id == line_id]
+    # 5) Assert the ReceiptWord's tags (again, ignore order)
+    assert set(matching_receipt_word.tags) == set(expected_tags), (
+        f"ReceiptWord(line_id={line_id}, id={word_id}, text={matching_receipt_word.text}) "
+        f"has tags={matching_receipt_word.tags}, but expected tags={expected_tags} (order-insensitive)."
+    )
+
+    # 6) Assert the correct number of ReceiptWordTag entries and that each tag is present
+    matching_receipt_word_tags = [
+        rwt
+        for rwt in receipt_details["word_tags"]
+        if rwt.line_id == line_id and rwt.word_id == word_id
+    ]
     assert len(matching_receipt_word_tags) == len(expected_tags), (
         f"Expected {len(expected_tags)} ReceiptWordTag entries for ReceiptWord with "
         f"(line_id={line_id}, id={word_id}), but found {len(matching_receipt_word_tags)}."
     )
-    matching_receipt_word_tags = sorted(matching_receipt_word_tags, key=lambda rwt: rwt.tag)
-    expected_tags = sorted(expected_tags)
-    for i, expected_tag in enumerate(expected_tags):
-        assert matching_receipt_word_tags[i].tag == expected_tag, (
+
+    matching_receipt_word_tags_sorted = sorted(
+        matching_receipt_word_tags, key=lambda rwt: rwt.tag
+    )
+    for i, expected_tag in enumerate(expected_tags_sorted):
+        assert matching_receipt_word_tags_sorted[i].tag == expected_tag, (
             f"Expected ReceiptWordTag entry {i} to have tag '{expected_tag}', "
-            f"but found '{matching_receipt_word_tags[i].tag}'."
+            f"but found '{matching_receipt_word_tags_sorted[i].tag}'."
         )
+
 
 class MockGPTResponse:
     """A simple mock response class with .json() and .status_code."""
@@ -130,7 +156,14 @@ def test_gpt_receipt(
     os.environ["OPENAI_API_KEY"] = "my-openai-api-key"
 
     def mock_gpt_request(self, receipt, receipt_words):
-        return MockGPTResponse({"choices":[{"message":{"content":f"```json{json.dumps(gpt_result)}```"}}]}, status_code=200)
+        return MockGPTResponse(
+            {
+                "choices": [
+                    {"message": {"content": f"```json{json.dumps(gpt_result)}```"}}
+                ]
+            },
+            status_code=200,
+        )
 
     monkeypatch.setattr(DynamoClient, "_gpt_request", mock_gpt_request)
 
@@ -141,15 +174,16 @@ def test_gpt_receipt(
     # Check that the GPT response was stored in S3
     s3_client = boto3.client("s3", region_name="us-east-1")
     s3_json_key = images[0].raw_s3_key.replace(
-                ".png",
-                f"_GPT_image_{images[0].id:05d}_receipt_{receipts[0].id:05d}.json",
-            )
+        ".png",
+        f"_GPT_image_{images[0].id:05d}_receipt_{receipts[0].id:05d}.json",
+    )
     obj = s3_client.get_object(Bucket=images[0].raw_s3_bucket, Key=s3_json_key)
     body_text = obj["Body"].read().decode("utf-8")
     assert body_text == json.dumps(gpt_result)
 
     # Check that the Tags were set correctly
     _, _, words, word_tags, _, receipt_details = client.getImageDetails(1)
+    # fmt: off
     assert_tags_on_word_and_receipt_word(2, 1, ["store_name"], words, word_tags, receipt_details[0]) # VONS
     assert_tags_on_word_and_receipt_word(3, 3, ["address"], words, word_tags, receipt_details[0]) # 497-1921
     assert_tags_on_word_and_receipt_word(4, 2, ["address"], words, word_tags, receipt_details[0]) # Agoura
@@ -165,15 +199,7 @@ def test_gpt_receipt(
     assert_tags_on_word_and_receipt_word(24, 1, ["line_item_price", "line_item"], words, word_tags, receipt_details[0]) # 3.60
     assert_tags_on_word_and_receipt_word(33, 1, ["total_amount"], words, word_tags, receipt_details[0]) # 3.60
     assert_tags_on_word_and_receipt_word(40, 1, ["phone_number"], words, word_tags, receipt_details[0]) # 877-276-9637
-
-    for word in [word for word in words if len(word.tags) > 0]:
-        print(
-            f"line_id: {word.line_id}\n"
-            f"word_id: {word.id}\n"
-            f"text: {word.text}\n"
-            f"tags: {word.tags}\n"
-        )
-
+    # fmt: on
 
 
 def test_gpt_receipt_bad_response(
