@@ -75,7 +75,7 @@ class DynamoClient(
                 # raw/a68c3576-6df0-4d1b-9aa8-f861664d74f4.png -> raw/a68c3576-6df0-4d1b-9aa8-f861664d74f4_failure_image_00001_receipt_00001.txt
                 failure_key = image.raw_s3_key.replace(
                     ".png",
-                    f"_failure_image_{image.id:05d}_receipt_{receipt.id:05d}.txt",
+                    f"_failure_image_{image.id}_receipt_{receipt.id:05d}.txt",
                 )
                 s3 = boto3.client("s3")
                 s3.put_object(
@@ -95,7 +95,7 @@ class DynamoClient(
             except json.JSONDecodeError:
                 failure_key = image.raw_s3_key.replace(
                     ".png",
-                    f"_failure_image_{image.id:05d}_receipt_{receipt.id:05d}.txt",
+                    f"_failure_image_{image.id}_receipt_{receipt.id:05d}.txt",
                 )
                 s3 = boto3.client("s3")
                 s3.put_object(
@@ -110,7 +110,7 @@ class DynamoClient(
 
             s3_json_key = image.raw_s3_key.replace(
                 ".png",
-                f"_GPT_image_{image.id:05d}_receipt_{receipt.id:05d}.json",
+                f"_GPT_image_{image.id}_receipt_{receipt.id:05d}.json",
             )
             s3 = boto3.client("s3")
             s3.put_object(
@@ -184,7 +184,7 @@ class DynamoClient(
                         if "item_name" not in line_item or  "price" not in line_item:
                             s3_json_key = image.raw_s3_key.replace(
                                 ".png",
-                                f"_GPT_image_failure_{image.id:05d}_receipt_{receipt.id:05d}.json",
+                                f"_GPT_image_failure_{image.id}_receipt_{receipt.id:05d}.json",
                             )
                             s3 = boto3.client("s3")
                             s3.put_object(
@@ -199,7 +199,7 @@ class DynamoClient(
                         if ("value" not in item_name or "word_centroids" not in item_name) or ("value" not in price or "word_centroids" not in price):
                             s3_json_key = image.raw_s3_key.replace(
                                 ".png",
-                                f"_GPT_image_failure_{image.id:05d}_receipt_{receipt.id:05d}.json",
+                                f"_GPT_image_failure_{image.id}_receipt_{receipt.id:05d}.json",
                             )
                             s3 = boto3.client("s3")
                             s3.put_object(

@@ -17,17 +17,17 @@ class _ReceiptWord:
         Adds multiple ReceiptWords.
     updateReceiptWord(word: ReceiptWord)
         Updates a ReceiptWord.
-    deleteReceiptWord(receipt_id: int, image_id: int, line_id: int, word_id: int)
+    deleteReceiptWord(receipt_id: int, image_id: str, line_id: int, word_id: int)
         Deletes a single ReceiptWord by IDs.
     deleteReceiptWords(words: list[ReceiptWord])
         Deletes multiple ReceiptWords.
-    deleteReceiptWordsFromLine(receipt_id: int, image_id: int, line_id: int)
+    deleteReceiptWordsFromLine(receipt_id: int, image_id: str, line_id: int)
         Deletes all ReceiptWords from a given line within a receipt/image.
-    getReceiptWord(receipt_id: int, image_id: int, line_id: int, word_id: int) -> ReceiptWord
+    getReceiptWord(receipt_id: int, image_id: str, line_id: int, word_id: int) -> ReceiptWord
         Retrieves a single ReceiptWord by IDs.
     listReceiptWords() -> list[ReceiptWord]
         Returns all ReceiptWords from the table.
-    listReceiptWordsFromLine(receipt_id: int, image_id: int, line_id: int) -> list[ReceiptWord]
+    listReceiptWordsFromLine(receipt_id: int, image_id: str, line_id: int) -> list[ReceiptWord]
         Returns all ReceiptWords that match the given receipt/image/line IDs.
     """
 
@@ -93,14 +93,14 @@ class _ReceiptWord:
             raise ValueError(f"Could not update ReceiptWords in the database: {e}")
 
     def deleteReceiptWord(
-        self, receipt_id: int, image_id: int, line_id: int, word_id: int
+        self, receipt_id: int, image_id: str, line_id: int, word_id: int
     ):
         """Deletes a single ReceiptWord by IDs."""
         try:
             self._client.delete_item(
                 TableName=self.table_name,
                 Key={
-                    "PK": {"S": f"IMAGE#{image_id:05d}"},
+                    "PK": {"S": f"IMAGE#{image_id}"},
                     "SK": {
                         "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}"
                     },
@@ -129,20 +129,20 @@ class _ReceiptWord:
         except ClientError as e:
             raise ValueError(f"Could not delete ReceiptWords from the database: {e}")
 
-    def deleteReceiptWordsFromLine(self, receipt_id: int, image_id: int, line_id: int):
+    def deleteReceiptWordsFromLine(self, receipt_id: int, image_id: str, line_id: int):
         """Deletes all ReceiptWords from a given line within a receipt/image."""
         words = self.listReceiptWordsFromLine(receipt_id, image_id, line_id)
         self.deleteReceiptWords(words)
 
     def getReceiptWord(
-        self, receipt_id: int, image_id: int, line_id: int, word_id: int
+        self, receipt_id: int, image_id: str, line_id: int, word_id: int
     ) -> ReceiptWord:
         """Retrieves a single ReceiptWord by IDs."""
         try:
             response = self._client.get_item(
                 TableName=self.table_name,
                 Key={
-                    "PK": {"S": f"IMAGE#{image_id:05d}"},
+                    "PK": {"S": f"IMAGE#{image_id}"},
                     "SK": {
                         "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}"
                     },
@@ -184,7 +184,7 @@ class _ReceiptWord:
             raise ValueError(f"Could not list ReceiptWords from the database {e}")
 
     def listReceiptWordsFromLine(
-        self, receipt_id: int, image_id: int, line_id: int
+        self, receipt_id: int, image_id: str, line_id: int
     ) -> list[ReceiptWord]:
         """Returns all ReceiptWords that match the given receipt/image/line IDs."""
         receipt_words = []
@@ -194,7 +194,7 @@ class _ReceiptWord:
                 KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
                 ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
                 ExpressionAttributeValues={
-                    ":pk_val": {"S": f"IMAGE#{image_id:05d}"},
+                    ":pk_val": {"S": f"IMAGE#{image_id}"},
                     ":sk_val": {
                         "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#"
                     },
@@ -210,7 +210,7 @@ class _ReceiptWord:
                     KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
                     ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
                     ExpressionAttributeValues={
-                        ":pk_val": {"S": f"IMAGE#{image_id:05d}"},
+                        ":pk_val": {"S": f"IMAGE#{image_id}"},
                         ":sk_val": {
                             "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#"
                         },

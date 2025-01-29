@@ -1,5 +1,6 @@
 from typing import Generator, Tuple
 from dynamo.entities.util import (
+    assert_valid_uuid,
     assert_valid_bounding_box,
     assert_valid_point,
     _format_float,
@@ -11,7 +12,7 @@ class ReceiptLetter:
     def __init__(
         self,
         receipt_id: int,
-        image_id: int,
+        image_id: str,
         line_id: int,
         word_id: int,
         id: int,
@@ -32,8 +33,7 @@ class ReceiptLetter:
             raise ValueError("receipt_id must be positive")
         self.receipt_id = receipt_id
         # Ensure the Image ID is a positive integer
-        if image_id <= 0 or not isinstance(image_id, int):
-            raise ValueError("image_id must be a positive integer")
+        assert_valid_uuid(image_id)
         self.image_id = image_id
         if line_id <= 0 or not isinstance(line_id, int):
             raise ValueError("line_id must be a positive integer")
@@ -73,7 +73,7 @@ class ReceiptLetter:
 
     def key(self) -> dict:
         return {
-            "PK": {"S": f"IMAGE#{self.image_id:05d}"},
+            "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {
                 "S": f"RECEIPT#{self.receipt_id:05d}#LINE#{self.line_id:05d}#WORD#{self.word_id:05d}#LETTER#{self.id:05d}"
             },
@@ -177,7 +177,7 @@ def itemToReceiptLetter(item: dict) -> ReceiptLetter:
     try:
         return ReceiptLetter(
             receipt_id=int(item["SK"]["S"].split("#")[1]),
-            image_id=int(item["PK"]["S"].split("#")[1]),
+            image_id=item["PK"]["S"].split("#")[1],
             line_id=int(item["SK"]["S"].split("#")[3]),
             word_id=int(item["SK"]["S"].split("#")[5]),
             id=int(item["SK"]["S"].split("#")[7]),

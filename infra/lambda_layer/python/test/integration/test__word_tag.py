@@ -11,7 +11,7 @@ def sample_word_tag():
     Provides a sample WordTag for testing.
     Adjust the IDs or tag text as needed for your schema.
     """
-    return WordTag(image_id=1, line_id=10, word_id=5, tag="SampleTag", timestamp_added="2021-01-01T00:00:00")
+    return WordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=10, word_id=5, tag="SampleTag", timestamp_added="2021-01-01T00:00:00")
 
 
 def test_add_word_tag(
@@ -83,7 +83,7 @@ def test_list_word_tags(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
     tags = [
-        WordTag(image_id=1, line_id=1, word_id=i, tag=f"Tag{i}", timestamp_added="2021-01-01T00:00:00") for i in range(1, 4)
+        WordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=i, tag=f"Tag{i}", timestamp_added="2021-01-01T00:00:00") for i in range(1, 4)
     ]
     for t in tags:
         client.addWordTag(t)
@@ -102,17 +102,17 @@ def test_list_word_tags_from_image(dynamodb_table: Literal["MyMockedTable"]):
 
     # WordTags in image_id=1
     same_image_tags = [
-        WordTag(image_id=1, line_id=10, word_id=i, tag=f"ImageTag{i}", timestamp_added="2021-01-01T00:00:00")
+        WordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=10, word_id=i, tag=f"ImageTag{i}", timestamp_added="2021-01-01T00:00:00")
         for i in range(1, 3)
     ]
     # Another WordTag with a different image_id
-    different_image_tag = WordTag(image_id=2, line_id=10, word_id=999, tag="OtherImage", timestamp_added="2021-01-01T00:00:00")
+    different_image_tag = WordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed4", line_id=10, word_id=999, tag="OtherImage", timestamp_added="2021-01-01T00:00:00")
 
     for wt in same_image_tags + [different_image_tag]:
         client.addWordTag(wt)
 
     # Act
-    found_tags = client.listWordTagsFromImage(1)
+    found_tags = client.listWordTagsFromImage("3f52804b-2fad-4e00-92c8-b593da3a8ed3")
 
     # Assert
     assert len(found_tags) == len(same_image_tags)
@@ -128,10 +128,10 @@ def sample_word_tags():
       - Group B has tag="BAR"
     """
     return [
-        WordTag(image_id=1, line_id=10, word_id=100, tag="FOO", timestamp_added="2021-01-01T00:00:00"),
-        WordTag(image_id=1, line_id=11, word_id=101, tag="FOO", timestamp_added="2021-01-01T00:00:00"),
-        WordTag(image_id=2, line_id=20, word_id=200, tag="BAR", timestamp_added="2021-01-01T00:00:00"),
-        WordTag(image_id=3, line_id=30, word_id=300, tag="FOO", timestamp_added="2021-01-01T00:00:00"),
+        WordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=10, word_id=100, tag="FOO", timestamp_added="2021-01-01T00:00:00"),
+        WordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=11, word_id=101, tag="FOO", timestamp_added="2021-01-01T00:00:00"),
+        WordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed4", line_id=20, word_id=200, tag="BAR", timestamp_added="2021-01-01T00:00:00"),
+        WordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed5", line_id=30, word_id=300, tag="FOO", timestamp_added="2021-01-01T00:00:00"),
     ]
 
 def test_get_word_tags(
@@ -149,9 +149,9 @@ def test_get_word_tags(
     # Assert: We expect 3 items with tag=FOO
     # Convert objects to sets of (image_id, line_id, word_id, tag) to compare easily
     foo_expected = {
-        (1, 10, 100, "FOO"),
-        (1, 11, 101, "FOO"),
-        (3, 30, 300, "FOO"),
+        ("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 10, 100, "FOO"),
+        ("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 11, 101, "FOO"),
+        ("3f52804b-2fad-4e00-92c8-b593da3a8ed5", 30, 300, "FOO"),
     }
     foo_returned = {(w.image_id, w.line_id, w.word_id, w.tag) for w in foo_tags}
     assert foo_returned == foo_expected
@@ -159,7 +159,7 @@ def test_get_word_tags(
     # Also check that "BAR" is distinct
     bar_tags = client.getWordTags("BAR")
     bar_expected = {
-        (2, 20, 200, "BAR"),
+        ("3f52804b-2fad-4e00-92c8-b593da3a8ed4", 20, 200, "BAR"),
     }
     bar_returned = {(w.image_id, w.line_id, w.word_id, w.tag) for w in bar_tags}
     assert bar_returned == bar_expected
@@ -185,7 +185,7 @@ def test_get_word_tags_pagination(dynamodb_table: Literal["MyMockedTable"]):
 
     big_list = []
     for i in range(30):
-        big_list.append(WordTag(image_id=1, line_id=1, word_id=i, tag="PAGE", timestamp_added="2021-01-01T00:00:00"))
+        big_list.append(WordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed4", line_id=1, word_id=i, tag="PAGE", timestamp_added="2021-01-01T00:00:00"))
 
     client.addWordTags(big_list)
 
@@ -194,5 +194,5 @@ def test_get_word_tags_pagination(dynamodb_table: Literal["MyMockedTable"]):
     assert len(results) == 30
     # Compare sets
     returned_ids = {(r.image_id, r.line_id, r.word_id) for r in results}
-    expected_ids = {(1, 1, i) for i in range(30)}
+    expected_ids = {("3f52804b-2fad-4e00-92c8-b593da3a8ed4", 1, i) for i in range(30)}
     assert returned_ids == expected_ids

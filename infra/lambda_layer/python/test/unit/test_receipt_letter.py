@@ -4,7 +4,7 @@ from dynamo import ReceiptLetter, itemToReceiptLetter
 def test_receipt_letter_valid_init():
     letter = ReceiptLetter(
         receipt_id=1,
-        image_id=2,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=3,
         word_id=4,
         id=5,
@@ -25,7 +25,7 @@ def test_receipt_letter_invalid_confidence():
     with pytest.raises(ValueError):
         ReceiptLetter(
             receipt_id=1,
-            image_id=2,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id=3,
             word_id=4,
             id=5,
@@ -43,7 +43,7 @@ def test_receipt_letter_invalid_confidence():
 def test_receipt_letter_to_item():
     letter = ReceiptLetter(
         receipt_id=1,
-        image_id=2,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=3,
         word_id=4,
         id=5,
@@ -58,7 +58,7 @@ def test_receipt_letter_to_item():
         confidence=0.99
     )
     item = letter.to_item()
-    assert item["PK"]["S"] == "IMAGE#00002"
+    assert item["PK"]["S"] == "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert item["SK"]["S"] == "RECEIPT#00001#LINE#00003#WORD#00004#LETTER#00005"
     assert "text" in item
     assert item["confidence"]["N"] == "0.99"
@@ -66,7 +66,7 @@ def test_receipt_letter_to_item():
 def test_equal_receipt_letter():
     letter1 = ReceiptLetter(
         receipt_id=1,
-        image_id=2,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=3,
         word_id=4,
         id=5,
@@ -82,7 +82,7 @@ def test_equal_receipt_letter():
     )
     letter2 = ReceiptLetter(
         receipt_id=1,
-        image_id=2,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=3,
         word_id=4,
         id=5,
@@ -100,7 +100,7 @@ def test_equal_receipt_letter():
 
 def test_item_to_receipt_letter_round_trip():
     item = {
-        "PK": {"S": "IMAGE#00002"},
+        "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {"S": "RECEIPT#00001#LINE#00003#WORD#00004#LETTER#00005"},
         "TYPE": {"S": "RECEIPT_LETTER"},
         "text": {"S": "C"},

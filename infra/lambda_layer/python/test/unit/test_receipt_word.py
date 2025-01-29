@@ -2,54 +2,68 @@ import pytest
 from decimal import Decimal
 from dynamo import ReceiptWord, itemToReceiptWord
 
-def test_receipt_word_valid_init():
-    """Test that a ReceiptWord with valid arguments initializes correctly."""
-    bounding_box = {"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4}
-    top_right    = {"x": 1.1, "y": 1.2}
-    top_left     = {"x": 2.1, "y": 2.2}
-    bottom_right = {"x": 3.1, "y": 3.2}
-    bottom_left  = {"x": 4.1, "y": 4.2}
-
-    word = ReceiptWord(
+@pytest.fixture
+def example_receipt_word():
+   return ReceiptWord(
         receipt_id=1,
-        image_id=2,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=3,
         id=4,
         text="Test",
-        bounding_box=bounding_box,
-        top_right=top_right,
-        top_left=top_left,
-        bottom_right=bottom_right,
-        bottom_left=bottom_left,
-        angle_degrees=45.0,
-        angle_radians=0.785398,
-        confidence=0.99,
-        tags=["example", "word"],
+        bounding_box={"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4},
+        top_right={"x": 1.0, "y": 2.0},
+        top_left={"x": 1.0, "y": 3.0},
+        bottom_right={"x": 4.0, "y": 2.0},
+        bottom_left={"x": 1.0, "y": 1.0},
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=0.9
     )
 
-    assert word.receipt_id == 1
-    assert word.image_id == 2
-    assert word.line_id == 3
-    assert word.id == 4
-    assert word.text == "Test"
-    assert word.bounding_box == bounding_box
-    assert word.top_right == top_right
-    assert word.top_left == top_left
-    assert word.bottom_right == bottom_right
-    assert word.bottom_left == bottom_left
-    assert word.angle_degrees == 45.0
-    assert word.angle_radians == 0.785398
-    assert word.confidence == 0.99
-    assert word.tags == ["example", "word"]
+@pytest.fixture
+def example_receipt_word_with_tags():
+    return ReceiptWord(
+        receipt_id=1,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=3,
+        id=4,
+        text="Test",
+        bounding_box={"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4},
+        top_right={"x": 1.0, "y": 2.0},
+        top_left={"x": 1.0, "y": 3.0},
+        bottom_right={"x": 4.0, "y": 2.0},
+        bottom_left={"x": 1.0, "y": 1.0},
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=0.9,
+        tags=["example", "word"]
+    )
+
+def test_receipt_word_valid_init(example_receipt_word, example_receipt_word_with_tags):
+    """Test that a ReceiptWord with valid arguments initializes correctly."""
+    assert example_receipt_word.receipt_id == 1
+    assert example_receipt_word.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    assert example_receipt_word.line_id == 3
+    assert example_receipt_word.id == 4
+    assert example_receipt_word.text == "Test"
+    assert example_receipt_word.bounding_box == {"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4}
+    assert example_receipt_word.top_right == {"x": 1.0, "y": 2.0}
+    assert example_receipt_word.top_left == {"x": 1.0, "y": 3.0}
+    assert example_receipt_word.bottom_right == {"x": 4.0, "y": 2.0}
+    assert example_receipt_word.bottom_left == {"x": 1.0, "y": 1.0}
+    assert example_receipt_word.angle_degrees == 1.0
+    assert example_receipt_word.angle_radians == 5.0
+    assert example_receipt_word.confidence == 0.9
+    assert example_receipt_word_with_tags.tags == ["example", "word"]
 
 @pytest.mark.parametrize(
     "receipt_id,image_id,line_id,id_val,expect_error",
     [
-        (-1, 1, 1, 1, True),  # Negative receipt_id
-        (1, -2, 1, 1, True),  # Negative image_id
-        (1, 2, -3, 1, True),  # Negative line_id
-        (1, 2, 3, -4, True),  # Negative id
-        (1, 2, 3, 4, False),  # All valid
+        (-1, "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, True),  # Negative receipt_id
+        (1, 0, 1, 1, True),                                        # number image_id
+        (1, "3f52804b-2fad-4e00-92c8-b593da3a8ed3", -3, 1, True),  # Negative line_id
+        (1, "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 3, -4, True),  # Negative id
+        (1, "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 3, 4, False),  # All valid
     ],
 )
 def test_receipt_word_id_constraints(
@@ -104,7 +118,7 @@ def test_receipt_word_bounding_box_validation():
     with pytest.raises(ValueError, match="bounding_box must contain the key 'width'"):
         ReceiptWord(
             receipt_id=1,
-            image_id=2,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id=3,
             id=4,
             text="Test",
@@ -126,7 +140,7 @@ def test_receipt_word_confidence_validation():
     with pytest.raises(ValueError, match="confidence must be a float between 0 and 1"):
         ReceiptWord(
             receipt_id=1,
-            image_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id=1,
             id=1,
             text="Test",
@@ -147,7 +161,7 @@ def test_receipt_word_to_item():
 
     word = ReceiptWord(
         receipt_id=1,
-        image_id=2,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=3,
         id=4,
         text="TestWord",
@@ -164,7 +178,7 @@ def test_receipt_word_to_item():
     item = word.to_item()
 
     # Check keys
-    assert item["PK"]["S"] == "IMAGE#00002"
+    assert item["PK"]["S"] == "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert item["SK"]["S"] == "RECEIPT#00001#LINE#00003#WORD#00004"
     assert item["bounding_box"]["M"]["x"]["N"]  # numeric
     assert "SS" in item["tags"]
@@ -176,7 +190,7 @@ def test_equal_receipt_word():
 
     word1 = ReceiptWord(
         receipt_id=1,
-        image_id=2,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=3,
         id=4,
         text="Test",
@@ -192,7 +206,7 @@ def test_equal_receipt_word():
     )
     word2 = ReceiptWord(
         receipt_id=1,
-        image_id=2,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=3,
         id=4,
         text="Test",
@@ -223,7 +237,7 @@ def test_item_to_receipt_word_round_trip():
         "y": {"N": "2.0001000000"}
     }}
     item = {
-        "PK": {"S": "IMAGE#00002"},
+        "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {"S": "RECEIPT#00001#LINE#00003#WORD#00004"},
         "TYPE": {"S": "RECEIPT_WORD"},
         "text": {"S": "TestWord"},
@@ -240,7 +254,7 @@ def test_item_to_receipt_word_round_trip():
 
     word = itemToReceiptWord(item)
     assert word.receipt_id == 1
-    assert word.image_id == 2
+    assert word.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert word.line_id == 3
     assert word.id == 4
     assert word.text == "TestWord"

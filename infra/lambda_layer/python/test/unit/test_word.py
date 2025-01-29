@@ -2,202 +2,219 @@ import pytest
 from dynamo import Word, itemToWord
 import math
 
-correct_word_params = {
-    "image_id": 1,
-    "line_id": 2,
-    "id": 3,
-    "text": "test_string",
-    "bounding_box": {
-        "y": 0.9167082878750482,
-        "width": 0.08690182470506236,
-        "x": 0.4454263367632384,
-        "height": 0.022867568134581906,
-    },
-    "top_right": {"y": 0.9307722198001792, "x": 0.5323281614683008},
-    "top_left": {"x": 0.44837726658954413, "y": 0.9395758560096301},
-    "bottom_right": {"y": 0.9167082878750482, "x": 0.529377231641995},
-    "bottom_left": {"x": 0.4454263367632384, "y": 0.9255119240844992},
-    "angle_degrees": -5.986527,
-    "angle_radians": -0.10448461,
-    "confidence": 1,
-}
+
+@pytest.fixture
+def example_word():
+    return Word(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        2,
+        3,
+        "test_string",
+        {
+            "x": 10.0,
+            "y": 20.0,
+            "width": 5.0,
+            "height": 2.0,
+        },
+        {"x": 15.0, "y": 20.0},
+        {"x": 10.0, "y": 20.0},
+        {"x": 15.0, "y": 22.0},
+        {"x": 10.0, "y": 22.0},
+        1.0,
+        5.0,
+        0.90,
+    )
 
 
-def test_init():
-    word = Word(**correct_word_params)
-    assert word.image_id == 1
-    assert word.line_id == 2
-    assert word.id == 3
-    assert word.text == "test_string"
-    assert word.bounding_box == {
-        "y": 0.9167082878750482,
-        "width": 0.08690182470506236,
-        "x": 0.4454263367632384,
-        "height": 0.022867568134581906,
+@pytest.fixture
+def example_word_with_tags():
+    return Word(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        2,
+        3,
+        "test_string",
+        {
+            "x": 10.0,
+            "y": 20.0,
+            "width": 5.0,
+            "height": 2.0,
+        },
+        {"x": 15.0, "y": 20.0},
+        {"x": 10.0, "y": 20.0},
+        {"x": 15.0, "y": 22.0},
+        {"x": 10.0, "y": 22.0},
+        1.0,
+        5.0,
+        0.90,
+        ["tag1", "tag2"],
+    )
+
+
+def test_init(example_word, example_word_with_tags):
+    assert example_word.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    assert example_word.line_id == 2
+    assert example_word.id == 3
+    assert example_word.text == "test_string"
+    assert example_word.bounding_box == {
+        "x": 10.0,
+        "y": 20.0,
+        "width": 5.0,
+        "height": 2.0,
     }
-    assert word.top_right == {"y": 0.9307722198001792, "x": 0.5323281614683008}
-    assert word.top_left == {"x": 0.44837726658954413, "y": 0.9395758560096301}
-    assert word.bottom_right == {"y": 0.9167082878750482, "x": 0.529377231641995}
-    assert word.bottom_left == {"x": 0.4454263367632384, "y": 0.9255119240844992}
-    assert word.angle_degrees == -5.986527
-    assert word.angle_radians == -0.10448461
-    assert word.confidence == 1
-    # Test with tags
-    word = Word(**correct_word_params, tags=["tag1", "tag2"])
-    assert word.tags == ["tag1", "tag2"]
+    assert example_word.top_right == {"x": 15.0, "y": 20.0}
+    assert example_word.top_left == {"x": 10.0, "y": 20.0}
+    assert example_word.bottom_right == {"x": 15.0, "y": 22.0}
+    assert example_word.bottom_left == {"x": 10.0, "y": 22.0}
+    assert example_word.angle_degrees == 1
+    assert example_word.angle_radians == 5
+    assert example_word.confidence == 0.90
+    assert example_word.tags == []
+    assert example_word_with_tags.tags == ["tag1", "tag2"]
 
 
-def test_key():
+def test_key(example_word):
     """Test the Word key method"""
-    word = Word(**correct_word_params)
-    key = word.key()
-    assert key == {
-        "PK": {"S": "IMAGE#00001"},
+    assert example_word.key() == {
+        "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {"S": "LINE#00002#WORD#00003"},
-    }, "The key should be {'PK': 'IMAGE#00001', 'SK': 'LINE#00002#WORD#00003'}"
+    }
 
 
-def test_to_item():
+def test_to_item(example_word, example_word_with_tags):
     """Test the Word to_item method"""
     # Test with no tags
-    word = Word(**correct_word_params)
-    item = word.to_item()
-    assert item["PK"] == {"S": "IMAGE#00001"}
+    item = example_word.to_item()
+    assert item["PK"] == {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"}
     assert item["SK"] == {"S": "LINE#00002#WORD#00003"}
     assert item["TYPE"] == {"S": "WORD"}
     assert item["text"] == {"S": "test_string"}
     assert item["bounding_box"] == {
         "M": {
-            "height": {"N": "0.022867568134581906"},
-            "width": {"N": "0.086901824705062360"},
-            "x": {"N": "0.445426336763238400"},
-            "y": {"N": "0.916708287875048200"},
+            "height": {"N": "2.000000000000000000"},
+            "width": {"N": "5.000000000000000000"},
+            "x": {"N": "10.000000000000000000"},
+            "y": {"N": "20.000000000000000000"},
         }
     }
     assert item["top_right"] == {
-        "M": {"x": {"N": "0.532328161468300800"}, "y": {"N": "0.930772219800179200"}}
+        "M": {
+            "x": {"N": "15.000000000000000000"},
+            "y": {"N": "20.000000000000000000"},
+        }
     }
-    assert item["top_left"] == {'M': {'x': {'N': '0.448377266589544130'}, 'y': {'N': '0.939575856009630100'}}}
-    assert item["bottom_right"] == {'M': {'x': {'N': '0.529377231641995000'}, 'y': {'N': '0.916708287875048200'}}}
-    assert item["bottom_left"] == {'M': {'x': {'N': '0.445426336763238400'}, 'y': {'N': '0.925511924084499200'}}}
-    assert item["angle_degrees"] == {'N': '-5.9865270000'}
-    assert item["angle_radians"] == {'N': '-0.1044846100'}
-    assert item["confidence"] == {"N": "1.00"}
+    assert item["top_left"] == {
+        "M": {
+            "x": {"N": "10.000000000000000000"},
+            "y": {"N": "20.000000000000000000"},
+        }
+    }
+    assert item["bottom_right"] == {
+        "M": {
+            "x": {"N": "15.000000000000000000"},
+            "y": {"N": "22.000000000000000000"},
+        }
+    }
+    assert item["bottom_left"] == {
+        "M": {
+            "x": {"N": "10.000000000000000000"},
+            "y": {"N": "22.000000000000000000"},
+        }
+    }
+    assert item["angle_degrees"] == {"N": "1.0000000000"}
+    assert item["angle_radians"] == {"N": "5.0000000000"}
+    assert item["confidence"] == {"N": "0.90"}
     assert "histogram" in item
     assert "num_chars" in item
     # Test with tags
-    word = Word(**correct_word_params, tags=["tag1", "tag2"])
-    item = word.to_item()
-    assert item["PK"] == {"S": "IMAGE#00001"}
-    assert item["SK"] == {"S": "LINE#00002#WORD#00003"}
-    assert item["TYPE"] == {"S": "WORD"}
-    assert item["text"] == {"S": "test_string"}
-    assert item["bounding_box"] == {
-        "M": {
-            "height": {"N": "0.022867568134581906"},
-            "width": {"N": "0.086901824705062360"},
-            "x": {"N": "0.445426336763238400"},
-            "y": {"N": "0.916708287875048200"},
-        }
-    }
-    assert item["top_right"] == {
-        "M": {"x": {"N": "0.532328161468300800"}, "y": {"N": "0.930772219800179200"}}
-    }
-    assert item["top_left"] == {'M': {'x': {'N': '0.448377266589544130'}, 'y': {'N': '0.939575856009630100'}}}
-    assert item["bottom_right"] == {'M': {'x': {'N': '0.529377231641995000'}, 'y': {'N': '0.916708287875048200'}}}
-    assert item["bottom_left"] == {'M': {'x': {'N': '0.445426336763238400'}, 'y': {'N': '0.925511924084499200'}}}
-    assert item["angle_degrees"] == {'N': '-5.9865270000'}
-    assert item["angle_radians"] == {'N': '-0.1044846100'}
-    assert item["confidence"] == {"N": "1.00"}
-    assert item["tags"] == {"SS": ["tag1", "tag2"]}
-    assert "histogram" in item
-    assert "num_chars" in item
-    
+    assert example_word_with_tags.to_item()["tags"] == {"SS": ["tag1", "tag2"]}
 
 
-def test_repr():
+def test_repr(example_word):
     """Test the Word __repr__ method"""
-    word = Word(**correct_word_params)
-    assert repr(word) == "Word(id=3, text='test_string')"
+    assert repr(example_word) == "Word(id=3, text='test_string')"
 
 
-def test_iter():
+def test_iter(example_word, example_word_with_tags):
     """Test the Word __iter__ method"""
-    word = Word(**correct_word_params)
-    assert dict(word) == {
-        "image_id": 1,
-        "line_id": 2,
-        "id": 3,
-        "text": "test_string",
-        "bounding_box": {
-            "x": 0.4454263367632384,
-            "y": 0.9167082878750482,
-            "width": 0.08690182470506236,
-            "height": 0.022867568134581906,
-        },
-        "top_right": {"x": 0.5323281614683008, "y": 0.9307722198001792},
-        "top_left": {"x": 0.44837726658954413, "y": 0.9395758560096301},
-        "bottom_right": {"x": 0.529377231641995, "y": 0.9167082878750482},
-        "bottom_left": {"x": 0.4454263367632384, "y": 0.9255119240844992},
-        "angle_degrees": -5.986527,
-        "angle_radians": -0.10448461,
-        "confidence": 1,
-        "tags": [],
+    word_dict = dict(example_word)
+    expected_keys = {
+        "image_id",
+        "line_id",
+        "id",
+        "text",
+        "bounding_box",
+        "top_right",
+        "top_left",
+        "bottom_right",
+        "bottom_left",
+        "angle_degrees",
+        "angle_radians",
+        "confidence",
+        "histogram",
+        "num_chars",
+        "tags",
     }
+    assert set(word_dict.keys()) == expected_keys
+    assert word_dict["image_id"] == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    assert word_dict["line_id"] == 2
+    assert word_dict["id"] == 3
+    assert word_dict["text"] == "test_string"
+    assert word_dict["bounding_box"] == {
+        "x": 10.0,
+        "y": 20.0,
+        "width": 5.0,
+        "height": 2.0,
+    }
+    assert word_dict["top_right"] == {"x": 15.0, "y": 20.0}
+    assert word_dict["top_left"] == {"x": 10.0, "y": 20.0}
+    assert word_dict["bottom_right"] == {"x": 15.0, "y": 22.0}
+    assert word_dict["bottom_left"] == {"x": 10.0, "y": 22.0}
+    assert word_dict["angle_degrees"] == 1
+    assert word_dict["angle_radians"] == 5
+    assert word_dict["confidence"] == 0.90
+    assert dict(example_word_with_tags)["tags"] == ["tag1", "tag2"]
 
 
 def test_eq():
     """Test the Word __eq__ method"""
-    word1 = Word(**correct_word_params)
-    word2 = Word(**correct_word_params)
-    assert word1 == word2
+    # fmt: off
+    w1 = Word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "test_string", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90, ["tag1", "tag2"])
+    w2 = Word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "test_string", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90, ["tag1", "tag2"])
+    w3 = Word("3f52804b-2fad-4e00-92c8-b593da3a8ed4", 2, 3, "test_string", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90, ["tag1", "tag2"]) # Different Image ID
+    w4 = Word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 3, 3, "test_string", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90, ["tag1", "tag2"]) # Different Line ID
+    w5 = Word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 4, "test_string", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90, ["tag1", "tag2"]) # Different Word ID
+    w6 = Word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "Test_string", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90, ["tag1", "tag2"]) # Different Text
+    w7 = Word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "test_string", {"x": 20.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90, ["tag1", "tag2"]) # Different Bounding Box
+    w8 = Word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "test_string", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 20.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90, ["tag1", "tag2"]) # Different Top Right
+    w9 = Word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "test_string", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 20.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90, ["tag1", "tag2"]) # Different Top Left
+    w10 = Word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "test_string", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 20.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90, ["tag1", "tag2"]) # Different Bottom Right
+    w11 = Word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "test_string", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 20.0, "y": 22.0}, 1.0, 5.0, 0.90, ["tag1", "tag2"]) # Different Bottom Left
+    w12 = Word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "test_string", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 2.0, 5.0, 0.90, ["tag1", "tag2"]) # Different Angle Degrees
+    w13 = Word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "test_string", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 6.0, 0.90, ["tag1", "tag2"]) # Different Angle Radians
+    w14 = Word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "test_string", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.91, ["tag1", "tag2"]) # Different Confidence
+    w15 = Word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "test_string", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90, ["tag1"]) # Different Tags
+    # fmt: on
+
+    assert w1 == w2
+    assert w1 != w3
+    assert w1 != w4
+    assert w1 != w5
+    assert w1 != w6
+    assert w1 != w7
+    assert w1 != w8
+    assert w1 != w9
+    assert w1 != w10
+    assert w1 != w11
+    assert w1 != w12
+    assert w1 != w13
+    assert w1 != w14
+    assert w1 != w15
 
 
-def test_itemToWord():
+def test_itemToWord(example_word, example_word_with_tags):
     """Test the itemToWord function"""
-    item = {
-        "PK": {"S": "IMAGE#00001"},
-        "SK": {"S": "LINE#00002#WORD#00003"},
-        "TYPE": {"S": "WORD"},
-        "text": {"S": "test_string"},
-        "bounding_box": {
-            "M": {
-                "x": {"N": "0.445426336763238400"},
-                "y": {"N": "0.916708287875048200"},
-                "width": {"N": "0.086901824705062360"},
-                "height": {"N": "0.022867568134581906"},
-            }
-        },
-        "top_right": {
-            "M": {
-                "x": {"N": "0.532328161468300800"},
-                "y": {"N": "0.930772219800179200"},
-            }
-        },
-        "top_left": {
-            "M": {
-                "x": {"N": "0.448377266589544130"},
-                "y": {"N": "0.939575856009630100"},
-            }
-        },
-        "bottom_right": {
-            "M": {
-                "x": {"N": "0.529377231641995000"},
-                "y": {"N": "0.916708287875048200"},
-            }
-        },
-        "bottom_left": {
-            "M": {
-                "x": {"N": "0.445426336763238400"},
-                "y": {"N": "0.925511924084499200"},
-            }
-        },
-        "angle_degrees": {"N": "-5.9865270000"},
-        "angle_radians": {"N": "-0.1044846100"},
-        "confidence": {"N": "1.00"},
-    }
-    word = itemToWord(item)
-    assert word == Word(**correct_word_params)
+    itemToWord(example_word.to_item()) == example_word
+    itemToWord(example_word_with_tags.to_item()) == example_word_with_tags
 
 
 def create_test_word():
@@ -206,10 +223,10 @@ def create_test_word():
     with easily verifiable points for testing.
     """
     return Word(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         id=1,
         text="Hello",
         tags=["example"],
-        image_id=1,
         line_id=1,
         # In your actual Word class, you'd need bounding box / corners
         # if you plan to scale/rotate/translate them the same way as Line/Letter.

@@ -2,113 +2,147 @@ import pytest
 from dynamo import Line, itemToLine
 import math
 
-correct_line_params = {
-    "image_id": 1,
-    "id": 1,
-    "text": "Test",
-    "bounding_box": {
-        "x": 10.0,
-        "y": 20.0,
-        "width": 5.0,
-        "height": 2.0,
-    },
-    "top_right": {"x": 15.0, "y": 20.0},
-    "top_left": {"x": 10.0, "y": 20.0},
-    "bottom_right": {"x": 15.0, "y": 22.0},
-    "bottom_left": {"x": 10.0, "y": 22.0},
-    "angle_degrees": 1.0,
-    "angle_radians": 5.0,
-    "confidence": 0.90,
-}
+
+@pytest.fixture
+def example_line():
+    return Line(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        1,
+        "Test",
+        {
+            "x": 10.0,
+            "y": 20.0,
+            "width": 5.0,
+            "height": 2.0,
+        },
+        {"x": 15.0, "y": 20.0},
+        {"x": 10.0, "y": 20.0},
+        {"x": 15.0, "y": 22.0},
+        {"x": 10.0, "y": 22.0},
+        1.0,
+        5.0,
+        0.90,
+    )
 
 
-def test_init():
+def test_init(example_line):
     """Test the Line constructor"""
-    line = Line(**correct_line_params)
-    assert int(line.image_id) == 1
-    assert int(line.id) == 1
-    assert line.text == "Test"
-    assert line.bounding_box == {
+    assert example_line.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    assert example_line.id == 1
+    assert example_line.text == "Test"
+    assert example_line.bounding_box == {
         "x": 10.0,
         "y": 20.0,
         "width": 5.0,
         "height": 2.0,
     }
-    assert line.top_right == {"x": 15.0, "y": 20.0}
-    assert line.top_left == {"x": 10.0, "y": 20.0}
-    assert line.bottom_right == {"x": 15.0, "y": 22.0}
-    assert line.bottom_left == {"x": 10.0, "y": 22.0}
-    assert line.angle_degrees == 1.0
-    assert line.angle_radians == 5.0
-    assert line.confidence == 0.90
+    assert example_line.top_right == {"x": 15.0, "y": 20.0}
+    assert example_line.top_left == {"x": 10.0, "y": 20.0}
+    assert example_line.bottom_right == {"x": 15.0, "y": 22.0}
+    assert example_line.bottom_left == {"x": 10.0, "y": 22.0}
+    assert example_line.angle_degrees == 1.0
+    assert example_line.angle_radians == 5.0
+    assert example_line.confidence == 0.90
 
-    # Test bad Image ID
-    with pytest.raises(ValueError):
-        Line(**{**correct_line_params, "image_id": -1})
 
-    # Test bad Line ID
-    with pytest.raises(ValueError):
-        Line(**{**correct_line_params, "id": -1})
-
-    # Test bad Text
-    with pytest.raises(ValueError):
-        Line(**{**correct_line_params, "text": 1})
-
-    # Test bad bounding_box
-    with pytest.raises(ValueError):
+def test_init_bad_id():
+    """Test the Line constructor with bad ID"""
+    with pytest.raises(ValueError, match="uuid must be a string"):
         Line(
-            **{
-                **correct_line_params,
-                "bounding_box": {"x": 10.0, "height": 2.0, "width": 5.0},
-            }
+            1,
+            1,
+            "Test",
+            {
+                "x": 10.0,
+                "y": 20.0,
+                "width": 5.0,
+                "height": 2.0,
+            },
+            {"x": 15.0, "y": 20.0},
+            {"x": 10.0, "y": 20.0},
+            {"x": 15.0, "y": 22.0},
+            {"x": 10.0, "y": 22.0},
+            1.0,
+            5.0,
+            0.90,
+        )
+    with pytest.raises(ValueError, match="uuid must be a valid UUID"):
+        Line(
+            "not-a-uuid",
+            1,
+            "Test",
+            {
+                "x": 10.0,
+                "y": 20.0,
+                "width": 5.0,
+                "height": 2.0,
+            },
+            {"x": 15.0, "y": 20.0},
+            {"x": 10.0, "y": 20.0},
+            {"x": 15.0, "y": 22.0},
+            {"x": 10.0, "y": 22.0},
+            1.0,
+            5.0,
+            0.90,
         )
 
-    # Test bad top_right
-    with pytest.raises(ValueError):
-        Line(**{**correct_line_params, "top_right": {"x": 15.0, "y": "bad y position"}})
 
-    # Test bad top_left
-    with pytest.raises(ValueError):
-        Line(**{**correct_line_params, "top_left": {"x": 10.0, "y": "bad y position"}})
-
-    # Test bad bottom_right
-    with pytest.raises(ValueError):
+def test_init_bad_id():
+    with pytest.raises(ValueError, match="id must be an integer"):
         Line(
-            **{
-                **correct_line_params,
-                "bottom_right": {"x": 15.0, "y": "bad y position"},
-            }
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            "not-an-int",
+            "Test",
+            {
+                "x": 10.0,
+                "y": 20.0,
+                "width": 5.0,
+                "height": 2.0,
+            },
+            {"x": 15.0, "y": 20.0},
+            {"x": 10.0, "y": 20.0},
+            {"x": 15.0, "y": 22.0},
+            {"x": 10.0, "y": 22.0},
+            1.0,
+            5.0,
+            0.90,
+        )
+    with pytest.raises(ValueError, match="id must be positive"):
+        Line(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            -1,
+            "Test",
+            {
+                "x": 10.0,
+                "y": 20.0,
+                "width": 5.0,
+                "height": 2.0,
+            },
+            {"x": 15.0, "y": 20.0},
+            {"x": 10.0, "y": 20.0},
+            {"x": 15.0, "y": 22.0},
+            {"x": 10.0, "y": 22.0},
+            1.0,
+            5.0,
+            0.90,
         )
 
-    # Test bad bottom_left
-    with pytest.raises(ValueError):
-        Line(
-            **{**correct_line_params, "bottom_left": {"x": 10.0, "y": "bad y position"}}
-        )
 
-    # Test bad angle_degrees
-    with pytest.raises(ValueError):
-        Line(**{**correct_line_params, "angle_degrees": "bad angle"})
-
-    # Test bad angle_radians
-    with pytest.raises(ValueError):
-        Line(**{**correct_line_params, "angle_radians": "bad angle"})
-
-
-def test_key():
+def test_key(example_line):
     """Test the Line.key() method"""
-    line = Line(**correct_line_params)
-    assert line.key() == {"PK": {"S": "IMAGE#00001"}, "SK": {"S": "LINE#00001"}}
+    assert example_line.key() == {
+        "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "SK": {"S": "LINE#00001"},
+    }
 
 
-def test_to_item():
+def test_to_item(example_line):
     """Test the Line.to_item() method"""
-    line = Line(**correct_line_params)
-    item = line.to_item()
-    assert item["PK"] == {"S": "IMAGE#00001"}
+    item = example_line.to_item()
+    assert item["PK"] == {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"}
     assert item["SK"] == {"S": "LINE#00001"}
     assert item["GSI1PK"] == {"S": "IMAGE"}
-    assert item["GSI1SK"] == {"S": "IMAGE#00001#LINE#00001"}
+    assert item["GSI1SK"] == {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#LINE#00001"}
     assert item["TYPE"] == {"S": "LINE"}
     assert item["text"] == {"S": "Test"}
     assert item["bounding_box"] == {
@@ -156,7 +190,7 @@ def create_test_line():
     Adjust coordinates as needed for your tests.
     """
     return Line(
-        image_id=1,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         id=1,
         text="Test",
         bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
@@ -262,23 +296,6 @@ def test_scale(sx, sy):
     # Angles should not change
     assert line.angle_degrees == 0.0
     assert line.angle_radians == 0.0
-
-
-def create_test_line():
-    """A helper function that returns a test Line object."""
-    return Line(
-        image_id=1,
-        id=1,
-        text="Test",
-        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        top_right={"x": 15.0, "y": 20.0},
-        top_left={"x": 10.0, "y": 20.0},
-        bottom_right={"x": 15.0, "y": 22.0},
-        bottom_left={"x": 10.0, "y": 22.0},
-        angle_degrees=0.0,
-        angle_radians=0.0,
-        confidence=1.0,
-    )
 
 
 @pytest.mark.parametrize(
@@ -390,50 +407,14 @@ def test_rotate_limited_range(angle, use_radians, should_raise):
             )
 
 
-def test_repr():
+def test_repr(example_line):
     """Test the Line.__repr__() method"""
-    line = Line(
-        1,
-        1,
-        "test_string",
-        {
-            "x": 0.4454263367632384,
-            "height": 0.022867568134581906,
-            "width": 0.08690182470506236,
-            "y": 0.9167082878750482,
-        },
-        {"y": 0.9307722198001792, "x": 0.5323281614683008},
-        {"y": 0.9395758560096301, "x": 0.44837726658954413},
-        {"x": 0.529377231641995, "y": 0.9167082878750482},
-        {"x": 0.4454263367632384, "y": 0.9255119240844992},
-        -5.986527,
-        -0.10448461,
-        1,
-    )
-    assert repr(line) == "Line(id=1, text='test_string')"
+    assert repr(example_line) == "Line(id=1, text='Test')"
 
 
-def test_iter():
+def test_iter(example_line):
     """Test the Line.__iter__() method"""
-    line = Line(
-        1,
-        1,
-        "test_string",
-        {
-            "x": 0.4454263367632384,
-            "height": 0.022867568134581906,
-            "width": 0.08690182470506236,
-            "y": 0.9167082878750482,
-        },
-        {"y": 0.9307722198001792, "x": 0.5323281614683008},
-        {"y": 0.9395758560096301, "x": 0.44837726658954413},
-        {"x": 0.529377231641995, "y": 0.9167082878750482},
-        {"x": 0.4454263367632384, "y": 0.9255119240844992},
-        -5.986527,
-        -0.10448461,
-        1,
-    )
-    line_dict = dict(line)
+    line_dict = dict(example_line)
     expected_keys = {
         "image_id",
         "id",
@@ -450,148 +431,55 @@ def test_iter():
         "num_chars",
     }
     assert set(line_dict.keys()) == expected_keys
-    assert line_dict["image_id"] == 1
+    assert line_dict["image_id"] == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert line_dict["id"] == 1
-    assert line_dict["text"] == "test_string"
+    assert line_dict["text"] == "Test"
     assert line_dict["bounding_box"] == {
-        "x": 0.4454263367632384,
-        "height": 0.022867568134581906,
-        "width": 0.08690182470506236,
-        "y": 0.9167082878750482,
+        "x": 10.0,
+        "y": 20.0,
+        "width": 5.0,
+        "height": 2.0,
     }
-    assert line_dict["top_right"] == {"y": 0.9307722198001792, "x": 0.5323281614683008}
-    assert line_dict["top_left"] == {"y": 0.9395758560096301, "x": 0.44837726658954413}
-    assert line_dict["bottom_right"] == {"x": 0.529377231641995, "y": 0.9167082878750482}
-    assert line_dict["bottom_left"] == {"x": 0.4454263367632384, "y": 0.9255119240844992}
-    assert line_dict["angle_degrees"] == -5.986527
-    assert line_dict["angle_radians"] == -0.10448461
-    assert line_dict["confidence"] == 1
+    assert line_dict["top_right"] == {"x": 15.0, "y": 20.0}
+    assert line_dict["top_left"] == {"x": 10.0, "y": 20.0}
+    assert line_dict["bottom_right"] == {"x": 15.0, "y": 22.0}
+    assert line_dict["bottom_left"] == {"x": 10.0, "y": 22.0}
+    assert line_dict["angle_degrees"] == 1
+    assert line_dict["angle_radians"] == 5
+    assert line_dict["confidence"] == 0.90
 
 
 def test_eq():
     """Test the Line.__eq__() method"""
-    line1 = Line(
-        1,
-        1,
-        "test_string",
-        {
-            "x": 0.4454263367632384,
-            "height": 0.022867568134581906,
-            "width": 0.08690182470506236,
-            "y": 0.9167082878750482,
-        },
-        {"y": 0.9307722198001792, "x": 0.5323281614683008},
-        {"y": 0.9395758560096301, "x": 0.44837726658954413},
-        {"x": 0.529377231641995, "y": 0.9167082878750482},
-        {"x": 0.4454263367632384, "y": 0.9255119240844992},
-        -5.986527,
-        -0.10448461,
-        1,
-    )
-    line2 = Line(
-        1,
-        1,
-        "test_string",
-        {
-            "x": 0.4454263367632384,
-            "height": 0.022867568134581906,
-            "width": 0.08690182470506236,
-            "y": 0.9167082878750482,
-        },
-        {"y": 0.9307722198001792, "x": 0.5323281614683008},
-        {"y": 0.9395758560096301, "x": 0.44837726658954413},
-        {"x": 0.529377231641995, "y": 0.9167082878750482},
-        {"x": 0.4454263367632384, "y": 0.9255119240844992},
-        -5.986527,
-        -0.10448461,
-        1,
-    )
-    assert line1 == line2
+    # fmt: off
+    l1 = Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)
+    l2 = Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)
+    l3 = Line("3f52804b-2fad-4e00-92c8-b593da3a8ed4", 1, "Test", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90) # Different Image ID
+    l4 = Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, "Test", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90) # Different ID
+    l5 = Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test2", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90) # Different text
+    l6 = Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", {"x": 20.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90) # Different bounding box
+    l7 = Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 20.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90) # Different top_right
+    l8 = Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 20.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90) # Different top_left
+    l9 = Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 20.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90) # Different bottom_right
+    l10 = Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 20.0, "y": 22.0}, 1.0, 5.0, 0.90) # Different bottom_left
+    l11 = Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 2.0, 5.0, 0.90) # Different angle_degrees
+    l12 = Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 6.0, 0.90) # Different angle_radians
+    l13 = Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.91) # Different confidence
+    # fmt: on
+
+    assert l1 == l2
+    assert l1 != l3
+    assert l1 != l4
+    assert l1 != l5
+    assert l1 != l6
+    assert l1 != l7
+    assert l1 != l8
+    assert l1 != l9
+    assert l1 != l10
+    assert l1 != l11
+    assert l1 != l12
+    assert l1 != l13
 
 
-def map_to_dict(map):
-    """
-    Convert a DynamoDB map to a dictionary.
-    """
-    return {key: float(value["N"]) for key, value in map.items()}
-
-
-def test_map_to_dict():
-    mapped_item = {
-        "bounding_box": {
-            "M": {
-                "x": {"N": "0.445426336763238400"},
-                "height": {"N": "0.022867568134581906"},
-                "width": {"N": "0.086901824705062360"},
-                "y": {"N": "0.916708287875048200"},
-            }
-        },
-    }
-    assert map_to_dict(mapped_item["bounding_box"]["M"]) == {
-        "x": 0.4454263367632384,
-        "height": 0.022867568134581906,
-        "width": 0.08690182470506236,
-        "y": 0.9167082878750482,
-    }
-
-
-def test_itemToLine():
-    item = {
-        "PK": {"S": "IMAGE#00001"},
-        "SK": {"S": "LINE#00001"},
-        "TYPE": {"S": "LINE"},
-        "text": {"S": "test_string"},
-        "bounding_box": {
-            "M": {
-                "x": {"N": "0.445426336763238400"},
-                "height": {"N": "0.022867568134581906"},
-                "width": {"N": "0.086901824705062360"},
-                "y": {"N": "0.916708287875048200"},
-            }
-        },
-        "top_right": {
-            "M": {
-                "y": {"N": "0.930772219800179200"},
-                "x": {"N": "0.532328161468300800"},
-            }
-        },
-        "top_left": {
-            "M": {
-                "y": {"N": "0.939575856009630100"},
-                "x": {"N": "0.448377266589544130"},
-            }
-        },
-        "bottom_right": {
-            "M": {
-                "x": {"N": "0.529377231641995000"},
-                "y": {"N": "0.916708287875048200"},
-            }
-        },
-        "bottom_left": {
-            "M": {
-                "x": {"N": "0.445426336763238400"},
-                "y": {"N": "0.925511924084499200"},
-            }
-        },
-        "angle_degrees": {"N": "-5.9865270000"},
-        "angle_radians": {"N": "-0.1044846100"},
-        "confidence": {"N": "1.00"},
-    }
-    assert Line(
-        1,
-        1,
-        "test_string",
-        {
-            "x": 0.4454263367632384,
-            "height": 0.022867568134581906,
-            "width": 0.08690182470506236,
-            "y": 0.9167082878750482,
-        },
-        {"y": 0.9307722198001792, "x": 0.5323281614683008},
-        {"y": 0.9395758560096301, "x": 0.44837726658954413},
-        {"x": 0.529377231641995, "y": 0.9167082878750482},
-        {"x": 0.4454263367632384, "y": 0.9255119240844992},
-        -5.986527,
-        -0.10448461,
-        1,
-    ) == itemToLine(item)
+def test_itemToLine(example_line):
+    itemToLine(example_line.to_item()) == example_line

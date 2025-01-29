@@ -19,7 +19,7 @@ def sample_receipt_word_tag():
     Adjust the IDs or tag text to fit your schema if needed.
     """
     return ReceiptWordTag(
-        image_id=1, receipt_id=100, line_id=5, word_id=42, tag="SampleTag"
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", receipt_id=100, line_id=5, word_id=42, tag="SampleTag"
     )
 
 
@@ -31,7 +31,7 @@ def sample_receipt():
     """
     return Receipt(
         id=1,
-        image_id=1,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         width=10,
         height=20,
         timestamp_added=datetime.now().isoformat(),
@@ -52,7 +52,7 @@ def sample_receipt_word():
     Adjust the IDs or tag text to fit your schema if needed.
     """
     return ReceiptWord(
-        image_id=1,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         receipt_id=1,
         line_id=1,
         word_id=1,
@@ -75,7 +75,7 @@ def sample_receipt_word():
 
 correct_receipt_params = {
     "id": 1,
-    "image_id": 1,
+    "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
     "width": 10,
     "height": 20,
     "timestamp_added": datetime.now().isoformat(),
@@ -89,7 +89,7 @@ correct_receipt_params = {
 }
 
 correct_image_params = {
-    "id": 1,
+    "id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
     "width": 10,
     "height": 20,
     "timestamp_added": datetime.now().isoformat(),
@@ -269,7 +269,7 @@ def test_deleteReceiptsFromImage(dynamodb_table: str):
     dynamo_client = DynamoClient(dynamodb_table)
     receipt = Receipt(**correct_receipt_params)
     image = Image(**correct_image_params)
-    receipt_different_image = Receipt(**{**correct_receipt_params, "image_id": 2})
+    receipt_different_image = Receipt(**{**correct_receipt_params, "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed4"})
     dynamo_client.addReceipts([receipt, receipt_different_image])
     dynamo_client.addImage(image)
 
@@ -326,7 +326,7 @@ def test_getReceiptsFromImage(dynamodb_table: str):
     dynamo_client = DynamoClient(dynamodb_table)
     receipt = Receipt(**correct_receipt_params)
     receipt_same_image = Receipt(**{**correct_receipt_params, "id": 2})
-    receipt_different_image = Receipt(**{**correct_receipt_params, "image_id": 2})
+    receipt_different_image = Receipt(**{**correct_receipt_params, "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed4"})
     dynamo_client.addReceipts([receipt, receipt_same_image, receipt_different_image])
 
     # Act
@@ -345,7 +345,7 @@ def sample_receipt_lines():
     """
     return [
         ReceiptLine(
-            image_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
             id=1,
             text="line1",
@@ -359,7 +359,7 @@ def sample_receipt_lines():
             confidence=1,
         ),
         ReceiptLine(
-            image_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
             id=2,
             text="line2",
@@ -373,7 +373,7 @@ def sample_receipt_lines():
             confidence=1,
         ),
         ReceiptLine(
-            image_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
             id=3,
             text="line3",
@@ -387,7 +387,7 @@ def sample_receipt_lines():
             confidence=1,
         ),
         ReceiptLine(
-            image_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
             id=4,
             text="line4",
@@ -406,7 +406,7 @@ def sample_receipt_lines():
 def sample_receipt_words():
     return [
         ReceiptWord(
-            image_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
             line_id=1,
             id=1,
@@ -421,7 +421,7 @@ def sample_receipt_words():
             confidence=1,
         ),
         ReceiptWord(
-            image_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
             line_id=1,
             id=2,
@@ -441,7 +441,7 @@ def sample_receipt_words():
 def sample_receipt_word_tags():
     return [
         ReceiptWordTag(
-            image_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
             line_id=1,
             word_id=1,
@@ -449,7 +449,7 @@ def sample_receipt_word_tags():
             timestamp_added="2021-01-01T00:00:00",
         ),
         ReceiptWordTag(
-            image_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
             line_id=1,
             word_id=2,
@@ -462,7 +462,7 @@ def sample_receipt_word_tags():
 def sample_receipt_letters():
     return [
         ReceiptLetter(
-            image_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
             line_id=1,
             word_id=1,
@@ -478,7 +478,7 @@ def sample_receipt_letters():
             confidence=1,
         ),
         ReceiptLetter(
-            image_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
             line_id=1,
             word_id=1,
