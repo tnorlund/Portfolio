@@ -59,7 +59,7 @@ class DynamoClient(
         Args:
             gpt_receipt (int): The image ID to label.
         """
-        image, lines, words, letters, receipt_details = self.getImageDetails(image_id)
+        image, lines, words, word_tags, letters, receipt_details = self.getImageDetails(image_id)
         for receipt_detail in receipt_details:
             receipt = receipt_detail["receipt"]
             receipt_lines = receipt_detail["lines"]
