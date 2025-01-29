@@ -5,6 +5,26 @@
     align-items: center;
     gap: 1rem; /* Space between logos */
   }
+
+  pre {
+    background-color: var(--code-background);  /* Light gray background often used on code blocks */
+    padding: 1em;
+    border-radius: 4px;
+    overflow: auto; /* Show scrollbar if content is wide */
+    line-height: 1.4;
+    font-size: 0.9rem;
+    font-family: Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    /* color: #333; */
+    margin: 0 0; 
+  }
+  
+  /* Optionally, style <code> elements if you use them directly */
+  code {
+    /* background-color: #f6f8fa; */
+    padding: 0.2em 0.4em;
+    border-radius: 4px;
+    font-family: Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  }
   
   /* When the screen width is below 768px, stack them vertically */
   @media (max-width: 768px) {

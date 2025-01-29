@@ -2,6 +2,7 @@
   /* Light / default mode variables */
   --background-color: #ffffff;
   --text-color: #000000;
+  --code-background: #f6f8fa;
 
   --header-background: #000000;
   --header-text: #ffffff;
@@ -104,6 +105,7 @@ li {
   :root {
     --background-color: #121212;
     --text-color: #ffffff;
+    --code-background: #1f1f1f;
 
     --header-background: #1f1f1f;
     --header-text: #ffffff;
