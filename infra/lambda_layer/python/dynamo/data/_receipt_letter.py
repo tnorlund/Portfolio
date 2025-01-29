@@ -16,15 +16,15 @@ class _ReceiptLetter:
         Adds multiple receipt-letters in batch.
     updateReceiptLetter(letter: ReceiptLetter)
         Updates an existing receipt-letter.
-    deleteReceiptLetter(receipt_id: int, image_id: int, line_id: int, word_id: int, letter_id: int)
+    deleteReceiptLetter(receipt_id: int, image_id: str, line_id: int, word_id: int, letter_id: int)
         Deletes a specific receipt-letter by IDs.
     deleteReceiptLetters(letters: list[ReceiptLetter])
         Deletes multiple receipt-letters in batch.
-    getReceiptLetter(receipt_id: int, image_id: int, line_id: int, word_id: int, letter_id: int) -> ReceiptLetter
+    getReceiptLetter(receipt_id: int, image_id: str, line_id: int, word_id: int, letter_id: int) -> ReceiptLetter
         Retrieves a single receipt-letter by IDs.
     listReceiptLetters() -> list[ReceiptLetter]
         Returns all ReceiptLetters from the table.
-    listReceiptLettersFromWord(receipt_id: int, image_id: int, line_id: int, word_id: int) -> list[ReceiptLetter]
+    listReceiptLettersFromWord(receipt_id: int, image_id: str, line_id: int, word_id: int) -> list[ReceiptLetter]
         Returns all ReceiptLetters for a given word.
     """
 
@@ -73,14 +73,14 @@ class _ReceiptLetter:
                 raise
 
     def deleteReceiptLetter(
-        self, receipt_id: int, image_id: int, line_id: int, word_id: int, letter_id: int
+        self, receipt_id: int, image_id: str, line_id: int, word_id: int, letter_id: int
     ):
         """Deletes a single ReceiptLetter by IDs."""
         try:
             self._client.delete_item(
                 TableName=self.table_name,
                 Key={
-                    "PK": {"S": f"IMAGE#{image_id:05d}"},
+                    "PK": {"S": f"IMAGE#{image_id}"},
                     "SK": {
                         "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"
                     },
@@ -110,14 +110,14 @@ class _ReceiptLetter:
             raise ValueError("Could not delete ReceiptLetters from the database") from e
 
     def getReceiptLetter(
-        self, receipt_id: int, image_id: int, line_id: int, word_id: int, letter_id: int
+        self, receipt_id: int, image_id: str, line_id: int, word_id: int, letter_id: int
     ) -> ReceiptLetter:
         """Retrieves a single ReceiptLetter by IDs."""
         try:
             response = self._client.get_item(
                 TableName=self.table_name,
                 Key={
-                    "PK": {"S": f"IMAGE#{image_id:05d}"},
+                    "PK": {"S": f"IMAGE#{image_id}"},
                     "SK": {
                         "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"
                     },
@@ -160,7 +160,7 @@ class _ReceiptLetter:
             raise ValueError("Could not list ReceiptLetters from the database") from e
 
     def listReceiptLettersFromWord(
-        self, receipt_id: int, image_id: int, line_id: int, word_id: int
+        self, receipt_id: int, image_id: str, line_id: int, word_id: int
     ) -> list[ReceiptLetter]:
         """Returns all ReceiptLetters for a given word."""
         receipt_letters = []
@@ -169,7 +169,7 @@ class _ReceiptLetter:
                 TableName=self.table_name,
                 KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
                 ExpressionAttributeValues={
-                    ":pkVal": {"S": f"IMAGE#{image_id:05d}"},
+                    ":pkVal": {"S": f"IMAGE#{image_id}"},
                     ":skPrefix": {
                         "S": (
                             f"RECEIPT#{receipt_id:05d}"
@@ -189,7 +189,7 @@ class _ReceiptLetter:
                     TableName=self.table_name,
                     KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
                     ExpressionAttributeValues={
-                        ":pkVal": {"S": f"IMAGE#{image_id:05d}"},
+                        ":pkVal": {"S": f"IMAGE#{image_id}"},
                         ":skPrefix": {
                             "S": (
                                 f"RECEIPT#{receipt_id:05d}"

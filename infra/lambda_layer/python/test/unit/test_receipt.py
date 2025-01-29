@@ -91,7 +91,7 @@ def test_receipt_invalid_id():
     )
 
 
-def test_receipt_invalid_dimensions(valid_receipt_args):
+def test_receipt_invalid_dimensions():
     """Test that constructing a Receipt with invalid width/height raises ValueError."""
     # Invalid width
     with pytest.raises(ValueError):

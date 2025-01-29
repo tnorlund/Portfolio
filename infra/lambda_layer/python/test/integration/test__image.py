@@ -312,8 +312,9 @@ def test_listImageDetails_pagination_returns_page_and_token(
 
     # Create 5 images
     images_created = []
+    uuids = [str(uuid4()) for _ in range(6)]
     for i in range(1, 6):
-        img = Image(i, 100, 200, f"2021-01-0{i}T00:00:00", "bucket", f"key-{i}")
+        img = Image(uuids[i], 100, 200, f"2021-01-0{i}T00:00:00", "bucket", f"key-{i}")
         client.addImage(img)
         images_created.append(img)
 
@@ -325,8 +326,8 @@ def test_listImageDetails_pagination_returns_page_and_token(
     assert lek is not None, "Should return a lastEvaluatedKey since more items exist"
 
     # The images we got back should be a subset of the images_created
-    for image_index in payload:
-        img = images_created[image_index - 1]
+    for image_index in range(5):
+        img = images_created[image_index]
         assert img in images_created, f"Image {img.id} should be in the original set"
 
 
@@ -341,8 +342,9 @@ def test_listImageDetails_pagination_uses_lastEvaluatedKey(
 
     # Create 5 images
     images_created = []
+    uuids = [str(uuid4()) for _ in range(6)]
     for i in range(1, 6):
-        img = Image(i, 100, 200, f"2021-01-0{i}T00:00:00", "bucket", f"key-{i}")
+        img = Image(uuids[i], 100, 200, f"2021-01-0{i}T00:00:00", "bucket", f"key-{i}")
         client.addImage(img)
         images_created.append(img)
 
@@ -388,9 +390,9 @@ def test_listImageDetails_pagination_no_limit_returns_all(
     client = DynamoClient(dynamodb_table)
 
     # Create 3 images
-    image_1 = Image(1, 10, 20, "2021-01-01T00:00:00", "bucket", "key1")
-    image_2 = Image(2, 30, 40, "2021-01-01T00:00:00", "bucket", "key2")
-    image_3 = Image(3, 50, 60, "2021-01-01T00:00:00", "bucket", "key3")
+    image_1 = Image("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 10, 20, "2021-01-01T00:00:00", "bucket", "key1")
+    image_2 = Image("3f52804b-2fad-4e00-92c8-b593da3a8ed4", 30, 40, "2021-01-01T00:00:00", "bucket", "key2")
+    image_3 = Image("3f52804b-2fad-4e00-92c8-b593da3a8ed5", 50, 60, "2021-01-01T00:00:00", "bucket", "key3")
 
     client.addImage(image_1)
     client.addImage(image_2)
@@ -481,8 +483,9 @@ def test_listImageDetails_lek_structure_and_usage(
 
     # Create 5 images
     images_created = []
+    uuids = [str(uuid4()) for _ in range(6)]
     for i in range(1, 6):
-        img = Image(i, 100, 200, f"2021-01-0{i}T00:00:00", "bucket", f"key-{i}")
+        img = Image(uuids[i], 100, 200, f"2021-01-0{i}T00:00:00", "bucket", f"key-{i}")
         client.addImage(img)
         images_created.append(img)
 

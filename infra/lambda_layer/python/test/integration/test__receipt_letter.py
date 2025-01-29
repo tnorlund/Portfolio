@@ -6,7 +6,7 @@ from dynamo import ReceiptLetter, DynamoClient
 def sample_receipt_letter():
     return ReceiptLetter(
         receipt_id=1,
-        image_id=1,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=10,
         word_id=5,
         id=2,
@@ -97,7 +97,7 @@ def test_list_receipt_letters(dynamodb_table: Literal["MyMockedTable"]):
     letters = [
         ReceiptLetter(
             receipt_id=1,
-            image_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id=10,
             word_id=5,
             id=i,
@@ -131,7 +131,7 @@ def test_list_receipt_letters_from_word(dynamodb_table: Literal["MyMockedTable"]
     letters_same_word = [
         ReceiptLetter(
             receipt_id=1,
-            image_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id=10,
             word_id=2,
             id=i,
@@ -150,7 +150,7 @@ def test_list_receipt_letters_from_word(dynamodb_table: Literal["MyMockedTable"]
     # A letter in a different word
     different_word_letter = ReceiptLetter(
         receipt_id=1,
-        image_id=1,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=10,
         word_id=99,
         id=999,
@@ -170,7 +170,7 @@ def test_list_receipt_letters_from_word(dynamodb_table: Literal["MyMockedTable"]
 
     # Act
     found_letters = client.listReceiptLettersFromWord(
-        receipt_id=1, image_id=1, line_id=10, word_id=2
+        receipt_id=1, image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=10, word_id=2
     )
 
     # Assert

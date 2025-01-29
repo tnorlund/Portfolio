@@ -78,12 +78,12 @@ class _Letter:
         except ClientError as e:
             raise ValueError(f"Letter with ID {letter.id} not found")
 
-    def deleteLetter(self, image_id: int, line_id: int, word_id: int, letter_id: int):
+    def deleteLetter(self, image_id: str, line_id: int, word_id: int, letter_id: int):
         try:
             self._client.delete_item(
                 TableName=self.table_name,
                 Key={
-                    "PK": {"S": f"IMAGE#{image_id:05d}"},
+                    "PK": {"S": f"IMAGE#{image_id}"},
                     "SK": {
                         "S": f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"
                     },
@@ -112,11 +112,11 @@ class _Letter:
         except ClientError as e:
             raise ValueError("Could not delete letters from the database")
 
-    def deleteLettersFromWord(self, image_id: int, line_id: int, word_id: int):
+    def deleteLettersFromWord(self, image_id: str, line_id: int, word_id: int):
         """Deletes all letters from a word
 
         Args:
-            image_id (int): The ID of the image the word belongs to
+            image_id (str): The UUID of the image the word belongs to
             line_id (int): The ID of the line the word belongs to
             word_id (int): The ID of the word to delete letters from
         """
@@ -124,13 +124,13 @@ class _Letter:
         self.deleteLetters(letters)
 
     def getLetter(
-        self, image_id: int, line_id: int, word_id: int, letter_id: int
+        self, image_id: str, line_id: int, word_id: int, letter_id: int
     ) -> Letter:
         try:
             response = self._client.get_item(
                 TableName=self.table_name,
                 Key={
-                    "PK": {"S": f"IMAGE#{image_id:05d}"},
+                    "PK": {"S": f"IMAGE#{image_id}"},
                     "SK": {
                         "S": f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"
                     },
@@ -169,7 +169,7 @@ class _Letter:
             raise ValueError("Could not list letters from the database") from e
 
     def listLettersFromWord(
-        self, image_id: int, line_id: int, word_id: int
+        self, image_id: str, line_id: int, word_id: int
     ) -> list[Letter]:
         letters = []
         try:
@@ -177,7 +177,7 @@ class _Letter:
                 TableName=self.table_name,
                 KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
                 ExpressionAttributeValues={
-                    ":pkVal": {"S": f"IMAGE#{image_id:05d}"},
+                    ":pkVal": {"S": f"IMAGE#{image_id}"},
                     ":skPrefix": {
                         "S": f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#"
                     },
@@ -190,7 +190,7 @@ class _Letter:
                     TableName=self.table_name,
                     KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
                     ExpressionAttributeValues={
-                        ":pkVal": {"S": f"IMAGE#{image_id:05d}"},
+                        ":pkVal": {"S": f"IMAGE#{image_id}"},
                         ":skPrefix": {
                             "S": f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#"
                         },

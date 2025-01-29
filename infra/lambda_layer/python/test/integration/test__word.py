@@ -4,7 +4,7 @@ import boto3
 from dynamo import Word, DynamoClient
 
 correct_word_params = {
-    "image_id": 1,
+    "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
     "line_id": 2,
     "id": 3,
     "text": "test_string",
@@ -103,11 +103,11 @@ def test_deleteWord(dynamodb_table: Literal["MyMockedTable"]):
     client.addWord(word)
 
     # Act
-    client.deleteWord(1, 2, 3)
+    client.deleteWord("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3)
 
     # Assert
     with pytest.raises(ValueError):
-        client.getWord(1, 2, 3)
+        client.getWord("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3)
 
 
 def test_deleteWord_error(dynamodb_table: Literal["MyMockedTable"]):
@@ -147,7 +147,7 @@ def test_getWord(dynamodb_table: Literal["MyMockedTable"]):
     client.addWord(word)
 
     # Act
-    retrieved_word = client.getWord(1, 2, 3)
+    retrieved_word = client.getWord("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3)
 
     # Assert
     assert retrieved_word == word
@@ -240,7 +240,7 @@ def test_listWordsFromLine(dynamodb_table: Literal["MyMockedTable"]):
     words = sorted(words, key=lambda x: x.id)
 
     # Act
-    response = client.listWordsFromLine(1, 2)
+    response = client.listWordsFromLine("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2)
 
     # Assert
     assert words == response
