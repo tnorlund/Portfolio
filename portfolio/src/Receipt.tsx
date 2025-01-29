@@ -64,7 +64,7 @@ If a particular field is not found, return an empty string or null for that fiel
 \`\`\`
 IMPORTANT: Make sure your output is valid JSON, with double quotes around keys and strings.
 `;
-return <pre>{prompt}</pre>
+  return <pre>{prompt}</pre>;
 }
 
 function Receipt() {
@@ -101,24 +101,40 @@ function Receipt() {
         <li>Confidence Scores</li>
       </ul>
       <p>
-        I used my new ChatGPT subscription to help me write some Swift code to write the OCR results to a JSON. I have no experience with Swift, but I was able to get it working.
+        I used my new ChatGPT subscription to help me write some Swift code to
+        write the OCR results to a JSON. I have no experience with Swift, but I
+        was able to get it working.
       </p>
       <p>
-        From here, I developed a DynamoDB table schema to store the image and OCR data.
+        From here, I developed a DynamoDB table schema to store the image and
+        OCR data.
       </p>
       <p>
-        I then created a Pulumi project to host all the AWS services needed. I'm currently using Lambda to process the image and OCR JSON, DynamoDB, S3 for data storage, API Gateway to access the OCR data, and CloudFront as a CDN. All of this allows me to host the data and images on the web.
+        I then created a Pulumi project to host all the AWS services needed. I'm
+        currently using Lambda to process the image and OCR JSON, DynamoDB, S3
+        for data storage, API Gateway to access the OCR data, and CloudFront as
+        a CDN. All of this allows me to host the data and images on the web.
       </p>
-
       <Diagram />
       <p>
-        With the data in DynamoDB, I created a React app to display the data. This is where a lot of the fine tuning went in. I refined how I was storing the data and how I was processing it. With the help of ChatGPT, I was able to write a lot of the code in a very short amount of time.
+        With the data in DynamoDB, I created a React app to display the data.
+        This is where a lot of the fine tuning went in. I refined how I was
+        storing the data and how I was processing it. With the help of ChatGPT,
+        I was able to write a lot of the code in a very short amount of time.
       </p>
       <ReceiptStack />
       <p>
-        Now comes the data science… The data is there, but what can I do with it? I decided to use OpenAI's ChatGPT API for data annotation. My first task was creating a structured prompt—like the one below—so it would consistently return well-formatted JSON. After some prompt engineering research, I landed on a design that ties each field to specific word coordinates from the OCR output, allowing me to visualize and process the data accurately. 
+        Now comes the data science… The data is there, but what can I do with
+        it? I decided to use OpenAI's ChatGPT API for data annotation. My first
+        task was creating a structured prompt—like the one below—so it would
+        consistently return well-formatted JSON. After some prompt engineering
+        research, I landed on a design that ties each field to specific word
+        coordinates from the OCR output, allowing me to visualize and process
+        the data accurately.
       </p>
-      <code><GPTPrompt/></code>
+      <code>
+        <GPTPrompt />
+      </code>
     </div>
   );
 }
