@@ -582,7 +582,7 @@ def store_cluster_entities(
     dynamo_client.addReceiptLines(receipt_lines)
     dynamo_client.addReceiptWords(receipt_words)
     dynamo_client.addReceiptLetters(receipt_letters)
-    logger.log(
+    logger.info(
         f"Added {len(receipt_lines)} receipt lines, "
         f"{len(receipt_words)} words, and "
         f"{len(receipt_letters)} letters for receipt {cluster_id}."
