@@ -43,8 +43,8 @@ if __name__ == "__main__":
     dynamo_client = DynamoClient(os.getenv("DYNAMO_DB_TABLE"))  # Adjust as needed
 
     # For example, get an image and lines from your DB:
-    image_details = dynamo_client.getImageDetails(image_id=1)
-    image, lines, words, letters, receipt_details = image_details
+    image_details = dynamo_client.getImageDetails(image_id=46)
+    image, lines, words, wod_tags, letters, receipt_details = image_details
 
     receipts = []
     receipt_lines = []

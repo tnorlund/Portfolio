@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import gzip
 import hashlib
 import json
 import shutil
@@ -10,6 +11,7 @@ from pathlib import Path
 from time import sleep
 from typing import Generator, List
 from uuid import uuid4
+import time
 
 import boto3
 from botocore.exceptions import ClientError
@@ -227,6 +229,7 @@ def upload_files_with_uuid_in_batches(
         # Invoke Lambda function for each new UUID.
         # Now use the *same* order to assign image_ids
         for idx, uuid_str in enumerate(mapped_uuids):
+            print(f"Invoking Lambda for UUID: {uuid_str} (image_id: {image_indexes[(batch_index - 1) * batch_size + idx]})")
             image_id = image_indexes[(batch_index - 1) * batch_size + idx]
             payload = {"uuid": uuid_str, "s3_path": path_prefix, "image_id": image_id}
             lambda_client.invoke(
@@ -253,6 +256,165 @@ def delete_in_batches(delete_func, items, chunk_size=1000):
         remaining = total - (start + len(batch))
         print(f"   Deleted {len(batch)} items. {remaining} remaining...")
 
+def delete_items_in_table(dynamo_client: DynamoClient) -> None:
+    images = dynamo_client.listImages()
+    print(f" - Deleting {len(images)} image items")
+    dynamo_client.deleteImages(images)
+
+    lines = dynamo_client.listLines()
+    print(f" - Deleting {len(lines)} line items")
+    dynamo_client.deleteLines(lines)
+
+    words = dynamo_client.listWords()
+    print(f" - Deleting {len(words)} word items")
+    dynamo_client.deleteWords(words)
+
+    word_tags = dynamo_client.listWordTags()
+    print(f" - Deleting {len(word_tags)} word tag items")
+    dynamo_client.deleteWordTags(word_tags)
+
+    letters = dynamo_client.listLetters()
+    print(f" - Deleting {len(letters)} letter items")
+    dynamo_client.deleteLetters(letters)
+
+    receipts = dynamo_client.listReceipts()
+    print(f" - Deleting {len(receipts)} receipt items")
+    dynamo_client.deleteReceipts(receipts)
+
+    receipt_lines = dynamo_client.listReceiptLines()
+    print(f" - Deleting {len(receipt_lines)} receipt line items")
+    dynamo_client.deleteReceiptLines(receipt_lines)
+
+    receipt_words = dynamo_client.listReceiptWords()
+    print(f" - Deleting {len(receipt_words)} receipt word items")
+    dynamo_client.deleteReceiptWords(receipt_words)
+
+    receipt_word_tags = dynamo_client.listReceiptWordTags()
+    print(f" - Deleting {len(receipt_word_tags)} receipt word tag items")
+    dynamo_client.deleteReceiptWordTags(receipt_word_tags)
+
+    receipt_letters = dynamo_client.listReceiptLetters()
+    print(f" - Deleting {len(receipt_letters)} receipt letter items")
+    dynamo_client.deleteReceiptLetters(receipt_letters)
+    sleep(1)
+
+def export_logs_to_s3(
+    log_group_name: str,
+    bucket_name: str,
+    start_ms: int,
+    end_ms: int,
+    export_prefix: str = "exportedlogs",
+) -> tuple[str, str]:
+    """
+    Initiate a CloudWatch Logs export task for the given log group, time range,
+    and S3 bucket. Returns (taskId, exportPrefix) so you can poll for completion 
+    and know where to download from.
+    """
+    logs_client = boto3.client("logs")
+    try:
+        response = logs_client.create_export_task(
+            logGroupName=log_group_name,
+            fromTime=start_ms,
+            to=end_ms,
+            destination=bucket_name,
+            destinationPrefix=export_prefix,
+        )
+        task_id = response["taskId"]
+        print(f"Successfully created export task. Task Id: {task_id}")
+        return task_id, export_prefix
+    except logs_client.exceptions.ClientError as e:
+        print(f"Error starting export task: {e}")
+        return "", export_prefix
+
+def wait_for_export_completion(logs_client, task_id: str, poll_interval=5):
+    while True:
+        tasks_info = logs_client.describe_export_tasks(taskId=task_id)
+        tasks = tasks_info.get("exportTasks", [])
+        if not tasks:
+            print(f"No task found for ID {task_id}")
+            return
+        status = tasks[0]["status"]["code"]
+        print(f"Export task {task_id} status: {status}")
+        if status in ["CANCELLED", "FAILED"]:
+            print(f"Task {task_id} finished with status: {status}")
+            return
+        if status == "COMPLETED":
+            print(f"Task {task_id} completed!")
+            return
+        time.sleep(poll_interval)
+
+def download_and_cleanup_logs(
+    bucket_name: str,
+    export_prefix: str,
+    download_dir: Path,
+    remove_from_s3: bool = True
+) -> list[Path]:
+    """
+    List all objects in S3 under 'export_prefix', download them to 'download_dir',
+    and optionally delete them from the S3 bucket afterward.
+
+    Returns:
+        A list of local .gz files that were downloaded.
+    """
+    s3 = boto3.client("s3")
+    download_dir.mkdir(parents=True, exist_ok=True)
+    downloaded_files = []
+
+    continuation_token = None
+    print(f"Downloading log files from s3://{bucket_name}/{export_prefix} to {download_dir} ...")
+
+    while True:
+        list_kwargs = {
+            "Bucket": bucket_name,
+            "Prefix": export_prefix,
+            "MaxKeys": 1000
+        }
+        if continuation_token:
+            list_kwargs["ContinuationToken"] = continuation_token
+
+        response = s3.list_objects_v2(**list_kwargs)
+        contents = response.get("Contents", [])
+        if not contents:
+            print("No more log files found under prefix.")
+            break
+
+        for obj in contents:
+            key = obj["Key"]
+            print(f"key: {key}")
+            filename = key.split("/")[-1] or "logfile.gz"
+            local_path = download_dir / filename
+
+            print(f"  - Downloading {key} -> {local_path}")
+            s3.download_file(bucket_name, key, str(local_path))
+            downloaded_files.append(local_path)
+
+            if remove_from_s3:
+                print(f"    Deleting from S3: {key}")
+                s3.delete_object(Bucket=bucket_name, Key=key)
+
+        if response.get("IsTruncated"):
+            continuation_token = response["NextContinuationToken"]
+        else:
+            break
+
+    print("Download (and cleanup) complete!")
+    return downloaded_files
+
+def parse_exported_logs(gz_files: list[Path]) -> None:
+    """
+    Unzip each .gz file from CloudWatch logs and write the *raw* text lines 
+    to a .txt file (same basename), ignoring any JSON parsing.
+    """
+    for gz_file in gz_files:
+        txt_file = gz_file.with_suffix(".txt")  # same name, but .txt
+
+        print(f"\n--- Parsing {gz_file.name} => {txt_file.name} ---")
+        with gzip.open(gz_file, "rt", encoding="utf-8") as f_in, txt_file.open("w", encoding="utf-8") as f_out:
+            for line in f_in:
+                # Just write the raw log line as-is
+                f_out.write(line)
+
+        print(f"Finished writing to {txt_file}")
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Upload images to S3")
@@ -280,46 +442,9 @@ def main() -> None:
     if args.debug:
         print("Deleting all items from DynamoDB tables...")
         dynamo_client = DynamoClient(dynamo_db_table)
-        images = dynamo_client.listImages()
-        print(f" - Deleting {len(images)} image items")
-        delete_in_batches(dynamo_client.deleteImages, images)
-
-        lines = dynamo_client.listLines()
-        print(f" - Deleting {len(lines)} line items")
-        delete_in_batches(dynamo_client.deleteLines, lines)
-
-        words = dynamo_client.listWords()
-        print(f" - Deleting {len(words)} word items")
-        delete_in_batches(dynamo_client.deleteWords, words)
-
-        word_tags = dynamo_client.listWordTags()
-        print(f" - Deleting {len(word_tags)} word tag items")
-        delete_in_batches(dynamo_client.deleteWordTags, word_tags)
-
-        letters = dynamo_client.listLetters()
-        print(f" - Deleting {len(letters)} letter items")
-        delete_in_batches(dynamo_client.deleteLetters, letters)
-
-        receipts = dynamo_client.listReceipts()
-        print(f" - Deleting {len(receipts)} receipt items")
-        delete_in_batches(dynamo_client.deleteReceipts, receipts)
-
-        receipt_lines = dynamo_client.listReceiptLines()
-        print(f" - Deleting {len(receipt_lines)} receipt line items")
-        delete_in_batches(dynamo_client.deleteReceiptLines, receipt_lines)
-
-        receipt_words = dynamo_client.listReceiptWords()
-        print(f" - Deleting {len(receipt_words)} receipt word items")
-        delete_in_batches(dynamo_client.deleteReceiptWords, receipt_words)
-
-        receipt_word_tags = dynamo_client.listReceiptWordTags()
-        print(f" - Deleting {len(receipt_word_tags)} receipt word tag items")
-        delete_in_batches(dynamo_client.deleteReceiptWordTags, receipt_word_tags)
-
-        receipt_letters = dynamo_client.listReceiptLetters()
-        print(f" - Deleting {len(receipt_letters)} receipt letter items")
-        delete_in_batches(dynamo_client.deleteReceiptLetters, receipt_letters)
-        sleep(1)
+        delete_items_in_table(dynamo_client)
+        delete_items_in_table(dynamo_client)
+    start_time = int(time.time() * 1000)
 
     # Perform the actual upload in batches.
     upload_files_with_uuid_in_batches(
@@ -328,6 +453,37 @@ def main() -> None:
         lambda_function=lambda_function,
         dynamodb_table_name=dynamo_db_table,
     )
+    sleep(5)
+    end_time = int(time.time() * 1000)
+    log_group_name = f"/aws/lambda/{lambda_function}"
+
+
+    # (B) Export logs
+    task_id, export_prefix = export_logs_to_s3(
+        log_group_name=log_group_name,
+        bucket_name=raw_bucket,
+        start_ms=start_time,
+        end_ms=end_time,
+        export_prefix="exportedlogs",
+    )
+
+    # (C) Wait for export to complete
+    if task_id:
+        logs_client = boto3.client("logs")
+        wait_for_export_completion(logs_client, task_id, poll_interval=5)
+
+        local_logs_dir = Path(f"lambda_logs_{args.env}")
+        gz_files = download_and_cleanup_logs(
+            bucket_name=raw_bucket,
+            export_prefix="exportedlogs",
+            download_dir=local_logs_dir,
+            remove_from_s3=False,
+        )
+
+        # New: uncompress & parse
+        parse_exported_logs([file for file in gz_files if file.suffix == ".gz"])
+    else:
+        print("No export task created, skipping download.")
 
 
 if __name__ == "__main__":
