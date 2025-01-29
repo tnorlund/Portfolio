@@ -53,8 +53,8 @@ const ReceiptStack: React.FC = () => {
     if (inView && receipts.length > 0) {
       api.start((index) => {
         const rotation = rotations[index] || 0;
-        const topOffset = index * 10;
-        const leftOffset = index * 10;
+        const topOffset = index * 5;
+        const leftOffset = index * 5;
 
         return {
           opacity: 1,
