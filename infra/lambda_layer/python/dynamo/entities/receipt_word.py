@@ -94,11 +94,13 @@ class ReceiptWord:
                 "S": f"RECEIPT#{self.receipt_id:05d}#LINE#{self.line_id:05d}#WORD#{self.id:05d}"
             },
         }
-    
+
     def gsi2_key(self) -> dict:
         return {
             "GSI2PK": {"S": f"RECEIPT"},
-            "GSI2SK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#LINE#{self.line_id:05d}#WORD#{self.id:05d}"},
+            "GSI2SK": {
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#LINE#{self.line_id:05d}#WORD#{self.id:05d}"
+            },
         }
 
     def to_item(self) -> dict:
@@ -148,10 +150,10 @@ class ReceiptWord:
         if self.tags:
             item["tags"] = {"SS": self.tags}
         return item
-    
+
     def __repr__(self) -> str:
         return f"ReceiptWord(id={self.id}, text='{self.text}')"
-    
+
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, ReceiptWord):
             return False
@@ -189,7 +191,7 @@ class ReceiptWord:
         yield "confidence", self.confidence
         yield "histogram", self.histogram
         yield "num_chars", self.num_chars
-    
+
     def calculate_centroid(self) -> Tuple[float, float]:
         """Calculates the centroid of the line
 
@@ -209,8 +211,10 @@ class ReceiptWord:
             + self.bottom_left["y"]
         ) / 4
         return x, y
-    
-    def distance_and_angle_from_ReceiptWord(self, other: 'ReceiptWord') -> Tuple[float, float]:
+
+    def distance_and_angle_from_ReceiptWord(
+        self, other: "ReceiptWord"
+    ) -> Tuple[float, float]:
         """Calculates the distance and the angle between the two words
 
         Args:
@@ -224,7 +228,6 @@ class ReceiptWord:
         distance = ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
         angle = atan2(y2 - y1, x2 - x1)
         return distance, angle
-        
 
 
 def itemToReceiptWord(item: dict) -> ReceiptWord:
