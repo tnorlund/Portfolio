@@ -6,6 +6,7 @@ from routes.health_check.infra import health_check_lambda
 from routes.images.infra import images_lambda
 from routes.image_details.infra import image_details_lambda
 from routes.receipts.infra import receipts_lambda
+from routes.receipt_word_tag.infra import receipt_word_tag_lambda
 
 # Detect the current Pulumi stack
 stack = pulumi.get_stack()
@@ -145,6 +146,33 @@ lambda_permission_receipts = aws.lambda_.Permission(
     source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
 )
 
+# /receipt_word_tag
+integration_receipt_word_tag = aws.apigatewayv2.Integration(
+    "receipt_word_tag_lambda_integration",
+    api_id=api.id,
+    integration_type="AWS_PROXY",
+    integration_uri=receipt_word_tag_lambda.invoke_arn,
+    integration_method="POST",
+    payload_format_version="2.0",
+)
+route_receipt_word_tag = aws.apigatewayv2.Route(
+    "receipt_word_tag_route",
+    api_id=api.id,
+    route_key="GET /receipt_word_tag",
+    target=integration_receipt_word_tag.id.apply(lambda id: f"integrations/{id}"),
+    opts=pulumi.ResourceOptions(
+        replace_on_changes=["route_key", "target"],
+        delete_before_replace=True,
+    ),
+)
+lambda_permission_receipt_word_tag = aws.lambda_.Permission(
+    "receipt_word_tag_lambda_permission",
+    action="lambda:InvokeFunction",
+    function=receipt_word_tag_lambda.name,
+    principal="apigateway.amazonaws.com",
+    source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
+)
+
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # 2. DEPLOYMENT + LOGGING
@@ -177,6 +205,11 @@ stage = aws.apigatewayv2.Stage(
         },
         {
             "routeKey": route_receipts.route_key,
+            "throttlingBurstLimit": 5000,
+            "throttlingRateLimit": 10000,
+        },
+        {
+            "routeKey": route_receipt_word_tag.route_key,
             "throttlingBurstLimit": 5000,
             "throttlingRateLimit": 10000,
         },
