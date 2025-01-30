@@ -135,9 +135,7 @@ class Word:
             raise ValueError("tags must be a list")
         self.tags = tags if tags is not None else []
 
-        # Calculate histogram (character frequency) of the text.
         self.histogram = histogram(self.text)
-        # Calculate the number of characters in the text.
         self.num_chars = len(self.text)
 
     def key(self) -> dict:
