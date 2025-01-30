@@ -31,6 +31,8 @@ class WordTag:
         self.image_id = image_id
         self.line_id = line_id
         self.word_id = word_id
+        if not tag:
+            raise ValueError("tag must not be empty")
         if len(tag) > 40:
             raise ValueError("tag must not exceed 40 characters")
         if tag.startswith("_"):
