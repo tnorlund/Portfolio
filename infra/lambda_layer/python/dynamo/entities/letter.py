@@ -9,6 +9,15 @@ from math import pi, radians, sin, cos
 
 
 class Letter:
+    """
+    Represents a single Letter within an image, including its text, bounding box,
+    positional corners, angle, and confidence score.
+
+    This class provides methods to generate DynamoDB key structures, transform
+    the letter's coordinates (translate, scale, rotate), calculate its centroid,
+    and serialize the data for DynamoDB.
+    """
+
     def __init__(
         self,
         image_id: str,
@@ -25,91 +34,89 @@ class Letter:
         angle_radians: float,
         confidence: float,
     ):
-        """Constructs a new Letter object for DynamoDB
-        
-        Args:
-            image_id (str): The UUID of the image the letter belongs to
-            line_id (int): The ID of the line the letter belongs to
-            word_id (int): The ID of the word the letter belongs to
-            id (int): The ID of the letter
-            text (str): The text of the letter
-            bounding_box (dict): The bounding box of the letter
-            top_right (dict): The top right point of the letter
-            top_left (dict): The top left point of the letter
-            bottom_right (dict): The bottom right point of the letter
-            bottom_left (dict): The bottom left point of the letter
-            angle_degrees (float): The angle of the letter in degrees
-            angle_radians (float): The angle of the letter in radians
-            confidence (float): The confidence of the letter
+        """
+        Constructs a new Letter object for DynamoDB.
 
-        Attributes:
-            image_id (str): The UUID of the image the letter belongs to
-            line_id (int): The ID of the line the letter belongs to
-            word_id (int): The ID of the word the letter belongs to
-            id (int): The ID of the letter
-            text (str): The text of the letter
+        Args:
+            image_id (str): The UUID of the image the letter belongs to.
+            line_id (int): The ID of the line the letter belongs to.
+            word_id (int): The ID of the word the letter belongs to.
+            id (int): The ID of the letter.
+            text (str): The text of the letter (must be exactly one character).
             bounding_box (dict): The bounding box of the letter
-            top_right (dict): The top right point of the letter
-            top_left (dict): The top left point of the letter
-            bottom_right (dict): The bottom right point of the letter
-            bottom_left (dict): The bottom left point of the letter
-            angle_degrees (float): The angle of the letter in degrees
-            angle_radians (float): The angle of the letter in radians
-            confidence (float): The confidence of the letter
-        
+                (keys: 'x', 'y', 'width', 'height').
+            top_right (dict): The top right point of the letter (keys: 'x', 'y').
+            top_left (dict): The top left point of the letter (keys: 'x', 'y').
+            bottom_right (dict): The bottom right point of the letter (keys: 'x', 'y').
+            bottom_left (dict): The bottom left point of the letter (keys: 'x', 'y').
+            angle_degrees (float): The angle of the letter in degrees.
+            angle_radians (float): The angle of the letter in radians.
+            confidence (float): The confidence of the letter (0 < confidence <= 1).
+
         Raises:
-            ValueError: When the image_id is not a valid UUID
-            ValueError: When the line_id or word_id are not positive integers
-            ValueError: When the id is not a positive integer
-            ValueError: When the text is not a single character
-            ValueError: When the bounding_box is invalid
-            ValueError: When the top_right point is invalid
-            ValueError: When the top_left point is invalid
-            ValueError: When the bottom_right point is invalid
-            ValueError: When the bottom_left point is invalid
-            ValueError: When the angle_degrees is not a float or int
-            ValueError: When the angle_radians is not a float or int
-            ValueError: When the confidence is not a float between 0 and
+            ValueError: If any of the inputs are invalid (e.g., invalid UUID,
+                non-positive IDs, text not exactly one character, invalid bounding box,
+                points, angles, or out-of-range confidence).
         """
         assert_valid_uuid(image_id)
         self.image_id = image_id
+
         if line_id <= 0 or not isinstance(line_id, int):
             raise ValueError("line_id must be a positive integer")
         self.line_id = line_id
+
         if word_id <= 0 or not isinstance(word_id, int):
             raise ValueError("word_id must be a positive integer")
         self.word_id = word_id
+
         if id <= 0 or not isinstance(id, int):
             raise ValueError("id must be a positive integer")
         self.id = id
+
         if text is None or len(text) != 1 or not isinstance(text, str):
             raise ValueError("text must be exactly one character")
         self.text = text
+
         assert_valid_bounding_box(bounding_box)
         self.bounding_box = bounding_box
+
         assert_valid_point(top_right)
         self.top_right = top_right
+
         assert_valid_point(top_left)
         self.top_left = top_left
+
         assert_valid_point(bottom_right)
         self.bottom_right = bottom_right
+
         assert_valid_point(bottom_left)
         self.bottom_left = bottom_left
+
         if not isinstance(angle_degrees, (float, int)):
             raise ValueError(
-                f"angle_degrees must be a float or int got: {angle_degrees}"
+                f"angle_degrees must be a float or int"
             )
         self.angle_degrees = angle_degrees
+
         if not isinstance(angle_radians, (float, int)):
             raise ValueError(
-                "angle_radians must be a float or int got: ", angle_radians
+                f"angle_radians must be a float or int"
             )
         self.angle_radians = angle_radians
+
         if confidence <= 0 or confidence > 1:
             raise ValueError("confidence must be a float between 0 and 1")
         self.confidence = confidence
 
     def key(self) -> dict:
+        """
+        Generates the primary key for this Letter in DynamoDB.
+
+        Returns:
+            dict: A dictionary containing "PK" and "SK" for DynamoDB. The "PK" uses
+            the image_id, and the "SK" encodes the line_id, word_id, and letter id
+            in zero-padded format.
+        """
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {
@@ -118,6 +125,13 @@ class Letter:
         }
 
     def to_item(self) -> dict:
+        """
+        Serializes this Letter into a dictionary compatible with DynamoDB.
+
+        Returns:
+            dict: A dictionary representing the Letter’s data in DynamoDB’s
+            key-value structure, including bounding box, corners, angles, and confidence.
+        """
         return {
             **self.key(),
             "TYPE": {"S": "LETTER"},
@@ -160,10 +174,11 @@ class Letter:
         }
 
     def calculate_centroid(self) -> Tuple[float, float]:
-        """Calculates the centroid of the line
+        """
+        Calculates the centroid (geometric center) of the Letter from its corners.
 
         Returns:
-            Tuple[float, float]: The x and y coordinates of the centroid
+            Tuple[float, float]: The (x, y) coordinates of the Letter’s centroid.
         """
         x = (
             self.top_right["x"]
@@ -178,9 +193,19 @@ class Letter:
             + self.bottom_left["y"]
         ) / 4
         return x, y
-    
+
     def translate(self, x: float, y: float) -> None:
-        """Translates the x, y position"""
+        """
+        Translates the Letter by (x, y).
+
+        Args:
+            x (float): The amount to translate in the x-direction.
+            y (float): The amount to translate in the y-direction.
+
+        Warning:
+            This method updates top_right, top_left, bottom_right, and bottom_left
+            but does **not** update the bounding_box.
+        """
         self.top_right["x"] += x
         self.top_right["y"] += y
         self.top_left["x"] += x
@@ -192,7 +217,13 @@ class Letter:
         Warning("This function does not update the bounding box")
 
     def scale(self, sx: float, sy: float) -> None:
-        """Scales the line by the x and y factors"""
+        """
+        Scales the Letter’s coordinates and bounding box by the specified x and y factors.
+
+        Args:
+            sx (float): Scale factor in the x-direction.
+            sy (float): Scale factor in the y-direction.
+        """
         self.top_right["x"] *= sx
         self.top_right["y"] *= sy
         self.top_left["x"] *= sx
@@ -214,54 +245,46 @@ class Letter:
         use_radians: bool = True,
     ) -> None:
         """
-        Rotates the line by the specified angle around (rotate_origin_x, rotate_origin_y).
-        ONLY rotates if angle is within:
-        - [-90°, 90°], if use_radians=False
-        - [-π/2, π/2], if use_radians=True
+        Rotates the Letter by the specified angle around (rotate_origin_x, rotate_origin_y).
+
+        Only rotates if angle is within:
+            - [-π/2, π/2] when use_radians=True
+            - [-90°, 90°] when use_radians=False
+
         Otherwise, raises ValueError.
 
-        Updates top_right, topLeft, bottomRight, bottomLeft in-place,
-        and also updates angleDegrees/angleRadians.
+        After rotation, the letter's angle_degrees/angle_radians are updated
+        by adding the rotation. The bounding_box is **not** updated.
 
         Args:
-            angle (float): The angle by which to rotate the line.
+            angle (float): The angle by which to rotate. Interpreted as degrees
+                if `use_radians=False`, else radians.
             rotate_origin_x (float): The x-coordinate of the rotation origin.
             rotate_origin_y (float): The y-coordinate of the rotation origin.
-            use_radians (bool): If True, `angle` is in radians. Otherwise, degrees.
-        """
+            use_radians (bool, optional): Indicates if the angle is in radians.
+                Defaults to True.
 
-        # 1) Check allowed range
+        Raises:
+            ValueError: If the angle is outside the allowed range.
+        """
         if use_radians:
-            # Allowed range is [-π/2, π/2]
             if not (-pi / 2 <= angle <= pi / 2):
                 raise ValueError(
                     f"Angle {angle} (radians) is outside the allowed range [-π/2, π/2]."
                 )
             angle_radians = angle
         else:
-            # Allowed range is [-90, 90] degrees
             if not (-90 <= angle <= 90):
                 raise ValueError(
                     f"Angle {angle} (degrees) is outside the allowed range [-90°, 90°]."
                 )
-            # Convert to radians
             angle_radians = radians(angle)
 
-        # 2) Rotate each corner
         def rotate_point(px, py, ox, oy, theta):
-            """
-            Rotates point (px, py) around (ox, oy) by theta radians.
-            Returns the new (x, y) coordinates.
-            """
-            # Translate point so that (ox, oy) becomes the origin
             translated_x = px - ox
             translated_y = py - oy
-
-            # Apply the rotation
             rotated_x = translated_x * cos(theta) - translated_y * sin(theta)
             rotated_y = translated_x * sin(theta) + translated_y * cos(theta)
-
-            # Translate back
             final_x = rotated_x + ox
             final_y = rotated_y + oy
             return final_x, final_y
@@ -278,30 +301,32 @@ class Letter:
             corner["x"] = x_new
             corner["y"] = y_new
 
-        # 3) Update angleDegrees and angleRadians
         if use_radians:
-            # Accumulate the rotation in angleRadians
             self.angle_radians += angle_radians
             self.angle_degrees += angle_radians * 180.0 / pi
         else:
-            # If it was in degrees, accumulate in degrees
             self.angle_degrees += angle
-            # Convert that addition to radians
             self.angle_radians += radians(angle)
 
-        # 4) Warn that the bounding box is not updated
         Warning("This function does not update the bounding box")
 
     def __repr__(self):
-        """Returns a string representation of the Letter object
+        """
+        Returns a string representation of the Letter object.
 
         Returns:
-            str: The string representation of the Letter object
+            str: The string representation of the Letter object.
         """
         return f"Letter(id={self.id}, text='{self.text}')"
 
     def __iter__(self) -> Generator[Tuple[str, dict], None, None]:
-        """Yields the Letter object as a series of key-value pairs"""
+        """
+        Yields the Letter object’s attributes as a series of (key, value) pairs.
+
+        Yields:
+            Generator[Tuple[str, dict], None, None]: Each yield is a tuple
+            of (attribute_name, attribute_value).
+        """
         yield "image_id", self.image_id
         yield "word_id", self.word_id
         yield "line_id", self.line_id
@@ -317,13 +342,15 @@ class Letter:
         yield "confidence", self.confidence
 
     def __eq__(self, other: object) -> bool:
-        """Compares two Letter objects for equality
+        """
+        Compares two Letter objects for equality based on their attributes.
 
         Args:
-            other (object): The object to compare
+            other (object): The object to compare to this Letter.
 
         Returns:
-            bool: True if the objects are equal, False otherwise"""
+            bool: True if the objects have the same attributes, False otherwise.
+        """
         if not isinstance(other, Letter):
             return False
         return (
@@ -344,6 +371,27 @@ class Letter:
 
 
 def itemToLetter(item: dict) -> Letter:
+    """
+    Converts a DynamoDB item dictionary into a Letter object.
+
+    This function expects a dictionary that contains:
+    - PK: {"S": "IMAGE#<uuid>"}
+    - SK: {"S": "LINE#<line_id>#WORD#<word_id>#LETTER#<letter_id>"}
+    - text: {"S": <single_character_string>}
+    - bounding_box, top_right, top_left, bottom_right, bottom_left:
+      nested dicts with numeric values
+    - angle_degrees, angle_radians, confidence: numeric values
+
+    Args:
+        item (dict): A dictionary in the DynamoDB format containing all required keys.
+
+    Returns:
+        Letter: An instance of the Letter class populated from the given item.
+
+    Raises:
+        ValueError: If the item is missing required keys or fails the conversion
+            (e.g., numeric parsing issues).
+    """
     required_keys = {
         "PK",
         "SK",
@@ -360,15 +408,17 @@ def itemToLetter(item: dict) -> Letter:
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - set(item.keys())
         raise ValueError("Item is missing required keys", missing_keys)
+
     try:
         return Letter(
-            image_id=item["PK"]["S"][6:],
+            image_id=item["PK"]["S"][6:],  # strip off "IMAGE#"
             id=int(item["SK"]["S"].split("#")[5]),
             line_id=int(item["SK"]["S"].split("#")[1]),
             word_id=int(item["SK"]["S"].split("#")[3]),
             text=item["text"]["S"],
             bounding_box={
-                key: float(value["N"]) for key, value in item["bounding_box"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["bounding_box"]["M"].items()
             },
             top_right={
                 key: float(value["N"]) for key, value in item["top_right"]["M"].items()
@@ -377,10 +427,12 @@ def itemToLetter(item: dict) -> Letter:
                 key: float(value["N"]) for key, value in item["top_left"]["M"].items()
             },
             bottom_right={
-                key: float(value["N"]) for key, value in item["bottom_right"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["bottom_right"]["M"].items()
             },
             bottom_left={
-                key: float(value["N"]) for key, value in item["bottom_left"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["bottom_left"]["M"].items()
             },
             angle_degrees=float(item["angle_degrees"]["N"]),
             angle_radians=float(item["angle_radians"]["N"]),
