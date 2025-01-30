@@ -67,32 +67,40 @@ class Line:
         """
         assert_valid_uuid(image_id)
         self.image_id = image_id
-        # Ensure the ID is a positive integer
+
         if not isinstance(id, int):
             raise ValueError("id must be an integer")
         if id <= 0:
             raise ValueError("id must be positive")
         self.id = id
+
         if not isinstance(text, str):
             raise ValueError("text must be a string")
         self.text = text
+
         assert_valid_bounding_box(bounding_box)
         self.bounding_box = bounding_box
+
         assert_valid_point(top_right)
         self.top_right = top_right
+
         assert_valid_point(top_left)
         self.top_left = top_left
+
         assert_valid_point(bottom_right)
         self.bottom_right = bottom_right
+
         assert_valid_point(bottom_left)
         self.bottom_left = bottom_left
+
         if not isinstance(angle_degrees, (float, int)):
             raise ValueError(f"angle_degrees must be a float or int")
         self.angle_degrees = angle_degrees
+
         if not isinstance(angle_radians, (float, int)):
             raise ValueError("angle_radians must be a float or int")
         self.angle_radians = angle_radians
-        # Ensure the confidence is a float between 0 and 1
+
         if isinstance(confidence, int):
             confidence = float(confidence)
         if not isinstance(confidence, float):
@@ -100,6 +108,7 @@ class Line:
         if confidence <= 0.0 or confidence > 1.0:
             raise ValueError("confidence must be between 0 and 1")
         self.confidence = confidence
+        
         self.histogram = histogram(text)
         self.num_chars = len(text)
 
