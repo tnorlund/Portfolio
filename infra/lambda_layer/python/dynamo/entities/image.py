@@ -215,4 +215,4 @@ def itemToImage(item: dict) -> Image:
             cdn_s3_key=cdn_s3_key if cdn_s3_key else None,
         )
     except KeyError as e:
-        raise ValueError(f"Invalid item format: {e}")
+        raise ValueError(f"Error converting item to Image: {e}")
