@@ -106,9 +106,11 @@ class Word:
         if not isinstance(angle_radians, (float, int)):
             raise ValueError("angle_radians must be a float or int")
         self.angle_radians = angle_radians
+        if isinstance(confidence, int):
+            confidence = float(confidence)
         if not isinstance(confidence, float):
             raise ValueError("confidence must be a float")
-        if confidence <= 0 or confidence > 1:
+        if confidence <= 0.0 or confidence > 1.0:
             raise ValueError("confidence must be between 0 and 1")
         self.confidence = confidence
         if tags is not None and not isinstance(tags, list):
