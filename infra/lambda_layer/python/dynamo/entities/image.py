@@ -48,7 +48,7 @@ class Image:
         """
         assert_valid_uuid(id)
         self.id = id
-        # Ensure the width and height are positive integers
+        
         if (
             width <= 0
             or height <= 0
@@ -58,20 +58,29 @@ class Image:
             raise ValueError("width and height must be positive integers")
         self.width = width
         self.height = height
+
         if isinstance(timestamp_added, datetime):
             self.timestamp_added = timestamp_added.isoformat()
         elif isinstance(timestamp_added, str):
             self.timestamp_added = timestamp_added
         else:
             raise ValueError("timestamp_added must be a string or datetime")
+        
+        if raw_s3_bucket and not isinstance(raw_s3_bucket, str):
+            raise ValueError("raw_s3_bucket must be a string")
         self.raw_s3_bucket = raw_s3_bucket
+        if raw_s3_key and not isinstance(raw_s3_key, str):
+            raise ValueError("raw_s3_key must be a string")
         self.raw_s3_key = raw_s3_key
+
         if sha256 and not isinstance(sha256, str):
             raise ValueError("sha256 must be a string")
         self.sha256 = sha256
+
         if cdn_s3_bucket and not isinstance(cdn_s3_bucket, str):
             raise ValueError("cdn_s3_bucket must be a string")
         self.cdn_s3_bucket = cdn_s3_bucket
+
         if cdn_s3_key and not isinstance(cdn_s3_key, str):
             raise ValueError("cdn_s3_key must be a string")
         self.cdn_s3_key = cdn_s3_key
