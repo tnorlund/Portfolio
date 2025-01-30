@@ -4,7 +4,6 @@ from dynamo.entities.util import (
     assert_valid_bounding_box,
     assert_valid_point,
     _format_float,
-    map_to_dict
 )
 
 
@@ -28,26 +27,37 @@ class ReceiptLetter:
     ):
         if not isinstance(receipt_id, int):
             raise ValueError("receipt_id must be an integer")
-        # Ensure the Receipt ID is a positive integer
         if receipt_id <= 0:
             raise ValueError("receipt_id must be positive")
         self.receipt_id = receipt_id
-        # Ensure the Image ID is a positive integer
+
         assert_valid_uuid(image_id)
         self.image_id = image_id
-        if line_id <= 0 or not isinstance(line_id, int):
-            raise ValueError("line_id must be a positive integer")
+
+        if not isinstance(line_id, int):
+            raise ValueError("line_id must be an integer")
+        if line_id < 0:
+            raise ValueError("line_id must be positive")
         self.line_id = line_id
-        if word_id <= 0 or not isinstance(word_id, int):
-            raise ValueError("line_id must be a positive integer")
+
+        if not isinstance(word_id, int):
+            raise ValueError("word_id must be an integer")
+        if word_id < 0:
+            raise ValueError("word_id must be positive")
         self.word_id = word_id
-        # Ensure the ID is a positive integer
-        if id <= 0 or not isinstance(id, int):
-            raise ValueError("id must be a positive integer")
+
+        if not isinstance(id, int):
+            raise ValueError("id must be an integer")
+        if id < 0:
+            raise ValueError("id must be positive")
         self.id = id
+
         if not isinstance(text, str):
             raise ValueError("text must be a string")
+        if len(text) != 1:
+            raise ValueError("text must be exactly one character")
         self.text = text
+
         assert_valid_bounding_box(bounding_box)
         self.bounding_box = bounding_box
         assert_valid_point(top_right)
@@ -58,17 +68,25 @@ class ReceiptLetter:
         self.bottom_right = bottom_right
         assert_valid_point(bottom_left)
         self.bottom_left = bottom_left
+
         if not isinstance(angle_degrees, (float, int)):
             raise ValueError(
-                f"angle_degrees must be a float or int got: {angle_degrees}"
+                f"angle_degrees must be a float or int"
             )
         self.angle_degrees = angle_degrees
+
         if not isinstance(angle_radians, (float, int)):
-            raise ValueError("angleRadians must be a float or int got: ", angle_radians)
+            raise ValueError(
+                f"angle_radians must be a float or int"
+            )
         self.angle_radians = angle_radians
-        # Ensure the confidence is a float between 0 and 1
-        if confidence <= 0 or confidence > 1:
-            raise ValueError("confidence must be a float between 0 and 1")
+
+        if isinstance(confidence, int):
+            confidence = float(confidence)
+        if not isinstance(confidence, float):
+            raise ValueError("confidence must be a float")
+        if confidence <= 0.0 or confidence > 1.0:
+            raise ValueError("confidence must be between 0 and 1")
         self.confidence = confidence
 
     def key(self) -> dict:
@@ -138,6 +156,7 @@ class ReceiptLetter:
             and self.bottom_left == other.bottom_left
             and self.angle_degrees == other.angle_degrees
             and self.angle_radians == other.angle_radians
+            and self.confidence == other.confidence
         )
 
     def __iter__(self) -> Generator[Tuple[str, str], None, None]:
@@ -155,6 +174,9 @@ class ReceiptLetter:
         yield "angle_degrees", self.angle_degrees
         yield "angle_radians", self.angle_radians
         yield "confidence", self.confidence
+
+    def __repr__(self):
+        return f"ReceiptLetter(id={self.id}, text='{self.text}')"
 
 
 def itemToReceiptLetter(item: dict) -> ReceiptLetter:
@@ -182,14 +204,27 @@ def itemToReceiptLetter(item: dict) -> ReceiptLetter:
             word_id=int(item["SK"]["S"].split("#")[5]),
             id=int(item["SK"]["S"].split("#")[7]),
             text=item["text"]["S"],
-            bounding_box=map_to_dict(item["bounding_box"]["M"]),
-            top_right=map_to_dict(item["top_right"]["M"]),
-            top_left=map_to_dict(item["top_left"]["M"]),
-            bottom_right=map_to_dict(item["bottom_right"]["M"]),
-            bottom_left=map_to_dict(item["bottom_left"]["M"]),
+            bounding_box={
+                key: float(value["N"])
+                for key, value in item["bounding_box"]["M"].items()
+            },
+            top_right={
+                key: float(value["N"]) for key, value in item["top_right"]["M"].items()
+            },
+            top_left={
+                key: float(value["N"]) for key, value in item["top_left"]["M"].items()
+            },
+            bottom_right={
+                key: float(value["N"])
+                for key, value in item["bottom_right"]["M"].items()
+            },
+            bottom_left={
+                key: float(value["N"])
+                for key, value in item["bottom_left"]["M"].items()
+            },
             angle_degrees=float(item["angle_degrees"]["N"]),
             angle_radians=float(item["angle_radians"]["N"]),
             confidence=float(item["confidence"]["N"]),
         )
     except (KeyError, ValueError) as e:
-        raise ValueError(f"Error converting item to ReceiptLetter") from e
+        raise ValueError(f"Error converting item to ReceiptLetter: {e}")
