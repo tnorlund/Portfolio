@@ -42,7 +42,7 @@ class Word:
             angle_radians (float): The angle of the word in radians
             confidence (float): The confidence of the word
             tags (list[str]): The tags of the word
-        
+
         Attributes:
             image_id (str): UUID identifying the image
             line_id (int): The ID of the line the word is in
@@ -59,7 +59,7 @@ class Word:
             tags (list[str]): The tags of the word
             histogram (dict): The histogram of the word
             num_chars (int): The number of characters in the word
-        
+
         Raises:
             ValueError: When the image_id is not a valid UUID
             ValueError: When the line_id is not a positive integer
@@ -77,11 +77,15 @@ class Word:
         """
         assert_valid_uuid(image_id)
         self.image_id = image_id
-        if line_id <= 0 or not isinstance(line_id, int):
-            raise ValueError("line_id must be a positive integer")
+        if not isinstance(line_id, int):
+            raise ValueError("line_id must be an integer")
+        if line_id < 0:
+            raise ValueError("line_id must be positive")
         self.line_id = line_id
-        if id <= 0 or not isinstance(id, int):
-            raise ValueError("id must be a positive integer")
+        if not isinstance(id, int):
+            raise ValueError("id must be an integer")
+        if id < 0:
+            raise ValueError("id must be positive")
         self.id = id
         if not isinstance(text, str):
             raise ValueError("text must be a string")
@@ -97,17 +101,15 @@ class Word:
         assert_valid_point(bottom_left)
         self.bottom_left = bottom_left
         if not isinstance(angle_degrees, (float, int)):
-            raise ValueError(
-                f"angle_degrees must be a float or int got: {angle_degrees}"
-            )
+            raise ValueError(f"angle_degrees must be a float or int")
         self.angle_degrees = angle_degrees
         if not isinstance(angle_radians, (float, int)):
-            raise ValueError(
-                "angle_radians must be a float or int got: ", angle_radians
-            )
+            raise ValueError("angle_radians must be a float or int")
         self.angle_radians = angle_radians
+        if not isinstance(confidence, float):
+            raise ValueError("confidence must be a float")
         if confidence <= 0 or confidence > 1:
-            raise ValueError("confidence must be a float between 0 and 1")
+            raise ValueError("confidence must be between 0 and 1")
         self.confidence = confidence
         if tags is not None and not isinstance(tags, list):
             raise ValueError("tags must be a list")
@@ -161,7 +163,12 @@ class Word:
             "angle_degrees": {"N": _format_float(self.angle_degrees, 10, 12)},
             "angle_radians": {"N": _format_float(self.angle_radians, 10, 12)},
             "confidence": {"N": _format_float(self.confidence, 2, 2)},
-            "histogram": {"M": {k: {"N": _format_float(v, 10, 12)} for k, v in self.histogram.items()}},
+            "histogram": {
+                "M": {
+                    k: {"N": _format_float(v, 10, 12)}
+                    for k, v in self.histogram.items()
+                }
+            },
             "num_chars": {"N": str(self.num_chars)},
         }
         if self.tags:
@@ -363,28 +370,47 @@ def itemToWord(item: dict) -> Word:
     Returns:
         Word: The Word object created from the item
     """
-    return Word(
-        image_id=item["PK"]["S"][6:],
-        line_id=int(item["SK"]["S"].split("#")[1]),
-        id=int(item["SK"]["S"].split("#")[3]),
-        text=item["text"]["S"],
-        bounding_box={
-            key: float(value["N"]) for key, value in item["bounding_box"]["M"].items()
-        },
-        top_right={
-            key: float(value["N"]) for key, value in item["top_right"]["M"].items()
-        },
-        top_left={
-            key: float(value["N"]) for key, value in item["top_left"]["M"].items()
-        },
-        bottom_right={
-            key: float(value["N"]) for key, value in item["bottom_right"]["M"].items()
-        },
-        bottom_left={
-            key: float(value["N"]) for key, value in item["bottom_left"]["M"].items()
-        },
-        angle_degrees=float(item["angle_degrees"]["N"]),
-        angle_radians=float(item["angle_radians"]["N"]),
-        confidence=float(item["confidence"]["N"]),
-        tags=item.get("tags", {}).get("SS", []),
-    )
+    required_keys = {
+        "PK",
+        "SK",
+        "text",
+        "bounding_box",
+        "top_right",
+        "top_left",
+        "bottom_right",
+        "bottom_left",
+        "angle_degrees",
+        "angle_radians",
+        "confidence",
+    }
+    if not required_keys.issubset(item.keys()):
+        missing_keys = required_keys - set(item.keys())
+        raise ValueError(f"Item is missing required keys: {missing_keys}")
+    try:
+        return Word(
+            image_id=item["PK"]["S"][6:],
+            line_id=int(item["SK"]["S"].split("#")[1]),
+            id=int(item["SK"]["S"].split("#")[3]),
+            text=item["text"]["S"],
+            bounding_box={
+                key: float(value["N"]) for key, value in item["bounding_box"]["M"].items()
+            },
+            top_right={
+                key: float(value["N"]) for key, value in item["top_right"]["M"].items()
+            },
+            top_left={
+                key: float(value["N"]) for key, value in item["top_left"]["M"].items()
+            },
+            bottom_right={
+                key: float(value["N"]) for key, value in item["bottom_right"]["M"].items()
+            },
+            bottom_left={
+                key: float(value["N"]) for key, value in item["bottom_left"]["M"].items()
+            },
+            angle_degrees=float(item["angle_degrees"]["N"]),
+            angle_radians=float(item["angle_radians"]["N"]),
+            confidence=float(item["confidence"]["N"]),
+            tags=item.get("tags", {}).get("SS", []),
+        )
+    except KeyError as e:
+        raise ValueError(f"Error converting item to Line: {e}")

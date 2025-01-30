@@ -96,7 +96,7 @@ class Line:
         if not isinstance(confidence, float):
             raise ValueError("confidence must be a float")
         if confidence <= 0 or confidence > 1:
-            raise ValueError("confidence must be a float between 0 and 1")
+            raise ValueError("confidence must be between 0 and 1")
         self.confidence = confidence
         self.histogram = histogram(text)
         self.num_chars = len(text)
