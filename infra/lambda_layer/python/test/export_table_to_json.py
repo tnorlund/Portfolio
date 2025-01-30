@@ -1,10 +1,11 @@
 import os
 import json
 from dynamo import DynamoClient
+import boto3
 
 CURRENT_DIR = os.path.dirname(__file__)
 
-IMAGE_ID = "5119873a-5401-4dd1-9669-878dff8b5bd5"
+IMAGE_ID = "5a63a88a-3579-408a-9cbd-031ceb86ffc7"
 
 if __name__ == "__main__":
     # 1) Grab data from Dynamo or wherever
@@ -14,6 +15,29 @@ if __name__ == "__main__":
     image, lines, words, word_tags, letters, receipt_details = (
         dynamo_client.getImageDetails(IMAGE_ID)
     )
+
+    # Get the GPT response from S3
+    s3 = boto3.client("s3")
+    # List all objects in the /raw directory in the image's raw bucket
+    response = s3.list_objects_v2(
+        Bucket=image.raw_s3_bucket,
+        Prefix=f"raw/{image.id}",
+    )
+    # Get all the objects with GPT in the name
+    gpt_objects = [
+        obj
+        for obj in response.get("Contents", [])
+        if "GPT" in obj["Key"]
+    ]
+    # Print the GPT response
+    for obj in gpt_objects:
+        response = s3.get_object(
+            Bucket=image.raw_s3_bucket,
+            Key=obj["Key"],
+        )
+        print(f"{obj['Key']}")
+        print(response["Body"].read().decode("utf-8"))
+        print()
 
     receipts = []
     receipt_lines = []
