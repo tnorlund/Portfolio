@@ -18,6 +18,7 @@ class _ReceiptWordTag:
       GSI1PK = "TAG#<tag_upper_padded>"
       GSI1SK = "IMAGE#<image_id>#RECEIPT#<receipt_id>#LINE#<line_id>#WORD#<word_id>"
     """
+
     def addReceiptWordTag(self, receipt_word_tag: ReceiptWordTag):
         """
         Adds a ReceiptWordTag to the database with a conditional check
@@ -71,14 +72,10 @@ class _ReceiptWordTag:
                 # Handle unprocessed items if they exist
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
-            raise ValueError(
-                "Could not add ReceiptWordTags to the database"
-            ) from e
+            raise ValueError("Could not add ReceiptWordTags to the database") from e
 
     def updateReceiptWordTag(self, receipt_word_tag: ReceiptWordTag):
         """
@@ -97,12 +94,7 @@ class _ReceiptWordTag:
             raise Exception(f"Error updating ReceiptWordTag: {e}")
 
     def deleteReceiptWordTag(
-        self,
-        image_id: int,
-        receipt_id: int,
-        line_id: int,
-        word_id: int,
-        tag: str
+        self, image_id: int, receipt_id: int, line_id: int, word_id: int, tag: str
     ):
         """
         Deletes a single ReceiptWordTag from DynamoDB with a conditional check
@@ -124,7 +116,7 @@ class _ReceiptWordTag:
             line_id=line_id,
             word_id=word_id,
             tag=tag,
-            timestamp_added="2000-01-01T00:00:00" # placeholder
+            timestamp_added="2000-01-01T00:00:00",  # placeholder
         )
         try:
             self._client.delete_item(
@@ -152,17 +144,13 @@ class _ReceiptWordTag:
         try:
             for i in range(0, len(receipt_word_tags), CHUNK_SIZE):
                 chunk = receipt_word_tags[i : i + CHUNK_SIZE]
-                request_items = [
-                    {"DeleteRequest": {"Key": rwt.key()}} for rwt in chunk
-                ]
+                request_items = [{"DeleteRequest": {"Key": rwt.key()}} for rwt in chunk]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             raise ValueError(
@@ -181,12 +169,7 @@ class _ReceiptWordTag:
         self.deleteReceiptWordTags(tags)
 
     def getReceiptWordTag(
-        self,
-        image_id: int,
-        receipt_id: int,
-        line_id: int,
-        word_id: int,
-        tag: str
+        self, image_id: int, receipt_id: int, line_id: int, word_id: int, tag: str
     ) -> ReceiptWordTag:
         """
         Retrieves a single ReceiptWordTag from DynamoDB by its key.
@@ -210,7 +193,7 @@ class _ReceiptWordTag:
             line_id=line_id,
             word_id=word_id,
             tag=tag,
-            timestamp_added="2000-01-01T00:00:00" # placeholder
+            timestamp_added="2000-01-01T00:00:00",  # placeholder
         )
         try:
             response = self._client.get_item(
@@ -227,7 +210,7 @@ class _ReceiptWordTag:
             )
         except ClientError as e:
             raise Exception(f"Error getting ReceiptWordTag: {e}")
-        
+
     def getReceiptWordTags(self, tag: str) -> list[ReceiptWordTag]:
         """
         Retrieves all ReceiptWordTag items with a given tag from the database,
@@ -238,27 +221,38 @@ class _ReceiptWordTag:
             # 1) Query the GSI
             response = self._client.query(
                 TableName=self.table_name,
-                IndexName="GSI1",  # Ensure this matches your actual GSI name
+                IndexName="GSI1",  # Make sure this is your actual GSI name
                 KeyConditionExpression="GSI1PK = :gsi1pk",
+                FilterExpression="#t = :typeVal",
+                ExpressionAttributeNames={"#t": "TYPE"},
                 ExpressionAttributeValues={
-                    ":gsi1pk": {"S": f"TAG#{tag:_>40}"}
+                    ":gsi1pk": {"S": f"TAG#{tag:_>40}"},
+                    ":typeVal": {"S": "RECEIPT_WORD_TAG"},
                 },
             )
+
             # 2) Convert each DynamoDB item to a ReceiptWordTag
-            receipt_tags.extend([itemToReceiptWordTag(item) for item in response["Items"]])
+            receipt_tags.extend(
+                [itemToReceiptWordTag(item) for item in response["Items"]]
+            )
 
             # 3) Handle pagination
             while "LastEvaluatedKey" in response:
                 response = self._client.query(
                     TableName=self.table_name,
-                    IndexName="GSI1",
+                    IndexName="GSI1",  # Make sure this is your actual GSI name
                     KeyConditionExpression="GSI1PK = :gsi1pk",
+                    FilterExpression="#t = :typeVal",
+                    ExpressionAttributeNames={"#t": "TYPE"},
                     ExpressionAttributeValues={
-                        ":gsi1pk": {"S": f"TAG#{tag:_>40}"}
+                        ":gsi1pk": {"S": f"TAG#{tag:_>40}"},
+                        ":typeVal": {"S": "RECEIPT_WORD_TAG"},
                     },
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                 )
-                receipt_tags.extend([itemToReceiptWordTag(item) for item in response["Items"]])
+                receipt_tags.extend(
+                    [itemToReceiptWordTag(item) for item in response["Items"]]
+                )
 
             return receipt_tags
 
@@ -300,9 +294,7 @@ class _ReceiptWordTag:
             return receipt_word_tags
 
         except ClientError as e:
-            raise ValueError(
-                "Could not list ReceiptWordTags from the database"
-            ) from e
+            raise ValueError("Could not list ReceiptWordTags from the database") from e
 
     def listReceiptWordTagsFromImage(self, image_id: int) -> list[ReceiptWordTag]:
         """
@@ -321,7 +313,7 @@ class _ReceiptWordTag:
                 ExpressionAttributeValues={
                     ":pk_val": {"S": f"IMAGE#{image_id}"},
                     ":sk_val": {"S": "RECEIPT#"},
-                    ":tag_val": {"S": "#TAG#"},   # Only SKs that include '#TAG#'
+                    ":tag_val": {"S": "#TAG#"},  # Only SKs that include '#TAG#'
                 },
             )
             for item in response.get("Items", []):
