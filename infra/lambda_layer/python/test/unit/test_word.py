@@ -295,7 +295,7 @@ def test_itemToWord(example_word, example_word_with_tags):
     with pytest.raises(ValueError, match="^Item is missing required keys: "):
         itemToWord({})
     # Invalid type
-    with pytest.raises(ValueError, match="^Error converting item to Line: "):
+    with pytest.raises(ValueError, match="^Error converting item to Word: "):
         itemToWord(
             {
                 "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
