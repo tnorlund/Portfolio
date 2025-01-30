@@ -143,13 +143,6 @@ def assert_valid_point(point):
     return point
 
 
-def map_to_dict(map):
-    """
-    Convert a DynamoDB map to a dictionary.
-    """
-    return {key: float(value["N"]) for key, value in map.items()}
-
-
 def _format_float(
     value: float, decimal_places: int = 10, total_length: int = 20
 ) -> str:
@@ -165,11 +158,6 @@ def _format_float(
 
     # Format as a string with exactly `decimal_places` decimals
     formatted = f"{d_rounded:.{decimal_places}f}"
-
-    # Optional: Pad to `total_length` characters
-    # If you want leading zeros:
-    if len(formatted) < total_length:
-        formatted = formatted.zfill(total_length)
 
     # If instead you wanted trailing zeros, you could do:
     # formatted = formatted.ljust(total_length, '0')
