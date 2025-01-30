@@ -1,8 +1,14 @@
 [run]
+# Limit coverage collection to one or more paths.
+# This is usually easiest if you just want coverage on `app/` or `infra/lambda_layer/python/`.
+source =
+    infra/lambda_layer/python/dynamo
 omit =
     */__init__.py
     */tests/*
 
 [report]
+show_missing = True
+
 exclude_lines =
     if __name__ == .__main__.:
