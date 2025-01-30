@@ -5,49 +5,17 @@ import math
 
 @pytest.fixture
 def example_word():
-    return Word(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        2,
-        3,
-        "test_string",
-        {
-            "x": 10.0,
-            "y": 20.0,
-            "width": 5.0,
-            "height": 2.0,
-        },
-        {"x": 15.0, "y": 20.0},
-        {"x": 10.0, "y": 20.0},
-        {"x": 15.0, "y": 22.0},
-        {"x": 10.0, "y": 22.0},
-        1.0,
-        5.0,
-        0.90,
-    )
+    # fmt: off
+    return Word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "test_string", { "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)
+    # fmt: on
 
 
 @pytest.fixture
 def example_word_with_tags():
-    return Word(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        2,
-        3,
-        "test_string",
-        {
-            "x": 10.0,
-            "y": 20.0,
-            "width": 5.0,
-            "height": 2.0,
-        },
-        {"x": 15.0, "y": 20.0},
-        {"x": 10.0, "y": 20.0},
-        {"x": 15.0, "y": 22.0},
-        {"x": 10.0, "y": 22.0},
-        1.0,
-        5.0,
-        0.90,
-        ["tag1", "tag2"],
-    )
+    # fmt: off
+    return Word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "test_string", { "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90, ["tag1", "tag2"])
+    # fmt: on
+
 
 @pytest.mark.unit
 def test_init(example_word, example_word_with_tags):
@@ -71,6 +39,102 @@ def test_init(example_word, example_word_with_tags):
     assert example_word.tags == []
     assert example_word_with_tags.tags == ["tag1", "tag2"]
 
+
+@pytest.mark.unit
+def test_init_bad_uuid():
+    """Test that Word raises a ValueError if the image_id is not a string"""
+    # fmt: off
+    with pytest.raises(ValueError, match="uuid must be a string"):
+        Word(1, 2, 3, "test_string", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)
+    with pytest.raises(ValueError, match="uuid must be a valid UUID"):
+        Word("bad-uuid", 2, 3, "test_string", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)
+    # fmt: on
+
+
+@pytest.mark.unit
+def test_init_bad_line_id():
+    """Test that Word raises a ValueError if the line_id is not an integer"""
+    # fmt: off
+    with pytest.raises(ValueError, match="line_id must be an integer"):
+        Word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "bad-line-id", 3, "test_string", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)
+    with pytest.raises(ValueError, match="line_id must be positive"):
+        Word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", -1, 3, "test_string", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)
+    # fmt: on
+
+
+@pytest.mark.unit
+def test_init_bad_id():
+    """Test that Word raises a ValueError if the id is not an integer"""
+    # fmt: off
+    with pytest.raises(ValueError, match="id must be an integer"):
+        Word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, "bad-id", "test_string", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)
+    with pytest.raises(ValueError, match="id must be positive"):
+        Word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, -1, "test_string", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)
+    # fmt: on
+
+
+@pytest.mark.unit
+def test_init_bad_text():
+    """Test that Word raises a ValueError if the text is not a string"""
+    # fmt: off
+    with pytest.raises(ValueError, match="text must be a string"):
+        Word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, 1, {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)
+    # fmt: on
+
+
+@pytest.mark.unit
+def test_init_bad_bounding_box():
+    """Test that Word raises a ValueError if the bounding_box is not a dict"""
+    # fmt: off
+    with pytest.raises(ValueError, match="bounding_box must be a dict"):
+        Word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "test_string", 1, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)
+    with pytest.raises(ValueError, match="bounding_box must contain the key 'x'"):
+        Word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "test_string", {"bad": 1}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)
+    # fmt: on
+
+
+@pytest.mark.unit
+def test_init_bad_corners():
+    """Test that Word raises a ValueError if the corners are not dicts"""
+    # fmt: off
+    with pytest.raises(ValueError, match="point must be a dictionary"):
+        Word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "test_string", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, 1, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)
+    with pytest.raises(ValueError, match="point must contain the key 'x'"):
+        Word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "test_string", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"bad": 1}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)
+    # fmt: on
+
+
+@pytest.mark.unit
+def test_init_bad_angle():
+    """Test that Word raises a ValueError if the angle is not a float"""
+    # fmt: off
+    with pytest.raises(ValueError, match="angle_degrees must be a float or int"):
+        Word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "test_string", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, "bad", 5.0, 0.90)
+    with pytest.raises(ValueError, match="angle_radians must be a float or int"):
+        Word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "test_string", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, "bad", 0.90)
+    # fmt: on
+
+
+@pytest.mark.unit
+def test_init_bad_confidence():
+    """Test that Word raises a ValueError if the confidence is not a float"""
+    # fmt: off
+    with pytest.raises(ValueError, match="confidence must be a float"):
+        Word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "test_string", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, "bad")
+    with pytest.raises(ValueError, match="confidence must be between 0 and 1"):
+        Word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "test_string", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 1.1)
+    # fmt: on
+
+
+@pytest.mark.unit
+def test_init_bad_tags():
+    """Test that Word raises a ValueError if the tags is not a list"""
+    # fmt: off
+    with pytest.raises(ValueError, match="tags must be a list"):
+        Word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "test_string", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90, "bad")
+    # fmt: on
+
+
 @pytest.mark.unit
 def test_key(example_word):
     """Test the Word key method"""
@@ -78,6 +142,7 @@ def test_key(example_word):
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {"S": "LINE#00002#WORD#00003"},
     }
+
 
 @pytest.mark.unit
 def test_to_item(example_word, example_word_with_tags):
@@ -128,10 +193,18 @@ def test_to_item(example_word, example_word_with_tags):
     # Test with tags
     assert example_word_with_tags.to_item()["tags"] == {"SS": ["tag1", "tag2"]}
 
+
+@pytest.mark.unit
+def test_calculate_centroid(example_word):
+    """Test the Word calculate_centroid method"""
+    assert example_word.calculate_centroid() == (12.5, 21.0)
+
+
 @pytest.mark.unit
 def test_repr(example_word):
     """Test the Word __repr__ method"""
     assert repr(example_word) == "Word(id=3, text='test_string')"
+
 
 @pytest.mark.unit
 def test_iter(example_word, example_word_with_tags):
@@ -174,6 +247,7 @@ def test_iter(example_word, example_word_with_tags):
     assert word_dict["confidence"] == 0.90
     assert dict(example_word_with_tags)["tags"] == ["tag1", "tag2"]
 
+
 @pytest.mark.unit
 def test_eq():
     """Test the Word __eq__ method"""
@@ -209,12 +283,63 @@ def test_eq():
     assert w1 != w13
     assert w1 != w14
     assert w1 != w15
+    assert w1 != "test_string"
+
 
 @pytest.mark.unit
 def test_itemToWord(example_word, example_word_with_tags):
     """Test the itemToWord function"""
     itemToWord(example_word.to_item()) == example_word
     itemToWord(example_word_with_tags.to_item()) == example_word_with_tags
+    # Missing keys
+    with pytest.raises(ValueError, match="^Item is missing required keys: "):
+        itemToWord({})
+    # Invalid type
+    with pytest.raises(ValueError, match="^Error converting item to Line: "):
+        itemToWord(
+            {
+                "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+                "SK": {"S": "LINE#00002#WORD#00003"},
+                "TYPE": {"S": "LINE"},
+                "text": {"N": "100"}, # Must be string
+                "bounding_box": {
+                    "M": {
+                        "height": {"N": "2.000000000000000000"},
+                        "width": {"N": "5.000000000000000000"},
+                        "x": {"N": "10.000000000000000000"},
+                        "y": {"N": "20.000000000000000000"},
+                    }
+                },
+                "top_right": {
+                    "M": {
+                        "x": {"N": "15.000000000000000000"},
+                        "y": {"N": "20.000000000000000000"},
+                    }
+                },
+                "top_left": {
+                    "M": {
+                        "x": {"N": "10.000000000000000000"},
+                        "y": {"N": "20.000000000000000000"},
+                    }
+                },
+                "bottom_right": {
+                    "M": {
+                        "x": {"N": "15.000000000000000000"},
+                        "y": {"N": "22.000000000000000000"},
+                    }
+                },
+                "bottom_left": {
+                    "M": {
+                        "x": {"N": "10.000000000000000000"},
+                        "y": {"N": "22.000000000000000000"},
+                    }
+                },
+                "angle_degrees": {"N": "1.0000000000"},
+                "angle_radians": {"N": "5.0000000000"},
+                "confidence": {"N": "0.90"},
+            }
+        )
+
 
 def create_test_word():
     """
@@ -239,6 +364,7 @@ def create_test_word():
         angle_radians=0.0,
         confidence=1.0,
     )
+
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
@@ -279,6 +405,7 @@ def test_word_translate(dx, dy):
     # Angles should not change
     assert word.angle_degrees == 0.0
     assert word.angle_radians == 0.0
+
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
@@ -322,6 +449,7 @@ def test_word_scale(sx, sy):
 
     assert word.angle_degrees == 0.0
     assert word.angle_radians == 0.0
+
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
