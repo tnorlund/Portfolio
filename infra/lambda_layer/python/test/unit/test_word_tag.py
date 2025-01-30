@@ -14,6 +14,7 @@ def sample_word_tag():
     )
 
 
+@pytest.mark.unit
 def test_word_tag_init(sample_word_tag):
     """Test that WordTag initializes correct attributes."""
     assert sample_word_tag.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
@@ -22,6 +23,7 @@ def test_word_tag_init(sample_word_tag):
     assert sample_word_tag.tag == "example"
 
 
+@pytest.mark.unit
 def test_word_tag_eq(sample_word_tag):
     """Test __eq__ method—only comparing tag & word_id."""
     wt1 = sample_word_tag
@@ -38,6 +40,7 @@ def test_word_tag_eq(sample_word_tag):
     assert wt1 != wt2
 
 
+@pytest.mark.unit
 def test_word_tag_iter(sample_word_tag):
     """Test __iter__ method yields correct name/value pairs."""
     as_dict = dict(sample_word_tag)
@@ -47,6 +50,7 @@ def test_word_tag_iter(sample_word_tag):
     assert as_dict["tag"] == "example"
 
 
+@pytest.mark.unit
 def test_word_tag_repr(sample_word_tag):
     """Test __repr__ method includes all relevant data."""
     # e.g. "WordTag(image_id=42, line_id=7, word_id=101, tag=example)"
@@ -57,6 +61,7 @@ def test_word_tag_repr(sample_word_tag):
     assert "tag='example'" in representation
 
 
+@pytest.mark.unit
 def test_word_tag_key(sample_word_tag):
     """
     Test that the main table key is generated as expected.
@@ -71,6 +76,7 @@ def test_word_tag_key(sample_word_tag):
     )
 
 
+@pytest.mark.unit
 def test_word_tag_gsi1_key(sample_word_tag):
     """
     Test that the GSI1 key is generated as expected.
@@ -85,6 +91,7 @@ def test_word_tag_gsi1_key(sample_word_tag):
     )
 
 
+@pytest.mark.unit
 def test_word_tag_to_item(sample_word_tag):
     """Test that to_item includes PK, SK, GSI1PK, GSI1SK, TYPE."""
     item = sample_word_tag.to_item()
@@ -95,6 +102,7 @@ def test_word_tag_to_item(sample_word_tag):
     assert item["TYPE"]["S"] == "WORD_TAG"
 
 
+@pytest.mark.unit
 def test_item_to_word_tag():
     """
     Test converting a DynamoDB item back to a WordTag object.
@@ -120,6 +128,7 @@ def test_item_to_word_tag():
     assert wt.tag == "example"  # note itemToWordTag uses upper() from GSI1SK
 
 
+@pytest.mark.unit
 def test_item_to_word_tag_missing_keys():
     """Test that itemToWordTag raises an error if PK or SK is missing."""
     incomplete_item = {
@@ -134,6 +143,7 @@ def test_item_to_word_tag_missing_keys():
     assert "missing required keys" in str(exc_info.value)
 
 
+@pytest.mark.unit
 def test_item_to_word_tag_bad_format():
     """Test that itemToWordTag raises an error if the PK or SK format is invalid."""
     bad_format_item = {

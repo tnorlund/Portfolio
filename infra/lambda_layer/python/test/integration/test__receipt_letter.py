@@ -2,6 +2,7 @@ import pytest
 from typing import Literal
 from dynamo import ReceiptLetter, DynamoClient
 
+
 @pytest.fixture
 def sample_receipt_letter():
     return ReceiptLetter(
@@ -18,10 +19,14 @@ def sample_receipt_letter():
         bottom_right={"x": 0.17, "y": 0.22},
         angle_degrees=1.5,
         angle_radians=0.0261799,
-        confidence=0.97
+        confidence=0.97,
     )
 
-def test_add_receipt_letter(dynamodb_table: Literal["MyMockedTable"], sample_receipt_letter: ReceiptLetter):
+
+@pytest.mark.integration
+def test_add_receipt_letter(
+    dynamodb_table: Literal["MyMockedTable"], sample_receipt_letter: ReceiptLetter
+):
     # Arrange
     client = DynamoClient(dynamodb_table)
 
@@ -38,7 +43,11 @@ def test_add_receipt_letter(dynamodb_table: Literal["MyMockedTable"], sample_rec
     )
     assert retrieved_letter == sample_receipt_letter
 
-def test_add_receipt_letter_duplicate_raises(dynamodb_table: Literal["MyMockedTable"], sample_receipt_letter: ReceiptLetter):
+
+@pytest.mark.integration
+def test_add_receipt_letter_duplicate_raises(
+    dynamodb_table: Literal["MyMockedTable"], sample_receipt_letter: ReceiptLetter
+):
     # Arrange
     client = DynamoClient(dynamodb_table)
     client.addReceiptLetter(sample_receipt_letter)
@@ -47,7 +56,11 @@ def test_add_receipt_letter_duplicate_raises(dynamodb_table: Literal["MyMockedTa
     with pytest.raises(ValueError, match="already exists"):
         client.addReceiptLetter(sample_receipt_letter)
 
-def test_update_receipt_letter(dynamodb_table: Literal["MyMockedTable"], sample_receipt_letter: ReceiptLetter):
+
+@pytest.mark.integration
+def test_update_receipt_letter(
+    dynamodb_table: Literal["MyMockedTable"], sample_receipt_letter: ReceiptLetter
+):
     # Arrange
     client = DynamoClient(dynamodb_table)
     client.addReceiptLetter(sample_receipt_letter)
@@ -66,7 +79,11 @@ def test_update_receipt_letter(dynamodb_table: Literal["MyMockedTable"], sample_
     )
     assert retrieved_letter.text == "Z"
 
-def test_delete_receipt_letter(dynamodb_table: Literal["MyMockedTable"], sample_receipt_letter: ReceiptLetter):
+
+@pytest.mark.integration
+def test_delete_receipt_letter(
+    dynamodb_table: Literal["MyMockedTable"], sample_receipt_letter: ReceiptLetter
+):
     # Arrange
     client = DynamoClient(dynamodb_table)
     client.addReceiptLetter(sample_receipt_letter)
@@ -91,6 +108,7 @@ def test_delete_receipt_letter(dynamodb_table: Literal["MyMockedTable"], sample_
         )
 
 
+@pytest.mark.integration
 def test_list_receipt_letters(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -124,6 +142,7 @@ def test_list_receipt_letters(dynamodb_table: Literal["MyMockedTable"]):
         assert lt in returned_letters
 
 
+@pytest.mark.integration
 def test_list_receipt_letters_from_word(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -170,7 +189,10 @@ def test_list_receipt_letters_from_word(dynamodb_table: Literal["MyMockedTable"]
 
     # Act
     found_letters = client.listReceiptLettersFromWord(
-        receipt_id=1, image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=10, word_id=2
+        receipt_id=1,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=10,
+        word_id=2,
     )
 
     # Assert

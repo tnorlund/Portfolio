@@ -27,6 +27,7 @@ def example_letter():
     )
 
 
+@pytest.mark.unit
 def test_init(example_letter):
     """Test the Letter constructor"""
     assert example_letter.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
@@ -49,6 +50,7 @@ def test_init(example_letter):
     assert example_letter.confidence == 0.90
 
 
+@pytest.mark.unit
 def test_key(example_letter):
     """Test the Letter.key method"""
     assert example_letter.key() == {
@@ -57,6 +59,7 @@ def test_key(example_letter):
     }
 
 
+@pytest.mark.unit
 def test_to_item(example_letter):
     """Test the Letter.to_item method"""
     assert example_letter.to_item() == {
@@ -102,11 +105,13 @@ def test_to_item(example_letter):
     }
 
 
+@pytest.mark.unit
 def test_repr(example_letter):
     """Test the Letter.__repr__ method"""
     assert repr(example_letter) == "Letter(id=3, text='0')"
 
 
+@pytest.mark.unit
 def test_iter(example_letter):
     """Test the Letter.__iter__ method"""
     assert dict(example_letter) == {
@@ -116,11 +121,11 @@ def test_iter(example_letter):
         "id": 3,
         "text": "0",
         "bounding_box": {
-        "x": 10.0,
-        "y": 20.0,
-        "width": 5.0,
-        "height": 2.0,
-    },
+            "x": 10.0,
+            "y": 20.0,
+            "width": 5.0,
+            "height": 2.0,
+        },
         "top_right": {"x": 15.0, "y": 20.0},
         "top_left": {"x": 10.0, "y": 20.0},
         "bottom_right": {"x": 15.0, "y": 22.0},
@@ -131,11 +136,13 @@ def test_iter(example_letter):
     }
 
 
+@pytest.mark.unit
 def test_itemToLetter(example_letter):
     """Test the itemToLetter function"""
     assert itemToLetter(example_letter.to_item()) == example_letter
 
 
+@pytest.mark.unit
 def create_test_letter():
     """
     A helper function that returns a Letter object
@@ -158,6 +165,7 @@ def create_test_letter():
     )
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize(
     "dx, dy",
     [
@@ -201,6 +209,7 @@ def test_letter_translate(dx, dy):
     assert letter.angle_radians == 0.0
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize(
     "sx, sy",
     [
@@ -246,6 +255,7 @@ def test_letter_scale(sx, sy):
     assert letter.angle_radians == 0.0
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize(
     "angle, use_radians, should_raise",
     [
