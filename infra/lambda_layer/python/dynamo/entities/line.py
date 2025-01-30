@@ -93,9 +93,11 @@ class Line:
             raise ValueError("angle_radians must be a float or int")
         self.angle_radians = angle_radians
         # Ensure the confidence is a float between 0 and 1
+        if isinstance(confidence, int):
+            confidence = float(confidence)
         if not isinstance(confidence, float):
             raise ValueError("confidence must be a float")
-        if confidence <= 0 or confidence > 1:
+        if confidence <= 0.0 or confidence > 1.0:
             raise ValueError("confidence must be between 0 and 1")
         self.confidence = confidence
         self.histogram = histogram(text)
