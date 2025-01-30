@@ -4,9 +4,9 @@ from dynamo.entities.util import (
     assert_valid_bounding_box,
     assert_valid_point,
     _format_float,
-    map_to_dict,
-    histogram
+    histogram,
 )
+
 
 class ReceiptLine:
     def __init__(
@@ -26,19 +26,23 @@ class ReceiptLine:
     ):
         if not isinstance(receipt_id, int):
             raise ValueError("receipt_id must be an integer")
-        # Ensure the Receipt ID is a positive integer
         if receipt_id <= 0:
-            raise ValueError("receipt_id must be a positive")
+            raise ValueError("receipt_id must be positive")
         self.receipt_id = receipt_id
+
         assert_valid_uuid(image_id)
         self.image_id = image_id
-        # Ensure the ID is a positive integer
-        if id <= 0 or not isinstance(id, int):
-            raise ValueError("id must be a positive integer")
+
+        if not isinstance(id, int):
+            raise ValueError("id must be an integer")
+        if id <= 0:
+            raise ValueError("id must be positive")
         self.id = id
+
         if not isinstance(text, str):
             raise ValueError("text must be a string")
         self.text = text
+
         assert_valid_bounding_box(bounding_box)
         self.bounding_box = bounding_box
         assert_valid_point(top_right)
@@ -49,18 +53,22 @@ class ReceiptLine:
         self.bottom_right = bottom_right
         assert_valid_point(bottom_left)
         self.bottom_left = bottom_left
+
         if not isinstance(angle_degrees, (float, int)):
-            raise ValueError(
-                f"angle_degrees must be a float or int got: {angle_degrees}"
-            )
+            raise ValueError(f"angle_degrees must be a float or int")
         self.angle_degrees = angle_degrees
         if not isinstance(angle_radians, (float, int)):
-            raise ValueError("angleRadians must be a float or int got: ", angle_radians)
+            raise ValueError("angle_radians must be a float or int")
         self.angle_radians = angle_radians
-        # Ensure the confidence is a float between 0 and 1
-        if confidence <= 0 or confidence > 1:
-            raise ValueError("confidence must be a float between 0 and 1")
+
+        if isinstance(confidence, int):
+            confidence = float(confidence)
+        if not isinstance(confidence, float):
+            raise ValueError("confidence must be a float")
+        if confidence <= 0.0 or confidence > 1.0:
+            raise ValueError("confidence must be between 0 and 1")
         self.confidence = confidence
+
         self.histogram = histogram(text)
         self.num_chars = len(text)
 
@@ -172,11 +180,24 @@ def itemToReceiptLine(item: dict) -> ReceiptLine:
             receipt_id=int(item["SK"]["S"].split("#")[1]),
             id=int(item["SK"]["S"].split("#")[3]),
             text=item["text"]["S"],
-            bounding_box=map_to_dict(item["bounding_box"]["M"]),
-            top_right=map_to_dict(item["top_right"]["M"]),
-            top_left=map_to_dict(item["top_left"]["M"]),
-            bottom_right=map_to_dict(item["bottom_right"]["M"]),
-            bottom_left=map_to_dict(item["bottom_left"]["M"]),
+            bounding_box={
+                key: float(value["N"])
+                for key, value in item["bounding_box"]["M"].items()
+            },
+            top_right={
+                key: float(value["N"]) for key, value in item["top_right"]["M"].items()
+            },
+            top_left={
+                key: float(value["N"]) for key, value in item["top_left"]["M"].items()
+            },
+            bottom_right={
+                key: float(value["N"])
+                for key, value in item["bottom_right"]["M"].items()
+            },
+            bottom_left={
+                key: float(value["N"])
+                for key, value in item["bottom_left"]["M"].items()
+            },
             angle_degrees=float(item["angle_degrees"]["N"]),
             angle_radians=float(item["angle_radians"]["N"]),
             confidence=float(item["confidence"]["N"]),
