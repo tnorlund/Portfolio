@@ -24,8 +24,12 @@ jobs:
         run: pip install -e .
         working-directory: infra/lambda_layer/python
 
-      - name: Run tests
-        run: pytest
+      - name: Run unit tests
+        run: pytest -m unit
+        working-directory: infra/lambda_layer/python
+
+      - name: Run integration tests
+        run: pytest -m integration
         working-directory: infra/lambda_layer/python
   up:
     name: Build React app and Pulumi Up to Production
