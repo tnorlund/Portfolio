@@ -28,23 +28,31 @@ class ReceiptWord:
         confidence: float,
         tags: list[str] = None,
     ):
-        # Ensure the Receipt ID is a positive integer
-        if receipt_id <= 0 or not isinstance(receipt_id, int):
-            raise ValueError("receipt_id must be a positive integer")
+        if not isinstance(receipt_id, int):
+            raise ValueError("receipt_id must be an integer")
+        if receipt_id <= 0:
+            raise ValueError("receipt_id must be positive")
         self.receipt_id = receipt_id
-        # Ensure the Image ID is a positive integer
+
         assert_valid_uuid(image_id)
         self.image_id = image_id
-        if line_id <= 0 or not isinstance(line_id, int):
-            raise ValueError("line_id must be a positive integer")
+
+        if not isinstance(line_id, int):
+            raise ValueError("line_id must be an integer")
+        if line_id < 0:
+            raise ValueError("line_id must be positive")
         self.line_id = line_id
-        # Ensure the ID is a positive integer
-        if id <= 0 or not isinstance(id, int):
-            raise ValueError("id must be a positive integer")
+
+        if not isinstance(id, int):
+            raise ValueError("id must be an integer")
+        if id < 0:
+            raise ValueError("id must be positive")
         self.id = id
+
         if not isinstance(text, str):
             raise ValueError("text must be a string")
         self.text = text
+
         assert_valid_bounding_box(bounding_box)
         self.bounding_box = bounding_box
         assert_valid_point(top_right)
@@ -55,19 +63,27 @@ class ReceiptWord:
         self.bottom_right = bottom_right
         assert_valid_point(bottom_left)
         self.bottom_left = bottom_left
+
         if not isinstance(angle_degrees, (float, int)):
-            raise ValueError(
-                f"angle_degrees must be a float or int got: {angle_degrees}"
-            )
+            raise ValueError("angle_degrees must be a float or int")
         self.angle_degrees = angle_degrees
+
         if not isinstance(angle_radians, (float, int)):
-            raise ValueError("angleRadians must be a float or int got: ", angle_radians)
+            raise ValueError("angle_radians must be a float or int")
         self.angle_radians = angle_radians
-        # Ensure the confidence is a float between 0 and 1
-        if confidence <= 0 or confidence > 1:
-            raise ValueError("confidence must be a float between 0 and 1")
+
+        if isinstance(confidence, int):
+            confidence = float(confidence)
+        if not isinstance(confidence, float):
+            raise ValueError("confidence must be a float")
+        if confidence <= 0.0 or confidence > 1.0:
+            raise ValueError("confidence must be between 0 and 1")
         self.confidence = confidence
+
+        if tags is not None and not isinstance(tags, list):
+            raise ValueError("tags must be a list")
         self.tags = tags if tags is not None else []
+
         self.histogram = histogram(self.text)
         self.num_chars = len(self.text)
 
