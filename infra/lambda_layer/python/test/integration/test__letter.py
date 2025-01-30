@@ -25,6 +25,7 @@ correct_letter_params = {
 }
 
 
+@pytest.mark.integration
 def test_addLetter(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -42,6 +43,7 @@ def test_addLetter(dynamodb_table: Literal["MyMockedTable"]):
     assert response["Item"] == letter.to_item()
 
 
+@pytest.mark.integration
 def test_addLetter_error(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -53,6 +55,7 @@ def test_addLetter_error(dynamodb_table: Literal["MyMockedTable"]):
         client.addLetter(letter)
 
 
+@pytest.mark.integration
 def test_addLetters(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -65,10 +68,15 @@ def test_addLetters(dynamodb_table: Literal["MyMockedTable"]):
     client.addLetters(letters)
 
     # Assert
-    assert letters[0] == client.getLetter("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 1)
-    assert letters[1] == client.getLetter("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 2)
+    assert letters[0] == client.getLetter(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 1
+    )
+    assert letters[1] == client.getLetter(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 2
+    )
 
 
+@pytest.mark.integration
 def test_deleteLetter(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -83,6 +91,7 @@ def test_deleteLetter(dynamodb_table: Literal["MyMockedTable"]):
         client.getLetter("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 1)
 
 
+@pytest.mark.integration
 def test_deleteLetter_error(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -94,6 +103,7 @@ def test_deleteLetter_error(dynamodb_table: Literal["MyMockedTable"]):
         client.deleteLetter(1, 1, 1, 2)
 
 
+@pytest.mark.integration
 def test_deleteLettersFromWord(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -114,6 +124,7 @@ def test_deleteLettersFromWord(dynamodb_table: Literal["MyMockedTable"]):
         client.getLetter(1, 1, 1, 2)
 
 
+@pytest.mark.integration
 def test_getLetter(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -127,6 +138,7 @@ def test_getLetter(dynamodb_table: Literal["MyMockedTable"]):
     assert response == letter
 
 
+@pytest.mark.integration
 def test_getLetter_error(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -138,6 +150,7 @@ def test_getLetter_error(dynamodb_table: Literal["MyMockedTable"]):
         client.getLetter(1, 1, 1, 2)
 
 
+@pytest.mark.integration
 def test_listLetters(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -154,6 +167,7 @@ def test_listLetters(dynamodb_table: Literal["MyMockedTable"]):
     assert letters_retrieved == letters
 
 
+@pytest.mark.integration
 def test_listLettersFromWord(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)

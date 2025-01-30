@@ -19,7 +19,11 @@ def sample_receipt_word_tag():
     Adjust the IDs or tag text to fit your schema if needed.
     """
     return ReceiptWordTag(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", receipt_id=100, line_id=5, word_id=42, tag="SampleTag"
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        receipt_id=100,
+        line_id=5,
+        word_id=42,
+        tag="SampleTag",
     )
 
 
@@ -98,6 +102,7 @@ correct_image_params = {
 }
 
 
+@pytest.mark.integration
 def test_addReceipt(dynamodb_table: Literal["MyMockedTable"], sample_receipt: Receipt):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
@@ -112,6 +117,7 @@ def test_addReceipt(dynamodb_table: Literal["MyMockedTable"], sample_receipt: Re
     assert response_receipt == sample_receipt
 
 
+@pytest.mark.integration
 def test_addReceipt_error_receipt_that_exists(
     dynamodb_table: Literal["MyMockedTable"], sample_receipt: Receipt
 ):
@@ -124,6 +130,7 @@ def test_addReceipt_error_receipt_that_exists(
         dynamo_client.addReceipt(sample_receipt)
 
 
+@pytest.mark.integration
 def test_addReceipts(dynamodb_table: str):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
@@ -140,6 +147,7 @@ def test_addReceipts(dynamodb_table: str):
     assert receipts == response_receipts
 
 
+@pytest.mark.integration
 def test_addReceipts_error_receipt_that_exists(dynamodb_table: str):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
@@ -154,6 +162,7 @@ def test_addReceipts_error_receipt_that_exists(dynamodb_table: str):
         dynamo_client.addReceipts(receipts)
 
 
+@pytest.mark.integration
 def test_updateReceipt(dynamodb_table: str):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
@@ -169,6 +178,7 @@ def test_updateReceipt(dynamodb_table: str):
     assert response_receipt == receipt
 
 
+@pytest.mark.integration
 def test_updateReceipt_error_receipt_not_exists(dynamodb_table: str):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
@@ -179,6 +189,7 @@ def test_updateReceipt_error_receipt_not_exists(dynamodb_table: str):
         dynamo_client.updateReceipt(receipt)
 
 
+@pytest.mark.integration
 def test_updateReceipts(dynamodb_table: str):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
@@ -197,6 +208,7 @@ def test_updateReceipts(dynamodb_table: str):
     assert dynamo_client.listReceipts() == receipts
 
 
+@pytest.mark.integration
 def test_updateReceipts_error_receipt_not_exists(dynamodb_table: str):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
@@ -210,6 +222,7 @@ def test_updateReceipts_error_receipt_not_exists(dynamodb_table: str):
         dynamo_client.updateReceipts(receipts)
 
 
+@pytest.mark.integration
 def test_deleteReceipt(dynamodb_table: str):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
@@ -224,6 +237,7 @@ def test_deleteReceipt(dynamodb_table: str):
     assert receipt not in response_receipts
 
 
+@pytest.mark.integration
 def test_deleteReceipt_error_receipt_not_exists(dynamodb_table: str):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
@@ -234,6 +248,7 @@ def test_deleteReceipt_error_receipt_not_exists(dynamodb_table: str):
         dynamo_client.deleteReceipt(receipt)
 
 
+@pytest.mark.integration
 def test_deleteReceipts(dynamodb_table: str):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
@@ -251,6 +266,7 @@ def test_deleteReceipts(dynamodb_table: str):
     assert not response_receipts
 
 
+@pytest.mark.integration
 def test_deleteReceipts_error_receipt_not_exists(dynamodb_table: str):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
@@ -264,12 +280,15 @@ def test_deleteReceipts_error_receipt_not_exists(dynamodb_table: str):
         dynamo_client.deleteReceipts(receipts)
 
 
+@pytest.mark.integration
 def test_deleteReceiptsFromImage(dynamodb_table: str):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
     receipt = Receipt(**correct_receipt_params)
     image = Image(**correct_image_params)
-    receipt_different_image = Receipt(**{**correct_receipt_params, "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed4"})
+    receipt_different_image = Receipt(
+        **{**correct_receipt_params, "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed4"}
+    )
     dynamo_client.addReceipts([receipt, receipt_different_image])
     dynamo_client.addImage(image)
 
@@ -288,6 +307,7 @@ def test_deleteReceiptsFromImage(dynamodb_table: str):
         dynamo_client.getReceipt(receipt.image_id, receipt.id)
 
 
+@pytest.mark.integration
 def test_deleteReceiptsFromImage_error_no_receipts_in_image(dynamodb_table: str):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
@@ -298,6 +318,7 @@ def test_deleteReceiptsFromImage_error_no_receipts_in_image(dynamodb_table: str)
         dynamo_client.deleteReceiptsFromImage(image_id)
 
 
+@pytest.mark.integration
 def test_getReceipt(dynamodb_table: str):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
@@ -311,6 +332,7 @@ def test_getReceipt(dynamodb_table: str):
     assert retrieved_receipt == receipt
 
 
+@pytest.mark.integration
 def test_getReceipt_error_receipt_not_exists(dynamodb_table: str):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
@@ -321,12 +343,15 @@ def test_getReceipt_error_receipt_not_exists(dynamodb_table: str):
         dynamo_client.getReceipt(receipt.image_id, receipt.id)
 
 
+@pytest.mark.integration
 def test_getReceiptsFromImage(dynamodb_table: str):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
     receipt = Receipt(**correct_receipt_params)
     receipt_same_image = Receipt(**{**correct_receipt_params, "id": 2})
-    receipt_different_image = Receipt(**{**correct_receipt_params, "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed4"})
+    receipt_different_image = Receipt(
+        **{**correct_receipt_params, "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed4"}
+    )
     dynamo_client.addReceipts([receipt, receipt_same_image, receipt_different_image])
 
     # Act
@@ -402,6 +427,7 @@ def sample_receipt_lines():
         ),
     ]
 
+
 @pytest.fixture
 def sample_receipt_words():
     return [
@@ -437,6 +463,7 @@ def sample_receipt_words():
         ),
     ]
 
+
 @pytest.fixture
 def sample_receipt_word_tags():
     return [
@@ -457,6 +484,7 @@ def sample_receipt_word_tags():
             timestamp_added="2021-01-01T00:00:00",
         ),
     ]
+
 
 @pytest.fixture
 def sample_receipt_letters():
@@ -496,6 +524,7 @@ def sample_receipt_letters():
     ]
 
 
+@pytest.mark.integration
 def test_getReceiptDetails(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt: Receipt,

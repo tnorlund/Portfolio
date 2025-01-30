@@ -49,7 +49,7 @@ def example_word_with_tags():
         ["tag1", "tag2"],
     )
 
-
+@pytest.mark.unit
 def test_init(example_word, example_word_with_tags):
     assert example_word.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert example_word.line_id == 2
@@ -71,7 +71,7 @@ def test_init(example_word, example_word_with_tags):
     assert example_word.tags == []
     assert example_word_with_tags.tags == ["tag1", "tag2"]
 
-
+@pytest.mark.unit
 def test_key(example_word):
     """Test the Word key method"""
     assert example_word.key() == {
@@ -79,7 +79,7 @@ def test_key(example_word):
         "SK": {"S": "LINE#00002#WORD#00003"},
     }
 
-
+@pytest.mark.unit
 def test_to_item(example_word, example_word_with_tags):
     """Test the Word to_item method"""
     # Test with no tags
@@ -128,12 +128,12 @@ def test_to_item(example_word, example_word_with_tags):
     # Test with tags
     assert example_word_with_tags.to_item()["tags"] == {"SS": ["tag1", "tag2"]}
 
-
+@pytest.mark.unit
 def test_repr(example_word):
     """Test the Word __repr__ method"""
     assert repr(example_word) == "Word(id=3, text='test_string')"
 
-
+@pytest.mark.unit
 def test_iter(example_word, example_word_with_tags):
     """Test the Word __iter__ method"""
     word_dict = dict(example_word)
@@ -174,7 +174,7 @@ def test_iter(example_word, example_word_with_tags):
     assert word_dict["confidence"] == 0.90
     assert dict(example_word_with_tags)["tags"] == ["tag1", "tag2"]
 
-
+@pytest.mark.unit
 def test_eq():
     """Test the Word __eq__ method"""
     # fmt: off
@@ -210,12 +210,11 @@ def test_eq():
     assert w1 != w14
     assert w1 != w15
 
-
+@pytest.mark.unit
 def test_itemToWord(example_word, example_word_with_tags):
     """Test the itemToWord function"""
     itemToWord(example_word.to_item()) == example_word
     itemToWord(example_word_with_tags.to_item()) == example_word_with_tags
-
 
 def create_test_word():
     """
@@ -241,7 +240,7 @@ def create_test_word():
         confidence=1.0,
     )
 
-
+@pytest.mark.unit
 @pytest.mark.parametrize(
     "dx, dy",
     [
@@ -281,7 +280,7 @@ def test_word_translate(dx, dy):
     assert word.angle_degrees == 0.0
     assert word.angle_radians == 0.0
 
-
+@pytest.mark.unit
 @pytest.mark.parametrize(
     "sx, sy",
     [
@@ -324,7 +323,7 @@ def test_word_scale(sx, sy):
     assert word.angle_degrees == 0.0
     assert word.angle_radians == 0.0
 
-
+@pytest.mark.unit
 @pytest.mark.parametrize(
     "angle, use_radians, should_raise",
     [

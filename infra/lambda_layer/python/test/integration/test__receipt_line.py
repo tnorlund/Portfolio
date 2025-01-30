@@ -21,7 +21,7 @@ def sample_receipt_line():
         confidence=0.98,
     )
 
-
+@pytest.mark.integration
 def test_add_receipt_line(
     dynamodb_table: Literal["MyMockedTable"], sample_receipt_line: ReceiptLine
 ):
@@ -39,7 +39,7 @@ def test_add_receipt_line(
     )
     assert retrieved_line == sample_receipt_line
 
-
+@pytest.mark.integration
 def test_add_receipt_line_duplicate_raises(
     dynamodb_table: Literal["MyMockedTable"], sample_receipt_line: ReceiptLine
 ):
@@ -51,7 +51,7 @@ def test_add_receipt_line_duplicate_raises(
     with pytest.raises(ValueError, match="already exists"):
         client.addReceiptLine(sample_receipt_line)
 
-
+@pytest.mark.integration
 def test_update_receipt_line(
     dynamodb_table: Literal["MyMockedTable"], sample_receipt_line: ReceiptLine
 ):
@@ -74,7 +74,7 @@ def test_update_receipt_line(
     )
     assert retrieved_line.text == updated_text
 
-
+@pytest.mark.integration
 def test_delete_receipt_line(
     dynamodb_table: Literal["MyMockedTable"], sample_receipt_line: ReceiptLine
 ):
@@ -97,7 +97,7 @@ def test_delete_receipt_line(
             sample_receipt_line.id,
         )
 
-
+@pytest.mark.integration
 def test_list_receipt_lines(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -130,7 +130,7 @@ def test_list_receipt_lines(dynamodb_table: Literal["MyMockedTable"]):
     for ln in lines:
         assert ln in returned_lines
 
-
+@pytest.mark.integration
 def test_list_receipt_lines_from_receipt(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)

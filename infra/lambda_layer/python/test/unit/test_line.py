@@ -25,6 +25,7 @@ def example_line():
     )
 
 
+@pytest.mark.unit
 def test_init(example_line):
     """Test the Line constructor"""
     assert example_line.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
@@ -45,6 +46,7 @@ def test_init(example_line):
     assert example_line.confidence == 0.90
 
 
+@pytest.mark.unit
 def test_init_bad_id():
     """Test the Line constructor with bad ID"""
     with pytest.raises(ValueError, match="uuid must be a string"):
@@ -87,6 +89,7 @@ def test_init_bad_id():
         )
 
 
+@pytest.mark.unit
 def test_init_bad_id():
     with pytest.raises(ValueError, match="id must be an integer"):
         Line(
@@ -128,6 +131,7 @@ def test_init_bad_id():
         )
 
 
+@pytest.mark.unit
 def test_key(example_line):
     """Test the Line.key() method"""
     assert example_line.key() == {
@@ -136,13 +140,16 @@ def test_key(example_line):
     }
 
 
+@pytest.mark.unit
 def test_to_item(example_line):
     """Test the Line.to_item() method"""
     item = example_line.to_item()
     assert item["PK"] == {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"}
     assert item["SK"] == {"S": "LINE#00001"}
     assert item["GSI1PK"] == {"S": "IMAGE"}
-    assert item["GSI1SK"] == {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#LINE#00001"}
+    assert item["GSI1SK"] == {
+        "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#LINE#00001"
+    }
     assert item["TYPE"] == {"S": "LINE"}
     assert item["text"] == {"S": "Test"}
     assert item["bounding_box"] == {
@@ -184,6 +191,7 @@ def test_to_item(example_line):
     assert "num_chars" in item
 
 
+@pytest.mark.unit
 def create_test_line():
     """
     Helper function to create a Line object with easily verifiable points.
@@ -204,6 +212,7 @@ def create_test_line():
     )
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize(
     "dx, dy",
     [
@@ -250,6 +259,7 @@ def test_translate(dx, dy):
     assert line.angle_radians == 0.0
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize(
     "sx, sy",
     [
@@ -298,6 +308,7 @@ def test_scale(sx, sy):
     assert line.angle_radians == 0.0
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize(
     "angle, use_radians, should_raise",
     [
@@ -407,11 +418,13 @@ def test_rotate_limited_range(angle, use_radians, should_raise):
             )
 
 
+@pytest.mark.unit
 def test_repr(example_line):
     """Test the Line.__repr__() method"""
     assert repr(example_line) == "Line(id=1, text='Test')"
 
 
+@pytest.mark.unit
 def test_iter(example_line):
     """Test the Line.__iter__() method"""
     line_dict = dict(example_line)
@@ -449,6 +462,7 @@ def test_iter(example_line):
     assert line_dict["confidence"] == 0.90
 
 
+@pytest.mark.unit
 def test_eq():
     """Test the Line.__eq__() method"""
     # fmt: off
@@ -481,5 +495,6 @@ def test_eq():
     assert l1 != l13
 
 
+@pytest.mark.unit
 def test_itemToLine(example_line):
     itemToLine(example_line.to_item()) == example_line

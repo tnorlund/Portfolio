@@ -2,6 +2,7 @@ import pytest
 from typing import Literal
 from dynamo import ReceiptWord, DynamoClient
 
+
 @pytest.fixture
 def sample_receipt_word():
     return ReceiptWord(
@@ -18,10 +19,14 @@ def sample_receipt_word():
         angle_degrees=2.0,
         angle_radians=0.0349066,
         confidence=0.95,
-        tags=["tag1", "tag2"]
+        tags=["tag1", "tag2"],
     )
 
-def test_add_receipt_word(dynamodb_table: Literal["MyMockedTable"], sample_receipt_word: ReceiptWord):
+
+@pytest.mark.integration
+def test_add_receipt_word(
+    dynamodb_table: Literal["MyMockedTable"], sample_receipt_word: ReceiptWord
+):
     # Arrange
     client = DynamoClient(dynamodb_table)
 
@@ -37,7 +42,11 @@ def test_add_receipt_word(dynamodb_table: Literal["MyMockedTable"], sample_recei
     )
     assert retrieved_word == sample_receipt_word
 
-def test_add_receipt_word_duplicate_raises(dynamodb_table: Literal["MyMockedTable"], sample_receipt_word: ReceiptWord):
+
+@pytest.mark.integration
+def test_add_receipt_word_duplicate_raises(
+    dynamodb_table: Literal["MyMockedTable"], sample_receipt_word: ReceiptWord
+):
     # Arrange
     client = DynamoClient(dynamodb_table)
     client.addReceiptWord(sample_receipt_word)
@@ -46,7 +55,11 @@ def test_add_receipt_word_duplicate_raises(dynamodb_table: Literal["MyMockedTabl
     with pytest.raises(ValueError, match="already exists"):
         client.addReceiptWord(sample_receipt_word)
 
-def test_update_receipt_word(dynamodb_table: Literal["MyMockedTable"], sample_receipt_word: ReceiptWord):
+
+@pytest.mark.integration
+def test_update_receipt_word(
+    dynamodb_table: Literal["MyMockedTable"], sample_receipt_word: ReceiptWord
+):
     # Arrange
     client = DynamoClient(dynamodb_table)
     client.addReceiptWord(sample_receipt_word)
@@ -64,7 +77,11 @@ def test_update_receipt_word(dynamodb_table: Literal["MyMockedTable"], sample_re
     )
     assert retrieved_word.text == "Updated receipt word"
 
-def test_delete_receipt_word(dynamodb_table: Literal["MyMockedTable"], sample_receipt_word: ReceiptWord):
+
+@pytest.mark.integration
+def test_delete_receipt_word(
+    dynamodb_table: Literal["MyMockedTable"], sample_receipt_word: ReceiptWord
+):
     # Arrange
     client = DynamoClient(dynamodb_table)
     client.addReceiptWord(sample_receipt_word)
@@ -86,6 +103,8 @@ def test_delete_receipt_word(dynamodb_table: Literal["MyMockedTable"], sample_re
             sample_receipt_word.id,
         )
 
+
+@pytest.mark.integration
 def test_list_receipt_words(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -117,6 +136,8 @@ def test_list_receipt_words(dynamodb_table: Literal["MyMockedTable"]):
     for w in words:
         assert w in returned_words
 
+
+@pytest.mark.integration
 def test_list_receipt_words_from_line(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -159,7 +180,9 @@ def test_list_receipt_words_from_line(dynamodb_table: Literal["MyMockedTable"]):
         client.addReceiptWord(w)
 
     # Act
-    found_words = client.listReceiptWordsFromLine(1, "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 10)
+    found_words = client.listReceiptWordsFromLine(
+        1, "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 10
+    )
 
     # Assert
     assert len(found_words) == 2

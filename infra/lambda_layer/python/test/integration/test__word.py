@@ -24,6 +24,7 @@ correct_word_params = {
 }
 
 
+@pytest.mark.integration
 def test_addWord_no_tags(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -41,6 +42,7 @@ def test_addWord_no_tags(dynamodb_table: Literal["MyMockedTable"]):
     assert response["Item"] == word.to_item()
 
 
+@pytest.mark.integration
 def test_addWord_with_tags(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -58,6 +60,7 @@ def test_addWord_with_tags(dynamodb_table: Literal["MyMockedTable"]):
     assert response["Item"] == word.to_item()
 
 
+@pytest.mark.integration
 def test_add_word_error(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -69,6 +72,7 @@ def test_add_word_error(dynamodb_table: Literal["MyMockedTable"]):
         client.addWord(word)
 
 
+@pytest.mark.integration
 def test_addWords(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -96,6 +100,7 @@ def test_addWords(dynamodb_table: Literal["MyMockedTable"]):
     assert response["Item"] == word2.to_item()
 
 
+@pytest.mark.integration
 def test_deleteWord(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -110,6 +115,7 @@ def test_deleteWord(dynamodb_table: Literal["MyMockedTable"]):
         client.getWord("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3)
 
 
+@pytest.mark.integration
 def test_deleteWord_error(dynamodb_table: Literal["MyMockedTable"]):
     """Raises exception when word is not found"""
     # Arrange
@@ -120,6 +126,7 @@ def test_deleteWord_error(dynamodb_table: Literal["MyMockedTable"]):
         client.deleteWord(1, 2, 3)
 
 
+@pytest.mark.integration
 def test_deleteWordsFromLine(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -140,6 +147,7 @@ def test_deleteWordsFromLine(dynamodb_table: Literal["MyMockedTable"]):
         client.getWord(1, 1, 2)
 
 
+@pytest.mark.integration
 def test_getWord(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -153,6 +161,7 @@ def test_getWord(dynamodb_table: Literal["MyMockedTable"]):
     assert retrieved_word == word
 
 
+@pytest.mark.integration
 def test_getWord_error(dynamodb_table: Literal["MyMockedTable"]):
     """Raises exception when word is not found"""
     # Arrange
@@ -163,6 +172,7 @@ def test_getWord_error(dynamodb_table: Literal["MyMockedTable"]):
         client.getWord(1, 2, 3)
 
 
+@pytest.mark.integration
 def test_getWords(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -179,6 +189,7 @@ def test_getWords(dynamodb_table: Literal["MyMockedTable"]):
     assert words_retrieved == words
 
 
+@pytest.mark.integration
 def test_getWords_invalid_keys(dynamodb_table: Literal["MyMockedTable"]):
     """
     Shows how to test for invalid keys. We expect ValueError when PK or SK is invalid.
@@ -211,6 +222,7 @@ def test_getWords_invalid_keys(dynamodb_table: Literal["MyMockedTable"]):
         client.getWords(bad_keys_no_word)
 
 
+@pytest.mark.integration
 def test_listWords(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -227,6 +239,7 @@ def test_listWords(dynamodb_table: Literal["MyMockedTable"]):
     assert words_retrieved == words
 
 
+@pytest.mark.integration
 def test_listWordsFromLine(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)

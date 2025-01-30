@@ -22,6 +22,7 @@ def example_receipt():
     )
 
 
+@pytest.mark.unit
 def test_receipt_construction_valid(example_receipt):
     """Test constructing a valid Receipt."""
     assert example_receipt.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
@@ -38,6 +39,7 @@ def test_receipt_construction_valid(example_receipt):
     assert example_receipt.sha256 == "abc123"
 
 
+@pytest.mark.unit
 def test_receipt_invalid_image_id():
     """Test that constructing a Receipt with invalid image_id raises ValueError."""
     with pytest.raises(ValueError, match="uuid must be a string"):
@@ -57,40 +59,42 @@ def test_receipt_invalid_image_id():
         )
 
 
+@pytest.mark.unit
 def test_receipt_invalid_id():
     """Test that constructing a Receipt with invalid id raises ValueError."""
     with pytest.raises(ValueError):
         Receipt(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        id=-1,
-        width=200,
-        height=100,
-        timestamp_added="2021-01-01T00:00:00",
-        raw_s3_bucket="test-bucket",
-        raw_s3_key="test/key/receipt.jpg",
-        top_left={"x": 0.0, "y": 0.0},
-        top_right={"x": 200.0, "y": 0.0},
-        bottom_left={"x": 0.0, "y": 100.0},
-        bottom_right={"x": 200.0, "y": 100.0},
-        sha256="abc123",
-    )
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            id=-1,
+            width=200,
+            height=100,
+            timestamp_added="2021-01-01T00:00:00",
+            raw_s3_bucket="test-bucket",
+            raw_s3_key="test/key/receipt.jpg",
+            top_left={"x": 0.0, "y": 0.0},
+            top_right={"x": 200.0, "y": 0.0},
+            bottom_left={"x": 0.0, "y": 100.0},
+            bottom_right={"x": 200.0, "y": 100.0},
+            sha256="abc123",
+        )
     with pytest.raises(ValueError):
         Receipt(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        id='not-an-int',
-        width=200,
-        height=100,
-        timestamp_added="2021-01-01T00:00:00",
-        raw_s3_bucket="test-bucket",
-        raw_s3_key="test/key/receipt.jpg",
-        top_left={"x": 0.0, "y": 0.0},
-        top_right={"x": 200.0, "y": 0.0},
-        bottom_left={"x": 0.0, "y": 100.0},
-        bottom_right={"x": 200.0, "y": 100.0},
-        sha256="abc123",
-    )
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            id="not-an-int",
+            width=200,
+            height=100,
+            timestamp_added="2021-01-01T00:00:00",
+            raw_s3_bucket="test-bucket",
+            raw_s3_key="test/key/receipt.jpg",
+            top_left={"x": 0.0, "y": 0.0},
+            top_right={"x": 200.0, "y": 0.0},
+            bottom_left={"x": 0.0, "y": 100.0},
+            bottom_right={"x": 200.0, "y": 100.0},
+            sha256="abc123",
+        )
 
 
+@pytest.mark.unit
 def test_receipt_invalid_dimensions():
     """Test that constructing a Receipt with invalid width/height raises ValueError."""
     # Invalid width
@@ -111,7 +115,7 @@ def test_receipt_invalid_dimensions():
         )
 
     with pytest.raises(ValueError):
-       Receipt(
+        Receipt(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             id=1,
             width=200,
@@ -127,6 +131,7 @@ def test_receipt_invalid_dimensions():
         )
 
 
+@pytest.mark.unit
 def test_receipt_invalid_timestamp():
     """Test that constructing a Receipt with an invalid timestamp raises ValueError."""
     with pytest.raises(ValueError):
@@ -146,25 +151,27 @@ def test_receipt_invalid_timestamp():
         )
 
 
+@pytest.mark.unit
 def test_receipt_invalid_point_types():
     """Test that constructing a Receipt with invalid point data raises ValueError."""
     with pytest.raises(ValueError):
         Receipt(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        id=1,
-        width=200,
-        height=100,
-        timestamp_added="2021-01-01T00:00:00",
-        raw_s3_bucket="test-bucket",
-        raw_s3_key="test/key/receipt.jpg",
-        top_left={"x": 'not-a-float', "y": 0.0},
-        top_right={"x": 200.0, "y": 0.0},
-        bottom_left={"x": 0.0, "y": 100.0},
-        bottom_right={"x": 200.0, "y": 100.0},
-        sha256="abc123",
-    )
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            id=1,
+            width=200,
+            height=100,
+            timestamp_added="2021-01-01T00:00:00",
+            raw_s3_bucket="test-bucket",
+            raw_s3_key="test/key/receipt.jpg",
+            top_left={"x": "not-a-float", "y": 0.0},
+            top_right={"x": 200.0, "y": 0.0},
+            bottom_left={"x": 0.0, "y": 100.0},
+            bottom_right={"x": 200.0, "y": 100.0},
+            sha256="abc123",
+        )
 
 
+@pytest.mark.unit
 def test_key_generation(example_receipt):
     """Test that the primary key is correctly generated."""
     assert example_receipt.key() == {
@@ -173,6 +180,7 @@ def test_key_generation(example_receipt):
     }
 
 
+@pytest.mark.unit
 def test_gsi1_key_generation(example_receipt):
     """Test that the GSI1 key is correctly generated."""
     assert example_receipt.gsi1_key() == {
@@ -180,6 +188,8 @@ def test_gsi1_key_generation(example_receipt):
         "GSI1SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"},
     }
 
+
+@pytest.mark.unit
 def test_gsi2_key_generation(example_receipt):
     """Test that the GSI2 key is correctly generated."""
     assert example_receipt.gsi2_key() == {
@@ -188,6 +198,7 @@ def test_gsi2_key_generation(example_receipt):
     }
 
 
+@pytest.mark.unit
 def test_to_item(example_receipt):
     """Test converting a Receipt to a DynamoDB item."""
     assert example_receipt.to_item() == {
@@ -233,11 +244,13 @@ def test_to_item(example_receipt):
     }
 
 
+@pytest.mark.unit
 def test_item_to_receipt_valid(example_receipt):
     """Test itemToReceipt with a valid DynamoDB item."""
     itemToReceipt(example_receipt.to_item()) == example_receipt
 
 
+@pytest.mark.unit
 def test_item_to_receipt_missing_keys():
     """Test that itemToReceipt raises ValueError when required keys are missing."""
     incomplete_item = {
@@ -249,6 +262,7 @@ def test_item_to_receipt_missing_keys():
         itemToReceipt(incomplete_item)
 
 
+@pytest.mark.unit
 def test_item_to_receipt_invalid_format():
     """Test that itemToReceipt raises ValueError when keys are incorrectly formatted."""
     invalid_item = {

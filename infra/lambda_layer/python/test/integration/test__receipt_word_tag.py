@@ -24,7 +24,7 @@ def sample_receipt_word_tag():
         timestamp_added="2021-01-01T00:00:00"
     )
 
-
+@pytest.mark.integration
 def test_add_receipt_word_tag(
     dynamodb_table: Literal["MyMockedTable"], sample_receipt_word_tag: ReceiptWordTag
 ):
@@ -44,7 +44,7 @@ def test_add_receipt_word_tag(
     )
     assert retrieved == sample_receipt_word_tag
 
-
+@pytest.mark.integration
 def test_add_receipt_word_tag_duplicate_raises(
     dynamodb_table: Literal["MyMockedTable"], sample_receipt_word_tag: ReceiptWordTag
 ):
@@ -56,7 +56,7 @@ def test_add_receipt_word_tag_duplicate_raises(
     with pytest.raises(ValueError, match="already exists"):
         client.addReceiptWordTag(sample_receipt_word_tag)
 
-
+@pytest.mark.integration
 def test_update_receipt_word_tag(
     dynamodb_table: Literal["MyMockedTable"], sample_receipt_word_tag: ReceiptWordTag
 ):
@@ -78,7 +78,7 @@ def test_update_receipt_word_tag(
     )
     assert retrieved.tag == "UpdatedTag"
 
-
+@pytest.mark.integration
 def test_delete_receipt_word_tag(
     dynamodb_table: Literal["MyMockedTable"], sample_receipt_word_tag: ReceiptWordTag
 ):
@@ -105,7 +105,7 @@ def test_delete_receipt_word_tag(
             sample_receipt_word_tag.tag
         )
 
-
+@pytest.mark.integration
 def test_list_receipt_word_tags(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -123,7 +123,7 @@ def test_list_receipt_word_tags(dynamodb_table: Literal["MyMockedTable"]):
     for rwt in receipt_word_tags:
         assert rwt in returned_tags
 
-
+@pytest.mark.integration
 def test_list_receipt_word_tags_from_image(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -161,7 +161,7 @@ def sample_receipt_word_tags():
         ReceiptWordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed5", receipt_id=300, line_id=30, word_id=30, tag="ALPHA", timestamp_added="2021-01-01T00:00:00"),
         ReceiptWordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed6", receipt_id=400, line_id=40, word_id=40, tag="BETA", timestamp_added="2021-01-01T00:00:00"),
     ]
-
+@pytest.mark.integration
 def test_get_receipt_word_tags(
     dynamodb_table: Literal["MyMockedTable"], 
     sample_receipt_word_tags: list[ReceiptWordTag]
@@ -195,7 +195,7 @@ def test_get_receipt_word_tags(
     }
     assert beta_returned == beta_expected
 
-
+@pytest.mark.integration
 def test_get_receipt_word_tags_no_results(dynamodb_table: Literal["MyMockedTable"]):
     """
     If tag doesn't exist, we expect an empty list.
@@ -204,7 +204,7 @@ def test_get_receipt_word_tags_no_results(dynamodb_table: Literal["MyMockedTable
     results = client.getReceiptWordTags("NOTHING")
     assert results == []
 
-
+@pytest.mark.integration
 def test_get_receipt_word_tags_pagination(dynamodb_table: Literal["MyMockedTable"]):
     """
     Test pagination for receipt word tags by inserting ~30 items
