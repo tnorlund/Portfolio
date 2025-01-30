@@ -3,10 +3,7 @@
 import pytest
 from typing import Literal
 
-# Import your ReceiptWordTag entity and DynamoClient (or similar class).
-# Adjust paths as necessary for your project.
-from dynamo.entities.receipt_word_tag import ReceiptWordTag
-from dynamo import DynamoClient  # or whatever your client is called
+from dynamo import DynamoClient, ReceiptWordTag
 
 
 @pytest.fixture
@@ -21,8 +18,9 @@ def sample_receipt_word_tag():
         line_id=5,
         word_id=42,
         tag="SampleTag",
-        timestamp_added="2021-01-01T00:00:00"
+        timestamp_added="2021-01-01T00:00:00",
     )
+
 
 @pytest.mark.integration
 def test_add_receipt_word_tag(
@@ -40,9 +38,10 @@ def test_add_receipt_word_tag(
         sample_receipt_word_tag.receipt_id,
         sample_receipt_word_tag.line_id,
         sample_receipt_word_tag.word_id,
-        sample_receipt_word_tag.tag
+        sample_receipt_word_tag.tag,
     )
     assert retrieved == sample_receipt_word_tag
+
 
 @pytest.mark.integration
 def test_add_receipt_word_tag_duplicate_raises(
@@ -55,6 +54,7 @@ def test_add_receipt_word_tag_duplicate_raises(
     # Act & Assert
     with pytest.raises(ValueError, match="already exists"):
         client.addReceiptWordTag(sample_receipt_word_tag)
+
 
 @pytest.mark.integration
 def test_update_receipt_word_tag(
@@ -74,9 +74,10 @@ def test_update_receipt_word_tag(
         sample_receipt_word_tag.receipt_id,
         sample_receipt_word_tag.line_id,
         sample_receipt_word_tag.word_id,
-        sample_receipt_word_tag.tag
+        sample_receipt_word_tag.tag,
     )
     assert retrieved.tag == "UpdatedTag"
+
 
 @pytest.mark.integration
 def test_delete_receipt_word_tag(
@@ -92,7 +93,7 @@ def test_delete_receipt_word_tag(
         receipt_id=sample_receipt_word_tag.receipt_id,
         line_id=sample_receipt_word_tag.line_id,
         word_id=sample_receipt_word_tag.word_id,
-        tag=sample_receipt_word_tag.tag
+        tag=sample_receipt_word_tag.tag,
     )
 
     # Assert
@@ -102,15 +103,23 @@ def test_delete_receipt_word_tag(
             sample_receipt_word_tag.receipt_id,
             sample_receipt_word_tag.line_id,
             sample_receipt_word_tag.word_id,
-            sample_receipt_word_tag.tag
+            sample_receipt_word_tag.tag,
         )
+
 
 @pytest.mark.integration
 def test_list_receipt_word_tags(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
     receipt_word_tags = [
-        ReceiptWordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", receipt_id=10, line_id=1, word_id=i, tag=f"Tag{i}", timestamp_added="2021-01-01T00:00:00")
+        ReceiptWordTag(
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            receipt_id=10,
+            line_id=1,
+            word_id=i,
+            tag=f"Tag{i}",
+            timestamp_added="2021-01-01T00:00:00",
+        )
         for i in range(1, 4)
     ]
     for rwt in receipt_word_tags:
@@ -123,6 +132,7 @@ def test_list_receipt_word_tags(dynamodb_table: Literal["MyMockedTable"]):
     for rwt in receipt_word_tags:
         assert rwt in returned_tags
 
+
 @pytest.mark.integration
 def test_list_receipt_word_tags_from_image(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
@@ -130,19 +140,33 @@ def test_list_receipt_word_tags_from_image(dynamodb_table: Literal["MyMockedTabl
 
     # ReceiptWordTags for image_id=1
     same_image_tags = [
-        ReceiptWordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", receipt_id=10, line_id=2, word_id=i, tag=f"ImageTag{i}", timestamp_added="2021-01-01T00:00:00")
+        ReceiptWordTag(
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            receipt_id=10,
+            line_id=2,
+            word_id=i,
+            tag=f"ImageTag{i}",
+            timestamp_added="2021-01-01T00:00:00",
+        )
         for i in range(1, 3)
     ]
     # Another ReceiptWordTag with a different image_id
     different_image_tag = ReceiptWordTag(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed4", receipt_id=99, line_id=2, word_id=999, tag="OtherImage", timestamp_added="2021-01-01T00:00:00"
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed4",
+        receipt_id=99,
+        line_id=2,
+        word_id=999,
+        tag="OtherImage",
+        timestamp_added="2021-01-01T00:00:00",
     )
 
     for rwt in same_image_tags + [different_image_tag]:
         client.addReceiptWordTag(rwt)
 
     # Act
-    found_tags = client.listReceiptWordTagsFromImage("3f52804b-2fad-4e00-92c8-b593da3a8ed3")
+    found_tags = client.listReceiptWordTagsFromImage(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    )
 
     # Assert
     assert len(found_tags) == len(same_image_tags)
@@ -150,21 +174,52 @@ def test_list_receipt_word_tags_from_image(dynamodb_table: Literal["MyMockedTabl
         assert rwt in found_tags
     assert different_image_tag not in found_tags
 
+
 @pytest.fixture
 def sample_receipt_word_tags():
     """
     Returns multiple ReceiptWordTag objects, with two distinct tags.
     """
     return [
-        ReceiptWordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", receipt_id=100, line_id=10, word_id=10, tag="ALPHA", timestamp_added="2021-01-01T00:00:00"),
-        ReceiptWordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed4", receipt_id=200, line_id=20, word_id=20, tag="BETA", timestamp_added="2021-01-01T00:00:00"),
-        ReceiptWordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed5", receipt_id=300, line_id=30, word_id=30, tag="ALPHA", timestamp_added="2021-01-01T00:00:00"),
-        ReceiptWordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed6", receipt_id=400, line_id=40, word_id=40, tag="BETA", timestamp_added="2021-01-01T00:00:00"),
+        ReceiptWordTag(
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            receipt_id=100,
+            line_id=10,
+            word_id=10,
+            tag="ALPHA",
+            timestamp_added="2021-01-01T00:00:00",
+        ),
+        ReceiptWordTag(
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed4",
+            receipt_id=200,
+            line_id=20,
+            word_id=20,
+            tag="BETA",
+            timestamp_added="2021-01-01T00:00:00",
+        ),
+        ReceiptWordTag(
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed5",
+            receipt_id=300,
+            line_id=30,
+            word_id=30,
+            tag="ALPHA",
+            timestamp_added="2021-01-01T00:00:00",
+        ),
+        ReceiptWordTag(
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed6",
+            receipt_id=400,
+            line_id=40,
+            word_id=40,
+            tag="BETA",
+            timestamp_added="2021-01-01T00:00:00",
+        ),
     ]
+
+
 @pytest.mark.integration
 def test_get_receipt_word_tags(
-    dynamodb_table: Literal["MyMockedTable"], 
-    sample_receipt_word_tags: list[ReceiptWordTag]
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt_word_tags: list[ReceiptWordTag],
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -195,6 +250,7 @@ def test_get_receipt_word_tags(
     }
     assert beta_returned == beta_expected
 
+
 @pytest.mark.integration
 def test_get_receipt_word_tags_no_results(dynamodb_table: Literal["MyMockedTable"]):
     """
@@ -203,6 +259,7 @@ def test_get_receipt_word_tags_no_results(dynamodb_table: Literal["MyMockedTable
     client = DynamoClient(dynamodb_table)
     results = client.getReceiptWordTags("NOTHING")
     assert results == []
+
 
 @pytest.mark.integration
 def test_get_receipt_word_tags_pagination(dynamodb_table: Literal["MyMockedTable"]):
@@ -214,9 +271,16 @@ def test_get_receipt_word_tags_pagination(dynamodb_table: Literal["MyMockedTable
 
     big_list = []
     for i in range(30):
-        big_list.append(ReceiptWordTag(
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed4", receipt_id=1, line_id=i, word_id=i, tag="PAGE", timestamp_added="2021-01-01T00:00:00"
-        ))
+        big_list.append(
+            ReceiptWordTag(
+                image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed4",
+                receipt_id=1,
+                line_id=i,
+                word_id=i,
+                tag="PAGE",
+                timestamp_added="2021-01-01T00:00:00",
+            )
+        )
 
     client.addReceiptWordTags(big_list)
 
@@ -226,5 +290,7 @@ def test_get_receipt_word_tags_pagination(dynamodb_table: Literal["MyMockedTable
     returned_tuples = {
         (r.image_id, r.receipt_id, r.line_id, r.word_id) for r in results
     }
-    expected_tuples = {("3f52804b-2fad-4e00-92c8-b593da3a8ed4", 1, i, i) for i in range(30)}
+    expected_tuples = {
+        ("3f52804b-2fad-4e00-92c8-b593da3a8ed4", 1, i, i) for i in range(30)
+    }
     assert returned_tuples == expected_tuples

@@ -61,6 +61,7 @@ def dynamodb_table():
         # Yield the table name so your tests can reference it
         yield table_name
 
+
 @pytest.fixture
 def s3_bucket():
     """
