@@ -5,14 +5,9 @@ from dynamo.entities.receipt_word_tag import ReceiptWordTag, itemToReceiptWordTa
 @pytest.fixture
 def example_receipt_word_tag():
     """Provides a sample ReceiptWordTag for testing."""
-    return ReceiptWordTag(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        receipt_id=45,
-        line_id=6,
-        word_id=789,
-        tag="food",
-        timestamp_added="2021-01-01T00:00:00",
-    )
+    # fmt: off
+    return ReceiptWordTag( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", receipt_id=45, line_id=6, word_id=789, tag="food", timestamp_added="2021-01-01T00:00:00", )
+    # fmt: on
 
 
 @pytest.mark.unit
@@ -69,33 +64,15 @@ def test_receipt_word_tag_eq():
     Test __eq__ method:
       - Two ReceiptWordTags are equal if (word_id, receipt_id, tag) match.
     """
-    rwt1 = ReceiptWordTag(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        20,
-        30,
-        40,
-        "TAG",
-        timestamp_added="2021-01-01T00:00:00",
-    )
-    rwt2 = ReceiptWordTag(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        20,
-        888,
-        40,
-        "TAG",
-        timestamp_added="2021-01-01T00:00:00",
-    )  # same receipt_id, word_id, tag
-    rwt3 = ReceiptWordTag(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        20,
-        30,
-        999,
-        "OTHER",
-        timestamp_added="2021-01-01T00:00:00",
-    )  # different word_id
+    # fmt: off
+    rwt1 = ReceiptWordTag( "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 20, 30, 40, "TAG", timestamp_added="2021-01-01T00:00:00", )
+    rwt2 = ReceiptWordTag( "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 20, 888, 40, "TAG", timestamp_added="2021-01-01T00:00:00", )  # same receipt_id, word_id, tag
+    rwt3 = ReceiptWordTag( "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 20, 30, 999, "OTHER", timestamp_added="2021-01-01T00:00:00", )  # different word_id
+    # fmt: on
 
     assert rwt1 == rwt2
     assert rwt1 != rwt3
+    assert rwt1 != "another-type"
 
 
 @pytest.mark.unit
