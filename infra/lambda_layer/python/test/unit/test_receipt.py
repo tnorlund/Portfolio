@@ -23,7 +23,7 @@ def example_receipt():
 
 
 @pytest.mark.unit
-def test_receipt_construction_valid(example_receipt):
+def test_init(example_receipt):
     """Test constructing a valid Receipt."""
     assert example_receipt.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert example_receipt.id == 1
@@ -130,19 +130,74 @@ def test_receipt_invalid_dimensions():
             sha256="abc123",
         )
 
+@pytest.mark.unit
+def test_valid_timestamp():
+    """Test that constructing a Receipt with a valid timestamp works."""
+    Receipt(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        id=1,
+        width=200,
+        height=100,
+        timestamp_added=datetime.now(),
+        raw_s3_bucket="test-bucket",
+        raw_s3_key="test/key/receipt.jpg",
+        top_left={"x": 0.0, "y": 0.0},
+        top_right={"x": 200.0, "y": 0.0},
+        bottom_left={"x": 0.0, "y": 100.0},
+        bottom_right={"x": 200.0, "y": 100.0},
+        sha256="abc123",
+    )
 
 @pytest.mark.unit
 def test_receipt_invalid_timestamp():
     """Test that constructing a Receipt with an invalid timestamp raises ValueError."""
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="timestamp_added must be a datetime object or a string"):
         Receipt(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             id=1,
-            width=-200,
+            width=200,
             height=100,
             timestamp_added=123,
             raw_s3_bucket="test-bucket",
             raw_s3_key="test/key/receipt.jpg",
+            top_left={"x": 0.0, "y": 0.0},
+            top_right={"x": 200.0, "y": 0.0},
+            bottom_left={"x": 0.0, "y": 100.0},
+            bottom_right={"x": 200.0, "y": 100.0},
+            sha256="abc123",
+        )
+
+@pytest.mark.unit
+def test_receipt_invalid_s3_bucket():
+    """Test that constructing a Receipt with an invalid S3 bucket raises ValueError."""
+    with pytest.raises(ValueError, match="raw_s3_bucket must be a string"):
+        Receipt(
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            id=1,
+            width=200,
+            height=100,
+            timestamp_added="2021-01-01T00:00:00",
+            raw_s3_bucket=123,
+            raw_s3_key="test/key/receipt.jpg",
+            top_left={"x": 0.0, "y": 0.0},
+            top_right={"x": 200.0, "y": 0.0},
+            bottom_left={"x": 0.0, "y": 100.0},
+            bottom_right={"x": 200.0, "y": 100.0},
+            sha256="abc123",
+        )
+
+@pytest.mark.unit
+def test_receipt_invalid_s3_key():
+    """Test that constructing a Receipt with an invalid S3 key raises ValueError."""
+    with pytest.raises(ValueError, match="raw_s3_key must be a string"):
+        Receipt(
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            id=1,
+            width=200,
+            height=100,
+            timestamp_added="2021-01-01T00:00:00",
+            raw_s3_bucket="test-bucket",
+            raw_s3_key=123,
             top_left={"x": 0.0, "y": 0.0},
             top_right={"x": 200.0, "y": 0.0},
             bottom_left={"x": 0.0, "y": 100.0},
@@ -170,6 +225,64 @@ def test_receipt_invalid_point_types():
             sha256="abc123",
         )
 
+@pytest.mark.unit
+def test_receipt_invalid_sha256():
+    """Test that constructing a Receipt with an invalid SHA256 raises ValueError."""
+    with pytest.raises(ValueError, match="sha256 must be a string"):
+        Receipt(
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            id=1,
+            width=200,
+            height=100,
+            timestamp_added="2021-01-01T00:00:00",
+            raw_s3_bucket="test-bucket",
+            raw_s3_key="test/key/receipt.jpg",
+            top_left={"x": 0.0, "y": 0.0},
+            top_right={"x": 200.0, "y": 0.0},
+            bottom_left={"x": 0.0, "y": 100.0},
+            bottom_right={"x": 200.0, "y": 100.0},
+            sha256=123,
+        )
+
+@pytest.mark.unit
+def test_receipt_invalid_cdn_bucket():
+    """Test that constructing a Receipt with an invalid CDN bucket raises ValueError."""
+    with pytest.raises(ValueError, match="cdn_s3_bucket must be a string"):
+        Receipt(
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            id=1,
+            width=200,
+            height=100,
+            timestamp_added="2021-01-01T00:00:00",
+            raw_s3_bucket="test-bucket",
+            raw_s3_key="test/key/receipt.jpg",
+            top_left={"x": 0.0, "y": 0.0},
+            top_right={"x": 200.0, "y": 0.0},
+            bottom_left={"x": 0.0, "y": 100.0},
+            bottom_right={"x": 200.0, "y": 100.0},
+            sha256="abc123",
+            cdn_s3_bucket=123,
+        )
+
+@pytest.mark.unit
+def test_receipt_invalid_cdn_key():
+    """Test that constructing a Receipt with an invalid CDN key raises ValueError."""
+    with pytest.raises(ValueError, match="cdn_s3_key must be a string"):
+        Receipt(
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            id=1,
+            width=200,
+            height=100,
+            timestamp_added="2021-01-01T00:00:00",
+            raw_s3_bucket="test-bucket",
+            raw_s3_key="test/key/receipt.jpg",
+            top_left={"x": 0.0, "y": 0.0},
+            top_right={"x": 200.0, "y": 0.0},
+            bottom_left={"x": 0.0, "y": 100.0},
+            bottom_right={"x": 200.0, "y": 100.0},
+            sha256="abc123",
+            cdn_s3_key=123,
+        )
 
 @pytest.mark.unit
 def test_key_generation(example_receipt):
@@ -245,6 +358,41 @@ def test_to_item(example_receipt):
 
 
 @pytest.mark.unit
+def test_repr(example_receipt):
+    """Test the string representation of a Receipt."""
+    assert str(example_receipt) == (
+        "Receipt(id=1, image_id='3f52804b-2fad-4e00-92c8-b593da3a8ed3')"
+    )
+
+@pytest.mark.unit
+def test_iter(example_receipt):
+    """Test that Receipt is iterable."""
+    assert dict(example_receipt) == {
+        "id": 1,
+        "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "width": 200,
+        "height": 100,
+        "timestamp_added": "2021-01-01T00:00:00",
+        "raw_s3_bucket": "test-bucket",
+        "raw_s3_key": "test/key/receipt.jpg",
+        "top_left": {"x": 0.0, "y": 0.0},
+        "top_right": {"x": 200.0, "y": 0.0},
+        "bottom_left": {"x": 0.0, "y": 100.0},
+        "bottom_right": {"x": 200.0, "y": 100.0},
+        "sha256": "abc123",
+        "cdn_s3_bucket": None,
+        "cdn_s3_key": None,
+    }
+    assert Receipt(**dict(example_receipt)) == example_receipt
+
+@pytest.mark.unit
+def test_eq(example_receipt):
+    """Test that Receipt equality works as expected."""
+    assert example_receipt == Receipt(**dict(example_receipt))
+    assert example_receipt != Receipt(**dict(example_receipt, id=2))
+    assert example_receipt != None
+
+@pytest.mark.unit
 def test_item_to_receipt_valid(example_receipt):
     """Test itemToReceipt with a valid DynamoDB item."""
     itemToReceipt(example_receipt.to_item()) == example_receipt
@@ -258,7 +406,7 @@ def test_item_to_receipt_missing_keys():
         "SK": {"S": "RECEIPT#00001"},
         # Missing width, height, etc.
     }
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Invalid item format\nmissing keys"):
         itemToReceipt(incomplete_item)
 
 
@@ -270,12 +418,13 @@ def test_item_to_receipt_invalid_format():
         "SK": {"S": "RECEIPT#00001"},
         "width": {"S": "200"},  # Should be {"N": "200"}
         "height": {"N": "100"},
-        "s3_bucket": {"S": "test-bucket"},
-        "s3_key": {"S": "test/key/receipt.jpg"},
-        "topLeft": {"M": {"x": {"N": "0.0"}, "y": {"N": "0.0"}}},
-        "topRight": {"M": {"x": {"N": "200.0"}, "y": {"N": "0.0"}}},
-        "bottomLeft": {"M": {"x": {"N": "0.0"}, "y": {"N": "100.0"}}},
-        "bottomRight": {"M": {"x": {"N": "200.0"}, "y": {"N": "100.0"}}},
+        "timestamp_added": {"S": "2021-01-01T00:00:00"},
+        "raw_s3_bucket": {"S": "test-bucket"},
+        "raw_s3_key": {"S": "test/key/receipt.jpg"},
+        "top_left": {"M": {"x": {"N": "0.0"}, "y": {"N": "0.0"}}},
+        "top_right": {"M": {"x": {"N": "200.0"}, "y": {"N": "0.0"}}},
+        "bottom_left": {"M": {"x": {"N": "0.0"}, "y": {"N": "100.0"}}},
+        "bottom_right": {"M": {"x": {"N": "200.0"}, "y": {"N": "100.0"}}},
     }
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Error converting item to Receipt"):
         itemToReceipt(invalid_item)
