@@ -1,24 +1,21 @@
-# Use AWS Lambda's Python base image
 FROM public.ecr.aws/lambda/python:3.12
 
-# First, install any OS-level/Python packages needed globally
+# Install system-level dependencies
 RUN pip install --no-cache-dir opencv-python-headless scikit-learn
 
-# Copy the "python" folder (which includes your requirements.txt) into the image
-COPY lambda_layer/python ./dynamo
+# Copy your layer code to a temporary location
+COPY lambda_layer/python /tmp/dynamo
 
-# Install dependencies from requirements.txt
-# This step will install everything listed in lambda_layer/python/requirements.txt
-RUN pip install --no-cache-dir -r ./dynamo/requirements.txt
+# Install everything from your "dynamo" package
+RUN pip install --no-cache-dir -r /tmp/dynamo/requirements.txt
+RUN pip install --no-cache-dir /tmp/dynamo
 
-# (Optional) If you have a setup.py in `dynamo` and want to install it as a package:
-RUN pip install --no-cache-dir ./dynamo
+# Remove the temporary copy (optional, but keeps container small)
+RUN rm -rf /tmp/dynamo
 
-# Set the working directory to Lambda's default task root
-WORKDIR ${LAMBDA_TASK_ROOT}
+# Then copy only your final .py code
+COPY ingestion/cluster.py /var/task/cluster.py
 
-# Copy your ingestion code into the container
-COPY ingestion/cluster.py ${LAMBDA_TASK_ROOT}
-
-# The default command will be your handler
-CMD [ "cluster.lambda_handler" ]
+# Set up the working directory, environment, and default handler
+WORKDIR /var/task
+CMD ["cluster.lambda_handler"]

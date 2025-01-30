@@ -320,7 +320,7 @@ class DynamoClient(
             '1) The field\'s **value** (e.g. "SPROUTS FARMERS MARKET").\n'
             '2) An array of "word_centroids" that correspond to the OCR words. \n'
             "     - This array should list the (x, y) coordinates of each word that you used to form that field's value.\n"
-            '     - Use the same centroids from the "words" array above.\n\n'
+            '     - Use the same centroids from the "words" array above. They **must** match based on the centroids given. Do not create new centroids.\n\n'
             "If a particular field is not found, return an empty string or null for that field.\n\n"
             "**The JSON structure** should look like this (conceptually):\n"
             "```json\n"
@@ -370,8 +370,8 @@ class DynamoClient(
             matched_words = [
                 receipt_word
                 for receipt_word in receipt_words
-                if receipt_word.calculate_centroid()[0] == centroid_in_response["x"]
-                and receipt_word.calculate_centroid()[1] == centroid_in_response["y"]
+                if receipt_word.calculate_centroid()
+                == (centroid_in_response["x"], centroid_in_response["y"])
             ]
             if len(matched_words) == 0:
                 # TODO Save JSON response to S3
