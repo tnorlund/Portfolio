@@ -61,19 +61,27 @@ class Letter:
         assert_valid_uuid(image_id)
         self.image_id = image_id
 
-        if line_id <= 0 or not isinstance(line_id, int):
-            raise ValueError("line_id must be a positive integer")
+        if not isinstance(line_id, int):
+            raise ValueError("line_id must be an integer")
+        if line_id <= 0:
+            raise ValueError("line_id must be positive")
         self.line_id = line_id
 
-        if word_id <= 0 or not isinstance(word_id, int):
-            raise ValueError("word_id must be a positive integer")
+        if not isinstance(word_id, int):
+            raise ValueError("word_id must be an integer")
+        if word_id <= 0:
+            raise ValueError("word_id must be positive")
         self.word_id = word_id
 
-        if id <= 0 or not isinstance(id, int):
-            raise ValueError("id must be a positive integer")
+        if not isinstance(id, int):
+            raise ValueError("id must be an integer")
+        if id <= 0:
+            raise ValueError("id must be positive")
         self.id = id
 
-        if text is None or len(text) != 1 or not isinstance(text, str):
+        if not isinstance(text, str):
+            raise ValueError("text must be a string")
+        if len(text) != 1:
             raise ValueError("text must be exactly one character")
         self.text = text
 
@@ -104,8 +112,12 @@ class Letter:
             )
         self.angle_radians = angle_radians
 
-        if confidence <= 0 or confidence > 1:
-            raise ValueError("confidence must be a float between 0 and 1")
+        if isinstance(confidence, int):
+            confidence = float(confidence)
+        if not isinstance(confidence, float):
+            raise ValueError("confidence must be a float")
+        if confidence <= 0.0 or confidence > 1.0:
+            raise ValueError("confidence must be between 0 and 1")
         self.confidence = confidence
 
     def key(self) -> dict:
@@ -120,7 +132,9 @@ class Letter:
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {
-                "S": f"LINE#{self.line_id:05d}#WORD#{self.word_id:05d}#LETTER#{self.id:05d}"
+                "S": f"LINE#{self.line_id:05d}"
+                    f"#WORD#{self.word_id:05d}"
+                    f"#LETTER#{self.id:05d}"
             },
         }
 
@@ -129,7 +143,7 @@ class Letter:
         Serializes this Letter into a dictionary compatible with DynamoDB.
 
         Returns:
-            dict: A dictionary representing the Letter’s data in DynamoDB’s
+            dict: A dictionary representing the Letter's data in DynamoDB's
             key-value structure, including bounding box, corners, angles, and confidence.
         """
         return {
@@ -218,7 +232,7 @@ class Letter:
 
     def scale(self, sx: float, sy: float) -> None:
         """
-        Scales the Letter’s coordinates and bounding box by the specified x and y factors.
+        Scales the Letter's coordinates and bounding box by the specified x and y factors.
 
         Args:
             sx (float): Scale factor in the x-direction.
@@ -321,7 +335,7 @@ class Letter:
 
     def __iter__(self) -> Generator[Tuple[str, dict], None, None]:
         """
-        Yields the Letter object’s attributes as a series of (key, value) pairs.
+        Yields the Letter object's attributes as a series of (key, value) pairs.
 
         Yields:
             Generator[Tuple[str, dict], None, None]: Each yield is a tuple
@@ -407,7 +421,7 @@ def itemToLetter(item: dict) -> Letter:
     }
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - set(item.keys())
-        raise ValueError("Item is missing required keys", missing_keys)
+        raise ValueError(f"Item is missing required keys: {missing_keys}")
 
     try:
         return Letter(
