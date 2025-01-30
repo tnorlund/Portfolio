@@ -116,7 +116,7 @@ class MockGPTResponse:
     def json(self):
         return self._json_data
 
-
+@pytest.mark.integration
 def test_gpt_receipt_1(
     sample_gpt_receipt_1: Tuple[
         list[Image],
@@ -209,7 +209,7 @@ def test_gpt_receipt_1(
     assert_tags_on_word_and_receipt_word(40, 1, ["phone_number"], words, word_tags, receipt_details[0]) # 877-276-9637
     # fmt: on
 
-
+@pytest.mark.integration
 def test_gpt_receipt_bad_response(
     sample_gpt_receipt_1,
     dynamodb_table: Literal["MyMockedTable"],
@@ -275,7 +275,7 @@ def test_gpt_receipt_bad_response(
     body_text = obj["Body"].read().decode("utf-8")
     assert body_text == "Internal Server Error"
 
-
+@pytest.mark.integration
 def test_gpt_no_api_key(
     sample_gpt_receipt_1,
     dynamodb_table: Literal["MyMockedTable"],
