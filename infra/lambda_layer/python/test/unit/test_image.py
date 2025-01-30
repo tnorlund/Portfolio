@@ -393,7 +393,7 @@ def test_itemToImage(
             }
         )
     # Bad item format
-    with pytest.raises(ValueError, match="Invalid item format: 'N'"):
+    with pytest.raises(ValueError, match="Error converting item to Image: "):
         itemToImage(
             {
                 "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
