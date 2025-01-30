@@ -10,6 +10,15 @@ from math import sin, cos, pi, radians
 
 
 class Word:
+    """
+    Represents a Word in an image, including its text, bounding box,
+    positional corners, angle, confidence score, tags, histogram, and number of characters.
+
+    Provides methods to generate DynamoDB key structures, transform
+    the word's coordinates (translate, scale, rotate), calculate its centroid,
+    and serialize the data for DynamoDB.
+    """
+
     def __init__(
         self,
         image_id: str,
@@ -26,86 +35,94 @@ class Word:
         confidence: float,
         tags: list[str] = None,
     ):
-        """Constructs a new Word object for DynamoDB
+        """
+        Constructs a new Word object for DynamoDB.
 
         Args:
-            image_id (str): UUID identifying the image
-            line_id (int): The ID of the line the word is in
-            id (int): The ID of the word
-            text (str): The text of the word
-            bounding_box (dict): The bounding box of the word
-            top_right (dict): The top right corner of the word
-            top_left (dict): The top left corner of the word
-            bottom_right (dict): The bottom right corner of the word
-            bottom_left (dict): The bottom left corner of the word
-            angle_degrees (float): The angle of the word in degrees
-            angle_radians (float): The angle of the word in radians
-            confidence (float): The confidence of the word
-            tags (list[str]): The tags of the word
+            image_id (str): UUID identifying the image.
+            line_id (int): The ID of the line the word is in.
+            id (int): The ID of the word.
+            text (str): The text of the word.
+            bounding_box (dict): The bounding box of the word 
+                (keys: 'x', 'y', 'width', 'height').
+            top_right (dict): The top right corner of the word (keys: 'x', 'y').
+            top_left (dict): The top left corner of the word (keys: 'x', 'y').
+            bottom_right (dict): The bottom right corner of the word (keys: 'x', 'y').
+            bottom_left (dict): The bottom left corner of the word (keys: 'x', 'y').
+            angle_degrees (float): The angle of the word in degrees.
+            angle_radians (float): The angle of the word in radians.
+            confidence (float): The confidence of the word (0 < confidence <= 1).
+            tags (list[str], optional): The tags of the word. Defaults to None.
 
         Attributes:
-            image_id (str): UUID identifying the image
-            line_id (int): The ID of the line the word is in
-            id (int): The ID of the word
-            text (str): The text of the word
-            bounding_box (dict): The bounding box of the word
-            top_right (dict): The top right corner of the word
-            top_left (dict): The top left corner of the word
-            bottom_right (dict): The bottom right corner of the word
-            bottom_left (dict): The bottom left corner of the word
-            angle_degrees (float): The angle of the word in degrees
-            angle_radians (float): The angle of the word in radians
-            confidence (float): The confidence of the word
-            tags (list[str]): The tags of the word
-            histogram (dict): The histogram of the word
-            num_chars (int): The number of characters in the word
+            image_id (str): UUID identifying the image.
+            line_id (int): The ID of the line the word is in.
+            id (int): The ID of the word.
+            text (str): The text of the word.
+            bounding_box (dict): The bounding box of the word.
+            top_right (dict): The top right corner of the word.
+            top_left (dict): The top left corner of the word.
+            bottom_right (dict): The bottom right corner of the word.
+            bottom_left (dict): The bottom left corner of the word.
+            angle_degrees (float): The angle of the word in degrees.
+            angle_radians (float): The angle of the word in radians.
+            confidence (float): The confidence of the word (0 < confidence <= 1).
+            tags (list[str]): The tags of the word.
+            histogram (dict): The histogram (character frequency) of the word's text.
+            num_chars (int): The number of characters in the word's text.
 
         Raises:
-            ValueError: When the image_id is not a valid UUID
-            ValueError: When the line_id is not a positive integer
-            ValueError: When the id is not a positive integer
-            ValueError: When the text is not a string
-            ValueError: When the bounding_box is not valid
-            ValueError: When the top_right is not valid
-            ValueError: When the top_left is not valid
-            ValueError: When the bottom_right is not valid
-            ValueError: When the bottom_left is not valid
-            ValueError: When the angle_degrees is not a float
-            ValueError: When the angle_radians is not a float
-            ValueError: When the confidence is not a float between 0 and 1
-            ValueError: When the tags is not a list
+            ValueError: If the image_id is not a valid UUID.
+            ValueError: If line_id is not a positive integer.
+            ValueError: If id is not a positive integer.
+            ValueError: If text is not a string.
+            ValueError: If bounding_box or any corner is invalid.
+            ValueError: If angle_degrees or angle_radians is not float/int.
+            ValueError: If confidence is not a float in (0, 1].
+            ValueError: If tags is not a list (when provided).
         """
         assert_valid_uuid(image_id)
         self.image_id = image_id
+
         if not isinstance(line_id, int):
             raise ValueError("line_id must be an integer")
         if line_id < 0:
             raise ValueError("line_id must be positive")
         self.line_id = line_id
+
         if not isinstance(id, int):
             raise ValueError("id must be an integer")
         if id < 0:
             raise ValueError("id must be positive")
         self.id = id
+
         if not isinstance(text, str):
             raise ValueError("text must be a string")
         self.text = text
+
         assert_valid_bounding_box(bounding_box)
         self.bounding_box = bounding_box
+
         assert_valid_point(top_right)
         self.top_right = top_right
+
         assert_valid_point(top_left)
         self.top_left = top_left
+
         assert_valid_point(bottom_right)
         self.bottom_right = bottom_right
+
         assert_valid_point(bottom_left)
         self.bottom_left = bottom_left
+
         if not isinstance(angle_degrees, (float, int)):
-            raise ValueError(f"angle_degrees must be a float or int")
+            raise ValueError("angle_degrees must be a float or int")
         self.angle_degrees = angle_degrees
+
         if not isinstance(angle_radians, (float, int)):
             raise ValueError("angle_radians must be a float or int")
         self.angle_radians = angle_radians
+
         if isinstance(confidence, int):
             confidence = float(confidence)
         if not isinstance(confidence, float):
@@ -113,19 +130,39 @@ class Word:
         if confidence <= 0.0 or confidence > 1.0:
             raise ValueError("confidence must be between 0 and 1")
         self.confidence = confidence
+
         if tags is not None and not isinstance(tags, list):
             raise ValueError("tags must be a list")
         self.tags = tags if tags is not None else []
+
+        # Calculate histogram (character frequency) of the text.
         self.histogram = histogram(self.text)
+        # Calculate the number of characters in the text.
         self.num_chars = len(self.text)
 
     def key(self) -> dict:
+        """
+        Generates the primary key for this Word in DynamoDB.
+
+        Returns:
+            dict: A dictionary containing "PK" and "SK" for DynamoDB. 
+                  - "PK" is of the form "IMAGE#<image_id>"
+                  - "SK" is of the form "LINE#<line_id>#WORD#<word_id>"
+        """
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {"S": f"LINE#{self.line_id:05d}#WORD#{self.id:05d}"},
         }
 
     def to_item(self) -> dict:
+        """
+        Serializes this Word into a dictionary compatible with DynamoDB.
+
+        Returns:
+            dict: A dictionary representing the Word's data in DynamoDB's
+                  key-value structure, including bounding box, corners, angles,
+                  confidence, histogram, number of characters, and tags.
+        """
         item = {
             **self.key(),
             "TYPE": {"S": "WORD"},
@@ -173,15 +210,18 @@ class Word:
             },
             "num_chars": {"N": str(self.num_chars)},
         }
+
         if self.tags:
             item["tags"] = {"SS": self.tags}
+
         return item
 
     def calculate_centroid(self) -> Tuple[float, float]:
-        """Calculates the centroid of the line
+        """
+        Calculates the centroid (geometric center) of the Word from its corners.
 
         Returns:
-            Tuple[float, float]: The x and y coordinates of the centroid
+            Tuple[float, float]: The (x, y) coordinates of the Word's centroid.
         """
         x = (
             self.top_right["x"]
@@ -198,7 +238,16 @@ class Word:
         return x, y
 
     def translate(self, x: float, y: float) -> None:
-        """Translates the x, y position"""
+        """
+        Translates the Word by (x, y).
+
+        Args:
+            x (float): The amount to translate in the x-direction.
+            y (float): The amount to translate in the y-direction.
+
+        Warning:
+            This method updates the corner points but does **not** update the bounding_box.
+        """
         self.top_right["x"] += x
         self.top_right["y"] += y
         self.top_left["x"] += x
@@ -210,7 +259,13 @@ class Word:
         Warning("This function does not update the bounding box")
 
     def scale(self, sx: float, sy: float) -> None:
-        """Scales the line by the x and y factors"""
+        """
+        Scales the Word's coordinates and bounding box by the specified x and y factors.
+
+        Args:
+            sx (float): Scale factor in the x-direction.
+            sy (float): Scale factor in the y-direction.
+        """
         self.top_right["x"] *= sx
         self.top_right["y"] *= sy
         self.top_left["x"] *= sx
@@ -232,23 +287,27 @@ class Word:
         use_radians: bool = True,
     ) -> None:
         """
-        Rotates the line by the specified angle around (rotate_origin_x, rotate_origin_y).
-        ONLY rotates if angle is within:
-        - [-90°, 90°], if use_radians=False
-        - [-π/2, π/2], if use_radians=True
-        Otherwise, raises ValueError.
+        Rotates the Word by the specified angle around (rotate_origin_x, rotate_origin_y).
+        
+        Only rotates if angle is within:
+            - [-π/2, π/2] when use_radians=True
+            - [-90°, 90°] when use_radians=False
 
-        Updates top_right, topLeft, bottomRight, bottomLeft in-place,
-        and also updates angleDegrees/angleRadians.
+        After rotation, the Word's angle_degrees/angle_radians are updated 
+        by adding the rotation. The bounding_box is **not** updated.
 
         Args:
-            angle (float): The angle by which to rotate the line.
+            angle (float): The angle by which to rotate. Interpreted as degrees
+                if `use_radians=False`, else radians.
             rotate_origin_x (float): The x-coordinate of the rotation origin.
             rotate_origin_y (float): The y-coordinate of the rotation origin.
-            use_radians (bool): If True, `angle` is in radians. Otherwise, degrees.
-        """
+            use_radians (bool, optional): Indicates if the angle is in radians. 
+                Defaults to True.
 
-        # 1) Check allowed range
+        Raises:
+            ValueError: If the angle is outside the allowed range 
+                ([-π/2, π/2] in radians or [-90°, 90°] in degrees).
+        """
         if use_radians:
             # Allowed range is [-π/2, π/2]
             if not (-pi / 2 <= angle <= pi / 2):
@@ -262,24 +321,19 @@ class Word:
                 raise ValueError(
                     f"Angle {angle} (degrees) is outside the allowed range [-90°, 90°]."
                 )
-            # Convert to radians
             angle_radians = radians(angle)
 
-        # 2) Rotate each corner
         def rotate_point(px, py, ox, oy, theta):
             """
             Rotates point (px, py) around (ox, oy) by theta radians.
             Returns the new (x, y) coordinates.
             """
-            # Translate point so that (ox, oy) becomes the origin
             translated_x = px - ox
             translated_y = py - oy
 
-            # Apply the rotation
             rotated_x = translated_x * cos(theta) - translated_y * sin(theta)
             rotated_y = translated_x * sin(theta) + translated_y * cos(theta)
 
-            # Translate back
             final_x = rotated_x + ox
             final_y = rotated_y + oy
             return final_x, final_y
@@ -296,29 +350,32 @@ class Word:
             corner["x"] = x_new
             corner["y"] = y_new
 
-        # 3) Update angleDegrees and angleRadians
         if use_radians:
-            # Accumulate the rotation in angleRadians
             self.angle_radians += angle_radians
             self.angle_degrees += angle_radians * 180.0 / pi
         else:
-            # If it was in degrees, accumulate in degrees
             self.angle_degrees += angle
-            # Convert that addition to radians
             self.angle_radians += radians(angle)
 
-        # 4) Warn that the bounding box is not updated
         Warning("This function does not update the bounding box")
 
     def __repr__(self):
-        """Returns a string representation of the Word object
+        """
+        Returns a string representation of the Word object.
 
         Returns:
-            str: The string representation of the Word object
+            str: The string representation, including id and text.
         """
         return f"Word(id={int(self.id)}, text='{self.text}')"
 
     def __iter__(self) -> Generator[Tuple[str, str], None, None]:
+        """
+        Yields the Word object's attributes as (key, value) pairs.
+
+        Yields:
+            Generator[Tuple[str, any], None, None]: Each yield is a tuple
+            of (attribute_name, attribute_value).
+        """
         yield "image_id", self.image_id
         yield "line_id", self.line_id
         yield "id", self.id
@@ -336,13 +393,14 @@ class Word:
         yield "num_chars", self.num_chars
 
     def __eq__(self, other: object) -> bool:
-        """Compares two Word objects
+        """
+        Compares two Word objects for equality based on their attributes.
 
         Args:
-            other (object): The object to compare
+            other (object): The object to compare.
 
         Returns:
-            bool: True if the objects are equal, False otherwise
+            bool: True if the objects have the same attributes, False otherwise.
         """
         if not isinstance(other, Word):
             return False
@@ -364,13 +422,27 @@ class Word:
 
 
 def itemToWord(item: dict) -> Word:
-    """Converts a DynamoDB item to a Word object
+    """
+    Converts a DynamoDB item dictionary into a Word object.
+
+    This function expects a dictionary that contains:
+    - PK: {"S": "IMAGE#<uuid>"}
+    - SK: {"S": "LINE#<line_id>#WORD#<word_id>"}
+    - text: {"S": <string>}
+    - bounding_box, top_right, top_left, bottom_right, bottom_left:
+      nested dicts with numeric values
+    - angle_degrees, angle_radians, confidence: numeric values
+    - Optional: tags ({"SS": [<tag1>, <tag2>, ...]})
 
     Args:
-        item (dict): The DynamoDB item to convert
+        item (dict): A dictionary in the DynamoDB format containing all required keys.
 
     Returns:
-        Word: The Word object created from the item
+        Word: An instance of the Word class populated from the given item.
+
+    Raises:
+        ValueError: If the item is missing required keys 
+            or if any required field is malformed (e.g., numeric parsing fails).
     """
     required_keys = {
         "PK",
@@ -388,9 +460,10 @@ def itemToWord(item: dict) -> Word:
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - set(item.keys())
         raise ValueError(f"Item is missing required keys: {missing_keys}")
+
     try:
         return Word(
-            image_id=item["PK"]["S"][6:],
+            image_id=item["PK"]["S"][6:],  # strip off "IMAGE#"
             line_id=int(item["SK"]["S"].split("#")[1]),
             id=int(item["SK"]["S"].split("#")[3]),
             text=item["text"]["S"],
@@ -414,5 +487,5 @@ def itemToWord(item: dict) -> Word:
             confidence=float(item["confidence"]["N"]),
             tags=item.get("tags", {}).get("SS", []),
         )
-    except KeyError as e:
-        raise ValueError(f"Error converting item to Line: {e}")
+    except (KeyError, ValueError) as e:
+        raise ValueError(f"Error converting item to Word: {e}")
