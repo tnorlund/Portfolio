@@ -5,13 +5,9 @@ from dynamo.entities.word_tag import WordTag, itemToWordTag
 
 @pytest.fixture
 def sample_word_tag():
-    return WordTag(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        line_id=7,
-        word_id=101,
-        tag="example",
-        timestamp_added="2021-01-01T00:00:00",
-    )
+    # fmt: off
+    return WordTag( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=7, word_id=101, tag="example", timestamp_added="2021-01-01T00:00:00", )
+    # fmt: on
 
 
 @pytest.mark.unit
@@ -22,22 +18,38 @@ def test_word_tag_init(sample_word_tag):
     assert sample_word_tag.word_id == 101
     assert sample_word_tag.tag == "example"
 
+@pytest.mark.unit
+def test_word_tag_init_empty_tag():
+    """Test that WordTag raises ValueError if tag is empty."""
+    with pytest.raises(ValueError, match="tag must not be empty"):
+        WordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "", "2021-01-01T00:00:00")
+
+@pytest.mark.unit
+def test_word_tag_init_long_tag():
+    """Test that WordTag raises ValueError if tag is too long (>40 chars)."""
+    long_tag = "A" * 41
+    with pytest.raises(ValueError, match="tag must not exceed 40 characters"):
+        WordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, long_tag, "2021-01-01T00:00:00")
+
+@pytest.mark.unit
+def test_word_tag_init_underscore_tag():
+    """Test that WordTag raises ValueError if tag starts with underscore."""
+    with pytest.raises(ValueError, match="tag must not start with an underscore"):
+        WordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "_bad", "2021-01-01T00:00:00")
+
 
 @pytest.mark.unit
 def test_word_tag_eq(sample_word_tag):
     """Test __eq__ method—only comparing tag & word_id."""
+    # fmt: off
     wt1 = sample_word_tag
-    wt2 = WordTag(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        888,
-        101,
-        "example",
-        timestamp_added="2021-01-01T00:00:00",
-    )
+    wt2 = WordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 888, 101, "example", timestamp_added="2021-01-01T00:00:00")
+    # fmt: on
 
     # WordTag equality depends on (word_id, tag)
     assert wt1 == sample_word_tag
     assert wt1 != wt2
+    assert wt1 != "another object"
 
 
 @pytest.mark.unit
