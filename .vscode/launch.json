@@ -1,25 +1,25 @@
 {
-    "version": "0.2.0",
-    "configurations": [
-      {
-        "name": "Python: Test with pytest",
-        "type": "debugpy",
-        "request": "launch",
-        "module": "pytest",
-        // This part is important:
-        "justMyCode": false,
-        "args": [
-          "--maxfail=1",
-          "--disable-warnings",
-          // You can also specify tests or directories here, e.g.:
-          // "development/lambda_layer/python/test"
-          // Coverage settings:
-          "--cov=development/lambda_layer/python",
-          // optionally:
-          "--cov-report=term-missing",
-          // or --cov-report=html, etc.
-        ],
-        "console": "integratedTerminal"
-      }
-    ]
-  }
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python: Test with pytest",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      // This part is important:
+      "justMyCode": false,
+      "args": [
+        "--maxfail=1",
+        "--disable-warnings",
+        // You can also specify tests or directories here, e.g.:
+        // "development/lambda_layer/python/test"
+        // Coverage settings:
+        "--cov=development/lambda_layer/python",
+        // optionally:
+        "--cov-report=term-missing"
+        // or --cov-report=html, etc.
+      ],
+      "console": "integratedTerminal"
+    }
+  ]
+}

@@ -1,10 +1,8 @@
 {
-    "python.testing.pytestArgs": [
-        "infra/lambda_layer/python/test"
-    ],
-    "python.testing.unittestEnabled": false,
-    "python.testing.pytestEnabled": true,
-    "cSpell.words": [
-        "wobj"
-    ]
+  "python.testing.pytestArgs": ["infra/lambda_layer/python/test"],
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestEnabled": true,
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}/infra/lambda_layer/python"
+  ]
 }
