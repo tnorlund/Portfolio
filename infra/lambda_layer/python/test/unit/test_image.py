@@ -6,62 +6,33 @@ from dynamo import Image, itemToImage
 @pytest.fixture
 def example_image():
     """Provides a sample Image for testing."""
-    return Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc123",
-        "cdn_bucket",
-        "cdn_key",
-    )
+    # fmt: off
+    return Image( "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 10, 20, "2021-01-01T00:00:00", "bucket", "key", "abc123", "cdn_bucket", "cdn_key", )
+    # fmt: on
 
 
 @pytest.fixture
 def example_image_no_sha():
     """Provides a sample Image for testing."""
-    return Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        cdn_s3_bucket="cdn_bucket",
-        cdn_s3_key="cdn_key",
-    )
+    # fmt: off
+    return Image( "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 10, 20, "2021-01-01T00:00:00", "bucket", "key", cdn_s3_bucket="cdn_bucket", cdn_s3_key="cdn_key", )
+    # fmt: on
 
 
 @pytest.fixture
 def example_image_no_cdn_bucket():
     """Provides a sample Image for testing."""
-    return Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc123",
-        cdn_s3_key="cdn_key",
-    )
+    # fmt: off
+    return Image( "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 10, 20, "2021-01-01T00:00:00", "bucket", "key", "abc123", cdn_s3_key="cdn_key", )
+    # fmt: on
 
 
 @pytest.fixture
 def example_image_no_cdn_key():
     """Provides a sample Image for testing."""
-    return Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc123",
-        "cdn_bucket",
-    )
+    # fmt: off
+    return Image( "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 10, 20, "2021-01-01T00:00:00", "bucket", "key", "abc123", "cdn_bucket", )
+    # fmt: on
 
 
 @pytest.mark.unit
@@ -160,6 +131,35 @@ def test_init_bad_timestamp():
             "key",
             sha256="abc123",
         )
+
+@pytest.mark.unit
+def test_init_bad_s3_bucket():
+    """Test that the s3 bucket is a str in the constructor"""
+    with pytest.raises(ValueError, match="raw_s3_bucket must be a string"):
+        Image(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            10,
+            20,
+            "2021-01-01T00:00:00",
+            10, # Should be a string
+            "key",
+            "abc123",
+        )
+
+@pytest.mark.unit
+def test_init_bad_s3_key():
+    """Test that the s3 key is a str in the constructor"""
+    with pytest.raises(ValueError, match="raw_s3_key must be a string"):
+        Image(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            10,
+            20,
+            "2021-01-01T00:00:00",
+            "bucket",
+            10, # Should be a string
+            "abc123",
+        )
+
 
 
 @pytest.mark.unit
