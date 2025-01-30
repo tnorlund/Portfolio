@@ -154,7 +154,7 @@ def test_list_receipt_letters_from_word(dynamodb_table: Literal["MyMockedTable"]
             line_id=10,
             word_id=2,
             id=i,
-            text=f"char{i}",
+            text=f"{i}",
             bounding_box={"x": 0.0, "y": 0.0, "width": 0.01, "height": 0.01},
             top_left={"x": 0.0, "y": 0.0},
             top_right={"x": 0.01, "y": 0.0},
