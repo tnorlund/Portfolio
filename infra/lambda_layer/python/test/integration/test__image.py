@@ -44,6 +44,7 @@ correct_image_params = {
     "raw_s3_key": "key",
 }
 
+
 @pytest.mark.integration
 def test_add_image(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
@@ -64,9 +65,13 @@ def test_add_image(dynamodb_table: Literal["MyMockedTable"]):
     # Assert
     response = boto3.client("dynamodb", region_name="us-east-1").get_item(
         TableName=dynamodb_table,
-        Key={"PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"}, "SK": {"S": "IMAGE"}},
+        Key={
+            "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+            "SK": {"S": "IMAGE"},
+        },
     )
     assert response["Item"] == image.to_item()
+
 
 @pytest.mark.integration
 def test_add_image_error(dynamodb_table: Literal["MyMockedTable"]):
@@ -86,6 +91,7 @@ def test_add_image_error(dynamodb_table: Literal["MyMockedTable"]):
     client.addImage(image)
     with pytest.raises(ValueError):
         client.addImage(image)
+
 
 @pytest.mark.integration
 def test_get_image(dynamodb_table: Literal["MyMockedTable"]):
@@ -108,12 +114,20 @@ def test_get_image(dynamodb_table: Literal["MyMockedTable"]):
     # Assert
     assert retrieved_image == image
 
+
 @pytest.mark.integration
 def test_get_imageDetails(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
     image_id = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    image = Image("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 10, 20, "2021-01-01T00:00:00", "bucket", "key1")
+    image = Image(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        10,
+        20,
+        "2021-01-01T00:00:00",
+        "bucket",
+        "key1",
+    )
     line = Line(
         "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         1,
@@ -177,8 +191,8 @@ def test_get_imageDetails(dynamodb_table: Literal["MyMockedTable"]):
     client.addLetter(letter)
 
     # Act
-    retrieved_image, lines, words, word_tags, letters, receipts = client.getImageDetails(
-        image_id
+    retrieved_image, lines, words, word_tags, letters, receipts = (
+        client.getImageDetails(image_id)
     )
 
     # Assert
@@ -187,11 +201,19 @@ def test_get_imageDetails(dynamodb_table: Literal["MyMockedTable"]):
     assert words == [word]
     assert letters == [letter]
 
+
 @pytest.mark.integration
 def test_deleteImage(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    image = Image("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 10, 20, "2021-01-01T00:00:00", "bucket", "key1")
+    image = Image(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        10,
+        20,
+        "2021-01-01T00:00:00",
+        "bucket",
+        "key1",
+    )
     client.addImage(image)
 
     # Act
@@ -201,15 +223,24 @@ def test_deleteImage(dynamodb_table: Literal["MyMockedTable"]):
     with pytest.raises(ValueError):
         client.getImage(1)
 
+
 @pytest.mark.integration
 def test_deleteImage_error(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    image = Image("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 10, 20, "2021-01-01T00:00:00", "bucket", "key1")
+    image = Image(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        10,
+        20,
+        "2021-01-01T00:00:00",
+        "bucket",
+        "key1",
+    )
 
     # Act
     with pytest.raises(ValueError):
         client.deleteImage(image.id)
+
 
 @pytest.mark.integration
 def test_deleteImages(dynamodb_table: Literal["MyMockedTable"]):
@@ -218,8 +249,7 @@ def test_deleteImages(dynamodb_table: Literal["MyMockedTable"]):
 
     # Generate 1000 images, each with a random UUID for the "id"
     images = [
-        Image(**{**correct_image_params, "id": str(uuid4())})
-        for _ in range(1000)
+        Image(**{**correct_image_params, "id": str(uuid4())}) for _ in range(1000)
     ]
     client.addImages(images)
 
@@ -229,6 +259,7 @@ def test_deleteImages(dynamodb_table: Literal["MyMockedTable"]):
     # Assert
     response_images = client.listImages()
     assert len(response_images) == 0, "all images should be deleted"
+
 
 @pytest.mark.integration
 def test_listImageDetails(dynamodb_table: Literal["MyMockedTable"]):
@@ -299,6 +330,7 @@ def test_listImageDetails(dynamodb_table: Literal["MyMockedTable"]):
     assert lines_in_image_2 == image_2_details["lines"]
     assert receipts_in_image_2 == image_2_details["receipts"]
 
+
 @pytest.mark.integration
 def test_listImageDetails_pagination_returns_page_and_token(
     dynamodb_table: Literal["MyMockedTable"],
@@ -330,9 +362,10 @@ def test_listImageDetails_pagination_returns_page_and_token(
         img = images_created[image_index]
         assert img in images_created, f"Image {img.id} should be in the original set"
 
+
 @pytest.mark.integration
 def test_listImageDetails_pagination_uses_lastEvaluatedKey(
-    dynamodb_table: Literal["MyMockedTable"]
+    dynamodb_table: Literal["MyMockedTable"],
 ):
     """
     Verifies we can do classic pagination: 2 images on page 1, 2 on page 2,
@@ -362,12 +395,16 @@ def test_listImageDetails_pagination_uses_lastEvaluatedKey(
     # Assert Page 1
     page_1_images = extract_images(page_1_payload)
     assert len(page_1_images) == 2, "First page should have 2 images"
-    assert lek_1 is not None, "First call should return a non-None LEK (since more data exist)"
+    assert (
+        lek_1 is not None
+    ), "First call should return a non-None LEK (since more data exist)"
 
     # Assert Page 2
     page_2_images = extract_images(page_2_payload)
     assert len(page_2_images) == 2, "Second page should have 2 images"
-    assert lek_2 is not None, "Second call should also return a LEK (we still have 1 left)"
+    assert (
+        lek_2 is not None
+    ), "Second call should also return a LEK (we still have 1 left)"
 
     # Assert Page 3
     page_3_images = extract_images(page_3_payload)
@@ -376,7 +413,10 @@ def test_listImageDetails_pagination_uses_lastEvaluatedKey(
 
     # Confirm we got all 5 images in total
     all_images = page_1_images + page_2_images + page_3_images
-    assert sorted(all_images, key=lambda x: x.id) == sorted(images_created, key=lambda x: x.id)
+    assert sorted(all_images, key=lambda x: x.id) == sorted(
+        images_created, key=lambda x: x.id
+    )
+
 
 @pytest.mark.integration
 def test_listImageDetails_pagination_no_limit_returns_all(
@@ -390,9 +430,30 @@ def test_listImageDetails_pagination_no_limit_returns_all(
     client = DynamoClient(dynamodb_table)
 
     # Create 3 images
-    image_1 = Image("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 10, 20, "2021-01-01T00:00:00", "bucket", "key1")
-    image_2 = Image("3f52804b-2fad-4e00-92c8-b593da3a8ed4", 30, 40, "2021-01-01T00:00:00", "bucket", "key2")
-    image_3 = Image("3f52804b-2fad-4e00-92c8-b593da3a8ed5", 50, 60, "2021-01-01T00:00:00", "bucket", "key3")
+    image_1 = Image(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        10,
+        20,
+        "2021-01-01T00:00:00",
+        "bucket",
+        "key1",
+    )
+    image_2 = Image(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed4",
+        30,
+        40,
+        "2021-01-01T00:00:00",
+        "bucket",
+        "key2",
+    )
+    image_3 = Image(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed5",
+        50,
+        60,
+        "2021-01-01T00:00:00",
+        "bucket",
+        "key3",
+    )
 
     client.addImage(image_1)
     client.addImage(image_2)
@@ -416,6 +477,7 @@ def test_listImageDetails_pagination_no_limit_returns_all(
     for i in (image_1, image_2, image_3):
         assert i in returned_images
 
+
 @pytest.mark.integration
 def test_listImageDetails_pagination_with_limit_exceeds_count(
     dynamodb_table: Literal["MyMockedTable"],
@@ -428,8 +490,22 @@ def test_listImageDetails_pagination_with_limit_exceeds_count(
     client = DynamoClient(dynamodb_table)
 
     # Create 2 images
-    image_1 = Image("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 10, 20, "2021-01-01T00:00:00", "bucket", "key1")
-    image_2 = Image("3f52804b-2fad-4e00-92c8-b593da3a8ed2", 30, 40, "2021-01-01T00:00:00", "bucket", "key2")
+    image_1 = Image(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        10,
+        20,
+        "2021-01-01T00:00:00",
+        "bucket",
+        "key1",
+    )
+    image_2 = Image(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed2",
+        30,
+        40,
+        "2021-01-01T00:00:00",
+        "bucket",
+        "key2",
+    )
     client.addImage(image_1)
     client.addImage(image_2)
 
@@ -452,6 +528,7 @@ def test_listImageDetails_pagination_with_limit_exceeds_count(
     assert image_1 in returned_images
     assert image_2 in returned_images
 
+
 @pytest.mark.integration
 def test_listImageDetails_pagination_empty_table(
     dynamodb_table: Literal["MyMockedTable"],
@@ -470,9 +547,10 @@ def test_listImageDetails_pagination_empty_table(
     assert len(payload) == 0, "Should return empty dictionary if no images exist"
     assert lek is None, "No next token if no images"
 
+
 @pytest.mark.integration
 def test_listImageDetails_lek_structure_and_usage(
-    dynamodb_table: Literal["MyMockedTable"]
+    dynamodb_table: Literal["MyMockedTable"],
 ):
     """
     Demonstrates that the LEK (LastEvaluatedKey) we get back:

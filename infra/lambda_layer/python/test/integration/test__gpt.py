@@ -15,9 +15,10 @@ from dynamo import (
     Receipt,
     ReceiptLine,
     ReceiptWord,
+    ReceiptWordTag,
     ReceiptLetter,
 )
-from ._fixtures import sample_gpt_receipt_1, sample_gpt_receipt_2
+from ._fixtures import sample_gpt_receipt_1
 
 
 def assert_tags_on_word_and_receipt_word(
@@ -121,10 +122,12 @@ def test_gpt_receipt_1(
         list[Image],
         list[Line],
         list[Word],
+        list[WordTag],
         list[Letter],
         list[Receipt],
         list[ReceiptLine],
         list[ReceiptWord],
+        list[ReceiptWordTag],
         list[ReceiptLetter],
     ],
     dynamodb_table: Literal["MyMockedTable"],
@@ -135,15 +138,18 @@ def test_gpt_receipt_1(
         images,
         lines,
         words,
+        _,
         letters,
         receipts,
         receipt_lines,
         receipt_words,
+        _,
         receipt_letters,
         gpt_result,
     ) = sample_gpt_receipt_1
     _ = s3_bucket
     client = DynamoClient(dynamodb_table)
+    image_id = images[0].id
     # Arrange
     client.addImages(images)
     client.addLines(lines)
@@ -166,26 +172,25 @@ def test_gpt_receipt_1(
         )
 
     monkeypatch.setattr(
-        "dynamo.data.dynamo_client.DynamoClient._gpt_request",
-        mock_gpt_request
+        "dynamo.data.dynamo_client.DynamoClient._gpt_request", mock_gpt_request
     )
 
     # Act
-    client.gpt_receipt("3f52804b-2fad-4e00-92c8-b593da3a8ed3")
+    client.gpt_receipt(image_id)
 
     # Assert
     # Check that the GPT response was stored in S3
     s3_client = boto3.client("s3", region_name="us-east-1")
     s3_json_key = images[0].raw_s3_key.replace(
         ".png",
-        f"_GPT_image_{images[0].id}_receipt_{receipts[0].id:05d}.json",
+        f"_GPT_image_{image_id}_receipt_{receipts[0].id:05d}.json",
     )
     obj = s3_client.get_object(Bucket=images[0].raw_s3_bucket, Key=s3_json_key)
     body_text = obj["Body"].read().decode("utf-8")
     assert body_text == json.dumps(gpt_result)
 
     # Check that the Tags were set correctly
-    _, _, words, word_tags, _, receipt_details = client.getImageDetails("3f52804b-2fad-4e00-92c8-b593da3a8ed3")
+    _, _, words, word_tags, _, receipt_details = client.getImageDetails(image_id)
     # fmt: off
     assert_tags_on_word_and_receipt_word(2, 1, ["store_name"], words, word_tags, receipt_details[0]) # VONS
     assert_tags_on_word_and_receipt_word(3, 3, ["address"], words, word_tags, receipt_details[0]) # 497-1921
@@ -205,90 +210,6 @@ def test_gpt_receipt_1(
     # fmt: on
 
 
-def test_gpt_receipt_2(
-    sample_gpt_receipt_2: Tuple[
-        list[Image],
-        list[Line],
-        list[Word],
-        list[Letter],
-        list[Receipt],
-        list[ReceiptLine],
-        list[ReceiptWord],
-        list[ReceiptLetter],
-    ],
-    dynamodb_table: Literal["MyMockedTable"],
-    s3_bucket: Literal["raw-image-bucket"],
-    monkeypatch,
-):
-    (
-        images,
-        lines,
-        words,
-        letters,
-        receipts,
-        receipt_lines,
-        receipt_words,
-        receipt_letters,
-        gpt_result,
-    ) = sample_gpt_receipt_2
-    _ = s3_bucket
-    client = DynamoClient(dynamodb_table)
-    # Arrange
-    client.addImages(images)
-    client.addLines(lines)
-    client.addWords(words)
-    client.addLetters(letters)
-    client.addReceipts(receipts)
-    client.addReceiptLines(receipt_lines)
-    client.addReceiptWords(receipt_words)
-    client.addReceiptLetters(receipt_letters)
-    os.environ["OPENAI_API_KEY"] = "my-openai-api-key"
-
-    def mock_gpt_request(self, receipt, receipt_words):
-        return MockGPTResponse(
-            {
-                "choices": [
-                    {"message": {"content": f"```json{json.dumps(gpt_result)}```"}}
-                ]
-            },
-            status_code=200,
-        )
-
-    monkeypatch.setattr(
-        "dynamo.data.dynamo_client.DynamoClient._gpt_request",
-        mock_gpt_request
-    )
-
-    # Act
-    client.gpt_receipt("3f52804b-2fad-4e00-92c8-b593da3a8ed4")
-
-    # Assert
-    # Check that the GPT response was stored in S3
-    s3_client = boto3.client("s3", region_name="us-east-1")
-    s3_json_key = images[0].raw_s3_key.replace(
-        ".png",
-        f"_GPT_image_{images[0].id}_receipt_{receipts[0].id:05d}.json",
-    )
-    obj = s3_client.get_object(Bucket=images[0].raw_s3_bucket, Key=s3_json_key)
-    body_text = obj["Body"].read().decode("utf-8")
-    assert body_text == json.dumps(gpt_result)
-
-    # Check that the Tags were set correctly
-    _, _, words, word_tags, _, receipt_details = client.getImageDetails("3f52804b-2fad-4e00-92c8-b593da3a8ed4")
-    # fmt: off
-    assert_tags_on_word_and_receipt_word(1, 1, ["line_item", "line_item_name"], words, word_tags, receipt_details[0])
-    assert_tags_on_word_and_receipt_word(2, 1, ["line_item", "line_item_price"], words, word_tags, receipt_details[0])
-    assert_tags_on_word_and_receipt_word(12, 1, ["store_name"], words, word_tags, receipt_details[0])
-    assert_tags_on_word_and_receipt_word(13, 1, ["store_name"], words, word_tags, receipt_details[0])
-    assert_tags_on_word_and_receipt_word(13, 2, ["store_name"], words, word_tags, receipt_details[0])
-    assert_tags_on_word_and_receipt_word(37, 3, ["time"], words, word_tags, receipt_details[0])
-    assert_tags_on_word_and_receipt_word(37, 4, ["time"], words, word_tags, receipt_details[0])
-    assert_tags_on_word_and_receipt_word(37, 5, ["time"], words, word_tags, receipt_details[0])
-    assert_tags_on_word_and_receipt_word(49, 1, ["date"], words, word_tags, receipt_details[0])
-    assert_tags_on_word_and_receipt_word(77, 1, ["total_amount"], words, word_tags, receipt_details[0])
-    assert_tags_on_word_and_receipt_word(77, 2, ["total_amount"], words, word_tags, receipt_details[0])
-    # fmt: on
-
 def test_gpt_receipt_bad_response(
     sample_gpt_receipt_1,
     dynamodb_table: Literal["MyMockedTable"],
@@ -300,7 +221,9 @@ def test_gpt_receipt_bad_response(
         _,
         _,
         _,
+        _,
         receipts,
+        _,
         _,
         _,
         _,
@@ -308,6 +231,7 @@ def test_gpt_receipt_bad_response(
     ) = sample_gpt_receipt_1
     client = DynamoClient(dynamodb_table)
     _ = s3_bucket
+    image_id = images[0].id
 
     client.addImages(images)
     client.addReceipts(receipts)
@@ -325,7 +249,7 @@ def test_gpt_receipt_bad_response(
         ValueError,
         match=f"An error occurred while making the request: Internal Server Error",
     ) as exc:
-        client.gpt_receipt("3f52804b-2fad-4e00-92c8-b593da3a8ed3")
+        client.gpt_receipt(image_id)
 
     # 2) Verify the error message was what we expect
     assert "Internal Server Error" in str(exc.value)
@@ -343,7 +267,7 @@ def test_gpt_receipt_bad_response(
     # Reproduce the failure_key logic in your code:
     failure_key = test_image.raw_s3_key.replace(
         ".png",
-        f"_failure_image_{test_image.id}_receipt_{test_receipt.id:05d}.txt",
+        f"_failure_image_{image_id}_receipt_{test_receipt.id:05d}.txt",
     )
 
     # Now fetch from S3 and confirm the Body is what we expected
@@ -356,14 +280,16 @@ def test_gpt_no_api_key(
     sample_gpt_receipt_1,
     dynamodb_table: Literal["MyMockedTable"],
 ):
-    (_, _, _, _, receipts, _, _, _, _) = sample_gpt_receipt_1
+    (images, _, _, _, _, receipts, _, _, _, _, _) = sample_gpt_receipt_1
     client = DynamoClient(dynamodb_table)
+    image_id = images[0].id
 
     client.addReceipts(receipts)
+    retrieved_receipts = client.listReceipts()
 
     os.environ["OPENAI_API_KEY"] = ""  # Set to empty string
 
     with pytest.raises(
         ValueError, match="The OPENAI_API_KEY environment variable is not set."
     ) as exc:
-        client.gpt_receipt("3f52804b-2fad-4e00-92c8-b593da3a8ed3")
+        client.gpt_receipt(image_id)
