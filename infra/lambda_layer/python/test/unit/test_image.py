@@ -64,6 +64,7 @@ def example_image_no_cdn_key():
     )
 
 
+@pytest.mark.unit
 def test_init(example_image):
     """Test the Image constructor"""
     assert example_image.id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
@@ -77,6 +78,7 @@ def test_init(example_image):
     assert example_image.cdn_s3_key == "cdn_key"
 
 
+@pytest.mark.unit
 def test_init_bad_id():
     with pytest.raises(ValueError, match="uuid must be a string"):
         Image(
@@ -100,6 +102,7 @@ def test_init_bad_id():
         )
 
 
+@pytest.mark.unit
 def test_init_bad_width_and_height():
     with pytest.raises(ValueError, match="width and height must be positive integers"):
         Image(
@@ -143,6 +146,7 @@ def test_init_bad_width_and_height():
         )
 
 
+@pytest.mark.unit
 def test_init_bad_timestamp():
     with pytest.raises(
         ValueError, match="timestamp_added must be a string or datetime"
@@ -158,6 +162,7 @@ def test_init_bad_timestamp():
         )
 
 
+@pytest.mark.unit
 def test_init_bad_sha256():
     with pytest.raises(ValueError, match="sha256 must be a string"):
         Image(
@@ -171,6 +176,7 @@ def test_init_bad_sha256():
         )
 
 
+@pytest.mark.unit
 def test_init_bad_cdn_s3_bucket():
     with pytest.raises(ValueError, match="cdn_s3_bucket must be a string"):
         Image(
@@ -185,6 +191,7 @@ def test_init_bad_cdn_s3_bucket():
         )
 
 
+@pytest.mark.unit
 def test_init_bad_cdn_s3_key():
     with pytest.raises(ValueError, match="cdn_s3_key must be a string"):
         Image(
@@ -199,6 +206,7 @@ def test_init_bad_cdn_s3_key():
         )
 
 
+@pytest.mark.unit
 def test_key(example_image):
     """Test the Image.key() method"""
     assert example_image.key() == {
@@ -207,6 +215,7 @@ def test_key(example_image):
     }
 
 
+@pytest.mark.unit
 def test_gsi1_key(example_image):
     """Test the Image.gsi1_key() method"""
     assert example_image.gsi1_key() == {
@@ -215,6 +224,7 @@ def test_gsi1_key(example_image):
     }
 
 
+@pytest.mark.unit
 def test_to_item(example_image):
     """Test the Image.to_item() method"""
     # Case: with sha256
@@ -235,6 +245,7 @@ def test_to_item(example_image):
     }
 
 
+@pytest.mark.unit
 def test_to_item_no_sha(example_image_no_sha):
     """Test the Image.to_item() method"""
     # Case: without sha256
@@ -255,6 +266,7 @@ def test_to_item_no_sha(example_image_no_sha):
     }
 
 
+@pytest.mark.unit
 def test_to_item_no_cdn_bucket(example_image_no_cdn_bucket):
     """Test the Image.to_item() method"""
     # Case: without cdn_s3_bucket
@@ -275,6 +287,7 @@ def test_to_item_no_cdn_bucket(example_image_no_cdn_bucket):
     }
 
 
+@pytest.mark.unit
 def test_to_item_no_cdn_key(example_image_no_cdn_key):
     """Test the Image.to_item() method"""
     # Case: without cdn_s3_key
@@ -295,11 +308,13 @@ def test_to_item_no_cdn_key(example_image_no_cdn_key):
     }
 
 
+@pytest.mark.unit
 def test_repr(example_image):
     """Test the Image.__repr__() method"""
     assert repr(example_image) == "Image(id='3f52804b-2fad-4e00-92c8-b593da3a8ed3')"
 
 
+@pytest.mark.unit
 def test_iter(example_image):
     """Test the Image.__iter__() method"""
     # If you include sha256 in iteration, test that:
@@ -316,6 +331,7 @@ def test_iter(example_image):
     }
 
 
+@pytest.mark.unit
 def test_eq():
     """Test the Image.__eq__() method"""
     i1 = Image(
@@ -452,6 +468,7 @@ def test_eq():
     assert i1 != i11, "Comparing different cdn_s3_keys"
 
 
+@pytest.mark.unit
 def test_itemToImage(
     example_image,
     example_image_no_sha,
@@ -466,9 +483,9 @@ def test_itemToImage(
         itemToImage(example_image_no_sha.to_item()) == example_image_no_sha
     ), "Should convert item to Image object without SHA256"
     assert (
-        itemToImage(example_image_no_cdn_bucket.to_item()) == example_image_no_cdn_bucket
+        itemToImage(example_image_no_cdn_bucket.to_item())
+        == example_image_no_cdn_bucket
     ), "Should convert item to Image object without cdn_s3_bucket"
     assert (
         itemToImage(example_image_no_cdn_key.to_item()) == example_image_no_cdn_key
     ), "Should convert item to Image object without cdn_s3_key"
-

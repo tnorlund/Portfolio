@@ -11,9 +11,16 @@ def sample_word_tag():
     Provides a sample WordTag for testing.
     Adjust the IDs or tag text as needed for your schema.
     """
-    return WordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=10, word_id=5, tag="SampleTag", timestamp_added="2021-01-01T00:00:00")
+    return WordTag(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=10,
+        word_id=5,
+        tag="SampleTag",
+        timestamp_added="2021-01-01T00:00:00",
+    )
 
 
+@pytest.mark.integration
 def test_add_word_tag(
     dynamodb_table: Literal["MyMockedTable"], sample_word_tag: WordTag
 ):
@@ -25,11 +32,15 @@ def test_add_word_tag(
 
     # Assert
     retrieved_tag = client.getWordTag(
-        sample_word_tag.image_id, sample_word_tag.line_id, sample_word_tag.word_id, sample_word_tag.tag
+        sample_word_tag.image_id,
+        sample_word_tag.line_id,
+        sample_word_tag.word_id,
+        sample_word_tag.tag,
     )
     assert retrieved_tag == sample_word_tag
 
 
+@pytest.mark.integration
 def test_add_word_tag_duplicate_raises(
     dynamodb_table: Literal["MyMockedTable"], sample_word_tag: WordTag
 ):
@@ -42,6 +53,7 @@ def test_add_word_tag_duplicate_raises(
         client.addWordTag(sample_word_tag)
 
 
+@pytest.mark.integration
 def test_update_word_tag(
     dynamodb_table: Literal["MyMockedTable"], sample_word_tag: WordTag
 ):
@@ -55,11 +67,15 @@ def test_update_word_tag(
 
     # Assert
     retrieved_tag = client.getWordTag(
-        sample_word_tag.image_id, sample_word_tag.line_id, sample_word_tag.word_id, sample_word_tag.tag
+        sample_word_tag.image_id,
+        sample_word_tag.line_id,
+        sample_word_tag.word_id,
+        sample_word_tag.tag,
     )
     assert retrieved_tag.tag == "UpdatedTag"
 
 
+@pytest.mark.integration
 def test_delete_word_tag(
     dynamodb_table: Literal["MyMockedTable"], sample_word_tag: WordTag
 ):
@@ -69,21 +85,35 @@ def test_delete_word_tag(
 
     # Act
     client.deleteWordTag(
-        sample_word_tag.image_id, sample_word_tag.line_id, sample_word_tag.word_id, sample_word_tag.tag
+        sample_word_tag.image_id,
+        sample_word_tag.line_id,
+        sample_word_tag.word_id,
+        sample_word_tag.tag,
     )
 
     # Assert
     with pytest.raises(ValueError, match="not found"):
         client.getWordTag(
-            sample_word_tag.image_id, sample_word_tag.line_id, sample_word_tag.word_id, sample_word_tag.tag
+            sample_word_tag.image_id,
+            sample_word_tag.line_id,
+            sample_word_tag.word_id,
+            sample_word_tag.tag,
         )
 
 
+@pytest.mark.integration
 def test_list_word_tags(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
     tags = [
-        WordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=i, tag=f"Tag{i}", timestamp_added="2021-01-01T00:00:00") for i in range(1, 4)
+        WordTag(
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=1,
+            word_id=i,
+            tag=f"Tag{i}",
+            timestamp_added="2021-01-01T00:00:00",
+        )
+        for i in range(1, 4)
     ]
     for t in tags:
         client.addWordTag(t)
@@ -96,17 +126,30 @@ def test_list_word_tags(dynamodb_table: Literal["MyMockedTable"]):
         assert t in returned_tags
 
 
+@pytest.mark.integration
 def test_list_word_tags_from_image(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
 
     # WordTags in image_id=1
     same_image_tags = [
-        WordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=10, word_id=i, tag=f"ImageTag{i}", timestamp_added="2021-01-01T00:00:00")
+        WordTag(
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=10,
+            word_id=i,
+            tag=f"ImageTag{i}",
+            timestamp_added="2021-01-01T00:00:00",
+        )
         for i in range(1, 3)
     ]
     # Another WordTag with a different image_id
-    different_image_tag = WordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed4", line_id=10, word_id=999, tag="OtherImage", timestamp_added="2021-01-01T00:00:00")
+    different_image_tag = WordTag(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed4",
+        line_id=10,
+        word_id=999,
+        tag="OtherImage",
+        timestamp_added="2021-01-01T00:00:00",
+    )
 
     for wt in same_image_tags + [different_image_tag]:
         client.addWordTag(wt)
@@ -120,6 +163,7 @@ def test_list_word_tags_from_image(dynamodb_table: Literal["MyMockedTable"]):
         assert wt in found_tags
     assert different_image_tag not in found_tags
 
+
 @pytest.fixture
 def sample_word_tags():
     """
@@ -128,15 +172,40 @@ def sample_word_tags():
       - Group B has tag="BAR"
     """
     return [
-        WordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=10, word_id=100, tag="FOO", timestamp_added="2021-01-01T00:00:00"),
-        WordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=11, word_id=101, tag="FOO", timestamp_added="2021-01-01T00:00:00"),
-        WordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed4", line_id=20, word_id=200, tag="BAR", timestamp_added="2021-01-01T00:00:00"),
-        WordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed5", line_id=30, word_id=300, tag="FOO", timestamp_added="2021-01-01T00:00:00"),
+        WordTag(
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=10,
+            word_id=100,
+            tag="FOO",
+            timestamp_added="2021-01-01T00:00:00",
+        ),
+        WordTag(
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=11,
+            word_id=101,
+            tag="FOO",
+            timestamp_added="2021-01-01T00:00:00",
+        ),
+        WordTag(
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed4",
+            line_id=20,
+            word_id=200,
+            tag="BAR",
+            timestamp_added="2021-01-01T00:00:00",
+        ),
+        WordTag(
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed5",
+            line_id=30,
+            word_id=300,
+            tag="FOO",
+            timestamp_added="2021-01-01T00:00:00",
+        ),
     ]
 
+
+@pytest.mark.integration
 def test_get_word_tags(
-    dynamodb_table: Literal["MyMockedTable"], 
-    sample_word_tags: list[WordTag]
+    dynamodb_table: Literal["MyMockedTable"], sample_word_tags: list[WordTag]
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -165,6 +234,7 @@ def test_get_word_tags(
     assert bar_returned == bar_expected
 
 
+@pytest.mark.integration
 def test_get_word_tags_no_results(dynamodb_table: Literal["MyMockedTable"]):
     """
     If we request a tag that doesn't exist, we should get an empty list.
@@ -175,6 +245,7 @@ def test_get_word_tags_no_results(dynamodb_table: Literal["MyMockedTable"]):
     assert results == []
 
 
+@pytest.mark.integration
 def test_get_word_tags_pagination(dynamodb_table: Literal["MyMockedTable"]):
     """
     Test pagination by adding more than one 'page' (the default DynamoDB
@@ -185,7 +256,15 @@ def test_get_word_tags_pagination(dynamodb_table: Literal["MyMockedTable"]):
 
     big_list = []
     for i in range(30):
-        big_list.append(WordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed4", line_id=1, word_id=i, tag="PAGE", timestamp_added="2021-01-01T00:00:00"))
+        big_list.append(
+            WordTag(
+                image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed4",
+                line_id=1,
+                word_id=i,
+                tag="PAGE",
+                timestamp_added="2021-01-01T00:00:00",
+            )
+        )
 
     client.addWordTags(big_list)
 

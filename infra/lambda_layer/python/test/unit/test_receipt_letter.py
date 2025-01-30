@@ -1,6 +1,8 @@
 import pytest
 from dynamo import ReceiptLetter, itemToReceiptLetter
 
+
+@pytest.mark.unit
 def test_receipt_letter_valid_init():
     letter = ReceiptLetter(
         receipt_id=1,
@@ -16,11 +18,13 @@ def test_receipt_letter_valid_init():
         bottom_left={"x": 0.1, "y": 0.2},
         angle_degrees=5.0,
         angle_radians=0.0872665,
-        confidence=0.98
+        confidence=0.98,
     )
     assert letter.text == "A"
     assert letter.bounding_box["width"] == 0.05
 
+
+@pytest.mark.unit
 def test_receipt_letter_invalid_confidence():
     with pytest.raises(ValueError):
         ReceiptLetter(
@@ -32,14 +36,16 @@ def test_receipt_letter_invalid_confidence():
             text="A",
             bounding_box={"x": 0, "y": 0, "width": 1, "height": 1},
             top_right={"x": 0.15, "y": 0.25},
-        top_left={"x": 0.1, "y": 0.25},
-        bottom_right={"x": 0.15, "y": 0.2},
-        bottom_left={"x": 0.1, "y": 0.2},
+            top_left={"x": 0.1, "y": 0.25},
+            bottom_right={"x": 0.15, "y": 0.2},
+            bottom_left={"x": 0.1, "y": 0.2},
             angle_degrees=0.0,
             angle_radians=0.0,
-            confidence=1.1  # invalid
+            confidence=1.1,  # invalid
         )
 
+
+@pytest.mark.unit
 def test_receipt_letter_to_item():
     letter = ReceiptLetter(
         receipt_id=1,
@@ -55,7 +61,7 @@ def test_receipt_letter_to_item():
         bottom_left={"x": 0.1, "y": 0.2},
         angle_degrees=0.0,
         angle_radians=0.0,
-        confidence=0.99
+        confidence=0.99,
     )
     item = letter.to_item()
     assert item["PK"]["S"] == "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"
@@ -63,6 +69,8 @@ def test_receipt_letter_to_item():
     assert "text" in item
     assert item["confidence"]["N"] == "0.99"
 
+
+@pytest.mark.unit
 def test_equal_receipt_letter():
     letter1 = ReceiptLetter(
         receipt_id=1,
@@ -78,7 +86,7 @@ def test_equal_receipt_letter():
         bottom_left={"x": 0.1, "y": 0.2},
         angle_degrees=0.0,
         angle_radians=0.0,
-        confidence=0.99
+        confidence=0.99,
     )
     letter2 = ReceiptLetter(
         receipt_id=1,
@@ -94,10 +102,12 @@ def test_equal_receipt_letter():
         bottom_left={"x": 0.1, "y": 0.2},
         angle_degrees=0.0,
         angle_radians=0.0,
-        confidence=0.99
+        confidence=0.99,
     )
     assert letter1 == letter2
 
+
+@pytest.mark.unit
 def test_item_to_receipt_letter_round_trip():
     item = {
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},

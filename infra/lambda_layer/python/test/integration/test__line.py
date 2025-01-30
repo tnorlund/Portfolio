@@ -23,6 +23,7 @@ correct_line_params = {
 }
 
 
+@pytest.mark.integration
 def test_add_line(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -40,6 +41,7 @@ def test_add_line(dynamodb_table: Literal["MyMockedTable"]):
     assert response["Item"] == line.to_item()
 
 
+@pytest.mark.integration
 def test_add_line_error(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -51,6 +53,7 @@ def test_add_line_error(dynamodb_table: Literal["MyMockedTable"]):
         client.addLine(line)
 
 
+@pytest.mark.integration
 def test_add_lines(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -79,6 +82,7 @@ def test_add_lines(dynamodb_table: Literal["MyMockedTable"]):
     assert response["Item"] == line_2.to_item()
 
 
+@pytest.mark.integration
 def test_delete_line(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -93,6 +97,7 @@ def test_delete_line(dynamodb_table: Literal["MyMockedTable"]):
         client.getLine("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1)
 
 
+@pytest.mark.integration
 def test_delete_line_error(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -104,6 +109,7 @@ def test_delete_line_error(dynamodb_table: Literal["MyMockedTable"]):
         client.deleteLine(1, 2)
 
 
+@pytest.mark.integration
 def test_deleteLines(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -125,6 +131,7 @@ def test_deleteLines(dynamodb_table: Literal["MyMockedTable"]):
         client.getLine(1, 2)
 
 
+@pytest.mark.integration
 def test_get_line(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -138,6 +145,7 @@ def test_get_line(dynamodb_table: Literal["MyMockedTable"]):
     assert retrieved_line == line
 
 
+@pytest.mark.integration
 def test_get_line_error(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -149,6 +157,7 @@ def test_get_line_error(dynamodb_table: Literal["MyMockedTable"]):
         client.getLine(1, 2)
 
 
+@pytest.mark.integration
 def test_listLines(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -168,6 +177,7 @@ def test_listLines(dynamodb_table: Literal["MyMockedTable"]):
     assert line_2 in lines
 
 
+@pytest.mark.integration
 def test_listLinesEmpty(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -179,6 +189,7 @@ def test_listLinesEmpty(dynamodb_table: Literal["MyMockedTable"]):
     assert len(lines) == 0
 
 
+@pytest.mark.integration
 def test_listLinesFromImage(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
