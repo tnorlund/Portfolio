@@ -6,7 +6,6 @@ from dynamo.entities.util import (
     assert_valid_point,
     _format_float,
     histogram,
-    map_to_dict,
 )
 
 
@@ -254,11 +253,21 @@ def itemToReceiptWord(item: dict) -> ReceiptWord:
             line_id=int(item["SK"]["S"].split("#")[3]),
             id=int(item["SK"]["S"].split("#")[5]),
             text=item["text"]["S"],
-            bounding_box=map_to_dict(item["bounding_box"]["M"]),
-            top_right=map_to_dict(item["top_right"]["M"]),
-            top_left=map_to_dict(item["top_left"]["M"]),
-            bottom_right=map_to_dict(item["bottom_right"]["M"]),
-            bottom_left=map_to_dict(item["bottom_left"]["M"]),
+            bounding_box={
+                key: float(value["N"]) for key, value in item["bounding_box"]["M"].items()
+            },
+            top_right={
+                key: float(value["N"]) for key, value in item["top_right"]["M"].items()
+            },
+            top_left={
+                key: float(value["N"]) for key, value in item["top_left"]["M"].items()
+            },
+            bottom_right={
+                key: float(value["N"]) for key, value in item["bottom_right"]["M"].items()
+            },
+            bottom_left={
+                key: float(value["N"]) for key, value in item["bottom_left"]["M"].items()
+            },
             angle_degrees=float(item["angle_degrees"]["N"]),
             angle_radians=float(item["angle_radians"]["N"]),
             confidence=float(item["confidence"]["N"]),
