@@ -334,127 +334,19 @@ def test_iter(example_image):
 @pytest.mark.unit
 def test_eq():
     """Test the Image.__eq__() method"""
-    i1 = Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc123",
-        "cdn_bucket",
-        "cdn_key",
-    )
-    i2 = Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc123",
-        "cdn_bucket",
-        "cdn_key",
-    )
-    i3 = Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed4",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc123",
-        "cdn_bucket",
-        "cdn_key",
-    )  # different id
-    i4 = Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        20,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc123",
-        "cdn_bucket",
-        "cdn_key",
-    )  # different width
-    i5 = Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        30,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc123",
-        "cdn_bucket",
-        "cdn_key",
-    )  # different height
-    i6 = Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:01",
-        "bucket",
-        "key",
-        "abc123",
-        "cdn_bucket",
-        "cdn_key",
-    )  # different timestamp
-    i7 = Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "Bucket",
-        "key",
-        "abc123",
-        "cdn_bucket",
-        "cdn_key",
-    )  # different raw_s3_bucket
-    i8 = Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "Key",
-        "abc123",
-        "cdn_bucket",
-        "cdn_key",
-    )  # different raw_s3_key
-    i9 = Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc124",
-        "cdn_bucket",
-        "cdn_key",
-    )  # different sha256
-    i10 = Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc123",
-        "Cdn_bucket",
-        "cdn_key",
-    )  # different cdn_bucket
-    i11 = Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc123",
-        "cdn_bucket",
-        "Cdn_key",
-    )  # different cdn_key
+    # fmt: off
+    i1 =  Image( "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 10, 20, "2021-01-01T00:00:00", "bucket", "key", "abc123", "cdn_bucket", "cdn_key", )
+    i2 =  Image( "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 10, 20, "2021-01-01T00:00:00", "bucket", "key", "abc123", "cdn_bucket", "cdn_key", )
+    i3 =  Image( "3f52804b-2fad-4e00-92c8-b593da3a8ed4", 10, 20, "2021-01-01T00:00:00", "bucket", "key", "abc123", "cdn_bucket", "cdn_key", )  # different id
+    i4 =  Image( "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 20, 20, "2021-01-01T00:00:00", "bucket", "key", "abc123", "cdn_bucket", "cdn_key", )  # different width
+    i5 =  Image( "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 10, 30, "2021-01-01T00:00:00", "bucket", "key", "abc123", "cdn_bucket", "cdn_key", )  # different height
+    i6 =  Image( "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 10, 20, "2021-01-01T00:00:01", "bucket", "key", "abc123", "cdn_bucket", "cdn_key", )  # different timestamp
+    i7 =  Image( "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 10, 20, "2021-01-01T00:00:00", "Bucket", "key", "abc123", "cdn_bucket", "cdn_key", )  # different raw_s3_bucket
+    i8 =  Image( "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 10, 20, "2021-01-01T00:00:00", "bucket", "Key", "abc123", "cdn_bucket", "cdn_key", )  # different raw_s3_key
+    i9 =  Image( "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 10, 20, "2021-01-01T00:00:00", "bucket", "key", "abc124", "cdn_bucket", "cdn_key", )  # different sha256
+    i10 = Image( "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 10, 20, "2021-01-01T00:00:00", "bucket", "key", "abc123", "Cdn_bucket", "cdn_key", )  # different cdn_bucket
+    i11 = Image( "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 10, 20, "2021-01-01T00:00:00", "bucket", "key", "abc123", "cdn_bucket", "Cdn_key", )  # different cdn_key
+    # fmt: on
 
     assert i1 == i2, "Should be equal"
     assert i1 != i3, "Comparing different ids"
@@ -466,6 +358,9 @@ def test_eq():
     assert i1 != i9, "Comparing different sha256s"
     assert i1 != i10, "Comparing different cdn_s3_buckets"
     assert i1 != i11, "Comparing different cdn_s3_keys"
+
+    # Compare with non-Image object
+    assert i1 != 42, "Should return NotImplemented"
 
 
 @pytest.mark.unit
@@ -489,3 +384,27 @@ def test_itemToImage(
     assert (
         itemToImage(example_image_no_cdn_key.to_item()) == example_image_no_cdn_key
     ), "Should convert item to Image object without cdn_s3_key"
+    # Case: missing required key
+    with pytest.raises(ValueError, match="^Invalid item format\nmissing keys: ."):
+        itemToImage(
+            {
+                "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+                "SK": {"S": "IMAGE"},
+            }
+        )
+    # Bad item format
+    with pytest.raises(ValueError, match="Invalid item format: 'N'"):
+        itemToImage(
+            {
+                "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+                "SK": {"S": "IMAGE"},
+                "TYPE": {"S": "IMAGE"},
+                "width": {"S": "String Rather Than "},
+                "height": {"N": "20"},
+                "timestamp_added": {"S": "2021-01-01T00:00:00"},
+                "raw_s3_bucket": {"S": "bucket"},
+                "raw_s3_key": {"S": "key"},
+                "sha256": {"S": "abc123"},
+                "cdn_s3_bucket": {"S": "cdn_bucket"},
+            }
+        )
