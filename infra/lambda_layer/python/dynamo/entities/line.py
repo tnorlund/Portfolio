@@ -87,14 +87,14 @@ class Line:
         assert_valid_point(bottom_left)
         self.bottom_left = bottom_left
         if not isinstance(angle_degrees, (float, int)):
-            raise ValueError(
-                f"angle_degrees must be a float or int got: {angle_degrees}"
-            )
+            raise ValueError(f"angle_degrees must be a float or int")
         self.angle_degrees = angle_degrees
         if not isinstance(angle_radians, (float, int)):
-            raise ValueError("angleRadians must be a float or int got: ", angle_radians)
+            raise ValueError("angle_radians must be a float or int")
         self.angle_radians = angle_radians
         # Ensure the confidence is a float between 0 and 1
+        if not isinstance(confidence, float):
+            raise ValueError("confidence must be a float")
         if confidence <= 0 or confidence > 1:
             raise ValueError("confidence must be a float between 0 and 1")
         self.confidence = confidence
@@ -384,7 +384,7 @@ def itemToLine(item: dict) -> Line:
     }
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - set(item.keys())
-        raise ValueError("Item is missing required keys", missing_keys)
+        raise ValueError(f"Item is missing required keys: {missing_keys}")
     try:
         return Line(
             image_id=item["PK"]["S"][6:],

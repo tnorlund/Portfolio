@@ -148,7 +148,7 @@ class Image:
             bool: True if the Image objects are equal, False otherwise
         """
         if not isinstance(other, Image):
-            return NotImplemented
+            return False
         return (
             self.id == other.id
             and self.width == other.width

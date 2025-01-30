@@ -5,24 +5,9 @@ import math
 
 @pytest.fixture
 def example_line():
-    return Line(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        1,
-        "Test",
-        {
-            "x": 10.0,
-            "y": 20.0,
-            "width": 5.0,
-            "height": 2.0,
-        },
-        {"x": 15.0, "y": 20.0},
-        {"x": 10.0, "y": 20.0},
-        {"x": 15.0, "y": 22.0},
-        {"x": 10.0, "y": 22.0},
-        1.0,
-        5.0,
-        0.90,
-    )
+    # fmt: off
+    return Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", { "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)
+    # fmt: on
 
 
 @pytest.mark.unit
@@ -47,88 +32,72 @@ def test_init(example_line):
 
 
 @pytest.mark.unit
-def test_init_bad_id():
+def test_init_bad_uuid():
     """Test the Line constructor with bad ID"""
+    # fmt: off
     with pytest.raises(ValueError, match="uuid must be a string"):
-        Line(
-            1,
-            1,
-            "Test",
-            {
-                "x": 10.0,
-                "y": 20.0,
-                "width": 5.0,
-                "height": 2.0,
-            },
-            {"x": 15.0, "y": 20.0},
-            {"x": 10.0, "y": 20.0},
-            {"x": 15.0, "y": 22.0},
-            {"x": 10.0, "y": 22.0},
-            1.0,
-            5.0,
-            0.90,
-        )
+        Line(1, 1, "Test", { "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)
     with pytest.raises(ValueError, match="uuid must be a valid UUID"):
-        Line(
-            "not-a-uuid",
-            1,
-            "Test",
-            {
-                "x": 10.0,
-                "y": 20.0,
-                "width": 5.0,
-                "height": 2.0,
-            },
-            {"x": 15.0, "y": 20.0},
-            {"x": 10.0, "y": 20.0},
-            {"x": 15.0, "y": 22.0},
-            {"x": 10.0, "y": 22.0},
-            1.0,
-            5.0,
-            0.90,
-        )
+        Line("not-a-uuid", 1, "Test", { "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)
+    # fmt: on
 
 
 @pytest.mark.unit
 def test_init_bad_id():
+    # fmt: off
     with pytest.raises(ValueError, match="id must be an integer"):
-        Line(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            "not-an-int",
-            "Test",
-            {
-                "x": 10.0,
-                "y": 20.0,
-                "width": 5.0,
-                "height": 2.0,
-            },
-            {"x": 15.0, "y": 20.0},
-            {"x": 10.0, "y": 20.0},
-            {"x": 15.0, "y": 22.0},
-            {"x": 10.0, "y": 22.0},
-            1.0,
-            5.0,
-            0.90,
-        )
+        Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "not-an-int", "Test", { "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)
     with pytest.raises(ValueError, match="id must be positive"):
-        Line(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            -1,
-            "Test",
-            {
-                "x": 10.0,
-                "y": 20.0,
-                "width": 5.0,
-                "height": 2.0,
-            },
-            {"x": 15.0, "y": 20.0},
-            {"x": 10.0, "y": 20.0},
-            {"x": 15.0, "y": 22.0},
-            {"x": 10.0, "y": 22.0},
-            1.0,
-            5.0,
-            0.90,
-        )
+        Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", -1, "Test", { "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)
+    # fmt: on
+
+
+@pytest.mark.unit
+def test_init_bad_text():
+    # fmt: off
+    with pytest.raises(ValueError, match="text must be a string"):
+        Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, { "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)
+    # fmt: on
+
+
+@pytest.mark.unit
+def test_init_bad_bounding_box():
+    # fmt: off
+    with pytest.raises(ValueError, match="bounding_box must be a dictionary"):
+        Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", 1, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)
+    with pytest.raises(ValueError, match="bounding_box must contain the key 'height'"):
+        Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", {"x": 10.0, "y": 20.0, "width": 5.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)
+    # fmt: on
+
+
+@pytest.mark.unit
+def test_init_bad_corner():
+    # fmt: off
+    with pytest.raises(ValueError, match="point must be a dictionary"):
+        Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", { "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, 1, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)
+    with pytest.raises(ValueError, match="point must contain the key 'y'"):
+        Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", { "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, {"x": 15.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)
+    # fmt: on
+
+
+@pytest.mark.unit
+def test_init_bad_angle():
+    # fmt: off
+    with pytest.raises(ValueError, match="angle_degrees must be a float or int"):
+        Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", { "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, "1.0", 5.0, 0.90)
+    with pytest.raises(ValueError, match="angle_radians must be a float or int"):
+        Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", { "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, "5.0", 0.90)
+    # fmt: on
+
+
+@pytest.mark.unit
+def test_init_bad_confidence():
+    # fmt: off
+    with pytest.raises(ValueError, match="confidence must be a float"):
+        Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", { "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, "0.90")
+    with pytest.raises(ValueError, match="confidence must be a float"):
+        Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", { "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, -0.90)
+    # fmt: on
 
 
 @pytest.mark.unit
@@ -192,6 +161,12 @@ def test_to_item(example_line):
 
 
 @pytest.mark.unit
+def test_calculate_centroid(example_line):
+    """Test the Line.calculate_centroid() method"""
+    centroid = example_line.calculate_centroid()
+    assert centroid == (12.5, 21.0)
+
+
 def create_test_line():
     """
     Helper function to create a Line object with easily verifiable points.
@@ -493,8 +468,59 @@ def test_eq():
     assert l1 != l11
     assert l1 != l12
     assert l1 != l13
+    assert l1 != "Test"
 
 
 @pytest.mark.unit
 def test_itemToLine(example_line):
     itemToLine(example_line.to_item()) == example_line
+
+    # Missing keys
+    with pytest.raises(ValueError, match="^Item is missing required keys"):
+        itemToLine({"SK": {"S": "LINE#00001"}})
+
+    # Bad keys
+    with pytest.raises(ValueError, match="^Error converting item to Line"):
+        itemToLine(
+            {
+                "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+                "SK": {"S": "LINE#00001"},
+                "TYPE": {"S": "LINE"},
+                "text": {"N": "100"}, # This should be a string
+                "bounding_box": {
+                    "M": {
+                        "height": {"N": "2.000000000000000000"},
+                        "width": {"N": "5.000000000000000000"},
+                        "x": {"N": "10.000000000000000000"},
+                        "y": {"N": "20.000000000000000000"},
+                    }
+                },
+                "top_right": {
+                    "M": {
+                        "x": {"N": "15.000000000000000000"},
+                        "y": {"N": "20.000000000000000000"},
+                    }
+                },
+                "top_left": {
+                    "M": {
+                        "x": {"N": "10.000000000000000000"},
+                        "y": {"N": "20.000000000000000000"},
+                    }
+                },
+                "bottom_right": {
+                    "M": {
+                        "x": {"N": "15.000000000000000000"},
+                        "y": {"N": "22.000000000000000000"},
+                    }
+                },
+                "bottom_left": {
+                    "M": {
+                        "x": {"N": "10.000000000000000000"},
+                        "y": {"N": "22.000000000000000000"},
+                    }
+                },
+                "angle_degrees": {"N": "1.0000000000"},
+                "angle_radians": {"N": "5.0000000000"},
+                "confidence": {"N": "0.90"},
+            }
+        )
