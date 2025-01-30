@@ -141,6 +141,20 @@ class ReceiptWordTag:
             "timestamp_added": {"S": self.timestamp_added},
         }
 
+    def to_ReceiptWord_key(self) -> dict:
+        """
+        Returns a key for the ReceiptWord table.
+        """
+        return {
+            "PK": {"S": f"IMAGE#{self.image_id}"},
+            "SK": {
+                "S": (
+                    f"RECEIPT#{self.receipt_id:05d}"
+                    f"#LINE#{self.line_id:05d}"
+                    f"#WORD#{self.word_id:05d}"
+                )
+            },
+        }
 
 def itemToReceiptWordTag(item: dict) -> ReceiptWordTag:
     """

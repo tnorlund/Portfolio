@@ -93,6 +93,16 @@ class WordTag:
             "tag_name": {"S": self.tag},
             "timestamp_added": {"S": self.timestamp_added},
         }
+    
+    def to_Word_key(self) -> dict:
+        """Returns the key for the Word table"""
+        return {
+            "PK": {"S": f"IMAGE#{self.image_id}"},
+            "SK": {
+                "S": f"LINE#{self.line_id:05d}"
+                f"#WORD#{self.word_id:05d}"
+            }
+        }
 
 
 def itemToWordTag(item: dict) -> WordTag:
