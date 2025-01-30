@@ -45,13 +45,13 @@ class Receipt:
         """
         assert_valid_uuid(image_id)
         self.image_id = image_id
-        # Ensure the ID is a positive integer
+        
         if not isinstance(id, int):
             raise ValueError("id must be an integer")
         if id <= 0:
             raise ValueError("id must be positive")
         self.id = id
-        # Ensure the width and height are positive integers
+        
         if (
             width <= 0
             or height <= 0
@@ -61,14 +61,21 @@ class Receipt:
             raise ValueError("width and height must be positive integers")
         self.width = width
         self.height = height
+
         if isinstance(timestamp_added, datetime):
             self.timestamp_added = timestamp_added.isoformat()
         elif isinstance(timestamp_added, str):
             self.timestamp_added = timestamp_added
         else:
             raise ValueError("timestamp_added must be a datetime object or a string")
+        
+        if raw_s3_bucket and not isinstance(raw_s3_bucket, str):
+            raise ValueError("raw_s3_bucket must be a string")
         self.raw_s3_bucket = raw_s3_bucket
+        if raw_s3_key and not isinstance(raw_s3_key, str):
+            raise ValueError("raw_s3_key must be a string")
         self.raw_s3_key = raw_s3_key
+
         assert_valid_point(top_right)
         self.top_right = top_right
         assert_valid_point(top_left)
@@ -77,9 +84,11 @@ class Receipt:
         self.bottom_left = bottom_left
         assert_valid_point(bottom_right)
         self.bottom_right = bottom_right
+
         if sha256 and not isinstance(sha256, str):
             raise ValueError("sha256 must be a string")
         self.sha256 = sha256
+
         if cdn_s3_bucket and not isinstance(cdn_s3_bucket, str):
             raise ValueError("cdn_s3_bucket must be a string")
         self.cdn_s3_bucket = cdn_s3_bucket
@@ -248,7 +257,11 @@ def itemToReceipt(item: dict) -> Receipt:
         "bottom_right",
     }
     if not required_keys.issubset(item.keys()):
-        raise ValueError("Invalid item format")
+        missing_keys = required_keys - item.keys()
+        additional_keys = item.keys() - required_keys
+        raise ValueError(
+            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
+        )
     try:
         return Receipt(
             image_id=item["PK"]["S"].split("#")[1],
@@ -289,4 +302,4 @@ def itemToReceipt(item: dict) -> Receipt:
             ),
         )
     except Exception as e:
-        raise ValueError(f"Invalid item format {e}")
+        raise ValueError(f"Error converting item to Receipt: {e}")
