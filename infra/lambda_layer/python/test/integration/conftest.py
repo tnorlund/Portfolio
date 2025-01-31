@@ -78,3 +78,23 @@ def s3_bucket(request):
         s3.create_bucket(Bucket=bucket_name)
         
         yield bucket_name
+
+@pytest.fixture
+def s3_buckets(request):
+    """
+    Spins up a mock S3 instance, creates two buckets (taken from `request.param`),
+    then yields (bucket_name1, bucket_name2) for tests.
+
+    After the tests, everything is torn down automatically.
+    """
+    with mock_aws():
+        s3 = boto3.client("s3", region_name="us-east-1")
+
+        # Expect request.param to be a tuple of two bucket names
+        bucket_name1, bucket_name2 = request.param
+
+        s3.create_bucket(Bucket=bucket_name1)
+        s3.create_bucket(Bucket=bucket_name2)
+
+        # Yield a tuple
+        yield (bucket_name1, bucket_name2)

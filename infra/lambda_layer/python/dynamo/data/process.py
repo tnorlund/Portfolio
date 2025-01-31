@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Tuple
 import boto3
 from botocore.exceptions import ClientError
 from dynamo.entities import Image, Line, Word, Letter
+from datetime import datetime, timezone
 
 
 def process(
@@ -53,6 +54,7 @@ def process(
     except json.JSONDecodeError as e:
         raise ValueError(f"Error decoding OCR results: {e}")
     
+    # Read the image file
     try:
         image_bytes = s3.get_object(Bucket=raw_bucket_name, Key=f"{raw_prefix}/{uuid}.png")["Body"].read()
         image = PIL_Image.open(BytesIO(image_bytes))
@@ -62,25 +64,52 @@ def process(
         raise ValueError(
             f"Corrupted or invalid PNG file at s3://{raw_bucket_name}/{raw_prefix}/{uuid}.png"
         ) from e
+    
+    # Store the image in the CDN bucket
+    try:
+        s3.put_object(
+            Bucket=cdn_bucket_name,
+            Key=f"{cdn_prefix}{uuid}.png",
+            Body=image_bytes,
+            ContentType="image/png",
+        )
+    except ClientError as e:
+        error_code = e.response["Error"]["Code"]
+        if error_code == "NoSuchBucket":
+            raise ValueError(f"Bucket {cdn_bucket_name} not found")
+        else:
+            raise
+    
+    # Get the metadata of the image
+    image_width, image_height = image.size
+    image_sha256 = calculate_sha256_from_bytes(image_bytes)
+    Image(
+        id=uuid,
+        width=image_width,
+        height=image_height,
+        timestamp_added=datetime.now(timezone.utc),
+        raw_s3_bucket=raw_bucket_name,
+        raw_s3_key=f"{raw_prefix}/{uuid}.png",
+        cdn_s3_bucket=cdn_bucket_name,
+        cdn_s3_key=f"{cdn_prefix}{uuid}.png",
+        sha256=image_sha256,
+    )
 
 
     pass
 
 
-def calculate_sha256(file_path: str) -> str:
+def calculate_sha256_from_bytes(data: bytes) -> str:
     """
-    Calculate the SHA-256 hash of a file.
+    Calculate the SHA-256 hash of data in memory.
 
     Args:
-        file_path: The path to the file to hash.
+        data (bytes): The file data in memory.
 
     Returns:
-        The SHA-256 hash in hexadecimal format.
+        str: The SHA-256 hash in hexadecimal format.
     """
-    sha256_hash = hashlib.sha256()
-    with open(file_path, "rb") as f:
-        for byte_block in iter(lambda: f.read(4096), b""):
-            sha256_hash.update(byte_block)
+    sha256_hash = hashlib.sha256(data)
     return sha256_hash.hexdigest()
 
 

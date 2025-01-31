@@ -43,14 +43,35 @@ def upload_json_and_png_files_for_uuid(
             Body=png_file.read(),
         )
 
-@pytest.mark.parametrize("s3_bucket", ["raw-image-bucket"], indirect=True)
-def test_process(s3_bucket):
+
+@pytest.mark.parametrize(
+    "s3_buckets",
+    [
+        ("raw-bucket", "cdn-bucket"),  # You can specify any 2 bucket names here
+    ],
+    indirect=True
+)
+def test_process(s3_buckets):
+    raw_bucket, cdn_bucket = s3_buckets
     # 1. Arrange: Put a ".json" and ".png" in the bucket
     s3 = boto3.client("s3", region_name="us-east-1")
     uuid = "e510f3c0-4e94-4bb9-a82e-e111f2d7e245"
     raw_prefix = "raw_prefix"
-    upload_json_and_png_files_for_uuid(s3, s3_bucket, uuid, raw_prefix)
-    process("table_name", "raw-image-bucket", raw_prefix, uuid, "cdn_bucket_name")
+    upload_json_and_png_files_for_uuid(s3, raw_bucket, uuid, raw_prefix)
+
+    # Act
+    process("table_name", "raw-bucket", raw_prefix, uuid, "cdn-bucket")
+
+    # Assert
+    cdn_key = f"assets/{uuid}.png"
+    cdn_response = s3.get_object(Bucket=cdn_bucket, Key=cdn_key)
+    cdn_png_bytes = cdn_response["Body"].read()
+    raw_response = s3.get_object(Bucket=raw_bucket, Key=f"{raw_prefix}/{uuid}.png")
+    raw_png_bytes = raw_response["Body"].read()
+
+    assert cdn_png_bytes == raw_png_bytes, "CDN copy of PNG does not match original!"
+    assert cdn_response["ContentType"] == "image/png"
+
 
 @pytest.mark.parametrize("s3_bucket", ["bad-bucket-name"], indirect=True)
 def test_process_no_bucket(s3_bucket):
