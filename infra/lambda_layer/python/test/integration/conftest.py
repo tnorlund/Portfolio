@@ -63,17 +63,18 @@ def dynamodb_table():
 
 
 @pytest.fixture
-def s3_bucket():
+def s3_bucket(request):
     """
-    Spins up a mock S3 instance, creates a bucket, then yields the bucket name for tests.
+    Spins up a mock S3 instance, creates a bucket with a name from `request.param`,
+    then yields the bucket name for tests.
 
     After the tests, everything is torn down automatically.
     """
     with mock_aws():
         s3 = boto3.client("s3", region_name="us-east-1")
-
-        bucket_name = "raw-image-bucket"
+        
+        # Pull the bucket name to create from the test's parameter
+        bucket_name = request.param
         s3.create_bucket(Bucket=bucket_name)
-
-        # Yield the bucket name so your tests can reference it
+        
         yield bucket_name
