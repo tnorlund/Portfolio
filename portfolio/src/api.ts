@@ -1,4 +1,4 @@
-import { ImageApiResponse, ImageReceiptsLines, RootPayload, PayloadItem, ReceiptApiResponse } from './interfaces';
+import { ImageApiResponse, ImageReceiptsLines, RootPayload, PayloadItem, ReceiptApiResponse, ReceiptWordApiResponse } from './interfaces';
 
 const isDevelopment = process.env.NODE_ENV === 'development';
 
@@ -31,6 +31,22 @@ export async function fetchReceipts(limit=5): Promise<ReceiptApiResponse> {
 
   // Parse JSON as our ReceiptApiResponse
   const data: ReceiptApiResponse = await response.json();
+  return data;
+}
+
+export async function fetchReceiptWords(tag:string): Promise<ReceiptWordApiResponse> {
+  const baseUrl = isDevelopment
+    ? `https://dev-api.tylernorlund.com/receipt_word_tag?tag=${tag}`
+    : `https://api.tylernorlund.com/receipt_word_tag?tag=${tag}`;
+
+  const response = await fetch(baseUrl);
+
+  if (!response.ok) {
+    throw new Error(`Network response was not ok (status: ${response.status})`);
+  }
+
+  // Parse JSON as our ReceiptWordApiResponse
+  const data: ReceiptWordApiResponse = await response.json();
   return data;
 }
 

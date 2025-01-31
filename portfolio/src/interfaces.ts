@@ -1,4 +1,4 @@
-import Receipt from "./Receipt";
+// import Receipt from "./Receipt";
 
 // Shared interfaces
 export interface Point {
@@ -115,3 +115,4 @@ export interface Point {
   
   export type ImageReceiptsLines = [ImagePayload, Receipt[], LineItem[]];
   export type ReceiptApiResponse = Receipt[];
+  export type ReceiptWordApiResponse = ReceiptWord[];
