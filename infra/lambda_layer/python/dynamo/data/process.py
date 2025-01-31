@@ -5,6 +5,7 @@ import json
 from typing import Any, Dict, List, Tuple
 import boto3
 from botocore.exceptions import ClientError
+from dynamo.data.dynamo_client import DynamoClient
 from dynamo.entities import Image, Line, Word, Letter
 from datetime import datetime, timezone
 
@@ -42,6 +43,10 @@ def process(
         # Key not found
         elif error_code in ("NoSuchKey", "404"):
             raise ValueError(f"UUID {uuid} not found in raw bucket {raw_bucket_name}") from e
+        
+        # Access denied
+        elif error_code == "AccessDenied":
+            raise ValueError(f"Access denied to s3://{raw_bucket_name}/{raw_prefix}/*")
 
         # Anything else, re-raise
         else:
@@ -77,26 +82,25 @@ def process(
         error_code = e.response["Error"]["Code"]
         if error_code == "NoSuchBucket":
             raise ValueError(f"Bucket {cdn_bucket_name} not found")
+        elif error_code == "AccessDenied":
+            raise ValueError(f"Access denied to s3://{cdn_bucket_name}/{cdn_prefix}")
         else:
             raise
     
-    # Get the metadata of the image
-    image_width, image_height = image.size
-    image_sha256 = calculate_sha256_from_bytes(image_bytes)
-    Image(
+    lines, words, letters = process_ocr_dict(ocr_results, uuid)
+
+    # Finally, add the entities to DynamoDB
+    DynamoClient(table_name).addImage(Image(
         id=uuid,
-        width=image_width,
-        height=image_height,
+        width=image.size[0],
+        height=image.size[1],
         timestamp_added=datetime.now(timezone.utc),
         raw_s3_bucket=raw_bucket_name,
         raw_s3_key=f"{raw_prefix}/{uuid}.png",
         cdn_s3_bucket=cdn_bucket_name,
         cdn_s3_key=f"{cdn_prefix}{uuid}.png",
-        sha256=image_sha256,
-    )
-
-
-    pass
+        sha256=calculate_sha256_from_bytes(image_bytes),
+    ))
 
 
 def calculate_sha256_from_bytes(data: bytes) -> str:
