@@ -22,12 +22,12 @@ const ReceiptStack: React.FC = () => {
   useEffect(() => {
     const getReceipts = async () => {
       try {
-        const response: ReceiptApiResponse = await fetchReceipts(15);
+        const response: ReceiptApiResponse = await fetchReceipts(25);
         // No need for `Object.values(response)` or `.map(entry => entry.receipt)` anymore
         setReceipts(response);
 
         // Generate random rotations for each receipt
-        const newRotations = response.map(() => Math.random() * 50 - 25);
+        const newRotations = response.map(() => Math.random() * 60 - 25);
         setRotations(newRotations);
       } catch (error) {
         console.error("Error fetching receipts:", error);
@@ -53,8 +53,8 @@ const ReceiptStack: React.FC = () => {
     if (inView && receipts.length > 0) {
       api.start((index) => {
         const rotation = rotations[index] || 0;
-        const topOffset = index * 5;
-        const leftOffset = index * 5;
+        const topOffset = (Math.random() > 0.5 ? 1 : -1) * index * 2;
+        const leftOffset = (Math.random() > 0.5 ? 1 : -1) * index * 2;
 
         return {
           opacity: 1,
@@ -72,7 +72,7 @@ const ReceiptStack: React.FC = () => {
         width: "100%",
         display: "flex",
         justifyContent: "center",
-        marginTop: "2rem",
+        marginTop: "4rem",
       }}
     >
       {/* Fixed-size, relative container so absolutely positioned items stack */}
