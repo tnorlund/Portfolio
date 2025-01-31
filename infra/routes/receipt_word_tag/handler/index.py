@@ -19,13 +19,13 @@ def handler(event, _):
         query_params = event.get("queryStringParameters") or {}
         if "tag" in query_params:
             rwts = client.getReceiptWordTags(query_params["tag"])
-            rws = client.getReceiptWordsByKeys([rwt.to_ReceiptWord_key() for rwt in rwts])
+            rws = client.getReceiptWordsByKeys(
+                [rwt.to_ReceiptWord_key() for rwt in rwts]
+            )
             return {
                 "statusCode": 200,
                 "body": json.dumps(
-                    {
-                        "payload": [dict(rw) for rw in rws],
-                    }
+                    [dict(rw) for rw in rws],
                 ),
             }
         else:
