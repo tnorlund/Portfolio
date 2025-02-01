@@ -469,43 +469,54 @@ def create_test_letter():
     "dx, dy",
     [
         (5, -2),  # Translate right by 5, up by -2
-        (0, 0),  # No translation
-        (-3, 10),  # Translate left by 3, down by 10
+        (0, 0),   # No translation
+        (-3, 10), # Translate left by 3, down by 10
     ],
 )
 def test_letter_translate(dx, dy):
     """
-    Test that Letter.translate(dx, dy) shifts the corner points correctly
-    and does NOT update bounding_box or angles.
+    Test that Letter.translate(dx, dy) shifts the corner points correctly,
+    updates the bounding_box accordingly, and leaves the angles unchanged.
     """
     letter = create_test_letter()
 
-    # Original corners and bounding box
+    # Save original corners, bounding box, and angles.
     orig_top_right = letter.top_right.copy()
     orig_top_left = letter.top_left.copy()
     orig_bottom_right = letter.bottom_right.copy()
     orig_bottom_left = letter.bottom_left.copy()
-    orig_bb = letter.bounding_box.copy()  # bounding_box is not updated in translate
+    orig_bb = letter.bounding_box.copy()
+    orig_angle_degrees = letter.angle_degrees
+    orig_angle_radians = letter.angle_radians
 
-    # Perform the translation
+    # Perform the translation.
     letter.translate(dx, dy)
 
-    # Check corners
+    # Check that each corner was shifted correctly.
     assert letter.top_right["x"] == pytest.approx(orig_top_right["x"] + dx)
     assert letter.top_right["y"] == pytest.approx(orig_top_right["y"] + dy)
+
     assert letter.top_left["x"] == pytest.approx(orig_top_left["x"] + dx)
     assert letter.top_left["y"] == pytest.approx(orig_top_left["y"] + dy)
+
     assert letter.bottom_right["x"] == pytest.approx(orig_bottom_right["x"] + dx)
     assert letter.bottom_right["y"] == pytest.approx(orig_bottom_right["y"] + dy)
+
     assert letter.bottom_left["x"] == pytest.approx(orig_bottom_left["x"] + dx)
     assert letter.bottom_left["y"] == pytest.approx(orig_bottom_left["y"] + dy)
 
-    # bounding_box should not change
-    assert letter.bounding_box == orig_bb
+    # Now, expect that the bounding_box is also updated by the same offsets.
+    expected_bb = {
+        "x": orig_bb["x"] + dx,
+        "y": orig_bb["y"] + dy,
+        "width": orig_bb["width"],
+        "height": orig_bb["height"],
+    }
+    assert letter.bounding_box == expected_bb
 
-    # Angles should not change
-    assert letter.angle_degrees == 0.0
-    assert letter.angle_radians == 0.0
+    # Verify that angles remain unchanged.
+    assert letter.angle_degrees == pytest.approx(orig_angle_degrees)
+    assert letter.angle_radians == pytest.approx(orig_angle_radians)
 
 
 @pytest.mark.unit
