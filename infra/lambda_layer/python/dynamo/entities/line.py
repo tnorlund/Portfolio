@@ -254,7 +254,12 @@ class Line:
             angle (float): The angle by which to rotate the line.
             rotate_origin_x (float): The x-coordinate of the rotation origin.
             rotate_origin_y (float): The y-coordinate of the rotation origin.
-            use_radians (bool): If True, `angle` is in radians. Otherwise, degrees.
+            use_radians (bool, optional): Indicates if the angle is in radians. 
+                Defaults to True.
+
+        Raises:
+            ValueError: If the angle is outside the allowed range 
+                ([-π/2, π/2] in radians or [-90°, 90°] in degrees).
         """
 
         # 1) Check allowed range
