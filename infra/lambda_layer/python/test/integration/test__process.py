@@ -72,7 +72,6 @@ def upload_json_and_png_files_for_uuid(
 def test_process(
     s3_buckets: Literal["raw-bucket", "cdn-bucket"],
     dynamodb_table: Literal["MyMockedTable"],
-    # freeze_time,
 ):
     raw_bucket, cdn_bucket = s3_buckets
     table_name = dynamodb_table
@@ -88,10 +87,9 @@ def test_process(
     process(table_name, "raw-bucket", raw_prefix, uuid, "cdn-bucket")
 
     # Assert
-    cdn_key = f"assets/{uuid}.png"
-    cdn_response = s3.get_object(Bucket=cdn_bucket, Key=cdn_key)
+    cdn_response = s3.get_object(Bucket="cdn-bucket", Key="assets/e510f3c0-4e94-4bb9-a82e-e111f2d7e245.png")
     cdn_png_bytes = cdn_response["Body"].read()
-    raw_response = s3.get_object(Bucket=raw_bucket, Key=f"{raw_prefix}/{uuid}.png")
+    raw_response = s3.get_object(Bucket="raw-bucket", Key="raw_prefix/e510f3c0-4e94-4bb9-a82e-e111f2d7e245.png")
     raw_png_bytes = raw_response["Body"].read()
     expected_lines, expected_words, expected_letters = process_ocr_dict(
         json.loads(
@@ -102,7 +100,7 @@ def test_process(
         uuid,
     )
     cdn_receipt_response = s3.get_object(
-        Bucket=cdn_bucket, Key=cdn_key.replace(".png", "_RECEIPT_00001.png")
+        Bucket="cdn-bucket", Key="assets/e510f3c0-4e94-4bb9-a82e-e111f2d7e245_RECEIPT_00001.png"
     )
     raw_receipt_png_bytes = cdn_receipt_response["Body"].read()
     # Probably want to query get receipt details for image and check the receipt
@@ -119,10 +117,10 @@ def test_process(
         width=2480,
         height=3508,
         timestamp_added="2021-01-01T00:00:00+00:00",
-        raw_s3_bucket=raw_bucket,
-        raw_s3_key=f"{raw_prefix}/{uuid}.png",
-        cdn_s3_bucket=cdn_bucket,
-        cdn_s3_key=cdn_key,
+        raw_s3_bucket="raw-bucket",
+        raw_s3_key="raw_prefix/e510f3c0-4e94-4bb9-a82e-e111f2d7e245.png",
+        cdn_s3_bucket="cdn-bucket",
+        cdn_s3_key="assets/e510f3c0-4e94-4bb9-a82e-e111f2d7e245.png",
         sha256="e0cf0ccf76e613858c445733a4bb3292342c22484f237b1b2213415a70b6b246",
     ) == DynamoClient(table_name).getImage(uuid)
     assert expected_lines == DynamoClient(table_name).listLines()
@@ -135,18 +133,18 @@ def test_process(
             width=859,
             height=3156,
             timestamp_added="2021-01-01T00:00:00+00:00",
-            raw_s3_bucket=raw_bucket,
-            raw_s3_key=f"{raw_prefix}/{uuid}.png",
+            raw_s3_bucket="raw-bucket",
+            raw_s3_key=f"raw_prefix/e510f3c0-4e94-4bb9-a82e-e111f2d7e245_RECEIPT_00001.png",
             top_left={"x": 0.3055130184694144, "y": 0.9011719136938777},
             top_right={"x": 0.6518054488955656, "y": 0.8980014679715593},
             bottom_left={"x": 0.28903475894519004, "y": 0.001636622217000783},
             bottom_right={"x": 0.6353271893713412, "y": -0.0015338235053175},
-            cdn_s3_bucket=cdn_bucket,
-            cdn_s3_key=cdn_key.replace(".png", "_RECEIPT_00001.png"),
+            cdn_s3_bucket="cdn-bucket",
+            cdn_s3_key="assets/e510f3c0-4e94-4bb9-a82e-e111f2d7e245_RECEIPT_00001.png",
             sha256="60ffc3cdcc1c0cbb15b2d063a686cee6469c003ee7bda5d549aecf657610b627",
         )
         == receipt
-    ), f"Receipt does not match expected: {receipt}"
+    )
 
 
 @pytest.mark.integration
@@ -162,7 +160,7 @@ def test_process_no_bucket(s3_bucket):
 @pytest.mark.parametrize("s3_bucket", ["raw-image-bucket"], indirect=True)
 def test_process_no_files(s3_bucket):
     with pytest.raises(
-        ValueError, match="UUID uuid not found in raw bucket raw-image-bucket"
+        ValueError, match="UUID uuid not found s3://raw-image-bucket/raw_prefix/uuid*"
     ):
         process(
             "table_name", "raw-image-bucket", "raw_prefix", "uuid", "cdn_bucket_name"
@@ -306,7 +304,7 @@ def test_process_access_denied_cdn_bucket(s3_buckets, dynamodb_table, monkeypatc
     monkeypatch.setattr("boto3.client", mock_boto3_client)
 
     # 5. Act & Assert: PNG file should trigger AccessDenied, causing a ValueError
-    with pytest.raises(ValueError, match="Access denied to s3://cdn-bucket/assets/"):
+    with pytest.raises(ValueError, match="Access denied to s3://cdn-bucket/assets"):
         process(
             table_name,
             raw_bucket,

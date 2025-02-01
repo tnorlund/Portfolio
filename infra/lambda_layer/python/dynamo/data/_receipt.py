@@ -216,7 +216,10 @@ class _Receipt:
                     "SK": {"S": f"RECEIPT#{receipt_id:05d}"},
                 },
             )
-            return itemToReceipt(response["Item"])
+            if "Item" in response:
+                return itemToReceipt(response["Item"])
+            else:
+                raise ValueError(f"Receipt with ID {receipt_id} and Image ID '{image_id}' does not exist")
         except ClientError as e:
             if e.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
                 raise ValueError(f"Receipt with ID {receipt_id} and Image ID '{image_id}' does not exist")
