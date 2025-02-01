@@ -252,6 +252,184 @@ def test_word_translate(dx, dy):
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    "sx, sy",
+    [
+        (2, 3),
+        (1, 1),
+        (0.5, 2),
+    ],
+)
+def test_word_scale(sx, sy):
+    """
+    Test that Word.scale(sx, sy) scales corner points
+    and bounding_box, but does NOT modify angles.
+    """
+    word = create_test_word()
+
+    orig_top_right = word.top_right.copy()
+    orig_top_left = word.top_left.copy()
+    orig_bottom_right = word.bottom_right.copy()
+    orig_bottom_left = word.bottom_left.copy()
+    orig_bb = word.bounding_box.copy()
+
+    word.scale(sx, sy)
+
+    # Check corners
+    assert word.top_right["x"] == pytest.approx(orig_top_right["x"] * sx)
+    assert word.top_right["y"] == pytest.approx(orig_top_right["y"] * sy)
+    assert word.top_left["x"] == pytest.approx(orig_top_left["x"] * sx)
+    assert word.top_left["y"] == pytest.approx(orig_top_left["y"] * sy)
+    assert word.bottom_right["x"] == pytest.approx(orig_bottom_right["x"] * sx)
+    assert word.bottom_right["y"] == pytest.approx(orig_bottom_right["y"] * sy)
+    assert word.bottom_left["x"] == pytest.approx(orig_bottom_left["x"] * sx)
+    assert word.bottom_left["y"] == pytest.approx(orig_bottom_left["y"] * sy)
+
+    # Check bounding_box
+    assert word.bounding_box["x"] == pytest.approx(orig_bb["x"] * sx)
+    assert word.bounding_box["y"] == pytest.approx(orig_bb["y"] * sy)
+    assert word.bounding_box["width"] == pytest.approx(orig_bb["width"] * sx)
+    assert word.bounding_box["height"] == pytest.approx(orig_bb["height"] * sy)
+
+    assert word.angle_degrees == 0.0
+    assert word.angle_radians == 0.0
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "angle, use_radians, should_raise",
+    [
+        # Degrees in valid range
+        (90, False, False),
+        (-90, False, False),
+        (45, False, False),
+        (0, False, False),
+        # Degrees outside valid range => expect ValueError
+        (91, False, True),
+        (-91, False, True),
+        (180, False, True),
+        # Radians in valid range ([-π/2, π/2])
+        (math.pi / 2, True, False),
+        (-math.pi / 2, True, False),
+        (0, True, False),
+        (0.5, True, False),
+        # Radians outside valid range => expect ValueError
+        (math.pi / 2 + 0.01, True, True),
+        (-math.pi / 2 - 0.01, True, True),
+        (math.pi, True, True),
+    ],
+)
+def test_word_rotate_limited_range(angle, use_radians, should_raise):
+    """
+    Test that Word.rotate(angle, origin_x, origin_y, use_radians) rotates the word's corners,
+    recalculates the axis-aligned bounding box from the rotated corners, and updates the
+    angle values accordingly. If the angle is outside the allowed range, a ValueError is raised
+    and no changes are made.
+    """
+    word = create_test_word()
+    orig_corners = {
+        "top_right": word.top_right.copy(),
+        "top_left": word.top_left.copy(),
+        "bottom_right": word.bottom_right.copy(),
+        "bottom_left": word.bottom_left.copy(),
+    }
+    orig_angle_degrees = word.angle_degrees
+    orig_angle_radians = word.angle_radians
+
+    if should_raise:
+        with pytest.raises(ValueError):
+            word.rotate(angle, 0, 0, use_radians=use_radians)
+        # Expect no changes on error
+        assert word.top_right == orig_corners["top_right"]
+        assert word.top_left == orig_corners["top_left"]
+        assert word.bottom_right == orig_corners["bottom_right"]
+        assert word.bottom_left == orig_corners["bottom_left"]
+        assert word.angle_degrees == orig_angle_degrees
+        assert word.angle_radians == orig_angle_radians
+    else:
+        # Determine the rotation angle in radians
+        theta = angle if use_radians else math.radians(angle)
+
+        # Helper: rotate a point (px,py) about the origin (ox,oy)
+        def rotate_point(px, py, ox, oy, theta):
+            # Translate point so that the origin becomes (0,0)
+            tx, ty = px - ox, py - oy
+            # Apply rotation
+            rx = tx * math.cos(theta) - ty * math.sin(theta)
+            ry = tx * math.sin(theta) + ty * math.cos(theta)
+            # Translate back
+            return rx + ox, ry + oy
+
+        # Compute expected rotated corner positions (using rotation about (0,0))
+        expected_top_right = {}
+        expected_top_left = {}
+        expected_bottom_right = {}
+        expected_bottom_left = {}
+
+        expected_top_right["x"], expected_top_right["y"] = rotate_point(
+            orig_corners["top_right"]["x"], orig_corners["top_right"]["y"], 0, 0, theta
+        )
+        expected_top_left["x"], expected_top_left["y"] = rotate_point(
+            orig_corners["top_left"]["x"], orig_corners["top_left"]["y"], 0, 0, theta
+        )
+        expected_bottom_right["x"], expected_bottom_right["y"] = rotate_point(
+            orig_corners["bottom_right"]["x"], orig_corners["bottom_right"]["y"], 0, 0, theta
+        )
+        expected_bottom_left["x"], expected_bottom_left["y"] = rotate_point(
+            orig_corners["bottom_left"]["x"], orig_corners["bottom_left"]["y"], 0, 0, theta
+        )
+
+        # Now apply the rotation
+        word.rotate(angle, 0, 0, use_radians=use_radians)
+
+        # Verify that the corners have been updated correctly.
+        assert word.top_right["x"] == pytest.approx(expected_top_right["x"], rel=1e-6)
+        assert word.top_right["y"] == pytest.approx(expected_top_right["y"], rel=1e-6)
+        assert word.top_left["x"] == pytest.approx(expected_top_left["x"], rel=1e-6)
+        assert word.top_left["y"] == pytest.approx(expected_top_left["y"], rel=1e-6)
+        assert word.bottom_right["x"] == pytest.approx(expected_bottom_right["x"], rel=1e-6)
+        assert word.bottom_right["y"] == pytest.approx(expected_bottom_right["y"], rel=1e-6)
+        assert word.bottom_left["x"] == pytest.approx(expected_bottom_left["x"], rel=1e-6)
+        assert word.bottom_left["y"] == pytest.approx(expected_bottom_left["y"], rel=1e-6)
+
+        # Compute the expected bounding box from the rotated corners.
+        xs = [
+            expected_top_right["x"],
+            expected_top_left["x"],
+            expected_bottom_right["x"],
+            expected_bottom_left["x"],
+        ]
+        ys = [
+            expected_top_right["y"],
+            expected_top_left["y"],
+            expected_bottom_right["y"],
+            expected_bottom_left["y"],
+        ]
+        expected_bb = {
+            "x": min(xs),
+            "y": min(ys),
+            "width": max(xs) - min(xs),
+            "height": max(ys) - min(ys),
+        }
+
+        # Verify that the bounding box was recalculated correctly.
+        assert word.bounding_box["x"] == pytest.approx(expected_bb["x"], rel=1e-6)
+        assert word.bounding_box["y"] == pytest.approx(expected_bb["y"], rel=1e-6)
+        assert word.bounding_box["width"] == pytest.approx(expected_bb["width"], rel=1e-6)
+        assert word.bounding_box["height"] == pytest.approx(expected_bb["height"], rel=1e-6)
+
+        # Verify that the angle accumulators have been updated correctly.
+        if use_radians:
+            expected_angle_radians = orig_angle_radians + angle
+            expected_angle_degrees = orig_angle_degrees + (angle * 180.0 / math.pi)
+        else:
+            expected_angle_degrees = orig_angle_degrees + angle
+            expected_angle_radians = orig_angle_radians + math.radians(angle)
+        assert word.angle_radians == pytest.approx(expected_angle_radians, abs=1e-9)
+        assert word.angle_degrees == pytest.approx(expected_angle_degrees, abs=1e-9)
+
+
+@pytest.mark.unit
 def test_repr(example_word):
     """Test the Word __repr__ method"""
     assert repr(example_word) == "Word(id=3, text='test_string')"
@@ -415,152 +593,3 @@ def create_test_word():
         angle_radians=0.0,
         confidence=1.0,
     )
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize(
-    "sx, sy",
-    [
-        (2, 3),
-        (1, 1),
-        (0.5, 2),
-    ],
-)
-def test_word_scale(sx, sy):
-    """
-    Test that Word.scale(sx, sy) scales corner points
-    and bounding_box, but does NOT modify angles.
-    """
-    word = create_test_word()
-
-    orig_top_right = word.top_right.copy()
-    orig_top_left = word.top_left.copy()
-    orig_bottom_right = word.bottom_right.copy()
-    orig_bottom_left = word.bottom_left.copy()
-    orig_bb = word.bounding_box.copy()
-
-    word.scale(sx, sy)
-
-    # Check corners
-    assert word.top_right["x"] == pytest.approx(orig_top_right["x"] * sx)
-    assert word.top_right["y"] == pytest.approx(orig_top_right["y"] * sy)
-    assert word.top_left["x"] == pytest.approx(orig_top_left["x"] * sx)
-    assert word.top_left["y"] == pytest.approx(orig_top_left["y"] * sy)
-    assert word.bottom_right["x"] == pytest.approx(orig_bottom_right["x"] * sx)
-    assert word.bottom_right["y"] == pytest.approx(orig_bottom_right["y"] * sy)
-    assert word.bottom_left["x"] == pytest.approx(orig_bottom_left["x"] * sx)
-    assert word.bottom_left["y"] == pytest.approx(orig_bottom_left["y"] * sy)
-
-    # Check bounding_box
-    assert word.bounding_box["x"] == pytest.approx(orig_bb["x"] * sx)
-    assert word.bounding_box["y"] == pytest.approx(orig_bb["y"] * sy)
-    assert word.bounding_box["width"] == pytest.approx(orig_bb["width"] * sx)
-    assert word.bounding_box["height"] == pytest.approx(orig_bb["height"] * sy)
-
-    assert word.angle_degrees == 0.0
-    assert word.angle_radians == 0.0
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize(
-    "angle, use_radians, should_raise",
-    [
-        # Degrees in valid range
-        (90, False, False),
-        (-90, False, False),
-        (45, False, False),
-        (0, False, False),
-        # Degrees outside valid range => expect ValueError
-        (91, False, True),
-        (-91, False, True),
-        (180, False, True),
-        # Radians in valid range ([-π/2, π/2])
-        (math.pi / 2, True, False),
-        (-math.pi / 2, True, False),
-        (0, True, False),
-        (0.5, True, False),
-        # Radians outside valid range => expect ValueError
-        (math.pi / 2 + 0.01, True, True),
-        (-math.pi / 2 - 0.01, True, True),
-        (math.pi, True, True),
-    ],
-)
-def test_word_rotate_limited_range(angle, use_radians, should_raise):
-    """
-    Test that Word.rotate(angle, origin_x, origin_y, use_radians) only rotates if angle
-    is in [-90, 90] degrees or [-π/2, π/2] radians. Otherwise, raises ValueError.
-    """
-    word = create_test_word()
-    orig_corners = {
-        "top_right": word.top_right.copy(),
-        "top_left": word.top_left.copy(),
-        "bottom_right": word.bottom_right.copy(),
-        "bottom_left": word.bottom_left.copy(),
-    }
-    orig_angle_degrees = word.angle_degrees
-    orig_angle_radians = word.angle_radians
-
-    if should_raise:
-        with pytest.raises(ValueError):
-            word.rotate(angle, 0, 0, use_radians=use_radians)
-
-        assert word.top_right == orig_corners["top_right"]
-        assert word.top_left == orig_corners["top_left"]
-        assert word.bottom_right == orig_corners["bottom_right"]
-        assert word.bottom_left == orig_corners["bottom_left"]
-        assert word.angle_degrees == orig_angle_degrees
-        assert word.angle_radians == orig_angle_radians
-
-    else:
-        word.rotate(angle, 0, 0, use_radians=use_radians)
-
-        # bounding_box remains unchanged
-        assert word.bounding_box["x"] == 10.0
-        assert word.bounding_box["y"] == 20.0
-        assert word.bounding_box["width"] == 5.0
-        assert word.bounding_box["height"] == 2.0
-
-        if angle not in (0, 0.0):
-            corners_changed = (
-                any(
-                    word.top_right[k] != orig_corners["top_right"][k]
-                    for k in ["x", "y"]
-                )
-                or any(
-                    word.top_left[k] != orig_corners["top_left"][k] for k in ["x", "y"]
-                )
-                or any(
-                    word.bottom_right[k] != orig_corners["bottom_right"][k]
-                    for k in ["x", "y"]
-                )
-                or any(
-                    word.bottom_left[k] != orig_corners["bottom_left"][k]
-                    for k in ["x", "y"]
-                )
-            )
-            assert corners_changed, "Expected corners to change after valid rotation."
-        else:
-            assert word.top_right == orig_corners["top_right"]
-            assert word.top_left == orig_corners["top_left"]
-            assert word.bottom_right == orig_corners["bottom_right"]
-            assert word.bottom_left == orig_corners["bottom_left"]
-
-        if use_radians:
-            # angle_radians => old + angle
-            assert word.angle_radians == pytest.approx(
-                orig_angle_radians + angle, abs=1e-9
-            )
-            # angle_degrees => old + angle * (180/π)
-            deg_from_radians = angle * 180.0 / math.pi
-            assert word.angle_degrees == pytest.approx(
-                orig_angle_degrees + deg_from_radians, abs=1e-9
-            )
-        else:
-            # angle_degrees => old + angle
-            assert word.angle_degrees == pytest.approx(
-                orig_angle_degrees + angle, abs=1e-9
-            )
-            # angle_radians => old + radians(angle)
-            assert word.angle_radians == pytest.approx(
-                orig_angle_radians + math.radians(angle), abs=1e-9
-            )

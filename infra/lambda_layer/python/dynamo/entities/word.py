@@ -289,8 +289,8 @@ class Word:
             - [-π/2, π/2] when use_radians=True
             - [-90°, 90°] when use_radians=False
 
-        After rotation, the Word's angle_degrees/angle_radians are updated 
-        by adding the rotation. The bounding_box is **not** updated.
+        Updates top_right, topLeft, bottomRight, bottomLeft in-place,
+        and also updates angleDegrees/angleRadians.
 
         Args:
             angle (float): The angle by which to rotate. Interpreted as degrees
@@ -304,6 +304,8 @@ class Word:
             ValueError: If the angle is outside the allowed range 
                 ([-π/2, π/2] in radians or [-90°, 90°] in degrees).
         """
+
+        # 1) Check allowed range
         if use_radians:
             # Allowed range is [-π/2, π/2]
             if not (-pi / 2 <= angle <= pi / 2):
@@ -317,19 +319,24 @@ class Word:
                 raise ValueError(
                     f"Angle {angle} (degrees) is outside the allowed range [-90°, 90°]."
                 )
+            # Convert to radians
             angle_radians = radians(angle)
 
+        # 2) Rotate each corner
         def rotate_point(px, py, ox, oy, theta):
             """
             Rotates point (px, py) around (ox, oy) by theta radians.
             Returns the new (x, y) coordinates.
             """
+            # Translate point so that (ox, oy) becomes the origin
             translated_x = px - ox
             translated_y = py - oy
 
+            # Apply the rotation
             rotated_x = translated_x * cos(theta) - translated_y * sin(theta)
             rotated_y = translated_x * sin(theta) + translated_y * cos(theta)
 
+            # Translate back
             final_x = rotated_x + ox
             final_y = rotated_y + oy
             return final_x, final_y
@@ -346,14 +353,27 @@ class Word:
             corner["x"] = x_new
             corner["y"] = y_new
 
+        # 3) Update angleDegrees and angleRadians
         if use_radians:
+            # Accumulate the rotation in angleRadians
             self.angle_radians += angle_radians
             self.angle_degrees += angle_radians * 180.0 / pi
         else:
+            # If it was in degrees, accumulate in degrees
             self.angle_degrees += angle
+            # Convert that addition to radians
             self.angle_radians += radians(angle)
 
-        Warning("This function does not update the bounding box")
+        # 4) Recalculate the axis-aligned bounding box from the rotated corners
+        xs = [pt["x"] for pt in corners]
+        ys = [pt["y"] for pt in corners]
+        min_x, max_x = min(xs), max(xs)
+        min_y, max_y = min(ys), max(ys)
+
+        self.bounding_box["x"] = min_x
+        self.bounding_box["y"] = min_y
+        self.bounding_box["width"] = max_x - min_x
+        self.bounding_box["height"] = max_y - min_y
 
     def __repr__(self):
         """
