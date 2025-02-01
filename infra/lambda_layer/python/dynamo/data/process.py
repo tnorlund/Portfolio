@@ -42,8 +42,10 @@ def process(
 
         # Key not found
         elif error_code in ("NoSuchKey", "404"):
-            raise ValueError(f"UUID {uuid} not found in raw bucket {raw_bucket_name}") from e
-        
+            raise ValueError(
+                f"UUID {uuid} not found in raw bucket {raw_bucket_name}"
+            ) from e
+
         # Access denied
         elif error_code == "AccessDenied":
             raise ValueError(f"Access denied to s3://{raw_bucket_name}/{raw_prefix}/*")
@@ -51,17 +53,23 @@ def process(
         # Anything else, re-raise
         else:
             raise
-    
+
     # Read the OCR results from the ".json" file
-    ocr_results = s3.get_object(Bucket=raw_bucket_name, Key=f"{raw_prefix}/{uuid}.json")["Body"].read().decode("utf-8")
+    ocr_results = (
+        s3.get_object(Bucket=raw_bucket_name, Key=f"{raw_prefix}/{uuid}.json")["Body"]
+        .read()
+        .decode("utf-8")
+    )
     try:
         ocr_results = json.loads(ocr_results)
     except json.JSONDecodeError as e:
         raise ValueError(f"Error decoding OCR results: {e}")
-    
+
     # Read the image file
     try:
-        image_bytes = s3.get_object(Bucket=raw_bucket_name, Key=f"{raw_prefix}/{uuid}.png")["Body"].read()
+        image_bytes = s3.get_object(
+            Bucket=raw_bucket_name, Key=f"{raw_prefix}/{uuid}.png"
+        )["Body"].read()
         image = PIL_Image.open(BytesIO(image_bytes))
         # Force Pillow to parse the file fully so corrupted data is caught
         image.verify()
@@ -69,7 +77,7 @@ def process(
         raise ValueError(
             f"Corrupted or invalid PNG file at s3://{raw_bucket_name}/{raw_prefix}/{uuid}.png"
         ) from e
-    
+
     # Store the image in the CDN bucket
     try:
         s3.put_object(
@@ -86,21 +94,32 @@ def process(
             raise ValueError(f"Access denied to s3://{cdn_bucket_name}/{cdn_prefix}")
         else:
             raise
-    
+
     lines, words, letters = process_ocr_dict(ocr_results, uuid)
 
+    cluster_dict = cluster_receipts(lines)
+
+    for cluster_id, cluster_lines in cluster_dict.items():
+        if cluster_id == -1:
+            continue
+        line_ids = [ln.id for ln in cluster_lines]
+        cluster_words = [w for w in words if w.line_id in line_ids]
+        cluster_letters = [lt for lt in letters if lt.line_id in line_ids]
+
     # Finally, add the entities to DynamoDB
-    DynamoClient(table_name).addImage(Image(
-        id=uuid,
-        width=image.size[0],
-        height=image.size[1],
-        timestamp_added=datetime.now(timezone.utc),
-        raw_s3_bucket=raw_bucket_name,
-        raw_s3_key=f"{raw_prefix}/{uuid}.png",
-        cdn_s3_bucket=cdn_bucket_name,
-        cdn_s3_key=f"{cdn_prefix}{uuid}.png",
-        sha256=calculate_sha256_from_bytes(image_bytes),
-    ))
+    DynamoClient(table_name).addImage(
+        Image(
+            id=uuid,
+            width=image.size[0],
+            height=image.size[1],
+            timestamp_added=datetime.now(timezone.utc),
+            raw_s3_bucket=raw_bucket_name,
+            raw_s3_key=f"{raw_prefix}/{uuid}.png",
+            cdn_s3_bucket=cdn_bucket_name,
+            cdn_s3_key=f"{cdn_prefix}{uuid}.png",
+            sha256=calculate_sha256_from_bytes(image_bytes),
+        )
+    )
     DynamoClient(table_name).addLines(lines)
     DynamoClient(table_name).addWords(words)
     DynamoClient(table_name).addLetters(letters)
@@ -188,3 +207,63 @@ def process_ocr_dict(
                 letters.append(letter_obj)
 
     return lines, words, letters
+
+
+def cluster_receipts(
+    lines: List[Line], eps: float = 0.08, min_samples: int = 2
+) -> Dict[int, List[Line]]:
+    """
+    Cluster lines of text based on their x-centroids using a simple threshold-based approach.
+
+    - Sort lines by x-centroid.
+    - Group consecutive lines if their x-centroids are within `eps` of each other.
+    - Mark clusters with fewer than `min_samples` lines as noise (cluster_id = -1).
+
+    Returns:
+        A dictionary mapping cluster_id -> list_of_lines.
+    """
+    if not lines:
+        return {}
+
+    # Sort by x-centroid
+    lines_with_x = [(line, line.calculate_centroid()[0]) for line in lines]
+    lines_with_x.sort(key=lambda pair: pair[1])  # sort by x value
+
+    current_cluster_id = 0
+    clusters = [[]]  # list of clusters; each cluster is a list of (Line, x)
+    clusters[0].append(lines_with_x[0])  # start with the first line
+
+    # Walk through lines, group if within eps
+    for i in range(1, len(lines_with_x)):
+        current_line, current_x = lines_with_x[i]
+        prev_line, prev_x = lines_with_x[i - 1]
+
+        if abs(current_x - prev_x) <= eps:
+            # same cluster
+            clusters[current_cluster_id].append((current_line, current_x))
+        else:
+            # start a new cluster
+            current_cluster_id += 1
+            clusters.append([(current_line, current_x)])
+
+    # Mark cluster IDs; small clusters become noise (cluster_id = -1)
+    cluster_id_counter = 1
+    for cluster in clusters:
+        if len(cluster) < min_samples:
+            # mark noise
+            for line_obj, _ in cluster:
+                line_obj.cluster_id = -1
+        else:
+            # assign a valid cluster ID
+            for line_obj, _ in cluster:
+                line_obj.cluster_id = cluster_id_counter
+            cluster_id_counter += 1
+
+    # Build the final dictionary of cluster_id -> lines
+    cluster_dict: Dict[int, List[Line]] = {}
+    for line_obj, _ in lines_with_x:
+        if line_obj.cluster_id == -1:
+            continue  # skip noise
+        cluster_dict.setdefault(line_obj.cluster_id, []).append(line_obj)
+
+    return cluster_dict
