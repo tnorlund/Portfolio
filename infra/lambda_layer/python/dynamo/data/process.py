@@ -18,6 +18,7 @@ from dynamo.entities import (
     ReceiptLetter,
 )
 from datetime import datetime, timezone
+import copy
 
 
 def process(
@@ -105,7 +106,7 @@ def process(
         cluster_words = [w for w in words if w.line_id in line_ids]
         cluster_letters = [lt for lt in letters if lt.line_id in line_ids]
         try:
-            r_image, r, _, _, _ = transform_cluster(
+            r_image, r, r_lines, r_words, r_letters = transform_cluster(
                 cluster_id,
                 cluster_lines,
                 cluster_words,
@@ -131,6 +132,9 @@ def process(
             raise ValueError(f"Error uploading receipt for cluster {cluster_id}: {e}") from e
 
         DynamoClient(table_name).addReceipt(r)
+        DynamoClient(table_name).addReceiptLines(r_lines)
+        DynamoClient(table_name).addReceiptWords(r_words)
+        DynamoClient(table_name).addReceiptLetters(r_letters)
 
     # Finally, add all entities to DynamoDB.
     DynamoClient(table_name).addImage(image_obj)
@@ -295,13 +299,13 @@ def transform_cluster(
     #                          d*(w-1) + f = src_tr[1]  =>  d = (src_tr[1] - src_tl[1])/(w-1)
     # For destination (0, h-1): b*(h-1) + c = src_bl[0]  =>  b = (src_bl[0] - src_tl[0])/(h-1)
     #                          e*(h-1) + f = src_bl[1]  =>  e = (src_bl[1] - src_tl[1])/(h-1)
-    a = (src_tr[0] - src_tl[0]) / (w - 1)
-    d = (src_tr[1] - src_tl[1]) / (w - 1)
-    b = (src_bl[0] - src_tl[0]) / (h - 1)
-    e = (src_bl[1] - src_tl[1]) / (h - 1)
-    c = src_tl[0]
-    f = src_tl[1]
-    affine_params = (a, b, c, d, e, f)
+    a_ = (src_tr[0] - src_tl[0]) / (w - 1)
+    d_ = (src_tr[1] - src_tl[1]) / (w - 1)
+    b_ = (src_bl[0] - src_tl[0]) / (h - 1)
+    e_ = (src_bl[1] - src_tl[1]) / (h - 1)
+    c_ = src_tl[0]
+    f_ = src_tl[1]
+    affine_params = (a_, b_, c_, d_, e_, f_)
 
     # 5) Apply the affine transform.
     affine_img = pil_image.transform(
@@ -339,7 +343,23 @@ def transform_cluster(
         cdn_s3_bucket=image_obj.cdn_s3_bucket,
         cdn_s3_key=image_obj.cdn_s3_key.replace('.png', f'_RECEIPT_{cluster_id:05d}.png'),
     )
-    return affine_img, r, [], [], []
+    receipt_lines = []
+    for line in cluster_lines:
+        line_copy = copy.deepcopy(line)
+        line_copy.warp_affine(*affine_params)
+        receipt_lines.append(ReceiptLine(**dict(line_copy), receipt_id=cluster_id))
+    receipt_words = []
+    for word in cluster_words:
+        word_copy = copy.deepcopy(word)
+        word_copy.warp_affine(*affine_params)
+        receipt_words.append(ReceiptWord(**dict(word_copy), receipt_id=cluster_id))
+    receipt_letters = []
+    for letter in cluster_letters:
+        letter_copy = copy.deepcopy(letter)
+        letter_copy.warp_affine(*affine_params)
+        receipt_letters.append(ReceiptLetter(**dict(letter_copy), receipt_id=cluster_id))
+    
+    return affine_img, r, receipt_lines, receipt_words, receipt_letters
 
 
 def reorder_box_points(pts: List[Tuple[float, float]]) -> List[Tuple[float, float]]:

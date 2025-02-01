@@ -26,6 +26,8 @@ class ReceiptWord:
         angle_radians: float,
         confidence: float,
         tags: list[str] = None,
+        histogram: dict = None,
+        num_chars: int = None,
     ):
         if not isinstance(receipt_id, int):
             raise ValueError("receipt_id must be an integer")
@@ -83,8 +85,15 @@ class ReceiptWord:
             raise ValueError("tags must be a list")
         self.tags = tags if tags is not None else []
 
-        self.histogram = compute_histogram(self.text)
-        self.num_chars = len(self.text)
+        if histogram is None:
+            self.histogram = compute_histogram(self.text)
+        else:
+            self.histogram = histogram
+
+        if num_chars is None:
+            self.num_chars = len(text)
+        else:
+            self.num_chars = num_chars
 
     def key(self) -> dict:
         return {
@@ -151,7 +160,42 @@ class ReceiptWord:
         return item
 
     def __repr__(self) -> str:
-        return f"ReceiptWord(id={self.id}, text='{self.text}')"
+        """Returns a string representation of the ReceiptWord object
+
+        Returns:
+            str: The string representation of the ReceiptWord object
+        """
+        # fmt: off
+        return (
+            f"ReceiptWord("
+                f"receipt_id={self.receipt_id}, "
+                f"image_id='{self.image_id}', "
+                f"line_id={self.line_id}, "
+                f"id={self.id}, "
+                f"text='{self.text}', "
+                "bounding_box=("
+                    f"x= {self.bounding_box['x']}, "
+                    f"y= {self.bounding_box['y']}, "
+                    f"width= {self.bounding_box['width']}, "
+                    f"height= {self.bounding_box['height']}), "
+                "top_right=("
+                    f"x= {self.top_right['x']}, "
+                    f"y= {self.top_right['y']}), "
+                "top_left=("
+                    f"x= {self.top_left['x']}, "
+                    f"y= {self.top_left['y']}), "
+                "bottom_right=("
+                    f"x= {self.bottom_right['x']}, "
+                    f"y= {self.bottom_right['y']}), "
+                "bottom_left=("
+                    f"x= {self.bottom_left['x']}, "
+                    f"y= {self.bottom_left['y']}), "
+                f"angle_degrees={self.angle_degrees}, "
+                f"angle_radians={self.angle_radians}, "
+                f"confidence={self.confidence:.2}"
+            f")"
+        )
+        # fmt: on
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, ReceiptWord):
