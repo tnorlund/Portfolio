@@ -327,7 +327,9 @@ class Line:
         self.bounding_box["width"] = max_x - min_x
         self.bounding_box["height"] = max_y - min_y
 
-    def shear(self, shx: float, shy: float, pivot_x: float = 0.0, pivot_y: float = 0.0) -> None:
+    def shear(
+        self, shx: float, shy: float, pivot_x: float = 0.0, pivot_y: float = 0.0
+    ) -> None:
         """
         Shears the line by shx (horizontal shear) and shy (vertical shear)
         around a pivot point (pivot_x, pivot_y).
@@ -336,15 +338,13 @@ class Line:
         - (shx, shy) = (0.0, 0.2) would produce a vertical slant
         - You can combine both for a more general shear.
 
-        Modifies top_right, top_left, bottom_right, bottom_left, 
+        Modifies top_right, top_left, bottom_right, bottom_left,
         and then recalculates the axis-aligned bounding box.
         """
         corners = [self.top_right, self.top_left, self.bottom_right, self.bottom_left]
         for corner in corners:
             x_new, y_new = shear_point(
-                corner["x"], corner["y"],
-                pivot_x, pivot_y,
-                shx, shy
+                corner["x"], corner["y"], pivot_x, pivot_y, shx, shy
             )
             corner["x"] = x_new
             corner["y"] = y_new
@@ -373,8 +373,8 @@ class Line:
         for corner in corners:
             x_old = corner["x"]
             y_old = corner["y"]
-            x_new = a*x_old + b*y_old + c
-            y_new = d*x_old + e*y_old + f
+            x_new = a * x_old + b * y_old + c
+            y_new = d * x_old + e * y_old + f
             corner["x"] = x_new
             corner["y"] = y_new
 
@@ -398,14 +398,39 @@ class Line:
 
         self.angle_radians = new_angle_radians
         self.angle_degrees = new_angle_degrees
-        
+
     def __repr__(self) -> str:
         """Returns a string representation of the Line object
 
         Returns:
             str: The string representation of the Line object
         """
-        return f"Line(id={self.id}, text='{self.text}')"
+        return (
+            f"Line("
+            f"id={self.id}, "
+            f"text='{self.text}', "
+            "bounding_box=("
+            f"x= {self.bounding_box['x']}, "
+            f"y= {self.bounding_box['y']}, "
+            f"width= {self.bounding_box['width']}, "
+            f"height= {self.bounding_box['height']}), "
+            "top_right=("
+            f"x= {self.top_right['x']}, "
+            f"y= {self.top_right['y']}), "
+            "top_left=("
+            f"x= {self.top_left['x']}, "
+            f"y= {self.top_left['y']}), "
+            "bottom_right=("
+            f"x= {self.bottom_right['x']}, "
+            f"y= {self.bottom_right['y']}), "
+            "bottom_left=("
+            f"x= {self.bottom_left['x']}, "
+            f"y= {self.bottom_left['y']}), "
+            f"angle_degrees={self.angle_degrees}, "
+            f"angle_radians={self.angle_radians}, "
+            f"confidence={self.confidence:.2}"
+            f")"
+        )
 
     def __iter__(self) -> Generator[Tuple[str, int], None, None]:
         """Returns an iterator over the Line object

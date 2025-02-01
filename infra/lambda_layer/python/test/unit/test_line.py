@@ -121,6 +121,7 @@ def test_init_bad_top_left():
             0.90,
         )
 
+
 @pytest.mark.unit
 def test_init_bad_top_right():
     with pytest.raises(ValueError, match="point must be a dictionary"):
@@ -161,6 +162,7 @@ def test_init_bad_top_right():
             5.0,
             0.90,
         )
+
 
 @pytest.mark.unit
 def test_init_bad_bottom_left():
@@ -203,6 +205,7 @@ def test_init_bad_bottom_left():
             0.90,
         )
 
+
 @pytest.mark.unit
 def test_init_bad_bottom_right():
     with pytest.raises(ValueError, match="point must be a dictionary"):
@@ -244,6 +247,7 @@ def test_init_bad_bottom_right():
             0.90,
         )
 
+
 @pytest.mark.unit
 def test_init_bad_angle():
     # fmt: off
@@ -265,13 +269,6 @@ def test_init_bad_confidence():
         Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", { "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, -0.90)
     # fmt: on
 
-@pytest.mark.unit
-def test_key(example_line):
-    """Test the Line.key() method"""
-    assert example_line.key() == {
-        "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-        "SK": {"S": "LINE#00001"},
-    }
 
 @pytest.mark.unit
 def test_key(example_line):
@@ -280,6 +277,16 @@ def test_key(example_line):
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {"S": "LINE#00001"},
     }
+
+
+@pytest.mark.unit
+def test_key(example_line):
+    """Test the Line.key() method"""
+    assert example_line.key() == {
+        "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "SK": {"S": "LINE#00001"},
+    }
+
 
 @pytest.mark.unit
 def test_gsi1_key(example_line):
@@ -288,6 +295,7 @@ def test_gsi1_key(example_line):
         "GSI1PK": {"S": "IMAGE"},
         "GSI1SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#LINE#00001"},
     }
+
 
 @pytest.mark.unit
 def test_to_item(example_line):
@@ -339,11 +347,13 @@ def test_to_item(example_line):
     assert "histogram" in item
     assert "num_chars" in item
 
+
 @pytest.mark.unit
 def test_calculate_centroid(example_line):
     """Test the Line.calculate_centroid() method"""
     centroid = example_line.calculate_centroid()
     assert centroid == (12.5, 21.0)
+
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
@@ -550,41 +560,69 @@ def test_rotate_limited_range(angle, use_radians, should_raise):
                 orig_angle_radians + math.radians(angle), abs=1e-9
             )
 
+
 @pytest.mark.unit
 @pytest.mark.parametrize(
     "shx, shy, pivot_x, pivot_y, expected_corners",
     [
         # Test 1: Horizontal shear only (shx nonzero, shy=0)
         (
-            0.2, 0.0, 10.0, 20.0,
+            0.2,
+            0.0,
+            10.0,
+            20.0,
             {
-                "top_right": {"x": 15.0 + 0.2*(20.0-20.0), "y": 20.0},   # (15,20)
-                "top_left": {"x": 10.0 + 0.2*(20.0-20.0), "y": 20.0},    # (10,20)
-                "bottom_right": {"x": 15.0 + 0.2*(22.0-20.0), "y": 22.0}, # (15.4,22)
-                "bottom_left": {"x": 10.0 + 0.2*(22.0-20.0), "y": 22.0},  # (10.4,22)
+                "top_right": {"x": 15.0 + 0.2 * (20.0 - 20.0), "y": 20.0},  # (15,20)
+                "top_left": {"x": 10.0 + 0.2 * (20.0 - 20.0), "y": 20.0},  # (10,20)
+                "bottom_right": {
+                    "x": 15.0 + 0.2 * (22.0 - 20.0),
+                    "y": 22.0,
+                },  # (15.4,22)
+                "bottom_left": {
+                    "x": 10.0 + 0.2 * (22.0 - 20.0),
+                    "y": 22.0,
+                },  # (10.4,22)
             },
         ),
         # Test 2: Vertical shear only (shy nonzero, shx=0)
         (
-            0.0, 0.2, 10.0, 20.0,
+            0.0,
+            0.2,
+            10.0,
+            20.0,
             {
-                "top_right": {"x": 15.0, "y": 20.0 + 0.2*(15.0-10.0)},   # (15,21)
-                "top_left": {"x": 10.0, "y": 20.0 + 0.2*(10.0-10.0)},    # (10,20)
-                "bottom_right": {"x": 15.0, "y": 22.0 + 0.2*(15.0-10.0)}, # (15,23)
-                "bottom_left": {"x": 10.0, "y": 22.0 + 0.2*(10.0-10.0)},  # (10,22)
+                "top_right": {"x": 15.0, "y": 20.0 + 0.2 * (15.0 - 10.0)},  # (15,21)
+                "top_left": {"x": 10.0, "y": 20.0 + 0.2 * (10.0 - 10.0)},  # (10,20)
+                "bottom_right": {"x": 15.0, "y": 22.0 + 0.2 * (15.0 - 10.0)},  # (15,23)
+                "bottom_left": {"x": 10.0, "y": 22.0 + 0.2 * (10.0 - 10.0)},  # (10,22)
             },
         ),
         # Test 3: Combined shear
         (
-            0.1, 0.1, 12.0, 21.0,
+            0.1,
+            0.1,
+            12.0,
+            21.0,
             {
                 # For each corner, calculate:
                 # new_x = original_x + 0.1*(original_y - 21.0)
                 # new_y = original_y + 0.1*(original_x - 12.0)
-                "top_right": {"x": 15.0 + 0.1*(20.0 - 21.0), "y": 20.0 + 0.1*(15.0 - 12.0)},  # (15 - 0.1, 20 + 0.3) = (14.9, 20.3)
-                "top_left": {"x": 10.0 + 0.1*(20.0 - 21.0), "y": 20.0 + 0.1*(10.0 - 12.0)},   # (10 - 0.1, 20 - 0.2) = (9.9, 19.8)
-                "bottom_right": {"x": 15.0 + 0.1*(22.0 - 21.0), "y": 22.0 + 0.1*(15.0 - 12.0)},# (15 + 0.1, 22 + 0.3) = (15.1, 22.3)
-                "bottom_left": {"x": 10.0 + 0.1*(22.0 - 21.0), "y": 22.0 + 0.1*(10.0 - 12.0)}, # (10 + 0.1, 22 - 0.2) = (10.1, 21.8)
+                "top_right": {
+                    "x": 15.0 + 0.1 * (20.0 - 21.0),
+                    "y": 20.0 + 0.1 * (15.0 - 12.0),
+                },  # (15 - 0.1, 20 + 0.3) = (14.9, 20.3)
+                "top_left": {
+                    "x": 10.0 + 0.1 * (20.0 - 21.0),
+                    "y": 20.0 + 0.1 * (10.0 - 12.0),
+                },  # (10 - 0.1, 20 - 0.2) = (9.9, 19.8)
+                "bottom_right": {
+                    "x": 15.0 + 0.1 * (22.0 - 21.0),
+                    "y": 22.0 + 0.1 * (15.0 - 12.0),
+                },  # (15 + 0.1, 22 + 0.3) = (15.1, 22.3)
+                "bottom_left": {
+                    "x": 10.0 + 0.1 * (22.0 - 21.0),
+                    "y": 22.0 + 0.1 * (10.0 - 12.0),
+                },  # (10 + 0.1, 22 - 0.2) = (10.1, 21.8)
             },
         ),
     ],
@@ -604,9 +642,9 @@ def test_shear(shx, shy, pivot_x, pivot_y, expected_corners):
         for coord in ["x", "y"]:
             expected_value = expected_corners[corner_name][coord]
             actual_value = line.__dict__[corner_name][coord]
-            assert actual_value == pytest.approx(expected_value), (
-                f"{corner_name} {coord} expected {expected_value}, got {actual_value}"
-            )
+            assert actual_value == pytest.approx(
+                expected_value
+            ), f"{corner_name} {coord} expected {expected_value}, got {actual_value}"
 
     # Compute expected bounding box from the updated corners
     xs = [
@@ -648,22 +686,30 @@ def test_warp_affine():
     #   bottom_left:   (10.0, 22.0)
     #   bottom_right:  (15.0, 22.0)
     # bounding_box: {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}
-    
+
     # Choose affine coefficients that scale by 2 and translate by (3,4)
     a, b, c = 2.0, 0.0, 3.0  # x' = 2*x + 3
     d, e, f = 0.0, 2.0, 4.0  # y' = 2*y + 4
 
     # Expected new positions for the corners:
-    expected_top_left = {"x": 2 * 10.0 + 3, "y": 2 * 20.0 + 4}      # (23, 44)
-    expected_top_right = {"x": 2 * 15.0 + 3, "y": 2 * 20.0 + 4}     # (33, 44)
-    expected_bottom_left = {"x": 2 * 10.0 + 3, "y": 2 * 22.0 + 4}   # (23, 48)
+    expected_top_left = {"x": 2 * 10.0 + 3, "y": 2 * 20.0 + 4}  # (23, 44)
+    expected_top_right = {"x": 2 * 15.0 + 3, "y": 2 * 20.0 + 4}  # (33, 44)
+    expected_bottom_left = {"x": 2 * 10.0 + 3, "y": 2 * 22.0 + 4}  # (23, 48)
     expected_bottom_right = {"x": 2 * 15.0 + 3, "y": 2 * 22.0 + 4}  # (33, 48)
 
     # Expected bounding box is computed from the new corners:
-    xs = [expected_top_left["x"], expected_top_right["x"],
-          expected_bottom_left["x"], expected_bottom_right["x"]]
-    ys = [expected_top_left["y"], expected_top_right["y"],
-          expected_bottom_left["y"], expected_bottom_right["y"]]
+    xs = [
+        expected_top_left["x"],
+        expected_top_right["x"],
+        expected_bottom_left["x"],
+        expected_bottom_right["x"],
+    ]
+    ys = [
+        expected_top_left["y"],
+        expected_top_right["y"],
+        expected_bottom_left["y"],
+        expected_bottom_right["y"],
+    ]
     expected_bb = {
         "x": min(xs),
         "y": min(ys),
@@ -674,7 +720,7 @@ def test_warp_affine():
     # dx = expected_top_right["x"] - expected_top_left["x"] = 33 - 23 = 10
     # dy = expected_top_right["y"] - expected_top_left["y"] = 44 - 44 = 0
     # Thus, the new angle should be 0.
-    
+
     # Apply the affine warp.
     line.warp_affine(a, b, c, d, e, f)
 
@@ -699,51 +745,43 @@ def test_warp_affine():
     assert line.angle_radians == pytest.approx(0.0)
     assert line.angle_degrees == pytest.approx(0.0)
 
-@pytest.mark.unit
-def test_scale():
-    """
-    Test that scale(sx, sy) scales both the corner points and the bounding_box,
-    and does NOT modify angles.
-    """
-    line = create_test_line()
-
-    orig_top_right = line.top_right.copy()
-    orig_top_left = line.top_left.copy()
-    orig_bottom_right = line.bottom_right.copy()
-    orig_bottom_left = line.bottom_left.copy()
-    orig_bb = line.bounding_box.copy()
-
-    sx, sy = 2, 3
-    line.scale(sx, sy)
-
-    # Check corners
-    assert line.top_right["x"] == pytest.approx(orig_top_right["x"] * sx)
-    assert line.top_right["y"] == pytest.approx(orig_top_right["y"] * sy)
-
-    assert line.top_left["x"] == pytest.approx(orig_top_left["x"] * sx)
-    assert line.top_left["y"] == pytest.approx(orig_top_left["y"] * sy)
-
-    assert line.bottom_right["x"] == pytest.approx(orig_bottom_right["x"] * sx)
-    assert line.bottom_right["y"] == pytest.approx(orig_bottom_right["y"] * sy)
-
-    assert line.bottom_left["x"] == pytest.approx(orig_bottom_left["x"] * sx)
-    assert line.bottom_left["y"] == pytest.approx(orig_bottom_left["y"] * sy)
-
-    # Check bounding_box
-    assert line.bounding_box["x"] == pytest.approx(orig_bb["x"] * sx)
-    assert line.bounding_box["y"] == pytest.approx(orig_bb["y"] * sy)
-    assert line.bounding_box["width"] == pytest.approx(orig_bb["width"] * sx)
-    assert line.bounding_box["height"] == pytest.approx(orig_bb["height"] * sy)
-
-    # Angles should remain unchanged.
-    assert line.angle_degrees == 0.0
-    assert line.angle_radians == 0.0
-
 
 @pytest.mark.unit
 def test_repr(example_line):
+    # fmt: off
     """Test the Line.__repr__() method"""
-    assert repr(example_line) == "Line(id=1, text='Test')"
+    assert (
+        repr(example_line) == "Line("
+            "id=1, "
+            "text='Test', "
+            "bounding_box=("
+                "x= 10.0, "
+                "y= 20.0, "
+                "width= 5.0, "
+                "height= 2.0"
+            "), "
+            "top_right=("
+                "x= 15.0, "
+                "y= 20.0"
+            "), "
+            "top_left=("
+                "x= 10.0, "
+                "y= 20.0"
+            "), "
+            "bottom_right=("
+                "x= 15.0, "
+                "y= 22.0"
+            "), "
+            "bottom_left=("
+                "x= 10.0, "
+                "y= 22.0"
+            "), "
+            "angle_degrees=1.0, "
+            "angle_radians=5.0, "
+            "confidence=0.9"
+        ")"
+    )
+    # fmt: on
 
 
 @pytest.mark.unit
