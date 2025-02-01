@@ -248,8 +248,8 @@ def test_receipt_line_to_item(example_receipt_line):
     assert item["top_left"] == {'M': {'x': {'N': '0.10000000000000000000'}, 'y': {'N': '0.20000000000000000000'}}}
     assert item["bottom_right"] == {'M': {'x': {'N': '0.60000000000000000000'}, 'y': {'N': '0.40000000000000000000'}}}
     assert item["bottom_left"] == {'M': {'x': {'N': '0.10000000000000000000'}, 'y': {'N': '0.40000000000000000000'}}}
-    assert item["angle_degrees"] == {'N': '0.000000000000'}
-    assert item["angle_radians"] == {'N': '0.000000000000'}
+    assert item["angle_degrees"] == {'N': '0.000000000000000000'}
+    assert item["angle_radians"] == {'N': '0.000000000000000000'}
     assert item["confidence"] == {"N": "0.95"}
     assert "histogram" in item
     assert "num_chars" in item

@@ -218,8 +218,8 @@ def test_to_item(example_receipt_letter):
                 "y": {"N": "0.20000000000000000000"},
             }
         },
-        "angle_degrees": {"N": "5.000000000000"},
-        "angle_radians": {"N": "0.087266500000"},
+        "angle_degrees": {"N": "5.000000000000000000"},
+        "angle_radians": {"N": "0.087266500000000000"},
         "confidence": {"N": "0.98"},
     }
 

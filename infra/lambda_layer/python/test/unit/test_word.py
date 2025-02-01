@@ -187,8 +187,8 @@ def test_to_item(example_word, example_word_with_tags):
             "y": {"N": "22.00000000000000000000"},
         }
     }
-    assert item["angle_degrees"] == {"N": "1.000000000000"}
-    assert item["angle_radians"] == {"N": "5.000000000000"}
+    assert item["angle_degrees"] == {"N": "1.000000000000000000"}
+    assert item["angle_radians"] == {"N": "5.000000000000000000"}
     assert item["confidence"] == {"N": "0.90"}
     assert "histogram" in item
     assert "num_chars" in item
