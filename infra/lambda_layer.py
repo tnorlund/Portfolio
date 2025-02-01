@@ -1,3 +1,4 @@
+import platform
 import sys
 import os
 import shutil
@@ -5,6 +6,7 @@ import subprocess
 import zipfile
 import pulumi
 import pulumi_aws as aws
+import pulumi_command as command
 
 # Constants
 PROJECT_DIR = os.path.dirname(__file__)
@@ -32,16 +34,36 @@ def clean_previous_artifacts():
 
 
 def install_dependencies():
-    """Install the dependencies for the Lambda Layer."""
-    try:
-        subprocess.check_call(
-            ["pip3", "install", PACKAGE_NAME, "--target", PYTHON_TARGET, "-r", REQUIREMENTS_PATH],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+    """Install the dependencies for the Lambda Layer using Docker (Python 3.13)."""
+    arch = platform.machine().lower()
+
+    docker_command = [
+        "docker", "run", "--rm",
+    ]
+
+    # Only force x86_64 architecture if on ARM (e.g., Apple Silicon)
+    if "arm" in arch or "aarch" in arch:
+        docker_command.extend(["--platform", "linux/amd64"])
+
+    docker_command.extend([
+        "-v", f"{PROJECT_DIR}:{PROJECT_DIR}",
+        "--entrypoint", "bash",
+        "-w", os.path.join(LAMBDA_LAYER_DIR, "python"),
+        "public.ecr.aws/lambda/python:3.13",
+        "-c",
+        (
+            "dnf install -y gcc python3-devel libjpeg-devel zlib-devel && "
+            "pip install --upgrade pip && "
+            f"pip install --target {PYTHON_TARGET} -r {REQUIREMENTS_PATH} && "
+            f"pip install --target {PYTHON_TARGET} ."
         )
+    ])
+
+    try:
+        subprocess.check_call(docker_command)
     except subprocess.CalledProcessError as e:
         print(f"Error installing dependencies: {e}")
-        raise
+        raise e
 
 
 def create_zip_file():
@@ -81,14 +103,22 @@ def prepare_lambda_layer():
 layer_name = "dynamo-receipt"
 compatible_runtimes = ["python3.13"]
 
-# Prepare the Lambda layer package
+# 1) Build & package
 prepare_lambda_layer()
 s3_bucket, s3_key = upload_to_s3()
 
+# 2) Create the Lambda Layer resource
 lambda_layer = aws.lambda_.LayerVersion(
     layer_name,
     layer_name=layer_name,
     compatible_runtimes=compatible_runtimes,
     code=pulumi.FileArchive(ZIP_FILE_PATH),
     description="Lambda Layer for accessing the DynamoDB table",
+)
+
+# 3) Cleanup local build artifacts AFTER the layer is created
+cleanup_local_artifacts = command.local.Command(
+    "cleanup-local-build-artifacts",
+    create=f"rm -rf {UPLOAD_DIR} {ZIP_FILE_PATH}",
+    opts=pulumi.ResourceOptions(depends_on=[lambda_layer])
 )
