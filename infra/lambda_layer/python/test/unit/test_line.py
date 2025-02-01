@@ -634,6 +634,72 @@ def test_shear(shx, shy, pivot_x, pivot_y, expected_corners):
 
 
 @pytest.mark.unit
+def test_warp_affine():
+    """
+    Test that warp_affine(a, b, c, d, e, f) applies the affine transform
+    x' = a*x + b*y + c, y' = d*x + e*y + f to all corners,
+    recomputes the bounding box, and updates the angle accordingly.
+    """
+    # Create a test line with known corner positions:
+    line = create_test_line()
+    # Our test line has:
+    #   top_left:      (10.0, 20.0)
+    #   top_right:     (15.0, 20.0)
+    #   bottom_left:   (10.0, 22.0)
+    #   bottom_right:  (15.0, 22.0)
+    # bounding_box: {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}
+    
+    # Choose affine coefficients that scale by 2 and translate by (3,4)
+    a, b, c = 2.0, 0.0, 3.0  # x' = 2*x + 3
+    d, e, f = 0.0, 2.0, 4.0  # y' = 2*y + 4
+
+    # Expected new positions for the corners:
+    expected_top_left = {"x": 2 * 10.0 + 3, "y": 2 * 20.0 + 4}      # (23, 44)
+    expected_top_right = {"x": 2 * 15.0 + 3, "y": 2 * 20.0 + 4}     # (33, 44)
+    expected_bottom_left = {"x": 2 * 10.0 + 3, "y": 2 * 22.0 + 4}   # (23, 48)
+    expected_bottom_right = {"x": 2 * 15.0 + 3, "y": 2 * 22.0 + 4}  # (33, 48)
+
+    # Expected bounding box is computed from the new corners:
+    xs = [expected_top_left["x"], expected_top_right["x"],
+          expected_bottom_left["x"], expected_bottom_right["x"]]
+    ys = [expected_top_left["y"], expected_top_right["y"],
+          expected_bottom_left["y"], expected_bottom_right["y"]]
+    expected_bb = {
+        "x": min(xs),
+        "y": min(ys),
+        "width": max(xs) - min(xs),
+        "height": max(ys) - min(ys),
+    }
+    # Since top_left and top_right have the same y value,
+    # dx = expected_top_right["x"] - expected_top_left["x"] = 33 - 23 = 10
+    # dy = expected_top_right["y"] - expected_top_left["y"] = 44 - 44 = 0
+    # Thus, the new angle should be 0.
+    
+    # Apply the affine warp.
+    line.warp_affine(a, b, c, d, e, f)
+
+    # Verify the transformed corners.
+    assert line.top_left["x"] == pytest.approx(expected_top_left["x"])
+    assert line.top_left["y"] == pytest.approx(expected_top_left["y"])
+    assert line.top_right["x"] == pytest.approx(expected_top_right["x"])
+    assert line.top_right["y"] == pytest.approx(expected_top_right["y"])
+    assert line.bottom_left["x"] == pytest.approx(expected_bottom_left["x"])
+    assert line.bottom_left["y"] == pytest.approx(expected_bottom_left["y"])
+    assert line.bottom_right["x"] == pytest.approx(expected_bottom_right["x"])
+    assert line.bottom_right["y"] == pytest.approx(expected_bottom_right["y"])
+
+    # Verify that the bounding_box has been recalculated correctly.
+    assert line.bounding_box["x"] == pytest.approx(expected_bb["x"])
+    assert line.bounding_box["y"] == pytest.approx(expected_bb["y"])
+    assert line.bounding_box["width"] == pytest.approx(expected_bb["width"])
+    assert line.bounding_box["height"] == pytest.approx(expected_bb["height"])
+
+    # Verify that the angle has been updated correctly.
+    # Here we expect 0 radians and 0 degrees since the top edge remains horizontal.
+    assert line.angle_radians == pytest.approx(0.0)
+    assert line.angle_degrees == pytest.approx(0.0)
+
+@pytest.mark.unit
 def test_scale():
     """
     Test that scale(sx, sy) scales both the corner points and the bounding_box,
