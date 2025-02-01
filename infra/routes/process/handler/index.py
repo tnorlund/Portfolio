@@ -1,14 +1,10 @@
-import os
+import concurrent.futures
 import logging
 import json
 from dynamo import process
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
-
-# Get the environment variables
-dynamodb_table_name = os.environ["DYNAMODB_TABLE_NAME"]
-
 
 def handler(event, _):
     logger.info("Received event: %s", event)
@@ -43,7 +39,7 @@ def handler(event, _):
                 ),
             }
 
-        if "uuid" not in query_params:
+        if "uuids" not in query_params:
             return {
                 "statusCode": 400,
                 "body": json.dumps(
@@ -76,23 +72,29 @@ def handler(event, _):
         table_name = query_params["table_name"]
         raw_bucket_name = query_params["raw_bucket_name"]
         raw_prefix = query_params["raw_prefix"]
-        uuid = query_params["uuid"]
+        uuids = query_params["uuids"].split(",")
         cdn_bucket_name = query_params["cdn_bucket_name"]
         cdn_prefix = query_params["cdn_prefix"]
 
-        try:
-            logger.info(f"Processing OCR for {uuid}")
-            process(
+        def process_one_uuid(u: str):
+            return process(
                 table_name=table_name,
                 raw_bucket_name=raw_bucket_name,
                 raw_prefix=raw_prefix,
-                uuid=uuid,
+                uuid=u,
                 cdn_bucket_name=cdn_bucket_name,
                 cdn_prefix=cdn_prefix,
             )
+
+        try:
+            # You can adjust max_workers as needed
+            with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+                # executor.map runs each UUID in parallel threads
+                list(executor.map(process_one_uuid, uuids))
+
             return {
                 "statusCode": 200,
-                "body": json.dumps({"body": "Success"}),
+                "body": json.dumps({"body": f"Processed {len(uuids)} UUIDs concurrently."}),
             }
         except Exception as e:
             return {
