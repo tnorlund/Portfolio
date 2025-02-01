@@ -1,3 +1,4 @@
+import platform
 import sys
 import os
 import shutil
@@ -33,31 +34,39 @@ def clean_previous_artifacts():
 
 def install_dependencies():
     """Install the dependencies for the Lambda Layer using Docker (Python 3.12 Lambda environment)."""
+    # Detect local architecture
+    arch = platform.machine().lower()
+
+    docker_command = [
+        "docker", "run", "--rm",
+    ]
+
+    # Only force x86_64 architecture if on ARM (e.g., Apple Silicon)
+    if "arm" in arch or "aarch" in arch:
+        docker_command.extend(["--platform", "linux/amd64"])
+
+    docker_command.extend([
+        # Mount your project folder and set working directory
+        "-v", f"{PROJECT_DIR}:{PROJECT_DIR}",
+        "--entrypoint", "bash",
+        "-w", os.path.join(LAMBDA_LAYER_DIR, "python"),
+
+        # Pull the official AWS Lambda Python 3.12 image
+        "public.ecr.aws/lambda/python:3.12",
+        "-c",
+        (
+            # 1) Install needed native deps for Pillow
+            "dnf install -y gcc python3-devel libjpeg-devel zlib-devel && "
+            # 2) Upgrade pip (helps get manylinux wheels, if available)
+            "pip install --upgrade pip && "
+            # 3) Install dependencies from your requirements.txt into the layer folder
+            f"pip install --target {PYTHON_TARGET} -r {REQUIREMENTS_PATH} && "
+            # 4) Install your local package (if any) into the same layer folder
+            f"pip install --target {PYTHON_TARGET} ."
+        )
+    ])
+
     try:
-        docker_command = [
-            "docker", "run", "--rm",
-            # If you are on Apple Silicon or another non-x86 machine, uncomment the next line:
-            "--platform", "linux/amd64",
-
-            # Mount your project folder and set working directory
-            "-v", f"{PROJECT_DIR}:{PROJECT_DIR}",
-            "--entrypoint", "bash",
-            "-w", os.path.join(LAMBDA_LAYER_DIR, "python"),
-
-            # Pull the official AWS Lambda Python 3.12 image
-            "public.ecr.aws/lambda/python:3.12",
-            "-c",
-            (
-                # 1) Install needed native deps for Pillow
-                "dnf install -y gcc python3-devel libjpeg-devel zlib-devel && "
-                # 2) Upgrade pip (helps get manylinux wheels, if available)
-                "pip install --upgrade pip && "
-                # 3) Install dependencies from your requirements.txt into the layer folder
-                f"pip install --target {PYTHON_TARGET} -r {REQUIREMENTS_PATH} && "
-                # 4) Install your local package (if any) into the same layer folder
-                f"pip install --target {PYTHON_TARGET} ."
-            )
-        ]
         subprocess.check_call(docker_command)
     except subprocess.CalledProcessError as e:
         print(f"Error installing dependencies: {e}")
