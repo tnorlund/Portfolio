@@ -224,6 +224,7 @@ def test_to_item(example_letter):
 @pytest.mark.unit
 def test_repr(example_letter):
     """Test the Letter __repr__ method"""
+    # fmt: off
     assert (
         repr(example_letter) 
         == "Letter("
@@ -254,8 +255,9 @@ def test_repr(example_letter):
             "angle_degrees=1.0, "
             "angle_radians=5.0, "
             "confidence=0.9"
-            ")"
-            )
+        ")"
+    )
+    # fmt: on
 
 
 @pytest.mark.unit
