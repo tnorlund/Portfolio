@@ -568,6 +568,7 @@ def test_shear(shx, shy, pivot_x, pivot_y, expected_corners):
     assert word.bounding_box["width"] == pytest.approx(expected_bb["width"])
     assert word.bounding_box["height"] == pytest.approx(expected_bb["height"])
 
+
 @pytest.mark.unit
 def test_warp_affine():
     """
@@ -642,10 +643,42 @@ def test_warp_affine():
     assert word.angle_radians == pytest.approx(0.0)
     assert word.angle_degrees == pytest.approx(0.0)
 
+
 @pytest.mark.unit
 def test_repr(example_word):
     """Test the Word __repr__ method"""
-    assert repr(example_word) == "Word(id=3, text='test_string')"
+    assert (
+        repr(example_word)
+        == "Word("
+            "id=3, "
+            "text='test_string', "
+            "bounding_box=("
+                "x= 10.0, "
+                "y= 20.0, "
+                "width= 5.0, "
+                "height= 2.0"
+            "), "
+            "top_right=("
+                "x= 15.0, "
+                "y= 20.0"
+            "), "
+            "top_left=("
+                "x= 10.0, "
+                "y= 20.0"
+            "), "
+            "bottom_right=("
+                "x= 15.0, "
+                "y= 22.0"
+            "), "
+            "bottom_left=("
+                "x= 10.0, "
+                "y= 22.0"
+            "), "
+            "angle_degrees=1.0, "
+            "angle_radians=5.0, "
+            "confidence=0.9"
+            ")"
+    )
 
 
 @pytest.mark.unit

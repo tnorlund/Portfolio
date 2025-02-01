@@ -242,7 +242,7 @@ class Line:
     ) -> None:
         """
         Rotates the line by the specified angle around (rotate_origin_x, rotate_origin_y).
-        
+
         ONLY rotates if angle is within:
         - [-90°, 90°], if use_radians=False
         - [-π/2, π/2], if use_radians=True
@@ -411,32 +411,34 @@ class Line:
         Returns:
             str: The string representation of the Line object
         """
+        # fmt: off
         return (
             f"Line("
-            f"id={self.id}, "
-            f"text='{self.text}', "
-            "bounding_box=("
-            f"x= {self.bounding_box['x']}, "
-            f"y= {self.bounding_box['y']}, "
-            f"width= {self.bounding_box['width']}, "
-            f"height= {self.bounding_box['height']}), "
-            "top_right=("
-            f"x= {self.top_right['x']}, "
-            f"y= {self.top_right['y']}), "
-            "top_left=("
-            f"x= {self.top_left['x']}, "
-            f"y= {self.top_left['y']}), "
-            "bottom_right=("
-            f"x= {self.bottom_right['x']}, "
-            f"y= {self.bottom_right['y']}), "
-            "bottom_left=("
-            f"x= {self.bottom_left['x']}, "
-            f"y= {self.bottom_left['y']}), "
-            f"angle_degrees={self.angle_degrees}, "
-            f"angle_radians={self.angle_radians}, "
-            f"confidence={self.confidence:.2}"
+                f"id={self.id}, "
+                f"text='{self.text}', "
+                "bounding_box=("
+                    f"x= {self.bounding_box['x']}, "
+                    f"y= {self.bounding_box['y']}, "
+                    f"width= {self.bounding_box['width']}, "
+                    f"height= {self.bounding_box['height']}), "
+                "top_right=("
+                    f"x= {self.top_right['x']}, "
+                    f"y= {self.top_right['y']}), "
+                "top_left=("
+                    f"x= {self.top_left['x']}, "
+                    f"y= {self.top_left['y']}), "
+                "bottom_right=("
+                    f"x= {self.bottom_right['x']}, "
+                    f"y= {self.bottom_right['y']}), "
+                "bottom_left=("
+                    f"x= {self.bottom_left['x']}, "
+                    f"y= {self.bottom_left['y']}), "
+                f"angle_degrees={self.angle_degrees}, "
+                f"angle_radians={self.angle_radians}, "
+                f"confidence={self.confidence:.2}"
             f")"
         )
+        # fmt: on
 
     def __iter__(self) -> Generator[Tuple[str, int], None, None]:
         """Returns an iterator over the Line object
