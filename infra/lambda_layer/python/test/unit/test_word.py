@@ -647,6 +647,7 @@ def test_warp_affine():
 @pytest.mark.unit
 def test_repr(example_word):
     """Test the Word __repr__ method"""
+    # fmt: off
     assert (
         repr(example_word)
         == "Word("
@@ -679,6 +680,7 @@ def test_repr(example_word):
             "confidence=0.9"
             ")"
     )
+    # fmt: on
 
 
 @pytest.mark.unit

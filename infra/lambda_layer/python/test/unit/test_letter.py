@@ -223,8 +223,39 @@ def test_to_item(example_letter):
 
 @pytest.mark.unit
 def test_repr(example_letter):
-    """Test the Letter.__repr__ method"""
-    assert repr(example_letter) == "Letter(id=3, text='0')"
+    """Test the Letter __repr__ method"""
+    assert (
+        repr(example_letter) 
+        == "Letter("
+        "id=3, "
+            "text='0', "
+            "bounding_box=("
+                "x= 10.0, "
+                "y= 20.0, "
+                "width= 5.0, "
+                "height= 2.0"
+            "), "
+            "top_right=("
+                "x= 15.0, "
+                "y= 20.0"
+            "), "
+            "top_left=("
+                "x= 10.0, "
+                "y= 20.0"
+            "), "
+            "bottom_right=("
+                "x= 15.0, "
+                "y= 22.0"
+            "), "
+            "bottom_left=("
+                "x= 10.0, "
+                "y= 22.0"
+            "), "
+            "angle_degrees=1.0, "
+            "angle_radians=5.0, "
+            "confidence=0.9"
+            ")"
+            )
 
 
 @pytest.mark.unit
