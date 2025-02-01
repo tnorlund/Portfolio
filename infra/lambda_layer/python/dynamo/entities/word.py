@@ -7,7 +7,7 @@ from dynamo.entities.util import (
     _format_float,
     shear_point,
 )
-from math import sin, cos, pi, radians
+from math import atan2, sin, cos, pi, radians
 
 
 class Word:
@@ -408,6 +408,45 @@ class Word:
         self.bounding_box["y"] = min_y
         self.bounding_box["width"] = max_x - min_x
         self.bounding_box["height"] = max_y - min_y
+
+    def warp_affine(self, a, b, c, d, e, f):
+        """
+        Applies the forward 2x3 affine transform to this lines corners:
+        x' = a*x + b*y + c
+        y' = d*x + e*y + f
+        Then recomputes the axis-aligned bounding box and angle.
+        """
+        corners = [self.top_left, self.top_right, self.bottom_left, self.bottom_right]
+
+        # 1) Transform corners in-place
+        for corner in corners:
+            x_old = corner["x"]
+            y_old = corner["y"]
+            x_new = a * x_old + b * y_old + c
+            y_new = d * x_old + e * y_old + f
+            corner["x"] = x_new
+            corner["y"] = y_new
+
+        # 2) Recompute bounding_box
+        xs = [pt["x"] for pt in corners]
+        ys = [pt["y"] for pt in corners]
+        min_x, max_x = min(xs), max(xs)
+        min_y, max_y = min(ys), max(ys)
+
+        self.bounding_box["x"] = min_x
+        self.bounding_box["y"] = min_y
+        self.bounding_box["width"] = max_x - min_x
+        self.bounding_box["height"] = max_y - min_y
+
+        dx = self.top_right["x"] - self.top_left["x"]
+        dy = self.top_right["y"] - self.top_left["y"]
+
+        # angle_radians is angle from x-axis
+        new_angle_radians = atan2(dy, dx)  # range [-pi, pi]
+        new_angle_degrees = new_angle_radians * 180.0 / pi
+
+        self.angle_radians = new_angle_radians
+        self.angle_degrees = new_angle_degrees
 
     def __repr__(self):
         """
