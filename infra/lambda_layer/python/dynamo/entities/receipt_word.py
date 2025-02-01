@@ -5,7 +5,7 @@ from dynamo.entities.util import (
     assert_valid_bounding_box,
     assert_valid_point,
     _format_float,
-    histogram,
+    compute_histogram,
 )
 
 
@@ -83,7 +83,7 @@ class ReceiptWord:
             raise ValueError("tags must be a list")
         self.tags = tags if tags is not None else []
 
-        self.histogram = histogram(self.text)
+        self.histogram = compute_histogram(self.text)
         self.num_chars = len(self.text)
 
     def key(self) -> dict:

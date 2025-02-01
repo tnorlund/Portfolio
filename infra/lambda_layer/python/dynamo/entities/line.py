@@ -1,7 +1,7 @@
 from typing import Generator, Tuple
 from dynamo.entities.util import (
     assert_valid_uuid,
-    histogram,
+    compute_histogram,
     assert_valid_bounding_box,
     assert_valid_point,
     _format_float,
@@ -24,6 +24,8 @@ class Line:
         angle_degrees: float,
         angle_radians: float,
         confidence: float,
+        histogram: dict = None,
+        num_chars: int = None,
     ):
         """Initializes a new Line object for DynamoDB
 
@@ -39,6 +41,8 @@ class Line:
             angle_degrees (float): The angle of the line in degrees
             angle_radians (float): The angle of the line in radians
             confidence (float): The confidence level of the line
+            histogram (dict, optional): The histogram of the line. Defaults to None.
+            num_chars (int, optional): The number of characters in the line. Defaults to None.
 
         Attributes:
             image_id (str): UUID identifying the image
@@ -52,6 +56,8 @@ class Line:
             angle_degrees (float): The angle of the line in degrees
             angle_radians (float): The angle of the line in radians
             confidence (float): The confidence level of the line
+            histogram (dict): The histogram of the line
+            num_chars (int): The number of characters in the line
 
         Raises:
             ValueError: If image_id is not a valid UUID
@@ -110,8 +116,15 @@ class Line:
             raise ValueError("confidence must be between 0 and 1")
         self.confidence = confidence
 
-        self.histogram = histogram(text)
-        self.num_chars = len(text)
+        if histogram is None:
+            self.histogram = compute_histogram(self.text)
+        else:
+            self.histogram = histogram
+
+        if num_chars is None:
+            self.num_chars = len(text)
+        else:
+            self.num_chars = num_chars
 
     def key(self) -> dict:
         """Generates the primary key for the line

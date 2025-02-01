@@ -1,7 +1,7 @@
 from typing import Generator, Tuple
 from dynamo.entities.util import (
     assert_valid_uuid,
-    histogram,
+    compute_histogram,
     assert_valid_bounding_box,
     assert_valid_point,
     _format_float,
@@ -35,6 +35,8 @@ class Word:
         angle_radians: float,
         confidence: float,
         tags: list[str] = None,
+        histogram: dict = None,
+        num_chars: int = None,
     ):
         """
         Constructs a new Word object for DynamoDB.
@@ -136,8 +138,15 @@ class Word:
             raise ValueError("tags must be a list")
         self.tags = tags if tags is not None else []
 
-        self.histogram = histogram(self.text)
-        self.num_chars = len(self.text)
+        if histogram is None:
+            self.histogram = compute_histogram(self.text)
+        else:
+            self.histogram = histogram
+
+        if num_chars is None:
+            self.num_chars = len(text)
+        else:
+            self.num_chars = num_chars
 
     def key(self) -> dict:
         """

@@ -721,6 +721,8 @@ def test_iter(example_word, example_word_with_tags):
     assert word_dict["angle_radians"] == 5
     assert word_dict["confidence"] == 0.90
     assert dict(example_word_with_tags)["tags"] == ["tag1", "tag2"]
+    assert Word(**dict(example_word)) == example_word
+    assert Word(**dict(example_word_with_tags)) == example_word_with_tags
 
 
 @pytest.mark.unit

@@ -10,7 +10,7 @@ UUID_V4_REGEX = re.compile(
     r'[0-9A-Fa-f]{12}$'
 )
 
-def histogram(text: str) -> dict:
+def compute_histogram(text: str) -> dict:
     known_letters = [
         " ",
         "!",

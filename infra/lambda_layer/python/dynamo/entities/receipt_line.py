@@ -4,7 +4,7 @@ from dynamo.entities.util import (
     assert_valid_bounding_box,
     assert_valid_point,
     _format_float,
-    histogram,
+    compute_histogram,
 )
 
 
@@ -69,7 +69,7 @@ class ReceiptLine:
             raise ValueError("confidence must be between 0 and 1")
         self.confidence = confidence
 
-        self.histogram = histogram(text)
+        self.histogram = compute_histogram(text)
         self.num_chars = len(text)
 
     def key(self):
