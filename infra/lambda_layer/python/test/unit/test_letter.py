@@ -112,13 +112,17 @@ def test_init_invalid_text():
 
     # fmt: on
 
+
 @pytest.mark.unit
-@pytest.mark.parametrize("bad_box", [
-    {},
-    {"x": 1, "width": 3, "height": 4},  # missing "y"
-    {"y": 2, "width": 3, "height": 4}, # missing "x"
-    {"x": "str", "y": 2, "width": 3, "height": 4},  # not float/int
-])
+@pytest.mark.parametrize(
+    "bad_box",
+    [
+        {},
+        {"x": 1, "width": 3, "height": 4},  # missing "y"
+        {"y": 2, "width": 3, "height": 4},  # missing "x"
+        {"x": "str", "y": 2, "width": 3, "height": 4},  # not float/int
+    ],
+)
 def test_init_invalid_bounding_box(bad_box):
     """Test constructor fails when bounding_box is not valid."""
     with pytest.raises(ValueError):
@@ -126,13 +130,17 @@ def test_init_invalid_bounding_box(bad_box):
         Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, id=1, text="H", bounding_box=bad_box, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, )
         # fmt: on
 
+
 @pytest.mark.unit
-@pytest.mark.parametrize("bad_point", [
-    {},
-    {"x": 1},  # missing "y"
-    {"y": 2},  # missing "x"
-    {"x": "str", "y": 2},
-])
+@pytest.mark.parametrize(
+    "bad_point",
+    [
+        {},
+        {"x": 1},  # missing "y"
+        {"y": 2},  # missing "x"
+        {"x": "str", "y": 2},
+    ],
+)
 def test_init_invalid_top_right(bad_point):
     """Test constructor fails when top_right is not valid."""
     with pytest.raises(ValueError):
@@ -140,21 +148,16 @@ def test_init_invalid_top_right(bad_point):
         Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right=bad_point, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, )
         # fmt: on
 
+
 @pytest.mark.unit
-@pytest.mark.parametrize("bad_confidence", [
-    -0.1,
-    0.0,
-    1.0001,
-    2,
-    "high",
-    None
-])
+@pytest.mark.parametrize("bad_confidence", [-0.1, 0.0, 1.0001, 2, "high", None])
 def test_init_invalid_confidence(bad_confidence):
     """Test constructor fails when confidence is not within (0, 1]."""
     with pytest.raises(ValueError):
         # fmt: off
         Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=10.0, angle_radians=0.1, confidence=bad_confidence, )
         # fmt: on
+
 
 @pytest.mark.unit
 def test_init_invalid_angels():
@@ -165,6 +168,7 @@ def test_init_invalid_angels():
     with pytest.raises(ValueError, match="angle_radians must be a float or int"):
         Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians="not-a-number", confidence=0.5, )
     # fmt: on
+
 
 @pytest.mark.unit
 def test_key(example_letter):
@@ -285,6 +289,7 @@ def test_iter(example_letter):
     }
     assert Letter(**dict(example_letter)) == example_letter
 
+
 @pytest.mark.unit
 def test_eq_same(example_letter):
     """Test __eq__ with the same Letter object."""
@@ -322,6 +327,7 @@ def test_eq_different_letter(example_letter):
     )
     assert example_letter != diff_letter
 
+
 @pytest.mark.unit
 def test_itemToLetter(example_letter):
     """Test the itemToLetter function"""
@@ -331,53 +337,56 @@ def test_itemToLetter(example_letter):
         itemToLetter({})
     # Bad value types
     with pytest.raises(ValueError, match="^Error converting item to Letter:"):
-        itemToLetter({
-        "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-        "SK": {"S": "LINE#00001#WORD#00002#LETTER#00003"},
-        "TYPE": {"S": "LETTER"},
-        "text": {"N": "0"}, # Should be a string
-        "bounding_box": {
-            "M": {
-                "height": {"N": "2.000000000000000000"},
-                "width": {"N": "5.000000000000000000"},
-                "x": {"N": "10.000000000000000000"},
-                "y": {"N": "20.000000000000000000"},
+        itemToLetter(
+            {
+                "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+                "SK": {"S": "LINE#00001#WORD#00002#LETTER#00003"},
+                "TYPE": {"S": "LETTER"},
+                "text": {"N": "0"},  # Should be a string
+                "bounding_box": {
+                    "M": {
+                        "height": {"N": "2.000000000000000000"},
+                        "width": {"N": "5.000000000000000000"},
+                        "x": {"N": "10.000000000000000000"},
+                        "y": {"N": "20.000000000000000000"},
+                    }
+                },
+                "top_right": {
+                    "M": {
+                        "x": {"N": "15.000000000000000000"},
+                        "y": {"N": "20.000000000000000000"},
+                    }
+                },
+                "top_left": {
+                    "M": {
+                        "x": {"N": "10.000000000000000000"},
+                        "y": {"N": "20.000000000000000000"},
+                    }
+                },
+                "bottom_right": {
+                    "M": {
+                        "x": {"N": "15.000000000000000000"},
+                        "y": {"N": "22.000000000000000000"},
+                    }
+                },
+                "bottom_left": {
+                    "M": {
+                        "x": {"N": "10.000000000000000000"},
+                        "y": {"N": "22.000000000000000000"},
+                    }
+                },
+                "angle_degrees": {"N": "1.0000000000"},
+                "angle_radians": {"N": "5.0000000000"},
+                "confidence": {"N": "0.90"},
             }
-        },
-        "top_right": {
-            "M": {
-                "x": {"N": "15.000000000000000000"},
-                "y": {"N": "20.000000000000000000"},
-            }
-        },
-        "top_left": {
-            "M": {
-                "x": {"N": "10.000000000000000000"},
-                "y": {"N": "20.000000000000000000"},
-            }
-        },
-        "bottom_right": {
-            "M": {
-                "x": {"N": "15.000000000000000000"},
-                "y": {"N": "22.000000000000000000"},
-            }
-        },
-        "bottom_left": {
-            "M": {
-                "x": {"N": "10.000000000000000000"},
-                "y": {"N": "22.000000000000000000"},
-            }
-        },
-        "angle_degrees": {"N": "1.0000000000"},
-        "angle_radians": {"N": "5.0000000000"},
-        "confidence": {"N": "0.90"},
-    })
+        )
 
 
 @pytest.mark.unit
 def test_calculate_centroid(example_letter):
     """Test the Letter.centroid method"""
     assert example_letter.calculate_centroid() == (12.5, 21.0)
+
 
 @pytest.mark.unit
 def create_test_letter():
