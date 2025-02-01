@@ -4,7 +4,7 @@ setup(
     name="dynamo",
     version="1",
     packages=find_packages(),
-    install_requires=["requests"],
+    install_requires=["requests", "Pillow"],
     extras_require={
         "test": [
             "pytest",
@@ -12,6 +12,7 @@ setup(
             "pytest-cov",
             "moto",
             "pytest-cov",
+            "freezegun",
         ]
     },
 )

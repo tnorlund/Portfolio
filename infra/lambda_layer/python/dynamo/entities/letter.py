@@ -4,8 +4,9 @@ from dynamo.entities.util import (
     assert_valid_bounding_box,
     assert_valid_point,
     _format_float,
+    shear_point,
 )
-from math import pi, radians, sin, cos
+from math import atan2, pi, radians, sin, cos
 
 
 class Letter:
@@ -101,16 +102,12 @@ class Letter:
         self.bottom_left = bottom_left
 
         if not isinstance(angle_degrees, (float, int)):
-            raise ValueError(
-                f"angle_degrees must be a float or int"
-            )
-        self.angle_degrees = angle_degrees
+            raise ValueError(f"angle_degrees must be a float or int")
+        self.angle_degrees = float(angle_degrees)
 
         if not isinstance(angle_radians, (float, int)):
-            raise ValueError(
-                f"angle_radians must be a float or int"
-            )
-        self.angle_radians = angle_radians
+            raise ValueError(f"angle_radians must be a float or int")
+        self.angle_radians = float(angle_radians)
 
         if isinstance(confidence, int):
             confidence = float(confidence)
@@ -133,8 +130,8 @@ class Letter:
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {
                 "S": f"LINE#{self.line_id:05d}"
-                    f"#WORD#{self.word_id:05d}"
-                    f"#LETTER#{self.id:05d}"
+                f"#WORD#{self.word_id:05d}"
+                f"#LETTER#{self.id:05d}"
             },
         }
 
@@ -152,38 +149,38 @@ class Letter:
             "text": {"S": self.text},
             "bounding_box": {
                 "M": {
-                    "x": {"N": _format_float(self.bounding_box["x"], 18, 20)},
-                    "y": {"N": _format_float(self.bounding_box["y"], 18, 20)},
-                    "width": {"N": _format_float(self.bounding_box["width"], 18, 20)},
-                    "height": {"N": _format_float(self.bounding_box["height"], 18, 20)},
+                    "x": {"N": _format_float(self.bounding_box["x"], 20, 22)},
+                    "y": {"N": _format_float(self.bounding_box["y"], 20, 22)},
+                    "width": {"N": _format_float(self.bounding_box["width"], 20, 22)},
+                    "height": {"N": _format_float(self.bounding_box["height"], 20, 22)},
                 }
             },
             "top_right": {
                 "M": {
-                    "x": {"N": _format_float(self.top_right["x"], 18, 20)},
-                    "y": {"N": _format_float(self.top_right["y"], 18, 20)},
+                    "x": {"N": _format_float(self.top_right["x"], 20, 22)},
+                    "y": {"N": _format_float(self.top_right["y"], 20, 22)},
                 }
             },
             "top_left": {
                 "M": {
-                    "x": {"N": _format_float(self.top_left["x"], 18, 20)},
-                    "y": {"N": _format_float(self.top_left["y"], 18, 20)},
+                    "x": {"N": _format_float(self.top_left["x"], 20, 22)},
+                    "y": {"N": _format_float(self.top_left["y"], 20, 22)},
                 }
             },
             "bottom_right": {
                 "M": {
-                    "x": {"N": _format_float(self.bottom_right["x"], 18, 20)},
-                    "y": {"N": _format_float(self.bottom_right["y"], 18, 20)},
+                    "x": {"N": _format_float(self.bottom_right["x"], 20, 22)},
+                    "y": {"N": _format_float(self.bottom_right["y"], 20, 22)},
                 }
             },
             "bottom_left": {
                 "M": {
-                    "x": {"N": _format_float(self.bottom_left["x"], 18, 20)},
-                    "y": {"N": _format_float(self.bottom_left["y"], 18, 20)},
+                    "x": {"N": _format_float(self.bottom_left["x"], 20, 22)},
+                    "y": {"N": _format_float(self.bottom_left["y"], 20, 22)},
                 }
             },
-            "angle_degrees": {"N": _format_float(self.angle_degrees, 10, 12)},
-            "angle_radians": {"N": _format_float(self.angle_radians, 10, 12)},
+            "angle_degrees": {"N": _format_float(self.angle_degrees, 18, 20)},
+            "angle_radians": {"N": _format_float(self.angle_radians, 18, 20)},
             "confidence": {"N": _format_float(self.confidence, 2, 2)},
         }
 
@@ -215,10 +212,6 @@ class Letter:
         Args:
             x (float): The amount to translate in the x-direction.
             y (float): The amount to translate in the y-direction.
-
-        Warning:
-            This method updates top_right, top_left, bottom_right, and bottom_left
-            but does **not** update the bounding_box.
         """
         self.top_right["x"] += x
         self.top_right["y"] += y
@@ -228,7 +221,8 @@ class Letter:
         self.bottom_right["y"] += y
         self.bottom_left["x"] += x
         self.bottom_left["y"] += y
-        Warning("This function does not update the bounding box")
+        self.bounding_box["x"] += x
+        self.bounding_box["y"] += y
 
     def scale(self, sx: float, sy: float) -> None:
         """
@@ -265,10 +259,8 @@ class Letter:
             - [-π/2, π/2] when use_radians=True
             - [-90°, 90°] when use_radians=False
 
-        Otherwise, raises ValueError.
-
-        After rotation, the letter's angle_degrees/angle_radians are updated
-        by adding the rotation. The bounding_box is **not** updated.
+        Updates top_right, topLeft, bottomRight, bottomLeft in-place,
+        and also updates angleDegrees/angleRadians.
 
         Args:
             angle (float): The angle by which to rotate. Interpreted as degrees
@@ -279,26 +271,41 @@ class Letter:
                 Defaults to True.
 
         Raises:
-            ValueError: If the angle is outside the allowed range.
+            ValueError: If the angle is outside the allowed range
+                ([-π/2, π/2] in radians or [-90°, 90°] in degrees).
         """
+        # 1) Check allowed range
         if use_radians:
+            # Allowed range is [-π/2, π/2]
             if not (-pi / 2 <= angle <= pi / 2):
                 raise ValueError(
                     f"Angle {angle} (radians) is outside the allowed range [-π/2, π/2]."
                 )
             angle_radians = angle
         else:
+            # Allowed range is [-90, 90] degrees
             if not (-90 <= angle <= 90):
                 raise ValueError(
                     f"Angle {angle} (degrees) is outside the allowed range [-90°, 90°]."
                 )
+            # Convert to radians
             angle_radians = radians(angle)
 
+        # 2) Rotate each corner
         def rotate_point(px, py, ox, oy, theta):
+            """
+            Rotates point (px, py) around (ox, oy) by theta radians.
+            Returns the new (x, y) coordinates.
+            """
+            # Translate point so that (ox, oy) becomes the origin
             translated_x = px - ox
             translated_y = py - oy
+
+            # Apply the rotation
             rotated_x = translated_x * cos(theta) - translated_y * sin(theta)
             rotated_y = translated_x * sin(theta) + translated_y * cos(theta)
+
+            # Translate back
             final_x = rotated_x + ox
             final_y = rotated_y + oy
             return final_x, final_y
@@ -315,14 +322,99 @@ class Letter:
             corner["x"] = x_new
             corner["y"] = y_new
 
+        # 3) Update angleDegrees and angleRadians
         if use_radians:
+            # Accumulate the rotation in angleRadians
             self.angle_radians += angle_radians
             self.angle_degrees += angle_radians * 180.0 / pi
         else:
+            # If it was in degrees, accumulate in degrees
             self.angle_degrees += angle
+            # Convert that addition to radians
             self.angle_radians += radians(angle)
 
-        Warning("This function does not update the bounding box")
+        # 4) Recalculate the axis-aligned bounding box from the rotated corners
+        xs = [pt["x"] for pt in corners]
+        ys = [pt["y"] for pt in corners]
+        min_x, max_x = min(xs), max(xs)
+        min_y, max_y = min(ys), max(ys)
+
+        self.bounding_box["x"] = min_x
+        self.bounding_box["y"] = min_y
+        self.bounding_box["width"] = max_x - min_x
+        self.bounding_box["height"] = max_y - min_y
+
+    def shear(
+        self, shx: float, shy: float, pivot_x: float = 0.0, pivot_y: float = 0.0
+    ) -> None:
+        """
+        Shears the Letter by shx (horizontal shear) and shy (vertical shear)
+        around a pivot point (pivot_x, pivot_y).
+
+        - (shx, shy) = (0.2, 0.0) would produce a horizontal slant
+        - (shx, shy) = (0.0, 0.2) would produce a vertical slant
+        - You can combine both for a more general shear.
+
+        Modifies top_right, top_left, bottom_right, bottom_left,
+        and then recalculates the axis-aligned bounding box.
+        """
+        corners = [self.top_right, self.top_left, self.bottom_right, self.bottom_left]
+        for corner in corners:
+            x_new, y_new = shear_point(
+                corner["x"], corner["y"], pivot_x, pivot_y, shx, shy
+            )
+            corner["x"] = x_new
+            corner["y"] = y_new
+
+        # Recalculate axis-aligned bounding box from new corners
+        xs = [pt["x"] for pt in corners]
+        ys = [pt["y"] for pt in corners]
+        min_x, max_x = min(xs), max(xs)
+        min_y, max_y = min(ys), max(ys)
+
+        self.bounding_box["x"] = min_x
+        self.bounding_box["y"] = min_y
+        self.bounding_box["width"] = max_x - min_x
+        self.bounding_box["height"] = max_y - min_y
+
+    def warp_affine(self, a, b, c, d, e, f):
+        """
+        Applies the forward 2x3 affine transform to this lines corners:
+        x' = a*x + b*y + c
+        y' = d*x + e*y + f
+        Then recomputes the axis-aligned bounding box and angle.
+        """
+        corners = [self.top_left, self.top_right, self.bottom_left, self.bottom_right]
+
+        # 1) Transform corners in-place
+        for corner in corners:
+            x_old = corner["x"]
+            y_old = corner["y"]
+            x_new = a * x_old + b * y_old + c
+            y_new = d * x_old + e * y_old + f
+            corner["x"] = x_new
+            corner["y"] = y_new
+
+        # 2) Recompute bounding_box
+        xs = [pt["x"] for pt in corners]
+        ys = [pt["y"] for pt in corners]
+        min_x, max_x = min(xs), max(xs)
+        min_y, max_y = min(ys), max(ys)
+
+        self.bounding_box["x"] = min_x
+        self.bounding_box["y"] = min_y
+        self.bounding_box["width"] = max_x - min_x
+        self.bounding_box["height"] = max_y - min_y
+
+        dx = self.top_right["x"] - self.top_left["x"]
+        dy = self.top_right["y"] - self.top_left["y"]
+
+        # angle_radians is angle from x-axis
+        new_angle_radians = atan2(dy, dx)  # range [-pi, pi]
+        new_angle_degrees = new_angle_radians * 180.0 / pi
+
+        self.angle_radians = new_angle_radians
+        self.angle_degrees = new_angle_degrees
 
     def __repr__(self):
         """
@@ -331,7 +423,34 @@ class Letter:
         Returns:
             str: The string representation of the Letter object.
         """
-        return f"Letter(id={self.id}, text='{self.text}')"
+        # fmt: off
+        return (
+            f"Letter("
+                f"id={self.id}, "
+                f"text='{self.text}', "
+                "bounding_box=("
+                    f"x= {self.bounding_box['x']}, "
+                    f"y= {self.bounding_box['y']}, "
+                    f"width= {self.bounding_box['width']}, "
+                    f"height= {self.bounding_box['height']}), "
+                "top_right=("
+                    f"x= {self.top_right['x']}, "
+                    f"y= {self.top_right['y']}), "
+                "top_left=("
+                    f"x= {self.top_left['x']}, "
+                    f"y= {self.top_left['y']}), "
+                "bottom_right=("
+                    f"x= {self.bottom_right['x']}, "
+                    f"y= {self.bottom_right['y']}), "
+                "bottom_left=("
+                    f"x= {self.bottom_left['x']}, "
+                    f"y= {self.bottom_left['y']}), "
+                f"angle_degrees={self.angle_degrees}, "
+                f"angle_radians={self.angle_radians}, "
+                f"confidence={self.confidence:.2}"
+            f")"
+        )
+        # fmt: on
 
     def __iter__(self) -> Generator[Tuple[str, dict], None, None]:
         """
