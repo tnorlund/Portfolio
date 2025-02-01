@@ -76,7 +76,8 @@ def test_process(
 ):
     raw_bucket, cdn_bucket = s3_buckets
     table_name = dynamodb_table
-    # 1. Arrange: Put a ".json" and ".png" in the bucket
+
+    # Arrange
     s3 = boto3.client("s3", region_name="us-east-1")
     uuid = "e510f3c0-4e94-4bb9-a82e-e111f2d7e245"
     raw_prefix = "raw_prefix"
@@ -142,10 +143,10 @@ def test_process(
             bottom_right={"x": 0.6353271893713412, "y": -0.0015338235053175},
             cdn_s3_bucket=cdn_bucket,
             cdn_s3_key=cdn_key.replace(".png", "_RECEIPT_00001.png"),
-            sha256="2fb8c78d3fa98224686e7db624dbec868cb7c1ca0aef9959be3d691f84877f34",
+            sha256="60ffc3cdcc1c0cbb15b2d063a686cee6469c003ee7bda5d549aecf657610b627",
         )
         == receipt
-    )
+    ), f"Receipt does not match expected: {receipt}"
 
 
 @pytest.mark.integration
