@@ -104,13 +104,13 @@ class Letter:
             raise ValueError(
                 f"angle_degrees must be a float or int"
             )
-        self.angle_degrees = angle_degrees
+        self.angle_degrees = float(angle_degrees)
 
         if not isinstance(angle_radians, (float, int)):
             raise ValueError(
                 f"angle_radians must be a float or int"
             )
-        self.angle_radians = angle_radians
+        self.angle_radians = float(angle_radians)
 
         if isinstance(confidence, int):
             confidence = float(confidence)
@@ -182,8 +182,8 @@ class Letter:
                     "y": {"N": _format_float(self.bottom_left["y"], 20, 22)},
                 }
             },
-            "angle_degrees": {"N": _format_float(self.angle_degrees, 12, 14)},
-            "angle_radians": {"N": _format_float(self.angle_radians, 12, 14)},
+            "angle_degrees": {"N": _format_float(self.angle_degrees, 18, 20)},
+            "angle_radians": {"N": _format_float(self.angle_radians, 18, 20)},
             "confidence": {"N": _format_float(self.confidence, 2, 2)},
         }
 

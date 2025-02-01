@@ -129,9 +129,29 @@ def process(
         line_ids = [ln.id for ln in cluster_lines]
         cluster_words = [w for w in words if w.line_id in line_ids]
         cluster_letters = [lt for lt in letters if lt.line_id in line_ids]
-        transform_cluster(
-            cluster_id, cluster_lines, cluster_words, cluster_letters, image, image_obj
-        )
+        try:
+            r_image, r, _, _, _ = transform_cluster(
+                cluster_id, cluster_lines, cluster_words, cluster_letters, image, image_obj
+            )
+            buffer = BytesIO()
+            r_image.save(buffer, format="PNG")
+            buffer.seek(0)
+            png_data = buffer.getvalue()
+        except Exception as e:
+            # Log the error or wrap it in a more informative exception
+            raise ValueError(f"Error processing cluster {cluster_id}: {e}") from e
+
+        try:
+            s3.put_object(
+                Bucket=cdn_bucket_name,
+                Key=f"{image_obj.cdn_s3_key.replace('.png', f'_RECEIPT_{cluster_id:05d}.png')}",
+                Body=png_data,
+                ContentType="image/png",
+            )
+        except ClientError as e:
+            raise ValueError(f"Error uploading receipt for cluster {cluster_id}: {e}") from e
+
+        DynamoClient(table_name).addReceipt(r)
 
     # Finally, add the entities to DynamoDB
     DynamoClient(table_name).addImage(image_obj)
@@ -364,28 +384,28 @@ def transform_cluster(
     g_, h_, _ = M_forward[2]
 
     M = (
-        (9.97730471e-01, 1.29210324e-02, -7.60432200e+02),
-        (-1.29420519e-02, 9.99334899e-01, -3.36652518e+02),
-        (-1.12553496e-11, -2.91572008e-13, 1.00000000e+00),
+        (9.97730471e-01, 1.29210324e-02, -7.60432200e02),
+        (-1.29420519e-02, 9.99334899e-01, -3.36652518e02),
+        (-1.12553496e-11, -2.91572008e-13, 1.00000000e00),
     )
 
     img_cv = np.array(pil_image)
     M_np = np.array(M)
     warped = cv2.warpPerspective(
-        img_cv,   # the source image (NumPy array)
-        M_np,     # your hardcoded 3x3 matrix
+        img_cv,  # the source image (NumPy array)
+        M_np,  # your hardcoded 3x3 matrix
         (w, h),  # (width, height)
         flags=cv2.INTER_LINEAR,  # or cv2.INTER_CUBIC, etc.
         borderMode=cv2.BORDER_CONSTANT,
-        borderValue=(255, 0, 255)  # fill with magenta, for example
+        borderValue=(255, 0, 255),  # fill with magenta, for example
     )
     # save warped image
     cv2.imwrite(f"cluster_{cluster_id}_warped_cv.png", warped)
     M = invert_3x3(M)
 
-    a_, b_, c_ = M[0]
-    d_, e_, f_ = M[1]
-    g_, h_, _  = M[2]
+    a_, b_, c_ = M_inv[0]
+    d_, e_, f_ = M_inv[1]
+    g_, h_, _ = M_inv[2]
 
     perspective_coeffs = (a_, b_, c_, d_, e_, f_, g_, h_)
 
@@ -397,7 +417,6 @@ def transform_cluster(
         resample=PIL_Image.BICUBIC,
         fillcolor=(255, 0, 255, 255),  # bright magenta for debugging
     )
-    
 
     warped_img.save(f"cluster_{cluster_id}_warped.png")
 
@@ -408,9 +427,9 @@ def transform_cluster(
         resample=PIL_Image.BICUBIC,
         fillcolor=(255, 0, 255, 255),  # bright magenta for debugging
     )
-    affine_img.save(f"cluster_{cluster_id}_affine.png")
-
-    print(f"Cluster {cluster_id} warped image saved as cluster_{cluster_id}_warped.png")
+    receipt_s3_key = (
+        f"{image_obj.cdn_s3_key.replace('.png', f'_RECEIPT_{cluster_id:05d}.png')}"
+    )
 
     r = Receipt(
         id=cluster_id,
@@ -438,9 +457,7 @@ def transform_cluster(
         },
         sha256=calculate_sha256_from_bytes(warped_img.tobytes()),
         cdn_s3_bucket=image_obj.cdn_s3_bucket,
-        cdn_s3_key=image_obj.cdn_s3_key.replace(
-            ".png", f"_cluster_{cluster_id:05d}.png"
-        ),
+        cdn_s3_key=receipt_s3_key,
     )
 
     # You would also do any code to store a “Receipt” object, e.g.:
@@ -458,11 +475,14 @@ def transform_cluster(
     # or anything else your pipeline needs.
 
     print(f"Done transforming cluster {cluster_id} into bounding box.")
+    return affine_img, r, [], [], []
+
 
 import numpy as np
 
 import cv2
 import numpy as np
+
 
 def compute_perspective_transform_cv(src_pts, dst_pts):
     src = np.array(src_pts, dtype=np.float32)

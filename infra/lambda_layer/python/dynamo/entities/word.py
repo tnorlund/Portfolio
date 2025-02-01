@@ -197,8 +197,8 @@ class Word:
                     "y": {"N": _format_float(self.bottom_left["y"], 20, 22)},
                 }
             },
-            "angle_degrees": {"N": _format_float(self.angle_degrees, 12, 14)},
-            "angle_radians": {"N": _format_float(self.angle_radians, 12, 14)},
+            "angle_degrees": {"N": _format_float(self.angle_degrees, 18, 20)},
+            "angle_radians": {"N": _format_float(self.angle_radians, 18, 20)},
             "confidence": {"N": _format_float(self.confidence, 2, 2)},
             "histogram": {
                 "M": {

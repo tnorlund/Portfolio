@@ -173,3 +173,29 @@ def assert_valid_uuid(uuid) -> None:
         raise ValueError("uuid must be a string")
     if not UUID_V4_REGEX.match(uuid):
         raise ValueError("uuid must be a valid UUIDv4")
+
+
+def shear_point(px, py, pivot_x, pivot_y, shx, shy):
+    """
+    Shears point (px, py) around pivot (pivot_x, pivot_y) 
+    by shear factors `shx` (x-shear) and `shy` (y-shear).
+
+    Forward transform (source -> dest):
+        [ x' ] = [ 1    shx ] [ x - pivot_x ]
+        [ y' ]   [ shy    1 ] [ y - pivot_y ]
+
+    Then translate back by adding pivot_x, pivot_y.
+    """
+    # 1) Translate so pivot is at origin
+    translated_x = px - pivot_x
+    translated_y = py - pivot_y
+
+    # 2) Apply shear
+    sheared_x = translated_x + shx * translated_y
+    sheared_y = shy * translated_x + translated_y
+
+    # 3) Translate back
+    final_x = sheared_x + pivot_x
+    final_y = sheared_y + pivot_y
+    return final_x, final_y
+

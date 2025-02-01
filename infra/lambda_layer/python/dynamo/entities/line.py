@@ -5,8 +5,9 @@ from dynamo.entities.util import (
     assert_valid_bounding_box,
     assert_valid_point,
     _format_float,
+    shear_point,
 )
-from math import sin, cos, pi, radians
+from math import atan2, sin, cos, pi, radians
 
 
 class Line:
@@ -95,11 +96,11 @@ class Line:
 
         if not isinstance(angle_degrees, (float, int)):
             raise ValueError(f"angle_degrees must be a float or int")
-        self.angle_degrees = angle_degrees
+        self.angle_degrees = float(angle_degrees)
 
         if not isinstance(angle_radians, (float, int)):
             raise ValueError("angle_radians must be a float or int")
-        self.angle_radians = angle_radians
+        self.angle_radians = float(angle_radians)
 
         if isinstance(confidence, int):
             confidence = float(confidence)
@@ -177,8 +178,8 @@ class Line:
                     "y": {"N": _format_float(self.bottom_left["y"], 20, 22)},
                 }
             },
-            "angle_degrees": {"N": _format_float(self.angle_degrees, 12, 14)},
-            "angle_radians": {"N": _format_float(self.angle_radians, 12, 14)},
+            "angle_degrees": {"N": _format_float(self.angle_degrees, 18, 20)},
+            "angle_radians": {"N": _format_float(self.angle_radians, 18, 20)},
             "confidence": {"N": _format_float(self.confidence, 2, 2)},
             "histogram": {"M": {k: {"N": str(v)} for k, v in self.histogram.items()}},
             "num_chars": {"N": str(self.num_chars)},
@@ -214,7 +215,8 @@ class Line:
         self.bottom_right["y"] += y
         self.bottom_left["x"] += x
         self.bottom_left["y"] += y
-        Warning("This function does not update the bounding box")
+        self.bounding_box["x"] += x
+        self.bounding_box["y"] += y
 
     def scale(self, sx: float, sy: float) -> None:
         """Scales the line by the x and y factors"""
@@ -314,9 +316,89 @@ class Line:
             # Convert that addition to radians
             self.angle_radians += radians(angle)
 
-        # 4) Warn that the bounding box is not updated
-        Warning("This function does not update the bounding box")
+        # 4) Recalculate the axis-aligned bounding box from the rotated corners
+        xs = [pt["x"] for pt in corners]
+        ys = [pt["y"] for pt in corners]
+        min_x, max_x = min(xs), max(xs)
+        min_y, max_y = min(ys), max(ys)
 
+        self.bounding_box["x"] = min_x
+        self.bounding_box["y"] = min_y
+        self.bounding_box["width"] = max_x - min_x
+        self.bounding_box["height"] = max_y - min_y
+
+    def shear(self, shx: float, shy: float, pivot_x: float = 0.0, pivot_y: float = 0.0) -> None:
+        """
+        Shears the line by shx (horizontal shear) and shy (vertical shear)
+        around a pivot point (pivot_x, pivot_y).
+
+        - (shx, shy) = (0.2, 0.0) would produce a horizontal slant
+        - (shx, shy) = (0.0, 0.2) would produce a vertical slant
+        - You can combine both for a more general shear.
+
+        Modifies top_right, top_left, bottom_right, bottom_left, 
+        and then recalculates the axis-aligned bounding box.
+        """
+        corners = [self.top_right, self.top_left, self.bottom_right, self.bottom_left]
+        for corner in corners:
+            x_new, y_new = shear_point(
+                corner["x"], corner["y"],
+                pivot_x, pivot_y,
+                shx, shy
+            )
+            corner["x"] = x_new
+            corner["y"] = y_new
+
+        # Recalculate axis-aligned bounding box from new corners
+        xs = [pt["x"] for pt in corners]
+        ys = [pt["y"] for pt in corners]
+        min_x, max_x = min(xs), max(xs)
+        min_y, max_y = min(ys), max(ys)
+
+        self.bounding_box["x"] = min_x
+        self.bounding_box["y"] = min_y
+        self.bounding_box["width"] = max_x - min_x
+        self.bounding_box["height"] = max_y - min_y
+
+    def warp_affine(self, a, b, c, d, e, f):
+        """
+        Applies the forward 2x3 affine transform to this lines corners:
+        x' = a*x + b*y + c
+        y' = d*x + e*y + f
+        Then recomputes the axis-aligned bounding box and angle.
+        """
+        corners = [self.top_left, self.top_right, self.bottom_left, self.bottom_right]
+
+        # 1) Transform corners in-place
+        for corner in corners:
+            x_old = corner["x"]
+            y_old = corner["y"]
+            x_new = a*x_old + b*y_old + c
+            y_new = d*x_old + e*y_old + f
+            corner["x"] = x_new
+            corner["y"] = y_new
+
+        # 2) Recompute bounding_box
+        xs = [pt["x"] for pt in corners]
+        ys = [pt["y"] for pt in corners]
+        min_x, max_x = min(xs), max(xs)
+        min_y, max_y = min(ys), max(ys)
+
+        self.bounding_box["x"] = min_x
+        self.bounding_box["y"] = min_y
+        self.bounding_box["width"] = max_x - min_x
+        self.bounding_box["height"] = max_y - min_y
+
+        dx = self.top_right["x"] - self.top_left["x"]
+        dy = self.top_right["y"] - self.top_left["y"]
+
+        # angle_radians is angle from x-axis
+        new_angle_radians = atan2(dy, dx)  # range [-pi, pi]
+        new_angle_degrees = new_angle_radians * 180.0 / pi
+
+        self.angle_radians = new_angle_radians
+        self.angle_degrees = new_angle_degrees
+        
     def __repr__(self) -> str:
         """Returns a string representation of the Line object
 

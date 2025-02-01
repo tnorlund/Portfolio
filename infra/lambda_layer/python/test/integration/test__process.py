@@ -6,9 +6,16 @@ from botocore.exceptions import ClientError
 import boto3
 import pytest
 from freezegun import freeze_time
-from dynamo import process, DynamoClient, Image
+from dynamo import process, DynamoClient, Image, Receipt
 from dynamo.data.process import process_ocr_dict
 
+
+def get_raw_bytes_receipt(uuid: str, receipt_id: int):
+    """Checks the PNG directory for the receipt image and returns the bytes"""
+    base_dir = os.path.dirname(__file__)  # directory containing test__process.py
+    receipt_path = os.path.join(base_dir, "PNG", f"{uuid}_RECEIPT_{str(receipt_id).zfill(5)}.png")
+    with open(receipt_path, "rb") as receipt_file:
+        return receipt_file.read()
 
 def upload_json_and_png_files_for_uuid(
     s3_client: "boto3.client",
@@ -20,6 +27,9 @@ def upload_json_and_png_files_for_uuid(
     Reads the .json and .png files for a given UUID from local directories
     (integration/JSON, integration/PNG) and uploads them to the specified S3 bucket
     under the given prefix.
+
+    This is necessary for the start of the test because the upload script lands 
+    both these files in the raw bucket.
 
     Args:
         s3_client (boto3.client): A boto3 S3 client.
@@ -71,6 +81,7 @@ def test_process(
     uuid = "e510f3c0-4e94-4bb9-a82e-e111f2d7e245"
     raw_prefix = "raw_prefix"
     upload_json_and_png_files_for_uuid(s3, raw_bucket, uuid, raw_prefix)
+    receipt_raw_bytes = get_raw_bytes_receipt(uuid, 1)
 
     # Act
     process(table_name, "raw-bucket", raw_prefix, uuid, "cdn-bucket")
@@ -89,9 +100,19 @@ def test_process(
         ),
         uuid,
     )
+    cdn_receipt_response = s3.get_object(
+        Bucket=cdn_bucket, Key=cdn_key.replace(".png", "_RECEIPT_00001.png")
+    )
+    raw_receipt_png_bytes = cdn_receipt_response["Body"].read()
+    # Probably want to query get receipt details for image and check the receipt
+    _, _, _, _, _, receipts = DynamoClient(table_name).getImageDetails(uuid)
+    assert len(receipts) == 1
+    receipt = receipts[0]["receipt"]
 
     assert cdn_png_bytes == raw_png_bytes, "CDN copy of PNG does not match original!"
     assert cdn_response["ContentType"] == "image/png"
+    assert raw_receipt_png_bytes == receipt_raw_bytes, "CDN copy of receipt does not match original!"
+    assert cdn_receipt_response["ContentType"] == "image/png"
     assert Image(
         id=uuid,
         width=2480,
@@ -105,7 +126,26 @@ def test_process(
     ) == DynamoClient(table_name).getImage(uuid)
     assert expected_lines == DynamoClient(table_name).listLines()
     assert expected_words == DynamoClient(table_name).listWords()
-    assert dict(expected_letters[133]) == dict(DynamoClient(table_name).listLetters()[133])
+    assert expected_letters == DynamoClient(table_name).listLetters()
+    assert (
+        Receipt(
+            id=1,
+            image_id=uuid,
+            width=859,
+            height=3156,
+            timestamp_added="2021-01-01T00:00:00+00:00",
+            raw_s3_bucket=raw_bucket,
+            raw_s3_key=f"{raw_prefix}/{uuid}.png",
+            top_left={"x": 0.3055130184694144, "y": 0.9011719136938777},
+            top_right={"x": 0.6518054488955656, "y": 0.8980014679715593},
+            bottom_left={"x": 0.28903475894519004, "y": 0.001636622217000783},
+            bottom_right={"x": 0.6353271893713412, "y": -0.0015338235053175},
+            cdn_s3_bucket=cdn_bucket,
+            cdn_s3_key=cdn_key.replace(".png", "_RECEIPT_00001.png"),
+            sha256="d5f48f5dc21972316e8193594e30624234debdbcc04873b4132fb0c370533bb6",
+        )
+        == receipt
+    )
 
 
 @pytest.mark.integration
