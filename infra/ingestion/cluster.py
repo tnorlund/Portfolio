@@ -643,13 +643,16 @@ def transform_cluster(
 
     # 2) Compute min-area bounding rect
     rect = cv2.minAreaRect(pts)  # (center, (w, h), angle)
+    print(f"rect: {rect}")
     box = cv2.boxPoints(rect)  # 4 corner points
+    print(f"box: {box}")
     box = np.array(box, dtype=np.float32)
 
     # 3) Order points, warp to upright rectangle
     box_ordered = order_points(box)  # see function above
     w = int(rect[1][0])
     h = int(rect[1][1])
+    print(f"box_ordered: {box_ordered}")
 
     # Ensure width is always less than height
     if w > h:
@@ -660,6 +663,7 @@ def transform_cluster(
     )
 
     M = cv2.getPerspectiveTransform(box_ordered, dst_pts)
+    print(f"M: {M}")
     warped = cv2.warpPerspective(image_cv, M, (w, h))
 
     store_cluster_entities(
