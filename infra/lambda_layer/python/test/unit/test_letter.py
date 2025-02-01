@@ -522,6 +522,116 @@ def test_letter_rotate_limited_range(angle, use_radians, should_raise):
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    "shx, shy, pivot_x, pivot_y, expected_corners",
+    [
+        # Test 1: Horizontal shear only (shx nonzero, shy=0)
+        (
+            0.2,
+            0.0,
+            10.0,
+            20.0,
+            {
+                "top_right": {"x": 15.0 + 0.2 * (20.0 - 20.0), "y": 20.0},  # (15,20)
+                "top_left": {"x": 10.0 + 0.2 * (20.0 - 20.0), "y": 20.0},  # (10,20)
+                "bottom_right": {
+                    "x": 15.0 + 0.2 * (22.0 - 20.0),
+                    "y": 22.0,
+                },  # (15.4,22)
+                "bottom_left": {
+                    "x": 10.0 + 0.2 * (22.0 - 20.0),
+                    "y": 22.0,
+                },  # (10.4,22)
+            },
+        ),
+        # Test 2: Vertical shear only (shy nonzero, shx=0)
+        (
+            0.0,
+            0.2,
+            10.0,
+            20.0,
+            {
+                "top_right": {"x": 15.0, "y": 20.0 + 0.2 * (15.0 - 10.0)},  # (15,21)
+                "top_left": {"x": 10.0, "y": 20.0 + 0.2 * (10.0 - 10.0)},  # (10,20)
+                "bottom_right": {"x": 15.0, "y": 22.0 + 0.2 * (15.0 - 10.0)},  # (15,23)
+                "bottom_left": {"x": 10.0, "y": 22.0 + 0.2 * (10.0 - 10.0)},  # (10,22)
+            },
+        ),
+        # Test 3: Combined shear
+        (
+            0.1,
+            0.1,
+            12.0,
+            21.0,
+            {
+                # For each corner, calculate:
+                # new_x = original_x + 0.1*(original_y - 21.0)
+                # new_y = original_y + 0.1*(original_x - 12.0)
+                "top_right": {
+                    "x": 15.0 + 0.1 * (20.0 - 21.0),
+                    "y": 20.0 + 0.1 * (15.0 - 12.0),
+                },  # (15 - 0.1, 20 + 0.3) = (14.9, 20.3)
+                "top_left": {
+                    "x": 10.0 + 0.1 * (20.0 - 21.0),
+                    "y": 20.0 + 0.1 * (10.0 - 12.0),
+                },  # (10 - 0.1, 20 - 0.2) = (9.9, 19.8)
+                "bottom_right": {
+                    "x": 15.0 + 0.1 * (22.0 - 21.0),
+                    "y": 22.0 + 0.1 * (15.0 - 12.0),
+                },  # (15 + 0.1, 22 + 0.3) = (15.1, 22.3)
+                "bottom_left": {
+                    "x": 10.0 + 0.1 * (22.0 - 21.0),
+                    "y": 22.0 + 0.1 * (10.0 - 12.0),
+                },  # (10 + 0.1, 22 - 0.2) = (10.1, 21.8)
+            },
+        ),
+    ],
+)
+def test_shear(shx, shy, pivot_x, pivot_y, expected_corners):
+    """
+    Test that the shear(shx, shy, pivot_x, pivot_y) method correctly shears
+    the corners of the line and recalculates the bounding box.
+    """
+    letter = create_test_letter()
+
+    # Apply shear transformation
+    letter.shear(shx, shy, pivot_x, pivot_y)
+
+    # Check each corner against the expected values
+    for corner_name in ["top_right", "top_left", "bottom_right", "bottom_left"]:
+        for coord in ["x", "y"]:
+            expected_value = expected_corners[corner_name][coord]
+            actual_value = letter.__dict__[corner_name][coord]
+            assert actual_value == pytest.approx(
+                expected_value
+            ), f"{corner_name} {coord} expected {expected_value}, got {actual_value}"
+
+    # Compute expected bounding box from the updated corners
+    xs = [
+        letter.top_right["x"],
+        letter.top_left["x"],
+        letter.bottom_right["x"],
+        letter.bottom_left["x"],
+    ]
+    ys = [
+        letter.top_right["y"],
+        letter.top_left["y"],
+        letter.bottom_right["y"],
+        letter.bottom_left["y"],
+    ]
+    expected_bb = {
+        "x": min(xs),
+        "y": min(ys),
+        "width": max(xs) - min(xs),
+        "height": max(ys) - min(ys),
+    }
+    assert letter.bounding_box["x"] == pytest.approx(expected_bb["x"])
+    assert letter.bounding_box["y"] == pytest.approx(expected_bb["y"])
+    assert letter.bounding_box["width"] == pytest.approx(expected_bb["width"])
+    assert letter.bounding_box["height"] == pytest.approx(expected_bb["height"])
+
+
+@pytest.mark.unit
 def test_repr(example_letter):
     """Test the Letter __repr__ method"""
     # fmt: off
