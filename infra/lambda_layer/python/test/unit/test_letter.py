@@ -382,44 +382,6 @@ def test_eq():
 
 
 @pytest.mark.unit
-def test_eq_same(example_letter):
-    """Test __eq__ with the same Letter object."""
-    assert example_letter == example_letter
-
-
-@pytest.mark.unit
-def test_eq_different_type(example_letter):
-    """Test __eq__ returns False when comparing to a different type."""
-    assert example_letter != "some string"
-
-
-@pytest.mark.unit
-def test_eq_different_letter(example_letter):
-    """Test __eq__ returns False when comparing two Letter objects with different fields."""
-    diff_letter = Letter(
-        image_id="aaaaaaaa-2fad-4e00-92c8-b593da3a8ed3",
-        line_id=1,
-        word_id=2,
-        id=3,
-        text="0",
-        bounding_box={
-            "x": 10.0,
-            "y": 20.0,
-            "width": 5.0,
-            "height": 2.0,
-        },
-        top_right={"x": 15.0, "y": 20.0},
-        top_left={"x": 10.0, "y": 20.0},
-        bottom_right={"x": 15.0, "y": 22.0},
-        bottom_left={"x": 10.0, "y": 22.0},
-        angle_degrees=1.0,
-        angle_radians=5.0,
-        confidence=0.90,
-    )
-    assert example_letter != diff_letter
-
-
-@pytest.mark.unit
 def test_itemToLetter(example_letter):
     """Test the itemToLetter function"""
     assert itemToLetter(example_letter.to_item()) == example_letter
