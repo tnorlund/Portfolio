@@ -81,6 +81,7 @@ def handler(event, _):
         cdn_prefix = query_params["cdn_prefix"]
 
         try:
+            logger.info(f"Processing OCR for {uuid}")
             process(
                 table_name=table_name,
                 raw_bucket_name=raw_bucket_name,

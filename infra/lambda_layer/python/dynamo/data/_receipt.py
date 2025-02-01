@@ -52,8 +52,11 @@ class _Receipt:
                 Item=receipt.to_item(),
                 ConditionExpression="attribute_not_exists(PK)",
             )
-        except ClientError:
-            raise ValueError(f"Receipt with ID {receipt.id} already exists")
+        except ClientError as e:
+            if e.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+                raise ValueError(f"Receipt with ID {receipt.id} and Image ID '{receipt.image_id}' already exists")
+            else:
+                raise e
 
     def addReceipts(self, receipts: list[Receipt]):
         """Adds a list of receipts to the database
@@ -98,7 +101,10 @@ class _Receipt:
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            raise ValueError(f"Receipt with ID {receipt.id} does not exist")
+            if e.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+                raise ValueError(f"Receipt with ID {receipt.id} and Image ID '{receipt.image_id}' does not exist")
+            else:
+                raise e
 
     def updateReceipts(self, receipts: list[Receipt]):
         """Updates a list of receipts in the database
@@ -143,7 +149,10 @@ class _Receipt:
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            raise ValueError(f"Receipt with ID {receipt.id} does not exist")
+            if e.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+                raise ValueError(f"Receipt with ID {receipt.id} and Image ID '{receipt.image_id}' does not exists")
+            else:
+                raise e
 
     def deleteReceipts(self, receipts: list[Receipt]):
         """Deletes a list of receipts from the database
@@ -208,8 +217,11 @@ class _Receipt:
                 },
             )
             return itemToReceipt(response["Item"])
-        except KeyError:
-            raise ValueError(f"Receipt with ID {receipt_id} not found")
+        except ClientError as e:
+            if e.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+                raise ValueError(f"Receipt with ID {receipt_id} and Image ID '{image_id}' does not exist")
+            else:
+                raise e
 
     def getReceiptDetails(self, image_id: int, receipt_id: int) -> Tuple[
         Receipt,

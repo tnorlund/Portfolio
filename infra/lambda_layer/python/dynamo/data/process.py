@@ -34,6 +34,10 @@ def process(
     the original and transformed images to S3.
     """
     s3 = boto3.client("s3")
+    if raw_prefix.endswith("/"):
+        raw_prefix = raw_prefix[:-1]
+    if cdn_prefix.endswith("/"):
+        cdn_prefix = cdn_prefix[:-1]
     # Check that both the JSON and PNG files exist in the raw bucket.
     try:
         s3.head_object(Bucket=raw_bucket_name, Key=f"{raw_prefix}/{uuid}.json")
@@ -43,7 +47,7 @@ def process(
         if error_code == "NoSuchBucket":
             raise ValueError(f"Bucket {raw_bucket_name} not found") from e
         elif error_code in ("NoSuchKey", "404"):
-            raise ValueError(f"UUID {uuid} not found in raw bucket {raw_bucket_name}") from e
+            raise ValueError(f"UUID {uuid} not found s3://{raw_bucket_name}/{raw_prefix}/{uuid}*") from e
         elif error_code == "AccessDenied":
             raise ValueError(f"Access denied to s3://{raw_bucket_name}/{raw_prefix}/*")
         else:
@@ -72,7 +76,7 @@ def process(
     try:
         s3.put_object(
             Bucket=cdn_bucket_name,
-            Key=f"{cdn_prefix}{uuid}.png",
+            Key=f"{cdn_prefix}/{uuid}.png",
             Body=image_bytes,
             ContentType="image/png",
         )
