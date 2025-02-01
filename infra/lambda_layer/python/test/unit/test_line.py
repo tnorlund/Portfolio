@@ -820,6 +820,7 @@ def test_iter(example_line):
     assert line_dict["angle_degrees"] == 1
     assert line_dict["angle_radians"] == 5
     assert line_dict["confidence"] == 0.90
+    assert Line(**dict(example_line)) == example_line
 
 
 @pytest.mark.unit
