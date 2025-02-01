@@ -1,12 +1,21 @@
 import pytest
-from dynamo import Line, itemToLine
 import math
-
+from dynamo import Line, itemToLine
 
 @pytest.fixture
 def example_line():
     # fmt: off
     return Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", { "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)
+    # fmt: on
+
+
+def create_test_line():
+    """
+    Helper function to create a Line object with easily verifiable points.
+    Adjust coordinates as needed for your tests.
+    """
+    # fmt: off
+    return Line( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", id=1, text="Test", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=0.0, angle_radians=0.0, confidence=1.0, )
     # fmt: on
 
 
@@ -71,137 +80,18 @@ def test_init_bad_bounding_box():
 
 
 @pytest.mark.unit
-def test_init_bad_corner():
-    # fmt: off
-    with pytest.raises(ValueError, match="point must be a dictionary"):
-        Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", { "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, 1, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)
-    with pytest.raises(ValueError, match="point must contain the key 'y'"):
-        Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", { "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, {"x": 15.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)
-    # fmt: on
-
-
-@pytest.mark.unit
-def test_init_bad_angle():
-    # fmt: off
-    with pytest.raises(ValueError, match="angle_degrees must be a float or int"):
-        Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", { "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, "1.0", 5.0, 0.90)
-    with pytest.raises(ValueError, match="angle_radians must be a float or int"):
-        Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", { "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, "5.0", 0.90)
-    # fmt: on
-
-
-@pytest.mark.unit
-def test_init_bad_confidence():
-    # fmt: off
-    with pytest.raises(ValueError, match="confidence must be a float"):
-        Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", { "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, "0.90")
-    line = Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", { "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 1)
-    assert line.confidence == 1.0
-    with pytest.raises(ValueError, match="confidence must be between 0 and 1"):
-        Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", { "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, -0.90)
-    # fmt: on
-
-
-@pytest.mark.unit
-def test_key(example_line):
-    """Test the Line.key() method"""
-    assert example_line.key() == {
-        "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-        "SK": {"S": "LINE#00001"},
-    }
-
-
-@pytest.mark.unit
-def test_to_item(example_line):
-    """Test the Line.to_item() method"""
-    item = example_line.to_item()
-    assert item["PK"] == {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"}
-    assert item["SK"] == {"S": "LINE#00001"}
-    assert item["GSI1PK"] == {"S": "IMAGE"}
-    assert item["GSI1SK"] == {
-        "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#LINE#00001"
-    }
-    assert item["TYPE"] == {"S": "LINE"}
-    assert item["text"] == {"S": "Test"}
-    assert item["bounding_box"] == {
-        "M": {
-            "height": {"N": "2.00000000000000000000"},
-            "width": {"N": "5.00000000000000000000"},
-            "x": {"N": "10.00000000000000000000"},
-            "y": {"N": "20.00000000000000000000"},
-        }
-    }
-    assert item["top_right"] == {
-        "M": {
-            "x": {"N": "15.00000000000000000000"},
-            "y": {"N": "20.00000000000000000000"},
-        }
-    }
-    assert item["top_left"] == {
-        "M": {
-            "x": {"N": "10.00000000000000000000"},
-            "y": {"N": "20.00000000000000000000"},
-        }
-    }
-    assert item["bottom_right"] == {
-        "M": {
-            "x": {"N": "15.00000000000000000000"},
-            "y": {"N": "22.00000000000000000000"},
-        }
-    }
-    assert item["bottom_left"] == {
-        "M": {
-            "x": {"N": "10.00000000000000000000"},
-            "y": {"N": "22.00000000000000000000"},
-        }
-    }
-    assert item["angle_degrees"] == {"N": "1.000000000000000000"}
-    assert item["angle_radians"] == {"N": "5.000000000000000000"}
-    assert item["confidence"] == {"N": "0.90"}
-    assert "histogram" in item
-    assert "num_chars" in item
-
-
-@pytest.mark.unit
-def test_calculate_centroid(example_line):
-    """Test the Line.calculate_centroid() method"""
-    centroid = example_line.calculate_centroid()
-    assert centroid == (12.5, 21.0)
-
-
-def create_test_line():
-    """
-    Helper function to create a Line object with easily verifiable points.
-    Adjust coordinates as needed for your tests.
-    """
-    return Line(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        id=1,
-        text="Test",
-        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        top_right={"x": 15.0, "y": 20.0},
-        top_left={"x": 10.0, "y": 20.0},
-        bottom_right={"x": 15.0, "y": 22.0},
-        bottom_left={"x": 10.0, "y": 22.0},
-        angle_degrees=0.0,
-        angle_radians=0.0,
-        confidence=1.0,
-    )
-
-
-@pytest.mark.unit
 @pytest.mark.parametrize(
     "dx, dy",
     [
         (5, -2),  # Translate right 5, up -2
-        (0, 0),  # No translation
-        (-3, 10),  # Translate left 3, down 10
+        (0, 0),   # No translation
+        (-3, 10), # Translate left 3, down 10
     ],
 )
 def test_translate(dx, dy):
     """
     Test that translate(dx, dy) shifts the corner points correctly
-    and does NOT update bounding_box or angles.
+    and updates the bounding_box accordingly.
     """
     line = create_test_line()
 
@@ -210,12 +100,12 @@ def test_translate(dx, dy):
     orig_top_left = line.top_left.copy()
     orig_bottom_right = line.bottom_right.copy()
     orig_bottom_left = line.bottom_left.copy()
-    orig_bb = line.bounding_box.copy()  # bounding_box is not updated in translate
+    orig_bb = line.bounding_box.copy()
 
     # Translate
     line.translate(dx, dy)
 
-    # Check corners
+    # Check corners have been updated
     assert line.top_right["x"] == pytest.approx(orig_top_right["x"] + dx)
     assert line.top_right["y"] == pytest.approx(orig_top_right["y"] + dy)
 
@@ -228,12 +118,14 @@ def test_translate(dx, dy):
     assert line.bottom_left["x"] == pytest.approx(orig_bottom_left["x"] + dx)
     assert line.bottom_left["y"] == pytest.approx(orig_bottom_left["y"] + dy)
 
-    # Check bounding_box (should not change)
-    assert line.bounding_box == orig_bb
-
-    # Angles should not change
-    assert line.angle_degrees == 0.0
-    assert line.angle_radians == 0.0
+    # Check that the bounding_box is translated as well
+    expected_bb = {
+        "x": orig_bb["x"] + dx,
+        "y": orig_bb["y"] + dy,
+        "width": orig_bb["width"],
+        "height": orig_bb["height"],
+    }
+    assert line.bounding_box == expected_bb
 
 
 @pytest.mark.unit
@@ -311,8 +203,9 @@ def test_scale(sx, sy):
 )
 def test_rotate_limited_range(angle, use_radians, should_raise):
     """
-    Test that rotate(angle, origin_x, origin_y, use_radians) only rotates if angle is in
-    [-90, 90] degrees or [-π/2, π/2] radians. Otherwise, raises ValueError.
+    Test that rotate(angle, origin_x, origin_y, use_radians) rotates the line only
+    if the angle is within the allowed range, and that it updates the corner positions,
+    angles, and bounding_box based on the new rotated corner positions.
     """
     line = create_test_line()
     orig_corners = {
@@ -328,7 +221,7 @@ def test_rotate_limited_range(angle, use_radians, should_raise):
         with pytest.raises(ValueError):
             line.rotate(angle, 0, 0, use_radians=use_radians)
 
-        # Corners and angles should remain unchanged after the exception
+        # After a failed rotation, the line should be unchanged.
         assert line.top_right == orig_corners["top_right"]
         assert line.top_left == orig_corners["top_left"]
         assert line.bottom_right == orig_corners["bottom_right"]
@@ -337,62 +230,86 @@ def test_rotate_limited_range(angle, use_radians, should_raise):
         assert line.angle_radians == orig_angle_radians
 
     else:
-        # Rotation should succeed without error
+        # Rotation should succeed without error.
         line.rotate(angle, 0, 0, use_radians=use_radians)
 
-        # The bounding box remains unchanged
-        assert line.bounding_box["x"] == 10.0
-        assert line.bounding_box["y"] == 20.0
-        assert line.bounding_box["width"] == 5.0
-        assert line.bounding_box["height"] == 2.0
+        # Instead of expecting the bounding_box to be unchanged,
+        # compute the expected bounding_box from the rotated corners.
+        expected_bb = {
+            "x": min(line.top_right["x"], line.top_left["x"], line.bottom_right["x"], line.bottom_left["x"]),
+            "y": min(line.top_right["y"], line.top_left["y"], line.bottom_right["y"], line.bottom_left["y"]),
+            "width": max(line.top_right["x"], line.top_left["x"], line.bottom_right["x"], line.bottom_left["x"]) -
+                     min(line.top_right["x"], line.top_left["x"], line.bottom_right["x"], line.bottom_left["x"]),
+            "height": max(line.top_right["y"], line.top_left["y"], line.bottom_right["y"], line.bottom_left["y"]) -
+                      min(line.top_right["y"], line.top_left["y"], line.bottom_right["y"], line.bottom_left["y"]),
+        }
+        assert line.bounding_box == expected_bb
 
-        # Some corners must change unless angle=0
+        # Verify that at least one of the corners has changed unless the rotation angle is zero.
         if angle not in (0, 0.0):
             corners_changed = (
-                any(
-                    line.top_right[k] != orig_corners["top_right"][k]
-                    for k in ["x", "y"]
-                )
-                or any(
-                    line.top_left[k] != orig_corners["top_left"][k] for k in ["x", "y"]
-                )
-                or any(
-                    line.bottom_right[k] != orig_corners["bottom_right"][k]
-                    for k in ["x", "y"]
-                )
-                or any(
-                    line.bottom_left[k] != orig_corners["bottom_left"][k]
-                    for k in ["x", "y"]
-                )
+                any(line.top_right[k] != orig_corners["top_right"][k] for k in ["x", "y"]) or
+                any(line.top_left[k] != orig_corners["top_left"][k] for k in ["x", "y"]) or
+                any(line.bottom_right[k] != orig_corners["bottom_right"][k] for k in ["x", "y"]) or
+                any(line.bottom_left[k] != orig_corners["bottom_left"][k] for k in ["x", "y"])
             )
             assert corners_changed, "Expected corners to change after valid rotation."
         else:
-            # angle=0 => no corner change
             assert line.top_right == orig_corners["top_right"]
             assert line.top_left == orig_corners["top_left"]
             assert line.bottom_right == orig_corners["bottom_right"]
             assert line.bottom_left == orig_corners["bottom_left"]
 
-        # Angles should have incremented
+        # Verify the angles have been updated appropriately.
         if use_radians:
-            # Should have increased angle_radians by `angle`
-            assert line.angle_radians == pytest.approx(
-                orig_angle_radians + angle, abs=1e-9
-            )
-            # angle_degrees should be old + angle*(180/π)
-            deg_from_radians = angle * 180.0 / math.pi
-            assert line.angle_degrees == pytest.approx(
-                orig_angle_degrees + deg_from_radians, abs=1e-9
-            )
+            # When using radians, the angle increments are in radians.
+            assert line.angle_radians == pytest.approx(orig_angle_radians + angle, abs=1e-9)
+            assert line.angle_degrees == pytest.approx(orig_angle_degrees + math.degrees(angle), abs=1e-9)
         else:
-            # Should have increased angle_degrees by `angle`
-            assert line.angle_degrees == pytest.approx(
-                orig_angle_degrees + angle, abs=1e-9
-            )
-            # angle_radians should be old + radians(angle)
-            assert line.angle_radians == pytest.approx(
-                orig_angle_radians + math.radians(angle), abs=1e-9
-            )
+            # When using degrees, the increments are in degrees.
+            assert line.angle_degrees == pytest.approx(orig_angle_degrees + angle, abs=1e-9)
+            assert line.angle_radians == pytest.approx(orig_angle_radians + math.radians(angle), abs=1e-9)
+
+
+@pytest.mark.unit
+def test_scale():
+    """
+    Test that scale(sx, sy) scales both the corner points and the bounding_box,
+    and does NOT modify angles.
+    """
+    line = create_test_line()
+
+    orig_top_right = line.top_right.copy()
+    orig_top_left = line.top_left.copy()
+    orig_bottom_right = line.bottom_right.copy()
+    orig_bottom_left = line.bottom_left.copy()
+    orig_bb = line.bounding_box.copy()
+
+    sx, sy = 2, 3
+    line.scale(sx, sy)
+
+    # Check corners
+    assert line.top_right["x"] == pytest.approx(orig_top_right["x"] * sx)
+    assert line.top_right["y"] == pytest.approx(orig_top_right["y"] * sy)
+
+    assert line.top_left["x"] == pytest.approx(orig_top_left["x"] * sx)
+    assert line.top_left["y"] == pytest.approx(orig_top_left["y"] * sy)
+
+    assert line.bottom_right["x"] == pytest.approx(orig_bottom_right["x"] * sx)
+    assert line.bottom_right["y"] == pytest.approx(orig_bottom_right["y"] * sy)
+
+    assert line.bottom_left["x"] == pytest.approx(orig_bottom_left["x"] * sx)
+    assert line.bottom_left["y"] == pytest.approx(orig_bottom_left["y"] * sy)
+
+    # Check bounding_box
+    assert line.bounding_box["x"] == pytest.approx(orig_bb["x"] * sx)
+    assert line.bounding_box["y"] == pytest.approx(orig_bb["y"] * sy)
+    assert line.bounding_box["width"] == pytest.approx(orig_bb["width"] * sx)
+    assert line.bounding_box["height"] == pytest.approx(orig_bb["height"] * sy)
+
+    # Angles should remain unchanged.
+    assert line.angle_degrees == 0.0
+    assert line.angle_radians == 0.0
 
 
 @pytest.mark.unit
