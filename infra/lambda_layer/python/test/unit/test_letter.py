@@ -345,6 +345,43 @@ def test_iter(example_letter):
 
 
 @pytest.mark.unit
+def test_eq():
+    """Test the Letter.__eq__ method"""
+    # fmt: off
+    l1 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, )
+    l2 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed4", line_id=1, word_id=2, id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different image_id
+    l3 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=2, word_id=2, id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different line_id
+    l4 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different word_id
+    l5 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, id=4, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different id
+    l6 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, id=3, text="1", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different text
+    l7 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, id=3, text="0", bounding_box={ "x": 11.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different bounding_box
+    l8 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 16.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different top_right
+    l9 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 21.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different top_left
+    l10 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 11.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different bottom_right
+    l11 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 16.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different bottom_left
+    l12 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=2.0, angle_radians=5.0, confidence=0.90, ) # different angle_degrees
+    l13 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=6.0, confidence=0.90, ) # different angle_radians
+    l14 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.91, ) # different confidence
+    # fmt: on
+
+    assert l1 == l1
+    assert l1 != l2
+    assert l1 != l3
+    assert l1 != l4
+    assert l1 != l5
+    assert l1 != l6
+    assert l1 != l7
+    assert l1 != l8
+    assert l1 != l9
+    assert l1 != l10
+    assert l1 != l11
+    assert l1 != l12
+    assert l1 != l13
+    assert l1 != l14
+    assert l1 != "some string"
+
+
+@pytest.mark.unit
 def test_eq_same(example_letter):
     """Test __eq__ with the same Letter object."""
     assert example_letter == example_letter
