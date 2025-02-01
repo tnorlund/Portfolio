@@ -215,8 +215,8 @@ def test_to_item(example_letter):
                 "y": {"N": "22.00000000000000000000"},
             }
         },
-        "angle_degrees": {"N": "1.000000000000"},
-        "angle_radians": {"N": "5.000000000000"},
+        "angle_degrees": {"N": "1.000000000000000000"},
+        "angle_radians": {"N": "5.000000000000000000"},
         "confidence": {"N": "0.90"},
     }
 
