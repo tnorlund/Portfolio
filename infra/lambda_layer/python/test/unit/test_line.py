@@ -550,6 +550,88 @@ def test_rotate_limited_range(angle, use_radians, should_raise):
                 orig_angle_radians + math.radians(angle), abs=1e-9
             )
 
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "shx, shy, pivot_x, pivot_y, expected_corners",
+    [
+        # Test 1: Horizontal shear only (shx nonzero, shy=0)
+        (
+            0.2, 0.0, 10.0, 20.0,
+            {
+                "top_right": {"x": 15.0 + 0.2*(20.0-20.0), "y": 20.0},   # (15,20)
+                "top_left": {"x": 10.0 + 0.2*(20.0-20.0), "y": 20.0},    # (10,20)
+                "bottom_right": {"x": 15.0 + 0.2*(22.0-20.0), "y": 22.0}, # (15.4,22)
+                "bottom_left": {"x": 10.0 + 0.2*(22.0-20.0), "y": 22.0},  # (10.4,22)
+            },
+        ),
+        # Test 2: Vertical shear only (shy nonzero, shx=0)
+        (
+            0.0, 0.2, 10.0, 20.0,
+            {
+                "top_right": {"x": 15.0, "y": 20.0 + 0.2*(15.0-10.0)},   # (15,21)
+                "top_left": {"x": 10.0, "y": 20.0 + 0.2*(10.0-10.0)},    # (10,20)
+                "bottom_right": {"x": 15.0, "y": 22.0 + 0.2*(15.0-10.0)}, # (15,23)
+                "bottom_left": {"x": 10.0, "y": 22.0 + 0.2*(10.0-10.0)},  # (10,22)
+            },
+        ),
+        # Test 3: Combined shear
+        (
+            0.1, 0.1, 12.0, 21.0,
+            {
+                # For each corner, calculate:
+                # new_x = original_x + 0.1*(original_y - 21.0)
+                # new_y = original_y + 0.1*(original_x - 12.0)
+                "top_right": {"x": 15.0 + 0.1*(20.0 - 21.0), "y": 20.0 + 0.1*(15.0 - 12.0)},  # (15 - 0.1, 20 + 0.3) = (14.9, 20.3)
+                "top_left": {"x": 10.0 + 0.1*(20.0 - 21.0), "y": 20.0 + 0.1*(10.0 - 12.0)},   # (10 - 0.1, 20 - 0.2) = (9.9, 19.8)
+                "bottom_right": {"x": 15.0 + 0.1*(22.0 - 21.0), "y": 22.0 + 0.1*(15.0 - 12.0)},# (15 + 0.1, 22 + 0.3) = (15.1, 22.3)
+                "bottom_left": {"x": 10.0 + 0.1*(22.0 - 21.0), "y": 22.0 + 0.1*(10.0 - 12.0)}, # (10 + 0.1, 22 - 0.2) = (10.1, 21.8)
+            },
+        ),
+    ],
+)
+def test_shear(shx, shy, pivot_x, pivot_y, expected_corners):
+    """
+    Test that the shear(shx, shy, pivot_x, pivot_y) method correctly shears
+    the corners of the line and recalculates the bounding box.
+    """
+    line = create_test_line()
+
+    # Apply shear transformation
+    line.shear(shx, shy, pivot_x, pivot_y)
+
+    # Check each corner against the expected values
+    for corner_name in ["top_right", "top_left", "bottom_right", "bottom_left"]:
+        for coord in ["x", "y"]:
+            expected_value = expected_corners[corner_name][coord]
+            actual_value = line.__dict__[corner_name][coord]
+            assert actual_value == pytest.approx(expected_value), (
+                f"{corner_name} {coord} expected {expected_value}, got {actual_value}"
+            )
+
+    # Compute expected bounding box from the updated corners
+    xs = [
+        line.top_right["x"],
+        line.top_left["x"],
+        line.bottom_right["x"],
+        line.bottom_left["x"],
+    ]
+    ys = [
+        line.top_right["y"],
+        line.top_left["y"],
+        line.bottom_right["y"],
+        line.bottom_left["y"],
+    ]
+    expected_bb = {
+        "x": min(xs),
+        "y": min(ys),
+        "width": max(xs) - min(xs),
+        "height": max(ys) - min(ys),
+    }
+    assert line.bounding_box["x"] == pytest.approx(expected_bb["x"])
+    assert line.bounding_box["y"] == pytest.approx(expected_bb["y"])
+    assert line.bounding_box["width"] == pytest.approx(expected_bb["width"])
+    assert line.bounding_box["height"] == pytest.approx(expected_bb["height"])
+
 
 @pytest.mark.unit
 def test_scale():
