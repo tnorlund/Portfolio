@@ -203,6 +203,55 @@ def test_calculate_centroid(example_word):
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    "dx, dy",
+    [
+        (5, -2),
+        (0, 0),
+        (-3, 10),
+    ],
+)
+def test_word_translate(dx, dy):
+    """
+    Test that Word.translate(dx, dy) shifts the corner points and updates the
+    bounding_box accordingly, while leaving the angles unchanged.
+    """
+    word = create_test_word()
+
+    orig_top_right = word.top_right.copy()
+    orig_top_left = word.top_left.copy()
+    orig_bottom_right = word.bottom_right.copy()
+    orig_bottom_left = word.bottom_left.copy()
+    orig_bb = word.bounding_box.copy()
+
+    # Apply translation
+    word.translate(dx, dy)
+
+    # Check that the corners are translated correctly.
+    assert word.top_right["x"] == pytest.approx(orig_top_right["x"] + dx)
+    assert word.top_right["y"] == pytest.approx(orig_top_right["y"] + dy)
+    assert word.top_left["x"] == pytest.approx(orig_top_left["x"] + dx)
+    assert word.top_left["y"] == pytest.approx(orig_top_left["y"] + dy)
+    assert word.bottom_right["x"] == pytest.approx(orig_bottom_right["x"] + dx)
+    assert word.bottom_right["y"] == pytest.approx(orig_bottom_right["y"] + dy)
+    assert word.bottom_left["x"] == pytest.approx(orig_bottom_left["x"] + dx)
+    assert word.bottom_left["y"] == pytest.approx(orig_bottom_left["y"] + dy)
+
+    # Now expect that the bounding_box is updated as well.
+    expected_bb = {
+        "x": orig_bb["x"] + dx,
+        "y": orig_bb["y"] + dy,
+        "width": orig_bb["width"],
+        "height": orig_bb["height"],
+    }
+    assert word.bounding_box == expected_bb
+
+    # Angles should remain unchanged.
+    assert word.angle_degrees == 0.0
+    assert word.angle_radians == 0.0
+
+
+@pytest.mark.unit
 def test_repr(example_word):
     """Test the Word __repr__ method"""
     assert repr(example_word) == "Word(id=3, text='test_string')"
@@ -303,7 +352,7 @@ def test_itemToWord(example_word, example_word_with_tags):
                 "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
                 "SK": {"S": "LINE#00002#WORD#00003"},
                 "TYPE": {"S": "LINE"},
-                "text": {"N": "100"}, # Must be string
+                "text": {"N": "100"},  # Must be string
                 "bounding_box": {
                     "M": {
                         "height": {"N": "2.000000000000000000"},
@@ -366,47 +415,6 @@ def create_test_word():
         angle_radians=0.0,
         confidence=1.0,
     )
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize(
-    "dx, dy",
-    [
-        (5, -2),
-        (0, 0),
-        (-3, 10),
-    ],
-)
-def test_word_translate(dx, dy):
-    """
-    Test that Word.translate(dx, dy) shifts corner points correctly
-    without updating bounding_box or angles.
-    """
-    word = create_test_word()
-
-    orig_top_right = word.top_right.copy()
-    orig_top_left = word.top_left.copy()
-    orig_bottom_right = word.bottom_right.copy()
-    orig_bottom_left = word.bottom_left.copy()
-    orig_bb = word.bounding_box.copy()
-
-    word.translate(dx, dy)
-
-    assert word.top_right["x"] == pytest.approx(orig_top_right["x"] + dx)
-    assert word.top_right["y"] == pytest.approx(orig_top_right["y"] + dy)
-    assert word.top_left["x"] == pytest.approx(orig_top_left["x"] + dx)
-    assert word.top_left["y"] == pytest.approx(orig_top_left["y"] + dy)
-    assert word.bottom_right["x"] == pytest.approx(orig_bottom_right["x"] + dx)
-    assert word.bottom_right["y"] == pytest.approx(orig_bottom_right["y"] + dy)
-    assert word.bottom_left["x"] == pytest.approx(orig_bottom_left["x"] + dx)
-    assert word.bottom_left["y"] == pytest.approx(orig_bottom_left["y"] + dy)
-
-    # bounding_box should NOT change
-    assert word.bounding_box == orig_bb
-
-    # Angles should not change
-    assert word.angle_degrees == 0.0
-    assert word.angle_radians == 0.0
 
 
 @pytest.mark.unit

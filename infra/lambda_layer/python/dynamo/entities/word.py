@@ -242,9 +242,6 @@ class Word:
         Args:
             x (float): The amount to translate in the x-direction.
             y (float): The amount to translate in the y-direction.
-
-        Warning:
-            This method updates the corner points but does **not** update the bounding_box.
         """
         self.top_right["x"] += x
         self.top_right["y"] += y
@@ -254,7 +251,8 @@ class Word:
         self.bottom_right["y"] += y
         self.bottom_left["x"] += x
         self.bottom_left["y"] += y
-        Warning("This function does not update the bounding box")
+        self.bounding_box["x"] += x
+        self.bounding_box["y"] += y
 
     def scale(self, sx: float, sy: float) -> None:
         """
