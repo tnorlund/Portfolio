@@ -1,34 +1,29 @@
+# Portfolio Project
 
+This project is managed using Pulumi. It creates a static website hosted on S3 and served through CloudFront. The website is a portfolio of projects and is built using React.
 
-### ECR
+## Project Structure
 
-While developing, the Lambda function can be updated with a new Docker image by following these steps:
-```bash
-export REGION='us-east-1'
-export ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text --region ${REGION})
-export PULUMI_STACK_NAME=$(pulumi stack --show-name)
+### `__main__.py`
 
-# Authenticate with ECR
-aws ecr get-login-password --region ${REGION} | docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com
+The main entry point for the Pulumi program. It defines the different stacks that are created.
 
-# Ensure ECR repository exists
-aws ecr describe-repositories --repository-names cluster-ocr --region ${REGION} || \
-aws ecr create-repository --repository-name cluster-ocr --region ${REGION}
+### `s3_website.py`
 
-# Build the Docker image
-docker buildx build --platform=linux/amd64 --load -t cluster-ocr:${PULUMI_STACK_NAME} -f ingestion/Dockerfile .
+Defines the infrastructure for hosting the static website (S3 + CloudFront).
 
-# Tag the image for ECR
-docker tag cluster-ocr:${PULUMI_STACK_NAME} ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/cluster-ocr:${PULUMI_STACK_NAME}
+### `raw_bucket.py`
 
-# Push the image to ECR
-docker push ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/cluster-ocr:${PULUMI_STACK_NAME}
+Has an S3 bucket for storing the raw data.
 
-# Get the Lambda function name from Pulumi
-export LAMBDA_FUNCTION_NAME=$(pulumi stack output cluster_lambda_function_name)
+### `api_gateway.py`
 
-# Update the Lambda function with the new image
-aws --no-cli-pager lambda update-function-code \
-    --function-name "${LAMBDA_FUNCTION_NAME}" \
-    --image-uri "${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/cluster-ocr:${PULUMI_STACK_NAME}"
-```
+Defines the API that's between the website and DynamoDB. This references the different routes in the `routes/` directory. Each route has a Lambda function that is triggered by the API Gateway.
+
+### `dynamo_db.py`
+
+The DynamoDB table that stores the data for the website.
+
+### `lambda_layer.py` & `lambda_layer/`
+
+Defines the Lambda Layer that is shared between the different Lambda functions.

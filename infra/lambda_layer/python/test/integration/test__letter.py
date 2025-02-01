@@ -25,6 +25,30 @@ correct_letter_params = {
 }
 
 
+@pytest.fixture
+def example_letter():
+    return Letter(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=1,
+        word_id=1,
+        id=1,
+        text="0",
+        bounding_box={
+            "height": 0.022867568333804766,
+            "width": 0.08688726243285705,
+            "x": 0.4454336178993411,
+            "y": 0.9167082877754368,
+        },
+        top_right={"x": 0.5323208803321982, "y": 0.930772983660083},
+        top_left={"x": 0.44837726707985254, "y": 0.9395758561092415},
+        bottom_right={"x": 0.5293772311516867, "y": 0.9167082877754368},
+        bottom_left={"x": 0.4454336178993411, "y": 0.9255111602245953},
+        angle_degrees=-5.986527,
+        angle_radians=-0.1044846,
+        confidence=1,
+    )
+
+
 @pytest.mark.integration
 def test_addLetter(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange

@@ -4,6 +4,7 @@ from dynamo import (
     Line,
     Letter,
     Word,
+    WordTag,
     Receipt,
     ReceiptLine,
     ReceiptWord,
@@ -138,6 +139,7 @@ class _Image:
         Image,
         list[Line],
         list[Word],
+        list[WordTag],
         list[Letter],
         list[Dict[str, Union[Receipt, list[ReceiptLine], list[Word], list[Letter]]]],
     ]:
