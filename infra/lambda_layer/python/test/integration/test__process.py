@@ -142,7 +142,7 @@ def test_process(
             bottom_right={"x": 0.6353271893713412, "y": -0.0015338235053175},
             cdn_s3_bucket=cdn_bucket,
             cdn_s3_key=cdn_key.replace(".png", "_RECEIPT_00001.png"),
-            sha256="d5f48f5dc21972316e8193594e30624234debdbcc04873b4132fb0c370533bb6",
+            sha256="2fb8c78d3fa98224686e7db624dbec868cb7c1ca0aef9959be3d691f84877f34",
         )
         == receipt
     )

@@ -131,7 +131,12 @@ def process(
         cluster_letters = [lt for lt in letters if lt.line_id in line_ids]
         try:
             r_image, r, _, _, _ = transform_cluster(
-                cluster_id, cluster_lines, cluster_words, cluster_letters, image, image_obj
+                cluster_id,
+                cluster_lines,
+                cluster_words,
+                cluster_letters,
+                image,
+                image_obj,
             )
             buffer = BytesIO()
             r_image.save(buffer, format="PNG")
@@ -149,7 +154,9 @@ def process(
                 ContentType="image/png",
             )
         except ClientError as e:
-            raise ValueError(f"Error uploading receipt for cluster {cluster_id}: {e}") from e
+            raise ValueError(
+                f"Error uploading receipt for cluster {cluster_id}: {e}"
+            ) from e
 
         DynamoClient(table_name).addReceipt(r)
 
@@ -328,97 +335,29 @@ def transform_cluster(
             points_abs.append((x_abs, y_abs))
 
     if not points_abs:
-        print(f"[WARN] No corners for cluster {cluster_id}, skipping warp.")
         return
 
     # 2) Compute minimal-area bounding rect
     (cx, cy), (rw, rh), angle_deg = min_area_rect(points_abs)
-    print(f"(cx, cy), (rw, rh), angle_deg: {(cx, cy), (rw, rh), angle_deg}")
-    # cv2.boxPoints equivalent:
     box_4 = box_points((cx, cy), (rw, rh), angle_deg)
-    print(f"box_4: {box_4}")
-    debug_img = pil_image.copy()
-    draw_box_pil(debug_img, box_4, color="red", width=3)
-    # draw a circle on the top left
-    draw = ImageDraw.Draw(debug_img)
-    draw.ellipse(
-        (
-            reorder_box_points(box_4)[0][0] - 5,
-            reorder_box_points(box_4)[0][1] - 5,
-            reorder_box_points(box_4)[0][0] + 5,
-            reorder_box_points(box_4)[0][1] + 5,
-        ),
-        fill="blue",
-    )
-
-    debug_img.save("debug_box_4_pil.png")
 
     # Convert (width, height) to integer for the output.
     # Some logic: if the detected rect is "rotated", we want w < h or h < w?
     # For consistency with your original code, do something like:
     w, h = int(round(rw)), int(round(rh))
     if w > h:
-        print("w > h, swapping")
         w, h = h, w  # swap so that the final is "portrait" if you prefer
-
-    print(f"w, h: {w}, {h}")
 
     # 3) Build your destination 4 corners:
     dst_pts = [(0, 0), (w - 1, 0), (w - 1, h - 1), (0, h - 1)]
     box_4_ordered = reorder_box_points(box_4)
-    print(f"box_4_ordered: {box_4_ordered}")
 
     M_forward = compute_perspective_transform(box_4_ordered, dst_pts)
     M_inv = invert_3x3(M_forward)
-    print(f"M_forward: {M_forward}")
-    print(f"M_inv: {M_inv}")
-    product = matmul_3x3(M_forward, M_inv)
-
-    # Print or check product—it should be very close to the identity matrix.
-    print("Product of M and M_inv:")
-    for row in product:
-        print(row)
-
-    a_, b_, c_ = M_forward[0]
-    d_, e_, f_ = M_forward[1]
-    g_, h_, _ = M_forward[2]
-
-    M = (
-        (9.97730471e-01, 1.29210324e-02, -7.60432200e02),
-        (-1.29420519e-02, 9.99334899e-01, -3.36652518e02),
-        (-1.12553496e-11, -2.91572008e-13, 1.00000000e00),
-    )
-
-    img_cv = np.array(pil_image)
-    M_np = np.array(M)
-    warped = cv2.warpPerspective(
-        img_cv,  # the source image (NumPy array)
-        M_np,  # your hardcoded 3x3 matrix
-        (w, h),  # (width, height)
-        flags=cv2.INTER_LINEAR,  # or cv2.INTER_CUBIC, etc.
-        borderMode=cv2.BORDER_CONSTANT,
-        borderValue=(255, 0, 255),  # fill with magenta, for example
-    )
-    # save warped image
-    cv2.imwrite(f"cluster_{cluster_id}_warped_cv.png", warped)
-    M = invert_3x3(M)
 
     a_, b_, c_ = M_inv[0]
     d_, e_, f_ = M_inv[1]
     g_, h_, _ = M_inv[2]
-
-    perspective_coeffs = (a_, b_, c_, d_, e_, f_, g_, h_)
-
-    print(f"perspective_coeffs: {perspective_coeffs}")
-    warped_img = pil_image.transform(
-        (w, h),
-        PIL_Image.PERSPECTIVE,
-        perspective_coeffs,
-        resample=PIL_Image.BICUBIC,
-        fillcolor=(255, 0, 255, 255),  # bright magenta for debugging
-    )
-
-    warped_img.save(f"cluster_{cluster_id}_warped.png")
 
     affine_img = pil_image.transform(
         (w, h),
@@ -455,39 +394,12 @@ def transform_cluster(
             "x": box_4[2][0] / image_obj.width,
             "y": 1 - box_4[2][1] / image_obj.height,
         },
-        sha256=calculate_sha256_from_bytes(warped_img.tobytes()),
+        sha256=calculate_sha256_from_bytes(affine_img.tobytes()),
         cdn_s3_bucket=image_obj.cdn_s3_bucket,
         cdn_s3_key=receipt_s3_key,
     )
 
-    # You would also do any code to store a “Receipt” object, e.g.:
-    #   - compute a new SHA-256
-    #   - upload to S3
-    #   - store metadata in Dynamo
-    #   - etc.
-    #
-    # Pseudocode:
-    #
-    #   receipt_sha256 = calculate_sha256(f"cluster_{cluster_id}.png")
-    #   s3_client.upload_file(...)
-    #   ...
-    #
-    # or anything else your pipeline needs.
-
-    print(f"Done transforming cluster {cluster_id} into bounding box.")
     return affine_img, r, [], [], []
-
-
-import numpy as np
-
-import cv2
-import numpy as np
-
-
-def compute_perspective_transform_cv(src_pts, dst_pts):
-    src = np.array(src_pts, dtype=np.float32)
-    dst = np.array(dst_pts, dtype=np.float32)
-    return cv2.getPerspectiveTransform(src, dst)
 
 
 def matmul_3x3(A, B):
@@ -514,8 +426,10 @@ def signed_area_of_polygon(pts):
 
 
 def reorder_box_points(pts):
-    # pts is a list of 4 corners: [(x1, y1), (x2, y2), (x3, y3), (x4, y4)]
-    # We'll return them in [top-left, top-right, bottom-right, bottom-left].
+    """
+    Given 4 points in any order, return them in a consistent order:
+    top-left, top-right, bottom-right, bottom-left.
+    """
 
     # 1) Sort by y, then by x
     pts_sorted = sorted(pts, key=lambda p: (p[1], p[0]))
@@ -567,7 +481,7 @@ def polygon_area(points: List[Tuple[float, float]]) -> float:
 def convex_hull(points: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
     """
     Return the convex hull of a set of 2D points as a list of vertices in CCW order.
-    This uses Graham Scan or Andrew’s monotone chain algorithm.
+    This uses Graham Scan or Andrew's monotone chain algorithm.
     """
     # Remove duplicates
     points = sorted(set(points))
