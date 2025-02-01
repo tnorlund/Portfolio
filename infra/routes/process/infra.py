@@ -10,7 +10,7 @@ from dynamo_db import dynamodb_table
 # Import the Lambda Layer from the lambda_layer module
 from lambda_layer import lambda_layer
 
-from process_ocr import bucket
+from raw_bucket import raw_bucket
 from s3_website import site_bucket
 
 # Reference the directory containing index.py
@@ -44,7 +44,7 @@ lambda_policy = aws.iam.Policy(
     description="IAM policy for '/process' route Lambda to query DynamoDB",
     policy=pulumi.Output.all(
         dynamodb_table.arn,
-        bucket.arn,
+        raw_bucket.arn,
         site_bucket.arn,
     ).apply(
         lambda arns: json.dumps(

@@ -8,6 +8,7 @@ from routes.image_details.infra import image_details_lambda
 from routes.receipts.infra import receipts_lambda
 from routes.receipt_word_tag.infra import receipt_word_tag_lambda
 from routes.process.infra import process_lambda
+from raw_bucket import raw_bucket
 
 # Detect the current Pulumi stack
 stack = pulumi.get_stack()
