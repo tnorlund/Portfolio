@@ -1,11 +1,13 @@
 import datetime
 import os
+import json
 from typing import Literal
 from botocore.exceptions import ClientError
 import boto3
 import pytest
 from freezegun import freeze_time
 from dynamo import process, DynamoClient, Image
+from dynamo.data.process import process_ocr_dict
 
 
 def upload_json_and_png_files_for_uuid(
@@ -79,6 +81,14 @@ def test_process(
     cdn_png_bytes = cdn_response["Body"].read()
     raw_response = s3.get_object(Bucket=raw_bucket, Key=f"{raw_prefix}/{uuid}.png")
     raw_png_bytes = raw_response["Body"].read()
+    expected_lines, expected_words, expected_letters = process_ocr_dict(
+        json.loads(
+            s3.get_object(Bucket=raw_bucket, Key=f"{raw_prefix}/{uuid}.json")["Body"]
+            .read()
+            .decode("utf-8")
+        ),
+        uuid,
+    )
 
     assert cdn_png_bytes == raw_png_bytes, "CDN copy of PNG does not match original!"
     assert cdn_response["ContentType"] == "image/png"
@@ -91,8 +101,11 @@ def test_process(
         raw_s3_key=f"{raw_prefix}/{uuid}.png",
         cdn_s3_bucket=cdn_bucket,
         cdn_s3_key=cdn_key,
-        sha256="e0cf0ccf76e613858c445733a4bb3292342c22484f237b1b2213415a70b6b246"
+        sha256="e0cf0ccf76e613858c445733a4bb3292342c22484f237b1b2213415a70b6b246",
     ) == DynamoClient(table_name).getImage(uuid)
+    assert expected_lines == DynamoClient(table_name).listLines()
+    assert expected_words == DynamoClient(table_name).listWords()
+    assert dict(expected_letters[133]) == dict(DynamoClient(table_name).listLetters()[133])
 
 
 @pytest.mark.integration

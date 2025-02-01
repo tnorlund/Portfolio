@@ -152,38 +152,38 @@ class Letter:
             "text": {"S": self.text},
             "bounding_box": {
                 "M": {
-                    "x": {"N": _format_float(self.bounding_box["x"], 18, 20)},
-                    "y": {"N": _format_float(self.bounding_box["y"], 18, 20)},
-                    "width": {"N": _format_float(self.bounding_box["width"], 18, 20)},
-                    "height": {"N": _format_float(self.bounding_box["height"], 18, 20)},
+                    "x": {"N": _format_float(self.bounding_box["x"], 20, 22)},
+                    "y": {"N": _format_float(self.bounding_box["y"], 20, 22)},
+                    "width": {"N": _format_float(self.bounding_box["width"], 20, 22)},
+                    "height": {"N": _format_float(self.bounding_box["height"], 20, 22)},
                 }
             },
             "top_right": {
                 "M": {
-                    "x": {"N": _format_float(self.top_right["x"], 18, 20)},
-                    "y": {"N": _format_float(self.top_right["y"], 18, 20)},
+                    "x": {"N": _format_float(self.top_right["x"], 20, 22)},
+                    "y": {"N": _format_float(self.top_right["y"], 20, 22)},
                 }
             },
             "top_left": {
                 "M": {
-                    "x": {"N": _format_float(self.top_left["x"], 18, 20)},
-                    "y": {"N": _format_float(self.top_left["y"], 18, 20)},
+                    "x": {"N": _format_float(self.top_left["x"], 20, 22)},
+                    "y": {"N": _format_float(self.top_left["y"], 20, 22)},
                 }
             },
             "bottom_right": {
                 "M": {
-                    "x": {"N": _format_float(self.bottom_right["x"], 18, 20)},
-                    "y": {"N": _format_float(self.bottom_right["y"], 18, 20)},
+                    "x": {"N": _format_float(self.bottom_right["x"], 20, 22)},
+                    "y": {"N": _format_float(self.bottom_right["y"], 20, 22)},
                 }
             },
             "bottom_left": {
                 "M": {
-                    "x": {"N": _format_float(self.bottom_left["x"], 18, 20)},
-                    "y": {"N": _format_float(self.bottom_left["y"], 18, 20)},
+                    "x": {"N": _format_float(self.bottom_left["x"], 20, 22)},
+                    "y": {"N": _format_float(self.bottom_left["y"], 20, 22)},
                 }
             },
-            "angle_degrees": {"N": _format_float(self.angle_degrees, 10, 12)},
-            "angle_radians": {"N": _format_float(self.angle_radians, 10, 12)},
+            "angle_degrees": {"N": _format_float(self.angle_degrees, 12, 14)},
+            "angle_radians": {"N": _format_float(self.angle_radians, 12, 14)},
             "confidence": {"N": _format_float(self.confidence, 2, 2)},
         }
 

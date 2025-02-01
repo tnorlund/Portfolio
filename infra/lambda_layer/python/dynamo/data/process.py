@@ -101,6 +101,9 @@ def process(
         cdn_s3_key=f"{cdn_prefix}{uuid}.png",
         sha256=calculate_sha256_from_bytes(image_bytes),
     ))
+    DynamoClient(table_name).addLines(lines)
+    DynamoClient(table_name).addWords(words)
+    DynamoClient(table_name).addLetters(letters)
 
 
 def calculate_sha256_from_bytes(data: bytes) -> str:

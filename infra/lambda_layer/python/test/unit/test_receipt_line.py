@@ -243,13 +243,13 @@ def test_receipt_line_to_item(example_receipt_line):
     assert item["SK"] == {"S": "RECEIPT#00001#LINE#00010"}
     assert item["TYPE"] == {"S": "RECEIPT_LINE"}
     assert item["text"] == {"S": "Line text"}
-    assert item["bounding_box"] == {'M': {'height': {'N': '0.200000000000000000'}, 'width': {'N': '0.500000000000000000'}, 'x': {'N': '0.100000000000000000'}, 'y': {'N': '0.200000000000000000'}}}
-    assert item["top_right"] == {'M': {'x': {'N': '0.600000000000000000'}, 'y': {'N': '0.200000000000000000'}}}
-    assert item["top_left"] == {'M': {'x': {'N': '0.100000000000000000'}, 'y': {'N': '0.200000000000000000'}}}
-    assert item["bottom_right"] == {'M': {'x': {'N': '0.600000000000000000'}, 'y': {'N': '0.400000000000000000'}}}
-    assert item["bottom_left"] == {'M': {'x': {'N': '0.100000000000000000'}, 'y': {'N': '0.400000000000000000'}}}
-    assert item["angle_degrees"] == {'N': '0.0000000000'}
-    assert item["angle_radians"] == {'N': '0.0000000000'}
+    assert item["bounding_box"] == {'M': {'height': {'N': '0.20000000000000000000'}, 'width': {'N': '0.50000000000000000000'}, 'x': {'N': '0.10000000000000000000'}, 'y': {'N': '0.20000000000000000000'}}}
+    assert item["top_right"] == {'M': {'x': {'N': '0.60000000000000000000'}, 'y': {'N': '0.20000000000000000000'}}}
+    assert item["top_left"] == {'M': {'x': {'N': '0.10000000000000000000'}, 'y': {'N': '0.20000000000000000000'}}}
+    assert item["bottom_right"] == {'M': {'x': {'N': '0.60000000000000000000'}, 'y': {'N': '0.40000000000000000000'}}}
+    assert item["bottom_left"] == {'M': {'x': {'N': '0.10000000000000000000'}, 'y': {'N': '0.40000000000000000000'}}}
+    assert item["angle_degrees"] == {'N': '0.000000000000'}
+    assert item["angle_radians"] == {'N': '0.000000000000'}
     assert item["confidence"] == {"N": "0.95"}
     assert "histogram" in item
     assert "num_chars" in item
