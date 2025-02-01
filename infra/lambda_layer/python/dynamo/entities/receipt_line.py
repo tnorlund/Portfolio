@@ -4,7 +4,7 @@ from dynamo.entities.util import (
     assert_valid_bounding_box,
     assert_valid_point,
     _format_float,
-    histogram,
+    compute_histogram,
 )
 
 
@@ -23,6 +23,8 @@ class ReceiptLine:
         angle_degrees: float,
         angle_radians: float,
         confidence: float,
+        histogram: dict = None,
+        num_chars: int = None,
     ):
         if not isinstance(receipt_id, int):
             raise ValueError("receipt_id must be an integer")
@@ -69,8 +71,15 @@ class ReceiptLine:
             raise ValueError("confidence must be between 0 and 1")
         self.confidence = confidence
 
-        self.histogram = histogram(text)
-        self.num_chars = len(text)
+        if histogram is None:
+            self.histogram = compute_histogram(self.text)
+        else:
+            self.histogram = histogram
+
+        if num_chars is None:
+            self.num_chars = len(text)
+        else:
+            self.num_chars = num_chars
 
     def key(self):
         return {
@@ -85,38 +94,38 @@ class ReceiptLine:
             "text": {"S": self.text},
             "bounding_box": {
                 "M": {
-                    "x": {"N": _format_float(self.bounding_box["x"], 18, 20)},
-                    "y": {"N": _format_float(self.bounding_box["y"], 18, 20)},
-                    "width": {"N": _format_float(self.bounding_box["width"], 18, 20)},
-                    "height": {"N": _format_float(self.bounding_box["height"], 18, 20)},
+                    "x": {"N": _format_float(self.bounding_box["x"], 20, 22)},
+                    "y": {"N": _format_float(self.bounding_box["y"], 20, 22)},
+                    "width": {"N": _format_float(self.bounding_box["width"], 20, 22)},
+                    "height": {"N": _format_float(self.bounding_box["height"], 20, 22)},
                 }
             },
             "top_right": {
                 "M": {
-                    "x": {"N": _format_float(self.top_right["x"], 18, 20)},
-                    "y": {"N": _format_float(self.top_right["y"], 18, 20)},
+                    "x": {"N": _format_float(self.top_right["x"], 20, 22)},
+                    "y": {"N": _format_float(self.top_right["y"], 20, 22)},
                 }
             },
             "top_left": {
                 "M": {
-                    "x": {"N": _format_float(self.top_left["x"], 18, 20)},
-                    "y": {"N": _format_float(self.top_left["y"], 18, 20)},
+                    "x": {"N": _format_float(self.top_left["x"], 20, 22)},
+                    "y": {"N": _format_float(self.top_left["y"],20, 22)},
                 }
             },
             "bottom_right": {
                 "M": {
-                    "x": {"N": _format_float(self.bottom_right["x"], 18, 20)},
-                    "y": {"N": _format_float(self.bottom_right["y"], 18, 20)},
+                    "x": {"N": _format_float(self.bottom_right["x"], 20, 22)},
+                    "y": {"N": _format_float(self.bottom_right["y"], 20, 22)},
                 }
             },
             "bottom_left": {
                 "M": {
-                    "x": {"N": _format_float(self.bottom_left["x"], 18, 20)},
-                    "y": {"N": _format_float(self.bottom_left["y"], 18, 20)},
+                    "x": {"N": _format_float(self.bottom_left["x"], 20, 22)},
+                    "y": {"N": _format_float(self.bottom_left["y"], 20, 22)},
                 }
             },
-            "angle_degrees": {"N": _format_float(self.angle_degrees, 10, 12)},
-            "angle_radians": {"N": _format_float(self.angle_radians, 10, 12)},
+            "angle_degrees": {"N": _format_float(self.angle_degrees, 18, 20)},
+            "angle_radians": {"N": _format_float(self.angle_radians, 18, 20)},
             "confidence": {"N": _format_float(self.confidence, 2, 2)},
             "histogram": {"M": {k: {"N": str(v)} for k, v in self.histogram.items()}},
             "num_chars": {"N": str(self.num_chars)},
@@ -139,6 +148,43 @@ class ReceiptLine:
             and self.angle_radians == other.angle_radians
             and self.confidence == other.confidence
         )
+    
+    def __repr__(self) -> str:
+        """Returns a string representation of the ReceiptLine object
+
+        Returns:
+            str: The string representation of the ReceiptLine object
+        """
+        # fmt: off
+        return (
+            f"ReceiptLine("
+                f"receipt_id={self.receipt_id}, "
+                f"image_id={self.image_id}, "
+                f"id={self.id}, "
+                f"text='{self.text}', "
+                "bounding_box=("
+                    f"x= {self.bounding_box['x']}, "
+                    f"y= {self.bounding_box['y']}, "
+                    f"width= {self.bounding_box['width']}, "
+                    f"height= {self.bounding_box['height']}), "
+                "top_right=("
+                    f"x= {self.top_right['x']}, "
+                    f"y= {self.top_right['y']}), "
+                "top_left=("
+                    f"x= {self.top_left['x']}, "
+                    f"y= {self.top_left['y']}), "
+                "bottom_right=("
+                    f"x= {self.bottom_right['x']}, "
+                    f"y= {self.bottom_right['y']}), "
+                "bottom_left=("
+                    f"x= {self.bottom_left['x']}, "
+                    f"y= {self.bottom_left['y']}), "
+                f"angle_degrees={self.angle_degrees}, "
+                f"angle_radians={self.angle_radians}, "
+                f"confidence={self.confidence:.2}"
+            f")"
+        )
+        # fmt: on
 
     def __iter__(self) -> Generator[Tuple[str, str], None, None]:
         yield "image_id", self.image_id

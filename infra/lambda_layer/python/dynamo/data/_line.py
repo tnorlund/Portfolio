@@ -155,6 +155,7 @@ class _Line:
                 KeyConditionExpression="#t = :val",
                 ExpressionAttributeNames={"#t": "TYPE"},
                 ExpressionAttributeValues={":val": {"S": "LINE"}},
+                ScanIndexForward=True,  # Sorts the results in ascending order by PK
             )
             lines.extend([itemToLine(item) for item in response["Items"]])
 
@@ -166,6 +167,7 @@ class _Line:
                     ExpressionAttributeNames={"#t": "TYPE"},
                     ExpressionAttributeValues={":val": {"S": "LINE"}},
                     ExclusiveStartKey=response["LastEvaluatedKey"],
+                    ScanIndexForward=True,  # Sorts the results in ascending order by PK
                 )
                 lines.extend([itemToLine(item) for item in response["Items"]])
             return lines

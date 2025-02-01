@@ -117,6 +117,7 @@ class MockGPTResponse:
         return self._json_data
 
 @pytest.mark.integration
+@pytest.mark.parametrize("s3_bucket", ["raw-image-bucket"], indirect=True)
 def test_gpt_receipt_1(
     sample_gpt_receipt_1: Tuple[
         list[Image],
@@ -210,6 +211,7 @@ def test_gpt_receipt_1(
     # fmt: on
 
 @pytest.mark.integration
+@pytest.mark.parametrize("s3_bucket", ["raw-image-bucket"], indirect=True)
 def test_gpt_receipt_bad_response(
     sample_gpt_receipt_1,
     dynamodb_table: Literal["MyMockedTable"],

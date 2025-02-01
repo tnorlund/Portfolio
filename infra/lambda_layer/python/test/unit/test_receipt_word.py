@@ -421,7 +421,43 @@ def test_repr(example_receipt_word):
     """Test that the __repr__ method returns a string."""
     assert isinstance(repr(example_receipt_word), str)
     assert str(example_receipt_word) == repr(example_receipt_word)
-    assert repr(example_receipt_word) == "ReceiptWord(id=4, text='Test')"
+    # fmt: off
+    assert (
+        repr(example_receipt_word) == 
+        "ReceiptWord("
+            "receipt_id=1, "
+            "image_id='3f52804b-2fad-4e00-92c8-b593da3a8ed3', "
+            "line_id=3, "
+            "id=4, "
+            "text='Test', "
+            "bounding_box=("
+                "x= 0.1, "
+                "y= 0.2, "
+                "width= 0.3, "
+                "height= 0.4"
+            "), "
+            "top_right=("
+                "x= 1.0, "
+                "y= 2.0"
+            "), "
+            "top_left=("
+                "x= 1.0, "
+                "y= 3.0"
+            "), "
+            "bottom_right=("
+                "x= 4.0, "
+                "y= 2.0"
+            "), "
+            "bottom_left=("
+                "x= 1.0, "
+                "y= 1.0"
+            "), "
+            "angle_degrees=1.0, "
+            "angle_radians=5.0, "
+            "confidence=0.9"
+        ")"
+    )
+    # fmt: on
 
 
 @pytest.mark.unit
@@ -509,6 +545,7 @@ def test_iter(example_receipt_word_with_tags):
     assert receipt_word_dict["angle_radians"] == 5.0
     assert receipt_word_dict["confidence"] == 0.9
     assert receipt_word_dict["tags"] == ["example", "word"]
+    assert ReceiptWord(**receipt_word_dict) == example_receipt_word_with_tags
 
 
 @pytest.mark.unit

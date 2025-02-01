@@ -1,5 +1,0 @@
-config:
-  aws:region: us-east-1
-  portfolio:environment: e2e
-  portfolio:OPENAI_API_KEY:
-    secure: AAABAC9hkT/oJytb2l+R4AlVD96kuPEbOcw6lTudWl9cLRDULSGJnsJtdHQxOM8ld32NV91llL6DWxkYAzvOhif/wbfc9DacF22usVNogsMXANXxVBhiY940JJTLXthThGLzHIbn7dsLuJss8Nzc6dyvlXiiYnLp4SN3orvYALWxWB4ANqtZVnBVkNYeqNXzO+G39LatHIrpcJHsAHa9i9fnt9bxohUsqkDcH6DJzlg6JecXEsXY/xFq/XMFUUypbmWDXQ==
