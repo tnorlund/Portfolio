@@ -33,7 +33,7 @@ def clean_previous_artifacts():
 
 
 def install_dependencies():
-    """Install the dependencies for the Lambda Layer using Docker (Python 3.12 Lambda environment)."""
+    """Install the dependencies for the Lambda Layer using Docker (Python 3.13 Lambda environment)."""
     # Detect local architecture
     arch = platform.machine().lower()
 
@@ -51,8 +51,8 @@ def install_dependencies():
         "--entrypoint", "bash",
         "-w", os.path.join(LAMBDA_LAYER_DIR, "python"),
 
-        # Pull the official AWS Lambda Python 3.12 image
-        "public.ecr.aws/lambda/python:3.12",
+        # Pull the official AWS Lambda Python 3.13 image
+        "public.ecr.aws/lambda/python:3.13",
         "-c",
         (
             # 1) Install needed native deps for Pillow
@@ -107,7 +107,7 @@ def prepare_lambda_layer():
 
 
 layer_name = "dynamo-receipt"
-compatible_runtimes = ["python3.12"]
+compatible_runtimes = ["python3.13"]
 
 # Prepare the Lambda layer package
 prepare_lambda_layer()

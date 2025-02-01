@@ -1,4 +1,4 @@
-FROM public.ecr.aws/lambda/python:3.12
+FROM public.ecr.aws/lambda/python:3.13
 
 # Install system-level dependencies
 RUN pip install --no-cache-dir opencv-python-headless scikit-learn

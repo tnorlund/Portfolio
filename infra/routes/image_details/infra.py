@@ -72,7 +72,7 @@ aws.iam.RolePolicyAttachment(
 # Create the Lambda function for the "user" route
 image_details_lambda = aws.lambda_.Function(
     f"api_{ROUTE_NAME}_GET_lambda",
-    runtime="python3.12",  # or whichever version you prefer
+    runtime="python3.13",  # or whichever version you prefer
     role=lambda_role.arn,
     code=AssetArchive(
         {
