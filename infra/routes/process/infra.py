@@ -39,7 +39,7 @@ lambda_role = aws.iam.Role(
 # Attach the necessary policies to the role
 lambda_policy = aws.iam.Policy(
     f"api_{ROUTE_NAME}_lambda_policy",
-    description="IAM policy for '/images' route Lambda to query DynamoDB",
+    description="IAM policy for '/process' route Lambda to query DynamoDB",
     policy=dynamodb_table.arn.apply(
         lambda arn: json.dumps(
             {
@@ -47,7 +47,7 @@ lambda_policy = aws.iam.Policy(
                 "Statement": [
                     {
                         "Effect": "Allow",
-                        "Action": ["dynamodb:Query", "dynamodb:DescribeTable", "dynamodb:BatchGetItem"],
+                        "Action": ["dynamodb:Query", "dynamodb:DescribeTable"],
                         "Resource": [arn, f"{arn}/index/GSI1"],
                     }
                 ],
@@ -70,7 +70,7 @@ aws.iam.RolePolicyAttachment(
 )
 
 # Create the Lambda function for the "user" route
-receipt_word_tag_lambda = aws.lambda_.Function(
+process_lambda = aws.lambda_.Function(
     f"api_{ROUTE_NAME}_GET_lambda",
     runtime="python3.12",  # or whichever version you prefer
     role=lambda_role.arn,
