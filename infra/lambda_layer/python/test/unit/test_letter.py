@@ -163,21 +163,7 @@ def test_init_invalid_top_left(bad_point):
     """Test constructor fails when top_left is not valid."""
     with pytest.raises(ValueError):
         # fmt: off
-        Letter(
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=1,
-            word_id=1,
-            id=1,
-            text="H",
-            bounding_box={"x": 1, "y": 2, "width": 3, "height": 4},
-            top_right={"x": 2, "y": 2},
-            top_left=bad_point,
-            bottom_right={"x": 2, "y": 3},
-            bottom_left={"x": 1, "y": 3},
-            angle_degrees=0.0,
-            angle_radians=0.0,
-            confidence=0.5,
-        )
+        Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left=bad_point, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, )
         # fmt: on
 
 
@@ -195,21 +181,7 @@ def test_init_invalid_bottom_right(bad_point):
     """Test constructor fails when bottom_right is not valid."""
     with pytest.raises(ValueError):
         # fmt: off
-        Letter(
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=1,
-            word_id=1,
-            id=1,
-            text="H",
-            bounding_box={"x": 1, "y": 2, "width": 3, "height": 4},
-            top_right={"x": 2, "y": 2},
-            top_left={"x": 1, "y": 2},
-            bottom_right=bad_point,
-            bottom_left={"x": 1, "y": 3},
-            angle_degrees=0.0,
-            angle_radians=0.0,
-            confidence=0.5,
-        )
+        Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right=bad_point, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, )
         # fmt: on
 
 
@@ -227,21 +199,7 @@ def test_init_invalid_bottom_left(bad_point):
     """Test constructor fails when bottom_left is not valid."""
     with pytest.raises(ValueError):
         # fmt: off
-        Letter(
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=1,
-            word_id=1,
-            id=1,
-            text="H",
-            bounding_box={"x": 1, "y": 2, "width": 3, "height": 4},
-            top_right={"x": 2, "y": 2},
-            top_left={"x": 1, "y": 2},
-            bottom_right={"x": 2, "y": 3},
-            bottom_left=bad_point,
-            angle_degrees=0.0,
-            angle_radians=0.0,
-            confidence=0.5,
-        )
+        Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left=bad_point, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, )
         # fmt: on
 
 
