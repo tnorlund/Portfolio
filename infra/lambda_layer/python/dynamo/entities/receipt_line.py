@@ -23,6 +23,8 @@ class ReceiptLine:
         angle_degrees: float,
         angle_radians: float,
         confidence: float,
+        histogram: dict = None,
+        num_chars: int = None,
     ):
         if not isinstance(receipt_id, int):
             raise ValueError("receipt_id must be an integer")
@@ -69,8 +71,15 @@ class ReceiptLine:
             raise ValueError("confidence must be between 0 and 1")
         self.confidence = confidence
 
-        self.histogram = compute_histogram(text)
-        self.num_chars = len(text)
+        if histogram is None:
+            self.histogram = compute_histogram(self.text)
+        else:
+            self.histogram = histogram
+
+        if num_chars is None:
+            self.num_chars = len(text)
+        else:
+            self.num_chars = num_chars
 
     def key(self):
         return {

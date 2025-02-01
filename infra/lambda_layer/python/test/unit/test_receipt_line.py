@@ -320,6 +320,7 @@ def test_iter(example_receipt_line):
     assert receipt_line_dict["angle_degrees"] == 0.0
     assert receipt_line_dict["angle_radians"] == 0.0
     assert receipt_line_dict["confidence"] == 0.95
+    assert ReceiptLine(**receipt_line_dict) == example_receipt_line
 
 
 @pytest.mark.unit
