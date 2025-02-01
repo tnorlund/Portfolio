@@ -5,6 +5,7 @@ from dynamo.entities.util import (
     assert_valid_bounding_box,
     assert_valid_point,
     _format_float,
+    shear_point,
 )
 from math import sin, cos, pi, radians
 
@@ -365,6 +366,39 @@ class Word:
             self.angle_radians += radians(angle)
 
         # 4) Recalculate the axis-aligned bounding box from the rotated corners
+        xs = [pt["x"] for pt in corners]
+        ys = [pt["y"] for pt in corners]
+        min_x, max_x = min(xs), max(xs)
+        min_y, max_y = min(ys), max(ys)
+
+        self.bounding_box["x"] = min_x
+        self.bounding_box["y"] = min_y
+        self.bounding_box["width"] = max_x - min_x
+        self.bounding_box["height"] = max_y - min_y
+
+    def shear(
+        self, shx: float, shy: float, pivot_x: float = 0.0, pivot_y: float = 0.0
+    ) -> None:
+        """
+        Shears the Word by shx (horizontal shear) and shy (vertical shear)
+        around a pivot point (pivot_x, pivot_y).
+
+        - (shx, shy) = (0.2, 0.0) would produce a horizontal slant
+        - (shx, shy) = (0.0, 0.2) would produce a vertical slant
+        - You can combine both for a more general shear.
+
+        Modifies top_right, top_left, bottom_right, bottom_left,
+        and then recalculates the axis-aligned bounding box.
+        """
+        corners = [self.top_right, self.top_left, self.bottom_right, self.bottom_left]
+        for corner in corners:
+            x_new, y_new = shear_point(
+                corner["x"], corner["y"], pivot_x, pivot_y, shx, shy
+            )
+            corner["x"] = x_new
+            corner["y"] = y_new
+
+        # Recalculate axis-aligned bounding box from new corners
         xs = [pt["x"] for pt in corners]
         ys = [pt["y"] for pt in corners]
         min_x, max_x = min(xs), max(xs)

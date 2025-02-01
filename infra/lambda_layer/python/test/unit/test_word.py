@@ -17,6 +17,16 @@ def example_word_with_tags():
     # fmt: on
 
 
+def create_test_word():
+    """
+    A helper function that returns a Word object
+    with easily verifiable points for testing.
+    """
+    # fmt: off
+    return Word( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", id=1, text="Hello", tags=["example"], line_id=1, bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=0.0, angle_radians=0.0, confidence=1.0, )
+    # fmt: on
+
+
 @pytest.mark.unit
 def test_init(example_word, example_word_with_tags):
     assert example_word.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
@@ -373,10 +383,18 @@ def test_word_rotate_limited_range(angle, use_radians, should_raise):
             orig_corners["top_left"]["x"], orig_corners["top_left"]["y"], 0, 0, theta
         )
         expected_bottom_right["x"], expected_bottom_right["y"] = rotate_point(
-            orig_corners["bottom_right"]["x"], orig_corners["bottom_right"]["y"], 0, 0, theta
+            orig_corners["bottom_right"]["x"],
+            orig_corners["bottom_right"]["y"],
+            0,
+            0,
+            theta,
         )
         expected_bottom_left["x"], expected_bottom_left["y"] = rotate_point(
-            orig_corners["bottom_left"]["x"], orig_corners["bottom_left"]["y"], 0, 0, theta
+            orig_corners["bottom_left"]["x"],
+            orig_corners["bottom_left"]["y"],
+            0,
+            0,
+            theta,
         )
 
         # Now apply the rotation
@@ -387,10 +405,18 @@ def test_word_rotate_limited_range(angle, use_radians, should_raise):
         assert word.top_right["y"] == pytest.approx(expected_top_right["y"], rel=1e-6)
         assert word.top_left["x"] == pytest.approx(expected_top_left["x"], rel=1e-6)
         assert word.top_left["y"] == pytest.approx(expected_top_left["y"], rel=1e-6)
-        assert word.bottom_right["x"] == pytest.approx(expected_bottom_right["x"], rel=1e-6)
-        assert word.bottom_right["y"] == pytest.approx(expected_bottom_right["y"], rel=1e-6)
-        assert word.bottom_left["x"] == pytest.approx(expected_bottom_left["x"], rel=1e-6)
-        assert word.bottom_left["y"] == pytest.approx(expected_bottom_left["y"], rel=1e-6)
+        assert word.bottom_right["x"] == pytest.approx(
+            expected_bottom_right["x"], rel=1e-6
+        )
+        assert word.bottom_right["y"] == pytest.approx(
+            expected_bottom_right["y"], rel=1e-6
+        )
+        assert word.bottom_left["x"] == pytest.approx(
+            expected_bottom_left["x"], rel=1e-6
+        )
+        assert word.bottom_left["y"] == pytest.approx(
+            expected_bottom_left["y"], rel=1e-6
+        )
 
         # Compute the expected bounding box from the rotated corners.
         xs = [
@@ -415,8 +441,12 @@ def test_word_rotate_limited_range(angle, use_radians, should_raise):
         # Verify that the bounding box was recalculated correctly.
         assert word.bounding_box["x"] == pytest.approx(expected_bb["x"], rel=1e-6)
         assert word.bounding_box["y"] == pytest.approx(expected_bb["y"], rel=1e-6)
-        assert word.bounding_box["width"] == pytest.approx(expected_bb["width"], rel=1e-6)
-        assert word.bounding_box["height"] == pytest.approx(expected_bb["height"], rel=1e-6)
+        assert word.bounding_box["width"] == pytest.approx(
+            expected_bb["width"], rel=1e-6
+        )
+        assert word.bounding_box["height"] == pytest.approx(
+            expected_bb["height"], rel=1e-6
+        )
 
         # Verify that the angle accumulators have been updated correctly.
         if use_radians:
@@ -428,6 +458,115 @@ def test_word_rotate_limited_range(angle, use_radians, should_raise):
         assert word.angle_radians == pytest.approx(expected_angle_radians, abs=1e-9)
         assert word.angle_degrees == pytest.approx(expected_angle_degrees, abs=1e-9)
 
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "shx, shy, pivot_x, pivot_y, expected_corners",
+    [
+        # Test 1: Horizontal shear only (shx nonzero, shy=0)
+        (
+            0.2,
+            0.0,
+            10.0,
+            20.0,
+            {
+                "top_right": {"x": 15.0 + 0.2 * (20.0 - 20.0), "y": 20.0},  # (15,20)
+                "top_left": {"x": 10.0 + 0.2 * (20.0 - 20.0), "y": 20.0},  # (10,20)
+                "bottom_right": {
+                    "x": 15.0 + 0.2 * (22.0 - 20.0),
+                    "y": 22.0,
+                },  # (15.4,22)
+                "bottom_left": {
+                    "x": 10.0 + 0.2 * (22.0 - 20.0),
+                    "y": 22.0,
+                },  # (10.4,22)
+            },
+        ),
+        # Test 2: Vertical shear only (shy nonzero, shx=0)
+        (
+            0.0,
+            0.2,
+            10.0,
+            20.0,
+            {
+                "top_right": {"x": 15.0, "y": 20.0 + 0.2 * (15.0 - 10.0)},  # (15,21)
+                "top_left": {"x": 10.0, "y": 20.0 + 0.2 * (10.0 - 10.0)},  # (10,20)
+                "bottom_right": {"x": 15.0, "y": 22.0 + 0.2 * (15.0 - 10.0)},  # (15,23)
+                "bottom_left": {"x": 10.0, "y": 22.0 + 0.2 * (10.0 - 10.0)},  # (10,22)
+            },
+        ),
+        # Test 3: Combined shear
+        (
+            0.1,
+            0.1,
+            12.0,
+            21.0,
+            {
+                # For each corner, calculate:
+                # new_x = original_x + 0.1*(original_y - 21.0)
+                # new_y = original_y + 0.1*(original_x - 12.0)
+                "top_right": {
+                    "x": 15.0 + 0.1 * (20.0 - 21.0),
+                    "y": 20.0 + 0.1 * (15.0 - 12.0),
+                },  # (15 - 0.1, 20 + 0.3) = (14.9, 20.3)
+                "top_left": {
+                    "x": 10.0 + 0.1 * (20.0 - 21.0),
+                    "y": 20.0 + 0.1 * (10.0 - 12.0),
+                },  # (10 - 0.1, 20 - 0.2) = (9.9, 19.8)
+                "bottom_right": {
+                    "x": 15.0 + 0.1 * (22.0 - 21.0),
+                    "y": 22.0 + 0.1 * (15.0 - 12.0),
+                },  # (15 + 0.1, 22 + 0.3) = (15.1, 22.3)
+                "bottom_left": {
+                    "x": 10.0 + 0.1 * (22.0 - 21.0),
+                    "y": 22.0 + 0.1 * (10.0 - 12.0),
+                },  # (10 + 0.1, 22 - 0.2) = (10.1, 21.8)
+            },
+        ),
+    ],
+)
+def test_shear(shx, shy, pivot_x, pivot_y, expected_corners):
+    """
+    Test that the shear(shx, shy, pivot_x, pivot_y) method correctly shears
+    the corners of the line and recalculates the bounding box.
+    """
+    word = create_test_word()
+
+    # Apply shear transformation
+    word.shear(shx, shy, pivot_x, pivot_y)
+
+    # Check each corner against the expected values
+    for corner_name in ["top_right", "top_left", "bottom_right", "bottom_left"]:
+        for coord in ["x", "y"]:
+            expected_value = expected_corners[corner_name][coord]
+            actual_value = word.__dict__[corner_name][coord]
+            assert actual_value == pytest.approx(
+                expected_value
+            ), f"{corner_name} {coord} expected {expected_value}, got {actual_value}"
+
+    # Compute expected bounding box from the updated corners
+    xs = [
+        word.top_right["x"],
+        word.top_left["x"],
+        word.bottom_right["x"],
+        word.bottom_left["x"],
+    ]
+    ys = [
+        word.top_right["y"],
+        word.top_left["y"],
+        word.bottom_right["y"],
+        word.bottom_left["y"],
+    ]
+    expected_bb = {
+        "x": min(xs),
+        "y": min(ys),
+        "width": max(xs) - min(xs),
+        "height": max(ys) - min(ys),
+    }
+    assert word.bounding_box["x"] == pytest.approx(expected_bb["x"])
+    assert word.bounding_box["y"] == pytest.approx(expected_bb["y"])
+    assert word.bounding_box["width"] == pytest.approx(expected_bb["width"])
+    assert word.bounding_box["height"] == pytest.approx(expected_bb["height"])
 
 @pytest.mark.unit
 def test_repr(example_word):
@@ -568,28 +707,3 @@ def test_itemToWord(example_word, example_word_with_tags):
                 "confidence": {"N": "0.90"},
             }
         )
-
-
-def create_test_word():
-    """
-    A helper function that returns a Word object
-    with easily verifiable points for testing.
-    """
-    return Word(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        id=1,
-        text="Hello",
-        tags=["example"],
-        line_id=1,
-        # In your actual Word class, you'd need bounding box / corners
-        # if you plan to scale/rotate/translate them the same way as Line/Letter.
-        # We'll assume Word also has these attributes:
-        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        top_right={"x": 15.0, "y": 20.0},
-        top_left={"x": 10.0, "y": 20.0},
-        bottom_right={"x": 15.0, "y": 22.0},
-        bottom_left={"x": 10.0, "y": 22.0},
-        angle_degrees=0.0,
-        angle_radians=0.0,
-        confidence=1.0,
-    )
