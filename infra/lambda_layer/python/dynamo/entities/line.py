@@ -491,6 +491,52 @@ class Line:
         self.angle_radians = angle_rad
         self.angle_degrees = degrees(angle_rad)
 
+    def rotate_90_ccw_in_place(self, old_w: int, old_h: int):
+        """
+        Rotates the object 90 degrees counter-clockwise in-place
+        about the (0,0) origin in a standard image coordinate system
+        (origin at top-left, y increasing downward).
+
+        old_w, old_h are the image dimensions before rotation.
+        """
+        # Convert normalized -> pixel
+        corners = [self.top_left, self.top_right, self.bottom_right, self.bottom_left]
+        for corner in corners:
+            corner["x"] *= old_w
+            corner["y"] *= old_h
+
+        # Now do the standard 90° CCW about (0,0) in pixel space
+        for corner in corners:
+            x_old = corner["x"]
+            y_old = corner["y"]
+            x_new = y_old
+            y_new = old_w - x_old
+            corner["x"] = x_new
+            corner["y"] = y_new
+
+        # The new image is (old_h, old_w) in pixel dims if you rotate 90°, so re‐normalize
+        # (and optionally flip Y if you want the bottom to be y=0).
+        final_w = old_h
+        final_h = old_w
+        for corner in corners:
+            corner["x"] /= final_w
+            # maybe corner["y"] = 1 - corner["y"]/final_h if you want 0 at bottom
+            corner["y"] /= final_h
+
+        # 2) Recompute the bounding box
+        xs = [pt["x"] for pt in corners]
+        ys = [pt["y"] for pt in corners]
+        min_x, max_x = min(xs), max(xs)
+        min_y, max_y = min(ys), max(ys)
+        self.bounding_box["x"] = min_x
+        self.bounding_box["y"] = min_y
+        self.bounding_box["width"] = max_x - min_x
+        self.bounding_box["height"] = max_y - min_y
+
+        # 3) Update the angle
+        self.angle_degrees += 90
+        self.angle_radians += pi / 2
+
     def __repr__(self) -> str:
         """Returns a string representation of the Line object
 
