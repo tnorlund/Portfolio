@@ -70,6 +70,20 @@ export interface Point {
 
   };
 
+  export interface ReceiptPayloadEntry {
+    receipt?: Receipt;   // The single “receipt” object
+    words?: ReceiptWord[]; // The array of recognized word objects
+  }
+  export interface ReceiptPayload_new {
+    [key: string]: ReceiptPayloadEntry;
+  }
+
+  export interface ReceiptDetailsApiResponse {
+    payload: ReceiptPayload_new;
+    // Optionally, if your endpoint ever returns pagination info, you could add:
+    last_evaluated_key?: string | null;
+  }
+
   export interface ReceiptWord {
     // IDs indicating what this word is linked to
     image_id: number;

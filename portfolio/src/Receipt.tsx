@@ -4,8 +4,13 @@ import Pulumi from "./Pulumi";
 import OpenAI from "./OpenAI";
 import ReceiptStack from "./ReceiptStack";
 import ReceiptWords from "./ReceiptWords";
+import Debug from "./Debug";
+
 
 import "./Receipt.css";
+
+
+
 
 function GPTPrompt() {
   const prompt = `You are a helpful assistant that extracts structured data from a receipt.
@@ -159,6 +164,8 @@ function Receipt() {
 
       <ReceiptStack />
       <ReceiptWords />
+      <Debug />
+      
     </div>
   );
 }
