@@ -22,6 +22,19 @@ import pulumi.automation as auto
 import requests
 
 
+def warm_up_api(base_url: str, params_common: dict, warmup_uuid: str = "warmup"):
+    """
+    Call the API with a dummy UUID to warm it up.
+    """
+    try:
+        warmup_params = params_common.copy()
+        # Use a dummy value that your API can either ignore or handle gracefully.
+        warmup_params["uuids"] = warmup_uuid
+        response = requests.get(base_url, params=warmup_params)
+        print(f"Warm-up request status: {response.status_code}")
+    except Exception as e:
+        print(f"Warm-up request failed: {e}")
+
 def calculate_sha256(file_path: str) -> str:
     sha256_hash = hashlib.sha256()
     with open(file_path, "rb") as f:
@@ -90,6 +103,11 @@ def upload_files_with_uuid_in_batches(
 ) -> None:
     s3 = boto3.client("s3")
     dynamo_client = DynamoClient(dynamodb_table_name)
+    domain_part = "api" if env == "prod" else f"{env}-api"
+    base_url = f"https://{domain_part}.tylernorlund.com/process"
+    warm_up_api(base_url, {"table_name": dynamodb_table_name})
+    warm_up_api(base_url, {"table_name": dynamodb_table_name})
+    warm_up_api(base_url, {"table_name": dynamodb_table_name})
 
     all_png_files = sorted(p for p in directory.iterdir() if p.suffix.lower() == ".png")
     files_to_upload = compare_local_files_with_dynamo(all_png_files, dynamodb_table_name)
@@ -127,8 +145,7 @@ def upload_files_with_uuid_in_batches(
             #           GET requests for sub-batches of UUIDs
             # --------------------------------------------------------------------------------
             print("\nSending GET requests for sub-batches of UUIDs in this batch, then waiting for all responses...")
-            domain_part = "api" if env == "prod" else f"{env}-api"
-            base_url = f"https://{domain_part}.tylernorlund.com/process"
+            
 
             # Subdivide the list of UUIDs into sub-batches
             sub_batches = list(chunked(mapped_uuids, sub_batch_size))

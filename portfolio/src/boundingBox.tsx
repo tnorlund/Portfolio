@@ -143,37 +143,48 @@ export function BoundingBoxReceipt(receipt: Receipt, image: ImageItem,  color: s
     <React.Fragment key={`receipt-${receipt.id}`}>
       {/* Draw edges of the rectangle in a similar style */}
       <circle cx={tl.x} cy={tl.y} r={20} fill={color} />
+      <circle cx={tr.x} cy={tr.y} r={20} fill="none" stroke={color} strokeWidth={10} />
+
+      {/* Draw an X on the bottom left corner */}
+      <line x1={bl.x - 20} y1={bl.y - 20} x2={bl.x + 20} y2={bl.y + 20} stroke={color} strokeWidth={10} />
+      <line x1={bl.x - 20} y1={bl.y + 20} x2={bl.x + 20} y2={bl.y - 20} stroke={color} strokeWidth={10} />
+
+      {/* Draw an X and circle on the bottom right corner */}
+      <line x1={br.x - 20} y1={br.y - 20} x2={br.x + 20} y2={br.y + 20} stroke={color} strokeWidth={10} />
+      <line x1={br.x - 20} y1={br.y + 20} x2={br.x + 20} y2={br.y - 20} stroke={color} strokeWidth={10} />
+      <circle cx={br.x} cy={br.y} r={20} fill="none" stroke={color} strokeWidth={10} />
+      {/* Draw the bounding box */}
       <line
-        x1={tl.x}
-        y1={tl.y}
-        x2={tr.x}
-        y2={tr.y}
-        stroke={color}
-        strokeWidth={3}
+      x1={tl.x}
+      y1={tl.y}
+      x2={tr.x}
+      y2={tr.y}
+      stroke={color}
+      strokeWidth={3}
       />
       <line
-        x1={tr.x}
-        y1={tr.y}
-        x2={br.x}
-        y2={br.y}
-        stroke={color}
-        strokeWidth={3}
+      x1={tr.x}
+      y1={tr.y}
+      x2={br.x}
+      y2={br.y}
+      stroke={color}
+      strokeWidth={3}
       />
       <line
-        x1={br.x}
-        y1={br.y}
-        x2={bl.x}
-        y2={bl.y}
-        stroke={color}
-        strokeWidth={3}
+      x1={br.x}
+      y1={br.y}
+      x2={bl.x}
+      y2={bl.y}
+      stroke={color}
+      strokeWidth={3}
       />
       <line
-        x1={bl.x}
-        y1={bl.y}
-        x2={tl.x}
-        y2={tl.y}
-        stroke={color}
-        strokeWidth={3}
+      x1={bl.x}
+      y1={bl.y}
+      x2={tl.x}
+      y2={tl.y}
+      stroke={color}
+      strokeWidth={3}
       />
     </React.Fragment>
   );
