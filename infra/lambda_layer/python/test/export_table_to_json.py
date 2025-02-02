@@ -49,6 +49,18 @@ if __name__ == "__main__":
     s3.download_file(image.raw_s3_bucket, image.raw_s3_key, image_local_path)
     # -------------------------------------------------------------------------
 
+    # Save the JSON file (unchanged location)
+    json_dir = os.path.join(CURRENT_DIR, "integration", "JSON")
+    os.makedirs(json_dir, exist_ok=True)
+    # -------------------------------------------------------------------------
+    # NEW CODE: Download the Swift OCR results JSON from S3.
+    # Assume that the Swift OCR JSON is stored in the same S3 prefix as the raw image.
+    swift_ocr_key = image.raw_s3_key.replace(".png", ".json")
+    swift_ocr_local_path = os.path.join(json_dir, f"{IMAGE_ID}_SWIFT_OCR.json")
+    print(f"Downloading swift OCR JSON from {image.raw_s3_bucket}/{swift_ocr_key} to {swift_ocr_local_path}")
+    s3.download_file(image.raw_s3_bucket, swift_ocr_key, swift_ocr_local_path)
+    # -------------------------------------------------------------------------
+
     receipts = []
     receipt_lines = []
     receipt_words = []
@@ -72,10 +84,8 @@ if __name__ == "__main__":
         s3.download_file(receipt.raw_s3_bucket, receipt.raw_s3_key, receipt_local_path)
     # -------------------------------------------------------------------------
 
-    # Save the JSON file (unchanged location)
-    json_dir = os.path.join(CURRENT_DIR, "integration", "JSON")
-    os.makedirs(json_dir, exist_ok=True)
-    with open(os.path.join(json_dir, f"{IMAGE_ID}.json"), "w") as f:
+    
+    with open(os.path.join(json_dir, f"{IMAGE_ID}_RESULTS.json"), "w") as f:
         json.dump({
             "images": [{
                 **dict(image),
