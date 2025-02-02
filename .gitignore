@@ -184,3 +184,4 @@ failure*
 lambda_logs_prod*
 lambda_logs_dev*
 lambda_logs_e2e*
+infra/lambda_layer/python/test/integration/FAIL*

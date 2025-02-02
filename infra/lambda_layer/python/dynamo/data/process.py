@@ -307,7 +307,6 @@ def cluster_receipts(
 
     return cluster_dict
 
-
 def transform_cluster(
     cluster_id: int,
     cluster_lines: List[Line],
@@ -318,69 +317,91 @@ def transform_cluster(
 ):
     """
     1) Compute min-area-rect
-    2) Affine warp that rectangle to (w,h)
-    3) If w>h, rotate final image 90° CCW
-    4) Post-rotate the line/word/letter coords so they match the final orientation.
+    2) If needed, rotate bounding box by 90° so that final w <= h
+    3) Affine warp that rectangle to (w,h)
+    4) Warp the line/word/letter coords so they match the final orientation
+    5) Return the receipt record plus the warped image and OCR objects
     """
-    # 1) Collect points
+    import copy
+    from datetime import datetime, timezone
+
+    # 1) Collect cluster points in absolute image coordinates
     points_abs = []
     for ln in cluster_lines:
         for corner in [ln.top_left, ln.top_right, ln.bottom_left, ln.bottom_right]:
             x_abs = corner["x"] * image_obj.width
-            y_abs = (1 - corner["y"]) * image_obj.height  # flip y
+            y_abs = (1 - corner["y"]) * image_obj.height  # flip Y
             points_abs.append((x_abs, y_abs))
+
     if not points_abs:
         raise ValueError("No points found for cluster transformation.")
 
-    # 2) min_area_rect, box corners
+    # Use your existing min_area_rect to find the bounding box
     (cx, cy), (rw, rh), angle_deg = min_area_rect(points_abs)
-    box_4 = box_points((cx, cy), (rw, rh), angle_deg)
-    box_4_ordered = reorder_box_points(box_4)
-
-    # Destination (w,h) = round(rw), round(rh)
     w = int(round(rw))
     h = int(round(rh))
     if w < 1 or h < 1:
         raise ValueError("Degenerate bounding box for cluster.")
 
-    # 3) Compute the 2x3 “inverse” matrix for Pillow (dst->src)
-    src_tl = box_4_ordered[0]  # top-left
-    src_tr = box_4_ordered[1]  # top-right
-    src_bl = box_4_ordered[3]  # bottom-left
-
-    rotated_90 = False
+    # ------------------------------------------------------
+    # 2) *Option A fix* - Ensure portrait orientation now
+    # ------------------------------------------------------
     if w > h:
-        print(f"swapping w,h: {w} -> {h} for {image_obj.id}")
-        rotated_90 = True
+        # Rotate the bounding box by -90° so the final warp is 'portrait'
+        angle_deg -= 90.0
+        # Swap the width & height so the final image is portrait
         w, h = h, w
+        # Also swap rw, rh so our box_points() call below is correct
+        rw, rh = rh, rw
 
-    # For (dst_x, dst_y) = (0,0), we want to sample from src_tl => c = src_tl[0], f = src_tl[1]
-    # For (w-1, 0): a*(w-1)+c = src_tr[0] => a = (src_tr[0]-src_tl[0])/(w-1)
-    #                 d*(w-1)+f = src_tr[1] => d = (src_tr[1]-src_tl[1])/(w-1)
-    # For (0, h-1): b*(h-1)+c = src_bl[0], e*(h-1)+f = src_bl[1]
-    a_i = (src_tr[0] - src_tl[0]) / (w - 1) if w > 1 else 0.0
-    d_i = (src_tr[1] - src_tl[1]) / (w - 1) if w > 1 else 0.0
-    b_i = (src_bl[0] - src_tl[0]) / (h - 1) if h > 1 else 0.0
-    e_i = (src_bl[1] - src_tl[1]) / (h - 1) if h > 1 else 0.0
+    # Recompute the four corners for the (possibly) adjusted angle & size
+    box_4 = box_points((cx, cy), (rw, rh), angle_deg)
+    box_4_ordered = reorder_box_points(box_4)
+
+    # For convenience, name the corners we need for the transform
+    src_tl = box_4_ordered[0]
+    src_tr = box_4_ordered[1]
+    src_bl = box_4_ordered[3]
+
+    # ------------------------------------------------------
+    # 3) Build the Pillow transform (dst->src) matrix
+    # ------------------------------------------------------
+    # Given a 2x3 matrix:
+    #   (a_i, b_i, c_i)
+    #   (d_i, e_i, f_i)
+    # We want:  (x_src, y_src) = M * (x_dst, y_dst, 1).
+    # Solve so that (0,0)->src_tl, (w-1,0)->src_tr, (0,h-1)->src_bl.
+    if w > 1:
+        a_i = (src_tr[0] - src_tl[0]) / (w - 1)
+        d_i = (src_tr[1] - src_tl[1]) / (w - 1)
+    else:
+        a_i = d_i = 0.0
+
+    if h > 1:
+        b_i = (src_bl[0] - src_tl[0]) / (h - 1)
+        e_i = (src_bl[1] - src_tl[1]) / (h - 1)
+    else:
+        b_i = e_i = 0.0
+
     c_i = src_tl[0]
     f_i = src_tl[1]
 
-    # The forward matrix used by warp_affine_normalized_forward:
+    # Invert it to get the forward transform for lines, words, etc.
     a_f, b_f, c_f, d_f, e_f, f_f = invert_affine(a_i, b_i, c_i, d_i, e_i, f_i)
 
-    # 4) Warp the image
+    # 4) Warp the image using the “inverse” (dst->src) matrix
     affine_img = pil_image.transform(
         (w, h),
         PIL_Image.AFFINE,
-        (a_i, b_i, c_i, d_i, e_i, f_i),
+        # (a_i, b_i, c_i, d_i, e_i, f_i),
+        invert_affine(a_i, b_i, c_i, d_i, e_i, f_i),
         resample=PIL_Image.BICUBIC,
     )
 
-    # 5) Optionally rotate to get portrait
-
+    # ------------------------------------------------------
+    # 5) Create the Receipt record with final size
+    # ------------------------------------------------------
     final_w, final_h = affine_img.size
-
-    # 6) Build the Receipt record
     r = Receipt(
         id=cluster_id,
         image_id=image_obj.id,
@@ -414,7 +435,10 @@ def transform_cluster(
         ),
     )
 
-    # 7) Warp lines/words/letters with the forward matrix, then rotate if needed
+    # ------------------------------------------------------
+    # 6) Warp the line/word/letter coords “forward”
+    #    so they match the final orientation
+    # ------------------------------------------------------
     receipt_lines = []
     for ln in cluster_lines:
         ln_copy = copy.deepcopy(ln)
@@ -427,7 +451,7 @@ def transform_cluster(
             f_f,
             orig_width=image_obj.width,
             orig_height=image_obj.height,
-            new_width=w,  # size BEFORE the rotate
+            new_width=w,   # size AFTER we've decided orientation
             new_height=h,
             flip_y=True,
         )
@@ -470,7 +494,6 @@ def transform_cluster(
         receipt_letters.append(ReceiptLetter(**dict(lt_copy), receipt_id=cluster_id))
 
     return affine_img, r, receipt_lines, receipt_words, receipt_letters
-
 
 def reorder_box_points(pts: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
     """
