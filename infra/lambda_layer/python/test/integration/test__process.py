@@ -50,6 +50,7 @@ def upload_json_and_png_files_for_uuid(
             Key=f"{raw_prefix}/{uuid}.json",
             Body=json_file.read(),
             ContentType="image/png",
+
         )
 
     # Upload .png
@@ -58,7 +59,9 @@ def upload_json_and_png_files_for_uuid(
             Bucket=bucket_name,
             Key=f"{raw_prefix}/{uuid}.png",
             Body=png_file.read(),
+
             ContentType="image/png",
+
         )
 
 
@@ -86,6 +89,7 @@ def test_process(
     receipt_raw_bytes = get_raw_bytes_receipt(uuid, 1)
 
     # Act
+
     process(table_name, "raw-bucket", "raw_prefix/", uuid, "cdn-bucket")
 
     # Assert
@@ -110,25 +114,30 @@ def test_process(
     expected_lines, expected_words, expected_letters = process_ocr_dict(
         json.loads(
             s3.get_object(Bucket=raw_bucket, Key="raw_prefix/e510f3c0-4e94-4bb9-a82e-e111f2d7e245.json")["Body"]
+
             .read()
             .decode("utf-8")
         ),
         uuid,
     )
+
     # Probably want to query get receipt details for image and check the receipt
     _, _, _, _, _, receipts = DynamoClient(table_name).getImageDetails(uuid)
     assert len(receipts) == 1
     receipt = receipts[0]["receipt"]
+
 
     assert Image(
         id=uuid,
         width=2480,
         height=3508,
         timestamp_added="2021-01-01T00:00:00+00:00",
+
         raw_s3_bucket="raw-bucket",
         raw_s3_key="raw_prefix/e510f3c0-4e94-4bb9-a82e-e111f2d7e245.png",
         cdn_s3_bucket="cdn-bucket",
         cdn_s3_key="assets/e510f3c0-4e94-4bb9-a82e-e111f2d7e245.png",
+
         sha256="e0cf0ccf76e613858c445733a4bb3292342c22484f237b1b2213415a70b6b246",
     ) == DynamoClient(table_name).getImage(uuid)
     assert expected_lines == DynamoClient(table_name).listLines()
@@ -141,18 +150,22 @@ def test_process(
             width=859,
             height=3156,
             timestamp_added="2021-01-01T00:00:00+00:00",
+
             raw_s3_bucket="raw-bucket",
             raw_s3_key=f"raw_prefix/e510f3c0-4e94-4bb9-a82e-e111f2d7e245_RECEIPT_00001.png",
+
             top_left={"x": 0.3055130184694144, "y": 0.9011719136938777},
             top_right={"x": 0.6518054488955656, "y": 0.8980014679715593},
             bottom_left={"x": 0.28903475894519004, "y": 0.001636622217000783},
             bottom_right={"x": 0.6353271893713412, "y": -0.0015338235053175},
+
             cdn_s3_bucket="cdn-bucket",
             cdn_s3_key="assets/e510f3c0-4e94-4bb9-a82e-e111f2d7e245_RECEIPT_00001.png",
             sha256="60ffc3cdcc1c0cbb15b2d063a686cee6469c003ee7bda5d549aecf657610b627",
         )
         == receipt
     )
+
 
 
 @pytest.mark.integration
@@ -169,6 +182,7 @@ def test_process_no_bucket(s3_bucket):
 def test_process_no_files(s3_bucket):
     with pytest.raises(
         ValueError, match="UUID uuid not found s3://raw-image-bucket/raw_prefix/uuid*"
+
     ):
         process(
             "table_name", "raw-image-bucket", "raw_prefix", "uuid", "cdn_bucket_name"
@@ -313,6 +327,7 @@ def test_process_access_denied_cdn_bucket(s3_buckets, dynamodb_table, monkeypatc
 
     # 5. Act & Assert: PNG file should trigger AccessDenied, causing a ValueError
     with pytest.raises(ValueError, match="Access denied to s3://cdn-bucket/assets"):
+
         process(
             table_name,
             raw_bucket,

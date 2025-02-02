@@ -128,7 +128,7 @@ def process(
         try:
             s3.put_object(
                 Bucket=cdn_bucket_name,
-                Key=f"{image_obj.cdn_s3_key.replace('.png', f'_RECEIPT_{cluster_id:05d}.png')}" ,
+                Key=f"{image_obj.cdn_s3_key.replace('.png', f'_RECEIPT_{cluster_id:05d}.png')}",
                 Body=png_data,
                 ContentType="image/png",
             )
@@ -349,6 +349,7 @@ def transform_cluster(
         timestamp_added=datetime.now(timezone.utc),
         raw_s3_bucket=image_obj.raw_s3_bucket,
         raw_s3_key=image_obj.raw_s3_key.replace('.png', f'_RECEIPT_{cluster_id:05d}.png'),
+
         top_left={
             "x": box_4_ordered[0][0] / image_obj.width,
             "y": 1 - box_4_ordered[0][1] / image_obj.height,
@@ -504,4 +505,5 @@ def box_points(center: Tuple[float, float], size: Tuple[float, float], angle_deg
         rx = cos_a * lx - sin_a * ly
         ry = sin_a * lx + cos_a * ly
         corners_world.append((cx + rx, cy + ry))
+
     return corners_world
