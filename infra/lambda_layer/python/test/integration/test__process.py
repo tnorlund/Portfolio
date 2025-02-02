@@ -49,6 +49,7 @@ def upload_json_and_png_files_for_uuid(
             Bucket=bucket_name,
             Key=f"{raw_prefix}/{uuid}.json",
             Body=json_file.read(),
+            ContentType="image/png",
         )
 
     # Upload .png
@@ -57,6 +58,7 @@ def upload_json_and_png_files_for_uuid(
             Bucket=bucket_name,
             Key=f"{raw_prefix}/{uuid}.png",
             Body=png_file.read(),
+            ContentType="image/png",
         )
 
 
@@ -84,34 +86,40 @@ def test_process(
     receipt_raw_bytes = get_raw_bytes_receipt(uuid, 1)
 
     # Act
-    process(table_name, "raw-bucket", raw_prefix, uuid, "cdn-bucket")
+    process(table_name, "raw-bucket", "raw_prefix/", uuid, "cdn-bucket")
 
     # Assert
+    # The PNG should be in both the raw and cdn buckets
     cdn_response = s3.get_object(Bucket="cdn-bucket", Key="assets/e510f3c0-4e94-4bb9-a82e-e111f2d7e245.png")
     cdn_png_bytes = cdn_response["Body"].read()
     raw_response = s3.get_object(Bucket="raw-bucket", Key="raw_prefix/e510f3c0-4e94-4bb9-a82e-e111f2d7e245.png")
     raw_png_bytes = raw_response["Body"].read()
+    assert cdn_png_bytes == raw_png_bytes, "CDN copy of PNG does not match original!"
+    assert cdn_response["ContentType"] == "image/png"
+    assert raw_response["ContentType"] == "image/png"
+
+    # The Receipt PNG should be in both the raw and cdn buckets
+    cdn_response = s3.get_object(Bucket="cdn-bucket", Key="assets/e510f3c0-4e94-4bb9-a82e-e111f2d7e245_RECEIPT_00001.png")
+    cdn_png_bytes = cdn_response["Body"].read()
+    raw_response = s3.get_object(Bucket="raw-bucket", Key="raw_prefix/e510f3c0-4e94-4bb9-a82e-e111f2d7e245_RECEIPT_00001.png")
+    raw_png_bytes = raw_response["Body"].read()
+    assert cdn_png_bytes == raw_png_bytes, "CDN copy of Receipt PNG does not match original!"
+    assert cdn_response["ContentType"] == "image/png"
+    assert raw_response["ContentType"] == "image/png"
+
     expected_lines, expected_words, expected_letters = process_ocr_dict(
         json.loads(
-            s3.get_object(Bucket=raw_bucket, Key=f"{raw_prefix}/{uuid}.json")["Body"]
+            s3.get_object(Bucket=raw_bucket, Key="raw_prefix/e510f3c0-4e94-4bb9-a82e-e111f2d7e245.json")["Body"]
             .read()
             .decode("utf-8")
         ),
         uuid,
     )
-    cdn_receipt_response = s3.get_object(
-        Bucket="cdn-bucket", Key="assets/e510f3c0-4e94-4bb9-a82e-e111f2d7e245_RECEIPT_00001.png"
-    )
-    raw_receipt_png_bytes = cdn_receipt_response["Body"].read()
     # Probably want to query get receipt details for image and check the receipt
     _, _, _, _, _, receipts = DynamoClient(table_name).getImageDetails(uuid)
     assert len(receipts) == 1
     receipt = receipts[0]["receipt"]
 
-    assert cdn_png_bytes == raw_png_bytes, "CDN copy of PNG does not match original!"
-    assert cdn_response["ContentType"] == "image/png"
-    assert raw_receipt_png_bytes == receipt_raw_bytes, "CDN copy of receipt does not match original!"
-    assert cdn_receipt_response["ContentType"] == "image/png"
     assert Image(
         id=uuid,
         width=2480,
