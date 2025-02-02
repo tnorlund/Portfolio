@@ -40,7 +40,7 @@ def upload_json_and_png_files_for_uuid(
 
     # Get absolute paths to the JSON and PNG files in integration/JSON and integration/PNG
     base_dir = os.path.dirname(__file__)  # directory containing test__process.py
-    json_path = os.path.join(base_dir, "JSON", f"{uuid}.json")
+    json_path = os.path.join(base_dir, "JSON", f"{uuid}_SWIFT_OCR.json")
     png_path = os.path.join(base_dir, "PNG", f"{uuid}.png")
 
     # Upload .json
