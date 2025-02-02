@@ -5,7 +5,7 @@ import boto3
 
 CURRENT_DIR = os.path.dirname(__file__)
 
-IMAGE_ID = "5a63a88a-3579-408a-9cbd-031ceb86ffc7"
+IMAGE_ID = "27e58027-edd6-45af-9038-3a778feda954"
 
 if __name__ == "__main__":
     # 1) Grab data from Dynamo or wherever
@@ -16,28 +16,38 @@ if __name__ == "__main__":
         dynamo_client.getImageDetails(IMAGE_ID)
     )
 
-    # Get the GPT response from S3
     s3 = boto3.client("s3")
-    # List all objects in the /raw directory in the image's raw bucket
+
+    # Example: Get the GPT response from S3 (existing code)
     response = s3.list_objects_v2(
         Bucket=image.raw_s3_bucket,
         Prefix=f"raw/{image.id}",
     )
-    # Get all the objects with GPT in the name
     gpt_objects = [
         obj
         for obj in response.get("Contents", [])
         if "GPT" in obj["Key"]
     ]
-    # Print the GPT response
     for obj in gpt_objects:
         response = s3.get_object(
             Bucket=image.raw_s3_bucket,
             Key=obj["Key"],
         )
-        print(f"{obj['Key']}")
-        print(response["Body"].read().decode("utf-8"))
-        print()
+        # Uncomment to print GPT responses:
+        # print(f"{obj['Key']}")
+        # print(response["Body"].read().decode("utf-8"))
+        # print()
+
+    # -------------------------------------------------------------------------
+    # NEW CODE: Download the raw image file from image.raw_s3_bucket/image.raw_s3_key
+    # Save it in the PNG directory (next to the JSON directory).
+    png_dir = os.path.join(CURRENT_DIR, "integration", "PNG")
+    os.makedirs(png_dir, exist_ok=True)
+    image_filename = os.path.basename(image.raw_s3_key)
+    image_local_path = os.path.join(png_dir, image_filename)
+    print(f"Downloading raw image file from {image.raw_s3_bucket}/{image.raw_s3_key} to {image_local_path}")
+    s3.download_file(image.raw_s3_bucket, image.raw_s3_key, image_local_path)
+    # -------------------------------------------------------------------------
 
     receipts = []
     receipt_lines = []
@@ -52,9 +62,20 @@ if __name__ == "__main__":
         receipt_word_tags.extend(receipt_detail_dict["word_tags"])
         receipt_letters.extend(receipt_detail_dict["letters"])
 
-    with open(os.path.join(
-        CURRENT_DIR, "integration", "JSON", f"{IMAGE_ID}.json"
-    ), "w") as f:
+    # -------------------------------------------------------------------------
+    # NEW CODE: Download each receipt’s raw file from its raw_s3_bucket/raw_s3_key.
+    # Files will also be saved in the same PNG directory.
+    for receipt in receipts:
+        receipt_filename = os.path.basename(receipt.raw_s3_key)
+        receipt_local_path = os.path.join(png_dir, receipt_filename)
+        print(f"Downloading raw receipt file from {receipt.raw_s3_bucket}/{receipt.raw_s3_key} to {receipt_local_path}")
+        s3.download_file(receipt.raw_s3_bucket, receipt.raw_s3_key, receipt_local_path)
+    # -------------------------------------------------------------------------
+
+    # Save the JSON file (unchanged location)
+    json_dir = os.path.join(CURRENT_DIR, "integration", "JSON")
+    os.makedirs(json_dir, exist_ok=True)
+    with open(os.path.join(json_dir, f"{IMAGE_ID}.json"), "w") as f:
         json.dump({
             "images": [{
                 **dict(image),
@@ -64,18 +85,20 @@ if __name__ == "__main__":
                 }],
             "lines": [
                 {
-                key: value
-                for key, value in dict(line).items()
-                if key not in ("num_chars", "histogram")
-            }
-            for line in lines],
+                    key: value
+                    for key, value in dict(line).items()
+                    if key not in ("num_chars", "histogram")
+                }
+                for line in lines
+            ],
             "words": [
                 {
-                key: value
-                for key, value in dict(word).items()
-                if key not in ("num_chars", "histogram")
-            }
-            for word in words],
+                    key: value
+                    for key, value in dict(word).items()
+                    if key not in ("num_chars", "histogram")
+                }
+                for word in words
+            ],
             "word_tags": [dict(word_tag) for word_tag in word_tags],
             "letters": [dict(letter) for letter in letters],
             "receipts": [{
@@ -86,18 +109,20 @@ if __name__ == "__main__":
                 } for receipt in receipts],
             "receipt_lines": [
                 {
-                key: value
-                for key, value in dict(line).items()
-                if key not in ("num_chars", "histogram")
-            }
-            for line in receipt_lines],
+                    key: value
+                    for key, value in dict(line).items()
+                    if key not in ("num_chars", "histogram")
+                }
+                for line in receipt_lines
+            ],
             "receipt_words": [
                 {
-                key: value
-                for key, value in dict(word).items()
-                if key not in ("num_chars", "histogram")
-            }
-            for word in receipt_words],
+                    key: value
+                    for key, value in dict(word).items()
+                    if key not in ("num_chars", "histogram")
+                }
+                for word in receipt_words
+            ],
             "receipt_word_tags": [dict(word_tag) for word_tag in receipt_word_tags],
             "receipt_letters": [dict(letter) for letter in receipt_letters],
         }, f, indent=4)
