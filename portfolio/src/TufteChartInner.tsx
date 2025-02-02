@@ -1,4 +1,4 @@
-import React, { useRef, useState, useLayoutEffect } from "react";
+import React from "react";
 import { ReceiptWord } from "./interfaces";
 
 /** Characters you care about */
