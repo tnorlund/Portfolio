@@ -247,24 +247,25 @@ def process_ocr_dict(
 def invert_affine(a, b, c, d, e, f):
     """
     Inverts the 2x3 affine transform:
-    
+
         [ a  b  c ]
         [ d  e  f ]
         [ 0  0  1 ]
-    
+
     Returns the 6-tuple (a_inv, b_inv, c_inv, d_inv, e_inv, f_inv)
     for the inverse transform, provided the determinant is not zero.
     """
     det = a * e - b * d
     if abs(det) < 1e-14:
         raise ValueError("Singular transform cannot be inverted.")
-    a_inv =  e / det
+    a_inv = e / det
     b_inv = -b / det
-    c_inv = ( b * f - c * e) / det
+    c_inv = (b * f - c * e) / det
     d_inv = -d / det
-    e_inv =  a / det
-    f_inv = ( c * d - a * f) / det
+    e_inv = a / det
+    f_inv = (c * d - a * f) / det
     return (a_inv, b_inv, c_inv, d_inv, e_inv, f_inv)
+
 
 def cluster_receipts(
     lines: List[Line], eps: float = 0.08, min_samples: int = 2
@@ -314,73 +315,77 @@ def transform_cluster(
     cluster_letters: List[Letter],
     pil_image: PIL_Image.Image,
     image_obj: Image,
-) -> Tuple[
-    PIL_Image.Image, Receipt, List[ReceiptLine], List[ReceiptWord], List[ReceiptLetter]
-]:
+):
     """
-    Given a cluster of lines, compute an affine transformation to crop and
-    warp the corresponding region from the original image.
+    1) Compute min-area-rect
+    2) Affine warp that rectangle to (w,h)
+    3) If w>h, rotate final image 90° CCW
+    4) Post-rotate the line/word/letter coords so they match the final orientation.
     """
-    # 1) Gather all the corner points (in absolute pixel space).
+    # 1) Collect points
     points_abs = []
     for ln in cluster_lines:
         for corner in [ln.top_left, ln.top_right, ln.bottom_left, ln.bottom_right]:
             x_abs = corner["x"] * image_obj.width
-            y_abs = (1 - corner["y"]) * image_obj.height  # flip y–axis
+            y_abs = (1 - corner["y"]) * image_obj.height  # flip y
             points_abs.append((x_abs, y_abs))
     if not points_abs:
         raise ValueError("No points found for cluster transformation.")
 
-    # 2) Compute a minimal–area bounding rectangle around the points.
+    # 2) min_area_rect, box corners
     (cx, cy), (rw, rh), angle_deg = min_area_rect(points_abs)
     box_4 = box_points((cx, cy), (rw, rh), angle_deg)
-    # Reorder the four points into a consistent order: top–left, top–right, bottom–right, bottom–left.
     box_4_ordered = reorder_box_points(box_4)
 
-    # 3) Determine the destination image size.
-    w, h = int(round(rw)), int(round(rh))
+    # Destination (w,h) = round(rw), round(rh)
+    w = int(round(rw))
+    h = int(round(rh))
+    if w < 1 or h < 1:
+        raise ValueError("Degenerate bounding box for cluster.")
+
+    # 3) Compute the 2x3 “inverse” matrix for Pillow (dst->src)
+    src_tl = box_4_ordered[0]  # top-left
+    src_tr = box_4_ordered[1]  # top-right
+    src_bl = box_4_ordered[3]  # bottom-left
+
+    rotated_90 = False
     if w > h:
-        w, h = h, w  # swap if needed (e.g. to enforce a “portrait” orientation)
+        print(f"swapping w,h: {w} -> {h} for {image_obj.id}")
+        rotated_90 = True
+        w, h = h, w
 
-    # 4) Compute the affine transform.
-    # For an affine transform we need three corresponding points.
-    # Here we choose:
-    #   - Source points: top–left, top–right, and bottom–left from the detected box.
-    #   - Destination points: (0,0), (w–1, 0) and (0, h–1) respectively.
-    src_tl = box_4_ordered[0]
-    src_tr = box_4_ordered[1]
-    src_bl = box_4_ordered[3]
-    if (w - 1) == 0 or (h - 1) == 0:
-        raise ValueError("Invalid destination dimensions for affine transform.")
+    # For (dst_x, dst_y) = (0,0), we want to sample from src_tl => c = src_tl[0], f = src_tl[1]
+    # For (w-1, 0): a*(w-1)+c = src_tr[0] => a = (src_tr[0]-src_tl[0])/(w-1)
+    #                 d*(w-1)+f = src_tr[1] => d = (src_tr[1]-src_tl[1])/(w-1)
+    # For (0, h-1): b*(h-1)+c = src_bl[0], e*(h-1)+f = src_bl[1]
+    a_i = (src_tr[0] - src_tl[0]) / (w - 1) if w > 1 else 0.0
+    d_i = (src_tr[1] - src_tl[1]) / (w - 1) if w > 1 else 0.0
+    b_i = (src_bl[0] - src_tl[0]) / (h - 1) if h > 1 else 0.0
+    e_i = (src_bl[1] - src_tl[1]) / (h - 1) if h > 1 else 0.0
+    c_i = src_tl[0]
+    f_i = src_tl[1]
 
-    # Compute the transform coefficients.
-    # For destination (0,0): x = c, y = f  =>  c = src_tl[0], f = src_tl[1]
-    # For destination (w-1, 0): a*(w-1) + c = src_tr[0]  =>  a = (src_tr[0] - src_tl[0])/(w-1)
-    #                          d*(w-1) + f = src_tr[1]  =>  d = (src_tr[1] - src_tl[1])/(w-1)
-    # For destination (0, h-1): b*(h-1) + c = src_bl[0]  =>  b = (src_bl[0] - src_tl[0])/(h-1)
-    #                          e*(h-1) + f = src_bl[1]  =>  e = (src_bl[1] - src_tl[1])/(h-1)
-    a_f = (src_tr[0] - src_tl[0]) / (w - 1)
-    d_f = (src_tr[1] - src_tl[1]) / (w - 1)
-    b_f = (src_bl[0] - src_tl[0]) / (h - 1)
-    e_f = (src_bl[1] - src_tl[1]) / (h - 1)
-    c_f = src_tl[0]
-    f_f = src_tl[1]
+    # The forward matrix used by warp_affine_normalized_forward:
+    a_f, b_f, c_f, d_f, e_f, f_f = invert_affine(a_i, b_i, c_i, d_i, e_i, f_i)
 
-    a_i, b_i, c_i, d_i, e_i, f_i = invert_affine(a_f, b_f, c_f, d_f, e_f, f_f)
-
-    # 5) Apply the affine transform.
+    # 4) Warp the image
     affine_img = pil_image.transform(
         (w, h),
         PIL_Image.AFFINE,
-        (a_f, b_f, c_f, d_f, e_f, f_f),
+        (a_i, b_i, c_i, d_i, e_i, f_i),
         resample=PIL_Image.BICUBIC,
     )
 
+    # 5) Optionally rotate to get portrait
+
+    final_w, final_h = affine_img.size
+
+    # 6) Build the Receipt record
     r = Receipt(
         id=cluster_id,
         image_id=image_obj.id,
-        width=w,
-        height=h,
+        width=final_w,
+        height=final_h,
         timestamp_added=datetime.now(timezone.utc),
         raw_s3_bucket=image_obj.raw_s3_bucket,
         raw_s3_key=image_obj.raw_s3_key.replace(
@@ -408,46 +413,61 @@ def transform_cluster(
             ".png", f"_RECEIPT_{cluster_id:05d}.png"
         ),
     )
+
+    # 7) Warp lines/words/letters with the forward matrix, then rotate if needed
     receipt_lines = []
-    for line in cluster_lines:
-        line_copy = copy.deepcopy(line)
-        line_copy.warp_affine_normalized_forward(
-            a_i, b_i, c_i, d_i, e_i, f_i,
+    for ln in cluster_lines:
+        ln_copy = copy.deepcopy(ln)
+        ln_copy.warp_affine_normalized_forward(
+            a_f,
+            b_f,
+            c_f,
+            d_f,
+            e_f,
+            f_f,
             orig_width=image_obj.width,
             orig_height=image_obj.height,
-            new_width=w,
+            new_width=w,  # size BEFORE the rotate
             new_height=h,
             flip_y=True,
         )
-        receipt_lines.append(ReceiptLine(**dict(line_copy), receipt_id=cluster_id))
+        receipt_lines.append(ReceiptLine(**dict(ln_copy), receipt_id=cluster_id))
 
     receipt_words = []
-    for word in cluster_words:
-        word_copy = copy.deepcopy(word)
-        word_copy.warp_affine_normalized_forward(
-            a_i, b_i, c_i, d_i, e_i, f_i,
+    for wd in cluster_words:
+        wd_copy = copy.deepcopy(wd)
+        wd_copy.warp_affine_normalized_forward(
+            a_f,
+            b_f,
+            c_f,
+            d_f,
+            e_f,
+            f_f,
             orig_width=image_obj.width,
             orig_height=image_obj.height,
             new_width=w,
             new_height=h,
             flip_y=True,
         )
-        receipt_words.append(ReceiptWord(**dict(word_copy), receipt_id=cluster_id))
+        receipt_words.append(ReceiptWord(**dict(wd_copy), receipt_id=cluster_id))
 
     receipt_letters = []
-    for letter in cluster_letters:
-        letter_copy = copy.deepcopy(letter)
-        letter_copy.warp_affine_normalized_forward(
-            a_i, b_i, c_i, d_i, e_i, f_i,
+    for lt in cluster_letters:
+        lt_copy = copy.deepcopy(lt)
+        lt_copy.warp_affine_normalized_forward(
+            a_f,
+            b_f,
+            c_f,
+            d_f,
+            e_f,
+            f_f,
             orig_width=image_obj.width,
             orig_height=image_obj.height,
             new_width=w,
             new_height=h,
             flip_y=True,
         )
-        receipt_letters.append(
-            ReceiptLetter(**dict(letter_copy), receipt_id=cluster_id)
-        )
+        receipt_letters.append(ReceiptLetter(**dict(lt_copy), receipt_id=cluster_id))
 
     return affine_img, r, receipt_lines, receipt_words, receipt_letters
 
