@@ -12,6 +12,7 @@ from time import sleep
 from typing import Generator, List
 from uuid import uuid4
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import boto3
 from botocore.exceptions import ClientError
@@ -83,7 +84,8 @@ def upload_files_with_uuid_in_batches(
     cdn_bucket_name: str,
     cdn_prefix: str = "cdn/",
     path_prefix: str = "raw/",
-    batch_size: int = 3,
+    batch_size: int = 6,
+    sub_batch_size: int = 3,
     env: str = "dev",
 ) -> None:
     s3 = boto3.client("s3")
@@ -121,33 +123,55 @@ def upload_files_with_uuid_in_batches(
                 print(f"Uploading {temp_file.name:<41} -> s3://{bucket_name}/{s3_key}")
                 s3.upload_file(str(temp_file), bucket_name, s3_key)
 
-        # --------------------------------------------------------------------------------
-        #           Single GET request for ALL UUIDs in the batch
-        # --------------------------------------------------------------------------------
-        print("\nSending GET request for all UUIDs in this batch, then waiting for the response...")
-        domain_part = "api" if env == "prod" else f"{env}-api"
-        base_url = f"https://{domain_part}.tylernorlund.com/process"
+            # --------------------------------------------------------------------------------
+            #           GET requests for sub-batches of UUIDs
+            # --------------------------------------------------------------------------------
+            print("\nSending GET requests for sub-batches of UUIDs in this batch, then waiting for all responses...")
+            domain_part = "api" if env == "prod" else f"{env}-api"
+            base_url = f"https://{domain_part}.tylernorlund.com/process"
 
-        # Pass a comma-separated string of all UUIDs
-        params = {
-            "table_name": dynamodb_table_name,
-            "raw_bucket_name": bucket_name,
-            "raw_prefix": path_prefix,
-            "uuids": ",".join(mapped_uuids),  # <--- changed from single "uuid" to multiple
-            "cdn_bucket_name": cdn_bucket_name,
-            "cdn_prefix": cdn_prefix,
-        }
+            # Subdivide the list of UUIDs into sub-batches
+            sub_batches = list(chunked(mapped_uuids, sub_batch_size))
+            print(f"Subdivided {len(mapped_uuids)} UUIDs into {len(sub_batches)} sub-batches.")
 
-        resp = requests.get(base_url, params=params)
-        if resp.status_code == 200:
-            print(f"Successfully triggered processing for {len(mapped_uuids)} UUIDs in batch #{batch_index}")
-        else:
-            print(
-                f"Failed to trigger processing for batch #{batch_index}. "
-                f"Status: {resp.status_code}, Body: {resp.text}"
-            )
+            # Set up common parameters for the GET requests
+            params_common = {
+                "table_name": dynamodb_table_name,
+                "raw_bucket_name": bucket_name,
+                "raw_prefix": path_prefix,
+                "cdn_bucket_name": cdn_bucket_name,
+                "cdn_prefix": cdn_prefix,
+            }
 
-        print(f"Finished batch #{batch_index}.\n")
+            def call_api_for_sub_batch(sub_batch):
+                params = params_common.copy()
+                # API expects a comma-separated string of UUIDs
+                params["uuids"] = ",".join(sub_batch)
+                return requests.get(base_url, params=params)
+
+            responses = []
+            # Use a thread pool to launch sub-batch GET requests concurrently.
+            with ThreadPoolExecutor(max_workers=len(sub_batches)) as executor:
+                futures = []
+                for i, sub_batch in enumerate(sub_batches):
+                    # Wait 0.1 seconds between starting each sub-batch request
+                    if i > 0:
+                        time.sleep(0.1)
+                    futures.append(executor.submit(call_api_for_sub_batch, sub_batch))
+                
+                # Wait for all the sub-batch requests to complete
+                for future in as_completed(futures):
+                    try:
+                        response = future.result()
+                        responses.append(response)
+                        if response.status_code == 200:
+                            print(f"Sub-batch GET request succeeded: {response.request.url}")
+                        else:
+                            print(f"Sub-batch GET request failed: Status {response.status_code} - {response.text}")
+                    except Exception as e:
+                        print(f"Error during sub-batch API call: {e}")
+
+            print(f"Finished batch #{batch_index}.\n")
 
 
 def delete_items_in_table(dynamo_client: DynamoClient) -> None:
