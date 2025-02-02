@@ -47,14 +47,18 @@ def process(
         if error_code == "NoSuchBucket":
             raise ValueError(f"Bucket {raw_bucket_name} not found") from e
         elif error_code in ("NoSuchKey", "404"):
-            raise ValueError(f"UUID {uuid} not found s3://{raw_bucket_name}/{raw_prefix}/{uuid}*") from e
+            raise ValueError(
+                f"UUID {uuid} not found s3://{raw_bucket_name}/{raw_prefix}/{uuid}*"
+            ) from e
         elif error_code == "AccessDenied":
             raise ValueError(f"Access denied to s3://{raw_bucket_name}/{raw_prefix}/*")
         else:
             raise
 
     # Read and decode the OCR JSON.
-    ocr_results = s3.get_object(Bucket=raw_bucket_name, Key=f"{raw_prefix}/{uuid}.json")["Body"]
+    ocr_results = s3.get_object(
+        Bucket=raw_bucket_name, Key=f"{raw_prefix}/{uuid}.json"
+    )["Body"]
     ocr_results = ocr_results.read().decode("utf-8")
     try:
         ocr_results = json.loads(ocr_results)
@@ -63,7 +67,9 @@ def process(
 
     # Read the image (and verify it isn’t corrupted).
     try:
-        image_bytes = s3.get_object(Bucket=raw_bucket_name, Key=f"{raw_prefix}/{uuid}.png")["Body"].read()
+        image_bytes = s3.get_object(
+            Bucket=raw_bucket_name, Key=f"{raw_prefix}/{uuid}.png"
+        )["Body"].read()
         image = PIL_Image.open(BytesIO(image_bytes))
         image.verify()  # force Pillow to fully parse the image
     except UnidentifiedImageError as e:
@@ -137,7 +143,9 @@ def process(
             if error_code == "NoSuchBucket":
                 raise ValueError(f"Bucket {cdn_bucket_name} not found")
             elif error_code == "AccessDenied":
-                raise ValueError(f"Access denied to s3://{cdn_bucket_name}/{cdn_prefix}")
+                raise ValueError(
+                    f"Access denied to s3://{cdn_bucket_name}/{cdn_prefix}"
+                )
             else:
                 raise
 
@@ -153,7 +161,9 @@ def process(
             if error_code == "NoSuchBucket":
                 raise ValueError(f"Bucket {raw_bucket_name} not found")
             elif error_code == "AccessDenied":
-                raise ValueError(f"Access denied to s3://{raw_bucket_name}/{raw_prefix}")
+                raise ValueError(
+                    f"Access denied to s3://{raw_bucket_name}/{raw_prefix}"
+                )
             else:
                 raise
 
@@ -211,7 +221,9 @@ def process_ocr_dict(
             )
             words.append(word_obj)
 
-            for letter_idx, letter_data in enumerate(word_data.get("letters", []), start=1):
+            for letter_idx, letter_data in enumerate(
+                word_data.get("letters", []), start=1
+            ):
                 letter_obj = Letter(
                     image_id=image_id,
                     line_id=line_idx,
@@ -231,6 +243,28 @@ def process_ocr_dict(
 
     return lines, words, letters
 
+
+def invert_affine(a, b, c, d, e, f):
+    """
+    Inverts the 2x3 affine transform:
+    
+        [ a  b  c ]
+        [ d  e  f ]
+        [ 0  0  1 ]
+    
+    Returns the 6-tuple (a_inv, b_inv, c_inv, d_inv, e_inv, f_inv)
+    for the inverse transform, provided the determinant is not zero.
+    """
+    det = a * e - b * d
+    if abs(det) < 1e-14:
+        raise ValueError("Singular transform cannot be inverted.")
+    a_inv =  e / det
+    b_inv = -b / det
+    c_inv = ( b * f - c * e) / det
+    d_inv = -d / det
+    e_inv =  a / det
+    f_inv = ( c * d - a * f) / det
+    return (a_inv, b_inv, c_inv, d_inv, e_inv, f_inv)
 
 def cluster_receipts(
     lines: List[Line], eps: float = 0.08, min_samples: int = 2
@@ -325,19 +359,20 @@ def transform_cluster(
     #                          d*(w-1) + f = src_tr[1]  =>  d = (src_tr[1] - src_tl[1])/(w-1)
     # For destination (0, h-1): b*(h-1) + c = src_bl[0]  =>  b = (src_bl[0] - src_tl[0])/(h-1)
     #                          e*(h-1) + f = src_bl[1]  =>  e = (src_bl[1] - src_tl[1])/(h-1)
-    a_ = (src_tr[0] - src_tl[0]) / (w - 1)
-    d_ = (src_tr[1] - src_tl[1]) / (w - 1)
-    b_ = (src_bl[0] - src_tl[0]) / (h - 1)
-    e_ = (src_bl[1] - src_tl[1]) / (h - 1)
-    c_ = src_tl[0]
-    f_ = src_tl[1]
-    affine_params = (a_, b_, c_, d_, e_, f_)
+    a_f = (src_tr[0] - src_tl[0]) / (w - 1)
+    d_f = (src_tr[1] - src_tl[1]) / (w - 1)
+    b_f = (src_bl[0] - src_tl[0]) / (h - 1)
+    e_f = (src_bl[1] - src_tl[1]) / (h - 1)
+    c_f = src_tl[0]
+    f_f = src_tl[1]
+
+    a_i, b_i, c_i, d_i, e_i, f_i = invert_affine(a_f, b_f, c_f, d_f, e_f, f_f)
 
     # 5) Apply the affine transform.
     affine_img = pil_image.transform(
         (w, h),
         PIL_Image.AFFINE,
-        affine_params,
+        (a_f, b_f, c_f, d_f, e_f, f_f),
         resample=PIL_Image.BICUBIC,
     )
 
@@ -348,8 +383,9 @@ def transform_cluster(
         height=h,
         timestamp_added=datetime.now(timezone.utc),
         raw_s3_bucket=image_obj.raw_s3_bucket,
-        raw_s3_key=image_obj.raw_s3_key.replace('.png', f'_RECEIPT_{cluster_id:05d}.png'),
-
+        raw_s3_key=image_obj.raw_s3_key.replace(
+            ".png", f"_RECEIPT_{cluster_id:05d}.png"
+        ),
         top_left={
             "x": box_4_ordered[0][0] / image_obj.width,
             "y": 1 - box_4_ordered[0][1] / image_obj.height,
@@ -368,24 +404,51 @@ def transform_cluster(
         },
         sha256=calculate_sha256_from_bytes(affine_img.tobytes()),
         cdn_s3_bucket=image_obj.cdn_s3_bucket,
-        cdn_s3_key=image_obj.cdn_s3_key.replace('.png', f'_RECEIPT_{cluster_id:05d}.png'),
+        cdn_s3_key=image_obj.cdn_s3_key.replace(
+            ".png", f"_RECEIPT_{cluster_id:05d}.png"
+        ),
     )
     receipt_lines = []
     for line in cluster_lines:
         line_copy = copy.deepcopy(line)
-        line_copy.warp_affine(*affine_params)
+        line_copy.warp_affine_normalized_forward(
+            a_i, b_i, c_i, d_i, e_i, f_i,
+            orig_width=image_obj.width,
+            orig_height=image_obj.height,
+            new_width=w,
+            new_height=h,
+            flip_y=True,
+        )
         receipt_lines.append(ReceiptLine(**dict(line_copy), receipt_id=cluster_id))
+
     receipt_words = []
     for word in cluster_words:
         word_copy = copy.deepcopy(word)
-        word_copy.warp_affine(*affine_params)
+        word_copy.warp_affine_normalized_forward(
+            a_i, b_i, c_i, d_i, e_i, f_i,
+            orig_width=image_obj.width,
+            orig_height=image_obj.height,
+            new_width=w,
+            new_height=h,
+            flip_y=True,
+        )
         receipt_words.append(ReceiptWord(**dict(word_copy), receipt_id=cluster_id))
+
     receipt_letters = []
     for letter in cluster_letters:
         letter_copy = copy.deepcopy(letter)
-        letter_copy.warp_affine(*affine_params)
-        receipt_letters.append(ReceiptLetter(**dict(letter_copy), receipt_id=cluster_id))
-    
+        letter_copy.warp_affine_normalized_forward(
+            a_i, b_i, c_i, d_i, e_i, f_i,
+            orig_width=image_obj.width,
+            orig_height=image_obj.height,
+            new_width=w,
+            new_height=h,
+            flip_y=True,
+        )
+        receipt_letters.append(
+            ReceiptLetter(**dict(letter_copy), receipt_id=cluster_id)
+        )
+
     return affine_img, r, receipt_lines, receipt_words, receipt_letters
 
 
@@ -419,22 +482,36 @@ def convex_hull(points: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
 
     lower = []
     for p in points:
-        while len(lower) >= 2 and ((lower[-1][0] - lower[-2][0]) * (p[1] - lower[-2][1]) -
-                                   (lower[-1][1] - lower[-2][1]) * (p[0] - lower[-2][0])) <= 0:
+        while (
+            len(lower) >= 2
+            and (
+                (lower[-1][0] - lower[-2][0]) * (p[1] - lower[-2][1])
+                - (lower[-1][1] - lower[-2][1]) * (p[0] - lower[-2][0])
+            )
+            <= 0
+        ):
             lower.pop()
         lower.append(p)
 
     upper = []
     for p in reversed(points):
-        while len(upper) >= 2 and ((upper[-1][0] - upper[-2][0]) * (p[1] - upper[-2][1]) -
-                                   (upper[-1][1] - upper[-2][1]) * (p[0] - upper[-2][0])) <= 0:
+        while (
+            len(upper) >= 2
+            and (
+                (upper[-1][0] - upper[-2][0]) * (p[1] - upper[-2][1])
+                - (upper[-1][1] - upper[-2][1]) * (p[0] - upper[-2][0])
+            )
+            <= 0
+        ):
             upper.pop()
         upper.append(p)
 
     return lower[:-1] + upper[:-1]
 
 
-def min_area_rect(points: List[Tuple[float, float]]) -> Tuple[Tuple[float, float], Tuple[float, float], float]:
+def min_area_rect(
+    points: List[Tuple[float, float]]
+) -> Tuple[Tuple[float, float], Tuple[float, float], float]:
     """
     Compute the minimum–area bounding rectangle of a set of 2D points.
     Returns a tuple of:
@@ -461,8 +538,10 @@ def min_area_rect(points: List[Tuple[float, float]]) -> Tuple[Tuple[float, float
     n = len(hull)
     min_area = float("inf")
     best_rect = ((0, 0), (0, 0), 0)
+
     def edge_angle(p1, p2):
         return math.atan2(p2[1] - p1[1], p2[0] - p1[0])
+
     for i in range(n):
         p1 = hull[i]
         p2 = hull[(i + 1) % n]
@@ -486,7 +565,9 @@ def min_area_rect(points: List[Tuple[float, float]]) -> Tuple[Tuple[float, float
     return best_rect
 
 
-def box_points(center: Tuple[float, float], size: Tuple[float, float], angle_deg: float) -> List[Tuple[float, float]]:
+def box_points(
+    center: Tuple[float, float], size: Tuple[float, float], angle_deg: float
+) -> List[Tuple[float, float]]:
     """
     Given a rectangle defined by center, size, and rotation angle (in degrees),
     compute its 4 corner coordinates (in order).
