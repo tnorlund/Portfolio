@@ -69,6 +69,7 @@ lambda_policy = aws.iam.Policy(
                         # ---------- S3 Permissions (Raw Bucket) ----------
                         "Effect": "Allow",
                         "Action": [
+                            "s3:PutObject",
                             "s3:GetObject",
                             "s3:HeadObject",
                             "s3:ListBucket",
