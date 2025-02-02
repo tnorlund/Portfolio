@@ -129,7 +129,18 @@ class Image:
         Returns:
             str: The string representation of the Image object
         """
-        return f"Image(id='{self.id}')"
+        return (
+            "Image("
+                f"id='{self.id}', "
+                f"width={self.width}, "
+                f"height={self.height}, "
+                f"timestamp_added={self.timestamp_added}, "
+                f"raw_s3_bucket='{self.raw_s3_bucket}', "
+                f"raw_s3_key='{self.raw_s3_key}', "
+                f"sha256='{self.sha256}', "
+                f"cdn_s3_bucket='{self.cdn_s3_bucket}', "
+                f"cdn_s3_key='{self.cdn_s3_key}'"
+                ")")
 
     def __iter__(self) -> Generator[Tuple[str, int], None, None]:
         """Returns an iterator over the Image object
