@@ -10,9 +10,6 @@ from dynamo_db import dynamodb_table
 # Import the Lambda Layer from the lambda_layer module
 from lambda_layer import lambda_layer
 
-from raw_bucket import raw_bucket
-from s3_website import site_bucket
-
 # Reference the directory containing index.py
 HANDLER_DIR = os.path.join(os.path.dirname(__file__), "handler")
 # Get the route name from the directory name
@@ -39,60 +36,20 @@ lambda_role = aws.iam.Role(
     }""",
 )
 
+# Attach the necessary policies to the role
 lambda_policy = aws.iam.Policy(
     f"api_{ROUTE_NAME}_lambda_policy",
-    description="IAM policy for '/process' route Lambda to query DynamoDB",
-    policy=pulumi.Output.all(
-        dynamodb_table.arn,
-        raw_bucket.arn,
-        site_bucket.arn,
-    ).apply(
-        lambda arns: json.dumps(
+    description="IAM policy for '/images' route Lambda to query DynamoDB",
+    policy=dynamodb_table.arn.apply(
+        lambda arn: json.dumps(
             {
                 "Version": "2012-10-17",
                 "Statement": [
                     {
-                        # ---------- DynamoDB Permissions ----------
                         "Effect": "Allow",
-                        "Action": [
-                            "dynamodb:Query",
-                            "dynamodb:DescribeTable",
-                            "dynamodb:PutItem",
-                            "dynamodb:BatchWriteItem",
-                        ],
-                        "Resource": [
-                            arns[0],  # dynamo_arn
-                            f"{arns[0]}/index/GSI1",
-                        ],
-                    },
-                    {
-                        # ---------- S3 Permissions (Raw Bucket) ----------
-                        "Effect": "Allow",
-                        "Action": [
-                            "s3:PutObject",
-                            "s3:GetObject",
-                            "s3:HeadObject",
-                            "s3:ListBucket",
-                        ],
-                        "Resource": [
-                            arns[1],  # raw_arn
-                            f"{arns[1]}/*",
-                        ],
-                    },
-                    {
-                        # ---------- S3 Permissions (CDN Bucket) ----------
-                        "Effect": "Allow",
-                        "Action": [
-                            "s3:PutObject",
-                            "s3:GetObject",
-                            "s3:HeadObject",
-                            "s3:ListBucket",
-                        ],
-                        "Resource": [
-                            arns[2],  # cdn_arn
-                            f"{arns[2]}/*",
-                        ],
-                    },
+                        "Action": ["dynamodb:Query", "dynamodb:DescribeTable"],
+                        "Resource": [arn, f"{arn}/index/GSI2"],
+                    }
                 ],
             }
         )
@@ -113,7 +70,7 @@ aws.iam.RolePolicyAttachment(
 )
 
 # Create the Lambda function for the "user" route
-process_lambda = aws.lambda_.Function(
+receipt_details_lambda = aws.lambda_.Function(
     f"api_{ROUTE_NAME}_GET_lambda",
     runtime="python3.13",  # or whichever version you prefer
     role=lambda_role.arn,
@@ -129,8 +86,8 @@ process_lambda = aws.lambda_.Function(
             "DYNAMODB_TABLE_NAME": DYNAMODB_TABLE_NAME,
         }
     },
-    memory_size=3072,  # Increase RAM to 3 GB
-    timeout=300,  # Increase timeout to 5 minutes
+    memory_size=1024,  # Increase RAM to 512 MB
+    timeout=30,  # Increase timeout to 30 seconds
 )
 
 # CloudWatch log group for the Lambda function

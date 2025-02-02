@@ -83,7 +83,7 @@ def upload_files_with_uuid_in_batches(
     cdn_bucket_name: str,
     cdn_prefix: str = "cdn/",
     path_prefix: str = "raw/",
-    batch_size: int = 10,
+    batch_size: int = 3,
     env: str = "dev",
 ) -> None:
     s3 = boto3.client("s3")
