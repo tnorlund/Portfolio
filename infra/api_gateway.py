@@ -8,7 +8,7 @@ from routes.image_details.infra import image_details_lambda
 from routes.receipts.infra import receipts_lambda
 from routes.receipt_word_tag.infra import receipt_word_tag_lambda
 from routes.process.infra import process_lambda
-from raw_bucket import raw_bucket
+from routes.receipt_details.infra import receipt_details_lambda
 
 # Detect the current Pulumi stack
 stack = pulumi.get_stack()
@@ -148,6 +148,33 @@ lambda_permission_receipts = aws.lambda_.Permission(
     source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
 )
 
+# /receipt_details
+integration_receipt_details = aws.apigatewayv2.Integration(
+    "receipt_details_lambda_integration",
+    api_id=api.id,
+    integration_type="AWS_PROXY",
+    integration_uri=receipt_details_lambda.invoke_arn,
+    integration_method="POST",
+    payload_format_version="2.0",
+)
+route_receipt_details = aws.apigatewayv2.Route(
+    "receipt_details_route",
+    api_id=api.id,
+    route_key="GET /receipt_details",
+    target=integration_receipt_details.id.apply(lambda id: f"integrations/{id}"),
+    opts=pulumi.ResourceOptions(
+        replace_on_changes=["route_key", "target"],
+        delete_before_replace=True,
+    ),
+)
+lambda_permission_receipt_details = aws.lambda_.Permission(
+    "receipt_details_lambda_permission",
+    action="lambda:InvokeFunction",
+    function=receipt_details_lambda.name,
+    principal="apigateway.amazonaws.com",
+    source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
+)
+
 # /receipt_word_tag
 integration_receipt_word_tag = aws.apigatewayv2.Integration(
     "receipt_word_tag_lambda_integration",
@@ -244,6 +271,11 @@ stage = aws.apigatewayv2.Stage(
         },
         {
             "routeKey": route_process.route_key,
+            "throttlingBurstLimit": 5000,
+            "throttlingRateLimit": 10000,
+        },
+        {
+            "routeKey": route_receipt_details.route_key,
             "throttlingBurstLimit": 5000,
             "throttlingRateLimit": 10000,
         },
