@@ -97,7 +97,7 @@ def process(
         raw_s3_bucket=raw_bucket_name,
         raw_s3_key=f"{raw_prefix}/{uuid}.png",
         cdn_s3_bucket=cdn_bucket_name,
-        cdn_s3_key=f"{cdn_prefix}{uuid}.png",
+        cdn_s3_key=f"{cdn_prefix}/{uuid}.png",
         sha256=calculate_sha256_from_bytes(image_bytes),
     )
     lines, words, letters = process_ocr_dict(ocr_results, uuid)
@@ -133,7 +133,29 @@ def process(
                 ContentType="image/png",
             )
         except ClientError as e:
-            raise ValueError(f"Error uploading receipt for cluster {cluster_id}: {e}") from e
+            error_code = e.response["Error"]["Code"]
+            if error_code == "NoSuchBucket":
+                raise ValueError(f"Bucket {cdn_bucket_name} not found")
+            elif error_code == "AccessDenied":
+                raise ValueError(f"Access denied to s3://{cdn_bucket_name}/{cdn_prefix}")
+            else:
+                raise
+
+        try:
+            s3.put_object(
+                Bucket=raw_bucket_name,
+                Key=f"{raw_prefix}/{uuid}_RECEIPT_{cluster_id:05d}.png",
+                Body=png_data,
+                ContentType="image/png",
+            )
+        except ClientError as e:
+            error_code = e.response["Error"]["Code"]
+            if error_code == "NoSuchBucket":
+                raise ValueError(f"Bucket {raw_bucket_name} not found")
+            elif error_code == "AccessDenied":
+                raise ValueError(f"Access denied to s3://{raw_bucket_name}/{raw_prefix}")
+            else:
+                raise
 
         DynamoClient(table_name).addReceipt(r)
         DynamoClient(table_name).addReceiptLines(r_lines)
@@ -326,7 +348,8 @@ def transform_cluster(
         height=h,
         timestamp_added=datetime.now(timezone.utc),
         raw_s3_bucket=image_obj.raw_s3_bucket,
-        raw_s3_key=image_obj.raw_s3_key,
+        raw_s3_key=image_obj.raw_s3_key.replace('.png', f'_RECEIPT_{cluster_id:05d}.png'),
+
         top_left={
             "x": box_4_ordered[0][0] / image_obj.width,
             "y": 1 - box_4_ordered[0][1] / image_obj.height,
@@ -482,4 +505,5 @@ def box_points(center: Tuple[float, float], size: Tuple[float, float], angle_deg
         rx = cos_a * lx - sin_a * ly
         ry = sin_a * lx + cos_a * ly
         corners_world.append((cx + rx, cy + ry))
+
     return corners_world
