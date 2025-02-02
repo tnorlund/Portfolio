@@ -56,6 +56,7 @@ def install_dependencies():
             "pip install --upgrade pip && "
             f"pip install --target {PYTHON_TARGET} -r {REQUIREMENTS_PATH} && "
             f"pip install --target {PYTHON_TARGET} ."
+            f"chmod -R a+w {PYTHON_TARGET}"
         )
     ])
 
