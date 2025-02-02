@@ -5,7 +5,7 @@ import boto3
 
 CURRENT_DIR = os.path.dirname(__file__)
 
-IMAGE_ID = "27e58027-edd6-45af-9038-3a778feda954"
+IMAGE_ID = "2608fbeb-dd25-4ab8-8034-5795282b6cd6"
 
 if __name__ == "__main__":
     # 1) Grab data from Dynamo or wherever
