@@ -150,6 +150,7 @@ class _Letter:
                 KeyConditionExpression="#t = :val",
                 ExpressionAttributeNames={"#t": "TYPE"},
                 ExpressionAttributeValues={":val": {"S": "LETTER"}},
+                ScanIndexForward=True,
             )
             letters.extend([itemToLetter(item) for item in response["Items"]])
 
@@ -161,6 +162,7 @@ class _Letter:
                     ExpressionAttributeNames={"#t": "TYPE"},
                     ExpressionAttributeValues={":val": {"S": "LETTER"}},
                     ExclusiveStartKey=response["LastEvaluatedKey"],
+                    ScanIndexForward=True,
                 )
                 letters.extend([itemToLetter(item) for item in response["Items"]])
             return letters
