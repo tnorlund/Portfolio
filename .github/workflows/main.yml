@@ -42,9 +42,6 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: 20
-
-      - name: Set up Docker
-        uses: docker/setup-buildx-action@v3
       
       - name: Set up AWS CLI
         uses: aws-actions/configure-aws-credentials@v4
@@ -67,30 +64,6 @@ jobs:
       - name: Install Pulumi Python dependencies
         run: pip install -r requirements.txt
         working-directory: infra
-
-      - name: Build and push Docker image
-        run: |
-          export ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text --region ${REGION})
-          # Authenticate with ECR
-          aws ecr get-login-password --region ${REGION} | docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com
-
-          # Ensure ECR repository exists
-          aws ecr describe-repositories --repository-names cluster-ocr --region ${REGION} || \
-          aws ecr create-repository --repository-name cluster-ocr --region ${REGION}
-
-          # Build the Docker image
-          docker buildx build --platform=linux/amd64 --load -t cluster-ocr:prod -f ingestion/Dockerfile .
-
-          # Tag the image for ECR
-          docker tag cluster-ocr:prod ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/cluster-ocr:prod
-
-          # Push the image to ECR
-          docker push ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/cluster-ocr:prod
-        working-directory: infra
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          REGION: us-east-1
 
       - name: Pulumi Deploy
         uses: pulumi/actions@v6
