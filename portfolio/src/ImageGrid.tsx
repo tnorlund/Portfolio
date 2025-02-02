@@ -7,7 +7,7 @@ export default function ImageGrid() {
   const [imageReceiptLines, setImageReceiptLines] = useState<ImageReceiptsLines[]>([]);
 
   useEffect(() => {
-    fetchImages()
+    fetchImages(10)
       .then((imageItems) => setImageReceiptLines(imageItems))
       .catch((error) => console.error('Error fetching images:', error));
   }, []);
@@ -24,6 +24,10 @@ export default function ImageGrid() {
         const scaledHeight = baseWidth * aspectRatio;
 
         return (
+          <div>
+          <h3 key={image.id}>{image.id}</h3>
+          
+          
           <svg
             key={image.id}
             width={baseWidth}
@@ -51,6 +55,8 @@ export default function ImageGrid() {
               BoundingBoxLine(line, image, 'blue')
             ))}
           </svg>
+          
+          </div>
         );
       })}
     </div>
