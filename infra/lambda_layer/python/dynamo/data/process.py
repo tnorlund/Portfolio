@@ -572,10 +572,10 @@ def min_area_rect(
     if len(hull) < 3:
         xs = [p[0] for p in hull]
         ys = [p[1] for p in hull]
-        minx, maxx = min(xs), max(xs)
-        miny, maxy = min(ys), max(ys)
-        width, height = (maxx - minx), (maxy - miny)
-        cx, cy = (minx + width / 2.0), (miny + height / 2.0)
+        min_x, max_x = min(xs), max(xs)
+        min_y, max_y = min(ys), max(ys)
+        width, height = (max_x - min_x), (max_y - min_y)
+        cx, cy = (min_x + width / 2.0), (min_y + height / 2.0)
         return ((cx, cy), (width, height), 0.0)
 
     n = len(hull)
