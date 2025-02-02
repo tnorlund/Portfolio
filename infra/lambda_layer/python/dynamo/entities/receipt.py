@@ -182,7 +182,24 @@ class Receipt:
         Returns:
             str: The string representation of the Receipt object
         """
-        return f"Receipt(id={int(self.id)}, image_id='{self.image_id}')"
+        return (
+            "Receipt("
+            f"image_id='{self.image_id}', "
+            f"id={int(self.id)}, "
+            f"width={self.width}, "
+            f"height={self.height}, "
+            f"timestamp_added={self.timestamp_added}, "
+            f"raw_s3_bucket='{self.raw_s3_bucket}', "
+            f"raw_s3_key='{self.raw_s3_key}', "
+            f"top_left={self.top_left}, "
+            f"top_right={self.top_right}, "
+            f"bottom_left={self.bottom_left}, "
+            f"bottom_right={self.bottom_right}, "
+            f"sha256='{self.sha256}', "
+            f"cdn_s3_bucket='{self.cdn_s3_bucket}', "
+            f"cdn_s3_key='{self.cdn_s3_key}'"
+            ")"
+        )
 
     def __iter__(self) -> Generator[Tuple[str, int], None, None]:
         """Returns an iterator over the Receipt object

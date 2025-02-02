@@ -83,7 +83,7 @@ def test_process(
 
     # Arrange
     s3 = boto3.client("s3", region_name="us-east-1")
-    uuid = "e510f3c0-4e94-4bb9-a82e-e111f2d7e245"
+    uuid = "27e58027-edd6-45af-9038-3a778feda954"
     raw_prefix = "raw_prefix"
     upload_json_and_png_files_for_uuid(s3, raw_bucket, uuid, raw_prefix)
     receipt_raw_bytes = get_raw_bytes_receipt(uuid, 1)
@@ -94,18 +94,18 @@ def test_process(
 
     # Assert
     # The PNG should be in both the raw and cdn buckets
-    cdn_response = s3.get_object(Bucket="cdn-bucket", Key="assets/e510f3c0-4e94-4bb9-a82e-e111f2d7e245.png")
+    cdn_response = s3.get_object(Bucket="cdn-bucket", Key="assets/27e58027-edd6-45af-9038-3a778feda954.png")
     cdn_png_bytes = cdn_response["Body"].read()
-    raw_response = s3.get_object(Bucket="raw-bucket", Key="raw_prefix/e510f3c0-4e94-4bb9-a82e-e111f2d7e245.png")
+    raw_response = s3.get_object(Bucket="raw-bucket", Key="raw_prefix/27e58027-edd6-45af-9038-3a778feda954.png")
     raw_png_bytes = raw_response["Body"].read()
     assert cdn_png_bytes == raw_png_bytes, "CDN copy of PNG does not match original!"
     assert cdn_response["ContentType"] == "image/png"
     assert raw_response["ContentType"] == "image/png"
 
     # The Receipt PNG should be in both the raw and cdn buckets
-    cdn_response = s3.get_object(Bucket="cdn-bucket", Key="assets/e510f3c0-4e94-4bb9-a82e-e111f2d7e245_RECEIPT_00001.png")
+    cdn_response = s3.get_object(Bucket="cdn-bucket", Key="assets/27e58027-edd6-45af-9038-3a778feda954_RECEIPT_00001.png")
     cdn_png_bytes = cdn_response["Body"].read()
-    raw_response = s3.get_object(Bucket="raw-bucket", Key="raw_prefix/e510f3c0-4e94-4bb9-a82e-e111f2d7e245_RECEIPT_00001.png")
+    raw_response = s3.get_object(Bucket="raw-bucket", Key="raw_prefix/27e58027-edd6-45af-9038-3a778feda954_RECEIPT_00001.png")
     raw_png_bytes = raw_response["Body"].read()
     assert cdn_png_bytes == raw_png_bytes, "CDN copy of Receipt PNG does not match original!"
     assert cdn_response["ContentType"] == "image/png"
@@ -113,7 +113,7 @@ def test_process(
 
     expected_lines, expected_words, expected_letters = process_ocr_dict(
         json.loads(
-            s3.get_object(Bucket=raw_bucket, Key="raw_prefix/e510f3c0-4e94-4bb9-a82e-e111f2d7e245.json")["Body"]
+            s3.get_object(Bucket=raw_bucket, Key="raw_prefix/27e58027-edd6-45af-9038-3a778feda954.json")["Body"]
 
             .read()
             .decode("utf-8")
@@ -134,11 +134,11 @@ def test_process(
         timestamp_added="2021-01-01T00:00:00+00:00",
 
         raw_s3_bucket="raw-bucket",
-        raw_s3_key="raw_prefix/e510f3c0-4e94-4bb9-a82e-e111f2d7e245.png",
+        raw_s3_key="raw_prefix/27e58027-edd6-45af-9038-3a778feda954.png",
         cdn_s3_bucket="cdn-bucket",
-        cdn_s3_key="assets/e510f3c0-4e94-4bb9-a82e-e111f2d7e245.png",
+        cdn_s3_key="assets/27e58027-edd6-45af-9038-3a778feda954.png",
 
-        sha256="e0cf0ccf76e613858c445733a4bb3292342c22484f237b1b2213415a70b6b246",
+        sha256="84418357a7248b72d9ed566ea52871f6cb14338144884be50790402f1ecb7984",
     ) == DynamoClient(table_name).getImage(uuid)
     assert expected_lines == DynamoClient(table_name).listLines()
     assert expected_words == DynamoClient(table_name).listWords()
@@ -147,21 +147,18 @@ def test_process(
         Receipt(
             id=1,
             image_id=uuid,
-            width=859,
-            height=3156,
+            width=883,
+            height=2162,
             timestamp_added="2021-01-01T00:00:00+00:00",
-
             raw_s3_bucket="raw-bucket",
-            raw_s3_key=f"raw_prefix/e510f3c0-4e94-4bb9-a82e-e111f2d7e245_RECEIPT_00001.png",
-
-            top_left={"x": 0.3055130184694144, "y": 0.9011719136938777},
-            top_right={"x": 0.6518054488955656, "y": 0.8980014679715593},
-            bottom_left={"x": 0.28903475894519004, "y": 0.001636622217000783},
-            bottom_right={"x": 0.6353271893713412, "y": -0.0015338235053175},
-
+            raw_s3_key="raw_prefix/27e58027-edd6-45af-9038-3a778feda954_RECEIPT_00001.png",
+            top_left={"x": 0.3385116284949973, "y": 0.8528895959899104},
+            top_right={"x": 0.6916728645345689, "y": 0.8201395064710936},
+            bottom_left={"x": 0.2251505841755011, "y": 0.24193551921666712},
+            bottom_right={"x": 0.5783118202150728, "y": 0.20918542969785037},
             cdn_s3_bucket="cdn-bucket",
-            cdn_s3_key="assets/e510f3c0-4e94-4bb9-a82e-e111f2d7e245_RECEIPT_00001.png",
-            sha256="60ffc3cdcc1c0cbb15b2d063a686cee6469c003ee7bda5d549aecf657610b627",
+            cdn_s3_key="assets/27e58027-edd6-45af-9038-3a778feda954_RECEIPT_00001.png",
+            sha256="3e98bc86eff21a766b2cf722bc9ed2b8363b17f7531c9001df980ff2f9ca083e",
         )
         == receipt
     )
@@ -275,7 +272,7 @@ def test_process_bad_png(s3_bucket):
 def test_process_no_cdn_bucket(s3_bucket):
     # 1. Arrange: Put a ".json" and ".png" in the bucket
     s3 = boto3.client("s3", region_name="us-east-1")
-    uuid = "e510f3c0-4e94-4bb9-a82e-e111f2d7e245"
+    uuid = "27e58027-edd6-45af-9038-3a778feda954"
     raw_prefix = "raw_prefix"
     upload_json_and_png_files_for_uuid(s3, s3_bucket, uuid, raw_prefix)
 
@@ -294,7 +291,7 @@ def test_process_no_cdn_bucket(s3_bucket):
 def test_process_access_denied_cdn_bucket(s3_buckets, dynamodb_table, monkeypatch):
     raw_bucket, cdn_bucket = s3_buckets
     table_name = dynamodb_table
-    uuid = "e510f3c0-4e94-4bb9-a82e-e111f2d7e245"
+    uuid = "27e58027-edd6-45af-9038-3a778feda954"
     raw_prefix = "raw_prefix"
     s3 = boto3.client("s3", region_name="us-east-1")
     upload_json_and_png_files_for_uuid(s3, raw_bucket, uuid, raw_prefix)
