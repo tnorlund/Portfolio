@@ -29,7 +29,7 @@ export default function ImageGrid() {
           
           
           <svg
-            key={image.id}
+            key={`svg-${image.id}`}
             width={baseWidth}
             height={scaledHeight}
             style={{ margin: '8px', backgroundColor: 'gray' }}

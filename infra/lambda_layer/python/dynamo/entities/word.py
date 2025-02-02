@@ -7,7 +7,7 @@ from dynamo.entities.util import (
     _format_float,
     shear_point,
 )
-from math import atan2, sin, cos, pi, radians
+from math import atan2, degrees, sin, cos, pi, radians
 
 
 class Word:
@@ -46,7 +46,7 @@ class Word:
             line_id (int): The ID of the line the word is in.
             id (int): The ID of the word.
             text (str): The text of the word.
-            bounding_box (dict): The bounding box of the word 
+            bounding_box (dict): The bounding box of the word
                 (keys: 'x', 'y', 'width', 'height').
             top_right (dict): The top right corner of the word (keys: 'x', 'y').
             top_left (dict): The top left corner of the word (keys: 'x', 'y').
@@ -153,7 +153,7 @@ class Word:
         Generates the primary key for this Word in DynamoDB.
 
         Returns:
-            dict: A dictionary containing "PK" and "SK" for DynamoDB. 
+            dict: A dictionary containing "PK" and "SK" for DynamoDB.
                   - "PK" is of the form "IMAGE#<image_id>"
                   - "SK" is of the form "LINE#<line_id>#WORD#<word_id>"
         """
@@ -294,7 +294,7 @@ class Word:
     ) -> None:
         """
         Rotates the Word by the specified angle around (rotate_origin_x, rotate_origin_y).
-        
+
         Only rotates if angle is within:
             - [-π/2, π/2] when use_radians=True
             - [-90°, 90°] when use_radians=False
@@ -307,11 +307,11 @@ class Word:
                 if `use_radians=False`, else radians.
             rotate_origin_x (float): The x-coordinate of the rotation origin.
             rotate_origin_y (float): The y-coordinate of the rotation origin.
-            use_radians (bool, optional): Indicates if the angle is in radians. 
+            use_radians (bool, optional): Indicates if the angle is in radians.
                 Defaults to True.
 
         Raises:
-            ValueError: If the angle is outside the allowed range 
+            ValueError: If the angle is outside the allowed range
                 ([-π/2, π/2] in radians or [-90°, 90°] in degrees).
         """
 
@@ -457,6 +457,79 @@ class Word:
         self.angle_radians = new_angle_radians
         self.angle_degrees = new_angle_degrees
 
+    def warp_affine_normalized_forward(
+        self,
+        a_f, b_f, c_f,
+        d_f, e_f, f_f,
+        orig_width, orig_height,
+        new_width, new_height,
+        flip_y=False
+    ):
+        """
+        Applies the 'forward' 2x3 transform:
+            x_new = a_f * x_old + b_f * y_old + c_f
+            y_new = d_f * x_old + e_f * y_old + f_f
+        where (x_old, y_old) are normalized wrt the original image,
+        and (x_new, y_new) become normalized wrt the new subimage.
+
+        So the final corners are in [0..1] of the new image.
+
+        Args:
+            a_f,b_f,c_f,d_f,e_f,f_f (float): 
+                The forward transform old->new in pixel space.
+            orig_width, orig_height (int):
+                Dimensions of the original image in pixels.
+            new_width, new_height (int):
+                Dimensions of the new warped/cropped image.
+            flip_y (bool):
+                If your original coords treat y=0 at the bottom, you might do
+                y_old_pixels = (1 - y_old) * orig_height. 
+                Conversely for the final y. 
+                Adjust as needed so you only do one consistent flip.
+        """
+
+        corners = [self.top_left, self.top_right, self.bottom_left, self.bottom_right]
+
+        # 1) For each corner (in old [0..1] coords):
+        for corner in corners:
+            # Convert from normalized old -> pixel old
+            x_o = corner["x"] * orig_width
+            y_o = corner["y"] * orig_height
+
+            if flip_y:
+                y_o = orig_height - y_o
+
+            # 2) Apply the forward transform (old->new) in pixel space:
+            x_new_px = a_f*x_o + b_f*y_o + c_f
+            y_new_px = d_f*x_o + e_f*y_o + f_f
+
+            # 3) Convert the new pixel coords to new [0..1]
+            if flip_y:
+                # If you want the new image to keep top=0, bottom=1,
+                # you might do y_new_norm = 1 - (y_new_px / new_height).
+                # Or do no flip if you prefer. 
+                corner["x"] = x_new_px / new_width
+                corner["y"] = 1 - (y_new_px / new_height)
+            else:
+                corner["x"] = x_new_px / new_width
+                corner["y"] = y_new_px / new_height
+
+        # 4) Recompute bounding box, angle, etc. same as before
+        xs = [pt["x"] for pt in corners]
+        ys = [pt["y"] for pt in corners]
+        min_x, max_x = min(xs), max(xs)
+        min_y, max_y = min(ys), max(ys)
+        self.bounding_box["x"] = min_x
+        self.bounding_box["y"] = min_y
+        self.bounding_box["width"] = (max_x - min_x)
+        self.bounding_box["height"] = (max_y - min_y)
+
+        dx = self.top_right["x"] - self.top_left["x"]
+        dy = self.top_right["y"] - self.top_left["y"]
+        angle_rad = atan2(dy, dx)
+        self.angle_radians = angle_rad
+        self.angle_degrees = degrees(angle_rad)
+
     def __repr__(self):
         """
         Returns a string representation of the Word object.
@@ -566,7 +639,7 @@ def itemToWord(item: dict) -> Word:
         Word: An instance of the Word class populated from the given item.
 
     Raises:
-        ValueError: If the item is missing required keys 
+        ValueError: If the item is missing required keys
             or if any required field is malformed (e.g., numeric parsing fails).
     """
     required_keys = {
@@ -593,7 +666,8 @@ def itemToWord(item: dict) -> Word:
             id=int(item["SK"]["S"].split("#")[3]),
             text=item["text"]["S"],
             bounding_box={
-                key: float(value["N"]) for key, value in item["bounding_box"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["bounding_box"]["M"].items()
             },
             top_right={
                 key: float(value["N"]) for key, value in item["top_right"]["M"].items()
@@ -602,10 +676,12 @@ def itemToWord(item: dict) -> Word:
                 key: float(value["N"]) for key, value in item["top_left"]["M"].items()
             },
             bottom_right={
-                key: float(value["N"]) for key, value in item["bottom_right"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["bottom_right"]["M"].items()
             },
             bottom_left={
-                key: float(value["N"]) for key, value in item["bottom_left"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["bottom_left"]["M"].items()
             },
             angle_degrees=float(item["angle_degrees"]["N"]),
             angle_radians=float(item["angle_radians"]["N"]),

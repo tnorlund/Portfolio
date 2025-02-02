@@ -1,7 +1,7 @@
 // ReceiptGrid.tsx
-import React, { useEffect, useState } from 'react';
-import { fetchReceiptDetails } from './api';
-import { ReceiptDetailsApiResponse, Receipt, ReceiptWord } from './interfaces';
+import React, { useEffect, useState } from "react";
+import { fetchReceiptDetails } from "./api";
+import { ReceiptDetailsApiResponse, Receipt, ReceiptWord } from "./interfaces";
 
 interface ReceiptEntry {
   receipt: Receipt;
@@ -43,7 +43,7 @@ const ReceiptGrid: React.FC = () => {
   return (
     <div style={styles.gridContainer}>
       {receiptEntries.map(({ receipt, words }) => (
-        <div key={`${receipt.image_id}-${receipt.id}`} style={styles.card}>
+        <div key={`ReceiptDiv${receipt.image_id}-${receipt.id}`} style={styles.card}>
           <h3 style={styles.cardTitle}>
             {receipt.image_id} - {receipt.id}
           </h3>
@@ -67,23 +67,44 @@ const ReceiptGrid: React.FC = () => {
                 The transform translates the origin to the bottom of the image and then
                 flips vertically.
               */}
-              <g transform={`translate(0, ${receipt.height}) scale(1, -1)`}>
+              <g 
+              // transform={`translate(0, ${receipt.height}) scale(1, -1)`}
+              >
                 {words.map((word) => {
-                  // Use the four corner coordinates from the API directly.
-                  // (These coordinates are assumed to be in the original image coordinate system.)
-                  const points = `
-                    ${word.top_left.x},${word.top_left.y} 
-                    ${word.top_right.x},${word.top_right.y} 
-                    ${word.bottom_right.x},${word.bottom_right.y} 
-                    ${word.bottom_left.x},${word.bottom_left.y}
-                  `;
+                  // Convert normalized [0..1] to pixel coords:
+                  //    x → x * receipt.width
+                  //    y → (1 - y) * receipt.height  // flip y
+                  const corners = [
+                    {
+                      x: word.top_left.x * receipt.width,
+                      y: (1- word.top_left.y) * receipt.height,
+                    },
+                    {
+                      x: word.top_right.x * receipt.width,
+                      y: (1-word.top_right.y) * receipt.height,
+                    },
+                    {
+                      x: word.bottom_right.x * receipt.width,
+                      y: (1-word.bottom_right.y) * receipt.height,
+                    },
+                    {
+                      x: word.bottom_left.x * receipt.width,
+                      y: (1-word.bottom_left.y) * receipt.height,
+                    },
+                  ];
+
+                  // Format as "x1,y1 x2,y2 x3,y3 x4,y4"
+                  const pointsString = corners
+                    .map((pt) => `${pt.x},${pt.y}`)
+                    .join(" ");
+
                   return (
                     <polygon
-                      key={word.id}
-                      points={points}
+                      key={`ReceiptWord${word.line_id}-${word.id}`}
+                      points={pointsString}
                       stroke="red"
-                      fill="transparent"
-                      strokeWidth="2"
+                      fill="none"
+                      strokeWidth={2}
                     />
                   );
                 })}
@@ -98,31 +119,31 @@ const ReceiptGrid: React.FC = () => {
 
 const styles: { [key: string]: React.CSSProperties } = {
   gridContainer: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
-    gap: '1rem',
-    padding: '1rem',
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))",
+    gap: "1rem",
+    padding: "1rem",
   },
   card: {
-    padding: '1rem',
-    border: '1px solid var(--test-color)',
-    borderRadius: '8px',
-    backgroundColor: 'var(--background-color)',
-    maxWidth: '300px',
-    margin: '0 auto',
+    padding: "1rem",
+    border: "1px solid var(--test-color)",
+    borderRadius: "8px",
+    backgroundColor: "var(--background-color)",
+    maxWidth: "300px",
+    margin: "0 auto",
   },
   cardTitle: {
-    textAlign: 'center',
-    marginBottom: '0.5rem',
+    textAlign: "center",
+    marginBottom: "0.5rem",
   },
   svgContainer: {
-    width: '100%',
-    overflow: 'hidden',
+    width: "100%",
+    overflow: "hidden",
   },
   svg: {
-    width: '100%',
-    height: 'auto',
-    display: 'block',
+    width: "100%",
+    height: "auto",
+    display: "block",
   },
 };
 
