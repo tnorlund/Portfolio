@@ -4,7 +4,7 @@
             "id": "2608fbeb-dd25-4ab8-8034-5795282b6cd6",
             "width": 2480,
             "height": 3508,
-            "timestamp_added": "2021-01-01T00:00:00.000000",
+            "timestamp_added": "2021-01-01T00:00:00+00:00",
             "raw_s3_bucket": "raw-image-bucket",
             "raw_s3_key": "raw/2608fbeb-dd25-4ab8-8034-5795282b6cd6.png",
             "cdn_s3_bucket": "cdn-bucket",
@@ -13585,7 +13585,7 @@
             "image_id": "2608fbeb-dd25-4ab8-8034-5795282b6cd6",
             "width": 805,
             "height": 2890,
-            "timestamp_added": "2021-01-01T00:00:00.000000",
+            "timestamp_added": "2021-01-01T00:00:00+00:00",
             "raw_s3_bucket": "my-raw-bucket",
             "raw_s3_key": "raw/2608fbeb-dd25-4ab8-8034-5795282b6cd6_RECEIPT_00001.png",
             "top_left": {

@@ -89,7 +89,7 @@ if __name__ == "__main__":
         json.dump({
             "images": [{
                 **dict(image),
-                "timestamp_added": "2021-01-01T00:00:00.000000",
+                "timestamp_added": "2021-01-01T00:00:00+00:00",
                 "raw_s3_bucket": "raw-image-bucket",
                 "cdn_s3_bucket": "cdn-bucket",
                 }],
@@ -113,7 +113,7 @@ if __name__ == "__main__":
             "letters": [dict(letter) for letter in letters],
             "receipts": [{
                 **dict(receipt),
-                "timestamp_added": "2021-01-01T00:00:00.000000",
+                "timestamp_added": "2021-01-01T00:00:00+00:00",
                 "raw_s3_bucket": "my-raw-bucket",
                 "cdn_s3_bucket": "my-cdn-bucket",
                 } for receipt in receipts],

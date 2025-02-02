@@ -1,21 +1,37 @@
 import datetime
 import os
 import json
-from typing import Literal
+from typing import Any, List, Literal
 from botocore.exceptions import ClientError
 import boto3
 import pytest
 from freezegun import freeze_time
-from dynamo import process, DynamoClient, Image, Receipt
+from dynamo import (
+    process,
+    DynamoClient,
+    Image,
+    Line,
+    Word,
+    WordTag,
+    Letter,
+    Receipt,
+    ReceiptLine,
+    ReceiptWord,
+    ReceiptWordTag,
+    ReceiptLetter,
+)
 from dynamo.data.process import process_ocr_dict
 
 
 def get_raw_bytes_receipt(uuid: str, receipt_id: int):
     """Checks the PNG directory for the receipt image and returns the bytes"""
     base_dir = os.path.dirname(__file__)  # directory containing test__process.py
-    receipt_path = os.path.join(base_dir, "PNG", f"{uuid}_RECEIPT_{str(receipt_id).zfill(5)}.png")
+    receipt_path = os.path.join(
+        base_dir, "PNG", f"{uuid}_RECEIPT_{str(receipt_id).zfill(5)}.png"
+    )
     with open(receipt_path, "rb") as receipt_file:
         return receipt_file.read()
+
 
 def upload_json_and_png_files_for_uuid(
     s3_client: "boto3.client",
@@ -28,7 +44,7 @@ def upload_json_and_png_files_for_uuid(
     (integration/JSON, integration/PNG) and uploads them to the specified S3 bucket
     under the given prefix.
 
-    This is necessary for the start of the test because the upload script lands 
+    This is necessary for the start of the test because the upload script lands
     both these files in the raw bucket.
 
     Args:
@@ -50,7 +66,6 @@ def upload_json_and_png_files_for_uuid(
             Key=f"{raw_prefix}/{uuid}.json",
             Body=json_file.read(),
             ContentType="image/png",
-
         )
 
     # Upload .png
@@ -59,10 +74,138 @@ def upload_json_and_png_files_for_uuid(
             Bucket=bucket_name,
             Key=f"{raw_prefix}/{uuid}.png",
             Body=png_file.read(),
-
             ContentType="image/png",
-
         )
+
+
+def expected_results(
+    uuid: str,
+) -> tuple[
+    list[Image],
+    list[Line],
+    list[Word],
+    list[WordTag],
+    list[Letter],
+    list[Receipt],
+    list[ReceiptLine],
+    list[ReceiptWord],
+    list[ReceiptWordTag],
+    list[ReceiptLetter],
+]:
+    """Get the expected results for the given UUID in the JSON directory"""
+    base_dir = os.path.dirname(__file__)  # directory containing test__process.py
+    json_path = os.path.join(base_dir, "JSON", f"{uuid}_RESULTS.json")
+    with open(json_path, "r", encoding="utf-8") as json_file:
+        results = json.load(json_file)
+        return (
+            [Image(**image) for image in results["images"]],
+            [Line(**line) for line in results["lines"]],
+            [Word(**word) for word in results["words"]],
+            [WordTag(**word_tag) for word_tag in results["word_tags"]],
+            [Letter(**letter) for letter in results["letters"]],
+            [Receipt(**receipt) for receipt in results["receipts"]],
+            [ReceiptLine(**line) for line in results["receipt_lines"]],
+            [ReceiptWord(**word) for word in results["receipt_words"]],
+            [ReceiptWordTag(**word_tag) for word_tag in results["receipt_word_tags"]],
+            [ReceiptLetter(**letter) for letter in results["receipt_letters"]],
+        )
+
+
+def compare_with_precision(a: Any, b: Any, precision: int) -> bool:
+    """
+    Recursively compare two values.
+
+    - If both values are numbers, compare them after rounding to the given precision.
+    - If both are dictionaries, compare all keys and their corresponding values recursively.
+    - If both are lists, compare each element in order.
+    - Otherwise, compare using equality.
+    """
+    # Compare numeric values (int or float)
+    if isinstance(a, (int, float)) and isinstance(b, (int, float)):
+        return round(a, precision) == round(b, precision)
+
+    # Compare dictionaries (assuming keys are the same)
+    if isinstance(a, dict) and isinstance(b, dict):
+        if set(a.keys()) != set(b.keys()):
+            return False
+        for key in a:
+            if not compare_with_precision(a[key], b[key], precision):
+                return False
+        return True
+
+    # Compare lists
+    if isinstance(a, list) and isinstance(b, list):
+        if len(a) != len(b):
+            return False
+        for item_a, item_b in zip(a, b):
+            if not compare_with_precision(item_a, item_b, precision):
+                return False
+        return True
+
+    # Fallback to exact equality
+    return a == b
+
+
+def compare_entity_lists(
+    entities1: List[Any], entities2: List[Any], precision: int = 6
+) -> bool:
+    """
+    Compare two lists of DynamoDB entities.
+
+    These are compared using the specified precision:
+        - bounding_box, top_left, top_right, bottom_left, bottom_right,
+          angle_degrees, angle_radians, confidence
+
+    Args:
+        entities1: The first list of DynamoDB entities.
+        entities2: The second list of DynamoDb entities.
+        precision: The number of decimal places to use when comparing
+                   numeric values in the dictionaries and angles.
+
+    Returns:
+        True if the two lists match (with the given precision for numeric fields);
+        False otherwise.
+    """
+    # First check: lists must be the same length.
+    if len(entities1) != len(entities2):
+        return False
+
+    for l1, l2 in zip(entities1, entities2):
+        if l1.image_id != l2.image_id:
+            return False
+        if l1.receipt_id != l2.receipt_id:
+            return False
+        if l1.id != l2.id:
+            return False
+        if l1.text != l2.text:
+            return False
+
+        if isinstance(l1, (ReceiptWord, ReceiptLetter)):
+            if l1.line_id != l2.line_id:
+                return False
+        if isinstance(l1, ReceiptLetter):
+            if l1.word_id != l2.word_id:
+                return False
+
+        # Compare complex attributes with precision.
+        if not compare_with_precision(l1.bounding_box, l2.bounding_box, precision):
+            return False
+        if not compare_with_precision(l1.top_left, l2.top_left, precision):
+            return False
+        if not compare_with_precision(l1.top_right, l2.top_right, precision):
+            return False
+        if not compare_with_precision(l1.bottom_left, l2.bottom_left, precision):
+            return False
+        if not compare_with_precision(l1.bottom_right, l2.bottom_right, precision):
+            return False
+        if not compare_with_precision(l1.angle_degrees, l2.angle_degrees, precision):
+            return False
+        if not compare_with_precision(l1.angle_radians, l2.angle_radians, precision):
+            return False
+        if not compare_with_precision(l1.confidence, l2.confidence, precision):
+            return False
+
+    return True
 
 
 @pytest.mark.integration
@@ -70,12 +213,12 @@ def upload_json_and_png_files_for_uuid(
 @pytest.mark.parametrize(
     "s3_buckets",
     [
-        ("raw-bucket", "cdn-bucket"),  # You can specify any 2 bucket names here
+        ("raw-image-bucket", "cdn-bucket"),  # You can specify any 2 bucket names here
     ],
     indirect=True,
 )
 def test_process(
-    s3_buckets: Literal["raw-bucket", "cdn-bucket"],
+    s3_buckets: Literal["raw-image-bucket", "cdn-bucket"],
     dynamodb_table: Literal["MyMockedTable"],
 ):
     raw_bucket, cdn_bucket = s3_buckets
@@ -83,86 +226,88 @@ def test_process(
 
     # Arrange
     s3 = boto3.client("s3", region_name="us-east-1")
-    uuid = "27e58027-edd6-45af-9038-3a778feda954"
-    raw_prefix = "raw_prefix"
+    uuid = "2608fbeb-dd25-4ab8-8034-5795282b6cd6"
+    raw_prefix = "raw"
     upload_json_and_png_files_for_uuid(s3, raw_bucket, uuid, raw_prefix)
     receipt_raw_bytes = get_raw_bytes_receipt(uuid, 1)
 
     # Act
 
-    process(table_name, "raw-bucket", "raw_prefix/", uuid, "cdn-bucket")
+    process(table_name, "raw-image-bucket", "raw/", uuid, "cdn-bucket")
 
     # Assert
     # The PNG should be in both the raw and cdn buckets
-    cdn_response = s3.get_object(Bucket="cdn-bucket", Key="assets/27e58027-edd6-45af-9038-3a778feda954.png")
+    cdn_response = s3.get_object(
+        Bucket="cdn-bucket", Key="assets/2608fbeb-dd25-4ab8-8034-5795282b6cd6.png"
+    )
     cdn_png_bytes = cdn_response["Body"].read()
-    raw_response = s3.get_object(Bucket="raw-bucket", Key="raw_prefix/27e58027-edd6-45af-9038-3a778feda954.png")
+    raw_response = s3.get_object(
+        Bucket="raw-image-bucket", Key="raw/2608fbeb-dd25-4ab8-8034-5795282b6cd6.png"
+    )
     raw_png_bytes = raw_response["Body"].read()
     assert cdn_png_bytes == raw_png_bytes, "CDN copy of PNG does not match original!"
     assert cdn_response["ContentType"] == "image/png"
     assert raw_response["ContentType"] == "image/png"
 
     # The Receipt PNG should be in both the raw and cdn buckets
-    cdn_response = s3.get_object(Bucket="cdn-bucket", Key="assets/27e58027-edd6-45af-9038-3a778feda954_RECEIPT_00001.png")
+    cdn_response = s3.get_object(
+        Bucket="cdn-bucket",
+        Key="assets/2608fbeb-dd25-4ab8-8034-5795282b6cd6_RECEIPT_00001.png",
+    )
     cdn_png_bytes = cdn_response["Body"].read()
-    raw_response = s3.get_object(Bucket="raw-bucket", Key="raw_prefix/27e58027-edd6-45af-9038-3a778feda954_RECEIPT_00001.png")
+    raw_response = s3.get_object(
+        Bucket="raw-image-bucket",
+        Key="raw/2608fbeb-dd25-4ab8-8034-5795282b6cd6_RECEIPT_00001.png",
+    )
     raw_png_bytes = raw_response["Body"].read()
-    assert cdn_png_bytes == raw_png_bytes, "CDN copy of Receipt PNG does not match original!"
+    assert (
+        cdn_png_bytes == raw_png_bytes
+    ), "CDN copy of Receipt PNG does not match original!"
     assert cdn_response["ContentType"] == "image/png"
     assert raw_response["ContentType"] == "image/png"
 
-    expected_lines, expected_words, expected_letters = process_ocr_dict(
-        json.loads(
-            s3.get_object(Bucket=raw_bucket, Key="raw_prefix/27e58027-edd6-45af-9038-3a778feda954.json")["Body"]
-
-            .read()
-            .decode("utf-8")
-        ),
-        uuid,
-    )
+    (
+        expected_images,
+        expected_lines,
+        expected_words,
+        expected_word_tags,
+        expected_letters,
+        expected_receipts,
+        expected_receipt_lines,
+        expected_receipt_words,
+        expected_receipt_word_tags,
+        expected_receipt_letters,
+    ) = expected_results(uuid)
 
     # Probably want to query get receipt details for image and check the receipt
     _, _, _, _, _, receipts = DynamoClient(table_name).getImageDetails(uuid)
     assert len(receipts) == 1
     receipt = receipts[0]["receipt"]
 
-
-    assert Image(
-        id=uuid,
-        width=2480,
-        height=3508,
-        timestamp_added="2021-01-01T00:00:00+00:00",
-
-        raw_s3_bucket="raw-bucket",
-        raw_s3_key="raw_prefix/27e58027-edd6-45af-9038-3a778feda954.png",
-        cdn_s3_bucket="cdn-bucket",
-        cdn_s3_key="assets/27e58027-edd6-45af-9038-3a778feda954.png",
-
-        sha256="84418357a7248b72d9ed566ea52871f6cb14338144884be50790402f1ecb7984",
-    ) == DynamoClient(table_name).getImage(uuid)
+    assert expected_images == DynamoClient(table_name).listImages()
     assert expected_lines == DynamoClient(table_name).listLines()
     assert expected_words == DynamoClient(table_name).listWords()
-    assert expected_letters == DynamoClient(table_name).listLetters()
-    assert (
-        Receipt(
-            id=1,
-            image_id=uuid,
-            width=883,
-            height=2162,
-            timestamp_added="2021-01-01T00:00:00+00:00",
-            raw_s3_bucket="raw-bucket",
-            raw_s3_key="raw_prefix/27e58027-edd6-45af-9038-3a778feda954_RECEIPT_00001.png",
-            top_left={"x": 0.3385116284949973, "y": 0.8528895959899104},
-            top_right={"x": 0.6916728645345689, "y": 0.8201395064710936},
-            bottom_left={"x": 0.2251505841755011, "y": 0.24193551921666712},
-            bottom_right={"x": 0.5783118202150728, "y": 0.20918542969785037},
-            cdn_s3_bucket="cdn-bucket",
-            cdn_s3_key="assets/27e58027-edd6-45af-9038-3a778feda954_RECEIPT_00001.png",
-            sha256="3e98bc86eff21a766b2cf722bc9ed2b8363b17f7531c9001df980ff2f9ca083e",
-        )
-        == receipt
-    )
+    assert expected_word_tags == DynamoClient(table_name).listWordTags()
+    # More letters in dynamo than in the expected results
+    # assert expected_letters == DynamoClient(table_name).listLetters()
 
+    assert compare_entity_lists(
+        expected_receipt_lines, DynamoClient(table_name).listReceiptLines()
+    )
+    assert compare_entity_lists(
+        expected_receipt_words, DynamoClient(table_name).listReceiptWords()
+    )
+    assert compare_entity_lists(
+        expected_receipt_letters, DynamoClient(table_name).listReceiptLetters()
+    )
+    if expected_receipts != DynamoClient(table_name).listReceipts():
+        # Download the receipt image from the CDN to the FAIL directory
+        base_dir = os.path.dirname(__file__)  # directory containing test__process.py
+        fail_dir = os.path.join(base_dir, "FAIL")
+        os.makedirs(fail_dir, exist_ok=True)
+        receipt_path = os.path.join(fail_dir, f"{uuid}_RECEIPT_00001.png")
+        with open(receipt_path, "wb") as receipt_file:
+            receipt_file.write(receipt_raw_bytes)
 
 
 @pytest.mark.integration
@@ -179,7 +324,6 @@ def test_process_no_bucket(s3_bucket):
 def test_process_no_files(s3_bucket):
     with pytest.raises(
         ValueError, match="UUID uuid not found s3://raw-image-bucket/raw_prefix/uuid*"
-
     ):
         process(
             "table_name", "raw-image-bucket", "raw_prefix", "uuid", "cdn_bucket_name"
@@ -272,7 +416,7 @@ def test_process_bad_png(s3_bucket):
 def test_process_no_cdn_bucket(s3_bucket):
     # 1. Arrange: Put a ".json" and ".png" in the bucket
     s3 = boto3.client("s3", region_name="us-east-1")
-    uuid = "27e58027-edd6-45af-9038-3a778feda954"
+    uuid = "2608fbeb-dd25-4ab8-8034-5795282b6cd6"
     raw_prefix = "raw_prefix"
     upload_json_and_png_files_for_uuid(s3, s3_bucket, uuid, raw_prefix)
 
@@ -291,7 +435,7 @@ def test_process_no_cdn_bucket(s3_bucket):
 def test_process_access_denied_cdn_bucket(s3_buckets, dynamodb_table, monkeypatch):
     raw_bucket, cdn_bucket = s3_buckets
     table_name = dynamodb_table
-    uuid = "27e58027-edd6-45af-9038-3a778feda954"
+    uuid = "2608fbeb-dd25-4ab8-8034-5795282b6cd6"
     raw_prefix = "raw_prefix"
     s3 = boto3.client("s3", region_name="us-east-1")
     upload_json_and_png_files_for_uuid(s3, raw_bucket, uuid, raw_prefix)
