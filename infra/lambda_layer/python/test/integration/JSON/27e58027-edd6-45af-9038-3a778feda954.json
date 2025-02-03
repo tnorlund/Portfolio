@@ -21354,7 +21354,7 @@
             "width": 883,
             "height": 2162,
             "timestamp_added": "2021-01-01T00:00:00.000000",
-            "raw_s3_bucket": "my-raw-bucket",
+            "raw_s3_bucket": "raw-image-bucket",
             "raw_s3_key": "raw/27e58027-edd6-45af-9038-3a778feda954_RECEIPT_00001.png",
             "top_left": {
                 "x": 0.3385116284949973,
@@ -21373,7 +21373,7 @@
                 "y": 0.20918542969785037
             },
             "sha256": "3e98bc86eff21a766b2cf722bc9ed2b8363b17f7531c9001df980ff2f9ca083e",
-            "cdn_s3_bucket": "my-cdn-bucket",
+            "cdn_s3_bucket": "cdn-bucket",
             "cdn_s3_key": "assets/27e58027-edd6-45af-9038-3a778feda954_RECEIPT_00001.png"
         }
     ],
