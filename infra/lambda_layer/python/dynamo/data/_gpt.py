@@ -50,10 +50,10 @@ def _validate_gpt_response(response: Response) -> dict:
     data = response.json()
     if "choices" not in data or not data["choices"]:
         raise ValueError("The response does not contain any choices.")
-    if len(data["choices"]) <= 1:
-        raise ValueError("The response does not contain choices.")
+    if not isinstance(data["choices"], list):
+        raise ValueError("The response choices are not a list.")
     first_choice = data["choices"][0]
-    if "message" not in first_choice or "role" not in first_choice:
+    if "message" not in first_choice:
         raise ValueError("The response does not contain a message.")
     message = first_choice["message"]
     if "content" not in message:
