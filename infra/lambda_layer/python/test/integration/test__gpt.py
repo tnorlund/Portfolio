@@ -109,162 +109,164 @@ class DummyWord:
     def calculate_centroid(self):
         return self._centroid
 
+# A simple dummy class to simulate receipt objects.
+class DummyReceipt(dict):
+    def __init__(self, data):
+        super().__init__(data)
 
 @pytest.mark.integration
-def test_missing_choices():
+def test_validate_missing_choices():
     resp = DummyResponse({})
     with pytest.raises(ValueError, match="The response does not contain any choices."):
         _validate_gpt_response(resp)
 
-
 @pytest.mark.integration
-def test_empty_choices():
+def test_validate_empty_choices():
     resp = DummyResponse({"choices": []})
     with pytest.raises(ValueError, match="The response does not contain any choices."):
         _validate_gpt_response(resp)
 
-
 @pytest.mark.integration
-def test_single_choice():
-    resp = DummyResponse(
-        {"choices": [{"role": "assistant", "message": {"content": "{}"}}]}
-    )
-    with pytest.raises(ValueError, match="The response does not contain choices."):
+def test_validate_non_list_choices():
+    resp = DummyResponse({"choices": {"role": "assistant", "message": {"content": "{}"}}})
+    with pytest.raises(ValueError, match="The response choices are not a list."):
         _validate_gpt_response(resp)
 
-
 @pytest.mark.integration
-def test_missing_message():
-    resp = DummyResponse(
-        {
-            "choices": [
-                {"role": "assistant"},  # missing message key
-                {"role": "assistant", "message": {"content": "{}"}},
-            ]
-        }
-    )
+def test_validate_missing_message():
+    resp = DummyResponse({
+        "choices": [
+            {"role": "assistant"},  # missing message
+            {"role": "assistant", "message": {"content": "{}"}},
+        ]
+    })
     with pytest.raises(ValueError, match="The response does not contain a message."):
         _validate_gpt_response(resp)
 
-
 @pytest.mark.integration
-def test_missing_role():
-    resp = DummyResponse(
-        {
-            "choices": [
-                {"message": {"content": "{}"}},  # missing role key
-                {"role": "assistant", "message": {"content": "{}"}},
-            ]
-        }
-    )
-    with pytest.raises(ValueError, match="The response does not contain a message."):
+def test_validate_missing_content():
+    resp = DummyResponse({
+        "choices": [
+            {"role": "assistant", "message": {}},
+            {"role": "assistant", "message": {"content": "{}"}},
+        ]
+    })
+    with pytest.raises(ValueError, match="The response message does not contain content."):
         _validate_gpt_response(resp)
 
-
 @pytest.mark.integration
-def test_missing_content():
-    resp = DummyResponse(
-        {
-            "choices": [
-                {"role": "assistant", "message": {}},
-                {"role": "assistant", "message": {"content": "{}"}},
-            ]
-        }
-    )
-    with pytest.raises(
-        ValueError, match="The response message does not contain content."
-    ):
-        _validate_gpt_response(resp)
-
-
-@pytest.mark.integration
-def test_empty_content():
-    resp = DummyResponse(
-        {
-            "choices": [
-                {"role": "assistant", "message": {"content": ""}},
-                {"role": "assistant", "message": {"content": "{}"}},
-            ]
-        }
-    )
+def test_validate_empty_content():
+    resp = DummyResponse({
+        "choices": [
+            {"role": "assistant", "message": {"content": ""}},
+            {"role": "assistant", "message": {"content": "{}"}},
+        ]
+    })
     with pytest.raises(ValueError, match="The response message content is empty."):
         _validate_gpt_response(resp)
 
-
 @pytest.mark.integration
-def test_invalid_json_content():
-    resp = DummyResponse(
-        {
-            "choices": [
-                {"role": "assistant", "message": {"content": "not a json"}},
-                {"role": "assistant", "message": {"content": "{}"}},
-            ]
-        }
-    )
-    with pytest.raises(
-        ValueError, match="The response message content is not valid JSON."
-    ):
+def test_validate_invalid_json():
+    resp = DummyResponse({
+        "choices": [
+            {"role": "assistant", "message": {"content": "not a json"}},
+            {"role": "assistant", "message": {"content": "{}"}},
+        ]
+    })
+    with pytest.raises(ValueError, match="The response message content is not valid JSON."):
         _validate_gpt_response(resp)
 
-
 @pytest.mark.integration
-def test_non_string_keys(monkeypatch):
-    # Define a fake loads function that returns a dict with an int key.
-    def fake_loads(s):
-        return {1: [{"l": 1, "w": 2}]}
-
-    # Import the module so we can patch its loads function.
+def test_validate_non_string_keys(monkeypatch):
+    # Patch the loads used in the module (_validate_gpt_response uses loads from json).
+    # Since _gpt.py imported loads directly, we must patch that binding.
     import dynamo.data._gpt as gpt_module
-
+    def fake_loads(s):
+        return {1: [{"l": 1, "w": 2}]}  # non-string key
     monkeypatch.setattr(gpt_module, "loads", fake_loads)
-
-    resp = DummyResponse(
-        {
-            "choices": [
-                {"role": "assistant", "message": {"content": "ignored"}},
-                {"role": "assistant", "message": {"content": "{}"}},
-            ]
-        }
-    )
-    with pytest.raises(
-        ValueError, match="The response message content keys are not strings."
-    ):
+    resp = DummyResponse({
+        "choices": [
+            {"role": "assistant", "message": {"content": "ignored"}},
+            {"role": "assistant", "message": {"content": "{}"}},
+        ]
+    })
+    with pytest.raises(ValueError, match="The response message content keys are not strings."):
         _validate_gpt_response(resp)
 
-
 @pytest.mark.integration
-def test_missing_l_or_w():
-    content = {"store_name": [{"l": 0, "w": 0}], "date": [{"l": 1}]}  # missing "w"
-    resp = DummyResponse(
-        {
-            "choices": [
-                {"role": "assistant", "message": {"content": json.dumps(content)}},
-                {"role": "assistant", "message": {"content": "{}"}},
-            ]
-        }
-    )
-    with pytest.raises(
-        ValueError,
-        match="The response message content values do not contain 'l' and 'w'.",
-    ):
+def test_validate_missing_l_or_w():
+    content = {"store_name": [{"l": 0, "w": 0}], "date": [{"l": 1}]}  # missing "w" in date
+    resp = DummyResponse({
+        "choices": [
+            {"role": "assistant", "message": {"content": json.dumps(content)}},
+            {"role": "assistant", "message": {"content": "{}"}},
+        ]
+    })
+    with pytest.raises(ValueError, match="The response message content values do not contain 'l' and 'w'."):
         _validate_gpt_response(resp)
 
+@pytest.mark.integration
+def test_validate_value_as_dict_missing_key():
+    # Here, "store_name" is a dict missing the "w" key.
+    content = {"store_name": {"l": 0}}
+    resp = DummyResponse({
+        "choices": [
+            {
+                "role": "assistant",
+                "message": {"content": json.dumps(content)}
+            },
+            {
+                "role": "assistant",
+                "message": {"content": "{}"}
+            }
+        ]
+    })
+    with pytest.raises(ValueError, match="The response message content values do not contain 'l' and 'w'."):
+        _validate_gpt_response(resp)
 
 @pytest.mark.integration
-def test_valid_response():
-    # This is the content we expect _validate_gpt_response to return.
-    content = {"store_name": {"l": 0, "w": 0}, "date": {"l": 1, "w": 2}}
-    resp = DummyResponse(
-        {
-            "choices": [
-                {"role": "assistant", "message": {"content": json.dumps(content)}},
-                {"role": "assistant", "message": {"content": "{}"}},
-            ]
-        }
-    )
+def test_validate_value_wrong_type():
+    # Here, "store_name" is a string instead of a list or dict.
+    content = {"store_name": "invalid"}
+    resp = DummyResponse({
+        "choices": [
+            {
+                "role": "assistant",
+                "message": {"content": json.dumps(content)}
+            },
+            {
+                "role": "assistant",
+                "message": {"content": "{}"}
+            }
+        ]
+    })
+    with pytest.raises(ValueError, match="The response message content values must be a list or a dict."):
+        _validate_gpt_response(resp)
+
+@pytest.mark.integration
+def test_validate_valid_response():
+    content = {"store_name": [{"l": 0, "w": 0}], "date": [{"l": 1, "w": 2}]}
+    resp = DummyResponse({
+        "choices": [
+            {"role": "assistant", "message": {"content": json.dumps(content)}},
+            {"role": "assistant", "message": {"content": "{}"}},
+        ]
+    })
     result = _validate_gpt_response(resp)
-    # Assert that the returned dict matches the input content.
     assert result == content
+
+@pytest.mark.integration
+def test_gpt_request_missing_api_key(monkeypatch):
+    # Ensure the environment variable is not set.
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    # Create a dummy receipt and empty receipt words.
+    dummy_receipt = DummyReceipt({"receipt_id": 123})
+    dummy_words = []  # Can be an empty list; the content doesn't matter here.
+
+    # Calling gpt_request without an API key should raise the expected ValueError.
+    with pytest.raises(ValueError, match="The OPENAI_API_KEY environment variable is not set."):
+        gpt_request(dummy_receipt, dummy_words)
 
 @pytest.mark.integration
 def test_gpt_request(monkeypatch):
