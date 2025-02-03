@@ -404,7 +404,7 @@ def transform_cluster(
     final_w, final_h = affine_img.size
     r = Receipt(
         receipt_id=cluster_id,
-        image_id=image_obj.id,
+        image_id=image_obj.image_id,
         width=final_w,
         height=final_h,
         timestamp_added=datetime.now(timezone.utc),

@@ -1,7 +1,8 @@
 from typing import Generator, Tuple
 from datetime import datetime
 from dynamo.entities.util import (
-    assert_valid_uuid
+    assert_valid_uuid,
+    _repr_str
 )
 
 class Image:
@@ -131,15 +132,15 @@ class Image:
         """
         return (
             "Image("
-                f"image_id='{self.image_id}', "
+                f"image_id={_repr_str(self.image_id)}, "
                 f"width={self.width}, "
                 f"height={self.height}, "
                 f"timestamp_added={self.timestamp_added}, "
-                f"raw_s3_bucket='{self.raw_s3_bucket}', "
-                f"raw_s3_key='{self.raw_s3_key}', "
-                f"sha256='{self.sha256}', "
-                f"cdn_s3_bucket='{self.cdn_s3_bucket}', "
-                f"cdn_s3_key='{self.cdn_s3_key}'"
+                f"raw_s3_bucket={_repr_str(self.raw_s3_bucket)}, "
+                f"raw_s3_key={_repr_str(self.raw_s3_key)}, "
+                f"sha256={_repr_str(self.sha256)}, "
+                f"cdn_s3_bucket={_repr_str(self.cdn_s3_bucket)}, "
+                f"cdn_s3_key={_repr_str(self.cdn_s3_key)}"
                 ")")
 
     def __iter__(self) -> Generator[Tuple[str, int], None, None]:
