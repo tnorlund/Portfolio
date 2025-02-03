@@ -1,4 +1,4 @@
-from typing import Generator, Tuple
+from typing import Any, Generator, Tuple
 from datetime import datetime
 from dynamo.entities.util import (
     assert_valid_uuid,
@@ -8,6 +8,30 @@ from dynamo.entities.util import (
 
 
 class Receipt:
+    """
+    Represents a receipt associated with an image in a DynamoDB table.
+
+    This class encapsulates receipt data and related metadata, including dimensions,
+    timestamps, and S3 storage details. It provides methods for generating primary and 
+    secondary (GSI) keys for DynamoDB operations, converting the receipt to a DynamoDB item, 
+    and iterating over its attributes.
+
+    Attributes:
+        image_id (str): UUID identifying the associated image.
+        id (int): Unique number identifying the receipt.
+        width (int): Width of the receipt in pixels.
+        height (int): Height of the receipt in pixels.
+        timestamp_added (str): ISO formatted timestamp when the receipt was added.
+        raw_s3_bucket (str): S3 bucket name where the raw receipt is stored.
+        raw_s3_key (str): S3 key corresponding to the raw receipt in S3.
+        top_left (dict): Coordinates of the top-left corner of the receipt's bounding box.
+        top_right (dict): Coordinates of the top-right corner of the receipt's bounding box.
+        bottom_left (dict): Coordinates of the bottom-left corner of the receipt's bounding box.
+        bottom_right (dict): Coordinates of the bottom-right corner of the receipt's bounding box.
+        sha256 (str, optional): SHA256 hash of the receipt image, if available.
+        cdn_s3_bucket (str, optional): S3 bucket name for the CDN-hosted receipt image, if available.
+        cdn_s3_key (str, optional): S3 key for the CDN-hosted receipt image, if available.
+    """
     def __init__(
         self,
         image_id: str,
@@ -25,33 +49,36 @@ class Receipt:
         cdn_s3_bucket: str = None,
         cdn_s3_key: str = None,
     ):
-        """Constructs a new Receipt object for DynamoDB
+        """Initializes a new Receipt object for DynamoDB.
 
         Args:
-            image_id (str): UUID identifying the image
-            id (int): Number identifying the receipt
-            width (int): The width of the receipt in pixels
-            height (int): The height of the receipt in pixels
-            timestamp_added (datetime): The timestamp the receipt was added
-            raw_s3_bucket (str): The S3 bucket where the receipt is stored
-            raw_s3_key (str): The S3 key where the receipt is stored
-            top_left (dict): The top left corner of the bounding box
-            top_right (dict): The top right corner of the bounding box
-            bottom_left (dict): The bottom left corner of the bounding box
-            bottom_right (dict): The bottom right corner of the bounding box
-            sha256 (str): The SHA256 hash of the receipt
+            image_id (str): UUID identifying the associated image.
+            id (int): Number identifying the receipt.
+            width (int): The width of the receipt in pixels.
+            height (int): The height of the receipt in pixels.
+            timestamp_added (datetime): The timestamp when the receipt was added.
+            raw_s3_bucket (str): The S3 bucket where the receipt is stored.
+            raw_s3_key (str): The S3 key where the receipt is stored.
+            top_left (dict): The top left corner of the bounding box.
+            top_right (dict): The top right corner of the bounding box.
+            bottom_left (dict): The bottom left corner of the bounding box.
+            bottom_right (dict): The bottom right corner of the bounding box.
+            sha256 (str): The SHA256 hash of the receipt.
+            cdn_s3_bucket (str, optional): The S3 bucket for the CDN version of the receipt.
+            cdn_s3_key (str, optional): The S3 key for the CDN version of the receipt.
 
-        Attributes:
+        Raises:
+            ValueError: If any parameter is of an invalid type or has an invalid value.
         """
         assert_valid_uuid(image_id)
         self.image_id = image_id
-        
+
         if not isinstance(id, int):
             raise ValueError("id must be an integer")
         if id <= 0:
             raise ValueError("id must be positive")
         self.id = id
-        
+
         if (
             width <= 0
             or height <= 0
@@ -68,7 +95,7 @@ class Receipt:
             self.timestamp_added = timestamp_added
         else:
             raise ValueError("timestamp_added must be a datetime object or a string")
-        
+
         if raw_s3_bucket and not isinstance(raw_s3_bucket, str):
             raise ValueError("raw_s3_bucket must be a string")
         self.raw_s3_bucket = raw_s3_bucket
@@ -97,10 +124,10 @@ class Receipt:
         self.cdn_s3_key = cdn_s3_key
 
     def key(self) -> dict:
-        """Generates the primary key for the line
+        """Generates the primary key for the receipt.
 
         Returns:
-            dict: The primary key for the line
+            dict: The primary key for the receipt.
         """
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
@@ -108,10 +135,10 @@ class Receipt:
         }
 
     def gsi1_key(self) -> dict:
-        """Generates the GSI1 key for the receipt
+        """Generates the GSI1 key for the receipt.
 
         Returns:
-            dict: The GSI1 key for the receipt
+            dict: The GSI1 key for the receipt.
         """
         return {
             "GSI1PK": {"S": "IMAGE"},
@@ -119,10 +146,10 @@ class Receipt:
         }
 
     def gsi2_key(self) -> dict:
-        """Generates the GSI2 key for the receipt
+        """Generates the GSI2 key for the receipt.
 
         Returns:
-            dict: The GSI2 key for the receipt
+            dict: The GSI2 key for the receipt.
         """
         return {
             "GSI2PK": {"S": "RECEIPT"},
@@ -130,10 +157,10 @@ class Receipt:
         }
 
     def to_item(self) -> dict:
-        """Converts the Receipt object to a DynamoDB item
+        """Converts the Receipt object to a DynamoDB item.
 
         Returns:
-            dict: The Receipt object as a DynamoDB item
+            dict: A dictionary representing the Receipt object as a DynamoDB item.
         """
         return {
             **self.key(),
@@ -177,15 +204,15 @@ class Receipt:
         }
 
     def __repr__(self) -> str:
-        """Returns a string representation of the Receipt object
+        """Returns a string representation of the Receipt object.
 
         Returns:
-            str: The string representation of the Receipt object
+            str: A string representation of the Receipt object.
         """
         return (
             "Receipt("
             f"image_id='{self.image_id}', "
-            f"id={int(self.id)}, "
+            f"id={self.id}, "
             f"width={self.width}, "
             f"height={self.height}, "
             f"timestamp_added={self.timestamp_added}, "
@@ -201,11 +228,11 @@ class Receipt:
             ")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, int], None, None]:
-        """Returns an iterator over the Receipt object
+    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+        """Returns an iterator over the Receipt object's attributes.
 
         Returns:
-            dict: The iterator over the Receipt object
+            Generator[Tuple[str, Any], None, None]: An iterator over the Receipt object's attribute name/value pairs.
         """
         yield "id", int(self.id)
         yield "image_id", self.image_id
@@ -223,13 +250,16 @@ class Receipt:
         yield "cdn_s3_key", self.cdn_s3_key
 
     def __eq__(self, other) -> bool:
-        """Checks if two Receipt objects are equal
+        """Determines whether two Receipt objects are equal.
 
         Args:
-            other (Receipt): The other Receipt object to compare
+            other (Receipt): The other Receipt object to compare.
 
         Returns:
-            bool: True if the Receipt objects are equal, False otherwise
+            bool: True if the Receipt objects are equal, False otherwise.
+
+        Note:
+            If other is not an instance of Receipt, NotImplemented is returned.
         """
         if not isinstance(other, Receipt):
             return NotImplemented
@@ -252,13 +282,16 @@ class Receipt:
 
 
 def itemToReceipt(item: dict) -> Receipt:
-    """Converts a DynamoDB item to a Receipt object
+    """Converts a DynamoDB item to a Receipt object.
 
     Args:
-        item (dict): The DynamoDB item to convert
+        item (dict): The DynamoDB item to convert.
 
     Returns:
-        Receipt: The Receipt object
+        Receipt: The Receipt object.
+
+    Raises:
+        ValueError: When the item format is invalid.
     """
     required_keys = {
         "PK",
