@@ -11,13 +11,30 @@ from math import atan2, degrees, sin, cos, pi, radians
 
 
 class Word:
-    """
-    Represents a Word in an image, including its text, bounding box,
-    positional corners, angle, confidence score, tags, histogram, and number of characters.
+    """Represents a word extracted from an image for DynamoDB.
 
-    Provides methods to generate DynamoDB key structures, transform
-    the word's coordinates (translate, scale, rotate), calculate its centroid,
-    and serialize the data for DynamoDB.
+    This class encapsulates word-related information such as its unique identifiers,
+    text content, geometric properties (bounding box and corner coordinates), rotation
+    angles, detection confidence, tags, character histogram, and character count.
+    It supports operations such as generating DynamoDB keys and applying geometric
+    transformations including translation, scaling, rotation, shear, and affine warping.
+
+    Attributes:
+        image_id (str): UUID identifying the image.
+        line_id (int): Identifier for the line containing the word.
+        id (int): Identifier for the word.
+        text (str): The text of the word.
+        bounding_box (dict): The bounding box of the word with keys 'x', 'y', 'width', and 'height'.
+        top_right (dict): The top-right corner coordinates with keys 'x' and 'y'.
+        top_left (dict): The top-left corner coordinates with keys 'x' and 'y'.
+        bottom_right (dict): The bottom-right corner coordinates with keys 'x' and 'y'.
+        bottom_left (dict): The bottom-left corner coordinates with keys 'x' and 'y'.
+        angle_degrees (float): The angle of the word in degrees.
+        angle_radians (float): The angle of the word in radians.
+        confidence (float): The confidence level of the word (between 0 and 1).
+        tags (list[str]): A list of tags associated with the word.
+        histogram (dict): A histogram representing character frequencies in the word.
+        num_chars (int): The number of characters in the word.
     """
 
     def __init__(
@@ -38,51 +55,27 @@ class Word:
         histogram: dict = None,
         num_chars: int = None,
     ):
-        """
-        Constructs a new Word object for DynamoDB.
+        """Initializes a new Word object for DynamoDB.
 
         Args:
             image_id (str): UUID identifying the image.
-            line_id (int): The ID of the line the word is in.
-            id (int): The ID of the word.
+            line_id (int): Identifier for the line containing the word.
+            id (int): Identifier for the word.
             text (str): The text of the word.
-            bounding_box (dict): The bounding box of the word
-                (keys: 'x', 'y', 'width', 'height').
-            top_right (dict): The top right corner of the word (keys: 'x', 'y').
-            top_left (dict): The top left corner of the word (keys: 'x', 'y').
-            bottom_right (dict): The bottom right corner of the word (keys: 'x', 'y').
-            bottom_left (dict): The bottom left corner of the word (keys: 'x', 'y').
+            bounding_box (dict): The bounding box of the word with keys 'x', 'y', 'width', and 'height'.
+            top_right (dict): The top-right corner coordinates with keys 'x' and 'y'.
+            top_left (dict): The top-left corner coordinates with keys 'x' and 'y'.
+            bottom_right (dict): The bottom-right corner coordinates with keys 'x' and 'y'.
+            bottom_left (dict): The bottom-left corner coordinates with keys 'x' and 'y'.
             angle_degrees (float): The angle of the word in degrees.
             angle_radians (float): The angle of the word in radians.
-            confidence (float): The confidence of the word (0 < confidence <= 1).
-            tags (list[str], optional): The tags of the word. Defaults to None.
-
-        Attributes:
-            image_id (str): UUID identifying the image.
-            line_id (int): The ID of the line the word is in.
-            id (int): The ID of the word.
-            text (str): The text of the word.
-            bounding_box (dict): The bounding box of the word.
-            top_right (dict): The top right corner of the word.
-            top_left (dict): The top left corner of the word.
-            bottom_right (dict): The bottom right corner of the word.
-            bottom_left (dict): The bottom left corner of the word.
-            angle_degrees (float): The angle of the word in degrees.
-            angle_radians (float): The angle of the word in radians.
-            confidence (float): The confidence of the word (0 < confidence <= 1).
-            tags (list[str]): The tags of the word.
-            histogram (dict): The histogram (character frequency) of the word's text.
-            num_chars (int): The number of characters in the word's text.
+            confidence (float): The confidence level of the word (between 0 and 1).
+            tags (list[str], optional): A list of tags associated with the word.
+            histogram (dict, optional): A histogram representing character frequencies in the word.
+            num_chars (int, optional): The number of characters in the word.
 
         Raises:
-            ValueError: If the image_id is not a valid UUID.
-            ValueError: If line_id is not a positive integer.
-            ValueError: If id is not a positive integer.
-            ValueError: If text is not a string.
-            ValueError: If bounding_box or any corner is invalid.
-            ValueError: If angle_degrees or angle_radians is not float/int.
-            ValueError: If confidence is not a float in (0, 1].
-            ValueError: If tags is not a list (when provided).
+            ValueError: If any parameter is of an invalid type or has an invalid value.
         """
         assert_valid_uuid(image_id)
         self.image_id = image_id
@@ -149,13 +142,10 @@ class Word:
             self.num_chars = num_chars
 
     def key(self) -> dict:
-        """
-        Generates the primary key for this Word in DynamoDB.
+        """Generates the primary key for the Word.
 
         Returns:
-            dict: A dictionary containing "PK" and "SK" for DynamoDB.
-                  - "PK" is of the form "IMAGE#<image_id>"
-                  - "SK" is of the form "LINE#<line_id>#WORD#<word_id>"
+            dict: The primary key for the Word.
         """
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
@@ -163,13 +153,10 @@ class Word:
         }
 
     def to_item(self) -> dict:
-        """
-        Serializes this Word into a dictionary compatible with DynamoDB.
+        """Converts the Word object to a DynamoDB item.
 
         Returns:
-            dict: A dictionary representing the Word's data in DynamoDB's
-                  key-value structure, including bounding box, corners, angles,
-                  confidence, histogram, number of characters, and tags.
+            dict: A dictionary representing the Word object as a DynamoDB item.
         """
         item = {
             **self.key(),
@@ -225,11 +212,10 @@ class Word:
         return item
 
     def calculate_centroid(self) -> Tuple[float, float]:
-        """
-        Calculates the centroid (geometric center) of the Word from its corners.
+        """Calculates the centroid of the Word.
 
         Returns:
-            Tuple[float, float]: The (x, y) coordinates of the Word's centroid.
+            Tuple[float, float]: The (x, y) coordinates of the centroid.
         """
         x = (
             self.top_right["x"]
@@ -246,12 +232,11 @@ class Word:
         return x, y
 
     def translate(self, x: float, y: float) -> None:
-        """
-        Translates the Word by (x, y).
+        """Translates the Word by the specified x and y offsets.
 
         Args:
-            x (float): The amount to translate in the x-direction.
-            y (float): The amount to translate in the y-direction.
+            x (float): The offset to add to the x-coordinate.
+            y (float): The offset to add to the y-coordinate.
         """
         self.top_right["x"] += x
         self.top_right["y"] += y
@@ -265,12 +250,11 @@ class Word:
         self.bounding_box["y"] += y
 
     def scale(self, sx: float, sy: float) -> None:
-        """
-        Scales the Word's coordinates and bounding box by the specified x and y factors.
+        """Scales the Word by the specified factors along the x and y axes.
 
         Args:
-            sx (float): Scale factor in the x-direction.
-            sy (float): Scale factor in the y-direction.
+            sx (float): The scaling factor for the x-coordinate.
+            sy (float): The scaling factor for the y-coordinate.
         """
         self.top_right["x"] *= sx
         self.top_right["y"] *= sy
@@ -292,64 +276,42 @@ class Word:
         rotate_origin_y: float,
         use_radians: bool = True,
     ) -> None:
-        """
-        Rotates the Word by the specified angle around (rotate_origin_x, rotate_origin_y).
+        """Rotates the Word by the specified angle about a given origin.
 
-        Only rotates if angle is within:
+        Only rotates if the angle is within:
             - [-π/2, π/2] when use_radians=True
             - [-90°, 90°] when use_radians=False
 
-        Updates top_right, topLeft, bottomRight, bottomLeft in-place,
-        and also updates angleDegrees/angleRadians.
-
         Args:
-            angle (float): The angle by which to rotate. Interpreted as degrees
-                if `use_radians=False`, else radians.
+            angle (float): The angle by which to rotate.
             rotate_origin_x (float): The x-coordinate of the rotation origin.
             rotate_origin_y (float): The y-coordinate of the rotation origin.
-            use_radians (bool, optional): Indicates if the angle is in radians.
-                Defaults to True.
+            use_radians (bool, optional): Whether the angle is in radians. Defaults to True.
 
         Raises:
-            ValueError: If the angle is outside the allowed range
-                ([-π/2, π/2] in radians or [-90°, 90°] in degrees).
+            ValueError: If the angle is outside the allowed range.
         """
 
-        # 1) Check allowed range
         if use_radians:
-            # Allowed range is [-π/2, π/2]
             if not (-pi / 2 <= angle <= pi / 2):
                 raise ValueError(
                     f"Angle {angle} (radians) is outside the allowed range [-π/2, π/2]."
                 )
             angle_radians = angle
         else:
-            # Allowed range is [-90, 90] degrees
             if not (-90 <= angle <= 90):
                 raise ValueError(
                     f"Angle {angle} (degrees) is outside the allowed range [-90°, 90°]."
                 )
-            # Convert to radians
             angle_radians = radians(angle)
 
-        # 2) Rotate each corner
         def rotate_point(px, py, ox, oy, theta):
-            """
-            Rotates point (px, py) around (ox, oy) by theta radians.
-            Returns the new (x, y) coordinates.
-            """
-            # Translate point so that (ox, oy) becomes the origin
+            """Rotates point (px, py) around (ox, oy) by theta radians."""
             translated_x = px - ox
             translated_y = py - oy
-
-            # Apply the rotation
             rotated_x = translated_x * cos(theta) - translated_y * sin(theta)
             rotated_y = translated_x * sin(theta) + translated_y * cos(theta)
-
-            # Translate back
-            final_x = rotated_x + ox
-            final_y = rotated_y + oy
-            return final_x, final_y
+            return rotated_x + ox, rotated_y + oy
 
         corners = [self.top_right, self.top_left, self.bottom_right, self.bottom_left]
         for corner in corners:
@@ -363,41 +325,30 @@ class Word:
             corner["x"] = x_new
             corner["y"] = y_new
 
-        # 3) Update angleDegrees and angleRadians
         if use_radians:
-            # Accumulate the rotation in angleRadians
             self.angle_radians += angle_radians
             self.angle_degrees += angle_radians * 180.0 / pi
         else:
-            # If it was in degrees, accumulate in degrees
             self.angle_degrees += angle
-            # Convert that addition to radians
             self.angle_radians += radians(angle)
 
-        # 4) Recalculate the axis-aligned bounding box from the rotated corners
         xs = [pt["x"] for pt in corners]
         ys = [pt["y"] for pt in corners]
-        min_x, max_x = min(xs), max(xs)
-        min_y, max_y = min(ys), max(ys)
-
-        self.bounding_box["x"] = min_x
-        self.bounding_box["y"] = min_y
-        self.bounding_box["width"] = max_x - min_x
-        self.bounding_box["height"] = max_y - min_y
+        self.bounding_box["x"] = min(xs)
+        self.bounding_box["y"] = min(ys)
+        self.bounding_box["width"] = max(xs) - min(xs)
+        self.bounding_box["height"] = max(ys) - min(ys)
 
     def shear(
         self, shx: float, shy: float, pivot_x: float = 0.0, pivot_y: float = 0.0
     ) -> None:
-        """
-        Shears the Word by shx (horizontal shear) and shy (vertical shear)
-        around a pivot point (pivot_x, pivot_y).
+        """Applies a shear transformation to the Word about a pivot point.
 
-        - (shx, shy) = (0.2, 0.0) would produce a horizontal slant
-        - (shx, shy) = (0.0, 0.2) would produce a vertical slant
-        - You can combine both for a more general shear.
-
-        Modifies top_right, top_left, bottom_right, bottom_left,
-        and then recalculates the axis-aligned bounding box.
+        Args:
+            shx (float): The horizontal shear factor.
+            shy (float): The vertical shear factor.
+            pivot_x (float, optional): The x-coordinate of the pivot point. Defaults to 0.0.
+            pivot_y (float, optional): The y-coordinate of the pivot point. Defaults to 0.0.
         """
         corners = [self.top_right, self.top_left, self.bottom_right, self.bottom_left]
         for corner in corners:
@@ -407,27 +358,33 @@ class Word:
             corner["x"] = x_new
             corner["y"] = y_new
 
-        # Recalculate axis-aligned bounding box from new corners
         xs = [pt["x"] for pt in corners]
         ys = [pt["y"] for pt in corners]
-        min_x, max_x = min(xs), max(xs)
-        min_y, max_y = min(ys), max(ys)
-
-        self.bounding_box["x"] = min_x
-        self.bounding_box["y"] = min_y
-        self.bounding_box["width"] = max_x - min_x
-        self.bounding_box["height"] = max_y - min_y
+        self.bounding_box["x"] = min(xs)
+        self.bounding_box["y"] = min(ys)
+        self.bounding_box["width"] = max(xs) - min(xs)
+        self.bounding_box["height"] = max(ys) - min(ys)
 
     def warp_affine(self, a, b, c, d, e, f):
-        """
-        Applies the forward 2x3 affine transform to this lines corners:
-        x' = a*x + b*y + c
-        y' = d*x + e*y + f
-        Then recomputes the axis-aligned bounding box and angle.
+        """Applies an affine transformation to the Word's corners and updates its properties.
+
+        The transformation is defined by:
+            x' = a * x + b * y + c
+            y' = d * x + e * y + f
+
+        This method updates the corner coordinates, recalculates the axis-aligned
+        bounding box, and recalculates the rotation angle based on the transformed corners.
+
+        Args:
+            a (float): The coefficient for x in the new x-coordinate.
+            b (float): The coefficient for y in the new x-coordinate.
+            c (float): The translation term for the new x-coordinate.
+            d (float): The coefficient for x in the new y-coordinate.
+            e (float): The coefficient for y in the new y-coordinate.
+            f (float): The translation term for the new y-coordinate.
         """
         corners = [self.top_left, self.top_right, self.bottom_left, self.bottom_right]
 
-        # 1) Transform corners in-place
         for corner in corners:
             x_old = corner["x"]
             y_old = corner["y"]
@@ -436,93 +393,77 @@ class Word:
             corner["x"] = x_new
             corner["y"] = y_new
 
-        # 2) Recompute bounding_box
         xs = [pt["x"] for pt in corners]
         ys = [pt["y"] for pt in corners]
-        min_x, max_x = min(xs), max(xs)
-        min_y, max_y = min(ys), max(ys)
-
-        self.bounding_box["x"] = min_x
-        self.bounding_box["y"] = min_y
-        self.bounding_box["width"] = max_x - min_x
-        self.bounding_box["height"] = max_y - min_y
+        self.bounding_box["x"] = min(xs)
+        self.bounding_box["y"] = min(ys)
+        self.bounding_box["width"] = max(xs) - min(xs)
+        self.bounding_box["height"] = max(ys) - min(ys)
 
         dx = self.top_right["x"] - self.top_left["x"]
         dy = self.top_right["y"] - self.top_left["y"]
 
-        # angle_radians is angle from x-axis
-        new_angle_radians = atan2(dy, dx)  # range [-pi, pi]
-        new_angle_degrees = new_angle_radians * 180.0 / pi
-
+        new_angle_radians = atan2(dy, dx)
         self.angle_radians = new_angle_radians
-        self.angle_degrees = new_angle_degrees
+        self.angle_degrees = new_angle_radians * 180.0 / pi
 
     def warp_affine_normalized_forward(
         self,
-        a_f, b_f, c_f,
-        d_f, e_f, f_f,
-        orig_width, orig_height,
-        new_width, new_height,
-        flip_y=False
+        a_f,
+        b_f,
+        c_f,
+        d_f,
+        e_f,
+        f_f,
+        orig_width,
+        orig_height,
+        new_width,
+        new_height,
+        flip_y=False,
     ):
-        """
-        Applies the 'forward' 2x3 transform:
-            x_new = a_f * x_old + b_f * y_old + c_f
-            y_new = d_f * x_old + e_f * y_old + f_f
-        where (x_old, y_old) are normalized wrt the original image,
-        and (x_new, y_new) become normalized wrt the new subimage.
+        """Applies a normalized forward affine transformation to the Word's corners.
 
-        So the final corners are in [0..1] of the new image.
+        The transformation converts normalized coordinates from the original image to new
+        normalized coordinates in the warped image.
 
         Args:
-            a_f,b_f,c_f,d_f,e_f,f_f (float): 
-                The forward transform old->new in pixel space.
-            orig_width, orig_height (int):
-                Dimensions of the original image in pixels.
-            new_width, new_height (int):
-                Dimensions of the new warped/cropped image.
-            flip_y (bool):
-                If your original coords treat y=0 at the bottom, you might do
-                y_old_pixels = (1 - y_old) * orig_height. 
-                Conversely for the final y. 
-                Adjust as needed so you only do one consistent flip.
+            a_f (float): The coefficient for x in the new x-coordinate.
+            b_f (float): The coefficient for y in the new x-coordinate.
+            c_f (float): The translation term for the new x-coordinate.
+            d_f (float): The coefficient for x in the new y-coordinate.
+            e_f (float): The coefficient for y in the new y-coordinate.
+            f_f (float): The translation term for the new y-coordinate.
+            orig_width (int): The width of the original image in pixels.
+            orig_height (int): The height of the original image in pixels.
+            new_width (int): The width of the new warped image in pixels.
+            new_height (int): The height of the new warped image in pixels.
+            flip_y (bool, optional): Whether to flip the y-coordinate. Defaults to False.
         """
-
         corners = [self.top_left, self.top_right, self.bottom_left, self.bottom_right]
 
-        # 1) For each corner (in old [0..1] coords):
         for corner in corners:
-            # Convert from normalized old -> pixel old
             x_o = corner["x"] * orig_width
             y_o = corner["y"] * orig_height
 
             if flip_y:
                 y_o = orig_height - y_o
 
-            # 2) Apply the forward transform (old->new) in pixel space:
-            x_new_px = a_f*x_o + b_f*y_o + c_f
-            y_new_px = d_f*x_o + e_f*y_o + f_f
+            x_new_px = a_f * x_o + b_f * y_o + c_f
+            y_new_px = d_f * x_o + e_f * y_o + f_f
 
-            # 3) Convert the new pixel coords to new [0..1]
             if flip_y:
-                # If you want the new image to keep top=0, bottom=1,
-                # you might do y_new_norm = 1 - (y_new_px / new_height).
-                # Or do no flip if you prefer. 
                 corner["x"] = x_new_px / new_width
                 corner["y"] = 1 - (y_new_px / new_height)
             else:
                 corner["x"] = x_new_px / new_width
                 corner["y"] = y_new_px / new_height
 
-        # 4) Recompute bounding box, angle, etc. same as before
         xs = [pt["x"] for pt in corners]
         ys = [pt["y"] for pt in corners]
-        min_x, max_x = min(xs), max(xs)
-        min_y, max_y = min(ys), max(ys)
-        self.bounding_box["x"] = min_x
-        self.bounding_box["y"] = min_y
-        self.bounding_box["width"] = (max_x - min_x)
-        self.bounding_box["height"] = (max_y - min_y)
+        self.bounding_box["x"] = min(xs)
+        self.bounding_box["y"] = min(ys)
+        self.bounding_box["width"] = max(xs) - min(xs)
+        self.bounding_box["height"] = max(ys) - min(ys)
 
         dx = self.top_right["x"] - self.top_left["x"]
         dy = self.top_right["y"] - self.top_left["y"]
@@ -531,20 +472,20 @@ class Word:
         self.angle_degrees = degrees(angle_rad)
 
     def rotate_90_ccw_in_place(self, old_w: int, old_h: int):
-        """
-        Rotates the object 90 degrees counter-clockwise in-place
-        about the (0,0) origin in a standard image coordinate system
-        (origin at top-left, y increasing downward).
+        """Rotates the Word 90 degrees counter-clockwise in-place.
 
-        old_w, old_h are the image dimensions before rotation.
+        The rotation is performed about the origin (0, 0) in pixel space, and the
+        coordinates are re-normalized based on the new image dimensions.
+
+        Args:
+            old_w (int): The width of the image before rotation.
+            old_h (int): The height of the image before rotation.
         """
-        # Convert normalized -> pixel
         corners = [self.top_left, self.top_right, self.bottom_right, self.bottom_left]
         for corner in corners:
             corner["x"] *= old_w
             corner["y"] *= old_h
 
-        # Now do the standard 90° CCW about (0,0) in pixel space
         for corner in corners:
             x_old = corner["x"]
             y_old = corner["y"]
@@ -553,72 +494,48 @@ class Word:
             corner["x"] = x_new
             corner["y"] = y_new
 
-        # The new image is (old_h, old_w) in pixel dims if you rotate 90°, so re‐normalize
-        # (and optionally flip Y if you want the bottom to be y=0).
         final_w = old_h
         final_h = old_w
         for corner in corners:
             corner["x"] /= final_w
-            # maybe corner["y"] = 1 - corner["y"]/final_h if you want 0 at bottom
             corner["y"] /= final_h
 
-        # 2) Recompute the bounding box
         xs = [pt["x"] for pt in corners]
         ys = [pt["y"] for pt in corners]
-        min_x, max_x = min(xs), max(xs)
-        min_y, max_y = min(ys), max(ys)
-        self.bounding_box["x"] = min_x
-        self.bounding_box["y"] = min_y
-        self.bounding_box["width"] = max_x - min_x
-        self.bounding_box["height"] = max_y - min_y
+        self.bounding_box["x"] = min(xs)
+        self.bounding_box["y"] = min(ys)
+        self.bounding_box["width"] = max(xs) - min(xs)
+        self.bounding_box["height"] = max(ys) - min(ys)
 
-        # 3) Update the angle
         self.angle_degrees += 90
         self.angle_radians += pi / 2
 
     def __repr__(self):
-        """
-        Returns a string representation of the Word object.
+        """Returns a string representation of the Word object.
 
         Returns:
             str: The string representation of the Word object.
         """
-        # fmt: off
         return (
             f"Word("
-                f"id={self.id}, "
-                f"text='{self.text}', "
-                "bounding_box=("
-                    f"x= {self.bounding_box['x']}, "
-                    f"y= {self.bounding_box['y']}, "
-                    f"width= {self.bounding_box['width']}, "
-                    f"height= {self.bounding_box['height']}), "
-                "top_right=("
-                    f"x= {self.top_right['x']}, "
-                    f"y= {self.top_right['y']}), "
-                "top_left=("
-                    f"x= {self.top_left['x']}, "
-                    f"y= {self.top_left['y']}), "
-                "bottom_right=("
-                    f"x= {self.bottom_right['x']}, "
-                    f"y= {self.bottom_right['y']}), "
-                "bottom_left=("
-                    f"x= {self.bottom_left['x']}, "
-                    f"y= {self.bottom_left['y']}), "
-                f"angle_degrees={self.angle_degrees}, "
-                f"angle_radians={self.angle_radians}, "
-                f"confidence={self.confidence:.2}"
+            f"id={self.id}, "
+            f"text='{self.text}', "
+            f"bounding_box={self.bounding_box}, "
+            f"top_right={self.top_right}, "
+            f"top_left={self.top_left}, "
+            f"bottom_right={self.bottom_right}, "
+            f"bottom_left={self.bottom_left}, "
+            f"angle_degrees={self.angle_degrees}, "
+            f"angle_radians={self.angle_radians}, "
+            f"confidence={self.confidence}"
             f")"
         )
-        # fmt: on
 
     def __iter__(self) -> Generator[Tuple[str, str], None, None]:
-        """
-        Yields the Word object's attributes as (key, value) pairs.
+        """Returns an iterator over the Word object's attributes.
 
         Yields:
-            Generator[Tuple[str, any], None, None]: Each yield is a tuple
-            of (attribute_name, attribute_value).
+            Tuple[str, any]: A tuple containing the attribute name and its value.
         """
         yield "image_id", self.image_id
         yield "line_id", self.line_id
@@ -637,14 +554,13 @@ class Word:
         yield "num_chars", self.num_chars
 
     def __eq__(self, other: object) -> bool:
-        """
-        Compares two Word objects for equality based on their attributes.
+        """Determines whether two Word objects are equal.
 
         Args:
             other (object): The object to compare.
 
         Returns:
-            bool: True if the objects have the same attributes, False otherwise.
+            bool: True if the Word objects have the same attributes, False otherwise.
         """
         if not isinstance(other, Word):
             return False
@@ -666,27 +582,16 @@ class Word:
 
 
 def itemToWord(item: dict) -> Word:
-    """
-    Converts a DynamoDB item dictionary into a Word object.
-
-    This function expects a dictionary that contains:
-    - PK: {"S": "IMAGE#<uuid>"}
-    - SK: {"S": "LINE#<line_id>#WORD#<word_id>"}
-    - text: {"S": <string>}
-    - bounding_box, top_right, top_left, bottom_right, bottom_left:
-      nested dicts with numeric values
-    - angle_degrees, angle_radians, confidence: numeric values
-    - Optional: tags ({"SS": [<tag1>, <tag2>, ...]})
+    """Converts a DynamoDB item to a Word object.
 
     Args:
-        item (dict): A dictionary in the DynamoDB format containing all required keys.
+        item (dict): The DynamoDB item to convert.
 
     Returns:
-        Word: An instance of the Word class populated from the given item.
+        Word: The Word object represented by the DynamoDB item.
 
     Raises:
-        ValueError: If the item is missing required keys
-            or if any required field is malformed (e.g., numeric parsing fails).
+        ValueError: When the item is missing required keys or has malformed fields.
     """
     required_keys = {
         "PK",

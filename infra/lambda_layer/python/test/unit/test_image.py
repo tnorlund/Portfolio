@@ -120,7 +120,7 @@ def test_init_bad_width_and_height():
 @pytest.mark.unit
 def test_init_bad_timestamp():
     with pytest.raises(
-        ValueError, match="timestamp_added must be a string or datetime"
+        ValueError, match="timestamp_added must be a datetime object or a string"
     ):
         Image(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -132,6 +132,7 @@ def test_init_bad_timestamp():
             sha256="abc123",
         )
 
+
 @pytest.mark.unit
 def test_init_bad_s3_bucket():
     """Test that the s3 bucket is a str in the constructor"""
@@ -141,10 +142,11 @@ def test_init_bad_s3_bucket():
             10,
             20,
             "2021-01-01T00:00:00",
-            10, # Should be a string
+            10,  # Should be a string
             "key",
             "abc123",
         )
+
 
 @pytest.mark.unit
 def test_init_bad_s3_key():
@@ -156,10 +158,9 @@ def test_init_bad_s3_key():
             20,
             "2021-01-01T00:00:00",
             "bucket",
-            10, # Should be a string
+            10,  # Should be a string
             "abc123",
         )
-
 
 
 @pytest.mark.unit
@@ -311,7 +312,19 @@ def test_to_item_no_cdn_key(example_image_no_cdn_key):
 @pytest.mark.unit
 def test_repr(example_image):
     """Test the Image.__repr__() method"""
-    assert repr(example_image) == "Image(id='3f52804b-2fad-4e00-92c8-b593da3a8ed3')"
+    assert repr(example_image) == (
+        "Image("
+        "id='3f52804b-2fad-4e00-92c8-b593da3a8ed3', "
+        "width=10, "
+        "height=20, "
+        "timestamp_added=2021-01-01T00:00:00, "
+        "raw_s3_bucket='bucket', "
+        "raw_s3_key='key', "
+        "sha256='abc123', "
+        "cdn_s3_bucket='cdn_bucket', "
+        "cdn_s3_key='cdn_key'"
+        ")"
+    )
 
 
 @pytest.mark.unit
