@@ -1,4 +1,4 @@
-from typing import Generator, Tuple
+from typing import Any, Generator, Tuple
 from datetime import datetime
 from dynamo.entities.util import (
     assert_valid_uuid,
@@ -40,6 +40,8 @@ class Receipt:
             bottom_left (dict): The bottom left corner of the bounding box.
             bottom_right (dict): The bottom right corner of the bounding box.
             sha256 (str): The SHA256 hash of the receipt.
+            cdn_s3_bucket (str, optional): The S3 bucket for the CDN version of the receipt.
+            cdn_s3_key (str, optional): The S3 key for the CDN version of the receipt.
 
         Attributes:
             image_id (str): UUID identifying the associated image.
@@ -54,7 +56,15 @@ class Receipt:
             bottom_left (dict): The bottom left corner of the bounding box.
             bottom_right (dict): The bottom right corner of the bounding box.
             sha256 (str): The SHA256 hash of the receipt.
+            cdn_s3_bucket (str): The S3 bucket for the CDN version of the receipt.
+            cdn_s3_key (str): The S3 key for the CDN version of the receipt.
 
+        Raises:
+            ValueError: If image_id is not a valid UUID.
+            ValueError: If id is not a positive integer.
+            ValueError: If width or height is not a positive integer.
+            ValueError: If timestamp_added is not a datetime object or a string.
+            ValueError: If raw_s3_bucket, raw_s3_key, sha256, cdn_s3_bucket, or cdn_s3_key is not a string.
         """
         assert_valid_uuid(image_id)
         self.image_id = image_id
@@ -114,7 +124,6 @@ class Receipt:
 
         Returns:
             dict: The primary key for the receipt.
-
         """
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
@@ -215,11 +224,11 @@ class Receipt:
             ")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, int], None, None]:
+    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
         """Returns an iterator over the Receipt object's attributes.
 
         Returns:
-            dict: An iterator over the Receipt object's attributes.
+            Generator[Tuple[str, Any], None, None]: An iterator over the Receipt object's attribute name/value pairs.
         """
         yield "id", int(self.id)
         yield "image_id", self.image_id
@@ -244,7 +253,6 @@ class Receipt:
 
         Returns:
             bool: True if the Receipt objects are equal, False otherwise.
-
         """
         if not isinstance(other, Receipt):
             return NotImplemented
@@ -267,13 +275,16 @@ class Receipt:
 
 
 def itemToReceipt(item: dict) -> Receipt:
-    """Converts a DynamoDB item to a Receipt object
+    """Converts a DynamoDB item to a Receipt object.
 
     Args:
-        item (dict): The DynamoDB item to convert
+        item (dict): The DynamoDB item to convert.
 
     Returns:
-        Receipt: The Receipt object
+        Receipt: The Receipt object.
+
+    Raises:
+        ValueError: When the item format is invalid.
     """
     required_keys = {
         "PK",

@@ -1,4 +1,4 @@
-from typing import Generator, Tuple
+from typing import Any, Generator, Tuple
 from datetime import datetime
 from dynamo.entities.util import assert_valid_uuid
 
@@ -26,8 +26,8 @@ class Image:
             raw_s3_bucket (str): The S3 bucket where the image is initially stored.
             raw_s3_key (str): The S3 key where the image is initially stored.
             sha256 (str): The SHA256 hash of the image.
-            cdn_s3_bucket (str): The S3 bucket where the image is stored in the CDN.
-            cdn_s3_key (str): The S3 key where the image is stored in the CDN.
+            cdn_s3_bucket (str, optional): The S3 bucket where the image is stored in the CDN.
+            cdn_s3_key (str, optional): The S3 key where the image is stored in the CDN.
 
         Attributes:
             id (str): UUID identifying the image.
@@ -41,9 +41,10 @@ class Image:
             cdn_s3_key (str): The S3 key where the image is stored in the CDN.
 
         Raises:
-            ValueError: If the ID is not a positive integer.
-            ValueError: If the width or height is not a positive integer.
+            ValueError: If id is not a valid UUID.
+            ValueError: If width or height is not a positive integer.
             ValueError: If timestamp_added is not a datetime object or a string.
+            ValueError: If raw_s3_bucket, raw_s3_key, sha256, cdn_s3_bucket, or cdn_s3_key is not a string.
         """
         assert_valid_uuid(id)
         self.id = id
@@ -63,7 +64,7 @@ class Image:
         elif isinstance(timestamp_added, str):
             self.timestamp_added = timestamp_added
         else:
-            raise ValueError("timestamp_added must be a string or datetime")
+            raise ValueError("timestamp_added must be a datetime object or a string")
 
         if raw_s3_bucket and not isinstance(raw_s3_bucket, str):
             raise ValueError("raw_s3_bucket must be a string")
@@ -142,11 +143,11 @@ class Image:
             ")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, int], None, None]:
+    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
         """Returns an iterator over the Image object's attributes.
 
         Returns:
-            dict: An iterator over the Image object's attributes.
+            Generator[Tuple[str, Any], None, None]: An iterator over the Image object's attribute name/value pairs.
         """
         yield "id", self.id
         yield "width", self.width
@@ -154,9 +155,9 @@ class Image:
         yield "timestamp_added", self.timestamp_added
         yield "raw_s3_bucket", self.raw_s3_bucket
         yield "raw_s3_key", self.raw_s3_key
+        yield "sha256", self.sha256
         yield "cdn_s3_bucket", self.cdn_s3_bucket
         yield "cdn_s3_key", self.cdn_s3_key
-        yield "sha256", self.sha256
 
     def __eq__(self, other) -> bool:
         """Determines whether two Image objects are equal.
@@ -166,7 +167,6 @@ class Image:
 
         Returns:
             bool: True if the Image objects are equal, False otherwise.
-
         """
         if not isinstance(other, Image):
             return False
@@ -184,16 +184,16 @@ class Image:
 
 
 def itemToImage(item: dict) -> Image:
-    """Converts a DynamoDB item to an Image object
+    """Converts a DynamoDB item to an Image object.
 
     Args:
-        item (dict): The DynamoDB item to convert
+        item (dict): The DynamoDB item to convert.
 
     Returns:
-        Image: The Image object represented by the DynamoDB item
+        Image: The Image object represented by the DynamoDB item.
 
     Raises:
-        ValueError: When the item format is invalid
+        ValueError: When the item format is invalid.
     """
     required_keys = {
         "PK",
