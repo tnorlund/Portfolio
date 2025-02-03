@@ -5,6 +5,7 @@ from dynamo.entities.util import (
     assert_valid_point,
     _format_float,
     compute_histogram,
+    _repr_str,
 )
 
 
@@ -38,7 +39,7 @@ class ReceiptLine:
         self,
         receipt_id: int,
         image_id: str,
-        id: int,
+        line_id: int,
         text: str,
         bounding_box: dict,
         top_right: dict,
@@ -82,11 +83,11 @@ class ReceiptLine:
         assert_valid_uuid(image_id)
         self.image_id = image_id
 
-        if not isinstance(id, int):
+        if not isinstance(line_id, int):
             raise ValueError("id must be an integer")
-        if id <= 0:
+        if line_id <= 0:
             raise ValueError("id must be positive")
-        self.id = id
+        self.line_id = line_id
 
         if not isinstance(text, str):
             raise ValueError("text must be a string")
@@ -132,7 +133,7 @@ class ReceiptLine:
         """
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#LINE#{self.id:05d}"},
+            "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#LINE#{self.line_id:05d}"},
         }
 
     def to_item(self) -> dict:
@@ -203,7 +204,7 @@ class ReceiptLine:
         return (
             self.receipt_id == other.receipt_id
             and self.image_id == other.image_id
-            and self.id == other.id
+            and self.line_id == other.line_id
             and self.text == other.text
             and self.bounding_box == other.bounding_box
             and self.top_right == other.top_right
@@ -225,8 +226,8 @@ class ReceiptLine:
         return (
             f"ReceiptLine("
             f"receipt_id={self.receipt_id}, "
-            f"image_id='{self.image_id}', "
-            f"id={self.id}, "
+            f"image_id={_repr_str(self.image_id)}, "
+            f"line_id={self.line_id}, "
             f"text='{self.text}', "
             f"bounding_box={self.bounding_box}, "
             f"top_right={self.top_right}, "
@@ -248,7 +249,7 @@ class ReceiptLine:
         """
         yield "image_id", self.image_id
         yield "receipt_id", self.receipt_id
-        yield "id", self.id
+        yield "line_id", self.line_id
         yield "text", self.text
         yield "bounding_box", self.bounding_box
         yield "top_right", self.top_right
@@ -295,7 +296,7 @@ def itemToReceiptLine(item: dict) -> ReceiptLine:
         return ReceiptLine(
             image_id=item["PK"]["S"].split("#")[1],
             receipt_id=int(item["SK"]["S"].split("#")[1]),
-            id=int(item["SK"]["S"].split("#")[3]),
+            line_id=int(item["SK"]["S"].split("#")[3]),
             text=item["text"]["S"],
             bounding_box={
                 key: float(value["N"])

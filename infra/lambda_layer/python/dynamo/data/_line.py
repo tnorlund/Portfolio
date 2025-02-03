@@ -33,7 +33,7 @@ class _Line:
                 ConditionExpression="attribute_not_exists(PK)",
             )
         except ClientError as e:
-            raise ValueError(f"Line with ID {line.id} already exists")
+            raise ValueError(f"Line with ID {line.line_id} already exists")
 
     def addLines(self, lines: list[Line]):
         """Adds a list of lines to the database
@@ -76,7 +76,7 @@ class _Line:
             )
         except ClientError as e:
             if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-                raise ValueError(f"Line with ID {line.id} not found")
+                raise ValueError(f"Line with ID {line.line_id} not found")
             else:
                 raise Exception(f"Error updating line: {e}")
 

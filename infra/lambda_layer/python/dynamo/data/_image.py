@@ -55,7 +55,7 @@ class _Image:
             )
         except ClientError as e:
             if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-                raise ValueError(f"Image with ID {image.id} already exists")
+                raise ValueError(f"Image with ID {image.image_id} already exists")
             else:
                 raise Exception(f"Error updating image: {e}")
 
@@ -131,7 +131,7 @@ class _Image:
             )
         except ClientError as e:
             if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-                raise ValueError(f"Image with ID {image.id} not found")
+                raise ValueError(f"Image with ID {image.image_id} not found")
             else:
                 raise Exception(f"Error updating image: {e}")
 
@@ -317,7 +317,7 @@ class _Image:
                 item_type = item["TYPE"]["S"]
                 if sk == "IMAGE":
                     img = itemToImage(item)
-                    payload[img.id] = {"image": img}
+                    payload[img.image_id] = {"image": img}
                 elif sk.startswith("RECEIPT") and item_type == "RECEIPT":
                     receipt = itemToReceipt(item)
                     if receipt.image_id in payload:
@@ -379,8 +379,8 @@ class _Image:
                     if images_found < limit:
                         # Include this image in the current page
                         img = itemToImage(item)
-                        payload[img.id] = {"image": img}
-                        included_image_ids.add(img.id)
+                        payload[img.image_id] = {"image": img}
+                        included_image_ids.add(img.image_id)
                         images_found += 1
 
                         # Track the key of the last consumed image
@@ -392,7 +392,7 @@ class _Image:
                     else:
                         # This is the (limit+1)-th image => leftover
                         leftover_img = itemToImage(item)
-                        leftover_image_id = leftover_img.id
+                        leftover_image_id = leftover_img.image_id
                         leftover_image_key = {
                             **leftover_img.key(),
                             **leftover_img.gsi1_key()

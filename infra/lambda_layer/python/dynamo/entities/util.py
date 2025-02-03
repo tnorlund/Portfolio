@@ -1,14 +1,21 @@
 from decimal import Decimal, ROUND_HALF_UP
 import re
 
+
+def _repr_str(value: str) -> str:
+    """Return a string wrapped in single quotes, or the literal 'None' if value is None."""
+    return "None" if value is None else f"'{value}'"
+
+
 # Regex for UUID version 4 (case-insensitive, enforcing the '4' and the [89AB] variant).
 UUID_V4_REGEX = re.compile(
-    r'^[0-9A-Fa-f]{8}-'
-    r'[0-9A-Fa-f]{4}-'
-    r'4[0-9A-Fa-f]{3}-'
-    r'[89ABab][0-9A-Fa-f]{3}-'
-    r'[0-9A-Fa-f]{12}$'
+    r"^[0-9A-Fa-f]{8}-"
+    r"[0-9A-Fa-f]{4}-"
+    r"4[0-9A-Fa-f]{3}-"
+    r"[89ABab][0-9A-Fa-f]{3}-"
+    r"[0-9A-Fa-f]{12}$"
 )
+
 
 def compute_histogram(text: str) -> dict:
     known_letters = [
@@ -104,7 +111,7 @@ def compute_histogram(text: str) -> dict:
         "{",
         "}",
         "|",
-        "~"
+        "~",
     ]
     histogram = {letter: 0 for letter in known_letters}
     for letter in text:
@@ -112,8 +119,11 @@ def compute_histogram(text: str) -> dict:
             histogram[letter] += 1
     total_letters = sum(histogram.values())
     if total_letters > 0:
-        histogram = {letter: count / total_letters for letter, count in histogram.items()}
+        histogram = {
+            letter: count / total_letters for letter, count in histogram.items()
+        }
     return histogram
+
 
 def assert_valid_bounding_box(bounding_box):
     """
@@ -177,7 +187,7 @@ def assert_valid_uuid(uuid) -> None:
 
 def shear_point(px, py, pivot_x, pivot_y, shx, shy):
     """
-    Shears point (px, py) around pivot (pivot_x, pivot_y) 
+    Shears point (px, py) around pivot (pivot_x, pivot_y)
     by shear factors `shx` (x-shear) and `shy` (y-shear).
 
     Forward transform (source -> dest):
@@ -198,4 +208,3 @@ def shear_point(px, py, pivot_x, pivot_y, shx, shy):
     final_x = sheared_x + pivot_x
     final_y = sheared_y + pivot_y
     return final_x, final_y
-
