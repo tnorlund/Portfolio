@@ -9,7 +9,7 @@ def sample_receipt_word():
         receipt_id=1,
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=10,
-        id=5,
+        word_id=5,
         text="Sample receipt word",
         bounding_box={"x": 0.1, "y": 0.2, "width": 0.2, "height": 0.03},
         top_left={"x": 0.1, "y": 0.2},
@@ -38,7 +38,7 @@ def test_add_receipt_word(
         sample_receipt_word.receipt_id,
         sample_receipt_word.image_id,
         sample_receipt_word.line_id,
-        sample_receipt_word.id,
+        sample_receipt_word.word_id,
     )
     assert retrieved_word == sample_receipt_word
 
@@ -73,7 +73,7 @@ def test_update_receipt_word(
         sample_receipt_word.receipt_id,
         sample_receipt_word.image_id,
         sample_receipt_word.line_id,
-        sample_receipt_word.id,
+        sample_receipt_word.word_id,
     )
     assert retrieved_word.text == "Updated receipt word"
 
@@ -91,7 +91,7 @@ def test_delete_receipt_word(
         sample_receipt_word.receipt_id,
         sample_receipt_word.image_id,
         sample_receipt_word.line_id,
-        sample_receipt_word.id,
+        sample_receipt_word.word_id,
     )
 
     # Assert
@@ -100,7 +100,7 @@ def test_delete_receipt_word(
             sample_receipt_word.receipt_id,
             sample_receipt_word.image_id,
             sample_receipt_word.line_id,
-            sample_receipt_word.id,
+            sample_receipt_word.word_id,
         )
 
 
@@ -113,7 +113,7 @@ def test_list_receipt_words(dynamodb_table: Literal["MyMockedTable"]):
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id=5,
-            id=i,
+            word_id=i,
             text=f"Word{i}",
             bounding_box={"x": 0.0, "y": 0.0, "width": 0.1, "height": 0.02},
             top_left={"x": 0.0, "y": 0.0},
@@ -147,7 +147,7 @@ def test_list_receipt_words_from_line(dynamodb_table: Literal["MyMockedTable"]):
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id=10,
-            id=i,
+            word_id=i,
             text=f"LineWord{i}",
             bounding_box={"x": 0.0, "y": 0.0, "width": 0.1, "height": 0.02},
             top_left={"x": 0.0, "y": 0.0},
@@ -165,7 +165,7 @@ def test_list_receipt_words_from_line(dynamodb_table: Literal["MyMockedTable"]):
         receipt_id=1,
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=99,
-        id=999,
+        word_id=999,
         text="Different line word",
         bounding_box={"x": 0.2, "y": 0.3, "width": 0.1, "height": 0.01},
         top_left={"x": 0.2, "y": 0.3},

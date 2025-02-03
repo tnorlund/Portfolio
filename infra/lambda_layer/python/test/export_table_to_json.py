@@ -5,7 +5,7 @@ import boto3
 
 CURRENT_DIR = os.path.dirname(__file__)
 
-IMAGE_ID = "2608fbeb-dd25-4ab8-8034-5795282b6cd6"
+IMAGE_ID = "02aa1d34-5c10-42b4-a463-c49b86214dd7"
 
 if __name__ == "__main__":
     # 1) Grab data from Dynamo or wherever
@@ -21,7 +21,7 @@ if __name__ == "__main__":
     # Example: Get the GPT response from S3 (existing code)
     response = s3.list_objects_v2(
         Bucket=image.raw_s3_bucket,
-        Prefix=f"raw/{image.id}",
+        Prefix=f"raw/{image.image_id}",
     )
     gpt_objects = [
         obj

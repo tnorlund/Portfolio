@@ -22,7 +22,7 @@ class Letter:
         image_id (str): UUID identifying the image.
         line_id (int): Identifier for the line containing the letter.
         word_id (int): Identifier for the word containing the letter.
-        id (int): Identifier for the letter.
+        letter_id (int): Identifier for the letter.
         text (str): The text of the letter (must be exactly one character).
         bounding_box (dict): The bounding box of the letter with keys 'x', 'y', 'width', and 'height'.
         top_right (dict): The top-right corner coordinates with keys 'x' and 'y'.
@@ -39,7 +39,7 @@ class Letter:
         image_id: str,
         line_id: int,
         word_id: int,
-        id: int,
+        letter_id: int,
         text: str,
         bounding_box: dict,
         top_right: dict,
@@ -56,7 +56,7 @@ class Letter:
             image_id (str): UUID identifying the image.
             line_id (int): Identifier for the line containing the letter.
             word_id (int): Identifier for the word containing the letter.
-            id (int): Identifier for the letter.
+            letter_id (int): Identifier for the letter.
             text (str): The text of the letter (must be exactly one character).
             bounding_box (dict): The bounding box of the letter with keys 'x', 'y', 'width', and 'height'.
             top_right (dict): The top-right corner coordinates with keys 'x' and 'y'.
@@ -85,11 +85,11 @@ class Letter:
             raise ValueError("word_id must be positive")
         self.word_id = word_id
 
-        if not isinstance(id, int):
+        if not isinstance(letter_id, int):
             raise ValueError("id must be an integer")
-        if id <= 0:
+        if letter_id <= 0:
             raise ValueError("id must be positive")
-        self.id = id
+        self.letter_id = letter_id
 
         if not isinstance(text, str):
             raise ValueError("text must be a string")
@@ -139,7 +139,7 @@ class Letter:
             "SK": {
                 "S": f"LINE#{self.line_id:05d}"
                 f"#WORD#{self.word_id:05d}"
-                f"#LETTER#{self.id:05d}"
+                f"#LETTER#{self.letter_id:05d}"
             },
         }
 
@@ -498,7 +498,7 @@ class Letter:
         """
         return (
             f"Letter("
-            f"id={self.id}, "
+            f"letter_id={self.letter_id}, "
             f"text='{self.text}', "
             f"bounding_box={self.bounding_box}, "
             f"top_right={self.top_right}, "
@@ -520,7 +520,7 @@ class Letter:
         yield "image_id", self.image_id
         yield "word_id", self.word_id
         yield "line_id", self.line_id
-        yield "id", self.id
+        yield "letter_id", self.letter_id
         yield "text", self.text
         yield "bounding_box", self.bounding_box
         yield "top_right", self.top_right
@@ -546,7 +546,7 @@ class Letter:
             self.image_id == other.image_id
             and self.line_id == other.line_id
             and self.word_id == other.word_id
-            and self.id == other.id
+            and self.letter_id == other.letter_id
             and self.text == other.text
             and self.bounding_box == other.bounding_box
             and self.top_right == other.top_right
@@ -591,7 +591,7 @@ def itemToLetter(item: dict) -> Letter:
     try:
         return Letter(
             image_id=item["PK"]["S"][6:],  # strip off "IMAGE#"
-            id=int(item["SK"]["S"].split("#")[5]),
+            letter_id=int(item["SK"]["S"].split("#")[5]),
             line_id=int(item["SK"]["S"].split("#")[1]),
             word_id=int(item["SK"]["S"].split("#")[3]),
             text=item["text"]["S"],

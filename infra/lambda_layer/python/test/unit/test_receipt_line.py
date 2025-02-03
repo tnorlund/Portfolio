@@ -4,14 +4,14 @@ from dynamo import ReceiptLine, itemToReceiptLine
 @pytest.fixture
 def example_receipt_line():
     # fmt: off
-    return ReceiptLine( receipt_id=1, image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", id=10, text="Line text", bounding_box={"x": 0.1, "y": 0.2, "width": 0.5, "height": 0.2}, top_left={"x": 0.1, "y": 0.2}, top_right={"x": 0.6, "y": 0.2}, bottom_left={"x": 0.1, "y": 0.4}, bottom_right={"x": 0.6, "y": 0.4}, angle_degrees=0.0, angle_radians=0.0, confidence=0.95, )
+    return ReceiptLine( receipt_id=1, image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=10, text="Line text", bounding_box={"x": 0.1, "y": 0.2, "width": 0.5, "height": 0.2}, top_left={"x": 0.1, "y": 0.2}, top_right={"x": 0.6, "y": 0.2}, bottom_left={"x": 0.1, "y": 0.4}, bottom_right={"x": 0.6, "y": 0.4}, angle_degrees=0.0, angle_radians=0.0, confidence=0.95, )
     # fmt: on
 
 @pytest.mark.unit
 def test_receipt_line_valid_init(example_receipt_line):
     assert example_receipt_line.receipt_id == 1
     assert example_receipt_line.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    assert example_receipt_line.id == 10
+    assert example_receipt_line.line_id == 10
     assert example_receipt_line.text == "Line text"
     assert example_receipt_line.bounding_box == {"x": 0.1, "y": 0.2, "width": 0.5, "height": 0.2}
     assert example_receipt_line.top_left == {"x": 0.1, "y": 0.2}
@@ -29,7 +29,7 @@ def test_invalid_receipt_id():
         ReceiptLine(
             receipt_id="1",  # invalid
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            id=1,
+            line_id=1,
             text="Line text",
             bounding_box={"x": 0, "y": 0, "width": 1, "height": 1},
             top_left={"x": 0.1, "y": 0.2},
@@ -44,7 +44,7 @@ def test_invalid_receipt_id():
         ReceiptLine(
             receipt_id=-1,  # invalid
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            id=1,
+            line_id=1,
             text="Line text",
             bounding_box={"x": 0, "y": 0, "width": 1, "height": 1},
             top_left={"x": 0.1, "y": 0.2},
@@ -62,7 +62,7 @@ def test_invalid_image_id():
         ReceiptLine(
             receipt_id=1,
             image_id=1,  # invalid
-            id=1,
+            line_id=1,
             text="Line text",
             bounding_box={"x": 0, "y": 0, "width": 1, "height": 1},
             top_left={"x": 0.1, "y": 0.2},
@@ -77,7 +77,7 @@ def test_invalid_image_id():
         ReceiptLine(
             receipt_id=1,
             image_id="invalid",  # invalid
-            id=1,
+            line_id=1,
             text="Line text",
             bounding_box={"x": 0, "y": 0, "width": 1, "height": 1},
             top_left={"x": 0.1, "y": 0.2},
@@ -95,7 +95,7 @@ def test_invalid_id():
         ReceiptLine(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            id="1",  # invalid
+            line_id="1",  # invalid
             text="Line text",
             bounding_box={"x": 0, "y": 0, "width": 1, "height": 1},
             top_left={"x": 0.1, "y": 0.2},
@@ -110,7 +110,7 @@ def test_invalid_id():
         ReceiptLine(
             receipt_id=1,  # invalid
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            id=-1,
+            line_id=-1,
             text="Line text",
             bounding_box={"x": 0, "y": 0, "width": 1, "height": 1},
             top_left={"x": 0.1, "y": 0.2},
@@ -128,7 +128,7 @@ def test_invalid_text():
         ReceiptLine(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            id=1,
+            line_id=1,
             text=1,  # invalid
             bounding_box={"x": 0, "y": 0, "width": 1, "height": 1},
             top_left={"x": 0.1, "y": 0.2},
@@ -146,7 +146,7 @@ def test_invalid_angles():
         ReceiptLine(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            id=1,
+            line_id=1,
             text="Line text",
             bounding_box={"x": 0, "y": 0, "width": 1, "height": 1},
             top_left={"x": 0.1, "y": 0.2},
@@ -161,7 +161,7 @@ def test_invalid_angles():
         ReceiptLine(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            id=1,
+            line_id=1,
             text="Line text",
             bounding_box={"x": 0, "y": 0, "width": 1, "height": 1},
             top_left={"x": 0.1, "y": 0.2},
@@ -179,7 +179,7 @@ def test_invalid_confidence():
         ReceiptLine(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            id=1,
+            line_id=1,
             text="Line text",
             bounding_box={"x": 0, "y": 0, "width": 1, "height": 1},
             top_left={"x": 0.1, "y": 0.2},
@@ -193,7 +193,7 @@ def test_invalid_confidence():
     receipt = ReceiptLine(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            id=1,
+            line_id=1,
             text="Line text",
             bounding_box={"x": 0, "y": 0, "width": 1, "height": 1},
             top_left={"x": 0.1, "y": 0.2},
@@ -209,7 +209,7 @@ def test_invalid_confidence():
         ReceiptLine(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            id=1,
+            line_id=1,
             text="Line text",
             bounding_box={"x": 0, "y": 0, "width": 1, "height": 1},
             top_left={"x": 0.1, "y": 0.2},
@@ -224,7 +224,7 @@ def test_invalid_confidence():
         ReceiptLine(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            id=1,
+            line_id=1,
             text="Line text",
             bounding_box={"x": 0, "y": 0, "width": 1, "height": 1},
             top_left={"x": 0.1, "y": 0.2},
@@ -260,7 +260,7 @@ def test_equal_receipt_line():
     line1 = ReceiptLine(
         receipt_id=1,
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        id=3,
+        line_id=3,
         text="Line text",
         bounding_box={"x": 0.1, "y": 0.2, "width": 0.5, "height": 0.2},
         top_left={"x": 0.1, "y": 0.2},
@@ -274,7 +274,7 @@ def test_equal_receipt_line():
     line2 = ReceiptLine(
         receipt_id=1,
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        id=3,
+        line_id=3,
         text="Line text",
         bounding_box={"x": 0.1, "y": 0.2, "width": 0.5, "height": 0.2},
         top_left={"x": 0.1, "y": 0.2},
@@ -294,7 +294,7 @@ def test_repr(example_receipt_line):
         "ReceiptLine("
         "receipt_id=1, "
         "image_id='3f52804b-2fad-4e00-92c8-b593da3a8ed3', "
-        "id=10, "
+        "line_id=10, "
         "text='Line text', "
         "bounding_box={'x': 0.1, 'y': 0.2, 'width': 0.5, 'height': 0.2}, "
         "top_right={'x': 0.6, 'y': 0.2}, "
@@ -313,7 +313,7 @@ def test_iter(example_receipt_line):
     expected_keys = {
         "receipt_id",
         "image_id",
-        "id",
+        "line_id",
         "text",
         "bounding_box",
         "top_left",
@@ -329,7 +329,7 @@ def test_iter(example_receipt_line):
     assert set(receipt_line_dict.keys()) == expected_keys
     assert receipt_line_dict["receipt_id"] == 1
     assert receipt_line_dict["image_id"] == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    assert receipt_line_dict["id"] == 10
+    assert receipt_line_dict["line_id"] == 10
     assert receipt_line_dict["text"] == "Line text"
     assert receipt_line_dict["bounding_box"] == {"x": 0.1, "y": 0.2, "width": 0.5, "height": 0.2}
     assert receipt_line_dict["top_left"] == {"x": 0.1, "y": 0.2}

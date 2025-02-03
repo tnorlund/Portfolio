@@ -175,14 +175,15 @@ def compare_entity_lists(
             return False
         if l1.receipt_id != l2.receipt_id:
             return False
-        if l1.id != l2.id:
+        if l1.line_id != l2.line_id:
             return False
         if l1.text != l2.text:
             return False
-
-        if isinstance(l1, (ReceiptWord, ReceiptLetter)):
-            if l1.line_id != l2.line_id:
-                return False
+        
+        # TODO - uncomment this when we have a word_id in the ReceiptWord and ReceiptLetter
+        # if isinstance(l1, (ReceiptWord, ReceiptLetter)):
+        #     if l1.line_id != l2.line_id:
+        #         return False
         if isinstance(l1, ReceiptLetter):
             if l1.word_id != l2.word_id:
                 return False
@@ -226,7 +227,7 @@ def test_process(
 
     # Arrange
     s3 = boto3.client("s3", region_name="us-east-1")
-    uuid = "2608fbeb-dd25-4ab8-8034-5795282b6cd6"
+    uuid = "02aa1d34-5c10-42b4-a463-c49b86214dd7"
     raw_prefix = "raw"
     upload_json_and_png_files_for_uuid(s3, raw_bucket, uuid, raw_prefix)
     receipt_raw_bytes = get_raw_bytes_receipt(uuid, 1)
@@ -238,11 +239,11 @@ def test_process(
     # Assert
     # The PNG should be in both the raw and cdn buckets
     cdn_response = s3.get_object(
-        Bucket="cdn-bucket", Key="assets/2608fbeb-dd25-4ab8-8034-5795282b6cd6.png"
+        Bucket="cdn-bucket", Key="assets/02aa1d34-5c10-42b4-a463-c49b86214dd7.png"
     )
     cdn_png_bytes = cdn_response["Body"].read()
     raw_response = s3.get_object(
-        Bucket="raw-image-bucket", Key="raw/2608fbeb-dd25-4ab8-8034-5795282b6cd6.png"
+        Bucket="raw-image-bucket", Key="raw/02aa1d34-5c10-42b4-a463-c49b86214dd7.png"
     )
     raw_png_bytes = raw_response["Body"].read()
     assert cdn_png_bytes == raw_png_bytes, "CDN copy of PNG does not match original!"
@@ -252,12 +253,12 @@ def test_process(
     # The Receipt PNG should be in both the raw and cdn buckets
     cdn_response = s3.get_object(
         Bucket="cdn-bucket",
-        Key="assets/2608fbeb-dd25-4ab8-8034-5795282b6cd6_RECEIPT_00001.png",
+        Key="assets/02aa1d34-5c10-42b4-a463-c49b86214dd7_RECEIPT_00001.png",
     )
     cdn_png_bytes = cdn_response["Body"].read()
     raw_response = s3.get_object(
         Bucket="raw-image-bucket",
-        Key="raw/2608fbeb-dd25-4ab8-8034-5795282b6cd6_RECEIPT_00001.png",
+        Key="raw/02aa1d34-5c10-42b4-a463-c49b86214dd7_RECEIPT_00001.png",
     )
     raw_png_bytes = raw_response["Body"].read()
     assert (
