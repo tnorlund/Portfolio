@@ -112,7 +112,7 @@ def process(
     for cluster_id, cluster_lines in cluster_dict.items():
         if cluster_id == -1:
             continue
-        line_ids = [ln.id for ln in cluster_lines]
+        line_ids = [ln.line_id for ln in cluster_lines]
         cluster_words = [w for w in words if w.line_id in line_ids]
         cluster_letters = [lt for lt in letters if lt.line_id in line_ids]
         try:
@@ -191,7 +191,7 @@ def process_ocr_dict(
     for line_idx, line_data in enumerate(ocr_data.get("lines", []), start=1):
         line_obj = Line(
             image_id=image_id,
-            id=line_idx,
+            line_id=line_idx,
             text=line_data["text"],
             bounding_box=line_data["bounding_box"],
             top_right=line_data["top_right"],

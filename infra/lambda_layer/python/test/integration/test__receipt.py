@@ -372,7 +372,7 @@ def sample_receipt_lines():
         ReceiptLine(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
-            id=1,
+            line_id=1,
             text="line1",
             bounding_box={"x": 0, "y": 0, "width": 10, "height": 20},
             top_right={"x": 10, "y": 0},
@@ -386,7 +386,7 @@ def sample_receipt_lines():
         ReceiptLine(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
-            id=2,
+            line_id=2,
             text="line2",
             bounding_box={"x": 0, "y": 0, "width": 10, "height": 20},
             top_right={"x": 10, "y": 0},
@@ -400,7 +400,7 @@ def sample_receipt_lines():
         ReceiptLine(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
-            id=3,
+            line_id=3,
             text="line3",
             bounding_box={"x": 0, "y": 0, "width": 10, "height": 20},
             top_right={"x": 10, "y": 0},
@@ -414,7 +414,7 @@ def sample_receipt_lines():
         ReceiptLine(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
-            id=4,
+            line_id=4,
             text="line4",
             bounding_box={"x": 0, "y": 0, "width": 10, "height": 20},
             top_right={"x": 10, "y": 0},

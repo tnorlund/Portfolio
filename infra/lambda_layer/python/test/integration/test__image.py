@@ -22,7 +22,7 @@ correct_receipt_params = {
 }
 
 correct_line_params = {
-    "id": 1,
+    "line_id": 1,
     "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
     "text": "test",
     "bounding_box": {"x": 0.0, "y": 0.0, "width": 0.0, "height": 0.0},
@@ -280,16 +280,16 @@ def test_listImageDetails(dynamodb_table: Literal["MyMockedTable"]):
 
     # Add Lines for the two real images, plus one line for the "different" image_id_3
     lines_in_image_1 = [
-        Line(**{**correct_line_params, "id": 1, "image_id": image_id_1}),
-        Line(**{**correct_line_params, "id": 2, "image_id": image_id_1}),
+        Line(**{**correct_line_params, "line_id": 1, "image_id": image_id_1}),
+        Line(**{**correct_line_params, "line_id": 2, "image_id": image_id_1}),
     ]
     lines_in_image_2 = [
-        Line(**{**correct_line_params, "id": 1, "image_id": image_id_2}),
-        Line(**{**correct_line_params, "id": 2, "image_id": image_id_2}),
-        Line(**{**correct_line_params, "id": 3, "image_id": image_id_2}),
+        Line(**{**correct_line_params, "line_id": 1, "image_id": image_id_2}),
+        Line(**{**correct_line_params, "line_id": 2, "image_id": image_id_2}),
+        Line(**{**correct_line_params, "line_id": 3, "image_id": image_id_2}),
     ]
     lines_different_image = [
-        Line(**{**correct_line_params, "id": 4, "image_id": image_id_3}),
+        Line(**{**correct_line_params, "line_id": 4, "image_id": image_id_3}),
     ]
     client.addLines(lines_in_image_1 + lines_in_image_2 + lines_different_image)
 

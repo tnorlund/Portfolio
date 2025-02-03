@@ -5,6 +5,7 @@ from dynamo.entities.util import (
     assert_valid_point,
     _format_float,
     compute_histogram,
+    _repr_str,
 )
 
 
@@ -13,7 +14,7 @@ class ReceiptLine:
         self,
         receipt_id: int,
         image_id: str,
-        id: int,
+        line_id: int,
         text: str,
         bounding_box: dict,
         top_right: dict,
@@ -35,11 +36,11 @@ class ReceiptLine:
         assert_valid_uuid(image_id)
         self.image_id = image_id
 
-        if not isinstance(id, int):
+        if not isinstance(line_id, int):
             raise ValueError("id must be an integer")
-        if id <= 0:
+        if line_id <= 0:
             raise ValueError("id must be positive")
-        self.id = id
+        self.line_id = line_id
 
         if not isinstance(text, str):
             raise ValueError("text must be a string")
@@ -84,7 +85,7 @@ class ReceiptLine:
     def key(self):
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#LINE#{self.id:05d}"},
+            "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#LINE#{self.line_id:05d}"},
         }
 
     def to_item(self) -> dict:
@@ -109,7 +110,7 @@ class ReceiptLine:
             "top_left": {
                 "M": {
                     "x": {"N": _format_float(self.top_left["x"], 20, 22)},
-                    "y": {"N": _format_float(self.top_left["y"],20, 22)},
+                    "y": {"N": _format_float(self.top_left["y"], 20, 22)},
                 }
             },
             "bottom_right": {
@@ -137,7 +138,7 @@ class ReceiptLine:
         return (
             self.receipt_id == other.receipt_id
             and self.image_id == other.image_id
-            and self.id == other.id
+            and self.line_id == other.line_id
             and self.text == other.text
             and self.bounding_box == other.bounding_box
             and self.top_right == other.top_right
@@ -148,48 +149,34 @@ class ReceiptLine:
             and self.angle_radians == other.angle_radians
             and self.confidence == other.confidence
         )
-    
+
     def __repr__(self) -> str:
         """Returns a string representation of the ReceiptLine object
 
         Returns:
             str: The string representation of the ReceiptLine object
         """
-        # fmt: off
         return (
             f"ReceiptLine("
-                f"receipt_id={self.receipt_id}, "
-                f"image_id={self.image_id}, "
-                f"id={self.id}, "
-                f"text='{self.text}', "
-                "bounding_box=("
-                    f"x= {self.bounding_box['x']}, "
-                    f"y= {self.bounding_box['y']}, "
-                    f"width= {self.bounding_box['width']}, "
-                    f"height= {self.bounding_box['height']}), "
-                "top_right=("
-                    f"x= {self.top_right['x']}, "
-                    f"y= {self.top_right['y']}), "
-                "top_left=("
-                    f"x= {self.top_left['x']}, "
-                    f"y= {self.top_left['y']}), "
-                "bottom_right=("
-                    f"x= {self.bottom_right['x']}, "
-                    f"y= {self.bottom_right['y']}), "
-                "bottom_left=("
-                    f"x= {self.bottom_left['x']}, "
-                    f"y= {self.bottom_left['y']}), "
-                f"angle_degrees={self.angle_degrees}, "
-                f"angle_radians={self.angle_radians}, "
-                f"confidence={self.confidence:.2}"
+            f"receipt_id={self.receipt_id}, "
+            f"image_id={self.image_id}, "
+            f"line_id={self.line_id}, "
+            f"text='{self.text}', "
+            f"bounding_box={self.bounding_box}, "
+            f"top_right={self.top_right}, "
+            f"top_left={self.top_left}, "
+            f"bottom_right={self.bottom_right}, "
+            f"bottom_left={self.bottom_left}, "
+            f"angle_degrees={self.angle_degrees}, "
+            f"angle_radians={self.angle_radians}, "
+            f"confidence={self.confidence}"
             f")"
         )
-        # fmt: on
 
     def __iter__(self) -> Generator[Tuple[str, str], None, None]:
         yield "image_id", self.image_id
         yield "receipt_id", self.receipt_id
-        yield "id", self.id
+        yield "line_id", self.line_id
         yield "text", self.text
         yield "bounding_box", self.bounding_box
         yield "top_right", self.top_right
@@ -224,7 +211,7 @@ def itemToReceiptLine(item: dict) -> ReceiptLine:
         return ReceiptLine(
             image_id=item["PK"]["S"].split("#")[1],
             receipt_id=int(item["SK"]["S"].split("#")[1]),
-            id=int(item["SK"]["S"].split("#")[3]),
+            line_id=int(item["SK"]["S"].split("#")[3]),
             text=item["text"]["S"],
             bounding_box={
                 key: float(value["N"])

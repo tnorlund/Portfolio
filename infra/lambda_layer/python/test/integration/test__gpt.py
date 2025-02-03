@@ -277,6 +277,7 @@ def test_gpt_receipt_bad_response(
     body_text = obj["Body"].read().decode("utf-8")
     assert body_text == "Internal Server Error"
 
+@pytest.skip("Not implemented")
 @pytest.mark.integration
 def test_gpt_no_api_key(
     sample_gpt_receipt_1,

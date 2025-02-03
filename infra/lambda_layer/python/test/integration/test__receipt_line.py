@@ -9,7 +9,7 @@ def sample_receipt_line():
     return ReceiptLine(
         receipt_id=1,
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        id=10,
+        line_id=10,
         text="Sample receipt line",
         bounding_box={"x": 0.1, "y": 0.2, "width": 0.4, "height": 0.05},
         top_left={"x": 0.1, "y": 0.2},
@@ -36,7 +36,7 @@ def test_add_receipt_line(
     retrieved_line = client.getReceiptLine(
         sample_receipt_line.receipt_id,
         sample_receipt_line.image_id,
-        sample_receipt_line.id,
+        sample_receipt_line.line_id,
     )
     assert retrieved_line == sample_receipt_line
 
@@ -73,7 +73,7 @@ def test_update_receipt_line(
     retrieved_line = client.getReceiptLine(
         sample_receipt_line.receipt_id,
         sample_receipt_line.image_id,
-        sample_receipt_line.id,
+        sample_receipt_line.line_id,
     )
     assert retrieved_line.text == updated_text
 
@@ -90,7 +90,7 @@ def test_delete_receipt_line(
     client.deleteReceiptLine(
         sample_receipt_line.receipt_id,
         sample_receipt_line.image_id,
-        sample_receipt_line.id,
+        sample_receipt_line.line_id,
     )
 
     # Assert
@@ -98,7 +98,7 @@ def test_delete_receipt_line(
         client.getReceiptLine(
             sample_receipt_line.receipt_id,
             sample_receipt_line.image_id,
-            sample_receipt_line.id,
+            sample_receipt_line.line_id,
         )
 
 
@@ -110,7 +110,7 @@ def test_list_receipt_lines(dynamodb_table: Literal["MyMockedTable"]):
         ReceiptLine(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            id=i,
+            line_id=i,
             text=f"Line {i}",
             bounding_box={"x": 0.0, "y": 0.0, "width": 1.0, "height": 1.0},
             top_left={"x": 0, "y": 0},
@@ -145,7 +145,7 @@ def test_list_receipt_lines_from_receipt(dynamodb_table: Literal["MyMockedTable"
         ReceiptLine(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            id=i,
+            line_id=i,
             text=f"Line {i}",
             bounding_box={"x": 0.0, "y": 0.0, "width": 1.0, "height": 1.0},
             top_left={"x": 0, "y": 0},
@@ -162,7 +162,7 @@ def test_list_receipt_lines_from_receipt(dynamodb_table: Literal["MyMockedTable"
     another_line = ReceiptLine(
         receipt_id=2,
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        id=10,
+        line_id=10,
         text="Different",
         bounding_box={"x": 0.2, "y": 0.2, "width": 0.1, "height": 0.1},
         top_left={"x": 0.2, "y": 0.2},
