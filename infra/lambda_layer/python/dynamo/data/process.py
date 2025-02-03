@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from copy import deepcopy
 import hashlib
 from io import BytesIO
-from PIL import Image as PIL_Image, UnidentifiedImageError
+from PIL import Image as PIL_Image, UnidentifiedImageError, ImageOps
 import json
 from typing import Any, Dict, List, Tuple
 import boto3
@@ -126,6 +126,7 @@ def process(
 
     # Reopen (Pillow cannot reuse the same file handle after verify())
     image = PIL_Image.open(BytesIO(image_bytes))
+    image = ImageOps.exif_transpose(image)  # Correct orientation
 
     # Upload the original image to the CDN bucket.
     try:
