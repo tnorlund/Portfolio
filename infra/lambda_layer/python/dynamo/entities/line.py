@@ -12,16 +12,15 @@ from dynamo.entities.util import (
 
 class Line:
     """
-    Represents a line of text extracted from an image, including its text content,
-    geometric properties, and confidence metrics.
+    Represents a line and its associated metadata stored in a DynamoDB table.
 
-    This class encapsulates data related to a detected line such as its bounding box,
-    corner coordinates, rotation angles, and a computed histogram of its text. It supports
-    operations for generating DynamoDB key structures and applying geometric transformations,
-    including translation, scaling, rotation, shear, and affine warping.
+    This class encapsulates line-related information such as its unique identifier,
+    text content, geometric properties, rotation angles, and detection confidence.
+    It is designed to support operations such as generating DynamoDB keys and applying
+    geometric transformations including translation, scaling, rotation, shear, and affine warping.
 
     Attributes:
-        image_id (str): UUID identifying the image.
+        image_id (str): UUID identifying the image to which the line belongs.
         id (int): Identifier for the line.
         text (str): The text content of the line.
         bounding_box (dict): The bounding box of the line with keys 'x', 'y', 'width', and 'height'.
@@ -31,7 +30,7 @@ class Line:
         bottom_left (dict): The bottom-left corner coordinates with keys 'x' and 'y'.
         angle_degrees (float): The angle of the line in degrees.
         angle_radians (float): The angle of the line in radians.
-        confidence (float): The confidence level of the text detection (between 0 and 1).
+        confidence (float): The confidence level of the line (between 0 and 1).
         histogram (dict): A histogram representing character frequencies in the text.
         num_chars (int): The number of characters in the line.
     """
@@ -55,7 +54,7 @@ class Line:
         """Initializes a new Line object for DynamoDB.
 
         Args:
-            image_id (str): UUID identifying the image.
+            image_id (str): UUID identifying the image to which the line belongs.
             id (int): Identifier for the line.
             text (str): The text content of the line.
             bounding_box (dict): The bounding box of the line with keys 'x', 'y', 'width', and 'height'.
@@ -511,7 +510,7 @@ class Line:
         """Returns an iterator over the Line object's attributes.
 
         Yields:
-            Tuple[str, any]: The attribute name and its corresponding value.
+            Tuple[str, any]: A tuple containing the attribute name and its value.
         """
         yield "image_id", self.image_id
         yield "id", self.id
@@ -528,13 +527,16 @@ class Line:
         yield "num_chars", self.num_chars
 
     def __eq__(self, other: object) -> bool:
-        """Compares this Line object with another for equality.
+        """Determines whether two Line objects are equal.
 
         Args:
             other (object): The object to compare.
 
         Returns:
             bool: True if the Line objects are equal, False otherwise.
+
+        Note:
+            If other is not an instance of Line, False is returned.
         """
         if not isinstance(other, Line):
             return False
@@ -554,13 +556,16 @@ class Line:
 
 
 def itemToLine(item: dict) -> Line:
-    """Converts a DynamoDB item to a Line object
+    """Converts a DynamoDB item to a Line object.
 
     Args:
-        item (dict): The DynamoDB item to convert
+        item (dict): The DynamoDB item to convert.
 
     Returns:
-        Line: The Line object represented by the DynamoDB item
+        Line: The Line object represented by the DynamoDB item.
+
+    Raises:
+        ValueError: When the item format is invalid.
     """
     required_keys = {
         "PK",
