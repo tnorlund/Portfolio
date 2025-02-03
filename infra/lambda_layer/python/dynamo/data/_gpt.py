@@ -48,7 +48,6 @@ def _validate_gpt_response(response: Response) -> dict:
     """
     response.raise_for_status()
     data = response.json()
-    print("DEBUG data", data)
     if "choices" not in data or not data["choices"]:
         raise ValueError("The response does not contain any choices.")
     if not isinstance(data["choices"], list):
