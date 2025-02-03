@@ -76,7 +76,7 @@ class _Letter:
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            raise ValueError(f"Letter with ID {letter.id} not found")
+            raise ValueError(f"Letter with ID {letter.letter_id} not found")
 
     def deleteLetter(self, image_id: str, line_id: int, word_id: int, letter_id: int):
         try:
