@@ -7,7 +7,7 @@ from dynamo.entities.util import (
 class Image:
     def __init__(
         self,
-        id: str,
+        image_id: str,
         width: int,
         height: int,
         timestamp_added: datetime,
@@ -20,7 +20,7 @@ class Image:
         """Constructs a new Image object for DynamoDB
 
         Args:
-            id (str): UUID identifying the image
+            image_id (str): UUID identifying the image
             width (int): The width of the image in pixels
             height (int): The height of the image in pixels
             timestamp_added (datetime): The timestamp the image was added
@@ -31,7 +31,7 @@ class Image:
             cdn_s3_key (str): The S3 key where the image is stored in the CDN
 
         Attributes:
-            id (str): UUID identifying the image
+            image_id (str): UUID identifying the image
             width (int): The width of the image in pixels
             height (int): The height of the image in pixels
             timestamp_added (datetime): The timestamp the image was added
@@ -46,8 +46,8 @@ class Image:
             ValueError: When the width or height are not positive integers
             ValueError: When the timestamp_added is not a datetime object or a string
         """
-        assert_valid_uuid(id)
-        self.id = id
+        assert_valid_uuid(image_id)
+        self.image_id = image_id
         
         if (
             width <= 0
@@ -91,7 +91,7 @@ class Image:
         Returns:
             dict: The primary key for the image
         """
-        return {"PK": {"S": f"IMAGE#{self.id}"}, "SK": {"S": "IMAGE"}}
+        return {"PK": {"S": f"IMAGE#{self.image_id}"}, "SK": {"S": "IMAGE"}}
 
     def gsi1_key(self) -> dict:
         """Generates the GSI1 key for the image
@@ -99,7 +99,7 @@ class Image:
         Returns:
             dict: The GSI1 key for the image
         """
-        return {"GSI1PK": {"S": "IMAGE"}, "GSI1SK": {"S": f"IMAGE#{self.id}"}}
+        return {"GSI1PK": {"S": "IMAGE"}, "GSI1SK": {"S": f"IMAGE#{self.image_id}"}}
 
     def to_item(self) -> dict:
         """Converts the Image object to a DynamoDB item
@@ -131,7 +131,7 @@ class Image:
         """
         return (
             "Image("
-                f"id='{self.id}', "
+                f"image_id='{self.image_id}', "
                 f"width={self.width}, "
                 f"height={self.height}, "
                 f"timestamp_added={self.timestamp_added}, "
@@ -148,7 +148,7 @@ class Image:
         Returns:
             dict: The iterator over the Image object
         """
-        yield "id", self.id
+        yield "image_id", self.image_id
         yield "width", self.width
         yield "height", self.height
         yield "timestamp_added", self.timestamp_added
@@ -170,7 +170,7 @@ class Image:
         if not isinstance(other, Image):
             return False
         return (
-            self.id == other.id
+            self.image_id == other.image_id
             and self.width == other.width
             and self.height == other.height
             and self.timestamp_added == other.timestamp_added
@@ -215,7 +215,7 @@ def itemToImage(item: dict) -> Image:
         cdn_s3_bucket = item.get("cdn_s3_bucket", {}).get("S")
         cdn_s3_key = item.get("cdn_s3_key", {}).get("S")
         return Image(
-            id=item["PK"]["S"].split("#")[1],
+            image_id=item["PK"]["S"].split("#")[1],
             width=int(item["width"]["N"]),
             height=int(item["height"]["N"]),
             timestamp_added=datetime.fromisoformat(item["timestamp_added"]["S"]),

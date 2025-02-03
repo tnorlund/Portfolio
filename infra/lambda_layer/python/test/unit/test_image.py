@@ -38,7 +38,7 @@ def example_image_no_cdn_key():
 @pytest.mark.unit
 def test_init(example_image):
     """Test the Image constructor"""
-    assert example_image.id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    assert example_image.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert example_image.width == 10
     assert example_image.height == 20
     assert example_image.timestamp_added == "2021-01-01T00:00:00"
@@ -311,7 +311,19 @@ def test_to_item_no_cdn_key(example_image_no_cdn_key):
 @pytest.mark.unit
 def test_repr(example_image):
     """Test the Image.__repr__() method"""
-    assert repr(example_image) == "Image(id='3f52804b-2fad-4e00-92c8-b593da3a8ed3')"
+    assert repr(example_image) == (
+        "Image("
+        "image_id='3f52804b-2fad-4e00-92c8-b593da3a8ed3', "
+        "width=10, "
+        "height=20, "
+        "timestamp_added=2021-01-01T00:00:00, "
+        "raw_s3_bucket='bucket', "
+        "raw_s3_key='key', "
+        "sha256='abc123', "
+        "cdn_s3_bucket='cdn_bucket', "
+        "cdn_s3_key='cdn_key'"
+        ")"
+        )
 
 
 @pytest.mark.unit
@@ -319,7 +331,7 @@ def test_iter(example_image):
     """Test the Image.__iter__() method"""
     # If you include sha256 in iteration, test that:
     assert dict(example_image) == {
-        "id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         "width": 10,
         "height": 20,
         "timestamp_added": "2021-01-01T00:00:00",
