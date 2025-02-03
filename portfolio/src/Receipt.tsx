@@ -4,7 +4,6 @@ import Pulumi from "./Pulumi";
 import OpenAI from "./OpenAI";
 import ReceiptStack from "./ReceiptStack";
 import ReceiptWords from "./ReceiptWords";
-import Debug from "./Debug";
 
 
 import "./Receipt.css";
@@ -164,7 +163,6 @@ function Receipt() {
 
       <ReceiptStack />
       <ReceiptWords />
-      <Debug />
       
     </div>
   );
