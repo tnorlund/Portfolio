@@ -300,23 +300,169 @@ def test_process(
     assert compare_entity_lists(
         expected_receipt_letters, DynamoClient(table_name).listReceiptLetters()
     )
-    if expected_receipts != DynamoClient(table_name).listReceipts():
-        # Download the receipt image from the CDN to the FAIL directory
-        base_dir = os.path.dirname(__file__)
-        fail_dir = os.path.join(base_dir, "FAIL")
-        os.makedirs(fail_dir, exist_ok=True)
-        receipt_path = os.path.join(fail_dir, f"{uuid}_RECEIPT_00001.png")
-        print(f"Receipt transform doesn't match. Placing receipt in {receipt_path}")
-        with open(receipt_path, "wb") as receipt_file:
-            receipt_file.write(raw_png_bytes)
-    else:
-        # Delete the failure from the fail directory
-        base_dir = os.path.dirname(__file__)
-        fail_dir = os.path.join(base_dir, "FAIL")
-        receipt_path = os.path.join(fail_dir, f"{uuid}_RECEIPT_00001.png")
-        if os.path.exists(receipt_path):
-            os.remove(receipt_path)
+    assert expected_receipts == DynamoClient(table_name).listReceipts()
+    # if expected_receipts != DynamoClient(table_name).listReceipts():
+    #     # Download the receipt image from the CDN to the FAIL directory
+    #     base_dir = os.path.dirname(__file__)
+    #     fail_dir = os.path.join(base_dir, "FAIL")
+    #     os.makedirs(fail_dir, exist_ok=True)
+    #     receipt_path = os.path.join(fail_dir, f"{uuid}_RECEIPT_00001.png")
+    #     print(f"Receipt transform doesn't match. Placing receipt in {receipt_path}")
+    #     with open(receipt_path, "wb") as receipt_file:
+    #         receipt_file.write(raw_png_bytes)
+    # else:
+    #     # Delete the failure from the fail directory
+    #     base_dir = os.path.dirname(__file__)
+    #     fail_dir = os.path.join(base_dir, "FAIL")
+    #     receipt_path = os.path.join(fail_dir, f"{uuid}_RECEIPT_00001.png")
+    #     if os.path.exists(receipt_path):
+    #         os.remove(receipt_path)
 
+
+@pytest.mark.integration
+@freeze_time("2021-01-01T00:00:00+00:00")
+@pytest.mark.parametrize(
+    "s3_buckets",
+    [
+        ("raw-image-bucket", "cdn-bucket"),  # Or any two bucket names for your test fixture
+    ],
+    indirect=True,
+)
+def test_process_upload(s3_buckets, dynamodb_table):
+    """
+    Tests the code path in which we provide ocr_dict and png_data
+    directly to process(), rather than reading them from S3.
+    """
+    # --------------------------------------------------------------------
+    # 1) Setup test variables & environment
+    # --------------------------------------------------------------------
+    raw_bucket, cdn_bucket = s3_buckets
+    table_name = dynamodb_table
+    uuid = "02aa1d34-5c10-42b4-a463-c49b86214dd7"
+    raw_prefix = "raw"
+
+    s3 = boto3.client("s3", region_name="us-east-1")
+
+    # Make sure the raw bucket is empty for the test (not strictly required,
+    # but ensures we rely solely on the ocr_dict/png_data path)
+    # The fixture might have it already empty, but if you want to be safe:
+    # for obj in s3.list_objects_v2(Bucket=raw_bucket).get("Contents", []):
+    #     s3.delete_object(Bucket=raw_bucket, Key=obj["Key"])
+
+    # --------------------------------------------------------------------
+    # 2) Read local JSON + PNG into memory (the same files your original
+    #    test used). Convert the JSON into a dict.
+    # --------------------------------------------------------------------
+    base_dir = os.path.dirname(__file__)  # directory containing test_process.py
+    json_path = os.path.join(base_dir, "JSON", f"{uuid}_SWIFT_OCR.json")
+    png_path = os.path.join(base_dir, "PNG", f"{uuid}.png")
+
+    with open(json_path, "r", encoding="utf-8") as jf:
+        ocr_dict = json.load(jf)
+
+    with open(png_path, "rb") as pf:
+        png_data = pf.read()
+
+    # --------------------------------------------------------------------
+    # 3) Call process() with our in-memory OCR + PNG data
+    #    NOTE: This tests the new code path that does not read from S3.
+    # --------------------------------------------------------------------
+    process(
+        table_name=table_name,
+        raw_bucket_name=raw_bucket,
+        raw_prefix=raw_prefix + "/",
+        uuid=uuid,
+        cdn_bucket_name=cdn_bucket,
+        cdn_prefix="assets/",
+        ocr_dict=ocr_dict,
+        png_data=png_data,
+    )
+
+    # --------------------------------------------------------------------
+    # 4) Assertions:
+    #    - The raw bucket should now contain the JSON and PNG we just provided.
+    #    - The CDN bucket should also contain the original PNG and any receipts.
+    #    - DynamoDB should have the expected data (lines, words, receipts, etc.)
+    # --------------------------------------------------------------------
+    # (a) Check the raw bucket
+    raw_json_resp = s3.get_object(
+        Bucket=raw_bucket, Key=f"{raw_prefix}/{uuid}.json"
+    )
+    raw_json_body = raw_json_resp["Body"].read().decode("utf-8")
+    assert json.loads(raw_json_body) == ocr_dict, "Raw JSON in S3 does not match input!"
+
+    raw_png_resp = s3.get_object(
+        Bucket=raw_bucket, Key=f"{raw_prefix}/{uuid}.png"
+    )
+    raw_png_bytes = raw_png_resp["Body"].read()
+    assert raw_png_bytes == png_data, "Raw PNG in S3 does not match input!"
+
+    # (b) Check the CDN bucket
+    cdn_png_resp = s3.get_object(
+        Bucket=cdn_bucket, Key=f"assets/{uuid}.png"
+    )
+    cdn_png_bytes = cdn_png_resp["Body"].read()
+    assert cdn_png_bytes == png_data, "CDN copy of PNG does not match input!"
+
+    # (c) Check the transformed receipt in S3
+    cdn_receipt_resp = s3.get_object(
+        Bucket=cdn_bucket, Key=f"assets/{uuid}_RECEIPT_00001.png"
+    )
+    cdn_receipt_bytes = cdn_receipt_resp["Body"].read()
+    raw_receipt_resp = s3.get_object(
+        Bucket=raw_bucket, Key=f"{raw_prefix}/{uuid}_RECEIPT_00001.png"
+    )
+    raw_receipt_bytes = raw_receipt_resp["Body"].read()
+    assert cdn_receipt_bytes == raw_receipt_bytes, "Receipt PNG differs between raw & CDN!"
+
+    # (d) Compare DynamoDB items to expected
+    #     This reuses your existing helpers and the same references
+    #     as test_process(). Confirm we get the same final data.
+    (
+        expected_images,
+        expected_lines,
+        expected_words,
+        expected_word_tags,
+        expected_letters,
+        expected_receipts,
+        expected_receipt_lines,
+        expected_receipt_words,
+        expected_receipt_word_tags,
+        expected_receipt_letters,
+    ) = expected_results(uuid)
+
+    dynamo_client = DynamoClient(table_name)
+    assert expected_images == dynamo_client.listImages()
+    assert expected_lines == dynamo_client.listLines()
+    assert expected_words == dynamo_client.listWords()
+    assert expected_word_tags == dynamo_client.listWordTags()
+    # Optionally compare letters if your data sets match exactly:
+    # assert expected_letters == dynamo_client.listLetters()
+
+    # For receipts & derived items, use your existing compare helpers:
+    assert compare_entity_lists(expected_receipt_lines, dynamo_client.listReceiptLines())
+    assert compare_entity_lists(expected_receipt_words, dynamo_client.listReceiptWords())
+    assert expected_receipt_word_tags == dynamo_client.listReceiptWordTags()
+    assert compare_entity_lists(
+        expected_receipt_letters, dynamo_client.listReceiptLetters()
+    )
+    assert expected_receipts == dynamo_client.listReceipts()
+    # if expected_receipts != DynamoClient(table_name).listReceipts():
+    #     # Download the receipt image from the CDN to the FAIL directory
+    #     base_dir = os.path.dirname(__file__)
+    #     fail_dir = os.path.join(base_dir, "FAIL")
+    #     os.makedirs(fail_dir, exist_ok=True)
+    #     receipt_path = os.path.join(fail_dir, f"{uuid}_RECEIPT_00001.png")
+    #     print(f"Receipt transform doesn't match. Placing receipt in {receipt_path}")
+    #     with open(receipt_path, "wb") as receipt_file:
+    #         receipt_file.write(cdn_receipt_bytes)
+    # else:
+    #     # Delete the failure from the fail directory
+    #     base_dir = os.path.dirname(__file__)
+    #     fail_dir = os.path.join(base_dir, "FAIL")
+    #     receipt_path = os.path.join(fail_dir, f"{uuid}_RECEIPT_00001.png")
+    #     if os.path.exists(receipt_path):
+    #         os.remove(receipt_path)
 
 @pytest.mark.integration
 @pytest.mark.parametrize("s3_bucket", ["bad-bucket-name"], indirect=True)
@@ -415,7 +561,7 @@ def test_process_bad_png(s3_bucket):
     s3.put_object(Bucket=s3_bucket, Key="raw_prefix/uuid.png", Body=b"Fake PNG data")
 
     # 2. Act & Assert: The invalid PNG should raise a ValueError
-    with pytest.raises(ValueError, match="Corrupted or invalid PNG file"):
+    with pytest.raises(ValueError, match="Corrupted or invalid PNG at s3://raw-image-bucket/raw_prefix/uuid.png"):
         process("table_name", s3_bucket, "raw_prefix", "uuid", "cdn_bucket_name")
 
 
