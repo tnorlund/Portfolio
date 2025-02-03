@@ -4,6 +4,7 @@ from dynamo.entities.util import (
     assert_valid_uuid,
     assert_valid_point,
     _format_float,
+    _repr_str,
 )
 
 
@@ -11,7 +12,7 @@ class Receipt:
     def __init__(
         self,
         image_id: str,
-        id: int,
+        receipt_id: int,
         width: int,
         height: int,
         timestamp_added: datetime,
@@ -29,7 +30,7 @@ class Receipt:
 
         Args:
             image_id (str): UUID identifying the image
-            id (int): Number identifying the receipt
+            receipt_id (int): Number identifying the receipt
             width (int): The width of the receipt in pixels
             height (int): The height of the receipt in pixels
             timestamp_added (datetime): The timestamp the receipt was added
@@ -46,11 +47,11 @@ class Receipt:
         assert_valid_uuid(image_id)
         self.image_id = image_id
         
-        if not isinstance(id, int):
+        if not isinstance(receipt_id, int):
             raise ValueError("id must be an integer")
-        if id <= 0:
+        if receipt_id <= 0:
             raise ValueError("id must be positive")
-        self.id = id
+        self.receipt_id = receipt_id
         
         if (
             width <= 0
@@ -104,7 +105,7 @@ class Receipt:
         """
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {"S": f"RECEIPT#{self.id:05d}"},
+            "SK": {"S": f"RECEIPT#{self.receipt_id:05d}"},
         }
 
     def gsi1_key(self) -> dict:
@@ -115,7 +116,7 @@ class Receipt:
         """
         return {
             "GSI1PK": {"S": "IMAGE"},
-            "GSI1SK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.id:05d}"},
+            "GSI1SK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"},
         }
 
     def gsi2_key(self) -> dict:
@@ -126,7 +127,7 @@ class Receipt:
         """
         return {
             "GSI2PK": {"S": "RECEIPT"},
-            "GSI2SK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.id:05d}"},
+            "GSI2SK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"},
         }
 
     def to_item(self) -> dict:
@@ -184,20 +185,20 @@ class Receipt:
         """
         return (
             "Receipt("
-            f"image_id='{self.image_id}', "
-            f"id={int(self.id)}, "
+            f"image_id={_repr_str(self.image_id)}, "
+            f"receipt_id={self.receipt_id}, "
             f"width={self.width}, "
             f"height={self.height}, "
-            f"timestamp_added={self.timestamp_added}, "
-            f"raw_s3_bucket='{self.raw_s3_bucket}', "
-            f"raw_s3_key='{self.raw_s3_key}', "
+            f"timestamp_added={_repr_str(self.timestamp_added)}, "
+            f"raw_s3_bucket={_repr_str(self.raw_s3_bucket)}, "
+            f"raw_s3_key={_repr_str(self.raw_s3_key)}, "
             f"top_left={self.top_left}, "
             f"top_right={self.top_right}, "
             f"bottom_left={self.bottom_left}, "
             f"bottom_right={self.bottom_right}, "
-            f"sha256='{self.sha256}', "
-            f"cdn_s3_bucket='{self.cdn_s3_bucket}', "
-            f"cdn_s3_key='{self.cdn_s3_key}'"
+            f"sha256={_repr_str(self.sha256)}, "
+            f"cdn_s3_bucket={_repr_str(self.cdn_s3_bucket)}, "
+            f"cdn_s3_key={_repr_str(self.cdn_s3_key)}"
             ")"
         )
 
@@ -207,7 +208,7 @@ class Receipt:
         Returns:
             dict: The iterator over the Receipt object
         """
-        yield "id", int(self.id)
+        yield "receipt_id", self.receipt_id
         yield "image_id", self.image_id
         yield "width", self.width
         yield "height", self.height
@@ -234,7 +235,7 @@ class Receipt:
         if not isinstance(other, Receipt):
             return NotImplemented
         return (
-            int(self.id) == int(other.id)
+            self.receipt_id == other.receipt_id
             and self.image_id == other.image_id
             and self.width == other.width
             and self.height == other.height
@@ -282,7 +283,7 @@ def itemToReceipt(item: dict) -> Receipt:
     try:
         return Receipt(
             image_id=item["PK"]["S"].split("#")[1],
-            id=int(item["SK"]["S"].split("#")[1]),
+            receipt_id=int(item["SK"]["S"].split("#")[1]),
             width=int(item["width"]["N"]),
             height=int(item["height"]["N"]),
             timestamp_added=item["timestamp_added"]["S"],
