@@ -39,15 +39,15 @@ class Image:
         """Initializes a new Image object for DynamoDB.
 
         Args:
-            image_id (str): UUID identifying the image
-            width (int): The width of the image in pixels
-            height (int): The height of the image in pixels
-            timestamp_added (datetime): The timestamp the image was added
-            raw_s3_bucket (str): The S3 bucket where the image is initially stored
-            raw_s3_key (str): The S3 key where the image is initially stored
-            sha256 (str): The SHA256 hash of the image
-            cdn_s3_bucket (str): The S3 bucket where the image is stored in the CDN
-            cdn_s3_key (str): The S3 key where the image is stored in the CDN
+            image_id (str): UUID identifying the image.
+            width (int): The width of the image in pixels.
+            height (int): The height of the image in pixels.
+            timestamp_added (datetime): The timestamp when the image was added.
+            raw_s3_bucket (str): The S3 bucket where the image is initially stored.
+            raw_s3_key (str): The S3 key where the image is initially stored.
+            sha256 (str, optional): The SHA256 hash of the image.
+            cdn_s3_bucket (str, optional): The S3 bucket where the image is stored in the CDN.
+            cdn_s3_key (str, optional): The S3 key where the image is stored in the CDN.
 
         Raises:
             ValueError: If any parameter is of an invalid type or has an invalid value.
