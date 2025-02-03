@@ -11,13 +11,8 @@ from time import sleep
 from typing import Generator, List
 from uuid import uuid4
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
-import boto3
-from botocore.exceptions import ClientError
 from dynamo import DynamoClient, process
 import pulumi.automation as auto
-
-import requests
 
 def calculate_sha256(file_path: str) -> str:
     sha256_hash = hashlib.sha256()
@@ -73,27 +68,21 @@ def compare_local_files_with_dynamo(local_files: list[Path], dynamo_table_name: 
     print(f"Found {duplicates_found} duplicates in DynamoDB.")
     return new_files
 
-
 def upload_files_with_uuid_in_batches(
     directory: Path,
     bucket_name: str,
     dynamodb_table_name: str,
     cdn_bucket_name: str,
-    cdn_prefix: str = "cdn/",
+    cdn_prefix: str = "assets/",
     path_prefix: str = "raw/",
     batch_size: int = 6,
     sub_batch_size: int = 3,
-    env: str = "dev",
 ) -> None:
     """
     Modified so that after running the Swift script, we call `process(...)`
-    directly with 'ocr_dict' and 'png_data'. We no longer rely on the GET
-    endpoint to do the ingestion, nor do we upload PNG/JSON to the raw bucket
-    ourselves. Instead, `process()` handles uploading everything.
+    directly with 'ocr_dict' and 'png_data'. We can now run each batch
+    in parallel by grouping them in sub-batches of size `sub_batch_size`.
     """
-    s3 = boto3.client("s3")
-    dynamo_client = DynamoClient(dynamodb_table_name)
-
     all_png_files = sorted(p for p in directory.iterdir() if p.suffix.lower() == ".png")
     files_to_upload = compare_local_files_with_dynamo(all_png_files, dynamodb_table_name)
     print(f"Found {len(files_to_upload)} files to upload.")
@@ -120,38 +109,44 @@ def upload_files_with_uuid_in_batches(
             if not run_swift_script(tmp_dir, files_in_temp):
                 raise RuntimeError("Error running Swift script")
 
-            # 3) For each UUID, read in the PNG and JSON from disk, then call `process(...)`
-            for new_uuid in mapped_uuids:
+            # 3) Process each file in parallel, sub-batch size = sub_batch_size
+            def process_single_uuid(new_uuid: str) -> None:
+                # This helper reads the PNG, JSON, and calls process(...)
                 png_path = tmp_dir / f"{new_uuid}.png"
                 json_path = tmp_dir / f"{new_uuid}.json"
 
-                # Read PNG into memory
                 if not png_path.exists():
                     raise FileNotFoundError(f"Swift OCR did not produce {png_path}")
                 with open(png_path, "rb") as pf:
                     png_data = pf.read()
 
-                # Read OCR JSON into a dict
                 if not json_path.exists():
                     raise FileNotFoundError(f"Swift OCR did not produce {json_path}")
                 with open(json_path, "r", encoding="utf-8") as jf:
                     ocr_dict = json.load(jf)
 
-                # Call the new `process()` with `ocr_dict` + `png_data`
-                print(f"Calling process() for UUID={new_uuid} ...")
+                print(f"UUID={new_uuid} ...")
                 process(
                     table_name=dynamodb_table_name,
                     raw_bucket_name=bucket_name,
-                    raw_prefix=path_prefix,  # no trailing slash needed if process() adjusts it
+                    raw_prefix=path_prefix,  
                     uuid=new_uuid,
                     cdn_bucket_name=cdn_bucket_name,
-                    cdn_prefix=cdn_prefix,   # likewise
+                    cdn_prefix=cdn_prefix,  
                     ocr_dict=ocr_dict,
                     png_data=png_data,
                 )
 
-            print(f"Finished batch #{batch_index}.\n")
+            futures = []
+            with ThreadPoolExecutor(max_workers=sub_batch_size) as executor:
+                for new_uuid in mapped_uuids:
+                    futures.append(executor.submit(process_single_uuid, new_uuid))
 
+                for future in as_completed(futures):
+                    # This will raise any exceptions that occurred within process_single_uuid
+                    future.result()  
+
+            print(f"Finished batch #{batch_index}.\n")
 
 def delete_items_in_table(dynamo_client: DynamoClient) -> None:
     images = dynamo_client.listImages()
