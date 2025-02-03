@@ -150,7 +150,7 @@ def test_gpt_receipt_1(
     ) = sample_gpt_receipt_1
     _ = s3_bucket
     client = DynamoClient(dynamodb_table)
-    image_id = images[0].id
+    image_id = images[0].image_id
     # Arrange
     client.addImages(images)
     client.addLines(lines)
@@ -184,7 +184,7 @@ def test_gpt_receipt_1(
     s3_client = boto3.client("s3", region_name="us-east-1")
     s3_json_key = images[0].raw_s3_key.replace(
         ".png",
-        f"_GPT_image_{image_id}_receipt_{receipts[0].id:05d}.json",
+        f"_GPT_image_{image_id}_receipt_{receipts[0].receipt_id:05d}.json",
     )
     obj = s3_client.get_object(Bucket=images[0].raw_s3_bucket, Key=s3_json_key)
     body_text = obj["Body"].read().decode("utf-8")
@@ -233,7 +233,7 @@ def test_gpt_receipt_bad_response(
     ) = sample_gpt_receipt_1
     client = DynamoClient(dynamodb_table)
     _ = s3_bucket
-    image_id = images[0].id
+    image_id = images[0].image_id
 
     client.addImages(images)
     client.addReceipts(receipts)
@@ -269,7 +269,7 @@ def test_gpt_receipt_bad_response(
     # Reproduce the failure_key logic in your code:
     failure_key = test_image.raw_s3_key.replace(
         ".png",
-        f"_failure_image_{image_id}_receipt_{test_receipt.id:05d}.txt",
+        f"_failure_image_{image_id}_receipt_{test_receipt.receipt_id:05d}.txt",
     )
 
     # Now fetch from S3 and confirm the Body is what we expected
@@ -284,7 +284,7 @@ def test_gpt_no_api_key(
 ):
     (images, _, _, _, _, receipts, _, _, _, _, _) = sample_gpt_receipt_1
     client = DynamoClient(dynamodb_table)
-    image_id = images[0].id
+    image_id = images[0].image_id
 
     client.addReceipts(receipts)
     retrieved_receipts = client.listReceipts()

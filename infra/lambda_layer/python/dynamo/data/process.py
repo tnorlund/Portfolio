@@ -96,7 +96,7 @@ def process(
             raise
 
     image_obj = Image(
-        id=uuid,
+        image_id=uuid,
         width=image.size[0],
         height=image.size[1],
         timestamp_added=datetime.now(timezone.utc),
@@ -403,7 +403,7 @@ def transform_cluster(
     # ------------------------------------------------------
     final_w, final_h = affine_img.size
     r = Receipt(
-        id=cluster_id,
+        receipt_id=cluster_id,
         image_id=image_obj.id,
         width=final_w,
         height=final_h,
