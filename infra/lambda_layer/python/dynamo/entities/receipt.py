@@ -253,6 +253,9 @@ class Receipt:
 
         Returns:
             bool: True if the Receipt objects are equal, False otherwise.
+
+        Note:
+            If other is not an instance of Receipt, NotImplemented is returned.
         """
         if not isinstance(other, Receipt):
             return NotImplemented

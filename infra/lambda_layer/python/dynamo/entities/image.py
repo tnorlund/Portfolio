@@ -167,6 +167,9 @@ class Image:
 
         Returns:
             bool: True if the Image objects are equal, False otherwise.
+
+        Note:
+            If other is not an instance of Image, False is returned.
         """
         if not isinstance(other, Image):
             return False
