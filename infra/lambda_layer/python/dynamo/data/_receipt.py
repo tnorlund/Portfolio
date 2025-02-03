@@ -414,7 +414,7 @@ class _Receipt:
                 if item["TYPE"]["S"] == "RECEIPT_WORD"
             ]
             # sort Receipt Words by receipt_id and line_id and word_id
-            receipt_words.sort(key=lambda x: (x.receipt_id, x.line_id, x.id))
+            receipt_words.sort(key=lambda x: (x.receipt_id, x.line_id, x.word_id))
             num_receipts = len(receipts)
             if num_receipts > limit and "LastEvaluatedKey" not in response:
                 payload = {}
@@ -449,7 +449,7 @@ class _Receipt:
                             if item["TYPE"]["S"] == "RECEIPT_WORD"
                         ]
                     )
-                    receipt_words.sort(key=lambda x: (x.receipt_id, x.line_id, x.id))
+                    receipt_words.sort(key=lambda x: (x.receipt_id, x.line_id, x.word_id))
                     num_receipts = len(receipts)
                 payload = {}
                 for i, receipt in enumerate(receipts[:limit]):
