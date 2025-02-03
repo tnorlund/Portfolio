@@ -1,21 +1,19 @@
 from typing import Any, Generator, Tuple
 from datetime import datetime
-from dynamo.entities.util import (
-    assert_valid_uuid,
-    _repr_str
-)
+from dynamo.entities.util import assert_valid_uuid, _repr_str
+
 
 class Image:
     """
     Represents an image and its associated metadata stored in a DynamoDB table.
 
     This class encapsulates image-related information such as its unique identifier,
-    dimensions, upload timestamp, and S3 storage details. It is designed to support 
-    operations such as generating DynamoDB keys and converting image metadata to a 
+    dimensions, upload timestamp, and S3 storage details. It is designed to support
+    operations such as generating DynamoDB keys and converting image metadata to a
     DynamoDB-compatible item.
 
     Attributes:
-        id (str): UUID identifying the image.
+        image_id (str): UUID identifying the image.
         width (int): The width of the image in pixels.
         height (int): The height of the image in pixels.
         timestamp_added (datetime): The timestamp when the image was added.
@@ -25,6 +23,7 @@ class Image:
         cdn_s3_bucket (str): The S3 bucket where the image is stored in the CDN.
         cdn_s3_key (str): The S3 key where the image is stored in the CDN.
     """
+
     def __init__(
         self,
         image_id: str,
@@ -50,23 +49,12 @@ class Image:
             cdn_s3_bucket (str): The S3 bucket where the image is stored in the CDN
             cdn_s3_key (str): The S3 key where the image is stored in the CDN
 
-        Attributes:
-            image_id (str): UUID identifying the image
-            width (int): The width of the image in pixels
-            height (int): The height of the image in pixels
-            timestamp_added (datetime): The timestamp the image was added
-            raw_s3_bucket (str): The S3 bucket where the image is initially stored
-            raw_s3_key (str): The S3 key where the image is initially stored
-            sha256 (str): The SHA256 hash of the image
-            cdn_s3_bucket (str): The S3 bucket where the image is stored in the CDN
-            cdn_s3_key (str): The S3 key where the image is stored in the CDN
-
         Raises:
             ValueError: If any parameter is of an invalid type or has an invalid value.
         """
         assert_valid_uuid(image_id)
         self.image_id = image_id
-        
+
         if (
             width <= 0
             or height <= 0
@@ -149,16 +137,17 @@ class Image:
         """
         return (
             "Image("
-                f"image_id={_repr_str(self.image_id)}, "
-                f"width={self.width}, "
-                f"height={self.height}, "
-                f"timestamp_added={self.timestamp_added}, "
-                f"raw_s3_bucket={_repr_str(self.raw_s3_bucket)}, "
-                f"raw_s3_key={_repr_str(self.raw_s3_key)}, "
-                f"sha256={_repr_str(self.sha256)}, "
-                f"cdn_s3_bucket={_repr_str(self.cdn_s3_bucket)}, "
-                f"cdn_s3_key={_repr_str(self.cdn_s3_key)}"
-                ")")
+            f"image_id={_repr_str(self.image_id)}, "
+            f"width={self.width}, "
+            f"height={self.height}, "
+            f"timestamp_added={self.timestamp_added}, "
+            f"raw_s3_bucket={_repr_str(self.raw_s3_bucket)}, "
+            f"raw_s3_key={_repr_str(self.raw_s3_key)}, "
+            f"sha256={_repr_str(self.sha256)}, "
+            f"cdn_s3_bucket={_repr_str(self.cdn_s3_bucket)}, "
+            f"cdn_s3_key={_repr_str(self.cdn_s3_key)}"
+            ")"
+        )
 
     def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
         """Returns an iterator over the Image object's attributes.
