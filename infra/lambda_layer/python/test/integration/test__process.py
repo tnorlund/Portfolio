@@ -297,17 +297,26 @@ def test_process(
     assert compare_entity_lists(
         expected_receipt_words, DynamoClient(table_name).listReceiptWords()
     )
+    assert expected_receipt_word_tags == DynamoClient(table_name).listReceiptWordTags()
     assert compare_entity_lists(
         expected_receipt_letters, DynamoClient(table_name).listReceiptLetters()
     )
     if expected_receipts != DynamoClient(table_name).listReceipts():
         # Download the receipt image from the CDN to the FAIL directory
-        base_dir = os.path.dirname(__file__)  # directory containing test__process.py
+        base_dir = os.path.dirname(__file__)
         fail_dir = os.path.join(base_dir, "FAIL")
         os.makedirs(fail_dir, exist_ok=True)
         receipt_path = os.path.join(fail_dir, f"{uuid}_RECEIPT_00001.png")
+        print(f"Receipt transform doesn't match. Placing receipt in {receipt_path}")
         with open(receipt_path, "wb") as receipt_file:
-            receipt_file.write(receipt_raw_bytes)
+            receipt_file.write(raw_png_bytes)
+    else:
+        # Delete the failure from the fail directory
+        base_dir = os.path.dirname(__file__)
+        fail_dir = os.path.join(base_dir, "FAIL")
+        receipt_path = os.path.join(fail_dir, f"{uuid}_RECEIPT_00001.png")
+        if os.path.exists(receipt_path):
+            os.remove(receipt_path)
 
 
 @pytest.mark.integration
