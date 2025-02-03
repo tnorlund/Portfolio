@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import gzip
 import hashlib
 import json
 import shutil
@@ -11,29 +10,14 @@ from pathlib import Path
 from time import sleep
 from typing import Generator, List
 from uuid import uuid4
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import boto3
 from botocore.exceptions import ClientError
-from dynamo import DynamoClient
+from dynamo import DynamoClient, process
 import pulumi.automation as auto
 
 import requests
-
-
-def warm_up_api(base_url: str, params_common: dict, warmup_uuid: str = "warmup"):
-    """
-    Call the API with a dummy UUID to warm it up.
-    """
-    try:
-        warmup_params = params_common.copy()
-        # Use a dummy value that your API can either ignore or handle gracefully.
-        warmup_params["uuids"] = warmup_uuid
-        response = requests.get(base_url, params=warmup_params)
-        print(f"Warm-up request status: {response.status_code}")
-    except Exception as e:
-        print(f"Warm-up request failed: {e}")
 
 def calculate_sha256(file_path: str) -> str:
     sha256_hash = hashlib.sha256()
@@ -101,13 +85,14 @@ def upload_files_with_uuid_in_batches(
     sub_batch_size: int = 3,
     env: str = "dev",
 ) -> None:
+    """
+    Modified so that after running the Swift script, we call `process(...)`
+    directly with 'ocr_dict' and 'png_data'. We no longer rely on the GET
+    endpoint to do the ingestion, nor do we upload PNG/JSON to the raw bucket
+    ourselves. Instead, `process()` handles uploading everything.
+    """
     s3 = boto3.client("s3")
     dynamo_client = DynamoClient(dynamodb_table_name)
-    domain_part = "api" if env == "prod" else f"{env}-api"
-    base_url = f"https://{domain_part}.tylernorlund.com/process"
-    warm_up_api(base_url, {"table_name": dynamodb_table_name})
-    warm_up_api(base_url, {"table_name": dynamodb_table_name})
-    warm_up_api(base_url, {"table_name": dynamodb_table_name})
 
     all_png_files = sorted(p for p in directory.iterdir() if p.suffix.lower() == ".png")
     files_to_upload = compare_local_files_with_dynamo(all_png_files, dynamodb_table_name)
@@ -122,7 +107,7 @@ def upload_files_with_uuid_in_batches(
         with tempfile.TemporaryDirectory() as tmp_dir_str:
             tmp_dir = Path(tmp_dir_str)
 
-            # Create a UUID for each file, copy it into temp dir
+            # 1) Copy files to temporary folder & assign them new UUIDs
             mapped_uuids = []
             for file_path in batch:
                 new_uuid = str(uuid4())
@@ -130,63 +115,40 @@ def upload_files_with_uuid_in_batches(
                 shutil.copy2(file_path, new_file_path)
                 mapped_uuids.append(new_uuid)
 
-            # Run Swift script
+            # 2) Run Swift script on *all* files in temp
             files_in_temp = [str(p) for p in tmp_dir.iterdir() if p.is_file()]
             if not run_swift_script(tmp_dir, files_in_temp):
                 raise RuntimeError("Error running Swift script")
 
-            # Upload from temp directory to S3
-            for temp_file in tmp_dir.iterdir():
-                s3_key = f"{path_prefix}{temp_file.name}"
-                print(f"Uploading {temp_file.name:<41} -> s3://{bucket_name}/{s3_key}")
-                s3.upload_file(str(temp_file), bucket_name, s3_key)
+            # 3) For each UUID, read in the PNG and JSON from disk, then call `process(...)`
+            for new_uuid in mapped_uuids:
+                png_path = tmp_dir / f"{new_uuid}.png"
+                json_path = tmp_dir / f"{new_uuid}.json"
 
-            # --------------------------------------------------------------------------------
-            #           GET requests for sub-batches of UUIDs
-            # --------------------------------------------------------------------------------
-            print("\nSending GET requests for sub-batches of UUIDs in this batch, then waiting for all responses...")
-            
+                # Read PNG into memory
+                if not png_path.exists():
+                    raise FileNotFoundError(f"Swift OCR did not produce {png_path}")
+                with open(png_path, "rb") as pf:
+                    png_data = pf.read()
 
-            # Subdivide the list of UUIDs into sub-batches
-            sub_batches = list(chunked(mapped_uuids, sub_batch_size))
-            print(f"Subdivided {len(mapped_uuids)} UUIDs into {len(sub_batches)} sub-batches.")
+                # Read OCR JSON into a dict
+                if not json_path.exists():
+                    raise FileNotFoundError(f"Swift OCR did not produce {json_path}")
+                with open(json_path, "r", encoding="utf-8") as jf:
+                    ocr_dict = json.load(jf)
 
-            # Set up common parameters for the GET requests
-            params_common = {
-                "table_name": dynamodb_table_name,
-                "raw_bucket_name": bucket_name,
-                "raw_prefix": path_prefix,
-                "cdn_bucket_name": cdn_bucket_name,
-                "cdn_prefix": cdn_prefix,
-            }
-
-            def call_api_for_sub_batch(sub_batch):
-                params = params_common.copy()
-                # API expects a comma-separated string of UUIDs
-                params["uuids"] = ",".join(sub_batch)
-                return requests.get(base_url, params=params)
-
-            responses = []
-            # Use a thread pool to launch sub-batch GET requests concurrently.
-            with ThreadPoolExecutor(max_workers=len(sub_batches)) as executor:
-                futures = []
-                for i, sub_batch in enumerate(sub_batches):
-                    # Wait 0.1 seconds between starting each sub-batch request
-                    if i > 0:
-                        time.sleep(0.1)
-                    futures.append(executor.submit(call_api_for_sub_batch, sub_batch))
-                
-                # Wait for all the sub-batch requests to complete
-                for future in as_completed(futures):
-                    try:
-                        response = future.result()
-                        responses.append(response)
-                        if response.status_code == 200:
-                            print(f"Sub-batch GET request succeeded: {response.request.url}")
-                        else:
-                            print(f"Sub-batch GET request failed: Status {response.status_code} - {response.text}")
-                    except Exception as e:
-                        print(f"Error during sub-batch API call: {e}")
+                # Call the new `process()` with `ocr_dict` + `png_data`
+                print(f"Calling process() for UUID={new_uuid} ...")
+                process(
+                    table_name=dynamodb_table_name,
+                    raw_bucket_name=bucket_name,
+                    raw_prefix=path_prefix,  # no trailing slash needed if process() adjusts it
+                    uuid=new_uuid,
+                    cdn_bucket_name=cdn_bucket_name,
+                    cdn_prefix=cdn_prefix,   # likewise
+                    ocr_dict=ocr_dict,
+                    png_data=png_data,
+                )
 
             print(f"Finished batch #{batch_index}.\n")
 
