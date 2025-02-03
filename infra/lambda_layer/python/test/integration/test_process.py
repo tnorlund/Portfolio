@@ -206,7 +206,7 @@ def compare_entity_lists(
 
     return True
 
-
+@pytest.mark.skip("TODO: Mock call to GPT API")
 @pytest.mark.integration
 @freeze_time("2021-01-01T00:00:00+00:00")
 @pytest.mark.parametrize(
@@ -301,24 +301,8 @@ def test_process(
         expected_receipt_letters, DynamoClient(table_name).listReceiptLetters()
     )
     assert expected_receipts == DynamoClient(table_name).listReceipts()
-    # if expected_receipts != DynamoClient(table_name).listReceipts():
-    #     # Download the receipt image from the CDN to the FAIL directory
-    #     base_dir = os.path.dirname(__file__)
-    #     fail_dir = os.path.join(base_dir, "FAIL")
-    #     os.makedirs(fail_dir, exist_ok=True)
-    #     receipt_path = os.path.join(fail_dir, f"{uuid}_RECEIPT_00001.png")
-    #     print(f"Receipt transform doesn't match. Placing receipt in {receipt_path}")
-    #     with open(receipt_path, "wb") as receipt_file:
-    #         receipt_file.write(raw_png_bytes)
-    # else:
-    #     # Delete the failure from the fail directory
-    #     base_dir = os.path.dirname(__file__)
-    #     fail_dir = os.path.join(base_dir, "FAIL")
-    #     receipt_path = os.path.join(fail_dir, f"{uuid}_RECEIPT_00001.png")
-    #     if os.path.exists(receipt_path):
-    #         os.remove(receipt_path)
 
-
+@pytest.mark.skip("TODO: Mock call to GPT API")
 @pytest.mark.integration
 @freeze_time("2021-01-01T00:00:00+00:00")
 @pytest.mark.parametrize(
