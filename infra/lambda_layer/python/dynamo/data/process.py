@@ -228,7 +228,7 @@ def process_ocr_dict(
                     image_id=image_id,
                     line_id=line_idx,
                     word_id=word_idx,
-                    id=letter_idx,
+                    letter_id=letter_idx,
                     text=letter_data["text"],
                     bounding_box=letter_data["bounding_box"],
                     top_right=letter_data["top_right"],
