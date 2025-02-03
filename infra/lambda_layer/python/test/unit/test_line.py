@@ -16,7 +16,7 @@ def create_test_line():
     Adjust coordinates as needed for your tests.
     """
     # fmt: off
-    return Line( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", id=1, text="Test", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=0.0, angle_radians=0.0, confidence=1.0, )
+    return Line( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, text="Test", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=0.0, angle_radians=0.0, confidence=1.0, )
     # fmt: on
 
 
@@ -24,7 +24,7 @@ def create_test_line():
 def test_init(example_line):
     """Test the Line constructor"""
     assert example_line.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    assert example_line.id == 1
+    assert example_line.line_id == 1
     assert example_line.text == "Test"
     assert example_line.bounding_box == {
         "x": 10.0,
@@ -55,9 +55,9 @@ def test_init_bad_uuid():
 @pytest.mark.unit
 def test_init_bad_id():
     # fmt: off
-    with pytest.raises(ValueError, match="id must be a positive integer"):
+    with pytest.raises(ValueError, match="line_id must be an integer"):
         Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "not-an-int", "Test", { "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)
-    with pytest.raises(ValueError, match="id must be a positive integer"):
+    with pytest.raises(ValueError, match="line_id must be positive"):
         Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", -1, "Test", { "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)
     # fmt: on
 
@@ -752,7 +752,8 @@ def test_repr(example_line):
     """Test the Line.__repr__() method"""
     assert (
         repr(example_line) == "Line("
-            "id=1, "
+            "image_id='3f52804b-2fad-4e00-92c8-b593da3a8ed3', "
+            "line_id=1, "
             "text='Test', "
             "bounding_box={'x': 10.0, 'y': 20.0, 'width': 5.0, 'height': 2.0}, "
             "top_right={'x': 15.0, 'y': 20.0}, "
@@ -773,7 +774,7 @@ def test_iter(example_line):
     line_dict = dict(example_line)
     expected_keys = {
         "image_id",
-        "id",
+        "line_id",
         "text",
         "bounding_box",
         "top_right",
@@ -788,7 +789,7 @@ def test_iter(example_line):
     }
     assert set(line_dict.keys()) == expected_keys
     assert line_dict["image_id"] == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    assert line_dict["id"] == 1
+    assert line_dict["line_id"] == 1
     assert line_dict["text"] == "Test"
     assert line_dict["bounding_box"] == {
         "x": 10.0,

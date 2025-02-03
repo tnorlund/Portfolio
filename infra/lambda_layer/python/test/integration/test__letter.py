@@ -7,7 +7,7 @@ correct_letter_params = {
     "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
     "line_id": 1,
     "word_id": 1,
-    "id": 1,
+    "letter_id": 1,
     "text": "0",
     "bounding_box": {
         "height": 0.022867568333804766,
@@ -31,7 +31,7 @@ def example_letter():
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=1,
         word_id=1,
-        id=1,
+        letter_id=1,
         text="0",
         bounding_box={
             "height": 0.022867568333804766,
@@ -85,7 +85,7 @@ def test_addLetters(dynamodb_table: Literal["MyMockedTable"]):
     client = DynamoClient(dynamodb_table)
     letters = [
         Letter(**correct_letter_params),
-        Letter(**{**correct_letter_params, "id": 2, "text": "1"}),
+        Letter(**{**correct_letter_params, "letter_id": 2, "text": "1"}),
     ]
 
     # Act
@@ -134,7 +134,7 @@ def test_deleteLettersFromWord(dynamodb_table: Literal["MyMockedTable"]):
     client.addLetters(
         [
             Letter(**correct_letter_params),
-            Letter(**{**correct_letter_params, "id": 2, "text": "1"}),
+            Letter(**{**correct_letter_params, "letter_id": 2, "text": "1"}),
         ]
     )
 
@@ -180,7 +180,7 @@ def test_listLetters(dynamodb_table: Literal["MyMockedTable"]):
     client = DynamoClient(dynamodb_table)
     letters = [
         Letter(**correct_letter_params),
-        Letter(**{**correct_letter_params, "id": 2, "text": "1"}),
+        Letter(**{**correct_letter_params, "letter_id": 2, "text": "1"}),
     ]
     client.addLetters(letters)
 

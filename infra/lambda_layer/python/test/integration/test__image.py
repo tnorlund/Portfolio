@@ -7,7 +7,7 @@ import json
 from uuid import uuid4
 
 correct_receipt_params = {
-    "id": 1,
+    "receipt_id": 1,
     "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
     "width": 10,
     "height": 20,
@@ -22,7 +22,7 @@ correct_receipt_params = {
 }
 
 correct_line_params = {
-    "id": 1,
+    "line_id": 1,
     "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
     "text": "test",
     "bounding_box": {"x": 0.0, "y": 0.0, "width": 0.0, "height": 0.0},
@@ -36,7 +36,7 @@ correct_line_params = {
 }
 
 correct_image_params = {
-    "id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+    "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
     "width": 10,
     "height": 20,
     "timestamp_added": datetime.now().isoformat(),
@@ -217,7 +217,7 @@ def test_deleteImage(dynamodb_table: Literal["MyMockedTable"]):
     client.addImage(image)
 
     # Act
-    client.deleteImage(image.id)
+    client.deleteImage(image.image_id)
 
     # Assert
     with pytest.raises(ValueError):
@@ -239,7 +239,7 @@ def test_deleteImage_error(dynamodb_table: Literal["MyMockedTable"]):
 
     # Act
     with pytest.raises(ValueError):
-        client.deleteImage(image.id)
+        client.deleteImage(image.image_id)
 
 
 @pytest.mark.integration
@@ -249,7 +249,7 @@ def test_deleteImages(dynamodb_table: Literal["MyMockedTable"]):
 
     # Generate 1000 images, each with a random UUID for the "id"
     images = [
-        Image(**{**correct_image_params, "id": str(uuid4())}) for _ in range(1000)
+        Image(**{**correct_image_params, "image_id": str(uuid4())}) for _ in range(1000)
     ]
     client.addImages(images)
 
@@ -273,38 +273,38 @@ def test_listImageDetails(dynamodb_table: Literal["MyMockedTable"]):
 
     # Add multiple images
     images = [
-        Image(**{**correct_image_params, "id": image_id_1}),
-        Image(**{**correct_image_params, "id": image_id_2}),
+        Image(**{**correct_image_params, "image_id": image_id_1}),
+        Image(**{**correct_image_params, "image_id": image_id_2}),
     ]
     client.addImages(images)
 
     # Add Lines for the two real images, plus one line for the "different" image_id_3
     lines_in_image_1 = [
-        Line(**{**correct_line_params, "id": 1, "image_id": image_id_1}),
-        Line(**{**correct_line_params, "id": 2, "image_id": image_id_1}),
+        Line(**{**correct_line_params, "line_id": 1, "image_id": image_id_1}),
+        Line(**{**correct_line_params, "line_id": 2, "image_id": image_id_1}),
     ]
     lines_in_image_2 = [
-        Line(**{**correct_line_params, "id": 1, "image_id": image_id_2}),
-        Line(**{**correct_line_params, "id": 2, "image_id": image_id_2}),
-        Line(**{**correct_line_params, "id": 3, "image_id": image_id_2}),
+        Line(**{**correct_line_params, "line_id": 1, "image_id": image_id_2}),
+        Line(**{**correct_line_params, "line_id": 2, "image_id": image_id_2}),
+        Line(**{**correct_line_params, "line_id": 3, "image_id": image_id_2}),
     ]
     lines_different_image = [
-        Line(**{**correct_line_params, "id": 4, "image_id": image_id_3}),
+        Line(**{**correct_line_params, "line_id": 4, "image_id": image_id_3}),
     ]
     client.addLines(lines_in_image_1 + lines_in_image_2 + lines_different_image)
 
     # Add Receipts for the two real images, plus one for the "different" image_id_3
     receipts_in_image_1 = [
-        Receipt(**{**correct_receipt_params, "id": 1, "image_id": image_id_1}),
-        Receipt(**{**correct_receipt_params, "id": 2, "image_id": image_id_1}),
+        Receipt(**{**correct_receipt_params, "receipt_id": 1, "image_id": image_id_1}),
+        Receipt(**{**correct_receipt_params, "receipt_id": 2, "image_id": image_id_1}),
     ]
     receipts_in_image_2 = [
-        Receipt(**{**correct_receipt_params, "id": 1, "image_id": image_id_2}),
-        Receipt(**{**correct_receipt_params, "id": 2, "image_id": image_id_2}),
-        Receipt(**{**correct_receipt_params, "id": 3, "image_id": image_id_2}),
+        Receipt(**{**correct_receipt_params, "receipt_id": 1, "image_id": image_id_2}),
+        Receipt(**{**correct_receipt_params, "receipt_id": 2, "image_id": image_id_2}),
+        Receipt(**{**correct_receipt_params, "receipt_id": 3, "image_id": image_id_2}),
     ]
     receipts_different_image = [
-        Receipt(**{**correct_receipt_params, "id": 4, "image_id": image_id_3}),
+        Receipt(**{**correct_receipt_params, "receipt_id": 4, "image_id": image_id_3}),
     ]
     client.addReceipts(receipts_in_image_1 + receipts_in_image_2)
     client.addReceipts(receipts_different_image)
@@ -413,8 +413,8 @@ def test_listImageDetails_pagination_uses_lastEvaluatedKey(
 
     # Confirm we got all 5 images in total
     all_images = page_1_images + page_2_images + page_3_images
-    assert sorted(all_images, key=lambda x: x.id) == sorted(
-        images_created, key=lambda x: x.id
+    assert sorted(all_images, key=lambda x: x.image_id) == sorted(
+        images_created, key=lambda x: x.image_id
     )
 
 
@@ -596,6 +596,6 @@ def test_listImageDetails_lek_structure_and_usage(
         + extract_images(payload_2)
         + extract_images(payload_3)
     )
-    assert sorted(all_returned, key=lambda x: x.id) == sorted(
-        images_created, key=lambda x: x.id
+    assert sorted(all_returned, key=lambda x: x.image_id) == sorted(
+        images_created, key=lambda x: x.image_id
     ), "We should retrieve all 5 images in total."

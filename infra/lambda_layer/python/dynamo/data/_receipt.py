@@ -54,7 +54,7 @@ class _Receipt:
             )
         except ClientError as e:
             if e.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
-                raise ValueError(f"Receipt with ID {receipt.id} and Image ID '{receipt.image_id}' already exists")
+                raise ValueError(f"Receipt with ID {receipt.receipt_id} and Image ID '{receipt.image_id}' already exists")
             else:
                 raise e
 
@@ -102,7 +102,7 @@ class _Receipt:
             )
         except ClientError as e:
             if e.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
-                raise ValueError(f"Receipt with ID {receipt.id} and Image ID '{receipt.image_id}' does not exist")
+                raise ValueError(f"Receipt with ID {receipt.receipt_id} and Image ID '{receipt.image_id}' does not exist")
             else:
                 raise e
 
@@ -150,7 +150,7 @@ class _Receipt:
             )
         except ClientError as e:
             if e.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
-                raise ValueError(f"Receipt with ID {receipt.id} and Image ID '{receipt.image_id}' does not exists")
+                raise ValueError(f"Receipt with ID {receipt.receipt_id} and Image ID '{receipt.image_id}' does not exists")
             else:
                 raise e
 
@@ -424,7 +424,7 @@ class _Receipt:
                         "words": [
                             word
                             for word in receipt_words
-                            if word.receipt_id == receipt.id
+                            if word.receipt_id == receipt.receipt_id
                             and word.image_id == receipt.image_id
                         ],
                     }
@@ -458,7 +458,7 @@ class _Receipt:
                         "words": [
                             word
                             for word in receipt_words
-                            if word.receipt_id == receipt.id
+                            if word.receipt_id == receipt.receipt_id
                             and word.image_id == receipt.image_id
                         ],
                     }

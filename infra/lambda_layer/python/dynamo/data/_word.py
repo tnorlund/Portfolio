@@ -33,7 +33,7 @@ class _Word:
                 ConditionExpression="attribute_not_exists(PK)",
             )
         except ClientError as e:
-            raise ValueError(f"Word with ID {word.id} already exists")
+            raise ValueError(f"Word with ID {word.word_id} already exists")
 
     def addWords(self, words: list[Word]):
         """Adds a list of words to the database
@@ -83,7 +83,7 @@ class _Word:
             )
         except ClientError as e:
             if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-                raise ValueError(f"Word with ID {word.id} not found")
+                raise ValueError(f"Word with ID {word.word_id} not found")
             else:
                 raise Exception(f"Error updating word: {e}")
             

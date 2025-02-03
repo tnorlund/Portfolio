@@ -1,6 +1,6 @@
 from typing import Any, Generator, Tuple
 from datetime import datetime
-from dynamo.entities.util import assert_valid_uuid
+from dynamo.entities.util import assert_valid_uuid, _repr_str
 
 
 class Image:
@@ -8,12 +8,12 @@ class Image:
     Represents an image and its associated metadata stored in a DynamoDB table.
 
     This class encapsulates image-related information such as its unique identifier,
-    dimensions, upload timestamp, and S3 storage details. It is designed to support 
-    operations such as generating DynamoDB keys and converting image metadata to a 
+    dimensions, upload timestamp, and S3 storage details. It is designed to support
+    operations such as generating DynamoDB keys and converting image metadata to a
     DynamoDB-compatible item.
 
     Attributes:
-        id (str): UUID identifying the image.
+        image_id (str): UUID identifying the image.
         width (int): The width of the image in pixels.
         height (int): The height of the image in pixels.
         timestamp_added (datetime): The timestamp when the image was added.
@@ -23,9 +23,10 @@ class Image:
         cdn_s3_bucket (str): The S3 bucket where the image is stored in the CDN.
         cdn_s3_key (str): The S3 key where the image is stored in the CDN.
     """
+
     def __init__(
         self,
-        id: str,
+        image_id: str,
         width: int,
         height: int,
         timestamp_added: datetime,
@@ -38,21 +39,21 @@ class Image:
         """Initializes a new Image object for DynamoDB.
 
         Args:
-            id (str): UUID identifying the image.
+            image_id (str): UUID identifying the image.
             width (int): The width of the image in pixels.
             height (int): The height of the image in pixels.
             timestamp_added (datetime): The timestamp when the image was added.
             raw_s3_bucket (str): The S3 bucket where the image is initially stored.
             raw_s3_key (str): The S3 key where the image is initially stored.
-            sha256 (str): The SHA256 hash of the image.
+            sha256 (str, optional): The SHA256 hash of the image.
             cdn_s3_bucket (str, optional): The S3 bucket where the image is stored in the CDN.
             cdn_s3_key (str, optional): The S3 key where the image is stored in the CDN.
 
         Raises:
             ValueError: If any parameter is of an invalid type or has an invalid value.
         """
-        assert_valid_uuid(id)
-        self.id = id
+        assert_valid_uuid(image_id)
+        self.image_id = image_id
 
         if (
             width <= 0
@@ -96,7 +97,7 @@ class Image:
         Returns:
             dict: The primary key for the image.
         """
-        return {"PK": {"S": f"IMAGE#{self.id}"}, "SK": {"S": "IMAGE"}}
+        return {"PK": {"S": f"IMAGE#{self.image_id}"}, "SK": {"S": "IMAGE"}}
 
     def gsi1_key(self) -> dict:
         """Generates the GSI1 key for the image.
@@ -104,7 +105,7 @@ class Image:
         Returns:
             dict: The GSI1 key for the image.
         """
-        return {"GSI1PK": {"S": "IMAGE"}, "GSI1SK": {"S": f"IMAGE#{self.id}"}}
+        return {"GSI1PK": {"S": "IMAGE"}, "GSI1SK": {"S": f"IMAGE#{self.image_id}"}}
 
     def to_item(self) -> dict:
         """Converts the Image object to a DynamoDB item.
@@ -136,15 +137,15 @@ class Image:
         """
         return (
             "Image("
-            f"id='{self.id}', "
+            f"image_id={_repr_str(self.image_id)}, "
             f"width={self.width}, "
             f"height={self.height}, "
             f"timestamp_added={self.timestamp_added}, "
-            f"raw_s3_bucket='{self.raw_s3_bucket}', "
-            f"raw_s3_key='{self.raw_s3_key}', "
-            f"sha256='{self.sha256}', "
-            f"cdn_s3_bucket='{self.cdn_s3_bucket}', "
-            f"cdn_s3_key='{self.cdn_s3_key}'"
+            f"raw_s3_bucket={_repr_str(self.raw_s3_bucket)}, "
+            f"raw_s3_key={_repr_str(self.raw_s3_key)}, "
+            f"sha256={_repr_str(self.sha256)}, "
+            f"cdn_s3_bucket={_repr_str(self.cdn_s3_bucket)}, "
+            f"cdn_s3_key={_repr_str(self.cdn_s3_key)}"
             ")"
         )
 
@@ -154,7 +155,7 @@ class Image:
         Returns:
             Generator[Tuple[str, Any], None, None]: An iterator over the Image object's attribute name/value pairs.
         """
-        yield "id", self.id
+        yield "image_id", self.image_id
         yield "width", self.width
         yield "height", self.height
         yield "timestamp_added", self.timestamp_added
@@ -179,7 +180,7 @@ class Image:
         if not isinstance(other, Image):
             return False
         return (
-            self.id == other.id
+            self.image_id == other.image_id
             and self.width == other.width
             and self.height == other.height
             and self.timestamp_added == other.timestamp_added
@@ -224,7 +225,7 @@ def itemToImage(item: dict) -> Image:
         cdn_s3_bucket = item.get("cdn_s3_bucket", {}).get("S")
         cdn_s3_key = item.get("cdn_s3_key", {}).get("S")
         return Image(
-            id=item["PK"]["S"].split("#")[1],
+            image_id=item["PK"]["S"].split("#")[1],
             width=int(item["width"]["N"]),
             height=int(item["height"]["N"]),
             timestamp_added=datetime.fromisoformat(item["timestamp_added"]["S"]),

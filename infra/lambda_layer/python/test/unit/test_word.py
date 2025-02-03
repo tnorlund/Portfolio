@@ -17,13 +17,13 @@ def example_word_with_tags():
     # fmt: on
 
 
-def create_test_word():
+def create_test_word() -> Word:
     """
     A helper function that returns a Word object
     with easily verifiable points for testing.
     """
     # fmt: off
-    return Word( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", id=1, text="Hello", tags=["example"], line_id=1, bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=0.0, angle_radians=0.0, confidence=1.0, )
+    return Word( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", word_id=1, text="Hello", tags=["example"], line_id=1, bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=0.0, angle_radians=0.0, confidence=1.0, )
     # fmt: on
 
 
@@ -31,7 +31,7 @@ def create_test_word():
 def test_init(example_word, example_word_with_tags):
     assert example_word.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert example_word.line_id == 2
-    assert example_word.id == 3
+    assert example_word.word_id == 3
     assert example_word.text == "test_string"
     assert example_word.bounding_box == {
         "x": 10.0,
@@ -651,7 +651,7 @@ def test_repr(example_word):
     assert (
         repr(example_word)
         == "Word("
-            "id=3, "
+            "word_id=3, "
             "text='test_string', "
             "bounding_box={'x': 10.0, 'y': 20.0, 'width': 5.0, 'height': 2.0}, "
             "top_right={'x': 15.0, 'y': 20.0}, "
@@ -673,7 +673,7 @@ def test_iter(example_word, example_word_with_tags):
     expected_keys = {
         "image_id",
         "line_id",
-        "id",
+        "word_id",
         "text",
         "bounding_box",
         "top_right",
@@ -690,7 +690,7 @@ def test_iter(example_word, example_word_with_tags):
     assert set(word_dict.keys()) == expected_keys
     assert word_dict["image_id"] == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert word_dict["line_id"] == 2
-    assert word_dict["id"] == 3
+    assert word_dict["word_id"] == 3
     assert word_dict["text"] == "test_string"
     assert word_dict["bounding_box"] == {
         "x": 10.0,

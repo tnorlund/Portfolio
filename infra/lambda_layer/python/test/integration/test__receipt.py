@@ -34,7 +34,7 @@ def sample_receipt():
     Adjust the IDs or tag text to fit your schema if needed.
     """
     return Receipt(
-        id=1,
+        receipt_id=1,
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         width=10,
         height=20,
@@ -78,7 +78,7 @@ def sample_receipt_word():
 
 
 correct_receipt_params = {
-    "id": 1,
+    "receipt_id": 1,
     "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
     "width": 10,
     "height": 20,
@@ -93,7 +93,7 @@ correct_receipt_params = {
 }
 
 correct_image_params = {
-    "id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+    "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
     "width": 10,
     "height": 20,
     "timestamp_added": datetime.now().isoformat(),
@@ -112,7 +112,7 @@ def test_addReceipt(dynamodb_table: Literal["MyMockedTable"], sample_receipt: Re
 
     # Assert
     response_receipt = dynamo_client.getReceipt(
-        sample_receipt.image_id, sample_receipt.id
+        sample_receipt.image_id, sample_receipt.receipt_id
     )
     assert response_receipt == sample_receipt
 
@@ -136,7 +136,7 @@ def test_addReceipts(dynamodb_table: str):
     dynamo_client = DynamoClient(dynamodb_table)
     receipts = [
         Receipt(**correct_receipt_params),
-        Receipt(**{**correct_receipt_params, "id": 2}),
+        Receipt(**{**correct_receipt_params, "receipt_id": 2}),
     ]
 
     # Act
@@ -174,7 +174,7 @@ def test_updateReceipt(dynamodb_table: str):
     dynamo_client.updateReceipt(receipt)
 
     # Assert
-    response_receipt = dynamo_client.getReceipt(receipt.image_id, receipt.id)
+    response_receipt = dynamo_client.getReceipt(receipt.image_id, receipt.receipt_id)
     assert response_receipt == receipt
 
 
@@ -195,7 +195,7 @@ def test_updateReceipts(dynamodb_table: str):
     dynamo_client = DynamoClient(dynamodb_table)
     receipts = [
         Receipt(**correct_receipt_params),
-        Receipt(**{**correct_receipt_params, "id": 2}),
+        Receipt(**{**correct_receipt_params, "receipt_id": 2}),
     ]
     dynamo_client.addReceipts(receipts)
     for receipt in receipts:
@@ -254,7 +254,7 @@ def test_deleteReceipts(dynamodb_table: str):
     dynamo_client = DynamoClient(dynamodb_table)
     receipts = [
         Receipt(**correct_receipt_params),
-        Receipt(**{**correct_receipt_params, "id": 2}),
+        Receipt(**{**correct_receipt_params, "receipt_id": 2}),
     ]
     dynamo_client.addReceipts(receipts)
 
@@ -296,15 +296,15 @@ def test_deleteReceiptsFromImage(dynamodb_table: str):
     dynamo_client.deleteReceiptsFromImage(receipt.image_id)
 
     # Assert
-    assert dynamo_client.getImage(image.id) == image
+    assert dynamo_client.getImage(image.image_id) == image
     assert (
         dynamo_client.getReceipt(
-            receipt_different_image.image_id, receipt_different_image.id
+            receipt_different_image.image_id, receipt_different_image.receipt_id
         )
         == receipt_different_image
     )
     with pytest.raises(ValueError):
-        dynamo_client.getReceipt(receipt.image_id, receipt.id)
+        dynamo_client.getReceipt(receipt.image_id, receipt.receipt_id)
 
 
 @pytest.mark.integration
@@ -326,7 +326,7 @@ def test_getReceipt(dynamodb_table: str):
     dynamo_client.addReceipt(receipt)
 
     # Act
-    retrieved_receipt = dynamo_client.getReceipt(receipt.image_id, receipt.id)
+    retrieved_receipt = dynamo_client.getReceipt(receipt.image_id, receipt.receipt_id)
 
     # Assert
     assert retrieved_receipt == receipt
@@ -340,7 +340,7 @@ def test_getReceipt_error_receipt_not_exists(dynamodb_table: str):
 
     # Act
     with pytest.raises(ValueError):
-        dynamo_client.getReceipt(receipt.image_id, receipt.id)
+        dynamo_client.getReceipt(receipt.image_id, receipt.receipt_id)
 
 
 @pytest.mark.integration
@@ -348,7 +348,7 @@ def test_getReceiptsFromImage(dynamodb_table: str):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
     receipt = Receipt(**correct_receipt_params)
-    receipt_same_image = Receipt(**{**correct_receipt_params, "id": 2})
+    receipt_same_image = Receipt(**{**correct_receipt_params, "receipt_id": 2})
     receipt_different_image = Receipt(
         **{**correct_receipt_params, "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed4"}
     )
@@ -372,7 +372,7 @@ def sample_receipt_lines():
         ReceiptLine(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
-            id=1,
+            line_id=1,
             text="line1",
             bounding_box={"x": 0, "y": 0, "width": 10, "height": 20},
             top_right={"x": 10, "y": 0},
@@ -386,7 +386,7 @@ def sample_receipt_lines():
         ReceiptLine(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
-            id=2,
+            line_id=2,
             text="line2",
             bounding_box={"x": 0, "y": 0, "width": 10, "height": 20},
             top_right={"x": 10, "y": 0},
@@ -400,7 +400,7 @@ def sample_receipt_lines():
         ReceiptLine(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
-            id=3,
+            line_id=3,
             text="line3",
             bounding_box={"x": 0, "y": 0, "width": 10, "height": 20},
             top_right={"x": 10, "y": 0},
@@ -414,7 +414,7 @@ def sample_receipt_lines():
         ReceiptLine(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
-            id=4,
+            line_id=4,
             text="line4",
             bounding_box={"x": 0, "y": 0, "width": 10, "height": 20},
             top_right={"x": 10, "y": 0},
@@ -435,7 +435,7 @@ def sample_receipt_words():
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
             line_id=1,
-            id=1,
+            word_id=1,
             text="word1",
             bounding_box={"x": 0, "y": 0, "width": 10, "height": 20},
             top_right={"x": 10, "y": 0},
@@ -450,7 +450,7 @@ def sample_receipt_words():
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
             line_id=1,
-            id=2,
+            word_id=2,
             text="word2",
             bounding_box={"x": 0, "y": 0, "width": 10, "height": 20},
             top_right={"x": 10, "y": 0},
@@ -544,7 +544,7 @@ def test_getReceiptDetails(
     # Act
 
     payload = dynamo_client.getReceiptDetails(
-        sample_receipt.image_id, sample_receipt.id
+        sample_receipt.image_id, sample_receipt.receipt_id
     )
 
     # Assert

@@ -7,6 +7,7 @@ from dynamo.entities.util import (
     assert_valid_point,
     _format_float,
     shear_point,
+    _repr_str
 )
 
 
@@ -21,7 +22,7 @@ class Line:
 
     Attributes:
         image_id (str): UUID identifying the image to which the line belongs.
-        id (int): Identifier for the line.
+        line_id (int): Identifier for the line.
         text (str): The text content of the line.
         bounding_box (dict): The bounding box of the line with keys 'x', 'y', 'width', and 'height'.
         top_right (dict): The top-right corner coordinates with keys 'x' and 'y'.
@@ -38,7 +39,7 @@ class Line:
     def __init__(
         self,
         image_id: str,
-        id: int,
+        line_id: int,
         text: str,
         bounding_box: dict,
         top_right: dict,
@@ -55,7 +56,7 @@ class Line:
 
         Args:
             image_id (str): UUID identifying the image to which the line belongs.
-            id (int): Identifier for the line.
+            line_id (int): Identifier for the line.
             text (str): The text content of the line.
             bounding_box (dict): The bounding box of the line with keys 'x', 'y', 'width', and 'height'.
             top_right (dict): The top-right corner coordinates with keys 'x' and 'y'.
@@ -74,9 +75,11 @@ class Line:
         assert_valid_uuid(image_id)
         self.image_id = image_id
 
-        if not isinstance(id, int) or id <= 0:
-            raise ValueError("id must be a positive integer")
-        self.id = id
+        if not isinstance(line_id, int):
+            raise ValueError("line_id must be an integer")
+        if line_id <= 0:
+            raise ValueError("line_id must be positive")
+        self.line_id = line_id
 
         if not isinstance(text, str):
             raise ValueError("text must be a string")
@@ -122,7 +125,7 @@ class Line:
         """
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {"S": f"LINE#{self.id:05d}"},
+            "SK": {"S": f"LINE#{self.line_id:05d}"},
         }
 
     def gsi1_key(self) -> dict:
@@ -132,8 +135,8 @@ class Line:
             dict: The GSI1 key for the line.
         """
         return {
-            "GSI1PK": {"S": "IMAGE"},
-            "GSI1SK": {"S": f"IMAGE#{self.image_id}#LINE#{self.id:05d}"},
+            "GSI1PK": {"S": f"IMAGE"},
+            "GSI1SK": {"S": f"IMAGE#{self.image_id}#LINE#{self.line_id:05d}"},
         }
 
     def to_item(self) -> dict:
@@ -493,8 +496,9 @@ class Line:
         """
         return (
             f"Line("
-            f"id={self.id}, "
-            f"text='{self.text}', "
+            f"image_id={_repr_str(self.image_id)}, "
+            f"line_id={self.line_id}, "
+            f"text={_repr_str(self.text)}, "
             f"bounding_box={self.bounding_box}, "
             f"top_right={self.top_right}, "
             f"top_left={self.top_left}, "
@@ -513,7 +517,7 @@ class Line:
             Tuple[str, any]: A tuple containing the attribute name and its value.
         """
         yield "image_id", self.image_id
-        yield "id", self.id
+        yield "line_id", self.line_id
         yield "text", self.text
         yield "bounding_box", self.bounding_box
         yield "top_right", self.top_right
@@ -542,7 +546,7 @@ class Line:
             return False
         return (
             self.image_id == other.image_id
-            and self.id == other.id
+            and self.line_id == other.line_id
             and self.text == other.text
             and self.bounding_box == other.bounding_box
             and self.top_right == other.top_right
@@ -586,7 +590,7 @@ def itemToLine(item: dict) -> Line:
     try:
         return Line(
             image_id=item["PK"]["S"][6:],
-            id=int(item["SK"]["S"][6:]),
+            line_id=int(item["SK"]["S"][6:]),
             text=item["text"]["S"],
             bounding_box={
                 key: float(value["N"])

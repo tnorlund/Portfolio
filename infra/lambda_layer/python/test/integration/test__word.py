@@ -6,7 +6,7 @@ from dynamo import Word, DynamoClient
 correct_word_params = {
     "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
     "line_id": 2,
-    "id": 3,
+    "word_id": 3,
     "text": "test_string",
     "bounding_box": {
         "y": 0.9167082878750482,
@@ -78,7 +78,7 @@ def test_addWords(dynamodb_table: Literal["MyMockedTable"]):
     client = DynamoClient(dynamodb_table)
     word1 = Word(**correct_word_params)
     word2_params = correct_word_params.copy()
-    word2_params["id"] = 4
+    word2_params["word_id"] = 4
     word2 = Word(**word2_params)
 
     # Act
@@ -132,7 +132,7 @@ def test_deleteWordsFromLine(dynamodb_table: Literal["MyMockedTable"]):
     client = DynamoClient(dynamodb_table)
     word1 = Word(**correct_word_params)
     word2_params = correct_word_params.copy()
-    word2_params["id"] = 4
+    word2_params["word_id"] = 4
     word2 = Word(**word2_params)
     client.addWord(word1)
     client.addWord(word2)
@@ -178,7 +178,7 @@ def test_getWords(dynamodb_table: Literal["MyMockedTable"]):
     client = DynamoClient(dynamodb_table)
     words = [
         Word(**correct_word_params),
-        Word(**{**correct_word_params, "id": 4}),
+        Word(**{**correct_word_params, "word_id": 4}),
     ]
     client.addWords(words)
 
@@ -228,7 +228,7 @@ def test_listWords(dynamodb_table: Literal["MyMockedTable"]):
     client = DynamoClient(dynamodb_table)
     words = [
         Word(**correct_word_params),
-        Word(**{**correct_word_params, "id": 4}),
+        Word(**{**correct_word_params, "word_id": 4}),
     ]
     client.addWords(words)
 
@@ -245,12 +245,12 @@ def test_listWordsFromLine(dynamodb_table: Literal["MyMockedTable"]):
     client = DynamoClient(dynamodb_table)
     words = [
         Word(**correct_word_params),
-        Word(**{**correct_word_params, "id": 1}),
-        Word(**{**correct_word_params, "id": 2}),
+        Word(**{**correct_word_params, "word_id": 1}),
+        Word(**{**correct_word_params, "word_id": 2}),
     ]
     client.addWords(words)
     # sort words by id
-    words = sorted(words, key=lambda x: x.id)
+    words = sorted(words, key=lambda x: x.word_id)
 
     # Act
     response = client.listWordsFromLine("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2)

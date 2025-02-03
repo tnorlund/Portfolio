@@ -96,7 +96,7 @@ def process(
             raise
 
     image_obj = Image(
-        id=uuid,
+        image_id=uuid,
         width=image.size[0],
         height=image.size[1],
         timestamp_added=datetime.now(timezone.utc),
@@ -112,7 +112,7 @@ def process(
     for cluster_id, cluster_lines in cluster_dict.items():
         if cluster_id == -1:
             continue
-        line_ids = [ln.id for ln in cluster_lines]
+        line_ids = [ln.line_id for ln in cluster_lines]
         cluster_words = [w for w in words if w.line_id in line_ids]
         cluster_letters = [lt for lt in letters if lt.line_id in line_ids]
         try:
@@ -191,7 +191,7 @@ def process_ocr_dict(
     for line_idx, line_data in enumerate(ocr_data.get("lines", []), start=1):
         line_obj = Line(
             image_id=image_id,
-            id=line_idx,
+            line_id=line_idx,
             text=line_data["text"],
             bounding_box=line_data["bounding_box"],
             top_right=line_data["top_right"],
@@ -208,7 +208,7 @@ def process_ocr_dict(
             word_obj = Word(
                 image_id=image_id,
                 line_id=line_idx,
-                id=word_idx,
+                word_id=word_idx,
                 text=word_data["text"],
                 bounding_box=word_data["bounding_box"],
                 top_right=word_data["top_right"],
@@ -228,7 +228,7 @@ def process_ocr_dict(
                     image_id=image_id,
                     line_id=line_idx,
                     word_id=word_idx,
-                    id=letter_idx,
+                    letter_id=letter_idx,
                     text=letter_data["text"],
                     bounding_box=letter_data["bounding_box"],
                     top_right=letter_data["top_right"],
@@ -403,8 +403,8 @@ def transform_cluster(
     # ------------------------------------------------------
     final_w, final_h = affine_img.size
     r = Receipt(
-        id=cluster_id,
-        image_id=image_obj.id,
+        receipt_id=cluster_id,
+        image_id=image_obj.image_id,
         width=final_w,
         height=final_h,
         timestamp_added=datetime.now(timezone.utc),

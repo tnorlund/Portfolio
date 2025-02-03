@@ -5,7 +5,7 @@ from dynamo import Line, DynamoClient
 
 correct_line_params = {
     "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-    "id": 1,
+    "line_id": 1,
     "text": "test_string",
     "bounding_box": {
         "x": 0.4454263367632384,
@@ -59,7 +59,7 @@ def test_add_lines(dynamodb_table: Literal["MyMockedTable"]):
     client = DynamoClient(dynamodb_table)
     line_1 = Line(**correct_line_params)
     line_2_params = correct_line_params.copy()
-    line_2_params["id"] = 2
+    line_2_params["line_id"] = 2
     line_2_params["text"] = "A New Line"
     line_2 = Line(**line_2_params)
 
@@ -115,7 +115,7 @@ def test_deleteLines(dynamodb_table: Literal["MyMockedTable"]):
     client = DynamoClient(dynamodb_table)
     line_1 = Line(**correct_line_params)
     line_2_params = correct_line_params.copy()
-    line_2_params["id"] = 2
+    line_2_params["line_id"] = 2
     line_2_params["text"] = "A New Line"
     line_2 = Line(**line_2_params)
     client.addLine(line_1)
@@ -163,7 +163,7 @@ def test_listLines(dynamodb_table: Literal["MyMockedTable"]):
     client = DynamoClient(dynamodb_table)
     line_1 = Line(**correct_line_params)
     line_2_params = correct_line_params.copy()
-    line_2_params["id"] = 2
+    line_2_params["line_id"] = 2
     line_2_params["text"] = "A New Line"
     line_2 = Line(**line_2_params)
     client.addLine(line_1)
@@ -195,7 +195,7 @@ def test_listLinesFromImage(dynamodb_table: Literal["MyMockedTable"]):
     client = DynamoClient(dynamodb_table)
     line_1 = Line(**correct_line_params)
     line_2_params = correct_line_params.copy()
-    line_2_params["id"] = 2
+    line_2_params["line_id"] = 2
     line_2_params["text"] = "A New Line"
     line_2 = Line(**line_2_params)
     client.addLine(line_1)
