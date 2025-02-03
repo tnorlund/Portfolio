@@ -21354,7 +21354,7 @@
             "width": 883,
             "height": 2161,
             "timestamp_added": "2021-01-01T00:00:00.000000",
-            "raw_s3_bucket": "my-raw-bucket",
+            "raw_s3_bucket": "raw-image-bucket",
             "raw_s3_key": "raw/5119873a-5401-4dd1-9669-878dff8b5bd5.png",
             "top_left": {
                 "x": 0.3385116159915924,
@@ -21373,7 +21373,7 @@
                 "y": 0.20918548107147217
             },
             "sha256": "2893b8ba0c2983f5a5679a2728d3f071ad66d4b3e565040471de0f5d6af83d34",
-            "cdn_s3_bucket": "my-cdn-bucket",
+            "cdn_s3_bucket": "cdn-bucket",
             "cdn_s3_key": "assets/5119873a-5401-4dd1-9669-878dff8b5bd5_cluster_00001.png"
         }
     ],

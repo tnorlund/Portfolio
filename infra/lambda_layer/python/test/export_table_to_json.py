@@ -114,8 +114,8 @@ if __name__ == "__main__":
             "receipts": [{
                 **dict(receipt),
                 "timestamp_added": "2021-01-01T00:00:00+00:00",
-                "raw_s3_bucket": "my-raw-bucket",
-                "cdn_s3_bucket": "my-cdn-bucket",
+                "raw_s3_bucket": "raw-image-bucket",
+                "cdn_s3_bucket": "cdn-bucket",
                 } for receipt in receipts],
             "receipt_lines": [
                 {
