@@ -22,7 +22,7 @@ class Line:
 
     Attributes:
         image_id (str): UUID identifying the image to which the line belongs.
-        id (int): Identifier for the line.
+        line_id (int): Identifier for the line.
         text (str): The text content of the line.
         bounding_box (dict): The bounding box of the line with keys 'x', 'y', 'width', and 'height'.
         top_right (dict): The top-right corner coordinates with keys 'x' and 'y'.
@@ -56,7 +56,7 @@ class Line:
 
         Args:
             image_id (str): UUID identifying the image to which the line belongs.
-            id (int): Identifier for the line.
+            line_id (int): Identifier for the line.
             text (str): The text content of the line.
             bounding_box (dict): The bounding box of the line with keys 'x', 'y', 'width', and 'height'.
             top_right (dict): The top-right corner coordinates with keys 'x' and 'y'.
@@ -76,9 +76,9 @@ class Line:
         self.image_id = image_id
 
         if not isinstance(line_id, int):
-            raise ValueError("id must be an integer")
+            raise ValueError("line_id must be an integer")
         if line_id <= 0:
-            raise ValueError("id must be positive")
+            raise ValueError("line_id must be positive")
         self.line_id = line_id
 
         if not isinstance(text, str):
@@ -496,8 +496,9 @@ class Line:
         """
         return (
             f"Line("
-            f"id={self.line_id}, "
-            f"text='{self.text}', "
+            f"image_id={_repr_str(self.image_id)}, "
+            f"line_id={self.line_id}, "
+            f"text={_repr_str(self.text)}, "
             f"bounding_box={self.bounding_box}, "
             f"top_right={self.top_right}, "
             f"top_left={self.top_left}, "

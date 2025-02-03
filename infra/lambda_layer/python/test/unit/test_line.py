@@ -55,9 +55,9 @@ def test_init_bad_uuid():
 @pytest.mark.unit
 def test_init_bad_id():
     # fmt: off
-    with pytest.raises(ValueError, match="id must be a positive integer"):
+    with pytest.raises(ValueError, match="line_id must be an integer"):
         Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "not-an-int", "Test", { "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)
-    with pytest.raises(ValueError, match="id must be a positive integer"):
+    with pytest.raises(ValueError, match="line_id must be positive"):
         Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", -1, "Test", { "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)
     # fmt: on
 
@@ -752,6 +752,7 @@ def test_repr(example_line):
     """Test the Line.__repr__() method"""
     assert (
         repr(example_line) == "Line("
+            "image_id='3f52804b-2fad-4e00-92c8-b593da3a8ed3', "
             "line_id=1, "
             "text='Test', "
             "bounding_box={'x': 10.0, 'y': 20.0, 'width': 5.0, 'height': 2.0}, "

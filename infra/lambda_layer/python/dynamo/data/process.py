@@ -208,7 +208,7 @@ def process_ocr_dict(
             word_obj = Word(
                 image_id=image_id,
                 line_id=line_idx,
-                id=word_idx,
+                word_id=word_idx,
                 text=word_data["text"],
                 bounding_box=word_data["bounding_box"],
                 top_right=word_data["top_right"],

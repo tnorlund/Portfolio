@@ -1,5 +1,6 @@
 from typing import Generator, Tuple
 from dynamo.entities.util import (
+    _repr_str,
     assert_valid_uuid,
     compute_histogram,
     assert_valid_bounding_box,
@@ -22,7 +23,7 @@ class Word:
     Attributes:
         image_id (str): UUID identifying the image.
         line_id (int): Identifier for the line containing the word.
-        id (int): Identifier for the word.
+        word_id (int): Identifier for the word.
         text (str): The text of the word.
         bounding_box (dict): The bounding box of the word with keys 'x', 'y', 'width', and 'height'.
         top_right (dict): The top-right corner coordinates with keys 'x' and 'y'.
@@ -517,12 +518,12 @@ class Word:
         return (
             f"Word("
                 f"word_id={self.word_id}, "
-                f"text='{self.text}', "
+                f"text={_repr_str(self.text)}, "
                 f"bounding_box={self.bounding_box}, "
                 f"top_right={self.top_right}, "
                 f"top_left={self.top_left}, "
-                f"bottom_right={self.top_left}, "
-                f"bottom_left={self.bottom_right}, "
+                f"bottom_right={self.bottom_right}, "
+                f"bottom_left={self.bottom_left}, "
                 f"angle_degrees={self.angle_degrees}, "
                 f"angle_radians={self.angle_radians}, "
                 f"confidence={self.confidence}"

@@ -22,7 +22,7 @@ class ReceiptWord:
         receipt_id (int): Identifier for the receipt.
         image_id (str): UUID identifying the image to which the receipt word belongs.
         line_id (int): Identifier for the receipt line.
-        id (int): Identifier for the receipt word.
+        word_id (int): Identifier for the receipt word.
         text (str): The text content of the receipt word.
         bounding_box (dict): The bounding box of the receipt word with keys 'x', 'y', 'width', and 'height'.
         top_right (dict): The top-right corner coordinates with keys 'x' and 'y'.
@@ -42,7 +42,7 @@ class ReceiptWord:
         receipt_id: int,
         image_id: str,
         line_id: int,
-        id: int,
+        word_id: int,
         text: str,
         bounding_box: dict,
         top_right: dict,
@@ -63,7 +63,7 @@ class ReceiptWord:
             receipt_id (int): Identifier for the receipt.
             image_id (str): UUID identifying the image to which the receipt word belongs.
             line_id (int): Identifier for the receipt line.
-            id (int): Identifier for the receipt word.
+            word_id (int): Identifier for the receipt word.
             text (str): The text content of the receipt word.
             bounding_box (dict): The bounding box of the receipt word with keys 'x', 'y', 'width', and 'height'.
             top_right (dict): The top-right corner coordinates with keys 'x' and 'y'.
@@ -95,11 +95,11 @@ class ReceiptWord:
             raise ValueError("line_id must be positive")
         self.line_id = line_id
 
-        if not isinstance(id, int):
+        if not isinstance(word_id, int):
             raise ValueError("id must be an integer")
-        if id < 0:
+        if word_id < 0:
             raise ValueError("id must be positive")
-        self.id = id
+        self.word_id = word_id
 
         if not isinstance(text, str):
             raise ValueError("text must be a string")
@@ -154,7 +154,7 @@ class ReceiptWord:
                 "S": (
                     f"RECEIPT#{self.receipt_id:05d}#"
                     f"LINE#{self.line_id:05d}#"
-                    f"WORD#{self.id:05d}"
+                    f"WORD#{self.word_id:05d}"
                 )
             },
         }
@@ -173,7 +173,7 @@ class ReceiptWord:
                     f"IMAGE#{self.image_id}#"
                     f"RECEIPT#{self.receipt_id:05d}#"
                     f"LINE#{self.line_id:05d}#"
-                    f"WORD#{self.id:05d}"
+                    f"WORD#{self.word_id:05d}"
                 )
             },
         }
@@ -245,7 +245,7 @@ class ReceiptWord:
             f"receipt_id={self.receipt_id}, "
             f"image_id='{self.image_id}', "
             f"line_id={self.line_id}, "
-            f"id={self.id}, "
+            f"word_id={self.word_id}, "
             f"text='{self.text}', "
             f"bounding_box={self.bounding_box}, "
             f"top_right={self.top_right}, "
@@ -274,7 +274,7 @@ class ReceiptWord:
             self.receipt_id == other.receipt_id
             and self.image_id == other.image_id
             and self.line_id == other.line_id
-            and self.id == other.id
+            and self.word_id == other.word_id
             and self.text == other.text
             and self.bounding_box == other.bounding_box
             and self.top_right == other.top_right
@@ -297,7 +297,7 @@ class ReceiptWord:
         yield "image_id", self.image_id
         yield "line_id", self.line_id
         yield "receipt_id", self.receipt_id
-        yield "id", self.id
+        yield "word_id", self.word_id
         yield "text", self.text
         yield "bounding_box", self.bounding_box
         yield "top_right", self.top_right
@@ -385,7 +385,7 @@ def itemToReceiptWord(item: dict) -> ReceiptWord:
             receipt_id=int(item["SK"]["S"].split("#")[1]),
             image_id=item["PK"]["S"].split("#")[1],
             line_id=int(item["SK"]["S"].split("#")[3]),
-            id=int(item["SK"]["S"].split("#")[5]),
+            word_id=int(item["SK"]["S"].split("#")[5]),
             text=item["text"]["S"],
             bounding_box={
                 key: float(value["N"])

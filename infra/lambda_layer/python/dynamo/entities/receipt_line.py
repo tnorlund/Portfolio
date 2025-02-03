@@ -226,7 +226,7 @@ class ReceiptLine:
         return (
             f"ReceiptLine("
             f"receipt_id={self.receipt_id}, "
-            f"image_id={self.image_id}, "
+            f"image_id={_repr_str(self.image_id)}, "
             f"line_id={self.line_id}, "
             f"text='{self.text}', "
             f"bounding_box={self.bounding_box}, "
