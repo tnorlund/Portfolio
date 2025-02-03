@@ -179,13 +179,11 @@ def compare_entity_lists(
             return False
         if l1.text != l2.text:
             return False
-        
-        # TODO - uncomment this when we have a word_id in the ReceiptWord and ReceiptLetter
-        # if isinstance(l1, (ReceiptWord, ReceiptLetter)):
-        #     if l1.line_id != l2.line_id:
-        #         return False
-        if isinstance(l1, ReceiptLetter):
+        if isinstance(l1, (ReceiptLetter, ReceiptWord)):
             if l1.word_id != l2.word_id:
+                return False
+        if isinstance(l1, ReceiptLetter):
+            if l1.letter_id != l2.letter_id:
                 return False
 
         # Compare complex attributes with precision.
