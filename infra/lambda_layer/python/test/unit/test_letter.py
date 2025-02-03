@@ -6,7 +6,7 @@ import math
 @pytest.fixture
 def example_letter():
     # fmt: off
-    return Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, )
+    return Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, )
     # fmt: on
 
 
@@ -16,7 +16,7 @@ def test_init(example_letter):
     assert example_letter.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert example_letter.line_id == 1
     assert example_letter.word_id == 2
-    assert example_letter.id == 3
+    assert example_letter.letter_id == 3
     assert example_letter.text == "0"
     assert example_letter.bounding_box == {
         "x": 10.0,
@@ -38,9 +38,9 @@ def test_init_bad_uuid():
     """Test the Letter constructor with a bad UUID"""
     # fmt: off
     with pytest.raises(ValueError, match="uuid must be a string"):
-        Letter( image_id=123, line_id=1, word_id=2, id=3, text="0", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, )
+        Letter( image_id=123, line_id=1, word_id=2, letter_id=3, text="0", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, )
     with pytest.raises(ValueError, match="uuid must be a valid UUID"):
-        Letter( image_id="not-a-uuid", line_id=1, word_id=2, id=3, text="0", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, )
+        Letter( image_id="not-a-uuid", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, )
     # fmt: on
 
 
@@ -59,7 +59,7 @@ def test_init_invalid_line_id(invalid_int):
     """Test constructor fails when line_id is not a valid positive integer."""
     with pytest.raises(ValueError, match=r"line_id must be"):
         # fmt: off
-        Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=invalid_int, word_id=1, id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, )
+        Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=invalid_int, word_id=1, letter_id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, )
         # fmt: on
 
 
@@ -78,7 +78,7 @@ def test_init_invalid_word_id(invalid_int):
     """Test constructor fails when word_id is not a valid positive integer."""
     with pytest.raises(ValueError, match=r"word_id must be"):
         # fmt: off
-        Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=invalid_int, id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, )
+        Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=invalid_int, letter_id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, )
         # fmt: on
 
 
@@ -97,7 +97,7 @@ def test_init_invalid_id(invalid_int):
     """Test constructor fails when id is not a valid positive integer."""
     with pytest.raises(ValueError, match=r"id must be"):
         # fmt: off
-        Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, id=invalid_int, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, )
+        Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=invalid_int, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, )
         # fmt: on
 
 
@@ -106,9 +106,9 @@ def test_init_invalid_text():
     """Test constructor fails when text is not a string."""
     # fmt: off
     with pytest.raises(ValueError, match=r"text must be a string"):
-        Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, id=1, text=123, bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, )
+        Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=1, text=123, bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, )
     with pytest.raises(ValueError, match=r"text must be exactly one character"):
-        Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, id=1, text="string-longer-than-1-char", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, )
+        Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=1, text="string-longer-than-1-char", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, )
 
     # fmt: on
 
@@ -127,7 +127,7 @@ def test_init_invalid_bounding_box(bad_box):
     """Test constructor fails when bounding_box is not valid."""
     with pytest.raises(ValueError):
         # fmt: off
-        Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, id=1, text="H", bounding_box=bad_box, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, )
+        Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=1, text="H", bounding_box=bad_box, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, )
         # fmt: on
 
 
@@ -145,7 +145,7 @@ def test_init_invalid_top_right(bad_point):
     """Test constructor fails when top_right is not valid."""
     with pytest.raises(ValueError):
         # fmt: off
-        Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right=bad_point, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, )
+        Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right=bad_point, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, )
         # fmt: on
 
 
@@ -163,7 +163,7 @@ def test_init_invalid_top_left(bad_point):
     """Test constructor fails when top_left is not valid."""
     with pytest.raises(ValueError):
         # fmt: off
-        Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left=bad_point, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, )
+        Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left=bad_point, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, )
         # fmt: on
 
 
@@ -181,7 +181,7 @@ def test_init_invalid_bottom_right(bad_point):
     """Test constructor fails when bottom_right is not valid."""
     with pytest.raises(ValueError):
         # fmt: off
-        Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right=bad_point, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, )
+        Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right=bad_point, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, )
         # fmt: on
 
 
@@ -199,7 +199,7 @@ def test_init_invalid_bottom_left(bad_point):
     """Test constructor fails when bottom_left is not valid."""
     with pytest.raises(ValueError):
         # fmt: off
-        Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left=bad_point, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, )
+        Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left=bad_point, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, )
         # fmt: on
 
 
@@ -209,7 +209,7 @@ def test_init_invalid_confidence(bad_confidence):
     """Test constructor fails when confidence is not within (0, 1]."""
     with pytest.raises(ValueError):
         # fmt: off
-        Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=10.0, angle_radians=0.1, confidence=bad_confidence, )
+        Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=10.0, angle_radians=0.1, confidence=bad_confidence, )
         # fmt: on
 
 
@@ -218,9 +218,9 @@ def test_init_invalid_angels():
     """Test constructor fails when angle_degrees and angle_radians are not valid."""
     # fmt: off
     with pytest.raises(ValueError, match="angle_degrees must be a float or int"):
-        Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees="not-a-number", angle_radians=0.0, confidence=0.5, )
+        Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees="not-a-number", angle_radians=0.0, confidence=0.5, )
     with pytest.raises(ValueError, match="angle_radians must be a float or int"):
-        Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians="not-a-number", confidence=0.5, )
+        Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians="not-a-number", confidence=0.5, )
     # fmt: on
 
 
@@ -294,7 +294,7 @@ def create_test_letter():
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=1,
         word_id=1,
-        id=1,
+        letter_id=1,
         text="A",
         bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
         top_right={"x": 15.0, "y": 20.0},
@@ -712,7 +712,7 @@ def test_repr(example_letter):
     assert (
         repr(example_letter) 
         == "Letter("
-        "id=3, "
+            "letter_id=3, "
             "text='0', "
             "bounding_box={'x': 10.0, 'y': 20.0, 'width': 5.0, 'height': 2.0}, "
             "top_right={'x': 15.0, 'y': 20.0}, "
@@ -734,7 +734,7 @@ def test_iter(example_letter):
         "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         "line_id": 1,
         "word_id": 2,
-        "id": 3,
+        "letter_id": 3,
         "text": "0",
         "bounding_box": {
             "x": 10.0,
@@ -757,20 +757,20 @@ def test_iter(example_letter):
 def test_eq():
     """Test the Letter.__eq__ method"""
     # fmt: off
-    l1 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, )
-    l2 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed4", line_id=1, word_id=2, id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different image_id
-    l3 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=2, word_id=2, id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different line_id
-    l4 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different word_id
-    l5 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, id=4, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different id
-    l6 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, id=3, text="1", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different text
-    l7 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, id=3, text="0", bounding_box={ "x": 11.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different bounding_box
-    l8 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 16.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different top_right
-    l9 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 21.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different top_left
-    l10 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 11.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different bottom_right
-    l11 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 16.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different bottom_left
-    l12 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=2.0, angle_radians=5.0, confidence=0.90, ) # different angle_degrees
-    l13 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=6.0, confidence=0.90, ) # different angle_radians
-    l14 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.91, ) # different confidence
+    l1 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, )
+    l2 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed4", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different image_id
+    l3 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=2, word_id=2, letter_id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different line_id
+    l4 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different word_id
+    l5 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=4, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different id
+    l6 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=3, text="1", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different text
+    l7 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={ "x": 11.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different bounding_box
+    l8 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 16.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different top_right
+    l9 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 21.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different top_left
+    l10 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 11.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different bottom_right
+    l11 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 16.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different bottom_left
+    l12 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=2.0, angle_radians=5.0, confidence=0.90, ) # different angle_degrees
+    l13 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=6.0, confidence=0.90, ) # different angle_radians
+    l14 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.91, ) # different confidence
     # fmt: on
 
     assert l1 == l1

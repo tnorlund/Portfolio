@@ -1,5 +1,6 @@
 from typing import Generator, Tuple
 from dynamo.entities.util import (
+    _repr_str,
     assert_valid_uuid,
     assert_valid_bounding_box,
     assert_valid_point,
@@ -21,7 +22,7 @@ class ReceiptLetter:
         image_id (str): UUID identifying the image to which the receipt letter belongs.
         line_id (int): Identifier for the receipt line.
         word_id (int): Identifier for the receipt word that this letter belongs to.
-        id (int): Identifier for the receipt letter.
+        letter_id (int): Identifier for the receipt letter.
         text (str): The text content of the receipt letter (must be exactly one character).
         bounding_box (dict): The bounding box of the receipt letter with keys 'x', 'y', 'width', and 'height'.
         top_right (dict): The top-right corner coordinates with keys 'x' and 'y'.
@@ -39,7 +40,7 @@ class ReceiptLetter:
         image_id: str,
         line_id: int,
         word_id: int,
-        id: int,
+        letter_id: int,
         text: str,
         bounding_box: dict,
         top_right: dict,
@@ -58,7 +59,7 @@ class ReceiptLetter:
             image_id (str): UUID identifying the image to which the receipt letter belongs.
             line_id (int): Identifier for the receipt line.
             word_id (int): Identifier for the receipt word.
-            id (int): Identifier for the receipt letter.
+            letter_id (int): Identifier for the receipt letter.
             text (str): The text content of the receipt letter. Must be exactly one character.
             bounding_box (dict): The bounding box of the receipt letter with keys 'x', 'y', 'width', and 'height'.
             top_right (dict): The top-right corner coordinates with keys 'x' and 'y'.
@@ -93,11 +94,11 @@ class ReceiptLetter:
             raise ValueError("word_id must be positive")
         self.word_id = word_id
 
-        if not isinstance(id, int):
-            raise ValueError("id must be an integer")
-        if id < 0:
-            raise ValueError("id must be positive")
-        self.id = id
+        if not isinstance(letter_id, int):
+            raise ValueError("letter_id must be an integer")
+        if letter_id < 0:
+            raise ValueError("letter_id must be positive")
+        self.letter_id = letter_id
 
         if not isinstance(text, str):
             raise ValueError("text must be a string")
@@ -146,7 +147,7 @@ class ReceiptLetter:
                     f"RECEIPT#{self.receipt_id:05d}#"
                     f"LINE#{self.line_id:05d}#"
                     f"WORD#{self.word_id:05d}#"
-                    f"LETTER#{self.id:05d}"
+                    f"LETTER#{self.letter_id:05d}"
                 )
             },
         }
@@ -216,7 +217,7 @@ class ReceiptLetter:
             and self.image_id == other.image_id
             and self.line_id == other.line_id
             and self.word_id == other.word_id
-            and self.id == other.id
+            and self.letter_id == other.letter_id
             and self.text == other.text
             and self.bounding_box == other.bounding_box
             and self.top_right == other.top_right
@@ -239,7 +240,7 @@ class ReceiptLetter:
         yield "receipt_id", self.receipt_id
         yield "line_id", self.line_id
         yield "word_id", self.word_id
-        yield "id", self.id
+        yield "letter_id", self.letter_id
         yield "text", self.text
         yield "bounding_box", self.bounding_box
         yield "top_right", self.top_right
@@ -257,7 +258,24 @@ class ReceiptLetter:
         Returns:
             str: A string representation of the ReceiptLetter object.
         """
-        return f"ReceiptLetter(id={self.id}, text='{self.text}')"
+        return (
+            f"ReceiptLetter("
+            f"receipt_id={self.receipt_id}, "
+            f"image_id={_repr_str(self.image_id)}, "
+            f"line_id={self.line_id}, "
+            f"word_id={self.word_id}, "
+            f"letter_id={self.letter_id}, "
+            f"text={_repr_str(self.text)}, "
+            f"bounding_box={self.bounding_box}, "
+            f"top_right={self.top_right}, "
+            f"top_left={self.top_left}, "
+            f"bottom_right={self.bottom_right}, "
+            f"bottom_left={self.bottom_left}, "
+            f"angle_degrees={self.angle_degrees}, "
+            f"angle_radians={self.angle_radians}, "
+            f"confidence={self.confidence}"
+            f")"
+        )
 
 
 def itemToReceiptLetter(item: dict) -> ReceiptLetter:
@@ -295,7 +313,7 @@ def itemToReceiptLetter(item: dict) -> ReceiptLetter:
             image_id=item["PK"]["S"].split("#")[1],
             line_id=int(item["SK"]["S"].split("#")[3]),
             word_id=int(item["SK"]["S"].split("#")[5]),
-            id=int(item["SK"]["S"].split("#")[7]),
+            letter_id=int(item["SK"]["S"].split("#")[7]),
             text=item["text"]["S"],
             bounding_box={
                 key: float(value["N"])

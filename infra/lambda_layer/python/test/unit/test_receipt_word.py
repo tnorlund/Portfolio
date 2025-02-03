@@ -9,7 +9,7 @@ def example_receipt_word():
         receipt_id=1,
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=3,
-        id=4,
+        word_id=4,
         text="Test",
         bounding_box={"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4},
         top_right={"x": 1.0, "y": 2.0},
@@ -28,7 +28,7 @@ def example_receipt_word_with_tags():
         receipt_id=1,
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=3,
-        id=4,
+        word_id=4,
         text="Test",
         bounding_box={"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4},
         top_right={"x": 1.0, "y": 2.0},
@@ -48,7 +48,7 @@ def test_receipt_word_valid_init(example_receipt_word, example_receipt_word_with
     assert example_receipt_word.receipt_id == 1
     assert example_receipt_word.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert example_receipt_word.line_id == 3
-    assert example_receipt_word.id == 4
+    assert example_receipt_word.word_id == 4
     assert example_receipt_word.text == "Test"
     assert example_receipt_word.bounding_box == {
         "x": 0.1,
@@ -73,7 +73,7 @@ def test_invalid_receipt_id():
             receipt_id="1",  # Not an integer
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id=3,
-            id=4,
+            word_id=4,
             text="Test",
             bounding_box={"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4},
             top_right={"x": 1.0, "y": 2.0},
@@ -89,7 +89,7 @@ def test_invalid_receipt_id():
             receipt_id=-1,  # Negative
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id=3,
-            id=4,
+            word_id=4,
             text="Test",
             bounding_box={"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4},
             top_right={"x": 1.0, "y": 2.0},
@@ -110,7 +110,7 @@ def test_invalid_uuid():
             receipt_id=1,
             image_id=3,  # Not a string
             line_id=3,
-            id=4,
+            word_id=4,
             text="Test",
             bounding_box={"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4},
             top_right={"x": 1.0, "y": 2.0},
@@ -126,7 +126,7 @@ def test_invalid_uuid():
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed",  # Missing last digit
             line_id=3,
-            id=4,
+            word_id=4,
             text="Test",
             bounding_box={"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4},
             top_right={"x": 1.0, "y": 2.0},
@@ -146,7 +146,7 @@ def test_invalid_line_id():
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id="3",  # Not an integer
-            id=4,
+            word_id=4,
             text="Test",
             bounding_box={"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4},
             top_right={"x": 1.0, "y": 2.0},
@@ -162,7 +162,7 @@ def test_invalid_line_id():
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id=-3,  # Negative
-            id=4,
+            word_id=4,
             text="Test",
             bounding_box={"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4},
             top_right={"x": 1.0, "y": 2.0},
@@ -182,7 +182,7 @@ def test_invalid_id():
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id=3,
-            id="4",  # Not an integer
+            word_id="4",  # Not an integer
             text="Test",
             bounding_box={"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4},
             top_right={"x": 1.0, "y": 2.0},
@@ -198,7 +198,7 @@ def test_invalid_id():
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id=3,
-            id=-4,  # Negative
+            word_id=-4,  # Negative
             text="Test",
             bounding_box={"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4},
             top_right={"x": 1.0, "y": 2.0},
@@ -218,7 +218,7 @@ def test_invalid_text():
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id=3,
-            id=4,
+            word_id=4,
             text=1,  # Not a string
             bounding_box={"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4},
             top_right={"x": 1.0, "y": 2.0},
@@ -239,7 +239,7 @@ def test_receipt_word_bounding_box_validation():
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id=3,
-            id=4,
+            word_id=4,
             text="Test",
             bounding_box={"x": 0.1, "y": 0.2, "height": 0.4},  # Missing width
             top_right={"x": 1.0, "y": 2.0},
@@ -260,7 +260,7 @@ def test_corners():
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id=3,
-            id=4,
+            word_id=4,
             text="Test",
             bounding_box={"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4},
             top_right={"x": 1.0},  # Missing y
@@ -281,7 +281,7 @@ def test_angle_validation():
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id=1,
-            id=1,
+            word_id=1,
             text="Test",
             bounding_box={"x": 0.0, "y": 0.0, "width": 1.0, "height": 1.0},
             top_right={"x": 1.0, "y": 2.0},
@@ -297,7 +297,7 @@ def test_angle_validation():
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id=1,
-            id=1,
+            word_id=1,
             text="Test",
             bounding_box={"x": 0.0, "y": 0.0, "width": 1.0, "height": 1.0},
             top_right={"x": 1.0, "y": 2.0},
@@ -318,7 +318,7 @@ def test_receipt_word_confidence_validation():
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id=1,
-            id=1,
+            word_id=1,
             text="Test",
             bounding_box={"x": 0.0, "y": 0.0, "width": 1.0, "height": 1.0},
             top_right={"x": 1.0, "y": 2.0},
@@ -333,7 +333,7 @@ def test_receipt_word_confidence_validation():
         receipt_id=1,
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=1,
-        id=1,
+        word_id=1,
         text="Test",
         bounding_box={"x": 0.0, "y": 0.0, "width": 1.0, "height": 1.0},
         top_right={"x": 1.0, "y": 2.0},
@@ -350,7 +350,7 @@ def test_receipt_word_confidence_validation():
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id=1,
-            id=1,
+            word_id=1,
             text="Test",
             bounding_box={"x": 0.0, "y": 0.0, "width": 1.0, "height": 1.0},
             top_right={"x": 1.0, "y": 2.0},
@@ -371,7 +371,7 @@ def test_invalid_tags():
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id=1,
-            id=1,
+            word_id=1,
             text="Test",
             bounding_box={"x": 0.0, "y": 0.0, "width": 1.0, "height": 1.0},
             top_right={"x": 1.0, "y": 2.0},
@@ -395,7 +395,7 @@ def test_receipt_word_to_item():
         receipt_id=1,
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=3,
-        id=4,
+        word_id=4,
         text="TestWord",
         bounding_box=bounding_box,
         top_right=point,
@@ -428,7 +428,7 @@ def test_repr(example_receipt_word):
             "receipt_id=1, "
             "image_id='3f52804b-2fad-4e00-92c8-b593da3a8ed3', "
             "line_id=3, "
-            "id=4, "
+            "word_id=4, "
             "text='Test', "
             "bounding_box={'x': 0.1, 'y': 0.2, 'width': 0.3, 'height': 0.4}, "
             "top_right={'x': 1.0, 'y': 2.0}, "
@@ -453,7 +453,7 @@ def test_equal_receipt_word():
         receipt_id=1,
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=3,
-        id=4,
+        word_id=4,
         text="Test",
         bounding_box=bounding_box,
         top_right=point,
@@ -469,7 +469,7 @@ def test_equal_receipt_word():
         receipt_id=1,
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=3,
-        id=4,
+        word_id=4,
         text="Test",
         bounding_box=bounding_box,
         top_right=point,
@@ -494,7 +494,7 @@ def test_iter(example_receipt_word_with_tags):
         "receipt_id",
         "image_id",
         "line_id",
-        "id",
+        "word_id",
         "text",
         "bounding_box",
         "top_right",
@@ -512,7 +512,7 @@ def test_iter(example_receipt_word_with_tags):
     assert receipt_word_dict["receipt_id"] == 1
     assert receipt_word_dict["image_id"] == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert receipt_word_dict["line_id"] == 3
-    assert receipt_word_dict["id"] == 4
+    assert receipt_word_dict["word_id"] == 4
     assert receipt_word_dict["text"] == "Test"
     assert receipt_word_dict["bounding_box"] == {
         "x": 0.1,
@@ -543,7 +543,7 @@ def test_distance_and_angle_from_ReceiptWord(example_receipt_word):
         receipt_id=1,
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=3,
-        id=5,
+        word_id=5,
         text="Test",
         bounding_box={"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4},
         top_right={"x": 40.0, "y": 20.0},

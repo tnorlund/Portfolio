@@ -32,7 +32,7 @@ class _Letter:
                 ConditionExpression="attribute_not_exists(PK)",
             )
         except ClientError as e:
-            raise ValueError(f"Letter with ID {letter.id} already exists")
+            raise ValueError(f"Letter with ID {letter.letter_id} already exists")
 
     def addLetters(self, letters: list[Letter]):
         """Adds a list of letters to the database

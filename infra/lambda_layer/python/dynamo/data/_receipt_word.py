@@ -42,7 +42,7 @@ class _ReceiptWord:
         except ClientError as e:
             # Check if it's a condition failure (duplicate key)
             if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-                raise ValueError(f"ReceiptWord with ID {word.id} already exists")
+                raise ValueError(f"ReceiptWord with ID {word.word_id} already exists")
             else:
                 raise Exception(f"Could not add ReceiptWord to the database: {e}")
 
@@ -72,7 +72,7 @@ class _ReceiptWord:
             )
         except ClientError as e:
             if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-                raise ValueError(f"ReceiptWord with ID {word.id} does not exist")
+                raise ValueError(f"ReceiptWord with ID {word.word_id} does not exist")
             else:
                 raise Exception(f"Could not update ReceiptWord in the database: {e}")
     

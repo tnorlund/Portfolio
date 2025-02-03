@@ -1,7 +1,7 @@
 {
     "images": [
         {
-            "id": "5119873a-5401-4dd1-9669-878dff8b5bd5",
+            "image_id": "5119873a-5401-4dd1-9669-878dff8b5bd5",
             "width": 2480,
             "height": 3508,
             "timestamp_added": "2021-01-01T00:00:00.000000",
@@ -21349,7 +21349,7 @@
     ],
     "receipts": [
         {
-            "id": 1,
+            "receipt_id": 1,
             "image_id": "5119873a-5401-4dd1-9669-878dff8b5bd5",
             "width": 883,
             "height": 2161,

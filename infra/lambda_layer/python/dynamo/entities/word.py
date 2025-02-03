@@ -1,5 +1,6 @@
 from typing import Generator, Tuple
 from dynamo.entities.util import (
+    _repr_str,
     assert_valid_uuid,
     compute_histogram,
     assert_valid_bounding_box,
@@ -22,7 +23,7 @@ class Word:
     Attributes:
         image_id (str): UUID identifying the image.
         line_id (int): Identifier for the line containing the word.
-        id (int): Identifier for the word.
+        word_id (int): Identifier for the word.
         text (str): The text of the word.
         bounding_box (dict): The bounding box of the word with keys 'x', 'y', 'width', and 'height'.
         top_right (dict): The top-right corner coordinates with keys 'x' and 'y'.
@@ -41,7 +42,7 @@ class Word:
         self,
         image_id: str,
         line_id: int,
-        id: int,
+        word_id: int,
         text: str,
         bounding_box: dict,
         top_right: dict,
@@ -59,8 +60,8 @@ class Word:
 
         Args:
             image_id (str): UUID identifying the image.
-            line_id (int): Identifier for the line containing the word.
-            id (int): Identifier for the word.
+            line_id (int): The ID of the line the word is in.
+            word_id (int): The ID of the word.
             text (str): The text of the word.
             bounding_box (dict): The bounding box of the word with keys 'x', 'y', 'width', and 'height'.
             top_right (dict): The top-right corner coordinates with keys 'x' and 'y'.
@@ -69,10 +70,8 @@ class Word:
             bottom_left (dict): The bottom-left corner coordinates with keys 'x' and 'y'.
             angle_degrees (float): The angle of the word in degrees.
             angle_radians (float): The angle of the word in radians.
-            confidence (float): The confidence level of the word (between 0 and 1).
-            tags (list[str], optional): A list of tags associated with the word.
-            histogram (dict, optional): A histogram representing character frequencies in the word.
-            num_chars (int, optional): The number of characters in the word.
+            confidence (float): The confidence of the word (0 < confidence <= 1).
+            tags (list[str], optional): The tags of the word. Defaults to None.
 
         Raises:
             ValueError: If any parameter is of an invalid type or has an invalid value.
@@ -86,11 +85,11 @@ class Word:
             raise ValueError("line_id must be positive")
         self.line_id = line_id
 
-        if not isinstance(id, int):
+        if not isinstance(word_id, int):
             raise ValueError("id must be an integer")
-        if id < 0:
+        if word_id < 0:
             raise ValueError("id must be positive")
-        self.id = id
+        self.word_id = word_id
 
         if not isinstance(text, str):
             raise ValueError("text must be a string")
@@ -149,7 +148,7 @@ class Word:
         """
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {"S": f"LINE#{self.line_id:05d}#WORD#{self.id:05d}"},
+            "SK": {"S": f"LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"},
         }
 
     def to_item(self) -> dict:
@@ -518,16 +517,16 @@ class Word:
         """
         return (
             f"Word("
-            f"id={self.id}, "
-            f"text='{self.text}', "
-            f"bounding_box={self.bounding_box}, "
-            f"top_right={self.top_right}, "
-            f"top_left={self.top_left}, "
-            f"bottom_right={self.bottom_right}, "
-            f"bottom_left={self.bottom_left}, "
-            f"angle_degrees={self.angle_degrees}, "
-            f"angle_radians={self.angle_radians}, "
-            f"confidence={self.confidence}"
+                f"word_id={self.word_id}, "
+                f"text={_repr_str(self.text)}, "
+                f"bounding_box={self.bounding_box}, "
+                f"top_right={self.top_right}, "
+                f"top_left={self.top_left}, "
+                f"bottom_right={self.bottom_right}, "
+                f"bottom_left={self.bottom_left}, "
+                f"angle_degrees={self.angle_degrees}, "
+                f"angle_radians={self.angle_radians}, "
+                f"confidence={self.confidence}"
             f")"
         )
 
@@ -539,7 +538,7 @@ class Word:
         """
         yield "image_id", self.image_id
         yield "line_id", self.line_id
-        yield "id", self.id
+        yield "word_id", self.word_id
         yield "text", self.text
         yield "bounding_box", self.bounding_box
         yield "top_right", self.top_right
@@ -567,7 +566,7 @@ class Word:
         return (
             self.image_id == other.image_id
             and self.line_id == other.line_id
-            and self.id == other.id
+            and self.word_id == other.word_id
             and self.text == other.text
             and self.bounding_box == other.bounding_box
             and self.top_right == other.top_right
@@ -614,7 +613,7 @@ def itemToWord(item: dict) -> Word:
         return Word(
             image_id=item["PK"]["S"][6:],  # strip off "IMAGE#"
             line_id=int(item["SK"]["S"].split("#")[1]),
-            id=int(item["SK"]["S"].split("#")[3]),
+            word_id=int(item["SK"]["S"].split("#")[3]),
             text=item["text"]["S"],
             bounding_box={
                 key: float(value["N"])
