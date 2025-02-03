@@ -156,10 +156,8 @@ def test_item_to_word_tag_missing_keys():
         "GSI1SK": {"S": "IMAGE#00042#LINE#00007#WORD#00101"},
         "TYPE": {"S": "WORD_TAG"},
     }
-    with pytest.raises(ValueError) as exc_info:
+    with pytest.raises(ValueError, match="^Item is missing required keys: "):
         itemToWordTag(incomplete_item)
-
-    assert "missing required keys" in str(exc_info.value)
 
 
 @pytest.mark.unit
@@ -172,5 +170,5 @@ def test_item_to_word_tag_bad_format():
         "GSI1SK": {"S": "IMAGE#00042#WORD#00999"},  # Also incomplete
         "TYPE": {"S": "WORD_TAG"},
     }
-    with pytest.raises(ValueError, match="missing required values"):
+    with pytest.raises(ValueError, match="Error converting item to WordTag"):
         itemToWordTag(bad_format_item)
