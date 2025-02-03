@@ -10,6 +10,33 @@ from dynamo.entities.util import (
 
 
 class ReceiptWord:
+    """
+    Represents a receipt word and its associated metadata stored in a DynamoDB table.
+
+    This class encapsulates receipt word-related information such as the receipt identifier,
+    image UUID, line identifier, word identifier, text content, geometric properties, rotation angles,
+    detection confidence, and optional tags. It is designed to support operations such as generating
+    DynamoDB keys (including secondary indexes) and converting the receipt word to a DynamoDB item.
+
+    Attributes:
+        receipt_id (int): Identifier for the receipt.
+        image_id (str): UUID identifying the image to which the receipt word belongs.
+        line_id (int): Identifier for the receipt line.
+        id (int): Identifier for the receipt word.
+        text (str): The text content of the receipt word.
+        bounding_box (dict): The bounding box of the receipt word with keys 'x', 'y', 'width', and 'height'.
+        top_right (dict): The top-right corner coordinates with keys 'x' and 'y'.
+        top_left (dict): The top-left corner coordinates with keys 'x' and 'y'.
+        bottom_right (dict): The bottom-right corner coordinates with keys 'x' and 'y'.
+        bottom_left (dict): The bottom-left corner coordinates with keys 'x' and 'y'.
+        angle_degrees (float): The angle of the receipt word in degrees.
+        angle_radians (float): The angle of the receipt word in radians.
+        confidence (float): The confidence level of the receipt word (between 0 and 1).
+        tags (list[str]): Optional tags associated with the receipt word.
+        histogram (dict): A histogram representing character frequencies in the text.
+        num_chars (int): The number of characters in the receipt word.
+    """
+
     def __init__(
         self,
         receipt_id: int,
@@ -29,6 +56,30 @@ class ReceiptWord:
         histogram: dict = None,
         num_chars: int = None,
     ):
+        """
+        Initializes a new ReceiptWord object for DynamoDB.
+
+        Args:
+            receipt_id (int): Identifier for the receipt.
+            image_id (str): UUID identifying the image to which the receipt word belongs.
+            line_id (int): Identifier for the receipt line.
+            id (int): Identifier for the receipt word.
+            text (str): The text content of the receipt word.
+            bounding_box (dict): The bounding box of the receipt word with keys 'x', 'y', 'width', and 'height'.
+            top_right (dict): The top-right corner coordinates with keys 'x' and 'y'.
+            top_left (dict): The top-left corner coordinates with keys 'x' and 'y'.
+            bottom_right (dict): The bottom-right corner coordinates with keys 'x' and 'y'.
+            bottom_left (dict): The bottom-left corner coordinates with keys 'x' and 'y'.
+            angle_degrees (float): The angle of the receipt word in degrees.
+            angle_radians (float): The angle of the receipt word in radians.
+            confidence (float): The confidence level of the receipt word (between 0 and 1).
+            tags (list[str], optional): A list of tags associated with the receipt word.
+            histogram (dict, optional): A histogram representing character frequencies in the text.
+            num_chars (int, optional): The number of characters in the receipt word.
+
+        Raises:
+            ValueError: If any parameter is of an invalid type or has an invalid value.
+        """
         if not isinstance(receipt_id, int):
             raise ValueError("receipt_id must be an integer")
         if receipt_id <= 0:
@@ -85,33 +136,55 @@ class ReceiptWord:
             raise ValueError("tags must be a list")
         self.tags = tags if tags is not None else []
 
-        if histogram is None:
-            self.histogram = compute_histogram(self.text)
-        else:
-            self.histogram = histogram
-
-        if num_chars is None:
-            self.num_chars = len(text)
-        else:
-            self.num_chars = num_chars
+        self.histogram = (
+            compute_histogram(self.text) if histogram is None else histogram
+        )
+        self.num_chars = len(text) if num_chars is None else num_chars
 
     def key(self) -> dict:
+        """
+        Generates the primary key for the receipt word.
+
+        Returns:
+            dict: The primary key for the receipt word.
+        """
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {
-                "S": f"RECEIPT#{self.receipt_id:05d}#LINE#{self.line_id:05d}#WORD#{self.id:05d}"
+                "S": (
+                    f"RECEIPT#{self.receipt_id:05d}#"
+                    f"LINE#{self.line_id:05d}#"
+                    f"WORD#{self.id:05d}"
+                )
             },
         }
 
     def gsi2_key(self) -> dict:
+        """
+        Generates the secondary index key for the receipt word.
+
+        Returns:
+            dict: The secondary index key for the receipt word.
+        """
         return {
-            "GSI2PK": {"S": f"RECEIPT"},
+            "GSI2PK": {"S": "RECEIPT"},
             "GSI2SK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#LINE#{self.line_id:05d}#WORD#{self.id:05d}"
+                "S": (
+                    f"IMAGE#{self.image_id}#"
+                    f"RECEIPT#{self.receipt_id:05d}#"
+                    f"LINE#{self.line_id:05d}#"
+                    f"WORD#{self.id:05d}"
+                )
             },
         }
 
     def to_item(self) -> dict:
+        """
+        Converts the ReceiptWord object to a DynamoDB item.
+
+        Returns:
+            dict: A dictionary representing the ReceiptWord object as a DynamoDB item.
+        """
         item = {
             **self.key(),
             **self.gsi2_key(),
@@ -160,44 +233,41 @@ class ReceiptWord:
         return item
 
     def __repr__(self) -> str:
-        """Returns a string representation of the ReceiptWord object
+        """
+        Returns a string representation of the ReceiptWord object.
 
         Returns:
-            str: The string representation of the ReceiptWord object
+            str: A string representation of the ReceiptWord object.
         """
-        # fmt: off
+
         return (
             f"ReceiptWord("
-                f"receipt_id={self.receipt_id}, "
-                f"image_id='{self.image_id}', "
-                f"line_id={self.line_id}, "
-                f"id={self.id}, "
-                f"text='{self.text}', "
-                "bounding_box=("
-                    f"x= {self.bounding_box['x']}, "
-                    f"y= {self.bounding_box['y']}, "
-                    f"width= {self.bounding_box['width']}, "
-                    f"height= {self.bounding_box['height']}), "
-                "top_right=("
-                    f"x= {self.top_right['x']}, "
-                    f"y= {self.top_right['y']}), "
-                "top_left=("
-                    f"x= {self.top_left['x']}, "
-                    f"y= {self.top_left['y']}), "
-                "bottom_right=("
-                    f"x= {self.bottom_right['x']}, "
-                    f"y= {self.bottom_right['y']}), "
-                "bottom_left=("
-                    f"x= {self.bottom_left['x']}, "
-                    f"y= {self.bottom_left['y']}), "
-                f"angle_degrees={self.angle_degrees}, "
-                f"angle_radians={self.angle_radians}, "
-                f"confidence={self.confidence:.2}"
+            f"receipt_id={self.receipt_id}, "
+            f"image_id='{self.image_id}', "
+            f"line_id={self.line_id}, "
+            f"id={self.id}, "
+            f"text='{self.text}', "
+            f"bounding_box={self.bounding_box}, "
+            f"top_right={self.top_right}, "
+            f"top_left={self.top_left}, "
+            f"bottom_right={self.bottom_right}, "
+            f"bottom_left={self.bottom_left}, "
+            f"angle_degrees={self.angle_degrees}, "
+            f"angle_radians={self.angle_radians}, "
+            f"confidence={self.confidence}"
             f")"
         )
-        # fmt: on
 
     def __eq__(self, other: object) -> bool:
+        """
+        Determines whether two ReceiptWord objects are equal.
+
+        Args:
+            other (object): The object to compare.
+
+        Returns:
+            bool: True if the ReceiptWord objects are equal, False otherwise.
+        """
         if not isinstance(other, ReceiptWord):
             return False
         return (
@@ -217,7 +287,13 @@ class ReceiptWord:
             and self.confidence == other.confidence
         )
 
-    def __iter__(self) -> Generator[Tuple[str, str], None, None]:
+    def __iter__(self) -> Generator[Tuple[str, any], None, None]:
+        """
+        Returns an iterator over the ReceiptWord object's attributes.
+
+        Yields:
+            Tuple[str, any]: A tuple containing the attribute name and its value.
+        """
         yield "image_id", self.image_id
         yield "line_id", self.line_id
         yield "receipt_id", self.receipt_id
@@ -236,10 +312,11 @@ class ReceiptWord:
         yield "num_chars", self.num_chars
 
     def calculate_centroid(self) -> Tuple[float, float]:
-        """Calculates the centroid of the line
+        """
+        Calculates the centroid of the receipt word.
 
         Returns:
-            Tuple[float, float]: The x and y coordinates of the centroid
+            Tuple[float, float]: The x and y coordinates of the centroid.
         """
         x = (
             self.top_right["x"]
@@ -258,13 +335,14 @@ class ReceiptWord:
     def distance_and_angle_from_ReceiptWord(
         self, other: "ReceiptWord"
     ) -> Tuple[float, float]:
-        """Calculates the distance and the angle between the two words
+        """
+        Calculates the distance and the angle between this receipt word and another receipt word.
 
         Args:
-            other (ReceiptWord): The other word
+            other (ReceiptWord): The other receipt word.
 
         Returns:
-            Tuple[float, float]: The distance and angle between the two words
+            Tuple[float, float]: The distance and angle between the two receipt words.
         """
         x1, y1 = self.calculate_centroid()
         x2, y2 = other.calculate_centroid()
@@ -274,6 +352,18 @@ class ReceiptWord:
 
 
 def itemToReceiptWord(item: dict) -> ReceiptWord:
+    """
+    Converts a DynamoDB item to a ReceiptWord object.
+
+    Args:
+        item (dict): The DynamoDB item to convert.
+
+    Returns:
+        ReceiptWord: The ReceiptWord object represented by the DynamoDB item.
+
+    Raises:
+        ValueError: When the item format is invalid or required keys are missing.
+    """
     required_keys = {
         "PK",
         "SK",
@@ -288,7 +378,7 @@ def itemToReceiptWord(item: dict) -> ReceiptWord:
         "confidence",
     }
     if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - item.keys()
+        missing_keys = required_keys - set(item.keys())
         raise ValueError(f"Item is missing required keys: {missing_keys}")
     try:
         return ReceiptWord(
@@ -298,7 +388,8 @@ def itemToReceiptWord(item: dict) -> ReceiptWord:
             id=int(item["SK"]["S"].split("#")[5]),
             text=item["text"]["S"],
             bounding_box={
-                key: float(value["N"]) for key, value in item["bounding_box"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["bounding_box"]["M"].items()
             },
             top_right={
                 key: float(value["N"]) for key, value in item["top_right"]["M"].items()
@@ -307,10 +398,12 @@ def itemToReceiptWord(item: dict) -> ReceiptWord:
                 key: float(value["N"]) for key, value in item["top_left"]["M"].items()
             },
             bottom_right={
-                key: float(value["N"]) for key, value in item["bottom_right"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["bottom_right"]["M"].items()
             },
             bottom_left={
-                key: float(value["N"]) for key, value in item["bottom_left"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["bottom_left"]["M"].items()
             },
             angle_degrees=float(item["angle_degrees"]["N"]),
             angle_radians=float(item["angle_radians"]["N"]),
@@ -318,4 +411,4 @@ def itemToReceiptWord(item: dict) -> ReceiptWord:
             tags=item.get("tags", {}).get("SS", []),
         )
     except (KeyError, ValueError) as e:
-        raise ValueError(f"Error converting item to ReceiptWord") from e
+        raise ValueError("Error converting item to ReceiptWord") from e
