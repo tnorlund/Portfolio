@@ -25,33 +25,46 @@ class Receipt:
         cdn_s3_bucket: str = None,
         cdn_s3_key: str = None,
     ):
-        """Constructs a new Receipt object for DynamoDB
+        """Initializes a new Receipt object for DynamoDB.
 
         Args:
-            image_id (str): UUID identifying the image
-            id (int): Number identifying the receipt
-            width (int): The width of the receipt in pixels
-            height (int): The height of the receipt in pixels
-            timestamp_added (datetime): The timestamp the receipt was added
-            raw_s3_bucket (str): The S3 bucket where the receipt is stored
-            raw_s3_key (str): The S3 key where the receipt is stored
-            top_left (dict): The top left corner of the bounding box
-            top_right (dict): The top right corner of the bounding box
-            bottom_left (dict): The bottom left corner of the bounding box
-            bottom_right (dict): The bottom right corner of the bounding box
-            sha256 (str): The SHA256 hash of the receipt
+            image_id (str): UUID identifying the associated image.
+            id (int): Number identifying the receipt.
+            width (int): The width of the receipt in pixels.
+            height (int): The height of the receipt in pixels.
+            timestamp_added (datetime): The timestamp when the receipt was added.
+            raw_s3_bucket (str): The S3 bucket where the receipt is stored.
+            raw_s3_key (str): The S3 key where the receipt is stored.
+            top_left (dict): The top left corner of the bounding box.
+            top_right (dict): The top right corner of the bounding box.
+            bottom_left (dict): The bottom left corner of the bounding box.
+            bottom_right (dict): The bottom right corner of the bounding box.
+            sha256 (str): The SHA256 hash of the receipt.
 
         Attributes:
+            image_id (str): UUID identifying the associated image.
+            id (int): Number identifying the receipt.
+            width (int): The width of the receipt in pixels.
+            height (int): The height of the receipt in pixels.
+            timestamp_added (datetime): The timestamp when the receipt was added.
+            raw_s3_bucket (str): The S3 bucket where the receipt is stored.
+            raw_s3_key (str): The S3 key where the receipt is stored.
+            top_left (dict): The top left corner of the bounding box.
+            top_right (dict): The top right corner of the bounding box.
+            bottom_left (dict): The bottom left corner of the bounding box.
+            bottom_right (dict): The bottom right corner of the bounding box.
+            sha256 (str): The SHA256 hash of the receipt.
+
         """
         assert_valid_uuid(image_id)
         self.image_id = image_id
-        
+
         if not isinstance(id, int):
             raise ValueError("id must be an integer")
         if id <= 0:
             raise ValueError("id must be positive")
         self.id = id
-        
+
         if (
             width <= 0
             or height <= 0
@@ -68,7 +81,7 @@ class Receipt:
             self.timestamp_added = timestamp_added
         else:
             raise ValueError("timestamp_added must be a datetime object or a string")
-        
+
         if raw_s3_bucket and not isinstance(raw_s3_bucket, str):
             raise ValueError("raw_s3_bucket must be a string")
         self.raw_s3_bucket = raw_s3_bucket
@@ -97,10 +110,11 @@ class Receipt:
         self.cdn_s3_key = cdn_s3_key
 
     def key(self) -> dict:
-        """Generates the primary key for the line
+        """Generates the primary key for the receipt.
 
         Returns:
-            dict: The primary key for the line
+            dict: The primary key for the receipt.
+
         """
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
@@ -108,10 +122,10 @@ class Receipt:
         }
 
     def gsi1_key(self) -> dict:
-        """Generates the GSI1 key for the receipt
+        """Generates the GSI1 key for the receipt.
 
         Returns:
-            dict: The GSI1 key for the receipt
+            dict: The GSI1 key for the receipt.
         """
         return {
             "GSI1PK": {"S": "IMAGE"},
@@ -119,10 +133,10 @@ class Receipt:
         }
 
     def gsi2_key(self) -> dict:
-        """Generates the GSI2 key for the receipt
+        """Generates the GSI2 key for the receipt.
 
         Returns:
-            dict: The GSI2 key for the receipt
+            dict: The GSI2 key for the receipt.
         """
         return {
             "GSI2PK": {"S": "RECEIPT"},
@@ -130,10 +144,10 @@ class Receipt:
         }
 
     def to_item(self) -> dict:
-        """Converts the Receipt object to a DynamoDB item
+        """Converts the Receipt object to a DynamoDB item.
 
         Returns:
-            dict: The Receipt object as a DynamoDB item
+            dict: A dictionary representing the Receipt object as a DynamoDB item.
         """
         return {
             **self.key(),
@@ -177,10 +191,10 @@ class Receipt:
         }
 
     def __repr__(self) -> str:
-        """Returns a string representation of the Receipt object
+        """Returns a string representation of the Receipt object.
 
         Returns:
-            str: The string representation of the Receipt object
+            str: A string representation of the Receipt object.
         """
         return (
             "Receipt("
@@ -202,10 +216,10 @@ class Receipt:
         )
 
     def __iter__(self) -> Generator[Tuple[str, int], None, None]:
-        """Returns an iterator over the Receipt object
+        """Returns an iterator over the Receipt object's attributes.
 
         Returns:
-            dict: The iterator over the Receipt object
+            dict: An iterator over the Receipt object's attributes.
         """
         yield "id", int(self.id)
         yield "image_id", self.image_id
@@ -223,13 +237,14 @@ class Receipt:
         yield "cdn_s3_key", self.cdn_s3_key
 
     def __eq__(self, other) -> bool:
-        """Checks if two Receipt objects are equal
+        """Determines whether two Receipt objects are equal.
 
         Args:
-            other (Receipt): The other Receipt object to compare
+            other (Receipt): The other Receipt object to compare.
 
         Returns:
-            bool: True if the Receipt objects are equal, False otherwise
+            bool: True if the Receipt objects are equal, False otherwise.
+
         """
         if not isinstance(other, Receipt):
             return NotImplemented
