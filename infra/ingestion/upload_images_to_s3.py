@@ -11,10 +11,20 @@ from time import sleep
 from typing import Generator, List
 from uuid import uuid4
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dynamo import DynamoClient, process
+
 import pulumi.automation as auto
+from dynamo import DynamoClient, process
+
 
 def calculate_sha256(file_path: str) -> str:
+    """Calculates the SHA-256 hash for a file.
+
+    Args:
+        file_path (str): Local filesystem path to the file.
+
+    Returns:
+        str: Hex digest string of the file's SHA-256 hash.
+    """
     sha256_hash = hashlib.sha256()
     with open(file_path, "rb") as f:
         for byte_block in iter(lambda: f.read(4096), b""):
@@ -23,19 +33,28 @@ def calculate_sha256(file_path: str) -> str:
 
 
 def chunked(iterable: List, n: int) -> Generator[List, None, None]:
+    """Yields successive n-sized chunks from a list (or other sequence).
+
+    Args:
+        iterable (List): The list (or sequence) to chunk.
+        n (int): Size of each chunk.
+
+    Yields:
+        Generator[List, None, None]: A generator that produces chunks of size n.
+    """
     for i in range(0, len(iterable), n):
         yield iterable[i : i + n]
 
 
 def load_env(env: str = "dev") -> dict:
-    """
-    Uses Pulumi to get stack outputs and return them as a dict.
-    Example keys:
-      - 'raw_bucket_name'
-      - 'cluster_lambda_function_name'
-      - 'dynamodb_table_name'
-      - 'cdn_bucket_name'
-      etc.
+    """Retrieves Pulumi stack outputs for the specified environment.
+
+    Args:
+        env (str, optional): Pulumi environment (stack) name, e.g. "dev" or "prod".
+            Defaults to "dev".
+
+    Returns:
+        dict: A dictionary of key-value pairs from the Pulumi stack outputs.
     """
     stack = auto.select_stack(
         stack_name=f"tnorlund/portfolio/{env}",
@@ -46,27 +65,62 @@ def load_env(env: str = "dev") -> dict:
 
 
 def run_swift_script(output_directory: Path, image_paths: list[str]) -> bool:
+    """Executes a Swift OCR script on the provided image paths.
+
+    The Swift script (OCRSwift.swift) is expected to produce <UUID>.json files
+    in the `output_directory`.
+
+    Args:
+        output_directory (Path): Directory where the OCR JSON output will be stored.
+        image_paths (list[str]): A list of local image file paths to process.
+
+    Returns:
+        bool: True if the script succeeded, False if it failed.
+    """
     swift_script = Path(__file__).parent / "OCRSwift.swift"
     try:
         swift_args = ["swift", str(swift_script), str(output_directory)] + image_paths
-        subprocess.run(swift_args, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(
+            swift_args,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
     except subprocess.CalledProcessError as e:
-        print(f"Error running swift script: {e}")
+        print(f"Error running Swift script: {e}")
         return False
     return True
 
 
-def compare_local_files_with_dynamo(local_files: list[Path], dynamo_table_name: str) -> list[Path]:
+def compare_local_files_with_dynamo(
+    local_files: list[Path],
+    dynamo_table_name: str
+) -> list[Path]:
+    """Compares local image files against DynamoDB records by SHA-256 hash.
+
+    Each local file's SHA-256 is calculated and checked against the set of SHA-256
+    hashes found in DynamoDB (Images table). Files not present in DynamoDB are returned.
+
+    Args:
+        local_files (list[Path]): A list of PNG file paths to compare.
+        dynamo_table_name (str): Name of the DynamoDB table storing image metadata.
+
+    Returns:
+        list[Path]: Files that do not exist in DynamoDB (by hash).
+    """
     dynamo_client = DynamoClient(dynamo_table_name)
     hashes_in_dynamo = {image.sha256 for image in dynamo_client.listImages()}
     new_files = []
+
     for local_file in local_files:
         file_hash = calculate_sha256(str(local_file))
         if file_hash not in hashes_in_dynamo:
             new_files.append(local_file)
+
     duplicates_found = len(local_files) - len(new_files)
     print(f"Found {duplicates_found} duplicates in DynamoDB.")
     return new_files
+
 
 def upload_files_with_uuid_in_batches(
     directory: Path,
@@ -78,10 +132,31 @@ def upload_files_with_uuid_in_batches(
     batch_size: int = 6,
     sub_batch_size: int = 3,
 ) -> None:
-    """
-    Modified so that after running the Swift script, we call `process(...)`
-    directly with 'ocr_dict' and 'png_data'. We can now run each batch
-    in parallel by grouping them in sub-batches of size `sub_batch_size`.
+    """Orchestrates uploading PNG files by running a Swift OCR script and calling `process()`.
+
+    The ingestion occurs in the following steps:
+      1. Gather all PNG files from `directory`.
+      2. Compare them against DynamoDB to skip duplicates.
+      3. Chunk them into top-level batches of size `batch_size`.
+      4. For each batch:
+         a) Copy files into a temporary directory and rename them to <UUID>.png.
+         b) Run the Swift script to produce <UUID>.json OCR results.
+         c) Use a ThreadPoolExecutor with `sub_batch_size` workers to:
+            - Read each PNG and JSON in memory.
+            - Call `process()` to upload the data to S3 and insert records in DynamoDB.
+
+    Args:
+        directory (Path): Path to the local directory containing PNG files.
+        bucket_name (str): S3 bucket name for raw images.
+        dynamodb_table_name (str): Name of DynamoDB table for storing metadata.
+        cdn_bucket_name (str): S3 bucket name for serving processed images as a CDN.
+        cdn_prefix (str, optional): Path prefix in the CDN bucket. Defaults to "assets/".
+        path_prefix (str, optional): Path prefix in the raw bucket. Defaults to "raw/".
+        batch_size (int, optional): Number of files per top-level batch. Defaults to 6.
+        sub_batch_size (int, optional): Number of concurrent threads for each batch. Defaults to 3.
+
+    Returns:
+        None
     """
     all_png_files = sorted(p for p in directory.iterdir() if p.suffix.lower() == ".png")
     files_to_upload = compare_local_files_with_dynamo(all_png_files, dynamodb_table_name)
@@ -96,7 +171,7 @@ def upload_files_with_uuid_in_batches(
         with tempfile.TemporaryDirectory() as tmp_dir_str:
             tmp_dir = Path(tmp_dir_str)
 
-            # 1) Copy files to temporary folder & assign them new UUIDs
+            # 1) Copy files to temporary folder & assign each a UUID filename
             mapped_uuids = []
             for file_path in batch:
                 new_uuid = str(uuid4())
@@ -104,14 +179,21 @@ def upload_files_with_uuid_in_batches(
                 shutil.copy2(file_path, new_file_path)
                 mapped_uuids.append(new_uuid)
 
-            # 2) Run Swift script on *all* files in temp
+            # 2) Run Swift OCR on all files in the temporary directory
             files_in_temp = [str(p) for p in tmp_dir.iterdir() if p.is_file()]
             if not run_swift_script(tmp_dir, files_in_temp):
-                raise RuntimeError("Error running Swift script")
+                raise RuntimeError("Error running Swift OCR script.")
 
-            # 3) Process each file in parallel, sub-batch size = sub_batch_size
+            # 3) Process each file in parallel (sub_batch_size concurrency)
             def process_single_uuid(new_uuid: str) -> None:
-                # This helper reads the PNG, JSON, and calls process(...)
+                """Handles reading PNG & JSON, then calling `process()` with in-memory data.
+
+                Args:
+                    new_uuid (str): The unique identifier assigned to the PNG/JSON pair.
+
+                Raises:
+                    FileNotFoundError: If either the PNG or JSON file is not found.
+                """
                 png_path = tmp_dir / f"{new_uuid}.png"
                 json_path = tmp_dir / f"{new_uuid}.json"
 
@@ -125,14 +207,14 @@ def upload_files_with_uuid_in_batches(
                 with open(json_path, "r", encoding="utf-8") as jf:
                     ocr_dict = json.load(jf)
 
-                print(f"UUID={new_uuid} ...")
+                print(new_uuid)
                 process(
                     table_name=dynamodb_table_name,
                     raw_bucket_name=bucket_name,
-                    raw_prefix=path_prefix,  
+                    raw_prefix=path_prefix,
                     uuid=new_uuid,
                     cdn_bucket_name=cdn_bucket_name,
-                    cdn_prefix=cdn_prefix,  
+                    cdn_prefix=cdn_prefix,
                     ocr_dict=ocr_dict,
                     png_data=png_data,
                 )
@@ -142,13 +224,22 @@ def upload_files_with_uuid_in_batches(
                 for new_uuid in mapped_uuids:
                     futures.append(executor.submit(process_single_uuid, new_uuid))
 
+                # Wait for all parallel tasks to complete, raising any exceptions
                 for future in as_completed(futures):
-                    # This will raise any exceptions that occurred within process_single_uuid
-                    future.result()  
+                    future.result()
 
             print(f"Finished batch #{batch_index}.\n")
 
+
 def delete_items_in_table(dynamo_client: DynamoClient) -> None:
+    """Deletes all items from the DynamoDB table associated with the given client.
+
+    Clears images, lines, words, letters, receipts, etc., then waits briefly for
+    eventual consistency.
+
+    Args:
+        dynamo_client (DynamoClient): The DynamoClient instance pointing to the correct table.
+    """
     images = dynamo_client.listImages()
     print(f" - Deleting {len(images)} image items")
     dynamo_client.deleteImages(images)
@@ -188,42 +279,58 @@ def delete_items_in_table(dynamo_client: DynamoClient) -> None:
     receipt_letters = dynamo_client.listReceiptLetters()
     print(f" - Deleting {len(receipt_letters)} receipt letter items")
     dynamo_client.deleteReceiptLetters(receipt_letters)
+
+    # Pause briefly for eventual consistency
     sleep(1)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Upload images to S3")
-    parser.add_argument("--directory_to_upload", required=True, help="Directory containing images to upload")
-    parser.add_argument("--env", default="dev", help="The environment to use (e.g., 'dev', 'prod')")
+    """Parses command-line arguments, optionally clears DynamoDB, then uploads PNGs in batches.
+
+    Command-line Arguments:
+        --directory_to_upload (str): Directory containing PNGs to ingest.
+        --env (str, optional): Pulumi environment to select (default: "dev").
+        --debug (bool, optional): If set, delete all items from DynamoDB prior to ingestion.
+    """
+    parser = argparse.ArgumentParser(description="Upload images to S3.")
+    parser.add_argument(
+        "--directory_to_upload",
+        required=True,
+        help="Directory containing images (PNGs) to upload."
+    )
+    parser.add_argument(
+        "--env",
+        default="dev",
+        help="Pulumi environment name (e.g. 'dev' or 'prod')."
+    )
     parser.add_argument(
         "--debug",
         action="store_true",
         default=False,
-        help="Delete all items from DynamoDB tables before uploading",
+        help="If set, delete all items from DynamoDB tables before uploading."
     )
     args = parser.parse_args()
 
+    # Load Pulumi outputs for the given environment
     pulumi_output = load_env(args.env)
     raw_bucket = pulumi_output["raw_bucket_name"]
     cdn_bucket = pulumi_output["cdn_bucket_name"]
     dynamo_db_table = pulumi_output["dynamodb_table_name"]
     cdn_prefix = "assets/"
 
-    # Optional: debug flag to delete everything from Dynamo
+    # (Optional) Clear the entire table if --debug is set
     if args.debug:
         print("Deleting all items from DynamoDB tables...")
         dynamo_client = DynamoClient(dynamo_db_table)
         delete_items_in_table(dynamo_client)
 
-    # Perform the actual upload in batches, 
-    # sending a single GET request per batch with all UUIDs:
+    # Ingest new PNG files in batches
     upload_files_with_uuid_in_batches(
         directory=Path(args.directory_to_upload).resolve(),
         bucket_name=raw_bucket,
         dynamodb_table_name=dynamo_db_table,
         cdn_bucket_name=cdn_bucket,
         cdn_prefix=cdn_prefix,
-        env=args.env,
     )
 
 
