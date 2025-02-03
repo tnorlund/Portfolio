@@ -8,6 +8,30 @@ from dynamo.entities.util import (
 
 
 class Receipt:
+    """
+    Represents a receipt associated with an image in a DynamoDB table.
+
+    This class encapsulates receipt data and related metadata, including dimensions,
+    timestamps, and S3 storage details. It provides methods for generating primary and 
+    secondary (GSI) keys for DynamoDB operations, converting the receipt to a DynamoDB item, 
+    and iterating over its attributes.
+
+    Attributes:
+        image_id (str): UUID identifying the associated image.
+        id (int): Unique number identifying the receipt.
+        width (int): Width of the receipt in pixels.
+        height (int): Height of the receipt in pixels.
+        timestamp_added (str): ISO formatted timestamp when the receipt was added.
+        raw_s3_bucket (str): S3 bucket name where the raw receipt is stored.
+        raw_s3_key (str): S3 key corresponding to the raw receipt in S3.
+        top_left (dict): Coordinates of the top-left corner of the receipt's bounding box.
+        top_right (dict): Coordinates of the top-right corner of the receipt's bounding box.
+        bottom_left (dict): Coordinates of the bottom-left corner of the receipt's bounding box.
+        bottom_right (dict): Coordinates of the bottom-right corner of the receipt's bounding box.
+        sha256 (str, optional): SHA256 hash of the receipt image, if available.
+        cdn_s3_bucket (str, optional): S3 bucket name for the CDN-hosted receipt image, if available.
+        cdn_s3_key (str, optional): S3 key for the CDN-hosted receipt image, if available.
+    """
     def __init__(
         self,
         image_id: str,
@@ -43,28 +67,8 @@ class Receipt:
             cdn_s3_bucket (str, optional): The S3 bucket for the CDN version of the receipt.
             cdn_s3_key (str, optional): The S3 key for the CDN version of the receipt.
 
-        Attributes:
-            image_id (str): UUID identifying the associated image.
-            id (int): Number identifying the receipt.
-            width (int): The width of the receipt in pixels.
-            height (int): The height of the receipt in pixels.
-            timestamp_added (datetime): The timestamp when the receipt was added.
-            raw_s3_bucket (str): The S3 bucket where the receipt is stored.
-            raw_s3_key (str): The S3 key where the receipt is stored.
-            top_left (dict): The top left corner of the bounding box.
-            top_right (dict): The top right corner of the bounding box.
-            bottom_left (dict): The bottom left corner of the bounding box.
-            bottom_right (dict): The bottom right corner of the bounding box.
-            sha256 (str): The SHA256 hash of the receipt.
-            cdn_s3_bucket (str): The S3 bucket for the CDN version of the receipt.
-            cdn_s3_key (str): The S3 key for the CDN version of the receipt.
-
         Raises:
-            ValueError: If image_id is not a valid UUID.
-            ValueError: If id is not a positive integer.
-            ValueError: If width or height is not a positive integer.
-            ValueError: If timestamp_added is not a datetime object or a string.
-            ValueError: If raw_s3_bucket, raw_s3_key, sha256, cdn_s3_bucket, or cdn_s3_key is not a string.
+            ValueError: If any parameter is of an invalid type or has an invalid value.
         """
         assert_valid_uuid(image_id)
         self.image_id = image_id

@@ -4,6 +4,25 @@ from dynamo.entities.util import assert_valid_uuid
 
 
 class Image:
+    """
+    Represents an image and its associated metadata stored in a DynamoDB table.
+
+    This class encapsulates image-related information such as its unique identifier,
+    dimensions, upload timestamp, and S3 storage details. It is designed to support 
+    operations such as generating DynamoDB keys and converting image metadata to a 
+    DynamoDB-compatible item.
+
+    Attributes:
+        id (str): UUID identifying the image.
+        width (int): The width of the image in pixels.
+        height (int): The height of the image in pixels.
+        timestamp_added (datetime): The timestamp when the image was added.
+        raw_s3_bucket (str): The S3 bucket where the image is initially stored.
+        raw_s3_key (str): The S3 key where the image is initially stored.
+        sha256 (str): The SHA256 hash of the image.
+        cdn_s3_bucket (str): The S3 bucket where the image is stored in the CDN.
+        cdn_s3_key (str): The S3 key where the image is stored in the CDN.
+    """
     def __init__(
         self,
         id: str,
@@ -29,22 +48,8 @@ class Image:
             cdn_s3_bucket (str, optional): The S3 bucket where the image is stored in the CDN.
             cdn_s3_key (str, optional): The S3 key where the image is stored in the CDN.
 
-        Attributes:
-            id (str): UUID identifying the image.
-            width (int): The width of the image in pixels.
-            height (int): The height of the image in pixels.
-            timestamp_added (datetime): The timestamp when the image was added.
-            raw_s3_bucket (str): The S3 bucket where the image is initially stored.
-            raw_s3_key (str): The S3 key where the image is initially stored.
-            sha256 (str): The SHA256 hash of the image.
-            cdn_s3_bucket (str): The S3 bucket where the image is stored in the CDN.
-            cdn_s3_key (str): The S3 key where the image is stored in the CDN.
-
         Raises:
-            ValueError: If id is not a valid UUID.
-            ValueError: If width or height is not a positive integer.
-            ValueError: If timestamp_added is not a datetime object or a string.
-            ValueError: If raw_s3_bucket, raw_s3_key, sha256, cdn_s3_bucket, or cdn_s3_key is not a string.
+            ValueError: If any parameter is of an invalid type or has an invalid value.
         """
         assert_valid_uuid(id)
         self.id = id
