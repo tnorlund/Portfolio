@@ -38,7 +38,7 @@ class _ReceiptLetter:
             )
         except ClientError as e:
             if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-                raise ValueError(f"ReceiptLetter with ID {letter.id} already exists")
+                raise ValueError(f"ReceiptLetter with ID {letter.letter_id} already exists")
             else:
                 raise
 
@@ -68,7 +68,7 @@ class _ReceiptLetter:
             )
         except ClientError as e:
             if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-                raise ValueError(f"ReceiptLetter with ID {letter.id} does not exist")
+                raise ValueError(f"ReceiptLetter with ID {letter.letter_id} does not exist")
             else:
                 raise
 
