@@ -24,7 +24,7 @@ class Word:
         self,
         image_id: str,
         line_id: int,
-        id: int,
+        word_id: int,
         text: str,
         bounding_box: dict,
         top_right: dict,
@@ -44,7 +44,7 @@ class Word:
         Args:
             image_id (str): UUID identifying the image.
             line_id (int): The ID of the line the word is in.
-            id (int): The ID of the word.
+            word_id (int): The ID of the word.
             text (str): The text of the word.
             bounding_box (dict): The bounding box of the word
                 (keys: 'x', 'y', 'width', 'height').
@@ -60,7 +60,7 @@ class Word:
         Attributes:
             image_id (str): UUID identifying the image.
             line_id (int): The ID of the line the word is in.
-            id (int): The ID of the word.
+            word_id (int): The ID of the word.
             text (str): The text of the word.
             bounding_box (dict): The bounding box of the word.
             top_right (dict): The top right corner of the word.
@@ -93,11 +93,11 @@ class Word:
             raise ValueError("line_id must be positive")
         self.line_id = line_id
 
-        if not isinstance(id, int):
+        if not isinstance(word_id, int):
             raise ValueError("id must be an integer")
-        if id < 0:
+        if word_id < 0:
             raise ValueError("id must be positive")
-        self.id = id
+        self.word_id = word_id
 
         if not isinstance(text, str):
             raise ValueError("text must be a string")
@@ -159,7 +159,7 @@ class Word:
         """
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {"S": f"LINE#{self.line_id:05d}#WORD#{self.id:05d}"},
+            "SK": {"S": f"LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"},
         }
 
     def to_item(self) -> dict:
@@ -586,28 +586,16 @@ class Word:
         # fmt: off
         return (
             f"Word("
-                f"id={self.id}, "
+                f"word_id={self.word_id}, "
                 f"text='{self.text}', "
-                "bounding_box=("
-                    f"x= {self.bounding_box['x']}, "
-                    f"y= {self.bounding_box['y']}, "
-                    f"width= {self.bounding_box['width']}, "
-                    f"height= {self.bounding_box['height']}), "
-                "top_right=("
-                    f"x= {self.top_right['x']}, "
-                    f"y= {self.top_right['y']}), "
-                "top_left=("
-                    f"x= {self.top_left['x']}, "
-                    f"y= {self.top_left['y']}), "
-                "bottom_right=("
-                    f"x= {self.bottom_right['x']}, "
-                    f"y= {self.bottom_right['y']}), "
-                "bottom_left=("
-                    f"x= {self.bottom_left['x']}, "
-                    f"y= {self.bottom_left['y']}), "
+                f"bounding_box={self.bounding_box}, "
+                f"top_right={self.top_right}, "
+                f"top_left={self.top_left}, "
+                f"bottom_right={self.top_left}, "
+                f"bottom_left={self.bottom_right}, "
                 f"angle_degrees={self.angle_degrees}, "
                 f"angle_radians={self.angle_radians}, "
-                f"confidence={self.confidence:.2}"
+                f"confidence={self.confidence}"
             f")"
         )
         # fmt: on
@@ -622,7 +610,7 @@ class Word:
         """
         yield "image_id", self.image_id
         yield "line_id", self.line_id
-        yield "id", self.id
+        yield "word_id", self.word_id
         yield "text", self.text
         yield "bounding_box", self.bounding_box
         yield "top_right", self.top_right
@@ -651,7 +639,7 @@ class Word:
         return (
             self.image_id == other.image_id
             and self.line_id == other.line_id
-            and self.id == other.id
+            and self.word_id == other.word_id
             and self.text == other.text
             and self.bounding_box == other.bounding_box
             and self.top_right == other.top_right
@@ -709,7 +697,7 @@ def itemToWord(item: dict) -> Word:
         return Word(
             image_id=item["PK"]["S"][6:],  # strip off "IMAGE#"
             line_id=int(item["SK"]["S"].split("#")[1]),
-            id=int(item["SK"]["S"].split("#")[3]),
+            word_id=int(item["SK"]["S"].split("#")[3]),
             text=item["text"]["S"],
             bounding_box={
                 key: float(value["N"])
