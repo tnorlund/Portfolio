@@ -360,7 +360,7 @@ def test_listImageDetails_pagination_returns_page_and_token(
     # The images we got back should be a subset of the images_created
     for image_index in range(5):
         img = images_created[image_index]
-        assert img in images_created, f"Image {img.id} should be in the original set"
+        assert img in images_created, f"Image {img.image_id} should be in the original set"
 
 
 @pytest.mark.integration
