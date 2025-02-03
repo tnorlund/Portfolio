@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from copy import deepcopy
 import hashlib
@@ -24,6 +25,11 @@ from dynamo.entities import (
     ReceiptLetter,
 )
 
+@dataclass
+class Tag:
+    tag_name: str
+    word_id: int
+    line_id: int
 
 def process(
     table_name: str,
