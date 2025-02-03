@@ -57,6 +57,8 @@ class WordTag:
 
         if not tag:
             raise ValueError("tag must not be empty")
+        if not isinstance(tag, str):
+            raise ValueError("tag must be a string")
         if len(tag) > 40:
             raise ValueError("tag must not exceed 40 characters")
         if tag.startswith("_"):
