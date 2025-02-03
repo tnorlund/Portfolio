@@ -10,7 +10,7 @@ def sample_receipt_letter():
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=10,
         word_id=5,
-        id=2,
+        letter_id=2,
         text="A",
         bounding_box={"x": 0.15, "y": 0.20, "width": 0.02, "height": 0.02},
         top_left={"x": 0.15, "y": 0.20},
@@ -39,7 +39,7 @@ def test_add_receipt_letter(
         sample_receipt_letter.image_id,
         sample_receipt_letter.line_id,
         sample_receipt_letter.word_id,
-        sample_receipt_letter.id,
+        sample_receipt_letter.letter_id,
     )
     assert retrieved_letter == sample_receipt_letter
 
@@ -75,7 +75,7 @@ def test_update_receipt_letter(
         sample_receipt_letter.image_id,
         sample_receipt_letter.line_id,
         sample_receipt_letter.word_id,
-        sample_receipt_letter.id,
+        sample_receipt_letter.letter_id,
     )
     assert retrieved_letter.text == "Z"
 
@@ -94,7 +94,7 @@ def test_delete_receipt_letter(
         sample_receipt_letter.image_id,
         sample_receipt_letter.line_id,
         sample_receipt_letter.word_id,
-        sample_receipt_letter.id,
+        sample_receipt_letter.letter_id,
     )
 
     # Assert
@@ -104,7 +104,7 @@ def test_delete_receipt_letter(
             sample_receipt_letter.image_id,
             sample_receipt_letter.line_id,
             sample_receipt_letter.word_id,
-            sample_receipt_letter.id,
+            sample_receipt_letter.letter_id,
         )
 
 
@@ -118,7 +118,7 @@ def test_list_receipt_letters(dynamodb_table: Literal["MyMockedTable"]):
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id=10,
             word_id=5,
-            id=i,
+            letter_id=i,
             text=str(i),
             bounding_box={"x": 0.0, "y": 0.0, "width": 0.01, "height": 0.02},
             top_left={"x": 0.0, "y": 0.0},
@@ -153,7 +153,7 @@ def test_list_receipt_letters_from_word(dynamodb_table: Literal["MyMockedTable"]
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id=10,
             word_id=2,
-            id=i,
+            letter_id=i,
             text=f"{i}",
             bounding_box={"x": 0.0, "y": 0.0, "width": 0.01, "height": 0.01},
             top_left={"x": 0.0, "y": 0.0},
@@ -172,7 +172,7 @@ def test_list_receipt_letters_from_word(dynamodb_table: Literal["MyMockedTable"]
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=10,
         word_id=99,
-        id=999,
+        letter_id=999,
         text="x",
         bounding_box={"x": 0.2, "y": 0.2, "width": 0.01, "height": 0.01},
         top_left={"x": 0.2, "y": 0.2},
