@@ -8,6 +8,7 @@ import json
 from typing import Any, Dict, List, Tuple
 import boto3
 from botocore.exceptions import ClientError
+from dynamo.data._gpt import gpt_request
 from dynamo.data.dynamo_client import DynamoClient
 from dynamo.data._geometry import (
     invert_affine,
@@ -24,12 +25,16 @@ from dynamo.entities import (
     ReceiptWord,
     ReceiptLetter,
 )
+from dynamo.entities.receipt_word_tag import ReceiptWordTag
+from dynamo.entities.word_tag import WordTag
+
 
 @dataclass
 class Tag:
-    tag_name: str
+    tag: str
     word_id: int
     line_id: int
+
 
 def process(
     table_name: str,
@@ -50,7 +55,7 @@ def process(
         raw_prefix = raw_prefix[:-1]
     if cdn_prefix.endswith("/"):
         cdn_prefix = cdn_prefix[:-1]
-    
+
     # If the user does NOT pass ocr_dict/png_data, ensure the raw objects exist in S3
     # as originally done.
     if ocr_dict is None or png_data is None:  # [MODIFIED CODE]
@@ -95,7 +100,6 @@ def process(
         except json.JSONDecodeError as e:
             raise ValueError(f"Error decoding OCR results: {e}")
 
-
     if png_data is not None:
         # The user provided the PNG bytes. Upload them to the raw location:
         s3.put_object(
@@ -139,7 +143,7 @@ def process(
             raise ValueError(f"Access denied to s3://{cdn_bucket_name}/{cdn_prefix}")
         else:
             raise
-    
+
     # Build our top-level Image object
     image_obj = Image(
         image_id=uuid,
@@ -159,6 +163,7 @@ def process(
     # Cluster logic
     cluster_dict = cluster_receipts(lines)
 
+    word_tags = []
     # Receipt extraction, transformation, saving
     for cluster_id, cluster_lines in cluster_dict.items():
         if cluster_id == -1:
@@ -220,17 +225,111 @@ def process(
             else:
                 raise
 
+        gpt_response = gpt_request(r, r_words)
+
+        # Save the GPT response to the raw bucket
+        try:
+            s3.put_object(
+                Bucket=raw_bucket_name,
+                Key=f"{raw_prefix}/{uuid}_RECEIPT_{cluster_id:05d}_GPT.json",
+                Body=json.dumps(gpt_response).encode("utf-8"),
+                ContentType="application/json",
+            )
+        except ClientError as e:
+            error_code = e.response["Error"]["Code"]
+            if error_code == "NoSuchBucket":
+                raise ValueError(f"Bucket {raw_bucket_name} not found")
+            elif error_code == "AccessDenied":
+                raise ValueError(
+                    f"Access denied to s3://{raw_bucket_name}/{raw_prefix}"
+                )
+            else:
+                raise
+
+        # Remove all tags without words
+        tags = []
+        for key, value in gpt_response.items():
+            if value and isinstance(value, list) and len(value) > 0:
+                for tag_obj in value:
+                    tags.append(Tag(key, tag_obj["w"], tag_obj["l"]))
+
+        # Create the ReceiptWordTag objects
+        r_word_tags = []
+        for tag in tags:
+            for word in r_words:
+                if word.word_id == tag.word_id and word.line_id == tag.line_id:
+                    r_word_tags.append(
+                        ReceiptWordTag(
+                            image_id=uuid,
+                            receipt_id=cluster_id,
+                            line_id=tag.line_id,
+                            word_id=tag.word_id,
+                            tag=tag.tag,
+                            timestamp_added=datetime.now(timezone.utc),
+                        )
+                    )
+        # Create the WordTag objects
+
+        for tag in tags:
+            for word in words:
+                if word.word_id == tag.word_id and word.line_id == tag.line_id:
+                    word_tags.append(
+                        WordTag(
+                            image_id=uuid,
+                            line_id=tag.line_id,
+                            word_id=tag.word_id,
+                            tag=tag.tag,
+                            timestamp_added=datetime.now(timezone.utc),
+                        )
+                    )
+
+        # Update each word with the tags
+        update_words_with_tags(r_words, tags)
+        update_words_with_tags(words, tags)
+
         # Insert the receipt + its lines/words/letters in Dynamo
         DynamoClient(table_name).addReceipt(r)
         DynamoClient(table_name).addReceiptLines(r_lines)
         DynamoClient(table_name).addReceiptWords(r_words)
+        DynamoClient(table_name).addReceiptWordTags(r_word_tags)
         DynamoClient(table_name).addReceiptLetters(r_letters)
 
     # Finally, add all entities to DynamoDB.
     DynamoClient(table_name).addImage(image_obj)
     DynamoClient(table_name).addLines(lines)
     DynamoClient(table_name).addWords(words)
+    DynamoClient(table_name).addWordTags(word_tags)
     DynamoClient(table_name).addLetters(letters)
+
+
+def update_words_with_tags(receipt_words: list, tags: list[Tag]) -> None:
+    """
+    Updates each Word object's tag attribute with the tag names from the GPT response.
+    
+    For every Tag in the list, if the Word object's `line_id` and `word_id`
+    match the Tag's values, then append the tag's `tag` to the Word's tag list,
+    ensuring no duplicates.
+    
+    Args:
+        receipt_words (list): List of Word objects.
+        tags (list[Tag]): List of Tag objects produced from the GPT response.
+    """
+    # Ensure every Word has a tags list
+    for word in receipt_words:
+        if not hasattr(word, "tags") or word.tags is None:
+            word.tags = []
+
+    # For each tag, update the matching Word object if the tag is not already present.
+    for tag in tags:
+        for word in receipt_words:
+            if word.line_id == tag.line_id and word.word_id == tag.word_id:
+                if tag.tag not in word.tags:
+                    word.tags.append(tag.tag)
+
+    # Deduplicate each Word object's tags list (preserving order)
+    for word in receipt_words:
+        # Using dict.fromkeys preserves the order while removing duplicates.
+        word.tags = list(dict.fromkeys(word.tags))
 
 
 def calculate_sha256_from_bytes(data: bytes) -> str:
@@ -298,7 +397,6 @@ def process_ocr_dict(
     return lines, words, letters
 
 
-
 def cluster_receipts(
     lines: List[Line], eps: float = 0.08, min_samples: int = 2
 ) -> Dict[int, List[Line]]:
@@ -338,6 +436,7 @@ def cluster_receipts(
         cluster_dict.setdefault(line_obj.cluster_id, []).append(line_obj)
 
     return cluster_dict
+
 
 def transform_cluster(
     cluster_id: int,
@@ -525,6 +624,7 @@ def transform_cluster(
         receipt_letters.append(ReceiptLetter(**dict(lt_copy), receipt_id=cluster_id))
 
     return affine_img, r, receipt_lines, receipt_words, receipt_letters
+
 
 def reorder_box_points(pts: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
     """
