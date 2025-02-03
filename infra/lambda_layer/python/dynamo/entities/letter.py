@@ -11,12 +11,11 @@ from math import atan2, degrees, pi, radians, sin, cos
 
 class Letter:
     """
-    Represents a single Letter within an image, including its text, bounding box,
-    positional corners, angle, and confidence score.
+    Represents a single letter (character) extracted from an image, including its text,
+    bounding box, and confidence level.
 
-    This class provides methods to generate DynamoDB key structures, transform
-    the letter's coordinates (translate, scale, rotate), calculate its centroid,
-    and serialize the data for DynamoDB.
+    Provides methods for generating DynamoDB key structures and serializing the letter's
+    data for storage.
     """
 
     def __init__(
@@ -418,11 +417,17 @@ class Letter:
 
     def warp_affine_normalized_forward(
         self,
-        a_f, b_f, c_f,
-        d_f, e_f, f_f,
-        orig_width, orig_height,
-        new_width, new_height,
-        flip_y=False
+        a_f,
+        b_f,
+        c_f,
+        d_f,
+        e_f,
+        f_f,
+        orig_width,
+        orig_height,
+        new_width,
+        new_height,
+        flip_y=False,
     ):
         """
         Applies the 'forward' 2x3 transform:
@@ -434,7 +439,7 @@ class Letter:
         So the final corners are in [0..1] of the new image.
 
         Args:
-            a_f,b_f,c_f,d_f,e_f,f_f (float): 
+            a_f,b_f,c_f,d_f,e_f,f_f (float):
                 The forward transform old->new in pixel space.
             orig_width, orig_height (int):
                 Dimensions of the original image in pixels.
@@ -442,8 +447,8 @@ class Letter:
                 Dimensions of the new warped/cropped image.
             flip_y (bool):
                 If your original coords treat y=0 at the bottom, you might do
-                y_old_pixels = (1 - y_old) * orig_height. 
-                Conversely for the final y. 
+                y_old_pixels = (1 - y_old) * orig_height.
+                Conversely for the final y.
                 Adjust as needed so you only do one consistent flip.
         """
 
@@ -459,14 +464,14 @@ class Letter:
                 y_o = orig_height - y_o
 
             # 2) Apply the forward transform (old->new) in pixel space:
-            x_new_px = a_f*x_o + b_f*y_o + c_f
-            y_new_px = d_f*x_o + e_f*y_o + f_f
+            x_new_px = a_f * x_o + b_f * y_o + c_f
+            y_new_px = d_f * x_o + e_f * y_o + f_f
 
             # 3) Convert the new pixel coords to new [0..1]
             if flip_y:
                 # If you want the new image to keep top=0, bottom=1,
                 # you might do y_new_norm = 1 - (y_new_px / new_height).
-                # Or do no flip if you prefer. 
+                # Or do no flip if you prefer.
                 corner["x"] = x_new_px / new_width
                 corner["y"] = 1 - (y_new_px / new_height)
             else:
@@ -480,8 +485,8 @@ class Letter:
         min_y, max_y = min(ys), max(ys)
         self.bounding_box["x"] = min_x
         self.bounding_box["y"] = min_y
-        self.bounding_box["width"] = (max_x - min_x)
-        self.bounding_box["height"] = (max_y - min_y)
+        self.bounding_box["width"] = max_x - min_x
+        self.bounding_box["height"] = max_y - min_y
 
         dx = self.top_right["x"] - self.top_left["x"]
         dy = self.top_right["y"] - self.top_left["y"]

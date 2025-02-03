@@ -12,12 +12,11 @@ from math import atan2, degrees, sin, cos, pi, radians
 
 class Word:
     """
-    Represents a Word in an image, including its text, bounding box,
-    positional corners, angle, confidence score, tags, histogram, and number of characters.
+    Represents a word extracted from an image, including its text content,
+    bounding box, corner coordinates, angles, confidence, tags, histogram, and character count.
 
-    Provides methods to generate DynamoDB key structures, transform
-    the word's coordinates (translate, scale, rotate), calculate its centroid,
-    and serialize the data for DynamoDB.
+    Provides methods for generating DynamoDB key structures, performing geometric
+    transformations, calculating centroids, and serializing the word's data for storage.
     """
 
     def __init__(
@@ -38,51 +37,44 @@ class Word:
         histogram: dict = None,
         num_chars: int = None,
     ):
-        """
-        Constructs a new Word object for DynamoDB.
+        """Initializes a new Word object for DynamoDB.
 
         Args:
             image_id (str): UUID identifying the image.
-            line_id (int): The ID of the line the word is in.
-            id (int): The ID of the word.
+            line_id (int): Identifier for the line containing the word.
+            id (int): Identifier for the word.
             text (str): The text of the word.
-            bounding_box (dict): The bounding box of the word
-                (keys: 'x', 'y', 'width', 'height').
-            top_right (dict): The top right corner of the word (keys: 'x', 'y').
-            top_left (dict): The top left corner of the word (keys: 'x', 'y').
-            bottom_right (dict): The bottom right corner of the word (keys: 'x', 'y').
-            bottom_left (dict): The bottom left corner of the word (keys: 'x', 'y').
+            bounding_box (dict): The bounding box of the word with keys 'x', 'y', 'width', and 'height'.
+            top_right (dict): The top-right corner coordinates of the word with keys 'x' and 'y'.
+            top_left (dict): The top-left corner coordinates of the word with keys 'x' and 'y'.
+            bottom_right (dict): The bottom-right corner coordinates of the word with keys 'x' and 'y'.
+            bottom_left (dict): The bottom-left corner coordinates of the word with keys 'x' and 'y'.
             angle_degrees (float): The angle of the word in degrees.
             angle_radians (float): The angle of the word in radians.
-            confidence (float): The confidence of the word (0 < confidence <= 1).
-            tags (list[str], optional): The tags of the word. Defaults to None.
+            confidence (float): The confidence level of the word (between 0 and 1).
+            tags (list[str], optional): A list of tags associated with the word.
+            histogram (dict, optional): A histogram representing character frequencies of the word.
+            num_chars (int, optional): The number of characters in the word.
 
         Attributes:
             image_id (str): UUID identifying the image.
-            line_id (int): The ID of the line the word is in.
-            id (int): The ID of the word.
+            line_id (int): Identifier for the line containing the word.
+            id (int): Identifier for the word.
             text (str): The text of the word.
             bounding_box (dict): The bounding box of the word.
-            top_right (dict): The top right corner of the word.
-            top_left (dict): The top left corner of the word.
-            bottom_right (dict): The bottom right corner of the word.
-            bottom_left (dict): The bottom left corner of the word.
+            top_right (dict): The top-right corner coordinates.
+            top_left (dict): The top-left corner coordinates.
+            bottom_right (dict): The bottom-right corner coordinates.
+            bottom_left (dict): The bottom-left corner coordinates.
             angle_degrees (float): The angle of the word in degrees.
             angle_radians (float): The angle of the word in radians.
-            confidence (float): The confidence of the word (0 < confidence <= 1).
-            tags (list[str]): The tags of the word.
-            histogram (dict): The histogram (character frequency) of the word's text.
-            num_chars (int): The number of characters in the word's text.
+            confidence (float): The confidence level.
+            tags (list[str]): The tags associated with the word.
+            histogram (dict): The histogram of the word's text.
+            num_chars (int): The number of characters in the word.
 
         Raises:
-            ValueError: If the image_id is not a valid UUID.
-            ValueError: If line_id is not a positive integer.
-            ValueError: If id is not a positive integer.
-            ValueError: If text is not a string.
-            ValueError: If bounding_box or any corner is invalid.
-            ValueError: If angle_degrees or angle_radians is not float/int.
-            ValueError: If confidence is not a float in (0, 1].
-            ValueError: If tags is not a list (when provided).
+            ValueError: If any parameter is of an invalid type or has an invalid value.
         """
         assert_valid_uuid(image_id)
         self.image_id = image_id
@@ -459,11 +451,17 @@ class Word:
 
     def warp_affine_normalized_forward(
         self,
-        a_f, b_f, c_f,
-        d_f, e_f, f_f,
-        orig_width, orig_height,
-        new_width, new_height,
-        flip_y=False
+        a_f,
+        b_f,
+        c_f,
+        d_f,
+        e_f,
+        f_f,
+        orig_width,
+        orig_height,
+        new_width,
+        new_height,
+        flip_y=False,
     ):
         """
         Applies the 'forward' 2x3 transform:
@@ -475,7 +473,7 @@ class Word:
         So the final corners are in [0..1] of the new image.
 
         Args:
-            a_f,b_f,c_f,d_f,e_f,f_f (float): 
+            a_f,b_f,c_f,d_f,e_f,f_f (float):
                 The forward transform old->new in pixel space.
             orig_width, orig_height (int):
                 Dimensions of the original image in pixels.
@@ -483,8 +481,8 @@ class Word:
                 Dimensions of the new warped/cropped image.
             flip_y (bool):
                 If your original coords treat y=0 at the bottom, you might do
-                y_old_pixels = (1 - y_old) * orig_height. 
-                Conversely for the final y. 
+                y_old_pixels = (1 - y_old) * orig_height.
+                Conversely for the final y.
                 Adjust as needed so you only do one consistent flip.
         """
 
@@ -500,14 +498,14 @@ class Word:
                 y_o = orig_height - y_o
 
             # 2) Apply the forward transform (old->new) in pixel space:
-            x_new_px = a_f*x_o + b_f*y_o + c_f
-            y_new_px = d_f*x_o + e_f*y_o + f_f
+            x_new_px = a_f * x_o + b_f * y_o + c_f
+            y_new_px = d_f * x_o + e_f * y_o + f_f
 
             # 3) Convert the new pixel coords to new [0..1]
             if flip_y:
                 # If you want the new image to keep top=0, bottom=1,
                 # you might do y_new_norm = 1 - (y_new_px / new_height).
-                # Or do no flip if you prefer. 
+                # Or do no flip if you prefer.
                 corner["x"] = x_new_px / new_width
                 corner["y"] = 1 - (y_new_px / new_height)
             else:
@@ -521,8 +519,8 @@ class Word:
         min_y, max_y = min(ys), max(ys)
         self.bounding_box["x"] = min_x
         self.bounding_box["y"] = min_y
-        self.bounding_box["width"] = (max_x - min_x)
-        self.bounding_box["height"] = (max_y - min_y)
+        self.bounding_box["width"] = max_x - min_x
+        self.bounding_box["height"] = max_y - min_y
 
         dx = self.top_right["x"] - self.top_left["x"]
         dy = self.top_right["y"] - self.top_left["y"]

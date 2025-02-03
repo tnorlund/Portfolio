@@ -212,7 +212,7 @@ class Receipt:
         return (
             "Receipt("
             f"image_id='{self.image_id}', "
-            f"id={int(self.id)}, "
+            f"id={self.id}, "
             f"width={self.width}, "
             f"height={self.height}, "
             f"timestamp_added={self.timestamp_added}, "
