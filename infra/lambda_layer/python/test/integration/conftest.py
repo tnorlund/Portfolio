@@ -1,6 +1,22 @@
+from os.path import dirname, join
+from json import load
+import functools
 import boto3
 import pytest
 from moto import mock_aws
+
+from dynamo import (
+    Image,
+    Line,
+    Word,
+    WordTag,
+    Letter,
+    Receipt,
+    ReceiptLine,
+    ReceiptWord,
+    ReceiptWordTag,
+    ReceiptLetter,
+)
 
 
 @pytest.fixture
@@ -98,3 +114,46 @@ def s3_buckets(request):
 
         # Yield a tuple
         yield (bucket_name1, bucket_name2)
+
+@pytest.fixture
+def expected_results(request):
+    """
+    Fixture that loads expected results from a JSON file for a given UUID.
+    The UUID is provided via parameterization (indirect=True).
+    
+    The JSON file is expected to be in a directory called "JSON" (relative to this file)
+    and have the name "<uuid>_RESULTS.json".
+    
+    The fixture returns a tuple containing:
+        (list[Image], list[Line], list[Word], list[WordTag], list[Letter],
+         list[Receipt], list[ReceiptLine], list[ReceiptWord], list[ReceiptWordTag], list[ReceiptLetter])
+    """
+    uuid = request.param  # The UUID is passed as the parameter
+    base_dir = dirname(__file__)
+    json_path = join(base_dir, "JSON", f"{uuid}_RESULTS.json")
+    with open(json_path, "r", encoding="utf-8") as f:
+        results = load(f)
+
+    images = [Image(**img) for img in results.get("images", [])]
+    lines = [Line(**line) for line in results.get("lines", [])]
+    words = [Word(**word) for word in results.get("words", [])]
+    word_tags = [WordTag(**wt) for wt in results.get("word_tags", [])]
+    letters = [Letter(**letter) for letter in results.get("letters", [])]
+    receipts = [Receipt(**rcpt) for rcpt in results.get("receipts", [])]
+    receipt_lines = [ReceiptLine(**rl) for rl in results.get("receipt_lines", [])]
+    receipt_words = [ReceiptWord(**rw) for rw in results.get("receipt_words", [])]
+    receipt_word_tags = [ReceiptWordTag(**rwt) for rwt in results.get("receipt_word_tags", [])]
+    receipt_letters = [ReceiptLetter(**rltr) for rltr in results.get("receipt_letters", [])]
+
+    return (
+        images,
+        lines,
+        words,
+        word_tags,
+        letters,
+        receipts,
+        receipt_lines,
+        receipt_words,
+        receipt_word_tags,
+        receipt_letters,
+    )
