@@ -8,6 +8,31 @@ from dynamo.entities.util import (
 
 
 class ReceiptLetter:
+    """
+    Represents a receipt letter and its associated metadata stored in a DynamoDB table.
+
+    This class encapsulates receipt letter-related information such as the receipt identifier,
+    image UUID, line identifier, word identifier, letter identifier, text content (exactly one character),
+    geometric properties, rotation angles, and detection confidence. It is designed to support operations
+    such as generating DynamoDB keys and converting the receipt letter to a DynamoDB item.
+
+    Attributes:
+        receipt_id (int): Identifier for the receipt.
+        image_id (str): UUID identifying the image to which the receipt letter belongs.
+        line_id (int): Identifier for the receipt line.
+        word_id (int): Identifier for the receipt word that this letter belongs to.
+        id (int): Identifier for the receipt letter.
+        text (str): The text content of the receipt letter (must be exactly one character).
+        bounding_box (dict): The bounding box of the receipt letter with keys 'x', 'y', 'width', and 'height'.
+        top_right (dict): The top-right corner coordinates with keys 'x' and 'y'.
+        top_left (dict): The top-left corner coordinates with keys 'x' and 'y'.
+        bottom_right (dict): The bottom-right corner coordinates with keys 'x' and 'y'.
+        bottom_left (dict): The bottom-left corner coordinates with keys 'x' and 'y'.
+        angle_degrees (float): The angle of the receipt letter in degrees.
+        angle_radians (float): The angle of the receipt letter in radians.
+        confidence (float): The confidence level of the receipt letter (between 0 and 1).
+    """
+
     def __init__(
         self,
         receipt_id: int,
@@ -25,6 +50,28 @@ class ReceiptLetter:
         angle_radians: float,
         confidence: float,
     ):
+        """
+        Initializes a new ReceiptLetter object for DynamoDB.
+
+        Args:
+            receipt_id (int): Identifier for the receipt.
+            image_id (str): UUID identifying the image to which the receipt letter belongs.
+            line_id (int): Identifier for the receipt line.
+            word_id (int): Identifier for the receipt word.
+            id (int): Identifier for the receipt letter.
+            text (str): The text content of the receipt letter. Must be exactly one character.
+            bounding_box (dict): The bounding box of the receipt letter with keys 'x', 'y', 'width', and 'height'.
+            top_right (dict): The top-right corner coordinates with keys 'x' and 'y'.
+            top_left (dict): The top-left corner coordinates with keys 'x' and 'y'.
+            bottom_right (dict): The bottom-right corner coordinates with keys 'x' and 'y'.
+            bottom_left (dict): The bottom-left corner coordinates with keys 'x' and 'y'.
+            angle_degrees (float): The angle of the receipt letter in degrees.
+            angle_radians (float): The angle of the receipt letter in radians.
+            confidence (float): The confidence level of the receipt letter (between 0 and 1).
+
+        Raises:
+            ValueError: If any parameter is of an invalid type or has an invalid value.
+        """
         if not isinstance(receipt_id, int):
             raise ValueError("receipt_id must be an integer")
         if receipt_id <= 0:
@@ -70,15 +117,11 @@ class ReceiptLetter:
         self.bottom_left = bottom_left
 
         if not isinstance(angle_degrees, (float, int)):
-            raise ValueError(
-                f"angle_degrees must be a float or int"
-            )
+            raise ValueError("angle_degrees must be a float or int")
         self.angle_degrees = angle_degrees
 
         if not isinstance(angle_radians, (float, int)):
-            raise ValueError(
-                f"angle_radians must be a float or int"
-            )
+            raise ValueError("angle_radians must be a float or int")
         self.angle_radians = angle_radians
 
         if isinstance(confidence, int):
@@ -90,14 +133,31 @@ class ReceiptLetter:
         self.confidence = confidence
 
     def key(self) -> dict:
+        """
+        Generates the primary key for the receipt letter.
+
+        Returns:
+            dict: The primary key for the receipt letter.
+        """
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {
-                "S": f"RECEIPT#{self.receipt_id:05d}#LINE#{self.line_id:05d}#WORD#{self.word_id:05d}#LETTER#{self.id:05d}"
+                "S": (
+                    f"RECEIPT#{self.receipt_id:05d}#"
+                    f"LINE#{self.line_id:05d}#"
+                    f"WORD#{self.word_id:05d}#"
+                    f"LETTER#{self.id:05d}"
+                )
             },
         }
 
     def to_item(self) -> dict:
+        """
+        Converts the ReceiptLetter object to a DynamoDB item.
+
+        Returns:
+            dict: A dictionary representing the ReceiptLetter object as a DynamoDB item.
+        """
         return {
             **self.key(),
             "TYPE": {"S": "RECEIPT_LETTER"},
@@ -139,7 +199,16 @@ class ReceiptLetter:
             "confidence": {"N": _format_float(self.confidence, 2, 2)},
         }
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
+        """
+        Determines whether two ReceiptLetter objects are equal.
+
+        Args:
+            other (object): The object to compare.
+
+        Returns:
+            bool: True if the ReceiptLetter objects are equal, False otherwise.
+        """
         if not isinstance(other, ReceiptLetter):
             return False
         return (
@@ -159,10 +228,16 @@ class ReceiptLetter:
             and self.confidence == other.confidence
         )
 
-    def __iter__(self) -> Generator[Tuple[str, str], None, None]:
+    def __iter__(self) -> Generator[Tuple[str, any], None, None]:
+        """
+        Returns an iterator over the ReceiptLetter object's attributes.
+
+        Yields:
+            Tuple[str, any]: A tuple containing the attribute name and its value.
+        """
         yield "image_id", self.image_id
-        yield "line_id", self.line_id
         yield "receipt_id", self.receipt_id
+        yield "line_id", self.line_id
         yield "word_id", self.word_id
         yield "id", self.id
         yield "text", self.text
@@ -175,11 +250,29 @@ class ReceiptLetter:
         yield "angle_radians", self.angle_radians
         yield "confidence", self.confidence
 
-    def __repr__(self):
+    def __repr__(self) -> str:
+        """
+        Returns a string representation of the ReceiptLetter object.
+
+        Returns:
+            str: A string representation of the ReceiptLetter object.
+        """
         return f"ReceiptLetter(id={self.id}, text='{self.text}')"
 
 
 def itemToReceiptLetter(item: dict) -> ReceiptLetter:
+    """
+    Converts a DynamoDB item to a ReceiptLetter object.
+
+    Args:
+        item (dict): The DynamoDB item to convert.
+
+    Returns:
+        ReceiptLetter: The ReceiptLetter object represented by the DynamoDB item.
+
+    Raises:
+        ValueError: When the item format is invalid or required keys are missing.
+    """
     required_keys = {
         "PK",
         "SK",
@@ -227,4 +320,4 @@ def itemToReceiptLetter(item: dict) -> ReceiptLetter:
             confidence=float(item["confidence"]["N"]),
         )
     except (KeyError, ValueError) as e:
-        raise ValueError(f"Error converting item to ReceiptLetter: {e}")
+        raise ValueError(f"Error converting item to ReceiptLetter: {e}") from e

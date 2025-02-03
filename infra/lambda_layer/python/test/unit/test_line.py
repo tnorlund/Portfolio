@@ -55,9 +55,9 @@ def test_init_bad_uuid():
 @pytest.mark.unit
 def test_init_bad_id():
     # fmt: off
-    with pytest.raises(ValueError, match="id must be an integer"):
+    with pytest.raises(ValueError, match="id must be a positive integer"):
         Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "not-an-int", "Test", { "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)
-    with pytest.raises(ValueError, match="id must be positive"):
+    with pytest.raises(ValueError, match="id must be a positive integer"):
         Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", -1, "Test", { "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)
     # fmt: on
 
@@ -261,11 +261,11 @@ def test_init_bad_angle():
 @pytest.mark.unit
 def test_init_bad_confidence():
     # fmt: off
-    with pytest.raises(ValueError, match="confidence must be a float"):
+    with pytest.raises(ValueError, match="confidence must be a float between 0 and 1"):
         Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", { "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, "0.90")
     line = Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", { "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 1)
     assert line.confidence == 1.0
-    with pytest.raises(ValueError, match="confidence must be between 0 and 1"):
+    with pytest.raises(ValueError, match="confidence must be a float between 0 and 1"):
         Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", { "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, -0.90)
     # fmt: on
 

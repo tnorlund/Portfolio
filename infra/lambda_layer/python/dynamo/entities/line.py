@@ -1,4 +1,5 @@
 from typing import Generator, Tuple
+from math import atan2, degrees, sin, cos, pi, radians
 from dynamo.entities.util import (
     assert_valid_uuid,
     compute_histogram,
@@ -8,10 +9,33 @@ from dynamo.entities.util import (
     shear_point,
     _repr_str
 )
-from math import atan2, degrees, sin, cos, pi, radians
 
 
 class Line:
+    """
+    Represents a line and its associated metadata stored in a DynamoDB table.
+
+    This class encapsulates line-related information such as its unique identifier,
+    text content, geometric properties, rotation angles, and detection confidence.
+    It is designed to support operations such as generating DynamoDB keys and applying
+    geometric transformations including translation, scaling, rotation, shear, and affine warping.
+
+    Attributes:
+        image_id (str): UUID identifying the image to which the line belongs.
+        id (int): Identifier for the line.
+        text (str): The text content of the line.
+        bounding_box (dict): The bounding box of the line with keys 'x', 'y', 'width', and 'height'.
+        top_right (dict): The top-right corner coordinates with keys 'x' and 'y'.
+        top_left (dict): The top-left corner coordinates with keys 'x' and 'y'.
+        bottom_right (dict): The bottom-right corner coordinates with keys 'x' and 'y'.
+        bottom_left (dict): The bottom-left corner coordinates with keys 'x' and 'y'.
+        angle_degrees (float): The angle of the line in degrees.
+        angle_radians (float): The angle of the line in radians.
+        confidence (float): The confidence level of the line (between 0 and 1).
+        histogram (dict): A histogram representing character frequencies in the text.
+        num_chars (int): The number of characters in the line.
+    """
+
     def __init__(
         self,
         image_id: str,
@@ -28,50 +52,25 @@ class Line:
         histogram: dict = None,
         num_chars: int = None,
     ):
-        """Initializes a new Line object for DynamoDB
+        """Initializes a new Line object for DynamoDB.
 
         Args:
-            image_id (str): UUID identifying the image
-            line_id (int): Identifier for the line
-            text (str): The text content of the line
-            bounding_box (dict): The bounding box of the line
-            top_right (dict): The top-right point of the line
-            top_left (dict): The top-left point of the line
-            bottom_right (dict): The bottom-right point of the line
-            bottom_left (dict): The bottom-left point of the line
-            angle_degrees (float): The angle of the line in degrees
-            angle_radians (float): The angle of the line in radians
-            confidence (float): The confidence level of the line
-            histogram (dict, optional): The histogram of the line. Defaults to None.
-            num_chars (int, optional): The number of characters in the line. Defaults to None.
-
-        Attributes:
-            image_id (str): UUID identifying the image
-            line_id (int): Identifier for the line
-            text (str): The text content of the line
-            bounding_box (dict): The bounding box of the line
-            top_right (dict): The top-right point of the line
-            top_left (dict): The top-left point of the line
-            bottom_right (dict): The bottom-right point of the line
-            bottom_left (dict): The bottom-left point of the line
-            angle_degrees (float): The angle of the line in degrees
-            angle_radians (float): The angle of the line in radians
-            confidence (float): The confidence level of the line
-            histogram (dict): The histogram of the line
-            num_chars (int): The number of characters in the line
+            image_id (str): UUID identifying the image to which the line belongs.
+            id (int): Identifier for the line.
+            text (str): The text content of the line.
+            bounding_box (dict): The bounding box of the line with keys 'x', 'y', 'width', and 'height'.
+            top_right (dict): The top-right corner coordinates with keys 'x' and 'y'.
+            top_left (dict): The top-left corner coordinates with keys 'x' and 'y'.
+            bottom_right (dict): The bottom-right corner coordinates with keys 'x' and 'y'.
+            bottom_left (dict): The bottom-left corner coordinates with keys 'x' and 'y'.
+            angle_degrees (float): The angle of the line in degrees.
+            angle_radians (float): The angle of the line in radians.
+            confidence (float): The confidence level of the line (between 0 and 1).
+            histogram (dict, optional): A histogram representing character frequencies in the text.
+            num_chars (int, optional): The number of characters in the line.
 
         Raises:
-            ValueError: If image_id is not a valid UUID
-            ValueError: If id is not a positive integer
-            ValueError: If text is not a string
-            ValueError: If bounding_box is not valid
-            ValueError: If top_right is not valid
-            ValueError: If top_left is not valid
-            ValueError: If bottom_right is not valid
-            ValueError: If bottom_left is not valid
-            ValueError: If angle_degrees is not a float
-            ValueError: If angle_radians is not a float
-            ValueError: If confidence is not a float between 0 and 1
+            ValueError: If any parameter is of an invalid type or has an invalid value.
         """
         assert_valid_uuid(image_id)
         self.image_id = image_id
@@ -102,7 +101,7 @@ class Line:
         self.bottom_left = bottom_left
 
         if not isinstance(angle_degrees, (float, int)):
-            raise ValueError(f"angle_degrees must be a float or int")
+            raise ValueError("angle_degrees must be a float or int")
         self.angle_degrees = float(angle_degrees)
 
         if not isinstance(angle_radians, (float, int)):
@@ -111,27 +110,18 @@ class Line:
 
         if isinstance(confidence, int):
             confidence = float(confidence)
-        if not isinstance(confidence, float):
-            raise ValueError("confidence must be a float")
-        if confidence <= 0.0 or confidence > 1.0:
-            raise ValueError("confidence must be between 0 and 1")
+        if not isinstance(confidence, float) or not (0 < confidence <= 1):
+            raise ValueError("confidence must be a float between 0 and 1")
         self.confidence = confidence
 
-        if histogram is None:
-            self.histogram = compute_histogram(self.text)
-        else:
-            self.histogram = histogram
-
-        if num_chars is None:
-            self.num_chars = len(text)
-        else:
-            self.num_chars = num_chars
+        self.histogram = compute_histogram(text) if histogram is None else histogram
+        self.num_chars = len(text) if num_chars is None else num_chars
 
     def key(self) -> dict:
-        """Generates the primary key for the line
+        """Generates the primary key for the line.
 
         Returns:
-            dict: The primary key for the line
+            dict: The primary key for the line.
         """
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
@@ -139,10 +129,10 @@ class Line:
         }
 
     def gsi1_key(self) -> dict:
-        """Generates the GSI1 key for the line
+        """Generates the GSI1 key for the line.
 
         Returns:
-            dict: The GSI1 key for the line
+            dict: The GSI1 key for the line.
         """
         return {
             "GSI1PK": {"S": f"IMAGE"},
@@ -150,10 +140,10 @@ class Line:
         }
 
     def to_item(self) -> dict:
-        """Converts the Line object to a DynamoDB item
+        """Converts the Line object to a DynamoDB item.
 
         Returns:
-            dict: The Line object as a DynamoDB item
+            dict: A dictionary representing the Line object as a DynamoDB item.
         """
         return {
             **self.key(),
@@ -200,10 +190,10 @@ class Line:
         }
 
     def calculate_centroid(self) -> Tuple[float, float]:
-        """Calculates the centroid of the line
+        """Calculates the centroid of the line.
 
         Returns:
-            Tuple[float, float]: The x and y coordinates of the centroid
+            Tuple[float, float]: The (x, y) coordinates of the centroid.
         """
         x = (
             self.top_right["x"]
@@ -220,7 +210,12 @@ class Line:
         return x, y
 
     def translate(self, x: float, y: float) -> None:
-        """Translates the x, y position"""
+        """Translates the line by the specified x and y offsets.
+
+        Args:
+            x (float): The offset to add to the x-coordinate.
+            y (float): The offset to add to the y-coordinate.
+        """
         self.top_right["x"] += x
         self.top_right["y"] += y
         self.top_left["x"] += x
@@ -233,7 +228,12 @@ class Line:
         self.bounding_box["y"] += y
 
     def scale(self, sx: float, sy: float) -> None:
-        """Scales the line by the x and y factors"""
+        """Scales the line by the specified factors along the x and y axes.
+
+        Args:
+            sx (float): The scaling factor for the x-coordinate.
+            sy (float): The scaling factor for the y-coordinate.
+        """
         self.top_right["x"] *= sx
         self.top_right["y"] *= sy
         self.top_left["x"] *= sx
@@ -254,67 +254,51 @@ class Line:
         rotate_origin_y: float,
         use_radians: bool = True,
     ) -> None:
-        """
-        Rotates the line by the specified angle around (rotate_origin_x, rotate_origin_y).
+        """Rotates the line by the specified angle about a given origin.
 
-        ONLY rotates if angle is within:
-        - [-90°, 90°], if use_radians=False
-        - [-π/2, π/2], if use_radians=True
-        Otherwise, raises ValueError.
+        Only rotates if the angle is within the allowed range:
+        - [-π/2, π/2] if `use_radians` is True
+        - [-90, 90] degrees if `use_radians` is False
 
-        Updates top_right, topLeft, bottomRight, bottomLeft in-place,
-        and also updates angleDegrees/angleRadians.
+        The method updates the corner coordinates and accumulates the rotation in the
+        angle properties.
 
         Args:
             angle (float): The angle by which to rotate the line.
             rotate_origin_x (float): The x-coordinate of the rotation origin.
             rotate_origin_y (float): The y-coordinate of the rotation origin.
-            use_radians (bool, optional): Indicates if the angle is in radians.
-                Defaults to True.
+            use_radians (bool, optional): Whether the angle is in radians. Defaults to True.
 
         Raises:
-            ValueError: If the angle is outside the allowed range
-                ([-π/2, π/2] in radians or [-90°, 90°] in degrees).
+            ValueError: If the angle is outside the allowed range.
         """
-
-        # 1) Check allowed range
         if use_radians:
-            # Allowed range is [-π/2, π/2]
             if not (-pi / 2 <= angle <= pi / 2):
                 raise ValueError(
                     f"Angle {angle} (radians) is outside the allowed range [-π/2, π/2]."
                 )
             angle_radians = angle
         else:
-            # Allowed range is [-90, 90] degrees
             if not (-90 <= angle <= 90):
                 raise ValueError(
-                    f"Angle {angle} (degrees) is outside the allowed range [-90°, 90°]."
+                    f"Angle {angle} (degrees) is outside the allowed range [-90, 90]."
                 )
-            # Convert to radians
             angle_radians = radians(angle)
 
-        # 2) Rotate each corner
         def rotate_point(px, py, ox, oy, theta):
-            """
-            Rotates point (px, py) around (ox, oy) by theta radians.
-            Returns the new (x, y) coordinates.
-            """
-            # Translate point so that (ox, oy) becomes the origin
+            """Rotates a point (px, py) around (ox, oy) by theta radians."""
             translated_x = px - ox
             translated_y = py - oy
-
-            # Apply the rotation
             rotated_x = translated_x * cos(theta) - translated_y * sin(theta)
             rotated_y = translated_x * sin(theta) + translated_y * cos(theta)
+            return rotated_x + ox, rotated_y + oy
 
-            # Translate back
-            final_x = rotated_x + ox
-            final_y = rotated_y + oy
-            return final_x, final_y
-
-        corners = [self.top_right, self.top_left, self.bottom_right, self.bottom_left]
-        for corner in corners:
+        for corner in [
+            self.top_right,
+            self.top_left,
+            self.bottom_right,
+            self.bottom_left,
+        ]:
             x_new, y_new = rotate_point(
                 corner["x"],
                 corner["y"],
@@ -325,41 +309,46 @@ class Line:
             corner["x"] = x_new
             corner["y"] = y_new
 
-        # 3) Update angleDegrees and angleRadians
         if use_radians:
-            # Accumulate the rotation in angleRadians
             self.angle_radians += angle_radians
             self.angle_degrees += angle_radians * 180.0 / pi
         else:
-            # If it was in degrees, accumulate in degrees
             self.angle_degrees += angle
-            # Convert that addition to radians
             self.angle_radians += radians(angle)
 
-        # 4) Recalculate the axis-aligned bounding box from the rotated corners
-        xs = [pt["x"] for pt in corners]
-        ys = [pt["y"] for pt in corners]
-        min_x, max_x = min(xs), max(xs)
-        min_y, max_y = min(ys), max(ys)
-
-        self.bounding_box["x"] = min_x
-        self.bounding_box["y"] = min_y
-        self.bounding_box["width"] = max_x - min_x
-        self.bounding_box["height"] = max_y - min_y
+        xs = [
+            pt["x"]
+            for pt in [
+                self.top_right,
+                self.top_left,
+                self.bottom_right,
+                self.bottom_left,
+            ]
+        ]
+        ys = [
+            pt["y"]
+            for pt in [
+                self.top_right,
+                self.top_left,
+                self.bottom_right,
+                self.bottom_left,
+            ]
+        ]
+        self.bounding_box["x"] = min(xs)
+        self.bounding_box["y"] = min(ys)
+        self.bounding_box["width"] = max(xs) - min(xs)
+        self.bounding_box["height"] = max(ys) - min(ys)
 
     def shear(
         self, shx: float, shy: float, pivot_x: float = 0.0, pivot_y: float = 0.0
     ) -> None:
-        """
-        Shears the line by shx (horizontal shear) and shy (vertical shear)
-        around a pivot point (pivot_x, pivot_y).
+        """Applies a shear transformation to the line about a pivot point.
 
-        - (shx, shy) = (0.2, 0.0) would produce a horizontal slant
-        - (shx, shy) = (0.0, 0.2) would produce a vertical slant
-        - You can combine both for a more general shear.
-
-        Modifies top_right, top_left, bottom_right, bottom_left,
-        and then recalculates the axis-aligned bounding box.
+        Args:
+            shx (float): The horizontal shear factor.
+            shy (float): The vertical shear factor.
+            pivot_x (float, optional): The x-coordinate of the pivot point. Defaults to 0.0.
+            pivot_y (float, optional): The y-coordinate of the pivot point. Defaults to 0.0.
         """
         corners = [self.top_right, self.top_left, self.bottom_right, self.bottom_left]
         for corner in corners:
@@ -369,203 +358,162 @@ class Line:
             corner["x"] = x_new
             corner["y"] = y_new
 
-        # Recalculate axis-aligned bounding box from new corners
         xs = [pt["x"] for pt in corners]
         ys = [pt["y"] for pt in corners]
-        min_x, max_x = min(xs), max(xs)
-        min_y, max_y = min(ys), max(ys)
+        self.bounding_box["x"] = min(xs)
+        self.bounding_box["y"] = min(ys)
+        self.bounding_box["width"] = max(xs) - min(xs)
+        self.bounding_box["height"] = max(ys) - min(ys)
 
-        self.bounding_box["x"] = min_x
-        self.bounding_box["y"] = min_y
-        self.bounding_box["width"] = max_x - min_x
-        self.bounding_box["height"] = max_y - min_y
+    def warp_affine(self, a, b, c, d, e, f) -> None:
+        """Applies an affine transformation to the line's corners and updates its properties.
 
-    def warp_affine(self, a, b, c, d, e, f):
-        """
-        Applies the forward 2x3 affine transform to this lines corners:
-        x' = a*x + b*y + c
-        y' = d*x + e*y + f
-        Then recomputes the axis-aligned bounding box and angle.
+        The transformation is defined by the equations:
+            x' = a * x + b * y + c
+            y' = d * x + e * y + f
+
+        After transforming the corners, the bounding box and the line's angle are recalculated.
+
+        Args:
+            a, b, c, d, e, f (float): Parameters defining the 2x3 affine transformation.
         """
         corners = [self.top_left, self.top_right, self.bottom_left, self.bottom_right]
-
-        # 1) Transform corners in-place
         for corner in corners:
             x_old = corner["x"]
             y_old = corner["y"]
-            x_new = a * x_old + b * y_old + c
-            y_new = d * x_old + e * y_old + f
-            corner["x"] = x_new
-            corner["y"] = y_new
+            corner["x"] = a * x_old + b * y_old + c
+            corner["y"] = d * x_old + e * y_old + f
 
-        # 2) Recompute bounding_box
         xs = [pt["x"] for pt in corners]
         ys = [pt["y"] for pt in corners]
-        min_x, max_x = min(xs), max(xs)
-        min_y, max_y = min(ys), max(ys)
-
-        self.bounding_box["x"] = min_x
-        self.bounding_box["y"] = min_y
-        self.bounding_box["width"] = max_x - min_x
-        self.bounding_box["height"] = max_y - min_y
+        self.bounding_box["x"] = min(xs)
+        self.bounding_box["y"] = min(ys)
+        self.bounding_box["width"] = max(xs) - min(xs)
+        self.bounding_box["height"] = max(ys) - min(ys)
 
         dx = self.top_right["x"] - self.top_left["x"]
         dy = self.top_right["y"] - self.top_left["y"]
-
-        # angle_radians is angle from x-axis
-        new_angle_radians = atan2(dy, dx)  # range [-pi, pi]
-        new_angle_degrees = new_angle_radians * 180.0 / pi
-
+        new_angle_radians = atan2(dy, dx)
         self.angle_radians = new_angle_radians
-        self.angle_degrees = new_angle_degrees
+        self.angle_degrees = new_angle_radians * 180.0 / pi
 
     def warp_affine_normalized_forward(
         self,
-        a_f, b_f, c_f,
-        d_f, e_f, f_f,
-        orig_width, orig_height,
-        new_width, new_height,
-        flip_y=False
-    ):
-        """
-        Applies the 'forward' 2x3 transform:
-            x_new = a_f * x_old + b_f * y_old + c_f
-            y_new = d_f * x_old + e_f * y_old + f_f
-        where (x_old, y_old) are normalized wrt the original image,
-        and (x_new, y_new) become normalized wrt the new subimage.
+        a_f,
+        b_f,
+        c_f,
+        d_f,
+        e_f,
+        f_f,
+        orig_width,
+        orig_height,
+        new_width,
+        new_height,
+        flip_y=False,
+    ) -> None:
+        """Applies a normalized forward affine transformation to the line's corners.
 
-        So the final corners are in [0..1] of the new image.
+        The transformation converts normalized coordinates from the original image to new
+        normalized coordinates in the warped image.
 
         Args:
-            a_f,b_f,c_f,d_f,e_f,f_f (float): 
-                The forward transform old->new in pixel space.
-            orig_width, orig_height (int):
-                Dimensions of the original image in pixels.
-            new_width, new_height (int):
-                Dimensions of the new warped/cropped image.
-            flip_y (bool):
-                If your original coords treat y=0 at the bottom, you might do
-                y_old_pixels = (1 - y_old) * orig_height. 
-                Conversely for the final y. 
-                Adjust as needed so you only do one consistent flip.
+            a_f, b_f, c_f, d_f, e_f, f_f (float): Parameters for the forward affine transform.
+            orig_width (int): The width of the original image in pixels.
+            orig_height (int): The height of the original image in pixels.
+            new_width (int): The width of the new warped image in pixels.
+            new_height (int): The height of the new warped image in pixels.
+            flip_y (bool, optional): Whether to flip the y-coordinate. Defaults to False.
         """
-
         corners = [self.top_left, self.top_right, self.bottom_left, self.bottom_right]
-
-        # 1) For each corner (in old [0..1] coords):
         for corner in corners:
-            # Convert from normalized old -> pixel old
-            x_o = corner["x"] * orig_width
-            y_o = corner["y"] * orig_height
-
+            x_old = corner["x"] * orig_width
+            y_old = corner["y"] * orig_height
             if flip_y:
-                y_o = orig_height - y_o
-
-            # 2) Apply the forward transform (old->new) in pixel space:
-            x_new_px = a_f*x_o + b_f*y_o + c_f
-            y_new_px = d_f*x_o + e_f*y_o + f_f
-
-            # 3) Convert the new pixel coords to new [0..1]
+                y_old = orig_height - y_old
+            x_new_px = a_f * x_old + b_f * y_old + c_f
+            y_new_px = d_f * x_old + e_f * y_old + f_f
             if flip_y:
-                # If you want the new image to keep top=0, bottom=1,
-                # you might do y_new_norm = 1 - (y_new_px / new_height).
-                # Or do no flip if you prefer. 
                 corner["x"] = x_new_px / new_width
                 corner["y"] = 1 - (y_new_px / new_height)
             else:
                 corner["x"] = x_new_px / new_width
                 corner["y"] = y_new_px / new_height
 
-        # 4) Recompute bounding box, angle, etc. same as before
         xs = [pt["x"] for pt in corners]
         ys = [pt["y"] for pt in corners]
-        min_x, max_x = min(xs), max(xs)
-        min_y, max_y = min(ys), max(ys)
-        self.bounding_box["x"] = min_x
-        self.bounding_box["y"] = min_y
-        self.bounding_box["width"] = (max_x - min_x)
-        self.bounding_box["height"] = (max_y - min_y)
-
+        self.bounding_box["x"] = min(xs)
+        self.bounding_box["y"] = min(ys)
+        self.bounding_box["width"] = max(xs) - min(xs)
+        self.bounding_box["height"] = max(ys) - min(ys)
         dx = self.top_right["x"] - self.top_left["x"]
         dy = self.top_right["y"] - self.top_left["y"]
         angle_rad = atan2(dy, dx)
         self.angle_radians = angle_rad
         self.angle_degrees = degrees(angle_rad)
 
-    def rotate_90_ccw_in_place(self, old_w: int, old_h: int):
-        """
-        Rotates the object 90 degrees counter-clockwise in-place
-        about the (0,0) origin in a standard image coordinate system
-        (origin at top-left, y increasing downward).
+    def rotate_90_ccw_in_place(self, old_w: int, old_h: int) -> None:
+        """Rotates the line 90 degrees counter-clockwise in-place.
 
-        old_w, old_h are the image dimensions before rotation.
+        The rotation is performed about the origin (0, 0) in pixel space, and the
+        coordinates are re-normalized based on the new image dimensions.
+
+        Args:
+            old_w (int): The width of the image before rotation.
+            old_h (int): The height of the image before rotation.
         """
-        # Convert normalized -> pixel
         corners = [self.top_left, self.top_right, self.bottom_right, self.bottom_left]
         for corner in corners:
             corner["x"] *= old_w
             corner["y"] *= old_h
 
-        # Now do the standard 90° CCW about (0,0) in pixel space
         for corner in corners:
             x_old = corner["x"]
             y_old = corner["y"]
-            x_new = y_old
-            y_new = old_w - x_old
-            corner["x"] = x_new
-            corner["y"] = y_new
+            corner["x"] = y_old
+            corner["y"] = old_w - x_old
 
-        # The new image is (old_h, old_w) in pixel dims if you rotate 90°, so re‐normalize
-        # (and optionally flip Y if you want the bottom to be y=0).
         final_w = old_h
         final_h = old_w
         for corner in corners:
             corner["x"] /= final_w
-            # maybe corner["y"] = 1 - corner["y"]/final_h if you want 0 at bottom
             corner["y"] /= final_h
 
-        # 2) Recompute the bounding box
         xs = [pt["x"] for pt in corners]
         ys = [pt["y"] for pt in corners]
-        min_x, max_x = min(xs), max(xs)
-        min_y, max_y = min(ys), max(ys)
-        self.bounding_box["x"] = min_x
-        self.bounding_box["y"] = min_y
-        self.bounding_box["width"] = max_x - min_x
-        self.bounding_box["height"] = max_y - min_y
+        self.bounding_box["x"] = min(xs)
+        self.bounding_box["y"] = min(ys)
+        self.bounding_box["width"] = max(xs) - min(xs)
+        self.bounding_box["height"] = max(ys) - min(ys)
 
-        # 3) Update the angle
         self.angle_degrees += 90
         self.angle_radians += pi / 2
 
     def __repr__(self) -> str:
-        """Returns a string representation of the Line object
+        """Returns a string representation of the Line object.
 
         Returns:
-            str: The string representation of the Line object
+            str: A string representation of the Line object.
         """
-        # fmt: off
         return (
             f"Line("
-                f"line_id={self.line_id}, "
-                f"text={_repr_str(self.text)}, "
-                f"bounding_box={self.bounding_box}, "
-                f"top_right={self.top_right}, "
-                f"top_left={self.top_left}, "
-                f"bottom_right={self.bottom_right}, "
-                f"bottom_left={self.bottom_left}, "
-                f"angle_degrees={self.angle_degrees}, "
-                f"angle_radians={self.angle_radians}, "
-                f"confidence={self.confidence}"
+            f"id={self.line_id}, "
+            f"text='{self.text}', "
+            f"bounding_box={self.bounding_box}, "
+            f"top_right={self.top_right}, "
+            f"top_left={self.top_left}, "
+            f"bottom_right={self.bottom_right}, "
+            f"bottom_left={self.bottom_left}, "
+            f"angle_degrees={self.angle_degrees}, "
+            f"angle_radians={self.angle_radians}, "
+            f"confidence={self.confidence}"
             f")"
         )
-        # fmt: on
 
-    def __iter__(self) -> Generator[Tuple[str, int], None, None]:
-        """Returns an iterator over the Line object
+    def __iter__(self) -> Generator[Tuple[str, any], None, None]:
+        """Returns an iterator over the Line object's attributes.
 
-        Returns:
-            dict: The iterator over the Line object
+        Yields:
+            Tuple[str, any]: A tuple containing the attribute name and its value.
         """
         yield "image_id", self.image_id
         yield "line_id", self.line_id
@@ -582,13 +530,16 @@ class Line:
         yield "num_chars", self.num_chars
 
     def __eq__(self, other: object) -> bool:
-        """Compares two Line objects
+        """Determines whether two Line objects are equal.
 
         Args:
-            other (object): The object to compare
+            other (object): The object to compare.
 
         Returns:
-            bool: True if the objects are equal, False otherwise
+            bool: True if the Line objects are equal, False otherwise.
+
+        Note:
+            If other is not an instance of Line, False is returned.
         """
         if not isinstance(other, Line):
             return False
@@ -608,13 +559,16 @@ class Line:
 
 
 def itemToLine(item: dict) -> Line:
-    """Converts a DynamoDB item to a Line object
+    """Converts a DynamoDB item to a Line object.
 
     Args:
-        item (dict): The DynamoDB item to convert
+        item (dict): The DynamoDB item to convert.
 
     Returns:
-        Line: The Line object represented by the DynamoDB item
+        Line: The Line object represented by the DynamoDB item.
+
+    Raises:
+        ValueError: When the item format is invalid.
     """
     required_keys = {
         "PK",

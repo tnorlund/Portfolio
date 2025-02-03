@@ -10,6 +10,31 @@ from dynamo.entities.util import (
 
 
 class ReceiptLine:
+    """
+    Represents a receipt line and its associated metadata stored in a DynamoDB table.
+
+    This class encapsulates receipt line-related information such as the receipt identifier,
+    image UUID, text content, geometric properties, rotation angles, and detection confidence.
+    It is designed to support operations such as generating DynamoDB keys and converting the
+    receipt line to a DynamoDB item.
+
+    Attributes:
+        receipt_id (int): Identifier for the receipt.
+        image_id (str): UUID identifying the image to which the receipt line belongs.
+        id (int): Identifier for the receipt line.
+        text (str): The text content of the receipt line.
+        bounding_box (dict): The bounding box of the receipt line with keys 'x', 'y', 'width', and 'height'.
+        top_right (dict): The top-right corner coordinates with keys 'x' and 'y'.
+        top_left (dict): The top-left corner coordinates with keys 'x' and 'y'.
+        bottom_right (dict): The bottom-right corner coordinates with keys 'x' and 'y'.
+        bottom_left (dict): The bottom-left corner coordinates with keys 'x' and 'y'.
+        angle_degrees (float): The angle of the receipt line in degrees.
+        angle_radians (float): The angle of the receipt line in radians.
+        confidence (float): The confidence level of the receipt line (between 0 and 1).
+        histogram (dict): A histogram representing character frequencies in the text.
+        num_chars (int): The number of characters in the receipt line.
+    """
+
     def __init__(
         self,
         receipt_id: int,
@@ -27,6 +52,28 @@ class ReceiptLine:
         histogram: dict = None,
         num_chars: int = None,
     ):
+        """
+        Initializes a new ReceiptLine object for DynamoDB.
+
+        Args:
+            receipt_id (int): Identifier for the receipt.
+            image_id (str): UUID identifying the image to which the receipt line belongs.
+            id (int): Identifier for the receipt line.
+            text (str): The text content of the receipt line.
+            bounding_box (dict): The bounding box of the receipt line with keys 'x', 'y', 'width', and 'height'.
+            top_right (dict): The top-right corner coordinates with keys 'x' and 'y'.
+            top_left (dict): The top-left corner coordinates with keys 'x' and 'y'.
+            bottom_right (dict): The bottom-right corner coordinates with keys 'x' and 'y'.
+            bottom_left (dict): The bottom-left corner coordinates with keys 'x' and 'y'.
+            angle_degrees (float): The angle of the receipt line in degrees.
+            angle_radians (float): The angle of the receipt line in radians.
+            confidence (float): The confidence level of the receipt line (between 0 and 1).
+            histogram (dict, optional): A histogram representing character frequencies in the text.
+            num_chars (int, optional): The number of characters in the receipt line.
+
+        Raises:
+            ValueError: If any parameter is of an invalid type or has an invalid value.
+        """
         if not isinstance(receipt_id, int):
             raise ValueError("receipt_id must be an integer")
         if receipt_id <= 0:
@@ -58,11 +105,11 @@ class ReceiptLine:
         self.bottom_left = bottom_left
 
         if not isinstance(angle_degrees, (float, int)):
-            raise ValueError(f"angle_degrees must be a float or int")
-        self.angle_degrees = angle_degrees
+            raise ValueError("angle_degrees must be a float or int")
+        self.angle_degrees = float(angle_degrees)
         if not isinstance(angle_radians, (float, int)):
             raise ValueError("angle_radians must be a float or int")
-        self.angle_radians = angle_radians
+        self.angle_radians = float(angle_radians)
 
         if isinstance(confidence, int):
             confidence = float(confidence)
@@ -72,23 +119,30 @@ class ReceiptLine:
             raise ValueError("confidence must be between 0 and 1")
         self.confidence = confidence
 
-        if histogram is None:
-            self.histogram = compute_histogram(self.text)
-        else:
-            self.histogram = histogram
+        self.histogram = (
+            compute_histogram(self.text) if histogram is None else histogram
+        )
+        self.num_chars = len(self.text) if num_chars is None else num_chars
 
-        if num_chars is None:
-            self.num_chars = len(text)
-        else:
-            self.num_chars = num_chars
+    def key(self) -> dict:
+        """
+        Generates the primary key for the receipt line.
 
-    def key(self):
+        Returns:
+            dict: The primary key for the receipt line.
+        """
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#LINE#{self.line_id:05d}"},
         }
 
     def to_item(self) -> dict:
+        """
+        Converts the ReceiptLine object to a DynamoDB item.
+
+        Returns:
+            dict: A dictionary representing the ReceiptLine object as a DynamoDB item.
+        """
         return {
             **self.key(),
             "TYPE": {"S": "RECEIPT_LINE"},
@@ -132,7 +186,19 @@ class ReceiptLine:
             "num_chars": {"N": str(self.num_chars)},
         }
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
+        """
+        Determines whether two ReceiptLine objects are equal.
+
+        Args:
+            other (object): The object to compare.
+
+        Returns:
+            bool: True if the ReceiptLine objects are equal, False otherwise.
+
+        Note:
+            If other is not an instance of ReceiptLine, False is returned.
+        """
         if not isinstance(other, ReceiptLine):
             return False
         return (
@@ -151,10 +217,11 @@ class ReceiptLine:
         )
 
     def __repr__(self) -> str:
-        """Returns a string representation of the ReceiptLine object
+        """
+        Returns a string representation of the ReceiptLine object.
 
         Returns:
-            str: The string representation of the ReceiptLine object
+            str: A string representation of the ReceiptLine object.
         """
         return (
             f"ReceiptLine("
@@ -173,7 +240,13 @@ class ReceiptLine:
             f")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, str], None, None]:
+    def __iter__(self) -> Generator[Tuple[str, any], None, None]:
+        """
+        Returns an iterator over the ReceiptLine object's attributes.
+
+        Yields:
+            Tuple[str, any]: A tuple containing the attribute name and its value.
+        """
         yield "image_id", self.image_id
         yield "receipt_id", self.receipt_id
         yield "line_id", self.line_id
@@ -191,6 +264,18 @@ class ReceiptLine:
 
 
 def itemToReceiptLine(item: dict) -> ReceiptLine:
+    """
+    Converts a DynamoDB item to a ReceiptLine object.
+
+    Args:
+        item (dict): The DynamoDB item to convert.
+
+    Returns:
+        ReceiptLine: The ReceiptLine object represented by the DynamoDB item.
+
+    Raises:
+        ValueError: When the item format is invalid or required keys are missing.
+    """
     required_keys = {
         "PK",
         "SK",
@@ -205,7 +290,7 @@ def itemToReceiptLine(item: dict) -> ReceiptLine:
         "confidence",
     }
     if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - item.keys()
+        missing_keys = required_keys - set(item.keys())
         raise ValueError(f"Item is missing required keys: {missing_keys}")
     try:
         return ReceiptLine(
