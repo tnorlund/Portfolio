@@ -32,6 +32,8 @@ def process(
     uuid: str,
     cdn_bucket_name: str,
     cdn_prefix: str = "assets/",
+    ocr_dict: Dict[str, Any] = None,
+    png_data: bytes = None,
 ) -> None:
     """
     Processes the OCR results by adding the entities to DynamoDB and uploading
@@ -42,45 +44,78 @@ def process(
         raw_prefix = raw_prefix[:-1]
     if cdn_prefix.endswith("/"):
         cdn_prefix = cdn_prefix[:-1]
-    # Check that both the JSON and PNG files exist in the raw bucket.
-    try:
-        s3.head_object(Bucket=raw_bucket_name, Key=f"{raw_prefix}/{uuid}.json")
-        s3.head_object(Bucket=raw_bucket_name, Key=f"{raw_prefix}/{uuid}.png")
-    except ClientError as e:
-        error_code = e.response["Error"]["Code"]
-        if error_code == "NoSuchBucket":
-            raise ValueError(f"Bucket {raw_bucket_name} not found") from e
-        elif error_code in ("NoSuchKey", "404"):
-            raise ValueError(
-                f"UUID {uuid} not found s3://{raw_bucket_name}/{raw_prefix}/{uuid}*"
-            ) from e
-        elif error_code == "AccessDenied":
-            raise ValueError(f"Access denied to s3://{raw_bucket_name}/{raw_prefix}/*")
-        else:
-            raise
+    
+    # If the user does NOT pass ocr_dict/png_data, ensure the raw objects exist in S3
+    # as originally done.
+    if ocr_dict is None or png_data is None:  # [MODIFIED CODE]
+        try:
+            # We only check for the object if it's not passed in
+            if ocr_dict is None:
+                s3.head_object(Bucket=raw_bucket_name, Key=f"{raw_prefix}/{uuid}.json")
+            if png_data is None:
+                s3.head_object(Bucket=raw_bucket_name, Key=f"{raw_prefix}/{uuid}.png")
+        except ClientError as e:
+            error_code = e.response["Error"]["Code"]
+            if error_code == "NoSuchBucket":
+                raise ValueError(f"Bucket {raw_bucket_name} not found") from e
+            elif error_code in ("NoSuchKey", "404"):
+                raise ValueError(
+                    f"UUID {uuid} not found s3://{raw_bucket_name}/{raw_prefix}/{uuid}*"
+                ) from e
+            elif error_code == "AccessDenied":
+                raise ValueError(
+                    f"Access denied to s3://{raw_bucket_name}/{raw_prefix}/*"
+                )
+            else:
+                raise
 
-    # Read and decode the OCR JSON.
-    ocr_results = s3.get_object(
-        Bucket=raw_bucket_name, Key=f"{raw_prefix}/{uuid}.json"
-    )["Body"]
-    ocr_results = ocr_results.read().decode("utf-8")
-    try:
-        ocr_results = json.loads(ocr_results)
-    except json.JSONDecodeError as e:
-        raise ValueError(f"Error decoding OCR results: {e}")
+    if ocr_dict is not None:
+        # The user provided OCR data. Upload it to the raw location:
+        s3.put_object(
+            Bucket=raw_bucket_name,
+            Key=f"{raw_prefix}/{uuid}.json",
+            Body=json.dumps(ocr_dict).encode("utf-8"),
+            ContentType="application/json",
+        )
+        ocr_results = ocr_dict
+    else:
+        # Fetch from S3 as before
+        ocr_data_obj = s3.get_object(
+            Bucket=raw_bucket_name, Key=f"{raw_prefix}/{uuid}.json"
+        )["Body"]
+        ocr_data_str = ocr_data_obj.read().decode("utf-8")
+        try:
+            ocr_results = json.loads(ocr_data_str)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Error decoding OCR results: {e}")
 
-    # Read the image (and verify it isn’t corrupted).
-    try:
+
+    if png_data is not None:
+        # The user provided the PNG bytes. Upload them to the raw location:
+        s3.put_object(
+            Bucket=raw_bucket_name,
+            Key=f"{raw_prefix}/{uuid}.png",
+            Body=png_data,
+            ContentType="image/png",
+        )
+        image_bytes = png_data
+    else:
+        # Read from S3 as before
         image_bytes = s3.get_object(
             Bucket=raw_bucket_name, Key=f"{raw_prefix}/{uuid}.png"
         )["Body"].read()
-        image = PIL_Image.open(BytesIO(image_bytes))
-        image.verify()  # force Pillow to fully parse the image
+
+    # Verify the image
+    try:
+        test_img = PIL_Image.open(BytesIO(image_bytes))
+        test_img.verify()  # force Pillow to fully parse the image
     except UnidentifiedImageError as e:
         raise ValueError(
-            f"Corrupted or invalid PNG file at s3://{raw_bucket_name}/{raw_prefix}/{uuid}.png"
+            f"Corrupted or invalid PNG at s3://{raw_bucket_name}/{raw_prefix}/{uuid}.png"
         ) from e
-    image = PIL_Image.open(BytesIO(image_bytes))  # reopen after verify
+
+    # Reopen (Pillow cannot reuse the same file handle after verify())
+    image = PIL_Image.open(BytesIO(image_bytes))
 
     # Upload the original image to the CDN bucket.
     try:
@@ -98,7 +133,8 @@ def process(
             raise ValueError(f"Access denied to s3://{cdn_bucket_name}/{cdn_prefix}")
         else:
             raise
-
+    
+    # Build our top-level Image object
     image_obj = Image(
         image_id=uuid,
         width=image.size[0],
@@ -110,9 +146,14 @@ def process(
         cdn_s3_key=f"{cdn_prefix}/{uuid}.png",
         sha256=calculate_sha256_from_bytes(image_bytes),
     )
+
+    # Parse the OCR into lines, words, letters
     lines, words, letters = process_ocr_dict(ocr_results, uuid)
+
+    # Cluster logic
     cluster_dict = cluster_receipts(lines)
 
+    # Receipt extraction, transformation, saving
     for cluster_id, cluster_lines in cluster_dict.items():
         if cluster_id == -1:
             continue
@@ -135,6 +176,7 @@ def process(
         except Exception as e:
             raise ValueError(f"Error processing cluster {cluster_id}: {e}") from e
 
+        # Upload the receipt image to the CDN
         try:
             s3.put_object(
                 Bucket=cdn_bucket_name,
@@ -153,6 +195,7 @@ def process(
             else:
                 raise
 
+        # Upload the receipt image to the raw bucket
         try:
             s3.put_object(
                 Bucket=raw_bucket_name,
@@ -171,6 +214,7 @@ def process(
             else:
                 raise
 
+        # Insert the receipt + its lines/words/letters in Dynamo
         DynamoClient(table_name).addReceipt(r)
         DynamoClient(table_name).addReceiptLines(r_lines)
         DynamoClient(table_name).addReceiptWords(r_words)
@@ -375,8 +419,7 @@ def transform_cluster(
     affine_img = pil_image.transform(
         (w, h),
         PIL_Image.AFFINE,
-        # (a_i, b_i, c_i, d_i, e_i, f_i),
-        invert_affine(a_i, b_i, c_i, d_i, e_i, f_i),
+        (a_i, b_i, c_i, d_i, e_i, f_i),
         resample=PIL_Image.BICUBIC,
     )
 
@@ -433,7 +476,7 @@ def transform_cluster(
             f_f,
             orig_width=image_obj.width,
             orig_height=image_obj.height,
-            new_width=w,   # size AFTER we've decided orientation
+            new_width=w,
             new_height=h,
             flip_y=True,
         )
