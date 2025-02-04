@@ -90,6 +90,7 @@ class DummyResponse:
     def __init__(self, json_data, status_code=200):
         self._json = json_data
         self.status_code = status_code
+        self.text = "string for testing purposes"
 
     def raise_for_status(self):
         if self.status_code != 200:
@@ -310,7 +311,10 @@ def test_gpt_request(monkeypatch):
     ]
 
     # Call gpt_request() with a dummy API key.
-    result = gpt_request(receipt, receipt_words, gpt_api_key="dummy_key")
+    formatted_response, query_sent, response_text = gpt_request(receipt, receipt_words, gpt_api_key="dummy_key")
 
     # Assert that the returned dict equals the valid content we defined.
-    assert result == valid_content
+    assert formatted_response == valid_content
+    assert query_sent.startswith("\nYou are a helpful assistant that extracts structured data from a receipt."
+    ), "Prompt does not start with the expected introductory text."
+    assert response_text == "string for testing purposes"
