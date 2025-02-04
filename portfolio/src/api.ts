@@ -50,16 +50,20 @@ export async function fetchReceiptDetails(
 
 export async function fetchReceipts(
   limit: number,
-  lastEvaluatedKey?: string
+  lastEvaluatedKey?: any  // Changed from string to any
 ): Promise<ReceiptApiResponse> {
   const params = new URLSearchParams();
   params.set("limit", limit.toString());
   if (lastEvaluatedKey) {
-    // JSON-encode if your server expects it that way
+    // JSON-encode the object exactly once.
     params.set("lastEvaluatedKey", JSON.stringify(lastEvaluatedKey));
   }
+  const baseUrl =
+    process.env.NODE_ENV === "development"
+      ? `https://dev-api.tylernorlund.com/receipts`
+      : `https://api.tylernorlund.com/receipts`;
 
-  const url = `/api/receipts?${params.toString()}`;
+  const url = `${baseUrl}?${params.toString()}`;
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`Error: ${response.status}`);
