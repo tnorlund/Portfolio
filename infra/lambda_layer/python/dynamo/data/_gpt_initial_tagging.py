@@ -1,36 +1,18 @@
 # _gpt_initial_tagging.py
 from typing import List
-from dynamo.entities.gpt_initial_tagging import (
-    GPTInitialTagging,
-    itemToGPTInitialTagging,
-)
+from dynamo.entities.gpt_initial_tagging import GPTInitialTagging, itemToGPTInitialTagging
 from botocore.exceptions import ClientError
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 CHUNK_SIZE = 25
-
 
 class _GPTInitialTagging:
     """
     A class used to represent GPTInitialTagging records in the database.
 
     This class encapsulates methods to add, update, retrieve, delete,
-    and list GPTInitialTagging items in DynamoDB.
-
-    Methods
-    -------
-    addGPTInitialTagging(tagging: GPTInitialTagging)
-        Adds a GPTInitialTagging record to the database.
-    addGPTInitialTaggings(taggings: List[GPTInitialTagging])
-        Adds multiple GPTInitialTagging records in batches.
-    getGPTInitialTagging(image_id: str, receipt_id: int, line_id: int, word_id: int, tag: str) -> GPTInitialTagging
-        Retrieves a single GPTInitialTagging record by its composite key.
-    updateGPTInitialTagging(tagging: GPTInitialTagging)
-        Updates an existing GPTInitialTagging record.
-    deleteGPTInitialTagging(tagging: GPTInitialTagging)
-        Deletes a GPTInitialTagging record.
-    listGPTInitialTaggings() -> List[GPTInitialTagging]
-        Lists all GPTInitialTagging records in the database.
+    and list GPTInitialTagging items in DynamoDB. With this design,
+    only one record per (image_id, receipt_id) exists.
     """
 
     def addGPTInitialTagging(self, tagging: GPTInitialTagging):
@@ -80,18 +62,13 @@ class _GPTInitialTagging:
         except ClientError as e:
             raise ValueError(f"Error adding GPTInitialTaggings: {e}")
 
-    def getGPTInitialTagging(
-        self, image_id: str, receipt_id: int, line_id: int, word_id: int, tag: str
-    ) -> GPTInitialTagging:
+    def getGPTInitialTagging(self, image_id: str, receipt_id: int) -> GPTInitialTagging:
         """
         Retrieves a GPTInitialTagging record from the database by its composite key.
 
         Args:
             image_id (str): The image ID.
             receipt_id (int): The receipt ID.
-            line_id (int): The line ID.
-            word_id (int): The word ID.
-            tag (str): The tag associated with the initial tagging.
 
         Returns:
             GPTInitialTagging: The retrieved GPTInitialTagging record.
@@ -99,19 +76,9 @@ class _GPTInitialTagging:
         Raises:
             ValueError: If the record is not found.
         """
-        # Construct the key as defined in GPTInitialTagging.key()
-        spaced_tag = f"{tag:_>40}"
         key = {
             "PK": {"S": f"IMAGE#{image_id}"},
-            "SK": {
-                "S": (
-                    f"RECEIPT#{receipt_id:05d}"
-                    f"#LINE#{line_id:05d}"
-                    f"#WORD#{word_id:05d}"
-                    f"#TAG#{spaced_tag}"
-                    f"#QUERY#INITIAL_TAGGING"
-                )
-            },
+            "SK": {"S": f"RECEIPT#{receipt_id:05d}#QUERY#INITIAL_TAGGING"},
         }
         try:
             response = self._client.get_item(
@@ -167,7 +134,7 @@ class _GPTInitialTagging:
                 raise ValueError(f"GPTInitialTagging record not found: {tagging}")
             else:
                 raise Exception(f"Error deleting GPTInitialTagging: {e}")
-            
+
     def deleteGPTInitialTaggings(self, taggings: List[GPTInitialTagging]):
         """
         Deletes multiple GPTInitialTagging records from the database in batches.
@@ -176,7 +143,7 @@ class _GPTInitialTagging:
             taggings (List[GPTInitialTagging]): A list of GPTInitialTagging records to delete.
 
         Raises:
-            ValueError: If an error occurs during batch writing.
+            ValueError: If an error occurs during batch deletion.
         """
         try:
             for i in range(0, len(taggings), CHUNK_SIZE):
@@ -187,7 +154,6 @@ class _GPTInitialTagging:
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
-                # Handle any unprocessed items by retrying.
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
                     response = self._client.batch_write_item(RequestItems=unprocessed)
@@ -209,14 +175,12 @@ class _GPTInitialTagging:
         try:
             response = self._client.query(
                 TableName=self.table_name,
-                IndexName="GSITYPE",  # Assumes a GSI is set up on TYPE.
+                IndexName="GSITYPE",
                 KeyConditionExpression="#t = :val",
                 ExpressionAttributeNames={"#t": "TYPE"},
                 ExpressionAttributeValues={":val": {"S": "GPT_INITIAL_TAGGING"}},
             )
-            taggings.extend(
-                [itemToGPTInitialTagging(item) for item in response["Items"]]
-            )
+            taggings.extend([itemToGPTInitialTagging(item) for item in response["Items"]])
             while "LastEvaluatedKey" in response:
                 response = self._client.query(
                     TableName=self.table_name,
@@ -226,9 +190,7 @@ class _GPTInitialTagging:
                     ExpressionAttributeValues={":val": {"S": "GPT_INITIAL_TAGGING"}},
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                 )
-                taggings.extend(
-                    [itemToGPTInitialTagging(item) for item in response["Items"]]
-                )
+                taggings.extend([itemToGPTInitialTagging(item) for item in response["Items"]])
             return taggings
         except Exception as e:
             raise Exception(f"Error listing GPTInitialTaggings: {e}")
