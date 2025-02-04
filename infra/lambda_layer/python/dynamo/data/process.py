@@ -24,6 +24,7 @@ from dynamo.entities import (
     ReceiptLine,
     ReceiptWord,
     ReceiptLetter,
+    GPTInitialTagging,
 )
 from dynamo.entities.receipt_word_tag import ReceiptWordTag
 from dynamo.entities.word_tag import WordTag
@@ -226,7 +227,7 @@ def process(
             else:
                 raise
 
-        gpt_response = gpt_request(r, r_words)
+        gpt_response, query, response = gpt_request(r, r_words)
 
         # Save the GPT response to the raw bucket
         try:
@@ -253,6 +254,23 @@ def process(
             if value and isinstance(value, list) and len(value) > 0:
                 for tag_obj in value:
                     tags.append(Tag(key, tag_obj["w"], tag_obj["l"]))
+        
+
+        initial_tagging_records = []
+        # For each Tag (data class instance), create a GPTInitialTagging record using the
+        # tag information along with the GPT prompt (query) and raw response (response)
+        for tag in tags:
+            tagging_record = GPTInitialTagging(
+                image_id=image_obj.image_id,  # from your Image object
+                receipt_id=cluster_id,        # using cluster_id as the receipt identifier
+                line_id=tag.line_id,          # line id from the tag data class
+                word_id=tag.word_id,          # word id from the tag data class
+                tag=tag.tag,                  # the field name (e.g., "store_name")
+                query=query,                  # the GPT prompt that was sent (returned from gpt_request)
+                response=response,            # the raw GPT response text (returned from gpt_request)
+                timestamp_added=datetime.now(timezone.utc)
+            )
+            initial_tagging_records.append(tagging_record)
 
         # Create the ReceiptWordTag objects
         r_word_tags = []
@@ -294,6 +312,7 @@ def process(
         DynamoClient(table_name).addReceiptWords(r_words)
         DynamoClient(table_name).addReceiptWordTags(r_word_tags)
         DynamoClient(table_name).addReceiptLetters(r_letters)
+        DynamoClient(table_name).addGPTInitialTaggings(initial_tagging_records)
 
     # Finally, add all entities to DynamoDB.
     DynamoClient(table_name).addImage(image_obj)

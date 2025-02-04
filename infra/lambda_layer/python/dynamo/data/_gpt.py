@@ -70,9 +70,9 @@ def _validate_gpt_response(response: Response) -> dict:
     if not content:
         raise ValueError("The response message content is empty.")
     try:
-        content = loads(content)
+        content = loads(content.replace("```json", "").replace("```", ""))
     except JSONDecodeError:
-        raise ValueError("The response message content is not valid JSON.")
+        raise ValueError(f"The response message content is not valid JSON.\n{response.text}")
     # Ensure all keys in the parsed content are strings.
     if not all(isinstance(key, str) for key in content.keys()):
         raise ValueError("The response message content keys are not strings.")
