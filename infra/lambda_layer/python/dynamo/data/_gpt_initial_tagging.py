@@ -167,6 +167,33 @@ class _GPTInitialTagging:
                 raise ValueError(f"GPTInitialTagging record not found: {tagging}")
             else:
                 raise Exception(f"Error deleting GPTInitialTagging: {e}")
+            
+    def deleteGPTInitialTaggings(self, taggings: List[GPTInitialTagging]):
+        """
+        Deletes multiple GPTInitialTagging records from the database in batches.
+
+        Args:
+            taggings (List[GPTInitialTagging]): A list of GPTInitialTagging records to delete.
+
+        Raises:
+            ValueError: If an error occurs during batch writing.
+        """
+        try:
+            for i in range(0, len(taggings), CHUNK_SIZE):
+                chunk = taggings[i : i + CHUNK_SIZE]
+                request_items = [
+                    {"DeleteRequest": {"Key": tagging.key()}} for tagging in chunk
+                ]
+                response = self._client.batch_write_item(
+                    RequestItems={self.table_name: request_items}
+                )
+                # Handle any unprocessed items by retrying.
+                unprocessed = response.get("UnprocessedItems", {})
+                while unprocessed.get(self.table_name):
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    unprocessed = response.get("UnprocessedItems", {})
+        except ClientError as e:
+            raise ValueError(f"Error deleting GPTInitialTaggings: {e}")
 
     def listGPTInitialTaggings(self) -> List[GPTInitialTagging]:
         """
