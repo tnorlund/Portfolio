@@ -27,8 +27,8 @@ const ReceiptStack: React.FC = () => {
     enter: (item, index) => {
       const rotation = rotations[index] ?? 0;
       // Example offset so each receipt is slightly fanned out
-      const topOffset = (Math.random() > 0.5 ? 1 : -1) * index * 2;
-      const leftOffset = (Math.random() > 0.5 ? 1 : -1) * index * 2;
+      const topOffset = (Math.random() > 0.5 ? 1 : -1) * index * 1.5;
+      const leftOffset = (Math.random() > 0.5 ? 1 : -1) * index * 1.5;
       return {
         opacity: 1,
         transform: `translate(${leftOffset}px, ${topOffset}px) rotate(${rotation}deg)`,
