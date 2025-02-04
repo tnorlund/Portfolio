@@ -10,7 +10,7 @@ const isDevelopment = process.env.NODE_ENV === "development";
 const ReceiptStack: React.FC = () => {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [rotations, setRotations] = useState<number[]>([]);
-  // Set triggerOnce: true so that the component's in-view state is only set the first time it comes into view.
+  // Set triggerOnce: true so the "in view" state is only set the first time.
   const [ref] = useInView({
     threshold: 0.1,
     triggerOnce: true,
@@ -23,9 +23,7 @@ const ReceiptStack: React.FC = () => {
   const transitions = useTransition(receipts, {
     from: { opacity: 0, transform: "translate(0px, -50px) rotate(0deg)" },
     enter: (item, index) => {
-      // Use the pre-calculated rotation for the given index.
       const rotation = rotations[index] ?? 0;
-      // Optionally add some offset based on the index.
       const topOffset = (Math.random() > 0.5 ? 1 : -1) * index * 2;
       const leftOffset = (Math.random() > 0.5 ? 1 : -1) * index * 2;
       return {
@@ -58,16 +56,18 @@ const ReceiptStack: React.FC = () => {
         totalFetched += response.receipts.length;
         if (!response.lastEvaluatedKey) break;
         lastEvaluatedKey = response.lastEvaluatedKey;
+
+        // Delay briefly so the UI can update and animate the new receipts
+        await new Promise((resolve) => setTimeout(resolve, 200));
       }
     };
 
-    // Start fetching receipts immediately.
     loadReceipts();
   }, []);
 
   return (
     <div
-      ref={ref} // The ref from useInView is attached to the container so that the "in view" event fires only once.
+      ref={ref} // This container triggers the "in view" event once.
       style={{
         width: "100%",
         display: "flex",
