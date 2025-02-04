@@ -1,6 +1,6 @@
 // ReceiptStack.tsx
 import React, { useEffect, useState } from "react";
-import { fetchReceipts } from "./api"; // Make sure this is your actual API call
+import { fetchReceipts } from "./api";
 import { Receipt, ReceiptApiResponse } from "./interfaces";
 import { useInView } from "react-intersection-observer";
 import { useTransition, animated } from "@react-spring/web";
@@ -19,7 +19,7 @@ const ReceiptStack: React.FC = () => {
 
   // Customize these to your needs
   const maxReceipts = 100;
-  const pageSize = 5;
+  const pageSize = 2;
 
   // Animate new items as they are added to `receipts`
   const transitions = useTransition(receipts, {
@@ -39,47 +39,48 @@ const ReceiptStack: React.FC = () => {
   });
 
   useEffect(() => {
-    const loadReceipts = async () => {
-      let lastEvaluatedKey: string | undefined; // Start undefined
+    const loadAllReceipts = async () => {
+      let lastEvaluatedKey: any | undefined; // `any` type if your key might be an object
       let totalFetched = 0;
 
+      // We'll accumulate all receipts & rotations locally
+      const allReceipts: Receipt[] = [];
+      const allRotations: number[] = [];
+
       while (totalFetched < maxReceipts) {
-        // Pass lastEvaluatedKey to the fetch function
         const response: ReceiptApiResponse = await fetchReceipts(
           pageSize,
           lastEvaluatedKey
         );
 
-        // If your server has receipts in `response.receipts`,
-        // and next page token in `response.lastEvaluatedKey`, do:
         const newReceipts = response.receipts || [];
-        setReceipts((prev) => [...prev, ...newReceipts].slice(0, maxReceipts));
-
-        // Create random rotation for each newly added receipt
-        setRotations((prev) => [
-          ...prev,
-          ...newReceipts.map(() => Math.random() * 60 - 30),
-        ]);
+        // Add newly fetched receipts to our local arrays
+        allReceipts.push(...newReceipts);
+        allRotations.push(
+          ...newReceipts.map(() => Math.random() * 60 - 30)
+        );
 
         totalFetched += newReceipts.length;
 
-        // If there's no lastEvaluatedKey in the response, we have no more pages
+        // If there's no further key, we've fetched all pages
         if (!response.lastEvaluatedKey) {
           break;
         }
+        // Otherwise, set up for the next page
         lastEvaluatedKey = response.lastEvaluatedKey;
-
-        // Delay a bit so you can see the new items animate in
-        await new Promise((resolve) => setTimeout(resolve, 300));
       }
+
+      // Now do a one-time set of receipts and rotations
+      setReceipts(allReceipts.slice(0, maxReceipts));
+      setRotations(allRotations.slice(0, maxReceipts));
     };
 
-    loadReceipts();
+    loadAllReceipts();
   }, []);
 
   return (
     <div
-      ref={ref} // Use IntersectionObserver to animate only once in view
+      ref={ref}
       style={{
         width: "100%",
         display: "flex",
