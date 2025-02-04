@@ -221,6 +221,7 @@ def test_item_to_receipt_word_tag():
         "TYPE": {"S": "RECEIPT_WORD_TAG"},
         "tag_name": {"S": "food"},
         "timestamp_added": {"S": "2021-01-01T00:00:00"},
+        "validated": {"BOOL": True},
     }
 
     obj = itemToReceiptWordTag(raw_item)
@@ -229,6 +230,8 @@ def test_item_to_receipt_word_tag():
     assert obj.line_id == 2
     assert obj.word_id == 99
     assert obj.tag == "food"
+    assert obj.timestamp_added == "2021-01-01T00:00:00"
+    assert obj.validated == True
 
 
 @pytest.mark.unit
@@ -264,6 +267,7 @@ def test_item_to_receipt_word_tag_bad_format():
         "TYPE": {"S": "RECEIPT_WORD_TAG"},
         "tag_name": {"S": "food"},
         "timestamp_added": {"N": "2021-01-01T00:00:00"},
+        "validated": {"BOOL": True},
     }
     with pytest.raises(ValueError, match="Error converting item to ReceiptWordTag"):
         itemToReceiptWordTag(bad_item)
