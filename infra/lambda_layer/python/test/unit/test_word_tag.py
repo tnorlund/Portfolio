@@ -162,12 +162,15 @@ def test_item_to_word_tag():
         "TYPE": {"S": "WORD_TAG"},
         "tag_name": {"S": "example"},
         "timestamp_added": {"S": "2021-01-01T00:00:00"},
+        "validated": {"BOOL": True},
     }
     wt = itemToWordTag(item)
     assert wt.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert wt.line_id == 7
     assert wt.word_id == 101
-    assert wt.tag == "example"  # note itemToWordTag uses upper() from GSI1SK
+    assert wt.tag == "example"
+    assert wt.timestamp_added == "2021-01-01T00:00:00"
+    assert wt.validated is True
 
 
 @pytest.mark.unit
@@ -192,6 +195,8 @@ def test_item_to_word_tag_bad_format():
         "GSI1PK": {"S": "TAG#_____________example"},
         "GSI1SK": {"S": "IMAGE#00042#WORD#00999"},  # Also incomplete
         "TYPE": {"S": "WORD_TAG"},
+        "timestamp_added": {"S": "2021-01-01T00:00:00"},
+        "validated": {"BOOL": True},
     }
     with pytest.raises(ValueError, match="Error converting item to WordTag"):
         itemToWordTag(bad_format_item)
