@@ -253,8 +253,13 @@ class _ReceiptWordTag:
                 params["ExclusiveStartKey"] = lastEvaluatedKey
 
             response = self._client.query(**params)
+            items = response.get("Items", [])
+            lek = response.get("LastEvaluatedKey", None)
+            if not lek:
+                lek = None
+
             receipt_tags.extend(
-                [itemToReceiptWordTag(item) for item in response["Items"]]
+                [itemToReceiptWordTag(item) for item in items]
             )
             lek = response.get("LastEvaluatedKey", None)
             return receipt_tags, lek
