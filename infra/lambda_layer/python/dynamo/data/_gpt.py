@@ -7,12 +7,14 @@ from dynamo.entities.receipt import Receipt
 from dynamo.entities.receipt_word import ReceiptWord
 
 
-
-def gpt_request(receipt: Receipt, receipt_words: list[ReceiptWord], gpt_api_key=None) -> dict:
+def gpt_request(
+    receipt: Receipt, receipt_words: list[ReceiptWord], gpt_api_key=None
+) -> tuple[dict, str, str]:
     """Makes a request to the OpenAI API to label the receipt.
 
     Returns:
-        dict: The response from the OpenAI API.
+        tuple[dict, str, str]: The formatted response from the OpenAI API, the query
+            sent to OpenAI API, and the raw response from OpenAI API.
     """
     if not gpt_api_key and not getenv("OPENAI_API_KEY"):
         raise ValueError("The OPENAI_API_KEY environment variable is not set.")
@@ -23,15 +25,21 @@ def gpt_request(receipt: Receipt, receipt_words: list[ReceiptWord], gpt_api_key=
         "Content-Type": "application/json",
         "Authorization": f"Bearer {getenv('OPENAI_API_KEY')}",
     }
+    query = _llm_prompt(receipt, receipt_words)
     payload = {
         "model": "gpt-3.5-turbo",
         "messages": [
             {"role": "system", "content": "You extract structured data from text."},
-            {"role": "user", "content": _llm_prompt(receipt, receipt_words)},
+            {"role": "user", "content": query},
         ],
     }
+    response = requests.post(url, headers=headers, json=payload)
 
-    return _validate_gpt_response(requests.post(url, headers=headers, json=payload))
+    return (
+        _validate_gpt_response(requests.post(url, headers=headers, json=payload)),
+        query,
+        response.text,
+    )
 
 
 def _validate_gpt_response(response: Response) -> dict:
@@ -72,13 +80,21 @@ def _validate_gpt_response(response: Response) -> dict:
     for key, value in content.items():
         if value:  # Only check non-empty values.
             if isinstance(value, list):
-                if not all(isinstance(tag, dict) and "l" in tag and "w" in tag for tag in value):
-                    raise ValueError("The response message content values do not contain 'l' and 'w'.")
+                if not all(
+                    isinstance(tag, dict) and "l" in tag and "w" in tag for tag in value
+                ):
+                    raise ValueError(
+                        "The response message content values do not contain 'l' and 'w'."
+                    )
             elif isinstance(value, dict):
                 if not ("l" in value and "w" in value):
-                    raise ValueError("The response message content values do not contain 'l' and 'w'.")
+                    raise ValueError(
+                        "The response message content values do not contain 'l' and 'w'."
+                    )
             else:
-                raise ValueError("The response message content values must be a list or a dict.")
+                raise ValueError(
+                    "The response message content values must be a list or a dict."
+                )
     return content
 
 
