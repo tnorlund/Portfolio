@@ -75,7 +75,9 @@ class _ReceiptWordTag:
                     response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
-            raise ValueError(f"Could not add ReceiptWordTags to the database: {e}") from e
+            raise ValueError(
+                f"Could not add ReceiptWordTags to the database: {e}"
+            ) from e
 
     def updateReceiptWordTag(self, receipt_word_tag: ReceiptWordTag):
         """
@@ -211,51 +213,51 @@ class _ReceiptWordTag:
         except ClientError as e:
             raise Exception(f"Error getting ReceiptWordTag: {e}")
 
-    def getReceiptWordTags(self, tag: str) -> list[ReceiptWordTag]:
+    def getReceiptWordTags(
+        self, tag: str, limit: int = None, lastEvaluatedKey: dict = None
+    ) -> tuple[list[ReceiptWordTag], dict | None]:
         """
-        Retrieves all ReceiptWordTag items with a given tag from the database,
-        using GSI1 (where GSI1PK = "TAG#<tag_underscore_padded>").
+        Retrieves ReceiptWordTag items with a given tag from the database, using the GSI1 index
+        (where GSI1PK = "TAG#<tag_upper_padded>"). This method supports pagination via the
+        limit and lastEvaluatedKey parameters.
+
+        Args:
+            tag (str): The tag to filter on.
+            limit (int, optional): The maximum number of items to return. If not provided, returns all matching items.
+            lastEvaluatedKey (dict, optional): The DynamoDB LastEvaluatedKey for pagination.
+
+        Returns:
+            tuple[list[ReceiptWordTag], dict | None]:
+                - A list of ReceiptWordTag objects for the current page.
+                - The LastEvaluatedKey dict (or None if there are no more items).
+
+        Raises:
+            ValueError: If there is an error querying the database.
         """
         receipt_tags = []
         try:
-            # 1) Query the GSI
-            response = self._client.query(
-                TableName=self.table_name,
-                IndexName="GSI1",  # Make sure this is your actual GSI name
-                KeyConditionExpression="GSI1PK = :gsi1pk",
-                FilterExpression="#t = :typeVal",
-                ExpressionAttributeNames={"#t": "TYPE"},
-                ExpressionAttributeValues={
+            params = {
+                "TableName": self.table_name,
+                "IndexName": "GSI1",  # Make sure this is the correct name of your GSI.
+                "KeyConditionExpression": "GSI1PK = :gsi1pk",
+                "FilterExpression": "#t = :typeVal",
+                "ExpressionAttributeNames": {"#t": "TYPE"},
+                "ExpressionAttributeValues": {
                     ":gsi1pk": {"S": f"TAG#{tag:_>40}"},
                     ":typeVal": {"S": "RECEIPT_WORD_TAG"},
                 },
-            )
+            }
+            if limit is not None:
+                params["Limit"] = limit
+            if lastEvaluatedKey is not None:
+                params["ExclusiveStartKey"] = lastEvaluatedKey
 
-            # 2) Convert each DynamoDB item to a ReceiptWordTag
+            response = self._client.query(**params)
             receipt_tags.extend(
                 [itemToReceiptWordTag(item) for item in response["Items"]]
             )
-
-            # 3) Handle pagination
-            while "LastEvaluatedKey" in response:
-                response = self._client.query(
-                    TableName=self.table_name,
-                    IndexName="GSI1",  # Make sure this is your actual GSI name
-                    KeyConditionExpression="GSI1PK = :gsi1pk",
-                    FilterExpression="#t = :typeVal",
-                    ExpressionAttributeNames={"#t": "TYPE"},
-                    ExpressionAttributeValues={
-                        ":gsi1pk": {"S": f"TAG#{tag:_>40}"},
-                        ":typeVal": {"S": "RECEIPT_WORD_TAG"},
-                    },
-                    ExclusiveStartKey=response["LastEvaluatedKey"],
-                )
-                receipt_tags.extend(
-                    [itemToReceiptWordTag(item) for item in response["Items"]]
-                )
-
-            return receipt_tags
-
+            lek = response.get("LastEvaluatedKey", None)
+            return receipt_tags, lek
         except ClientError as e:
             raise ValueError("Could not list ReceiptWordTags from the database") from e
 
