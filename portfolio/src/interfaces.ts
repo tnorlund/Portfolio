@@ -132,4 +132,7 @@ export interface Point {
     receipts: Receipt[];
     lastEvaluatedKey?: string; // This key is used for pagination (if present)
   }
-  export type ReceiptWordApiResponse = ReceiptWord[];
+  export interface ReceiptWordsApiResponse {
+    words: ReceiptWord[];
+    lastEvaluatedKey?: string; // If there are more pages, this will be a string (often JSON-encoded)
+  }
