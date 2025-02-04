@@ -4,7 +4,7 @@ import {
   RootPayload,
   PayloadItem,
   ReceiptApiResponse,
-  ReceiptWordApiResponse,
+  ReceiptWordsApiResponse,
   ReceiptDetailsApiResponse,
 } from "./interfaces";
 
@@ -25,7 +25,9 @@ export async function fetchImages(limit = 5): Promise<ImageReceiptsLines[]> {
   return mapPayloadToImages(data.payload);
 }
 
-export async function fetchReceiptDetails(limit = 5): Promise<ReceiptDetailsApiResponse> {
+export async function fetchReceiptDetails(
+  limit = 5
+): Promise<ReceiptDetailsApiResponse> {
   const apiUrl = isDevelopment
     ? `https://dev-api.tylernorlund.com/receipt_details?limit=${limit}`
     : `https://api.tylernorlund.com/receipt_details?limit=${limit}`;
@@ -33,9 +35,11 @@ export async function fetchReceiptDetails(limit = 5): Promise<ReceiptDetailsApiR
   try {
     const response = await fetch(apiUrl);
     if (!response.ok) {
-      throw new Error(`Network response was not ok (status: ${response.status})`);
+      throw new Error(
+        `Network response was not ok (status: ${response.status})`
+      );
     }
-    
+
     const data: ReceiptDetailsApiResponse = await response.json();
     return data;
   } catch (error) {
@@ -44,13 +48,18 @@ export async function fetchReceiptDetails(limit = 5): Promise<ReceiptDetailsApiR
   }
 }
 
-export async function fetchReceipts(limit = 5, lastEvaluatedKey?: string): Promise<ReceiptApiResponse> {
+export async function fetchReceipts(
+  limit = 5,
+  lastEvaluatedKey?: string
+): Promise<ReceiptApiResponse> {
   const baseUrl = isDevelopment
     ? `https://dev-api.tylernorlund.com/receipts?limit=${limit}`
     : `https://api.tylernorlund.com/receipts?limit=${limit}`;
 
   // If lastEvaluatedKey is provided, append it to the query string
-  const apiUrl = lastEvaluatedKey ? `${baseUrl}&lastEvaluatedKey=${encodeURIComponent(lastEvaluatedKey)}` : baseUrl;
+  const apiUrl = lastEvaluatedKey
+    ? `${baseUrl}&lastEvaluatedKey=${encodeURIComponent(lastEvaluatedKey)}`
+    : baseUrl;
 
   const response = await fetch(apiUrl);
 
@@ -63,20 +72,26 @@ export async function fetchReceipts(limit = 5, lastEvaluatedKey?: string): Promi
 }
 
 export async function fetchReceiptWords(
-  tag: string
-): Promise<ReceiptWordApiResponse> {
-  const baseUrl = isDevelopment
-    ? `https://dev-api.tylernorlund.com/receipt_word_tag?tag=${tag}`
-    : `https://api.tylernorlund.com/receipt_word_tag?tag=${tag}`;
+  tag: string,
+  limit: number = 200,
+  lastEvaluatedKey?: string
+): Promise<ReceiptWordsApiResponse> {
+  const baseUrl =
+    process.env.NODE_ENV === "development"
+      ? `https://dev-api.tylernorlund.com/receipt_word_tag`
+      : `https://api.tylernorlund.com/receipt_word_tag`;
 
-  const response = await fetch(baseUrl);
-
-  if (!response.ok) {
-    throw new Error(`Network response was not ok (status: ${response.status})`);
+  // Build the query string with required parameters.
+  let url = `${baseUrl}?tag=${encodeURIComponent(tag)}&limit=${limit}`;
+  if (lastEvaluatedKey) {
+    url += `&lastEvaluatedKey=${encodeURIComponent(lastEvaluatedKey)}`;
   }
 
-  // Parse JSON as our ReceiptWordApiResponse
-  const data: ReceiptWordApiResponse = await response.json();
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Error fetching receipt words: ${response.statusText}`);
+  }
+  const data = (await response.json()) as ReceiptWordsApiResponse;
   return data;
 }
 
