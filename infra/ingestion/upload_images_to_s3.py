@@ -283,7 +283,7 @@ def delete_items_in_table(dynamo_client: DynamoClient) -> None:
     print(f" - Deleting {len(letters)} letter items")
     dynamo_client.deleteLetters(letters)
 
-    receipts = dynamo_client.listReceipts()
+    receipts, _ = dynamo_client.listReceipts()
     print(f" - Deleting {len(receipts)} receipt items")
     dynamo_client.deleteReceipts(receipts)
 
