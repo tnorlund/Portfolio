@@ -143,7 +143,7 @@ def test_addReceipts(dynamodb_table: str):
     dynamo_client.addReceipts(receipts)
 
     # Assert
-    response_receipts = dynamo_client.listReceipts()
+    response_receipts, _ = dynamo_client.listReceipts()
     assert receipts == response_receipts
 
 
@@ -205,7 +205,8 @@ def test_updateReceipts(dynamodb_table: str):
     dynamo_client.updateReceipts(receipts)
 
     # Assert
-    assert dynamo_client.listReceipts() == receipts
+    retrieved_receipts, _ = dynamo_client.listReceipts()
+    assert retrieved_receipts == receipts
 
 
 @pytest.mark.integration
@@ -262,7 +263,7 @@ def test_deleteReceipts(dynamodb_table: str):
     dynamo_client.deleteReceipts(receipts)
 
     # Assert
-    response_receipts = dynamo_client.listReceipts()
+    response_receipts, _ = dynamo_client.listReceipts()
     assert not response_receipts
 
 
