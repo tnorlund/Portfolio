@@ -272,23 +272,15 @@ class _Receipt:
         except ClientError as e:
             raise ValueError(f"Error getting receipt details: {e}")
 
-    def listReceipts(self, limit: int = None) -> tuple[list[Receipt], dict | None]:
+    def listReceipts(
+        self, limit: int = None, lastEvaluatedKey: dict | None = None
+    ) -> tuple[list[Receipt], dict | None]:
         """
-        Lists receipts from the database. If a limit is provided, returns a tuple of:
-        - a list of up to 'limit' Receipt objects, and
-        - the LastEvaluatedKey (LEK) from DynamoDB (or None if there are no more items).
-
-        Args:
-            limit (int, optional): The maximum number of receipts to return.
-
-        Returns:
-            tuple[list[Receipt], dict | None]: The list of receipts and the LEK.
-        
-        Raises:
-            ValueError: If there is an error querying the database.
+        Lists receipts from the database.
+        - If a limit is provided, performs one query (or page) and returns up to that many receipts plus the LastEvaluatedKey.
+        - If no limit is provided, paginates until all receipts are returned.
         """
         receipts = []
-        last_evaluated_key = None
         try:
             query_params = {
                 "TableName": self.table_name,
@@ -297,24 +289,29 @@ class _Receipt:
                 "ExpressionAttributeNames": {"#t": "TYPE"},
                 "ExpressionAttributeValues": {":val": {"S": "RECEIPT"}},
             }
+            # If a starting key is provided, add it.
+            if lastEvaluatedKey is not None:
+                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            
+            # If a limit is provided, add it to the query parameters.
+            if limit is not None:
+                query_params["Limit"] = limit
+
             response = self._client.query(**query_params)
             receipts.extend([itemToReceipt(item) for item in response["Items"]])
-            
-            # Continue paginating if a LEK is present and we haven't reached the limit.
-            while "LastEvaluatedKey" in response and (limit is None or len(receipts) < limit):
-                query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
-                response = self._client.query(**query_params)
-                receipts.extend([itemToReceipt(item) for item in response["Items"]])
-            
-            # If a limit is specified and we retrieved more than 'limit' receipts, slice the list.
-            if limit is not None:
-                if len(receipts) > limit:
-                    receipts = receipts[:limit]
-                # Always capture the LEK from the final response; it might be None if no more pages exist.
-                last_evaluated_key = response.get("LastEvaluatedKey", None)
+
+            if limit is None:
+                # Paginate through all pages if no limit is provided.
+                while "LastEvaluatedKey" in response:
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    response = self._client.query(**query_params)
+                    receipts.extend([itemToReceipt(item) for item in response["Items"]])
+                # No further pages, so LEK is None.
+                last_evaluated_key = None
             else:
+                # If a limit was provided, return the LEK from the response (which will be None if this was the last page).
                 last_evaluated_key = response.get("LastEvaluatedKey", None)
-                
+            
             return receipts, last_evaluated_key
         except ClientError as e:
             raise ValueError(f"Could not list receipts from the database: {e}")
