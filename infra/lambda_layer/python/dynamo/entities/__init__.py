@@ -8,3 +8,5 @@ from .receipt_word import ReceiptWord, itemToReceiptWord
 from .receipt_letter import ReceiptLetter, itemToReceiptLetter
 from .word_tag import WordTag, itemToWordTag
 from .receipt_word_tag import ReceiptWordTag, itemToReceiptWordTag
+from .gpt_validation import GPTValidation, itemToGPTValidation
+from .gpt_initial_tagging import GPTInitialTagging, itemToGPTInitialTagging
