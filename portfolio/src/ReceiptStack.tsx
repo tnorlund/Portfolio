@@ -1,11 +1,8 @@
+// ReceiptStack.tsx
 import React, { useEffect, useState } from "react";
 import { fetchReceipts } from "./api";
 import { Receipt, ReceiptApiResponse } from "./interfaces";
-
-// Intersection Observer
 import { useInView } from "react-intersection-observer";
-
-// React Spring
 import { useSprings, animated } from "@react-spring/web";
 
 const isDevelopment = process.env.NODE_ENV === "development";
@@ -13,49 +10,53 @@ const isDevelopment = process.env.NODE_ENV === "development";
 const ReceiptStack: React.FC = () => {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [rotations, setRotations] = useState<number[]>([]);
-
   const [ref, inView] = useInView({
-    threshold: 0.1, // 10% visible
-    triggerOnce: true, // animate only the first time it appears
+    threshold: 0.1, 
+    triggerOnce: true, 
   });
 
-  useEffect(() => {
-    const getReceipts = async () => {
-      try {
-        const response: ReceiptApiResponse = await fetchReceipts(25);
-        // No need for `Object.values(response)` or `.map(entry => entry.receipt)` anymore
-        setReceipts(response);
+  // Set your maximum number of receipts and page size.
+  const maxReceipts = 25;
+  const pageSize = 5;
 
-        // Generate random rotations for each receipt
-        const newRotations = response.map(() => Math.random() * 60 - 25);
+  useEffect(() => {
+    const loadReceipts = async () => {
+      let allReceipts: Receipt[] = [];
+      let lastEvaluatedKey: string | undefined = undefined;
+
+      try {
+        // Loop until we've fetched maxReceipts or there are no more pages.
+        do {
+          const response: ReceiptApiResponse = await fetchReceipts(pageSize, lastEvaluatedKey);
+          allReceipts = [...allReceipts, ...response.receipts];
+          lastEvaluatedKey = response.lastEvaluatedKey;
+        } while (allReceipts.length < maxReceipts && lastEvaluatedKey);
+
+        // If we got more receipts than needed, slice the list.
+        setReceipts(allReceipts.slice(0, maxReceipts));
+
+        // Generate random rotations for each receipt.
+        const newRotations = allReceipts.slice(0, maxReceipts).map(() => Math.random() * 60 - 25);
         setRotations(newRotations);
       } catch (error) {
         console.error("Error fetching receipts:", error);
       }
     };
 
-    getReceipts();
+    loadReceipts();
   }, []);
 
   const [springs, api] = useSprings(receipts.length, (index) => ({
-    from: {
-      opacity: 0,
-      transform: "translate(0px, -50px) rotate(0deg)",
-    },
-    to: {
-      opacity: 0,
-      transform: "translate(0px, -50px) rotate(0deg)",
-    },
+    from: { opacity: 0, transform: "translate(0px, -50px) rotate(0deg)" },
+    to: { opacity: 0, transform: "translate(0px, -50px) rotate(0deg)" },
   }));
 
-  // 3) When in view, animate each receipt in a staggered fashion
   useEffect(() => {
     if (inView && receipts.length > 0) {
       api.start((index) => {
         const rotation = rotations[index] || 0;
         const topOffset = (Math.random() > 0.5 ? 1 : -1) * index * 2;
         const leftOffset = (Math.random() > 0.5 ? 1 : -1) * index * 2;
-
         return {
           opacity: 1,
           transform: `translate(${leftOffset}px, ${topOffset}px) rotate(${rotation}deg)`,
@@ -67,7 +68,7 @@ const ReceiptStack: React.FC = () => {
 
   return (
     <div
-      ref={ref} // Attach Intersection Observer to this container
+      ref={ref}
       style={{
         width: "100%",
         display: "flex",
@@ -75,33 +76,28 @@ const ReceiptStack: React.FC = () => {
         marginTop: "4rem",
       }}
     >
-      {/* Fixed-size, relative container so absolutely positioned items stack */}
       <div
         style={{
           position: "relative",
-          width: "150px", // Stacking area width
+          width: "150px",
           minHeight: "475px",
         }}
       >
         {springs.map((styleProps, index) => {
           const receipt = receipts[index];
           if (!receipt) return null;
-
           const cdnUrl = isDevelopment
             ? `https://dev.tylernorlund.com/${receipt.cdn_s3_key}`
             : `https://www.tylernorlund.com/${receipt.cdn_s3_key}`;
-
           return (
             <animated.div
               key={receipt.id || index}
               style={{
-                // Absolutely positioned so "topOffset" & "leftOffset" come from transform
                 position: "absolute",
                 width: "100px",
                 border: "1px solid #ccc",
                 backgroundColor: "#fff",
                 boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
-                // Merge the per-item animated styles
                 ...styleProps,
               }}
             >
