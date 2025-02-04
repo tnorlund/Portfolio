@@ -9,30 +9,30 @@ logger.setLevel(logging.INFO)
 # Get the environment variables
 dynamodb_table_name = os.environ["DYNAMODB_TABLE_NAME"]
 
-
 def handler(event, _):
     logger.info("Received event: %s", event)
     http_method = event["requestContext"]["http"]["method"].upper()
 
+    client = DynamoClient(dynamodb_table_name)
+    query_params = event.get("queryStringParameters") or {}
+
     if http_method == "GET":
-        client = DynamoClient(dynamodb_table_name)
-        query_params = event.get("queryStringParameters") or {}
         if "limit" not in query_params:
-            receipts = client.listReceipts()
+            receipts, _ = client.listReceipts()
             return {
                 "statusCode": 200,
-                "body": json.dumps(
-                    [dict(receipt) for receipt in receipts]
-                ),
+                "body": json.dumps([dict(receipt) for receipt in receipts]),
             }
         else:
             limit = int(query_params["limit"])
-            receipts = client.listReceipts(limit=limit)
+            receipts, last_evaluated_key = client.listReceipts(limit=limit)
+            response_body = {
+                "receipts": [dict(receipt) for receipt in receipts],
+                "lastEvaluatedKey": last_evaluated_key  # may be None if no more pages exist
+            }
             return {
                 "statusCode": 200,
-                "body": json.dumps(
-                    [dict(receipt) for receipt in receipts]
-                ),
+                "body": json.dumps(response_body),
             }
     elif http_method == "POST":
         return {"statusCode": 405, "body": "Method not allowed"}
