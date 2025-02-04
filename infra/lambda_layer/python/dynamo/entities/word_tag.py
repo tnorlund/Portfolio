@@ -1,6 +1,6 @@
 from typing import Generator, Tuple
 from datetime import datetime
-from dynamo.entities.util import assert_valid_uuid
+from dynamo.entities.util import assert_valid_uuid, _repr_str
 
 
 class WordTag:
@@ -17,6 +17,7 @@ class WordTag:
         word_id (int): The word number of the word.
         tag (str): The tag applied to the word.
         timestamp_added (str): The ISO formatted timestamp when the tag was added.
+        validated (bool): Whether the tag has been validated.
     """
 
     def __init__(
@@ -26,6 +27,7 @@ class WordTag:
         word_id: int,
         tag: str,
         timestamp_added: datetime,
+        validated: bool = False,
     ):
         """Initializes a new WordTag object for DynamoDB.
 
@@ -36,6 +38,7 @@ class WordTag:
             tag (str): The tag to apply to the word. Must be non-empty, not exceed 40 characters,
                 and must not start with an underscore.
             timestamp_added (datetime): The timestamp when the tag was added.
+            validated (bool, optional): Whether the tag has been validated. Defaults to False.
 
         Raises:
             ValueError: If any parameter is of an invalid type or has an invalid value.
@@ -71,6 +74,10 @@ class WordTag:
             self.timestamp_added = timestamp_added
         else:
             raise ValueError("timestamp_added must be a datetime object or a string")
+        
+        if not isinstance(validated, bool):
+            raise ValueError("validated must be a boolean")
+        self.validated = validated
 
     def __eq__(self, other: object) -> bool:
         """Checks equality between this WordTag and another object.
@@ -89,6 +96,7 @@ class WordTag:
             and self.line_id == other.line_id
             and self.word_id == other.word_id
             and self.tag == other.tag
+            and self.validated == other.validated
         )
 
     def __iter__(self) -> Generator[Tuple[str, str], None, None]:
@@ -102,6 +110,7 @@ class WordTag:
         yield "word_id", self.word_id
         yield "tag", self.tag
         yield "timestamp_added", self.timestamp_added
+        yield "validated", self.validated
 
     def __repr__(self) -> str:
         """Returns a string representation of the WordTag.
@@ -113,7 +122,10 @@ class WordTag:
             f"WordTag(image_id='{self.image_id}', "
             f"line_id={self.line_id}, "
             f"word_id={self.word_id}, "
-            f"tag='{self.tag}')"
+            f"tag={_repr_str(self.tag)}, "
+            f"timestamp_added={_repr_str(self.timestamp_added)}, "
+            f"validated={self.validated}"
+            ")"
         )
 
     def key(self) -> dict:
@@ -164,6 +176,7 @@ class WordTag:
             "TYPE": {"S": "WORD_TAG"},
             "tag_name": {"S": self.tag},
             "timestamp_added": {"S": self.timestamp_added},
+            "validated": {"BOOL": self.validated},
         }
 
     def to_Word_key(self) -> dict:
@@ -190,7 +203,7 @@ def itemToWordTag(item: dict) -> WordTag:
     Raises:
         ValueError: If the item is missing required keys or has malformed fields.
     """
-    required_keys = {"PK", "SK"}
+    required_keys = {"PK", "SK", "validated", "timestamp_added"}
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - set(item.keys())
         raise ValueError(f"Item is missing required keys: {missing_keys}")
@@ -205,6 +218,7 @@ def itemToWordTag(item: dict) -> WordTag:
             word_id=int(sk_parts[3]),
             tag=tag,
             timestamp_added=datetime.fromisoformat(item["timestamp_added"]["S"]),
+            validated=item["validated"]["BOOL"],
         )
     except (IndexError, ValueError, KeyError) as e:
         raise ValueError(f"Error converting item to WordTag: {e}")
