@@ -49,26 +49,22 @@ export async function fetchReceiptDetails(
 }
 
 export async function fetchReceipts(
-  limit = 5,
+  limit: number,
   lastEvaluatedKey?: string
 ): Promise<ReceiptApiResponse> {
-  const baseUrl = isDevelopment
-    ? `https://dev-api.tylernorlund.com/receipts?limit=${limit}`
-    : `https://api.tylernorlund.com/receipts?limit=${limit}`;
-
-  // If lastEvaluatedKey is provided, append it to the query string
-  const apiUrl = lastEvaluatedKey
-    ? `${baseUrl}&lastEvaluatedKey=${encodeURIComponent(lastEvaluatedKey)}`
-    : baseUrl;
-
-  const response = await fetch(apiUrl);
-
-  if (!response.ok) {
-    throw new Error(`Network response was not ok (status: ${response.status})`);
+  const params = new URLSearchParams();
+  params.set("limit", limit.toString());
+  if (lastEvaluatedKey) {
+    // JSON-encode if your server expects it that way
+    params.set("lastEvaluatedKey", JSON.stringify(lastEvaluatedKey));
   }
 
-  const data: ReceiptApiResponse = await response.json();
-  return data;
+  const url = `/api/receipts?${params.toString()}`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Error: ${response.status}`);
+  }
+  return await response.json();
 }
 
 export async function fetchReceiptWords(
