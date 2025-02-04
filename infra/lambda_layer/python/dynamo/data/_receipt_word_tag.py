@@ -75,7 +75,7 @@ class _ReceiptWordTag:
                     response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
-            raise ValueError("Could not add ReceiptWordTags to the database") from e
+            raise ValueError(f"Could not add ReceiptWordTags to the database: {e}") from e
 
     def updateReceiptWordTag(self, receipt_word_tag: ReceiptWordTag):
         """

@@ -254,23 +254,27 @@ def process(
             if value and isinstance(value, list) and len(value) > 0:
                 for tag_obj in value:
                     tags.append(Tag(key, tag_obj["w"], tag_obj["l"]))
-        
 
         initial_tagging_records = []
         # For each Tag (data class instance), create a GPTInitialTagging record using the
         # tag information along with the GPT prompt (query) and raw response (response)
         for tag in tags:
             tagging_record = GPTInitialTagging(
-                image_id=image_obj.image_id,  # from your Image object
-                receipt_id=cluster_id,        # using cluster_id as the receipt identifier
-                line_id=tag.line_id,          # line id from the tag data class
-                word_id=tag.word_id,          # word id from the tag data class
-                tag=tag.tag,                  # the field name (e.g., "store_name")
-                query=query,                  # the GPT prompt that was sent (returned from gpt_request)
-                response=response,            # the raw GPT response text (returned from gpt_request)
-                timestamp_added=datetime.now(timezone.utc)
+                image_id=image_obj.image_id,
+                receipt_id=cluster_id,
+                line_id=tag.line_id,
+                word_id=tag.word_id,
+                tag=tag.tag,
+                query=query,
+                response=response,
+                timestamp_added=datetime.now(timezone.utc),
             )
             initial_tagging_records.append(tagging_record)
+
+        # Deduplicate the GPTInitialTagging records
+        initial_tagging_records = deduplicate_gpt_initial_taggings(
+            initial_tagging_records
+        )
 
         # Create the ReceiptWordTag objects
         r_word_tags = []
@@ -287,8 +291,11 @@ def process(
                             timestamp_added=datetime.now(timezone.utc),
                         )
                     )
-        # Create the WordTag objects
 
+        # Deduplicate the ReceiptWordTags
+        r_word_tags = deduplicate_receipt_word_tags(r_word_tags)
+
+        # Create the WordTag objects
         for tag in tags:
             for word in words:
                 if word.word_id == tag.word_id and word.line_id == tag.line_id:
@@ -301,6 +308,9 @@ def process(
                             timestamp_added=datetime.now(timezone.utc),
                         )
                     )
+
+        # Deduplicate the WordTags
+        word_tags = deduplicate_word_tags(word_tags)
 
         # Update each word with the tags
         update_words_with_tags(r_words, tags)
@@ -325,11 +335,11 @@ def process(
 def update_words_with_tags(receipt_words: list, tags: list[Tag]) -> None:
     """
     Updates each Word object's tag attribute with the tag names from the GPT response.
-    
+
     For every Tag in the list, if the Word object's `line_id` and `word_id`
     match the Tag's values, then append the tag's `tag` to the Word's tag list,
     ensuring no duplicates.
-    
+
     Args:
         receipt_words (list): List of Word objects.
         tags (list[Tag]): List of Tag objects produced from the GPT response.
@@ -415,6 +425,90 @@ def process_ocr_dict(
                 letters.append(letter_obj)
 
     return lines, words, letters
+
+
+def deduplicate_gpt_initial_taggings(
+    taggings: List[GPTInitialTagging],
+) -> List[GPTInitialTagging]:
+    """
+    Deduplicate a list of GPTInitialTagging objects using their identifying attributes.
+
+    Two GPTInitialTagging objects are considered duplicates if they have the same:
+      - image_id
+      - receipt_id
+      - line_id
+      - word_id
+      - tag (normalized, i.e. stripped of leading/trailing whitespace)
+
+    Returns:
+        A list with only one instance of each unique GPTInitialTagging.
+    """
+    unique = {}
+    for tagging in taggings:
+        dedup_key = (
+            tagging.image_id,
+            tagging.receipt_id,
+            tagging.line_id,
+            tagging.word_id,
+            tagging.tag.strip(),  # normalize the tag
+        )
+        if dedup_key not in unique:
+            unique[dedup_key] = tagging
+    return list(unique.values())
+
+
+def deduplicate_receipt_word_tags(tags: List[ReceiptWordTag]) -> List[ReceiptWordTag]:
+    """
+    Deduplicate a list of ReceiptWordTag objects by using their identifying attributes.
+
+    Two ReceiptWordTag objects are considered duplicates if they have the same:
+      - image_id
+      - receipt_id
+      - line_id
+      - word_id
+      - tag (after stripping extra whitespace)
+
+    Returns a list with only one instance of each unique tag.
+    """
+    unique = {}
+    for tag in tags:
+        # Build a unique key; we use the same fields that are used in key() for DynamoDB.
+        dedup_key = (
+            tag.image_id,
+            tag.receipt_id,
+            tag.line_id,
+            tag.word_id,
+            tag.tag.strip(),  # ensure no leading/trailing spaces
+        )
+        if dedup_key not in unique:
+            unique[dedup_key] = tag
+    return list(unique.values())
+
+
+def deduplicate_word_tags(tags: List[WordTag]) -> List[WordTag]:
+    """
+    Deduplicate a list of WordTag objects by using their identifying attributes.
+
+    Two WordTag objects are considered duplicates if they have the same:
+      - image_id
+      - line_id
+      - word_id
+      - tag (after stripping extra whitespace)
+
+    Returns a list with only one instance of each unique tag.
+    """
+    unique = {}
+    for tag in tags:
+        # Build a unique key using the fields that define the primary key.
+        dedup_key = (
+            tag.image_id,
+            tag.line_id,
+            tag.word_id,
+            tag.tag.strip(),  # Normalize the tag by stripping extra whitespace
+        )
+        if dedup_key not in unique:
+            unique[dedup_key] = tag
+    return list(unique.values())
 
 
 def cluster_receipts(
