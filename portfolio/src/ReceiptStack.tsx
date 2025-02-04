@@ -85,7 +85,7 @@ const ReceiptStack: React.FC = () => {
         width: "100%",
         display: "flex",
         justifyContent: "center",
-        marginTop: "4rem",
+        marginTop: "6rem",
       }}
     >
       <div
