@@ -18,8 +18,8 @@ const ReceiptStack: React.FC = () => {
   });
 
   // Customize these to your needs
-  const maxReceipts = 100;
-  const pageSize = 2;
+  const maxReceipts = 40;
+  const pageSize = 20;
 
   // Animate new items as they are added to `receipts`
   const transitions = useTransition(receipts, {
