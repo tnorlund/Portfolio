@@ -248,6 +248,14 @@ def process(
             else:
                 raise
 
+        initial_tagging = GPTInitialTagging(
+            image_id=image_obj.image_id,
+            receipt_id=cluster_id,
+            query=query,
+            response=response,
+            timestamp_added=datetime.now(timezone.utc),
+        )
+
         # Remove all tags without words
         tags = []
         for key, value in gpt_response.items():
@@ -255,26 +263,6 @@ def process(
                 for tag_obj in value:
                     tags.append(Tag(key, tag_obj["w"], tag_obj["l"]))
 
-        initial_tagging_records = []
-        # For each Tag (data class instance), create a GPTInitialTagging record using the
-        # tag information along with the GPT prompt (query) and raw response (response)
-        for tag in tags:
-            tagging_record = GPTInitialTagging(
-                image_id=image_obj.image_id,
-                receipt_id=cluster_id,
-                line_id=tag.line_id,
-                word_id=tag.word_id,
-                tag=tag.tag,
-                query=query,
-                response=response,
-                timestamp_added=datetime.now(timezone.utc),
-            )
-            initial_tagging_records.append(tagging_record)
-
-        # Deduplicate the GPTInitialTagging records
-        initial_tagging_records = deduplicate_gpt_initial_taggings(
-            initial_tagging_records
-        )
 
         # Create the ReceiptWordTag objects
         r_word_tags = []
@@ -322,7 +310,7 @@ def process(
         DynamoClient(table_name).addReceiptWords(r_words)
         DynamoClient(table_name).addReceiptWordTags(r_word_tags)
         DynamoClient(table_name).addReceiptLetters(r_letters)
-        DynamoClient(table_name).addGPTInitialTaggings(initial_tagging_records)
+        DynamoClient(table_name).addGPTInitialTagging(initial_tagging)
 
     # Finally, add all entities to DynamoDB.
     DynamoClient(table_name).addImage(image_obj)
@@ -426,35 +414,6 @@ def process_ocr_dict(
 
     return lines, words, letters
 
-
-def deduplicate_gpt_initial_taggings(
-    taggings: List[GPTInitialTagging],
-) -> List[GPTInitialTagging]:
-    """
-    Deduplicate a list of GPTInitialTagging objects using their identifying attributes.
-
-    Two GPTInitialTagging objects are considered duplicates if they have the same:
-      - image_id
-      - receipt_id
-      - line_id
-      - word_id
-      - tag (normalized, i.e. stripped of leading/trailing whitespace)
-
-    Returns:
-        A list with only one instance of each unique GPTInitialTagging.
-    """
-    unique = {}
-    for tagging in taggings:
-        dedup_key = (
-            tagging.image_id,
-            tagging.receipt_id,
-            tagging.line_id,
-            tagging.word_id,
-            tagging.tag.strip(),  # normalize the tag
-        )
-        if dedup_key not in unique:
-            unique[dedup_key] = tagging
-    return list(unique.values())
 
 
 def deduplicate_receipt_word_tags(tags: List[ReceiptWordTag]) -> List[ReceiptWordTag]:
