@@ -218,13 +218,22 @@ def upload_files_with_uuid_in_batches(
                     ocr_dict=ocr_dict,
                     png_data=png_data,
                 )
+            def process_with_delay(new_uuid: str, delay: float) -> None:
+                """Waits for a given delay then calls process_single_uuid.
+
+                Args:
+                    new_uuid (str): The unique identifier for the PNG/JSON pair.
+                    delay (float): Time in seconds to wait before calling process().
+                """
+                sleep(delay)
+                process_single_uuid(new_uuid)
 
             futures = []
             with ThreadPoolExecutor(max_workers=sub_batch_size) as executor:
-                for new_uuid in mapped_uuids:
-                    futures.append(executor.submit(process_single_uuid, new_uuid))
-
-                # Wait for all parallel tasks to complete, raising any exceptions
+                futures = []
+                for index, new_uuid in enumerate(mapped_uuids):
+                    # Each task waits index*0.1 seconds before calling process_single_uuid.
+                    futures.append(executor.submit(process_with_delay, new_uuid, index * 0.1))
                 for future in as_completed(futures):
                     future.result()
 
@@ -279,6 +288,10 @@ def delete_items_in_table(dynamo_client: DynamoClient) -> None:
     receipt_letters = dynamo_client.listReceiptLetters()
     print(f" - Deleting {len(receipt_letters)} receipt letter items")
     dynamo_client.deleteReceiptLetters(receipt_letters)
+
+    gpt_initial_taggings = dynamo_client.listGPTInitialTaggings()
+    print(f" - Deleting {len(gpt_initial_taggings)} GPT initial tagging items")
+    dynamo_client.deleteGPTInitialTaggings(gpt_initial_taggings)
 
     # Pause briefly for eventual consistency
     sleep(1)
