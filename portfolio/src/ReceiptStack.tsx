@@ -10,10 +10,10 @@ const isDevelopment = process.env.NODE_ENV === "development";
 const ReceiptStack: React.FC = () => {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [rotations, setRotations] = useState<number[]>([]);
-  const [ref, inView] = useInView({
+  // Set triggerOnce: true so that the component's in-view state is only set the first time it comes into view.
+  const [ref] = useInView({
     threshold: 0.1,
-    // We want to animate new pages even if the component is already in view.
-    triggerOnce: false,
+    triggerOnce: true,
   });
 
   const maxReceipts = 100;
@@ -21,11 +21,11 @@ const ReceiptStack: React.FC = () => {
 
   // useTransition handles animating items as they are added to the receipts array.
   const transitions = useTransition(receipts, {
-    // When a receipt is added, start off hidden and above the stack.
     from: { opacity: 0, transform: "translate(0px, -50px) rotate(0deg)" },
-    // When a receipt enters, animate it in with a slight stagger.
     enter: (item, index) => {
+      // Use the pre-calculated rotation for the given index.
       const rotation = rotations[index] ?? 0;
+      // Optionally add some offset based on the index.
       const topOffset = (Math.random() > 0.5 ? 1 : -1) * index * 2;
       const leftOffset = (Math.random() > 0.5 ? 1 : -1) * index * 2;
       return {
@@ -45,14 +45,14 @@ const ReceiptStack: React.FC = () => {
       while (totalFetched < maxReceipts) {
         const response: ReceiptApiResponse = await fetchReceipts(pageSize, lastEvaluatedKey);
 
-        // Update state incrementally so new pages trigger an animation.
+        // Update state incrementally so new pages animate in via useTransition.
         setReceipts((prev) => {
           const updated = [...prev, ...response.receipts];
           return updated.slice(0, maxReceipts);
         });
         setRotations((prev) => [
           ...prev,
-          ...response.receipts.map(() => Math.random() * 60 - 25),
+          ...response.receipts.map(() => Math.random() * 60 - 30),
         ]);
 
         totalFetched += response.receipts.length;
@@ -67,7 +67,7 @@ const ReceiptStack: React.FC = () => {
 
   return (
     <div
-      ref={ref}
+      ref={ref} // The ref from useInView is attached to the container so that the "in view" event fires only once.
       style={{
         width: "100%",
         display: "flex",
@@ -82,7 +82,7 @@ const ReceiptStack: React.FC = () => {
           minHeight: "475px",
         }}
       >
-        {transitions((style, receipt, t, index) => {
+        {transitions((style, receipt, _, index) => {
           if (!receipt) return null;
           const cdnUrl = isDevelopment
             ? `https://dev.tylernorlund.com/${receipt.cdn_s3_key}`
