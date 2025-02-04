@@ -226,7 +226,7 @@ def test_get_receipt_word_tags(
     client.addReceiptWordTags(sample_receipt_word_tags)
 
     # Act: Retrieve all with tag="ALPHA"
-    alpha = client.getReceiptWordTags("ALPHA")
+    alpha, _ = client.getReceiptWordTags("ALPHA")
 
     # Assert
     # The two we expect with ALPHA
@@ -240,7 +240,7 @@ def test_get_receipt_word_tags(
     assert alpha_returned == alpha_expected
 
     # Check BETA
-    beta = client.getReceiptWordTags("BETA")
+    beta, _ = client.getReceiptWordTags("BETA")
     beta_expected = {
         ("3f52804b-2fad-4e00-92c8-b593da3a8ed4", 200, 20, 20, "BETA"),
         ("3f52804b-2fad-4e00-92c8-b593da3a8ed6", 400, 40, 40, "BETA"),
@@ -257,7 +257,7 @@ def test_get_receipt_word_tags_no_results(dynamodb_table: Literal["MyMockedTable
     If tag doesn't exist, we expect an empty list.
     """
     client = DynamoClient(dynamodb_table)
-    results = client.getReceiptWordTags("NOTHING")
+    results, _ = client.getReceiptWordTags("NOTHING")
     assert results == []
 
 
@@ -284,7 +284,7 @@ def test_get_receipt_word_tags_pagination(dynamodb_table: Literal["MyMockedTable
 
     client.addReceiptWordTags(big_list)
 
-    results = client.getReceiptWordTags("PAGE")
+    results, _ = client.getReceiptWordTags("PAGE")
     assert len(results) == 30
 
     returned_tuples = {
