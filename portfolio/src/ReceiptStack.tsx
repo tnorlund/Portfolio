@@ -107,7 +107,7 @@ const ReceiptStack: React.FC = () => {
                 position: "absolute",
                 width: "100px",
                 border: "1px solid #ccc",
-                backgroundColor: "#fff",
+                backgroundColor: "var(--background-color)",
                 boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
                 ...style,
               }}
