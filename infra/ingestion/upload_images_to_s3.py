@@ -93,8 +93,7 @@ def run_swift_script(output_directory: Path, image_paths: list[str]) -> bool:
 
 
 def compare_local_files_with_dynamo(
-    local_files: list[Path],
-    dynamo_table_name: str
+    local_files: list[Path], dynamo_table_name: str
 ) -> list[Path]:
     """Compares local image files against DynamoDB records by SHA-256 hash.
 
@@ -129,8 +128,8 @@ def upload_files_with_uuid_in_batches(
     cdn_bucket_name: str,
     cdn_prefix: str = "assets/",
     path_prefix: str = "raw/",
-    batch_size: int = 6,
-    sub_batch_size: int = 3,
+    batch_size: int = 10,
+    sub_batch_size: int = 5,
 ) -> None:
     """Orchestrates uploading PNG files by running a Swift OCR script and calling `process()`.
 
@@ -159,7 +158,9 @@ def upload_files_with_uuid_in_batches(
         None
     """
     all_png_files = sorted(p for p in directory.iterdir() if p.suffix.lower() == ".png")
-    files_to_upload = compare_local_files_with_dynamo(all_png_files, dynamodb_table_name)
+    files_to_upload = compare_local_files_with_dynamo(
+        all_png_files, dynamodb_table_name
+    )
     print(f"Found {len(files_to_upload)} files to upload.")
     if not files_to_upload:
         print("No new files to upload.")
@@ -185,57 +186,70 @@ def upload_files_with_uuid_in_batches(
                 raise RuntimeError("Error running Swift OCR script.")
 
             # 3) Process each file in parallel (sub_batch_size concurrency)
+            failed_uuids: list[str] = []
+
             def process_single_uuid(new_uuid: str) -> None:
-                """Handles reading PNG & JSON, then calling `process()` with in-memory data.
-
-                Args:
-                    new_uuid (str): The unique identifier assigned to the PNG/JSON pair.
-
-                Raises:
-                    FileNotFoundError: If either the PNG or JSON file is not found.
                 """
-                png_path = tmp_dir / f"{new_uuid}.png"
-                json_path = tmp_dir / f"{new_uuid}.json"
+                Reads PNG & JSON files, then calls process() with in-memory data.
+                If process() fails, the UUID is appended to failed_uuids.
+                """
+                try:
+                    png_path = tmp_dir / f"{new_uuid}.png"
+                    json_path = tmp_dir / f"{new_uuid}.json"
 
-                if not png_path.exists():
-                    raise FileNotFoundError(f"Swift OCR did not produce {png_path}")
-                with open(png_path, "rb") as pf:
-                    png_data = pf.read()
+                    if not png_path.exists():
+                        raise FileNotFoundError(f"Swift OCR did not produce {png_path}")
+                    with open(png_path, "rb") as pf:
+                        png_data = pf.read()
 
-                if not json_path.exists():
-                    raise FileNotFoundError(f"Swift OCR did not produce {json_path}")
-                with open(json_path, "r", encoding="utf-8") as jf:
-                    ocr_dict = json.load(jf)
+                    if not json_path.exists():
+                        raise FileNotFoundError(
+                            f"Swift OCR did not produce {json_path}"
+                        )
+                    with open(json_path, "r", encoding="utf-8") as jf:
+                        ocr_dict = json.load(jf)
 
-                print(new_uuid)
-                process(
-                    table_name=dynamodb_table_name,
-                    raw_bucket_name=bucket_name,
-                    raw_prefix=path_prefix,
-                    uuid=new_uuid,
-                    cdn_bucket_name=cdn_bucket_name,
-                    cdn_prefix=cdn_prefix,
-                    ocr_dict=ocr_dict,
-                    png_data=png_data,
-                )
+                    print(f"Processing UUID: {new_uuid}")
+                    process(
+                        table_name=dynamodb_table_name,
+                        raw_bucket_name=bucket_name,
+                        raw_prefix=path_prefix,
+                        uuid=new_uuid,
+                        cdn_bucket_name=cdn_bucket_name,
+                        cdn_prefix=cdn_prefix,
+                        ocr_dict=ocr_dict,
+                        png_data=png_data,
+                    )
+                except Exception as e:
+                    print(f"Error processing {new_uuid}: {e}")
+                    failed_uuids.append(new_uuid)
+
             def process_with_delay(new_uuid: str, delay: float) -> None:
-                """Waits for a given delay then calls process_single_uuid.
-
-                Args:
-                    new_uuid (str): The unique identifier for the PNG/JSON pair.
-                    delay (float): Time in seconds to wait before calling process().
-                """
+                """Waits for a given delay then calls process_single_uuid."""
                 sleep(delay)
                 process_single_uuid(new_uuid)
 
-            futures = []
+            # Process files concurrently with a staggered delay.
             with ThreadPoolExecutor(max_workers=sub_batch_size) as executor:
                 futures = []
                 for index, new_uuid in enumerate(mapped_uuids):
                     # Each task waits index*0.1 seconds before calling process_single_uuid.
-                    futures.append(executor.submit(process_with_delay, new_uuid, index * 0.1))
+                    futures.append(
+                        executor.submit(process_with_delay, new_uuid, index * 0.1)
+                    )
                 for future in as_completed(futures):
                     future.result()
+
+            # If any process() call failed, retry those UUIDs.
+            if failed_uuids:
+                print("Retrying failed UUIDs:", failed_uuids)
+                # Save a copy of failed UUIDs and clear the list for retry results.
+                retry_list = failed_uuids.copy()
+                failed_uuids.clear()
+                for uuid in retry_list:
+                    process_single_uuid(uuid)
+                if failed_uuids:
+                    print("The following UUIDs still failed after retry:", failed_uuids)
 
             print(f"Finished batch #{batch_index}.\n")
 
@@ -309,18 +323,16 @@ def main() -> None:
     parser.add_argument(
         "--directory_to_upload",
         required=True,
-        help="Directory containing images (PNGs) to upload."
+        help="Directory containing images (PNGs) to upload.",
     )
     parser.add_argument(
-        "--env",
-        default="dev",
-        help="Pulumi environment name (e.g. 'dev' or 'prod')."
+        "--env", default="dev", help="Pulumi environment name (e.g. 'dev' or 'prod')."
     )
     parser.add_argument(
         "--debug",
         action="store_true",
         default=False,
-        help="If set, delete all items from DynamoDB tables before uploading."
+        help="If set, delete all items from DynamoDB tables before uploading.",
     )
     args = parser.parse_args()
 
