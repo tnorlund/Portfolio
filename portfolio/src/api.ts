@@ -73,19 +73,23 @@ export async function fetchReceipts(
 
 export async function fetchReceiptWords(
   tag: string,
-  limit: number = 200,
-  lastEvaluatedKey?: string
+  limit: number,
+  lastEvaluatedKey?: any
 ): Promise<ReceiptWordsApiResponse> {
+  const params = new URLSearchParams();
+  params.set("tag", tag);
+  params.set("limit", limit.toString());
+  if (lastEvaluatedKey) {
+    // Encode the lastEvaluatedKey as a JSON string.
+    params.set("lastEvaluatedKey", JSON.stringify(lastEvaluatedKey));
+  }
+
   const baseUrl =
     process.env.NODE_ENV === "development"
       ? `https://dev-api.tylernorlund.com/receipt_word_tag`
       : `https://api.tylernorlund.com/receipt_word_tag`;
 
-  // Build the query string with required parameters.
-  let url = `${baseUrl}?tag=${encodeURIComponent(tag)}&limit=${limit}`;
-  if (lastEvaluatedKey) {
-    url += `&lastEvaluatedKey=${encodeURIComponent(lastEvaluatedKey)}`;
-  }
+  const url = `${baseUrl}?${params.toString()}`;
 
   const response = await fetch(url);
   if (!response.ok) {
