@@ -588,16 +588,17 @@ def test_process_access_denied_cdn_bucket(s3_buckets, dynamodb_table, monkeypatc
             original_put_object = client.put_object
 
             def mock_put_object(*p_args, **p_kwargs):
+                bucket = p_kwargs.get("Bucket", "")
                 key = p_kwargs.get("Key", "")
-                # Raise AccessDenied specifically for the ".png" key
-                if key.endswith(".png"):
+                # Only raise an error if we're uploading to the CDN bucket
+                # and the key begins with the CDN prefix (e.g., "assets/")
+                if bucket == cdn_bucket and key.startswith("assets/"):
                     raise ClientError(
                         {"Error": {"Code": "AccessDenied", "Message": "Access Denied"}},
                         "PutObject",
                     )
                 return original_put_object(*p_args, **p_kwargs)
 
-            # Patch the 'put_object' on this new S3 client
             monkeypatch.setattr(client, "put_object", mock_put_object)
         return client
 
@@ -606,7 +607,6 @@ def test_process_access_denied_cdn_bucket(s3_buckets, dynamodb_table, monkeypatc
 
     # 5. Act & Assert: PNG file should trigger AccessDenied, causing a ValueError
     with pytest.raises(ValueError, match="Access denied to s3://cdn-bucket/assets"):
-
         process(
             table_name,
             raw_bucket,
