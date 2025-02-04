@@ -129,13 +129,18 @@ def process(
     image = PIL_Image.open(BytesIO(image_bytes))
     image = ImageOps.exif_transpose(image)  # Correct orientation
 
-    # Upload the original image to the CDN bucket.
+    # Upload the original image to the CDN bucket as JPEG.
     try:
+        image_converted = image.convert("RGB")
+        buffer = BytesIO()
+        image_converted.save(buffer, format="JPEG", quality=85)
+        buffer.seek(0)
+        jpeg_data = buffer.getvalue()
         s3.put_object(
             Bucket=cdn_bucket_name,
-            Key=f"{cdn_prefix}/{uuid}.png",
-            Body=image_bytes,
-            ContentType="image/png",
+            Key=f"{cdn_prefix}/{uuid}.jpg",  # change file extension to .jpg
+            Body=jpeg_data,
+            ContentType="image/jpeg",
         )
     except ClientError as e:
         error_code = e.response["Error"]["Code"]
@@ -155,7 +160,7 @@ def process(
         raw_s3_bucket=raw_bucket_name,
         raw_s3_key=f"{raw_prefix}/{uuid}.png",
         cdn_s3_bucket=cdn_bucket_name,
-        cdn_s3_key=f"{cdn_prefix}/{uuid}.png",
+        cdn_s3_key=f"{cdn_prefix}/{uuid}.jpg",
         sha256=calculate_sha256_from_bytes(image_bytes),
     )
 
@@ -189,22 +194,28 @@ def process(
         except Exception as e:
             raise ValueError(f"Error processing cluster {cluster_id}: {e}") from e
 
-        # Upload the receipt image to the CDN
+        # Convert the receipt image to JPEG and upload to the CDN bucket.
         try:
+            # Convert the transformed image (r_image) to JPEG.
+            r_image_converted = r_image.convert("RGB")
+            buffer = BytesIO()
+            r_image_converted.save(buffer, format="JPEG", quality=85)
+            buffer.seek(0)
+            jpeg_receipt_data = buffer.getvalue()
+            # Update the key to have a .jpg extension.
+            new_cdn_key = image_obj.cdn_s3_key.replace('.png', f'_RECEIPT_{cluster_id:05d}.jpg')
             s3.put_object(
                 Bucket=cdn_bucket_name,
-                Key=f"{image_obj.cdn_s3_key.replace('.png', f'_RECEIPT_{cluster_id:05d}.png')}",
-                Body=png_data,
-                ContentType="image/png",
+                Key=new_cdn_key,
+                Body=jpeg_receipt_data,
+                ContentType="image/jpeg",
             )
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code == "NoSuchBucket":
                 raise ValueError(f"Bucket {cdn_bucket_name} not found")
             elif error_code == "AccessDenied":
-                raise ValueError(
-                    f"Access denied to s3://{cdn_bucket_name}/{cdn_prefix}"
-                )
+                raise ValueError(f"Access denied to s3://{cdn_bucket_name}/{cdn_prefix}")
             else:
                 raise
 
@@ -634,7 +645,7 @@ def transform_cluster(
         sha256=calculate_sha256_from_bytes(affine_img.tobytes()),
         cdn_s3_bucket=image_obj.cdn_s3_bucket,
         cdn_s3_key=image_obj.cdn_s3_key.replace(
-            ".png", f"_RECEIPT_{cluster_id:05d}.png"
+            ".png", f"_RECEIPT_{cluster_id:05d}.jpg"
         ),
     )
 
