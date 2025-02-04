@@ -128,5 +128,8 @@ export interface Point {
   }
   
   export type ImageReceiptsLines = [ImagePayload, Receipt[], LineItem[]];
-  export type ReceiptApiResponse = Receipt[];
+  export interface ReceiptApiResponse {
+    receipts: Receipt[];
+    lastEvaluatedKey?: string; // This key is used for pagination (if present)
+  }
   export type ReceiptWordApiResponse = ReceiptWord[];
