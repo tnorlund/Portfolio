@@ -254,7 +254,8 @@ class _ReceiptWordTag:
 
             response = self._client.query(**params)
             items = response.get("Items", [])
-            lek = response.get("LastEvaluatedKey", None)
+            lek = response.get("LastEvaluatedKey")  # no default
+            # If "lek" is falsy (None or {}), set it to None so it returns null to the client
             if not lek:
                 lek = None
 
