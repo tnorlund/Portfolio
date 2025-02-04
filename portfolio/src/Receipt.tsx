@@ -13,67 +13,84 @@ import "./Receipt.css";
 
 function GPTPrompt() {
   const prompt = `You are a helpful assistant that extracts structured data from a receipt.
-The receipt's OCR text is:
-{
-  "receipt": { ... },
-  "words": [
+
+Below is a sample of the JSON you will receive. Notice that each 'word' has a 'text', a 'centroid' [x, y], and a line/word ID (l, w):
+
+\`\`\`json
+{  
+  "receipt": {
+    "receipt_id": 123
+    // more receipt-level fields
+  },
+  "w": [
     {
-      "text": "SPROUTS",
-      "centroid": {"x": 0.1, "y": 0.1}
+      "t": "BANANAS",
+      "c": [0.1234, 0.5678],
+      "l": 0,
+      "w": 0
     },
-    ...
+    {
+      "t": "1.99",
+      "c": [0.2345, 0.6789],
+      "l": 0,
+      "w": 1
+    }
+    // ...
   ]
 }
+\`\`\`
+The receipt's OCR text is:
 
-**Your task**: Identify the following fields and output them as valid JSON:
-    - store_name (string)
-    - date (string)
-    - time (string)
-    - phone_number (string)
-    - total_amount (number)
-    - items (array of objects with fields: "item_name" (string) and "price" (number))
-    - taxes (number)
-    - address (string)
+. . .
 
-Additionally, for **every field** you return, **please include**:
-1) The field's **value** (e.g. "SPROUTS FARMERS MARKET").
-2) An array of "word_centroids" that correspond to the OCR words. 
-     - Use the same centroids from the "words" array above. 
-       They **must** match based on the centroids given. 
-       Do not create new centroids.
-     - Use the same centroids from the "words" array above.
+Your task:
+   Identify the following fields in the text:
+   - store_name (string)
+   - date (string)
+   - time (string)
+   - phone_number (string)
+   - total_amount (number)
+   - taxes (number)
+   - address (string)
+   - For line items, return three separate fields:
+       * line_item: includes all words that contribute to any line item
+       * line_item_name: includes words that contribute to the item name
+       * line_item_price: includes words that contribute to the item price
 
-If a particular field is not found, return an empty string or null for that field.
+   Instead of returning the text or centroid, **return an array of {"l": <line_id>, "w": <word_id>} for each field.**
+   - For example, if you think the first two words (line_id=0, word_id=0 and line_id=0, word_id=1) make up 'store_name', return:
+     "store_name": [
+       {"l": 0, "w": 0},
+       {"l": 0, "w": 1}
+     ]
+   - If you cannot find a particular field, return an empty array for it.
 
-**The JSON structure** should look like this (conceptually):
+**Output Requirements**:
+ - Output must be valid JSON.
+ - Do not return additional keys or text.
+ - Do not invent new {"l", "w"} pairs. Only use those provided in the 'words' list.
+ - If none found, return empty arrays.
+
+Example output:
 \`\`\`json
 {
-  "store_name": {
-    "value": "...",
-    "word_centroids": [
-      {"x": ..., "y": ...},
-      ...
-    ]
-  },
-  ...
-  "items": [
-    {
-      "item_name": {
-        "value": "...",
-        "word_centroids": [...]
-      },
-      "price": {
-        "value": 0.0,
-        "word_centroids": [...]
-      }
-    }
-  ],
+  "store_name": [{"l": 0, "w": 0}, {"l": 0, "w": 1}],
+  "date": [{"l": 2, "w": 5}],
+  "time": [],
+  "phone_number": [],
+  "total_amount": [],
+  "taxes": [],
+  "address": [],
+  "line_item": [{"l": 5, "w": 1}],
+  "line_item_name": [{"l": 5, "w": 2}],
+  "line_item_price": [{"l": 5, "w": 3}]
 }
 \`\`\`
-IMPORTANT: Make sure your output is valid JSON, with double quotes around keys and strings.
+Return only this JSON structure. Nothing else.
 `;
   return <pre>{prompt}</pre>;
 }
+
 function Receipt() {
   return (
     <div>
