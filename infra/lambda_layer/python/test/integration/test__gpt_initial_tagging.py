@@ -101,7 +101,7 @@ def test_batch_add_and_list_gpt_initial_tagging(
     listed_queries = set(t.query for t in filtered)
     assert queries.issubset(listed_queries)
 
-def test_get_nonexistent_gpt_initial_tagging(dynamodb_table: Literal["MyMockedTable"]):
+def test_gpt_initial_tagging_get_nonexistent(dynamodb_table: Literal["MyMockedTable"]):
     """
     Tests that attempting to get a non-existent record raises a ValueError.
     """

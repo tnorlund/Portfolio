@@ -108,7 +108,7 @@ def test_delete_receipt_word_tag(
 
 
 @pytest.mark.integration
-def test_list_receipt_word_tags(dynamodb_table: Literal["MyMockedTable"]):
+def test_receipt_word_tag_list(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
     receipt_word_tags = [
@@ -134,7 +134,7 @@ def test_list_receipt_word_tags(dynamodb_table: Literal["MyMockedTable"]):
 
 
 @pytest.mark.integration
-def test_list_receipt_word_tags_from_image(dynamodb_table: Literal["MyMockedTable"]):
+def test_receipt_word_tag_list_from_image(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
 
@@ -252,7 +252,7 @@ def test_get_receipt_word_tags(
 
 
 @pytest.mark.integration
-def test_get_receipt_word_tags_no_results(dynamodb_table: Literal["MyMockedTable"]):
+def test_receipt_word_tag_get_no_results(dynamodb_table: Literal["MyMockedTable"]):
     """
     If tag doesn't exist, we expect an empty list.
     """
@@ -262,7 +262,7 @@ def test_get_receipt_word_tags_no_results(dynamodb_table: Literal["MyMockedTable
 
 
 @pytest.mark.integration
-def test_get_receipt_word_tags_pagination(dynamodb_table: Literal["MyMockedTable"]):
+def test_receipt_word_tag_get_pagination(dynamodb_table: Literal["MyMockedTable"]):
     """
     Test pagination for receipt word tags by inserting ~30 items
     all with the same tag.
