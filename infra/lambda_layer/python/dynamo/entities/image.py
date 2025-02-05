@@ -190,6 +190,26 @@ class Image:
             and self.cdn_s3_bucket == other.cdn_s3_bucket
             and self.cdn_s3_key == other.cdn_s3_key
         )
+    
+    def __hash__(self) -> int:
+        """Returns the hash value of the Image object.
+
+        Returns:
+            int: The hash value of the Image object.
+        """
+        return hash(
+            (
+                self.image_id,
+                self.width,
+                self.height,
+                self.timestamp_added,
+                self.raw_s3_bucket,
+                self.raw_s3_key,
+                self.sha256,
+                self.cdn_s3_bucket,
+                self.cdn_s3_key,
+            )
+        )
 
 
 def itemToImage(item: dict) -> Image:

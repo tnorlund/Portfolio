@@ -207,6 +207,25 @@ class GPTValidation:
             "response": {"S": self.response},
             "timestamp_added": {"S": self.timestamp_added},
         }
+    
+    def __hash__(self) -> int:
+        """Returns the hash value of the GPTValidation object.
+
+        Returns:
+            int: The hash value of the GPTValidation object.
+        """
+        return hash(
+            (
+                self.image_id,
+                self.receipt_id,
+                self.line_id,
+                self.word_id,
+                self.tag,
+                self.query,
+                self.response,
+                self.timestamp_added,
+            )
+        )
 
 
 def itemToGPTValidation(item: dict) -> GPTValidation:
