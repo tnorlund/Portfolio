@@ -26,6 +26,9 @@ const ReceiptWords: React.FC = () => {
   const [tagIndex, setTagIndex] = useState(0);
   const [loading, setLoading] = useState<boolean>(false);
 
+  // State to keep track of how many degrees the button is rotated
+  const [rotation, setRotation] = useState<number>(0);
+
   const currentTag = TAGS[tagIndex];
 
   const handleNextTag = () => {
@@ -35,11 +38,14 @@ const ReceiptWords: React.FC = () => {
     setTagIndex((prevIndex) => (prevIndex + 1) % TAGS.length);
   };
 
-  // Animate the button: while loading, the button rotates continuously.
+  /**
+   * Animate the button using the current `rotation` state.
+   * Each time `rotation` changes, the button smoothly rotates to the new angle.
+   * Increased tension for a snappier feel.
+   */
   const buttonSpring = useSpring({
-    transform: loading ? "rotate(360deg)" : "rotate(0deg)",
-    config: { duration: 1000 },
-    loop: loading ? { reverse: false } : false,
+    transform: `rotate(${rotation}deg)`,
+    config: { tension: 300, friction: 20 },
   });
 
   useEffect(() => {
@@ -47,24 +53,32 @@ const ReceiptWords: React.FC = () => {
       setLoading(true);
       try {
         let lastEvaluatedKey: string | undefined = undefined;
-        // Clear the current words when the tag changes.
+        // Clear current words on each tag switch
         setWords([]);
         setHistogramWords([]);
-        // Fetch pages incrementally.
+
+        // Paginate until no more results
         do {
           const response: ReceiptWordsApiResponse = await fetchReceiptWords(
             currentTag,
             200,
             lastEvaluatedKey
           );
-          // Update the words state incrementally.
           setWords((prevWords) => [...prevWords, ...response.words]);
           setHistogramWords((prevWords) => [...prevWords, ...response.words]);
+
+          // Move to the next page
           lastEvaluatedKey = response.lastEvaluatedKey;
+
+          // Apply a random rotation after each successful fetch
+          // Range: -30° to +30°
+          setRotation((prevRotation) => prevRotation + (Math.random() * 60 - 30));
         } while (lastEvaluatedKey);
       } catch (error) {
         console.error("Error fetching receipt words:", error);
       } finally {
+        // Bring the button back to the original angle after paginating
+        setRotation(0);
         setLoading(false);
       }
     };
@@ -74,7 +88,6 @@ const ReceiptWords: React.FC = () => {
 
   return (
     <div style={{ margin: "1rem auto", maxWidth: "1200px" }}>
-      {/* Button container with high z-index so that it is always visible */}
       <div
         style={{
           marginBottom: "1rem",
@@ -84,6 +97,8 @@ const ReceiptWords: React.FC = () => {
         }}
       >
         <animated.button
+          // onClick is not triggered when disabled during loading.
+          // Alternatively: onClick={loading ? undefined : handleNextTag}
           onClick={handleNextTag}
           style={buttonSpring}
           disabled={loading}
@@ -91,7 +106,14 @@ const ReceiptWords: React.FC = () => {
           {loading ? "Loading..." : TAG_LABELS[currentTag]}
         </animated.button>
       </div>
-      <div style={{ display: "flex", width: "100%", alignItems: "stretch", gap: "1rem" }}>
+      <div
+        style={{
+          display: "flex",
+          width: "100%",
+          alignItems: "stretch",
+          gap: "1rem",
+        }}
+      >
         <div style={{ flex: 1 }}>
           <WordsSvgContainer words={words} />
         </div>
