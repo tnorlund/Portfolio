@@ -1,114 +1,18 @@
 import React from "react";
-import { ReceiptWord } from "./interfaces";
-
-/** Characters you care about */
-const CHARACTERS = [
-  " ",
-  "!",
-  '"',
-  "#",
-  "$",
-  "%",
-  "&",
-  "'",
-  "(",
-  ")",
-  "*",
-  "+",
-  ",",
-  "-",
-  ".",
-  "/",
-  "0",
-  "1",
-  "2",
-  "3",
-  "4",
-  "5",
-  "6",
-  "7",
-  "8",
-  "9",
-  ":",
-  ";",
-  "<",
-  "=",
-  ">",
-  "?",
-  "@",
-  "A",
-  "B",
-  "C",
-  "D",
-  "E",
-  "F",
-  "G",
-  "H",
-  "I",
-  "J",
-  "K",
-  "L",
-  "M",
-  "N",
-  "O",
-  "P",
-  "Q",
-  "R",
-  "S",
-  "T",
-  "U",
-  "V",
-  "W",
-  "X",
-  "Y",
-  "Z",
-  "[",
-  "\\",
-  "]",
-  "_",
-  "a",
-  "b",
-  "c",
-  "d",
-  "e",
-  "f",
-  "g",
-  "h",
-  "i",
-  "j",
-  "k",
-  "l",
-  "m",
-  "n",
-  "o",
-  "p",
-  "q",
-  "r",
-  "s",
-  "t",
-  "u",
-  "v",
-  "w",
-  "x",
-  "y",
-  "z",
-  "{",
-  "}",
-  "|",
-  "~",
-];
+import { CHARACTERS } from "./utils";
+import { ReceiptWord } from "../interfaces";
 
 export interface IQRStats {
-  min: number;
-  q1: number;
-  median: number;
-  q3: number;
-  max: number;
-}
+    min: number;
+    q1: number;
+    median: number;
+    q3: number;
+    max: number;
+  }
 
-interface IQRMap {
-  [char: string]: IQRStats;
-}
+  interface IQRMap {
+    [char: string]: IQRStats;
+  }
 
 /** Compute boxplot stats (min, q1, median, q3, max) for a sorted array. */
 function computeIQR(sorted: number[]): IQRStats {
@@ -233,6 +137,7 @@ const MiniBoxPlot: React.FC<{
   );
 };
 
+// TufteChartInner
 const TufteChartInner: React.FC<{ words: ReceiptWord[] }> = ({ words }) => {
   // 1) Compute boxplot data for all characters
   const iqrMap = computeLetterIQRMap(words, CHARACTERS);
@@ -285,4 +190,20 @@ const TufteChartInner: React.FC<{ words: ReceiptWord[] }> = ({ words }) => {
   );
 };
 
-export default TufteChartInner;
+const TufteBoxplot: React.FC<{ words: ReceiptWord[] }> = ({ words }) => {
+    return (
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          minHeight: "300px",
+          position: "relative", // <-- needed for absolutely-positioned text overlay
+        }}
+      >
+        {/* TufteChartInner will render the SVG plus text overlay. */}
+        <TufteChartInner words={words} />
+      </div>
+    );
+  };
+
+export default TufteBoxplot;

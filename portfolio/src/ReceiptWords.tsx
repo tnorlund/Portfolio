@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useSpring, animated } from "@react-spring/web";
 import { fetchReceiptWords } from "./api";
 import { ReceiptWord, ReceiptWordsApiResponse } from "./interfaces";
+// import TufteBoxplot from "./TufteBoxplot";
 import TufteBoxplot from "./TufteBoxplot";
 import WordsSvgContainer from "./WordsSvgContainer";
 
