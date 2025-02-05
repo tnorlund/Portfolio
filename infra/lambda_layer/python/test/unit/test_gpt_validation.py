@@ -24,7 +24,7 @@ def sample_gpt_validation():
 # --- Initialization Tests ---
 
 @pytest.mark.unit
-def test_gpt_validation_init(sample_gpt_validation):
+def test_gpt_validation_init_valid(sample_gpt_validation):
     """Test that GPTValidation initializes correct attributes."""
     gv = sample_gpt_validation
     assert gv.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
@@ -37,7 +37,7 @@ def test_gpt_validation_init(sample_gpt_validation):
     assert gv.timestamp_added == "2021-01-01T00:00:00"
 
 @pytest.mark.unit
-def test_gpt_validation_init_bad_image_id():
+def test_gpt_validation_init_invalid_image_id():
     """Test that GPTValidation raises ValueError for an invalid image_id."""
     with pytest.raises(ValueError):
         GPTValidation(
@@ -63,7 +63,7 @@ def test_gpt_validation_init_bad_image_id():
         )
 
 @pytest.mark.unit
-def test_gpt_validation_init_bad_receipt_id():
+def test_gpt_validation_init_invalid_receipt_id():
     """Test that GPTValidation raises ValueError for an invalid receipt_id."""
     with pytest.raises(ValueError, match="receipt_id must be an integer"):
         GPTValidation(
@@ -89,7 +89,7 @@ def test_gpt_validation_init_bad_receipt_id():
         )
 
 @pytest.mark.unit
-def test_gpt_validation_init_bad_line_id():
+def test_gpt_validation_init_invalid_line_id():
     """Test that GPTValidation raises ValueError for an invalid line_id."""
     with pytest.raises(ValueError, match="line_id must be an integer"):
         GPTValidation(
@@ -115,7 +115,7 @@ def test_gpt_validation_init_bad_line_id():
         )
 
 @pytest.mark.unit
-def test_gpt_validation_init_bad_word_id():
+def test_gpt_validation_init_invalid_word_id():
     """Test that GPTValidation raises ValueError for an invalid word_id."""
     with pytest.raises(ValueError, match="word_id must be an integer"):
         GPTValidation(
@@ -141,7 +141,7 @@ def test_gpt_validation_init_bad_word_id():
         )
 
 @pytest.mark.unit
-def test_gpt_validation_init_bad_tag():
+def test_gpt_validation_init_invalid_tag():
     """Test that GPTValidation raises ValueError for an invalid tag."""
     with pytest.raises(ValueError, match="tag must not be empty"):
         GPTValidation(
@@ -190,7 +190,7 @@ def test_gpt_validation_init_bad_tag():
         )
 
 @pytest.mark.unit
-def test_gpt_validation_init_bad_query():
+def test_gpt_validation_init_invalid_query():
     """Test that GPTValidation raises ValueError for an invalid query."""
     with pytest.raises(ValueError, match="query must be a non-empty string"):
         GPTValidation(
@@ -216,7 +216,7 @@ def test_gpt_validation_init_bad_query():
         )
 
 @pytest.mark.unit
-def test_gpt_validation_init_bad_response():
+def test_gpt_validation_init_invalid_response():
     """Test that GPTValidation raises ValueError for an invalid response."""
     with pytest.raises(ValueError, match="response must be a non-empty string"):
         GPTValidation(
@@ -242,7 +242,7 @@ def test_gpt_validation_init_bad_response():
         )
 
 @pytest.mark.unit
-def test_gpt_validation_init_bad_timestamp():
+def test_gpt_validation_init_invalid_timestamp():
     """Test that GPTValidation raises ValueError for an invalid timestamp_added."""
     with pytest.raises(ValueError, match="timestamp_added must be a datetime object or a string"):
         GPTValidation(
@@ -378,7 +378,7 @@ def test_item_to_gpt_validation_missing_keys():
         itemToGPTValidation(incomplete_item)
 
 @pytest.mark.unit
-def test_item_to_gpt_validation_bad_format():
+def test_item_to_gpt_validation_invalid_format():
     """Test that itemToGPTValidation raises an error for an improperly formatted item."""
     bad_item = {
         "PK": {"S": "IMAGE#bad"},  # Improperly formatted

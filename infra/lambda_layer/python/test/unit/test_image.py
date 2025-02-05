@@ -36,7 +36,7 @@ def example_image_no_cdn_key():
 
 
 @pytest.mark.unit
-def test_init(example_image):
+def test_image_init_valid(example_image):
     """Test the Image constructor"""
     assert example_image.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert example_image.width == 10
@@ -50,7 +50,7 @@ def test_init(example_image):
 
 
 @pytest.mark.unit
-def test_init_bad_id():
+def test_image_init_invalid_id():
     with pytest.raises(ValueError, match="uuid must be a string"):
         Image(
             1,
@@ -74,7 +74,7 @@ def test_init_bad_id():
 
 
 @pytest.mark.unit
-def test_init_bad_width_and_height():
+def test_image_init_invalid_width_and_height():
     with pytest.raises(ValueError, match="width and height must be positive integers"):
         Image(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -118,7 +118,7 @@ def test_init_bad_width_and_height():
 
 
 @pytest.mark.unit
-def test_init_bad_timestamp():
+def test_image_init_invalid_timestamp():
     with pytest.raises(
         ValueError, match="timestamp_added must be a datetime object or a string"
     ):
@@ -134,7 +134,7 @@ def test_init_bad_timestamp():
 
 
 @pytest.mark.unit
-def test_init_bad_s3_bucket():
+def test_image_init_invalid_s3_bucket():
     """Test that the s3 bucket is a str in the constructor"""
     with pytest.raises(ValueError, match="raw_s3_bucket must be a string"):
         Image(
@@ -149,7 +149,7 @@ def test_init_bad_s3_bucket():
 
 
 @pytest.mark.unit
-def test_init_bad_s3_key():
+def test_image_init_invalid_s3_key():
     """Test that the s3 key is a str in the constructor"""
     with pytest.raises(ValueError, match="raw_s3_key must be a string"):
         Image(
@@ -164,7 +164,7 @@ def test_init_bad_s3_key():
 
 
 @pytest.mark.unit
-def test_init_bad_sha256():
+def test_image_init_invalid_sha256():
     with pytest.raises(ValueError, match="sha256 must be a string"):
         Image(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -178,7 +178,7 @@ def test_init_bad_sha256():
 
 
 @pytest.mark.unit
-def test_init_bad_cdn_s3_bucket():
+def test_image_init_invalid_cdn_s3_bucket():
     with pytest.raises(ValueError, match="cdn_s3_bucket must be a string"):
         Image(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -193,7 +193,7 @@ def test_init_bad_cdn_s3_bucket():
 
 
 @pytest.mark.unit
-def test_init_bad_cdn_s3_key():
+def test_image_init_invalid_cdn_s3_key():
     with pytest.raises(ValueError, match="cdn_s3_key must be a string"):
         Image(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -208,7 +208,7 @@ def test_init_bad_cdn_s3_key():
 
 
 @pytest.mark.unit
-def test_key(example_image):
+def test_image_key(example_image):
     """Test the Image.key() method"""
     assert example_image.key() == {
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
@@ -217,7 +217,7 @@ def test_key(example_image):
 
 
 @pytest.mark.unit
-def test_gsi1_key(example_image):
+def test_image_gsi1_key(example_image):
     """Test the Image.gsi1_key() method"""
     assert example_image.gsi1_key() == {
         "GSI1PK": {"S": "IMAGE"},
@@ -226,7 +226,7 @@ def test_gsi1_key(example_image):
 
 
 @pytest.mark.unit
-def test_to_item(example_image):
+def test_image_to_item(example_image):
     """Test the Image.to_item() method"""
     # Case: with sha256
     assert example_image.to_item() == {
@@ -247,7 +247,7 @@ def test_to_item(example_image):
 
 
 @pytest.mark.unit
-def test_to_item_no_sha(example_image_no_sha):
+def test_image_to_item_no_sha(example_image_no_sha):
     """Test the Image.to_item() method"""
     # Case: without sha256
     assert example_image_no_sha.to_item() == {
@@ -268,7 +268,7 @@ def test_to_item_no_sha(example_image_no_sha):
 
 
 @pytest.mark.unit
-def test_to_item_no_cdn_bucket(example_image_no_cdn_bucket):
+def test_image_to_item_no_cdn_bucket(example_image_no_cdn_bucket):
     """Test the Image.to_item() method"""
     # Case: without cdn_s3_bucket
     assert example_image_no_cdn_bucket.to_item() == {
@@ -289,7 +289,7 @@ def test_to_item_no_cdn_bucket(example_image_no_cdn_bucket):
 
 
 @pytest.mark.unit
-def test_to_item_no_cdn_key(example_image_no_cdn_key):
+def test_image_to_item_no_cdn_key(example_image_no_cdn_key):
     """Test the Image.to_item() method"""
     # Case: without cdn_s3_key
     assert example_image_no_cdn_key.to_item() == {
@@ -310,7 +310,7 @@ def test_to_item_no_cdn_key(example_image_no_cdn_key):
 
 
 @pytest.mark.unit
-def test_repr(example_image):
+def test_image_repr(example_image):
     """Test the Image.__repr__() method"""
     assert repr(example_image) == (
         "Image("
@@ -328,7 +328,7 @@ def test_repr(example_image):
 
 
 @pytest.mark.unit
-def test_iter(example_image):
+def test_image_iter(example_image):
     """Test the Image.__iter__() method"""
     # If you include sha256 in iteration, test that:
     assert dict(example_image) == {
@@ -345,7 +345,7 @@ def test_iter(example_image):
 
 
 @pytest.mark.unit
-def test_eq():
+def test_image_eq():
     """Test the Image.__eq__() method"""
     # fmt: off
     i1 =  Image( "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 10, 20, "2021-01-01T00:00:00", "bucket", "key", "abc123", "cdn_bucket", "cdn_key", )

@@ -23,7 +23,7 @@ def example_receipt():
 
 
 @pytest.mark.unit
-def test_init(example_receipt):
+def test_receipt_init_valid(example_receipt):
     """Test constructing a valid Receipt."""
     assert example_receipt.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert example_receipt.receipt_id == 1
@@ -40,7 +40,7 @@ def test_init(example_receipt):
 
 
 @pytest.mark.unit
-def test_receipt_invalid_image_id():
+def test_receipt_init_invalid_image_id():
     """Test that constructing a Receipt with invalid image_id raises ValueError."""
     with pytest.raises(ValueError, match="uuid must be a string"):
         Receipt(
@@ -60,7 +60,7 @@ def test_receipt_invalid_image_id():
 
 
 @pytest.mark.unit
-def test_receipt_invalid_id():
+def test_receipt_init_invalid_id():
     """Test that constructing a Receipt with invalid id raises ValueError."""
     with pytest.raises(ValueError):
         Receipt(
@@ -95,7 +95,7 @@ def test_receipt_invalid_id():
 
 
 @pytest.mark.unit
-def test_receipt_invalid_dimensions():
+def test_receipt_init_invalid_dimensions():
     """Test that constructing a Receipt with invalid width/height raises ValueError."""
     # Invalid width
     with pytest.raises(ValueError):
@@ -132,7 +132,7 @@ def test_receipt_invalid_dimensions():
 
 
 @pytest.mark.unit
-def test_valid_timestamp():
+def test_receipt_init_valid_timestamp():
     """Test that constructing a Receipt with a valid timestamp works."""
     Receipt(
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -151,7 +151,7 @@ def test_valid_timestamp():
 
 
 @pytest.mark.unit
-def test_receipt_invalid_timestamp():
+def test_receipt_init_invalid_timestamp():
     """Test that constructing a Receipt with an invalid timestamp raises ValueError."""
     with pytest.raises(
         ValueError, match="timestamp_added must be a datetime object or a string"
@@ -173,7 +173,7 @@ def test_receipt_invalid_timestamp():
 
 
 @pytest.mark.unit
-def test_receipt_invalid_s3_bucket():
+def test_receipt_init_invalid_s3_bucket():
     """Test that constructing a Receipt with an invalid S3 bucket raises ValueError."""
     with pytest.raises(ValueError, match="raw_s3_bucket must be a string"):
         Receipt(
@@ -193,7 +193,7 @@ def test_receipt_invalid_s3_bucket():
 
 
 @pytest.mark.unit
-def test_receipt_invalid_s3_key():
+def test_receipt_init_invalid_s3_key():
     """Test that constructing a Receipt with an invalid S3 key raises ValueError."""
     with pytest.raises(ValueError, match="raw_s3_key must be a string"):
         Receipt(
@@ -213,7 +213,7 @@ def test_receipt_invalid_s3_key():
 
 
 @pytest.mark.unit
-def test_receipt_invalid_point_types():
+def test_receipt_init_invalid_point_types():
     """Test that constructing a Receipt with invalid point data raises ValueError."""
     with pytest.raises(ValueError):
         Receipt(
@@ -233,7 +233,7 @@ def test_receipt_invalid_point_types():
 
 
 @pytest.mark.unit
-def test_receipt_invalid_sha256():
+def test_receipt_init_invalid_sha256():
     """Test that constructing a Receipt with an invalid SHA256 raises ValueError."""
     with pytest.raises(ValueError, match="sha256 must be a string"):
         Receipt(
@@ -253,7 +253,7 @@ def test_receipt_invalid_sha256():
 
 
 @pytest.mark.unit
-def test_receipt_invalid_cdn_bucket():
+def test_receipt_init_invalid_cdn_bucket():
     """Test that constructing a Receipt with an invalid CDN bucket raises ValueError."""
     with pytest.raises(ValueError, match="cdn_s3_bucket must be a string"):
         Receipt(
@@ -274,7 +274,7 @@ def test_receipt_invalid_cdn_bucket():
 
 
 @pytest.mark.unit
-def test_receipt_invalid_cdn_key():
+def test_receipt_init_invalid_cdn_key():
     """Test that constructing a Receipt with an invalid CDN key raises ValueError."""
     with pytest.raises(ValueError, match="cdn_s3_key must be a string"):
         Receipt(
@@ -295,7 +295,7 @@ def test_receipt_invalid_cdn_key():
 
 
 @pytest.mark.unit
-def test_key_generation(example_receipt):
+def test_receipt_key_generation(example_receipt):
     """Test that the primary key is correctly generated."""
     assert example_receipt.key() == {
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
@@ -304,7 +304,7 @@ def test_key_generation(example_receipt):
 
 
 @pytest.mark.unit
-def test_gsi1_key_generation(example_receipt):
+def test_receipt_gsi1_key_generation(example_receipt):
     """Test that the GSI1 key is correctly generated."""
     assert example_receipt.gsi1_key() == {
         "GSI1PK": {"S": "IMAGE"},
@@ -313,7 +313,7 @@ def test_gsi1_key_generation(example_receipt):
 
 
 @pytest.mark.unit
-def test_gsi2_key_generation(example_receipt):
+def test_receipt_gsi2_key_generation(example_receipt):
     """Test that the GSI2 key is correctly generated."""
     assert example_receipt.gsi2_key() == {
         "GSI2PK": {"S": "RECEIPT"},
@@ -322,7 +322,7 @@ def test_gsi2_key_generation(example_receipt):
 
 
 @pytest.mark.unit
-def test_to_item(example_receipt):
+def test_receipt_to_item(example_receipt):
     """Test converting a Receipt to a DynamoDB item."""
     assert example_receipt.to_item() == {
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
@@ -368,7 +368,7 @@ def test_to_item(example_receipt):
 
 
 @pytest.mark.unit
-def test_repr(example_receipt):
+def test_receipt_repr(example_receipt):
     """Test the string representation of a Receipt."""
     assert str(example_receipt) == (
         "Receipt("
@@ -391,7 +391,7 @@ def test_repr(example_receipt):
 
 
 @pytest.mark.unit
-def test_iter(example_receipt):
+def test_receipt_iter(example_receipt):
     """Test that Receipt is iterable."""
     assert dict(example_receipt) == {
         "receipt_id": 1,
@@ -413,7 +413,7 @@ def test_iter(example_receipt):
 
 
 @pytest.mark.unit
-def test_eq(example_receipt):
+def test_receipt_eq(example_receipt):
     """Test that Receipt equality works as expected."""
     assert example_receipt == Receipt(**dict(example_receipt))
     assert example_receipt != Receipt(**dict(example_receipt, receipt_id=2))
@@ -421,7 +421,7 @@ def test_eq(example_receipt):
 
 
 @pytest.mark.unit
-def test_item_to_receipt_valid(example_receipt):
+def test_item_to_receipt_valid_input(example_receipt):
     """Test itemToReceipt with a valid DynamoDB item."""
     itemToReceipt(example_receipt.to_item()) == example_receipt
 

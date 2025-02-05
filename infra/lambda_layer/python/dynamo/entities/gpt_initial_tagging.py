@@ -102,7 +102,7 @@ class GPTInitialTagging:
         """
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#QUERY#INITIAL_TAGGING"}
+            "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#QUERY#INITIAL_TAGGING"},
         }
 
     def to_item(self) -> dict:
@@ -114,6 +114,18 @@ class GPTInitialTagging:
             "response": {"S": self.response},
             "timestamp_added": {"S": self.timestamp_added},
         }
+
+    def __hash__(self):
+        """Generates a hash value for the GPTInitialTagging."""
+        return hash(
+            (
+                self.image_id,
+                self.receipt_id,
+                self.query,
+                self.response,
+                self.timestamp_added,
+            )
+        )
 
 
 def itemToGPTInitialTagging(item: dict) -> GPTInitialTagging:
@@ -135,7 +147,9 @@ def itemToGPTInitialTagging(item: dict) -> GPTInitialTagging:
 
     try:
         pk_parts = item["PK"]["S"].split("#")  # e.g. IMAGE#<image_id>
-        sk_parts = item["SK"]["S"].split("#")  # e.g. RECEIPT#<receipt_id>#QUERY#INITIAL_TAGGING
+        sk_parts = item["SK"]["S"].split(
+            "#"
+        )  # e.g. RECEIPT#<receipt_id>#QUERY#INITIAL_TAGGING
 
         image_id = pk_parts[1]
         receipt_id = int(sk_parts[1])
