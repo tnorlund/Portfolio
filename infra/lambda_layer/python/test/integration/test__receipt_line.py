@@ -103,7 +103,7 @@ def test_delete_receipt_line(
 
 
 @pytest.mark.integration
-def test_list_receipt_lines(dynamodb_table: Literal["MyMockedTable"]):
+def test_receipt_line_list(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
     lines = [
@@ -137,7 +137,7 @@ def test_list_receipt_lines(dynamodb_table: Literal["MyMockedTable"]):
 
 
 @pytest.mark.integration
-def test_list_receipt_lines_from_receipt(dynamodb_table: Literal["MyMockedTable"]):
+def test_receipt_line_list_from_receipt(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
     # Lines for receipt_id=1, image_id=1

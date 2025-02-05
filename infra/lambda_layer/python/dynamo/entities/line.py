@@ -557,6 +557,28 @@ class Line:
             and self.angle_radians == other.angle_radians
             and self.confidence == other.confidence
         )
+    
+    def __hash__(self) -> int:
+        """Returns the hash value of the Line object.
+
+        Returns:
+            int: The hash value of the Line object.
+        """
+        return hash(
+            (
+                self.image_id,
+                self.line_id,
+                self.text,
+                tuple(self.bounding_box.items()),
+                tuple(self.top_right.items()),
+                tuple(self.top_left.items()),
+                tuple(self.bottom_right.items()),
+                tuple(self.bottom_left.items()),
+                self.angle_degrees,
+                self.angle_radians,
+                self.confidence,
+            )
+        )
 
 
 def itemToLine(item: dict) -> Line:

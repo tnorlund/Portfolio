@@ -21,7 +21,7 @@ def sample_gpt_tagging():
 # --- Initialization Tests ---
 
 @pytest.mark.unit
-def test_gpt_tagging_init(sample_gpt_tagging):
+def test_gpt_tagging_init_valid(sample_gpt_tagging):
     """Test that GPTInitialTagging initializes correct attributes."""
     gt = sample_gpt_tagging
     assert gt.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
@@ -31,7 +31,7 @@ def test_gpt_tagging_init(sample_gpt_tagging):
     assert gt.timestamp_added == "2021-01-01T00:00:00"
 
 @pytest.mark.unit
-def test_gpt_tagging_init_bad_image_id():
+def test_gpt_tagging_init_invalid_image_id():
     """Test that GPTInitialTagging raises ValueError for an invalid image_id."""
     with pytest.raises(ValueError):
         GPTInitialTagging(
@@ -51,7 +51,7 @@ def test_gpt_tagging_init_bad_image_id():
         )
 
 @pytest.mark.unit
-def test_gpt_tagging_init_bad_receipt_id():
+def test_gpt_tagging_init_invalid_receipt_id():
     """Test that GPTInitialTagging raises ValueError for an invalid receipt_id."""
     with pytest.raises(ValueError, match="receipt_id must be an integer"):
         GPTInitialTagging(
@@ -71,7 +71,7 @@ def test_gpt_tagging_init_bad_receipt_id():
         )
 
 @pytest.mark.unit
-def test_gpt_tagging_init_bad_query():
+def test_gpt_tagging_init_invalid_query():
     """Test that GPTInitialTagging raises ValueError for an invalid query."""
     with pytest.raises(ValueError, match="query must be a non-empty string"):
         GPTInitialTagging(
@@ -91,7 +91,7 @@ def test_gpt_tagging_init_bad_query():
         )
 
 @pytest.mark.unit
-def test_gpt_tagging_init_bad_response():
+def test_gpt_tagging_init_invalid_response():
     """Test that GPTInitialTagging raises ValueError for an invalid response."""
     with pytest.raises(ValueError, match="response must be a non-empty string"):
         GPTInitialTagging(
@@ -111,7 +111,7 @@ def test_gpt_tagging_init_bad_response():
         )
 
 @pytest.mark.unit
-def test_gpt_tagging_init_bad_timestamp():
+def test_gpt_tagging_init_invalid_timestamp():
     """Test that GPTInitialTagging raises ValueError for an invalid timestamp_added."""
     with pytest.raises(ValueError, match="timestamp_added must be a datetime object or a string"):
         GPTInitialTagging(
@@ -209,7 +209,7 @@ def test_item_to_gpt_tagging_missing_keys():
         itemToGPTInitialTagging(incomplete_item)
 
 @pytest.mark.unit
-def test_item_to_gpt_tagging_bad_format():
+def test_item_to_gpt_tagging_invalid_format():
     """Test that itemToGPTInitialTagging raises an error for an improperly formatted item."""
     bad_item = {
         "PK": {"S": "IMAGE#bad"},  # e.g. missing or incomplete ID

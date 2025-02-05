@@ -216,6 +216,24 @@ class ReceiptWordTag:
                 )
             },
         }
+    
+    def __hash__(self) -> int:
+        """Returns the hash value of the ReceiptWordTag.
+
+        Returns:
+            int: The hash value of the ReceiptWordTag.
+        """
+        return hash(
+            (
+                self.image_id,
+                self.receipt_id,
+                self.line_id,
+                self.word_id,
+                self.tag,
+                self.timestamp_added,
+                self.validated,
+            )
+        )
 
 
 def itemToReceiptWordTag(item: dict) -> ReceiptWordTag:

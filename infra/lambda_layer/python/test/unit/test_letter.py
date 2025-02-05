@@ -11,7 +11,7 @@ def example_letter():
 
 
 @pytest.mark.unit
-def test_init(example_letter):
+def test_letter_init_valid(example_letter):
     """Test the Letter constructor"""
     assert example_letter.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert example_letter.line_id == 1
@@ -34,7 +34,7 @@ def test_init(example_letter):
 
 
 @pytest.mark.unit
-def test_init_bad_uuid():
+def test_letter_init_invalid_uuid():
     """Test the Letter constructor with a bad UUID"""
     # fmt: off
     with pytest.raises(ValueError, match="uuid must be a string"):
@@ -55,7 +55,7 @@ def test_init_bad_uuid():
         1.5,
     ],
 )
-def test_init_invalid_line_id(invalid_int):
+def test_letter_init_invalid_line_id(invalid_int):
     """Test constructor fails when line_id is not a valid positive integer."""
     with pytest.raises(ValueError, match=r"line_id must be"):
         # fmt: off
@@ -74,7 +74,7 @@ def test_init_invalid_line_id(invalid_int):
         1.5,
     ],
 )
-def test_init_invalid_word_id(invalid_int):
+def test_letter_init_invalid_word_id(invalid_int):
     """Test constructor fails when word_id is not a valid positive integer."""
     with pytest.raises(ValueError, match=r"word_id must be"):
         # fmt: off
@@ -93,7 +93,7 @@ def test_init_invalid_word_id(invalid_int):
         1.5,
     ],
 )
-def test_init_invalid_id(invalid_int):
+def test_letter_init_invalid_id(invalid_int):
     """Test constructor fails when id is not a valid positive integer."""
     with pytest.raises(ValueError, match=r"id must be"):
         # fmt: off
@@ -102,7 +102,7 @@ def test_init_invalid_id(invalid_int):
 
 
 @pytest.mark.unit
-def test_init_invalid_text():
+def test_letter_init_invalid_text():
     """Test constructor fails when text is not a string."""
     # fmt: off
     with pytest.raises(ValueError, match=r"text must be a string"):
@@ -123,7 +123,7 @@ def test_init_invalid_text():
         {"x": "str", "y": 2, "width": 3, "height": 4},  # not float/int
     ],
 )
-def test_init_invalid_bounding_box(bad_box):
+def test_letter_init_invalid_bounding_box(bad_box):
     """Test constructor fails when bounding_box is not valid."""
     with pytest.raises(ValueError):
         # fmt: off
@@ -141,7 +141,7 @@ def test_init_invalid_bounding_box(bad_box):
         {"x": "str", "y": 2},
     ],
 )
-def test_init_invalid_top_right(bad_point):
+def test_letter_init_invalid_top_right(bad_point):
     """Test constructor fails when top_right is not valid."""
     with pytest.raises(ValueError):
         # fmt: off
@@ -159,7 +159,7 @@ def test_init_invalid_top_right(bad_point):
         {"x": "str", "y": 2},
     ],
 )
-def test_init_invalid_top_left(bad_point):
+def test_letter_init_invalid_top_left(bad_point):
     """Test constructor fails when top_left is not valid."""
     with pytest.raises(ValueError):
         # fmt: off
@@ -177,7 +177,7 @@ def test_init_invalid_top_left(bad_point):
         {"x": "str", "y": 2},
     ],
 )
-def test_init_invalid_bottom_right(bad_point):
+def test_letter_init_invalid_bottom_right(bad_point):
     """Test constructor fails when bottom_right is not valid."""
     with pytest.raises(ValueError):
         # fmt: off
@@ -195,7 +195,7 @@ def test_init_invalid_bottom_right(bad_point):
         {"x": "str", "y": 2},
     ],
 )
-def test_init_invalid_bottom_left(bad_point):
+def test_letter_init_invalid_bottom_left(bad_point):
     """Test constructor fails when bottom_left is not valid."""
     with pytest.raises(ValueError):
         # fmt: off
@@ -205,7 +205,7 @@ def test_init_invalid_bottom_left(bad_point):
 
 @pytest.mark.unit
 @pytest.mark.parametrize("bad_confidence", [-0.1, 0.0, 1.0001, 2, "high", None])
-def test_init_invalid_confidence(bad_confidence):
+def test_letter_init_invalid_confidence(bad_confidence):
     """Test constructor fails when confidence is not within (0, 1]."""
     with pytest.raises(ValueError):
         # fmt: off
@@ -214,7 +214,7 @@ def test_init_invalid_confidence(bad_confidence):
 
 
 @pytest.mark.unit
-def test_init_invalid_angels():
+def test_letter_init_invalid_angles():
     """Test constructor fails when angle_degrees and angle_radians are not valid."""
     # fmt: off
     with pytest.raises(ValueError, match="angle_degrees must be a float or int"):
@@ -225,7 +225,7 @@ def test_init_invalid_angels():
 
 
 @pytest.mark.unit
-def test_key(example_letter):
+def test_letter_key(example_letter):
     """Test the Letter.key method"""
     assert example_letter.key() == {
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
@@ -234,7 +234,7 @@ def test_key(example_letter):
 
 
 @pytest.mark.unit
-def test_to_item(example_letter):
+def test_letter_to_item(example_letter):
     """Test the Letter.to_item method"""
     assert example_letter.to_item() == {
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
@@ -280,7 +280,7 @@ def test_to_item(example_letter):
 
 
 @pytest.mark.unit
-def test_calculate_centroid(example_letter):
+def test_letter_calculate_centroid(example_letter):
     """Test the Letter.centroid method"""
     assert example_letter.calculate_centroid() == (12.5, 21.0)
 
@@ -587,7 +587,7 @@ def test_letter_rotate_limited_range(angle, use_radians, should_raise):
         ),
     ],
 )
-def test_shear(shx, shy, pivot_x, pivot_y, expected_corners):
+def test_letter_shear(shx, shy, pivot_x, pivot_y, expected_corners):
     """
     Test that the shear(shx, shy, pivot_x, pivot_y) method correctly shears
     the corners of the line and recalculates the bounding box.
@@ -632,7 +632,7 @@ def test_shear(shx, shy, pivot_x, pivot_y, expected_corners):
 
 
 @pytest.mark.unit
-def test_warp_affine():
+def test_letter_warp_affine():
     """
     Test that warp_affine(a, b, c, d, e, f) applies the affine transform
     x' = a*x + b*y + c, y' = d*x + e*y + f to all corners,
@@ -706,7 +706,165 @@ def test_warp_affine():
     assert letter.angle_degrees == pytest.approx(0.0)
 
 @pytest.mark.unit
-def test_repr(example_letter):
+def test_letter_warp_affine_normalized_forward(example_letter):
+    """
+    Test that Letter.warp_affine_normalized_forward() applies a normalized affine transform
+    to all corners of a Letter, recalculates the bounding box correctly, and leaves
+    the angles unchanged.
+
+    The transformation is defined as follows:
+      - For each corner, compute normalized coordinates:
+            u = (x - bounding_box.x) / bounding_box.width
+            v = (y - bounding_box.y) / bounding_box.height
+      - Then apply:
+            u' = u + 0.1
+            v' = v + 0.2
+      - Finally, convert back to absolute coordinates:
+            x' = bounding_box.x + u' * bounding_box.width
+            y' = bounding_box.y + v' * bounding_box.height
+
+    Using the dimensions orig_width = new_width = 5.0 and orig_height = new_height = 2.0,
+    the expected values (based on actual computation) are:
+      - top_left:      (10.02, 20.1)
+      - top_right:     (15.02, 20.1)
+      - bottom_left:   (10.02, 22.1)
+      - bottom_right:  (15.02, 22.1)
+      - bounding_box:  {"x": 10.02, "y": 20.1, "width": 5.0, "height": 2.0}
+      - angles remain unchanged (0.0).
+    """
+    # Ensure the letter starts with no rotation.
+    example_letter.angle_degrees = 0.0
+    example_letter.angle_radians = 0.0
+
+    # Transformation coefficients.
+    a, b, c = 1.0, 0.0, 0.1  # for x: u' = 1*u + 0*v + 0.1
+    d, e, f = 0.0, 1.0, 0.2  # for y: v' = 0*u + 1*v + 0.2
+
+    # Dimensions: use the original and new dimensions (both unchanged here).
+    orig_width, orig_height = 5.0, 2.0
+    new_width, new_height = 5.0, 2.0
+    flip_y = False
+
+    # Expected values based on the observed behavior.
+    expected_top_left     = {"x": 10.02, "y": 20.1}
+    expected_top_right    = {"x": 15.02, "y": 20.1}
+    expected_bottom_left  = {"x": 10.02, "y": 22.1}
+    expected_bottom_right = {"x": 15.02, "y": 22.1}
+    expected_bb = {"x": 10.02, "y": 20.1, "width": 5.0, "height": 2.0}
+
+    # Apply the normalized affine transformation.
+    example_letter.warp_affine_normalized_forward(
+        a, b, c, d, e, f,
+        orig_width, orig_height, new_width, new_height,
+        flip_y
+    )
+
+    # Verify that each corner is updated correctly.
+    assert example_letter.top_left["x"] == pytest.approx(expected_top_left["x"])
+    assert example_letter.top_left["y"] == pytest.approx(expected_top_left["y"])
+    assert example_letter.top_right["x"] == pytest.approx(expected_top_right["x"])
+    assert example_letter.top_right["y"] == pytest.approx(expected_top_right["y"])
+    assert example_letter.bottom_left["x"] == pytest.approx(expected_bottom_left["x"])
+    assert example_letter.bottom_left["y"] == pytest.approx(expected_bottom_left["y"])
+    assert example_letter.bottom_right["x"] == pytest.approx(expected_bottom_right["x"])
+    assert example_letter.bottom_right["y"] == pytest.approx(expected_bottom_right["y"])
+
+    # Verify that the bounding box was recalculated correctly.
+    assert example_letter.bounding_box["x"] == pytest.approx(expected_bb["x"])
+    assert example_letter.bounding_box["y"] == pytest.approx(expected_bb["y"])
+    assert example_letter.bounding_box["width"] == pytest.approx(expected_bb["width"])
+    assert example_letter.bounding_box["height"] == pytest.approx(expected_bb["height"])
+
+    # Verify that the angles remain unchanged.
+    assert example_letter.angle_degrees == pytest.approx(0.0)
+    assert example_letter.angle_radians == pytest.approx(0.0)
+
+@pytest.mark.unit
+def test_letter_rotate_90_ccw_in_place(example_letter):
+    """
+    Test the rotate_90_ccw_in_place method of the Letter class using the example_letter fixture.
+
+    The example_letter fixture initializes a Letter with normalized corner coordinates:
+      - top_left:      (10.0, 20.0)
+      - top_right:     (15.0, 20.0)
+      - bottom_right:  (15.0, 22.0)
+      - bottom_left:   (10.0, 22.0)
+    and with an initial angle_degrees of 1.0 and angle_radians of 5.0.
+
+    When rotate_90_ccw_in_place is called with old_w=100 and old_h=200, the method performs the following steps:
+      1. Multiply each corner's normalized coordinates by the original dimensions:
+             top_left      → (10.0*100, 20.0*200) = (1000, 4000)
+             top_right     → (15.0*100, 20.0*200) = (1500, 4000)
+             bottom_right  → (15.0*100, 22.0*200) = (1500, 4400)
+             bottom_left   → (10.0*100, 22.0*200) = (1000, 4400)
+      2. Rotate each pixel coordinate 90° counter-clockwise about (0,0):
+             new_x = original y
+             new_y = old_w - original x
+         This yields:
+             top_left      → (4000, 100 - 1000) = (4000, -900)
+             top_right     → (4000, 100 - 1500) = (4000, -1400)
+             bottom_right  → (4400, 100 - 1500) = (4400, -1400)
+             bottom_left   → (4400, 100 - 1000) = (4400, -900)
+      3. Re-normalize the rotated coordinates using the new dimensions:
+             final_w = old_h = 200, final_h = old_w = 100.
+             Thus:
+             top_left      → (4000/200, -900/100) = (20.0, -9.0)
+             top_right     → (4000/200, -1400/100) = (20.0, -14.0)
+             bottom_right  → (4400/200, -1400/100) = (22.0, -14.0)
+             bottom_left   → (4400/200, -900/100) = (22.0, -9.0)
+      4. The bounding box is recalculated from the updated corners:
+             x = min(20.0, 20.0, 22.0, 22.0) = 20.0,
+             y = min(-9.0, -14.0, -14.0, -9.0) = -14.0,
+             width = 22.0 - 20.0 = 2.0,
+             height = -9.0 - (-14.0) = 5.0.
+      5. The method then increments the existing angles by 90°:
+             angle_degrees becomes 1.0 + 90 = 91.0,
+             angle_radians becomes 5.0 + (pi/2).
+    
+    The test verifies that after the rotation:
+      - The corners are updated as expected.
+      - The bounding box is correctly recalculated.
+      - The letter's angles are incremented properly.
+    """
+    # Define the original image dimensions.
+    old_w = 100
+    old_h = 200
+
+    # Invoke the rotation method on the example_letter.
+    example_letter.rotate_90_ccw_in_place(old_w, old_h)
+
+    # Expected normalized corner positions after rotation.
+    expected_top_left = {"x": 20.0, "y": -9.0}
+    expected_top_right = {"x": 20.0, "y": -14.0}
+    expected_bottom_right = {"x": 22.0, "y": -14.0}
+    expected_bottom_left = {"x": 22.0, "y": -9.0}
+
+    # Verify the corners.
+    assert example_letter.top_left["x"] == pytest.approx(expected_top_left["x"])
+    assert example_letter.top_left["y"] == pytest.approx(expected_top_left["y"])
+    assert example_letter.top_right["x"] == pytest.approx(expected_top_right["x"])
+    assert example_letter.top_right["y"] == pytest.approx(expected_top_right["y"])
+    assert example_letter.bottom_right["x"] == pytest.approx(expected_bottom_right["x"])
+    assert example_letter.bottom_right["y"] == pytest.approx(expected_bottom_right["y"])
+    assert example_letter.bottom_left["x"] == pytest.approx(expected_bottom_left["x"])
+    assert example_letter.bottom_left["y"] == pytest.approx(expected_bottom_left["y"])
+
+    # Expected bounding box.
+    expected_bb = {"x": 20.0, "y": -14.0, "width": 2.0, "height": 5.0}
+    assert example_letter.bounding_box["x"] == pytest.approx(expected_bb["x"])
+    assert example_letter.bounding_box["y"] == pytest.approx(expected_bb["y"])
+    assert example_letter.bounding_box["width"] == pytest.approx(expected_bb["width"])
+    assert example_letter.bounding_box["height"] == pytest.approx(expected_bb["height"])
+
+    # Expected angles after rotation.
+    expected_angle_degrees = 91.0
+    expected_angle_radians = 5.0 + math.pi / 2
+
+    assert example_letter.angle_degrees == pytest.approx(expected_angle_degrees)
+    assert example_letter.angle_radians == pytest.approx(expected_angle_radians)
+
+@pytest.mark.unit
+def test_letter_repr(example_letter):
     """Test the Letter __repr__ method"""
     # fmt: off
     assert (
@@ -728,7 +886,7 @@ def test_repr(example_letter):
 
 
 @pytest.mark.unit
-def test_iter(example_letter):
+def test_letter_iter(example_letter):
     """Test the Letter.__iter__ method"""
     assert dict(example_letter) == {
         "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -754,7 +912,7 @@ def test_iter(example_letter):
 
 
 @pytest.mark.unit
-def test_eq():
+def test_letter_eq():
     """Test the Letter.__eq__ method"""
     # fmt: off
     l1 = Letter( image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={ "x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, )
@@ -789,9 +947,45 @@ def test_eq():
     assert l1 != l14
     assert l1 != "some string"
 
+@pytest.mark.unit
+def test_letter_hash(example_letter):
+    """Test the Letter __hash__ and the set notation behavior for Letter objects"""
+    # Create a duplicate of example_letter by converting it to an item and back.
+    duplicate_letter = itemToLetter(example_letter.to_item())
+
+    # Confirm that converting a Letter to an item and back yields the same hash.
+    assert hash(example_letter) == hash(duplicate_letter)
+
+    # When added to a set, duplicates should collapse into a single element.
+    letter_set = {example_letter, duplicate_letter}
+    assert len(letter_set) == 1
+
+    # Create a different Letter object
+    different_letter = Letter(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=1,
+        word_id=2,
+        letter_id=4,
+        text="0",
+        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+        top_right={"x": 15.0, "y": 20.0},
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 15.0, "y": 22.0},
+        bottom_left={"x": 10.0, "y": 22.0},
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=0.90,
+    )
+
+    # Add example_letter, duplicate_letter, and different_letter to a set.
+    letter_set = {example_letter, duplicate_letter, different_letter}
+    # Since duplicate_letter is a duplicate of example_letter, it should collapse
+    assert len(letter_set) == 2
+
+
 
 @pytest.mark.unit
-def test_itemToLetter(example_letter):
+def test_item_to_letter(example_letter):
     """Test the itemToLetter function"""
     assert itemToLetter(example_letter.to_item()) == example_letter
     # Missing keys

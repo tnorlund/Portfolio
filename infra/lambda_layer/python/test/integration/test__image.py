@@ -46,7 +46,7 @@ correct_image_params = {
 
 
 @pytest.mark.integration
-def test_add_image(dynamodb_table: Literal["MyMockedTable"]):
+def test_image_add(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
     image_id = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
@@ -74,7 +74,7 @@ def test_add_image(dynamodb_table: Literal["MyMockedTable"]):
 
 
 @pytest.mark.integration
-def test_add_image_error(dynamodb_table: Literal["MyMockedTable"]):
+def test_image_add_error(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
     image_id = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
@@ -94,7 +94,7 @@ def test_add_image_error(dynamodb_table: Literal["MyMockedTable"]):
 
 
 @pytest.mark.integration
-def test_get_image(dynamodb_table: Literal["MyMockedTable"]):
+def test_image_get(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
     image_id = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
@@ -116,7 +116,7 @@ def test_get_image(dynamodb_table: Literal["MyMockedTable"]):
 
 
 @pytest.mark.integration
-def test_get_imageDetails(dynamodb_table: Literal["MyMockedTable"]):
+def test_image_get_details(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
     image_id = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
@@ -203,7 +203,7 @@ def test_get_imageDetails(dynamodb_table: Literal["MyMockedTable"]):
 
 
 @pytest.mark.integration
-def test_deleteImage(dynamodb_table: Literal["MyMockedTable"]):
+def test_image_delete(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
     image = Image(
@@ -225,7 +225,7 @@ def test_deleteImage(dynamodb_table: Literal["MyMockedTable"]):
 
 
 @pytest.mark.integration
-def test_deleteImage_error(dynamodb_table: Literal["MyMockedTable"]):
+def test_image_delete_error(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
     image = Image(
@@ -243,7 +243,7 @@ def test_deleteImage_error(dynamodb_table: Literal["MyMockedTable"]):
 
 
 @pytest.mark.integration
-def test_deleteImages(dynamodb_table: Literal["MyMockedTable"]):
+def test_image_delete_all(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
 
@@ -262,7 +262,7 @@ def test_deleteImages(dynamodb_table: Literal["MyMockedTable"]):
 
 
 @pytest.mark.integration
-def test_listImageDetails(dynamodb_table: Literal["MyMockedTable"]):
+def test_image_list_details(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
 

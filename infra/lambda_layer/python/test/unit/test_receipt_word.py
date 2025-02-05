@@ -43,7 +43,7 @@ def example_receipt_word_with_tags():
 
 
 @pytest.mark.unit
-def test_receipt_word_valid_init(example_receipt_word, example_receipt_word_with_tags):
+def test_receipt_word_init_valid(example_receipt_word, example_receipt_word_with_tags):
     """Test that a ReceiptWord with valid arguments initializes correctly."""
     assert example_receipt_word.receipt_id == 1
     assert example_receipt_word.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
@@ -67,7 +67,7 @@ def test_receipt_word_valid_init(example_receipt_word, example_receipt_word_with
 
 
 @pytest.mark.unit
-def test_invalid_receipt_id():
+def test_receipt_word_init_invalid_receipt_id():
     with pytest.raises(ValueError, match="^receipt_id must be an integer"):
         ReceiptWord(
             receipt_id="1",  # Not an integer
@@ -103,7 +103,7 @@ def test_invalid_receipt_id():
 
 
 @pytest.mark.unit
-def test_invalid_uuid():
+def test_receipt_word_init_invalid_uuid():
     """Test that invalid UUIDs raise ValueError."""
     with pytest.raises(ValueError, match="uuid must be a string"):
         ReceiptWord(
@@ -140,7 +140,7 @@ def test_invalid_uuid():
 
 
 @pytest.mark.unit
-def test_invalid_line_id():
+def test_receipt_word_init_invalid_line_id():
     with pytest.raises(ValueError, match="^line_id must be an integer"):
         ReceiptWord(
             receipt_id=1,
@@ -176,7 +176,7 @@ def test_invalid_line_id():
 
 
 @pytest.mark.unit
-def test_invalid_id():
+def test_receipt_word_init_invalid_id():
     with pytest.raises(ValueError, match="^id must be an integer"):
         ReceiptWord(
             receipt_id=1,
@@ -212,7 +212,7 @@ def test_invalid_id():
 
 
 @pytest.mark.unit
-def test_invalid_text():
+def test_receipt_word_init_invalid_text():
     with pytest.raises(ValueError, match="^text must be a string"):
         ReceiptWord(
             receipt_id=1,
@@ -232,7 +232,7 @@ def test_invalid_text():
 
 
 @pytest.mark.unit
-def test_receipt_word_bounding_box_validation():
+def test_receipt_word_init_invalid_bounding_box():
     """Test that invalid bounding_box keys or types raise ValueError."""
     with pytest.raises(ValueError, match="bounding_box must contain the key 'width'"):
         ReceiptWord(
@@ -253,7 +253,7 @@ def test_receipt_word_bounding_box_validation():
 
 
 @pytest.mark.unit
-def test_corners():
+def test_receipt_word_corners():
     """Test that invalid point keys or types raise ValueError."""
     with pytest.raises(ValueError, match="point must contain the key 'y'"):
         ReceiptWord(
@@ -274,7 +274,7 @@ def test_corners():
 
 
 @pytest.mark.unit
-def test_angle_validation():
+def test_receipt_word_angle_validation():
     """Test that angles outside [0, 360) raise ValueError."""
     with pytest.raises(ValueError, match="angle_degrees must be a float or int"):
         ReceiptWord(
@@ -311,7 +311,7 @@ def test_angle_validation():
 
 
 @pytest.mark.unit
-def test_receipt_word_confidence_validation():
+def test_receipt_word_init_invalid_confidence():
     """Test that confidence outside (0,1] raises ValueError."""
     with pytest.raises(ValueError, match="confidence must be a float"):
         ReceiptWord(
@@ -364,7 +364,7 @@ def test_receipt_word_confidence_validation():
 
 
 @pytest.mark.unit
-def test_invalid_tags():
+def test_receipt_word_init_invalid_tags():
     """Test that tags must be a list of strings."""
     with pytest.raises(ValueError, match="tags must be a list"):
         ReceiptWord(
@@ -444,7 +444,7 @@ def test_repr(example_receipt_word):
 
 
 @pytest.mark.unit
-def test_equal_receipt_word():
+def test_receipt_word_eq():
     """Test that two ReceiptWords with the same attributes are equal."""
     bounding_box = {"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4}
     point = {"x": 1.0, "y": 2.0}
@@ -487,7 +487,7 @@ def test_equal_receipt_word():
 
 
 @pytest.mark.unit
-def test_iter(example_receipt_word_with_tags):
+def test_receipt_word_iter(example_receipt_word_with_tags):
     """Test that the __iter__ method returns a dictionary."""
     receipt_word_dict = dict(example_receipt_word_with_tags)
     expected_keys = {
@@ -532,13 +532,13 @@ def test_iter(example_receipt_word_with_tags):
 
 
 @pytest.mark.unit
-def test_calculate_centroid(example_receipt_word):
+def test_receipt_word_calculate_centroid(example_receipt_word):
     """Test that the centroid is calculated correctly."""
     assert example_receipt_word.calculate_centroid() == (1.75, 2.0)
 
 
 @pytest.mark.unit
-def test_distance_and_angle_from_ReceiptWord(example_receipt_word):
+def test_receipt_word_distance_and_angle(example_receipt_word):
     other_receipt_word = ReceiptWord(
         receipt_id=1,
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",

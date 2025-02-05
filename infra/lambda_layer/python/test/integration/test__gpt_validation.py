@@ -82,7 +82,7 @@ def test_delete_gpt_validation(
             tag=sample_gpt_validation.tag,
         )
 
-def test_batch_add_and_list_gpt_validation(dynamodb_table: Literal["MyMockedTable"]):
+def test_gpt_validation_batch_add_list(dynamodb_table: Literal["MyMockedTable"]):
     """
     Tests adding multiple GPTValidation records in batch and then listing them.
     """
@@ -116,7 +116,7 @@ def test_batch_add_and_list_gpt_validation(dynamodb_table: Literal["MyMockedTabl
     listed_queries = set(v.query for v in filtered)
     assert queries.issubset(listed_queries)
 
-def test_get_nonexistent_gpt_validation(dynamodb_table: Literal["MyMockedTable"]):
+def test_gpt_validation_get_nonexistent(dynamodb_table: Literal["MyMockedTable"]):
     """
     Tests that attempting to get a non-existent record raises a ValueError.
     """

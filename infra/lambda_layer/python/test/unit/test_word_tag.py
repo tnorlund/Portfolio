@@ -11,7 +11,7 @@ def sample_word_tag():
 
 
 @pytest.mark.unit
-def test_word_tag_init(sample_word_tag):
+def test_word_tag_init_valid(sample_word_tag):
     """Test that WordTag initializes correct attributes."""
     assert sample_word_tag.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert sample_word_tag.line_id == 7
@@ -19,7 +19,7 @@ def test_word_tag_init(sample_word_tag):
     assert sample_word_tag.tag == "example"
 
 @pytest.mark.unit
-def test_word_tag_init_bad_image_id():
+def test_word_tag_init_invalid_image_id():
     """Test that WordTag raises ValueError if image_id is invalid."""
     with pytest.raises(ValueError, match="uuid must be a string"):
         WordTag(1, 2, 3, "example", "2021-01-01T00:00:00")
@@ -27,7 +27,7 @@ def test_word_tag_init_bad_image_id():
         WordTag("bad-uuid", 2, 3, "example", "2021-01-01T00:00:00")
 
 @pytest.mark.unit
-def test_word_tag_init_bad_line_id():
+def test_word_tag_init_invalid_line_id():
     """Test that WordTag raises ValueError if line_id is invalid."""
     with pytest.raises(ValueError, match="line_id must be an integer"):
         WordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "2", 3, "example", "2021-01-01T00:00:00")
@@ -35,7 +35,7 @@ def test_word_tag_init_bad_line_id():
         WordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", -2, 3, "example", "2021-01-01T00:00:00")
 
 @pytest.mark.unit
-def test_word_tag_init_bad_word_id():
+def test_word_tag_init_invalid_word_id():
     """Test that WordTag raises ValueError if word_id is invalid."""
     with pytest.raises(ValueError, match="word_id must be an integer"):
         WordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, "3", "example", "2021-01-01T00:00:00")
@@ -43,7 +43,7 @@ def test_word_tag_init_bad_word_id():
         WordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, -3, "example", "2021-01-01T00:00")
 
 @pytest.mark.unit
-def test_word_tag_init_bad_tag():
+def test_word_tag_init_invalid_tag():
     """Test that WordTag raises ValueError if tag is invalid."""
     with pytest.raises(ValueError, match="tag must not be empty"):
         WordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "", "2021-01-01T00:00:00")
@@ -56,7 +56,7 @@ def test_word_tag_init_bad_tag():
         WordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "_bad", "2021-01-01T00:00:00")
 
 @pytest.mark.unit
-def test_word_tag_init_bad_timestamp_added():
+def test_word_tag_init_invalid_timestamp_added():
     """Test that WordTag raises ValueError if timestamp_added is invalid."""
     with pytest.raises(ValueError, match="timestamp_added must be a datetime object or a string"):
         WordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "example", 1234567890)    
@@ -137,7 +137,7 @@ def test_word_tag_to_item(sample_word_tag):
     assert item["TYPE"]["S"] == "WORD_TAG"
 
 @pytest.mark.unit
-def test_to_Word_key(sample_word_tag):
+def test_word_tag_to_word_key(sample_word_tag):
     """Test that the to_Word_key method returns the correct key."""
     key = sample_word_tag.to_Word_key()
     assert key["PK"]["S"] == "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"
@@ -187,7 +187,7 @@ def test_item_to_word_tag_missing_keys():
 
 
 @pytest.mark.unit
-def test_item_to_word_tag_bad_format():
+def test_item_to_word_tag_invalid_format():
     """Test that itemToWordTag raises an error if the PK or SK format is invalid."""
     bad_format_item = {
         "PK": {"S": "IMAGE#42"},  # Not zero-padded, missing pieces

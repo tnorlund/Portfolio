@@ -276,6 +276,32 @@ class ReceiptLetter:
             f"confidence={self.confidence}"
             f")"
         )
+    
+    def __hash__(self) -> int:
+        """
+        Generates a hash value for the ReceiptLetter object.
+
+        Returns:
+            int: The hash value for the ReceiptLetter object.
+        """
+        return hash(
+            (
+                self.receipt_id,
+                self.image_id,
+                self.line_id,
+                self.word_id,
+                self.letter_id,
+                self.text,
+                tuple(self.bounding_box.items()),
+                tuple(self.top_right.items()),
+                tuple(self.top_left.items()),
+                tuple(self.bottom_right.items()),
+                tuple(self.bottom_left.items()),
+                self.angle_degrees,
+                self.angle_radians,
+                self.confidence,
+            )
+        )
 
 
 def itemToReceiptLetter(item: dict) -> ReceiptLetter:

@@ -105,7 +105,7 @@ def test_delete_receipt_word(
 
 
 @pytest.mark.integration
-def test_list_receipt_words(dynamodb_table: Literal["MyMockedTable"]):
+def test_receipt_word_list(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
     words = [
@@ -138,7 +138,7 @@ def test_list_receipt_words(dynamodb_table: Literal["MyMockedTable"]):
 
 
 @pytest.mark.integration
-def test_list_receipt_words_from_line(dynamodb_table: Literal["MyMockedTable"]):
+def test_receipt_word_list_from_line(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
 
