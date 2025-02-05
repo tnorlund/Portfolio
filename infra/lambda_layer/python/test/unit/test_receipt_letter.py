@@ -11,7 +11,7 @@ def example_receipt_letter():
 
 
 @pytest.mark.unit
-def test_init(example_receipt_letter):
+def test_receipt_letter_init_valid(example_receipt_letter):
     assert example_receipt_letter.receipt_id == 1
     assert example_receipt_letter.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert example_receipt_letter.line_id == 3
@@ -34,7 +34,7 @@ def test_init(example_receipt_letter):
 
 
 @pytest.mark.unit
-def test_init_invalid_receipt_id():
+def test_receipt_letter_init_invalid_receipt_id():
     """Test that ReceiptLetter raises a ValueError if the receipt_id is not an integer"""
     # fmt: off
     with pytest.raises(ValueError, match="receipt_id must be an integer"):
@@ -45,7 +45,7 @@ def test_init_invalid_receipt_id():
 
 
 @pytest.mark.unit
-def test_init_invalid_uuid():
+def test_receipt_letter_init_invalid_uuid():
     """Test that ReceiptLetter raises a ValueError if the image_id is not a string"""
     # fmt: off
     with pytest.raises(ValueError, match="uuid must be a string"):
@@ -56,7 +56,7 @@ def test_init_invalid_uuid():
 
 
 @pytest.mark.unit
-def test_init_invalid_line_id():
+def test_receipt_letter_init_invalid_line_id():
     """Test that ReceiptLetter raises a ValueError if the line_id is not an integer"""
     # fmt: off
     with pytest.raises(ValueError, match="line_id must be an integer"):
@@ -67,7 +67,7 @@ def test_init_invalid_line_id():
 
 
 @pytest.mark.unit
-def test_init_invalid_word_id():
+def test_receipt_letter_init_invalid_word_id():
     """Test that ReceiptLetter raises a ValueError if the word_id is not an integer"""
     # fmt: off
     with pytest.raises(ValueError, match="word_id must be an integer"):
@@ -78,7 +78,7 @@ def test_init_invalid_word_id():
 
 
 @pytest.mark.unit
-def test_init_invalid_id():
+def test_receipt_letter_init_invalid_id():
     """Test that ReceiptLetter raises a ValueError if the id is not an integer"""
     # fmt: off
     with pytest.raises(ValueError, match="id must be an integer"):
@@ -89,7 +89,7 @@ def test_init_invalid_id():
 
 
 @pytest.mark.unit
-def test_init_invalid_text():
+def test_receipt_letter_init_invalid_text():
     """Test that ReceiptLetter raises a ValueError if the text is not a string"""
     # fmt: off
     with pytest.raises(ValueError, match="text must be a string"):
@@ -100,7 +100,7 @@ def test_init_invalid_text():
 
 
 @pytest.mark.unit
-def test_init_invalid_bounding_box():
+def test_receipt_letter_init_invalid_bounding_box():
     """Test that ReceiptLetter raises a ValueError if the bounding_box is not a dict"""
     # fmt: off
     with pytest.raises(ValueError, match="bounding_box must be a dictionary"):
@@ -111,7 +111,7 @@ def test_init_invalid_bounding_box():
 
 
 @pytest.mark.unit
-def test_init_invalid_top_right():
+def test_receipt_letter_init_invalid_top_right():
     """Test that ReceiptLetter raises a ValueError if the top_right is not a dict"""
     # fmt: off
     with pytest.raises(ValueError, match="point must be a dictionary"):
@@ -122,7 +122,7 @@ def test_init_invalid_top_right():
 
 
 @pytest.mark.unit
-def test_init_invalid_top_left():
+def test_receipt_letter_init_invalid_top_left():
     """Test that ReceiptLetter raises a ValueError if the top_left is not a dict"""
     # fmt: off
     with pytest.raises(ValueError, match="point must be a dictionary"):
@@ -133,7 +133,7 @@ def test_init_invalid_top_left():
 
 
 @pytest.mark.unit
-def test_init_invalid_bottom_right():
+def test_receipt_letter_init_invalid_bottom_right():
     """Test that ReceiptLetter raises a ValueError if the bottom_right is not a dict"""
     # fmt: off
     with pytest.raises(ValueError, match="point must be a dictionary"):
@@ -144,7 +144,7 @@ def test_init_invalid_bottom_right():
 
 
 @pytest.mark.unit
-def test_init_invalid_bottom_left():
+def test_receipt_letter_init_invalid_bottom_left():
     """Test that ReceiptLetter raises a ValueError if the bottom_left is not a dict"""
     # fmt: off
     with pytest.raises(ValueError, match="point must be a dictionary"):
@@ -155,7 +155,7 @@ def test_init_invalid_bottom_left():
 
 
 @pytest.mark.unit
-def test_init_invalid_angles():
+def test_receipt_letter_init_invalid_angles():
     """Test that ReceiptLetter raises a ValueError if the angles are not floats"""
     # fmt: off
     with pytest.raises(ValueError, match="angle_degrees must be a float"):
@@ -166,7 +166,7 @@ def test_init_invalid_angles():
 
 
 @pytest.mark.unit
-def test_receipt_letter_invalid_confidence():
+def test_receipt_letter_init_invalid_confidence():
     """Test that ReceiptLetter raises a ValueError if the confidence is not a float or is not between 0 and 1"""
     # fmt: off
     with pytest.raises(ValueError, match="confidence must be a float"):
@@ -312,7 +312,7 @@ def test_repr(example_receipt_letter):
 
 
 @pytest.mark.unit
-def test_itemToWord(example_receipt_letter):
+def test_item_to_word(example_receipt_letter):
     """Test that itemToReceiptLetter() works as expected"""
     itemToReceiptLetter(example_receipt_letter.to_item()) == example_receipt_letter
     # Missing Keys

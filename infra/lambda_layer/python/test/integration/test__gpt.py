@@ -23,7 +23,7 @@ from dynamo.data._gpt import _llm_prompt, _validate_gpt_response, gpt_request
 
 
 @pytest.mark.unit
-def test__reduce_precision():
+def test_gpt_reduce_precision():
     from dynamo.data._gpt import _reduce_precision
 
     assert _reduce_precision((1.23456789, 2.3456789), 4) == (1.2346, 2.3457)
@@ -35,7 +35,7 @@ def test__reduce_precision():
 @pytest.mark.parametrize(
     "expected_results", ["2f05267d-86df-42b3-8a14-e29c5ea567b3"], indirect=True
 )
-def test__llm_prompt(expected_results):
+def test_gpt_llm_prompt(expected_results):
     # Unpack the expected results tuple:
     _, _, _, _, _, receipts, _, receipt_words, _, _ = expected_results
 
@@ -116,25 +116,25 @@ class DummyReceipt(dict):
         super().__init__(data)
 
 @pytest.mark.integration
-def test_validate_missing_choices():
+def test_gpt_validate_missing_choices():
     resp = DummyResponse({})
     with pytest.raises(ValueError, match="The response does not contain any choices."):
         _validate_gpt_response(resp)
 
 @pytest.mark.integration
-def test_validate_empty_choices():
+def test_gpt_validate_empty_choices():
     resp = DummyResponse({"choices": []})
     with pytest.raises(ValueError, match="The response does not contain any choices."):
         _validate_gpt_response(resp)
 
 @pytest.mark.integration
-def test_validate_non_list_choices():
+def test_gpt_validate_non_list_choices():
     resp = DummyResponse({"choices": {"role": "assistant", "message": {"content": "{}"}}})
     with pytest.raises(ValueError, match="The response choices are not a list."):
         _validate_gpt_response(resp)
 
 @pytest.mark.integration
-def test_validate_missing_message():
+def test_gpt_validate_missing_message():
     resp = DummyResponse({
         "choices": [
             {"role": "assistant"},  # missing message
@@ -145,7 +145,7 @@ def test_validate_missing_message():
         _validate_gpt_response(resp)
 
 @pytest.mark.integration
-def test_validate_missing_content():
+def test_gpt_validate_missing_content():
     resp = DummyResponse({
         "choices": [
             {"role": "assistant", "message": {}},
@@ -156,7 +156,7 @@ def test_validate_missing_content():
         _validate_gpt_response(resp)
 
 @pytest.mark.integration
-def test_validate_empty_content():
+def test_gpt_validate_empty_content():
     resp = DummyResponse({
         "choices": [
             {"role": "assistant", "message": {"content": ""}},
@@ -167,7 +167,7 @@ def test_validate_empty_content():
         _validate_gpt_response(resp)
 
 @pytest.mark.integration
-def test_validate_invalid_json():
+def test_gpt_validate_invalid_json():
     resp = DummyResponse({
         "choices": [
             {"role": "assistant", "message": {"content": "not a json"}},
@@ -178,7 +178,7 @@ def test_validate_invalid_json():
         _validate_gpt_response(resp)
 
 @pytest.mark.integration
-def test_validate_non_string_keys(monkeypatch):
+def test_gpt_validate_non_string_keys(monkeypatch):
     # Patch the loads used in the module (_validate_gpt_response uses loads from json).
     # Since _gpt.py imported loads directly, we must patch that binding.
     import dynamo.data._gpt as gpt_module
@@ -195,7 +195,7 @@ def test_validate_non_string_keys(monkeypatch):
         _validate_gpt_response(resp)
 
 @pytest.mark.integration
-def test_validate_missing_l_or_w():
+def test_gpt_validate_missing_l_or_w():
     content = {"store_name": [{"l": 0, "w": 0}], "date": [{"l": 1}]}  # missing "w" in date
     resp = DummyResponse({
         "choices": [
@@ -207,7 +207,7 @@ def test_validate_missing_l_or_w():
         _validate_gpt_response(resp)
 
 @pytest.mark.integration
-def test_validate_value_as_dict_missing_key():
+def test_gpt_validate_value_dict_missing_key():
     # Here, "store_name" is a dict missing the "w" key.
     content = {"store_name": {"l": 0}}
     resp = DummyResponse({
@@ -226,7 +226,7 @@ def test_validate_value_as_dict_missing_key():
         _validate_gpt_response(resp)
 
 @pytest.mark.integration
-def test_validate_value_wrong_type():
+def test_gpt_validate_value_wrong_type():
     # Here, "store_name" is a string instead of a list or dict.
     content = {"store_name": "invalid"}
     resp = DummyResponse({
@@ -245,7 +245,7 @@ def test_validate_value_wrong_type():
         _validate_gpt_response(resp)
 
 @pytest.mark.integration
-def test_validate_valid_response():
+def test_gpt_validate_valid_response():
     content = {"store_name": [{"l": 0, "w": 0}], "date": [{"l": 1, "w": 2}]}
     resp = DummyResponse({
         "choices": [

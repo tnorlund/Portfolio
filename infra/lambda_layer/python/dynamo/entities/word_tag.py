@@ -98,6 +98,16 @@ class WordTag:
             and self.tag == other.tag
             and self.validated == other.validated
         )
+    
+    def __hash__(self) -> int:
+        """Generates a hash value for the WordTag.
+
+        Returns:
+            int: The hash value for the WordTag.
+        """
+        return hash(
+            (self.image_id, self.line_id, self.word_id, self.tag, self.validated)
+        )
 
     def __iter__(self) -> Generator[Tuple[str, str], None, None]:
         """Yields the attributes of the WordTag as key-value pairs.

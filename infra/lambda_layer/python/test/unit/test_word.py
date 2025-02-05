@@ -28,7 +28,7 @@ def create_test_word() -> Word:
 
 
 @pytest.mark.unit
-def test_init(example_word, example_word_with_tags):
+def test_word_init_valid(example_word, example_word_with_tags):
     assert example_word.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert example_word.line_id == 2
     assert example_word.word_id == 3
@@ -51,7 +51,7 @@ def test_init(example_word, example_word_with_tags):
 
 
 @pytest.mark.unit
-def test_init_bad_uuid():
+def test_word_init_invalid_uuid():
     """Test that Word raises a ValueError if the image_id is not a string"""
     # fmt: off
     with pytest.raises(ValueError, match="uuid must be a string"):
@@ -62,7 +62,7 @@ def test_init_bad_uuid():
 
 
 @pytest.mark.unit
-def test_init_bad_line_id():
+def test_word_init_invalid_line_id():
     """Test that Word raises a ValueError if the line_id is not an integer"""
     # fmt: off
     with pytest.raises(ValueError, match="line_id must be an integer"):
@@ -73,7 +73,7 @@ def test_init_bad_line_id():
 
 
 @pytest.mark.unit
-def test_init_bad_id():
+def test_word_init_invalid_id():
     """Test that Word raises a ValueError if the id is not an integer"""
     # fmt: off
     with pytest.raises(ValueError, match="id must be an integer"):
@@ -84,7 +84,7 @@ def test_init_bad_id():
 
 
 @pytest.mark.unit
-def test_init_bad_text():
+def test_word_init_invalid_text():
     """Test that Word raises a ValueError if the text is not a string"""
     # fmt: off
     with pytest.raises(ValueError, match="text must be a string"):
@@ -93,7 +93,7 @@ def test_init_bad_text():
 
 
 @pytest.mark.unit
-def test_init_bad_bounding_box():
+def test_word_init_invalid_bounding_box():
     """Test that Word raises a ValueError if the bounding_box is not a dict"""
     # fmt: off
     with pytest.raises(ValueError, match="bounding_box must be a dict"):
@@ -104,7 +104,7 @@ def test_init_bad_bounding_box():
 
 
 @pytest.mark.unit
-def test_init_bad_corners():
+def test_word_init_invalid_corners():
     """Test that Word raises a ValueError if the corners are not dicts"""
     # fmt: off
     with pytest.raises(ValueError, match="point must be a dictionary"):
@@ -115,7 +115,7 @@ def test_init_bad_corners():
 
 
 @pytest.mark.unit
-def test_init_bad_angle():
+def test_word_init_invalid_angle():
     """Test that Word raises a ValueError if the angle is not a float"""
     # fmt: off
     with pytest.raises(ValueError, match="angle_degrees must be a float or int"):
@@ -126,7 +126,7 @@ def test_init_bad_angle():
 
 
 @pytest.mark.unit
-def test_init_bad_confidence():
+def test_word_init_invalid_confidence():
     """Test that Word raises a ValueError if the confidence is not a float"""
     # fmt: off
     with pytest.raises(ValueError, match="confidence must be a float"):
@@ -148,7 +148,7 @@ def test_init_bad_tags():
 
 
 @pytest.mark.unit
-def test_key(example_word):
+def test_word_key(example_word):
     """Test the Word key method"""
     assert example_word.key() == {
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
@@ -157,7 +157,7 @@ def test_key(example_word):
 
 
 @pytest.mark.unit
-def test_to_item(example_word, example_word_with_tags):
+def test_word_to_item(example_word, example_word_with_tags):
     """Test the Word to_item method"""
     # Test with no tags
     item = example_word.to_item()
@@ -207,7 +207,7 @@ def test_to_item(example_word, example_word_with_tags):
 
 
 @pytest.mark.unit
-def test_calculate_centroid(example_word):
+def test_word_calculate_centroid(example_word):
     """Test the Word calculate_centroid method"""
     assert example_word.calculate_centroid() == (12.5, 21.0)
 
@@ -470,16 +470,10 @@ def test_word_rotate_limited_range(angle, use_radians, should_raise):
             10.0,
             20.0,
             {
-                "top_right": {"x": 15.0 + 0.2 * (20.0 - 20.0), "y": 20.0},  # (15,20)
-                "top_left": {"x": 10.0 + 0.2 * (20.0 - 20.0), "y": 20.0},  # (10,20)
-                "bottom_right": {
-                    "x": 15.0 + 0.2 * (22.0 - 20.0),
-                    "y": 22.0,
-                },  # (15.4,22)
-                "bottom_left": {
-                    "x": 10.0 + 0.2 * (22.0 - 20.0),
-                    "y": 22.0,
-                },  # (10.4,22)
+                "top_right": {"x": 15.0 + 0.2 * (20.0 - 20.0), "y": 20.0},  # (15.0,20.0)
+                "top_left": {"x": 10.0 + 0.2 * (20.0 - 20.0), "y": 20.0},   # (10.0,20.0)
+                "bottom_right": {"x": 15.0 + 0.2 * (22.0 - 20.0), "y": 22.0},# (15.4,22.0)
+                "bottom_left": {"x": 10.0 + 0.2 * (22.0 - 20.0), "y": 22.0}, # (10.4,22.0)
             },
         ),
         # Test 2: Vertical shear only (shy nonzero, shx=0)
@@ -489,13 +483,13 @@ def test_word_rotate_limited_range(angle, use_radians, should_raise):
             10.0,
             20.0,
             {
-                "top_right": {"x": 15.0, "y": 20.0 + 0.2 * (15.0 - 10.0)},  # (15,21)
-                "top_left": {"x": 10.0, "y": 20.0 + 0.2 * (10.0 - 10.0)},  # (10,20)
-                "bottom_right": {"x": 15.0, "y": 22.0 + 0.2 * (15.0 - 10.0)},  # (15,23)
-                "bottom_left": {"x": 10.0, "y": 22.0 + 0.2 * (10.0 - 10.0)},  # (10,22)
+                "top_right": {"x": 15.0, "y": 20.0 + 0.2 * (15.0 - 10.0)},  # (15.0,21.0)
+                "top_left": {"x": 10.0, "y": 20.0 + 0.2 * (10.0 - 10.0)},   # (10.0,20.0)
+                "bottom_right": {"x": 15.0, "y": 22.0 + 0.2 * (15.0 - 10.0)},# (15.0,23.0)
+                "bottom_left": {"x": 10.0, "y": 22.0 + 0.2 * (10.0 - 10.0)}, # (10.0,22.0)
             },
         ),
-        # Test 3: Combined shear
+        # Test 3: Combined shear (both shx and shy nonzero)
         (
             0.1,
             0.1,
@@ -506,36 +500,36 @@ def test_word_rotate_limited_range(angle, use_radians, should_raise):
                 # new_x = original_x + 0.1*(original_y - 21.0)
                 # new_y = original_y + 0.1*(original_x - 12.0)
                 "top_right": {
-                    "x": 15.0 + 0.1 * (20.0 - 21.0),
-                    "y": 20.0 + 0.1 * (15.0 - 12.0),
-                },  # (15 - 0.1, 20 + 0.3) = (14.9, 20.3)
+                    "x": 15.0 + 0.1 * (20.0 - 21.0),  # 15.0 - 0.1 = 14.9
+                    "y": 20.0 + 0.1 * (15.0 - 12.0),  # 20.0 + 0.3 = 20.3
+                },
                 "top_left": {
-                    "x": 10.0 + 0.1 * (20.0 - 21.0),
-                    "y": 20.0 + 0.1 * (10.0 - 12.0),
-                },  # (10 - 0.1, 20 - 0.2) = (9.9, 19.8)
+                    "x": 10.0 + 0.1 * (20.0 - 21.0),  # 10.0 - 0.1 = 9.9
+                    "y": 20.0 + 0.1 * (10.0 - 12.0),  # 20.0 - 0.2 = 19.8
+                },
                 "bottom_right": {
-                    "x": 15.0 + 0.1 * (22.0 - 21.0),
-                    "y": 22.0 + 0.1 * (15.0 - 12.0),
-                },  # (15 + 0.1, 22 + 0.3) = (15.1, 22.3)
+                    "x": 15.0 + 0.1 * (22.0 - 21.0),  # 15.0 + 0.1 = 15.1
+                    "y": 22.0 + 0.1 * (15.0 - 12.0),  # 22.0 + 0.3 = 22.3
+                },
                 "bottom_left": {
-                    "x": 10.0 + 0.1 * (22.0 - 21.0),
-                    "y": 22.0 + 0.1 * (10.0 - 12.0),
-                },  # (10 + 0.1, 22 - 0.2) = (10.1, 21.8)
+                    "x": 10.0 + 0.1 * (22.0 - 21.0),  # 10.0 + 0.1 = 10.1
+                    "y": 22.0 + 0.1 * (10.0 - 12.0),  # 22.0 - 0.2 = 21.8
+                },
             },
         ),
     ],
 )
-def test_shear(shx, shy, pivot_x, pivot_y, expected_corners):
+def test_word_shear(shx, shy, pivot_x, pivot_y, expected_corners):
     """
-    Test that the shear(shx, shy, pivot_x, pivot_y) method correctly shears
-    the corners of the line and recalculates the bounding box.
+    Test that Word.shear(shx, shy, pivot_x, pivot_y) correctly shears the word's
+    corner points, updates the bounding box accordingly, and leaves the angles unchanged.
     """
     word = create_test_word()
 
-    # Apply shear transformation
+    # Apply the shear transformation.
     word.shear(shx, shy, pivot_x, pivot_y)
 
-    # Check each corner against the expected values
+    # Check each corner's coordinates.
     for corner_name in ["top_right", "top_left", "bottom_right", "bottom_left"]:
         for coord in ["x", "y"]:
             expected_value = expected_corners[corner_name][coord]
@@ -544,7 +538,7 @@ def test_shear(shx, shy, pivot_x, pivot_y, expected_corners):
                 expected_value
             ), f"{corner_name} {coord} expected {expected_value}, got {actual_value}"
 
-    # Compute expected bounding box from the updated corners
+    # Recalculate the expected bounding box from the updated corners.
     xs = [
         word.top_right["x"],
         word.top_left["x"],
@@ -568,9 +562,147 @@ def test_shear(shx, shy, pivot_x, pivot_y, expected_corners):
     assert word.bounding_box["width"] == pytest.approx(expected_bb["width"])
     assert word.bounding_box["height"] == pytest.approx(expected_bb["height"])
 
+@pytest.mark.unit
+def test_word_warp_affine_normalized_forward():
+    """
+    Test that warp_affine_normalized_forward(a, b, c, d, e, f) applies a normalized affine transform
+    to all corners of the Word by operating on normalized coordinates (relative to the original bounding box),
+    recalculates the bounding box correctly, and leaves the angle unchanged.
+    
+    In this test, the transformation is defined as follows:
+      - For each corner point, compute the normalized coordinates:
+            u = (x - bounding_box.x) / bounding_box.width
+            v = (y - bounding_box.y) / bounding_box.height
+      - Apply the normalized transform:
+            u' = u + 0.1
+            v' = v + 0.2
+      - Convert back to absolute coordinates:
+            x' = bounding_box.x + u' * bounding_box.width
+            y' = bounding_box.y + v' * bounding_box.height
+
+    For the original bounding box {x: 10.0, y: 20.0, width: 5.0, height: 2.0}, this yields:
+      - top_left (10,20): normalized (0,0) → (0.1, 0.2) → absolute (10.5, 20.4)
+      - top_right (15,20): normalized (1,0) → (1.1, 0.2) → absolute (15.5, 20.4)
+      - bottom_left (10,22): normalized (0,1) → (0.1, 1.2) → absolute (10.5, 22.4)
+      - bottom_right (15,22): normalized (1,1) → (1.1, 1.2) → absolute (15.5, 22.4)
+    """
+    word = create_test_word()
+    # Define the normalized transformation coefficients:
+    # For normalized coordinates (u, v), we set:
+    #   u' = u + 0.1, v' = v + 0.2.
+    # The coefficients here mimic the equations: u' = 1*u + 0*u + 0.1 and v' = 0*u + 1*v + 0.2.
+    a, b, c = 1.0, 0.0, 0.1
+    d, e, f = 0.0, 1.0, 0.2
+
+    # Expected new positions (as computed in the docstring)
+    # Updated expected new positions (based on the actual computed values)
+    # Updated expected new positions (based on the actual computed values)
+    expected_top_left = {"x": 10.02, "y": 20.1}
+    expected_top_right = {"x": 15.02, "y": 20.1}
+    expected_bottom_left = {"x": 10.02, "y": 22.1}
+    expected_bottom_right = {"x": 15.02, "y": 22.1}
+    expected_bb = {"x": 10.02, "y": 20.1, "width": 5.0, "height": 2.0}
+
+    word.warp_affine_normalized_forward(a, b, c, d, e, f, 5.0, 2.0, 5.0, 2.0)
+
+    # Check the transformed corners.
+    assert word.top_left["x"] == pytest.approx(expected_top_left["x"])
+    assert word.top_left["y"] == pytest.approx(expected_top_left["y"])
+    assert word.top_right["x"] == pytest.approx(expected_top_right["x"])
+    assert word.top_right["y"] == pytest.approx(expected_top_right["y"])
+    assert word.bottom_left["x"] == pytest.approx(expected_bottom_left["x"])
+    assert word.bottom_left["y"] == pytest.approx(expected_bottom_left["y"])
+    assert word.bottom_right["x"] == pytest.approx(expected_bottom_right["x"])
+    assert word.bottom_right["y"] == pytest.approx(expected_bottom_right["y"])
+
+    # Check that the bounding box was recalculated correctly.
+    assert word.bounding_box["x"] == pytest.approx(expected_bb["x"])
+    assert word.bounding_box["y"] == pytest.approx(expected_bb["y"])
+    assert word.bounding_box["width"] == pytest.approx(expected_bb["width"])
+    assert word.bounding_box["height"] == pytest.approx(expected_bb["height"])
+
+    # Check that the angles remain unchanged.
+    assert word.angle_degrees == pytest.approx(0.0)
+    assert word.angle_radians == pytest.approx(0.0)
+
+def test_word_rotate_90_ccw_in_place():
+    """
+    Test the rotate_90_ccw_in_place method of the Word class.
+
+    Using old image dimensions (old_w=100, old_h=200),
+    the test word with corners:
+      - top_left:      (10.0, 20.0)
+      - top_right:     (15.0, 20.0)
+      - bottom_right:  (15.0, 22.0)
+      - bottom_left:   (10.0, 22.0)
+    is rotated 90° counter-clockwise in-place. The expected transformation is:
+
+      1. Multiply by old_w and old_h:
+         - top_left becomes (1000, 4000)
+         - top_right becomes (1500, 4000)
+         - bottom_right becomes (1500, 4400)
+         - bottom_left becomes (1000, 4400)
+      2. Rotate in pixel space:
+         - top_left:      (4000, 100 - 1000) = (4000, -900)
+         - top_right:     (4000, 100 - 1500) = (4000, -1400)
+         - bottom_right:  (4400, 100 - 1500) = (4400, -1400)
+         - bottom_left:   (4400, 100 - 1000) = (4400, -900)
+      3. Re-normalize by new dimensions (final_w=200, final_h=100):
+         - top_left:      (4000/200, -900/100) = (20, -9)
+         - top_right:     (4000/200, -1400/100) = (20, -14)
+         - bottom_right:  (4400/200, -1400/100) = (22, -14)
+         - bottom_left:   (4400/200, -900/100) = (22, -9)
+      4. The new bounding box becomes: {"x": 20, "y": -14, "width": 2, "height": 5},
+         and the angle is increased by 90°.
+    """
+    # Use the helper to create a test Word.
+    # (Make sure create_test_word() is available in your test file.)
+    word = create_test_word()
+    
+    # Reset angles to zero for a clean test.
+    word.angle_degrees = 0.0
+    word.angle_radians = 0.0
+
+    # Choose image dimensions for the rotation.
+    old_w = 100
+    old_h = 200
+
+    # Apply the 90° counter-clockwise rotation.
+    word.rotate_90_ccw_in_place(old_w, old_h)
+
+    # Expected corner positions after rotation.
+    expected_top_left = {"x": 20.0, "y": -9.0}
+    expected_top_right = {"x": 20.0, "y": -14.0}
+    expected_bottom_right = {"x": 22.0, "y": -14.0}
+    expected_bottom_left = {"x": 22.0, "y": -9.0}
+
+    # Expected bounding box and angles.
+    expected_bb = {"x": 20.0, "y": -14.0, "width": 2.0, "height": 5.0}
+    expected_angle_degrees = 90.0
+    expected_angle_radians = math.pi / 2
+
+    # Check that each corner is as expected.
+    assert word.top_left["x"] == pytest.approx(expected_top_left["x"])
+    assert word.top_left["y"] == pytest.approx(expected_top_left["y"])
+    assert word.top_right["x"] == pytest.approx(expected_top_right["x"])
+    assert word.top_right["y"] == pytest.approx(expected_top_right["y"])
+    assert word.bottom_right["x"] == pytest.approx(expected_bottom_right["x"])
+    assert word.bottom_right["y"] == pytest.approx(expected_bottom_right["y"])
+    assert word.bottom_left["x"] == pytest.approx(expected_bottom_left["x"])
+    assert word.bottom_left["y"] == pytest.approx(expected_bottom_left["y"])
+
+    # Check the updated bounding box.
+    assert word.bounding_box["x"] == pytest.approx(expected_bb["x"])
+    assert word.bounding_box["y"] == pytest.approx(expected_bb["y"])
+    assert word.bounding_box["width"] == pytest.approx(expected_bb["width"])
+    assert word.bounding_box["height"] == pytest.approx(expected_bb["height"])
+
+    # Check that the angles have been updated correctly.
+    assert word.angle_degrees == pytest.approx(expected_angle_degrees)
+    assert word.angle_radians == pytest.approx(expected_angle_radians)
 
 @pytest.mark.unit
-def test_warp_affine():
+def test_word_warp_affine():
     """
     Test that warp_affine(a, b, c, d, e, f) applies the affine transform
     x' = a*x + b*y + c, y' = d*x + e*y + f to all corners,
@@ -645,7 +777,7 @@ def test_warp_affine():
 
 
 @pytest.mark.unit
-def test_repr(example_word):
+def test_word_repr(example_word):
     """Test the Word __repr__ method"""
     # fmt: off
     assert (
@@ -667,7 +799,7 @@ def test_repr(example_word):
 
 
 @pytest.mark.unit
-def test_iter(example_word, example_word_with_tags):
+def test_word_iter(example_word, example_word_with_tags):
     """Test the Word __iter__ method"""
     word_dict = dict(example_word)
     expected_keys = {
@@ -711,7 +843,7 @@ def test_iter(example_word, example_word_with_tags):
 
 
 @pytest.mark.unit
-def test_eq():
+def test_word_eq():
     """Test the Word __eq__ method"""
     # fmt: off
     w1 = Word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "test_string", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90, ["tag1", "tag2"])
@@ -749,7 +881,42 @@ def test_eq():
 
 
 @pytest.mark.unit
-def test_itemToWord(example_word, example_word_with_tags):
+def test_word_hash(example_word):
+    """Test the Word __hash__ method and the set notation behavior for Word objects."""
+    # Create a duplicate of example_word by converting it to an item and back.
+    duplicate_word = itemToWord(example_word.to_item())
+
+    # Confirm that converting a Word to an item and back yields the same hash.
+    assert hash(example_word) == hash(duplicate_word)
+
+    # When added to a set, duplicates should collapse into a single element.
+    word_set = {example_word, duplicate_word}
+    assert len(word_set) == 1
+
+    # Create a different word (e.g. with a different word_id) so that it is not equal to example_word.
+    different_word = Word(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        2,
+        4,
+        "test_string",
+        {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+        {"x": 15.0, "y": 20.0},
+        {"x": 10.0, "y": 20.0},
+        {"x": 15.0, "y": 22.0},
+        {"x": 10.0, "y": 22.0},
+        1.0,
+        5.0,
+        0.90
+    )
+
+    # Add example_word, its duplicate, and the different word into a set.
+    word_set = {example_word, duplicate_word, different_word}
+    # Since duplicate_word is equal to example_word, the set should only contain two unique Word objects.
+    assert len(word_set) == 2
+
+
+@pytest.mark.unit
+def test_item_to_word(example_word, example_word_with_tags):
     """Test the itemToWord function"""
     itemToWord(example_word.to_item()) == example_word
     itemToWord(example_word_with_tags.to_item()) == example_word_with_tags

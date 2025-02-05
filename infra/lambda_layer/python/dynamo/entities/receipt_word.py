@@ -349,6 +349,32 @@ class ReceiptWord:
         distance = ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
         angle = atan2(y2 - y1, x2 - x1)
         return distance, angle
+    
+    def __hash__(self) -> int:
+        """
+        Returns the hash value of the ReceiptWord object.
+
+        Returns:
+            int: The hash value of the ReceiptWord object.
+        """
+        return hash(
+            (
+                self.receipt_id,
+                self.image_id,
+                self.line_id,
+                self.word_id,
+                self.text,
+                self.bounding_box,
+                self.top_right,
+                self.top_left,
+                self.bottom_right,
+                self.bottom_left,
+                self.angle_degrees,
+                self.angle_radians,
+                self.confidence,
+                tuple(self.tags),
+            )
+        )
 
 
 def itemToReceiptWord(item: dict) -> ReceiptWord:
