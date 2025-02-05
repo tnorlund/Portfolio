@@ -108,7 +108,8 @@ def compare_local_files_with_dynamo(
         list[Path]: Files that do not exist in DynamoDB (by hash).
     """
     dynamo_client = DynamoClient(dynamo_table_name)
-    hashes_in_dynamo = {image.sha256 for image in dynamo_client.listImages()}
+    images, _ = dynamo_client.listImages()
+    hashes_in_dynamo = {image.sha256 for image in images}
     new_files = []
 
     for local_file in local_files:
@@ -263,7 +264,7 @@ def delete_items_in_table(dynamo_client: DynamoClient) -> None:
     Args:
         dynamo_client (DynamoClient): The DynamoClient instance pointing to the correct table.
     """
-    images = dynamo_client.listImages()
+    images, _ = dynamo_client.listImages()
     print(f" - Deleting {len(images)} image items")
     dynamo_client.deleteImages(images)
 
