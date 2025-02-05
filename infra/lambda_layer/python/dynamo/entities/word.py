@@ -517,16 +517,16 @@ class Word:
         """
         return (
             f"Word("
-                f"word_id={self.word_id}, "
-                f"text={_repr_str(self.text)}, "
-                f"bounding_box={self.bounding_box}, "
-                f"top_right={self.top_right}, "
-                f"top_left={self.top_left}, "
-                f"bottom_right={self.bottom_right}, "
-                f"bottom_left={self.bottom_left}, "
-                f"angle_degrees={self.angle_degrees}, "
-                f"angle_radians={self.angle_radians}, "
-                f"confidence={self.confidence}"
+            f"word_id={self.word_id}, "
+            f"text={_repr_str(self.text)}, "
+            f"bounding_box={self.bounding_box}, "
+            f"top_right={self.top_right}, "
+            f"top_left={self.top_left}, "
+            f"bottom_right={self.bottom_right}, "
+            f"bottom_left={self.bottom_left}, "
+            f"angle_degrees={self.angle_degrees}, "
+            f"angle_radians={self.angle_radians}, "
+            f"confidence={self.confidence}"
             f")"
         )
 
@@ -577,6 +577,30 @@ class Word:
             and self.angle_radians == other.angle_radians
             and self.confidence == other.confidence
             and self.tags == other.tags
+        )
+
+    def __hash__(self) -> int:
+        """Returns the hash value of the Word object.
+
+        Returns:
+            int: The hash value of the Word object.
+        """
+        return hash(
+            (
+                self.image_id,
+                self.line_id,
+                self.word_id,
+                self.text,
+                tuple(self.bounding_box.items()),
+                tuple(self.top_right.items()),
+                tuple(self.top_left.items()),
+                tuple(self.bottom_right.items()),
+                tuple(self.bottom_left.items()),
+                self.angle_degrees,
+                self.angle_radians,
+                self.confidence,
+                tuple(self.tags),
+            )
         )
 
 
