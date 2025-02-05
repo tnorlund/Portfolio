@@ -102,7 +102,7 @@ def test_delete_word_tag(
 
 
 @pytest.mark.integration
-def test_list_word_tags(dynamodb_table: Literal["MyMockedTable"]):
+def test_word_tag_list(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
     tags = [
@@ -127,7 +127,7 @@ def test_list_word_tags(dynamodb_table: Literal["MyMockedTable"]):
 
 
 @pytest.mark.integration
-def test_list_word_tags_from_image(dynamodb_table: Literal["MyMockedTable"]):
+def test_word_tag_list_from_image(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
 
@@ -235,7 +235,7 @@ def test_get_word_tags(
 
 
 @pytest.mark.integration
-def test_get_word_tags_no_results(dynamodb_table: Literal["MyMockedTable"]):
+def test_word_tag_get_no_results(dynamodb_table: Literal["MyMockedTable"]):
     """
     If we request a tag that doesn't exist, we should get an empty list.
     """
@@ -246,7 +246,7 @@ def test_get_word_tags_no_results(dynamodb_table: Literal["MyMockedTable"]):
 
 
 @pytest.mark.integration
-def test_get_word_tags_pagination(dynamodb_table: Literal["MyMockedTable"]):
+def test_word_tag_get_pagination(dynamodb_table: Literal["MyMockedTable"]):
     """
     Test pagination by adding more than one 'page' (the default DynamoDB
     Query limit can be around 1 MB or 1k items). We'll just add ~30 items

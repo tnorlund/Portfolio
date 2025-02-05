@@ -103,7 +103,7 @@ correct_image_params = {
 
 
 @pytest.mark.integration
-def test_addReceipt(dynamodb_table: Literal["MyMockedTable"], sample_receipt: Receipt):
+def test_receipt_add(dynamodb_table: Literal["MyMockedTable"], sample_receipt: Receipt):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
 
@@ -131,7 +131,7 @@ def test_addReceipt_error_receipt_that_exists(
 
 
 @pytest.mark.integration
-def test_addReceipts(dynamodb_table: str):
+def test_receipt_add_all(dynamodb_table: str):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
     receipts = [
@@ -148,7 +148,7 @@ def test_addReceipts(dynamodb_table: str):
 
 
 @pytest.mark.integration
-def test_addReceipts_error_receipt_that_exists(dynamodb_table: str):
+def test_receipt_add_all_error_exists(dynamodb_table: str):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
     receipts = [
@@ -163,7 +163,7 @@ def test_addReceipts_error_receipt_that_exists(dynamodb_table: str):
 
 
 @pytest.mark.integration
-def test_updateReceipt(dynamodb_table: str):
+def test_receipt_update(dynamodb_table: str):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
     receipt = Receipt(**correct_receipt_params)
@@ -179,7 +179,7 @@ def test_updateReceipt(dynamodb_table: str):
 
 
 @pytest.mark.integration
-def test_updateReceipt_error_receipt_not_exists(dynamodb_table: str):
+def test_receipt_update_error_not_exists(dynamodb_table: str):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
     receipt = Receipt(**correct_receipt_params)
@@ -190,7 +190,7 @@ def test_updateReceipt_error_receipt_not_exists(dynamodb_table: str):
 
 
 @pytest.mark.integration
-def test_updateReceipts(dynamodb_table: str):
+def test_receipt_update_all(dynamodb_table: str):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
     receipts = [
@@ -210,7 +210,7 @@ def test_updateReceipts(dynamodb_table: str):
 
 
 @pytest.mark.integration
-def test_updateReceipts_error_receipt_not_exists(dynamodb_table: str):
+def test_receipt_update_all_error_not_exists(dynamodb_table: str):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
     receipts = [
@@ -224,7 +224,7 @@ def test_updateReceipts_error_receipt_not_exists(dynamodb_table: str):
 
 
 @pytest.mark.integration
-def test_deleteReceipt(dynamodb_table: str):
+def test_receipt_delete(dynamodb_table: str):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
     receipt = Receipt(**correct_receipt_params)
@@ -239,7 +239,7 @@ def test_deleteReceipt(dynamodb_table: str):
 
 
 @pytest.mark.integration
-def test_deleteReceipt_error_receipt_not_exists(dynamodb_table: str):
+def test_receipt_delete_error_not_exists(dynamodb_table: str):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
     receipt = Receipt(**correct_receipt_params)
@@ -250,7 +250,7 @@ def test_deleteReceipt_error_receipt_not_exists(dynamodb_table: str):
 
 
 @pytest.mark.integration
-def test_deleteReceipts(dynamodb_table: str):
+def test_receipt_delete_all(dynamodb_table: str):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
     receipts = [
@@ -268,7 +268,7 @@ def test_deleteReceipts(dynamodb_table: str):
 
 
 @pytest.mark.integration
-def test_deleteReceipts_error_receipt_not_exists(dynamodb_table: str):
+def test_receipt_delete_all_error_not_exists(dynamodb_table: str):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
     receipts = [
@@ -282,7 +282,7 @@ def test_deleteReceipts_error_receipt_not_exists(dynamodb_table: str):
 
 
 @pytest.mark.integration
-def test_deleteReceiptsFromImage(dynamodb_table: str):
+def test_receipt_delete_all_from_image(dynamodb_table: str):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
     receipt = Receipt(**correct_receipt_params)
@@ -309,7 +309,7 @@ def test_deleteReceiptsFromImage(dynamodb_table: str):
 
 
 @pytest.mark.integration
-def test_deleteReceiptsFromImage_error_no_receipts_in_image(dynamodb_table: str):
+def test_receipt_delete_all_from_image_error_no_receipts(dynamodb_table: str):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
     image_id = 1
@@ -320,7 +320,7 @@ def test_deleteReceiptsFromImage_error_no_receipts_in_image(dynamodb_table: str)
 
 
 @pytest.mark.integration
-def test_getReceipt(dynamodb_table: str):
+def test_receipt_get(dynamodb_table: str):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
     receipt = Receipt(**correct_receipt_params)
@@ -334,7 +334,7 @@ def test_getReceipt(dynamodb_table: str):
 
 
 @pytest.mark.integration
-def test_getReceipt_error_receipt_not_exists(dynamodb_table: str):
+def test_receipt_get_error_not_exists(dynamodb_table: str):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
     receipt = Receipt(**correct_receipt_params)
@@ -345,7 +345,7 @@ def test_getReceipt_error_receipt_not_exists(dynamodb_table: str):
 
 
 @pytest.mark.integration
-def test_getReceiptsFromImage(dynamodb_table: str):
+def test_receipt_get_all_from_image(dynamodb_table: str):
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
     receipt = Receipt(**correct_receipt_params)

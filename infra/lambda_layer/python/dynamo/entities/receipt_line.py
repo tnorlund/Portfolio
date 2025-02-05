@@ -262,6 +262,29 @@ class ReceiptLine:
         yield "histogram", self.histogram
         yield "num_chars", self.num_chars
 
+    def __hash__(self):
+        """Returns a hash value for the ReceiptLine object.
+        
+        Returns:
+            int: The hash value for the ReceiptLine object.
+        """
+        return hash(
+            (
+                self.receipt_id,
+                self.image_id,
+                self.line_id,
+                self.text,
+                tuple(self.bounding_box.items()),
+                tuple(self.top_right.items()),
+                tuple(self.top_left.items()),
+                tuple(self.bottom_right.items()),
+                tuple(self.bottom_left.items()),
+                self.angle_degrees,
+                self.angle_radians,
+                self.confidence,
+            )
+        )
+
 
 def itemToReceiptLine(item: dict) -> ReceiptLine:
     """

@@ -8,7 +8,7 @@ def example_receipt_line():
     # fmt: on
 
 @pytest.mark.unit
-def test_receipt_line_valid_init(example_receipt_line):
+def test_receipt_line_init_valid(example_receipt_line):
     assert example_receipt_line.receipt_id == 1
     assert example_receipt_line.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert example_receipt_line.line_id == 10
@@ -24,7 +24,7 @@ def test_receipt_line_valid_init(example_receipt_line):
 
 
 @pytest.mark.unit
-def test_invalid_receipt_id():
+def test_receipt_line_init_invalid_receipt_id():
     with pytest.raises(ValueError, match="^receipt_id must be an integer"):
         ReceiptLine(
             receipt_id="1",  # invalid
@@ -57,7 +57,7 @@ def test_invalid_receipt_id():
         )
 
 @pytest.mark.unit
-def test_invalid_image_id():
+def test_receipt_line_init_invalid_image_id():
     with pytest.raises(ValueError, match="uuid must be a string"):
         ReceiptLine(
             receipt_id=1,
@@ -90,7 +90,7 @@ def test_invalid_image_id():
         )
 
 @pytest.mark.unit
-def test_invalid_id():
+def test_receipt_line_init_invalid_id():
     with pytest.raises(ValueError, match="^id must be an integer"):
         ReceiptLine(
             receipt_id=1,
@@ -123,7 +123,7 @@ def test_invalid_id():
         )
 
 @pytest.mark.unit
-def test_invalid_text():
+def test_receipt_line_init_invalid_text():
     with pytest.raises(ValueError, match="text must be a string"):
         ReceiptLine(
             receipt_id=1,
@@ -141,7 +141,7 @@ def test_invalid_text():
         )
 
 @pytest.mark.unit
-def test_invalid_angles():
+def test_receipt_line_init_invalid_angles():
     with pytest.raises(ValueError, match="angle_degrees must be a float or int"):
         ReceiptLine(
             receipt_id=1,
@@ -174,7 +174,7 @@ def test_invalid_angles():
         )
 
 @pytest.mark.unit
-def test_invalid_confidence():
+def test_receipt_line_init_invalid_confidence():
     with pytest.raises(ValueError, match="confidence must be a float"):
         ReceiptLine(
             receipt_id=1,
@@ -256,7 +256,7 @@ def test_receipt_line_to_item(example_receipt_line):
 
 
 @pytest.mark.unit
-def test_equal_receipt_line():
+def test_receipt_line_eq():
     line1 = ReceiptLine(
         receipt_id=1,
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -289,7 +289,7 @@ def test_equal_receipt_line():
     assert line1 != "line1"
 
 @pytest.mark.unit
-def test_repr(example_receipt_line):
+def test_receipt_line_repr(example_receipt_line):
     assert repr(example_receipt_line) == (
         "ReceiptLine("
         "receipt_id=1, "
@@ -308,7 +308,7 @@ def test_repr(example_receipt_line):
     )
 
 @pytest.mark.unit
-def test_iter(example_receipt_line):
+def test_receipt_line_iter(example_receipt_line):
     receipt_line_dict = dict(example_receipt_line)
     expected_keys = {
         "receipt_id",
@@ -343,7 +343,7 @@ def test_iter(example_receipt_line):
 
 
 @pytest.mark.unit
-def test_itemToReceiptLine(example_receipt_line):
+def test_item_to_receipt_line(example_receipt_line):
     assert itemToReceiptLine(example_receipt_line.to_item()) == example_receipt_line
 
     # Missing keys

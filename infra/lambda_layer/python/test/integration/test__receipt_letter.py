@@ -109,7 +109,7 @@ def test_delete_receipt_letter(
 
 
 @pytest.mark.integration
-def test_list_receipt_letters(dynamodb_table: Literal["MyMockedTable"]):
+def test_receipt_letter_list(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
     letters = [
@@ -143,7 +143,7 @@ def test_list_receipt_letters(dynamodb_table: Literal["MyMockedTable"]):
 
 
 @pytest.mark.integration
-def test_list_receipt_letters_from_word(dynamodb_table: Literal["MyMockedTable"]):
+def test_receipt_letter_list_from_word(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
 

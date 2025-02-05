@@ -280,6 +280,31 @@ class Receipt:
             and self.cdn_s3_bucket == other.cdn_s3_bucket
             and self.cdn_s3_key == other.cdn_s3_key
         )
+    
+    def __hash__(self) -> int:
+        """Returns the hash value of the Receipt object.
+
+        Returns:
+            int: The hash value of the Receipt object.
+        """
+        return hash(
+            (
+                self.receipt_id,
+                self.image_id,
+                self.width,
+                self.height,
+                self.timestamp_added,
+                self.raw_s3_bucket,
+                self.raw_s3_key,
+                self.top_left,
+                self.top_right,
+                self.bottom_left,
+                self.bottom_right,
+                self.sha256,
+                self.cdn_s3_bucket,
+                self.cdn_s3_key,
+            )
+        )
 
 
 def itemToReceipt(item: dict) -> Receipt:

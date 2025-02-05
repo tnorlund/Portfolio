@@ -11,7 +11,7 @@ def example_receipt_word_tag():
 
 
 @pytest.mark.unit
-def test_receipt_word_tag_init(example_receipt_word_tag):
+def test_receipt_word_tag_init_valid(example_receipt_word_tag):
     """Test constructor initializes the correct fields."""
     assert example_receipt_word_tag.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert example_receipt_word_tag.receipt_id == 45
@@ -20,7 +20,7 @@ def test_receipt_word_tag_init(example_receipt_word_tag):
     assert example_receipt_word_tag.tag == "food"
 
 @pytest.mark.unit
-def test_receipt_word_tag_init_bad_image_id():
+def test_receipt_word_tag_init_invalid_image_id():
     """Test constructor raises ValueError if image_id is not a valid UUID."""
     with pytest.raises(ValueError, match="uuid must be a string"):
         ReceiptWordTag(
@@ -32,7 +32,7 @@ def test_receipt_word_tag_init_bad_image_id():
         )
 
 @pytest.mark.unit
-def test_receipt_word_tag_init_bad_receipt_id():
+def test_receipt_word_tag_init_invalid_receipt_id():
     """Test constructor raises ValueError if receipt_id is not an integer or is negative."""
     with pytest.raises(ValueError, match="receipt_id must be an integer"):
         ReceiptWordTag(
@@ -44,7 +44,7 @@ def test_receipt_word_tag_init_bad_receipt_id():
         )
 
 @pytest.mark.unit
-def test_receipt_word_tag_init_bad_line_id():
+def test_receipt_word_tag_init_invalid_line_id():
     """Test constructor raises ValueError if line_id is not an integer or is negative."""
     with pytest.raises(ValueError, match="line_id must be an integer"):
         ReceiptWordTag(
@@ -56,7 +56,7 @@ def test_receipt_word_tag_init_bad_line_id():
         )
 
 @pytest.mark.unit
-def test_receipt_word_tag_init_bad_word_id():
+def test_receipt_word_tag_init_invalid_word_id():
     """Test constructor raises ValueError if word_id is not an integer or is negative."""
     with pytest.raises(ValueError, match="word_id must be an integer"):
         ReceiptWordTag(
@@ -68,7 +68,7 @@ def test_receipt_word_tag_init_bad_word_id():
         )
 
 @pytest.mark.unit
-def test_receipt_word_tag_init_bad_tag():
+def test_receipt_word_tag_init_invalid_tag():
     """Test constructor raises ValueError if tag is not a string."""
     with pytest.raises(ValueError, match="tag must not be empty"):
         ReceiptWordTag(
@@ -89,7 +89,7 @@ def test_receipt_word_tag_init_bad_tag():
         )
 
 @pytest.mark.unit
-def test_receipt_word_tag_init_bad_timestamp_added():
+def test_receipt_word_tag_init_invalid_timestamp_added():
     """Test constructor raises ValueError if timestamp_added is not a datetime or string."""
     with pytest.raises(ValueError, match="timestamp_added must be a datetime object or a string"):
         ReceiptWordTag(
@@ -197,7 +197,7 @@ def test_receipt_word_tag_to_item(example_receipt_word_tag):
     assert item["timestamp_added"]["S"] == "2021-01-01T00:00:00"
 
 @pytest.mark.unit
-def test_to_ReceiptWord_key(example_receipt_word_tag):
+def test_receipt_word_tag_to_receipt_word_key(example_receipt_word_tag):
     """Test the to_ReceiptWord_key method."""
     key = example_receipt_word_tag.to_ReceiptWord_key()
     assert key["PK"]["S"] == "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"
@@ -252,7 +252,7 @@ def test_item_to_receipt_word_tag_missing_keys():
 
 
 @pytest.mark.unit
-def test_item_to_receipt_word_tag_bad_format():
+def test_item_to_receipt_word_tag_invalid_format():
     """
     Test that itemToReceiptWordTag raises ValueError if the PK/SK is badly formatted.
     """
