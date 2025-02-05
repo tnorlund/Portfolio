@@ -460,30 +460,60 @@ class _Image:
         # Return the final payload plus leftover key (if any)
         return payload, lek_to_return
 
-    def listImages(self) -> List[Image]:
-        """Lists all images in the database."""
+    def listImages(
+        self, 
+        limit: Optional[int] = None, 
+        lastEvaluatedKey: Optional[Dict] = None
+    ) -> Tuple[List[Image], Optional[Dict]]:
+        """
+        Lists images from the database.
+
+        If a limit is provided, performs one query (or page) and returns up to that many images
+        along with a LastEvaluatedKey (if there are more images). If no limit is provided,
+        it paginates until all images are returned.
+
+        Args:
+            limit (Optional[int]): The maximum number of images to return.
+            lastEvaluatedKey (Optional[Dict]): The DynamoDB key from where the next page should start.
+
+        Returns:
+            Tuple[List[Image], Optional[Dict]]: A tuple containing:
+                1) A list of images.
+                2) The LastEvaluatedKey (if more images are available) or None.
+        """
         images = []
         try:
-            response = self._client.query(
-                TableName=self.table_name,
-                IndexName="GSITYPE",
-                KeyConditionExpression="#t = :val",
-                ExpressionAttributeNames={"#t": "TYPE"},
-                ExpressionAttributeValues={":val": {"S": "IMAGE"}},
-            )
+            query_params = {
+                "TableName": self.table_name,
+                "IndexName": "GSITYPE",
+                "KeyConditionExpression": "#t = :val",
+                "ExpressionAttributeNames": {"#t": "TYPE"},
+                "ExpressionAttributeValues": {":val": {"S": "IMAGE"}},
+            }
+
+            # If a starting key is provided, add it to the query parameters.
+            if lastEvaluatedKey is not None:
+                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+
+            # If a limit is provided, include it in the query parameters.
+            if limit is not None:
+                query_params["Limit"] = limit
+
+            response = self._client.query(**query_params)
             images.extend([itemToImage(item) for item in response["Items"]])
 
-            while "LastEvaluatedKey" in response:
-                response = self._client.query(
-                    TableName=self.table_name,
-                    IndexName="GSITYPE",
-                    KeyConditionExpression="#t = :val",
-                    ExpressionAttributeNames={"#t": "TYPE"},
-                    ExpressionAttributeValues={":val": {"S": "IMAGE"}},
-                    ExclusiveStartKey=response["LastEvaluatedKey"],
-                )
-                images.extend([itemToImage(item) for item in response["Items"]])
+            if limit is None:
+                # Paginate through all pages if no limit is provided.
+                while "LastEvaluatedKey" in response and response["LastEvaluatedKey"]:
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    response = self._client.query(**query_params)
+                    images.extend([itemToImage(item) for item in response["Items"]])
+                last_evaluated_key = None
+            else:
+                # If a limit was provided, capture the LastEvaluatedKey if available.
+                last_evaluated_key = response.get("LastEvaluatedKey", None)
 
-            return images
-        except Exception as e:
-            raise Exception(f"Error listing images: {e}")
+            return images, last_evaluated_key
+
+        except ClientError as e:
+            raise ValueError(f"Could not list images from the database: {e}")

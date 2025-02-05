@@ -216,7 +216,7 @@ def backup_dynamo_items(
     dynamo_client = DynamoClient(dynamo_name)
     os.makedirs(backup_dir, exist_ok=True)
 
-    images = dynamo_client.listImages()
+    images, _ = dynamo_client.listImages()
     lines = dynamo_client.listLines()
     words = dynamo_client.listWords()
     word_tags = dynamo_client.listWordTags()
@@ -452,7 +452,7 @@ def delete_dynamo_items(dynamo_name: str) -> None:
     """
     dynamo_client = DynamoClient(dynamo_name)
 
-    images = dynamo_client.listImages()
+    images, _ = dynamo_client.listImages()
     print(f" - Deleting {len(images)} image items")
     delete_in_batches(dynamo_client.deleteImages, images)
 

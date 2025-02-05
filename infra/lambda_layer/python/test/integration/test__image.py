@@ -257,7 +257,7 @@ def test_deleteImages(dynamodb_table: Literal["MyMockedTable"]):
     client.deleteImages(images)
 
     # Assert
-    response_images = client.listImages()
+    response_images, _ = client.listImages()
     assert len(response_images) == 0, "all images should be deleted"
 
 

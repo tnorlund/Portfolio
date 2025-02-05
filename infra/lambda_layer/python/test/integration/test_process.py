@@ -283,7 +283,7 @@ def test_process(
     assert len(receipts) == 1
     receipt = receipts[0]["receipt"]
 
-    assert expected_images == DynamoClient(table_name).listImages()
+    assert expected_images == DynamoClient(table_name).listImages()[0]
     assert expected_lines == DynamoClient(table_name).listLines()
     assert expected_words == DynamoClient(table_name).listWords()
     assert expected_word_tags == DynamoClient(table_name).listWordTags()
@@ -416,7 +416,7 @@ def test_process_upload(s3_buckets, dynamodb_table):
     ) = expected_results(uuid)
 
     dynamo_client = DynamoClient(table_name)
-    assert expected_images == dynamo_client.listImages()
+    assert expected_images == dynamo_client.listImages()[0]
     assert expected_lines == dynamo_client.listLines()
     assert expected_words == dynamo_client.listWords()
     assert expected_word_tags == dynamo_client.listWordTags()
