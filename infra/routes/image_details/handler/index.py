@@ -29,10 +29,16 @@ def handler(event, context):
                     receipts_by_image_id[receipt.image_id] = 0
                 receipts_by_image_id[receipt.image_id] += 1
 
-            # Get the image_id with the most receipts
-            image_id = max(
-                receipts_by_image_id, key=lambda key: receipts_by_image_id[key]
-            )
+            # Only use images with 2 receipts
+            receipts_by_image_id = {
+                key: value for key, value in receipts_by_image_id.items() if value == 2
+            }
+
+            # Randomly chose an image_id of the images with 2 receipts
+            if len(receipts_by_image_id) == 0:
+                return {"statusCode": 404, "body": "No images with 2 receipts found"}
+
+            image_id = random.choice(list(receipts_by_image_id.keys()))
 
             image_details = client.getImageDetails(image_id)
             (

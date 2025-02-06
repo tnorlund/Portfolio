@@ -11,6 +11,32 @@ import {
 
 const isDevelopment = process.env.NODE_ENV === "development";
 
+export async function fetchImageCount(): Promise<number> {
+  const apiUrl = isDevelopment
+    ? `https://dev-api.tylernorlund.com/image_count`
+    : `https://api.tylernorlund.com/image_count`;
+  const response = await fetch(apiUrl);
+
+  if (!response.ok) {
+    throw new Error(`Network response was not ok (status: ${response.status})`);
+  }
+
+  return await response.json();
+}
+
+export async function fetchReceiptCount(): Promise<number> {
+  const apiUrl = isDevelopment
+    ? `https://dev-api.tylernorlund.com/receipt_count`
+    : `https://api.tylernorlund.com/receipt_count`;
+  const response = await fetch(apiUrl);
+
+  if (!response.ok) {
+    throw new Error(`Network response was not ok (status: ${response.status})`);
+  }
+
+  return await response.json();
+}
+
 export async function fetchImageDetails(): Promise<ImageDetailsApiResponse> {
   const apiUrl = isDevelopment
     ? `https://dev-api.tylernorlund.com/image_details`

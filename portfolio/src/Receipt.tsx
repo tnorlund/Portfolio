@@ -102,6 +102,7 @@ function Receipt() {
         have increased exponentially. I decided to automate not only the process
         of organizing receipts, but also the process of software development.
       </p>
+
       <h1>Strategy</h1>
       <p>
         I started with a solid foundation in AWS and a bit of React, but Swift
@@ -140,9 +141,10 @@ function Receipt() {
       <h2>Infrastructure</h2>
       <p>
         I had experience with AWS services and Terraform, but Pulumi was new to
-        me. With ChatGPT, I was able to quickly create cloud services that are
-        consistent between the different environments. This stopped me from
-        "testing in production" while quickly changing cloud compute.
+        me. With ChatGPT, an OpenAI product, I was able to quickly create cloud
+        services that are consistent between a "development" and "production"
+        environment. This stopped me from "testing in production" while quickly
+        optimizing cloud compute.
       </p>
       <div className="logos-container">
         <Pulumi />
@@ -175,26 +177,51 @@ function Receipt() {
       </ul>
       <Diagram />
 
+      <h2>ChatGPT</h2>
+      <p>
+        One of the core aspects of this project involved using ChatGPT's API to
+        label receipt words automatically. I iterated through several prompt
+        engineering strategies—testing everything from the structure of the JSON
+        output to how ChatGPT highlights each word's location—to arrive at a
+        final prompt that gave consistently accurate labels. This iterative
+        process involved tweaking the prompt, sending sample payloads to
+        ChatGPT's API, and validating the output against real receipts.
+      </p>
+
+      <code>
+        <GPTPrompt />
+      </code>
+
+      <p>
+        Refining my prompts revealed the power of prompt engineering with
+        ChatGPT. By adjusting phrasing, specificity, and output constraints, I
+        guided the model to accurately label receipt words and generate
+        functional code that fit seamlessly into the project. This iterative
+        process of testing, tweaking, and retesting was essential for harnessing
+        ChatGPT's capabilities and producing reliable, maintainable code.
+      </p>
+
       <h2>Frontend</h2>
       <p>
         The front end was built using TypeScript with React. The typing system
         in TypeScript made it easier for ChatGPT to gain context on the data
-        being passed around. As I iterated on the both the data processing and
-        the cloud infrastructure, the frontend evolved alongside these changes.
+        being passed around. As I iterated on both the data processing and
+        infrastructure, the frontend evolved alongside these changes.
       </p>
       <div className="logos-container">
         <ReactLogo />
         <TypeScriptLogo />
       </div>
       <p>
-        Each refinement in the OCR processing and AWS services was continuously applied to the frontend through a CICD pipeline. This allowed me to quickly test new features and ensure that the frontend was always in sync with the backend.
+        Each refinement was continuously applied to and tested against the
+        frontend through a CICD pipeline. This allowed me to quickly test new
+        features and ensure that the frontend was always in sync and functioning
+        correctly.
       </p>
 
-      <h1>ChatGPT</h1>
-      <code>
-        <GPTPrompt />
-      </code>
+      
 
+      <h1>Results</h1>
       <p>
         And that's it! Now I have a system that scans, annotates, and stores
         receipt data, letting me explore it any way I like. It's been a fun
