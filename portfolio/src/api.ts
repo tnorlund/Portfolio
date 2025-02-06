@@ -6,9 +6,23 @@ import {
   ReceiptApiResponse,
   ReceiptWordsApiResponse,
   ReceiptDetailsApiResponse,
+  ImageDetailsApiResponse,
 } from "./interfaces";
 
 const isDevelopment = process.env.NODE_ENV === "development";
+
+export async function fetchImageDetails(): Promise<ImageDetailsApiResponse> {
+  const apiUrl = isDevelopment
+    ? `https://dev-api.tylernorlund.com/image_details`
+    : `https://api.tylernorlund.com/image_details`;
+  const response = await fetch(apiUrl);
+
+  if (!response.ok) {
+    throw new Error(`Network response was not ok (status: ${response.status})`);
+  }
+
+  return await response.json();
+}
 
 /** Fetch images from the API and return a list of tuples */
 export async function fetchImages(limit = 5): Promise<ImageReceiptsLines[]> {

@@ -4,6 +4,7 @@ import Pulumi from "./Pulumi";
 import OpenAI from "./OpenAI";
 import ReceiptStack from "./ReceiptStack";
 import ReceiptWords from "./ReceiptWords";
+import ImageBoundingBox from "./ImageBoundingBox";
 
 
 import "./Receipt.css";
@@ -104,7 +105,7 @@ function Receipt() {
         Pulumi, so I thought, “Why not turn all these dusty scans into something
         useful?”
       </p>
-
+      <ImageBoundingBox />
       <p>
         First up: extracting the text from each receipt. I started with
         Tesseract for OCR (Optical Character Recognition), but it wasn't giving

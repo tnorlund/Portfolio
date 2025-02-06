@@ -26,9 +26,44 @@ export interface Point {
     angle_radians: number;
     confidence: number;
   }
+
+  export interface Image {
+    image_id: string // (str): UUID identifying the image.
+    width: number // (int): The width of the image in pixels.
+    height: number // (int): The height of the image in pixels.
+    timestamp_added: string //  (datetime): The timestamp when the image was added.
+    raw_s3_bucket: string // (str): The S3 bucket where the image is initially stored.
+    raw_s3_key: string // (str): The S3 key where the image is initially stored.
+    sha256: string // (str): The SHA256 hash of the image.
+    cdn_s3_bucket: string //  (str): The S3 bucket where the image is stored in the CDN.
+    cdn_s3_key: string // (str): The S3 key where the image is stored in the CDN.
+  };
+
+  export interface Word {
+    // IDs indicating what this word is linked to
+    image_id: number;
+    line_id: number;
+    word_id: number;
+  
+    // Basic text and geometry
+    text: string;
+    bounding_box: BoundingBoxInterface;
+    top_left: Point;
+    top_right: Point;
+    bottom_left: Point;
+    bottom_right: Point;
+    angle_degrees: number;
+    angle_radians: number;
+    confidence: number;
+  
+    // Additional fields found in the example
+    tags: string[];  
+    histogram: Record<string, number>;
+    num_chars: number;
+  }
   
   export interface Receipt {
-    id: number;
+    receipt_id: number;
     image_id: number;
     width: number;
     height: number;
@@ -135,4 +170,11 @@ export interface Point {
   export interface ReceiptWordsApiResponse {
     words: ReceiptWord[];
     lastEvaluatedKey?: string; // If there are more pages, this will be a string (often JSON-encoded)
+  }
+
+  export interface ImageDetailsApiResponse {
+    images: Image[];
+    words: Word[];
+    receipts: Receipt[];
+    receipt_words: ReceiptWord[];
   }
