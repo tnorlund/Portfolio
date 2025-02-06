@@ -35,7 +35,7 @@ const ReceiptStack: React.FC = () => {
         delay: index * 100,
       };
     },
-    keys: (item) => item.id, // Use a stable key (e.g. "receipt.id")
+    keys: (item) => item.receipt_id, // Use a stable key (e.g. "receipt.id")
   });
 
   useEffect(() => {
@@ -102,7 +102,7 @@ const ReceiptStack: React.FC = () => {
             : `https://www.tylernorlund.com/${receipt.cdn_s3_key}`;
           return (
             <animated.div
-              key={receipt.id}
+              key={receipt.receipt_id}
               style={{
                 position: "absolute",
                 width: "100px",
@@ -114,7 +114,7 @@ const ReceiptStack: React.FC = () => {
             >
               <img
                 src={cdnUrl}
-                alt={`Receipt ${receipt.id}`}
+                alt={`Receipt ${receipt.receipt_id}`}
                 style={{
                   width: "100%",
                   height: "auto",

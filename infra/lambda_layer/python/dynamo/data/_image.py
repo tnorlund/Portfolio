@@ -10,6 +10,7 @@ from dynamo import (
     ReceiptWord,
     ReceiptWordTag,
     ReceiptLetter,
+    GPTInitialTagging,
     itemToReceipt,
     itemToReceiptLine,
     itemToReceiptWord,
@@ -20,33 +21,93 @@ from dynamo import (
     itemToWord,
     itemToWordTag,
     itemToLetter,
+    itemToGPTInitialTagging,
 )
+from dynamo.entities import assert_valid_uuid
 from botocore.exceptions import ClientError
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
-# So let's chunk the items in groups of 25
+# So we chunk the items in groups of 25 for bulk operations.
 CHUNK_SIZE = 25
 
 
 class _Image:
     """
-    A class used to represent an Image in the database.
+    A class providing methods to interact with "Image" entities in DynamoDB.
+    This class is typically used within a DynamoClient to access and manage
+    image records.
+
+    Attributes
+    ----------
+    _client : boto3.client
+        The Boto3 DynamoDB client (must be set externally).
+    table_name : str
+        The name of the DynamoDB table (must be set externally).
 
     Methods
     -------
-    addImage(image: Image)
-        Adds an image to the database.
+    addImage(image: Image):
+        Adds a single Image item to the database, ensuring a unique ID.
+    addImages(images: List[Image]):
+        Adds multiple Image items to the database in chunks of up to 25 items.
+    getImage(image_id: str) -> Image:
+        Retrieves a single Image item by its ID.
+    getMaxImageId() -> int:
+        Retrieves the maximum image ID found in the database.
+    updateImage(image: Image):
+        Updates an existing Image item in the database.
+    getImageDetails(image_id: str) -> tuple[Image,
+                                            list[Line],
+                                            list[Word],
+                                            list[WordTag],
+                                            list[Letter],
+                                            list[Dict[str, Union[Receipt,
+                                                                 list[ReceiptLine],
+                                                                 list[Word],
+                                                                 list[Letter]]]]]:
+        Retrieves comprehensive details for an Image, including lines, words, letters,
+        and receipt data (if any) associated with the Image.
+    deleteImage(image_id: str):
+        Deletes a single Image item from the database by its ID.
+    deleteImages(images: list[Image]):
+        Deletes multiple Image items in chunks of up to 25 items.
+    listImageDetails(limit: Optional[int] = None,
+                     last_evaluated_key: Optional[Dict] = None)
+                     -> Tuple[Dict[int, Dict[str, Union[Image, List[Receipt], List[Line]]]],
+                              Optional[Dict]]:
+        Lists images (via GSI) with optional pagination and returns their basic details.
+    listImages(limit: Optional[int] = None,
+               lastEvaluatedKey: Optional[Dict] = None) -> Tuple[List[Image], Optional[Dict]]:
+        Lists images (via GSI) with optional pagination, returning Image objects directly.
     """
 
     def addImage(self, image: Image):
-        """Adds an image to the database
-
-        Args:
-            image (Image): The image to add to the database
-
-        Raises:
-            ValueError: When an image with the same ID already
         """
+        Adds an Image item to the database.
+
+        Uses a conditional put to ensure that the item does not overwrite
+        an existing image with the same ID.
+
+        Parameters
+        ----------
+        image : Image
+            The Image object to be added.
+
+        Raises
+        ------
+        ValueError
+            If an image with the same ID already exists.
+        Exception
+            If another error occurs while putting the item.
+        """
+        # Validate the image parameter.
+        if image is None:
+            raise ValueError("Image parameter is required and cannot be None.")
+        if not isinstance(image, Image):
+            raise ValueError("image must be an instance of the Image class.")
+
+        # Attempt to put the image item into DynamoDB with a condition that prevents
+        # overwriting an existing image.
         try:
             self._client.put_item(
                 TableName=self.table_name,
@@ -54,23 +115,52 @@ class _Image:
                 ConditionExpression="attribute_not_exists(PK)",
             )
         except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-                raise ValueError(f"Image with ID {image.image_id} already exists")
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ConditionalCheckFailedException":
+                raise ValueError(
+                    f"Image with ID {image.image_id} already exists"
+                ) from e
+            elif error_code == "ProvisionedThroughputExceededException":
+                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+            elif error_code == "InternalServerError":
+                raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(f"Error updating image: {e}")
+                raise Exception(f"Error putting image: {e}") from e
 
     def addImages(self, images: List[Image]):
-        """Adds a list of images to the database
-
-        Args:
-            images (list[Image]): The images to add to the database
-
-        Raises:
-            ValueError: When an image with the same ID already exists
         """
+        Adds multiple Image items to the database in batches of up to 25.
+
+        This method validates that the provided parameter is a list of Image instances.
+        It uses DynamoDB's batch_write_item operation, which can handle up to 25 items
+        per batch. Any unprocessed items are automatically retried until no unprocessed
+        items remain.
+
+        Parameters
+        ----------
+        images : list[Image]
+            The list of Image objects to be added.
+
+        Raises
+        ------
+        ValueError
+            If the images parameter is None, not a list, or if any element in the list
+            is not an instance of the Image class, or if an error occurs while adding the images.
+        Exception
+            For any other errors encountered during the batch write operation.
+        """
+        if images is None:
+            raise ValueError("Images parameter is required and cannot be None.")
+        if not isinstance(images, list):
+            raise ValueError("Images must be provided as a list.")
+        if not all(isinstance(img, Image) for img in images):
+            raise ValueError(
+                "All items in the images list must be instances of the Image class."
+            )
+
         try:
-            for i in range(0, len(images), CHUNK_SIZE):
-                chunk = images[i : i + CHUNK_SIZE]
+            for i in range(0, len(images), 25):
+                chunk = images[i : i + 25]
                 request_items = [
                     {"PutRequest": {"Item": image.to_item()}} for image in chunk
                 ]
@@ -80,49 +170,85 @@ class _Image:
                 # Handle unprocessed items if they exist
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    # If there are unprocessed items, retry them
                     response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
-            raise ValueError(f"Error adding images: {e}")
+            raise ValueError(f"Error adding images: {e}") from e
 
-    def getImage(self, image_id: int) -> Image:
-        """Fetches a single Image item by its ID."""
+    def getImage(self, image_id: str) -> Image:
+        """
+        Retrieves a single Image item by its ID from the database after validating the input.
+
+        Parameters
+        ----------
+        image_id : str
+            The UUID of the image to retrieve.
+
+        Returns
+        -------
+        Image
+            The retrieved Image object.
+
+        Raises
+        ------
+        ValueError
+            If image_id is not provided, is not a UUID, or if no image is found with the specified ID.
+        Exception
+            For various DynamoDB ClientErrors such as ProvisionedThroughputExceededException,
+            ResourceNotFoundException, InternalServerError, or any other error encountered during the get_item operation.
+        """
+        # Validate the image_id parameter.
+        if image_id is None:
+            raise ValueError("Image ID is required and cannot be None.")
+        assert_valid_uuid(image_id)
+
+        # Attempt to retrieve the image item from DynamoDB.
         try:
             response = self._client.get_item(
                 TableName=self.table_name,
                 Key={"PK": {"S": f"IMAGE#{image_id}"}, "SK": {"S": "IMAGE"}},
             )
+            if "Item" not in response or not response["Item"]:
+                raise ValueError(f"Image with ID {image_id} not found")
             return itemToImage(response["Item"])
-        except KeyError:
-            raise ValueError(f"Image with ID {image_id} not found")
-    
-    def getMaxImageId(self) -> int:
-        """Fetches the maximum image ID from the database."""
-        try:
-            response = self._client.query(
-                TableName=self.table_name,
-                IndexName="GSI1",  # or whatever index you created
-                KeyConditionExpression="#pk = :pk_val",
-                ExpressionAttributeNames={"#pk": "GSI1PK"},
-                ExpressionAttributeValues={":pk_val": {"S": "IMAGE"}},
-                ScanIndexForward=False,  # Sort in descending order
-                Limit=1,                 # Grab only the top (largest) item
-            )
-            items = response.get("Items", [])
-            if not items:
-                return 0  # no images found at all
-
-            # Extract the image_id from the PK or SK, depending on your schema
-            # Example: PK = "IMAGE#00042", so we split on '#'
-            pk_str = items[0]["PK"]["S"]  # e.g. "IMAGE#00042"
-            image_id_str = pk_str.split("#")[1]  # "00042"
-            return int(image_id_str)
-        except Exception as e:
-            raise Exception(f"Error getting max image ID: {e}")
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ResourceNotFoundException":
+                raise Exception(f"Table {self.table_name} not found: {e}") from e
+            elif error_code == "ProvisionedThroughputExceededException":
+                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+            elif error_code == "InternalServerError":
+                raise Exception(f"Internal server error: {e}") from e
+            else:
+                raise Exception(f"Error getting image: {e}") from e
 
     def updateImage(self, image: Image):
-        """Updates an image in the database."""
+        """
+        Updates an existing Image item in the database after validating the input.
+
+        This method ensures that the provided image parameter is valid and that the
+        DynamoDB client and table name are properly configured. It uses a conditional
+        put to ensure that the item exists before updating.
+
+        Parameters
+        ----------
+        image : Image
+            The Image object containing updated data.
+
+        Raises
+        ------
+        ValueError
+            If the image parameter is None, is not an instance of the Image class,
+            or if the image does not exist.
+        Exception
+            If any other error occurs during the update operation.
+        """
+        # Validate the image parameter.
+        if image is None:
+            raise ValueError("Image parameter is required and cannot be None.")
+        if not isinstance(image, Image):
+            raise ValueError("image must be an instance of the Image class.")
+
         try:
             self._client.put_item(
                 TableName=self.table_name,
@@ -130,23 +256,66 @@ class _Image:
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-                raise ValueError(f"Image with ID {image.image_id} not found")
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ConditionalCheckFailedException":
+                raise ValueError(f"Image with ID {image.image_id} not found") from e
             else:
-                raise Exception(f"Error updating image: {e}")
+                raise Exception(f"Error updating image: {e}") from e
 
-    def getImageDetails(self, image_id: int) -> tuple[
-        Image,
+    def getImageDetails(self, image_id: str) -> tuple[
+        list[Image],
         list[Line],
         list[Word],
         list[WordTag],
         list[Letter],
-        list[Dict[str, Union[Receipt, list[ReceiptLine], list[Word], list[Letter]]]],
+        list[Receipt],
+        list[ReceiptLine],
+        list[ReceiptWord],
+        list[ReceiptWordTag],
+        list[ReceiptLetter],
+        list[GPTInitialTagging],
     ]:
         """
-        Gets the details of an image from the database. This includes all lines,
-        words, letters, and scaled images associated with the image.
+        Retrieves detailed information about an Image from the database,
+        including its lines, words, letters, and any associated receipts.
+
+        This method queries all items matching the partition key ("IMAGE#{image_id}")
+        and then groups items by their type to build a comprehensive view of the
+        Image's related data.
+
+        Parameters
+        ----------
+        image_id : int
+            The ID of the image for which to retrieve details.
+
+        Returns
+        -------
+        tuple
+            A tuple containing:
+            1) The Image object.
+            2) A list of Line objects.
+            3) A list of Word objects.
+            4) A list of WordTag objects.
+            5) A list of Letter objects.
+            6) A list of dictionaries, each representing a Receipt and its associated
+               lines, words, word_tags, and letters.
+
+        Raises
+        ------
+        Exception
+            If there is an error querying DynamoDB.
         """
+        images = []
+        lines = []
+        words = []
+        word_tags = []
+        letters = []
+        receipts = []
+        receipt_lines = []
+        receipt_words = []
+        receipt_word_tags = []
+        receipt_letters = []
+        initial_gpt_queries = []
         try:
             response = self._client.query(
                 TableName=self.table_name,
@@ -157,7 +326,7 @@ class _Image:
             )
             items = response["Items"]
 
-            # Keep querying while there is a LastEvaluatedKey
+            # Keep querying if there's a LastEvaluatedKey
             while "LastEvaluatedKey" in response and response["LastEvaluatedKey"]:
                 response = self._client.query(
                     TableName=self.table_name,
@@ -171,18 +340,10 @@ class _Image:
                 )
                 items += response["Items"]
 
-            # Separate items by type
-            image = None
-            lines = []
-            words = []
-            word_tags = []
-            letters = []
-            receipts = []
-
             for item in items:
                 sk_value = item["SK"]["S"]
                 if item["TYPE"]["S"] == "IMAGE":
-                    image = itemToImage(item)
+                    images.append(itemToImage(item))
                 elif item["TYPE"]["S"] == "LINE":
                     lines.append(itemToLine(item))
                 elif item["TYPE"]["S"] == "WORD":
@@ -192,35 +353,53 @@ class _Image:
                 elif item["TYPE"]["S"] == "LETTER":
                     letters.append(itemToLetter(item))
                 elif item["TYPE"]["S"] == "RECEIPT":
-                    receipts.append(
-                        {
-                            "receipt": itemToReceipt(item),
-                            "lines": [],
-                            "words": [],
-                            "word_tags": [],
-                            "letters": [],
-                        }
-                    )
+                    receipts.append(itemToReceipt(item))
                 elif item["TYPE"]["S"] == "RECEIPT_LINE":
-                    this_line = itemToReceiptLine(dict(item))
-                    receipts[this_line.receipt_id - 1]["lines"].append(this_line)
+                    receipt_lines.append(itemToReceiptLine(item))
                 elif item["TYPE"]["S"] == "RECEIPT_WORD":
-                    this_word = itemToReceiptWord(item)
-                    receipts[this_word.receipt_id - 1]["words"].append(this_word)
+                    receipt_words.append(itemToReceiptWord(item))
                 elif item["TYPE"]["S"] == "RECEIPT_WORD_TAG":
-                    this_tag = itemToReceiptWordTag(item)
-                    receipts[this_tag.receipt_id - 1]["word_tags"].append(this_tag)
+                    receipt_word_tags.append(itemToReceiptWordTag(item))
                 elif item["TYPE"]["S"] == "RECEIPT_LETTER":
-                    this_letter = itemToReceiptLetter(item)
-                    receipts[this_letter.receipt_id - 1]["letters"].append(this_letter)
+                    receipt_letters.append(itemToReceiptLetter(item))
+                elif item["TYPE"]["S"] == "GPT_INITIAL_TAGGING":
+                    initial_gpt_queries.append(itemToGPTInitialTagging(item))
 
-            return image, lines, words, word_tags, letters, receipts
+            return (
+                images,
+                lines,
+                words,
+                word_tags,
+                letters,
+                receipts,
+                receipt_lines,
+                receipt_words,
+                receipt_word_tags,
+                receipt_letters,
+                initial_gpt_queries,
+            )
 
         except Exception as e:
             raise Exception(f"Error getting image details: {e}")
 
     def deleteImage(self, image_id: int):
-        """Deletes an image from the database."""
+        """
+        Deletes an Image item from the database by its ID.
+
+        Uses a conditional expression to ensure that the Image exists before deletion.
+
+        Parameters
+        ----------
+        image_id : int
+            The ID of the image to delete.
+
+        Raises
+        ------
+        ValueError
+            If the image does not exist.
+        Exception
+            If another error occurs during the delete operation.
+        """
         try:
             self._client.delete_item(
                 TableName=self.table_name,
@@ -234,7 +413,21 @@ class _Image:
                 raise Exception(f"Error deleting image: {e}")
 
     def deleteImages(self, images: list[Image]):
-        """Deletes a list of images"""
+        """
+        Deletes multiple Image items from the database in batches of up to 25 items.
+
+        Any unprocessed items are automatically retried until none remain.
+
+        Parameters
+        ----------
+        images : list[Image]
+            The list of Image objects to delete.
+
+        Raises
+        ------
+        ValueError
+            If an error occurs while deleting the images in batch.
+        """
         try:
             for i in range(0, len(images), CHUNK_SIZE):
                 chunk = images[i : i + CHUNK_SIZE]
@@ -252,34 +445,36 @@ class _Image:
             raise ValueError("Could not delete images from the database") from e
 
     def listImageDetails(
-        self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None
+        self, limit: Optional[int] = None, last_evaluated_key: Optional[Dict] = None
     ) -> Tuple[
-        Dict[int, Dict[str, Union[Image, List[Receipt], List[Line]]]],
-        Optional[Dict]
+        Dict[int, Dict[str, Union[Image, List[Receipt], List[Line]]]], Optional[Dict]
     ]:
         """
-        Lists images using the GSI on GSI1PK='IMAGE'. When both 'limit' and
-        'last_evaluated_key' are None, it returns *all* images. Otherwise, it
-        returns exactly 'limit' images (with their lines/receipts) plus a
-        LastEvaluatedKey (LEK) if there are more images remaining.
+        Lists images and their basic associated details (lines, receipts) using a
+        global secondary index where GSI1PK = 'IMAGE'. Supports optional pagination.
 
-        Args:
-            limit (Optional[int]): The maximum number of images to return.
-            last_evaluated_key (Optional[Dict]): The DynamoDB key from where
-                the next page should start (for pagination).
+        Parameters
+        ----------
+        limit : int, optional
+            The maximum number of images to return in this call.
+            If None, all images are returned (paginating until exhausted).
+        last_evaluated_key : dict, optional
+            The DynamoDB key from where the next page should start (for pagination).
 
-        Returns:
-            A tuple:
-            1) A dictionary of image_id -> { "image": Image, "lines": [...], "receipts": [...] }
-            2) The LastEvaluatedKey dict if there are more images, otherwise None.
+        Returns
+        -------
+        tuple
+            A tuple containing:
+            1) A dictionary keyed by image_id, where each value is another dict with:
+               {
+                   "image": Image,
+                   "lines": List[Line],
+                   "receipts": List[Receipt],
+               }
+            2) The LastEvaluatedKey dict if more items remain, otherwise None.
         """
-
-        # -------------------------------------------------------------
-        # CASE 1: No limit + no starting key => Return *all* images
-        # -------------------------------------------------------------
         if limit is None and last_evaluated_key is None:
+            # CASE 1: Return *all* images
             all_items = []
             response = None
             while True:
@@ -293,7 +488,6 @@ class _Image:
                         ScanIndexForward=True,
                     )
                 else:
-                    # If there's no LastEvaluatedKey, we've paged through all items
                     if not response.get("LastEvaluatedKey"):
                         break
                     response = self._client.query(
@@ -310,7 +504,6 @@ class _Image:
                 if not response.get("LastEvaluatedKey"):
                     break
 
-            # Build the final payload
             payload: Dict[int, Dict[str, Union[Image, List[Receipt], List[Line]]]] = {}
             for item in all_items:
                 sk = item["SK"]["S"]
@@ -321,7 +514,9 @@ class _Image:
                 elif sk.startswith("RECEIPT") and item_type == "RECEIPT":
                     receipt = itemToReceipt(item)
                     if receipt.image_id in payload:
-                        payload[receipt.image_id].setdefault("receipts", []).append(receipt)
+                        payload[receipt.image_id].setdefault("receipts", []).append(
+                            receipt
+                        )
                 elif sk.startswith("LINE") and item_type == "LINE":
                     line = itemToLine(item)
                     if line.image_id in payload:
@@ -329,9 +524,7 @@ class _Image:
 
             return payload, None
 
-        # -------------------------------------------------------------
         # CASE 2: Paginated => Return exactly 'limit' images (if available)
-        # -------------------------------------------------------------
         payload: Dict[int, Dict[str, Union[Image, List[Receipt], List[Line]]]] = {}
         included_image_ids = set()
         images_found = 0
@@ -339,10 +532,7 @@ class _Image:
 
         next_key = last_evaluated_key
 
-        # We'll keep looping until we've either found our 'limit' images
-        # OR run out of items in Dynamo, etc.
         while True:
-            # Build query params, including the ExclusiveStartKey if we have one
             query_params = {
                 "TableName": self.table_name,
                 "IndexName": "GSI1",
@@ -360,65 +550,49 @@ class _Image:
 
             response = self._client.query(**query_params)
             items = response.get("Items", [])
-            next_key = response.get("LastEvaluatedKey")  # might be None or another dict
+            next_key = response.get("LastEvaluatedKey")
 
-            # We keep track of leftover_image_id if we encounter a (limit+1)-th image
             leftover_image_id = None
             leftover_image_key = None
-
-            # We'll also store the last image we actually included:
             last_consumed_image_key = None
 
-            # Process all items in this batch
             for item in items:
                 sk = item["SK"]["S"]
                 item_type = item["TYPE"]["S"]
 
-                # -- 1) IMAGE Items --
+                # IMAGE item
                 if sk == "IMAGE":
                     if images_found < limit:
-                        # Include this image in the current page
                         img = itemToImage(item)
                         payload[img.image_id] = {"image": img}
                         included_image_ids.add(img.image_id)
                         images_found += 1
-
-                        # Track the key of the last consumed image
-                        last_consumed_image_key = {
-                            **img.key(),      # PK, SK
-                            **img.gsi1_key()  # GSI1PK, GSI1SK
-                        }
-
+                        last_consumed_image_key = {**img.key(), **img.gsi1_key()}
                     else:
                         # This is the (limit+1)-th image => leftover
                         leftover_img = itemToImage(item)
                         leftover_image_id = leftover_img.image_id
                         leftover_image_key = {
                             **leftover_img.key(),
-                            **leftover_img.gsi1_key()
+                            **leftover_img.gsi1_key(),
                         }
-                        # Do NOT "consume" it. We don't break right away because
-                        # we still want to process lines/receipts for previously included images.
-                
-                # -- 2) LINE / RECEIPT Items --
+
+                # LINE or RECEIPT item
                 elif item_type in ("LINE", "RECEIPT"):
-                    # If we've identified a leftover image, skip lines/receipts for it
-                    # but still attach lines/receipts for any included images in the batch.
                     if leftover_image_id:
-                        # We need to check if this belongs to an included image or the leftover image
+                        # Only attach data if it belongs to an included image
                         if item_type == "LINE":
                             ln = itemToLine(item)
                             if ln.image_id in included_image_ids:
                                 payload[ln.image_id].setdefault("lines", []).append(ln)
-                            # else belongs to leftover_image_id => skip
                         else:
                             rcpt = itemToReceipt(item)
                             if rcpt.image_id in included_image_ids:
-                                payload[rcpt.image_id].setdefault("receipts", []).append(rcpt)
-                            # else skip
+                                payload[rcpt.image_id].setdefault(
+                                    "receipts", []
+                                ).append(rcpt)
                     else:
-                        # Normal case: No leftover identified yet, so if it belongs
-                        # to an included image, attach it
+                        # No leftover identified yet, so attach to included images if relevant
                         if item_type == "LINE":
                             ln = itemToLine(item)
                             if ln.image_id in included_image_ids:
@@ -426,60 +600,59 @@ class _Image:
                         else:
                             rcpt = itemToReceipt(item)
                             if rcpt.image_id in included_image_ids:
-                                payload[rcpt.image_id].setdefault("receipts", []).append(rcpt)
+                                payload[rcpt.image_id].setdefault(
+                                    "receipts", []
+                                ).append(rcpt)
 
-                # (If you have other types like WORD, LETTER, etc., handle them similarly.)
-
-            # End of for-loop: we've consumed all items in this batch.
-
-            # If we found a leftover image (the (limit+1)-th), that means we are done
-            # for this page. We set the LEK to the *last consumed* image (the limit-th).
             if leftover_image_id is not None:
+                # We found the leftover (limit+1)-th image, so we're done for this page
                 lek_to_return = last_consumed_image_key
-                break  # Done with this page
+                break
 
-            # If leftover_image_id is not set, then we haven't exceeded 'limit' yet in this batch
-            # or we exactly reached it but no leftover was discovered.
             if images_found < limit:
-                # We still need more images if there's any left. If next_key is None => no more data.
+                # Need more images if available
                 if next_key is None:
-                    # No more data in Dynamo => done
+                    # No more data left in Dynamo
                     break
                 else:
-                    # More data in Dynamo => keep reading next batch
                     continue
             else:
-                # We have exactly 'limit' images. If next_key is None => done entirely. 
-                # If next_key is not None => we can set LEK to next_key or last_consumed_image_key
-                # Typically, if we haven't seen a leftover, we just set LEK = next_key
-                # so the next page starts after the last consumed item.
+                # We have exactly 'limit' images or just reached it
                 if next_key is not None:
                     lek_to_return = next_key
                 break
 
-        # Return the final payload plus leftover key (if any)
         return payload, lek_to_return
 
     def listImages(
-        self, 
-        limit: Optional[int] = None, 
-        lastEvaluatedKey: Optional[Dict] = None
+        self, limit: Optional[int] = None, lastEvaluatedKey: Optional[Dict] = None
     ) -> Tuple[List[Image], Optional[Dict]]:
         """
-        Lists images from the database.
+        Lists images from the database via a global secondary index
+        (named "GSITYPE" in this implementation) on the "TYPE" attribute.
 
-        If a limit is provided, performs one query (or page) and returns up to that many images
-        along with a LastEvaluatedKey (if there are more images). If no limit is provided,
-        it paginates until all images are returned.
+        If 'limit' is provided, a single query up to that many items is returned,
+        along with a LastEvaluatedKey for pagination if more remain. If 'limit' is
+        None, all images are retrieved by paginating until all items are fetched.
 
-        Args:
-            limit (Optional[int]): The maximum number of images to return.
-            lastEvaluatedKey (Optional[Dict]): The DynamoDB key from where the next page should start.
+        Parameters
+        ----------
+        limit : int, optional
+            The maximum number of images to return in one query.
+        lastEvaluatedKey : dict, optional
+            The key from which to continue a previous paginated query.
 
-        Returns:
-            Tuple[List[Image], Optional[Dict]]: A tuple containing:
-                1) A list of images.
-                2) The LastEvaluatedKey (if more images are available) or None.
+        Returns
+        -------
+        tuple
+            A tuple containing:
+            1) A list of Image objects.
+            2) The LastEvaluatedKey (dict) if more items remain, otherwise None.
+
+        Raises
+        ------
+        ValueError
+            If there's an error listing images from DynamoDB.
         """
         images = []
         try:
@@ -491,11 +664,9 @@ class _Image:
                 "ExpressionAttributeValues": {":val": {"S": "IMAGE"}},
             }
 
-            # If a starting key is provided, add it to the query parameters.
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
 
-            # If a limit is provided, include it in the query parameters.
             if limit is not None:
                 query_params["Limit"] = limit
 
@@ -503,14 +674,14 @@ class _Image:
             images.extend([itemToImage(item) for item in response["Items"]])
 
             if limit is None:
-                # Paginate through all pages if no limit is provided.
+                # If no limit is provided, paginate until all items are retrieved
                 while "LastEvaluatedKey" in response and response["LastEvaluatedKey"]:
                     query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                     response = self._client.query(**query_params)
                     images.extend([itemToImage(item) for item in response["Items"]])
                 last_evaluated_key = None
             else:
-                # If a limit was provided, capture the LastEvaluatedKey if available.
+                # If a limit is provided, capture the LastEvaluatedKey (if any)
                 last_evaluated_key = response.get("LastEvaluatedKey", None)
 
             return images, last_evaluated_key
