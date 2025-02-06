@@ -2,6 +2,7 @@ import os
 import logging
 import json
 from dynamo import DynamoClient
+import random
 
 
 logger = logging.getLogger()
@@ -15,26 +16,47 @@ def handler(event, context):
     http_method = event["requestContext"]["http"]["method"].upper()
 
     if http_method == "GET":
-        query_params = event.get("queryStringParameters") or {}
-        image_id = query_params.get("image_id")
-        if image_id is None or image_id == "":
-            return {"statusCode": 400, "body": "Bad request: image_id is required"}
         try:
-            logger.info(f"Getting image details for image_id: {image_id}")
+            # Use the client to list the first 50 images
             client = DynamoClient(dynamodb_table_name)
-            logger.info("Attempting to get image details")
-            image_details = client.getImageDetails(int(image_id))
-            image, lines, words, letters, scaled_images = image_details
+            receipts, _ = client.listReceipts(50)
+
+            # Group all receipts by their image_id
+            # Set the value to the dict to the number of receipts with that image_id
+            receipts_by_image_id = {}
+            for receipt in receipts:
+                if receipt.image_id not in receipts_by_image_id:
+                    receipts_by_image_id[receipt.image_id] = 0
+                receipts_by_image_id[receipt.image_id] += 1
+
+            # Get the image_id with the most receipts
+            image_id = max(
+                receipts_by_image_id, key=lambda key: receipts_by_image_id[key]
+            )
+
+            image_details = client.getImageDetails(image_id)
+            (
+                images,
+                _,
+                words,
+                _,
+                _,
+                receipts,
+                _,
+                receipt_words,
+                _,
+                _,
+                _,
+            ) = image_details
             return {
                 "statusCode": 200,
                 "body": json.dumps(
                     {
-                        "image": dict(image),
-                        "lines": [dict(line) for line in lines],
+                        "images": [dict(image) for image in images],
                         "words": [dict(word) for word in words],
-                        "letters": [dict(letter) for letter in letters],
-                        "scaled_images": [
-                            dict(scaled_image) for scaled_image in scaled_images
+                        "receipts": [dict(receipt) for receipt in receipts],
+                        "receipt_words": [
+                            dict(receipt_word) for receipt_word in receipt_words
                         ],
                     }
                 ),

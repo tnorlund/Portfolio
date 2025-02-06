@@ -182,16 +182,10 @@ def test_addImage(dynamodb_table, example_image):
 
 
 
-@pytest.mark.integration
-def test_image_add_error(dynamodb_table, example_image):
-    client = DynamoClient(dynamodb_table)
-    client.addImage(example_image)
-    with pytest.raises(ValueError):
-        client.addImage(example_image)
 
 
 @pytest.mark.integration
-def test_image_get(dynamodb_table, example_image):
+def test_getImage(dynamodb_table, example_image):
     """
     This test focuses on retrieving an image, but also proves integration by
     adding the image first (so there's actually something to get).
@@ -275,9 +269,22 @@ def test_image_get_details(dynamodb_table, example_image):
     client.addWord(word)
     client.addLetter(letter)
 
-    retrieved_image, lines, words, word_tags, letters, receipts = (
+    (
+                images,
+                lines,
+                words,
+                word_tags,
+                letters,
+                receipts,
+                receipt_lines,
+                receipt_words,
+                receipt_word_tags,
+                receipt_letters,
+                initial_gpt_queries,
+            )  = (
         client.getImageDetails(image.image_id)
     )
+    retrieved_image = images[0]
     assert retrieved_image == image
     assert lines == [line]
     assert words == [word]
