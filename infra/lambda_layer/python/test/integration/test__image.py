@@ -3,6 +3,7 @@ import boto3
 from datetime import datetime
 from uuid import uuid4
 from dynamo import Image, Line, Word, Letter, Receipt, DynamoClient
+from botocore.exceptions import ClientError
 
 
 @pytest.fixture
@@ -21,13 +22,146 @@ def example_image():
         "bucket",
         "key",
     )
+@pytest.mark.integration
+def test_addImage_raises_value_error_for_none_image(dynamodb_table):
+    """
+    Integration test that checks addImage raises ValueError when 'image' is None.
+    We rely on the 'dynamodb_table' fixture to create a table so that 
+    DynamoClient constructor won't raise an error about the missing table.
+    """
+    # Use the real table name from the fixture
+    client = DynamoClient(dynamodb_table)  
+    with pytest.raises(ValueError, match="Image parameter is required"):
+        client.addImage(None)
 
 
 @pytest.mark.integration
-def test_image_add(dynamodb_table, example_image):
+def test_addImage_raises_value_error_for_invalid_type(dynamodb_table):
     """
-    This test focuses on adding an image, but also verifies that we can
-    retrieve it via getImage to demonstrate integration between the two methods.
+    Checks addImage with an invalid type for 'image'.
+    """
+    client = DynamoClient(dynamodb_table)
+    with pytest.raises(ValueError, match="image must be an instance"):
+        client.addImage("not-an-image")
+
+
+@pytest.mark.integration
+def test_addImage_raises_conditional_check_failed(dynamodb_table, example_image, mocker):
+    """
+    Tests that addImage raises ValueError when a ConditionalCheckFailedException 
+    occurs (image already exists).
+    """
+    client = DynamoClient(dynamodb_table)
+
+    # Patch the client's put_item to raise the ClientError
+    mock_put = mocker.patch.object(
+        client._client, 
+        "put_item",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": "ConditionalCheckFailedException",
+                    "Message": "The conditional request failed"
+                }
+            },
+            "PutItem"
+        )
+    )
+
+    with pytest.raises(ValueError, match="already exists"):
+        client.addImage(example_image)
+
+    mock_put.assert_called_once()
+
+@pytest.mark.integration
+def test_addImage_raises_provisioned_throughput(dynamodb_table, example_image, mocker):
+    """
+    Tests that addImage raises an Exception with a message indicating that the
+    provisioned throughput was exceeded when the DynamoDB put_item call returns a
+    ProvisionedThroughputExceededException.
+    """
+    client = DynamoClient(dynamodb_table)
+
+    # Patch the client's put_item to raise the ClientError
+    mock_put = mocker.patch.object(
+        client._client, 
+        "put_item",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": "ProvisionedThroughputExceededException",
+                    "Message": "Provisioned throughput exceeded"
+                }
+            },
+            "PutItem"
+        )
+    )
+
+    with pytest.raises(Exception, match="Provisioned throughput exceeded"):
+        client.addImage(example_image)
+
+    mock_put.assert_called_once()
+
+@pytest.mark.integration
+def test_addImage_raises_internal_server_error(dynamodb_table, example_image, mocker):
+    """
+    Tests that addImage raises an Exception with a message indicating that an internal server error occurred,
+    when the DynamoDB put_item call returns an InternalServerError.
+    """
+    client = DynamoClient(dynamodb_table)
+
+    # Patch the client's put_item to raise a ClientError with code "InternalServerError"
+    mock_put = mocker.patch.object(
+        client._client,
+        "put_item",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": "InternalServerError",
+                    "Message": "Internal server error"
+                }
+            },
+            "PutItem"
+        )
+    )
+
+    with pytest.raises(Exception, match="Internal server error:"):
+        client.addImage(example_image)
+
+    mock_put.assert_called_once()
+
+@pytest.mark.integration
+def test_addImage_raises_unknown_exception(dynamodb_table, example_image, mocker):
+    """
+    Tests that addImage raises a generic Exception with a message indicating an error putting the image,
+    when the DynamoDB put_item call returns a ClientError with an unhandled error code.
+    """
+    client = DynamoClient(dynamodb_table)
+
+    # Patch the client's put_item to raise a ClientError with an unknown error code.
+    mock_put = mocker.patch.object(
+        client._client,
+        "put_item",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": "UnknownException",
+                    "Message": "An unknown error occurred"
+                }
+            },
+            "PutItem"
+        )
+    )
+
+    with pytest.raises(Exception, match="Error putting image:"):
+        client.addImage(example_image)
+
+    mock_put.assert_called_once()
+
+@pytest.mark.integration
+def test_addImage(dynamodb_table, example_image):
+    """
+    Verifies a successful addImage call actually persists data to DynamoDB.
     """
     client = DynamoClient(dynamodb_table)
     client.addImage(example_image)

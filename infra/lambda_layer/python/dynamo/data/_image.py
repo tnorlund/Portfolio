@@ -21,6 +21,7 @@ from dynamo import (
     itemToWordTag,
     itemToLetter,
 )
+from dynamo.entities import assert_valid_uuid
 from botocore.exceptions import ClientError
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
@@ -117,8 +118,6 @@ class _Image:
                 raise ValueError(f"Image with ID {image.image_id} already exists") from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
-            elif error_code == "ResourceNotFoundException":
-                raise Exception(f"Table {self.table_name} not found: {e}") from e
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
@@ -160,14 +159,14 @@ class _Image:
         except ClientError as e:
             raise ValueError(f"Error adding images: {e}")
 
-    def getImage(self, image_id: int) -> Image:
+    def getImage(self, image_id: str) -> Image:
         """
         Retrieves a single Image item by its ID from the database after validating the input.
 
         Parameters
         ----------
-        image_id : int
-            The ID of the image to retrieve.
+        image_id : str
+            The UUID of the image to retrieve.
 
         Returns
         -------
@@ -177,7 +176,7 @@ class _Image:
         Raises
         ------
         ValueError
-            If image_id is not provided, is not an integer, or if no image is found with the specified ID.
+            If image_id is not provided, is not a UUID, or if no image is found with the specified ID.
         Exception
             For various DynamoDB ClientErrors such as ProvisionedThroughputExceededException,
             ResourceNotFoundException, InternalServerError, or any other error encountered during the get_item operation.
@@ -185,8 +184,7 @@ class _Image:
         # Validate the image_id parameter.
         if image_id is None:
             raise ValueError("Image ID is required and cannot be None.")
-        if not isinstance(image_id, int):
-            raise ValueError("Image ID must be an integer.")
+        assert_valid_uuid(image_id)
         
         # Attempt to retrieve the image item from DynamoDB.
         try:
