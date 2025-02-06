@@ -7,6 +7,7 @@ import ReceiptWords from "./ReceiptWords";
 import ImageBoundingBox from "./ImageBoundingBox";
 import TypeScriptLogo from "./TypeScriptLogo";
 import ReactLogo from "./ReactLogo";
+import { ReceiptCounts, ImageCounts } from "./DataCounts";
 
 import "./Receipt.css";
 
@@ -228,6 +229,10 @@ function Receipt() {
         crash course in everything from OCR to React to Pulumi—definitely worth
         the effort of digging out those old receipts.
       </p>
+      <div className="logos-container">
+        <ImageCounts />
+        <ReceiptCounts />
+      </div>
 
       <ReceiptStack />
       <ReceiptWords />
