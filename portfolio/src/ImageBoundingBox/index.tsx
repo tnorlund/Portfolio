@@ -59,9 +59,10 @@ const AnimatedWordBox: React.FC<AnimatedWordBoxProps> = ({
     <>
       <animated.polygon
         style={{
-          ...polygonSpring,
-          transformOrigin: `${centroidX}px ${centroidY}px`,
-        }}
+            ...polygonSpring,
+            transformOrigin: "50% 50%",
+            transformBox: "fill-box",
+          }}
         points={points}
         fill="none"
         stroke="red"
@@ -155,6 +156,8 @@ const ImageBoundingBox: React.FC = () => {
     useState<ImageDetailsApiResponse | null>(null);
   const [error, setError] = useState<Error | null>(null);
 
+  const [resetKey, setResetKey] = useState(0);
+
   useEffect(() => {
     const loadImageDetails = async () => {
       try {
@@ -217,7 +220,10 @@ const ImageBoundingBox: React.FC = () => {
   return (
     <div>
       <h1>ImageBoundingBox</h1>
+    <div style={{ margin: "0 auto" }}>
       <svg
+        key={resetKey}
+        onClick={() => setResetKey((k) => k + 1)}
         viewBox={`0 0 ${svgWidth} ${svgHeight}`}
         width={displayWidth}
         height={displayHeight}
@@ -271,6 +277,7 @@ const ImageBoundingBox: React.FC = () => {
           />
         ))}
       </svg>
+      </div>
     </div>
   );
 };
