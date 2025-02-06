@@ -109,9 +109,9 @@ function Receipt() {
         I started with a solid foundation in AWS and a bit of React, but Swift
         was uncharted territory. Leveraging ChatGPT's o1 Pro Mode "reasoning," I
         laid out an initial strategy that bridged my existing skills with the
-        challenge of integrating OCR data into a coherent system. This approach
-        allowed me to jumpstart the project and quickly put together the
-        essential components.
+        challenge of integrating OCR, optical character recognition, data into a
+        coherent system. This approach allowed me to jumpstart the project and
+        quickly put together the essential components.
       </p>
       <p>
         While the initial strategy provided a useful roadmap, the development
@@ -220,14 +220,36 @@ function Receipt() {
         correctly.
       </p>
 
-      
-
-      <h1>Results</h1>
+      <h1>Conclusion</h1>
       <p>
-        And that's it! Now I have a system that scans, annotates, and stores
-        receipt data, letting me explore it any way I like. It's been a fun
-        crash course in everything from OCR to React to Pulumi—definitely worth
-        the effort of digging out those old receipts.
+        This entire journey—from choosing a software to get the OCR results, to
+        refining prompts, and taming ChatGPT's occasional hallucinations—has
+        been a testament to the power of iteration in software development.
+        Despite early hiccups with incremental image IDs and duplicated uploads
+        (both solved with UUIDs and hashing), the core achievement stands: a
+        robust system for automating OCR-based data extraction. Beyond receipts,
+        this labeling approach opens countless avenues for data augmentation,
+        cleaning, and training across all types of media.
+      </p>
+      <p>
+        I still have to validate the word tags. Below is a visualization showing
+        the tags. They're not always correct. Phone numbers shouldn't contain
+        letters. I plan to validate the tags by tokenizing the words
+        similar to how ChatGPT works. Simply comparing character sets across different word types isn't enough. Understanding the order
+        of the characters, symbols, and numbers will allow me to further
+        validate and automate the tagging of words without ChatGPT. Ultimately,
+        I can train a more flexible, hardware-agnostic model that scales
+        gracefully.
+      </p>
+      <p>
+        The rapid pace of AI innovation might transform how we code, but it
+        won't replace the need for sound engineering practices, critical
+        thinking, or domain expertise—it simply supercharges them. Building this
+        was fun and eye-opening, proving that ChatGPT is far from just a
+        “spellchecker” and more like a catalyst for a new era of development. I
+        can't wait to see where this revolution takes us next. By merging human
+        intuition and AI-assisted iteration, the process of software development
+        becomes faster, smarter, and more accessible than ever.
       </p>
       <div className="logos-container">
         <ImageCounts />
