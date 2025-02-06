@@ -14,6 +14,8 @@
 
   --safari-icon-top: #e8e8e8;
   --safari-icon-bottom: #dcdcdc;
+
+  --react-logo: #087ea4;
 }
 
 main {
@@ -117,6 +119,8 @@ li {
 
     --safari-icon-top: #1D1D1E;
     --safari-icon-bottom: #111112;
+
+    --react-logo: #58C4DC;
   }
 }
 
