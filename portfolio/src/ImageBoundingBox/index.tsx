@@ -59,10 +59,10 @@ const AnimatedWordBox: React.FC<AnimatedWordBoxProps> = ({
     <>
       <animated.polygon
         style={{
-            ...polygonSpring,
-            transformOrigin: "50% 50%",
-            transformBox: "fill-box",
-          }}
+          ...polygonSpring,
+          transformOrigin: "50% 50%",
+          transformBox: "fill-box",
+        }}
         points={points}
         fill="none"
         stroke="red"
@@ -201,9 +201,9 @@ const ImageBoundingBox: React.FC = () => {
   // Use the first image from the API.
   const firstImage = imageDetails?.images[0];
   const cdnUrl = firstImage
-    ? (isDevelopment
-        ? `https://dev.tylernorlund.com/${firstImage.cdn_s3_key}`
-        : `https://www.tylernorlund.com/${firstImage.cdn_s3_key}`)
+    ? isDevelopment
+      ? `https://dev.tylernorlund.com/${firstImage.cdn_s3_key}`
+      : `https://www.tylernorlund.com/${firstImage.cdn_s3_key}`
     : "";
 
   // When imageDetails is loaded, compute these values;
@@ -217,93 +217,104 @@ const ImageBoundingBox: React.FC = () => {
   const displayWidth = svgWidth * scaleFactor;
   const displayHeight = svgHeight * scaleFactor;
 
-if (error) {
-  return <div>Error loading image details</div>;
-}
+  if (error) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          minHeight: displayHeight, // this remains constant when API loads
+          alignItems: "center",
+        }}
+      >
+        Error loading image details
+      </div>
+    );
+  }
 
-return (
-  <div>
-    {/* 
+  return (
+    <div>
+      {/* 
       The outer container always reserves the same vertical space.
       We use a minHeight (or height) equal to the final display height.
       While the API is loading, this container keeps its size.
     */}
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "center",
-        minHeight: displayHeight, // this remains constant when API loads
-        alignItems: "center",
-      }}
-    >
-      {imageDetails ? (
-        <svg
-          key={resetKey}
-          onClick={() => setResetKey((k) => k + 1)}
-          viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-          width={displayWidth}
-          height={displayHeight}
-        >
-          <image
-            href={cdnUrl}
-            x="0"
-            y="0"
-            width={svgWidth}
-            height={svgHeight}
-          />
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          minHeight: displayHeight, // this remains constant when API loads
+          alignItems: "center",
+        }}
+      >
+        {imageDetails ? (
+          <svg
+            key={resetKey}
+            onClick={() => setResetKey((k) => k + 1)}
+            viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+            width={displayWidth}
+            height={displayHeight}
+          >
+            <image
+              href={cdnUrl}
+              x="0"
+              y="0"
+              width={svgWidth}
+              height={svgHeight}
+            />
 
-          {/* Render animated word bounding boxes (via transition) */}
-          {wordTransitions((style, word) => {
-            const x1 = word.top_left.x * svgWidth;
-            const y1 = (1 - word.top_left.y) * svgHeight;
-            const x2 = word.top_right.x * svgWidth;
-            const y2 = (1 - word.top_right.y) * svgHeight;
-            const x3 = word.bottom_right.x * svgWidth;
-            const y3 = (1 - word.bottom_right.y) * svgHeight;
-            const x4 = word.bottom_left.x * svgWidth;
-            const y4 = (1 - word.bottom_left.y) * svgHeight;
-            const points = `${x1},${y1} ${x2},${y2} ${x3},${y3} ${x4},${y4}`;
-            return (
-              <animated.polygon
+            {/* Render animated word bounding boxes (via transition) */}
+            {wordTransitions((style, word) => {
+              const x1 = word.top_left.x * svgWidth;
+              const y1 = (1 - word.top_left.y) * svgHeight;
+              const x2 = word.top_right.x * svgWidth;
+              const y2 = (1 - word.top_right.y) * svgHeight;
+              const x3 = word.bottom_right.x * svgWidth;
+              const y3 = (1 - word.bottom_right.y) * svgHeight;
+              const x4 = word.bottom_left.x * svgWidth;
+              const y4 = (1 - word.bottom_left.y) * svgHeight;
+              const points = `${x1},${y1} ${x2},${y2} ${x3},${y3} ${x4},${y4}`;
+              return (
+                <animated.polygon
+                  key={`${word.line_id}-${word.word_id}`}
+                  style={style}
+                  points={points}
+                  fill="none"
+                  stroke="red"
+                  strokeWidth="2"
+                />
+              );
+            })}
+
+            {/* Render animated word centroids */}
+            {words.map((word, index) => (
+              <AnimatedWordBox
                 key={`${word.line_id}-${word.word_id}`}
-                style={style}
-                points={points}
-                fill="none"
-                stroke="red"
-                strokeWidth="2"
+                word={word}
+                svgWidth={svgWidth}
+                svgHeight={svgHeight}
+                delay={index * 30}
               />
-            );
-          })}
+            ))}
 
-          {/* Render animated word centroids */}
-          {words.map((word, index) => (
-            <AnimatedWordBox
-              key={`${word.line_id}-${word.word_id}`}
-              word={word}
-              svgWidth={svgWidth}
-              svgHeight={svgHeight}
-              delay={index * 30}
-            />
-          ))}
-
-          {/* Render animated receipt bounding boxes and centroids */}
-          {receipts.map((receipt, index) => (
-            <AnimatedReceipt
-              key={`receipt-${receipt.receipt_id}`}
-              receipt={receipt}
-              svgWidth={svgWidth}
-              svgHeight={svgHeight}
-              delay={totalDelayForWords + index * 100}
-            />
-          ))}
-        </svg>
-      ) : (
-        // While loading, show a "Loading" message centered in the reserved space.
-        <div>Loading...</div>
-      )}
+            {/* Render animated receipt bounding boxes and centroids */}
+            {receipts.map((receipt, index) => (
+              <AnimatedReceipt
+                key={`receipt-${receipt.receipt_id}`}
+                receipt={receipt}
+                svgWidth={svgWidth}
+                svgHeight={svgHeight}
+                delay={totalDelayForWords + index * 100}
+              />
+            ))}
+          </svg>
+        ) : (
+          // While loading, show a "Loading" message centered in the reserved space.
+          <div>Loading...</div>
+        )}
+      </div>
     </div>
-  </div>
-);
+  );
 };
 
 export default ImageBoundingBox;
