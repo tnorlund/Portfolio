@@ -10,3 +10,5 @@ from .word_tag import WordTag, itemToWordTag
 from .receipt_word_tag import ReceiptWordTag, itemToReceiptWordTag
 from .gpt_validation import GPTValidation, itemToGPTValidation
 from .gpt_initial_tagging import GPTInitialTagging, itemToGPTInitialTagging
+
+from .util import assert_valid_uuid

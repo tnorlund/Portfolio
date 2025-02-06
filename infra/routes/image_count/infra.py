@@ -48,7 +48,7 @@ lambda_policy = aws.iam.Policy(
                     {
                         "Effect": "Allow",
                         "Action": ["dynamodb:Query", "dynamodb:DescribeTable"],
-                        "Resource": [arn, f"{arn}/index/*", f"{arn}/index/GSITYPE"]
+                        "Resource": [arn, f"{arn}/index/GSITYPE"]
                     }
                 ],
             }
@@ -70,7 +70,7 @@ aws.iam.RolePolicyAttachment(
 )
 
 # Create the Lambda function for the "user" route
-image_details_lambda = aws.lambda_.Function(
+image_count_lambda = aws.lambda_.Function(
     f"api_{ROUTE_NAME}_GET_lambda",
     runtime="python3.13",  # or whichever version you prefer
     role=lambda_role.arn,
