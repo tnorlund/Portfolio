@@ -4,12 +4,12 @@ import Pulumi from "./Pulumi";
 import OpenAI from "./OpenAI";
 import ReceiptStack from "./ReceiptStack";
 import ReceiptWords from "./ReceiptWords";
-
+import ImageBoundingBox from "./ImageBoundingBox";
+import TypeScriptLogo from "./TypeScriptLogo";
+import ReactLogo from "./ReactLogo";
+import { ReceiptCounts, ImageCounts } from "./DataCounts";
 
 import "./Receipt.css";
-
-
-
 
 function GPTPrompt() {
   const prompt = `You are a helpful assistant that extracts structured data from a receipt.
@@ -96,75 +96,97 @@ function Receipt() {
     <div>
       <h1>The Project</h1>
       <p>
-        Ever open a drawer and find piles of old receipts you scanned ages ago,
-        but never got around to using? That was me. I'd been accumulating
-        digital copies for years—some more than a decade old—just in case I ever
-        needed them. But I never really did anything with them… until now. I
-        recently subscribed to ChatGPT Pro and wanted a fun project to try out
-        Pulumi, so I thought, “Why not turn all these dusty scans into something
-        useful?”
+        In middle school, I spent a summer manually organizing my dad's receipts
+        for tax purposes. It allowed me to buy a couple games on Xbox, but it
+        was incredibly tedious. Automating this process was not an option at the
+        time. After getting the ChatGPT Pro subscription, my programming skills
+        have increased exponentially. I decided to automate not only the process
+        of organizing receipts, but also the process of software development.
       </p>
 
+      <h1>Strategy</h1>
       <p>
-        First up: extracting the text from each receipt. I started with
-        Tesseract for OCR (Optical Character Recognition), but it wasn't giving
-        me all the details I needed. Then I discovered Apple's Vision OCR. This
-        tool not only reads text but also provides handy details like bounding
-        boxes, angles, and even how confident it is about each line of text. I
-        wrote a little Swift script—with a big assist from ChatGPT—to pump all
-        that information into a JSON file.
+        I started with a solid foundation in AWS and a bit of React, but Swift
+        was uncharted territory. Leveraging ChatGPT's o1 Pro Mode "reasoning," I
+        laid out an initial strategy that bridged my existing skills with the
+        challenge of integrating OCR, optical character recognition, data into a
+        coherent system. This approach allowed me to jumpstart the project and
+        quickly put together the essential components.
       </p>
-
       <p>
-        Next, I needed a place to store everything. That's where AWS DynamoDB
-        came in handy: it's perfect for quick reads and writes, and I don't have
-        to worry about managing servers. To tie it all together, I used Pulumi
-        to create and maintain the infrastructure—AWS Lambda handles the image
-        processing, S3 stores the images, API Gateway serves the data, and
-        CloudFront makes it all run smoothly on the web. Switching from
-        Terraform to Pulumi turned out to be simpler than I expected.
+        While the initial strategy provided a useful roadmap, the development
+        process was highly iterative. I continuously refined my approach based
+        on feedback and rigorous testing. My background in AWS system design,
+        React development, and QA testing enabled me to spot issues early and
+        iterate rapidly.
       </p>
+      <h1>Implementation</h1>
 
+      <h2>OCR and Image Processing</h2>
       <p>
-        Of course, data is only good if you can see it. So, I built a little
-        React app that shows each receipt alongside its OCR text. ChatGPT helped
-        generate a bunch of the React code, and I fine-tuned how that OCR data
-        would display. Below is a quick diagram of how everything fits together:
+        I started with Tesseract for OCR, but it didn't capture the necessary
+        details. Switching to Apple's Vision OCR provided more precise data,
+        including bounding boxes and confidence metrics. I then implemented a
+        clustering approach to group and normalize the varying OCR outputs,
+        ensuring consistency across the receipt data.
       </p>
-
-      <Diagram />
-
       <p>
-        The real trick was getting ChatGPT to label each receipt field—store
-        name, date, total, and so on—in a way that matched the exact words in
-        the OCR. I learned it's vital to tell ChatGPT <em>not</em> to create new
-        coordinates. If it makes up a coordinate that isn't really on the
-        receipt, everything gets out of sync. With some patience (and a bunch of
-        prompt engineering), I finally got ChatGPT to output perfect JSON,
-        linking each piece of text to the right spot on the receipt.
+        I applied DBSCAN clustering to group nearby text elements by focusing on
+        their X-axis values, since receipts are taller than they are wide. This
+        approach helped determine which words belong to which receipt by
+        clustering similar X coordinates. Once isolated, I normalized the OCR
+        coordinates to a standard 1x1 square, ensuring consistent scaling for
+        subsequent calculations.
       </p>
-
+      <ImageBoundingBox />
+      <h2>Infrastructure</h2>
+      <p>
+        I had experience with AWS services and Terraform, but Pulumi was new to
+        me. With ChatGPT, an OpenAI product, I was able to quickly create cloud
+        services that are consistent between a "development" and "production"
+        environment. This stopped me from "testing in production" while quickly
+        optimizing cloud compute.
+      </p>
       <div className="logos-container">
         <Pulumi />
         <OpenAI />
       </div>
-
       <p>
-        I also dealt with a ton of duplicate images—turns out having the ability
-        to nuke the cloud environment and start again results in duplicate
-        images. To fix this, each upload generates a unique ID, and I run a
-        SHA256 hash to check if the file's already in the system. This makes the
-        entire upload process “idempotent,” which is a fancy way of saying, “No
-        matter how many times you do it, you'll get the same end result.”
-        Because I had thorough tests in place, making these changes was pretty
-        painless.
+        I used a few AWS services to organize the data and serve it to the
+        frontend:
       </p>
+      <ul>
+        <li>
+          <strong>AWS Lambda</strong>: Manages image processing and workflow
+          orchestration.
+        </li>
+        <li>
+          <strong>AWS S3</strong>: Stores receipt images securely.
+        </li>
+        <li>
+          <strong>AWS DynamoDB</strong>: Maintains receipt metadata with quick
+          read/write capabilities.
+        </li>
+        <li>
+          <strong>AWS API Gateway</strong>: Exposes the backend API to client
+          requests.
+        </li>
+        <li>
+          <strong>AWS CloudFront</strong>: Delivers content quickly and securely
+          as a CDN.
+        </li>
+      </ul>
+      <Diagram />
 
+      <h2>ChatGPT</h2>
       <p>
-        Here's the ChatGPT prompt that does all the magic. It ensures each field
-        (like store name, total, etc.) comes back with valid JSON and maps to
-        the right words on the receipt. Notice how I tell ChatGPT not to invent
-        new coordinates. That was key!
+        One of the core aspects of this project involved using ChatGPT's API to
+        label receipt words automatically. I iterated through several prompt
+        engineering strategies—testing everything from the structure of the JSON
+        output to how ChatGPT highlights each word's location—to arrive at a
+        final prompt that gave consistently accurate labels. This iterative
+        process involved tweaking the prompt, sending sample payloads to
+        ChatGPT's API, and validating the output against real receipts.
       </p>
 
       <code>
@@ -172,15 +194,70 @@ function Receipt() {
       </code>
 
       <p>
-        And that's it! Now I have a system that scans, annotates, and stores
-        receipt data, letting me explore it any way I like. It's been a fun
-        crash course in everything from OCR to React to Pulumi—definitely worth
-        the effort of digging out those old receipts.
+        Refining my prompts revealed the power of prompt engineering with
+        ChatGPT. By adjusting phrasing, specificity, and output constraints, I
+        guided the model to accurately label receipt words and generate
+        functional code that fit seamlessly into the project. This iterative
+        process of testing, tweaking, and retesting was essential for harnessing
+        ChatGPT's capabilities and producing reliable, maintainable code.
       </p>
+
+      <h2>Frontend</h2>
+      <p>
+        The front end was built using TypeScript with React. The typing system
+        in TypeScript made it easier for ChatGPT to gain context on the data
+        being passed around. As I iterated on both the data processing and
+        infrastructure, the frontend evolved alongside these changes.
+      </p>
+      <div className="logos-container">
+        <ReactLogo />
+        <TypeScriptLogo />
+      </div>
+      <p>
+        Each refinement was continuously applied to and tested against the
+        frontend through a CICD pipeline. This allowed me to quickly test new
+        features and ensure that the frontend was always in sync and functioning
+        correctly.
+      </p>
+
+      <h1>Conclusion</h1>
+      <p>
+        This entire journey—from choosing a software to get the OCR results, to
+        refining prompts, and taming ChatGPT's occasional hallucinations—has
+        been a testament to the power of iteration in software development.
+        Despite early hiccups with incremental image IDs and duplicated uploads
+        (both solved with UUIDs and hashing), the core achievement stands: a
+        robust system for automating OCR-based data extraction. Beyond receipts,
+        this labeling approach opens countless avenues for data augmentation,
+        cleaning, and training across all types of media.
+      </p>
+      <p>
+        I still have to validate the word tags. Below is a visualization showing
+        the tags. They're not always correct. Phone numbers shouldn't contain
+        letters. I plan to validate the tags by tokenizing the words similar to
+        how ChatGPT works. Simply comparing character sets across different word
+        types isn't enough. Understanding the order of the characters, symbols,
+        and numbers will allow me to further validate and automate the tagging
+        of words without ChatGPT. Ultimately, I can train a more flexible,
+        hardware-agnostic model that scales gracefully.
+      </p>
+      <p>
+        The rapid pace of AI innovation might transform how we code, but it
+        won't replace the need for sound engineering practices, critical
+        thinking, or domain expertise—it simply supercharges them. Building this
+        was fun and eye-opening, proving that ChatGPT is far from just a
+        “spellchecker” and more like a catalyst for a new era of development. I
+        can't wait to see where this revolution takes us next. By merging human
+        intuition and AI-assisted iteration, the process of software development
+        becomes faster, smarter, and more accessible than ever.
+      </p>
+      <div className="logos-container">
+        <ImageCounts />
+        <ReceiptCounts />
+      </div>
 
       <ReceiptStack />
       <ReceiptWords />
-      
     </div>
   );
 }

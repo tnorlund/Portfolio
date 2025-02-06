@@ -43,9 +43,9 @@ const ReceiptGrid: React.FC = () => {
   return (
     <div style={styles.gridContainer}>
       {receiptEntries.map(({ receipt, words }) => (
-        <div key={`ReceiptDiv${receipt.image_id}-${receipt.id}`} style={styles.card}>
+        <div key={`ReceiptDiv${receipt.image_id}-${receipt.receipt_id}`} style={styles.card}>
           <h3 style={styles.cardTitle}>
-            {receipt.image_id} - {receipt.id}
+            {receipt.image_id} - {receipt.receipt_id}
           </h3>
           <div style={styles.svgContainer}>
             <svg
