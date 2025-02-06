@@ -183,7 +183,8 @@ const ImageBoundingBox: React.FC = () => {
 
   // Animate word bounding boxes using a transition.
   const wordTransitions = useTransition(words, {
-    keys: (word) => `${word.line_id}-${word.word_id}`,
+    // Include resetKey in the key so that each item gets a new key on reset.
+    keys: (word) => `${resetKey}-${word.line_id}-${word.word_id}`,
     from: { opacity: 0, transform: "scale(0.8)" },
     enter: (item, index) => ({
       opacity: 1,
@@ -196,16 +197,6 @@ const ImageBoundingBox: React.FC = () => {
   // Compute the total delay for word animations.
   const totalDelayForWords =
     words.length > 0 ? (words.length - 1) * 30 + 1130 : 0;
-
-//   if (error) {
-//     return <div>Error loading image details: {error.message}</div>;
-//   }
-//   if (!imageDetails) {
-//     return <div>Loading...</div>;
-//   }
-//   if (imageDetails.images.length === 0) {
-//     return <div>No images available</div>;
-//   }
 
   // Use the first image from the API.
   const firstImage = imageDetails?.images[0];
@@ -225,22 +216,6 @@ const ImageBoundingBox: React.FC = () => {
   const scaleFactor = Math.min(1, maxDisplayWidth / svgWidth);
   const displayWidth = svgWidth * scaleFactor;
   const displayHeight = svgHeight * scaleFactor;
-// Animate word bounding boxes using a transition.
-// const words = imageDetails?.words ?? [];
-// const receipts = imageDetails?.receipts ?? [];
-// const wordTransitions = useTransition(words, {
-//   keys: (word) => `${word.line_id}-${word.word_id}`,
-//   from: { opacity: 0, transform: "scale(0.8)" },
-//   enter: (item, index) => ({
-//     opacity: 1,
-//     transform: "scale(1)",
-//     delay: index * 30,
-//   }),
-//   config: { duration: 800 },
-// });
-
-// const totalDelayForWords =
-//   words.length > 0 ? (words.length - 1) * 30 + 1130 : 0;
 
 if (error) {
   return <div>Error loading image details</div>;
