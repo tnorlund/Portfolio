@@ -5,7 +5,8 @@ import { useSpring, useTransition, animated } from "@react-spring/web";
 
 const isDevelopment = process.env.NODE_ENV === "development";
 
-// Component for an animated word bounding box and its centroid marker.
+// ----------------------------------------------------
+// AnimatedWordBox: already defined for words (unchanged)
 interface AnimatedWordBoxProps {
   word: any; // Adjust type as needed
   svgWidth: number;
@@ -19,7 +20,7 @@ const AnimatedWordBox: React.FC<AnimatedWordBoxProps> = ({
   svgHeight,
   delay,
 }) => {
-  // Convert normalized coordinates (0..1) to absolute pixel values.
+  // Convert normalized coordinates to absolute pixel values.
   const x1 = word.top_left.x * svgWidth;
   const y1 = (1 - word.top_left.y) * svgHeight;
   const x2 = word.top_right.x * svgWidth;
@@ -34,7 +35,7 @@ const AnimatedWordBox: React.FC<AnimatedWordBoxProps> = ({
   const centroidX = (x1 + x2 + x3 + x4) / 4;
   const centroidY = (y1 + y2 + y3 + y4) / 4;
 
-  // Animate the polygon scaling from 0 to 1, using its centroid as the transform origin.
+  // Animate the polygon scaling from 0 to 1, with the centroid as the origin.
   const polygonSpring = useSpring({
     from: { transform: "scale(0)" },
     to: { transform: "scale(1)" },
@@ -43,14 +44,12 @@ const AnimatedWordBox: React.FC<AnimatedWordBoxProps> = ({
   });
 
   // Animate the centroid marker:
-  // 1. Fade in at its computed position (cy: centroidY)
-  // 2. Then animate its "cy" to the mid‑Y of the SVG (svgHeight/2)
+  // 1. Fade in at the computed centroid.
+  // 2. Then animate its y coordinate to mid‑Y.
   const centroidSpring = useSpring({
     from: { opacity: 0, cy: centroidY },
     to: async (next) => {
-      // Fade in at the computed centroid.
       await next({ opacity: 1, cy: centroidY, config: { duration: 300 } });
-      // Then animate the circle’s y coordinate to mid‑Y.
       await next({ cy: svgHeight / 2, config: { duration: 800 } });
     },
     delay: delay + 30,
@@ -61,7 +60,6 @@ const AnimatedWordBox: React.FC<AnimatedWordBoxProps> = ({
       <animated.polygon
         style={{
           ...polygonSpring,
-          // Scale the polygon from its centroid.
           transformOrigin: `${centroidX}px ${centroidY}px`,
         }}
         points={points}
@@ -80,6 +78,78 @@ const AnimatedWordBox: React.FC<AnimatedWordBoxProps> = ({
   );
 };
 
+// ----------------------------------------------------
+// AnimatedReceipt: new component for receipt bounding box and centroid animation.
+interface AnimatedReceiptProps {
+  receipt: any; // Adjust type accordingly
+  svgWidth: number;
+  svgHeight: number;
+  delay: number;
+}
+
+const AnimatedReceipt: React.FC<AnimatedReceiptProps> = ({
+  receipt,
+  svgWidth,
+  svgHeight,
+  delay,
+}) => {
+  // Compute the receipt bounding box corners.
+  const x1 = receipt.top_left.x * svgWidth;
+  const y1 = (1 - receipt.top_left.y) * svgHeight;
+  const x2 = receipt.top_right.x * svgWidth;
+  const y2 = (1 - receipt.top_right.y) * svgHeight;
+  const x3 = receipt.bottom_right.x * svgWidth;
+  const y3 = (1 - receipt.bottom_right.y) * svgHeight;
+  const x4 = receipt.bottom_left.x * svgWidth;
+  const y4 = (1 - receipt.bottom_left.y) * svgHeight;
+  const points = `${x1},${y1} ${x2},${y2} ${x3},${y3} ${x4},${y4}`;
+
+  // Compute the centroid of the receipt bounding box.
+  const centroidX = (x1 + x2 + x3 + x4) / 4;
+  const centroidY = (y1 + y2 + y3 + y4) / 4;
+  const midY = svgHeight / 2;
+
+  // Animate the receipt bounding box to fade in.
+  const boxSpring = useSpring({
+    from: { opacity: 0 },
+    to: { opacity: 1 },
+    delay: delay,
+    config: { duration: 800 },
+  });
+
+  // Animate the receipt centroid marker:
+  // Start at midY, then animate to the computed receipt centroid.
+  const centroidSpring = useSpring({
+    from: { opacity: 0, cy: midY },
+    to: async (next) => {
+      await next({ opacity: 1, cy: midY, config: { duration: 400 } });
+      await next({ cy: centroidY, config: { duration: 800 } });
+    },
+    delay: delay, // Same delay as the bounding box fade in.
+  });
+
+  return (
+    <>
+      <animated.polygon
+        style={boxSpring}
+        points={points}
+        fill="none"
+        stroke="blue"
+        strokeWidth="4"
+      />
+      <animated.circle
+        cx={centroidX}
+        cy={centroidSpring.cy}
+        r={10}
+        fill="blue"
+        style={{ opacity: centroidSpring.opacity }}
+      />
+    </>
+  );
+};
+
+// ----------------------------------------------------
+// Main ImageBoundingBox component
 const ImageBoundingBox: React.FC = () => {
   const [imageDetails, setImageDetails] =
     useState<ImageDetailsApiResponse | null>(null);
@@ -99,11 +169,11 @@ const ImageBoundingBox: React.FC = () => {
     loadImageDetails();
   }, []);
 
-  // Unconditionally extract words and receipts (defaulting to empty arrays).
+  // Unconditionally extract words and receipts.
   const words = imageDetails?.words ?? [];
   const receipts = imageDetails?.receipts ?? [];
 
-  // Existing AnimatedWordBox and wordTransitions definitions remain the same.
+  // Animate word bounding boxes using a transition.
   const wordTransitions = useTransition(words, {
     keys: (word) => `${word.line_id}-${word.word_id}`,
     from: { opacity: 0, transform: "scale(0.8)" },
@@ -115,18 +185,9 @@ const ImageBoundingBox: React.FC = () => {
     config: { duration: 800 },
   });
 
-  // Calculate the total delay based on the last word's centroid animation.
+  // Compute the total delay for word animations.
   const totalDelayForWords =
     words.length > 0 ? (words.length - 1) * 30 + 1130 : 0;
-
-  // Animate receipt bounding boxes after all word centroids are at mid Y.
-  const receiptTransitions = useTransition(receipts, {
-    keys: (receipt) => `RECEIPT_BBOX_${receipt.image_id}-${receipt.receipt_id}`,
-    from: { opacity: 0 },
-    enter: { opacity: 1 },
-    delay: totalDelayForWords, // Use computed delay here
-    config: { duration: 800 },
-  });
 
   if (error) {
     return <div>Error loading image details: {error.message}</div>;
@@ -164,7 +225,7 @@ const ImageBoundingBox: React.FC = () => {
         {/* Render the background image */}
         <image href={cdnUrl} x="0" y="0" width={svgWidth} height={svgHeight} />
 
-        {/* Render word bounding boxes (animated via transition) */}
+        {/* Render animated word bounding boxes (via transition) */}
         {wordTransitions((style, word) => {
           const x1 = word.top_left.x * svgWidth;
           const y1 = (1 - word.top_left.y) * svgHeight;
@@ -175,7 +236,6 @@ const ImageBoundingBox: React.FC = () => {
           const x4 = word.bottom_left.x * svgWidth;
           const y4 = (1 - word.bottom_left.y) * svgHeight;
           const points = `${x1},${y1} ${x2},${y2} ${x3},${y3} ${x4},${y4}`;
-
           return (
             <animated.polygon
               key={`${word.line_id}-${word.word_id}`}
@@ -188,7 +248,7 @@ const ImageBoundingBox: React.FC = () => {
           );
         })}
 
-        {/* Render animated word centroids (each animating to mid Y) */}
+        {/* Render animated word centroids */}
         {words.map((word, index) => (
           <AnimatedWordBox
             key={`${word.line_id}-${word.word_id}`}
@@ -199,30 +259,17 @@ const ImageBoundingBox: React.FC = () => {
           />
         ))}
 
-        {/* Render animated receipt bounding boxes.
-            Each receipt is assumed to have width and height properties.
-            The bounding box appears after the word centroids finish animating. */}
-        {receiptTransitions((style, receipt) => {
-          const x1 = receipt.top_left.x * svgWidth;
-          const y1 = (1 - receipt.top_left.y) * svgHeight;
-          const x2 = receipt.top_right.x * svgWidth;
-          const y2 = (1 - receipt.top_right.y) * svgHeight;
-          const x3 = receipt.bottom_right.x * svgWidth;
-          const y3 = (1 - receipt.bottom_right.y) * svgHeight;
-          const x4 = receipt.bottom_left.x * svgWidth;
-          const y4 = (1 - receipt.bottom_left.y) * svgHeight;
-          const points = `${x1},${y1} ${x2},${y2} ${x3},${y3} ${x4},${y4}`;
-          return (
-            <animated.polygon
-              key={`RECEIPT_BBOX_${receipt.image_id}-${receipt.receipt_id}`}
-              style={style}
-              points={points}
-              fill="none"
-              stroke="red"
-              strokeWidth="4"
-            />
-          );
-        })}
+        {/* Render animated receipt bounding boxes and centroids.
+            Their animations start after all word centroids have finished. */}
+        {receipts.map((receipt, index) => (
+          <AnimatedReceipt
+            key={`receipt-${receipt.receipt_id}`}
+            receipt={receipt}
+            svgWidth={svgWidth}
+            svgHeight={svgHeight}
+            delay={totalDelayForWords + index * 100}
+          />
+        ))}
       </svg>
     </div>
   );
