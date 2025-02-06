@@ -234,12 +234,12 @@ function Receipt() {
       <p>
         I still have to validate the word tags. Below is a visualization showing
         the tags. They're not always correct. Phone numbers shouldn't contain
-        letters. I plan to validate the tags by tokenizing the words
-        similar to how ChatGPT works. Simply comparing character sets across different word types isn't enough. Understanding the order
-        of the characters, symbols, and numbers will allow me to further
-        validate and automate the tagging of words without ChatGPT. Ultimately,
-        I can train a more flexible, hardware-agnostic model that scales
-        gracefully.
+        letters. I plan to validate the tags by tokenizing the words similar to
+        how ChatGPT works. Simply comparing character sets across different word
+        types isn't enough. Understanding the order of the characters, symbols,
+        and numbers will allow me to further validate and automate the tagging
+        of words without ChatGPT. Ultimately, I can train a more flexible,
+        hardware-agnostic model that scales gracefully.
       </p>
       <p>
         The rapid pace of AI innovation might transform how we code, but it
