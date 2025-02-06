@@ -97,6 +97,14 @@ class _Image:
         Exception
             If another error occurs while putting the item.
         """
+        # Validate the image parameter.
+        if image is None:
+            raise ValueError("Image parameter is required and cannot be None.")
+        if not isinstance(image, Image):
+            raise ValueError("image must be an instance of the Image class.")
+        
+        # Attempt to put the image item into DynamoDB with a condition that prevents
+        # overwriting an existing image.
         try:
             self._client.put_item(
                 TableName=self.table_name,
@@ -104,10 +112,17 @@ class _Image:
                 ConditionExpression="attribute_not_exists(PK)",
             )
         except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-                raise ValueError(f"Image with ID {image.image_id} already exists")
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ConditionalCheckFailedException":
+                raise ValueError(f"Image with ID {image.image_id} already exists") from e
+            elif error_code == "ProvisionedThroughputExceededException":
+                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+            elif error_code == "ResourceNotFoundException":
+                raise Exception(f"Table {self.table_name} not found: {e}") from e
+            elif error_code == "InternalServerError":
+                raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(f"Error updating image: {e}")
+                raise Exception(f"Error putting image: {e}") from e
 
     def addImages(self, images: List[Image]):
         """
@@ -147,7 +162,7 @@ class _Image:
 
     def getImage(self, image_id: int) -> Image:
         """
-        Retrieves a single Image item by its ID from the database.
+        Retrieves a single Image item by its ID from the database after validating the input.
 
         Parameters
         ----------
@@ -162,55 +177,36 @@ class _Image:
         Raises
         ------
         ValueError
-            If no image is found with the specified ID.
+            If image_id is not provided, is not an integer, or if no image is found with the specified ID.
         Exception
-            If another error occurs during the get operation.
+            For various DynamoDB ClientErrors such as ProvisionedThroughputExceededException,
+            ResourceNotFoundException, InternalServerError, or any other error encountered during the get_item operation.
         """
+        # Validate the image_id parameter.
+        if image_id is None:
+            raise ValueError("Image ID is required and cannot be None.")
+        if not isinstance(image_id, int):
+            raise ValueError("Image ID must be an integer.")
+        
+        # Attempt to retrieve the image item from DynamoDB.
         try:
             response = self._client.get_item(
                 TableName=self.table_name,
                 Key={"PK": {"S": f"IMAGE#{image_id}"}, "SK": {"S": "IMAGE"}},
             )
+            if "Item" not in response or not response["Item"]:
+                raise ValueError(f"Image with ID {image_id} not found")
             return itemToImage(response["Item"])
-        except KeyError:
-            raise ValueError(f"Image with ID {image_id} not found")
-
-    def getMaxImageId(self) -> int:
-        """
-        Retrieves the maximum image ID from the database.
-
-        Queries a global secondary index (GSI) sorted in descending order
-        to get the highest image ID quickly. If no images exist, returns 0.
-
-        Returns
-        -------
-        int
-            The maximum image ID, or 0 if no images are found.
-
-        Raises
-        ------
-        Exception
-            If there is an error querying DynamoDB.
-        """
-        try:
-            response = self._client.query(
-                TableName=self.table_name,
-                IndexName="GSI1",  # or whatever index you created
-                KeyConditionExpression="#pk = :pk_val",
-                ExpressionAttributeNames={"#pk": "GSI1PK"},
-                ExpressionAttributeValues={":pk_val": {"S": "IMAGE"}},
-                ScanIndexForward=False,  # Sort in descending order
-                Limit=1,                 # Grab only the top (largest) item
-            )
-            items = response.get("Items", [])
-            if not items:
-                return 0  # No images found
-
-            pk_str = items[0]["PK"]["S"]  # e.g. "IMAGE#00042"
-            image_id_str = pk_str.split("#")[1]  # "00042"
-            return int(image_id_str)
-        except Exception as e:
-            raise Exception(f"Error getting max image ID: {e}")
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ResourceNotFoundException":
+                raise Exception(f"Table {self.table_name} not found: {e}") from e
+            elif error_code == "ProvisionedThroughputExceededException":
+                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+            elif error_code == "InternalServerError":
+                raise Exception(f"Internal server error: {e}") from e
+            else:
+                raise Exception(f"Error getting image: {e}") from e
 
     def updateImage(self, image: Image):
         """
