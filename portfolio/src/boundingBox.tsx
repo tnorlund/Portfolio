@@ -1,7 +1,7 @@
 import React from "react";
 
 interface Receipt {
-  id: number;
+  receipt_id: number;
   width: number;
   height: number;
   timestamp_added: string;
@@ -140,7 +140,7 @@ export function BoundingBoxReceipt(receipt: Receipt, image: ImageItem,  color: s
   const tr = scalePointByImage(invert_y(receipt.top_right), image);
 
   return (
-    <React.Fragment key={`receipt-${receipt.id}`}>
+    <React.Fragment key={`receipt-${receipt.receipt_id}`}>
       {/* Draw edges of the rectangle in a similar style */}
       <circle cx={tl.x} cy={tl.y} r={20} fill={color} />
       <circle cx={tr.x} cy={tr.y} r={20} fill="none" stroke={color} strokeWidth={10} />

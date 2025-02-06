@@ -1,4 +1,4 @@
-from typing import Generator, Tuple
+from typing import Generator, Optional, Tuple
 from datetime import datetime
 from dynamo.entities.util import assert_valid_uuid, _repr_str
 
@@ -29,7 +29,7 @@ class ReceiptWordTag:
         word_id: int,
         tag: str,
         timestamp_added: datetime,
-        validated: bool = False,
+        validated: Optional[bool] = None,
     ):
         """Initializes a new ReceiptWordTag object for DynamoDB.
 
@@ -41,7 +41,7 @@ class ReceiptWordTag:
             tag (str): The tag to apply to the word. Must be non-empty, not exceed 40 characters,
                 and must not start with an underscore.
             timestamp_added (datetime): The timestamp when the tag was added.
-            validated (bool, optional): Whether the tag has been validated. Defaults to False.
+            validated (bool, optional): Whether the tag has been validated. Defaults to None.
 
         Raises:
             ValueError: If any parameter is of an invalid type or has an invalid value.
@@ -84,8 +84,8 @@ class ReceiptWordTag:
         else:
             raise ValueError("timestamp_added must be a datetime object or a string")
         
-        if not isinstance(validated, bool):
-            raise ValueError("validated must be a boolean")
+        if validated not in (True, False, None):
+            raise ValueError("validated must be a boolean or None")
         self.validated = validated
 
     def __eq__(self, other: object) -> bool:
@@ -197,7 +197,7 @@ class ReceiptWordTag:
             "TYPE": {"S": "RECEIPT_WORD_TAG"},
             "tag_name": {"S": self.tag},
             "timestamp_added": {"S": self.timestamp_added},
-            "validated": {"BOOL": self.validated},
+            "validated": {"BOOL": self.validated} if self.validated is not None else {"NULL": True},
         }
 
     def to_ReceiptWord_key(self) -> dict:
@@ -261,6 +261,7 @@ def itemToReceiptWordTag(item: dict) -> ReceiptWordTag:
         word_id = int(sk_parts[5])
         tag = sk_parts[7].lstrip("_").strip()
         timestamp_added = datetime.fromisoformat(item["timestamp_added"]["S"])
+        validated = bool(item["validated"]["BOOL"]) if "BOOL" in item["validated"] else None
         return ReceiptWordTag(
             image_id=image_id,
             receipt_id=receipt_id,
@@ -268,7 +269,7 @@ def itemToReceiptWordTag(item: dict) -> ReceiptWordTag:
             word_id=word_id,
             tag=tag,
             timestamp_added=timestamp_added,
-            validated=item["validated"]["BOOL"],
+            validated=validated,
         )
     except (IndexError, ValueError, KeyError) as e:
         raise ValueError(f"Error converting item to ReceiptWordTag: {e}")
