@@ -202,11 +202,9 @@ def process(
             r_image_converted.save(buffer, format="JPEG", quality=85)
             buffer.seek(0)
             jpeg_receipt_data = buffer.getvalue()
-            # Update the key to have a .jpg extension.
-            new_cdn_key = image_obj.cdn_s3_key.replace('.png', f'_RECEIPT_{cluster_id:05d}.jpg')
             s3.put_object(
                 Bucket=cdn_bucket_name,
-                Key=new_cdn_key,
+                Key=image_obj.cdn_s3_key.replace('.jpg', f'_RECEIPT_{cluster_id:05d}.jpg'),
                 Body=jpeg_receipt_data,
                 ContentType="image/jpeg",
             )
@@ -645,7 +643,7 @@ def transform_cluster(
         sha256=calculate_sha256_from_bytes(affine_img.tobytes()),
         cdn_s3_bucket=image_obj.cdn_s3_bucket,
         cdn_s3_key=image_obj.cdn_s3_key.replace(
-            ".png", f"_RECEIPT_{cluster_id:05d}.jpg"
+            ".jpg", f"_RECEIPT_{cluster_id:05d}.jpg"
         ),
     )
 
