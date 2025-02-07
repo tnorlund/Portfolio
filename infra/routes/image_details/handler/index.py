@@ -19,7 +19,10 @@ def handler(event, context):
         try:
             # Use the client to list the first 50 images
             client = DynamoClient(dynamodb_table_name)
-            receipts, _ = client.listReceipts(50)
+            receipts, lek = client.listReceipts(500)
+            while lek:
+                next_receipts, lek = client.listReceipts(500, lek)
+                receipts.extend(next_receipts)
 
             # Group all receipts by their image_id
             # Set the value to the dict to the number of receipts with that image_id
