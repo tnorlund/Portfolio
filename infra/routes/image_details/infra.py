@@ -87,6 +87,7 @@ image_details_lambda = aws.lambda_.Function(
         }
     },
     memory_size=1024,  # Increase the RAM to 1024 MB
+    timeout=30,  # Increase the timeout to 30 seconds
 )
 
 # CloudWatch log group for the Lambda function
