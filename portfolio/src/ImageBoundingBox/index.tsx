@@ -247,6 +247,13 @@ const ImageBoundingBox: React.FC = () => {
           alignItems: "center",
         }}
       >
+        <div
+          style={{
+            height: displayHeight,
+            width: displayWidth,
+            borderRadius: "15px",
+            overflow: "hidden",
+          }}>
         {imageDetails ? (
           <svg
             key={resetKey}
@@ -255,60 +262,12 @@ const ImageBoundingBox: React.FC = () => {
             width={displayWidth}
             height={displayHeight}
           >
-            <defs>
-              {/* 
-              1) Define a filter that blurs the shape 
-                 (so the edges become semi-transparent). 
-            */}
-              <filter
-                id="edgeFadeFilter"
-                // Make the filter area bigger than 100% so
-                // the blur extends beyond the shape’s bounds.
-                x="-20%"
-                y="-20%"
-                width="140%"
-                height="140%"
-              >
-                <feGaussianBlur
-                  in="SourceGraphic"
-                  stdDeviation="1000"
-                  edgeMode="duplicate"
-                />
-              </filter>
-
-              {/* 
-              2) Create a mask that uses the blur filter 
-                 on a slightly smaller rectangle so the edges fade.
-            */}
-              <mask id="fadeMask">
-                {/* 
-                The default mask area is black (invisible).
-                We add a smaller white rectangle in the center,
-                then blur it so it fades to black near edges.
-              */}
-                <rect
-                  // Shift in by ~2.5% on each side
-                  x="5%"
-                  y="5%"
-                  width="90%"
-                  height="90%"
-                  fill="#fff"
-                  filter="url(#edgeFadeFilter)"
-                />
-              </mask>
-            </defs>
-
-            {/* 
-            3) Apply the mask to the <image>, 
-               so it fades at the edges.
-          */}
             <image
               href={cdnUrl}
               x="0"
               y="0"
               width={svgWidth}
               height={svgHeight}
-              mask="url(#fadeMask)"
             />
 
             {/* Render animated word bounding boxes (via transition) */}
@@ -360,6 +319,7 @@ const ImageBoundingBox: React.FC = () => {
           // While loading, show a "Loading" message centered in the reserved space.
           <div>Loading...</div>
         )}
+        </div>
       </div>
     </div>
   );
