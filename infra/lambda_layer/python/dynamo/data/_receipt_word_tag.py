@@ -219,11 +219,13 @@ class _ReceiptWordTag:
         """
         Retrieves ReceiptWordTag items with a given tag from the database, using the GSI1 index
         (where GSI1PK = "TAG#<tag_upper_padded>"). This method supports pagination via the
-        limit and lastEvaluatedKey parameters.
+        limit and lastEvaluatedKey parameters. When a limit is provided, it loops until it has
+        accumulated that many filtered items (or until no more items exist).
 
         Args:
             tag (str): The tag to filter on.
-            limit (int, optional): The maximum number of items to return. If not provided, returns all matching items.
+            limit (int, optional): The maximum number of items to return. If not provided,
+                                returns all matching items.
             lastEvaluatedKey (dict, optional): The DynamoDB LastEvaluatedKey for pagination.
 
         Returns:
@@ -236,9 +238,13 @@ class _ReceiptWordTag:
         """
         receipt_tags = []
         try:
-            params = {
+            # If a limit is provided, use it as the batch size; otherwise choose a default batch size.
+            batch_limit = limit if limit is not None else 100
+
+            # Set up the base query parameters.
+            base_params = {
                 "TableName": self.table_name,
-                "IndexName": "GSI1",  # Make sure this is the correct name of your GSI.
+                "IndexName": "GSI1",  # Ensure this is the correct name of your GSI.
                 "KeyConditionExpression": "GSI1PK = :gsi1pk",
                 "FilterExpression": "#t = :typeVal",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
@@ -246,24 +252,40 @@ class _ReceiptWordTag:
                     ":gsi1pk": {"S": f"TAG#{tag:_>40}"},
                     ":typeVal": {"S": "RECEIPT_WORD_TAG"},
                 },
+                "Limit": batch_limit,
             }
-            if limit is not None:
-                params["Limit"] = limit
+
+            # Use the provided lastEvaluatedKey, if any.
             if lastEvaluatedKey is not None:
-                params["ExclusiveStartKey"] = lastEvaluatedKey
+                base_params["ExclusiveStartKey"] = lastEvaluatedKey
 
-            response = self._client.query(**params)
-            items = response.get("Items", [])
-            lek = response.get("LastEvaluatedKey")  # no default
-            # If "lek" is falsy (None or {}), set it to None so it returns null to the client
-            if not lek:
-                lek = None
+            last_key = None
 
-            receipt_tags.extend(
-                [itemToReceiptWordTag(item) for item in items]
-            )
-            lek = response.get("LastEvaluatedKey", None)
-            return receipt_tags, lek
+            # Loop until we've gathered at least 'limit' filtered items (if a limit was provided)
+            # or until there are no more items.
+            while True:
+                response = self._client.query(**base_params)
+                items = response.get("Items", [])
+                # Append the filtered items.
+                receipt_tags.extend([itemToReceiptWordTag(item) for item in items])
+                last_key = response.get("LastEvaluatedKey", None)
+
+                # If a limit was provided and we have reached/exceeded it, break out of the loop.
+                if limit is not None and len(receipt_tags) >= limit:
+                    break
+
+                # If there is no more data, break.
+                if last_key is None:
+                    break
+
+                # Set ExclusiveStartKey for the next query.
+                base_params["ExclusiveStartKey"] = last_key
+
+            # If we accumulated more items than requested, trim the list.
+            if limit is not None and len(receipt_tags) > limit:
+                receipt_tags = receipt_tags[:limit]
+
+            return receipt_tags, last_key
         except ClientError as e:
             raise ValueError("Could not list ReceiptWordTags from the database") from e
 
@@ -313,7 +335,10 @@ class _ReceiptWordTag:
                     query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                     response = self._client.query(**query_params)
                     receipt_tags.extend(
-                        [itemToReceiptWordTag(item) for item in response.get("Items", [])]
+                        [
+                            itemToReceiptWordTag(item)
+                            for item in response.get("Items", [])
+                        ]
                     )
                 last_evaluated_key = None
             else:
