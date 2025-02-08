@@ -184,6 +184,7 @@ def process(
     # to keep track of everything clearly:
     all_word_tags = []
     all_receipt_word_tags = []
+    word_tags = []
     # Receipt extraction, transformation, saving
     for cluster_id, cluster_lines in cluster_dict.items():
         if cluster_id == -1:
@@ -335,6 +336,7 @@ def process(
         all_gpt_initial_taggings.append(initial_tagging)
         all_word_tags.extend(word_tags)
 
+    all_word_tags = deduplicate_word_tags(all_word_tags)
     # Finally, add all entities to DynamoDB.
     DynamoClient(table_name).addImage(image_obj)
     DynamoClient(table_name).addLines(lines)
