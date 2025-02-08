@@ -31,10 +31,15 @@ const ImageCounts = () => {
 
   return (
     <div ref={ref} style={{ textAlign: "center" }}>
-      <animated.span style={{ fontSize: "4rem", fontWeight: "bold" }}>
-        {springProps.number.to((n) => Math.floor(n).toLocaleString())}
-      </animated.span>{" "}
-      Images
+      {/* Only render the text & animation if count > 0 */}
+      {count > 0 && (
+        <>
+          <animated.span style={{ fontSize: "4rem", fontWeight: "bold" }}>
+            {springProps.number.to((n) => Math.floor(n).toLocaleString())}
+          </animated.span>{" "}
+          Images
+        </>
+      )}
     </div>
   );
 };
@@ -67,10 +72,15 @@ const ReceiptCounts = () => {
 
   return (
     <div ref={ref} style={{ textAlign: "center" }}>
-      <animated.span style={{ fontSize: "4rem", fontWeight: "bold" }}>
-        {springProps.number.to((n) => Math.floor(n).toLocaleString())}
-      </animated.span>{" "}
-      Receipts
+      {/* Only render the text & animation if count > 0 */}
+      {count > 0 && (
+        <>
+          <animated.span style={{ fontSize: "4rem", fontWeight: "bold" }}>
+            {springProps.number.to((n) => Math.floor(n).toLocaleString())}
+          </animated.span>{" "}
+          Receipts
+        </>
+      )}
     </div>
   );
 };
