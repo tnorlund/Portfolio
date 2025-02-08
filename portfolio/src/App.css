@@ -26,6 +26,32 @@ main {
   justify-content: center;
 }
 
+select {
+  background-color: var(--button-background);
+  color: var(--button-text);
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  font-weight: bold;
+  border: 1px solid var(--button-text);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin: 1rem;
+}
+
+/* Hover state for select elements */
+select:hover {
+  background-color: var(--button-background-hover);
+  color: var(--button-text-hover);
+  border-color: var(--button-text-hover);
+}
+
+/* Optional: Focus state for improved accessibility */
+select:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.2);
+}
+
 header {
   background-color: var(--header-background);
   color: var(--header-text);

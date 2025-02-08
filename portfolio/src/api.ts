@@ -11,6 +11,19 @@ import {
 
 const isDevelopment = process.env.NODE_ENV === "development";
 
+export async function fetchWordTagList(): Promise<string[]> {
+  const apiUrl = isDevelopment
+    ? `https://dev-api.tylernorlund.com/word_tag_list`
+    : `https://api.tylernorlund.com/word_tag_list`;
+  const response = await fetch(apiUrl);
+
+  if (!response.ok) {
+    throw new Error(`Network response was not ok (status: ${response.status})`);
+  }
+
+  return await response.json();
+}
+
 export async function fetchImageCount(): Promise<number> {
   const apiUrl = isDevelopment
     ? `https://dev-api.tylernorlund.com/image_count`

@@ -285,6 +285,36 @@ lambda_permission_process = aws.lambda_.Permission(
     source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
 )
 
+if stack == "dev":
+    from routes.word_tag_list.infra import word_tag_list_lambda
+
+    integration_word_tag_list = aws.apigatewayv2.Integration(
+        "word_tag_list_lambda_integration",
+        api_id=api.id,
+        integration_type="AWS_PROXY",
+        integration_uri=word_tag_list_lambda.invoke_arn,
+        integration_method="POST",
+        payload_format_version="2.0",
+    )
+    route_word_tag_list = aws.apigatewayv2.Route(
+        "word_tag_list_route",
+        api_id=api.id,
+        route_key="GET /word_tag_list",
+        target=integration_word_tag_list.id.apply(lambda id: f"integrations/{id}"),
+        opts=pulumi.ResourceOptions(
+            replace_on_changes=["route_key", "target"],
+            delete_before_replace=True,
+        ),
+    )
+    lambda_permission_word_tag_list = aws.lambda_.Permission(
+        "word_tag_list_lambda_permission",
+        action="lambda:InvokeFunction",
+        function=word_tag_list_lambda.name,
+        principal="apigateway.amazonaws.com",
+        source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
+    )
+
+
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # 2. DEPLOYMENT + LOGGING
@@ -295,12 +325,8 @@ log_group = aws.cloudwatch.LogGroup(
     retention_in_days=14,
 )
 
-stage = aws.apigatewayv2.Stage(
-    "api_stage",
-    api_id=api.id,
-    name="$default",
-    route_settings=[
-        {
+route_settings = [
+    {
             "routeKey": route_health_check.route_key,
             "throttlingBurstLimit": 5000,
             "throttlingRateLimit": 10000,
@@ -345,7 +371,22 @@ stage = aws.apigatewayv2.Stage(
             "throttlingBurstLimit": 5000,
             "throttlingRateLimit": 10000,
         },
-    ],
+]
+
+if stack == "dev":
+    route_settings.append(
+        {
+            "routeKey": route_word_tag_list.route_key,
+            "throttlingBurstLimit": 5000,
+            "throttlingRateLimit": 10000,
+        }
+    )
+
+stage = aws.apigatewayv2.Stage(
+    "api_stage",
+    api_id=api.id,
+    name="$default",
+    route_settings=route_settings,
     auto_deploy=True,
     access_log_settings=aws.apigatewayv2.StageAccessLogSettingsArgs(
         destination_arn=log_group.arn,
