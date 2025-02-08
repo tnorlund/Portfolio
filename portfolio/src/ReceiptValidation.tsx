@@ -2,12 +2,21 @@ import { useState, useEffect } from "react";
 import { fetchWordTagList, fetchReceiptWordTags } from "./api";
 import { ReceiptWordTagsApiResponse } from "./interfaces"; // adjust import if needed
 
+// Helper function to format the timestamp
+function formatTimestamp(timestamp: string): string {
+    const date = new Date(timestamp);
+    // Customize the format as needed; this example uses the local date and time format.
+    return date.toLocaleString();
+  }
+
 function ReceiptValidation() {
   const [tags, setTags] = useState<string[]>([]);
   const [selectedTag, setSelectedTag] = useState<string>("");
   const [loadingTags, setLoadingTags] = useState<boolean>(true);
   const [receiptTags, setReceiptTags] = useState<ReceiptWordTagsApiResponse | null>(null);
   const [loadingReceiptTags, setLoadingReceiptTags] = useState<boolean>(false);
+  // Expanded state object where key is the index of the tag item
+  const [expanded, setExpanded] = useState<{ [key: number]: boolean }>({});
 
   // Fetch the list of word tags when the component mounts.
   useEffect(() => {
@@ -37,6 +46,8 @@ function ReceiptValidation() {
         .then((data) => {
           console.log("Fetched receipt word tags:", data);
           setReceiptTags(data);
+          // Reset any expanded items when a new tag is selected.
+          setExpanded({});
         })
         .catch((error) => {
           console.error("Failed to fetch receipt word tags:", error);
@@ -49,6 +60,13 @@ function ReceiptValidation() {
 
   const handleTagChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedTag(event.target.value);
+  };
+
+  const toggleExpand = (index: number) => {
+    setExpanded((prev) => ({
+      ...prev,
+      [index]: !prev[index],
+    }));
   };
 
   return (
@@ -72,7 +90,7 @@ function ReceiptValidation() {
 
       {selectedTag && (
         <div style={{ marginTop: "20px" }}>
-          <h2>Word Tags</h2>
+          <h2>Word Tags for "{selectedTag}"</h2>
           {loadingReceiptTags ? (
             <p>Loading receipt word tags...</p>
           ) : receiptTags && receiptTags.payload && receiptTags.payload.length > 0 ? (
@@ -83,25 +101,56 @@ function ReceiptValidation() {
                   style={{
                     border: "1px solid var(--text-color)",
                     borderRadius: "4px",
-                    padding: "10px",
                     marginBottom: "10px",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
+                    overflow: "hidden",
                   }}
                 >
-                  <div>
-                    <strong>{item.word.text}</strong>
-                  </div>
-                  <div>
-                    <strong>
-                    {item.tag.validated === null
-                      ? "?"
-                      : item.tag.validated
-                      ? "✓"
-                      : "✗"}
+                  {/* Header area with arrow, word text, and validated status */}
+                  <div
+                    style={{
+                      padding: "10px",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      cursor: "pointer",
+                    }}
+                    onClick={() => toggleExpand(index)}
+                  >
+                    <div style={{ display: "flex", alignItems: "center" }}>
+                      <span
+                        style={{
+                          marginRight: "10px",
+                          transition: "transform 0.3s",
+                          transform: expanded[index] ? "rotate(90deg)" : "rotate(0deg)",
+                          userSelect: "none",
+                        }}
+                      >
+                        ▶
+                      </span>
+                      <strong>{item.word.text}</strong>
+                    </div>
+                    <div>
+                      <strong>
+                        {item.tag.validated === null
+                          ? "?"
+                          : item.tag.validated
+                          ? "✓"
+                          : "✗"}
                       </strong>
+                    </div>
                   </div>
+                  {/* Expanded content */}
+                  {expanded[index] && (
+                    <div style={{ padding: "10px", borderTop: "1px solid var(--text-color)" }}>
+                      <div>
+                        <strong>Tag:</strong> {item.tag.tag}
+                      </div>
+                      <div>
+                        <strong>Added:</strong> {formatTimestamp(item.tag.timestamp_added)}
+                      </div>
+                      {/* Add additional details here as needed */}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
