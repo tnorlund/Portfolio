@@ -8,14 +8,13 @@ import { useTransition, animated } from "@react-spring/web";
 const isDevelopment = process.env.NODE_ENV === "development";
 
 const ReceiptStack: React.FC = () => {
-  const [receipts, setReceipts] = useState<Receipt[]>([]);
-  const [rotations, setRotations] = useState<number[]>([]);
-
-  // Only trigger "in view" once, so the stack won't re-animate on scroll in/out
-  const [ref] = useInView({
+  const [ref, inView] = useInView({
     threshold: 0.1,
     triggerOnce: true,
   });
+
+  const [receipts, setReceipts] = useState<Receipt[]>([]);
+  const [rotations, setRotations] = useState<number[]>([]);
 
   // Customize these to your needs
   const maxReceipts = 40;
@@ -35,15 +34,17 @@ const ReceiptStack: React.FC = () => {
         delay: index * 100,
       };
     },
-    keys: (item) => item.receipt_id, // Use a stable key (e.g. "receipt.id")
+    keys: (item) => item.receipt_id,
   });
 
   useEffect(() => {
+    // Only load when the component is in view
+    if (!inView) return;
+
     const loadAllReceipts = async () => {
-      let lastEvaluatedKey: any | undefined; // `any` type if your key might be an object
+      let lastEvaluatedKey: any | undefined; 
       let totalFetched = 0;
 
-      // We'll accumulate all receipts & rotations locally
       const allReceipts: Receipt[] = [];
       const allRotations: number[] = [];
 
@@ -54,29 +55,23 @@ const ReceiptStack: React.FC = () => {
         );
 
         const newReceipts = response.receipts || [];
-        // Add newly fetched receipts to our local arrays
         allReceipts.push(...newReceipts);
-        allRotations.push(
-          ...newReceipts.map(() => Math.random() * 60 - 30)
-        );
+        allRotations.push(...newReceipts.map(() => Math.random() * 60 - 30));
 
         totalFetched += newReceipts.length;
 
-        // If there's no further key, we've fetched all pages
         if (!response.lastEvaluatedKey) {
           break;
         }
-        // Otherwise, set up for the next page
         lastEvaluatedKey = response.lastEvaluatedKey;
       }
 
-      // Now do a one-time set of receipts and rotations
       setReceipts(allReceipts.slice(0, maxReceipts));
       setRotations(allRotations.slice(0, maxReceipts));
     };
 
     loadAllReceipts();
-  }, []);
+  }, [inView]);
 
   return (
     <div
@@ -100,6 +95,7 @@ const ReceiptStack: React.FC = () => {
           const cdnUrl = isDevelopment
             ? `https://dev.tylernorlund.com/${receipt.cdn_s3_key}`
             : `https://www.tylernorlund.com/${receipt.cdn_s3_key}`;
+
           return (
             <animated.div
               key={receipt.receipt_id}
