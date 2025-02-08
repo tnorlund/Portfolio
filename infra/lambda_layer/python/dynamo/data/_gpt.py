@@ -3,8 +3,26 @@ import requests
 from json import dumps, loads, JSONDecodeError
 from os import getenv, environ
 
-from dynamo.entities.receipt import Receipt
-from dynamo.entities.receipt_word import ReceiptWord
+from dynamo import Receipt, ReceiptWord, ReceiptWordTag, ReceiptLine
+
+
+def gpt_request_tagging_validation(gpt_api_key=None):
+    """
+    Makes a request to the OpenAI API to validate the tagging of a receipt.
+
+    Returns:
+        tuple[dict, str, str]: The formatted response from the OpenAI API, the query
+            sent to OpenAI API, and the raw response from OpenAI API.
+    """
+    if not gpt_api_key and not getenv("OPENAI_API_KEY"):
+        raise ValueError("The OPENAI_API_KEY environment variable is not set.")
+    if gpt_api_key:
+        environ["OPENAI_API_KEY"] = gpt_api_key
+    url = "https://api.openai.com/v1/chat/completions"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {getenv('OPENAI_API_KEY')}",
+    }
 
 
 def gpt_request_initial_tagging(
@@ -118,7 +136,9 @@ def _reduce_precision(value: tuple, precision: int = 2) -> tuple:
     return tuple(round(v, precision) for v in value)
 
 
-def _llm_prompt_initial_tagging(receipt, receipt_words) -> str:
+def _llm_prompt_initial_tagging(
+    receipt: Receipt, receipt_words: list[ReceiptWord]
+) -> str:
     """Generates a prompt for the ChatGPT API based on the receipt.
 
     Returns:
@@ -208,4 +228,138 @@ def _llm_prompt_initial_tagging(receipt, receipt_words) -> str:
         "}\n"
         "```\n"
         "Return only this JSON structure. Nothing else.\n"
+    )
+
+
+def _llm_prompt_tagging_validation(
+    receipt: Receipt,
+    receipt_lines: list[ReceiptLine],
+    receipt_words: list[ReceiptWord],
+    receipt_word_tags: list[ReceiptWordTag],
+) -> str:
+    receipt_dict = {
+        "width": receipt.width,
+        "height": receipt.height,
+    }
+    line_dicts = []
+
+    for line in receipt_lines:
+        words_in_line_with_tags = [
+            word
+            for word in receipt_words
+            if word.line_id == line.line_id
+            and word.receipt_id == receipt.receipt_id
+            and len(word.tags) > 0
+        ]
+
+        tagged_words = []
+        for word in words_in_line_with_tags:
+            # For each word get its tags
+            tags = [
+                tag
+                for tag in receipt_word_tags
+                if tag.word_id == word.word_id
+                and tag.line_id == word.line_id
+                and tag.receipt_id == receipt.receipt_id
+            ]
+            tagged_words.append(
+                {
+                    "word_id": word.word_id,
+                    "text": word.text,
+                    "bounding_box": word.bounding_box,
+                    "tags": [
+                        {
+                            "tag": tag.tag,
+                            "validated": tag.validated,
+                        }
+                        for tag in tags
+                    ],
+                }
+            )
+
+        line_dicts.append(
+            {
+                "line_id": line.line_id,
+                "bounding_box": line.bounding_box,
+                "text": line.text,
+                "tagged_words": tagged_words,
+            }
+        )
+
+    # Now, AFTER the loop, build the final JSON and return the full prompt:
+    context_json = dumps({"receipt": receipt_dict, "lines": line_dicts}, indent=2)
+
+    return (
+        "You are provided with JSON data that conforms to the following structure:\n"
+        "```json\n"
+        "{\n"
+        "    \"receipt\": {\n"
+        "        \"width\": <integer>,\n"
+        "        \"height\": <integer>\n"
+        "    },\n"
+        "    \"lines\": [\n"
+        "        {\n"
+        "            \"line_id\": <integer>,\n"
+        "            \"bounding_box\": {\n"
+        "                \"x\": <integer>,\n"
+        "                \"y\": <integer>,\n"
+        "                \"width\": <integer>,\n"
+        "                \"height\": <integer>\n"
+        "            },\n"
+        "            \"tagged_words\": [\n"
+        "                {\n"
+        "                    \"word_id\": <integer>,\n"
+        "                    \"text\": <string>,\n"
+        "                    \"bounding_box\": {\n"
+        "                        \"x\": <integer>,\n"
+        "                        \"y\": <integer>,\n"
+        "                        \"width\": <integer>,\n"
+        "                        \"height\": <integer>\n"
+        "                    },\n"
+        "                    \"tags\": [\n"
+        "                        {\n"
+        "                            \"tag\": <string>,\n"
+        "                            \"validated\": <boolean>\n"
+        "                        }\n"
+        "                    ]\n"
+        "                }\n"
+        "            ]\n"
+        "        }\n"
+        "    ]\n"
+        "}\n"
+        "```\n"
+        "\n"
+        f"Here is the data (JSON):\n"
+        f"{context_json}\n"
+        "\n"
+        "I'm expecting a structured output in JSON format with the following fields:\n"
+        "```json\n"
+        "[\n"
+        "  {\n"
+        '    "line_id": 1,\n'
+        '    "word_id": 10,\n'
+        '    "initial_tag": "phone_number",\n'
+        '    "revised_tag": "phone_number",\n'
+        '    "confidence": 5,\n'
+        '    "flag": "ok"\n'
+        "  },\n"
+        "  {\n"
+        '    "line_id": 3,\n'
+        '    "word_id": 11,\n'
+        '    "initial_tag": "date",\n'
+        '    "revised_tag": "time",\n'
+        '    "confidence": 2,\n'
+        '    "flag": "needs_review"\n'
+        "  }\n"
+        "]\n"
+        "```\n"
+        "\n"
+        "- The 'line_id' and 'word_id' fields are the unique identifiers for each line and word. They should match the data provided.\n"
+        "- 'initial_tag' is the tag provided in the data.\n"
+        "- 'revised_tag' is the corrected tag you suggest.\n"
+        "- 'confidence' is your confidence level from 1 to 5.\n"
+        "- 'flag' is 'ok' if the tag is correct, 'needs_review' if unsure.\n"
+        "\n"
+        "You must review each word in \"tagged_words\" and provide the correct tag. If the tag is correct, mark 'ok' and provide a high confidence level.\n"
+        "Return all the \"tagged_words\" with the structure above.\n"
     )
