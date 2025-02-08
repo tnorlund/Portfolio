@@ -72,12 +72,39 @@ function ReceiptValidation() {
 
       {selectedTag && (
         <div style={{ marginTop: "20px" }}>
-          <h2>Receipt Word Tags for "{selectedTag}"</h2>
+          <h2>Word Tags</h2>
           {loadingReceiptTags ? (
             <p>Loading receipt word tags...</p>
-          ) : receiptTags ? (
-            // Render the fetched receipt word tags.
-            <pre>{JSON.stringify(receiptTags, null, 2)}</pre>
+          ) : receiptTags && receiptTags.payload && receiptTags.payload.length > 0 ? (
+            <div>
+              {receiptTags.payload.map((item, index) => (
+                <div
+                  key={index}
+                  style={{
+                    border: "1px solid var(--text-color)",
+                    borderRadius: "4px",
+                    padding: "10px",
+                    marginBottom: "10px",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
+                  <div>
+                    <strong>{item.word.text}</strong>
+                  </div>
+                  <div>
+                    <strong>
+                    {item.tag.validated === null
+                      ? "?"
+                      : item.tag.validated
+                      ? "✓"
+                      : "✗"}
+                      </strong>
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : (
             <p>No receipt word tags available.</p>
           )}

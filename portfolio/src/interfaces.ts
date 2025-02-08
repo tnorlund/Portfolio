@@ -69,6 +69,7 @@ export interface ReceiptWordTag {
   word_id: number;
   tag: string;
   timestamp_added: string;
+  validated: boolean | null;
 }
 
 export interface Receipt {
