@@ -237,6 +237,41 @@ def _llm_prompt_tagging_validation(
     receipt_words: list[ReceiptWord],
     receipt_word_tags: list[ReceiptWordTag],
 ) -> str:
+    """
+    Generates a prompt string for validating and potentially revising receipt word tags.
+
+    This function constructs a detailed prompt intended for a language model (such as ChatGPT)
+    to review receipt data that includes receipt dimensions, lines, words, and their associated tags.
+    It formats the receipt information as a JSON structure that describes:
+      - The receipt metadata (e.g., width and height).
+      - A list of receipt lines, where each line contains:
+          - A unique line identifier and bounding box.
+          - The full text of the line.
+          - A list of tagged words, with each word including its identifier, text,
+            bounding box, and a list of tag objects (each with a tag name and a validation flag).
+
+    The prompt then provides instructions on how to generate a structured JSON output. The expected
+    output should be a list of dictionaries, each containing:
+      - "line_id": The unique identifier of the line.
+      - "word_id": The unique identifier of the word.
+      - "initial_tag": The tag originally provided in the data.
+      - "revised_tag": The corrected tag suggested by the language model.
+      - "confidence": A numeric confidence level (from 1 to 5) indicating certainty.
+      - "flag": A status string ("ok" if the tag is correct, or "needs_review" if it is uncertain).
+
+    Parameters:
+        receipt (Receipt): The receipt object containing metadata such as width and height.
+        receipt_lines (list[ReceiptLine]): A list of receipt line objects.
+        receipt_words (list[ReceiptWord]): A list of receipt word objects.
+        receipt_word_tags (list[ReceiptWordTag]): A list of tags associated with receipt words.
+
+    Returns:
+        str: A prompt string that includes:
+            - A description of the expected JSON structure.
+            - The receipt data formatted as a JSON string.
+            - Detailed instructions for reviewing and revising word tags,
+              ensuring the output is a structured JSON matching the specified schema.
+    """
     receipt_dict = {
         "width": receipt.width,
         "height": receipt.height,
