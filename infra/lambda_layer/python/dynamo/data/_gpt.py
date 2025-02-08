@@ -120,6 +120,58 @@ def _validate_gpt_response_initial_tagging(response: Response) -> dict:
     return content
 
 
+def _validate_gpt_response_tagging_validation(response: Response) -> dict:
+    """Validates the response from the OpenAI API.
+
+    Validate the response from OpenAI API and raise an error if the response
+    is not formatted as expected. If the response is valid, return the parsed content.
+
+    Args:
+        response (Response): The response from the OpenAI API
+
+    Returns:
+        dict: The validated response (parsed JSON) from the OpenAI API.
+    """
+    response.raise_for_status()
+    data = response.json()
+    if "choices" not in data or not data["choices"]:
+        raise ValueError("The response does not contain any choices.")
+    if not isinstance(data["choices"], list):
+        raise ValueError("The response choices are not a list.")
+    first_choice = data["choices"][0]
+    if "message" not in first_choice:
+        raise ValueError("The response does not contain a message.")
+    message = first_choice["message"]
+    if "content" not in message:
+        raise ValueError("The response message does not contain content.")
+    content = message["content"]
+    if not content:
+        raise ValueError("The response message content is empty.")
+    try:
+        content = loads(content.replace("```json", "").replace("```", ""))
+    except JSONDecodeError:
+        raise ValueError(
+            f"The response message content is not valid JSON.\n{response.text}"
+        )
+    if not isinstance(content, list):
+        raise ValueError("The response message content is not a list.")
+    for item in content:
+        if not isinstance(item, dict):
+            raise ValueError("The response items are not dictionaries.")
+        if not all(
+            key in item
+            for key in [
+                "line_id",
+                "word_id",
+                "initial_tag",
+                "revised_tag",
+                "confidence",
+                "flag",
+            ]
+        ):
+            raise ValueError("The response items do not contain the expected fields.")
+    return content
+
 def _reduce_precision(value: tuple, precision: int = 2) -> tuple:
     """Reduces the precision of the word's centroid.
 
