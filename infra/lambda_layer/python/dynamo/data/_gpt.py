@@ -7,7 +7,7 @@ from dynamo.entities.receipt import Receipt
 from dynamo.entities.receipt_word import ReceiptWord
 
 
-def gpt_request(
+def gpt_request_initial_tagging(
     receipt: Receipt, receipt_words: list[ReceiptWord], gpt_api_key=None
 ) -> tuple[dict, str, str]:
     """Makes a request to the OpenAI API to label the receipt.
@@ -25,7 +25,7 @@ def gpt_request(
         "Content-Type": "application/json",
         "Authorization": f"Bearer {getenv('OPENAI_API_KEY')}",
     }
-    query = _llm_prompt(receipt, receipt_words)
+    query = _llm_prompt_initial_tagging(receipt, receipt_words)
     payload = {
         "model": "gpt-3.5-turbo",
         "messages": [
@@ -36,13 +36,15 @@ def gpt_request(
     response = requests.post(url, headers=headers, json=payload)
 
     return (
-        _validate_gpt_response(requests.post(url, headers=headers, json=payload)),
+        _validate_gpt_response_initial_tagging(
+            requests.post(url, headers=headers, json=payload)
+        ),
         query,
         response.text,
     )
 
 
-def _validate_gpt_response(response: Response) -> dict:
+def _validate_gpt_response_initial_tagging(response: Response) -> dict:
     """Validates the response from the OpenAI API.
 
     Validate the response from OpenAI API and raise an error if the response
@@ -72,7 +74,9 @@ def _validate_gpt_response(response: Response) -> dict:
     try:
         content = loads(content.replace("```json", "").replace("```", ""))
     except JSONDecodeError:
-        raise ValueError(f"The response message content is not valid JSON.\n{response.text}")
+        raise ValueError(
+            f"The response message content is not valid JSON.\n{response.text}"
+        )
     # Ensure all keys in the parsed content are strings.
     if not all(isinstance(key, str) for key in content.keys()):
         raise ValueError("The response message content keys are not strings.")
@@ -114,7 +118,7 @@ def _reduce_precision(value: tuple, precision: int = 2) -> tuple:
     return tuple(round(v, precision) for v in value)
 
 
-def _llm_prompt(receipt, receipt_words) -> str:
+def _llm_prompt_initial_tagging(receipt, receipt_words) -> str:
     """Generates a prompt for the ChatGPT API based on the receipt.
 
     Returns:

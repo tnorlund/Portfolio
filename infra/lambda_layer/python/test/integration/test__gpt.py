@@ -19,7 +19,7 @@ from dynamo import (
     ReceiptWordTag,
     ReceiptLetter,
 )
-from dynamo.data._gpt import _llm_prompt, _validate_gpt_response, gpt_request
+from dynamo.data._gpt import _llm_prompt_initial_tagging, _validate_gpt_response_initial_tagging, gpt_request_initial_tagging
 
 
 @pytest.mark.unit
@@ -35,7 +35,7 @@ def test_gpt_reduce_precision():
 @pytest.mark.parametrize(
     "expected_results", ["2f05267d-86df-42b3-8a14-e29c5ea567b3"], indirect=True
 )
-def test_gpt_llm_prompt(expected_results):
+def test_gpt_llm_prompt_initial_tagging(expected_results):
     # Unpack the expected results tuple:
     _, _, _, _, _, receipts, _, receipt_words, _, _ = expected_results
 
@@ -43,7 +43,7 @@ def test_gpt_llm_prompt(expected_results):
     receipt = receipts[0]
 
     # Call your function with receipt and its words (or however your API expects it).
-    prompt = _llm_prompt(receipt, receipt_words)
+    prompt = _llm_prompt_initial_tagging(receipt, receipt_words)
 
     # Assert that the prompt starts with the expected introductory text.
     assert prompt.startswith(
@@ -119,19 +119,19 @@ class DummyReceipt(dict):
 def test_gpt_validate_missing_choices():
     resp = DummyResponse({})
     with pytest.raises(ValueError, match="The response does not contain any choices."):
-        _validate_gpt_response(resp)
+        _validate_gpt_response_initial_tagging(resp)
 
 @pytest.mark.integration
 def test_gpt_validate_empty_choices():
     resp = DummyResponse({"choices": []})
     with pytest.raises(ValueError, match="The response does not contain any choices."):
-        _validate_gpt_response(resp)
+        _validate_gpt_response_initial_tagging(resp)
 
 @pytest.mark.integration
 def test_gpt_validate_non_list_choices():
     resp = DummyResponse({"choices": {"role": "assistant", "message": {"content": "{}"}}})
     with pytest.raises(ValueError, match="The response choices are not a list."):
-        _validate_gpt_response(resp)
+        _validate_gpt_response_initial_tagging(resp)
 
 @pytest.mark.integration
 def test_gpt_validate_missing_message():
@@ -142,7 +142,7 @@ def test_gpt_validate_missing_message():
         ]
     })
     with pytest.raises(ValueError, match="The response does not contain a message."):
-        _validate_gpt_response(resp)
+        _validate_gpt_response_initial_tagging(resp)
 
 @pytest.mark.integration
 def test_gpt_validate_missing_content():
@@ -153,7 +153,7 @@ def test_gpt_validate_missing_content():
         ]
     })
     with pytest.raises(ValueError, match="The response message does not contain content."):
-        _validate_gpt_response(resp)
+        _validate_gpt_response_initial_tagging(resp)
 
 @pytest.mark.integration
 def test_gpt_validate_empty_content():
@@ -164,7 +164,7 @@ def test_gpt_validate_empty_content():
         ]
     })
     with pytest.raises(ValueError, match="The response message content is empty."):
-        _validate_gpt_response(resp)
+        _validate_gpt_response_initial_tagging(resp)
 
 @pytest.mark.integration
 def test_gpt_validate_invalid_json():
@@ -175,11 +175,11 @@ def test_gpt_validate_invalid_json():
         ]
     })
     with pytest.raises(ValueError, match="The response message content is not valid JSON."):
-        _validate_gpt_response(resp)
+        _validate_gpt_response_initial_tagging(resp)
 
 @pytest.mark.integration
 def test_gpt_validate_non_string_keys(monkeypatch):
-    # Patch the loads used in the module (_validate_gpt_response uses loads from json).
+    # Patch the loads used in the module (_validate_gpt_response_initial_tagging uses loads from json).
     # Since _gpt.py imported loads directly, we must patch that binding.
     import dynamo.data._gpt as gpt_module
     def fake_loads(s):
@@ -192,7 +192,7 @@ def test_gpt_validate_non_string_keys(monkeypatch):
         ]
     })
     with pytest.raises(ValueError, match="The response message content keys are not strings."):
-        _validate_gpt_response(resp)
+        _validate_gpt_response_initial_tagging(resp)
 
 @pytest.mark.integration
 def test_gpt_validate_missing_l_or_w():
@@ -204,7 +204,7 @@ def test_gpt_validate_missing_l_or_w():
         ]
     })
     with pytest.raises(ValueError, match="The response message content values do not contain 'l' and 'w'."):
-        _validate_gpt_response(resp)
+        _validate_gpt_response_initial_tagging(resp)
 
 @pytest.mark.integration
 def test_gpt_validate_value_dict_missing_key():
@@ -223,7 +223,7 @@ def test_gpt_validate_value_dict_missing_key():
         ]
     })
     with pytest.raises(ValueError, match="The response message content values do not contain 'l' and 'w'."):
-        _validate_gpt_response(resp)
+        _validate_gpt_response_initial_tagging(resp)
 
 @pytest.mark.integration
 def test_gpt_validate_value_wrong_type():
@@ -242,7 +242,7 @@ def test_gpt_validate_value_wrong_type():
         ]
     })
     with pytest.raises(ValueError, match="The response message content values must be a list or a dict."):
-        _validate_gpt_response(resp)
+        _validate_gpt_response_initial_tagging(resp)
 
 @pytest.mark.integration
 def test_gpt_validate_valid_response():
@@ -253,11 +253,11 @@ def test_gpt_validate_valid_response():
             {"role": "assistant", "message": {"content": "{}"}},
         ]
     })
-    result = _validate_gpt_response(resp)
+    result = _validate_gpt_response_initial_tagging(resp)
     assert result == content
 
 @pytest.mark.integration
-def test_gpt_request_missing_api_key(monkeypatch):
+def test_gpt_request_initial_tagging_missing_api_key(monkeypatch):
     # Ensure the environment variable is not set.
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
@@ -265,13 +265,13 @@ def test_gpt_request_missing_api_key(monkeypatch):
     dummy_receipt = DummyReceipt({"receipt_id": 123})
     dummy_words = []  # Can be an empty list; the content doesn't matter here.
 
-    # Calling gpt_request without an API key should raise the expected ValueError.
+    # Calling gpt_request_initial_tagging without an API key should raise the expected ValueError.
     with pytest.raises(ValueError, match="The OPENAI_API_KEY environment variable is not set."):
-        gpt_request(dummy_receipt, dummy_words)
+        gpt_request_initial_tagging(dummy_receipt, dummy_words)
 
 @pytest.mark.integration
 def test_gpt_request(monkeypatch):
-    # Define the valid content that we expect _validate_gpt_response to return.
+    # Define the valid content that we expect _validate_gpt_response_initial_tagging to return.
     valid_content = {
         "store_name": [{"l": 0, "w": 0}, {"l": 0, "w": 1}],
         "date": [{"l": 1, "w": 2}],
@@ -303,15 +303,15 @@ def test_gpt_request(monkeypatch):
     monkeypatch.setattr(requests, "post", fake_post)
 
     # Create a dummy receipt and a list of dummy receipt words.
-    receipt = {"receipt_id": 123}  # _llm_prompt() uses dict(receipt)
+    receipt = {"receipt_id": 123}  # _llm_prompt_initial_tagging() uses dict(receipt)
     receipt_words = [
         DummyWord("STORE", (0.1, 0.2), 0, 0),
         DummyWord("NAME", (0.3, 0.4), 0, 1),
         DummyWord("2025-01-01", (0.5, 0.6), 1, 2),
     ]
 
-    # Call gpt_request() with a dummy API key.
-    formatted_response, query_sent, response_text = gpt_request(receipt, receipt_words, gpt_api_key="dummy_key")
+    # Call gpt_request_initial_tagging() with a dummy API key.
+    formatted_response, query_sent, response_text = gpt_request_initial_tagging(receipt, receipt_words, gpt_api_key="dummy_key")
 
     # Assert that the returned dict equals the valid content we defined.
     assert formatted_response == valid_content
