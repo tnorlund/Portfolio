@@ -267,39 +267,59 @@ class _ReceiptWordTag:
         except ClientError as e:
             raise ValueError("Could not list ReceiptWordTags from the database") from e
 
-    def listReceiptWordTags(self) -> list[ReceiptWordTag]:
+    def listReceiptWordTags(
+        self, limit: int = None, lastEvaluatedKey: dict = None
+    ) -> tuple[list[ReceiptWordTag], dict | None]:
         """
-        Lists all ReceiptWordTag items in the table by querying an index (e.g. GSITYPE)
-        where TYPE = 'RECEIPT_WORD_TAG'.
+        Lists ReceiptWordTag items from the database via the GSITYPE index (using the "TYPE" attribute).
+        Supports optional pagination via a limit and a LastEvaluatedKey.
+
+        Args:
+            limit (int, optional): The maximum number of items to return in one query.
+            lastEvaluatedKey (dict, optional): The key from which to continue a previous paginated query.
 
         Returns:
-            list[ReceiptWordTag]
+            tuple[list[ReceiptWordTag], dict | None]:
+                - A list of ReceiptWordTag objects.
+                - The LastEvaluatedKey (dict) if more items remain, otherwise None.
+
+        Raises:
+            ValueError: If there's an error listing ReceiptWordTags from the database.
         """
-        receipt_word_tags = []
+        receipt_tags: list[ReceiptWordTag] = []
         try:
-            response = self._client.query(
-                TableName=self.table_name,
-                IndexName="GSITYPE",  # or name of your secondary index
-                KeyConditionExpression="#t = :val",
-                ExpressionAttributeNames={"#t": "TYPE"},
-                ExpressionAttributeValues={":val": {"S": "RECEIPT_WORD_TAG"}},
+            query_params = {
+                "TableName": self.table_name,
+                "IndexName": "GSITYPE",
+                "KeyConditionExpression": "#t = :val",
+                "ExpressionAttributeNames": {"#t": "TYPE"},
+                "ExpressionAttributeValues": {":val": {"S": "RECEIPT_WORD_TAG"}},
+            }
+
+            if lastEvaluatedKey is not None:
+                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+
+            if limit is not None:
+                query_params["Limit"] = limit
+
+            response = self._client.query(**query_params)
+            receipt_tags.extend(
+                [itemToReceiptWordTag(item) for item in response.get("Items", [])]
             )
-            for item in response.get("Items", []):
-                receipt_word_tags.append(itemToReceiptWordTag(item))
 
-            while "LastEvaluatedKey" in response:
-                response = self._client.query(
-                    TableName=self.table_name,
-                    IndexName="GSITYPE",
-                    KeyConditionExpression="#t = :val",
-                    ExpressionAttributeNames={"#t": "TYPE"},
-                    ExpressionAttributeValues={":val": {"S": "RECEIPT_WORD_TAG"}},
-                    ExclusiveStartKey=response["LastEvaluatedKey"],
-                )
-                for item in response.get("Items", []):
-                    receipt_word_tags.append(itemToReceiptWordTag(item))
+            if limit is None:
+                # If no limit is provided, continue paginating until all items are retrieved.
+                while "LastEvaluatedKey" in response and response["LastEvaluatedKey"]:
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    response = self._client.query(**query_params)
+                    receipt_tags.extend(
+                        [itemToReceiptWordTag(item) for item in response.get("Items", [])]
+                    )
+                last_evaluated_key = None
+            else:
+                last_evaluated_key = response.get("LastEvaluatedKey", None)
 
-            return receipt_word_tags
+            return receipt_tags, last_evaluated_key
 
         except ClientError as e:
             raise ValueError("Could not list ReceiptWordTags from the database") from e
