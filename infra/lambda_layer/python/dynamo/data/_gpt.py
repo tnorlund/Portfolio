@@ -172,6 +172,7 @@ def _validate_gpt_response_tagging_validation(response: Response) -> dict:
             raise ValueError("The response items do not contain the expected fields.")
     return content
 
+
 def _reduce_precision(value: tuple, precision: int = 2) -> tuple:
     """Reduces the precision of the word's centroid.
 
@@ -380,33 +381,33 @@ def _llm_prompt_tagging_validation(
         "You are provided with JSON data that conforms to the following structure:\n"
         "```json\n"
         "{\n"
-        "    \"receipt\": {\n"
-        "        \"width\": <integer>,\n"
-        "        \"height\": <integer>\n"
+        '    "receipt": {\n'
+        '        "width": <integer>,\n'
+        '        "height": <integer>\n'
         "    },\n"
-        "    \"lines\": [\n"
+        '    "lines": [\n'
         "        {\n"
-        "            \"line_id\": <integer>,\n"
-        "            \"bounding_box\": {\n"
-        "                \"x\": <integer>,\n"
-        "                \"y\": <integer>,\n"
-        "                \"width\": <integer>,\n"
-        "                \"height\": <integer>\n"
+        '            "line_id": <integer>,\n'
+        '            "bounding_box": {\n'
+        '                "x": <integer>,\n'
+        '                "y": <integer>,\n'
+        '                "width": <integer>,\n'
+        '                "height": <integer>\n'
         "            },\n"
-        "            \"tagged_words\": [\n"
+        '            "tagged_words": [\n'
         "                {\n"
-        "                    \"word_id\": <integer>,\n"
-        "                    \"text\": <string>,\n"
-        "                    \"bounding_box\": {\n"
-        "                        \"x\": <integer>,\n"
-        "                        \"y\": <integer>,\n"
-        "                        \"width\": <integer>,\n"
-        "                        \"height\": <integer>\n"
+        '                    "word_id": <integer>,\n'
+        '                    "text": <string>,\n'
+        '                    "bounding_box": {\n'
+        '                        "x": <integer>,\n'
+        '                        "y": <integer>,\n'
+        '                        "width": <integer>,\n'
+        '                        "height": <integer>\n'
         "                    },\n"
-        "                    \"tags\": [\n"
+        '                    "tags": [\n'
         "                        {\n"
-        "                            \"tag\": <string>,\n"
-        "                            \"validated\": <boolean>\n"
+        '                            "tag": <string>,\n'
+        '                            "validated": <boolean>\n'
         "                        }\n"
         "                    ]\n"
         "                }\n"
@@ -448,5 +449,5 @@ def _llm_prompt_tagging_validation(
         "- 'flag' is 'ok' if the tag is correct, 'needs_review' if unsure.\n"
         "\n"
         "You must review each word in \"tagged_words\" and provide the correct tag. If the tag is correct, mark 'ok' and provide a high confidence level.\n"
-        "Return all the \"tagged_words\" with the structure above.\n"
+        'Return all the "tagged_words" with the structure above.\n'
     )
