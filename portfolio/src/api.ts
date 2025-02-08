@@ -7,9 +7,38 @@ import {
   ReceiptWordsApiResponse,
   ReceiptDetailsApiResponse,
   ImageDetailsApiResponse,
+  ReceiptWordTagsApiResponse,
 } from "./interfaces";
 
 const isDevelopment = process.env.NODE_ENV === "development";
+
+export async function fetchReceiptWordTags(
+  tag: string,
+  limit: number,
+  lastEvaluatedKey?: any
+): Promise<ReceiptWordTagsApiResponse> {
+  const params = new URLSearchParams();
+  params.set("limit", limit.toString());
+  params.set("tag", tag);
+  if (lastEvaluatedKey) {
+    // JSON-encode the object exactly once.
+    params.set("lastEvaluatedKey", JSON.stringify(lastEvaluatedKey));
+  }
+  const baseUrl =
+    process.env.NODE_ENV === "development"
+      ? `https://dev-api.tylernorlund.com/receipt_word_tags`
+      : `https://api.tylernorlund.com/receipt_word_tags`;
+
+  const url = `${baseUrl}?${params.toString()}`;
+  console.log(url)
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    throw new Error(`Network response was not ok (status: ${response.status})`);
+  }
+
+  return await response.json();
+}
 
 export async function fetchWordTagList(): Promise<string[]> {
   const apiUrl = isDevelopment
@@ -103,7 +132,7 @@ export async function fetchReceiptDetails(
 
 export async function fetchReceipts(
   limit: number,
-  lastEvaluatedKey?: any  // Changed from string to any
+  lastEvaluatedKey?: any // Changed from string to any
 ): Promise<ReceiptApiResponse> {
   const params = new URLSearchParams();
   params.set("limit", limit.toString());

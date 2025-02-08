@@ -1,25 +1,51 @@
 import { useState, useEffect } from "react";
-import { fetchWordTagList } from "./api";
+import { fetchWordTagList, fetchReceiptWordTags } from "./api";
+import { ReceiptWordTagsApiResponse } from "./interfaces"; // adjust import if needed
 
 function ReceiptValidation() {
   const [tags, setTags] = useState<string[]>([]);
   const [selectedTag, setSelectedTag] = useState<string>("");
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loadingTags, setLoadingTags] = useState<boolean>(true);
+  const [receiptTags, setReceiptTags] = useState<ReceiptWordTagsApiResponse | null>(null);
+  const [loadingReceiptTags, setLoadingReceiptTags] = useState<boolean>(false);
 
+  // Fetch the list of word tags when the component mounts.
   useEffect(() => {
-    // Fetch the list of tags when the component mounts.
     fetchWordTagList()
       .then((data) => {
         console.log("Fetched word tags:", data);
         setTags(data);
+        // Optionally, set a default tag if available.
+        if (data.length > 0) {
+          setSelectedTag(data[0]);
+        }
       })
       .catch((error) => {
         console.error("Failed to fetch word tags:", error);
       })
       .finally(() => {
-        setLoading(false);
+        setLoadingTags(false);
       });
   }, []);
+
+  // Whenever the selectedTag changes, fetch the receipt word tags.
+  useEffect(() => {
+    if (selectedTag) {
+      setLoadingReceiptTags(true);
+      // Here we pass the selected tag and a limit (for example, 5). Adjust the limit as needed.
+      fetchReceiptWordTags(selectedTag, 5)
+        .then((data) => {
+          console.log("Fetched receipt word tags:", data);
+          setReceiptTags(data);
+        })
+        .catch((error) => {
+          console.error("Failed to fetch receipt word tags:", error);
+        })
+        .finally(() => {
+          setLoadingReceiptTags(false);
+        });
+    }
+  }, [selectedTag]);
 
   const handleTagChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedTag(event.target.value);
@@ -28,21 +54,33 @@ function ReceiptValidation() {
   return (
     <div>
       <h1>Receipt Validation</h1>
-      {loading ? (
+      {loadingTags ? (
         <div style={{ display: "flex", justifyContent: "center" }}>
-        <p>Loading tags...</p>
+          <p>Loading tags...</p>
         </div>
       ) : (
         <div style={{ display: "flex", justifyContent: "center" }}>
-          <div>
-            <select id="tag-select" value={selectedTag} onChange={handleTagChange}>
-              {tags.map((tag, index) => (
-                <option key={index} value={tag}>
-                  {tag}
-                </option>
-              ))}
-            </select>
-          </div>
+          <select id="tag-select" value={selectedTag} onChange={handleTagChange}>
+            {tags.map((tag, index) => (
+              <option key={index} value={tag}>
+                {tag}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {selectedTag && (
+        <div style={{ marginTop: "20px" }}>
+          <h2>Receipt Word Tags for "{selectedTag}"</h2>
+          {loadingReceiptTags ? (
+            <p>Loading receipt word tags...</p>
+          ) : receiptTags ? (
+            // Render the fetched receipt word tags.
+            <pre>{JSON.stringify(receiptTags, null, 2)}</pre>
+          ) : (
+            <p>No receipt word tags available.</p>
+          )}
         </div>
       )}
     </div>
