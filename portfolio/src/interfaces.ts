@@ -62,6 +62,30 @@ export interface Word {
   num_chars: number;
 }
 
+export interface ReceiptWord {
+  // IDs indicating what this word is linked to
+  image_id: number;
+  receipt_id: number;
+  line_id: number;
+  word_id: number;
+
+  // Basic text and geometry
+  text: string;
+  bounding_box: BoundingBoxInterface;
+  top_left: Point;
+  top_right: Point;
+  bottom_left: Point;
+  bottom_right: Point;
+  angle_degrees: number;
+  angle_radians: number;
+  confidence: number;
+
+  // Additional fields found in the example
+  tags: string[];
+  histogram: Record<string, number>;
+  num_chars: number;
+}
+
 export interface ReceiptWordTag {
   image_id: number;
   receipt_id: number;
@@ -188,7 +212,7 @@ export interface ImageDetailsApiResponse {
 }
 
 export interface ReceiptWordTagsPayloadItem {
-  word: Word;
+  word: ReceiptWord;
   tag: ReceiptWordTag;
 }
 
