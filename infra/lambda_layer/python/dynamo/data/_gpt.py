@@ -6,7 +6,13 @@ from os import getenv, environ
 from dynamo import Receipt, ReceiptWord, ReceiptWordTag, ReceiptLine
 
 
-def gpt_request_tagging_validation(gpt_api_key=None):
+def gpt_request_tagging_validation(
+    receipt: Receipt,
+    receipt_lines: list[ReceiptLine],
+    receipt_words: list[ReceiptWord],
+    receipt_word_tags: list[ReceiptWordTag],
+    gpt_api_key=None,
+) -> tuple[dict, str, str]:
     """
     Makes a request to the OpenAI API to validate the tagging of a receipt.
 
@@ -23,6 +29,23 @@ def gpt_request_tagging_validation(gpt_api_key=None):
         "Content-Type": "application/json",
         "Authorization": f"Bearer {getenv('OPENAI_API_KEY')}",
     }
+    query = _llm_prompt_tagging_validation(
+        receipt, receipt_lines, receipt_words, receipt_word_tags
+    )
+    payload = {
+        "model": "gpt-3.5-turbo",
+        "messages": [
+            {"role": "system", "content": "You extract structured data from text."},
+            {"role": "user", "content": query},
+        ],
+    }
+    response = requests.post(url, headers=headers, json=payload)
+
+    return (
+        _validate_gpt_response_tagging_validation(response),
+        query,
+        response.text,
+    )
 
 
 def gpt_request_initial_tagging(
@@ -54,9 +77,7 @@ def gpt_request_initial_tagging(
     response = requests.post(url, headers=headers, json=payload)
 
     return (
-        _validate_gpt_response_initial_tagging(
-            requests.post(url, headers=headers, json=payload)
-        ),
+        _validate_gpt_response_initial_tagging(response),
         query,
         response.text,
     )
