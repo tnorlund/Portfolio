@@ -317,7 +317,17 @@ const ImageBoundingBox: React.FC = () => {
           </svg>
         ) : (
           // While loading, show a "Loading" message centered in the reserved space.
-          <div>Loading...</div>
+            <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              width: "100%",
+              height: "100%",
+            }}
+            >
+            Loading...
+            </div>
         )}
         </div>
       </div>
