@@ -169,6 +169,9 @@ def process(
 
     # Cluster logic
     cluster_dict = cluster_receipts(lines)
+    cluster_dict = join_overlapping_clusters(
+        cluster_dict, image.width, image.height, iou_threshold=0.01
+    )
 
     word_tags = []
     # Receipt extraction, transformation, saving
@@ -358,6 +361,212 @@ def update_words_with_tags(receipt_words: list, tags: list[Tag]) -> None:
         # Using dict.fromkeys preserves the order while removing duplicates.
         word.tags = list(dict.fromkeys(word.tags))
 
+
+def join_overlapping_clusters(
+    cluster_dict: Dict[int, List[Line]], 
+    image_width: int, 
+    image_height: int, 
+    iou_threshold: float = 0.01
+) -> Dict[int, List[Line]]:
+    """
+    Merge clusters whose bounding boxes overlap above the given iou_threshold.
+    This returns a new dictionary of cluster_id -> List[Line] with no overlaps.
+    
+    We ignore cluster_id == -1 (noise).
+    """
+    # Step 1: Collect valid cluster_ids (excluding -1)
+    valid_cluster_ids = [cid for cid in cluster_dict.keys() if cid != -1]
+    if not valid_cluster_ids:
+        return {}
+
+    # Step 2: Compute bounding boxes (as polygon points) for each cluster
+    #         We'll reuse your min_area_rect + reorder_box_points approach
+    cluster_bboxes = {}
+    for cid in valid_cluster_ids:
+        lines_in_cluster = cluster_dict[cid]
+        # Collect absolute coords for all corners in the cluster
+        pts_abs = []
+        for ln in lines_in_cluster:
+            for corner in [ln.top_left, ln.top_right, ln.bottom_left, ln.bottom_right]:
+                x_abs = corner["x"] * image_width
+                # flip Y to absolute coords
+                y_abs = (1.0 - corner["y"]) * image_height
+                pts_abs.append((x_abs, y_abs))
+
+        # If no points, skip (should not happen, but just in case)
+        if not pts_abs:
+            continue
+
+        # Compute the min-area rect with your existing geometry
+        (cx, cy), (rw, rh), angle_deg = min_area_rect(pts_abs)
+        # Generate 4 corners for that bounding box
+        box_4 = box_points((cx, cy), (rw, rh), angle_deg)
+        # Order them top-left, top-right, bottom-right, bottom-left
+        box_4_ordered = reorder_box_points(box_4)
+
+        # Store this polygon in a dict (matching what dev.py’s IoU code expects)
+        cluster_bboxes[cid] = {
+            "box_points": box_4_ordered
+        }
+
+    # Step 3: Use a Union-Find structure to merge clusters that overlap
+    parent = {cid: cid for cid in valid_cluster_ids}  # each cluster is its own parent
+
+    def find(x):
+        # Path compression
+        if parent[x] != x:
+            parent[x] = find(parent[x])
+        return parent[x]
+
+    def union(a, b):
+        rootA = find(a)
+        rootB = find(b)
+        if rootA != rootB:
+            parent[rootB] = rootA
+
+    def cross(a, b):
+        """Return the 2D cross product of vectors a and b."""
+        return a[0] * b[1] - a[1] * b[0]
+
+    def subtract(a, b):
+        """Subtract vector b from vector a."""
+        return (a[0] - b[0], a[1] - b[1])
+
+    def polygon_area(polygon):
+        """
+        Compute the area of a polygon given as a list of (x, y) tuples
+        using the Shoelace formula.
+        """
+        area = 0.0
+        n = len(polygon)
+        for i in range(n):
+            j = (i + 1) % n
+            area += polygon[i][0] * polygon[j][1] - polygon[j][0] * polygon[i][1]
+        return abs(area) / 2.0
+
+    def is_inside(p, cp1, cp2):
+        """
+        Check if point p is inside the half-plane defined by the edge from cp1 to cp2.
+        Assumes the clipping polygon is ordered counterclockwise.
+        """
+        # For a counterclockwise clip polygon, a point is inside if it lies to the left
+        # of the edge (or on the edge), i.e., if the cross product >= 0.
+        return cross(subtract(cp2, cp1), subtract(p, cp1)) >= 0
+
+    def compute_intersection(s, e, cp1, cp2):
+        """
+        Compute the intersection point of the line segment from s to e with the line
+        defined by cp1 -> cp2. Returns the intersection as an (x, y) tuple.
+        """
+        # Represent the segment as s + t*(e - s)
+        # and the clip edge as cp1 + u*(cp2 - cp1)
+        r = subtract(e, s)
+        d = subtract(cp2, cp1)
+        denominator = cross(r, d)
+        if denominator == 0:
+            # Lines are parallel; in our use-case this is unlikely since
+            # we’re dealing with rotated rectangles. Return None to be safe.
+            return None
+        t = cross(subtract(cp1, s), d) / denominator
+        return (s[0] + t * r[0], s[1] + t * r[1])
+
+    def polygon_clip(subjectPolygon, clipPolygon):
+        """
+        Clip a polygon with another polygon using the Sutherland-Hodgman algorithm.
+        Both polygons are defined as lists of (x, y) tuples. Returns a list of points
+        representing the intersection polygon.
+        """
+        outputList = subjectPolygon[:]
+        cp1 = clipPolygon[-1]
+        for cp2 in clipPolygon:
+            inputList = outputList
+            outputList = []
+            if not inputList:
+                # No intersection.
+                break
+            s = inputList[-1]
+            for e in inputList:
+                if is_inside(e, cp1, cp2):
+                    if not is_inside(s, cp1, cp2):
+                        intersection_pt = compute_intersection(s, e, cp1, cp2)
+                        if intersection_pt:
+                            outputList.append(intersection_pt)
+                    outputList.append(e)
+                elif is_inside(s, cp1, cp2):
+                    intersection_pt = compute_intersection(s, e, cp1, cp2)
+                    if intersection_pt:
+                        outputList.append(intersection_pt)
+                s = e
+            cp1 = cp2
+        return outputList
+    
+    def compute_iou(box_a, box_b):
+        """
+        Compute the Intersection over Union (IoU) for two bounding boxes.
+        
+        Each box is a dict that must contain the key "box_points" which is a list
+        of four (x, y) tuples defining the polygon.
+        """
+        poly_a = box_a["box_points"]
+        poly_b = box_b["box_points"]
+        
+        area_a = polygon_area(poly_a)
+        area_b = polygon_area(poly_b)
+        
+        # Compute the intersection polygon (if any)
+        intersection_poly = polygon_clip(poly_a, poly_b)
+        if not intersection_poly:
+            intersection_area = 0.0
+        else:
+            intersection_area = polygon_area(intersection_poly)
+        
+        union_area = area_a + area_b - intersection_area
+        if union_area == 0:
+            return 0.0
+        return intersection_area / union_area
+    
+    def boxes_overlap(box_a, box_b, iou_threshold=0.1):
+        """
+        Determine whether two bounding boxes overlap by comparing their IoU to a threshold.
+        Returns True if IoU > iou_threshold.
+        """
+        iou = compute_iou(box_a, box_b)
+        return iou > iou_threshold
+
+    # Compare every pair of clusters; if boxes_overlap, union them
+    all_ids = list(cluster_bboxes.keys())
+    for i in range(len(all_ids)):
+        cid_a = all_ids[i]
+        for j in range(i + 1, len(all_ids)):
+            cid_b = all_ids[j]
+            if boxes_overlap(cluster_bboxes[cid_a], cluster_bboxes[cid_b], iou_threshold):
+                union(cid_a, cid_b)
+
+    # Step 4: Build a mapping from original cluster_id -> final merged root
+    merged_map = {}
+    for cid in valid_cluster_ids:
+        merged_map[cid] = find(cid)
+
+    # Step 5: Rebuild a new cluster dictionary from these merges
+    new_cluster_dict: Dict[int, List[Line]] = {}
+    # We also want to assign new consecutive cluster IDs (1, 2, 3, ...)
+    # but we first gather lines by their root.
+    root_to_lines: Dict[int, List[Line]] = {}
+    for cid in valid_cluster_ids:
+        root = merged_map[cid]
+        if root not in root_to_lines:
+            root_to_lines[root] = []
+        root_to_lines[root].extend(cluster_dict[cid])
+
+    # Now we reassign new cluster IDs in ascending order
+    sorted_roots = sorted(root_to_lines.keys())
+    new_cid = 1
+    for root_cid in sorted_roots:
+        lines_merged = root_to_lines[root_cid]
+        new_cluster_dict[new_cid] = lines_merged
+        new_cid += 1
+
+    return new_cluster_dict
 
 def calculate_sha256_from_bytes(data: bytes) -> str:
     sha256_hash = hashlib.sha256(data)
