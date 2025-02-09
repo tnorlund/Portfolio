@@ -100,7 +100,6 @@ class ReceiptWordTag:
         else:
             # If it's already a string or None, just assign it.
             self.timestamp_validated = timestamp_validated
-        
 
         if gpt_confidence is not None and not isinstance(gpt_confidence, int):
             raise ValueError("gpt_confidence must be an integer")

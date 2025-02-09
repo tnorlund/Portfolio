@@ -28,6 +28,9 @@ class WordTag:
         tag: str,
         timestamp_added: datetime,
         validated: Optional[bool] = None,
+        timestamp_validated: Optional[datetime] = None,
+        gpt_confidence: Optional[int] = None,
+        flag: Optional[str] = None,
     ):
         """Initializes a new WordTag object for DynamoDB.
 
@@ -74,10 +77,30 @@ class WordTag:
             self.timestamp_added = timestamp_added
         else:
             raise ValueError("timestamp_added must be a datetime object or a string")
-        
+
         if validated not in (True, False, None):
             raise ValueError("validated must be a boolean or None")
         self.validated = validated
+
+        if isinstance(timestamp_validated, datetime):
+            # Convert datetime to an ISO-formatted string.
+            self.timestamp_validated = timestamp_validated.isoformat()
+        elif not isinstance(timestamp_validated, (str, type(None))):
+            # Raise an error if it's neither a string nor None.
+            raise ValueError(
+                "timestamp_validated must be a datetime object, a string, or None"
+            )
+        else:
+            # If it's already a string or None, just assign it.
+            self.timestamp_validated = timestamp_validated
+
+        if gpt_confidence is not None and not isinstance(gpt_confidence, int):
+            raise ValueError("gpt_confidence must be an integer")
+        self.gpt_confidence = gpt_confidence
+
+        if flag is not None and not isinstance(flag, str):
+            raise ValueError("flag must be a string")
+        self.flag = flag
 
     def __eq__(self, other: object) -> bool:
         """Checks equality between this WordTag and another object.
@@ -97,8 +120,12 @@ class WordTag:
             and self.word_id == other.word_id
             and self.tag == other.tag
             and self.validated == other.validated
+            and self.timestamp_added == other.timestamp_added
+            and self.timestamp_validated == other.timestamp_validated
+            and self.gpt_confidence == other.gpt_confidence
+            and self.flag == other.flag
         )
-    
+
     def __hash__(self) -> int:
         """Generates a hash value for the WordTag.
 
@@ -106,7 +133,17 @@ class WordTag:
             int: The hash value for the WordTag.
         """
         return hash(
-            (self.image_id, self.line_id, self.word_id, self.tag, self.validated)
+            (
+                self.image_id,
+                self.line_id,
+                self.word_id,
+                self.tag,
+                self.validated,
+                self.timestamp_added,
+                self.timestamp_validated,
+                self.gpt_confidence,
+                self.flag,
+            )
         )
 
     def __iter__(self) -> Generator[Tuple[str, str], None, None]:
@@ -121,6 +158,9 @@ class WordTag:
         yield "tag", self.tag
         yield "timestamp_added", self.timestamp_added
         yield "validated", self.validated
+        yield "timestamp_validated", self.timestamp_validated
+        yield "gpt_confidence", self.gpt_confidence
+        yield "flag", self.flag
 
     def __repr__(self) -> str:
         """Returns a string representation of the WordTag.
@@ -134,7 +174,10 @@ class WordTag:
             f"word_id={self.word_id}, "
             f"tag={_repr_str(self.tag)}, "
             f"timestamp_added={_repr_str(self.timestamp_added)}, "
-            f"validated={self.validated}"
+            f"validated={self.validated}, "
+            f"timestamp_validated={_repr_str(self.timestamp_validated)}, "
+            f"gpt_confidence={self.gpt_confidence}, "
+            f"flag={_repr_str(self.flag)}"
             ")"
         )
 
@@ -186,7 +229,22 @@ class WordTag:
             "TYPE": {"S": "WORD_TAG"},
             "tag_name": {"S": self.tag},
             "timestamp_added": {"S": self.timestamp_added},
-            "validated": {"BOOL": self.validated} if self.validated is not None else {"NULL": True},
+            "validated": (
+                {"BOOL": self.validated}
+                if self.validated is not None
+                else {"NULL": True}
+            ),
+            "timestamp_validated": (
+                {"S": self.timestamp_validated}
+                if self.timestamp_validated is not None
+                else {"NULL": True}
+            ),
+            "gpt_confidence": (
+                {"N": str(self.gpt_confidence)}
+                if self.gpt_confidence is not None
+                else {"NULL": True}
+            ),
+            "flag": {"S": self.flag} if self.flag is not None else {"NULL": True},
         }
 
     def to_Word_key(self) -> dict:
@@ -220,8 +278,21 @@ def itemToWordTag(item: dict) -> WordTag:
     try:
         pk_parts = item["PK"]["S"].split("#")
         sk_parts = item["SK"]["S"].split("#")
-        validated = bool(item["validated"]["BOOL"]) if "BOOL" in item["validated"] else None
-
+        validated = (
+            bool(item["validated"]["BOOL"]) if "BOOL" in item["validated"] else None
+        )
+        if "timestamp_validated" in item:
+            timestamp_validated = datetime.fromisoformat(item["timestamp_validated"]["S"]) if "S" in item["timestamp_validated"] else None
+        else:
+            timestamp_validated = None
+        if "gpt_confidence" in item:
+            gpt_confidence = int(item["gpt_confidence"]["N"]) if "N" in item["gpt_confidence"] else None
+        else:
+            gpt_confidence = None
+        if "flag" in item:
+            flag = item["flag"]["S"] if "S" in item["flag"] else None
+        else:
+            flag = None
         tag = sk_parts[-1].lstrip("_").strip()
         return WordTag(
             image_id=pk_parts[1],
@@ -230,6 +301,9 @@ def itemToWordTag(item: dict) -> WordTag:
             tag=tag,
             timestamp_added=datetime.fromisoformat(item["timestamp_added"]["S"]),
             validated=validated,
+            timestamp_validated=timestamp_validated,
+            gpt_confidence=gpt_confidence,
+            flag=flag,
         )
     except (IndexError, ValueError, KeyError) as e:
         raise ValueError(f"Error converting item to WordTag: {e}")
