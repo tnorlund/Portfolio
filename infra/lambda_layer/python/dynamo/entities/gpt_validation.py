@@ -4,7 +4,7 @@ from dynamo.entities.util import assert_valid_uuid, _repr_str
 
 
 class GPTValidation:
-    """Represents a ChatGPT validation query applied to a receipt word tag for DynamoDB.
+    """Represents a ChatGPT validation query for a receipt in DynamoDB.
 
     This class encapsulates details such as the associated image, receipt, line, and word
     identifiers, the tag under validation, the ChatGPT query and response, and the timestamp
@@ -25,14 +25,11 @@ class GPTValidation:
         self,
         image_id: str,
         receipt_id: int,
-        line_id: int,
-        word_id: int,
-        tag: str,
         query: str,
         response: str,
         timestamp_added: datetime,
     ):
-        """Initializes a new GPTValidation object for DynamoDB.
+        """Initializes a new GPTValidation object.
 
         Args:
             image_id (str): UUID identifying the image.
@@ -42,36 +39,22 @@ class GPTValidation:
             tag (str): The tag under validation. Must be non-empty, not exceed 40 characters,
                 and must not start with an underscore.
             query (str): The ChatGPT prompt for validation.
-            response (str): The ChatGPT response.
-            timestamp_added (datetime): The timestamp when the validation was performed.
+            response (str): The ChatGPT response text.
+            timestamp_added (datetime or str): When the validation was performed.
 
         Raises:
-            ValueError: If any parameter is of an invalid type or has an invalid value.
+            ValueError: If any parameter is invalid.
         """
         # Validate and assign the image identifier.
         assert_valid_uuid(image_id)
         self.image_id = image_id
 
-        # Validate numeric identifiers.
-        for name, value in (("receipt_id", receipt_id), ("line_id", line_id), ("word_id", word_id)):
-            if not isinstance(value, int):
-                raise ValueError(f"{name} must be an integer")
-            if value < 0:
-                raise ValueError(f"{name} must be positive")
+        # Validate receipt_id.
+        if not isinstance(receipt_id, int):
+            raise ValueError("receipt_id must be an integer")
+        if receipt_id < 0:
+            raise ValueError("receipt_id must be positive")
         self.receipt_id = receipt_id
-        self.line_id = line_id
-        self.word_id = word_id
-
-        # Validate the tag.
-        if not tag:
-            raise ValueError("tag must not be empty")
-        if not isinstance(tag, str):
-            raise ValueError("tag must be a string")
-        if len(tag) > 40:
-            raise ValueError("tag must not exceed 40 characters")
-        if tag.startswith("_"):
-            raise ValueError("tag must not start with an underscore")
-        self.tag = tag.strip()
 
         # Validate the query and response.
         if not query or not isinstance(query, str):
@@ -104,9 +87,6 @@ class GPTValidation:
         return (
             self.image_id == other.image_id
             and self.receipt_id == other.receipt_id
-            and self.line_id == other.line_id
-            and self.word_id == other.word_id
-            and self.tag == other.tag
             and self.query == other.query
             and self.response == other.response
             and self.timestamp_added == other.timestamp_added
@@ -120,9 +100,6 @@ class GPTValidation:
         """
         yield "image_id", self.image_id
         yield "receipt_id", self.receipt_id
-        yield "line_id", self.line_id
-        yield "word_id", self.word_id
-        yield "tag", self.tag
         yield "query", self.query
         yield "response", self.response
         yield "timestamp_added", self.timestamp_added
@@ -137,9 +114,6 @@ class GPTValidation:
             "GPTValidation("
             f"image_id={_repr_str(self.image_id)}, "
             f"receipt_id={self.receipt_id}, "
-            f"line_id={self.line_id}, "
-            f"word_id={self.word_id}, "
-            f"tag={_repr_str(self.tag)}, "
             f"query={_repr_str(self.query)}, "
             f"response={_repr_str(self.response)}, "
             f"timestamp_added={_repr_str(self.timestamp_added)}"
@@ -156,41 +130,9 @@ class GPTValidation:
             dict: A dictionary containing the primary key for the GPTValidation.
         """
         # Use a fixed-width formatting for the tag as in receipt_word_tag.py.
-        tag_upper = self.tag
-        spaced_tag_upper = f"{tag_upper:_>40}"
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {
-                "S": (
-                    f"RECEIPT#{self.receipt_id:05d}"
-                    f"#LINE#{self.line_id:05d}"
-                    f"#WORD#{self.word_id:05d}"
-                    f"#TAG#{spaced_tag_upper}"
-                    f"#QUERY#VALIDATION"
-                )
-            },
-        }
-
-    def gsi1_key(self) -> dict:
-        """Generates the secondary index key for the GPTValidation.
-
-        This key is used to query validation queries in DynamoDB based on the tag attribute.
-
-        Returns:
-            dict: A dictionary containing the secondary index key for the GPTValidation.
-        """
-        tag_upper = self.tag
-        spaced_tag_upper = f"{tag_upper:_>40}"
-        return {
-            "GSI1PK": {"S": f"TAG#{spaced_tag_upper}"},
-            "GSI1SK": {
-                "S": (
-                    f"IMAGE#{self.image_id}"
-                    f"#RECEIPT#{self.receipt_id:05d}"
-                    f"#LINE#{self.line_id:05d}"
-                    f"#WORD#{self.word_id:05d}"
-                )
-            },
+            "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#QUERY#VALIDATION"},
         }
 
     def to_item(self) -> dict:
@@ -201,13 +143,12 @@ class GPTValidation:
         """
         return {
             **self.key(),
-            **self.gsi1_key(),
             "TYPE": {"S": "GPT_VALIDATION"},
             "query": {"S": self.query},
             "response": {"S": self.response},
             "timestamp_added": {"S": self.timestamp_added},
         }
-    
+
     def __hash__(self) -> int:
         """Returns the hash value of the GPTValidation object.
 
@@ -218,9 +159,6 @@ class GPTValidation:
             (
                 self.image_id,
                 self.receipt_id,
-                self.line_id,
-                self.word_id,
-                self.tag,
                 self.query,
                 self.response,
                 self.timestamp_added,
@@ -247,23 +185,15 @@ def itemToGPTValidation(item: dict) -> GPTValidation:
     try:
         # Split the partition key to extract image_id.
         pk_parts = item["PK"]["S"].split("#")
-        # Split the sort key to extract receipt, line, word, and tag.
         sk_parts = item["SK"]["S"].split("#")
         image_id = pk_parts[1]
         receipt_id = int(sk_parts[1])
-        line_id = int(sk_parts[3])
-        word_id = int(sk_parts[5])
-        # The tag is stored in the sort key with fixed-width formatting.
-        tag = sk_parts[7].lstrip("_").strip()
         query = item["query"]["S"]
         response = item["response"]["S"]
         timestamp_added = datetime.fromisoformat(item["timestamp_added"]["S"])
         return GPTValidation(
             image_id=image_id,
             receipt_id=receipt_id,
-            line_id=line_id,
-            word_id=word_id,
-            tag=tag,
             query=query,
             response=response,
             timestamp_added=timestamp_added,

@@ -18,6 +18,8 @@ class WordTag:
         tag (str): The tag applied to the word.
         timestamp_added (str): The ISO formatted timestamp when the tag was added.
         validated (bool): Whether the tag has been validated.
+        revised_tag (str, optional): The revised tag for the word.
+        human_validated (bool): Whether the tag has been validated by a human.
     """
 
     def __init__(
@@ -31,6 +33,8 @@ class WordTag:
         timestamp_validated: Optional[datetime] = None,
         gpt_confidence: Optional[int] = None,
         flag: Optional[str] = None,
+        revised_tag: Optional[str] = None,
+        human_validated: Optional[bool] = None,
     ):
         """Initializes a new WordTag object for DynamoDB.
 
@@ -102,6 +106,14 @@ class WordTag:
             raise ValueError("flag must be a string")
         self.flag = flag
 
+        if revised_tag is not None and not isinstance(revised_tag, str):
+            raise ValueError("revised_tag must be a string")
+        self.revised_tag = revised_tag
+
+        if human_validated not in (True, False, None):
+            raise ValueError("human_validated must be a boolean or None")
+        self.human_validated = human_validated
+
     def __eq__(self, other: object) -> bool:
         """Checks equality between this WordTag and another object.
 
@@ -124,6 +136,8 @@ class WordTag:
             and self.timestamp_validated == other.timestamp_validated
             and self.gpt_confidence == other.gpt_confidence
             and self.flag == other.flag
+            and self.revised_tag == other.revised_tag
+            and self.human_validated == other.human_validated
         )
 
     def __hash__(self) -> int:
@@ -143,6 +157,8 @@ class WordTag:
                 self.timestamp_validated,
                 self.gpt_confidence,
                 self.flag,
+                self.revised_tag,
+                self.human_validated,
             )
         )
 
@@ -161,6 +177,8 @@ class WordTag:
         yield "timestamp_validated", self.timestamp_validated
         yield "gpt_confidence", self.gpt_confidence
         yield "flag", self.flag
+        yield "revised_tag", self.revised_tag
+        yield "human_validated", self.human_validated
 
     def __repr__(self) -> str:
         """Returns a string representation of the WordTag.
@@ -177,7 +195,9 @@ class WordTag:
             f"validated={self.validated}, "
             f"timestamp_validated={_repr_str(self.timestamp_validated)}, "
             f"gpt_confidence={self.gpt_confidence}, "
-            f"flag={_repr_str(self.flag)}"
+            f"flag={_repr_str(self.flag)}, "
+            f"revised_tag={_repr_str(self.revised_tag)}, "
+            f"human_validated={self.human_validated}"
             ")"
         )
 
@@ -245,6 +265,8 @@ class WordTag:
                 else {"NULL": True}
             ),
             "flag": {"S": self.flag} if self.flag is not None else {"NULL": True},
+            "revised_tag": {"S": self.revised_tag} if self.revised_tag is not None else {"NULL": True},
+            "human_validated": {"BOOL": self.human_validated} if self.human_validated is not None else {"NULL": True},
         }
 
     def to_Word_key(self) -> dict:
@@ -293,6 +315,14 @@ def itemToWordTag(item: dict) -> WordTag:
             flag = item["flag"]["S"] if "S" in item["flag"] else None
         else:
             flag = None
+        if "revised_tag" in item:
+            revised_tag = item["revised_tag"]["S"] if "S" in item["revised_tag"] else None
+        else:
+            revised_tag = None
+        if "human_validated" in item:
+            human_validated = bool(item["human_validated"]["BOOL"]) if "BOOL" in item["human_validated"] else None
+        else:
+            human_validated = None
         tag = sk_parts[-1].lstrip("_").strip()
         return WordTag(
             image_id=pk_parts[1],
@@ -304,6 +334,8 @@ def itemToWordTag(item: dict) -> WordTag:
             timestamp_validated=timestamp_validated,
             gpt_confidence=gpt_confidence,
             flag=flag,
+            revised_tag=revised_tag,
+            human_validated=human_validated,
         )
     except (IndexError, ValueError, KeyError) as e:
         raise ValueError(f"Error converting item to WordTag: {e}")
