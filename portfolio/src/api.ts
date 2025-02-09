@@ -8,9 +8,25 @@ import {
   ReceiptDetailsApiResponse,
   ImageDetailsApiResponse,
   ReceiptWordTagsApiResponse,
+  TagValidationStatsResponse,
 } from "./interfaces";
 
 const isDevelopment = process.env.NODE_ENV === "development";
+
+export async function fetchTagValidationStats(): Promise<TagValidationStatsResponse> {
+  const apiUrl =
+    process.env.NODE_ENV === "development"
+      ? `https://dev-api.tylernorlund.com/tag_validation_counts`
+      : `https://api.tylernorlund.com/tag_validation_counts`;
+
+      const response = await fetch(apiUrl);
+
+      if (!response.ok) {
+        throw new Error(`Network response was not ok (status: ${response.status})`);
+      }
+    
+      return await response.json();
+}
 
 export async function fetchReceiptWordTags(
   tag: string,

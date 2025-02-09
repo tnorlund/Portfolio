@@ -76,10 +76,6 @@ def handler(event, _):
         
         return {
             "statusCode": 200,
-            "headers": {
-                "Content-Type": "application/json",
-                "Access-Control-Allow-Origin": "*"  # Enable CORS
-            },
             "body": json.dumps(response_body)
         }
     elif http_method == "POST":

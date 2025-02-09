@@ -138,7 +138,7 @@ export interface RootPayload {
 export interface LastEvaluatedKey {}
 
 export interface ReceiptPayloadEntry {
-  receipt?: Receipt; // The single “receipt” object
+  receipt?: Receipt; // The single "receipt" object
   words?: ReceiptWord[]; // The array of recognized word objects
 }
 export interface ReceiptPayload_new {
@@ -176,7 +176,7 @@ export interface ReceiptWord {
 }
 
 export interface ReceiptPayloadEntry {
-  receipt?: Receipt; // The single “receipt” object
+  receipt?: Receipt; // The single "receipt" object
   words?: ReceiptWord[]; // The array of recognized word objects
 }
 
@@ -222,3 +222,23 @@ export interface ReceiptWordTagsApiResponse {
   payload: ReceiptWordTagsPayload;
   last_evaluated_key?: string;
 }
+
+export interface TagStats {
+  valid: number;
+  invalid: number;
+  total: number;
+}
+
+export interface TagValidationStatsResponse {
+  tag_stats: {
+    [tag: string]: TagStats;
+  }
+}
+
+// Example response:
+// {
+//   "tag_stats": {
+//     "total": { "valid": 45, "invalid": 3, "total": 48 },
+//     "date": { "valid": 32, "invalid": 1, "total": 33 }
+//   }
+// }

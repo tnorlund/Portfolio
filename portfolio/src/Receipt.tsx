@@ -8,7 +8,7 @@ import ImageBoundingBox from "./ImageBoundingBox";
 import TypeScriptLogo from "./TypeScriptLogo";
 import ReactLogo from "./ReactLogo";
 import { ReceiptCounts, ImageCounts } from "./DataCounts";
-
+import TagValidationChart from "./components/TagValidationChart";
 import "./Receipt.css";
 
 function GPTPrompt() {
@@ -188,7 +188,7 @@ function Receipt() {
         process involved tweaking the prompt, sending sample payloads to
         ChatGPT's API, and validating the output against real receipts.
       </p>
-
+      <TagValidationChart />
       <code>
         <GPTPrompt />
       </code>
@@ -246,7 +246,7 @@ function Receipt() {
         won't replace the need for sound engineering practices, critical
         thinking, or domain expertise—it simply supercharges them. Building this
         was fun and eye-opening, proving that ChatGPT is far from just a
-        “spellchecker” and more like a catalyst for a new era of development. I
+        "spellchecker" and more like a catalyst for a new era of development. I
         can't wait to see where this revolution takes us next. By merging human
         intuition and AI-assisted iteration, the process of software development
         becomes faster, smarter, and more accessible than ever.
