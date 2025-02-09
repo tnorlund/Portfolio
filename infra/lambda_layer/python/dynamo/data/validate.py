@@ -56,6 +56,7 @@ def validate(table_name: str, image_id: str) -> None:
         receipt_word_tags,
         _,
         _,
+        _,
     ) = dynamo_client.getImageDetails(image_id)
 
     if not receipts:
