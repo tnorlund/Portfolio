@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
@@ -31,14 +32,17 @@ def validate(table_name: str, image_id: str) -> None:
         image_id (str): UUID of the image containing receipts to validate
 
     Raises:
-        ValueError: If table_name is empty or if no receipts are found for the image_id
+        ValueError: If table_name is not provided and the environment variable DYNAMO_DB_TABLE is not set
         Exception: If there are errors communicating with DynamoDB or GPT
 
     Example:
         >>> validate("ReceiptsTable", "550e8400-e29b-41d4-a716-446655440000")
     """
     if not table_name:
-        raise ValueError("The table_name parameter is required")
+        # Check the environment variable
+        table_name = os.getenv("DYNAMO_DB_TABLE")
+        if not table_name:
+            raise ValueError("The table_name parameter is required")
 
     # Initialize DynamoDB client
     dynamo_client = DynamoClient(table_name)
