@@ -77,6 +77,16 @@ h1 {
   font-weight: 700;
 }
 
+h2 {
+  font-size: 1.25rem;
+  margin-top: 1.5rem;
+  margin-bottom: 0;
+}
+
+p {
+  margin: 0;
+}
+
 body {
   font-size: 16px;         /* or 17px, depending on taste */
   line-height: 1.6;        /* adds breathing room between lines */
