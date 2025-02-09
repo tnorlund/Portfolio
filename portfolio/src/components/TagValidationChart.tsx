@@ -68,7 +68,7 @@ const TagValidationChart: React.FC<TagValidationChartProps> = () => {
               <svg 
                 width="100%"
                 height={28}
-                viewBox={`-1 -1 ${barWidth + 2} 26`}
+                viewBox={`-2 -2 ${barWidth + 4} 28`}
                 preserveAspectRatio="none"
               >
                 {/* Valid portion - round only the left corners */}
