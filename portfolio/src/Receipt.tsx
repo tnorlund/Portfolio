@@ -75,7 +75,11 @@ function Receipt() {
         <OpenAI />
       </div>
       <h2>AWS Services</h2>
-      <ul>
+      <p>
+        These AWS services form the backbone of the backend, ensuring fast image
+        processing, secure storage, and reliable data management.
+      </p>
+      <ul style={{ marginTop: "1rem" }}>
         <li>
           <strong>AWS Lambda</strong>: Manages image processing and workflow
           orchestration.
