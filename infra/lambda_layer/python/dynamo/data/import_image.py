@@ -5,11 +5,11 @@ from dynamo.data.dynamo_client import DynamoClient
 from dynamo.entities import (
     Image, Line, Word, WordTag, Letter,
     Receipt, ReceiptLine, ReceiptWord, ReceiptWordTag, ReceiptLetter,
-    GPTInitialTagging, GPTValidation  # Changed from InitialGPTQuery
+    GPTInitialTagging, GPTValidation
 )
 
 
-def import_data(table_name: str, json_path: str) -> None:
+def import_image(table_name: str, json_path: str) -> None:
     """
     Imports data from a JSON file into DynamoDB.
     The JSON file should be in the format produced by the export() function.
@@ -22,8 +22,12 @@ def import_data(table_name: str, json_path: str) -> None:
         ValueError: If table_name is not provided and the environment variable DYNAMO_DB_TABLE is not set
         FileNotFoundError: If the JSON file doesn't exist
         Exception: If there are errors accessing DynamoDB
+
+    Example:
+        >>> import_data("ReceiptsTable", "./export/image-id.json")
     """
     if not table_name:
+        # Check the environment variable
         table_name = os.getenv("DYNAMO_DB_TABLE")
         if not table_name:
             raise ValueError("The table_name parameter is required")
@@ -50,7 +54,7 @@ def import_data(table_name: str, json_path: str) -> None:
         "receipt_words": [ReceiptWord(**item) for item in data["receipt_words"]],
         "receipt_word_tags": [ReceiptWordTag(**item) for item in data["receipt_word_tags"]],
         "receipt_letters": [ReceiptLetter(**item) for item in data["receipt_letters"]],
-        "gpt_initial_taggings": [GPTInitialTagging(**item) for item in data["gpt_initial_taggings"]],  # Changed key name
+        "gpt_initial_taggings": [GPTInitialTagging(**item) for item in data["gpt_initial_taggings"]],
         "gpt_validations": [GPTValidation(**item) for item in data["gpt_validations"]],
     }
 
@@ -86,7 +90,7 @@ def import_data(table_name: str, json_path: str) -> None:
         dynamo_client.addReceiptLetters(entities["receipt_letters"])
     
     if entities["gpt_initial_taggings"]:
-        dynamo_client.addGPTInitialTaggings(entities["gpt_initial_taggings"])  # Changed method name
+        dynamo_client.addGPTInitialTaggings(entities["gpt_initial_taggings"])
     
     if entities["gpt_validations"]:
         dynamo_client.addGPTValidations(entities["gpt_validations"]) 

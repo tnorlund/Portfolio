@@ -318,7 +318,7 @@ class _Image:
         receipt_words = []
         receipt_word_tags = []
         receipt_letters = []
-        initial_gpt_taggings = []
+        gpt_initial_taggings = []
         gpt_validations = []
         try:
             response = self._client.query(
@@ -367,7 +367,7 @@ class _Image:
                 elif item["TYPE"]["S"] == "RECEIPT_LETTER":
                     receipt_letters.append(itemToReceiptLetter(item))
                 elif item["TYPE"]["S"] == "GPT_INITIAL_TAGGING":
-                    initial_gpt_taggings.append(itemToGPTInitialTagging(item))
+                    gpt_initial_taggings.append(itemToGPTInitialTagging(item))
                 elif item["TYPE"]["S"] == "GPT_VALIDATION":
                     gpt_validations.append(itemToGPTValidation(item))
 
@@ -382,7 +382,7 @@ class _Image:
                 receipt_words,
                 receipt_word_tags,
                 receipt_letters,
-                initial_gpt_taggings,
+                gpt_initial_taggings,
                 gpt_validations,
             )
 
