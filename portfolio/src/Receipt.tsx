@@ -14,7 +14,7 @@ import "./Receipt.css";
 function Receipt() {
   return (
     <div>
-      <h1>The Project</h1>
+      <h1>Introduction</h1>
       <h2>The Inspiration</h2>
       <p>
         In middle school, I spent a summer sorting my dad's receipts for his
