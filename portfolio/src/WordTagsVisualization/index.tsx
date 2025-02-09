@@ -33,6 +33,7 @@ const WordsPolygonSvg: React.FC<Props> = ({ words }) => {
       height="100%"
       viewBox="-0.01 -0.01 1.02 1.02"
       preserveAspectRatio="none"
+      shapeRendering="geometricPrecision"
       style={{
         border: "2px solid var(--text-color)",
         background: "var(--background-color)",
@@ -51,7 +52,9 @@ const WordsPolygonSvg: React.FC<Props> = ({ words }) => {
               x2={top_right.x}
               y2={1 - top_right.y}
               stroke="var(--text-color)"
-              strokeWidth="0.004"
+              strokeWidth="1"
+              strokeLinecap="round"
+              vectorEffect="non-scaling-stroke"
             />
             {/* Right line */}
             <line
@@ -60,7 +63,9 @@ const WordsPolygonSvg: React.FC<Props> = ({ words }) => {
               x2={bottom_right.x}
               y2={1 - bottom_right.y}
               stroke="var(--text-color)"
-              strokeWidth="0.004"
+              strokeWidth="1"
+              strokeLinecap="round"
+              vectorEffect="non-scaling-stroke"
             />
             {/* Bottom line */}
             <line
@@ -69,7 +74,9 @@ const WordsPolygonSvg: React.FC<Props> = ({ words }) => {
               x2={bottom_left.x}
               y2={1 - bottom_left.y}
               stroke="var(--text-color)"
-              strokeWidth="0.004"
+              strokeWidth="1"
+              strokeLinecap="round"
+              vectorEffect="non-scaling-stroke"
             />
             {/* Left line */}
             <line
@@ -78,7 +85,9 @@ const WordsPolygonSvg: React.FC<Props> = ({ words }) => {
               x2={top_left.x}
               y2={1 - top_left.y}
               stroke="var(--text-color)"
-              strokeWidth="0.004"
+              strokeWidth="1"
+              strokeLinecap="round"
+              vectorEffect="non-scaling-stroke"
             />
           </g>
         );
