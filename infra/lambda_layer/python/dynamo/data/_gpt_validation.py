@@ -1,6 +1,6 @@
 # _gpt_validation.py
 from typing import Optional, List, Tuple, Dict, Union
-from dynamo.entities.gpt_validation import GPTValidation, itemToGPTValidation
+from dynamo import GPTValidation, itemToGPTValidation
 from botocore.exceptions import ClientError
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
@@ -149,6 +149,32 @@ class _GPTValidation:
                 raise ValueError(f"GPTValidation record not found: {validation}")
             else:
                 raise Exception(f"Error deleting GPTValidation: {e}")
+
+    def deleteGPTValidations(self, validations: List[GPTValidation]):
+        """
+        Deletes multiple GPTValidation records from the database in batches.
+
+        Args:
+            validations (List[GPTValidation]): A list of GPTValidation records to delete.
+
+        Raises:
+            ValueError: If an error occurs during batch deletion.
+        """
+        try:
+            for i in range(0, len(validations), CHUNK_SIZE):
+                chunk = validations[i : i + CHUNK_SIZE]
+                request_items = [
+                    {"DeleteRequest": {"Key": validation.key()}} for validation in chunk
+                ]
+                response = self._client.batch_write_item(
+                    RequestItems={self.table_name: request_items}
+                )
+                unprocessed = response.get("UnprocessedItems", {})
+                while unprocessed.get(self.table_name):
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    unprocessed = response.get("UnprocessedItems", {})
+        except ClientError as e:
+            raise ValueError(f"Error deleting GPTValidations: {e}")
 
     def listGPTValidations(self) -> List[GPTValidation]:
         """
