@@ -57,10 +57,11 @@
 
 .legend-swatch.filled {
   background-color: var(--text-color);
+  border: 2px solid var(--text-color);
 }
 
 .legend-swatch.outlined {
-  border: 1px solid var(--text-color);
+  border: 2px solid var(--text-color);
 }
 
 /* Inherit font styles from body */

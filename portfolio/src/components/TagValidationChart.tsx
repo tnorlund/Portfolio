@@ -65,7 +65,11 @@ const TagValidationChart: React.FC<TagValidationChartProps> = () => {
           <div key={d.tag} className="chart-row">
             <div className="tag-label">{d.tag}</div>
             <div className="bar-container">
-              <svg width={barWidth} height={24}>
+              <svg 
+                width={barWidth} 
+                height={28}  // Increased height to account for stroke
+                viewBox={`-1 -1 ${barWidth + 2} 26`}  // Added padding for stroke
+              >
                 {/* Valid portion - round only the left corners */}
                 <path
                   d={`
@@ -78,6 +82,8 @@ const TagValidationChart: React.FC<TagValidationChartProps> = () => {
                     a 4 4 0 0 1 4 -4
                   `}
                   fill="var(--text-color)"
+                  stroke="var(--text-color)"
+                  strokeWidth={2}
                 />
                 {/* Invalid portion - round only the right corners */}
                 <path
@@ -92,7 +98,7 @@ const TagValidationChart: React.FC<TagValidationChartProps> = () => {
                   `}
                   fill="none"
                   stroke="var(--text-color)"
-                  strokeWidth={1}
+                  strokeWidth={2}
                 />
               </svg>
               <div className="total-count">{d.total}</div>
