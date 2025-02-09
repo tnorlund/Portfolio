@@ -55,7 +55,7 @@ const TagValidationChart: React.FC<TagValidationChartProps> = () => {
     .sort((a, b) => b.total - a.total);
 
   const maxValue = Math.max(...chartData.map(d => d.total));
-  const barWidth = dimensions.width - 200; // Account for labels and totals
+  const barWidth = dimensions.width - 180; // Just account for label width and total count
   const xScale = (value: number) => (value / maxValue) * barWidth;
 
   return (
@@ -66,9 +66,10 @@ const TagValidationChart: React.FC<TagValidationChartProps> = () => {
             <div className="tag-label">{d.tag}</div>
             <div className="bar-container">
               <svg 
-                width={barWidth} 
-                height={28}  // Increased height to account for stroke
-                viewBox={`-1 -1 ${barWidth + 2} 26`}  // Added padding for stroke
+                width="100%"
+                height={28}
+                viewBox={`-1 -1 ${barWidth + 2} 26`}
+                preserveAspectRatio="none"
               >
                 {/* Valid portion - round only the left corners */}
                 <path
