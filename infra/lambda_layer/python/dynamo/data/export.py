@@ -43,7 +43,7 @@ def export(table_name: str, image_id: str, output_dir: str) -> None:
         receipt_words,
         receipt_word_tags,
         receipt_letters,
-        initial_gpt_queries,
+        initial_gpt_taggings,
         gpt_validations,
     ) = dynamo_client.getImageDetails(image_id)
 
@@ -62,7 +62,7 @@ def export(table_name: str, image_id: str, output_dir: str) -> None:
         "receipt_words": [dict(word) for word in receipt_words],
         "receipt_word_tags": [dict(word_tag) for word_tag in receipt_word_tags],
         "receipt_letters": [dict(letter) for letter in receipt_letters],
-        "initial_gpt_queries": [dict(gpt_query) for gpt_query in initial_gpt_queries],
+        "initial_gpt_taggings": [dict(gpt_query) for gpt_query in initial_gpt_taggings],
         "gpt_validations": [dict(gpt_validation) for gpt_validation in gpt_validations],
     }
 

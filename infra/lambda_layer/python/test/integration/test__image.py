@@ -280,7 +280,7 @@ def test_image_get_details(dynamodb_table, example_image):
                 receipt_words,
                 receipt_word_tags,
                 receipt_letters,
-                initial_gpt_queries,
+                initial_gpt_taggings,
                 gpt_validations,
             )  = (
         client.getImageDetails(image.image_id)
