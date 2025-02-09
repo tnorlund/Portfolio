@@ -52,7 +52,7 @@ class GPTValidation:
         # Validate receipt_id.
         if not isinstance(receipt_id, int):
             raise ValueError("receipt_id must be an integer")
-        if receipt_id < 0:
+        if receipt_id <= 0:
             raise ValueError("receipt_id must be positive")
         self.receipt_id = receipt_id
 
