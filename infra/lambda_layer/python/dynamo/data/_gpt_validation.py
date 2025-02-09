@@ -20,7 +20,7 @@ class _GPTValidation:
         Adds a GPTValidation record to the database.
     addGPTValidations(validations: List[GPTValidation])
         Adds multiple GPTValidation records in batches.
-    getGPTValidation(image_id: str, receipt_id: int, line_id: int, word_id: int, tag: str) -> GPTValidation
+    getGPTValidation(image_id: str, receipt_id: int) -> GPTValidation
         Retrieves a single GPTValidation record by its composite key.
     updateGPTValidation(validation: GPTValidation)
         Updates an existing GPTValidation record.
@@ -77,18 +77,13 @@ class _GPTValidation:
         except ClientError as e:
             raise ValueError(f"Error adding GPTValidations: {e}")
 
-    def getGPTValidation(
-        self, image_id: str, receipt_id: int, line_id: int, word_id: int, tag: str
-    ) -> GPTValidation:
+    def getGPTValidation(self, image_id: str, receipt_id: int) -> GPTValidation:
         """
         Retrieves a GPTValidation record from the database by its composite key.
 
         Args:
             image_id (str): The image ID.
             receipt_id (int): The receipt ID.
-            line_id (int): The line ID.
-            word_id (int): The word ID.
-            tag (str): The tag associated with the validation.
 
         Returns:
             GPTValidation: The retrieved GPTValidation record.
@@ -96,20 +91,9 @@ class _GPTValidation:
         Raises:
             ValueError: If the record is not found.
         """
-        # Construct the key exactly as in GPTValidation.key().
-        # (Assuming GPTValidation uses fixed-width formatting for the tag.)
-        spaced_tag = f"{tag:_>40}"
         key = {
             "PK": {"S": f"IMAGE#{image_id}"},
-            "SK": {
-                "S": (
-                    f"RECEIPT#{receipt_id:05d}"
-                    f"#LINE#{line_id:05d}"
-                    f"#WORD#{word_id:05d}"
-                    f"#TAG#{spaced_tag}"
-                    f"#QUERY#VALIDATION"
-                )
-            },
+            "SK": {"S": f"RECEIPT#{receipt_id:05d}#QUERY#VALIDATION"},
         }
         try:
             response = self._client.get_item(
