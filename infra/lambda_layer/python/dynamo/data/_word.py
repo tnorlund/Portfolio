@@ -197,7 +197,6 @@ class _Word:
             
             # Perform BatchGet
             response = self._client.batch_get_item(**request)
-            print(f"response: {response}")
             
             # Combine all found items
             batch_items = response["Responses"].get(self.table_name, [])

@@ -67,6 +67,8 @@ def validate(table_name: str, image_id: str) -> None:
         raise ValueError(f"No receipts found for image {image_id}")
 
     # Process each receipt
+    receipt_word_tags_to_update = []
+    word_tags_to_update = []
     for receipt in receipts:
         # Filter data for this receipt
         r_lines = [l for l in receipt_lines if l.receipt_id == receipt.receipt_id]
@@ -87,10 +89,6 @@ def validate(table_name: str, image_id: str) -> None:
             timestamp_added=datetime.now(timezone.utc).isoformat(),
         )
 
-        # Update the validation status of tags
-        receipt_tags_to_update = []
-        word_tags_to_update = []
-        
         for word_data in content:
             word_id = word_data["word_id"]
             line_id = word_data["line_id"]
@@ -100,7 +98,7 @@ def validate(table_name: str, image_id: str) -> None:
             revised_tag = word_data["revised_tag"]
 
             # Find and update the receipt word tag
-            matching_receipt_tag = next(
+            matching_receipt_word_tag = next(
                 (
                     tag
                     for tag in r_word_tags
@@ -110,38 +108,46 @@ def validate(table_name: str, image_id: str) -> None:
                 ),
                 None,
             )
+            if not matching_receipt_word_tag:
+                Exception(f"Could not match GPT response to a receipt word tag")
+            matching_receipt_word_tag.validated = flag == "ok"
+            matching_receipt_word_tag.timestamp_validated = datetime.now(timezone.utc).isoformat()
+            matching_receipt_word_tag.gpt_confidence = confidence
+            matching_receipt_word_tag.flag = flag
+            matching_receipt_word_tag.revised_tag = revised_tag
+            receipt_word_tags_to_update.append(matching_receipt_word_tag)
 
-            if matching_receipt_tag:
-                # Update the tag properties
-                matching_receipt_tag.validated = flag == "ok"
-                matching_receipt_tag.gpt_confidence = confidence
-                matching_receipt_tag.flag = flag
-                matching_receipt_tag.timestamp_validated = datetime.now(timezone.utc).isoformat()
-                if initial_tag != revised_tag:
-                    matching_receipt_tag.tag = revised_tag
-                receipt_tags_to_update.append(matching_receipt_tag)
+            # Find the matching word tag
+            matching_word_tag = next(
+                (
+                    tag
+                    for tag in word_tags
+                    if tag.word_id == word_id 
+                    and tag.line_id == line_id 
+                    and tag.tag == initial_tag
+                ),
+                None,
+            )
+            if not matching_word_tag:
+                Exception(f"Could not match GPT response to a word tag")
+            matching_word_tag.validated = flag == "ok"
+            matching_word_tag.timestamp_validated = datetime.now(timezone.utc).isoformat()
+            matching_word_tag.gpt_confidence = confidence
+            matching_word_tag.flag = flag
+            matching_word_tag.revised_tag = revised_tag
+            word_tags_to_update.append(matching_word_tag)
 
-                # Also update the corresponding WordTag
-                matching_word_tag = next(
-                    (
-                        tag
-                        for tag in word_tags
-                        if tag.word_id == word_id 
-                        and tag.line_id == line_id 
-                        and tag.tag == initial_tag
-                    ),
-                    None,
-                )
-                
-                if matching_word_tag:
-                    if initial_tag != revised_tag:
-                        matching_word_tag.tag = revised_tag
-                    matching_word_tag.timestamp_validated = datetime.now(timezone.utc).isoformat()
-                    word_tags_to_update.append(matching_word_tag)
+        # Deduplicate the lists
+        receipt_word_tags_to_update = list(set(receipt_word_tags_to_update))
+        word_tags_to_update = list(set(word_tags_to_update))
+
+        # Check that all word tags and receipt word tags match
+        receipt_keys = [f"{item.word_id}_{item.line_id}_{item.tag}" for item in receipt_word_tags_to_update]
+        word_keys = [f"{item.word_id}_{item.line_id}_{item.tag}" for item in word_tags_to_update]
+        if set(receipt_keys) != set(word_keys):
+            Exception("Could not match receipt word tags to word tags")
 
         # Batch update DynamoDB
         dynamo_client.addGPTValidation(gpt_validation)
-        if receipt_tags_to_update:
-            dynamo_client.addReceiptWordTags(receipt_tags_to_update)
-        if word_tags_to_update:
-            dynamo_client.addWordTags(word_tags_to_update)
+        dynamo_client.addReceiptWordTags(receipt_word_tags_to_update)
+        dynamo_client.addWordTags(word_tags_to_update)
