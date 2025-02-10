@@ -2,12 +2,12 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Python: Test with pytest",
+      "name": "Python: Debug Pytest",
       "type": "debugpy",
       "request": "launch",
+
       "module": "pytest",
       // This part is important:
-      "justMyCode": false,
       "args": [
         "--maxfail=1",
         "--disable-warnings",
@@ -19,7 +19,8 @@
         "--cov-report=term-missing"
         // or --cov-report=html, etc.
       ],
-      "console": "integratedTerminal"
+      "console": "integratedTerminal",
+      "justMyCode": false,
     }
   ]
 }
