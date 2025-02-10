@@ -19,6 +19,7 @@ from dynamo.entities.word_tag import WordTag
 
 TEST_UUID = "d28fcc1e-642c-4d1b-89ec-8fd9f456ea78"
 
+@pytest.mark.integration
 def test_validate_receipt(dynamodb_table, mocker):
     """
     Test the validate function with mocked DynamoDB and GPT response.
