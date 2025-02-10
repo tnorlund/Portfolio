@@ -53,8 +53,10 @@ const ReceiptWords: React.FC = () => {
       setLoading(true);
       try {
         let lastEvaluatedKey: string | undefined = undefined;
-        let allWords: ReceiptWord[] = [];
-        
+        // Clear current words on each tag switch
+        setWords([]);
+        setHistogramWords([]);
+
         // Paginate until no more results
         do {
           const response: ReceiptWordsApiResponse = await fetchReceiptWords(
@@ -62,17 +64,21 @@ const ReceiptWords: React.FC = () => {
             200,
             lastEvaluatedKey
           );
-          allWords = [...allWords, ...response.words];
-          lastEvaluatedKey = response.lastEvaluatedKey;
-        } while (lastEvaluatedKey);
+          setWords((prevWords) => [...prevWords, ...response.words]);
+          setHistogramWords((prevWords) => [...prevWords, ...response.words]);
 
-        // Update all state at once after collecting all words
-        setWords(allWords);
-        setHistogramWords(allWords);
-        setRotation(0);
+          // Move to the next page
+          lastEvaluatedKey = response.lastEvaluatedKey;
+
+          // Apply a random rotation after each successful fetch
+          // Range: -30° to +30°
+          setRotation((prevRotation) => prevRotation + (Math.random() * 60 - 30));
+        } while (lastEvaluatedKey);
       } catch (error) {
         console.error("Error fetching receipt words:", error);
       } finally {
+        // Bring the button back to the original angle after paginating
+        setRotation(0);
         setLoading(false);
       }
     };

@@ -38,10 +38,12 @@ const ChartRow: React.FC<ChartRowProps> = ({
   return (
     <div ref={ref} className={`chart-row ${inView ? "visible" : ""}`}>
       <div className="tag-label">{tag}</div>
-      <div className="bar-container">
+      <div className="bar-container" style={{ width: "100%" }}>
         <svg
-          height={30}
-          viewBox={`-4 -4 ${barWidth + 16} 30`}
+        width="100%"
+        height={30}
+        preserveAspectRatio="none"
+        viewBox={`-4 -4 ${barWidth + 16} 30`}
         >
           {/* Valid portion - left corners rounded */}
           <path
