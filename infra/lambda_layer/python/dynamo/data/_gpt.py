@@ -1,5 +1,6 @@
 from requests.models import Response
 import requests
+import re
 from json import dumps, loads, JSONDecodeError
 from os import getenv, environ
 
@@ -169,11 +170,26 @@ def _validate_gpt_response_tagging_validation(response: Response) -> dict:
     if not content:
         raise ValueError("The response message content is empty.")
     try:
-        content = loads(content.replace("```json", "").replace("```", ""))
-    except JSONDecodeError:
+        # Check if the content contains a JSON code block.
+        if '```json' in content:
+            # Look for the JSON code block using a regular expression.
+            match = re.search(r'```json(.*?)```', content, flags=re.DOTALL)
+            if match:
+                # Extract the JSON text between the markers, stripping any extra whitespace.
+                json_text = match.group(1).strip()
+            else:
+                # Fallback: if the marker is present but the regex didn't match, use the full content.
+                json_text = content
+        else:
+            # No markers found; assume the entire content is JSON.
+            json_text = content
+
+        # Attempt to parse the extracted JSON.
+        content = loads(json_text)
+    except JSONDecodeError as e:
         raise ValueError(
             f"The response message content is not valid JSON.\n{response.text}"
-        )
+        ) from e
     if not isinstance(content, list):
         raise ValueError("The response message content is not a list.")
     for item in content:
@@ -471,4 +487,5 @@ def _llm_prompt_tagging_validation(
         "\n"
         "You must review each word in \"tagged_words\" and provide the correct tag. If the tag is correct, mark 'ok' and provide a high confidence level.\n"
         'Return all the "tagged_words" with the structure above.\n'
+        "Do not create new 'line_id' or 'word_id' pairs. Only use the ones provided in the data.\n"
     )

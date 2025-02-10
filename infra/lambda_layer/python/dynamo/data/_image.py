@@ -345,7 +345,6 @@ class _Image:
                 items += response["Items"]
 
             for item in items:
-                sk_value = item["SK"]["S"]
                 if item["TYPE"]["S"] == "IMAGE":
                     images.append(itemToImage(item))
                 elif item["TYPE"]["S"] == "LINE":
