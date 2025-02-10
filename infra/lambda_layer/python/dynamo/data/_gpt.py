@@ -412,7 +412,7 @@ def _llm_prompt_tagging_validation(
         )
 
     # Now, AFTER the loop, build the final JSON and return the full prompt:
-    context_json = dumps({"receipt": receipt_dict, "lines": line_dicts}, indent=2)
+    context_json = dumps({"receipt": receipt_dict, "lines": line_dicts})
 
     return (
         "You are provided with JSON data that conforms to the following structure:\n"
@@ -488,4 +488,5 @@ def _llm_prompt_tagging_validation(
         "You must review each word in \"tagged_words\" and provide the correct tag. If the tag is correct, mark 'ok' and provide a high confidence level.\n"
         'Return all the "tagged_words" with the structure above.\n'
         "Do not create new 'line_id' or 'word_id' pairs. Only use the ones provided in the data.\n"
+        "Return this JSON structure. Nothing else.\n"
     )
