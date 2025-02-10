@@ -17,7 +17,7 @@ def export_image(table_name: str, image_id: str, output_dir: str) -> None:
         Exception: If there are errors accessing DynamoDB
 
     Example:
-        >>> export("ReceiptsTable", "550e8400-e29b-41d4-a716-446655440000", "./export")
+        >>> export_image("ReceiptsTable", "550e8400-e29b-41d4-a716-446655440000", "./export")
     """
     if not table_name:
         # Check the environment variable

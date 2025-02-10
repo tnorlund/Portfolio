@@ -24,7 +24,7 @@ def import_image(table_name: str, json_path: str) -> None:
         Exception: If there are errors accessing DynamoDB
 
     Example:
-        >>> import_data("ReceiptsTable", "./export/image-id.json")
+        >>> import_image("ReceiptsTable", "./export/image-id.json")
     """
     if not table_name:
         # Check the environment variable
