@@ -122,24 +122,16 @@ const MiniBoxPlot: React.FC<{
   globalMax: number;
   height?: number;
 }> = ({ stats, globalMin, globalMax, height = 16 }) => {
-  // We'll "pretend" our logical width is 100 units and let the SVG scale to 100% container width.
-  const leftMargin = 2; // keep some space on the left
-  const rightMargin = 2; // keep some space on the right
+  const leftMargin = 2;
+  const rightMargin = 2;
   const chartWidth = 100 - leftMargin - rightMargin;
   const yCenter = height / 2;
 
-  /**
-   * Scales a data value (in [globalMin..globalMax]) to the 0..100 "logical width".
-   * Then adds leftMargin offset so that the 0..100 region becomes 2..98.
-   */
   const xScale = (val: number) => {
     if (globalMax === globalMin) {
-      // Avoid division by zero if all frequencies are the same
       return leftMargin + chartWidth / 2;
     }
-    return (
-      leftMargin + ((val - globalMin) / (globalMax - globalMin)) * chartWidth
-    );
+    return leftMargin + ((val - globalMin) / (globalMax - globalMin)) * chartWidth;
   };
 
   // Precompute scaled X positions
@@ -153,10 +145,10 @@ const MiniBoxPlot: React.FC<{
     <div style={{ width: "100%" }}>
       <svg
         width="100%"
-        height={height}
-        style={{ display: "block" }}
-        viewBox={`0 0 100 ${height}`}
+        height={height + 4}
+        viewBox={`-1 -1 102 ${height + 2}`}
         preserveAspectRatio="none"
+        style={{ display: "block" }}
       >
         {/* Whiskers (min–max line) */}
         <line
@@ -165,7 +157,7 @@ const MiniBoxPlot: React.FC<{
           y1={yCenter}
           y2={yCenter}
           stroke="var(--text-color)"
-          strokeWidth={1}
+          strokeWidth={2}
         />
         {/* Box (q1–q3 line) */}
         <line
@@ -174,10 +166,15 @@ const MiniBoxPlot: React.FC<{
           y1={yCenter}
           y2={yCenter}
           stroke="var(--text-color)"
-          strokeWidth={3}
+          strokeWidth={2}
         />
         {/* Median (circle at the median) */}
-        <circle cx={xMed} cy={yCenter} r={2} fill="var(--text-color)" />
+        <circle 
+          cx={xMed} 
+          cy={yCenter} 
+          r={2} 
+          fill="var(--text-color)"
+        />
       </svg>
     </div>
   );

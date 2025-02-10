@@ -1,5 +1,6 @@
 # _word_tag.py
 
+from typing import Dict, List, Optional, Tuple
 from dynamo import WordTag, itemToWordTag
 from botocore.exceptions import ClientError
 
@@ -244,38 +245,57 @@ class _WordTag:
         except ClientError as e:
             raise ValueError("Could not list WordTags from the database") from e
 
-    def listWordTags(self) -> list[WordTag]:
+    def listWordTags(
+        self, limit: Optional[int] = None, lastEvaluatedKey: Optional[Dict] = None
+    ) -> Tuple[List[WordTag], Optional[Dict]]:
         """
-        Lists all WordTag items by querying the GSITYPE index (assuming each WordTag has TYPE='WORD_TAG').
+        Lists WordTag items from the database via the GSITYPE index (using the "TYPE" attribute).
+        Supports optional pagination via a limit and a LastEvaluatedKey.
+
+        Parameters:
+            limit (Optional[int]): The maximum number of WordTags to return in one query.
+            lastEvaluatedKey (Optional[Dict]): The key from which to continue a previous paginated query.
 
         Returns:
-            list[WordTag]: A list of all WordTag objects in the table.
+            Tuple[List[WordTag], Optional[Dict]]: A tuple containing:
+                - A list of WordTag objects.
+                - The LastEvaluatedKey (dict) if more items remain, otherwise None.
+
+        Raises:
+            ValueError: If there's an error listing WordTags from the database.
         """
-        word_tags = []
+        word_tags: List[WordTag] = []
         try:
-            response = self._client.query(
-                TableName=self.table_name,
-                IndexName="GSITYPE",  # or whatever index is used for "TYPE"
-                KeyConditionExpression="#t = :val",
-                ExpressionAttributeNames={"#t": "TYPE"},
-                ExpressionAttributeValues={":val": {"S": "WORD_TAG"}},
-            )
+            query_params = {
+                "TableName": self.table_name,
+                "IndexName": "GSITYPE",
+                "KeyConditionExpression": "#t = :val",
+                "ExpressionAttributeNames": {"#t": "TYPE"},
+                "ExpressionAttributeValues": {":val": {"S": "WORD_TAG"}},
+            }
+            if lastEvaluatedKey is not None:
+                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+
+            if limit is not None:
+                query_params["Limit"] = limit
+
+            response = self._client.query(**query_params)
             word_tags.extend([itemToWordTag(item) for item in response["Items"]])
 
-            while "LastEvaluatedKey" in response:
-                response = self._client.query(
-                    TableName=self.table_name,
-                    IndexName="GSITYPE",
-                    KeyConditionExpression="#t = :val",
-                    ExpressionAttributeNames={"#t": "TYPE"},
-                    ExpressionAttributeValues={":val": {"S": "WORD_TAG"}},
-                    ExclusiveStartKey=response["LastEvaluatedKey"],
-                )
-                word_tags.extend([itemToWordTag(item) for item in response["Items"]])
-            return word_tags
+            if limit is None:
+                # If no limit is provided, paginate until all items are retrieved.
+                while "LastEvaluatedKey" in response and response["LastEvaluatedKey"]:
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    response = self._client.query(**query_params)
+                    word_tags.extend([itemToWordTag(item) for item in response["Items"]])
+                last_evaluated_key = None
+            else:
+                last_evaluated_key = response.get("LastEvaluatedKey", None)
+
+            return word_tags, last_evaluated_key
 
         except ClientError as e:
-            raise ValueError("Could not list WordTags from the database") from e
+            raise ValueError(f"Could not list WordTags from the database: {e}")
 
     def listWordTagsFromImage(self, image_id: str) -> list[WordTag]:
         """

@@ -126,7 +126,7 @@ def test_receipt_word_tag_list(dynamodb_table: Literal["MyMockedTable"]):
         client.addReceiptWordTag(rwt)
 
     # Act
-    returned_tags = client.listReceiptWordTags()
+    returned_tags, _ = client.listReceiptWordTags()
 
     # Assert
     for rwt in receipt_word_tags:

@@ -12,9 +12,6 @@ def sample_gpt_validation():
     return GPTValidation(
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         receipt_id=7,
-        line_id=3,
-        word_id=15,
-        tag="TOTAL",
         query="Is this the total amount?",
         response="Yes, it is the total.",
         timestamp_added=datetime(2021, 1, 1, 0, 0, 0),
@@ -33,9 +30,6 @@ def test_add_and_get_gpt_validation(
     retrieved = client.getGPTValidation(
         image_id=sample_gpt_validation.image_id,
         receipt_id=sample_gpt_validation.receipt_id,
-        line_id=sample_gpt_validation.line_id,
-        word_id=sample_gpt_validation.word_id,
-        tag=sample_gpt_validation.tag,
     )
     assert retrieved == sample_gpt_validation
 
@@ -56,9 +50,6 @@ def test_update_gpt_validation(
     updated = client.getGPTValidation(
         image_id=sample_gpt_validation.image_id,
         receipt_id=sample_gpt_validation.receipt_id,
-        line_id=sample_gpt_validation.line_id,
-        word_id=sample_gpt_validation.word_id,
-        tag=sample_gpt_validation.tag,
     )
     assert updated.response == "Updated response."
 
@@ -77,9 +68,6 @@ def test_delete_gpt_validation(
         client.getGPTValidation(
             image_id=sample_gpt_validation.image_id,
             receipt_id=sample_gpt_validation.receipt_id,
-            line_id=sample_gpt_validation.line_id,
-            word_id=sample_gpt_validation.word_id,
-            tag=sample_gpt_validation.tag,
         )
 
 def test_gpt_validation_batch_add_list(dynamodb_table: Literal["MyMockedTable"]):
@@ -92,10 +80,7 @@ def test_gpt_validation_batch_add_list(dynamodb_table: Literal["MyMockedTable"])
     for i in range(3):
         validation = GPTValidation(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            receipt_id=7,
-            line_id=3,
-            word_id=15 + i,
-            tag="TOTAL",
+            receipt_id=7 + i,
             query=f"Query {i}",
             response=f"Response {i}",
             timestamp_added=datetime(2021, 1, 1, 0, 0, 0),
@@ -108,7 +93,7 @@ def test_gpt_validation_batch_add_list(dynamodb_table: Literal["MyMockedTable"])
     # Filter on image_id and receipt_id to ensure we are only looking at test records
     filtered = [
         v for v in listed
-        if v.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3" and v.receipt_id == 7
+        if v.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     ]
     assert len(filtered) >= 3
     # Verify that the queries for our batch records are present
@@ -124,9 +109,6 @@ def test_gpt_validation_get_nonexistent(dynamodb_table: Literal["MyMockedTable"]
         DynamoClient(dynamodb_table).getGPTValidation(
             image_id="nonexistent-id",
             receipt_id=1,
-            line_id=1,
-            word_id=1,
-            tag="NONEXISTENT",
         )
 
 def test_update_nonexistent_gpt_validation(

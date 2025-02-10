@@ -11,7 +11,7 @@ from routes.process.infra import process_lambda
 from routes.receipt_details.infra import receipt_details_lambda
 from routes.image_count.infra import image_count_lambda
 from routes.receipt_count.infra import receipt_count_lambda
-
+from routes.tag_validation_counts.infra import tag_validation_counts_lambda
 # Detect the current Pulumi stack
 stack = pulumi.get_stack()
 
@@ -285,6 +285,92 @@ lambda_permission_process = aws.lambda_.Permission(
     source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
 )
 
+# /tag_validation_counts
+integration_tag_validation_counts = aws.apigatewayv2.Integration(
+    "tag_validation_counts_lambda_integration",
+    api_id=api.id,
+    integration_type="AWS_PROXY",
+    integration_uri=tag_validation_counts_lambda.invoke_arn,
+    integration_method="POST",
+    payload_format_version="2.0",
+)
+route_tag_validation_counts = aws.apigatewayv2.Route(
+    "tag_validation_counts_route",
+    api_id=api.id,
+    route_key="GET /tag_validation_counts",
+    target=integration_tag_validation_counts.id.apply(lambda id: f"integrations/{id}"),
+    opts=pulumi.ResourceOptions(
+        replace_on_changes=["route_key", "target"],
+        delete_before_replace=True,
+    ),
+)
+lambda_permission_tag_validation_counts = aws.lambda_.Permission(
+    "tag_validation_counts_lambda_permission",
+    action="lambda:InvokeFunction",
+    function=tag_validation_counts_lambda.name,
+    principal="apigateway.amazonaws.com",
+    source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
+)
+
+
+
+
+if stack == "dev":
+    from routes.word_tag_list.infra import word_tag_list_lambda
+    from routes.receipt_word_tags.infra import receipt_word_tags_lambda
+
+    integration_word_tag_list = aws.apigatewayv2.Integration(
+        "word_tag_list_lambda_integration",
+        api_id=api.id,
+        integration_type="AWS_PROXY",
+        integration_uri=word_tag_list_lambda.invoke_arn,
+        integration_method="POST",
+        payload_format_version="2.0",
+    )
+    route_word_tag_list = aws.apigatewayv2.Route(
+        "word_tag_list_route",
+        api_id=api.id,
+        route_key="GET /word_tag_list",
+        target=integration_word_tag_list.id.apply(lambda id: f"integrations/{id}"),
+        opts=pulumi.ResourceOptions(
+            replace_on_changes=["route_key", "target"],
+            delete_before_replace=True,
+        ),
+    )
+    lambda_permission_word_tag_list = aws.lambda_.Permission(
+        "word_tag_list_lambda_permission",
+        action="lambda:InvokeFunction",
+        function=word_tag_list_lambda.name,
+        principal="apigateway.amazonaws.com",
+        source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
+    )
+
+    integration_receipt_word_tags = aws.apigatewayv2.Integration(
+        "receipt_word_tags_lambda_integration",
+        api_id=api.id,
+        integration_type="AWS_PROXY",
+        integration_uri=receipt_word_tags_lambda.invoke_arn,
+        integration_method="POST",
+        payload_format_version="2.0",
+    )
+    route_receipt_word_tags = aws.apigatewayv2.Route(
+        "receipt_word_tags_route",
+        api_id=api.id,
+        route_key="GET /receipt_word_tags",
+        target=integration_receipt_word_tags.id.apply(lambda id: f"integrations/{id}"),
+        opts=pulumi.ResourceOptions(
+            replace_on_changes=["route_key", "target"],
+            delete_before_replace=True,
+        ),
+    )
+    lambda_permission_receipt_word_tags = aws.lambda_.Permission(
+        "receipt_word_tags_lambda_permission",
+        action="lambda:InvokeFunction",
+        function=receipt_word_tags_lambda.name,
+        principal="apigateway.amazonaws.com",
+        source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
+    )
+
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # 2. DEPLOYMENT + LOGGING
@@ -295,57 +381,80 @@ log_group = aws.cloudwatch.LogGroup(
     retention_in_days=14,
 )
 
+route_settings = [
+    {
+        "routeKey": route_health_check.route_key,
+        "throttlingBurstLimit": 5000,
+        "throttlingRateLimit": 10000,
+    },
+    {
+        "routeKey": route_images.route_key,
+        "throttlingBurstLimit": 5000,
+        "throttlingRateLimit": 10000,
+    },
+    {
+        "routeKey": route_image_details.route_key,
+        "throttlingBurstLimit": 5000,
+        "throttlingRateLimit": 10000,
+    },
+    {
+        "routeKey": route_image_count.route_key,
+        "throttlingBurstLimit": 5000,
+        "throttlingRateLimit": 10000,
+    },
+    {
+        "routeKey": route_receipt_count.route_key,
+        "throttlingBurstLimit": 5000,
+        "throttlingRateLimit": 10000,
+    },
+    {
+        "routeKey": route_receipts.route_key,
+        "throttlingBurstLimit": 5000,
+        "throttlingRateLimit": 10000,
+    },
+    {
+        "routeKey": route_receipt_word_tag.route_key,
+        "throttlingBurstLimit": 5000,
+        "throttlingRateLimit": 10000,
+    },
+    {
+        "routeKey": route_process.route_key,
+        "throttlingBurstLimit": 5000,
+        "throttlingRateLimit": 10000,
+    },
+    {
+        "routeKey": route_receipt_details.route_key,
+        "throttlingBurstLimit": 5000,
+        "throttlingRateLimit": 10000,
+    },
+    {
+        "routeKey": route_tag_validation_counts.route_key,
+        "throttlingBurstLimit": 5000,
+        "throttlingRateLimit": 10000,
+    },
+]
+
+if stack == "dev":
+    route_settings.extend(
+        [
+            {
+                "routeKey": route_word_tag_list.route_key,
+                "throttlingBurstLimit": 5000,
+                "throttlingRateLimit": 10000,
+            },
+            {
+                "routeKey": route_receipt_word_tags.route_key,
+                "throttlingBurstLimit": 5000,
+                "throttlingRateLimit": 10000,
+            },
+        ]
+    )
+
 stage = aws.apigatewayv2.Stage(
     "api_stage",
     api_id=api.id,
     name="$default",
-    route_settings=[
-        {
-            "routeKey": route_health_check.route_key,
-            "throttlingBurstLimit": 5000,
-            "throttlingRateLimit": 10000,
-        },
-        {
-            "routeKey": route_images.route_key,
-            "throttlingBurstLimit": 5000,
-            "throttlingRateLimit": 10000,
-        },
-        {
-            "routeKey": route_image_details.route_key,
-            "throttlingBurstLimit": 5000,
-            "throttlingRateLimit": 10000,
-        },
-        {
-            "routeKey": route_image_count.route_key,
-            "throttlingBurstLimit": 5000,
-            "throttlingRateLimit": 10000,
-        },
-        {
-            "routeKey": route_receipt_count.route_key,
-            "throttlingBurstLimit": 5000,
-            "throttlingRateLimit": 10000,
-        },
-        {
-            "routeKey": route_receipts.route_key,
-            "throttlingBurstLimit": 5000,
-            "throttlingRateLimit": 10000,
-        },
-        {
-            "routeKey": route_receipt_word_tag.route_key,
-            "throttlingBurstLimit": 5000,
-            "throttlingRateLimit": 10000,
-        },
-        {
-            "routeKey": route_process.route_key,
-            "throttlingBurstLimit": 5000,
-            "throttlingRateLimit": 10000,
-        },
-        {
-            "routeKey": route_receipt_details.route_key,
-            "throttlingBurstLimit": 5000,
-            "throttlingRateLimit": 10000,
-        },
-    ],
+    route_settings=route_settings,
     auto_deploy=True,
     access_log_settings=aws.apigatewayv2.StageAccessLogSettingsArgs(
         destination_arn=log_group.arn,
