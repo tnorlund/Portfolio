@@ -17,29 +17,6 @@ interface Props {
 
 /**
  * --------------------------------------------------
- * Utility Functions
- * --------------------------------------------------
- */
-
-/**
- * Computes the SVG polygon "points" string for a given ReceiptWord's corners.
- * Assumes that (0,0) in the data space corresponds to the bottom-left,
- * so we invert the Y coordinates by using (1 - y).
- * If your data already has y=0 at the top, you can remove the `1 - y` logic.
- */
-function getPolygonPoints(word: ReceiptWord): string {
-  const { top_left, top_right, bottom_right, bottom_left } = word;
-  const pointsArray = [
-    `${top_left.x},${1 - top_left.y}`,
-    `${top_right.x},${1 - top_right.y}`,
-    `${bottom_right.x},${1 - bottom_right.y}`,
-    `${bottom_left.x},${1 - bottom_left.y}`,
-  ];
-  return pointsArray.join(" ");
-}
-
-/**
- * --------------------------------------------------
  * Presentational Components
  * --------------------------------------------------
  */
@@ -54,29 +31,65 @@ const WordsPolygonSvg: React.FC<Props> = ({ words }) => {
     <svg
       width="100%"
       height="100%"
-      viewBox="0 0 1 1"
+      viewBox="-0.01 -0.01 1.02 1.02"
       preserveAspectRatio="none"
+      shapeRendering="geometricPrecision"
       style={{
-        border: "1px solid var(--text-color)",
+        border: "2px solid var(--text-color)",
         background: "var(--background-color)",
         borderRadius: "6px",
-        // "overflow: hidden" ensures shapes beyond the viewBox are clipped
         overflow: "hidden",
       }}
     >
       {words.map((word, idx) => {
-        const points = getPolygonPoints(word);
+        const { top_left, top_right, bottom_right, bottom_left } = word;
         return (
-          <polygon
-            key={idx}
-            points={points}
-            fill="none"
-            stroke="var(--text-color)"
-            strokeWidth="1px"
-            // vectorEffect="non-scaling-stroke" prevents stroke width from scaling.
-            // Remove or comment out if you'd like the stroke to scale with the SVG.
-            vectorEffect="non-scaling-stroke"
-          />
+          <g key={idx}>
+            {/* Top line */}
+            <line
+              x1={top_left.x}
+              y1={1 - top_left.y}
+              x2={top_right.x}
+              y2={1 - top_right.y}
+              stroke="var(--text-color)"
+              strokeWidth="1"
+              strokeLinecap="round"
+              vectorEffect="non-scaling-stroke"
+            />
+            {/* Right line */}
+            <line
+              x1={top_right.x}
+              y1={1 - top_right.y}
+              x2={bottom_right.x}
+              y2={1 - bottom_right.y}
+              stroke="var(--text-color)"
+              strokeWidth="1"
+              strokeLinecap="round"
+              vectorEffect="non-scaling-stroke"
+            />
+            {/* Bottom line */}
+            <line
+              x1={bottom_right.x}
+              y1={1 - bottom_right.y}
+              x2={bottom_left.x}
+              y2={1 - bottom_left.y}
+              stroke="var(--text-color)"
+              strokeWidth="1"
+              strokeLinecap="round"
+              vectorEffect="non-scaling-stroke"
+            />
+            {/* Left line */}
+            <line
+              x1={bottom_left.x}
+              y1={1 - bottom_left.y}
+              x2={top_left.x}
+              y2={1 - top_left.y}
+              stroke="var(--text-color)"
+              strokeWidth="1"
+              strokeLinecap="round"
+              vectorEffect="non-scaling-stroke"
+            />
+          </g>
         );
       })}
     </svg>
