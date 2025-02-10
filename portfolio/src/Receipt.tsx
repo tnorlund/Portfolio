@@ -106,23 +106,20 @@ function Receipt() {
 
       <h2>Automated Labeling</h2>
       <p>
-        One major time-saver in this project was using ChatGPT's API to tag the
-        words on each receipt automatically. Working in the Cursor IDE, I
-        iterated quickly on the code and prompts—adjusting JSON formats and how
-        word locations are highlighted—until the model produced consistent and
-        accurate labels.
+        One major time-saver in this project was using ChatGPT's API to label
+        the words on each receipt automatically. I refined how the prompts were
+        written and the data sent to ChatGPT. This automation reduces the need
+        for obvious inconsistencies and speeds up the labeling process.
       </p>
 
       <TagValidationChart />
 
-      <h2>Two-Step Validation</h2>
+      <h2>Manual Labeling</h2>
       <p>
-        Although ChatGPT sped up labeling, I added a second layer of checks to
-        ensure accuracy. After ChatGPT labels the words, I run a follow-up
-        pass—partly automated and partly manual—to confirm correctness. This
-        approach provides reliable results without losing the time-saving
-        benefits. By combining ChatGPT, prompt engineering, and the Cursor IDE,
-        I built maintainable code at a faster pace than before.
+        ChatGPT drastically reduces the time I spend on labeling, but it's not
+        good enough to replace human oversight entirely. I still need to
+        manually verify the labels to catch any mistakes. See the chart above
+        for a breakdown of the labels and their accuracy.
       </p>
 
       <h1>Frontend</h1>
@@ -157,12 +154,11 @@ function Receipt() {
       </p>
       <h2>Validation and Future Plans</h2>
       <p>
-        I still have to verify the word tags to catch mistakes. For instance,
-        phone numbers shouldn't have letters. My plan is to further refine the
-        tag validation by looking at the order of characters, not just their
-        types. That way, I can automate more of the process without depending on
-        ChatGPT. Eventually, I hope to create a flexible, hardware-agnostic
-        model that scales smoothly.
+        I am currently labeling the outliers manually to catch any inaccuracies.
+        At the same time, I'm developing a custom classifier to replace both
+        ChatGPT's automated labeling and Apple's OCR system. By reducing reliance on
+        external tools, this approach will streamline the validation process and
+        deliver faster, more reliable performance across any platform.
       </p>
       <h2>A New Era of Coding</h2>
       <p>
