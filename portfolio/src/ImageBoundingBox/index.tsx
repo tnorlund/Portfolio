@@ -162,7 +162,6 @@ const ImageBoundingBox: React.FC = () => {
     const loadImageDetails = async () => {
       try {
         const details = await fetchImageDetails();
-        console.log("Image details:", details);
         setImageDetails(details);
       } catch (err) {
         setError(err as Error);

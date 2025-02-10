@@ -119,7 +119,7 @@ def test_word_tag_list(dynamodb_table: Literal["MyMockedTable"]):
         client.addWordTag(t)
 
     # Act
-    returned_tags = client.listWordTags()
+    returned_tags, _ = client.listWordTags()
 
     # Assert
     for t in tags:

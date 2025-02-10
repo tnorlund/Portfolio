@@ -13,7 +13,7 @@ from uuid import uuid4
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pulumi.automation as auto
-from dynamo import DynamoClient, process
+from dynamo import DynamoClient, process, validate
 
 
 def calculate_sha256(file_path: str) -> str:
@@ -144,6 +144,7 @@ def upload_files_with_uuid_in_batches(
          c) Use a ThreadPoolExecutor with `sub_batch_size` workers to:
             - Read each PNG and JSON in memory.
             - Call `process()` to upload the data to S3 and insert records in DynamoDB.
+         d) After all files are processed, validate the batch using parallel workers.
 
     Args:
         directory (Path): Path to the local directory containing PNG files.
@@ -225,32 +226,52 @@ def upload_files_with_uuid_in_batches(
                     print(f"Error processing {new_uuid}: {e}")
                     failed_uuids.append(new_uuid)
 
-            def process_with_delay(new_uuid: str, delay: float) -> None:
-                """Waits for a given delay then calls process_single_uuid."""
-                sleep(delay)
-                process_single_uuid(new_uuid)
-
-            # Process files concurrently with a staggered delay.
+            # Process files concurrently without artificial delays
             with ThreadPoolExecutor(max_workers=sub_batch_size) as executor:
-                futures = []
-                for index, new_uuid in enumerate(mapped_uuids):
-                    # Each task waits index*0.1 seconds before calling process_single_uuid.
-                    futures.append(
-                        executor.submit(process_with_delay, new_uuid, index * 0.1)
-                    )
+                futures = [executor.submit(process_single_uuid, uuid) for uuid in mapped_uuids]
                 for future in as_completed(futures):
                     future.result()
 
             # If any process() call failed, retry those UUIDs.
             if failed_uuids:
                 print("Retrying failed UUIDs:", failed_uuids)
-                # Save a copy of failed UUIDs and clear the list for retry results.
                 retry_list = failed_uuids.copy()
                 failed_uuids.clear()
                 for uuid in retry_list:
                     process_single_uuid(uuid)
                 if failed_uuids:
                     print("The following UUIDs still failed after retry:", failed_uuids)
+
+            # Remove failed UUIDs from the mapped_uuids list before validation
+            successful_uuids = [uuid for uuid in mapped_uuids if uuid not in failed_uuids]
+            if successful_uuids:
+                print(f"\nValidating {len(successful_uuids)} successfully processed images...")
+                validation_failed_uuids: list[str] = []
+
+                def validate_single_uuid(uuid: str) -> None:
+                    """Validates a single image's OCR results using GPT."""
+                    try:
+                        print(f"Validating UUID: {uuid}")
+                        validate(table_name=dynamodb_table_name, image_id=uuid)
+                    except Exception as e:
+                        print(f"Error validating {uuid}: {e}")
+                        validation_failed_uuids.append(uuid)
+
+                # Validate files concurrently without artificial delays
+                with ThreadPoolExecutor(max_workers=sub_batch_size) as executor:
+                    futures = [executor.submit(validate_single_uuid, uuid) for uuid in successful_uuids]
+                    for future in as_completed(futures):
+                        future.result()
+
+                # If any validations failed, retry them
+                if validation_failed_uuids:
+                    print("Retrying failed validations:", validation_failed_uuids)
+                    retry_list = validation_failed_uuids.copy()
+                    validation_failed_uuids.clear()
+                    for uuid in retry_list:
+                        validate_single_uuid(uuid)
+                    if validation_failed_uuids:
+                        print("The following validations still failed after retry:", validation_failed_uuids)
 
             print(f"Finished batch #{batch_index}.\n")
 
@@ -276,7 +297,7 @@ def delete_items_in_table(dynamo_client: DynamoClient) -> None:
     print(f" - Deleting {len(words)} word items")
     dynamo_client.deleteWords(words)
 
-    word_tags = dynamo_client.listWordTags()
+    word_tags, _ = dynamo_client.listWordTags()
     print(f" - Deleting {len(word_tags)} word tag items")
     dynamo_client.deleteWordTags(word_tags)
 
@@ -296,7 +317,7 @@ def delete_items_in_table(dynamo_client: DynamoClient) -> None:
     print(f" - Deleting {len(receipt_words)} receipt word items")
     dynamo_client.deleteReceiptWords(receipt_words)
 
-    receipt_word_tags = dynamo_client.listReceiptWordTags()
+    receipt_word_tags, _ = dynamo_client.listReceiptWordTags()
     print(f" - Deleting {len(receipt_word_tags)} receipt word tag items")
     dynamo_client.deleteReceiptWordTags(receipt_word_tags)
 

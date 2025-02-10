@@ -8,7 +8,7 @@ import json
 from typing import Any, Dict, List, Tuple
 import boto3
 from botocore.exceptions import ClientError
-from dynamo.data._gpt import gpt_request
+from dynamo.data._gpt import gpt_request_initial_tagging
 from dynamo.data.dynamo_client import DynamoClient
 from dynamo.data._geometry import (
     invert_affine,
@@ -250,7 +250,7 @@ def process(
             else:
                 raise
 
-        gpt_response, query, response = gpt_request(r, r_words)
+        gpt_response, query, response = gpt_request_initial_tagging(r, r_words)
 
         # Save the GPT response to the raw bucket
         try:
