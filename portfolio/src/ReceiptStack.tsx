@@ -25,7 +25,6 @@ const ReceiptStack: React.FC = () => {
     from: { opacity: 0, transform: "translate(0px, -50px) rotate(0deg)" },
     enter: (item, index) => {
       const rotation = rotations[index] ?? 0;
-      // Example offset so each receipt is slightly fanned out
       const topOffset = (Math.random() > 0.5 ? 1 : -1) * index * 1.5;
       const leftOffset = (Math.random() > 0.5 ? 1 : -1) * index * 1.5;
       return {
@@ -34,7 +33,7 @@ const ReceiptStack: React.FC = () => {
         delay: index * 100,
       };
     },
-    keys: (item) => item.receipt_id,
+    keys: (item) => `${item.receipt_id}-${item.image_id}`,
   });
 
   useEffect(() => {
@@ -98,7 +97,6 @@ const ReceiptStack: React.FC = () => {
 
           return (
             <animated.div
-              key={receipt.receipt_id}
               style={{
                 position: "absolute",
                 width: "100px",

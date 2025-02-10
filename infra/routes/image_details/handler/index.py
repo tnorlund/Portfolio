@@ -56,6 +56,7 @@ def handler(event, context):
                 _,
                 _,
                 _,
+                _,
             ) = image_details
             return {
                 "statusCode": 200,

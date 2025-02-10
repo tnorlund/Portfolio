@@ -279,7 +279,7 @@ def test_process(
     ) = expected_results(uuid)
 
     # Probably want to query get receipt details for image and check the receipt
-    _, _, _, _, _, receipts, _, _, _, _, _ = DynamoClient(table_name).getImageDetails(uuid)
+    _, _, _, _, _, receipts, _, _, _, _, _, _ = DynamoClient(table_name).getImageDetails(uuid)
     assert len(receipts) == 1
     receipt = receipts[0]
 

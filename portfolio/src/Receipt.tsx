@@ -8,154 +8,78 @@ import ImageBoundingBox from "./ImageBoundingBox";
 import TypeScriptLogo from "./TypeScriptLogo";
 import ReactLogo from "./ReactLogo";
 import { ReceiptCounts, ImageCounts } from "./DataCounts";
-
+import TagValidationChart from "./components/TagValidationChart";
 import "./Receipt.css";
-
-function GPTPrompt() {
-  const prompt = `You are a helpful assistant that extracts structured data from a receipt.
-
-Below is a sample of the JSON you will receive. Notice that each 'word' has a 'text', a 'centroid' [x, y], and a line/word ID (l, w):
-
-\`\`\`json
-{  
-  "receipt": {
-    "receipt_id": 123
-    // more receipt-level fields
-  },
-  "w": [
-    {
-      "t": "BANANAS",
-      "c": [0.1234, 0.5678],
-      "l": 0,
-      "w": 0
-    },
-    {
-      "t": "1.99",
-      "c": [0.2345, 0.6789],
-      "l": 0,
-      "w": 1
-    }
-    // ...
-  ]
-}
-\`\`\`
-The receipt's OCR text is:
-
-. . .
-
-Your task:
-   Identify the following fields in the text:
-   - store_name (string)
-   - date (string)
-   - time (string)
-   - phone_number (string)
-   - total_amount (number)
-   - taxes (number)
-   - address (string)
-   - For line items, return three separate fields:
-       * line_item: includes all words that contribute to any line item
-       * line_item_name: includes words that contribute to the item name
-       * line_item_price: includes words that contribute to the item price
-
-   Instead of returning the text or centroid, **return an array of {"l": <line_id>, "w": <word_id>} for each field.**
-   - For example, if you think the first two words (line_id=0, word_id=0 and line_id=0, word_id=1) make up 'store_name', return:
-     "store_name": [
-       {"l": 0, "w": 0},
-       {"l": 0, "w": 1}
-     ]
-   - If you cannot find a particular field, return an empty array for it.
-
-**Output Requirements**:
- - Output must be valid JSON.
- - Do not return additional keys or text.
- - Do not invent new {"l", "w"} pairs. Only use those provided in the 'words' list.
- - If none found, return empty arrays.
-
-Example output:
-\`\`\`json
-{
-  "store_name": [{"l": 0, "w": 0}, {"l": 0, "w": 1}],
-  "date": [{"l": 2, "w": 5}],
-  "time": [],
-  "phone_number": [],
-  "total_amount": [],
-  "taxes": [],
-  "address": [],
-  "line_item": [{"l": 5, "w": 1}],
-  "line_item_name": [{"l": 5, "w": 2}],
-  "line_item_price": [{"l": 5, "w": 3}]
-}
-\`\`\`
-Return only this JSON structure. Nothing else.
-`;
-  return <pre>{prompt}</pre>;
-}
 
 function Receipt() {
   return (
     <div>
-      <h1>The Project</h1>
+      <h1>Introduction</h1>
+      <h2>The Inspiration</h2>
       <p>
-        In middle school, I spent a summer manually organizing my dad's receipts
-        for tax purposes. It allowed me to buy a couple games on Xbox, but it
-        was incredibly tedious. Automating this process was not an option at the
-        time. After getting the ChatGPT Pro subscription, my programming skills
-        have increased exponentially. I decided to automate not only the process
-        of organizing receipts, but also the process of software development.
+        In middle school, I spent a summer sorting my dad's receipts for his
+        taxes. It was tedious work, but I saved enough for a few Xbox games.
+        Back then, automation wasn't an option. Today, thanks to a ChatGPT Pro
+        subscription, my programming skills have grown rapidly. Now I'm
+        automating not just the organizing of receipts, but also parts of my own
+        coding process.
       </p>
 
       <h1>Strategy</h1>
+      <h2>Bridging Skills With New Tools</h2>
       <p>
-        I started with a solid foundation in AWS and a bit of React, but Swift
-        was uncharted territory. Leveraging ChatGPT's o1 Pro Mode "reasoning," I
-        laid out an initial strategy that bridged my existing skills with the
-        challenge of integrating OCR, optical character recognition, data into a
-        coherent system. This approach allowed me to jumpstart the project and
-        quickly put together the essential components.
+        I came into this project comfortable with AWS and a bit of React, but
+        Swift was new territory. ChatGPT's advanced “reasoning” mode helped me
+        lay out a plan that linked my familiar skill set to fresh challenges
+        like integrating Optical Character Recognition (OCR). This head start
+        let me quickly put together the project's core components.
       </p>
+      <h2>Constant Iteration</h2>
       <p>
-        While the initial strategy provided a useful roadmap, the development
-        process was highly iterative. I continuously refined my approach based
-        on feedback and rigorous testing. My background in AWS system design,
-        React development, and QA testing enabled me to spot issues early and
-        iterate rapidly.
+        My initial plan gave me a decent roadmap, but the real work required
+        continuous updates. I used feedback and rigorous testing at every step.
+        My background in AWS system design, React, and QA testing helped me spot
+        and fix issues early on, keeping the project on track.
       </p>
-      <h1>Implementation</h1>
 
-      <h2>OCR and Image Processing</h2>
+      <h1>OCR and Image Processing</h1>
+
+      <h2>Choosing the Right OCR</h2>
       <p>
-        I started with Tesseract for OCR, but it didn't capture the necessary
-        details. Switching to Apple's Vision OCR provided more precise data,
-        including bounding boxes and confidence metrics. I then implemented a
-        clustering approach to group and normalize the varying OCR outputs,
-        ensuring consistency across the receipt data.
+        I first tried Tesseract for OCR, but it wasn't capturing the details I
+        needed. Switching to Apple's Vision OCR gave me better data, including
+        bounding boxes and confidence scores. From there, I grouped and
+        standardized the OCR results so every receipt would be labeled
+        consistently.
       </p>
+      <h2>Clustering Receipts</h2>
       <p>
-        I applied DBSCAN clustering to group nearby text elements by focusing on
-        their X-axis values, since receipts are taller than they are wide. This
-        approach helped determine which words belong to which receipt by
-        clustering similar X coordinates. Once isolated, I normalized the OCR
-        coordinates to a standard 1x1 square, ensuring consistent scaling for
-        subsequent calculations.
+        To figure out which words belonged on the same receipt, I used a method
+        called DBSCAN clustering. It groups nearby text elements along the
+        X-axis, handy for tall receipts. After grouping, I normalized all OCR
+        coordinates to fit inside a standard 1x1 square, making the data easier
+        to handle later on.
       </p>
       <ImageBoundingBox />
-      <h2>Infrastructure</h2>
+
+      <h1>Infrastructure</h1>
+      <h2>Pulumi and AWS</h2>
       <p>
-        I had experience with AWS services and Terraform, but Pulumi was new to
-        me. With ChatGPT, an OpenAI product, I was able to quickly create cloud
-        services that are consistent between a "development" and "production"
-        environment. This stopped me from "testing in production" while quickly
-        optimizing cloud compute.
+        I was familiar with AWS and Terraform, but Pulumi was new. ChatGPT
+        helped me quickly set up consistent cloud services for both
+        “development” and “production” environments, so I could test changes
+        without risk and optimize my cloud usage.
       </p>
       <div className="logos-container">
         <Pulumi />
         <OpenAI />
       </div>
+      <h2>AWS Services</h2>
       <p>
-        I used a few AWS services to organize the data and serve it to the
-        frontend:
+        These AWS services form the backbone of the backend, ensuring fast image
+        processing, secure storage, and reliable data management.
       </p>
-      <ul>
+      <ul style={{ marginTop: "1rem" }}>
         <li>
           <strong>AWS Lambda</strong>: Manages image processing and workflow
           orchestration.
@@ -178,78 +102,77 @@ function Receipt() {
       </ul>
       <Diagram />
 
-      <h2>ChatGPT</h2>
+      <h1>ChatGPT</h1>
+
+      <h2>Automated Labeling</h2>
       <p>
-        One of the core aspects of this project involved using ChatGPT's API to
-        label receipt words automatically. I iterated through several prompt
-        engineering strategies—testing everything from the structure of the JSON
-        output to how ChatGPT highlights each word's location—to arrive at a
-        final prompt that gave consistently accurate labels. This iterative
-        process involved tweaking the prompt, sending sample payloads to
-        ChatGPT's API, and validating the output against real receipts.
+        One major time-saver in this project was using ChatGPT's API to tag the
+        words on each receipt automatically. Working in the Cursor IDE, I
+        iterated quickly on the code and prompts—adjusting JSON formats and how
+        word locations are highlighted—until the model produced consistent and
+        accurate labels.
       </p>
 
-      <code>
-        <GPTPrompt />
-      </code>
+      <TagValidationChart />
 
+      <h2>Two-Step Validation</h2>
       <p>
-        Refining my prompts revealed the power of prompt engineering with
-        ChatGPT. By adjusting phrasing, specificity, and output constraints, I
-        guided the model to accurately label receipt words and generate
-        functional code that fit seamlessly into the project. This iterative
-        process of testing, tweaking, and retesting was essential for harnessing
-        ChatGPT's capabilities and producing reliable, maintainable code.
+        Although ChatGPT sped up labeling, I added a second layer of checks to
+        ensure accuracy. After ChatGPT labels the words, I run a follow-up
+        pass—partly automated and partly manual—to confirm correctness. This
+        approach provides reliable results without losing the time-saving
+        benefits. By combining ChatGPT, prompt engineering, and the Cursor IDE,
+        I built maintainable code at a faster pace than before.
       </p>
 
-      <h2>Frontend</h2>
+      <h1>Frontend</h1>
+      <h2>TypeScript + React</h2>
       <p>
-        The front end was built using TypeScript with React. The typing system
-        in TypeScript made it easier for ChatGPT to gain context on the data
-        being passed around. As I iterated on both the data processing and
-        infrastructure, the frontend evolved alongside these changes.
+        I chose React with TypeScript for the frontend. TypeScript's type system
+        gave ChatGPT helpful context about the data, making it easier to handle
+        the code. As the backend and infrastructure evolved, I kept the frontend
+        in sync, ensuring smooth, up-to-date functionality.
       </p>
       <div className="logos-container">
         <ReactLogo />
         <TypeScriptLogo />
       </div>
+      <h2>Continuous Testing</h2>
       <p>
-        Each refinement was continuously applied to and tested against the
-        frontend through a CICD pipeline. This allowed me to quickly test new
-        features and ensure that the frontend was always in sync and functioning
-        correctly.
+        A continuous integration and delivery (CICD) pipeline allowed me to
+        apply and test every improvement right away. This kept the frontend
+        aligned with the latest changes, preventing any major issues from
+        slipping through.
       </p>
 
       <h1>Conclusion</h1>
+      <h2>Lessons Learned</h2>
       <p>
-        This entire journey—from choosing a software to get the OCR results, to
-        refining prompts, and taming ChatGPT's occasional hallucinations—has
-        been a testament to the power of iteration in software development.
-        Despite early hiccups with incremental image IDs and duplicated uploads
-        (both solved with UUIDs and hashing), the core achievement stands: a
-        robust system for automating OCR-based data extraction. Beyond receipts,
-        this labeling approach opens countless avenues for data augmentation,
-        cleaning, and training across all types of media.
+        From picking the right OCR tools to refining ChatGPT prompts and fixing
+        early issues like duplicate uploads, this project was an exercise in
+        constant improvement. In the end, I built a solid system for
+        automatically extracting data from receipts. The same tagging approach
+        could work for many other types of data or media, offering broader
+        possibilities for cleaning and training.
       </p>
+      <h2>Validation and Future Plans</h2>
       <p>
-        I still have to validate the word tags. Below is a visualization showing
-        the tags. They're not always correct. Phone numbers shouldn't contain
-        letters. I plan to validate the tags by tokenizing the words similar to
-        how ChatGPT works. Simply comparing character sets across different word
-        types isn't enough. Understanding the order of the characters, symbols,
-        and numbers will allow me to further validate and automate the tagging
-        of words without ChatGPT. Ultimately, I can train a more flexible,
-        hardware-agnostic model that scales gracefully.
+        I still have to verify the word tags to catch mistakes. For instance,
+        phone numbers shouldn't have letters. My plan is to further refine the
+        tag validation by looking at the order of characters, not just their
+        types. That way, I can automate more of the process without depending on
+        ChatGPT. Eventually, I hope to create a flexible, hardware-agnostic
+        model that scales smoothly.
       </p>
+      <h2>A New Era of Coding</h2>
       <p>
-        The rapid pace of AI innovation might transform how we code, but it
-        won't replace the need for sound engineering practices, critical
-        thinking, or domain expertise—it simply supercharges them. Building this
-        was fun and eye-opening, proving that ChatGPT is far from just a
-        “spellchecker” and more like a catalyst for a new era of development. I
-        can't wait to see where this revolution takes us next. By merging human
-        intuition and AI-assisted iteration, the process of software development
-        becomes faster, smarter, and more accessible than ever.
+        Artificial intelligence is advancing quickly and changing how we write
+        software. However, no matter how smart computers become, we still need
+        solid engineering practices, clever problem-solving, and expert
+        knowledge. This project showed that ChatGPT is not just a
+        spellchecker—it's a helpful partner that brings new ideas to software
+        development. I'm excited to see a future where people and AI work
+        together to make programming faster, smarter, and easier for everyone.
       </p>
       <div className="logos-container">
         <ImageCounts />
