@@ -80,6 +80,15 @@ def min_area_rect(
         return (points[0], (0, 0), 0)
 
     hull = convex_hull(points)
+    if len(hull) == 2:
+        # Two-point degenerate case: return a "line segment" as the minimal rectangle.
+        (x0, y0), (x1, y1) = hull
+        center = ((x0 + x1) / 2.0, (y0 + y1) / 2.0)
+        dx = x1 - x0
+        dy = y1 - y0
+        distance = (dx**2 + dy**2)**0.5
+        # Here we force the result to be axis aligned.
+        return (center, (distance, 0), 0.0)
     if len(hull) < 3:
         xs = [p[0] for p in hull]
         ys = [p[1] for p in hull]
