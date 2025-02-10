@@ -154,12 +154,11 @@ function Receipt() {
       </p>
       <h2>Validation and Future Plans</h2>
       <p>
-        I still have to verify the word tags to catch mistakes. For instance,
-        phone numbers shouldn't have letters. My plan is to further refine the
-        tag validation by looking at the order of characters, not just their
-        types. That way, I can automate more of the process without depending on
-        ChatGPT. Eventually, I hope to create a flexible, hardware-agnostic
-        model that scales smoothly.
+        I am currently labeling the outliers manually to catch any inaccuracies.
+        At the same time, I'm developing a custom classifier to replace both
+        ChatGPT's automated labeling and Apple's OCR system. By reducing reliance on
+        external tools, this approach will streamline the validation process and
+        deliver faster, more reliable performance across any platform.
       </p>
       <h2>A New Era of Coding</h2>
       <p>
