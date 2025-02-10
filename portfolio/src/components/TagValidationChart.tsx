@@ -1,11 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useInView } from 'react-intersection-observer';
-import { TagValidationStatsResponse } from '../interfaces';
-import { fetchTagValidationStats } from '../api';
-import './TagValidationChart.css'; // We'll put our animation CSS in here
-
-interface TagValidationChartProps {}
-
+import React, { useState, useEffect, useRef } from "react";
+import { useInView } from "react-intersection-observer";
+import { TagValidationStatsResponse } from "../interfaces";
+import { fetchTagValidationStats } from "../api";
+import "./TagValidationChart.css"; // We'll put our animation CSS in here
 
 interface ChartRowProps {
   tag: string;
@@ -13,7 +10,7 @@ interface ChartRowProps {
   invalid: number;
   total: number;
   barWidth: number;
-  onVisible: () => void;  // Notifies parent when it becomes visible
+  onVisible: () => void; // Notifies parent when it becomes visible
   xScale: (v: number) => number;
 }
 
@@ -24,7 +21,7 @@ const ChartRow: React.FC<ChartRowProps> = ({
   total,
   barWidth,
   onVisible,
-  xScale
+  xScale,
 }) => {
   const [ref, inView] = useInView({
     triggerOnce: true,
@@ -39,14 +36,12 @@ const ChartRow: React.FC<ChartRowProps> = ({
   }, [inView, onVisible]);
 
   return (
-    <div ref={ref} className={`chart-row ${inView ? 'visible' : ''}`}>
+    <div ref={ref} className={`chart-row ${inView ? "visible" : ""}`}>
       <div className="tag-label">{tag}</div>
       <div className="bar-container">
         <svg
-          width="100%"
-          height={28}
-          viewBox={`0 0 ${barWidth + 8} 28`}
-          preserveAspectRatio="none"
+          height={30}
+          viewBox={`-4 -4 ${barWidth + 16} 30`}
         >
           {/* Valid portion - left corners rounded */}
           <path
@@ -103,7 +98,7 @@ const TagValidationChart: React.FC = () => {
       if (containerRef.current?.parentElement) {
         const parentWidth = containerRef.current.parentElement.clientWidth;
         // Only update if width actually changed
-        setDimensions(prev => {
+        setDimensions((prev) => {
           if (prev.width !== parentWidth) {
             return { width: parentWidth };
           }
@@ -111,10 +106,10 @@ const TagValidationChart: React.FC = () => {
         });
       }
     };
-    
+
     handleResize();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, []); // Empty dependency array is fine here since we're using refs
 
   useEffect(() => {
@@ -123,7 +118,7 @@ const TagValidationChart: React.FC = () => {
         const data = await fetchTagValidationStats();
         setStats(data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'An error occurred');
+        setError(err instanceof Error ? err.message : "An error occurred");
       } finally {
         setLoading(false);
       }
@@ -140,18 +135,18 @@ const TagValidationChart: React.FC = () => {
 
   // Memoize the onVisible callback
   const handleRowVisible = React.useCallback(() => {
-    setVisibleCount(count => count + 1);
+    setVisibleCount((count) => count + 1);
   }, []);
 
   if (loading)
     return (
       <div
         style={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          margin: '16px 0',
-          height: '421px',
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          margin: "16px 0",
+          height: "421px",
         }}
       >
         Loading tag validation statistics...
@@ -162,11 +157,11 @@ const TagValidationChart: React.FC = () => {
     return (
       <div
         style={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          margin: '16px 0',
-          height: '421px',
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          margin: "16px 0",
+          height: "421px",
         }}
       >
         Error loading tag validation stats: {error}
@@ -177,11 +172,11 @@ const TagValidationChart: React.FC = () => {
     return (
       <div
         style={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          margin: '16px 0',
-          height: '421px',
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          margin: "16px 0",
+          height: "421px",
         }}
       >
         No data available
@@ -214,13 +209,13 @@ const TagValidationChart: React.FC = () => {
             total={d.total}
             barWidth={barWidth}
             xScale={xScale}
-            onVisible={handleRowVisible}  // Use memoized callback
+            onVisible={handleRowVisible} // Use memoized callback
           />
         ))}
       </div>
 
       {/* Only fade in the legend once all rows have animated in */}
-      <div className={`chart-legend ${legendVisible ? 'show' : ''}`}>
+      <div className={`chart-legend ${legendVisible ? "show" : ""}`}>
         <div className="legend-item">
           <div className="legend-swatch filled" />
           <span>GPT Valid</span>
