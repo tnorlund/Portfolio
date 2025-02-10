@@ -14,29 +14,32 @@ dynamodb_table_name = os.environ["DYNAMODB_TABLE_NAME"]
 
 def get_tag_validation_stats(dynamo_client: DynamoClient) -> Dict[str, Tuple[int, int]]:
     """
-    Gets validation statistics for each unique tag in the database.
+    Gets validation statistics for each tag in tags_wanted list.
     
     Returns:
         Dict[str, Tuple[int, int]]: A dictionary where:
             - key: tag name
             - value: tuple of (valid_count, invalid_count)
     """
+    tags_wanted = ["line_item_name", "address", "line_item_price", "store_name", "date", "time", "total_amount", "phone_number", "taxes"]
+
     # Get all receipt word tags
     receipt_tags, _ = dynamo_client.listReceiptWordTags()
     
-    # Initialize counters for each tag
-    tag_stats = defaultdict(lambda: [0, 0])  # [valid_count, invalid_count]
+    # Initialize counters for specified tags only
+    tag_stats = {tag: [0, 0] for tag in tags_wanted}  # [valid_count, invalid_count]
     
     # Count valid/invalid for each tag
     for tag in receipt_tags:
         if hasattr(tag, 'validated'):  # Only count tags that have been validated
             tag_name = tag.tag.lower()  # Normalize tag names to lowercase
-            if tag.validated:
-                tag_stats[tag_name][0] += 1  # Increment valid count
-            else:
-                tag_stats[tag_name][1] += 1  # Increment invalid count
+            if tag_name in tags_wanted:  # Only count tags we care about
+                if tag.validated:
+                    tag_stats[tag_name][0] += 1  # Increment valid count
+                else:
+                    tag_stats[tag_name][1] += 1  # Increment invalid count
     
-    # Convert defaultdict to regular dict and lists to tuples
+    # Convert lists to tuples
     return {tag: tuple(counts) for tag, counts in tag_stats.items()}
 
 def handler(event, _):
