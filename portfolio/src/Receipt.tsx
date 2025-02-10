@@ -106,23 +106,20 @@ function Receipt() {
 
       <h2>Automated Labeling</h2>
       <p>
-        One major time-saver in this project was using ChatGPT's API to tag the
-        words on each receipt automatically. Working in the Cursor IDE, I
-        iterated quickly on the code and prompts—adjusting JSON formats and how
-        word locations are highlighted—until the model produced consistent and
-        accurate labels.
+        One major time-saver in this project was using ChatGPT's API to label
+        the words on each receipt automatically. I refined how the prompts were
+        written and the data sent to ChatGPT. This automation reduces the need
+        for obvious inconsistencies and speeds up the labeling process.
       </p>
 
       <TagValidationChart />
 
-      <h2>Two-Step Validation</h2>
+      <h2>Manual Labeling</h2>
       <p>
-        Although ChatGPT sped up labeling, I added a second layer of checks to
-        ensure accuracy. After ChatGPT labels the words, I run a follow-up
-        pass—partly automated and partly manual—to confirm correctness. This
-        approach provides reliable results without losing the time-saving
-        benefits. By combining ChatGPT, prompt engineering, and the Cursor IDE,
-        I built maintainable code at a faster pace than before.
+        ChatGPT drastically reduces the time I spend on labeling, but it's not
+        good enough to replace human oversight entirely. I still need to
+        manually verify the labels to catch any mistakes. See the chart above
+        for a breakdown of the labels and their accuracy.
       </p>
 
       <h1>Frontend</h1>
