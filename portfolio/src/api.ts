@@ -46,7 +46,6 @@ export async function fetchReceiptWordTags(
       : `https://api.tylernorlund.com/receipt_word_tags`;
 
   const url = `${baseUrl}?${params.toString()}`;
-  console.log(url)
   const response = await fetch(url);
 
   if (!response.ok) {
