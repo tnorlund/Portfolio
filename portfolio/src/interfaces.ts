@@ -94,6 +94,12 @@ export interface ReceiptWordTag {
   tag: string;
   timestamp_added: string;
   validated: boolean | null;
+  timestamp_validated: string | null;
+  gpt_confidence: number | null;
+  flag: string | null;
+  revised_tag: string | null;
+  human_validated: boolean | null;
+  timestamp_human_validated: string | null;
 }
 
 export interface Receipt {
@@ -146,9 +152,15 @@ export interface ReceiptPayload_new {
 }
 
 export interface ReceiptDetailsApiResponse {
-  payload: ReceiptPayload_new;
-  // Optionally, if your endpoint ever returns pagination info, you could add:
-  last_evaluated_key?: string | null;
+  payload: {
+    [key: string]: ReceiptDetail; // keys are in format "image_id_receipt_id"
+  };
+  last_evaluated_key: {
+    PK: { S: string };
+    SK: { S: string };
+    GSI2PK: { S: string };
+    GSI2SK: { S: string };
+  } | null;
 }
 
 export interface ReceiptWord {
@@ -242,3 +254,10 @@ export interface TagValidationStatsResponse {
 //     "date": { "valid": 32, "invalid": 1, "total": 33 }
 //   }
 // }
+
+// Single receipt detail structure
+export interface ReceiptDetail {
+  receipt: Receipt;
+  words: ReceiptWord[];
+  word_tags: ReceiptWordTag[];
+}

@@ -123,18 +123,25 @@ export async function fetchImages(limit = 5): Promise<ImageReceiptsLines[]> {
 }
 
 export async function fetchReceiptDetails(
-  limit = 5
+  limit = 5,
+  lastEvaluatedKey?: any
 ): Promise<ReceiptDetailsApiResponse> {
-  const apiUrl = isDevelopment
-    ? `https://dev-api.tylernorlund.com/receipt_details?limit=${limit}`
-    : `https://api.tylernorlund.com/receipt_details?limit=${limit}`;
+  const params = new URLSearchParams();
+  params.set("limit", limit.toString());
+  if (lastEvaluatedKey) {
+    params.set("last_evaluated_key", JSON.stringify(lastEvaluatedKey));
+  }
+  
+  const baseUrl = isDevelopment
+    ? `https://dev-api.tylernorlund.com/receipt_details`
+    : `https://api.tylernorlund.com/receipt_details`;
+
+  const url = `${baseUrl}?${params.toString()}`;
 
   try {
-    const response = await fetch(apiUrl);
+    const response = await fetch(url);
     if (!response.ok) {
-      throw new Error(
-        `Network response was not ok (status: ${response.status})`
-      );
+      throw new Error(`Network response was not ok (status: ${response.status})`);
     }
 
     const data: ReceiptDetailsApiResponse = await response.json();
