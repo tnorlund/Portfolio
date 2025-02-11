@@ -104,7 +104,7 @@ export interface ReceiptWordTag {
 
 export interface Receipt {
   receipt_id: number;
-  image_id: number;
+  image_id: string;
   width: number;
   height: number;
   timestamp_added: string;

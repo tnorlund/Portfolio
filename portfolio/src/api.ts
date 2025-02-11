@@ -124,12 +124,12 @@ export async function fetchImages(limit = 5): Promise<ImageReceiptsLines[]> {
 }
 
 export async function fetchReceiptDetail(
-  imageId: number,
-  receiptId: string
+  imageId: string,
+  receiptId: number
 ): Promise<ReceiptDetailApiResponse> {
   const params = new URLSearchParams();
-  params.set("image_id", imageId.toString());
-  params.set("receipt_id", receiptId)
+  params.set("image_id", imageId);
+  params.set("receipt_id", receiptId.toString());
   const baseUrl = isDevelopment
     ? `https://dev-api.tylernorlund.com/receipt_detail`
     : `https://api.tylernorlund.com/receipt_detail`;

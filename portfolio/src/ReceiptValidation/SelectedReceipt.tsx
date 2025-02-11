@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ReceiptDetail, ReceiptWord, ReceiptWordTag } from "../interfaces";
 import ReceiptBoundingBox from "../ReceiptBoundingBox";
 import TagGroup from './TagGroup';
+import { fetchReceiptDetail } from "../api";
 
 // Types
 interface GroupedWords {
@@ -13,6 +14,7 @@ interface SelectedReceiptProps {
   selectedReceipt: string | null;
   receiptDetails: { [key: string]: ReceiptDetail };
   cdn_base_url: string;
+  onReceiptUpdate: (receiptId: string, newDetails: ReceiptDetail) => void;
 }
 
 // Constants
@@ -75,6 +77,30 @@ const styles = {
     paddingBottom: "3px",
     fontWeight: "bold",
   }),
+  validationHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '1rem',
+    width: '100%',
+  },
+  validationTitle: {
+    margin: 0,
+    fontSize: '1.5rem',
+    fontWeight: 'bold',
+  },
+  refreshButton: {
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    padding: '0.5rem',
+    borderRadius: '50%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: 'var(--text-color)',
+    transition: 'all 0.2s ease',
+  },
 };
 
 // Component
@@ -82,6 +108,7 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
   selectedReceipt,
   receiptDetails,
   cdn_base_url,
+  onReceiptUpdate,
 }) => {
   const [selectedWord, setSelectedWord] = useState<ReceiptWord | null>(null);
   const [openTagMenu, setOpenTagMenu] = useState<{
@@ -164,6 +191,27 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
     };
   }, [addingTagType]);
 
+  const handleRefresh = async () => {
+    if (!selectedReceipt || !receiptDetails[selectedReceipt]) return;
+
+    try {
+      const currentDetail = receiptDetails[selectedReceipt];
+      const response = await fetchReceiptDetail(
+        currentDetail.receipt.image_id,
+        currentDetail.receipt.receipt_id
+      );
+      
+      if (response.receipt) {
+        onReceiptUpdate(selectedReceipt, {
+          ...currentDetail,
+          receipt: response.receipt
+        });
+      }
+    } catch (error) {
+      console.error('Error refreshing receipt:', error);
+    }
+  };
+
   const renderRightPanel = () => {
     if (!selectedReceipt || !receiptDetails[selectedReceipt]) return null;
 
@@ -200,7 +248,28 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
 
   return (
     <div style={styles.container}>
-      <h1 className="text-2xl font-bold p-4">Receipt Validation</h1>
+      <div style={styles.validationHeader}>
+        <h1 style={styles.validationTitle}>Receipt Validation</h1>
+        <button 
+          style={styles.refreshButton}
+          onClick={handleRefresh}
+          title="Refresh"
+        >
+          <svg 
+            xmlns="http://www.w3.org/2000/svg" 
+            width="24" 
+            height="24" 
+            viewBox="0 0 24 24" 
+            fill="none" 
+            stroke="currentColor" 
+            strokeWidth="2" 
+            strokeLinecap="round" 
+            strokeLinejoin="round"
+          >
+            <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3"/>
+          </svg>
+        </button>
+      </div>
 
       <div style={styles.mainContainer}>
         <div style={styles.leftPanel}>

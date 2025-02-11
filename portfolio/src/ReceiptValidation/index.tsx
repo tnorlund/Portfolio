@@ -4,7 +4,7 @@ import { ReceiptDetail } from "../interfaces";
 import SelectedReceipt from './SelectedReceipt';
 import ReceiptSelector from './ReceiptSelector';
 
-function ReceiptValidation() {
+const ReceiptValidation: React.FC = () => {
   const [receiptDetails, setReceiptDetails] = useState<{ [key: string]: ReceiptDetail }>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,6 +29,13 @@ function ReceiptValidation() {
     loadReceiptDetails();
   }, []);
 
+  const handleReceiptUpdate = (receiptId: string, newDetails: ReceiptDetail) => {
+    setReceiptDetails(prev => ({
+      ...prev,
+      [receiptId]: newDetails
+    }));
+  };
+
   if (loading) {
     return <div className="text-center py-4">Loading...</div>;
   }
@@ -47,6 +54,7 @@ function ReceiptValidation() {
         selectedReceipt={selectedReceipt}
         receiptDetails={receiptDetails}
         cdn_base_url={cdn_base_url}
+        onReceiptUpdate={handleReceiptUpdate}
       />
       <ReceiptSelector
         receiptDetails={receiptDetails}
@@ -56,6 +64,6 @@ function ReceiptValidation() {
       />
     </div>
   );
-}
+};
 
 export default ReceiptValidation;
