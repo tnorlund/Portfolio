@@ -10,6 +10,8 @@ from dynamo import (
     itemToReceiptWord,
     itemToReceiptLetter,
     itemToReceiptWordTag,
+    itemToGPTValidation,
+    itemToGPTInitialTagging,
 )
 from botocore.exceptions import ClientError
 
@@ -227,12 +229,14 @@ class _Receipt:
             else:
                 raise e
 
-    def getReceiptDetails(self, image_id: int, receipt_id: int) -> Tuple[
+    def getReceiptDetails(self, image_id: str, receipt_id: int) -> Tuple[
         Receipt,
         list[ReceiptLine],
         list[ReceiptWord],
         list[ReceiptLetter],
         list[ReceiptWordTag],
+        list[dict],  # GPT validations
+        list[dict],  # GPT initial taggings
     ]:
         """Get a receipt with its details
 
@@ -241,7 +245,14 @@ class _Receipt:
             receipt_id (int): The ID of the receipt to get
 
         Returns:
-            dict: A dictionary containing the receipt and its details
+            Tuple containing:
+            - Receipt: The receipt object
+            - list[ReceiptLine]: List of receipt lines
+            - list[ReceiptWord]: List of receipt words
+            - list[ReceiptLetter]: List of receipt letters
+            - list[ReceiptWordTag]: List of receipt word tags
+            - list[dict]: List of GPT validations
+            - list[dict]: List of GPT initial taggings
         """
         try:
             response = self._client.query(
@@ -257,6 +268,9 @@ class _Receipt:
             words = []
             letters = []
             tags = []
+            validations = []
+            initial_taggings = []
+            
             for item in response["Items"]:
                 if item["TYPE"]["S"] == "RECEIPT":
                     receipt = itemToReceipt(item)
@@ -268,7 +282,12 @@ class _Receipt:
                     letters.append(itemToReceiptLetter(item))
                 elif item["TYPE"]["S"] == "RECEIPT_WORD_TAG":
                     tags.append(itemToReceiptWordTag(item))
-            return receipt, lines, words, letters, tags
+                elif item["TYPE"]["S"] == "GPT_VALIDATION":
+                    validations.append(itemToGPTValidation(item))
+                elif item["TYPE"]["S"] == "GPT_INITIAL_TAGGING":
+                    initial_taggings.append(itemToGPTInitialTagging(item))
+                
+            return receipt, lines, words, letters, tags, validations, initial_taggings
         except ClientError as e:
             raise ValueError(f"Error getting receipt details: {e}")
 

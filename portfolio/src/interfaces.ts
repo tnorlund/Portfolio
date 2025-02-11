@@ -151,6 +151,12 @@ export interface ReceiptPayload_new {
   [key: string]: ReceiptPayloadEntry;
 }
 
+export interface ReceiptDetailApiResponse {
+  receipt: Receipt;
+  words: ReceiptWord[];
+  tags: ReceiptWordTag[];
+}
+
 export interface ReceiptDetailsApiResponse {
   payload: {
     [key: string]: ReceiptDetail; // keys are in format "image_id_receipt_id"

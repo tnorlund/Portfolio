@@ -9,6 +9,7 @@ import {
   ImageDetailsApiResponse,
   ReceiptWordTagsApiResponse,
   TagValidationStatsResponse,
+  ReceiptDetailApiResponse,
 } from "./interfaces";
 
 const isDevelopment = process.env.NODE_ENV === "development";
@@ -120,6 +121,32 @@ export async function fetchImages(limit = 5): Promise<ImageReceiptsLines[]> {
 
   const data: ImageApiResponse = await response.json();
   return mapPayloadToImages(data.payload);
+}
+
+export async function fetchReceiptDetail(
+  imageId: number,
+  receiptId: string
+): Promise<ReceiptDetailApiResponse> {
+  const params = new URLSearchParams();
+  params.set("image_id", imageId.toString());
+  params.set("receipt_id", receiptId)
+  const baseUrl = isDevelopment
+    ? `https://dev-api.tylernorlund.com/receipt_detail`
+    : `https://api.tylernorlund.com/receipt_detail`;
+
+  const url = `${baseUrl}?${params.toString()}`;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Network response was not ok (status: ${response.status})`);
+    }
+
+    const data: ReceiptDetailApiResponse = await response.json();
+    return data;
+  } catch (error) {
+    console.error("Error fetching receipt detail:", error);
+    throw error;
+  }
 }
 
 export async function fetchReceiptDetails(
