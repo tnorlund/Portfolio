@@ -37,6 +37,7 @@ const ReceiptSelector: React.FC<ReceiptSelectorProps> = ({
                 isSelected={selectedReceipt === key}
                 onClick={() => onSelectReceipt(selectedReceipt === key ? null : key)}
                 cdn_base_url={cdn_base_url}
+                highlightedWords={[]}
               />
             </div>
           ))}

@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ReceiptDetail, ReceiptWord, ReceiptWordTag } from "../interfaces";
 import ReceiptBoundingBox from "../ReceiptBoundingBox";
-import AddressGroup from "./AddressGroup";
 import TagGroup from './TagGroup';
 
 // Types
@@ -93,6 +92,13 @@ const styles = {
   }),
 };
 
+interface SelectionBox {
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+}
+
 // Component
 const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
   selectedReceipt,
@@ -106,6 +112,7 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
   } | null>(null);
   const [addingTagType, setAddingTagType] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const [selectedWords, setSelectedWords] = useState<ReceiptWord[]>([]);
 
   const onWordSelect = useCallback((word: ReceiptWord) => {
     setSelectedWord(word);
@@ -197,6 +204,14 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
     }
   };
 
+  const handleSelectionComplete = (words: ReceiptWord[]) => {
+    if (addingTagType && words.length > 0) {
+      console.log('Adding tag:', addingTagType, 'to words:', words);
+      setSelectedWords(words);
+      setAddingTagType(null);
+    }
+  };
+
   const renderRightPanel = () => {
     if (!selectedReceipt || !receiptDetails[selectedReceipt]) return null;
 
@@ -243,8 +258,9 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
               width={450}
               isSelected={true}
               cdn_base_url={cdn_base_url}
-              highlightedWords={selectedWord ? [selectedWord] : []}
+              highlightedWords={selectedWord ? [selectedWord] : selectedWords}
               onClick={addingTagType ? handleBoundingBoxClick : undefined}
+              onSelectionComplete={addingTagType ? handleSelectionComplete : undefined}
               isAddingTag={!!addingTagType}
             />
           ) : (
