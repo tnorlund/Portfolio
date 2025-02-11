@@ -277,6 +277,7 @@ class ReceiptWordTag:
         return {
             **self.key(),
             **self.gsi1_key(),
+            **self.gsi2_key(),
             "TYPE": {"S": "RECEIPT_WORD_TAG"},
             "tag_name": {"S": self.tag},
             "timestamp_added": {"S": self.timestamp_added},

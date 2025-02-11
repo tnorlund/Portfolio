@@ -16,7 +16,6 @@ const ReceiptSelector: React.FC<ReceiptSelectorProps> = ({
   onSelectReceipt,
   cdn_base_url,
 }) => {
-  console.log('Receipt Details:', Object.keys(receiptDetails).length, receiptDetails);
   
   return (
     <div className="receipt-selector-container">

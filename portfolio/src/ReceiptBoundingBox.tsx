@@ -1,5 +1,5 @@
 import React from 'react';
-import { ReceiptDetail } from './interfaces';
+import { ReceiptDetail, ReceiptWord } from './interfaces';
 
 interface ReceiptBoundingBoxProps {
   detail: ReceiptDetail;
@@ -7,6 +7,7 @@ interface ReceiptBoundingBoxProps {
   isSelected?: boolean;
   onClick?: () => void;
   cdn_base_url: string;
+  highlightedWords?: ReceiptWord[];
 }
 
 const ReceiptBoundingBox: React.FC<ReceiptBoundingBoxProps> = ({
@@ -14,8 +15,9 @@ const ReceiptBoundingBox: React.FC<ReceiptBoundingBoxProps> = ({
   width = 200,
   isSelected = false,
   onClick,
-  cdn_base_url
-}) => {
+  cdn_base_url,
+  highlightedWords = []
+}): JSX.Element => {
   const { receipt, words } = detail;
   const imageUrl = cdn_base_url + receipt.cdn_s3_key;
   
@@ -43,6 +45,14 @@ const ReceiptBoundingBox: React.FC<ReceiptBoundingBoxProps> = ({
         />
         
         {words.map((word, idx) => {
+          const isHighlighted = highlightedWords.some(hw => {
+            const matches = 
+              hw.word_id === word.word_id && 
+              hw.line_id === word.line_id && 
+              hw.receipt_id === word.receipt_id && 
+              hw.image_id === word.image_id;
+            return matches;
+          });
           const points = `
             ${word.top_left.x * receipt.width},${(1 - word.top_left.y) * receipt.height} 
             ${word.top_right.x * receipt.width},${(1 - word.top_right.y) * receipt.height} 
@@ -56,7 +66,7 @@ const ReceiptBoundingBox: React.FC<ReceiptBoundingBoxProps> = ({
               points={points}
               fill="none"
               stroke="red"
-              strokeWidth={isSelected ? "2" : "1"}
+              strokeWidth={isHighlighted ? "3" : "1"}
               opacity={isSelected ? "0.8" : "0.5"}
             />
           );
