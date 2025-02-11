@@ -137,27 +137,6 @@ const ReceiptBoundingBox: React.FC<ReceiptBoundingBoxProps> = ({
     setSelectionBox(null);
   };
 
-  const handleBoundingBoxClick = (word: ReceiptWord) => {
-    if (addingTagType && onClick) {
-      const matchingTags = detail.word_tags.filter(tag => 
-        tag.word_id === word.word_id &&
-        tag.line_id === word.line_id &&
-        tag.receipt_id === word.receipt_id &&
-        tag.image_id === word.image_id
-      );
-
-      console.log('Single Update test:', {
-        selected_tag: addingTagType || null,
-        selected_words: [{
-          word: word,
-          tags: matchingTags
-        }]
-      });
-
-      onClick(word);
-    }
-  };
-
   const { receipt, words } = detail;
   const imageUrl = cdn_base_url + receipt.cdn_s3_key;
   
@@ -171,16 +150,17 @@ const ReceiptBoundingBox: React.FC<ReceiptBoundingBoxProps> = ({
       style={{ 
         position: 'relative',
         cursor: isAddingTag ? 'crosshair' : 'default',
-        touchAction: isAddingTag ? 'none' : 'auto', // Prevent scrolling when in drawing mode
+        touchAction: isAddingTag ? 'none' : 'auto',
+        pointerEvents: isAddingTag ? 'all' : 'none'
       }}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={endDrawing}
-      onMouseLeave={endDrawing}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={endDrawing}
-      onTouchCancel={endDrawing}
+      onMouseDown={isAddingTag ? handleMouseDown : undefined}
+      onMouseMove={isAddingTag ? handleMouseMove : undefined}
+      onMouseUp={isAddingTag ? endDrawing : undefined}
+      onMouseLeave={isAddingTag ? endDrawing : undefined}
+      onTouchStart={isAddingTag ? handleTouchStart : undefined}
+      onTouchMove={isAddingTag ? handleTouchMove : undefined}
+      onTouchEnd={isAddingTag ? endDrawing : undefined}
+      onTouchCancel={isAddingTag ? endDrawing : undefined}
     >
       <div 
         className={`cursor-pointer transition-transform ${isSelected ? 'scale-100' : 'hover:scale-105'}`}
@@ -223,13 +203,16 @@ const ReceiptBoundingBox: React.FC<ReceiptBoundingBoxProps> = ({
                 stroke={isAddingTag ? "var(--color-yellow)" : "var(--color-red)"}
                 strokeWidth={isHighlighted ? "3" : isAddingTag ? "2" : "1"}
                 opacity={isAddingTag ? "0.2" : isSelected ? "0.8" : "0.5"}
-                style={{ cursor: isAddingTag ? 'crosshair' : 'pointer' }}
-                onClick={isAddingTag ? undefined : (e) => {  // Don't attach click handler in selection mode
+                style={{ 
+                  cursor: isAddingTag ? 'crosshair' : 'pointer',
+                  pointerEvents: isAddingTag ? 'none' : 'all'
+                }}
+                onClick={!isAddingTag ? (e) => {
                   e.stopPropagation();
                   if (onWordTagClick) {
                     onWordTagClick(word, { clientX: e.clientX, clientY: e.clientY });
                   }
-                }}
+                } : undefined}
               />
             );
           })}
