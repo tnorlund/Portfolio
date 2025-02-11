@@ -1,275 +1,100 @@
 import { useState, useEffect } from "react";
-import { fetchWordTagList, fetchReceiptWordTags } from "./api";
-import { ReceiptWordTagsApiResponse } from "./interfaces"; // adjust import if needed
-
-// Helper function to format the timestamp
-function formatTimestamp(timestamp: string): string {
-  const date = new Date(timestamp);
-  return date.toLocaleString();
-}
-
-/**
- * Returns one of these symbols for the entire receipt:
- *   "✗" if ANY word is validated === false
- *   "✓" if ALL words are validated === true
- *   "?" otherwise (if any are null or it's a mix)
- */
-function getOverallValidationStatus(
-  items: { tag: { validated: boolean | null } }[]
-): string {
-  // An array of just the validated flags
-  const flags = items.map((item) => item.tag.validated);
-
-  // 1) If any are explicitly false => "✗"
-  if (flags.includes(false)) {
-    return "✗";
-  }
-
-  // 2) If *every* item is true => "✓"
-  if (flags.every((f) => f === true)) {
-    return "✓";
-  }
-
-  // 3) Otherwise => "?"
-  return "?";
-}
+import { fetchReceiptDetails } from "./api";
+import { ReceiptDetail } from "./interfaces";
+import ReceiptBoundingBox from './ReceiptBoundingBox';
 
 function ReceiptValidation() {
-  const [tags, setTags] = useState<string[]>([]);
-  const [selectedTag, setSelectedTag] = useState<string>("");
-  const [loadingTags, setLoadingTags] = useState<boolean>(true);
+  const [receiptDetails, setReceiptDetails] = useState<{ [key: string]: ReceiptDetail }>({});
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedReceipt, setSelectedReceipt] = useState<string | null>(null);
 
-  const [receiptTags, setReceiptTags] = useState<ReceiptWordTagsApiResponse | null>(null);
-  const [loadingReceiptTags, setLoadingReceiptTags] = useState<boolean>(false);
+  const cdn_base_url = "https://dev.tylernorlund.com/";
 
-  // Track expansion at the (imageId, receiptId) level
-  const [expandedReceipts, setExpandedReceipts] = useState<{
-    [imageId: string]: { [receiptId: string]: boolean };
-  }>({});
-
-  // Fetch the list of tags on mount
   useEffect(() => {
-    fetchWordTagList()
-      .then((data) => {
-        setTags(data);
-        if (data.length > 0) {
-          setSelectedTag(data[0]);
-        }
-      })
-      .catch((error) => {
-        console.error("Failed to fetch word tags:", error);
-      })
-      .finally(() => {
-        setLoadingTags(false);
-      });
+    const loadReceiptDetails = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const response = await fetchReceiptDetails(10);
+        setReceiptDetails(response.payload);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'An error occurred');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadReceiptDetails();
   }, []);
 
-  // Whenever selectedTag changes, fetch the receipt word tags
-  useEffect(() => {
-    if (selectedTag) {
-      setLoadingReceiptTags(true);
-      fetchReceiptWordTags(selectedTag, 50)
-        .then((data) => {
-          setReceiptTags(data);
-          // Reset expanded receipts when a new tag is selected
-          setExpandedReceipts({});
-        })
-        .catch((error) => {
-          console.error("Failed to fetch receipt word tags:", error);
-        })
-        .finally(() => {
-          setLoadingReceiptTags(false);
-        });
-    }
-  }, [selectedTag]);
+  if (loading) {
+    return <div className="text-center py-4">Loading...</div>;
+  }
 
-  const handleTagChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
-    setSelectedTag(event.target.value);
-  };
-
-  /**
-   * Group items by image_id → receipt_id
-   */
-  const getGroupedData = () => {
-    if (!receiptTags || !receiptTags.payload) return {};
-
-    // Build a nested object: grouped[imageId][receiptId] = arrayOfItems
-    const grouped = receiptTags.payload.reduce((acc, item) => {
-      const { word } = item;
-      const imageId = word.image_id ?? "unknown_image";
-      const receiptId = word.receipt_id ?? "unknown_receipt";
-
-      if (!acc[imageId]) {
-        acc[imageId] = {};
-      }
-      if (!acc[imageId][receiptId]) {
-        acc[imageId][receiptId] = [];
-      }
-      acc[imageId][receiptId].push(item);
-
-      return acc;
-    }, {} as { [imageId: string]: { [receiptId: string]: typeof receiptTags.payload } });
-
-    return grouped;
-  };
-
-  // Toggle expand/collapse for a given receipt (within a given image)
-  const toggleExpandReceipt = (imageId: string, receiptId: string) => {
-    setExpandedReceipts((prev) => ({
-      ...prev,
-      [imageId]: {
-        ...prev[imageId],
-        [receiptId]: !prev[imageId]?.[receiptId],
-      },
-    }));
-  };
-
-  const groupedData = getGroupedData();
+  if (error) {
+    return (
+      <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+        {error}
+      </div>
+    );
+  }
 
   return (
-    <div>
-      <h1>Receipt Validation</h1>
-
-      {/* TAG SELECTOR */}
-      {loadingTags ? (
-        <div style={{ display: "flex", justifyContent: "center" }}>
-          <p>Loading tags...</p>
+    <div className="h-screen flex flex-col">
+      {/* Top Section - Selected Receipt */}
+      <div className="flex-grow border-b bg-gray-50">
+        <div className="max-w-6xl mx-auto p-4">
+          <h1 className="text-2xl font-bold mb-4">Receipt Validation</h1>
+          <div className="flex justify-center items-center" style={{ minHeight: '60vh' }}>
+            {selectedReceipt && receiptDetails[selectedReceipt] ? (
+              <ReceiptBoundingBox
+                detail={receiptDetails[selectedReceipt]}
+                width={400}
+                isSelected={true}
+                cdn_base_url={cdn_base_url}
+              />
+            ) : (
+              <div className="text-gray-500 bg-white p-8 rounded-lg shadow-sm">
+                Select a receipt below to view details
+              </div>
+            )}
+          </div>
         </div>
-      ) : (
-        <div style={{ display: "flex", justifyContent: "center" }}>
-          <select id="tag-select" value={selectedTag} onChange={handleTagChange}>
-            {tags.map((tag, index) => (
-              <option key={index} value={tag}>
-                {tag}
-              </option>
+      </div>
+
+      {/* Bottom Section - Receipt Selector */}
+      <div className="h-[200px] bg-white border-t shadow-inner">
+        <div className="max-w-6xl mx-auto p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-gray-700">Available Receipts</h2>
+            <span className="text-xs text-gray-500">Scroll horizontally to see more →</span>
+          </div>
+          <div style={{display: 'flex', overflowX: 'auto', gap: '10px', padding: '10px'}}>
+            {Object.entries(receiptDetails).map(([key, detail]) => (
+              <div 
+                key={key} 
+                className={`
+                  flex flex-col items-center gap-1 p-2 rounded-lg flex-shrink-0
+                  ${selectedReceipt === key ? 'bg-blue-50' : 'hover:bg-gray-50'}
+                  transition-colors duration-200
+                `}
+              >
+                <ReceiptBoundingBox
+                  detail={detail}
+                  width={100}
+                  isSelected={selectedReceipt === key}
+                  onClick={() => setSelectedReceipt(selectedReceipt === key ? null : key)}
+                  cdn_base_url={cdn_base_url}
+                />
+                <span className="text-xs text-gray-600">
+                  Receipt {detail.receipt.receipt_id}
+                </span>
+              </div>
             ))}
-          </select>
+          </div>
         </div>
-      )}
-
-      {/* RECEIPT WORD TAGS */}
-      {selectedTag && (
-        <div style={{ marginTop: "20px" }}>
-          <h2>Word Tags for "{selectedTag}"</h2>
-          {loadingReceiptTags ? (
-            <p>Loading receipt word tags...</p>
-          ) : receiptTags && receiptTags.payload && receiptTags.payload.length > 0 ? (
-            <div>
-              {Object.entries(groupedData).map(([imageId, receipts]) => {
-                return (
-                  <div key={imageId}>
-                    {Object.entries(receipts).map(([receiptId, items]) => {
-                      const isExpanded =
-                        expandedReceipts[imageId]?.[receiptId] || false;
-
-                      // Create a single string of all words for the summary
-                      const allWords = items.map((item) => item.word.text).join(" ");
-                      // Compute an overall "?" / "✗" / "✓" for the entire receipt
-                      const overallStatus = getOverallValidationStatus(items);
-
-                      return (
-                        <div
-                          key={receiptId}
-                          style={{
-                            border: "1px solid var(--text-color)",
-                            borderRadius: "4px",
-                            marginBottom: "10px",
-                            overflow: "hidden",
-                          }}
-                        >
-                          {/* Summary row with arrow on LEFT and status symbol on RIGHT */}
-                          <div
-                            style={{
-                              padding: "10px",
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                              cursor: "pointer",
-                            //   backgroundColor: "#f8f8f8",
-                            }}
-                            onClick={() => toggleExpandReceipt(imageId, receiptId)}
-                          >
-                            {/* LEFT side: arrow + words */}
-                            <div style={{ display: "flex", alignItems: "center" }}>
-                              <span
-                                style={{
-                                  marginRight: "8px",
-                                  transition: "transform 0.3s",
-                                  transform: isExpanded
-                                    ? "rotate(90deg)"
-                                    : "rotate(0deg)",
-                                }}
-                              >
-                                ▶
-                              </span>
-                              <span>{allWords}</span>
-                            </div>
-                            {/* RIGHT side: overall status symbol */}
-                            <strong>{overallStatus}</strong>
-                          </div>
-
-                          {/* Expanded detail rows */}
-                          {isExpanded && (
-                            <div style={{ padding: "10px" }}>
-                              {items.map((item, idx) => (
-                                <div
-                                  key={idx}
-                                  style={{
-                                    border: "1px solid var(--text-color)",
-                                    borderRadius: "4px",
-                                    marginBottom: "10px",
-                                    overflow: "hidden",
-                                  }}
-                                >
-                                  {/* Word row (text on left, ?/X/check on the right) */}
-                                  <div
-                                    style={{
-                                      padding: "10px",
-                                      display: "flex",
-                                      justifyContent: "space-between",
-                                      alignItems: "center",
-                                    }}
-                                  >
-                                    <strong>{item.word.text}</strong>
-                                    <strong>
-                                      {item.tag.validated === null
-                                        ? "?"
-                                        : item.tag.validated
-                                        ? "✓"
-                                        : "✗"}
-                                    </strong>
-                                  </div>
-                                  {/* Additional metadata */}
-                                  <div
-                                    style={{
-                                      padding: "10px",
-                                      borderTop: "1px solid var(--text-color)",
-                                    }}
-                                  >
-                                    <div>
-                                      <strong>Tag:</strong> {item.tag.tag}
-                                    </div>
-                                    <div>
-                                      <strong>Added:</strong>{" "}
-                                      {formatTimestamp(item.tag.timestamp_added)}
-                                    </div>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <p>No receipt word tags available.</p>
-          )}
-        </div>
-      )}
+      </div>
     </div>
   );
 }
