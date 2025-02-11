@@ -6,7 +6,7 @@ from routes.health_check.infra import health_check_lambda
 from routes.images.infra import images_lambda
 from routes.image_details.infra import image_details_lambda
 from routes.receipts.infra import receipts_lambda
-from routes.receipt_word_tag.infra import receipt_word_tag_lambda
+from routes.receipt_word_tag_page.infra import receipt_word_tag_page_lambda
 from routes.process.infra import process_lambda
 from routes.receipt_details.infra import receipt_details_lambda
 from routes.image_count.infra import image_count_lambda
@@ -260,29 +260,29 @@ lambda_permission_receipt_detail = aws.lambda_.Permission(
     source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
 )
 
-# /receipt_word_tag
-integration_receipt_word_tag = aws.apigatewayv2.Integration(
-    "receipt_word_tag_lambda_integration",
+# /receipt_word_tag_page
+integration_receipt_word_tag_page = aws.apigatewayv2.Integration(
+    "receipt_word_tag_page_lambda_integration",
     api_id=api.id,
     integration_type="AWS_PROXY",
-    integration_uri=receipt_word_tag_lambda.invoke_arn,
+    integration_uri=receipt_word_tag_page_lambda.invoke_arn,
     integration_method="POST",
     payload_format_version="2.0",
 )
-route_receipt_word_tag = aws.apigatewayv2.Route(
-    "receipt_word_tag_route",
+route_receipt_word_tag_page = aws.apigatewayv2.Route(
+    "receipt_word_tag_page_route",
     api_id=api.id,
-    route_key="GET /receipt_word_tag",
-    target=integration_receipt_word_tag.id.apply(lambda id: f"integrations/{id}"),
+    route_key="GET /receipt_word_tag_page",
+    target=integration_receipt_word_tag_page.id.apply(lambda id: f"integrations/{id}"),
     opts=pulumi.ResourceOptions(
         replace_on_changes=["route_key", "target"],
         delete_before_replace=True,
     ),
 )
-lambda_permission_receipt_word_tag = aws.lambda_.Permission(
-    "receipt_word_tag_lambda_permission",
+lambda_permission_receipt_word_tag_page = aws.lambda_.Permission(
+    "receipt_word_tag_page_lambda_permission",
     action="lambda:InvokeFunction",
-    function=receipt_word_tag_lambda.name,
+    function=receipt_word_tag_page_lambda.name,
     principal="apigateway.amazonaws.com",
     source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
 )
@@ -440,7 +440,7 @@ route_settings = [
         "throttlingRateLimit": 10000,
     },
     {
-        "routeKey": route_receipt_word_tag.route_key,
+        "routeKey": route_receipt_word_tag_page.route_key,
         "throttlingBurstLimit": 5000,
         "throttlingRateLimit": 10000,
     },

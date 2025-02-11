@@ -202,7 +202,7 @@ export async function fetchReceipts(
   return await response.json();
 }
 
-export async function fetchReceiptWords(
+export async function fetchReceiptWordPaginate(
   tag: string,
   limit: number,
   lastEvaluatedKey?: any
@@ -217,8 +217,8 @@ export async function fetchReceiptWords(
 
   const baseUrl =
     process.env.NODE_ENV === "development"
-      ? `https://dev-api.tylernorlund.com/receipt_word_tag`
-      : `https://api.tylernorlund.com/receipt_word_tag`;
+      ? `https://dev-api.tylernorlund.com/receipt_word_tag_page`
+      : `https://api.tylernorlund.com/receipt_word_tag_page`;
 
   const url = `${baseUrl}?${params.toString()}`;
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useSpring, animated } from "@react-spring/web";
-import { fetchReceiptWords } from "./api";
+import { fetchReceiptWordPaginate } from "./api";
 import { ReceiptWord, ReceiptWordsApiResponse } from "./interfaces";
 import TufteBoxplot from "./TufteBoxplot";
 import WordsSvgContainer from "./WordTagsVisualization";
@@ -59,7 +59,7 @@ const ReceiptWords: React.FC = () => {
 
         // Paginate until no more results
         do {
-          const response: ReceiptWordsApiResponse = await fetchReceiptWords(
+          const response: ReceiptWordsApiResponse = await fetchReceiptWordPaginate(
             currentTag,
             200,
             lastEvaluatedKey
