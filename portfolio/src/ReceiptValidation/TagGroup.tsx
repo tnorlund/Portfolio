@@ -38,7 +38,7 @@ const TagGroup: React.FC<TagGroupProps> = ({
         alignItems: 'center'
       }}>
         <div style={{
-          fontSize: '2rem',
+          fontSize: '1.5rem',
           color: 'var(--text-color)',
           position: 'relative',
           fontWeight: 'bold'
@@ -85,7 +85,8 @@ const TagGroup: React.FC<TagGroupProps> = ({
         borderRadius: '4px',
         display: 'flex',
         flexDirection: 'column',
-        gap: '4px'
+        gap: '4px',
+        marginLeft: '6px',
       }}>
         {words.map((word, wordIdx) => (
           <WordItem
