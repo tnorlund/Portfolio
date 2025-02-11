@@ -30,7 +30,6 @@ const ReceiptBoundingBox: React.FC<ReceiptBoundingBoxProps> = ({
   return (
     <div 
       className={`cursor-pointer transition-transform ${isSelected ? 'scale-100' : 'hover:scale-105'}`}
-      onClick={onClick && words[0] ? () => onClick(words[0]) : undefined}
     >
       <svg
         viewBox={`0 0 ${receipt.width} ${receipt.height}`}
@@ -66,12 +65,17 @@ const ReceiptBoundingBox: React.FC<ReceiptBoundingBoxProps> = ({
             <polygon
               key={idx}
               points={points}
-              fill="none"
+              fill={isAddingTag ? "rgba(255, 255, 0, 0.2)" : "none"}
               stroke={isAddingTag ? "yellow" : "red"}
-              strokeWidth={isHighlighted ? "3" : "1"}
-              opacity={isSelected ? "0.8" : "0.5"}
+              strokeWidth={isHighlighted ? "3" : isAddingTag ? "2" : "1"}
+              opacity={isAddingTag ? "0.8" : isSelected ? "0.8" : "0.5"}
               style={{ cursor: isAddingTag ? 'pointer' : 'default' }}
-              onClick={onClick ? () => onClick(word) : undefined}
+              onClick={(e) => {
+                if (onClick && isAddingTag) {
+                  e.stopPropagation();
+                  onClick(word);
+                }
+              }}
             />
           );
         })}

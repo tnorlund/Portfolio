@@ -1,6 +1,7 @@
 import React from "react";
 import { ReceiptDetail, ReceiptWord, ReceiptWordTag } from "../interfaces";
 import ReceiptBoundingBox from "../ReceiptBoundingBox";
+import AddressGroup from "./AddressGroup";
 
 interface WordWithTag extends ReceiptWord {
   tag?: ReceiptWordTag;
@@ -42,6 +43,10 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
   const [isAddingTag, setIsAddingTag] = React.useState(false);
   const menuRef = React.useRef<HTMLDivElement>(null);
 
+  const onWordSelect = React.useCallback((word: ReceiptWord) => {
+    setSelectedWord(word);
+  }, []);
+
   React.useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
@@ -66,46 +71,20 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
       }
       return a.bounding_box.y - b.bounding_box.y;
     });
-    const groups: GroupedWords[] = [];
-    let currentGroup: GroupedWords | null = null;
 
-    sortedWords.forEach((word) => {
-      const matchingTag = addressTags.find((tag) => {
-        return (
+    // Create a group for each tagged word
+    return sortedWords
+      .map(word => {
+        const matchingTag = addressTags.find((tag) => 
           tag.word_id === word.word_id &&
           tag.line_id === word.line_id &&
           tag.receipt_id === word.receipt_id &&
           tag.image_id === word.image_id
         );
-      });
-
-      if (matchingTag) {
-        if (!currentGroup) {
-          currentGroup = { words: [word], tag: matchingTag };
-          groups.push(currentGroup);
-        } else {
-          // Check if this word is close to the last word in current group
-          const lastWord = currentGroup.words[currentGroup.words.length - 1];
-          const isNearby =
-            Math.abs(word.bounding_box.y - lastWord.bounding_box.y) < 20 ||
-            Math.abs(
-              word.bounding_box.x -
-                (lastWord.bounding_box.x + lastWord.bounding_box.width)
-            ) < 30;
-
-          if (isNearby) {
-            currentGroup.words.push(word);
-          } else {
-            currentGroup = { words: [word], tag: matchingTag };
-            groups.push(currentGroup);
-          }
-        }
-      } else {
-        currentGroup = null;
-      }
-    });
-
-    return groups;
+        
+        return matchingTag ? { words: [word], tag: matchingTag } : null;
+      })
+      .filter((group): group is GroupedWords => group !== null);
   };
 
   const renderStars = (confidence: number | null) => {
@@ -180,102 +159,17 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
           </div>
         </div>
         {addressGroups.map((group, index) => (
-          <div key={index} 
-               style={{
-                 padding: '8px',
-                 backgroundColor: 'var(--background-color)',
-                 border: '1px solid #e2e8f0',
-                 borderRadius: '4px',
-                 display: 'flex',
-                 flexDirection: 'column',
-                 gap: '4px'
-               }}>
-            {group.words.map((word, wordIdx) => (
-              <div
-                key={wordIdx}
-                style={{
-                  cursor: 'pointer',
-                  padding: '4px',
-                  backgroundColor: selectedWord && 
-                    selectedWord.word_id === word.word_id &&
-                    selectedWord.line_id === word.line_id &&
-                    selectedWord.receipt_id === word.receipt_id &&
-                    selectedWord.image_id === word.image_id
-                      ? '#1e40af' 
-                      : 'transparent',
-                  borderRadius: '2px',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  position: 'relative'
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  {renderHumanValidation(group.tag.human_validated)}
-                  <span 
-                    style={{ color: 'var(--text-color)' }}
-                    onClick={() => setSelectedWord(word)}
-                  >
-                    {word.text}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  {renderStars(group.tag.gpt_confidence)}
-                  <span 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setOpenTagMenu(openTagMenu?.groupIndex === index && 
-                        openTagMenu.wordIndex === wordIdx ? null : 
-                        { groupIndex: index, wordIndex: wordIdx });
-                    }}
-                    style={{ 
-                      color: group.tag.validated ? '#4ade80' : '#ef4444',
-                      backgroundColor: group.tag.validated ? '#065f46' : '#7f1d1d',
-                      padding: '2px 8px',
-                      borderRadius: '4px',
-                      fontSize: '0.875rem',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Address
-                  </span>
-                </div>
-                {openTagMenu?.groupIndex === index && 
-                 openTagMenu.wordIndex === wordIdx && (
-                  <div ref={menuRef} style={{
-                    position: 'absolute',
-                    right: 0,
-                    top: '100%',
-                    backgroundColor: 'var(--background-color)',
-                    border: '1px solid var(--text-color)',
-                    borderRadius: '4px',
-                    zIndex: 10,
-                    marginTop: '4px',
-                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
-                  }}>
-                    {selectableTags.map(tag => (
-                      <div
-                        key={tag}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setOpenTagMenu(null);
-                        }}
-                        className="hover:bg-gray-700"
-                        style={{
-                          padding: '8px 16px',
-                          color: 'white',
-                          cursor: 'pointer',
-                          whiteSpace: 'nowrap'
-                        }}
-                      >
-                        {tag}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+          <AddressGroup
+            key={index}
+            words={group.words}
+            tag={group.tag}
+            selectedWord={selectedWord}
+            onWordSelect={onWordSelect}
+            groupIndex={index}
+            openTagMenu={openTagMenu}
+            setOpenTagMenu={setOpenTagMenu}
+            menuRef={menuRef}
+          />
         ))}
       </div>
     );
@@ -283,7 +177,7 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
 
   const handleBoundingBoxClick = (word: ReceiptWord) => {
     if (isAddingTag) {
-      console.log('Selected word for new tag:', word);
+      setSelectedWord(word);
       setIsAddingTag(false);
     }
   };
@@ -298,7 +192,6 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
         <div
           style={{
             width: "50%",
-            backgroundColor: "red",
             display: "flex",
             justifyContent: "center",
             alignItems: "center",
@@ -323,7 +216,6 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
         <div
           style={{
             width: "50%",
-            backgroundColor: "blue",
             position: "absolute",
             right: 0,
             top: 0,
