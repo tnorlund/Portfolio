@@ -49,7 +49,7 @@ const TagGroup: React.FC<TagGroupProps> = ({
             bottom: 0,
             left: -8,
             right: -8,
-            backgroundColor: isAddingTag ? 'var(--color-yellow)' : 'transparent',
+            border: isAddingTag ? '2px solid var(--color-yellow)' : 'none',
             borderRadius: '4px',
             zIndex: 0
           }} />
@@ -64,7 +64,7 @@ const TagGroup: React.FC<TagGroupProps> = ({
           height: '32px',
           borderRadius: '50%',
           backgroundColor: isAddingTag ? 'var(--color-yellow)' : 'var(--text-color)',
-          color: isAddingTag ? 'var(--text-color)' : 'var(--background-color)',
+          color: 'var(--background-color)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',

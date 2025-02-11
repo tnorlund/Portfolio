@@ -45,7 +45,9 @@ const TagMenu: React.FC<TagMenuProps> = ({ menuRef, onSelect }) => {
             whiteSpace: 'nowrap'
           }}
         >
-          {tag}
+          {tag.split('_').map(word => 
+              word.charAt(0).toUpperCase() + word.slice(1)
+            ).join(' ')}
         </div>
       ))}
     </div>

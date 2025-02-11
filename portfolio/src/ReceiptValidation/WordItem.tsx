@@ -111,7 +111,9 @@ const WordItem: React.FC<WordItemProps> = ({
             cursor: 'pointer'
           }}
         >
-          {tag.tag}
+          {tag.tag.split('_').map(word => 
+              word.charAt(0).toUpperCase() + word.slice(1)
+            ).join(' ')}
         </span>
         {openTagMenu && (
           <TagMenu
