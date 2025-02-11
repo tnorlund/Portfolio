@@ -39,19 +39,31 @@ const TagGroup: React.FC<TagGroupProps> = ({
       }}>
         <div style={{
           fontSize: '2rem',
-          color: 'white',
+          color: 'var(--text-color)',
+          position: 'relative',
           fontWeight: 'bold'
         }}>
-          {tagType.split('_').map(word => 
-            word.charAt(0).toUpperCase() + word.slice(1)
-          ).join(' ')}
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            bottom: 0,
+            left: -8,
+            right: -8,
+            backgroundColor: isAddingTag ? 'var(--color-yellow)' : 'transparent',
+            borderRadius: '4px',
+            zIndex: 0
+          }} />
+          <span style={{ position: 'relative', zIndex: 1 }}>
+            {tagType.split('_').map(word => 
+              word.charAt(0).toUpperCase() + word.slice(1)
+            ).join(' ')}
+          </span>
         </div>
         <div style={{
           width: '32px',
           height: '32px',
           borderRadius: '50%',
-          backgroundColor: isAddingTag ? 'var(--background-color)' : 'var(--text-color)',
-          border: isAddingTag ? '2px solid var(--text-color)' : 'none',
+          backgroundColor: isAddingTag ? 'var(--color-yellow)' : 'var(--text-color)',
           color: isAddingTag ? 'var(--text-color)' : 'var(--background-color)',
           display: 'flex',
           alignItems: 'center',
@@ -60,7 +72,8 @@ const TagGroup: React.FC<TagGroupProps> = ({
           fontSize: '1.5rem',
           lineHeight: '1',
           paddingBottom: '3px',
-          fontWeight: 'bold'
+          fontWeight: 'bold',
+          userSelect: 'none'
         }} onClick={onAddTagClick}>
           +
         </div>

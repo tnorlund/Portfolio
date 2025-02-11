@@ -49,7 +49,7 @@ const WordItem: React.FC<WordItemProps> = ({
     }
     return (
       <span style={{ 
-        color: validated ? '#4ade80' : '#ef4444',
+        color: validated ? 'var(--color-green)' : 'var(--color-red)',
         fontSize: '1rem'
       }}>
         {validated ? '✓' : '✗'}
@@ -62,16 +62,25 @@ const WordItem: React.FC<WordItemProps> = ({
       style={{
         cursor: 'pointer',
         padding: '4px',
-        backgroundColor: isSelected ? '#1e40af' : 'transparent',
         borderRadius: '2px',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        position: 'relative'
+        position: 'relative',
+        outline: isSelected ? '2px solid var(--color-blue)' : 'none'
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center' }}>
-        {renderHumanValidation(tag.human_validated)}
+      <div style={{ display: 'flex', alignItems: 'center', minWidth: '24px', justifyContent: 'center' }}>
+        <div 
+          onClick={(e) => {
+            e.stopPropagation();
+            console.log('Word:', word);
+            console.log('Tag:', tag);
+          }}
+          style={{ display: 'flex', alignItems: 'center' }}
+        >
+          {renderHumanValidation(tag.human_validated)}
+        </div>
       </div>
 
       <div 
@@ -94,8 +103,8 @@ const WordItem: React.FC<WordItemProps> = ({
         <span 
           onClick={onTagClick}
           style={{ 
-            color: tag.validated ? '#4ade80' : '#ef4444',
-            backgroundColor: tag.validated ? '#065f46' : '#7f1d1d',
+            color: tag.validated ? 'var(--color-green)' : 'var(--color-red)',
+            border: `1px solid ${tag.validated ? 'var(--color-green)' : 'var(--color-red)'}`,
             padding: '2px 8px',
             borderRadius: '4px',
             fontSize: '0.875rem',

@@ -166,10 +166,10 @@ const ReceiptBoundingBox: React.FC<ReceiptBoundingBoxProps> = ({
               <polygon
                 key={idx}
                 points={points}
-                fill={isAddingTag ? "rgba(255, 255, 0, 0.2)" : "none"}
-                stroke={isAddingTag ? "yellow" : "red"}
+                fill={isAddingTag ? "var(--color-yellow)" : "none"}
+                stroke={isAddingTag ? "var(--color-yellow)" : "var(--color-red)"}
                 strokeWidth={isHighlighted ? "3" : isAddingTag ? "2" : "1"}
-                opacity={isAddingTag ? "0.8" : isSelected ? "0.8" : "0.5"}
+                opacity={isAddingTag ? "0.2" : isSelected ? "0.8" : "0.5"}
                 style={{ cursor: isAddingTag ? 'pointer' : 'default' }}
                 onClick={(e) => {
                   if (onClick && isAddingTag) {
@@ -184,18 +184,31 @@ const ReceiptBoundingBox: React.FC<ReceiptBoundingBoxProps> = ({
       </div>
       
       {selectionBox && (
-        <div
-          style={{
-            position: 'absolute',
-            left: Math.min(selectionBox.startX, selectionBox.endX),
-            top: Math.min(selectionBox.startY, selectionBox.endY),
-            width: Math.abs(selectionBox.endX - selectionBox.startX),
-            height: Math.abs(selectionBox.endY - selectionBox.startY),
-            border: '2px solid var(--text-color)',
-            backgroundColor: 'rgba(0, 0, 255, 0.2)',
-            pointerEvents: 'none',
-          }}
-        />
+        <>
+          <div
+            style={{
+              position: 'absolute',
+              left: Math.min(selectionBox.startX, selectionBox.endX),
+              top: Math.min(selectionBox.startY, selectionBox.endY),
+              width: Math.abs(selectionBox.endX - selectionBox.startX),
+              height: Math.abs(selectionBox.endY - selectionBox.startY),
+              border: '2px solid var(--color-blue)',
+              pointerEvents: 'none',
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              left: Math.min(selectionBox.startX, selectionBox.endX) + 2,
+              top: Math.min(selectionBox.startY, selectionBox.endY) + 2,
+              width: Math.abs(selectionBox.endX - selectionBox.startX) + 2,
+              height: Math.abs(selectionBox.endY - selectionBox.startY) + 2,
+              backgroundColor: 'var(--color-blue)',
+              opacity: 0.2,
+              pointerEvents: 'none',
+            }}
+          />
+        </>
       )}
     </div>
   );

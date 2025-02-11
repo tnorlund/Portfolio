@@ -40,7 +40,7 @@ const TagMenu: React.FC<TagMenuProps> = ({ menuRef, onSelect }) => {
           className="hover:bg-gray-700"
           style={{
             padding: '8px 16px',
-            color: 'white',
+            color: 'var(--text-color)',
             cursor: 'pointer',
             whiteSpace: 'nowrap'
           }}
