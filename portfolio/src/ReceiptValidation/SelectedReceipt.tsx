@@ -150,6 +150,20 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
     }
   };
 
+  // Add this new effect to clear selection mode if touch ends outside
+  useEffect(() => {
+    const handleTouchEnd = () => {
+      if (addingTagType) {
+        setAddingTagType(null);
+      }
+    };
+
+    document.addEventListener('touchend', handleTouchEnd);
+    return () => {
+      document.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [addingTagType]);
+
   const renderRightPanel = () => {
     if (!selectedReceipt || !receiptDetails[selectedReceipt]) return null;
 

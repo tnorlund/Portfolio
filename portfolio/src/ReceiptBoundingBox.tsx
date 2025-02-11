@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { ReceiptDetail, ReceiptWord } from './interfaces';
 
 interface SelectionBox {
@@ -33,31 +33,51 @@ const ReceiptBoundingBox: React.FC<ReceiptBoundingBoxProps> = ({
   const [selectionBox, setSelectionBox] = useState<SelectionBox | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const handleMouseDown = (e: React.MouseEvent) => {
+  const startDrawing = (x: number, y: number) => {
     if (!isAddingTag || !containerRef.current) return;
     
     const rect = containerRef.current.getBoundingClientRect();
     setIsDrawing(true);
     setSelectionBox({
-      startX: e.clientX - rect.left,
-      startY: e.clientY - rect.top,
-      endX: e.clientX - rect.left,
-      endY: e.clientY - rect.top,
+      startX: x - rect.left,
+      startY: y - rect.top,
+      endX: x - rect.left,
+      endY: y - rect.top,
     });
   };
 
-  const handleMouseMove = (e: React.MouseEvent) => {
+  const updateDrawing = (x: number, y: number) => {
     if (!isDrawing || !containerRef.current || !selectionBox) return;
 
     const rect = containerRef.current.getBoundingClientRect();
     setSelectionBox({
       ...selectionBox,
-      endX: e.clientX - rect.left,
-      endY: e.clientY - rect.top,
+      endX: x - rect.left,
+      endY: y - rect.top,
     });
   };
 
-  const handleMouseUp = () => {
+  const handleMouseDown = (e: React.MouseEvent) => {
+    startDrawing(e.clientX, e.clientY);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    updateDrawing(e.clientX, e.clientY);
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    e.preventDefault(); // Prevent scrolling while drawing
+    const touch = e.touches[0];
+    startDrawing(touch.clientX, touch.clientY);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    e.preventDefault(); // Prevent scrolling while drawing
+    const touch = e.touches[0];
+    updateDrawing(touch.clientX, touch.clientY);
+  };
+
+  const endDrawing = () => {
     if (!isDrawing || !selectionBox || !onSelectionComplete) return;
 
     // Calculate the selection box coordinates
@@ -98,11 +118,16 @@ const ReceiptBoundingBox: React.FC<ReceiptBoundingBoxProps> = ({
       style={{ 
         position: 'relative',
         cursor: isAddingTag ? 'crosshair' : 'default',
+        touchAction: isAddingTag ? 'none' : 'auto', // Prevent scrolling when in drawing mode
       }}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
+      onMouseUp={endDrawing}
+      onMouseLeave={endDrawing}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={endDrawing}
+      onTouchCancel={endDrawing}
     >
       <div 
         className={`cursor-pointer transition-transform ${isSelected ? 'scale-100' : 'hover:scale-105'}`}
@@ -167,7 +192,7 @@ const ReceiptBoundingBox: React.FC<ReceiptBoundingBoxProps> = ({
             width: Math.abs(selectionBox.endX - selectionBox.startX),
             height: Math.abs(selectionBox.endY - selectionBox.startY),
             border: '2px solid var(--text-color)',
-            backgroundColor: 'rgba(255, 255, 255, 0.1)',
+            backgroundColor: 'rgba(0, 0, 255, 0.2)',
             pointerEvents: 'none',
           }}
         />
