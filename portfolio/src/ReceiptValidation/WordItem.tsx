@@ -74,8 +74,7 @@ const WordItem: React.FC<WordItemProps> = ({
         <div 
           onClick={(e) => {
             e.stopPropagation();
-            console.log('Word:', word);
-            console.log('Tag:', tag);
+            console.log('Single Update:', {selected_word: word, selected_tag: tag});
           }}
           style={{ display: 'flex', alignItems: 'center' }}
         >
@@ -119,7 +118,12 @@ const WordItem: React.FC<WordItemProps> = ({
           <TagMenu
             menuRef={menuRef}
             onSelect={(newTag) => {
-              console.log('Selected new tag:', newTag);
+              console.log('Single Update:', {
+                selected_word: word,
+                selected_new_tag: newTag,
+                matching_tag: tag
+              });
+              onTagClick();
             }}
           />
         )}

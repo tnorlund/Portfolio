@@ -17,6 +17,8 @@ interface ReceiptBoundingBoxProps {
   onClick?: (word: ReceiptWord) => void;
   onSelectionComplete?: (words: ReceiptWord[]) => void;
   isAddingTag?: boolean;
+  addingTagType?: string;
+  onWordTagClick?: (word: ReceiptWord, event: { clientX: number; clientY: number }) => void;
 }
 
 const ReceiptBoundingBox: React.FC<ReceiptBoundingBoxProps> = ({
@@ -28,6 +30,8 @@ const ReceiptBoundingBox: React.FC<ReceiptBoundingBoxProps> = ({
   onClick,
   onSelectionComplete,
   isAddingTag,
+  addingTagType,
+  onWordTagClick,
 }) => {
   const [isDrawing, setIsDrawing] = useState(false);
   const [selectionBox, setSelectionBox] = useState<SelectionBox | null>(null);
@@ -88,11 +92,19 @@ const ReceiptBoundingBox: React.FC<ReceiptBoundingBoxProps> = ({
 
     // Find words that intersect with the selection box
     const selectedWords = detail.words.filter(word => {
-      const box = word.bounding_box;
-      const wordLeft = box.x * width;
-      const wordRight = (box.x + box.width) * width;
-      const wordTop = box.y * width;
-      const wordBottom = (box.y + box.height) * width;
+      // Convert word coordinates to screen coordinates using scaleFactor
+      const points = [
+        { x: word.top_left.x * width, y: (1 - word.top_left.y) * height },
+        { x: word.top_right.x * width, y: (1 - word.top_right.y) * height },
+        { x: word.bottom_right.x * width, y: (1 - word.bottom_right.y) * height },
+        { x: word.bottom_left.x * width, y: (1 - word.bottom_left.y) * height }
+      ];
+
+      // Find bounding box of the word
+      const wordLeft = Math.min(...points.map(p => p.x));
+      const wordRight = Math.max(...points.map(p => p.x));
+      const wordTop = Math.min(...points.map(p => p.y));
+      const wordBottom = Math.max(...points.map(p => p.y));
 
       return !(wordLeft > right || 
                wordRight < left || 
@@ -100,9 +112,50 @@ const ReceiptBoundingBox: React.FC<ReceiptBoundingBoxProps> = ({
                wordBottom < top);
     });
 
+    // Create a summary of selected words with their existing tags
+    const selectionSummary = {
+      selected_tag: addingTagType || null,
+      selected_words: selectedWords.map(word => {
+        const matchingTags = detail.word_tags.filter(tag => 
+          tag.word_id === word.word_id &&
+          tag.line_id === word.line_id &&
+          tag.receipt_id === word.receipt_id &&
+          tag.image_id === word.image_id
+        );
+
+        return {
+          word: word,
+          tags: matchingTags
+        };
+      })
+    };
+
+    console.log('Batch Update:', selectionSummary);
+
     onSelectionComplete(selectedWords);
     setIsDrawing(false);
     setSelectionBox(null);
+  };
+
+  const handleBoundingBoxClick = (word: ReceiptWord) => {
+    if (addingTagType && onClick) {
+      const matchingTags = detail.word_tags.filter(tag => 
+        tag.word_id === word.word_id &&
+        tag.line_id === word.line_id &&
+        tag.receipt_id === word.receipt_id &&
+        tag.image_id === word.image_id
+      );
+
+      console.log('Single Update test:', {
+        selected_tag: addingTagType || null,
+        selected_words: [{
+          word: word,
+          tags: matchingTags
+        }]
+      });
+
+      onClick(word);
+    }
   };
 
   const { receipt, words } = detail;
@@ -166,15 +219,15 @@ const ReceiptBoundingBox: React.FC<ReceiptBoundingBoxProps> = ({
               <polygon
                 key={idx}
                 points={points}
-                fill={isAddingTag ? "var(--color-yellow)" : "none"}
+                fill={isAddingTag ? "var(--color-yellow)" : "transparent"}
                 stroke={isAddingTag ? "var(--color-yellow)" : "var(--color-red)"}
                 strokeWidth={isHighlighted ? "3" : isAddingTag ? "2" : "1"}
                 opacity={isAddingTag ? "0.2" : isSelected ? "0.8" : "0.5"}
-                style={{ cursor: isAddingTag ? 'pointer' : 'default' }}
-                onClick={(e) => {
-                  if (onClick && isAddingTag) {
-                    e.stopPropagation();
-                    onClick(word);
+                style={{ cursor: isAddingTag ? 'crosshair' : 'pointer' }}
+                onClick={isAddingTag ? undefined : (e) => {  // Don't attach click handler in selection mode
+                  e.stopPropagation();
+                  if (onWordTagClick) {
+                    onWordTagClick(word, { clientX: e.clientX, clientY: e.clientY });
                   }
                 }}
               />

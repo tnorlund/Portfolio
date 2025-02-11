@@ -3,6 +3,7 @@ import { ReceiptDetail, ReceiptWord, ReceiptWordTag } from "../interfaces";
 import ReceiptBoundingBox from "../ReceiptBoundingBox";
 import TagGroup from './TagGroup';
 import { fetchReceiptDetail } from "../api";
+import TagMenu from './TagMenu';
 
 // Types
 interface GroupedWords {
@@ -117,7 +118,9 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
   } | null>(null);
   const [addingTagType, setAddingTagType] = useState<string | null>(null);
   const [selectedWords, setSelectedWords] = useState<ReceiptWord[]>([]);
+  const [matchingTag, setMatchingTag] = useState<ReceiptWordTag | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
 
   const onWordSelect = useCallback((word: ReceiptWord) => {
     setSelectedWord(word);
@@ -163,7 +166,7 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
 
   const handleBoundingBoxClick = (word: ReceiptWord) => {
     if (addingTagType) {
-      console.log('Adding tag:', addingTagType, 'to word:', word);
+      // console.log('Adding tag:', addingTagType, 'to word:', word);
       setSelectedWord(word);
       setAddingTagType(null);
     }
@@ -171,7 +174,7 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
 
   const handleSelectionComplete = (words: ReceiptWord[]) => {
     if (addingTagType && words.length > 0) {
-      console.log('Adding tag:', addingTagType, 'to words:', words);
+      // console.log('Adding tag:', addingTagType, 'to words:', words);
       setSelectedWords(words);
       setAddingTagType(null);
     }
@@ -210,6 +213,27 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
     } catch (error) {
       console.error('Error refreshing receipt:', error);
     }
+  };
+
+  const handleWordTagClick = (word: ReceiptWord, event: { clientX: number; clientY: number }) => {
+    setSelectedWord(word);
+    
+    if (!selectedReceipt || !receiptDetails[selectedReceipt]) return;
+
+    const existingTag = receiptDetails[selectedReceipt].word_tags.find((tag: ReceiptWordTag) => 
+      tag.word_id === word.word_id &&
+      tag.line_id === word.line_id &&
+      tag.receipt_id === word.receipt_id &&
+      tag.image_id === word.image_id
+    );
+    
+    setMatchingTag(existingTag || null);
+    setMenuPosition({ x: event.clientX, y: event.clientY });
+
+    setOpenTagMenu({
+      groupIndex: -1,
+      wordIndex: -1
+    });
   };
 
   const renderRightPanel = () => {
@@ -274,16 +298,40 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
       <div style={styles.mainContainer}>
         <div style={styles.leftPanel}>
           {selectedReceipt && receiptDetails[selectedReceipt] ? (
-            <ReceiptBoundingBox
-              detail={receiptDetails[selectedReceipt]}
-              width={450}
-              isSelected={true}
-              cdn_base_url={cdn_base_url}
-              highlightedWords={selectedWord ? [selectedWord] : selectedWords}
-              onClick={addingTagType ? handleBoundingBoxClick : undefined}
-              onSelectionComplete={addingTagType ? handleSelectionComplete : undefined}
-              isAddingTag={!!addingTagType}
-            />
+            <>
+              <ReceiptBoundingBox
+                detail={receiptDetails[selectedReceipt]}
+                width={450}
+                isSelected={true}
+                cdn_base_url={cdn_base_url}
+                highlightedWords={selectedWord ? [selectedWord] : selectedWords}
+                onClick={addingTagType ? handleBoundingBoxClick : undefined}
+                onSelectionComplete={addingTagType ? handleSelectionComplete : undefined}
+                isAddingTag={!!addingTagType}
+                addingTagType={addingTagType || undefined}
+                onWordTagClick={!addingTagType ? handleWordTagClick : undefined}
+              />
+              {openTagMenu && openTagMenu.groupIndex === -1 && menuPosition && !addingTagType && (
+                <TagMenu
+                  menuRef={menuRef}
+                  style={{
+                    position: 'fixed',
+                    left: menuPosition.x,
+                    top: menuPosition.y,
+                    zIndex: 1000
+                  }}
+                  onSelect={(newTag) => {
+                    console.log('Single Update:', {
+                      selected_word: selectedWord,
+                      selected_new_tag: newTag,
+                      matching_tag: matchingTag
+                    });
+                    setOpenTagMenu(null);
+                    setMenuPosition(null);
+                  }}
+                />
+              )}
+            </>
           ) : (
             <div>Select a receipt</div>
           )}

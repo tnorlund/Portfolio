@@ -398,6 +398,18 @@ if stack == "dev":
         source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
     )
 
+    # Add POST route for receipt_word_tags
+    route_receipt_word_tags_post = aws.apigatewayv2.Route(
+        "receipt_word_tags_post_route",
+        api_id=api.id,
+        route_key="POST /receipt_word_tags",
+        target=integration_receipt_word_tags.id.apply(lambda id: f"integrations/{id}"),
+        opts=pulumi.ResourceOptions(
+            replace_on_changes=["route_key", "target"],
+            delete_before_replace=True,
+        ),
+    )
+
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # 2. DEPLOYMENT + LOGGING
@@ -476,6 +488,11 @@ if stack == "dev":
             },
             {
                 "routeKey": route_receipt_word_tags.route_key,
+                "throttlingBurstLimit": 5000,
+                "throttlingRateLimit": 10000,
+            },
+            {
+                "routeKey": route_receipt_word_tags_post.route_key,
                 "throttlingBurstLimit": 5000,
                 "throttlingRateLimit": 10000,
             },
