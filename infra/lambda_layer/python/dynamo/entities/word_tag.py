@@ -1,4 +1,4 @@
-from typing import Generator, Optional, Tuple
+from typing import Generator, Optional, Tuple, Union
 from datetime import datetime
 from dynamo.entities.util import assert_valid_uuid, _repr_str
 
@@ -22,6 +22,19 @@ class WordTag:
         human_validated (bool): Whether the tag has been validated by a human.
     """
 
+    image_id: str
+    line_id: int
+    word_id: int
+    tag: str
+    timestamp_added: str
+    validated: Optional[bool]
+    timestamp_validated: Optional[str]
+    gpt_confidence: Optional[int]
+    flag: Optional[str]
+    revised_tag: Optional[str]
+    human_validated: Optional[bool]
+    timestamp_human_validated: Optional[str]
+
     def __init__(
         self,
         image_id: str,
@@ -30,12 +43,12 @@ class WordTag:
         tag: str,
         timestamp_added: datetime,
         validated: Optional[bool] = None,
-        timestamp_validated: Optional[datetime] = None,
+        timestamp_validated: Optional[Union[str, datetime]] = None,
         gpt_confidence: Optional[int] = None,
         flag: Optional[str] = None,
         revised_tag: Optional[str] = None,
         human_validated: Optional[bool] = None,
-        timestamp_human_validated: Optional[datetime] = None,
+        timestamp_human_validated: Optional[Union[str, datetime]] = None,
     ):
         """Initializes a new WordTag object for DynamoDB.
 
@@ -47,6 +60,7 @@ class WordTag:
                 and must not start with an underscore.
             timestamp_added (datetime): The timestamp when the tag was added.
             validated (bool, optional): Whether the tag has been validated. Defaults to None.
+            timestamp_human_validated (datetime, optional): The timestamp when the tag was validated by a human. Defaults to None.
 
         Raises:
             ValueError: If any parameter is of an invalid type or has an invalid value.
@@ -88,15 +102,10 @@ class WordTag:
         self.validated = validated
 
         if isinstance(timestamp_validated, datetime):
-            # Convert datetime to an ISO-formatted string.
             self.timestamp_validated = timestamp_validated.isoformat()
         elif not isinstance(timestamp_validated, (str, type(None))):
-            # Raise an error if it's neither a string nor None.
-            raise ValueError(
-                "timestamp_validated must be a datetime object, a string, or None"
-            )
+            raise ValueError("timestamp_validated must be a datetime object, a string, or None")
         else:
-            # If it's already a string or None, just assign it.
             self.timestamp_validated = timestamp_validated
 
         if gpt_confidence is not None and not isinstance(gpt_confidence, int):
@@ -118,9 +127,7 @@ class WordTag:
         if isinstance(timestamp_human_validated, datetime):
             self.timestamp_human_validated = timestamp_human_validated.isoformat()
         elif not isinstance(timestamp_human_validated, (str, type(None))):
-            raise ValueError(
-                "timestamp_human_validated must be a datetime object, a string, or None"
-            )
+            raise ValueError("timestamp_human_validated must be a datetime object, a string, or None")
         else:
             self.timestamp_human_validated = timestamp_human_validated
 
@@ -365,7 +372,11 @@ def itemToWordTag(item: dict) -> WordTag:
         else:
             human_validated = None
         if "timestamp_human_validated" in item:
-            timestamp_human_validated = datetime.fromisoformat(item["timestamp_human_validated"]["S"]) if "S" in item["timestamp_human_validated"] else None
+            timestamp_human_validated = (
+                item["timestamp_human_validated"]["S"]
+                if "S" in item["timestamp_human_validated"]
+                else None
+            )
         else:
             timestamp_human_validated = None
         tag = sk_parts[-1].lstrip("_").strip()

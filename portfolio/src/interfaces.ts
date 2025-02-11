@@ -63,13 +63,10 @@ export interface Word {
 }
 
 export interface ReceiptWord {
-  // IDs indicating what this word is linked to
-  image_id: number;
+  image_id: string;  // UUID string
   receipt_id: number;
   line_id: number;
   word_id: number;
-
-  // Basic text and geometry
   text: string;
   bounding_box: BoundingBoxInterface;
   top_left: Point;
@@ -79,15 +76,13 @@ export interface ReceiptWord {
   angle_degrees: number;
   angle_radians: number;
   confidence: number;
-
-  // Additional fields found in the example
-  tags: string[];
-  histogram: Record<string, number>;
-  num_chars: number;
+  tags: string[];  // Required array, might be empty
+  histogram: Record<string, number>;  // Required
+  num_chars: number;  // Required
 }
 
 export interface ReceiptWordTag {
-  image_id: number;
+  image_id: string;
   receipt_id: number;
   line_id: number;
   word_id: number;
@@ -169,30 +164,6 @@ export interface ReceiptDetailsApiResponse {
   } | null;
 }
 
-export interface ReceiptWord {
-  // IDs indicating what this word is linked to
-  image_id: number;
-  line_id: number;
-  receipt_id: number;
-  id: number;
-
-  // Basic text and geometry
-  text: string;
-  bounding_box: BoundingBoxInterface;
-  top_left: Point;
-  top_right: Point;
-  bottom_left: Point;
-  bottom_right: Point;
-  angle_degrees: number;
-  angle_radians: number;
-  confidence: number;
-
-  // Additional fields found in the example
-  tags: string[];
-  histogram: Record<string, number>;
-  num_chars: number;
-}
-
 export interface ReceiptPayloadEntry {
   receipt?: Receipt; // The single "receipt" object
   words?: ReceiptWord[]; // The array of recognized word objects
@@ -266,4 +237,9 @@ export interface ReceiptDetail {
   receipt: Receipt;
   words: ReceiptWord[];
   word_tags: ReceiptWordTag[];
+}
+
+export interface ReceiptWordTagApiResponse {
+  statusCode: number;
+  body: string;
 }

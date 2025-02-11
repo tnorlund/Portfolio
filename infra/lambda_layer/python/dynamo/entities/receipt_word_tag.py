@@ -1,4 +1,4 @@
-from typing import Generator, Optional, Tuple
+from typing import Generator, Optional, Tuple, Union
 from datetime import datetime
 from dynamo.entities.util import assert_valid_uuid, _repr_str
 
@@ -22,6 +22,20 @@ class ReceiptWordTag:
         human_validated (bool): Whether the tag has been validated by a human.
     """
 
+    image_id: str
+    receipt_id: int
+    line_id: int
+    word_id: int
+    tag: str
+    timestamp_added: str
+    validated: Optional[bool]
+    timestamp_validated: Optional[str]
+    gpt_confidence: Optional[int]
+    flag: Optional[str]
+    revised_tag: Optional[str]
+    human_validated: Optional[bool]
+    timestamp_human_validated: Optional[str]  # Explicitly declare as str
+
     def __init__(
         self,
         image_id: str,
@@ -36,7 +50,7 @@ class ReceiptWordTag:
         flag: Optional[str] = None,
         revised_tag: Optional[str] = None,
         human_validated: Optional[bool] = None,
-        timestamp_human_validated: Optional[datetime] = None,
+        timestamp_human_validated: Optional[Union[str, datetime]] = None,
     ):
         """Initializes a new ReceiptWordTag object for DynamoDB.
 
@@ -49,6 +63,7 @@ class ReceiptWordTag:
                 and must not start with an underscore.
             timestamp_added (datetime): The timestamp when the tag was added.
             validated (bool, optional): Whether the tag has been validated. Defaults to None.
+            timestamp_human_validated (datetime, optional): The timestamp when the tag was validated by a human. Defaults to None.
 
         Raises:
             ValueError: If any parameter is of an invalid type or has an invalid value.
@@ -419,7 +434,7 @@ def itemToReceiptWordTag(item: dict) -> ReceiptWordTag:
             human_validated = None
         if "timestamp_human_validated" in item:
             timestamp_human_validated = (
-                datetime.fromisoformat(item["timestamp_human_validated"]["S"])
+                item["timestamp_human_validated"]["S"]
                 if "S" in item["timestamp_human_validated"]
                 else None
             )

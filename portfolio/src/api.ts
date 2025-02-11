@@ -10,6 +10,9 @@ import {
   ReceiptWordTagsApiResponse,
   TagValidationStatsResponse,
   ReceiptDetailApiResponse,
+  ReceiptWord,
+  ReceiptWordTag,
+  ReceiptWordTagApiResponse,
 } from "./interfaces";
 
 const isDevelopment = process.env.NODE_ENV === "development";
@@ -27,6 +30,29 @@ export async function fetchTagValidationStats(): Promise<TagValidationStatsRespo
       }
     
       return await response.json();
+}
+
+export async function postReceiptWordTag(
+  selectedTag: ReceiptWordTag,
+  selectedWord: ReceiptWord
+): Promise<ReceiptWordTagApiResponse> {
+  const apiUrl = isDevelopment
+    ? `https://dev-api.tylernorlund.com/receipt_word_tag`
+    : `https://api.tylernorlund.com/receipt_word_tag`;
+
+  const response = await fetch(apiUrl, {
+    method: "POST",
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ selected_tag: selectedTag, selected_word: selectedWord }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Network response was not ok (status: ${response.status})`);
+  }
+
+  return await response.json();
 }
 
 export async function fetchReceiptWordTags(
