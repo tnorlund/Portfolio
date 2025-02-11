@@ -1,8 +1,10 @@
-import React from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ReceiptDetail, ReceiptWord, ReceiptWordTag } from "../interfaces";
 import ReceiptBoundingBox from "../ReceiptBoundingBox";
 import AddressGroup from "./AddressGroup";
+import TagGroup from './TagGroup';
 
+// Types
 interface WordWithTag extends ReceiptWord {
   tag?: ReceiptWordTag;
 }
@@ -18,73 +20,137 @@ interface SelectedReceiptProps {
   cdn_base_url: string;
 }
 
-const selectableTags = [
-  "line_item_name",
-  "address",
-  "line_item_price",
+// Constants
+const SELECTABLE_TAGS = [
   "store_name",
   "date",
   "time",
-  "total_amount",
   "phone_number",
+  "address",
+  "line_item_name",
+  "line_item_price",
+  "total_amount",
   "taxes",
-];
+] as const;
 
+// Styles
+const styles = {
+  container: {
+    display: "flex" as const,
+    flexDirection: "column" as const,
+    width: "100%",
+  },
+  mainContainer: {
+    display: "flex",
+    position: "relative" as const,
+  },
+  leftPanel: {
+    width: "50%",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  rightPanel: {
+    width: "50%",
+    position: "absolute" as const,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    overflowY: "auto" as const,
+  },
+  rightPanelContent: {
+    padding: "20px",
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: "8px",
+  },
+  header: {
+    display: "flex",
+    justifyContent: "space-between",
+    marginBottom: "0.5rem",
+    alignItems: "center",
+  },
+  headerTitle: {
+    fontSize: "2rem",
+    color: "white",
+    fontWeight: "bold",
+  },
+  addButton: (isAddingTag: boolean) => ({
+    width: "32px",
+    height: "32px",
+    borderRadius: "50%",
+    backgroundColor: isAddingTag ? "var(--background-color)" : "var(--text-color)",
+    border: isAddingTag ? "2px solid var(--text-color)" : "none",
+    color: isAddingTag ? "var(--text-color)" : "var(--background-color)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    fontSize: "1.5rem",
+    lineHeight: "1",
+    paddingBottom: "3px",
+    fontWeight: "bold",
+  }),
+};
+
+// Component
 const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
   selectedReceipt,
   receiptDetails,
   cdn_base_url,
 }) => {
-  const [selectedWord, setSelectedWord] = React.useState<ReceiptWord | null>(null);
-  const [openTagMenu, setOpenTagMenu] = React.useState<{
+  const [selectedWord, setSelectedWord] = useState<ReceiptWord | null>(null);
+  const [openTagMenu, setOpenTagMenu] = useState<{
     groupIndex: number;
     wordIndex: number;
   } | null>(null);
-  const [isAddingTag, setIsAddingTag] = React.useState(false);
-  const menuRef = React.useRef<HTMLDivElement>(null);
+  const [addingTagType, setAddingTagType] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
-  const onWordSelect = React.useCallback((word: ReceiptWord) => {
+  const onWordSelect = useCallback((word: ReceiptWord) => {
     setSelectedWord(word);
   }, []);
 
-  React.useEffect(() => {
+  useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
         setOpenTagMenu(null);
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const getAddressGroups = (detail: ReceiptDetail): GroupedWords[] => {
-    // Get all address tags
-    const addressTags = detail.word_tags.filter((tag) => {
-      return tag.tag.trim().toLowerCase() === "address";
+  const getTagGroups = (detail: ReceiptDetail, tagType: string): GroupedWords => {
+    // Get all tags of the specified type
+    const tags = detail.word_tags.filter((tag) => {
+      return tag.tag.trim().toLowerCase() === tagType.toLowerCase();
     });
 
+    // Get all words that have this tag
+    const taggedWords = detail.words.filter(word => 
+      tags.some(tag => 
+        tag.word_id === word.word_id &&
+        tag.line_id === word.line_id &&
+        tag.receipt_id === word.receipt_id &&
+        tag.image_id === word.image_id
+      )
+    );
+
     // Sort words by their position (top to bottom, left to right)
-    const sortedWords = [...detail.words].sort((a, b) => {
+    const sortedWords = [...taggedWords].sort((a, b) => {
       if (Math.abs(a.bounding_box.y - b.bounding_box.y) < 10) {
         return a.bounding_box.x - b.bounding_box.x;
       }
       return a.bounding_box.y - b.bounding_box.y;
     });
 
-    // Create a group for each tagged word
-    return sortedWords
-      .map(word => {
-        const matchingTag = addressTags.find((tag) => 
-          tag.word_id === word.word_id &&
-          tag.line_id === word.line_id &&
-          tag.receipt_id === word.receipt_id &&
-          tag.image_id === word.image_id
-        );
-        
-        return matchingTag ? { words: [word], tag: matchingTag } : null;
-      })
-      .filter((group): group is GroupedWords => group !== null);
+    // Return all words with their tag
+    return {
+      words: sortedWords,
+      tag: tags[0] // Use the first tag since they're all the same type
+    };
   };
 
   const renderStars = (confidence: number | null) => {
@@ -123,80 +189,54 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
     );
   };
 
+  const handleBoundingBoxClick = (word: ReceiptWord) => {
+    if (addingTagType) {
+      console.log('Adding tag:', addingTagType, 'to word:', word);
+      setSelectedWord(word);
+      setAddingTagType(null);
+    }
+  };
+
   const renderRightPanel = () => {
     if (!selectedReceipt || !receiptDetails[selectedReceipt]) return null;
 
-    const addressGroups = getAddressGroups(receiptDetails[selectedReceipt]);
+    let groupIndex = 0;
 
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between',
-          marginBottom: '0.5rem',
-          alignItems: 'center'
-        }}>
-          <div style={{ fontSize: '2rem', color: 'white', fontWeight: 'bold'}}>
-            Address
-          </div>
-          <div style={{
-            width: '32px',
-            height: '32px',
-            borderRadius: '50%',
-            backgroundColor: isAddingTag ? 'var(--background-color)' : 'var(--text-color)',
-            border: isAddingTag ? '2px solid var(--text-color)' : 'none',
-            color: isAddingTag ? 'var(--text-color)' : 'var(--background-color)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            fontSize: '1.5rem',
-            lineHeight: '1',
-            paddingBottom: '3px',
-            fontWeight: 'bold'
-          }} onClick={() => setIsAddingTag(!isAddingTag)}>
-            +
-          </div>
-        </div>
-        {addressGroups.map((group, index) => (
-          <AddressGroup
-            key={index}
-            words={group.words}
-            tag={group.tag}
-            selectedWord={selectedWord}
-            onWordSelect={onWordSelect}
-            groupIndex={index}
-            openTagMenu={openTagMenu}
-            setOpenTagMenu={setOpenTagMenu}
-            menuRef={menuRef}
-          />
-        ))}
+      <div style={styles.rightPanelContent}>
+        {SELECTABLE_TAGS.map(tagType => {
+          const group = getTagGroups(receiptDetails[selectedReceipt], tagType);
+          if (group.words.length === 0) return null;
+
+          return (
+            <TagGroup
+              key={tagType}
+              words={group.words}
+              tag={group.tag}
+              tagType={tagType}
+              selectedWord={selectedWord}
+              onWordSelect={onWordSelect}
+              groupIndex={groupIndex++}
+              openTagMenu={openTagMenu}
+              setOpenTagMenu={setOpenTagMenu}
+              menuRef={menuRef}
+              isAddingTag={addingTagType === tagType}
+              onAddTagClick={() => {
+                setAddingTagType(addingTagType === tagType ? null : tagType);
+              }}
+            />
+          );
+        })}
       </div>
     );
   };
 
-  const handleBoundingBoxClick = (word: ReceiptWord) => {
-    if (isAddingTag) {
-      setSelectedWord(word);
-      setIsAddingTag(false);
-    }
-  };
-
   return (
-    <div className="w-full flex flex-col">
+    <div style={styles.container}>
       <h1 className="text-2xl font-bold p-4">Receipt Validation</h1>
 
-      {/* Main container */}
-      <div style={{ display: "flex", position: "relative" }}>
-        {/* Left panel - Will determine height */}
-        <div
-          style={{
-            width: "50%",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-          }}
-        >
+      <div style={styles.mainContainer}>
+        <div style={styles.leftPanel}>
           {selectedReceipt && receiptDetails[selectedReceipt] ? (
             <ReceiptBoundingBox
               detail={receiptDetails[selectedReceipt]}
@@ -204,29 +244,15 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
               isSelected={true}
               cdn_base_url={cdn_base_url}
               highlightedWords={selectedWord ? [selectedWord] : []}
-              onClick={isAddingTag ? handleBoundingBoxClick : undefined}
-              isAddingTag={isAddingTag}
+              onClick={addingTagType ? handleBoundingBoxClick : undefined}
+              isAddingTag={!!addingTagType}
             />
           ) : (
             <div>Select a receipt</div>
           )}
         </div>
 
-        {/* Right panel - Should scroll */}
-        <div
-          style={{
-            width: "50%",
-            position: "absolute",
-            right: 0,
-            top: 0,
-            bottom: 0,
-            overflowY: "auto",
-          }}
-        >
-          <div style={{ padding: "20px" }}>
-            {renderRightPanel()}
-          </div>
-        </div>
+        <div style={styles.rightPanel}>{renderRightPanel()}</div>
       </div>
     </div>
   );
