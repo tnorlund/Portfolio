@@ -4,10 +4,6 @@ import ReceiptBoundingBox from "../ReceiptBoundingBox";
 import TagGroup from './TagGroup';
 
 // Types
-interface WordWithTag extends ReceiptWord {
-  tag?: ReceiptWordTag;
-}
-
 interface GroupedWords {
   words: ReceiptWord[];
   tag: ReceiptWordTag;
@@ -63,17 +59,6 @@ const styles = {
     flexDirection: "column" as const,
     gap: "8px",
   },
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    marginBottom: "0.5rem",
-    alignItems: "center",
-  },
-  headerTitle: {
-    fontSize: "2rem",
-    color: "white",
-    fontWeight: "bold",
-  },
   addButton: (isAddingTag: boolean) => ({
     width: "32px",
     height: "32px",
@@ -92,13 +77,6 @@ const styles = {
   }),
 };
 
-interface SelectionBox {
-  startX: number;
-  startY: number;
-  endX: number;
-  endY: number;
-}
-
 // Component
 const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
   selectedReceipt,
@@ -111,8 +89,8 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
     wordIndex: number;
   } | null>(null);
   const [addingTagType, setAddingTagType] = useState<string | null>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
   const [selectedWords, setSelectedWords] = useState<ReceiptWord[]>([]);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const onWordSelect = useCallback((word: ReceiptWord) => {
     setSelectedWord(word);
@@ -130,12 +108,10 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
   }, []);
 
   const getTagGroups = (detail: ReceiptDetail, tagType: string): GroupedWords => {
-    // Get all tags of the specified type
-    const tags = detail.word_tags.filter((tag) => {
-      return tag.tag.trim().toLowerCase() === tagType.toLowerCase();
-    });
+    const tags = detail.word_tags.filter((tag) => 
+      tag.tag.trim().toLowerCase() === tagType.toLowerCase()
+    );
 
-    // Get all words that have this tag
     const taggedWords = detail.words.filter(word => 
       tags.some(tag => 
         tag.word_id === word.word_id &&
@@ -145,7 +121,6 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
       )
     );
 
-    // Sort words by their position (top to bottom, left to right)
     const sortedWords = [...taggedWords].sort((a, b) => {
       if (Math.abs(a.bounding_box.y - b.bounding_box.y) < 10) {
         return a.bounding_box.x - b.bounding_box.x;
@@ -153,47 +128,10 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
       return a.bounding_box.y - b.bounding_box.y;
     });
 
-    // Return all words with their tag
     return {
       words: sortedWords,
-      tag: tags[0] // Use the first tag since they're all the same type
+      tag: tags[0]
     };
-  };
-
-  const renderStars = (confidence: number | null) => {
-    if (confidence === null) return null;
-    const stars = '★'.repeat(confidence) + '☆'.repeat(5 - confidence);
-    return (
-      <span style={{ 
-        color: 'var(--text-color)', // Amber-400 for gold stars
-        marginLeft: '8px',
-        fontSize: '0.875rem'
-      }}>
-        {stars}
-      </span>
-    );
-  };
-
-  const renderHumanValidation = (validated: boolean | null) => {
-    if (validated === null) {
-      return (
-        <span style={{ 
-          width: '16px',
-          height: '16px',
-          borderRadius: '4px',
-          border: '2px solid var(--text-color)',
-          display: 'inline-block'
-        }} />
-      );
-    }
-    return (
-      <span style={{ 
-        color: validated ? '#4ade80' : '#ef4444',
-        fontSize: '1rem'
-      }}>
-        {validated ? '✓' : '✗'}
-      </span>
-    );
   };
 
   const handleBoundingBoxClick = (word: ReceiptWord) => {
