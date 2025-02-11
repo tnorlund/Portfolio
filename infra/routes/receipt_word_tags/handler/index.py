@@ -103,14 +103,44 @@ def handler(event, context):
                 
                 # Create the receipt word and receipt word tags
                 word = ReceiptWord(**word_data["word"])
-                tags = [ReceiptWordTag(**tag) for tag in word_data["tags"]]
+                existing_tags = [ReceiptWordTag(**tag) for tag in word_data["tags"]]
 
-                
+                # Create new word tag if it doesn't exist
+                new_tag = ReceiptWordTag(
+                    image_id=word.image_id,
+                    receipt_id=word.receipt_id,
+                    line_id=word.line_id,
+                    word_id=word.word_id,
+                    tag=selected_tag,
+                    timestamp_added=datetime.datetime.now(),
+                    human_validated=True,
+                    timestamp_human_validated=datetime.datetime.now()
+                )
+
+                try:
+                    # Check if this tag already exists for this word
+                    tag_exists = any(tag.tag == selected_tag for tag in existing_tags)
+                    
+                    if tag_exists:
+                        # Update existing tag with human validation
+                        client.updateWordTag(new_tag)
+                    else:
+                        # Create new tag
+                        client.addWordTag(new_tag)
+
+                        # Update the word's tags list if needed
+                        if selected_tag not in word.tags:
+                            word.tags.append(selected_tag)
+                            client.updateReceiptWord(word)
+
+                except Exception as e:
+                    logger.error(f"Error processing word {word.word_id}: {str(e)}")
+                    return {"statusCode": 500, "body": f"Error processing word: {str(e)}"}
 
             return {
                 "statusCode": 200,
                 "body": json.dumps({
-                    "message": "Successfully created word tags",
+                    "message": "Successfully updated word tags",
                     "tag": selected_tag,
                     "word_count": len(selected_words)
                 })
