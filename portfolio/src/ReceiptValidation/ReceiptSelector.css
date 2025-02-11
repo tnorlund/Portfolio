@@ -1,0 +1,65 @@
+.receipt-selector-container {
+  height: 200px;
+  border-top: 1px solid var(--text-color);
+  box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
+}
+
+.receipt-selector-content {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.receipt-selector-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.receipt-selector-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.receipt-selector-hint {
+  font-size: 0.75rem;
+  color: var(--text-color);
+}
+
+.receipt-selector-grid {
+  display: flex;
+  gap: 2rem;
+  overflow-x: auto;
+  padding-top: 0.5rem;
+  padding-bottom: 1.5rem;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+  width: 100%;
+  align-items: center;
+  min-height: 140px;
+}
+
+.receipt-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  padding: 0.5rem;
+  border-radius: 0.5rem;
+  flex-shrink: 0;
+  width: 120px;
+  transition: transform 200ms ease-out;
+  cursor: pointer;
+  transform-origin: center center;
+}
+
+.receipt-item.selected {
+  border: 2px solid var(--text-color);
+}
+
+.receipt-item:not(.selected):hover {
+  transform: scale(1.05);
+} 
