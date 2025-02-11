@@ -1,8 +1,25 @@
+"""
+This handler is used to get and update receipt word tags.
+
+GET:
+    - Get receipt word tags by tag.
+    - Paginated.
+
+POST:
+    - Update receipt word tags.
+    - Expects
+        - selected_tag: string
+        - selected_words: list of objects with the following keys:
+            - word: Word entity as a dictionary
+            - tags: list of tag entities as dictionaries
+"""
+
 import os
 import logging
 import json
-from dynamo import DynamoClient
+from dynamo import DynamoClient, ReceiptWord, ReceiptWordTag
 import random
+import datetime
 
 
 logger = logging.getLogger()
@@ -63,39 +80,39 @@ def handler(event, context):
             
             # Parse the request body
             body = json.loads(event.get("body", "{}"))
-            if not isinstance(body, list):
-                return {"statusCode": 400, "body": "Request body must be an array of word tag updates"}
+            
+            # Validate request structure
+            if not isinstance(body, dict):
+                return {"statusCode": 400, "body": "Request body must be an object"}
+            
+            if "selected_tag" not in body or "selected_words" not in body:
+                return {"statusCode": 400, "body": "Request must include 'selected_tag' and 'selected_words'"}
+            
+            selected_tag = body["selected_tag"]
+            selected_words = body["selected_words"]
+            
+            if not isinstance(selected_words, list):
+                return {"statusCode": 400, "body": "'selected_words' must be an array"}
 
-            # Expected format of each item:
-            # {
-            #   "receiptId": string,
-            #   "wordId": string,
-            #   "tag": string
-            # }
+            # Process each word
+            for word_data in selected_words:
+                if "word" not in word_data:
+                    return {"statusCode": 400, "body": "Each item must contain a 'word' object"} 
+                if "tags" not in word_data:
+                    return {"statusCode": 400, "body": "Each item must contain a 'tags' array"}
+                
+                # Create the receipt word and receipt word tags
+                word = ReceiptWord(**word_data["word"])
+                tags = [ReceiptWordTag(**tag) for tag in word_data["tags"]]
 
-            # Validate the request body
-            for item in body:
-                if not all(k in item for k in ("receiptId", "wordId", "tag")):
-                    return {
-                        "statusCode": 400,
-                        "body": "Each item must contain receiptId, wordId, and tag"
-                    }
-
-            # Process the updates
-            updated_items = []
-            for item in body:
-                rwt = client.putReceiptWordTag(
-                    receipt_id=item["receiptId"],
-                    word_id=item["wordId"],
-                    tag=item["tag"]
-                )
-                updated_items.append(dict(rwt))
+                
 
             return {
                 "statusCode": 200,
                 "body": json.dumps({
-                    "message": f"Successfully updated {len(updated_items)} tags",
-                    "updated": updated_items
+                    "message": "Successfully created word tags",
+                    "tag": selected_tag,
+                    "word_count": len(selected_words)
                 })
             }
 
