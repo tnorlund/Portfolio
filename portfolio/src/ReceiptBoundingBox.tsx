@@ -5,9 +5,10 @@ interface ReceiptBoundingBoxProps {
   detail: ReceiptDetail;
   width?: number;
   isSelected?: boolean;
-  onClick?: () => void;
+  onClick?: (word: ReceiptWord) => void;
   cdn_base_url: string;
   highlightedWords?: ReceiptWord[];
+  isAddingTag?: boolean;
 }
 
 const ReceiptBoundingBox: React.FC<ReceiptBoundingBoxProps> = ({
@@ -16,7 +17,8 @@ const ReceiptBoundingBox: React.FC<ReceiptBoundingBoxProps> = ({
   isSelected = false,
   onClick,
   cdn_base_url,
-  highlightedWords = []
+  highlightedWords = [],
+  isAddingTag = false
 }): JSX.Element => {
   const { receipt, words } = detail;
   const imageUrl = cdn_base_url + receipt.cdn_s3_key;
@@ -28,7 +30,7 @@ const ReceiptBoundingBox: React.FC<ReceiptBoundingBoxProps> = ({
   return (
     <div 
       className={`cursor-pointer transition-transform ${isSelected ? 'scale-100' : 'hover:scale-105'}`}
-      onClick={onClick}
+      onClick={onClick && words[0] ? () => onClick(words[0]) : undefined}
     >
       <svg
         viewBox={`0 0 ${receipt.width} ${receipt.height}`}
@@ -65,9 +67,11 @@ const ReceiptBoundingBox: React.FC<ReceiptBoundingBoxProps> = ({
               key={idx}
               points={points}
               fill="none"
-              stroke="red"
+              stroke={isAddingTag ? "yellow" : "red"}
               strokeWidth={isHighlighted ? "3" : "1"}
               opacity={isSelected ? "0.8" : "0.5"}
+              style={{ cursor: isAddingTag ? 'pointer' : 'default' }}
+              onClick={onClick ? () => onClick(word) : undefined}
             />
           );
         })}

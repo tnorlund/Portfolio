@@ -39,6 +39,7 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
     groupIndex: number;
     wordIndex: number;
   } | null>(null);
+  const [isAddingTag, setIsAddingTag] = React.useState(false);
   const menuRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -107,6 +108,42 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
     return groups;
   };
 
+  const renderStars = (confidence: number | null) => {
+    if (confidence === null) return null;
+    const stars = '★'.repeat(confidence) + '☆'.repeat(5 - confidence);
+    return (
+      <span style={{ 
+        color: 'var(--text-color)', // Amber-400 for gold stars
+        marginLeft: '8px',
+        fontSize: '0.875rem'
+      }}>
+        {stars}
+      </span>
+    );
+  };
+
+  const renderHumanValidation = (validated: boolean | null) => {
+    if (validated === null) {
+      return (
+        <span style={{ 
+          width: '16px',
+          height: '16px',
+          borderRadius: '4px',
+          border: '2px solid var(--text-color)',
+          display: 'inline-block'
+        }} />
+      );
+    }
+    return (
+      <span style={{ 
+        color: validated ? '#4ade80' : '#ef4444',
+        fontSize: '1rem'
+      }}>
+        {validated ? '✓' : '✗'}
+      </span>
+    );
+  };
+
   const renderRightPanel = () => {
     if (!selectedReceipt || !receiptDetails[selectedReceipt]) return null;
 
@@ -114,6 +151,34 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between',
+          marginBottom: '0.5rem',
+          alignItems: 'center'
+        }}>
+          <div style={{ fontSize: '2rem', color: 'white', fontWeight: 'bold'}}>
+            Address
+          </div>
+          <div style={{
+            width: '32px',
+            height: '32px',
+            borderRadius: '50%',
+            backgroundColor: isAddingTag ? 'var(--background-color)' : 'var(--text-color)',
+            border: isAddingTag ? '2px solid var(--text-color)' : 'none',
+            color: isAddingTag ? 'var(--text-color)' : 'var(--background-color)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            fontSize: '1.5rem',
+            lineHeight: '1',
+            paddingBottom: '3px',
+            fontWeight: 'bold'
+          }} onClick={() => setIsAddingTag(!isAddingTag)}>
+            +
+          </div>
+        </div>
         {addressGroups.map((group, index) => (
           <div key={index} 
                style={{
@@ -145,30 +210,36 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
                   position: 'relative'
                 }}
               >
-                <span 
-                  style={{ color: 'white' }}
-                  onClick={() => setSelectedWord(word)}
-                >
-                  {word.text}
-                </span>
-                <span 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setOpenTagMenu(openTagMenu?.groupIndex === index && 
-                      openTagMenu.wordIndex === wordIdx ? null : 
-                      { groupIndex: index, wordIndex: wordIdx });
-                  }}
-                  style={{ 
-                    color: group.tag.validated ? '#4ade80' : '#ef4444',
-                    backgroundColor: group.tag.validated ? '#065f46' : '#7f1d1d',
-                    padding: '2px 8px',
-                    borderRadius: '4px',
-                    fontSize: '0.875rem',
-                    cursor: 'pointer'
-                  }}
-                >
-                  Address
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {renderHumanValidation(group.tag.human_validated)}
+                  <span 
+                    style={{ color: 'var(--text-color)' }}
+                    onClick={() => setSelectedWord(word)}
+                  >
+                    {word.text}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {renderStars(group.tag.gpt_confidence)}
+                  <span 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setOpenTagMenu(openTagMenu?.groupIndex === index && 
+                        openTagMenu.wordIndex === wordIdx ? null : 
+                        { groupIndex: index, wordIndex: wordIdx });
+                    }}
+                    style={{ 
+                      color: group.tag.validated ? '#4ade80' : '#ef4444',
+                      backgroundColor: group.tag.validated ? '#065f46' : '#7f1d1d',
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                      fontSize: '0.875rem',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Address
+                  </span>
+                </div>
                 {openTagMenu?.groupIndex === index && 
                  openTagMenu.wordIndex === wordIdx && (
                   <div ref={menuRef} style={{
@@ -210,6 +281,13 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
     );
   };
 
+  const handleBoundingBoxClick = (word: ReceiptWord) => {
+    if (isAddingTag) {
+      console.log('Selected word for new tag:', word);
+      setIsAddingTag(false);
+    }
+  };
+
   return (
     <div className="w-full flex flex-col">
       <h1 className="text-2xl font-bold p-4">Receipt Validation</h1>
@@ -233,6 +311,8 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
               isSelected={true}
               cdn_base_url={cdn_base_url}
               highlightedWords={selectedWord ? [selectedWord] : []}
+              onClick={isAddingTag ? handleBoundingBoxClick : undefined}
+              isAddingTag={isAddingTag}
             />
           ) : (
             <div>Select a receipt</div>
@@ -252,9 +332,6 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
           }}
         >
           <div style={{ padding: "20px" }}>
-            <h2 style={{ color: "white", marginBottom: "1rem" }}>
-              Address Entries
-            </h2>
             {renderRightPanel()}
           </div>
         </div>
