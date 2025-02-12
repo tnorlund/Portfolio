@@ -41,23 +41,34 @@ const WordItem: React.FC<WordItemProps> = ({
   };
 
   const renderHumanValidation = (validated: boolean | null) => {
+    const commonStyles = {
+      width: '16px',
+      height: '16px',
+      borderRadius: '4px',
+      border: '2px solid var(--text-color)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+    };
+
     if (validated === null) {
-      return (
-        <span style={{ 
-          width: '16px',
-          height: '16px',
-          borderRadius: '4px',
-          border: '2px solid var(--text-color)',
-          display: 'inline-block'
-        }} />
-      );
+      return <span style={commonStyles} />;
     }
+
     return (
       <span style={{ 
+        ...commonStyles,
         color: validated ? 'var(--color-green)' : 'var(--color-red)',
-        fontSize: '1rem'
       }}>
-        {validated ? '✓' : '✗'}
+        {validated ? (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="5">
+            <path d="M20 6L9 17L4 12" />
+          </svg>
+        ) : (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="5">
+            <path d="M18 6L6 18M6 6l12 12" />
+          </svg>
+        )}
       </span>
     );
   };
