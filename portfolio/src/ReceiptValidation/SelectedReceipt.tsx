@@ -8,7 +8,7 @@ import TagMenu from './TagMenu';
 // Types
 interface GroupedWords {
   words: ReceiptWord[];
-  tag: ReceiptWordTag;
+  tag: ReceiptWordTag[];
 }
 
 interface SelectedReceiptProps {
@@ -160,7 +160,7 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
 
     return {
       words: sortedWords,
-      tag: tags[0]
+      tag: tags
     };
   };
 
@@ -281,7 +281,7 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
             <TagGroup
               key={tagType}
               words={group.words}
-              tag={group.tag}
+              tags={group.tag}
               tagType={tagType}
               selectedWord={selectedWord}
               onWordSelect={onWordSelect}

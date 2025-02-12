@@ -4,7 +4,7 @@ import WordItem from './WordItem';
 
 interface TagGroupProps {
   words: ReceiptWord[];
-  tag: ReceiptWordTag;
+  tags: ReceiptWordTag[];
   tagType: string;
   selectedWord: ReceiptWord | null;
   onWordSelect: (word: ReceiptWord) => void;
@@ -19,7 +19,7 @@ interface TagGroupProps {
 
 const TagGroup: React.FC<TagGroupProps> = ({
   words,
-  tag,
+  tags,
   tagType,
   selectedWord,
   onWordSelect,
@@ -90,29 +90,43 @@ const TagGroup: React.FC<TagGroupProps> = ({
         gap: '4px',
         marginLeft: '6px',
       }}>
-        {words.map((word, wordIdx) => (
-          <WordItem
-            key={`${word.image_id}-${word.line_id}-${word.word_id}`}
-            word={word}
-            tag={tag}
-            isSelected={!!(selectedWord && 
-              selectedWord.word_id === word.word_id &&
-              selectedWord.line_id === word.line_id &&
-              selectedWord.receipt_id === word.receipt_id &&
-              selectedWord.image_id === word.image_id
-            )}
-            onWordClick={() => onWordSelect(word)}
-            onTagClick={() => {
-              setOpenTagMenu({
-                groupIndex,
-                wordIndex: wordIdx,
-              });
-            }}
-            openTagMenu={openTagMenu?.groupIndex === groupIndex && openTagMenu?.wordIndex === wordIdx}
-            menuRef={menuRef}
-            onUpdateTag={onUpdateTag}
-          />
-        ))}
+        {words.map((word, wordIdx) => {
+          const wordTag = tags.find(t => 
+            t.word_id === word.word_id && 
+            t.line_id === word.line_id && 
+            t.receipt_id === word.receipt_id &&
+            t.image_id === word.image_id
+          );
+
+          if (!wordTag) {
+            console.error('No matching tag found for word:', word);
+            return null;
+          }
+
+          return (
+            <WordItem
+              key={`${word.image_id}-${word.line_id}-${word.word_id}`}
+              word={word}
+              tag={wordTag}
+              isSelected={!!(selectedWord && 
+                selectedWord.word_id === word.word_id &&
+                selectedWord.line_id === word.line_id &&
+                selectedWord.receipt_id === word.receipt_id &&
+                selectedWord.image_id === word.image_id
+              )}
+              onWordClick={() => onWordSelect(word)}
+              onTagClick={() => {
+                setOpenTagMenu({
+                  groupIndex,
+                  wordIndex: wordIdx,
+                });
+              }}
+              openTagMenu={openTagMenu?.groupIndex === groupIndex && openTagMenu?.wordIndex === wordIdx}
+              menuRef={menuRef}
+              onUpdateTag={onUpdateTag}
+            />
+          );
+        })}
       </div>
     </div>
   );
