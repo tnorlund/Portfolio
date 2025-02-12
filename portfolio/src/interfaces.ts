@@ -97,6 +97,21 @@ export interface ReceiptWordTag {
   timestamp_human_validated: string | null;
 }
 
+export interface WordTag {
+  image_id: string;
+  line_id: number;
+  word_id: number;
+  tag: string;
+  timestamp_added: string;
+  validated: boolean | null;
+  timestamp_validated: string | null;
+  gpt_confidence: number | null;
+  flag: string | null;
+  revised_tag: string | null;
+  human_validated: boolean | null;
+  timestamp_human_validated: string | null;
+}
+
 export interface Receipt {
   receipt_id: number;
   image_id: string;

@@ -15,6 +15,7 @@ interface TagGroupProps {
   isAddingTag: boolean;
   onAddTagClick: () => void;
   onUpdateTag: (updatedTag: ReceiptWordTag) => void;
+  onRefresh: () => void;
 }
 
 const TagGroup: React.FC<TagGroupProps> = ({
@@ -30,6 +31,7 @@ const TagGroup: React.FC<TagGroupProps> = ({
   isAddingTag,
   onAddTagClick,
   onUpdateTag,
+  onRefresh,
 }) => {
   return (
     <div>
@@ -124,6 +126,7 @@ const TagGroup: React.FC<TagGroupProps> = ({
               openTagMenu={openTagMenu?.groupIndex === groupIndex && openTagMenu?.wordIndex === wordIdx}
               menuRef={menuRef}
               onUpdateTag={onUpdateTag}
+              onRefresh={onRefresh}
             />
           );
         })}

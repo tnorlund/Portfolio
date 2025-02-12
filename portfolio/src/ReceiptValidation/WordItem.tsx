@@ -12,6 +12,7 @@ interface WordItemProps {
   openTagMenu: boolean;
   menuRef: React.RefObject<HTMLDivElement>;
   onUpdateTag?: (updatedTag: ReceiptWordTag) => void;
+  onRefresh?: () => void;
 }
 
 const WordItem: React.FC<WordItemProps> = ({
@@ -23,6 +24,7 @@ const WordItem: React.FC<WordItemProps> = ({
   openTagMenu,
   menuRef,
   onUpdateTag,
+  onRefresh,
 }) => {
   const [isUpdating, setIsUpdating] = useState(false);
 
@@ -79,21 +81,55 @@ const WordItem: React.FC<WordItemProps> = ({
     try {
       setIsUpdating(true);
       
-      const updatedTag = {
-        ...tag,
-        human_validated: tag.human_validated === null ? true : !tag.human_validated
-      };
+      console.log('Validating tag:', {
+        selected_tag: tag,
+        selected_word: word,
+        action: "validate"
+      });
+      
+      const response = await postReceiptWordTag({
+        selected_tag: tag,
+        selected_word: word,
+        action: "validate"
+      });
 
-      await postReceiptWordTag(updatedTag, word);
-
+      console.log('Validation response:', response);
+      
       if (onUpdateTag) {
-        onUpdateTag(updatedTag);
+        onUpdateTag(response.updated.receipt_word_tag);
       }
     } catch (error) {
       console.error('Failed to update human validation:', error);
     } finally {
       setIsUpdating(false);
     }
+  };
+
+  // Determine tag color based on validation status
+  const getTagColor = () => {
+    if (tag.human_validated === false) {
+      return {
+        color: 'var(--color-red)',
+        border: '1px solid var(--color-red)',
+        backgroundColor: 'rgba(var(--color-red-rgb), 0.1)'
+      };
+    } else if (tag.human_validated === null) {
+      // If human_validated is null, use tag.validated
+      return tag.validated ? {
+        color: 'var(--color-green)',
+        border: '1px solid var(--color-green)',
+        backgroundColor: 'rgba(var(--color-green-rgb), 0.1)'
+      } : {
+        color: 'var(--color-red)',
+        border: '1px solid var(--color-red)',
+        backgroundColor: 'rgba(var(--color-red-rgb), 0.1)'
+      };
+    }
+    return {
+      color: 'var(--color-green)',
+      border: '1px solid var(--color-green)',
+      backgroundColor: 'rgba(var(--color-green-rgb), 0.1)'
+    };
   };
 
   return (
@@ -146,27 +182,44 @@ const WordItem: React.FC<WordItemProps> = ({
         <span 
           onClick={onTagClick}
           style={{ 
-            color: tag.validated ? 'var(--color-green)' : 'var(--color-red)',
-            border: `1px solid ${tag.validated ? 'var(--color-green)' : 'var(--color-red)'}`,
+            ...getTagColor(),
             padding: '2px 8px',
-            borderRadius: '4px',
+            borderRadius: '999px',
             fontSize: '0.875rem',
             cursor: 'pointer'
           }}
         >
           {tag.tag.split('_').map(word => 
-              word.charAt(0).toUpperCase() + word.slice(1)
-            ).join(' ')}
+            word.charAt(0).toUpperCase() + word.slice(1)
+          ).join(' ')}
         </span>
         {openTagMenu && (
           <TagMenu
             menuRef={menuRef}
-            onSelect={(newTag) => {
-              console.log('Single Update:', {
-                selected_word: word,
-                selected_new_tag: newTag,
-                matching_tag: tag
-              });
+            onSelect={async (newTag) => {
+              try {
+                console.log('Changing tag:', {
+                  selected_tag: tag,
+                  selected_word: word,
+                  action: "change_tag",
+                  new_tag: newTag
+                });
+
+                const response = await postReceiptWordTag({
+                  selected_tag: tag,
+                  selected_word: word,
+                  action: "change_tag",
+                  new_tag: newTag
+                });
+
+                console.log('Tag change response:', response);
+                
+                if (onUpdateTag) {
+                  onUpdateTag(response.updated.receipt_word_tag);
+                }
+              } catch (error) {
+                console.error('Failed to update tag:', error);
+              }
               onTagClick();
             }}
           />

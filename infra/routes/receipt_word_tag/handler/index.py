@@ -65,6 +65,7 @@ def handler(event, context):
 
             # Parse the request body
             body = json.loads(event.get("body", "{}"))
+            logger.info("Received POST body: %s", body)
 
             # Validate request structure
             if not isinstance(body, dict):
@@ -74,15 +75,16 @@ def handler(event, context):
                     "body": json.dumps({"error": "Request body must be an object"})
                 }
 
-            if "selected_tag" not in body or "selected_word" not in body:
+            if "selected_tag" not in body or "selected_word" not in body or "action" not in body:
                 return {
                     "statusCode": 400,
                     "headers": cors_headers,
-                    "body": json.dumps({"error": "Request must include 'selected_tag' and 'selected_word'"})
+                    "body": json.dumps({"error": "Request must include 'selected_tag', 'selected_word', and 'action'"})
                 }
 
             selected_tag = body["selected_tag"]
             selected_word = body["selected_word"]
+            action = body["action"]
 
             # Convert to receipt entities
             receipt_word_tag = ReceiptWordTag(**selected_tag)
@@ -104,42 +106,119 @@ def handler(event, context):
                 timestamp_human_validated=receipt_word_tag.timestamp_human_validated
             )
 
-            word = Word(
-                image_id=receipt_word.image_id,
-                line_id=receipt_word.line_id,
-                word_id=receipt_word.word_id,
-                text=receipt_word.text,
-                bounding_box=receipt_word.bounding_box,
-                top_right=receipt_word.top_right,
-                top_left=receipt_word.top_left,
-                bottom_right=receipt_word.bottom_right,
-                bottom_left=receipt_word.bottom_left,
-                angle_degrees=receipt_word.angle_degrees,
-                angle_radians=receipt_word.angle_radians,
-                confidence=receipt_word.confidence,
-                tags=receipt_word.tags
-            )
+            # Remove receipt_id before creating Word entity
+            word_params = {k: v for k, v in selected_word.items() if k != 'receipt_id'}
+            word = Word(**word_params)
 
-            # Update all entities
+            # Get current timestamp
             current_time = datetime.now(UTC)
-            timestamp_str = current_time.isoformat()  # Convert to ISO format string
-            
-            word_tag.human_validated = True
-            word_tag.timestamp_human_validated = timestamp_str  # Use string instead of datetime
-            receipt_word_tag.human_validated = True
-            receipt_word_tag.timestamp_human_validated = timestamp_str  # Use string instead of datetime
-            
+            timestamp_str = current_time.isoformat()
+
+            if action == "validate":
+                # Toggle validation status
+                new_validation_status = not receipt_word_tag.human_validated
+                receipt_word_tag.human_validated = new_validation_status
+                word_tag.human_validated = new_validation_status
+                
+                if new_validation_status:
+                    receipt_word_tag.timestamp_human_validated = timestamp_str
+                    word_tag.timestamp_human_validated = timestamp_str
+                else:
+                    receipt_word_tag.timestamp_human_validated = None
+                    word_tag.timestamp_human_validated = None
+                    # Remove tag from word entities when invalidating
+                    word.tags = [t for t in word.tags if t != receipt_word_tag.tag]
+                    receipt_word.tags = word.tags.copy()
+
+            elif action == "change_tag":
+                if "new_tag" not in body:
+                    return {
+                        "statusCode": 400,
+                        "headers": cors_headers,
+                        "body": json.dumps({"error": "new_tag is required for change_tag action"})
+                    }
+                
+                new_tag_type = body["new_tag"]
+                old_tag_type = receipt_word_tag.tag
+
+                # Update tag while preserving other attributes
+                receipt_word_tag.tag = new_tag_type
+                word_tag.tag = new_tag_type
+                
+                # Update validation status
+                receipt_word_tag.human_validated = True
+                word_tag.human_validated = True
+                receipt_word_tag.timestamp_human_validated = timestamp_str
+                word_tag.timestamp_human_validated = timestamp_str
+                
+                # Keep existing attributes
+                receipt_word_tag.validated = True  # Since human validated
+                word_tag.validated = True
+                receipt_word_tag.timestamp_validated = timestamp_str
+                word_tag.timestamp_validated = timestamp_str
+                
+                # Preserve these attributes from the original tag
+                # (they're already preserved since we're modifying the existing object)
+                # - gpt_confidence
+                # - flag
+                # - revised_tag
+                # - timestamp_added
+
+                # Update word's tag list
+                current_tags = [t for t in word.tags if t != old_tag_type]
+                word.tags = list(set(current_tags + [new_tag_type]))
+                receipt_word.tags = word.tags.copy()
+
+            elif action == "add_tag":
+                if "new_tag" not in body:
+                    return {
+                        "statusCode": 400,
+                        "headers": cors_headers,
+                        "body": json.dumps({"error": "new_tag is required for add_tag action"})
+                    }
+                
+                new_tag_type = body["new_tag"]
+                
+                # Add new tag type
+                receipt_word_tag.tag = new_tag_type
+                word_tag.tag = new_tag_type
+                receipt_word_tag.human_validated = True
+                word_tag.human_validated = True
+                receipt_word_tag.timestamp_human_validated = timestamp_str
+                word_tag.timestamp_human_validated = timestamp_str
+
+                # Update word tags (ensure no duplicates)
+                word.tags = list(set(word.tags + [new_tag_type]))
+                receipt_word.tags = word.tags.copy()
+
+            else:
+                return {
+                    "statusCode": 400,
+                    "headers": cors_headers,
+                    "body": json.dumps({"error": f"Invalid action: {action}"})
+                }
+
+            # Persist all changes
             client.updateWordTag(word_tag)
+            client.updateReceiptWordTag(receipt_word_tag)
             client.updateWord(word)
             client.updateReceiptWord(receipt_word)
-            client.updateReceiptWordTag(receipt_word_tag)
+
+            # Log the response we're sending back
+            response = {
+                'updated': {
+                    'word': dict(word),
+                    'word_tag': dict(word_tag),
+                    'receipt_word': dict(receipt_word),
+                    'receipt_word_tag': dict(receipt_word_tag)
+                }
+            }
+            logger.info("Sending response: %s", response)
 
             return {
                 'statusCode': 200,
                 'headers': cors_headers,
-                'body': json.dumps({
-                    'message': 'Receipt word tag updated successfully'
-                })
+                'body': json.dumps(response)
             }
 
         except Exception as e:

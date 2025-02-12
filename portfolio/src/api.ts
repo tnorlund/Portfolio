@@ -13,6 +13,8 @@ import {
   ReceiptWord,
   ReceiptWordTag,
   ReceiptWordTagApiResponse,
+  Word,
+  WordTag,
 } from "./interfaces";
 
 const isDevelopment = process.env.NODE_ENV === "development";
@@ -32,28 +34,45 @@ export async function fetchTagValidationStats(): Promise<TagValidationStatsRespo
       return await response.json();
 }
 
-export async function postReceiptWordTag(
-  selectedTag: ReceiptWordTag,
-  selectedWord: ReceiptWord
-): Promise<ReceiptWordTagApiResponse> {
-  const apiUrl = isDevelopment
-    ? `https://dev-api.tylernorlund.com/receipt_word_tag`
-    : `https://api.tylernorlund.com/receipt_word_tag`;
+export const postReceiptWordTag = async (params: {
+  selected_tag: ReceiptWordTag;
+  selected_word: ReceiptWord;
+  action: "validate" | "change_tag" | "add_tag";
+  new_tag?: string;
+}): Promise<{
+  updated: {
+    word: Word;
+    word_tag: WordTag;
+    receipt_word: ReceiptWord;
+    receipt_word_tag: ReceiptWordTag;
+  }
+}> => {
+  const apiUrl =
+    process.env.NODE_ENV === "development"
+      ? `https://dev-api.tylernorlund.com/receipt_word_tag`
+      : `https://api.tylernorlund.com/receipt_word_tag`;
 
-  const response = await fetch(apiUrl, {
-    method: "POST",
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ selected_tag: selectedTag, selected_word: selectedWord }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Network response was not ok (status: ${response.status})`);
+  // Validate required parameters based on action
+  if ((params.action === "change_tag" || params.action === "add_tag") && !params.new_tag) {
+    throw new Error(`new_tag is required for ${params.action} action`);
   }
 
+  const response = await fetch(apiUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params)
+  });
+  
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => null);
+    throw new Error(
+      errorData?.error || 
+      `Failed to update tag (status: ${response.status})`
+    );
+  }
+  
   return await response.json();
-}
+};
 
 export async function fetchReceiptWordTags(
   tag: string,

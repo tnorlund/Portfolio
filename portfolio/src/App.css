@@ -18,7 +18,9 @@
   --react-logo: #087ea4;
 
   --color-red: #E53935;
+  --color-red-rgb: 229, 57, 53;  /* RGB values for #E53935 */
   --color-green: #43A047;
+  --color-green-rgb: 67, 160, 71;  /* RGB values for #43A047 */
   --color-blue: #1E88E5;
   --color-yellow: #FDD835;
 }
@@ -164,7 +166,9 @@ li {
     --react-logo: #58C4DC;
 
     --color-red: #EF5350;
+    --color-red-rgb: 239, 83, 80;  /* RGB values for #EF5350 */
     --color-green: #66BB6A;
+    --color-green-rgb: 102, 187, 106;  /* RGB values for #66BB6A */
     --color-blue: #42A5F5;
     --color-yellow: #FFEE58;
   }
@@ -174,7 +178,7 @@ li {
 .container {
   margin: 0 auto;       /* center horizontally */
   padding: 2rem;        /* some breathing room */
-  max-width: 1024px;    /* default “tablet/desktop” width */
+  max-width: 1024px;    /* default "tablet/desktop" width */
   text-align: left;     /* or 'center' if you want text centered too */
 }
 

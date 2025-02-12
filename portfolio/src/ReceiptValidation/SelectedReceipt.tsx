@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ReceiptDetail, ReceiptWord, ReceiptWordTag } from "../interfaces";
 import ReceiptBoundingBox from "../ReceiptBoundingBox";
 import TagGroup from './TagGroup';
-import { fetchReceiptDetail } from "../api";
+import { fetchReceiptDetail, postReceiptWordTag } from "../api";
 import TagMenu from './TagMenu';
 
 // Types
@@ -195,23 +195,19 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
   }, [addingTagType]);
 
   const handleRefresh = async () => {
-    if (!selectedReceipt || !receiptDetails[selectedReceipt]) return;
-
     try {
-      const currentDetail = receiptDetails[selectedReceipt];
-      const response = await fetchReceiptDetail(
-        currentDetail.receipt.image_id,
-        currentDetail.receipt.receipt_id
-      );
-      
-      if (response.receipt) {
+      if (!selectedReceipt) return;
+      const [imageId, receiptId] = selectedReceipt.split('#');
+      const details = await fetchReceiptDetail(imageId, parseInt(receiptId));
+      if (details) {
         onReceiptUpdate(selectedReceipt, {
-          ...currentDetail,
-          receipt: response.receipt
+          receipt: details.receipt,
+          words: details.words,
+          word_tags: details.tags
         });
       }
     } catch (error) {
-      console.error('Error refreshing receipt:', error);
+      console.error('Failed to refresh receipt details:', error);
     }
   };
 
@@ -246,21 +242,24 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
         if (word.image_id === updatedTag.image_id && 
             word.line_id === updatedTag.line_id && 
             word.word_id === updatedTag.word_id) {
+          // Ensure we have a unique set of tags
+          const otherTags = word.tags.filter(t => t !== updatedTag.tag);
           return {
             ...word,
-            tags: [updatedTag.tag]
+            tags: Array.from(new Set([...otherTags, updatedTag.tag]))
           };
         }
         return word;
       }),
-      word_tags: currentReceipt.word_tags.map(tag => 
-        tag.image_id === updatedTag.image_id && 
-        tag.line_id === updatedTag.line_id && 
-        tag.word_id === updatedTag.word_id && 
-        tag.tag === updatedTag.tag
-          ? updatedTag 
-          : tag
-      )
+      // Remove any existing tags for this word and add the new one
+      word_tags: [
+        ...currentReceipt.word_tags.filter(tag => 
+          !(tag.image_id === updatedTag.image_id && 
+            tag.line_id === updatedTag.line_id && 
+            tag.word_id === updatedTag.word_id)
+        ),
+        updatedTag
+      ]
     };
 
     onReceiptUpdate(selectedReceipt, updatedReceipt);
@@ -294,6 +293,7 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
                 setAddingTagType(addingTagType === tagType ? null : tagType);
               }}
               onUpdateTag={handleTagUpdate}
+              onRefresh={handleRefresh}
             />
           );
         })}
@@ -351,14 +351,35 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
                     top: menuPosition.y,
                     zIndex: 1000
                   }}
-                  onSelect={(newTag) => {
-                    console.log('Single Update:', {
-                      selected_word: selectedWord,
-                      selected_new_tag: newTag,
-                      matching_tag: matchingTag
-                    });
-                    setOpenTagMenu(null);
-                    setMenuPosition(null);
+                  onSelect={async (newTag) => {
+                    if (!selectedWord || !matchingTag) return;
+                    
+                    try {
+                      const response = await postReceiptWordTag({
+                        selected_tag: matchingTag,
+                        selected_word: selectedWord,
+                        action: "change_tag",
+                        new_tag: newTag
+                      });
+                      
+                      setSelectedWords(selectedWords.map(w => {
+                        if (w.receipt_id === selectedWord.receipt_id && 
+                            w.line_id === selectedWord.line_id && 
+                            w.word_id === selectedWord.word_id) {
+                          return {
+                            ...response.updated.receipt_word,
+                            receipt_id: selectedWord.receipt_id,
+                            image_id: selectedWord.image_id,
+                          } as ReceiptWord;
+                        }
+                        return w;
+                      }));
+                      
+                      setOpenTagMenu(null);
+                      setMenuPosition(null);
+                    } catch (error) {
+                      console.error('Failed to update tag:', error);
+                    }
                   }}
                 />
               )}
