@@ -6,7 +6,7 @@ import './ReceiptSelector.css';
 interface ReceiptSelectorProps {
   receiptDetails: { [key: string]: ReceiptDetail };
   selectedReceipt: string | null;
-  onSelectReceipt: (receiptId: string | null) => void;
+  onSelectReceipt: (receiptId: string) => void;
   cdn_base_url: string;
 }
 
@@ -16,6 +16,10 @@ const ReceiptSelector: React.FC<ReceiptSelectorProps> = ({
   onSelectReceipt,
   cdn_base_url,
 }) => {
+  const handleReceiptClick = (receiptId: string) => {
+    console.log('Selecting receipt:', receiptId);
+    onSelectReceipt(receiptId);
+  };
   
   return (
     <div className="receipt-selector-container">
@@ -25,17 +29,16 @@ const ReceiptSelector: React.FC<ReceiptSelectorProps> = ({
           <span className="receipt-selector-hint">Scroll horizontally to see more →</span>
         </div>
         <div className="receipt-selector-grid">
-          {Object.entries(receiptDetails).map(([key, detail]) => (
+          {Object.entries(receiptDetails).map(([receiptId, detail]) => (
             <div 
-              key={key} 
-              className={`receipt-item ${selectedReceipt === key ? 'selected' : ''}`}
-              onClick={() => onSelectReceipt(selectedReceipt === key ? null : key)}
+              key={receiptId} 
+              className={`receipt-item ${selectedReceipt === receiptId ? 'selected' : ''}`}
+              onClick={() => handleReceiptClick(receiptId)}
             >
               <ReceiptBoundingBox
                 detail={detail}
                 width={100}
-                isSelected={selectedReceipt === key}
-                onClick={() => onSelectReceipt(selectedReceipt === key ? null : key)}
+                isSelected={selectedReceipt === receiptId}
                 cdn_base_url={cdn_base_url}
                 highlightedWords={[]}
               />

@@ -77,22 +77,22 @@ aws.iam.RolePolicyAttachment(
 # Create the Lambda function for the "user" route
 receipt_word_tag_lambda = aws.lambda_.Function(
     f"api_{ROUTE_NAME}_POST_lambda",
-    runtime="python3.13",  # or whichever version you prefer
+    runtime="python3.13",
     role=lambda_role.arn,
     code=AssetArchive(
         {
             ".": FileArchive(HANDLER_DIR),
         }
     ),
-    handler="index.handler",  # file_name.function_name
+    handler="index.handler",
     layers=[lambda_layer.arn],
     environment={
         "variables": {
             "DYNAMODB_TABLE_NAME": DYNAMODB_TABLE_NAME,
         }
     },
-    memory_size=1024,  # Increase the RAM to 1024 MB
-    timeout=30,  # Increase the timeout to 30 seconds
+    memory_size=1024,
+    timeout=30,
 )
 
 # CloudWatch log group for the Lambda function

@@ -236,6 +236,36 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
     });
   };
 
+  const handleTagUpdate = (updatedTag: ReceiptWordTag) => {
+    if (!selectedReceipt) return;
+    
+    const currentReceipt = receiptDetails[selectedReceipt];
+    const updatedReceipt = {
+      ...currentReceipt,
+      words: currentReceipt.words.map(word => {
+        if (word.image_id === updatedTag.image_id && 
+            word.line_id === updatedTag.line_id && 
+            word.word_id === updatedTag.word_id) {
+          return {
+            ...word,
+            tags: [updatedTag.tag]
+          };
+        }
+        return word;
+      }),
+      word_tags: currentReceipt.word_tags.map(tag => 
+        tag.image_id === updatedTag.image_id && 
+        tag.line_id === updatedTag.line_id && 
+        tag.word_id === updatedTag.word_id && 
+        tag.tag === updatedTag.tag
+          ? updatedTag 
+          : tag
+      )
+    };
+
+    onReceiptUpdate(selectedReceipt, updatedReceipt);
+  };
+
   const renderRightPanel = () => {
     if (!selectedReceipt || !receiptDetails[selectedReceipt]) return null;
 
@@ -263,6 +293,7 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
               onAddTagClick={() => {
                 setAddingTagType(addingTagType === tagType ? null : tagType);
               }}
+              onUpdateTag={handleTagUpdate}
             />
           );
         })}

@@ -24,6 +24,35 @@ dynamodb_table_name = os.environ["DYNAMODB_TABLE_NAME"]
 
 
 def handler(event, context):
+    # Get the origin from the request headers
+    origin = event.get('headers', {}).get('origin', '')
+    allowed_origins = [
+        "http://localhost:3000",
+        "https://tylernorlund.com",
+        "https://dev.tylernorlund.com"
+    ]
+    
+    # Check if the origin is allowed
+    if origin not in allowed_origins:
+        origin = allowed_origins[0]  # Default to first allowed origin
+    
+    # Common headers for CORS
+    cors_headers = {
+        'Access-Control-Allow-Origin': origin,
+        'Access-Control-Allow-Credentials': 'true',
+        'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS,HEAD',
+        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,Origin,Accept',
+        'Content-Type': 'application/json'
+    }
+    
+    # For OPTIONS requests (preflight)
+    if event.get('requestContext', {}).get('http', {}).get('method') == 'OPTIONS':
+        return {
+            'statusCode': 200,
+            'headers': cors_headers,
+            'body': ''
+        }
+    
     logger.info("Received event: %s", event)
     http_method = event["requestContext"]["http"]["method"].upper()
 
@@ -96,13 +125,24 @@ def handler(event, context):
             client.updateReceiptWord(receipt_word)
             client.updateReceiptWordTag(receipt_word_tag)
 
+            # When returning success response
             return {
-                "statusCode": 200,
-                "body": "Receipt word tag updated successfully",
+                'statusCode': 200,
+                'headers': cors_headers,
+                'body': json.dumps({
+                    'message': 'Receipt word tag updated successfully'
+                })
             }
 
         except Exception as e:
-            return {"statusCode": 500, "body": f"Internal server error: {str(e)}"}
+            # Error response
+            return {
+                'statusCode': 500,
+                'headers': cors_headers,
+                'body': json.dumps({
+                    'error': f'Internal server error: {str(e)}'
+                })
+            }
 
     else:
         return {"statusCode": 405, "body": f"Method {http_method} not allowed"}

@@ -14,6 +14,7 @@ interface TagGroupProps {
   menuRef: React.RefObject<HTMLDivElement>;
   isAddingTag: boolean;
   onAddTagClick: () => void;
+  onUpdateTag: (updatedTag: ReceiptWordTag) => void;
 }
 
 const TagGroup: React.FC<TagGroupProps> = ({
@@ -28,6 +29,7 @@ const TagGroup: React.FC<TagGroupProps> = ({
   menuRef,
   isAddingTag,
   onAddTagClick,
+  onUpdateTag,
 }) => {
   return (
     <div>
@@ -90,24 +92,20 @@ const TagGroup: React.FC<TagGroupProps> = ({
       }}>
         {words.map((word, wordIdx) => (
           <WordItem
-            key={wordIdx}
+            key={`${word.image_id}-${word.line_id}-${word.word_id}`}
             word={word}
             tag={tag}
-            isSelected={selectedWord?.word_id === word.word_id && 
-                       selectedWord?.line_id === word.line_id && 
-                       selectedWord?.receipt_id === word.receipt_id && 
-                       selectedWord?.image_id === word.image_id}
+            isSelected={selectedWord?.word_id === word.word_id}
             onWordClick={() => onWordSelect(word)}
             onTagClick={() => {
-              setOpenTagMenu(
-                openTagMenu?.groupIndex === groupIndex && 
-                openTagMenu.wordIndex === wordIdx ? null : 
-                { groupIndex, wordIndex: wordIdx }
-              );
+              setOpenTagMenu({
+                groupIndex,
+                wordIndex: wordIdx,
+              });
             }}
-            openTagMenu={openTagMenu?.groupIndex === groupIndex && 
-                        openTagMenu.wordIndex === wordIdx}
+            openTagMenu={openTagMenu?.groupIndex === groupIndex && openTagMenu?.wordIndex === wordIdx}
             menuRef={menuRef}
+            onUpdateTag={onUpdateTag}
           />
         ))}
       </div>

@@ -29,6 +29,10 @@ const ReceiptValidation: React.FC = () => {
     loadReceiptDetails();
   }, []);
 
+  useEffect(() => {
+    console.log('Selected receipt changed:', selectedReceipt);
+  }, [selectedReceipt]);
+
   const handleReceiptUpdate = (receiptId: string, newDetails: ReceiptDetail) => {
     setReceiptDetails(prev => ({
       ...prev,

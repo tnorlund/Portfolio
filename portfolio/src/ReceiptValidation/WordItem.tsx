@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ReceiptWord, ReceiptWordTag } from '../interfaces';
 import TagMenu from './TagMenu';
+import { postReceiptWordTag } from '../api';
 
 interface WordItemProps {
   word: ReceiptWord;
@@ -10,6 +11,7 @@ interface WordItemProps {
   onTagClick: () => void;
   openTagMenu: boolean;
   menuRef: React.RefObject<HTMLDivElement>;
+  onUpdateTag?: (updatedTag: ReceiptWordTag) => void;
 }
 
 const WordItem: React.FC<WordItemProps> = ({
@@ -20,7 +22,10 @@ const WordItem: React.FC<WordItemProps> = ({
   onTagClick,
   openTagMenu,
   menuRef,
+  onUpdateTag,
 }) => {
+  const [isUpdating, setIsUpdating] = useState(false);
+
   const renderStars = (confidence: number | null) => {
     if (confidence === null) return null;
     const stars = '★'.repeat(confidence) + '☆'.repeat(5 - confidence);
@@ -57,6 +62,29 @@ const WordItem: React.FC<WordItemProps> = ({
     );
   };
 
+  const updateHumanValidation = async () => {
+    if (isUpdating) return;
+
+    try {
+      setIsUpdating(true);
+      
+      const updatedTag = {
+        ...tag,
+        human_validated: tag.human_validated === null ? true : !tag.human_validated
+      };
+
+      await postReceiptWordTag(updatedTag, word);
+
+      if (onUpdateTag) {
+        onUpdateTag(updatedTag);
+      }
+    } catch (error) {
+      console.error('Failed to update human validation:', error);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   return (
     <div
       style={{
@@ -74,9 +102,14 @@ const WordItem: React.FC<WordItemProps> = ({
         <div 
           onClick={(e) => {
             e.stopPropagation();
-            console.log('Single Update:', {selected_word: word, selected_tag: tag});
+            updateHumanValidation();
           }}
-          style={{ display: 'flex', alignItems: 'center' }}
+          style={{ 
+            display: 'flex', 
+            alignItems: 'center',
+            opacity: isUpdating ? 0.5 : 1,
+            cursor: isUpdating ? 'not-allowed' : 'pointer'
+          }}
         >
           {renderHumanValidation(tag.human_validated)}
         </div>
