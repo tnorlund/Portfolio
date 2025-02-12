@@ -95,7 +95,12 @@ const TagGroup: React.FC<TagGroupProps> = ({
             key={`${word.image_id}-${word.line_id}-${word.word_id}`}
             word={word}
             tag={tag}
-            isSelected={selectedWord?.word_id === word.word_id}
+            isSelected={!!(selectedWord && 
+              selectedWord.word_id === word.word_id &&
+              selectedWord.line_id === word.line_id &&
+              selectedWord.receipt_id === word.receipt_id &&
+              selectedWord.image_id === word.image_id
+            )}
             onWordClick={() => onWordSelect(word)}
             onTagClick={() => {
               setOpenTagMenu({
