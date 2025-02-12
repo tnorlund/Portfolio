@@ -40,7 +40,7 @@ def handler(event, context):
     cors_headers = {
         'Access-Control-Allow-Origin': origin,
         'Access-Control-Allow-Credentials': 'true',
-        'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS,HEAD',
+        'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS,HEAD,PATCH',
         'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,Origin,Accept',
         'Content-Type': 'application/json'
     }
@@ -68,12 +68,17 @@ def handler(event, context):
 
             # Validate request structure
             if not isinstance(body, dict):
-                return {"statusCode": 400, "body": "Request body must be an object"}
+                return {
+                    "statusCode": 400,
+                    "headers": cors_headers,
+                    "body": json.dumps({"error": "Request body must be an object"})
+                }
 
             if "selected_tag" not in body or "selected_word" not in body:
                 return {
                     "statusCode": 400,
-                    "body": "Request must include 'selected_tag' and 'selected_word'",
+                    "headers": cors_headers,
+                    "body": json.dumps({"error": "Request must include 'selected_tag' and 'selected_word'"})
                 }
 
             selected_tag = body["selected_tag"]
@@ -117,15 +122,18 @@ def handler(event, context):
 
             # Update all entities
             current_time = datetime.now(UTC)
-            word_tag.timestamp_human_validated = current_time
-            receipt_word_tag.timestamp_human_validated = current_time
+            timestamp_str = current_time.isoformat()  # Convert to ISO format string
+            
+            word_tag.human_validated = True
+            word_tag.timestamp_human_validated = timestamp_str  # Use string instead of datetime
+            receipt_word_tag.human_validated = True
+            receipt_word_tag.timestamp_human_validated = timestamp_str  # Use string instead of datetime
             
             client.updateWordTag(word_tag)
             client.updateWord(word)
             client.updateReceiptWord(receipt_word)
             client.updateReceiptWordTag(receipt_word_tag)
 
-            # When returning success response
             return {
                 'statusCode': 200,
                 'headers': cors_headers,
@@ -135,7 +143,7 @@ def handler(event, context):
             }
 
         except Exception as e:
-            # Error response
+            logger.error(f"Error processing request: {str(e)}", exc_info=True)
             return {
                 'statusCode': 500,
                 'headers': cors_headers,

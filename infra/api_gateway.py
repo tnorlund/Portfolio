@@ -34,11 +34,22 @@ api = aws.apigatewayv2.Api(
     "my-api",
     protocol_type="HTTP",
     cors_configuration=aws.apigatewayv2.ApiCorsConfigurationArgs(
-        allow_origins=["*"],
-        allow_methods=["GET", "POST", "OPTIONS"],
-        allow_headers=["Content-Type", "Authorization"],
+        allow_origins=["http://localhost:3000", "https://tylernorlund.com", "https://dev.tylernorlund.com"],
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"],
+        allow_headers=[
+            "Content-Type",
+            "Authorization",
+            "X-Amz-Date",
+            "X-Api-Key",
+            "X-Amz-Security-Token",
+            "X-Requested-With",
+            "Accept",
+            "Access-Control-Allow-Methods",
+            "Access-Control-Allow-Origin",
+            "Access-Control-Allow-Headers"
+        ],
         expose_headers=["Content-Length", "Content-Type"],
-        allow_credentials=False,
+        allow_credentials=True,
         max_age=86400,
     ),
 )
