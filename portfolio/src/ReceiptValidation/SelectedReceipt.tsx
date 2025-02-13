@@ -102,10 +102,14 @@ const styles = {
     color: 'var(--text-color)',
     transition: 'all 0.2s ease',
   },
+  receiptContainer: {
+    position: 'relative' as const,
+    minHeight: '100vh', // Ensure container is at least full viewport height
+  },
   floatingAddButton: {
-    position: 'absolute' as const,
+    position: 'sticky' as const,
     left: '16px',
-    top: '50%',
+    top: '37vh',
     transform: 'translateY(-50%)',
     width: '50px',
     height: '50px',
@@ -125,7 +129,7 @@ const styles = {
     zIndex: 10,
   },
   floatingAddButtonText: {
-    marginTop: '-3px',
+    marginTop: '-4px',
     display: 'block',
   },
 };
@@ -362,7 +366,16 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
         <div style={styles.leftPanel}>
           {selectedReceipt && receiptDetails[selectedReceipt] ? (
             <>
-              <div className="receipt-container" style={{ position: 'relative' }}>
+              <div className="receipt-container" style={styles.receiptContainer}>
+                <button 
+                  className="floating-add-button"
+                  style={styles.floatingAddButton}
+                  onClick={() => {
+                    console.log('Floating add button clicked');
+                  }}
+                >
+                  <span style={styles.floatingAddButtonText}>+</span>
+                </button>
                 <ReceiptBoundingBox
                   detail={receiptDetails[selectedReceipt]}
                   width={450}
@@ -375,14 +388,6 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
                   addingTagType={addingTagType || undefined}
                   onWordTagClick={!addingTagType ? handleWordTagClick : undefined}
                 />
-                <button 
-                  style={styles.floatingAddButton}
-                  onClick={() => {
-                    console.log('Floating add button clicked');
-                  }}
-                >
-                  <span style={styles.floatingAddButtonText}>+</span>
-                </button>
                 {openTagMenu && openTagMenu.groupIndex === -1 && menuPosition && !addingTagType && (
                   <TagMenu
                     menuRef={menuRef}
