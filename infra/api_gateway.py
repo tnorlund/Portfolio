@@ -54,11 +54,12 @@ api = aws.apigatewayv2.Api(
             "Accept",
             "Access-Control-Allow-Methods",
             "Access-Control-Allow-Origin",
-            "Access-Control-Allow-Headers"
+            "Access-Control-Allow-Headers",
+            "Access-Control-Allow-Credentials"
         ],
         expose_headers=["Content-Length", "Content-Type"],
         allow_credentials=True,
-        max_age=86400,
+        max_age=3600,
     ),
 )
 
@@ -505,8 +506,13 @@ route_settings = [
     },
     {
         "routeKey": route_receipt_details.route_key,
-        "throttlingBurstLimit": 5000,
-        "throttlingRateLimit": 10000,
+        "throttlingBurstLimit": 10000,
+        "throttlingRateLimit": 20000,
+    },
+    {
+        "routeKey": "OPTIONS /receipt_details",
+        "throttlingBurstLimit": 10000,
+        "throttlingRateLimit": 20000,
     },
     {
         "routeKey": route_tag_validation_counts.route_key,

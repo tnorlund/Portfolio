@@ -44,9 +44,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     # Default CORS headers
     cors_headers = {
         'Access-Control-Allow-Methods': 'GET,OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,Access-Control-Allow-Credentials',
         'Access-Control-Allow-Credentials': 'true',
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Access-Control-Max-Age': '3600'  # Match the API Gateway setting
     }
 
     # Add Access-Control-Allow-Origin if origin is allowed
@@ -56,7 +57,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     # Handle OPTIONS request (preflight)
     if event.get('requestContext', {}).get('http', {}).get('method') == 'OPTIONS':
         return {
-            'statusCode': 200,
+            'statusCode': 204,  # Changed from 200 to 204 (No Content)
             'headers': cors_headers,
             'body': ''
         }
