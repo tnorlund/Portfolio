@@ -256,10 +256,10 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
     if (!selectedReceipt || !receiptDetails[selectedReceipt]) return;
 
     const existingTags = receiptDetails[selectedReceipt].word_tags.filter((tag: ReceiptWordTag) => 
-        tag.word_id === word.word_id &&
-        tag.line_id === word.line_id &&
-        tag.receipt_id === word.receipt_id &&
-        tag.image_id === word.image_id
+      tag.word_id === word.word_id &&
+      tag.line_id === word.line_id &&
+      tag.receipt_id === word.receipt_id &&
+      tag.image_id === word.image_id
     );
     
     setMatchingTag(existingTags[0] || null);
@@ -267,13 +267,11 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
     const container = document.querySelector('.receipt-container');
     if (!container) return;
 
-    const containerRect = container.getBoundingClientRect();
-    
-    // Calculate position relative to container
-    let x = event.clientX - containerRect.left;
-    let y = event.clientY - containerRect.top;
-    
-    setMenuPosition({ x, y });
+    const rect = container.getBoundingClientRect();
+    setMenuPosition({ 
+      x: event.clientX - rect.left + 10,
+      y: event.clientY - rect.top
+    });
     setOpenTagMenu({ groupIndex: -1, wordIndex: -1 });
   };
 
@@ -312,17 +310,26 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
 
   // Update the floating button click handler
   const handleFloatingButtonClick = () => {
+    if (addingTagType) {
+      // If we're in selection mode, exit it
+      setAddingTagType(null);
+      return;
+    }
+
+    // Otherwise show the tag menu as before
     if (!floatingButtonRef.current) return;
     
     const buttonRect = floatingButtonRef.current.getBoundingClientRect();
-    
-    // Position relative to viewport instead of container
     setMenuPosition({
       x: buttonRect.right + 10,
       y: buttonRect.top
     });
     
     setShowFloatingMenu(true);
+  };
+
+  const handleTagButtonClick = (tagType: string) => {
+    setAddingTagType(current => current === tagType ? null : tagType);
   };
 
   const renderRightPanel = () => {
@@ -349,9 +356,7 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
               setOpenTagMenu={setOpenTagMenu}
               menuRef={menuRef}
               isAddingTag={addingTagType === tagType}
-              onAddTagClick={() => {
-                setAddingTagType(addingTagType === tagType ? null : tagType);
-              }}
+              onAddTagClick={() => handleTagButtonClick(tagType)}
               onUpdateTag={handleTagUpdate}
               onRefresh={handleRefresh}
             />
@@ -410,12 +415,16 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
                   isAddingTag={!!addingTagType}
                   addingTagType={addingTagType || undefined}
                   onWordTagClick={!addingTagType ? handleWordTagClick : undefined}
+                  onClearSelection={() => {
+                    setSelectedWord(null);
+                    setSelectedWords([]);
+                  }}
                 />
                 {((openTagMenu && openTagMenu.groupIndex === -1) || showFloatingMenu) && menuPosition && !addingTagType && (
                   <TagMenu
                     menuRef={menuRef}
                     style={{
-                      position: 'fixed',
+                      position: showFloatingMenu ? 'fixed' : 'absolute',
                       left: `${menuPosition.x}px`,
                       top: `${menuPosition.y}px`,
                       zIndex: 1000

@@ -20,6 +20,13 @@ interface ReceiptBoundingBoxProps {
   isAddingTag?: boolean;
   addingTagType?: string;
   onWordTagClick?: (word: ReceiptWord, event: { clientX: number; clientY: number }) => void;
+  onClearSelection?: () => void;
+}
+
+interface WordColors {
+  stroke: string;
+  fill: string;
+  strokeWidth: string;
 }
 
 const ReceiptBoundingBox: React.FC<ReceiptBoundingBoxProps> = ({
@@ -33,6 +40,7 @@ const ReceiptBoundingBox: React.FC<ReceiptBoundingBoxProps> = ({
   isAddingTag,
   addingTagType,
   onWordTagClick,
+  onClearSelection,
 }) => {
   const [isDrawing, setIsDrawing] = useState(false);
   const [selectionBox, setSelectionBox] = useState<SelectionBox | null>(null);
@@ -174,6 +182,57 @@ const ReceiptBoundingBox: React.FC<ReceiptBoundingBoxProps> = ({
     setSelectionBox(null);
   };
 
+  const getWordColor = (word: ReceiptWord, isWordHighlighted: boolean): WordColors => {
+    if (isAddingTag) {
+      return {
+        stroke: "var(--color-yellow)",
+        fill: "rgba(var(--color-yellow-rgb), 0.8)",
+        strokeWidth: "3"
+      };
+    }
+    
+    const matchingTags = detail.word_tags.filter(tag => 
+      tag.word_id === word.word_id &&
+      tag.line_id === word.line_id &&
+      tag.receipt_id === word.receipt_id &&
+      tag.image_id === word.image_id
+    );
+
+    if (matchingTags.length === 0) {
+      return {
+        stroke: isWordHighlighted ? "var(--color-blue)" : "#000000",
+        fill: "transparent",
+        strokeWidth: isWordHighlighted ? "4" : "1"
+      };
+    }
+
+    const hasHumanValidated = matchingTags.some(tag => tag.human_validated === true);
+    if (hasHumanValidated) {
+      return {
+        stroke: "var(--color-green)",
+        fill: isWordHighlighted ? "rgba(var(--color-blue-rgb), 0.15)" : "rgba(var(--color-green-rgb), 0.15)",
+        strokeWidth: isWordHighlighted ? "4" : "2"
+      };
+    }
+
+    const hasInvalidated = matchingTags.some(tag => 
+      tag.human_validated === false || tag.validated === false
+    );
+    if (hasInvalidated) {
+      return {
+        stroke: "var(--color-red)",
+        fill: isWordHighlighted ? "rgba(var(--color-blue-rgb), 0.15)" : "rgba(var(--color-red-rgb), 0.15)",
+        strokeWidth: isWordHighlighted ? "4" : "2"
+      };
+    }
+
+    return {
+      stroke: isWordHighlighted ? "var(--color-blue)" : "#000000",
+      fill: "transparent",
+      strokeWidth: isWordHighlighted ? "4" : "1"
+    };
+  };
+
   const { receipt, words } = detail;
   const imageUrl = cdn_base_url + receipt.cdn_s3_key;
   
@@ -188,7 +247,7 @@ const ReceiptBoundingBox: React.FC<ReceiptBoundingBoxProps> = ({
         position: 'relative',
         cursor: isAddingTag ? 'crosshair' : 'default',
         touchAction: isAddingTag ? 'none' : 'auto',
-        pointerEvents: isAddingTag ? 'all' : 'none'
+        pointerEvents: 'all'
       }}
       onMouseDown={isAddingTag ? handleMouseDown : undefined}
       onMouseMove={isAddingTag ? handleMouseMove : undefined}
@@ -199,14 +258,20 @@ const ReceiptBoundingBox: React.FC<ReceiptBoundingBoxProps> = ({
       onTouchEnd={isAddingTag ? endDrawing : undefined}
       onTouchCancel={isAddingTag ? endDrawing : undefined}
     >
-      <div 
-        className={`cursor-pointer transition-transform ${isSelected ? 'scale-100' : 'hover:scale-105'}`}
-      >
+      <div className={`cursor-pointer transition-transform ${isSelected ? 'scale-100' : 'hover:scale-105'}`}>
         <svg
           viewBox={`0 0 ${receipt.width} ${receipt.height}`}
           width={width}
           height={height}
           className={`rounded-lg ${isSelected ? 'shadow-xl' : 'shadow-md'}`}
+          onClick={(e) => {
+            if ((e.target instanceof SVGElement && e.target.tagName === 'svg') || 
+                (e.target instanceof SVGImageElement && e.target.tagName === 'image')) {
+              if (!isAddingTag && onClearSelection) {
+                onClearSelection();
+              }
+            }
+          }}
         >
           <image
             href={imageUrl}
@@ -214,6 +279,7 @@ const ReceiptBoundingBox: React.FC<ReceiptBoundingBoxProps> = ({
             y="0"
             width={receipt.width}
             height={receipt.height}
+            style={{ pointerEvents: 'all' }}  // Make sure image receives clicks
           />
           
           {words.map((word, idx) => {
@@ -232,13 +298,15 @@ const ReceiptBoundingBox: React.FC<ReceiptBoundingBoxProps> = ({
               ${word.bottom_left.x * receipt.width},${(1 - word.bottom_left.y) * receipt.height}
             `;
             
+            const wordColors = getWordColor(word, isHighlighted);
+            
             return (
               <polygon
                 key={idx}
                 points={points}
-                fill={isAddingTag ? "var(--color-yellow)" : "transparent"}
-                stroke={isAddingTag ? "var(--color-yellow)" : "var(--color-red)"}
-                strokeWidth={isHighlighted ? "3" : isAddingTag ? "2" : "1"}
+                fill={wordColors.fill}
+                stroke={wordColors.stroke}
+                strokeWidth={wordColors.strokeWidth}
                 opacity={isAddingTag ? "0.2" : isSelected ? "0.8" : "0.5"}
                 style={{ 
                   cursor: isAddingTag ? 'crosshair' : 'pointer',
