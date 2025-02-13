@@ -224,7 +224,19 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
     );
     
     setMatchingTag(existingTags[0] || null);
-    setMenuPosition({ x: event.clientX, y: event.clientY });
+
+    // Get the bounding box container element
+    const container = document.querySelector('.receipt-container');
+    if (!container) return;
+
+    // Get container's position relative to the page
+    const containerRect = container.getBoundingClientRect();
+    
+    // Calculate position relative to the container
+    const x = event.clientX - containerRect.left;
+    const y = event.clientY - containerRect.top;
+    
+    setMenuPosition({ x, y });
 
     setOpenTagMenu({
         groupIndex: -1,
@@ -330,75 +342,77 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
         <div style={styles.leftPanel}>
           {selectedReceipt && receiptDetails[selectedReceipt] ? (
             <>
-              <ReceiptBoundingBox
-                detail={receiptDetails[selectedReceipt]}
-                width={450}
-                isSelected={true}
-                cdn_base_url={cdn_base_url}
-                highlightedWords={selectedWord ? [selectedWord] : selectedWords}
-                onClick={addingTagType ? handleBoundingBoxClick : undefined}
-                onSelectionComplete={addingTagType ? handleSelectionComplete : undefined}
-                isAddingTag={!!addingTagType}
-                addingTagType={addingTagType || undefined}
-                onWordTagClick={!addingTagType ? handleWordTagClick : undefined}
-              />
-              {openTagMenu && openTagMenu.groupIndex === -1 && menuPosition && !addingTagType && (
-                <TagMenu
-                  menuRef={menuRef}
-                  style={{
-                    position: 'fixed',
-                    left: menuPosition.x,
-                    top: menuPosition.y,
-                    zIndex: 1000
-                  }}
-                  onSelect={async (newTag) => {
-                    if (!selectedWord) return;
-
-                    try {
-                        if (selectedWord.tags.length === 0) {
-                            const payload = {
-                                selected_tag: {
-                                    image_id: selectedWord.image_id,
-                                    receipt_id: selectedWord.receipt_id,
-                                    line_id: selectedWord.line_id,
-                                    word_id: selectedWord.word_id,
-                                    tag: newTag,
-                                    timestamp_added: new Date().toISOString(),
-                                    validated: null,
-                                    timestamp_validated: null,
-                                    gpt_confidence: null,
-                                    flag: null,
-                                    revised_tag: null,
-                                    human_validated: null,
-                                    timestamp_human_validated: null
-                                } as ReceiptWordTag,
-                                selected_word: selectedWord,
-                                action: "add_tag" as const,
-                                new_tag: newTag
-                            };
-                            console.log('API Payload for word with no tags:', payload);
-                            const response = await postReceiptWordTag(payload);
-                            handleTagUpdate(response.updated.receipt_word_tag);
-                        } else if (matchingTag) {
-                            const payload = {
-                                selected_tag: matchingTag,
-                                selected_word: selectedWord,
-                                action: "change_tag" as const,
-                                new_tag: newTag
-                            };
-                            console.log('API Payload for word with existing tags:', payload);
-                            const response = await postReceiptWordTag(payload);
-                            handleTagUpdate(response.updated.receipt_word_tag);
-                        }
-                    } catch (error) {
-                        console.error('Failed to update tag:', error);
-                    }
-                    
-                    setOpenTagMenu(null);
-                    setMenuPosition(null);
-                  }}
+              <div className="receipt-container" style={{ position: 'relative' }}>
+                <ReceiptBoundingBox
+                  detail={receiptDetails[selectedReceipt]}
+                  width={450}
+                  isSelected={true}
+                  cdn_base_url={cdn_base_url}
+                  highlightedWords={selectedWord ? [selectedWord] : selectedWords}
+                  onClick={addingTagType ? handleBoundingBoxClick : undefined}
+                  onSelectionComplete={addingTagType ? handleSelectionComplete : undefined}
+                  isAddingTag={!!addingTagType}
+                  addingTagType={addingTagType || undefined}
+                  onWordTagClick={!addingTagType ? handleWordTagClick : undefined}
                 />
-              )}
+                {openTagMenu && openTagMenu.groupIndex === -1 && menuPosition && !addingTagType && (
+                  <TagMenu
+                    menuRef={menuRef}
+                    style={{
+                      position: 'absolute',
+                      left: `${menuPosition.x}px`,
+                      top: `${menuPosition.y}px`,
+                      zIndex: 1000
+                    }}
+                    onSelect={async (newTag) => {
+                      if (!selectedWord) return;
+
+                      try {
+                          if (selectedWord.tags.length === 0) {
+                              const payload = {
+                                  selected_tag: {
+                                      image_id: selectedWord.image_id,
+                                      receipt_id: selectedWord.receipt_id,
+                                      line_id: selectedWord.line_id,
+                                      word_id: selectedWord.word_id,
+                                      tag: newTag,
+                                      timestamp_added: new Date().toISOString(),
+                                      validated: null,
+                                      timestamp_validated: null,
+                                      gpt_confidence: null,
+                                      flag: null,
+                                      revised_tag: null,
+                                      human_validated: null,
+                                      timestamp_human_validated: null
+                                  } as ReceiptWordTag,
+                                  selected_word: selectedWord,
+                                  action: "add_tag" as const,
+                                  new_tag: newTag
+                              };
+                              console.log('API Payload for word with no tags:', payload);
+                              const response = await postReceiptWordTag(payload);
+                              handleTagUpdate(response.updated.receipt_word_tag);
+                          } else if (matchingTag) {
+                              const payload = {
+                                  selected_tag: matchingTag,
+                                  selected_word: selectedWord,
+                                  action: "change_tag" as const,
+                                  new_tag: newTag
+                              };
+                              console.log('API Payload for word with existing tags:', payload);
+                              const response = await postReceiptWordTag(payload);
+                              handleTagUpdate(response.updated.receipt_word_tag);
+                          }
+                      } catch (error) {
+                          console.error('Failed to update tag:', error);
+                      }
+                      
+                      setOpenTagMenu(null);
+                      setMenuPosition(null);
+                    }}
+                  />
+                )}
+              </div>
             </>
           ) : (
             <div>Select a receipt</div>
