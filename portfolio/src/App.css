@@ -2,6 +2,7 @@
   /* Light / default mode variables */
   --background-color: #ffffff;
   --text-color: #000000;
+  --text-color-rgb: 0, 0, 0;  /* Add this line - RGB for black */
   --code-background: #f6f8fa;
 
   --header-background: #000000;
@@ -150,6 +151,7 @@ li {
   :root {
     --background-color: #121212;
     --text-color: #ffffff;
+    --text-color-rgb: 255, 255, 255;  /* Add this line - RGB for white */
     --code-background: #1f1f1f;
 
     --header-background: #000000;

@@ -49,32 +49,44 @@ const WordItem: React.FC<WordItemProps> = ({
     const commonStyles = {
       display: "flex",
       alignItems: "center",
-      gap: "4px",
-      padding: "2px",
-      borderRadius: "4px",
-      border: "1px solid var(--text-color)",
+      gap: "0px",
+      height: "24px",
+      borderRadius: "999px",
+      overflow: "hidden",
+      border: `2px solid ${
+        validated === null
+          ? "var(--text-color)"
+          : validated
+          ? "var(--color-green)"
+          : "var(--color-red)"
+      }`,
     };
 
-    const iconStyles = {
-      width: "16px",
-      height: "16px",
+    const buttonStyles = (isCheck: boolean) => ({
+      width: "32px",
+      height: "100%",
       cursor: "pointer",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
-    };
-
-    const getColor = (isCheck: boolean) => {
-      if (validated === null) return "var(--text-color)";
-      if (validated === true && isCheck) return "var(--color-green)";
-      if (validated === false && !isCheck) return "var(--color-red)";
-      return "var(--text-color)";
-    };
+      backgroundColor: validated === null 
+        ? "rgba(var(--text-color-rgb), 0.1)"
+        : validated === true && isCheck
+        ? "var(--color-green)"
+        : validated === false && !isCheck
+        ? "var(--color-red)"
+        : "rgba(var(--text-color-rgb), 0.1)",
+      color: validated === null 
+        ? "var(--text-color)"
+        : (validated === true && isCheck) || (validated === false && !isCheck)
+        ? "var(--color-background)"
+        : "var(--text-color)",
+    });
 
     return (
       <span style={commonStyles}>
         <span
-          style={{ ...iconStyles, color: getColor(true) }}
+          style={buttonStyles(true)}
           onClick={(e) => {
             e.stopPropagation();
             console.log("Checkmark clicked - setting human_validated to true");
@@ -86,14 +98,14 @@ const WordItem: React.FC<WordItemProps> = ({
             height="16"
             viewBox="0 0 24 24"
             fill="none"
-            stroke="currentColor"
-            strokeWidth="3"
+            stroke={validated === true ? "var(--background-color)" : "var(--text-color)"}
+            strokeWidth="5"
           >
             <path d="M20 6L9 17L4 12" />
           </svg>
         </span>
         <span
-          style={{ ...iconStyles, color: getColor(false) }}
+          style={buttonStyles(false)}
           onClick={(e) => {
             e.stopPropagation();
             console.log("X clicked - setting human_validated to false");
@@ -105,8 +117,8 @@ const WordItem: React.FC<WordItemProps> = ({
             height="16"
             viewBox="0 0 24 24"
             fill="none"
-            stroke="currentColor"
-            strokeWidth="3"
+            stroke={validated === false ? "var(--background-color)" : "var(--text-color)"}
+            strokeWidth="5"
           >
             <path d="M18 6L6 18M6 6l12 12" />
           </svg>
