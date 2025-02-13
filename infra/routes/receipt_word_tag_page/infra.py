@@ -39,7 +39,7 @@ lambda_role = aws.iam.Role(
 # Attach the necessary policies to the role
 lambda_policy = aws.iam.Policy(
     f"api_{ROUTE_NAME}_lambda_policy",
-    description="IAM policy for Lambda to access DynamoDB",
+    description="IAM policy for '/images' route Lambda to query DynamoDB",
     policy=dynamodb_table.arn.apply(
         lambda arn: json.dumps(
             {
@@ -47,16 +47,8 @@ lambda_policy = aws.iam.Policy(
                 "Statement": [
                     {
                         "Effect": "Allow",
-                        "Action": [
-                            "dynamodb:Query", 
-                            "dynamodb:DescribeTable", 
-                            "dynamodb:BatchGetItem",
-                            "dynamodb:PutItem",
-                            "dynamodb:UpdateItem",
-                            "dynamodb:GetItem",
-                            "dynamodb:DeleteItem"
-                        ],
-                        "Resource": [arn, f"{arn}/index/GSI1"]
+                        "Action": ["dynamodb:Query", "dynamodb:DescribeTable", "dynamodb:BatchGetItem"],
+                        "Resource": [arn, f"{arn}/index/GSI1"],
                     }
                 ],
             }
@@ -78,24 +70,23 @@ aws.iam.RolePolicyAttachment(
 )
 
 # Create the Lambda function for the "user" route
-receipt_word_tag_lambda = aws.lambda_.Function(
-    f"api_{ROUTE_NAME}_POST_lambda",
-    runtime="python3.13",
+receipt_word_tag_page_lambda = aws.lambda_.Function(
+    f"api_{ROUTE_NAME}_GET_lambda",
+    runtime="python3.13",  # or whichever version you prefer
     role=lambda_role.arn,
     code=AssetArchive(
         {
             ".": FileArchive(HANDLER_DIR),
         }
     ),
-    handler="index.handler",
+    handler="index.handler",  # file_name.function_name
     layers=[lambda_layer.arn],
     environment={
         "variables": {
             "DYNAMODB_TABLE_NAME": DYNAMODB_TABLE_NAME,
         }
     },
-    memory_size=1024,
-    timeout=30,
+    memory_size=512,  # Increase RAM to 512 MB
 )
 
 # CloudWatch log group for the Lambda function
@@ -103,3 +94,5 @@ log_group = aws.cloudwatch.LogGroup(
     f"api_{ROUTE_NAME}_lambda_log_group",
     retention_in_days=30,
 )
+
+# Add a test for the Lambda Handler

@@ -93,7 +93,7 @@ function computeLetterIQRMap(words: ReceiptWord[], chars: string[]): IQRMap {
   words.forEach((w) => {
     chars.forEach((c) => {
       // Default to 0 if a character is missing
-      freqMap[c].push(w.histogram[c] ?? 0);
+      freqMap[c].push((w.histogram?.[c] ?? 0));
     });
   });
 
