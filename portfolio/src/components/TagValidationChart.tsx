@@ -12,6 +12,18 @@ interface ChartRowProps {
   xScale: (v: number) => number;
 }
 
+const TAG_LABELS: { [key: string]: string } = {
+  "line_item_name": "Item Names",
+  "line_item_price": "Item Prices",
+  "store_name": "Store Name",
+  "total_amount": "Total",
+  "address": "Address",
+  "date": "Date",
+  "time": "Time",
+  "phone_number": "Phone",
+  "taxes": "Taxes"
+};
+
 const ChartRow: React.FC<ChartRowProps> = ({
   tag,
   stats,
@@ -47,7 +59,7 @@ const ChartRow: React.FC<ChartRowProps> = ({
 
   return (
     <div ref={ref} className={`chart-row ${inView ? "visible" : ""}`}>
-      <div className="tag-label">{tag}</div>
+      <div className="tag-label">{TAG_LABELS[tag] || tag}</div>
       <div className="bar-container" style={{ width: "100%" }}>
         <svg
           width="100%"
@@ -260,7 +272,7 @@ const TagValidationChart: React.FC = () => {
     stats.validated_false_human_true +
     stats.validated_none_human_true
   )));
-  const barWidth = dimensions.width - 180;
+  const barWidth = dimensions.width - 150;
   const xScale = (value: number) => (value / maxValue) * barWidth;
 
   return (
@@ -279,21 +291,26 @@ const TagValidationChart: React.FC = () => {
       </div>
 
       <div className={`chart-legend ${legendVisible ? "show" : ""}`}>
-        <div className="legend-item">
-          <div className="legend-swatch filled" />
-          <span>GPT Valid</span>
+        <div className="legend-group gpt-group">
+          <div className="legend-item">
+            <div className="legend-swatch filled" />
+            <span>GPT Valid</span>
+          </div>
+          <div className="legend-item">
+            <div className="legend-swatch outlined" />
+            <span>GPT Invalid</span>
+          </div>
         </div>
-        <div className="legend-item">
-          <div className="legend-swatch outlined" />
-          <span>GPT Invalid</span>
-        </div>
-        <div className="legend-item">
-          <div className="legend-swatch" style={{ backgroundColor: "var(--color-green)" }} />
-          <span>Human Valid</span>
-        </div>
-        <div className="legend-item">
-          <div className="legend-swatch" style={{ backgroundColor: "var(--color-red)" }} />
-          <span>Human Invalid</span>
+        
+        <div className="legend-group human-group">
+          <div className="legend-item">
+            <div className="legend-swatch" style={{ backgroundColor: "var(--color-green)" }} />
+            <span>Human Valid</span>
+          </div>
+          <div className="legend-item">
+            <div className="legend-swatch" style={{ backgroundColor: "var(--color-red)" }} />
+            <span>Human Invalid</span>
+          </div>
         </div>
       </div>
     </div>
