@@ -38,7 +38,8 @@ api = aws.apigatewayv2.Api(
     cors_configuration=aws.apigatewayv2.ApiCorsConfigurationArgs(
         allow_origins=[
             "http://localhost:3000", 
-            "https://tylernorlund.com", 
+            "https://tylernorlund.com",
+            "https://www.tylernorlund.com",  # Add www subdomain
             "https://dev.tylernorlund.com",
             "http://192.168.4.117:3000"  # Add your iPad's address
         ],
