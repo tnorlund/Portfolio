@@ -70,12 +70,11 @@ const ChartRow: React.FC<ChartRowProps> = ({
           {/* GPT Valid section on top */}
           <path
             d={`
-              M ${currentX + 4} 0
+              M ${currentX} 0
               H ${currentX + gptValidWidth}
-              V 12
+              V 11
               H ${currentX}
-              V 4
-              a 4 4 0 0 1 4 -4
+              V 0
             `}
             fill="var(--text-color)"
             stroke="var(--text-color)"
@@ -90,9 +89,8 @@ const ChartRow: React.FC<ChartRowProps> = ({
               <path
                 d={`
                   M ${invalidX} 0
-                  H ${invalidX + gptInvalidWidth - 4}
-                  a 4 4 0 0 1 4 4
-                  V 12
+                  H ${invalidX + gptInvalidWidth}
+                  V 11
                   H ${invalidX}
                   V 0
                 `}
@@ -108,17 +106,17 @@ const ChartRow: React.FC<ChartRowProps> = ({
           {/* First: No human validation (blank/transparent) */}
           <path
             d={`
-              M ${currentX} 12
+              M ${currentX} 13
               H ${currentX + positions.validatedTrueHumanFalse}
               V 24
               H ${currentX}
-              V 12
+              V 13
             `}
             fill="transparent"
             vectorEffect="non-scaling-stroke"
           />
 
-          {/* Second: Human Invalid (Red) */}
+          {/* Second: Human Valid (Green) */}
           <path
             d={`
               M ${currentX + positions.validatedTrueHumanFalse} 12
@@ -127,13 +125,13 @@ const ChartRow: React.FC<ChartRowProps> = ({
               H ${currentX + positions.validatedTrueHumanFalse}
               V 12
             `}
-            fill="var(--color-red)"
-            stroke="var(--color-red)"
+            fill="var(--color-green)"
+            stroke="var(--color-green)"
             strokeWidth={2}
             vectorEffect="non-scaling-stroke"
           />
 
-          {/* Third: Human Valid (Green) */}
+          {/* Third: Human Invalid (Red) */}
           <path
             d={`
               M ${currentX + positions.validatedTrueHumanFalse + positions.validatedTrueHumanTrue} 12
@@ -142,8 +140,8 @@ const ChartRow: React.FC<ChartRowProps> = ({
               H ${currentX + positions.validatedTrueHumanFalse + positions.validatedTrueHumanTrue}
               V 12
             `}
-            fill="var(--color-green)"
-            stroke="var(--color-green)"
+            fill="var(--color-red)"
+            stroke="var(--color-red)"
             strokeWidth={2}
             vectorEffect="non-scaling-stroke"
           />
