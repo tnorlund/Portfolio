@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { fetchReceiptDetails } from "../api";
 import { ReceiptDetail } from "../interfaces";
 import SelectedReceipt from './SelectedReceipt';
@@ -27,9 +27,7 @@ const ReceiptValidation: React.FC = () => {
     }
   }, [receiptDetails, selectedReceipt]);  // Add selectedReceipt to dependencies
 
-  const loadReceipts = async (lek: any) => {
-    if (loading) return;
-
+  const loadReceipts = useCallback(async (lek: any) => {
     try {
       setLoading(true);
       setError(null);
@@ -55,12 +53,12 @@ const ReceiptValidation: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedReceipt]); // Remove loading from dependencies
 
   // Initial load
   useEffect(() => {
     loadReceipts(null);
-  }, []);
+  }, [loadReceipts]);
 
   const handleNextPage = async () => {
     if (!hasMore || loading) return;

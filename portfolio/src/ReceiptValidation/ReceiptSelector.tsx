@@ -2,7 +2,6 @@ import React from 'react';
 import { ReceiptDetail } from '../interfaces';
 import ReceiptBoundingBox from './ReceiptBoundingBox';
 import './ReceiptSelector.css';
-import LoadingSpinner from '../components/LoadingSpinner';
 
 interface ReceiptSelectorProps {
   receiptDetails: { [key: string]: ReceiptDetail };
@@ -37,20 +36,6 @@ const ReceiptSelector: React.FC<ReceiptSelectorProps> = ({
     // Load more when user scrolls near the right edge
     if (scrollWidth - scrollLeft <= clientWidth * 1.5 && hasMore && !loading) {
       onNext();
-    }
-  };
-
-  const scrollLeft = () => {
-    const grid = document.querySelector('.receipt-selector-grid');
-    if (grid) {
-      grid.scrollBy({ left: -300, behavior: 'smooth' });
-    }
-  };
-
-  const scrollRight = () => {
-    const grid = document.querySelector('.receipt-selector-grid');
-    if (grid) {
-      grid.scrollBy({ left: 300, behavior: 'smooth' });
     }
   };
 
