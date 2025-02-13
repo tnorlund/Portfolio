@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
-import { ReceiptDetail, ReceiptWord } from './interfaces';
+import { ReceiptDetail, ReceiptWord } from '../interfaces';
+import { postReceiptWordTags } from '../api';
 
 interface SelectionBox {
   startX: number;
@@ -15,7 +16,7 @@ interface ReceiptBoundingBoxProps {
   cdn_base_url: string;
   highlightedWords: ReceiptWord[];
   onClick?: (word: ReceiptWord) => void;
-  onSelectionComplete?: (words: ReceiptWord[]) => void;
+  onSelectionComplete?: (words: ReceiptWord[], updatedDetail: Partial<ReceiptDetail>) => void;
   isAddingTag?: boolean;
   addingTagType?: string;
   onWordTagClick?: (word: ReceiptWord, event: { clientX: number; clientY: number }) => void;
@@ -81,7 +82,7 @@ const ReceiptBoundingBox: React.FC<ReceiptBoundingBoxProps> = ({
     updateDrawing(touch.clientX, touch.clientY);
   };
 
-  const endDrawing = () => {
+  const endDrawing = async () => {
     if (!isDrawing || !selectionBox || !onSelectionComplete) return;
 
     // Calculate the selection box coordinates
@@ -114,7 +115,7 @@ const ReceiptBoundingBox: React.FC<ReceiptBoundingBoxProps> = ({
 
     // Create a summary of selected words with their existing tags
     const selectionSummary = {
-      selected_tag: addingTagType || null,
+      selected_tag: addingTagType || "",
       selected_words: selectedWords.map(word => {
         const matchingTags = detail.word_tags.filter(tag => 
           tag.word_id === word.word_id &&
@@ -132,7 +133,43 @@ const ReceiptBoundingBox: React.FC<ReceiptBoundingBoxProps> = ({
 
     console.log('Batch Update:', selectionSummary);
 
-    onSelectionComplete(selectedWords);
+    try {
+      // Call the API to update tags
+      const result = await postReceiptWordTags(selectionSummary);
+      console.log('Batch Update Result:', result);
+      
+      // Create updated detail from response
+      const updatedDetail: Partial<ReceiptDetail> = {
+        words: detail.words.map(word => {
+          // Find if this word was updated
+          const updated = result.updated_items.find(item => 
+            item.word.word_id === word.word_id &&
+            item.word.line_id === word.line_id &&
+            item.word.image_id === word.image_id
+          );
+          return updated ? updated.receipt_word : word;
+        }),
+        word_tags: detail.word_tags.filter(tag => {
+          // Remove tags that were updated
+          return !result.updated_items.some(item =>
+            item.receipt_word_tag.word_id === tag.word_id &&
+            item.receipt_word_tag.line_id === tag.line_id &&
+            item.receipt_word_tag.image_id === tag.image_id &&
+            item.receipt_word_tag.tag === tag.tag
+          );
+        }).concat(
+          // Add new/updated tags
+          result.updated_items.map(item => item.receipt_word_tag)
+        )
+      };
+      
+      // Call the callback with selected words and updated detail
+      onSelectionComplete(selectedWords, updatedDetail);
+    } catch (error) {
+      console.error('Error updating tags:', error);
+      // You might want to show an error message to the user here
+    }
+
     setIsDrawing(false);
     setSelectionBox(null);
   };

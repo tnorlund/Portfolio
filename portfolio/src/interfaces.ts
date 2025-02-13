@@ -41,7 +41,7 @@ export interface Image {
 
 export interface Word {
   // IDs indicating what this word is linked to
-  image_id: number;
+  image_id: string;
   line_id: number;
   word_id: number;
 

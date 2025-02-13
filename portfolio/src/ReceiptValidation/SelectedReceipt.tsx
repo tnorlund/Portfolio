@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ReceiptDetail, ReceiptWord, ReceiptWordTag } from "../interfaces";
-import ReceiptBoundingBox from "../ReceiptBoundingBox";
+import ReceiptBoundingBox from "./ReceiptBoundingBox";
 import TagGroup from './TagGroup';
 import { fetchReceiptDetail, postReceiptWordTag } from "../api";
 import TagMenu from './TagMenu';
@@ -207,11 +207,15 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
     }
   };
 
-  const handleSelectionComplete = (words: ReceiptWord[]) => {
-    if (addingTagType && words.length > 0) {
-      // console.log('Adding tag:', addingTagType, 'to words:', words);
-      setSelectedWords(words);
-      setAddingTagType(null);
+  const handleSelectionComplete = (words: ReceiptWord[], updatedDetail: Partial<ReceiptDetail>) => {
+    setSelectedWords(words);
+    setAddingTagType(null);
+    if (selectedReceipt && receiptDetails[selectedReceipt]) {
+      onReceiptUpdate(selectedReceipt, {
+        ...receiptDetails[selectedReceipt],
+        words: updatedDetail.words || receiptDetails[selectedReceipt].words,
+        word_tags: updatedDetail.word_tags || receiptDetails[selectedReceipt].word_tags
+      });
     }
   };
 
@@ -418,49 +422,52 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
                     }}
                     onSelect={async (newTag) => {
                       setShowFloatingMenu(false);
-                      setAddingTagType(newTag);
                       
-                      // Only handle word tag updates if we have a selected word
-                      if (!selectedWord) return;
+                      // Only set addingTagType if we're using the floating menu
+                      if (showFloatingMenu) {
+                        setAddingTagType(newTag);
+                        return;
+                      }
                       
-                      try {
+                      // Handle individual word tag updates
+                      if (selectedWord) {
+                        try {
                           if (selectedWord.tags.length === 0) {
-                              const payload = {
-                                  selected_tag: {
-                                      image_id: selectedWord.image_id,
-                                      receipt_id: selectedWord.receipt_id,
-                                      line_id: selectedWord.line_id,
-                                      word_id: selectedWord.word_id,
-                                      tag: newTag,
-                                      timestamp_added: new Date().toISOString(),
-                                      validated: null,
-                                      timestamp_validated: null,
-                                      gpt_confidence: null,
-                                      flag: null,
-                                      revised_tag: null,
-                                      human_validated: null,
-                                      timestamp_human_validated: null
-                                  } as ReceiptWordTag,
-                                  selected_word: selectedWord,
-                                  action: "add_tag" as const,
-                                  new_tag: newTag
-                              };
-                              console.log('API Payload for word with no tags:', payload);
-                              const response = await postReceiptWordTag(payload);
-                              handleTagUpdate(response.updated.receipt_word_tag);
+                            const payload = {
+                              selected_tag: {
+                                image_id: selectedWord.image_id,
+                                receipt_id: selectedWord.receipt_id,
+                                line_id: selectedWord.line_id,
+                                word_id: selectedWord.word_id,
+                                tag: newTag,
+                                timestamp_added: new Date().toISOString(),
+                                validated: null,
+                                timestamp_validated: null,
+                                gpt_confidence: null,
+                                flag: null,
+                                revised_tag: null,
+                                human_validated: null,
+                                timestamp_human_validated: null
+                              } as ReceiptWordTag,
+                              selected_word: selectedWord,
+                              action: "add_tag" as const,
+                              new_tag: newTag
+                            };
+                            const response = await postReceiptWordTag(payload);
+                            handleTagUpdate(response.updated.receipt_word_tag);
                           } else if (matchingTag) {
-                              const payload = {
-                                  selected_tag: matchingTag,
-                                  selected_word: selectedWord,
-                                  action: "change_tag" as const,
-                                  new_tag: newTag
-                              };
-                              console.log('API Payload for word with existing tags:', payload);
-                              const response = await postReceiptWordTag(payload);
-                              handleTagUpdate(response.updated.receipt_word_tag);
+                            const payload = {
+                              selected_tag: matchingTag,
+                              selected_word: selectedWord,
+                              action: "change_tag" as const,
+                              new_tag: newTag
+                            };
+                            const response = await postReceiptWordTag(payload);
+                            handleTagUpdate(response.updated.receipt_word_tag);
                           }
-                      } catch (error) {
+                        } catch (error) {
                           console.error('Failed to update tag:', error);
+                        }
                       }
                       
                       setOpenTagMenu(null);

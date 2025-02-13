@@ -1,6 +1,6 @@
 import React from 'react';
 import { ReceiptDetail } from '../interfaces';
-import ReceiptBoundingBox from '../ReceiptBoundingBox';
+import ReceiptBoundingBox from './ReceiptBoundingBox';
 import './ReceiptSelector.css';
 
 interface ReceiptSelectorProps {

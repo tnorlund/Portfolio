@@ -141,33 +141,67 @@ def handler(event, context):
                 new_tag_type = body["new_tag"]
                 old_tag_type = receipt_word_tag.tag
 
-                # Update tag while preserving other attributes
-                receipt_word_tag.tag = new_tag_type
-                word_tag.tag = new_tag_type
+                # Delete old tag entries
+                client.deleteWordTag(
+                    image_id=word_tag.image_id,
+                    line_id=word_tag.line_id,
+                    word_id=word_tag.word_id,
+                    tag=word_tag.tag
+                )
+                client.deleteReceiptWordTag(
+                    image_id=receipt_word_tag.image_id,
+                    receipt_id=receipt_word_tag.receipt_id,
+                    line_id=receipt_word_tag.line_id,
+                    word_id=receipt_word_tag.word_id,
+                    tag=receipt_word_tag.tag
+                )
+
+                # Create new tag entries with updated tag type
+                new_receipt_word_tag = ReceiptWordTag(
+                    image_id=receipt_word_tag.image_id,
+                    receipt_id=receipt_word_tag.receipt_id,
+                    line_id=receipt_word_tag.line_id,
+                    word_id=receipt_word_tag.word_id,
+                    tag=new_tag_type,
+                    timestamp_added=receipt_word_tag.timestamp_added,
+                    validated=True,
+                    timestamp_validated=timestamp_str,
+                    gpt_confidence=receipt_word_tag.gpt_confidence,
+                    flag=receipt_word_tag.flag,
+                    revised_tag=receipt_word_tag.revised_tag,
+                    human_validated=True,
+                    timestamp_human_validated=timestamp_str
+                )
                 
-                # Update validation status
-                receipt_word_tag.human_validated = True
-                word_tag.human_validated = True
-                receipt_word_tag.timestamp_human_validated = timestamp_str
-                word_tag.timestamp_human_validated = timestamp_str
-                
-                # Keep existing attributes
-                receipt_word_tag.validated = True  # Since human validated
-                word_tag.validated = True
-                receipt_word_tag.timestamp_validated = timestamp_str
-                word_tag.timestamp_validated = timestamp_str
-                
-                # Preserve these attributes from the original tag
-                # (they're already preserved since we're modifying the existing object)
-                # - gpt_confidence
-                # - flag
-                # - revised_tag
-                # - timestamp_added
+                new_word_tag = WordTag(
+                    image_id=word_tag.image_id,
+                    line_id=word_tag.line_id,
+                    word_id=word_tag.word_id,
+                    tag=new_tag_type,
+                    timestamp_added=word_tag.timestamp_added,
+                    validated=True,
+                    timestamp_validated=timestamp_str,
+                    gpt_confidence=word_tag.gpt_confidence,
+                    flag=word_tag.flag,
+                    revised_tag=word_tag.revised_tag,
+                    human_validated=True,
+                    timestamp_human_validated=timestamp_str
+                )
 
                 # Update word's tag list
                 current_tags = [t for t in word.tags if t != old_tag_type]
                 word.tags = list(set(current_tags + [new_tag_type]))
                 receipt_word.tags = word.tags.copy()
+
+                # Add new tags
+                client.addWordTag(new_word_tag)
+                client.addReceiptWordTag(new_receipt_word_tag)
+                client.updateWord(word)
+                client.updateReceiptWord(receipt_word)
+
+                # Update response with new tag entities
+                word_tag = new_word_tag
+                receipt_word_tag = new_receipt_word_tag
 
             elif action == "add_tag":
                 if "new_tag" not in body:

@@ -34,7 +34,12 @@ api = aws.apigatewayv2.Api(
     "my-api",
     protocol_type="HTTP",
     cors_configuration=aws.apigatewayv2.ApiCorsConfigurationArgs(
-        allow_origins=["http://localhost:3000", "https://tylernorlund.com", "https://dev.tylernorlund.com"],
+        allow_origins=[
+            "http://localhost:3000", 
+            "https://tylernorlund.com", 
+            "https://dev.tylernorlund.com",
+            "http://192.168.4.117:3000"  # Add your iPad's address
+        ],
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"],
         allow_headers=[
             "Content-Type",

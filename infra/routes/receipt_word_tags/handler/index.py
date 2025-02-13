@@ -19,7 +19,7 @@ import logging
 import json
 from dynamo import DynamoClient, ReceiptWord, ReceiptWordTag, Word, WordTag
 import random
-import datetime
+from datetime import datetime, UTC
 
 
 logger = logging.getLogger()
@@ -28,7 +28,51 @@ logger.setLevel(logging.INFO)
 dynamodb_table_name = os.environ["DYNAMODB_TABLE_NAME"]
 
 
+def is_local_network(origin):
+    """Check if origin is from local network"""
+    if origin:
+        # Check for localhost
+        if origin.startswith('http://localhost:'):
+            return True
+        # Check for local IP addresses (192.168.*.*)
+        if origin.startswith('http://192.168.'):
+            return True
+        # You can add other local network patterns here
+    return False
+
 def handler(event, context):
+    # Get the origin from the request headers
+    origin = event.get('headers', {}).get('origin', '')
+    
+    # Define production origins
+    production_origins = [
+        "https://tylernorlund.com",
+        "https://dev.tylernorlund.com"
+    ]
+    
+    # Allow the origin if it's from production or local network
+    if origin in production_origins or is_local_network(origin):
+        allowed_origin = origin
+    else:
+        allowed_origin = "http://localhost:3000"  # Default fallback
+    
+    # Common headers for CORS
+    cors_headers = {
+        'Access-Control-Allow-Origin': allowed_origin,
+        'Access-Control-Allow-Credentials': 'true',
+        'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS,HEAD,PATCH',
+        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,Origin,Accept',
+        'Content-Type': 'application/json'
+    }
+    
+    # For OPTIONS requests (preflight)
+    if event.get('requestContext', {}).get('http', {}).get('method') == 'OPTIONS':
+        return {
+            'statusCode': 200,
+            'headers': cors_headers,
+            'body': ''
+        }
+
     logger.info("Received event: %s", event)
     http_method = event["requestContext"]["http"]["method"].upper()
 
@@ -80,135 +124,186 @@ def handler(event, context):
             
             # Parse the request body
             body = json.loads(event.get("body", "{}"))
+            logger.info("Received POST body: %s", body)
             
             # Validate request structure
             if not isinstance(body, dict):
-                return {"statusCode": 400, "body": "Request body must be an object"}
+                return {
+                    "statusCode": 400,
+                    "headers": cors_headers,
+                    "body": json.dumps({"error": "Request body must be an object"})
+                }
             
             if "selected_tag" not in body or "selected_words" not in body:
-                return {"statusCode": 400, "body": "Request must include 'selected_tag' and 'selected_words'"}
+                return {
+                    "statusCode": 400,
+                    "headers": cors_headers,
+                    "body": json.dumps({"error": "Request must include 'selected_tag' and 'selected_words'"})
+                }
             
             selected_tag = body["selected_tag"]
             selected_words = body["selected_words"]
             
             if not isinstance(selected_words, list):
-                return {"statusCode": 400, "body": "'selected_words' must be an array"}
+                return {
+                    "statusCode": 400,
+                    "headers": cors_headers,
+                    "body": json.dumps({"error": "'selected_words' must be an array"})
+                }
 
+            # Get current timestamp
+            current_time = datetime.now(UTC)
+            timestamp_str = current_time.isoformat()
+
+            updated_items = []
+            
             # Process each word
             for word_data in selected_words:
-                if "word" not in word_data:
-                    return {"statusCode": 400, "body": "Each item must contain a 'word' object"} 
-                if "tags" not in word_data:
-                    return {"statusCode": 400, "body": "Each item must contain a 'tags' array"}
-                
-                # Create both receipt word and regular word entities
+                if "word" not in word_data or "tags" not in word_data:
+                    return {
+                        "statusCode": 400,
+                        "headers": cors_headers,
+                        "body": json.dumps({"error": "Each item must contain 'word' and 'tags'"})
+                    }
+
+                # Create receipt word entity
                 receipt_word = ReceiptWord(**word_data["word"])
-                word = Word(
-                    image_id=receipt_word.image_id,
-                    line_id=receipt_word.line_id,
-                    word_id=receipt_word.word_id,
-                    text=receipt_word.text,
-                    bounding_box=receipt_word.bounding_box,
-                    top_right=receipt_word.top_right,
-                    top_left=receipt_word.top_left,
-                    bottom_right=receipt_word.bottom_right,
-                    bottom_left=receipt_word.bottom_left,
-                    angle_degrees=receipt_word.angle_degrees,
-                    angle_radians=receipt_word.angle_radians,
-                    confidence=receipt_word.confidence,
-                    tags=receipt_word.tags
-                )
+                
+                # Remove receipt_id before creating Word entity
+                word_params = {k: v for k, v in word_data["word"].items() if k != 'receipt_id'}
+                word = Word(**word_params)
 
-                # Create both receipt word tags and regular word tags
-                existing_receipt_tags = [ReceiptWordTag(**tag) for tag in word_data["tags"]]
-                existing_word_tags = [
-                    WordTag(
-                        image_id=tag.image_id,
-                        line_id=tag.line_id,
-                        word_id=tag.word_id,
-                        tag=tag.tag,
-                        timestamp_added=tag.timestamp_added,
-                        validated=tag.validated,
-                        timestamp_validated=tag.timestamp_validated,
-                        gpt_confidence=tag.gpt_confidence,
-                        flag=tag.flag,
-                        revised_tag=tag.revised_tag,
-                        human_validated=tag.human_validated,
-                        timestamp_human_validated=tag.timestamp_human_validated
-                    ) 
-                    for tag in existing_receipt_tags
-                ]
+                # Delete all existing tags for this word
+                existing_tags = word_data["tags"]
+                for tag in existing_tags:
+                    # Skip if this is the selected tag
+                    if tag["tag"] == selected_tag:
+                        continue
+                        
+                    # Delete the tag entries
+                    client.deleteWordTag(
+                        image_id=tag["image_id"],
+                        line_id=tag["line_id"],
+                        word_id=tag["word_id"],
+                        tag=tag["tag"]
+                    )
+                    client.deleteReceiptWordTag(
+                        image_id=tag["image_id"],
+                        receipt_id=tag["receipt_id"],
+                        line_id=tag["line_id"],
+                        word_id=tag["word_id"],
+                        tag=tag["tag"]
+                    )
 
-                # Create new tags
-                new_receipt_tag = ReceiptWordTag(
+                # Find matching tag if it exists
+                matching_tag = None
+                for tag in existing_tags:
+                    if tag["tag"] == selected_tag:
+                        matching_tag = tag
+                        break
+
+                if matching_tag:
+                    # Create entities from existing tag
+                    old_receipt_word_tag = ReceiptWordTag(**matching_tag)
+                    old_word_tag = WordTag(
+                        image_id=old_receipt_word_tag.image_id,
+                        line_id=old_receipt_word_tag.line_id,
+                        word_id=old_receipt_word_tag.word_id,
+                        tag=old_receipt_word_tag.tag,
+                        timestamp_added=old_receipt_word_tag.timestamp_added,
+                        validated=old_receipt_word_tag.validated,
+                        timestamp_validated=old_receipt_word_tag.timestamp_validated,
+                        gpt_confidence=old_receipt_word_tag.gpt_confidence,
+                        flag=old_receipt_word_tag.flag,
+                        revised_tag=old_receipt_word_tag.revised_tag,
+                        human_validated=old_receipt_word_tag.human_validated,
+                        timestamp_human_validated=old_receipt_word_tag.timestamp_human_validated
+                    )
+                    
+                    # Delete the old tag entries
+                    client.deleteWordTag(
+                        image_id=old_word_tag.image_id,
+                        line_id=old_word_tag.line_id,
+                        word_id=old_word_tag.word_id,
+                        tag=old_word_tag.tag
+                    )
+                    client.deleteReceiptWordTag(
+                        image_id=old_receipt_word_tag.image_id,
+                        receipt_id=old_receipt_word_tag.receipt_id,
+                        line_id=old_receipt_word_tag.line_id,
+                        word_id=old_receipt_word_tag.word_id,
+                        tag=old_receipt_word_tag.tag
+                    )
+
+                # Create new tag (whether updating or creating fresh)
+                receipt_word_tag = ReceiptWordTag(
                     image_id=receipt_word.image_id,
                     receipt_id=receipt_word.receipt_id,
                     line_id=receipt_word.line_id,
                     word_id=receipt_word.word_id,
                     tag=selected_tag,
-                    timestamp_added=datetime.datetime.now(),
+                    timestamp_added=old_receipt_word_tag.timestamp_added if matching_tag else timestamp_str,
+                    validated=True,
+                    timestamp_validated=timestamp_str,
+                    gpt_confidence=old_receipt_word_tag.gpt_confidence if matching_tag else None,
+                    flag=old_receipt_word_tag.flag if matching_tag else None,
+                    revised_tag=old_receipt_word_tag.revised_tag if matching_tag else None,
                     human_validated=True,
-                    timestamp_human_validated=datetime.datetime.now()
+                    timestamp_human_validated=timestamp_str
                 )
                 
-                new_word_tag = WordTag(
+                word_tag = WordTag(
                     image_id=word.image_id,
                     line_id=word.line_id,
                     word_id=word.word_id,
                     tag=selected_tag,
-                    timestamp_added=datetime.datetime.now(),
+                    timestamp_added=old_word_tag.timestamp_added if matching_tag else timestamp_str,
+                    validated=True,
+                    timestamp_validated=timestamp_str,
+                    gpt_confidence=old_word_tag.gpt_confidence if matching_tag else None,
+                    flag=old_word_tag.flag if matching_tag else None,
+                    revised_tag=old_word_tag.revised_tag if matching_tag else None,
                     human_validated=True,
-                    timestamp_human_validated=datetime.datetime.now()
+                    timestamp_human_validated=timestamp_str
                 )
 
-                try:
-                    # Check if tags already exist
-                    receipt_tag_exists = any(tag.tag == selected_tag for tag in existing_receipt_tags)
-                    
-                    if receipt_tag_exists:
-                        # Find and update the existing tags
-                        for tag in existing_receipt_tags:
-                            if tag.tag == selected_tag:
-                                tag.human_validated = True
-                                tag.timestamp_human_validated = datetime.datetime.now()
-                                client.updateReceiptWordTag(tag)
-                                break
-                        
-                        for tag in existing_word_tags:
-                            if tag.tag == selected_tag:
-                                tag.human_validated = True
-                                tag.timestamp_human_validated = datetime.datetime.now()
-                                client.updateWordTag(tag)
-                                break
-                    else:
-                        # Create new tags
-                        client.addReceiptWordTag(new_receipt_tag)
-                        client.addWordTag(new_word_tag)
+                # Update word tags - now only containing the selected tag
+                word.tags = [selected_tag]
+                receipt_word.tags = [selected_tag]
 
-                        # Update both words' tags lists if needed
-                        if selected_tag not in receipt_word.tags:
-                            receipt_word.tags.append(selected_tag)
-                            word.tags.append(selected_tag)
-                            client.updateReceiptWord(receipt_word)
-                            client.updateWord(word)
+                # Add the new tags
+                client.addWordTag(word_tag)
+                client.addReceiptWordTag(receipt_word_tag)
+                client.updateWord(word)
+                client.updateReceiptWord(receipt_word)
 
-                except Exception as e:
-                    logger.error(f"Error processing word {word.word_id}: {str(e)}")
-                    return {"statusCode": 500, "body": f"Error processing word: {str(e)}"}
+                updated_items.append({
+                    'word': dict(word),
+                    'word_tag': dict(word_tag),
+                    'receipt_word': dict(receipt_word),
+                    'receipt_word_tag': dict(receipt_word_tag)
+                })
+
+            response = {
+                'updated_items': updated_items
+            }
+            logger.info("Sending response: %s", response)
 
             return {
-                "statusCode": 200,
-                "body": json.dumps({
-                    "message": "Successfully updated word tags",
-                    "tag": selected_tag,
-                    "word_count": len(selected_words)
+                'statusCode': 200,
+                'headers': cors_headers,
+                'body': json.dumps(response)
+            }
+
+        except Exception as e:
+            logger.error(f"Error processing request: {str(e)}", exc_info=True)
+            return {
+                'statusCode': 500,
+                'headers': cors_headers,
+                'body': json.dumps({
+                    'error': f'Internal server error: {str(e)}'
                 })
             }
 
-        except json.JSONDecodeError:
-            return {"statusCode": 400, "body": "Invalid JSON in request body"}
-        except Exception as e:
-            logger.error("Error processing request: %s", str(e))
-            return {"statusCode": 500, "body": f"Internal server error: {str(e)}"}
     else:
         return {"statusCode": 405, "body": f"Method {http_method} not allowed"}

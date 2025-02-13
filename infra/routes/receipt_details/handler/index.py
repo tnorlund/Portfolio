@@ -20,7 +20,53 @@ def convert_payload_to_dict(payload):
         }
     return result
 
-def handler(event, _):
+def is_local_network(origin):
+    """Check if origin is from local network"""
+    if origin:
+        # Check for localhost
+        if origin.startswith('http://localhost:'):
+            return True
+        # Check for local IP addresses (192.168.*.*)
+        if origin.startswith('http://192.168.'):
+            return True
+        # Add specific iPad address
+        if origin == "http://192.168.4.117:3000":
+            return True
+    return False
+
+def handler(event, context):
+    # Get the origin from the request headers
+    origin = event.get('headers', {}).get('origin', '')
+    
+    # Define production origins
+    production_origins = [
+        "https://tylernorlund.com",
+        "https://dev.tylernorlund.com"
+    ]
+    
+    # Allow the origin if it's from production or local network
+    if origin in production_origins or is_local_network(origin):
+        allowed_origin = origin
+    else:
+        allowed_origin = "http://localhost:3000"  # Default fallback
+    
+    # Common headers for CORS
+    cors_headers = {
+        'Access-Control-Allow-Origin': allowed_origin,
+        'Access-Control-Allow-Credentials': 'true',
+        'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS,HEAD,PATCH',
+        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,Origin,Accept',
+        'Content-Type': 'application/json'
+    }
+    
+    # For OPTIONS requests (preflight)
+    if event.get('requestContext', {}).get('http', {}).get('method') == 'OPTIONS':
+        return {
+            'statusCode': 200,
+            'headers': cors_headers,
+            'body': ''
+        }
+
     logger.info("Received event: %s", event)
     http_method = event["requestContext"]["http"]["method"].upper()
 
@@ -41,6 +87,7 @@ def handler(event, _):
         
         return {
             "statusCode": 200,
+            "headers": cors_headers,
             "body": json.dumps({
                 "payload": convert_payload_to_dict(payload),
                 "last_evaluated_key": last_evaluated_key,

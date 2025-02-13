@@ -12,7 +12,6 @@ import {
   ReceiptDetailApiResponse,
   ReceiptWord,
   ReceiptWordTag,
-  ReceiptWordTagApiResponse,
   Word,
   WordTag,
 } from "./interfaces";
@@ -71,6 +70,41 @@ export const postReceiptWordTag = async (params: {
     );
   }
   
+  return await response.json();
+};
+
+export const postReceiptWordTags = async (params: {
+  selected_tag: string;
+  selected_words: Array<{
+    word: ReceiptWord;
+    tags: ReceiptWordTag[];
+  }>;
+}): Promise<{
+  updated_items: Array<{
+    word: Word;
+    word_tag: WordTag;
+    receipt_word: ReceiptWord;
+    receipt_word_tag: ReceiptWordTag;
+  }>;
+}> => {
+  const apiUrl = process.env.NODE_ENV === "development"
+    ? `https://dev-api.tylernorlund.com/receipt_word_tags`
+    : `https://api.tylernorlund.com/receipt_word_tags`;
+
+  const response = await fetch(apiUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params)
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => null);
+    throw new Error(
+      errorData?.error || 
+      `Failed to update tags (status: ${response.status})`
+    );
+  }
+
   return await response.json();
 };
 
