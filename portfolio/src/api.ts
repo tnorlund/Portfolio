@@ -19,7 +19,7 @@ import {
 
 const isDevelopment = process.env.NODE_ENV === "development";
 
-// Add this common fetch configuration
+// Remove the credentials config
 const fetchConfig = {
   credentials: 'include' as RequestCredentials,
   headers: { 
