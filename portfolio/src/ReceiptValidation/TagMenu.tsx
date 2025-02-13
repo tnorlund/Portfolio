@@ -18,9 +18,25 @@ const selectableTags = [
   "taxes",
 ];
 
-const TagMenu: React.FC<TagMenuProps> = ({ menuRef, onSelect, style }) => {
+const TagMenu: React.FC<TagMenuProps> = ({ menuRef, onSelect }) => {
+  React.useEffect(() => {
+    if (!menuRef.current) return;
+    
+    const menu = menuRef.current;
+    const menuRect = menu.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - menuRect.bottom;
+    
+    if (spaceBelow < 0) {
+      // If menu would appear off-screen, position it above instead
+      menu.style.top = 'auto';
+      menu.style.bottom = '100%';
+      menu.style.marginTop = '0';
+      menu.style.marginBottom = '4px';
+    }
+  }, []);
+
   return (
-    <div 
+    <div
       ref={menuRef}
       style={{
         position: 'absolute',
@@ -30,8 +46,7 @@ const TagMenu: React.FC<TagMenuProps> = ({ menuRef, onSelect, style }) => {
         borderRadius: '4px',
         zIndex: 10,
         marginTop: '4px',
-        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-        ...style
+        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
       }}
     >
       {selectableTags.map(tag => (

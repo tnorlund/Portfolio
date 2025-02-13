@@ -27,6 +27,7 @@ const WordItem: React.FC<WordItemProps> = ({
   onRefresh,
 }) => {
   const [isUpdating, setIsUpdating] = useState(false);
+  const tagRef = React.useRef<HTMLSpanElement>(null);
 
   const renderStars = (confidence: number | null) => {
     if (confidence === null) return null;
@@ -180,6 +181,7 @@ const WordItem: React.FC<WordItemProps> = ({
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         {renderStars(tag.gpt_confidence)}
         <span 
+          ref={tagRef}
           onClick={onTagClick}
           style={{ 
             ...getTagColor(),
