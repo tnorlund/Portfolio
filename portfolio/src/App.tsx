@@ -4,8 +4,6 @@ import Resume from './Resume'; // import the Resume component
 import Receipt from './Receipt';
 import ReceiptValidation from './ReceiptValidation';
 
-const isDevelopment = process.env.NODE_ENV === "development";
-
 function App() {
   return (
     <div>
@@ -38,18 +36,15 @@ function App() {
                 <button onClick={() => window.location.href = '/receipt'}>
                   Receipt
                 </button>
-
-                {isDevelopment && (
                   <button onClick={() => window.location.href = '/receipt-validation'}>
                     Receipt Validation
                   </button>
-                )}
             </main>
           }
         />
         <Route path="/resume" element={<Resume />} />
         <Route path="/receipt" element={<Receipt />} />
-        {isDevelopment && (<Route path="/receipt-validation" element={<ReceiptValidation />} />)}
+        <Route path="/receipt-validation" element={<ReceiptValidation />} />
       </Routes>
       </div>
     </div>
