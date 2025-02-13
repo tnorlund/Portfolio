@@ -51,9 +51,10 @@ const ChartRow: React.FC<ChartRowProps> = ({
     validatedNoneHumanTrue: xScale(stats.validated_none_human_true),
   };
 
-  // Calculate total width for GPT sections
+  // Calculate widths for each GPT section
   const gptValidWidth = positions.validatedTrueHumanFalse + positions.validatedTrueHumanTrue;
   const gptInvalidWidth = positions.validatedFalseHumanFalse + positions.validatedFalseHumanTrue;
+  const gptNoneWidth = positions.validatedNoneHumanTrue;
 
   let currentX = 4; // Starting position
 
@@ -72,7 +73,7 @@ const ChartRow: React.FC<ChartRowProps> = ({
             d={`
               M ${currentX} 0
               H ${currentX + gptValidWidth}
-              V 11
+              V 12
               H ${currentX}
               V 0
             `}
@@ -90,7 +91,7 @@ const ChartRow: React.FC<ChartRowProps> = ({
                 d={`
                   M ${invalidX} 0
                   H ${invalidX + gptInvalidWidth}
-                  V 11
+                  V 12
                   H ${invalidX}
                   V 0
                 `}
@@ -106,11 +107,11 @@ const ChartRow: React.FC<ChartRowProps> = ({
           {/* First: No human validation (blank/transparent) */}
           <path
             d={`
-              M ${currentX} 13
+              M ${currentX} 12
               H ${currentX + positions.validatedTrueHumanFalse}
               V 24
               H ${currentX}
-              V 13
+              V 12
             `}
             fill="transparent"
             vectorEffect="non-scaling-stroke"
@@ -119,11 +120,11 @@ const ChartRow: React.FC<ChartRowProps> = ({
           {/* Second: Human Valid (Green) */}
           <path
             d={`
-              M ${currentX + positions.validatedTrueHumanFalse} 12
+              M ${currentX + positions.validatedTrueHumanFalse} 13
               H ${currentX + positions.validatedTrueHumanFalse + positions.validatedTrueHumanTrue}
               V 24
               H ${currentX + positions.validatedTrueHumanFalse}
-              V 12
+              V 13
             `}
             fill="var(--color-green)"
             stroke="var(--color-green)"
@@ -134,11 +135,11 @@ const ChartRow: React.FC<ChartRowProps> = ({
           {/* Third: Human Invalid (Red) */}
           <path
             d={`
-              M ${currentX + positions.validatedTrueHumanFalse + positions.validatedTrueHumanTrue} 12
+              M ${currentX + positions.validatedTrueHumanFalse + positions.validatedTrueHumanTrue} 13
               H ${currentX + gptValidWidth}
               V 24
               H ${currentX + positions.validatedTrueHumanFalse + positions.validatedTrueHumanTrue}
-              V 12
+              V 13
             `}
             fill="var(--color-red)"
             stroke="var(--color-red)"
@@ -146,24 +147,30 @@ const ChartRow: React.FC<ChartRowProps> = ({
             vectorEffect="non-scaling-stroke"
           />
 
-          {/* GPT None, Human Valid (Green) section at the end */}
+          {/* GPT None section (no top bar) */}
           {(() => {
             const noneX = currentX + gptValidWidth + gptInvalidWidth;
-            return (
-              <path
-                d={`
-                  M ${noneX} 12
-                  H ${noneX + positions.validatedNoneHumanTrue}
-                  V 24
-                  H ${noneX}
-                  V 12
-                `}
-                fill="var(--color-green)"
-                stroke="var(--color-green)"
-                strokeWidth={2}
-                vectorEffect="non-scaling-stroke"
-              />
-            );
+            if (gptNoneWidth > 0) {
+              return (
+                <>
+                  {/* Human Valid under GPT None (Green) */}
+                  <path
+                    d={`
+                      M ${noneX} 13
+                      H ${noneX + gptNoneWidth}
+                      V 24
+                      H ${noneX}
+                      V 13
+                    `}
+                    fill="var(--color-green)"
+                    stroke="var(--color-green)"
+                    strokeWidth={2}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                </>
+              );
+            }
+            return null;
           })()}
         </svg>
         <div className="total-count">{stats.total}</div>
