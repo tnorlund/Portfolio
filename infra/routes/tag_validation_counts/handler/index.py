@@ -12,35 +12,55 @@ logger.setLevel(logging.INFO)
 # Get the environment variables
 dynamodb_table_name = os.environ["DYNAMODB_TABLE_NAME"]
 
-def get_tag_validation_stats(dynamo_client: DynamoClient) -> Dict[str, Tuple[int, int]]:
+def get_tag_validation_stats(dynamo_client: DynamoClient) -> Dict[str, Dict[str, int]]:
     """
     Gets validation statistics for each tag in tags_wanted list.
     
     Returns:
-        Dict[str, Tuple[int, int]]: A dictionary where:
+        Dict[str, Dict[str, int]]: A dictionary where:
             - key: tag name
-            - value: tuple of (valid_count, invalid_count)
+            - value: dictionary of counts for different validation states
     """
-    tags_wanted = ["line_item_name", "address", "line_item_price", "store_name", "date", "time", "total_amount", "phone_number", "taxes"]
+    tags_wanted = ["line_item_name", "address", "line_item_price", "store_name", 
+                  "date", "time", "total_amount", "phone_number", "taxes"]
 
     # Get all receipt word tags
     receipt_tags, _ = dynamo_client.listReceiptWordTags()
     
     # Initialize counters for specified tags only
-    tag_stats = {tag: [0, 0] for tag in tags_wanted}  # [valid_count, invalid_count]
+    tag_stats = {tag: {
+        "validated_true_human_true": 0,    # validated=True, human_validated=True
+        "validated_true_human_false": 0,   # validated=True, human_validated=False
+        "validated_false_human_true": 0,   # validated=False, human_validated=True
+        "validated_false_human_false": 0,  # validated=False, human_validated=False
+        "validated_none_human_true": 0,    # validated=None, human_validated=True
+        "validated_none_human_false": 0,   # validated=None, human_validated=False
+    } for tag in tags_wanted}
     
-    # Count valid/invalid for each tag
+    # Count validation states for each tag
     for tag in receipt_tags:
-        if hasattr(tag, 'validated'):  # Only count tags that have been validated
-            tag_name = tag.tag.lower()  # Normalize tag names to lowercase
-            if tag_name in tags_wanted:  # Only count tags we care about
-                if tag.validated:
-                    tag_stats[tag_name][0] += 1  # Increment valid count
+        tag_name = tag.tag.lower()  # Normalize tag names to lowercase
+        if tag_name in tags_wanted:
+            validated = getattr(tag, 'validated', None)
+            human_validated = getattr(tag, 'human_validated', False)
+            
+            if validated is True:
+                if human_validated:
+                    tag_stats[tag_name]["validated_true_human_true"] += 1
                 else:
-                    tag_stats[tag_name][1] += 1  # Increment invalid count
+                    tag_stats[tag_name]["validated_true_human_false"] += 1
+            elif validated is False:
+                if human_validated:
+                    tag_stats[tag_name]["validated_false_human_true"] += 1
+                else:
+                    tag_stats[tag_name]["validated_false_human_false"] += 1
+            elif validated is None:
+                if human_validated:
+                    tag_stats[tag_name]["validated_none_human_true"] += 1
+                else:
+                    tag_stats[tag_name]["validated_none_human_false"] += 1
     
-    # Convert lists to tuples
-    return {tag: tuple(counts) for tag, counts in tag_stats.items()}
+    return tag_stats
 
 def handler(event, _):
     """
@@ -50,8 +70,14 @@ def handler(event, _):
         dict: API Gateway response containing tag validation statistics:
         {
             "tag_stats": {
-                "total": {"valid": 45, "invalid": 3, "total": 48},
-                "date": {"valid": 32, "invalid": 1, "total": 33},
+                "date": {
+                    "validated_true_human_true": 10,
+                    "validated_true_human_false": 20,
+                    "validated_false_human_true": 5,
+                    "validated_false_human_false": 15,
+                    "validated_none_human_true": 3,
+                    "total": 53
+                },
                 ...
             }
         }
@@ -65,12 +91,10 @@ def handler(event, _):
         
         # Format the statistics for the response
         formatted_stats = {}
-        for tag, (valid, invalid) in sorted(stats.items()):
-            total = valid + invalid
+        for tag, counts in sorted(stats.items()):
             formatted_stats[tag] = {
-                "valid": valid,
-                "invalid": invalid,
-                "total": total
+                **counts,  # Include all the detailed counts
+                "total": sum(counts.values())  # Add total
             }
         
         response_body = {

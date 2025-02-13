@@ -223,15 +223,19 @@ export interface ReceiptWordTagsApiResponse {
 }
 
 export interface TagStats {
-  valid: number;
-  invalid: number;
+  validated_true_human_true: number;
+  validated_true_human_false: number;
+  validated_false_human_true: number;
+  validated_false_human_false: number;
+  validated_none_human_true: number;
+  validated_none_human_false: number;
   total: number;
 }
 
 export interface TagValidationStatsResponse {
   tag_stats: {
-    [tag: string]: TagStats;
-  }
+    [key: string]: TagStats;
+  };
 }
 
 // Example response:
