@@ -178,7 +178,12 @@ const WordItem: React.FC<WordItemProps> = ({
         {word.text}
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      <div style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        gap: '8px',
+        position: 'relative'
+      }}>
         {renderStars(tag.gpt_confidence)}
         <span 
           ref={tagRef}

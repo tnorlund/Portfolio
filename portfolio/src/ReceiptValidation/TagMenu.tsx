@@ -18,35 +18,69 @@ const selectableTags = [
   "taxes",
 ];
 
-const TagMenu: React.FC<TagMenuProps> = ({ menuRef, onSelect }) => {
+const TagMenu: React.FC<TagMenuProps> = ({ menuRef, onSelect, style }) => {
   React.useEffect(() => {
     if (!menuRef.current) return;
     
     const menu = menuRef.current;
     const menuRect = menu.getBoundingClientRect();
-    const spaceBelow = window.innerHeight - menuRect.bottom;
     
-    if (spaceBelow < 0) {
-      // If menu would appear off-screen, position it above instead
-      menu.style.top = 'auto';
-      menu.style.bottom = '100%';
-      menu.style.marginTop = '0';
-      menu.style.marginBottom = '4px';
+    // Handle explicit positioning (SelectedReceipt case)
+    if (style?.left !== undefined || style?.top !== undefined) {
+      const viewportHeight = window.innerHeight;
+      const viewportWidth = window.innerWidth;
+      
+      if (menuRect.bottom > viewportHeight) {
+        menu.style.transform = `translateY(-100%)`;
+      }
+      
+      if (menuRect.right > viewportWidth) {
+        menu.style.transform = `translateX(-100%)${menu.style.transform ? ' translateY(-100%)' : ''}`;
+      }
+    } 
+    // Handle relative positioning (WordItem case)
+    else {
+      const parentRect = menu.parentElement?.getBoundingClientRect();
+      if (!parentRect) return;
+
+      const viewportHeight = window.innerHeight;
+      const viewportWidth = window.innerWidth;
+      
+      const spaceBelow = viewportHeight - parentRect.bottom;
+      const spaceRight = viewportWidth - parentRect.right;
+      
+      if (spaceBelow < menuRect.height) {
+        menu.style.top = 'auto';
+        menu.style.bottom = '100%';
+        menu.style.marginBottom = '4px';
+      } else {
+        menu.style.top = '100%';
+        menu.style.bottom = 'auto';
+        menu.style.marginTop = '4px';
+      }
+      
+      if (spaceRight < menuRect.width) {
+        menu.style.right = '0';
+        menu.style.left = 'auto';
+      } else {
+        menu.style.left = '0';
+        menu.style.right = 'auto';
+      }
     }
-  }, []);
+  }, [style, menuRef]);
 
   return (
     <div
       ref={menuRef}
       style={{
         position: 'absolute',
-        top: '100%',
         backgroundColor: 'var(--background-color)',
         border: '1px solid var(--text-color)',
         borderRadius: '4px',
-        zIndex: 10,
-        marginTop: '4px',
-        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+        zIndex: 1000,
+        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+        minWidth: 'max-content',
+        ...style
       }}
     >
       {selectableTags.map(tag => (

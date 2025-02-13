@@ -225,23 +225,17 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
     
     setMatchingTag(existingTags[0] || null);
 
-    // Get the bounding box container element
     const container = document.querySelector('.receipt-container');
     if (!container) return;
 
-    // Get container's position relative to the page
     const containerRect = container.getBoundingClientRect();
     
-    // Calculate position relative to the container
-    const x = event.clientX - containerRect.left;
-    const y = event.clientY - containerRect.top;
+    // Calculate position relative to container
+    let x = event.clientX - containerRect.left;
+    let y = event.clientY - containerRect.top;
     
     setMenuPosition({ x, y });
-
-    setOpenTagMenu({
-        groupIndex: -1,
-        wordIndex: -1
-    });
+    setOpenTagMenu({ groupIndex: -1, wordIndex: -1 });
   };
 
   const handleTagUpdate = (updatedTag: ReceiptWordTag) => {
