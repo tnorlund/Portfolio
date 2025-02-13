@@ -102,6 +102,32 @@ const styles = {
     color: 'var(--text-color)',
     transition: 'all 0.2s ease',
   },
+  floatingAddButton: {
+    position: 'absolute' as const,
+    left: '16px',
+    top: '50%',
+    transform: 'translateY(-50%)',
+    width: '50px',
+    height: '50px',
+    borderRadius: '50%',
+    backgroundColor: 'var(--background-color)',
+    color: 'var(--text-color)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    fontSize: '2rem',
+    lineHeight: '32px',
+    padding: 0,
+    fontWeight: 'bold',
+    userSelect: 'none' as const,
+    border: '2px solid var(--text-color)',
+    zIndex: 10,
+  },
+  floatingAddButtonText: {
+    marginTop: '-3px',
+    display: 'block',
+  },
 };
 
 // Component
@@ -349,6 +375,14 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
                   addingTagType={addingTagType || undefined}
                   onWordTagClick={!addingTagType ? handleWordTagClick : undefined}
                 />
+                <button 
+                  style={styles.floatingAddButton}
+                  onClick={() => {
+                    console.log('Floating add button clicked');
+                  }}
+                >
+                  <span style={styles.floatingAddButtonText}>+</span>
+                </button>
                 {openTagMenu && openTagMenu.groupIndex === -1 && menuPosition && !addingTagType && (
                   <TagMenu
                     menuRef={menuRef}
