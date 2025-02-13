@@ -9,6 +9,12 @@ import {
   ImageDetailsApiResponse,
   ReceiptWordTagsApiResponse,
   TagValidationStatsResponse,
+  ReceiptDetailApiResponse,
+  ReceiptWord,
+  ReceiptWordTag,
+  Word,
+  WordTag,
+  ReceiptWordTagAction,
 } from "./interfaces";
 
 const isDevelopment = process.env.NODE_ENV === "development";
@@ -27,6 +33,69 @@ export async function fetchTagValidationStats(): Promise<TagValidationStatsRespo
     
       return await response.json();
 }
+
+export const postReceiptWordTag = async (params: ReceiptWordTagAction) => {
+  const apiUrl =
+    process.env.NODE_ENV === "development"
+      ? `https://dev-api.tylernorlund.com/receipt_word_tag`
+      : `https://api.tylernorlund.com/receipt_word_tag`;
+
+  // Validate required parameters based on action
+  if ((params.action === "change_tag" || params.action === "add_tag") && !params.new_tag) {
+    throw new Error(`new_tag is required for ${params.action} action`);
+  }
+
+  const response = await fetch(apiUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params)
+  });
+  
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => null);
+    throw new Error(
+      errorData?.error || 
+      `Failed to update tag (status: ${response.status})`
+    );
+  }
+  
+  return await response.json();
+};
+
+export const postReceiptWordTags = async (params: {
+  selected_tag: string;
+  selected_words: Array<{
+    word: ReceiptWord;
+    tags: ReceiptWordTag[];
+  }>;
+}): Promise<{
+  updated_items: Array<{
+    word: Word;
+    word_tag: WordTag;
+    receipt_word: ReceiptWord;
+    receipt_word_tag: ReceiptWordTag;
+  }>;
+}> => {
+  const apiUrl = process.env.NODE_ENV === "development"
+    ? `https://dev-api.tylernorlund.com/receipt_word_tags`
+    : `https://api.tylernorlund.com/receipt_word_tags`;
+
+  const response = await fetch(apiUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params)
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => null);
+    throw new Error(
+      errorData?.error || 
+      `Failed to update tags (status: ${response.status})`
+    );
+  }
+
+  return await response.json();
+};
 
 export async function fetchReceiptWordTags(
   tag: string,
@@ -122,19 +191,54 @@ export async function fetchImages(limit = 5): Promise<ImageReceiptsLines[]> {
   return mapPayloadToImages(data.payload);
 }
 
+export async function fetchReceiptDetail(
+  imageId: string,
+  receiptId: number
+): Promise<ReceiptDetailApiResponse> {
+  const params = new URLSearchParams();
+  params.set("image_id", imageId);
+  params.set("receipt_id", receiptId.toString());
+  const baseUrl = isDevelopment
+    ? `https://dev-api.tylernorlund.com/receipt_detail`
+    : `https://api.tylernorlund.com/receipt_detail`;
+
+  const url = `${baseUrl}?${params.toString()}`;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Network response was not ok (status: ${response.status})`);
+    }
+
+    const data: ReceiptDetailApiResponse = await response.json();
+    return data;
+  } catch (error) {
+    console.error("Error fetching receipt detail:", error);
+    throw error;
+  }
+}
+
 export async function fetchReceiptDetails(
-  limit = 5
+  limit = 5,
+  lastEvaluatedKey?: any
 ): Promise<ReceiptDetailsApiResponse> {
-  const apiUrl = isDevelopment
-    ? `https://dev-api.tylernorlund.com/receipt_details?limit=${limit}`
-    : `https://api.tylernorlund.com/receipt_details?limit=${limit}`;
+  const params = new URLSearchParams();
+  params.set("limit", limit.toString());
+  
+  // Only add lastEvaluatedKey to params if it exists
+  if (lastEvaluatedKey) {
+    params.set("last_evaluated_key", JSON.stringify(lastEvaluatedKey));
+  }
+  
+  const baseUrl = isDevelopment
+    ? `https://dev-api.tylernorlund.com/receipt_details`
+    : `https://api.tylernorlund.com/receipt_details`;
+
+  const url = `${baseUrl}?${params.toString()}`;
 
   try {
-    const response = await fetch(apiUrl);
+    const response = await fetch(url);
     if (!response.ok) {
-      throw new Error(
-        `Network response was not ok (status: ${response.status})`
-      );
+      throw new Error(`Network response was not ok (status: ${response.status})`);
     }
 
     const data: ReceiptDetailsApiResponse = await response.json();
@@ -168,7 +272,7 @@ export async function fetchReceipts(
   return await response.json();
 }
 
-export async function fetchReceiptWords(
+export async function fetchReceiptWordPaginate(
   tag: string,
   limit: number,
   lastEvaluatedKey?: any
@@ -183,8 +287,8 @@ export async function fetchReceiptWords(
 
   const baseUrl =
     process.env.NODE_ENV === "development"
-      ? `https://dev-api.tylernorlund.com/receipt_word_tag`
-      : `https://api.tylernorlund.com/receipt_word_tag`;
+      ? `https://dev-api.tylernorlund.com/receipt_word_tag_page`
+      : `https://api.tylernorlund.com/receipt_word_tag_page`;
 
   const url = `${baseUrl}?${params.toString()}`;
 

@@ -47,7 +47,13 @@ lambda_policy = aws.iam.Policy(
                 "Statement": [
                     {
                         "Effect": "Allow",
-                        "Action": ["dynamodb:Query", "dynamodb:DescribeTable", "dynamodb:BatchGetItem"],
+                        "Action": [
+                            "dynamodb:Query", 
+                            "dynamodb:DescribeTable", 
+                            "dynamodb:BatchGetItem",
+                            "dynamodb:PutItem",
+                            "dynamodb:DeleteItem"
+                        ],
                         "Resource": [arn, f"{arn}/index/GSI1"]
                     }
                 ],

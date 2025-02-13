@@ -175,6 +175,20 @@ def test_receipt_word_tag_gsi1_key(example_receipt_word_tag):
 
 
 @pytest.mark.unit
+def test_receipt_word_tag_gsi2_key(example_receipt_word_tag):
+    """
+    Test that .gsi2_key() returns GSI2PK/GSI2SK.
+      GSI2PK = "RECEIPT"
+      GSI2SK = "IMAGE#<image_id>#RECEIPT#<receipt_id>#LINE#<line_id>#WORD#<word_id>#TAG#<tag>"
+    """ 
+    gsi_key = example_receipt_word_tag.gsi2_key()
+    assert gsi_key["GSI2PK"]["S"] == "RECEIPT"
+    assert (
+        gsi_key["GSI2SK"]["S"]
+        == "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00045#LINE#00006#WORD#00789#TAG#____________________________________food"
+    )
+    
+@pytest.mark.unit
 def test_receipt_word_tag_to_item(example_receipt_word_tag):
     """Test .to_item() combines all keys plus TYPE and tag_name."""
     item = example_receipt_word_tag.to_item()
