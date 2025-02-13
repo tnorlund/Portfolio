@@ -19,19 +19,27 @@ import {
 
 const isDevelopment = process.env.NODE_ENV === "development";
 
+// Add this common fetch configuration
+const fetchConfig = {
+  credentials: 'include' as RequestCredentials,
+  headers: { 
+    'Content-Type': 'application/json'
+  }
+};
+
 export async function fetchTagValidationStats(): Promise<TagValidationStatsResponse> {
   const apiUrl =
     process.env.NODE_ENV === "development"
       ? `https://dev-api.tylernorlund.com/tag_validation_counts`
       : `https://api.tylernorlund.com/tag_validation_counts`;
 
-      const response = await fetch(apiUrl);
+  const response = await fetch(apiUrl, fetchConfig);
 
-      if (!response.ok) {
-        throw new Error(`Network response was not ok (status: ${response.status})`);
-      }
-    
-      return await response.json();
+  if (!response.ok) {
+    throw new Error(`Network response was not ok (status: ${response.status})`);
+  }
+
+  return await response.json();
 }
 
 export const postReceiptWordTag = async (params: ReceiptWordTagAction) => {
@@ -46,8 +54,8 @@ export const postReceiptWordTag = async (params: ReceiptWordTagAction) => {
   }
 
   const response = await fetch(apiUrl, {
+    ...fetchConfig,
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params)
   });
   
@@ -81,8 +89,8 @@ export const postReceiptWordTags = async (params: {
     : `https://api.tylernorlund.com/receipt_word_tags`;
 
   const response = await fetch(apiUrl, {
+    ...fetchConfig,
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params)
   });
 
@@ -115,7 +123,7 @@ export async function fetchReceiptWordTags(
       : `https://api.tylernorlund.com/receipt_word_tags`;
 
   const url = `${baseUrl}?${params.toString()}`;
-  const response = await fetch(url);
+  const response = await fetch(url, fetchConfig);
 
   if (!response.ok) {
     throw new Error(`Network response was not ok (status: ${response.status})`);
@@ -128,7 +136,7 @@ export async function fetchWordTagList(): Promise<string[]> {
   const apiUrl = isDevelopment
     ? `https://dev-api.tylernorlund.com/word_tag_list`
     : `https://api.tylernorlund.com/word_tag_list`;
-  const response = await fetch(apiUrl);
+  const response = await fetch(apiUrl, fetchConfig);
 
   if (!response.ok) {
     throw new Error(`Network response was not ok (status: ${response.status})`);
@@ -141,7 +149,7 @@ export async function fetchImageCount(): Promise<number> {
   const apiUrl = isDevelopment
     ? `https://dev-api.tylernorlund.com/image_count`
     : `https://api.tylernorlund.com/image_count`;
-  const response = await fetch(apiUrl);
+  const response = await fetch(apiUrl, fetchConfig);
 
   if (!response.ok) {
     throw new Error(`Network response was not ok (status: ${response.status})`);
@@ -154,7 +162,7 @@ export async function fetchReceiptCount(): Promise<number> {
   const apiUrl = isDevelopment
     ? `https://dev-api.tylernorlund.com/receipt_count`
     : `https://api.tylernorlund.com/receipt_count`;
-  const response = await fetch(apiUrl);
+  const response = await fetch(apiUrl, fetchConfig);
 
   if (!response.ok) {
     throw new Error(`Network response was not ok (status: ${response.status})`);
@@ -167,7 +175,7 @@ export async function fetchImageDetails(): Promise<ImageDetailsApiResponse> {
   const apiUrl = isDevelopment
     ? `https://dev-api.tylernorlund.com/image_details`
     : `https://api.tylernorlund.com/image_details`;
-  const response = await fetch(apiUrl);
+  const response = await fetch(apiUrl, fetchConfig);
 
   if (!response.ok) {
     throw new Error(`Network response was not ok (status: ${response.status})`);
@@ -181,7 +189,7 @@ export async function fetchImages(limit = 5): Promise<ImageReceiptsLines[]> {
   const apiUrl = isDevelopment
     ? `https://dev-api.tylernorlund.com/images?limit=${limit}`
     : `https://api.tylernorlund.com/images?limit=${limit}`;
-  const response = await fetch(apiUrl);
+  const response = await fetch(apiUrl, fetchConfig);
 
   if (!response.ok) {
     throw new Error(`Network response was not ok (status: ${response.status})`);
@@ -204,7 +212,7 @@ export async function fetchReceiptDetail(
 
   const url = `${baseUrl}?${params.toString()}`;
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, fetchConfig);
     if (!response.ok) {
       throw new Error(`Network response was not ok (status: ${response.status})`);
     }
@@ -236,7 +244,7 @@ export async function fetchReceiptDetails(
   const url = `${baseUrl}?${params.toString()}`;
 
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, fetchConfig);
     if (!response.ok) {
       throw new Error(`Network response was not ok (status: ${response.status})`);
     }
@@ -265,7 +273,7 @@ export async function fetchReceipts(
       : `https://api.tylernorlund.com/receipts`;
 
   const url = `${baseUrl}?${params.toString()}`;
-  const response = await fetch(url);
+  const response = await fetch(url, fetchConfig);
   if (!response.ok) {
     throw new Error(`Error: ${response.status}`);
   }
@@ -292,7 +300,7 @@ export async function fetchReceiptWordPaginate(
 
   const url = `${baseUrl}?${params.toString()}`;
 
-  const response = await fetch(url);
+  const response = await fetch(url, fetchConfig);
   if (!response.ok) {
     throw new Error(`Error fetching receipt words: ${response.statusText}`);
   }
