@@ -152,6 +152,10 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
   const menuRef = useRef<HTMLDivElement>(null);
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
 
+  // Add new state for floating button menu
+  const [showFloatingMenu, setShowFloatingMenu] = useState(false);
+  const floatingButtonRef = useRef<HTMLButtonElement>(null);
+
   const onWordSelect = useCallback((word: ReceiptWord) => {
     setSelectedWord(word);
   }, []);
@@ -160,6 +164,7 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
     const handleClickOutside = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
         setOpenTagMenu(null);
+        setShowFloatingMenu(false);
       }
     };
 
@@ -301,6 +306,21 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
     onReceiptUpdate(selectedReceipt, updatedReceipt);
   };
 
+  // Update the floating button click handler
+  const handleFloatingButtonClick = () => {
+    if (!floatingButtonRef.current) return;
+    
+    const buttonRect = floatingButtonRef.current.getBoundingClientRect();
+    
+    // Position relative to viewport instead of container
+    setMenuPosition({
+      x: buttonRect.right + 10,
+      y: buttonRect.top
+    });
+    
+    setShowFloatingMenu(true);
+  };
+
   const renderRightPanel = () => {
     if (!selectedReceipt || !receiptDetails[selectedReceipt]) return null;
 
@@ -368,11 +388,10 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
             <>
               <div className="receipt-container" style={styles.receiptContainer}>
                 <button 
+                  ref={floatingButtonRef}
                   className="floating-add-button"
                   style={styles.floatingAddButton}
-                  onClick={() => {
-                    console.log('Floating add button clicked');
-                  }}
+                  onClick={handleFloatingButtonClick}
                 >
                   <span style={styles.floatingAddButtonText}>+</span>
                 </button>
@@ -388,18 +407,22 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
                   addingTagType={addingTagType || undefined}
                   onWordTagClick={!addingTagType ? handleWordTagClick : undefined}
                 />
-                {openTagMenu && openTagMenu.groupIndex === -1 && menuPosition && !addingTagType && (
+                {((openTagMenu && openTagMenu.groupIndex === -1) || showFloatingMenu) && menuPosition && !addingTagType && (
                   <TagMenu
                     menuRef={menuRef}
                     style={{
-                      position: 'absolute',
+                      position: 'fixed',
                       left: `${menuPosition.x}px`,
                       top: `${menuPosition.y}px`,
                       zIndex: 1000
                     }}
                     onSelect={async (newTag) => {
+                      setShowFloatingMenu(false);
+                      setAddingTagType(newTag);
+                      
+                      // Only handle word tag updates if we have a selected word
                       if (!selectedWord) return;
-
+                      
                       try {
                           if (selectedWord.tags.length === 0) {
                               const payload = {
