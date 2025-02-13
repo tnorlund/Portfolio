@@ -223,6 +223,8 @@ export async function fetchReceiptDetails(
 ): Promise<ReceiptDetailsApiResponse> {
   const params = new URLSearchParams();
   params.set("limit", limit.toString());
+  
+  // Only add lastEvaluatedKey to params if it exists
   if (lastEvaluatedKey) {
     params.set("last_evaluated_key", JSON.stringify(lastEvaluatedKey));
   }

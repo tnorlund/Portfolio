@@ -24,6 +24,8 @@
   --color-green-rgb: 67, 160, 71;  /* RGB values for #43A047 */
   --color-blue: #1E88E5;
   --color-yellow: #FDD835;
+
+  --background-color-rgb: 255, 255, 255;  /* Add this for light mode */
 }
 
 main {
@@ -173,6 +175,8 @@ li {
     --color-green-rgb: 102, 187, 106;  /* RGB values for #66BB6A */
     --color-blue: #42A5F5;
     --color-yellow: #FFEE58;
+
+    --background-color-rgb: 18, 18, 18;  /* Add this for dark mode */
   }
 }
 

@@ -171,12 +171,7 @@ export interface ReceiptDetailsApiResponse {
   payload: {
     [key: string]: ReceiptDetail; // keys are in format "image_id_receipt_id"
   };
-  last_evaluated_key: {
-    PK: { S: string };
-    SK: { S: string };
-    GSI2PK: { S: string };
-    GSI2SK: { S: string };
-  } | null;
+  last_evaluated_key?: any;
 }
 
 export interface ReceiptPayloadEntry {
