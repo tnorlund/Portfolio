@@ -55,41 +55,6 @@ const ChartRow: React.FC<ChartRowProps> = ({
           preserveAspectRatio="none"
           viewBox={`-4 -4 ${barWidth + 16} 30`}
         >
-          {/* Human Valid (Green) sections */}
-          <path
-            d={`
-              M ${currentX + positions.validatedTrueHumanFalse} 12
-              H ${currentX + gptValidWidth}
-              V 24
-              H ${currentX + positions.validatedTrueHumanFalse}
-              V 12
-            `}
-            fill="var(--color-green)"
-            stroke="var(--color-green)"
-            strokeWidth={2}
-            vectorEffect="non-scaling-stroke"
-          />
-
-          {/* Human Invalid (Red) section */}
-          {(() => {
-            const redX = currentX + gptValidWidth;
-            return (
-              <path
-                d={`
-                  M ${redX + positions.validatedFalseHumanFalse} 12
-                  H ${redX + gptInvalidWidth}
-                  V 24
-                  H ${redX + positions.validatedFalseHumanFalse}
-                  V 12
-                `}
-                fill="var(--color-red)"
-                stroke="var(--color-red)"
-                strokeWidth={2}
-                vectorEffect="non-scaling-stroke"
-              />
-            );
-          })()}
-
           {/* GPT Valid section on top */}
           <path
             d={`
@@ -108,19 +73,83 @@ const ChartRow: React.FC<ChartRowProps> = ({
 
           {/* GPT Invalid section on top */}
           {(() => {
-            currentX += gptValidWidth;
+            const invalidX = currentX + gptValidWidth;
             return (
               <path
                 d={`
-                  M ${currentX} 0
-                  H ${currentX + gptInvalidWidth - 4}
+                  M ${invalidX} 0
+                  H ${invalidX + gptInvalidWidth - 4}
                   a 4 4 0 0 1 4 4
                   V 12
-                  H ${currentX}
+                  H ${invalidX}
                   V 0
                 `}
                 fill="var(--background-color)"
                 stroke="var(--text-color)"
+                strokeWidth={2}
+                vectorEffect="non-scaling-stroke"
+              />
+            );
+          })()}
+
+          {/* Human sections under GPT Valid */}
+          {/* First: No human validation (blank/transparent) */}
+          <path
+            d={`
+              M ${currentX} 12
+              H ${currentX + positions.validatedTrueHumanFalse}
+              V 24
+              H ${currentX}
+              V 12
+            `}
+            fill="transparent"
+            vectorEffect="non-scaling-stroke"
+          />
+
+          {/* Second: Human Invalid (Red) */}
+          <path
+            d={`
+              M ${currentX + positions.validatedTrueHumanFalse} 12
+              H ${currentX + positions.validatedTrueHumanFalse + positions.validatedTrueHumanTrue}
+              V 24
+              H ${currentX + positions.validatedTrueHumanFalse}
+              V 12
+            `}
+            fill="var(--color-red)"
+            stroke="var(--color-red)"
+            strokeWidth={2}
+            vectorEffect="non-scaling-stroke"
+          />
+
+          {/* Third: Human Valid (Green) */}
+          <path
+            d={`
+              M ${currentX + positions.validatedTrueHumanFalse + positions.validatedTrueHumanTrue} 12
+              H ${currentX + gptValidWidth}
+              V 24
+              H ${currentX + positions.validatedTrueHumanFalse + positions.validatedTrueHumanTrue}
+              V 12
+            `}
+            fill="var(--color-green)"
+            stroke="var(--color-green)"
+            strokeWidth={2}
+            vectorEffect="non-scaling-stroke"
+          />
+
+          {/* GPT None, Human Valid (Green) section at the end */}
+          {(() => {
+            const noneX = currentX + gptValidWidth + gptInvalidWidth;
+            return (
+              <path
+                d={`
+                  M ${noneX} 12
+                  H ${noneX + positions.validatedNoneHumanTrue}
+                  V 24
+                  H ${noneX}
+                  V 12
+                `}
+                fill="var(--color-green)"
+                stroke="var(--color-green)"
                 strokeWidth={2}
                 vectorEffect="non-scaling-stroke"
               />
