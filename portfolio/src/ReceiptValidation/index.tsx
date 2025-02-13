@@ -19,13 +19,14 @@ const ReceiptValidation: React.FC = () => {
   const cdn_base_url = "https://dev.tylernorlund.com/";
   const BATCH_SIZE = 10;
 
-  // Modify the useEffect to only set selected receipt on initial load
+  // Modify the useEffect to handle both initial load and pagination cases
   useEffect(() => {
     const receiptIds = Object.keys(receiptDetails);
-    if (receiptIds.length > 0 && !selectedReceipt) {  // Only set if no receipt is selected
+    if (receiptIds.length > 0 && (!selectedReceipt || !receiptDetails[selectedReceipt])) {
+      // Select first receipt if none selected or current selection is not in the new page
       setSelectedReceipt(receiptIds[0]);
     }
-  }, [receiptDetails, selectedReceipt]);  // Add selectedReceipt to dependencies
+  }, [receiptDetails, selectedReceipt]);  // Keep both dependencies
 
   const loadReceipts = useCallback(async (lek: any) => {
     try {
@@ -34,14 +35,13 @@ const ReceiptValidation: React.FC = () => {
       
       const response = await fetchReceiptDetails(BATCH_SIZE, lek);
       
-      // Preserve the selected receipt when updating details
-      const currentSelection = selectedReceipt;
-      setReceiptDetails(response.payload);
-      
-      // Only set selection if current selection is not in new payload
-      if (currentSelection && !response.payload[currentSelection]) {
-        setSelectedReceipt(Object.keys(response.payload)[0]);
-      }
+      setReceiptDetails(prevDetails => {
+        // Only update if the data is different
+        if (JSON.stringify(prevDetails) === JSON.stringify(response.payload)) {
+          return prevDetails;
+        }
+        return response.payload;
+      });
       
       setCurrentLEK(response.last_evaluated_key);
       setHasMore(!!response.last_evaluated_key);
@@ -53,11 +53,19 @@ const ReceiptValidation: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [selectedReceipt]); // Remove loading from dependencies
+  }, []); // Remove selectedReceipt from dependencies
 
-  // Initial load
+  // Initial load - add a mounted ref to prevent double calls
   useEffect(() => {
-    loadReceipts(null);
+    const mounted = { current: true };
+    
+    if (mounted.current) {
+      loadReceipts(null);
+    }
+    
+    return () => {
+      mounted.current = false;
+    };
   }, [loadReceipts]);
 
   const handleNextPage = async () => {
