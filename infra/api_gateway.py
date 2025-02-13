@@ -1,5 +1,6 @@
 import pulumi
 import pulumi_aws as aws
+from typing import List, Dict, Any
 
 # Import your Lambda/route definitions
 from routes.health_check.infra import health_check_lambda
@@ -39,25 +40,13 @@ api = aws.apigatewayv2.Api(
         allow_origins=[
             "http://localhost:3000", 
             "https://tylernorlund.com",
-            "https://www.tylernorlund.com",  # Add www subdomain
+            "https://www.tylernorlund.com",
             "https://dev.tylernorlund.com",
-            "http://192.168.4.117:3000"  # Add your iPad's address
+            "http://192.168.4.117:3000"
         ],
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"],
-        allow_headers=[
-            "Content-Type",
-            "Authorization",
-            "X-Amz-Date",
-            "X-Api-Key",
-            "X-Amz-Security-Token",
-            "X-Requested-With",
-            "Accept",
-            "Access-Control-Allow-Methods",
-            "Access-Control-Allow-Origin",
-            "Access-Control-Allow-Headers",
-            "Access-Control-Allow-Credentials"
-        ],
-        expose_headers=["Content-Length", "Content-Type"],
+        allow_methods=["GET", "POST"],
+        allow_headers=["Content-Type"],
+        expose_headers=["Content-Type"],
         allow_credentials=True,
         max_age=3600,
     ),
@@ -463,99 +452,16 @@ log_group = aws.cloudwatch.LogGroup(
     retention_in_days=14,
 )
 
-route_settings = [
-    {
-        "routeKey": route_health_check.route_key,
-        "throttlingBurstLimit": 5000,
-        "throttlingRateLimit": 10000,
-    },
-    {
-        "routeKey": route_images.route_key,
-        "throttlingBurstLimit": 5000,
-        "throttlingRateLimit": 10000,
-    },
-    {
-        "routeKey": route_image_details.route_key,
-        "throttlingBurstLimit": 5000,
-        "throttlingRateLimit": 10000,
-    },
-    {
-        "routeKey": route_image_count.route_key,
-        "throttlingBurstLimit": 5000,
-        "throttlingRateLimit": 10000,
-    },
-    {
-        "routeKey": route_receipt_count.route_key,
-        "throttlingBurstLimit": 5000,
-        "throttlingRateLimit": 10000,
-    },
-    {
-        "routeKey": route_receipts.route_key,
-        "throttlingBurstLimit": 5000,
-        "throttlingRateLimit": 10000,
-    },
-    {
-        "routeKey": route_receipt_word_tag_page.route_key,
-        "throttlingBurstLimit": 5000,
-        "throttlingRateLimit": 10000,
-    },
-    {
-        "routeKey": route_process.route_key,
-        "throttlingBurstLimit": 5000,
-        "throttlingRateLimit": 10000,
-    },
-    {
-        "routeKey": route_receipt_details.route_key,
-        "throttlingBurstLimit": 10000,
-        "throttlingRateLimit": 20000,
-    },
-    {
-        "routeKey": "OPTIONS /receipt_details",
-        "throttlingBurstLimit": 10000,
-        "throttlingRateLimit": 20000,
-    },
-    {
-        "routeKey": route_tag_validation_counts.route_key,
-        "throttlingBurstLimit": 5000,
-        "throttlingRateLimit": 10000,
-    },
-    {
-        "routeKey": route_receipt_detail.route_key,
-        "throttlingBurstLimit": 5000,
-        "throttlingRateLimit": 10000,
-    },
-    {
-        "routeKey": route_receipt_word_tag.route_key,
-        "throttlingBurstLimit": 5000,
-        "throttlingRateLimit": 10000,
-    },
-]
-
-# Update the route_settings array to include these routes unconditionally
-route_settings.extend([
-    {
-        "routeKey": route_word_tag_list.route_key,
-        "throttlingBurstLimit": 5000,
-        "throttlingRateLimit": 10000,
-    },
-    {
-        "routeKey": route_receipt_word_tags.route_key,
-        "throttlingBurstLimit": 5000,
-        "throttlingRateLimit": 10000,
-    },
-    {
-        "routeKey": route_receipt_word_tags_post.route_key,
-        "throttlingBurstLimit": 5000,
-        "throttlingRateLimit": 10000,
-    },
-])
-
 stage = aws.apigatewayv2.Stage(
     "api_stage",
     api_id=api.id,
     name="$default",
-    route_settings=route_settings,
     auto_deploy=True,
+    default_route_settings=aws.apigatewayv2.StageDefaultRouteSettingsArgs(
+        throttling_burst_limit=10000,
+        throttling_rate_limit=20000,
+        detailed_metrics_enabled=True,
+    ),
     access_log_settings=aws.apigatewayv2.StageAccessLogSettingsArgs(
         destination_arn=log_group.arn,
         format='{"requestId":"$context.requestId","ip":"$context.identity.sourceIp","caller":"$context.identity.caller","user":"$context.identity.user","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","resourcePath":"$context.resourcePath","status":"$context.status","protocol":"$context.protocol","responseLength":"$context.responseLength"}',
