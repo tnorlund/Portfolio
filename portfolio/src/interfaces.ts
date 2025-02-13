@@ -41,7 +41,7 @@ export interface Image {
 
 export interface Word {
   // IDs indicating what this word is linked to
-  image_id: number;
+  image_id: string;
   line_id: number;
   word_id: number;
 
@@ -63,13 +63,10 @@ export interface Word {
 }
 
 export interface ReceiptWord {
-  // IDs indicating what this word is linked to
-  image_id: number;
+  image_id: string;  // UUID string
   receipt_id: number;
   line_id: number;
   word_id: number;
-
-  // Basic text and geometry
   text: string;
   bounding_box: BoundingBoxInterface;
   top_left: Point;
@@ -79,26 +76,45 @@ export interface ReceiptWord {
   angle_degrees: number;
   angle_radians: number;
   confidence: number;
-
-  // Additional fields found in the example
-  tags: string[];
-  histogram: Record<string, number>;
-  num_chars: number;
+  tags: string[];  // Required array, might be empty
+  histogram: Record<string, number>;  // Required
+  num_chars: number;  // Required
 }
 
 export interface ReceiptWordTag {
-  image_id: number;
+  image_id: string;
   receipt_id: number;
   line_id: number;
   word_id: number;
   tag: string;
   timestamp_added: string;
   validated: boolean | null;
+  timestamp_validated: string | null;
+  gpt_confidence: number | null;
+  flag: string | null;
+  revised_tag: string | null;
+  human_validated: boolean | null;
+  timestamp_human_validated: string | null;
+}
+
+export interface WordTag {
+  image_id: string;
+  line_id: number;
+  word_id: number;
+  tag: string;
+  timestamp_added: string;
+  validated: boolean | null;
+  timestamp_validated: string | null;
+  gpt_confidence: number | null;
+  flag: string | null;
+  revised_tag: string | null;
+  human_validated: boolean | null;
+  timestamp_human_validated: string | null;
 }
 
 export interface Receipt {
   receipt_id: number;
-  image_id: number;
+  image_id: string;
   width: number;
   height: number;
   timestamp_added: string;
@@ -145,34 +161,17 @@ export interface ReceiptPayload_new {
   [key: string]: ReceiptPayloadEntry;
 }
 
-export interface ReceiptDetailsApiResponse {
-  payload: ReceiptPayload_new;
-  // Optionally, if your endpoint ever returns pagination info, you could add:
-  last_evaluated_key?: string | null;
+export interface ReceiptDetailApiResponse {
+  receipt: Receipt;
+  words: ReceiptWord[];
+  tags: ReceiptWordTag[];
 }
 
-export interface ReceiptWord {
-  // IDs indicating what this word is linked to
-  image_id: number;
-  line_id: number;
-  receipt_id: number;
-  id: number;
-
-  // Basic text and geometry
-  text: string;
-  bounding_box: BoundingBoxInterface;
-  top_left: Point;
-  top_right: Point;
-  bottom_left: Point;
-  bottom_right: Point;
-  angle_degrees: number;
-  angle_radians: number;
-  confidence: number;
-
-  // Additional fields found in the example
-  tags: string[];
-  histogram: Record<string, number>;
-  num_chars: number;
+export interface ReceiptDetailsApiResponse {
+  payload: {
+    [key: string]: ReceiptDetail; // keys are in format "image_id_receipt_id"
+  };
+  last_evaluated_key?: any;
 }
 
 export interface ReceiptPayloadEntry {
@@ -224,15 +223,19 @@ export interface ReceiptWordTagsApiResponse {
 }
 
 export interface TagStats {
-  valid: number;
-  invalid: number;
+  validated_true_human_true: number;
+  validated_true_human_false: number;
+  validated_false_human_true: number;
+  validated_false_human_false: number;
+  validated_none_human_true: number;
+  validated_none_human_false: number;
   total: number;
 }
 
 export interface TagValidationStatsResponse {
   tag_stats: {
-    [tag: string]: TagStats;
-  }
+    [key: string]: TagStats;
+  };
 }
 
 // Example response:
@@ -242,3 +245,23 @@ export interface TagValidationStatsResponse {
 //     "date": { "valid": 32, "invalid": 1, "total": 33 }
 //   }
 // }
+
+// Single receipt detail structure
+export interface ReceiptDetail {
+  receipt: Receipt;
+  words: ReceiptWord[];
+  word_tags: ReceiptWordTag[];
+}
+
+export interface ReceiptWordTagApiResponse {
+  statusCode: number;
+  body: string;
+}
+
+export type ReceiptWordTagAction = {
+  selected_tag: ReceiptWordTag;
+  selected_word: ReceiptWord;
+  action: "validate" | "change_tag" | "add_tag";
+  new_tag?: string;
+  validation_value?: boolean;
+}

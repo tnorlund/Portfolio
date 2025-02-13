@@ -100,7 +100,7 @@ const ReceiptGrid: React.FC = () => {
 
                   return (
                     <polygon
-                      key={`ReceiptWord${word.line_id}-${word.id}`}
+                      key={`ReceiptWord${word.line_id}-${word.word_id}`}
                       points={pointsString}
                       stroke="red"
                       fill="none"
