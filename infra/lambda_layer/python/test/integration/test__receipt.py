@@ -556,6 +556,8 @@ def test_getReceiptDetails(
         retrieved_words,
         retrieved_letters,
         retrieved_tags,
+        retrieved_validations,
+        retrieved_initial_taggings,
     ) = payload
     assert retrieved_receipt == sample_receipt
     assert retrieved_lines == sample_receipt_lines

@@ -2,6 +2,7 @@
   /* Light / default mode variables */
   --background-color: #ffffff;
   --text-color: #000000;
+  --text-color-rgb: 0, 0, 0;  /* Add this line - RGB for black */
   --code-background: #f6f8fa;
 
   --header-background: #000000;
@@ -16,6 +17,17 @@
   --safari-icon-bottom: #dcdcdc;
 
   --react-logo: #087ea4;
+
+  --color-red: #E53935;
+  --color-red-rgb: 229, 57, 53;  /* RGB values for #E53935 */
+  --color-green: #43A047;
+  --color-green-rgb: 67, 160, 71;  /* RGB values for #43A047 */
+  --color-blue: #1E88E5;
+  --color-blue-rgb: 30, 136, 229;  /* RGB values for #1E88E5 */
+  --color-yellow: #FDD835;
+  --color-yellow-rgb: 253, 216, 53;  /* RGB values for #FDD835 */
+
+  --background-color-rgb: 255, 255, 255;  /* Add this for light mode */
 }
 
 main {
@@ -143,6 +155,7 @@ li {
   :root {
     --background-color: #121212;
     --text-color: #ffffff;
+    --text-color-rgb: 255, 255, 255;  /* Add this line - RGB for white */
     --code-background: #1f1f1f;
 
     --header-background: #000000;
@@ -157,6 +170,15 @@ li {
     --safari-icon-bottom: #111112;
 
     --react-logo: #58C4DC;
+
+    --color-red: #EF5350;
+    --color-red-rgb: 239, 83, 80;  /* RGB values for #EF5350 */
+    --color-green: #66BB6A;
+    --color-green-rgb: 102, 187, 106;  /* RGB values for #66BB6A */
+    --color-blue: #42A5F5;
+    --color-yellow: #FFEE58;
+
+    --background-color-rgb: 18, 18, 18;  /* Add this for dark mode */
   }
 }
 
@@ -164,7 +186,7 @@ li {
 .container {
   margin: 0 auto;       /* center horizontally */
   padding: 2rem;        /* some breathing room */
-  max-width: 1024px;    /* default “tablet/desktop” width */
+  max-width: 1024px;    /* default "tablet/desktop" width */
   text-align: left;     /* or 'center' if you want text centered too */
 }
 
@@ -209,4 +231,12 @@ li {
   .container {
     max-width: 1200px; /* or larger if you prefer */
   }
+}
+
+.receipt-item {
+  -webkit-user-select: none;  /* Safari */
+  -moz-user-select: none;     /* Firefox */
+  -ms-user-select: none;      /* IE10+/Edge */
+  user-select: none;          /* Standard */
+  -webkit-touch-callout: none; /* iOS Safari */
 }

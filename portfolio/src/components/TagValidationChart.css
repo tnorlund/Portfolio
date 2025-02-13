@@ -65,6 +65,7 @@
 }
 
 .legend-swatch.outlined {
+  background-color: var(--background-color);
   border: 2px solid var(--text-color);
 }
 

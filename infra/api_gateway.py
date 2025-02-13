@@ -6,12 +6,17 @@ from routes.health_check.infra import health_check_lambda
 from routes.images.infra import images_lambda
 from routes.image_details.infra import image_details_lambda
 from routes.receipts.infra import receipts_lambda
-from routes.receipt_word_tag.infra import receipt_word_tag_lambda
+from routes.receipt_word_tag_page.infra import receipt_word_tag_page_lambda
 from routes.process.infra import process_lambda
 from routes.receipt_details.infra import receipt_details_lambda
 from routes.image_count.infra import image_count_lambda
 from routes.receipt_count.infra import receipt_count_lambda
 from routes.tag_validation_counts.infra import tag_validation_counts_lambda
+from routes.receipt_detail.infra import receipt_detail_lambda
+from routes.receipt_word_tag.infra import receipt_word_tag_lambda
+from routes.word_tag_list.infra import word_tag_list_lambda
+from routes.receipt_word_tags.infra import receipt_word_tags_lambda
+
 # Detect the current Pulumi stack
 stack = pulumi.get_stack()
 
@@ -31,11 +36,27 @@ api = aws.apigatewayv2.Api(
     "my-api",
     protocol_type="HTTP",
     cors_configuration=aws.apigatewayv2.ApiCorsConfigurationArgs(
-        allow_origins=["*"],
-        allow_methods=["GET", "POST", "OPTIONS"],
-        allow_headers=["Content-Type", "Authorization"],
+        allow_origins=[
+            "http://localhost:3000", 
+            "https://tylernorlund.com", 
+            "https://dev.tylernorlund.com",
+            "http://192.168.4.117:3000"  # Add your iPad's address
+        ],
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"],
+        allow_headers=[
+            "Content-Type",
+            "Authorization",
+            "X-Amz-Date",
+            "X-Api-Key",
+            "X-Amz-Security-Token",
+            "X-Requested-With",
+            "Accept",
+            "Access-Control-Allow-Methods",
+            "Access-Control-Allow-Origin",
+            "Access-Control-Allow-Headers"
+        ],
         expose_headers=["Content-Length", "Content-Type"],
-        allow_credentials=False,
+        allow_credentials=True,
         max_age=86400,
     ),
 )
@@ -231,29 +252,56 @@ lambda_permission_receipt_details = aws.lambda_.Permission(
     source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
 )
 
-# /receipt_word_tag
-integration_receipt_word_tag = aws.apigatewayv2.Integration(
-    "receipt_word_tag_lambda_integration",
+# /receipt_detail
+integration_receipt_detail = aws.apigatewayv2.Integration(
+    "receipt_detail_lambda_integration",
     api_id=api.id,
     integration_type="AWS_PROXY",
-    integration_uri=receipt_word_tag_lambda.invoke_arn,
+    integration_uri=receipt_detail_lambda.invoke_arn,
     integration_method="POST",
     payload_format_version="2.0",
 )
-route_receipt_word_tag = aws.apigatewayv2.Route(
-    "receipt_word_tag_route",
+route_receipt_detail = aws.apigatewayv2.Route(
+    "receipt_detail_route",
     api_id=api.id,
-    route_key="GET /receipt_word_tag",
-    target=integration_receipt_word_tag.id.apply(lambda id: f"integrations/{id}"),
+    route_key="GET /receipt_detail",
+    target=integration_receipt_detail.id.apply(lambda id: f"integrations/{id}"),
     opts=pulumi.ResourceOptions(
         replace_on_changes=["route_key", "target"],
         delete_before_replace=True,
     ),
 )
-lambda_permission_receipt_word_tag = aws.lambda_.Permission(
-    "receipt_word_tag_lambda_permission",
+lambda_permission_receipt_detail = aws.lambda_.Permission(
+    "receipt_detail_lambda_permission",
     action="lambda:InvokeFunction",
-    function=receipt_word_tag_lambda.name,
+    function=receipt_detail_lambda.name,
+    principal="apigateway.amazonaws.com",
+    source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
+)
+
+# /receipt_word_tag_page
+integration_receipt_word_tag_page = aws.apigatewayv2.Integration(
+    "receipt_word_tag_page_lambda_integration",
+    api_id=api.id,
+    integration_type="AWS_PROXY",
+    integration_uri=receipt_word_tag_page_lambda.invoke_arn,
+    integration_method="POST",
+    payload_format_version="2.0",
+)
+route_receipt_word_tag_page = aws.apigatewayv2.Route(
+    "receipt_word_tag_page_route",
+    api_id=api.id,
+    route_key="GET /receipt_word_tag_page",
+    target=integration_receipt_word_tag_page.id.apply(lambda id: f"integrations/{id}"),
+    opts=pulumi.ResourceOptions(
+        replace_on_changes=["route_key", "target"],
+        delete_before_replace=True,
+    ),
+)
+lambda_permission_receipt_word_tag_page = aws.lambda_.Permission(
+    "receipt_word_tag_page_lambda_permission",
+    action="lambda:InvokeFunction",
+    function=receipt_word_tag_page_lambda.name,
     principal="apigateway.amazonaws.com",
     source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
 )
@@ -312,65 +360,97 @@ lambda_permission_tag_validation_counts = aws.lambda_.Permission(
     source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
 )
 
+# Replace the if stack == "dev" block with these unconditional declarations
+integration_word_tag_list = aws.apigatewayv2.Integration(
+    "word_tag_list_lambda_integration",
+    api_id=api.id,
+    integration_type="AWS_PROXY",
+    integration_uri=word_tag_list_lambda.invoke_arn,
+    integration_method="POST",
+    payload_format_version="2.0",
+)
+route_word_tag_list = aws.apigatewayv2.Route(
+    "word_tag_list_route",
+    api_id=api.id,
+    route_key="GET /word_tag_list",
+    target=integration_word_tag_list.id.apply(lambda id: f"integrations/{id}"),
+    opts=pulumi.ResourceOptions(
+        replace_on_changes=["route_key", "target"],
+        delete_before_replace=True,
+    ),
+)
+lambda_permission_word_tag_list = aws.lambda_.Permission(
+    "word_tag_list_lambda_permission",
+    action="lambda:InvokeFunction",
+    function=word_tag_list_lambda.name,
+    principal="apigateway.amazonaws.com",
+    source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
+)
 
+integration_receipt_word_tags = aws.apigatewayv2.Integration(
+    "receipt_word_tags_lambda_integration",
+    api_id=api.id,
+    integration_type="AWS_PROXY",
+    integration_uri=receipt_word_tags_lambda.invoke_arn,
+    integration_method="POST",
+    payload_format_version="2.0",
+)
+route_receipt_word_tags = aws.apigatewayv2.Route(
+    "receipt_word_tags_route",
+    api_id=api.id,
+    route_key="GET /receipt_word_tags",
+    target=integration_receipt_word_tags.id.apply(lambda id: f"integrations/{id}"),
+    opts=pulumi.ResourceOptions(
+        replace_on_changes=["route_key", "target"],
+        delete_before_replace=True,
+    ),
+)
+lambda_permission_receipt_word_tags = aws.lambda_.Permission(
+    "receipt_word_tags_lambda_permission",
+    action="lambda:InvokeFunction",
+    function=receipt_word_tags_lambda.name,
+    principal="apigateway.amazonaws.com",
+    source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
+)
 
+# Add POST route for receipt_word_tags
+route_receipt_word_tags_post = aws.apigatewayv2.Route(
+    "receipt_word_tags_post_route",
+    api_id=api.id,
+    route_key="POST /receipt_word_tags",
+    target=integration_receipt_word_tags.id.apply(lambda id: f"integrations/{id}"),
+    opts=pulumi.ResourceOptions(
+        replace_on_changes=["route_key", "target"],
+        delete_before_replace=True,
+    ),
+)
 
-if stack == "dev":
-    from routes.word_tag_list.infra import word_tag_list_lambda
-    from routes.receipt_word_tags.infra import receipt_word_tags_lambda
-
-    integration_word_tag_list = aws.apigatewayv2.Integration(
-        "word_tag_list_lambda_integration",
-        api_id=api.id,
-        integration_type="AWS_PROXY",
-        integration_uri=word_tag_list_lambda.invoke_arn,
-        integration_method="POST",
-        payload_format_version="2.0",
-    )
-    route_word_tag_list = aws.apigatewayv2.Route(
-        "word_tag_list_route",
-        api_id=api.id,
-        route_key="GET /word_tag_list",
-        target=integration_word_tag_list.id.apply(lambda id: f"integrations/{id}"),
-        opts=pulumi.ResourceOptions(
-            replace_on_changes=["route_key", "target"],
-            delete_before_replace=True,
-        ),
-    )
-    lambda_permission_word_tag_list = aws.lambda_.Permission(
-        "word_tag_list_lambda_permission",
-        action="lambda:InvokeFunction",
-        function=word_tag_list_lambda.name,
-        principal="apigateway.amazonaws.com",
-        source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
-    )
-
-    integration_receipt_word_tags = aws.apigatewayv2.Integration(
-        "receipt_word_tags_lambda_integration",
-        api_id=api.id,
-        integration_type="AWS_PROXY",
-        integration_uri=receipt_word_tags_lambda.invoke_arn,
-        integration_method="POST",
-        payload_format_version="2.0",
-    )
-    route_receipt_word_tags = aws.apigatewayv2.Route(
-        "receipt_word_tags_route",
-        api_id=api.id,
-        route_key="GET /receipt_word_tags",
-        target=integration_receipt_word_tags.id.apply(lambda id: f"integrations/{id}"),
-        opts=pulumi.ResourceOptions(
-            replace_on_changes=["route_key", "target"],
-            delete_before_replace=True,
-        ),
-    )
-    lambda_permission_receipt_word_tags = aws.lambda_.Permission(
-        "receipt_word_tags_lambda_permission",
-        action="lambda:InvokeFunction",
-        function=receipt_word_tags_lambda.name,
-        principal="apigateway.amazonaws.com",
-        source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
-    )
-
+# Add the receipt_word_tag integration and route
+integration_receipt_word_tag = aws.apigatewayv2.Integration(
+    "receipt_word_tag_lambda_integration",
+    api_id=api.id,
+    integration_type="AWS_PROXY",
+    integration_uri=receipt_word_tag_lambda.invoke_arn,
+    integration_method="POST",
+    payload_format_version="2.0",
+)
+route_receipt_word_tag = aws.apigatewayv2.Route(
+    "receipt_word_tag_route",
+    api_id=api.id,
+    route_key="POST /receipt_word_tag",
+    target=integration_receipt_word_tag.id.apply(lambda id: f"integrations/{id}"),
+    opts=pulumi.ResourceOptions(
+        replace_on_changes=["route_key", "target"],
+        delete_before_replace=True,
+    ),
+)
+lambda_permission_receipt_word_tag = aws.lambda_.Permission(
+    "receipt_word_tag_lambda_permission",
+    action="lambda:InvokeFunction",
+    function=receipt_word_tag_lambda.name,
+    principal="apigateway.amazonaws.com",
+    source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
+)
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # 2. DEPLOYMENT + LOGGING
@@ -413,7 +493,7 @@ route_settings = [
         "throttlingRateLimit": 10000,
     },
     {
-        "routeKey": route_receipt_word_tag.route_key,
+        "routeKey": route_receipt_word_tag_page.route_key,
         "throttlingBurstLimit": 5000,
         "throttlingRateLimit": 10000,
     },
@@ -432,23 +512,36 @@ route_settings = [
         "throttlingBurstLimit": 5000,
         "throttlingRateLimit": 10000,
     },
+    {
+        "routeKey": route_receipt_detail.route_key,
+        "throttlingBurstLimit": 5000,
+        "throttlingRateLimit": 10000,
+    },
+    {
+        "routeKey": route_receipt_word_tag.route_key,
+        "throttlingBurstLimit": 5000,
+        "throttlingRateLimit": 10000,
+    },
 ]
 
-if stack == "dev":
-    route_settings.extend(
-        [
-            {
-                "routeKey": route_word_tag_list.route_key,
-                "throttlingBurstLimit": 5000,
-                "throttlingRateLimit": 10000,
-            },
-            {
-                "routeKey": route_receipt_word_tags.route_key,
-                "throttlingBurstLimit": 5000,
-                "throttlingRateLimit": 10000,
-            },
-        ]
-    )
+# Update the route_settings array to include these routes unconditionally
+route_settings.extend([
+    {
+        "routeKey": route_word_tag_list.route_key,
+        "throttlingBurstLimit": 5000,
+        "throttlingRateLimit": 10000,
+    },
+    {
+        "routeKey": route_receipt_word_tags.route_key,
+        "throttlingBurstLimit": 5000,
+        "throttlingRateLimit": 10000,
+    },
+    {
+        "routeKey": route_receipt_word_tags_post.route_key,
+        "throttlingBurstLimit": 5000,
+        "throttlingRateLimit": 10000,
+    },
+])
 
 stage = aws.apigatewayv2.Stage(
     "api_stage",
