@@ -236,8 +236,18 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
   const handleRefresh = async () => {
     try {
       if (!selectedReceipt) return;
-      const [imageId, receiptId] = selectedReceipt.split('#');
-      const details = await fetchReceiptDetail(imageId, parseInt(receiptId));
+      
+      // Fix: Parse the receipt ID correctly from the combined string
+      const [imageId, receiptIdStr] = selectedReceipt.split('_');
+      const receiptId = parseInt(receiptIdStr, 10); // Add radix parameter and ensure it's a number
+      
+      // Add validation to prevent NaN
+      if (isNaN(receiptId)) {
+        console.error('Invalid receipt ID:', receiptIdStr);
+        return;
+      }
+
+      const details = await fetchReceiptDetail(imageId, receiptId);
       if (details) {
         onReceiptUpdate(selectedReceipt, {
           receipt: details.receipt,
