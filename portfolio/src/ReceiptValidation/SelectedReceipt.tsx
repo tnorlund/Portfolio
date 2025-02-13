@@ -173,18 +173,28 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
   }, []);
 
   const getTagGroups = (detail: ReceiptDetail, tagType: string): GroupedWords => {
-    const tags = detail.word_tags.filter((tag) => 
-      tag.tag.trim().toLowerCase() === tagType.toLowerCase()
-    );
+    console.log(`Getting tag groups for ${tagType}`, detail);
+    
+    const tags = detail.word_tags.filter((tag) => {
+      const matches = tag.tag.trim().toLowerCase() === tagType.toLowerCase();
+      console.log(`Checking tag ${tag.tag} against ${tagType}: ${matches}`);
+      return matches;
+    });
 
-    const taggedWords = detail.words.filter(word => 
-      tags.some(tag => 
+    console.log(`Found ${tags.length} tags for ${tagType}`);
+
+    const taggedWords = detail.words.filter(word => {
+      const matches = tags.some(tag => 
         tag.word_id === word.word_id &&
         tag.line_id === word.line_id &&
         tag.receipt_id === word.receipt_id &&
         tag.image_id === word.image_id
-      )
-    );
+      );
+      if (matches) {
+        console.log(`Found matching word for ${tagType}:`, word);
+      }
+      return matches;
+    });
 
     const sortedWords = [...taggedWords].sort((a, b) => {
       if (Math.abs(a.bounding_box.y - b.bounding_box.y) < 10) {
@@ -237,23 +247,26 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
     try {
       if (!selectedReceipt) return;
       
-      // Fix: Parse the receipt ID correctly from the combined string
       const [imageId, receiptIdStr] = selectedReceipt.split('_');
-      const receiptId = parseInt(receiptIdStr, 10); // Add radix parameter and ensure it's a number
+      const receiptId = parseInt(receiptIdStr, 10);
       
-      // Add validation to prevent NaN
       if (isNaN(receiptId)) {
         console.error('Invalid receipt ID:', receiptIdStr);
         return;
       }
 
+      console.log('Fetching details for:', { imageId, receiptId });
       const details = await fetchReceiptDetail(imageId, receiptId);
+      console.log('Received details:', details);
+      
       if (details) {
-        onReceiptUpdate(selectedReceipt, {
+        const updatedDetails = {
           receipt: details.receipt,
           words: details.words,
           word_tags: details.tags
-        });
+        };
+        console.log('Updating receipt with:', updatedDetails);
+        onReceiptUpdate(selectedReceipt, updatedDetails);
       }
     } catch (error) {
       console.error('Failed to refresh receipt details:', error);
@@ -343,7 +356,13 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
   };
 
   const renderRightPanel = () => {
-    if (!selectedReceipt || !receiptDetails[selectedReceipt]) return null;
+    if (!selectedReceipt || !receiptDetails[selectedReceipt]) {
+      console.log('No receipt selected or no details available');
+      return null;
+    }
+
+    console.log('Receipt Details:', receiptDetails[selectedReceipt]);
+    console.log('Word Tags:', receiptDetails[selectedReceipt].word_tags);
 
     let groupIndex = 0;
 
@@ -351,6 +370,7 @@ const SelectedReceipt: React.FC<SelectedReceiptProps> = ({
       <div style={styles.rightPanelContent}>
         {SELECTABLE_TAGS.map(tagType => {
           const group = getTagGroups(receiptDetails[selectedReceipt], tagType);
+          console.log(`Tag group for ${tagType}:`, group);
           if (group.words.length === 0) return null;
 
           return (

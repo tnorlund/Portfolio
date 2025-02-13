@@ -37,17 +37,22 @@ def is_local_network(origin):
     return False
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+    # Add detailed logging at the start of the handler
+    logger.info("Received event headers: %s", event.get('headers'))
+    logger.info("Received event method: %s", event.get('requestContext', {}).get('http', {}).get('method'))
+    logger.info("Received event path: %s", event.get('requestContext', {}).get('http', {}).get('path'))
+    
     # Get the origin from the request headers
     headers = event.get('headers', {})
     origin = headers.get('origin') or headers.get('Origin')
+    logger.info("Received origin: %s", origin)
+    logger.info("Allowed origins: %s", allowed_origins)
 
-    # Default CORS headers
+    # Simplified CORS headers
     cors_headers = {
-        'Access-Control-Allow-Methods': 'GET,OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,Access-Control-Allow-Credentials',
+        'Access-Control-Allow-Origin': origin if origin in allowed_origins else '*',
         'Access-Control-Allow-Credentials': 'true',
-        'Content-Type': 'application/json',
-        'Access-Control-Max-Age': '3600'  # Match the API Gateway setting
+        'Content-Type': 'application/json'
     }
 
     # Add Access-Control-Allow-Origin if origin is allowed
