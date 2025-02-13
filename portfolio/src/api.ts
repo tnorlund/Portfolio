@@ -14,6 +14,7 @@ import {
   ReceiptWordTag,
   Word,
   WordTag,
+  ReceiptWordTagAction,
 } from "./interfaces";
 
 const isDevelopment = process.env.NODE_ENV === "development";
@@ -33,19 +34,7 @@ export async function fetchTagValidationStats(): Promise<TagValidationStatsRespo
       return await response.json();
 }
 
-export const postReceiptWordTag = async (params: {
-  selected_tag: ReceiptWordTag;
-  selected_word: ReceiptWord;
-  action: "validate" | "change_tag" | "add_tag";
-  new_tag?: string;
-}): Promise<{
-  updated: {
-    word: Word;
-    word_tag: WordTag;
-    receipt_word: ReceiptWord;
-    receipt_word_tag: ReceiptWordTag;
-  }
-}> => {
+export const postReceiptWordTag = async (params: ReceiptWordTagAction) => {
   const apiUrl =
     process.env.NODE_ENV === "development"
       ? `https://dev-api.tylernorlund.com/receipt_word_tag`

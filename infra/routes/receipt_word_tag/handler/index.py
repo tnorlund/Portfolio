@@ -115,8 +115,12 @@ def handler(event, context):
             timestamp_str = current_time.isoformat()
 
             if action == "validate":
-                # Toggle validation status
-                new_validation_status = not receipt_word_tag.human_validated
+                # Use the provided validation value instead of toggling
+                new_validation_status = body.get("validation_value")
+                if new_validation_status is None:
+                    # Fallback to toggle behavior if validation_value not provided
+                    new_validation_status = not receipt_word_tag.human_validated
+                
                 receipt_word_tag.human_validated = new_validation_status
                 word_tag.human_validated = new_validation_status
                 

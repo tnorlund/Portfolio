@@ -45,53 +45,78 @@ const WordItem: React.FC<WordItemProps> = ({
 
   const renderHumanValidation = (validated: boolean | null) => {
     const commonStyles = {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '4px',
+      padding: '2px',
+      borderRadius: '4px',
+      border: '1px solid var(--text-color)',
+    };
+
+    const iconStyles = {
       width: '16px',
       height: '16px',
-      borderRadius: '4px',
-      border: '2px solid var(--text-color)',
+      cursor: 'pointer',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
     };
 
-    if (validated === null) {
-      return <span style={commonStyles} />;
-    }
+    const getColor = (isCheck: boolean) => {
+      if (validated === null) return 'var(--text-color)';
+      if (validated === true && isCheck) return 'var(--color-green)';
+      if (validated === false && !isCheck) return 'var(--color-red)';
+      return 'var(--text-color)';
+    };
 
     return (
-      <span style={{ 
-        ...commonStyles,
-        color: validated ? 'var(--color-green)' : 'var(--color-red)',
-      }}>
-        {validated ? (
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="5">
+      <span style={commonStyles}>
+        <span 
+          style={{ ...iconStyles, color: getColor(true) }}
+          onClick={(e) => {
+            e.stopPropagation();
+            console.log('Checkmark clicked - setting human_validated to true');
+            if (!isUpdating) updateHumanValidation(true);
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
             <path d="M20 6L9 17L4 12" />
           </svg>
-        ) : (
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="5">
+        </span>
+        <span 
+          style={{ ...iconStyles, color: getColor(false) }}
+          onClick={(e) => {
+            e.stopPropagation();
+            console.log('X clicked - setting human_validated to false');
+            if (!isUpdating) updateHumanValidation(false);
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
             <path d="M18 6L6 18M6 6l12 12" />
           </svg>
-        )}
+        </span>
       </span>
     );
   };
 
-  const updateHumanValidation = async () => {
+  const updateHumanValidation = async (newValue: boolean) => {
     if (isUpdating) return;
 
     try {
       setIsUpdating(true);
       
-      console.log('Validating tag:', {
+      console.log('Starting validation update:', {
+        current_validation: tag.human_validated,
+        new_validation: newValue,
         selected_tag: tag,
-        selected_word: word,
-        action: "validate"
+        selected_word: word
       });
       
       const response = await postReceiptWordTag({
         selected_tag: tag,
         selected_word: word,
-        action: "validate"
+        action: "validate",
+        validation_value: newValue
       });
 
       console.log('Validation response:', response);
@@ -146,12 +171,10 @@ const WordItem: React.FC<WordItemProps> = ({
         outline: isSelected ? '2px solid var(--color-blue)' : 'none'
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', minWidth: '24px', justifyContent: 'center' }}>
+      <div 
+        style={{ display: 'flex', alignItems: 'center', minWidth: '24px', justifyContent: 'center' }}
+      >
         <div 
-          onClick={(e) => {
-            e.stopPropagation();
-            updateHumanValidation();
-          }}
           style={{ 
             display: 'flex', 
             alignItems: 'center',

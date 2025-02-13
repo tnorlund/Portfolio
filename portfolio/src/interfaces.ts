@@ -258,3 +258,11 @@ export interface ReceiptWordTagApiResponse {
   statusCode: number;
   body: string;
 }
+
+export type ReceiptWordTagAction = {
+  selected_tag: ReceiptWordTag;
+  selected_word: ReceiptWord;
+  action: "validate" | "change_tag" | "add_tag";
+  new_tag?: string;
+  validation_value?: boolean;
+}
