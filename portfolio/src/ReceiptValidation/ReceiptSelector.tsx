@@ -34,14 +34,17 @@ const ReceiptSelector: React.FC<ReceiptSelectorProps> = ({
               key={receiptId} 
               className={`receipt-item ${selectedReceipt === receiptId ? 'selected' : ''}`}
               onClick={() => handleReceiptClick(receiptId)}
+              style={{ pointerEvents: 'all' }}
             >
-              <ReceiptBoundingBox
-                detail={detail}
-                width={100}
-                isSelected={selectedReceipt === receiptId}
-                cdn_base_url={cdn_base_url}
-                highlightedWords={[]}
-              />
+              <div style={{ pointerEvents: 'none' }}>
+                <ReceiptBoundingBox
+                  detail={detail}
+                  width={100}
+                  isSelected={selectedReceipt === receiptId}
+                  cdn_base_url={cdn_base_url}
+                  highlightedWords={[]}
+                />
+              </div>
             </div>
           ))}
         </div>

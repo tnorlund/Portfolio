@@ -54,6 +54,7 @@
   transition: transform 200ms ease-out;
   cursor: pointer;
   transform-origin: center center;
+  pointer-events: auto !important;
 }
 
 .receipt-item.selected {
@@ -62,4 +63,27 @@
 
 .receipt-item:not(.selected):hover {
   transform: scale(1.05);
+}
+
+.receipt-selector-container,
+.receipt-selector-content,
+.receipt-selector-grid,
+.receipt-item * {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  pointer-events: none;
+}
+
+.receipt-item svg,
+.receipt-item svg *,
+.receipt-item text,
+.receipt-item rect {
+  pointer-events: none !important;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
 } 
