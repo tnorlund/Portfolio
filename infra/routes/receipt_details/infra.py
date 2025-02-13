@@ -84,6 +84,7 @@ receipt_details_lambda = aws.lambda_.Function(
     environment={
         "variables": {
             "DYNAMODB_TABLE_NAME": DYNAMODB_TABLE_NAME,
+            "ALLOWED_ORIGINS": "http://localhost:3000,https://tylernorlund.com,https://www.tylernorlund.com,https://dev.tylernorlund.com,http://192.168.4.117:3000",
         }
     },
     memory_size=1024,  # Increase RAM to 512 MB
