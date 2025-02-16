@@ -210,12 +210,25 @@ class Word:
 
         return item
 
-    def calculate_centroid(self) -> Tuple[float, float]:
+    def calculate_centroid(
+        self, width: int = None, height: int = None, flip_y: bool = False
+    ) -> Tuple[float, float]:
         """Calculates the centroid of the Word.
+
+        Args:
+            width (int, optional): The width of the image to scale coordinates. Defaults to None.
+            height (int, optional): The height of the image to scale coordinates. Defaults to None.
+            flip_y (bool, optional): Whether to flip the y coordinate. Defaults to False.
 
         Returns:
             Tuple[float, float]: The (x, y) coordinates of the centroid.
+
+        Raises:
+            ValueError: If only one of width or height is provided.
         """
+        if (width is None) != (height is None):
+            raise ValueError("Both width and height must be provided together")
+
         x = (
             self.top_right["x"]
             + self.top_left["x"]
@@ -228,7 +241,99 @@ class Word:
             + self.bottom_right["y"]
             + self.bottom_left["y"]
         ) / 4
+
+        if width is not None and height is not None:
+            x *= width
+            y *= height
+            if flip_y:
+                y = height - y
+
         return x, y
+
+    def calculate_bounding_box(
+        self, width: int = None, height: int = None, flip_y: bool = False
+    ) -> Tuple[float, float, float, float]:
+        """Calculates the bounding box of the Word.
+
+        Args:
+            width (int, optional): The width of the image to scale coordinates. Defaults to None.
+            height (int, optional): The height of the image to scale coordinates. Defaults to None.
+            flip_y (bool, optional): Whether to flip the y coordinate. Defaults to False.
+
+        Returns:
+            Tuple[float, float, float, float]: The bounding box of the Word with keys 'x', 'y', 'width', and 'height'.
+
+        Raises:
+            ValueError: If only one of width or height is provided.
+        """
+        if (width is None) != (height is None):
+            raise ValueError("Both width and height must be provided together")
+
+        x = self.bounding_box["x"]
+        y = self.bounding_box["y"]
+        w = self.bounding_box["width"]
+        h = self.bounding_box["height"]
+
+        if width is not None and height is not None:
+            x *= width
+            y *= height
+            if flip_y:
+                y = height - y
+
+        return x, y, w, h
+
+    def calculate_corners(
+        self, width: int = None, height: int = None, flip_y: bool = False
+    ) -> Tuple[
+        Tuple[float, float],
+        Tuple[float, float],
+        Tuple[float, float],
+        Tuple[float, float],
+    ]:
+        """Calculates the top-left, top-right, bottom-left, and bottom-right corners of the Word in image coordinates.
+
+        Args:
+            width (int, optional): The width of the image to scale coordinates. Defaults to None.
+            height (int, optional): The height of the image to scale coordinates. Defaults to None.
+            flip_y (bool, optional): Whether to flip the y coordinate. Defaults to False.
+
+        Returns:
+            Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float], Tuple[float, float]]: The corners of the Word.
+
+        Raises:
+            ValueError: If only one of width or height is provided.
+        """
+        if (width is None) != (height is None):
+            raise ValueError("Both width and height must be provided together")
+
+        if width is not None and height is not None:
+            x_scale = width
+            y_scale = height
+        else:
+            x_scale = y_scale = 1.0
+
+        top_left_x = self.top_left["x"] * x_scale
+        top_right_x = self.top_right["x"] * x_scale
+        bottom_left_x = self.bottom_left["x"] * x_scale
+        bottom_right_x = self.bottom_right["x"] * x_scale
+
+        if flip_y:
+            top_left_y = height - (self.top_left["y"] * y_scale)
+            top_right_y = height - (self.top_right["y"] * y_scale)
+            bottom_left_y = height - (self.bottom_left["y"] * y_scale)
+            bottom_right_y = height - (self.bottom_right["y"] * y_scale)
+        else:
+            top_left_y = self.top_left["y"] * y_scale
+            top_right_y = self.top_right["y"] * y_scale
+            bottom_left_y = self.bottom_left["y"] * y_scale
+            bottom_right_y = self.bottom_right["y"] * y_scale
+
+        return (
+            (top_left_x, top_left_y),
+            (top_right_x, top_right_y),
+            (bottom_left_x, bottom_left_y),
+            (bottom_right_x, bottom_right_y),
+        )
 
     def translate(self, x: float, y: float) -> None:
         """Translates the Word by the specified x and y offsets.
