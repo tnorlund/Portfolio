@@ -1,5 +1,4 @@
-# infra/lambda_layer/python/dynamo/data/_geometry.py
-from math import radians, cos, sin, atan2, degrees
+from math import radians, cos, sin, atan2, degrees, hypot
 from typing import Dict, List, Optional, Tuple
 
 
@@ -24,6 +23,114 @@ def invert_affine(a, b, c, d, e, f):
     e_inv = a / det
     f_inv = (c * d - a * f) / det
     return (a_inv, b_inv, c_inv, d_inv, e_inv, f_inv)
+
+
+def pad_corners_opposite(corners, pad):
+    """
+    Moves each corner 'pad' pixels away from its opposite corner.
+    
+    corners: list of 4 (x, y) in consistent order, e.g.:
+        [top-left, top-right, bottom-right, bottom-left]
+    pad: positive means each corner moves outward 
+         (further from the opposite corner)
+    """
+    new_corners = []
+    for i in range(4):
+        x_i, y_i = corners[i]
+        # Opposite corner is (i + 2) % 4
+        x_opp, y_opp = corners[(i + 2) % 4]
+        
+        dx = x_i - x_opp
+        dy = y_i - y_opp
+        dist = hypot(dx, dy)
+        if dist == 0:
+            # corners coincide, no shift
+            new_corners.append((x_i, y_i))
+        else:
+            nx = dx / dist  # unit vector x
+            ny = dy / dist  # unit vector y
+            new_x = x_i + pad * nx
+            new_y = y_i + pad * ny
+            new_corners.append((new_x, new_y))
+    return new_corners
+
+def solve_8x8_system(A, b):
+    """
+    Solve an 8x8 system A * x = b for x, where:
+      - A is a list of lists (8 rows, each row has 8 floats).
+      - b is a list of length 8.
+    Returns x as a list of length 8.
+    Uses Gaussian elimination with partial pivoting.
+    """
+    n = 8
+
+    # Forward elimination
+    for i in range(n):
+        # 1) Find pivot row (partial pivot)
+        pivot = i
+        for r in range(i + 1, n):
+            if abs(A[r][i]) > abs(A[pivot][i]):
+                pivot = r
+        # 2) Swap pivot row into position
+        if pivot != i:
+            A[i], A[pivot] = A[pivot], A[i]
+            b[i], b[pivot] = b[pivot], b[i]
+
+        # 3) Normalize pivot row (so A[i][i] = 1)
+        pivot_val = A[i][i]
+        if abs(pivot_val) < 1e-12:
+            raise ValueError("Matrix is singular or poorly conditioned for pivoting.")
+        inv_pivot = 1.0 / pivot_val
+        A[i] = [val * inv_pivot for val in A[i]]
+        b[i] = b[i] * inv_pivot
+
+        # 4) Eliminate below pivot
+        for r in range(i + 1, n):
+            factor = A[r][i]
+            A[r] = [A[r][c] - factor * A[i][c] for c in range(n)]
+            b[r] = b[r] - factor * b[i]
+
+    # Back-substitution
+    for i in reversed(range(n)):
+        # b[i] is the value after subtracting known terms from the row
+        for j in range(i + 1, n):
+            b[i] -= A[i][j] * b[j]
+        # A[i][i] should be 1.0 here from the normalization step
+    return b
+
+
+def find_perspective_coeffs(src_points, dst_points):
+    """
+    src_points: list of 4 (x, y) source corners
+    dst_points: list of 4 (x, y) destination corners
+
+    Returns a list of 8 coefficients [a, b, c, d, e, f, g, h] for PIL's
+    Image.transform(..., PERSPECTIVE, coeffs).
+
+    The transform maps (x_dst, y_dst) back to (x_src, y_src) as:
+        x_src = a*x_dst + b*y_dst + c
+        y_src = d*x_dst + e*y_dst + f
+    normalized by (1 + g*x_dst + h*y_dst).
+    """
+    # Each source→destination pair gives 2 linear equations:
+    #   sx = a*dx + b*dy + c - g*dx*sx - h*dy*sx  (written in standard form)
+    #   sy = d*dx + e*dy + f - g*dx*sy - h*dy*sy
+    #
+    # The matrix A is 8x8, vector b is length 8.
+    A = []
+    B = []
+    for (sx, sy), (dx, dy) in zip(src_points, dst_points):
+        A.append([dx, dy, 1, 0, 0, 0, -sx * dx, -sx * dy])
+        B.append(sx)
+        A.append([0, 0, 0, dx, dy, 1, -sy * dx, -sy * dy])
+        B.append(sy)
+
+    # Solve the system for [a, b, c, d, e, f, g, h]
+    # Make a *copy* of A if you don't want to mutate the original:
+    A_copy = [row[:] for row in A]
+    B_copy = B[:]
+    solution = solve_8x8_system(A_copy, B_copy)
+    return solution
 
 
 def compute_receipt_box_from_skewed_extents(
