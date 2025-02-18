@@ -111,6 +111,8 @@ class ReceiptWindow:
         )
 
     def __hash__(self) -> int:
+        # Convert inner_corner_coordinates tuple of floats to hashable form
+        hashable_coords = tuple(float(x) for x in self.inner_corner_coordinates)
         return hash(
             (
                 self.image_id,
@@ -118,8 +120,8 @@ class ReceiptWindow:
                 self.cdn_s3_bucket,
                 self.cdn_s3_key,
                 self.corner_name,
-                self.inner_corner_coordinates,
-                self.gpt_guess,
+                hashable_coords,  # Now hashable while preserving precision
+                tuple(self.gpt_guess) if self.gpt_guess else None,  # Make gpt_guess hashable too
             )
         )
 
