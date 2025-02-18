@@ -279,9 +279,10 @@ def extract_and_save_corner_windows(
     image_br, width_br, height_br = down_sample(cropped_br, max_dim)
     image_bl, width_bl, height_bl = down_sample(cropped_bl, max_dim)
 
+    # Since the inner corner I is the first element of each polygon, include it in the output.
     return {
-        "top_left": {"image": image_tl, "width": width_tl, "height": height_tl},
-        "top_right": {"image": image_tr, "width": width_tr, "height": height_tr},
-        "bottom_right": {"image": image_br, "width": width_br, "height": height_br},
-        "bottom_left": {"image": image_bl, "width": width_bl, "height": height_bl},
+        "top_left": {"image": image_tl, "width": width_tl, "height": height_tl, "inner_corner": poly_tl[0]},
+        "top_right": {"image": image_tr, "width": width_tr, "height": height_tr, "inner_corner": poly_tr[0]},
+        "bottom_right": {"image": image_br, "width": width_br, "height": height_br, "inner_corner": poly_br[0]},
+        "bottom_left": {"image": image_bl, "width": width_bl, "height": height_bl, "inner_corner": poly_bl[0]},
     }
