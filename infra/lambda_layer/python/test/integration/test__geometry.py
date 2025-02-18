@@ -1,6 +1,7 @@
 # infra/lambda_layer/python/test/integration/test__geometry.py
 import pytest
-from math import sqrt, pi, isclose
+from math import sqrt, pi, isclose, isclose
+import random
 from dynamo.data._geometry import (
     invert_affine,
     convex_hull,
@@ -12,7 +13,133 @@ from dynamo.data._geometry import (
     pad_corners_opposite,
     find_perspective_coeffs,
     solve_8x8_system,
+    invert_warp,
 )
+
+
+def multiply_perspective(m1, m2):
+    """
+    Multiplies two 8-coefficient perspective transforms:
+    m1, m2 => [a,b,c,d,e,f,g,h]
+    Interpreted as 3x3:
+       [a b c]
+       [d e f]
+       [g h 1]
+    Returns the 8-coefficient result of m1*m2 as a list [a2,b2,c2,d2,e2,f2,g2,h2].
+    """
+    # Convert to 3x3
+    M1 = [
+        [m1[0], m1[1], m1[2]],
+        [m1[3], m1[4], m1[5]],
+        [m1[6], m1[7], 1.0],
+    ]
+    M2 = [
+        [m2[0], m2[1], m2[2]],
+        [m2[3], m2[4], m2[5]],
+        [m2[6], m2[7], 1.0],
+    ]
+    # Multiply
+    M = [[0.0] * 3 for _ in range(3)]
+    for r in range(3):
+        for c in range(3):
+            M[r][c] = sum(M1[r][k] * M2[k][c] for k in range(3))
+    # Convert back to 8-list
+    return [
+        M[0][0],
+        M[0][1],
+        M[0][2],
+        M[1][0],
+        M[1][1],
+        M[1][2],
+        M[2][0],
+        M[2][1],
+    ]
+
+
+@pytest.mark.unit
+def test_invert_warp_identity():
+    """
+    Inverting the identity warp => identity again.
+    Identity warp => x' = x, y' = y, so [a,b,c,d,e,f,g,h] = [1,0,0, 0,1,0, 0,0].
+    """
+    # Identity perspective warp
+    identity = [1, 0, 0, 0, 1, 0, 0, 0]
+    inv = invert_warp(*identity)  # unpack => (1,0,0,0,1,0,0,0)
+    # Should still be the identity warp
+    assert inv == identity, f"Inverse of identity should be identity, got {inv}"
+
+
+@pytest.mark.unit
+def test_invert_warp_det_zero():
+    """
+    Pass a warp that leads to determinant=0 => expect ValueError.
+    For instance, let g=0,h=0 but a,e=0 => or any degenerate 3x3 matrix.
+    We'll just pick a=0,e=0 => guaranteed zero determinant.
+    """
+    # We want the 3x3:
+    # [0 b c]
+    # [d 0 f]
+    # [g h 1]
+    # This is likely degenerate if everything else is 0 or trivial
+    # For a quick guaranteed zero det, do this:
+    degenerate = [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+    ]  # i.e. entire matrix is 0 except last element => [g,h,1]? We'll keep g,h=0 => last row => [0,0,1].
+    # So effectively [0,0,0],[0,0,0],[0,0,1] => determinant=0
+    with pytest.raises(ValueError, match="Cannot invert perspective matrix"):
+        invert_warp(*degenerate)
+
+
+@pytest.mark.unit
+def test_invert_warp_random():
+    """
+    Generate a random perspective warp with nonzero determinant.
+    Invert it. Then multiply original*inverse => identity (within float tolerance).
+    """
+    # We'll keep trying random values until we find one with a non-tiny determinant
+    # in the 3x3 sense (since we skip if det ~0).
+    for _ in range(100):
+        # random numbers in [-2,2], for example
+        m = [random.uniform(-2, 2) for _ in range(8)]
+        # Force last row => [g,h,1]
+        # Check determinant
+        # Convert to 3x3
+        M = [
+            [m[0], m[1], m[2]],
+            [m[3], m[4], m[5]],
+            [m[6], m[7], 1.0],
+        ]
+        # Compute determinant
+        det = (
+            M[0][0] * (M[1][1] * M[2][2] - M[1][2] * M[2][1])
+            - M[0][1] * (M[1][0] * M[2][2] - M[1][2] * M[2][0])
+            + M[0][2] * (M[1][0] * M[2][1] - M[1][1] * M[2][0])
+        )
+        if abs(det) > 1e-3:  # big enough determinant
+            # We'll test this warp
+            invm = invert_warp(*m)
+            # Multiply => should get identity
+            prod = multiply_perspective(m, invm)
+            # Compare to identity => [1,0,0, 0,1,0, 0,0]
+            # We'll allow some float tolerance
+            identity = [1, 0, 0, 0, 1, 0, 0, 0]
+            for i in range(8):
+                assert isclose(
+                    prod[i], identity[i], abs_tol=1e-6
+                ), f"Expected identity at index {i}, got {prod[i]}"
+            break
+    else:
+        # If we never found a random warp with big enough det, raise an error
+        raise RuntimeError(
+            "Couldn't find a random warp with non-tiny determinant after 100 tries."
+        )
 
 
 @pytest.mark.unit

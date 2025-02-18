@@ -25,13 +25,76 @@ def invert_affine(a, b, c, d, e, f):
     return (a_inv, b_inv, c_inv, d_inv, e_inv, f_inv)
 
 
+def invert_warp(a, b, c, d, e, f, g, h):
+    """
+    Given the 8 perspective coefficients (a,b,c,d,e,f,g,h) for the mapping
+      x_new = (a*x + b*y + c) / (1 + g*x + h*y)
+      y_new = (d*x + e*y + f) / (1 + g*x + h*y)
+    returns a new list of 8 coefficients [a2, b2, c2, d2, e2, f2, g2, h2]
+    that perform the inverse mapping (x_new,y_new) -> (x,y).
+    """
+    # Form the 3x3 matrix
+    M = [
+        [a, b, c],
+        [d, e, f],
+        [g, h, 1],
+    ]
+    # Invert it
+    M_inv = _invert_3x3(M)
+    # Extract the top-left 8 elements
+    # M_inv = [[A, B, C],
+    #          [D, E, F],
+    #          [G, H, I]]
+    A = M_inv[0][0]
+    B = M_inv[0][1]
+    C = M_inv[0][2]
+    D = M_inv[1][0]
+    E = M_inv[1][1]
+    F = M_inv[1][2]
+    G = M_inv[2][0]
+    H = M_inv[2][1]
+    # The last element M_inv[2][2] would be 1 if not degenerate
+    return [A, B, C, D, E, F, G, H]
+
+
+def _invert_3x3(M):
+    """Inverts a 3x3 matrix M using standard formula (or your own method)."""
+    determinant = (
+        M[0][0] * (M[1][1] * M[2][2] - M[1][2] * M[2][1])
+        - M[0][1] * (M[1][0] * M[2][2] - M[1][2] * M[2][0])
+        + M[0][2] * (M[1][0] * M[2][1] - M[1][1] * M[2][0])
+    )
+    if abs(determinant) < 1e-12:
+        raise ValueError("Cannot invert perspective matrix (det=0).")
+
+    inverse_determinant = 1.0 / determinant
+    # Adjugate / cofactor method
+    return [
+        [
+            inverse_determinant * ((M[1][1] * M[2][2] - M[1][2] * M[2][1])),
+            inverse_determinant * (-(M[0][1] * M[2][2] - M[0][2] * M[2][1])),
+            inverse_determinant * ((M[0][1] * M[1][2] - M[0][2] * M[1][1])),
+        ],
+        [
+            inverse_determinant * (-(M[1][0] * M[2][2] - M[1][2] * M[2][0])),
+            inverse_determinant * ((M[0][0] * M[2][2] - M[0][2] * M[2][0])),
+            inverse_determinant * (-(M[0][0] * M[1][2] - M[0][2] * M[1][0])),
+        ],
+        [
+            inverse_determinant * ((M[1][0] * M[2][1] - M[1][1] * M[2][0])),
+            inverse_determinant * (-(M[0][0] * M[2][1] - M[0][1] * M[2][0])),
+            inverse_determinant * ((M[0][0] * M[1][1] - M[0][1] * M[1][0])),
+        ],
+    ]
+
+
 def pad_corners_opposite(corners, pad):
     """
     Moves each corner 'pad' pixels away from its opposite corner.
-    
+
     corners: list of 4 (x, y) in consistent order, e.g.:
         [top-left, top-right, bottom-right, bottom-left]
-    pad: positive means each corner moves outward 
+    pad: positive means each corner moves outward
          (further from the opposite corner)
     """
     new_corners = []
@@ -39,7 +102,7 @@ def pad_corners_opposite(corners, pad):
         x_i, y_i = corners[i]
         # Opposite corner is (i + 2) % 4
         x_opp, y_opp = corners[(i + 2) % 4]
-        
+
         dx = x_i - x_opp
         dy = y_i - y_opp
         dist = hypot(dx, dy)
@@ -53,6 +116,7 @@ def pad_corners_opposite(corners, pad):
             new_y = y_i + pad * ny
             new_corners.append((new_x, new_y))
     return new_corners
+
 
 def solve_8x8_system(A, b):
     """
@@ -99,7 +163,9 @@ def solve_8x8_system(A, b):
     return b
 
 
-def find_perspective_coeffs(src_points, dst_points):
+def find_perspective_coeffs(
+    src_points: List[Tuple[float, float]], dst_points: List[Tuple[float, float]]
+) -> List[float]:
     """
     src_points: list of 4 (x, y) source corners
     dst_points: list of 4 (x, y) destination corners
