@@ -320,6 +320,14 @@ def test_receipt_gsi2_key_generation(example_receipt):
         "GSI2SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"},
     }
 
+@pytest.mark.unit
+def test_receipt_gsi3_key_generation(example_receipt):
+    """Test that the GSI3 key is correctly generated."""
+    assert example_receipt.gsi3_key() == {
+        "GSI3PK": {"S": "RECEIPT"},
+        "GSI3SK": {"S": "RECEIPT#00001"},
+    }
+
 
 @pytest.mark.unit
 def test_receipt_to_item(example_receipt):
@@ -331,6 +339,8 @@ def test_receipt_to_item(example_receipt):
         "GSI1SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"},
         "GSI2PK": {"S": "RECEIPT"},
         "GSI2SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"},
+        "GSI3PK": {"S": "RECEIPT"},
+        "GSI3SK": {"S": "RECEIPT#00001"},
         "TYPE": {"S": "RECEIPT"},
         "width": {"N": "200"},
         "height": {"N": "100"},
