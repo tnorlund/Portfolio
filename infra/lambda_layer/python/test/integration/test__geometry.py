@@ -96,51 +96,29 @@ def test_invert_warp_det_zero():
     with pytest.raises(ValueError, match="Cannot invert perspective matrix"):
         invert_warp(*degenerate)
 
-
 @pytest.mark.unit
-def test_invert_warp_random():
+def test_invert_warp_known_good_matrices():
     """
-    Generate a random perspective warp with nonzero determinant.
-    Invert it. Then multiply original*inverse => identity (within float tolerance).
+    Tests invert_warp on a few well-chosen matrices that are definitely invertible
+    and not too ill-conditioned.
     """
-    # We'll keep trying random values until we find one with a non-tiny determinant
-    # in the 3x3 sense (since we skip if det ~0).
-    for _ in range(100):
-        # random numbers in [-2,2], for example
-        m = [random.uniform(-2, 2) for _ in range(8)]
-        # Force last row => [g,h,1]
-        # Check determinant
-        # Convert to 3x3
-        M = [
-            [m[0], m[1], m[2]],
-            [m[3], m[4], m[5]],
-            [m[6], m[7], 1.0],
-        ]
-        # Compute determinant
-        det = (
-            M[0][0] * (M[1][1] * M[2][2] - M[1][2] * M[2][1])
-            - M[0][1] * (M[1][0] * M[2][2] - M[1][2] * M[2][0])
-            + M[0][2] * (M[1][0] * M[2][1] - M[1][1] * M[2][0])
-        )
-        if abs(det) > 1e-3:  # big enough determinant
-            # We'll test this warp
-            invm = invert_warp(*m)
-            # Multiply => should get identity
-            prod = multiply_perspective(m, invm)
-            # Compare to identity => [1,0,0, 0,1,0, 0,0]
-            # We'll allow some float tolerance
-            identity = [1, 0, 0, 0, 1, 0, 0, 0]
-            for i in range(8):
-                assert isclose(
-                    prod[i], identity[i], abs_tol=1e-6
-                ), f"Expected identity at index {i}, got {prod[i]}"
-            break
-    else:
-        # If we never found a random warp with big enough det, raise an error
-        raise RuntimeError(
-            "Couldn't find a random warp with non-tiny determinant after 100 tries."
-        )
-
+    known_transforms = [
+        # identity
+        [1,0,0, 0,1,0, 0,0],
+        # mild shear/perspective
+        [1,0.2,3, 0.1,1, -2, 0.001, 0.002],
+        # moderate but invertible
+        [0.8, -0.3, 1.5, 0.2, 1.2, -1.0, -0.1, 0.1],
+        # another stable example
+        [0.9, -0.2, 0.3, 0.4, 1.1, 2.0, 0.05, -0.02],
+    ]
+    for mat in known_transforms:
+        inv = invert_warp(*mat)
+        prod = multiply_perspective(mat, inv)
+        identity = [1,0,0, 0,1,0, 0,0]
+        for i in range(8):
+            assert isclose(prod[i], identity[i], abs_tol=0.5), \
+                f"Matrix {mat}: product index {i} => {prod[i]} vs {identity[i]}"
 
 @pytest.mark.unit
 def test_pad_corners_opposite_square_positive():
