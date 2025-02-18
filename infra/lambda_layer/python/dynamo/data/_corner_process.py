@@ -1,3 +1,4 @@
+# infra/lambda_layer/python/dynamo/data/_corner_process.py
 from PIL.Image import Image, Resampling
 from typing import List, Tuple, Dict
 import math
