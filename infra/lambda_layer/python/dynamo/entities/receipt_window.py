@@ -121,9 +121,12 @@ class ReceiptWindow:
                 self.cdn_s3_key,
                 self.corner_name,
                 hashable_coords,  # Now hashable while preserving precision
-                tuple(self.gpt_guess) if self.gpt_guess else None,  # Make gpt_guess hashable too
+                (
+                    tuple(self.gpt_guess) if self.gpt_guess else None
+                ),  # Make gpt_guess hashable too
             )
         )
+
 
 def itemToReceiptWindow(item: dict) -> ReceiptWindow:
     required_keys = {
@@ -149,7 +152,11 @@ def itemToReceiptWindow(item: dict) -> ReceiptWindow:
         if gpt_guess_field and gpt_guess_field.get("NULL", False):
             gpt_guess = None
         else:
-            gpt_guess = [int(guess["N"]) for guess in gpt_guess_field["L"]] if gpt_guess_field else None
+            gpt_guess = (
+                [int(guess["N"]) for guess in gpt_guess_field["L"]]
+                if gpt_guess_field
+                else None
+            )
 
         return ReceiptWindow(
             image_id=item["PK"]["S"].split("#")[1],
