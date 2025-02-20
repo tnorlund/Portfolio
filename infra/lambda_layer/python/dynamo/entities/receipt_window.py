@@ -1,6 +1,6 @@
 # dynamo/entities/receipt_window.py
 from datetime import datetime
-from typing import Any, Generator, Tuple
+from typing import Any, Generator, Tuple, List
 from dynamo.entities.util import assert_valid_uuid
 
 
@@ -14,7 +14,7 @@ class ReceiptWindow:
         corner_name: str,
         width: int,
         height: int,
-        inner_corner_coordinates: Tuple[int, int],
+        inner_corner_coordinates: Tuple[float, float] | List[float],
         gpt_guess: list[int] | None = None,
     ):
         assert_valid_uuid(image_id)
@@ -42,9 +42,10 @@ class ReceiptWindow:
         if height <= 0:
             raise ValueError("height must be positive")
         self.height = height
-        if inner_corner_coordinates and not isinstance(inner_corner_coordinates, tuple):
-            raise ValueError("inner_corner_coordinates must be a tuple")
-        self.inner_corner_coordinates = inner_corner_coordinates
+        if not isinstance(inner_corner_coordinates, (tuple, list)):
+            raise ValueError("inner_corner_coordinates must be a tuple or list")
+        # Always store as tuple
+        self.inner_corner_coordinates = tuple(inner_corner_coordinates)
         self.gpt_guess = gpt_guess
 
     def key(self) -> dict:
@@ -167,7 +168,7 @@ def itemToReceiptWindow(item: dict) -> ReceiptWindow:
             width=int(item["width"]["N"]),
             height=int(item["height"]["N"]),
             inner_corner_coordinates=tuple(
-                int(coord["N"]) for coord in item["inner_corner_coordinates"]["L"]
+                float(coord["N"]) for coord in item["inner_corner_coordinates"]["L"]
             ),
             gpt_guess=gpt_guess,
         )
