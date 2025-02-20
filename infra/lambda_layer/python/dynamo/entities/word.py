@@ -574,6 +574,74 @@ class Word:
         angle_rad = atan2(dy, dx)
         self.angle_radians = angle_rad
         self.angle_degrees = degrees(angle_rad)
+    def warp_transform(
+        self,
+        a: float,
+        b: float,
+        c: float,
+        d: float,
+        e: float,
+        f: float,
+        g: float,
+        h: float,
+        src_width: int,
+        src_height: int,
+        dst_width: int,
+        dst_height: int,
+        # We will assume the corners come in as Vision bottom-left coords
+        # and we want them to end as Vision bottom-left coords in the original image.
+    ):
+        """
+        Maps Vision (bottom-left) normalized coords in the 'warped' image
+        back to Vision (bottom-left) normalized coords in the 'original' image.
+        """
+
+        corners = [self.top_left, self.top_right, self.bottom_left, self.bottom_right]
+        corner_names = ["top_left", "top_right", "bottom_left", "bottom_right"]
+
+        for corner, name in zip(corners, corner_names):
+            # 1) Flip Y from bottom-left to top-left
+            #    Because the perspective transform code uses top-left orientation
+            x_vision_warped = corner["x"]  # 0..1
+            y_vision_warped = corner["y"]  # 0..1, bottom=0
+            y_top_left_warped = 1.0 - y_vision_warped
+
+            # 2) Scale to pixel coordinates in the *warped* image
+            x_warped_px = x_vision_warped * dst_width
+            y_warped_px = y_top_left_warped * dst_height
+
+            # 3) Apply the *inverse* perspective (already inverted) to get original top-left px
+            denom = (g * x_warped_px) + (h * y_warped_px) + 1.0
+            if abs(denom) < 1e-12:
+                raise ValueError("Inverse warp denominator ~ 0 at corner: " + name)
+
+            X_old_px = (a * x_warped_px + b * y_warped_px + c) / denom
+            Y_old_px = (d * x_warped_px + e * y_warped_px + f) / denom
+
+            # 4) Convert to normalized coordinates in top-left of the *original* image
+            X_old_norm_tl = X_old_px / src_width
+            Y_old_norm_tl = Y_old_px / src_height
+
+            # 5) Flip Y back to bottom-left for Vision
+            X_old_vision = X_old_norm_tl
+            Y_old_vision = 1.0 - Y_old_norm_tl
+
+            # Update the corner
+            corner["x"] = X_old_vision
+            corner["y"] = Y_old_vision
+
+        xs = [pt["x"] for pt in corners]
+        ys = [pt["y"] for pt in corners]
+        self.bounding_box["x"] = min(xs)
+        self.bounding_box["y"] = min(ys)
+        self.bounding_box["width"] = max(xs) - min(xs)
+        self.bounding_box["height"] = max(ys) - min(ys)
+        dx = self.top_right["x"] - self.top_left["x"]
+        dy = self.top_right["y"] - self.top_left["y"]
+        angle_rad = atan2(dy, dx)
+        self.angle_radians = angle_rad
+        self.angle_degrees = degrees(angle_rad)
+
 
     def rotate_90_ccw_in_place(self, old_w: int, old_h: int):
         """Rotates the Word 90 degrees counter-clockwise in-place.

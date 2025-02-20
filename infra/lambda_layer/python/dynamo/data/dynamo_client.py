@@ -16,6 +16,7 @@ from dynamo.data._word_tag import _WordTag
 from dynamo.data._receipt_word_tag import _ReceiptWordTag
 from dynamo.data._gpt_validation import _GPTValidation
 from dynamo.data._gpt_initial_tagging import _GPTInitialTagging
+from dynamo.data._receipt_window import _ReceiptWindow
 
 
 class DynamoClient(
@@ -31,6 +32,7 @@ class DynamoClient(
     _ReceiptWordTag,
     _GPTValidation,
     _GPTInitialTagging,
+    _ReceiptWindow,
 ):
     """A class used to represent a DynamoDB client."""
 

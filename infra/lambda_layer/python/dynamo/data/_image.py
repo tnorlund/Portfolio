@@ -28,6 +28,8 @@ from dynamo import (
 from dynamo.entities import assert_valid_uuid
 from botocore.exceptions import ClientError
 
+from dynamo.entities.receipt_window import itemToReceiptWindow
+
 # DynamoDB batch_write_item can only handle up to 25 items per call
 # So we chunk the items in groups of 25 for bulk operations.
 CHUNK_SIZE = 25
@@ -288,8 +290,8 @@ class _Image:
 
         Parameters
         ----------
-        image_id : int
-            The ID of the image for which to retrieve details.
+        image_id : str
+            The UUID of the image for which to retrieve details.
 
         Returns
         -------
@@ -314,6 +316,7 @@ class _Image:
         word_tags = []
         letters = []
         receipts = []
+        receipt_windows = []
         receipt_lines = []
         receipt_words = []
         receipt_word_tags = []
@@ -357,6 +360,8 @@ class _Image:
                     letters.append(itemToLetter(item))
                 elif item["TYPE"]["S"] == "RECEIPT":
                     receipts.append(itemToReceipt(item))
+                elif item["TYPE"]["S"] == "RECEIPT_WINDOW":
+                    receipt_windows.append(itemToReceiptWindow(item))
                 elif item["TYPE"]["S"] == "RECEIPT_LINE":
                     receipt_lines.append(itemToReceiptLine(item))
                 elif item["TYPE"]["S"] == "RECEIPT_WORD":
@@ -377,6 +382,7 @@ class _Image:
                 word_tags,
                 letters,
                 receipts,
+                receipt_windows,
                 receipt_lines,
                 receipt_words,
                 receipt_word_tags,
@@ -388,7 +394,7 @@ class _Image:
         except Exception as e:
             raise Exception(f"Error getting image details: {e}")
 
-    def deleteImage(self, image_id: int):
+    def deleteImage(self, image_id: str):
         """
         Deletes an Image item from the database by its ID.
 
@@ -396,8 +402,8 @@ class _Image:
 
         Parameters
         ----------
-        image_id : int
-            The ID of the image to delete.
+        image_id : str
+            The UUID of the image to delete.
 
         Raises
         ------

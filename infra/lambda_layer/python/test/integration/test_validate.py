@@ -101,6 +101,7 @@ def test_validate_receipt(dynamodb_table, mocker):
         _,
         _,
         _,
+        _,
         updated_receipt_word_tags,
         _,
         _,

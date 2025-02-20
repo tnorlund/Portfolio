@@ -12,6 +12,7 @@ from dynamo import (
     itemToReceiptWordTag,
     itemToGPTValidation,
     itemToGPTInitialTagging,
+    itemToReceiptWindow,
 )
 from botocore.exceptions import ClientError
 
@@ -55,8 +56,13 @@ class _Receipt:
                 ConditionExpression="attribute_not_exists(PK)",
             )
         except ClientError as e:
-            if e.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
-                raise ValueError(f"Receipt with ID {receipt.receipt_id} and Image ID '{receipt.image_id}' already exists")
+            if (
+                e.response.get("Error", {}).get("Code")
+                == "ConditionalCheckFailedException"
+            ):
+                raise ValueError(
+                    f"Receipt with ID {receipt.receipt_id} and Image ID '{receipt.image_id}' already exists"
+                )
             else:
                 raise e
 
@@ -103,8 +109,13 @@ class _Receipt:
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            if e.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
-                raise ValueError(f"Receipt with ID {receipt.receipt_id} and Image ID '{receipt.image_id}' does not exist")
+            if (
+                e.response.get("Error", {}).get("Code")
+                == "ConditionalCheckFailedException"
+            ):
+                raise ValueError(
+                    f"Receipt with ID {receipt.receipt_id} and Image ID '{receipt.image_id}' does not exist"
+                )
             else:
                 raise e
 
@@ -151,8 +162,13 @@ class _Receipt:
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            if e.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
-                raise ValueError(f"Receipt with ID {receipt.receipt_id} and Image ID '{receipt.image_id}' does not exists")
+            if (
+                e.response.get("Error", {}).get("Code")
+                == "ConditionalCheckFailedException"
+            ):
+                raise ValueError(
+                    f"Receipt with ID {receipt.receipt_id} and Image ID '{receipt.image_id}' does not exists"
+                )
             else:
                 raise e
 
@@ -221,11 +237,18 @@ class _Receipt:
             if "Item" in response:
                 return itemToReceipt(response["Item"])
             else:
-                raise ValueError(f"Receipt with ID {receipt_id} and Image ID '{image_id}' does not exist")
+                raise ValueError(
+                    f"Receipt with ID {receipt_id} and Image ID '{image_id}' does not exist"
+                )
 
         except ClientError as e:
-            if e.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
-                raise ValueError(f"Receipt with ID {receipt_id} and Image ID '{image_id}' does not exist")
+            if (
+                e.response.get("Error", {}).get("Code")
+                == "ConditionalCheckFailedException"
+            ):
+                raise ValueError(
+                    f"Receipt with ID {receipt_id} and Image ID '{image_id}' does not exist"
+                )
             else:
                 raise e
 
@@ -270,7 +293,7 @@ class _Receipt:
             tags = []
             validations = []
             initial_taggings = []
-            
+
             for item in response["Items"]:
                 if item["TYPE"]["S"] == "RECEIPT":
                     receipt = itemToReceipt(item)
@@ -286,7 +309,7 @@ class _Receipt:
                     validations.append(itemToGPTValidation(item))
                 elif item["TYPE"]["S"] == "GPT_INITIAL_TAGGING":
                     initial_taggings.append(itemToGPTInitialTagging(item))
-                
+
             return receipt, lines, words, letters, tags, validations, initial_taggings
         except ClientError as e:
             raise ValueError(f"Error getting receipt details: {e}")
@@ -311,7 +334,7 @@ class _Receipt:
             # If a starting key is provided, add it.
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
-            
+
             # If a limit is provided, add it to the query parameters.
             if limit is not None:
                 query_params["Limit"] = limit
@@ -330,7 +353,7 @@ class _Receipt:
             else:
                 # If a limit was provided, return the LEK from the response (which will be None if this was the last page).
                 last_evaluated_key = response.get("LastEvaluatedKey", None)
-            
+
             return receipts, last_evaluated_key
         except ClientError as e:
             raise ValueError(f"Could not list receipts from the database: {e}")
@@ -370,9 +393,97 @@ class _Receipt:
         except ClientError as e:
             raise ValueError(f"Error listing receipts from image: {e}")
 
+    def listReceiptWindowDetails(
+        self, limit: Optional[int] = None, last_evaluated_key: Optional[dict] = None
+    ) -> Tuple[Dict[str, Dict], Optional[Dict]]:
+        """List receipts with their windows from GSI3.
+
+        Returns:
+            Tuple[Dict[str, Dict], Optional[Dict]]: 
+            - A dict of {
+                "<image_id>_<receipt_id>": {
+                    "receipt": Receipt,
+                    "windows": [ReceiptWindow, ...]
+                },
+                ...
+                }
+            - A LastEvaluatedKey or None if no more pages.
+        """
+
+        try:
+            query_params = {
+                "TableName": self.table_name,
+                "IndexName": "GSI3",
+                "KeyConditionExpression": "#pk = :pk_value",
+                "ExpressionAttributeNames": {"#pk": "GSI3PK"},
+                "ExpressionAttributeValues": {":pk_value": {"S": "RECEIPT"}},
+                "ScanIndexForward": True,
+            }
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
+
+            payload = {}
+            receipt_count = 0
+
+            while True:
+                response = self._client.query(**query_params)
+
+                for item in response["Items"]:
+                    item_type = item["TYPE"]["S"]
+
+                    if item_type == "RECEIPT":
+                        # Convert to our Receipt object
+                        receipt = itemToReceipt(item)
+                        key = f"{receipt.image_id}_{receipt.receipt_id}"
+
+                        # If we've hit our limit, build a LEK and return immediately
+                        if limit is not None and receipt_count >= limit:
+                            last_evaluated_key = {
+                                "PK": item["PK"],
+                                "SK": item["SK"],
+                                "GSI3PK": item["GSI3PK"],
+                                "GSI3SK": item["GSI3SK"],
+                            }
+                            return payload, last_evaluated_key
+
+                        # Ensure there's an entry in payload for this key
+                        if key not in payload:
+                            payload[key] = {"receipt": receipt, "windows": []}
+                        else:
+                            # If an entry already exists, we just set the receipt
+                            # (in case we encountered windows first)
+                            payload[key]["receipt"] = receipt
+
+                        receipt_count += 1
+
+                    elif item_type == "RECEIPT_WINDOW":
+                        # Convert to our ReceiptWindow object
+                        window = itemToReceiptWindow(item)
+                        key = f"{window.image_id}_{window.receipt_id}"
+
+                        # If no entry yet for this receipt, create it with a placeholder
+                        # receipt = None, windows = []
+                        if key not in payload:
+                            payload[key] = {"receipt": None, "windows": []}
+
+                        payload[key]["windows"].append(window)
+
+                # If there are no more pages, we return what we have
+                if "LastEvaluatedKey" not in response:
+                    return payload, None
+
+                # Otherwise, continue paginating
+                query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+
+        except ClientError as e:
+            raise ValueError("Could not list receipt windows from the database") from e
+        
     def listReceiptDetails(
         self, limit: Optional[int] = None, last_evaluated_key: Optional[dict] = None
-    ) -> Tuple[Dict[str, Dict[str, Union[Receipt, List[ReceiptWord], List[ReceiptWordTag]]]], Optional[Dict]]:
+    ) -> Tuple[
+        Dict[str, Dict[str, Union[Receipt, List[ReceiptWord], List[ReceiptWordTag]]]],
+        Optional[Dict],
+    ]:
         """List receipts with their words and word tags
 
         Args:
@@ -381,7 +492,7 @@ class _Receipt:
 
         Returns:
             Tuple[Dict[str, Dict], Optional[Dict]]: A tuple containing:
-                - Dictionary mapping "<image_id>_<receipt_id>" to receipt details 
+                - Dictionary mapping "<image_id>_<receipt_id>" to receipt details
                 - Last evaluated key for pagination (None if no more pages)
         """
         try:
@@ -393,7 +504,7 @@ class _Receipt:
                 "ExpressionAttributeValues": {":pk_value": {"S": "RECEIPT"}},
                 "ScanIndexForward": True,
             }
-            
+
             if last_evaluated_key is not None:
                 query_params["ExclusiveStartKey"] = last_evaluated_key
 
@@ -404,10 +515,10 @@ class _Receipt:
 
             while True:
                 response = self._client.query(**query_params)
-                
+
                 for item in response["Items"]:
                     item_type = item["TYPE"]["S"]
-                    
+
                     if item_type == "RECEIPT":
                         # If we've hit our limit, use this receipt's key as the LEK and stop
                         if limit is not None and receipt_count >= limit:
@@ -418,31 +529,37 @@ class _Receipt:
                                 "GSI2SK": item["GSI2SK"],
                             }
                             return payload, last_evaluated_key
-                        
+
                         receipt = itemToReceipt(item)
                         current_key = f"{receipt.image_id}_{receipt.receipt_id}"
                         payload[current_key] = {
                             "receipt": receipt,
                             "words": [],
-                            "word_tags": []
+                            "word_tags": [],
                         }
                         current_receipt = receipt
                         receipt_count += 1
-                    
+
                     elif item_type == "RECEIPT_WORD" and current_receipt:
                         word = itemToReceiptWord(item)
-                        if word.image_id == current_receipt.image_id and word.receipt_id == current_receipt.receipt_id:
+                        if (
+                            word.image_id == current_receipt.image_id
+                            and word.receipt_id == current_receipt.receipt_id
+                        ):
                             payload[current_key]["words"].append(word)
-                    
+
                     elif item_type == "RECEIPT_WORD_TAG" and current_receipt:
                         tag = itemToReceiptWordTag(item)
-                        if tag.image_id == current_receipt.image_id and tag.receipt_id == current_receipt.receipt_id:
+                        if (
+                            tag.image_id == current_receipt.image_id
+                            and tag.receipt_id == current_receipt.receipt_id
+                        ):
                             payload[current_key]["word_tags"].append(tag)
 
                 # If no more pages
                 if "LastEvaluatedKey" not in response:
                     return payload, None
-                    
+
                 query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
 
         except ClientError as e:

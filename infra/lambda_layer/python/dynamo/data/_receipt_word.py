@@ -202,36 +202,58 @@ class _ReceiptWord:
         except ClientError as e:
             raise ValueError(f"Could not delete ReceiptWords from the database: {e}")
 
-    def listReceiptWords(self) -> list[ReceiptWord]:
+    def listReceiptWords(
+        self, limit: int = None, lastEvaluatedKey: dict | None = None
+    ) -> list[ReceiptWord]:
         """Returns all ReceiptWords from the table."""
+        if limit is not None and not isinstance(limit, int):
+            raise ValueError("limit must be an integer or None.")
+        if lastEvaluatedKey is not None and not isinstance(lastEvaluatedKey, dict):
+            raise ValueError("lastEvaluatedKey must be a dictionary or None.")
+        
         receipt_words = []
         try:
-            response = self._client.query(
-                TableName=self.table_name,
-                IndexName="GSITYPE",
-                KeyConditionExpression="#t = :val",
-                ExpressionAttributeNames={"#t": "TYPE"},
-                ExpressionAttributeValues={":val": {"S": "RECEIPT_WORD"}},
-            )
+            query_params = {
+                "TableName": self.table_name,
+                "IndexName": "GSITYPE",
+                "KeyConditionExpression": "#t = :val",
+                "ExpressionAttributeNames": {"#t": "TYPE"},
+                "ExpressionAttributeValues": {":val": {"S": "RECEIPT_WORD"}},
+            }
+            if lastEvaluatedKey is not None:
+                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if limit is not None:
+                query_params["Limit"] = limit
+            response = self._client.query(**query_params)
             receipt_words.extend(
                 [itemToReceiptWord(item) for item in response["Items"]]
             )
 
-            while "LastEvaluatedKey" in response:
-                response = self._client.query(
-                    TableName=self.table_name,
-                    IndexName="GSITYPE",
-                    KeyConditionExpression="#t = :val",
-                    ExpressionAttributeNames={"#t": "TYPE"},
-                    ExpressionAttributeValues={":val": {"S": "RECEIPT_WORD"}},
-                    ExclusiveStartKey=response["LastEvaluatedKey"],
-                )
-                receipt_words.extend(
-                    [itemToReceiptWord(item) for item in response["Items"]]
-                )
-            return receipt_words
+            if limit is None:
+                # Paginate through all the receipt words.
+                while "LastEvaluatedKey" in response:
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    response = self._client.query(**query_params)
+                    receipt_words.extend(
+                        [itemToReceiptWord(item) for item in response["Items"]]
+                    )
+                last_evaluated_key = None
+            else:
+                last_evaluated_key = response.get("LastEvaluatedKey", None)
+
+            return receipt_words, last_evaluated_key
         except ClientError as e:
-            raise ValueError(f"Could not list ReceiptWords from the database {e}")
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ResourceNotFoundException":
+                raise Exception(f"Could not list receipt words from DynamoDB: {e}") from e
+            elif error_code == "ProvisionedThroughputExceededException":
+                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+            elif error_code == "ValidationException":
+                raise ValueError(f"One or more parameters given were invalid: {e}") from e
+            elif error_code == "InternalServerError":
+                raise Exception(f"Internal server error: {e}") from e
+            else:
+                raise Exception(f"Error listing receipt words: {e}") from e
 
     def listReceiptWordsFromLine(
         self, receipt_id: int, image_id: str, line_id: int

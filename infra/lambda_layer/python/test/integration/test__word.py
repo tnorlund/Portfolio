@@ -233,7 +233,7 @@ def test_word_list(dynamodb_table: Literal["MyMockedTable"]):
     client.addWords(words)
 
     # Act
-    words_retrieved = client.listWords()
+    words_retrieved, _ = client.listWords()
 
     # Assert
     assert words_retrieved == words

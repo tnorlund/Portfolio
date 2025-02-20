@@ -65,8 +65,8 @@ def process_picture(
     dynamo_receipt_words = []
     dynamo_receipt_letters = []
     dynamo_receipt_windows = []
+    print(f"Processing {len(image_paths)} images: ", end="", flush=True)
     for image_path in image_paths:
-        print(f"Processing image: {image_path}")
         (
             receipt_images,
             receipt_boxes,
@@ -293,18 +293,31 @@ def process_picture(
                     gpt_guess=None,
                 )
             )
+        print(".", end="", flush=True)
+    print()  # End the line after all chunks are processed.
 
     # Add all the entities to the database.
-    dynamo_client.addImages(dynamo_images)
-    dynamo_client.addLines(dynamo_lines)
-    dynamo_client.addWords(dynamo_words)
-    dynamo_client.addLetters(dynamo_letters)
-    dynamo_client.addReceipts(dynamo_receipts)
-    dynamo_client.addReceiptLines(dynamo_receipt_lines)
-    dynamo_client.addReceiptWords(dynamo_receipt_words)
-    dynamo_client.addReceiptLetters(dynamo_receipt_letters)
-    dynamo_client.addReceiptWindows(dynamo_receipt_windows)
+    _upload_entities_in_chunks(dynamo_client.addImages, dynamo_images, "Images")
+    _upload_entities_in_chunks(dynamo_client.addLines, dynamo_lines, "Lines")
+    _upload_entities_in_chunks(dynamo_client.addWords, dynamo_words, "Words")
+    _upload_entities_in_chunks(dynamo_client.addLetters, dynamo_letters, "Letters")
+    _upload_entities_in_chunks(dynamo_client.addReceipts, dynamo_receipts, "Receipts")
+    _upload_entities_in_chunks(dynamo_client.addReceiptLines, dynamo_receipt_lines, "ReceiptLines")
+    _upload_entities_in_chunks(dynamo_client.addReceiptWords, dynamo_receipt_words, "ReceiptWords")
+    _upload_entities_in_chunks(dynamo_client.addReceiptLetters, dynamo_receipt_letters, "ReceiptLetters")
+    _upload_entities_in_chunks(dynamo_client.addReceiptWindows, dynamo_receipt_windows, "ReceiptWindows")
 
+
+def _upload_entities_in_chunks(upload_method, entities, entity_name):
+    total = len(entities)
+    # Print the initial message without a newline.
+    print(f"Adding {total} {entity_name}: ", end="", flush=True)
+    # Process entities in chunks of 25.
+    for i in range(0, total, 25):
+        chunk = entities[i:i+25]
+        upload_method(chunk)
+        print(".", end="", flush=True)
+    print()  # End the line after all chunks are processed.
 
 def _get_ocr_and_windows(image_path: Path) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """ """

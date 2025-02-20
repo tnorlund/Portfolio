@@ -1,6 +1,6 @@
 from dynamo import Word, itemToWord
 from botocore.exceptions import ClientError
-
+from typing import Optional, Dict
 # DynamoDB batch_write_item can only handle up to 25 items per call
 # So let's chunk the items in groups of 25
 CHUNK_SIZE = 25
@@ -212,28 +212,31 @@ class _Word:
         
         return [itemToWord(result) for result in results]
 
-    def listWords(self) -> list[Word]:
+    def listWords(self, limit: Optional[int] = None, last_evaluated_key: Optional[Dict] = None) -> list[Word]:
         words = []
         try:
-            response = self._client.query(
-                TableName=self.table_name,
-                IndexName="GSITYPE",
-                KeyConditionExpression="#t = :val",
-                ExpressionAttributeNames={"#t": "TYPE"},
-                ExpressionAttributeValues={":val": {"S": "WORD"}},
-            )
+            query_params = {
+                "TableName": self.table_name,
+                "IndexName": "GSITYPE",
+                "KeyConditionExpression": "#t = :val",
+                "ExpressionAttributeNames": {"#t": "TYPE"},
+                "ExpressionAttributeValues": {":val": {"S": "WORD"}},
+            }
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
+            if limit is not None:
+                query_params["Limit"] = limit
+            response = self._client.query(**query_params)
             words.extend([itemToWord(item) for item in response["Items"]])
-            while "LastEvaluatedKey" in response:
-                response = self._client.query(
-                    TableName=self.table_name,
-                    IndexName="GSITYPE",
-                    KeyConditionExpression="#t = :val",
-                    ExpressionAttributeNames={"#t": "TYPE"},
-                    ExpressionAttributeValues={":val": {"S": "WORD"}},
-                    ExclusiveStartKey=response["LastEvaluatedKey"],
-                )
-                words.extend([itemToWord(item) for item in response["Items"]])
-            return words
+            if limit is None:
+                while "LastEvaluatedKey" in response:
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    response = self._client.query(**query_params)
+                    words.extend([itemToWord(item) for item in response["Items"]])
+                last_evaluated_key = None
+            else:
+                last_evaluated_key = response.get("LastEvaluatedKey", None)
+            return words, last_evaluated_key
         except ClientError as e:
             raise ValueError("Could not list words from the database") from e
 
