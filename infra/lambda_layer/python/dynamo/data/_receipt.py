@@ -1,24 +1,23 @@
+# infra/lambda_layer/python/dynamo/data/_receipt.py
 from typing import Dict, List, Optional, Tuple, Union
-from dynamo import (
-    Receipt,
-    ReceiptLine,
-    ReceiptWord,
-    ReceiptWordTag,
-    ReceiptLetter,
-    itemToReceipt,
-    itemToReceiptLine,
-    itemToReceiptWord,
-    itemToReceiptLetter,
-    itemToReceiptWordTag,
-    itemToGPTValidation,
-    itemToGPTInitialTagging,
-    itemToReceiptWindow,
-)
 from botocore.exceptions import ClientError
+from dynamo.entities.receipt import Receipt, itemToReceipt
+from dynamo.entities.receipt_line import ReceiptLine, itemToReceiptLine
+from dynamo.entities.receipt_word import ReceiptWord, itemToReceiptWord
+from dynamo.entities.receipt_letter import ReceiptLetter, itemToReceiptLetter
+from dynamo.entities.receipt_word_tag import ReceiptWordTag, itemToReceiptWordTag
+from dynamo.entities.gpt_validation import itemToGPTValidation
+from dynamo.entities.gpt_initial_tagging import itemToGPTInitialTagging
+from dynamo.entities.receipt_window import itemToReceiptWindow
 
-# DynamoDB batch_write_item can only handle up to 25 items per call
-# So let's chunk the items in groups of 25
-CHUNK_SIZE = 25
+def validate_last_evaluated_key(lek: dict) -> None:
+    required_keys = {"PK", "SK"}
+    if not required_keys.issubset(lek.keys()):
+        raise ValueError(f"LastEvaluatedKey must contain keys: {required_keys}")
+    # You might also check that each key maps to a dictionary with a DynamoDB type key (e.g., "S")
+    for key in required_keys:
+        if not isinstance(lek[key], dict) or "S" not in lek[key]:
+            raise ValueError(f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'")
 
 
 def _parse_receipt_details(
@@ -76,8 +75,8 @@ class _Receipt:
             ValueError: When a receipt with the same ID already exists
         """
         try:
-            for i in range(0, len(receipts), CHUNK_SIZE):
-                chunk = receipts[i : i + CHUNK_SIZE]
+            for i in range(0, len(receipts), 25):
+                chunk = receipts[i : i + 25]
                 request_items = [
                     {"PutRequest": {"Item": receipt.to_item()}} for receipt in chunk
                 ]
@@ -129,8 +128,8 @@ class _Receipt:
             ValueError: When a receipt does not exist
         """
         try:
-            for i in range(0, len(receipts), CHUNK_SIZE):
-                chunk = receipts[i : i + CHUNK_SIZE]
+            for i in range(0, len(receipts), 25):
+                chunk = receipts[i : i + 25]
                 request_items = [
                     {"PutRequest": {"Item": receipt.to_item()}} for receipt in chunk
                 ]
@@ -182,8 +181,8 @@ class _Receipt:
             ValueError: When a receipt does not exist
         """
         try:
-            for i in range(0, len(receipts), CHUNK_SIZE):
-                chunk = receipts[i : i + CHUNK_SIZE]
+            for i in range(0, len(receipts), 25):
+                chunk = receipts[i : i + 25]
                 request_items = [
                     {"DeleteRequest": {"Key": receipt.key()}} for receipt in chunk
                 ]
@@ -318,10 +317,43 @@ class _Receipt:
         self, limit: int = None, lastEvaluatedKey: dict | None = None
     ) -> tuple[list[Receipt], dict | None]:
         """
-        Lists receipts from the database.
-        - If a limit is provided, performs one query (or page) and returns up to that many receipts plus the LastEvaluatedKey.
-        - If no limit is provided, paginates until all receipts are returned.
+        Retrieve receipt records from the database with support for precise pagination.
+
+        This method queries the database for items identified as receipts and returns a list of corresponding
+        Receipt objects along with a pagination key (LastEvaluatedKey) for subsequent queries. When a limit is provided,
+        the method will continue to paginate through the data until it accumulates exactly that number of receipts (or
+        until no more items are available). If no limit is specified, the method retrieves all available receipts.
+
+        Parameters:
+            limit (int, optional): The maximum number of receipt items to return. If set to None, all receipts are fetched.
+            lastEvaluatedKey (dict, optional): A key that marks the starting point for the query, used to continue a 
+                previous pagination session.
+
+        Returns:
+            tuple:
+                - A list of Receipt objects, containing up to 'limit' items if a limit is specified.
+                - A dict representing the LastEvaluatedKey from the final query page, or None if there are no further pages.
+
+        Raises:
+            ValueError: If the limit is not an integer or is less than or equal to 0.
+            ValueError: If the lastEvaluatedKey is not a dictionary.
+            Exception: If the underlying database query fails.
+
+        Notes:
+            - For each query iteration, if a limit is provided, the method dynamically calculates the remaining number of 
+            items needed and adjusts the query's Limit parameter accordingly.
+            - This approach ensures that exactly the specified number of receipts is returned (when available),
+            even if it requires multiple query operations.
         """
+        if limit is not None and not isinstance(limit, int):
+            raise ValueError("Limit must be an integer")
+        if limit is not None and limit <= 0:
+            raise ValueError("Limit must be greater than 0")
+        if lastEvaluatedKey is not None:
+            if not isinstance(lastEvaluatedKey, dict):
+                raise ValueError("LastEvaluatedKey must be a dictionary")
+            validate_last_evaluated_key(lastEvaluatedKey)
+
         receipts = []
         try:
             query_params = {
@@ -331,32 +363,46 @@ class _Receipt:
                 "ExpressionAttributeNames": {"#t": "TYPE"},
                 "ExpressionAttributeValues": {":val": {"S": "RECEIPT"}},
             }
-            # If a starting key is provided, add it.
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
 
-            # If a limit is provided, add it to the query parameters.
-            if limit is not None:
-                query_params["Limit"] = limit
+            while True:
+                # If a limit is provided, adjust the query's Limit to only fetch what is needed.
+                if limit is not None:
+                    remaining = limit - len(receipts)
+                    query_params["Limit"] = remaining
 
-            response = self._client.query(**query_params)
-            receipts.extend([itemToReceipt(item) for item in response["Items"]])
+                response = self._client.query(**query_params)
+                receipts.extend([itemToReceipt(item) for item in response["Items"]])
 
-            if limit is None:
-                # Paginate through all pages if no limit is provided.
-                while "LastEvaluatedKey" in response:
+                # If we have reached or exceeded the limit, trim the list and break.
+                if limit is not None and len(receipts) >= limit:
+                    receipts = receipts[:limit]  # ensure we return exactly the limit
+                    last_evaluated_key = response.get("LastEvaluatedKey", None)
+                    break
+
+                # Continue paginating if there's more data; otherwise, we're done.
+                if "LastEvaluatedKey" in response:
                     query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
-                    response = self._client.query(**query_params)
-                    receipts.extend([itemToReceipt(item) for item in response["Items"]])
-                # No further pages, so LEK is None.
-                last_evaluated_key = None
-            else:
-                # If a limit was provided, return the LEK from the response (which will be None if this was the last page).
-                last_evaluated_key = response.get("LastEvaluatedKey", None)
+                else:
+                    last_evaluated_key = None
+                    break
 
             return receipts, last_evaluated_key
         except ClientError as e:
-            raise ValueError(f"Could not list receipts from the database: {e}")
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ResourceNotFoundException":
+                raise Exception(f"Could not list receipts from the database: {e}") from e
+            elif error_code == "ProvisionedThroughputExceededException":
+                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+            elif error_code == "ValidationException":
+                raise Exception(
+                    f"One or more parameters given were invalid: {e}"
+                ) from e
+            elif error_code == "InternalServerError":
+                raise Exception(f"Internal server error: {e}") from e
+            else:
+                raise Exception(f"Could not list receipts from the database: {e}") from e
 
     def getReceiptsFromImage(self, image_id: int) -> list[Receipt]:
         """List all receipts from an image using the GSI
