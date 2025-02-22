@@ -119,6 +119,25 @@ def test_addReceipt_success(dynamodb_table: Literal["MyMockedTable"], sample_rec
     assert retrieved == sample_receipt, "Stored and retrieved receipts should match."
 
 @pytest.mark.integration
+def test_addReceipt_raises_value_error(dynamodb_table, sample_receipt, mocker):
+    """
+    Tests that addReceipt raises ValueError when the receipt is None.
+    """
+    client = DynamoClient(dynamodb_table)
+    with pytest.raises(ValueError, match="Receipt parameter is required and cannot be None."):
+        client.addReceipt(None) # type: ignore
+
+@pytest.mark.integration    
+def test_addReceipt_raises_value_error_receipt_not_instance(dynamodb_table, sample_receipt, mocker):
+    """
+    Tests that addReceipt raises ValueError when the receipt is not an instance of Receipt.
+    """
+    client = DynamoClient(dynamodb_table)
+    with pytest.raises(ValueError, match="receipt must be an instance of the Receipt class."):
+        client.addReceipt("not-a-receipt") # type: ignore
+
+
+@pytest.mark.integration
 def test_addReceipt_raises_conditional_check_failed(
     dynamodb_table, sample_receipt, mocker
 ):
@@ -164,11 +183,31 @@ def test_addReceipt_raises_resource_not_found(dynamodb_table, sample_receipt, mo
         ),
     )
 
-    with pytest.raises(ClientError, match="Table not found"):
+    with pytest.raises(Exception, match="Table not found"):
         # Note: In _receipt.py we do not specifically catch ResourceNotFoundException in addReceipt,
         # so it won't raise ValueError, it re-raises the original error if it's not ConditionalCheckFailedException.
         client.addReceipt(sample_receipt)
     mock_put.assert_called_once()
+
+@pytest.mark.integration
+def test_addReceipt_raises_provisioned_throughput_exceeded(dynamodb_table, sample_receipt, mocker):
+    """
+    Simulate a ProvisionedThroughputExceededException when adding a receipt.
+    """
+    client = DynamoClient(dynamodb_table)
+    mock_put = mocker.patch.object(
+        client._client,
+        "put_item",
+        side_effect=ClientError(
+            {"Error": {"Code": "ProvisionedThroughputExceededException", "Message": "Provisioned throughput exceeded"}},
+            "PutItem",
+        ),
+    )
+
+    with pytest.raises(Exception, match="Provisioned throughput exceeded"):
+        client.addReceipt(sample_receipt)
+    mock_put.assert_called_once()
+
 
 @pytest.mark.integration
 def test_addReceipt_raises_unknown_error(dynamodb_table, sample_receipt, mocker):
@@ -185,7 +224,7 @@ def test_addReceipt_raises_unknown_error(dynamodb_table, sample_receipt, mocker)
         ),
     )
 
-    with pytest.raises(ClientError, match="Something unexpected"):
+    with pytest.raises(Exception, match="Something unexpected"):
         client.addReceipt(sample_receipt)
     mock_put.assert_called_once()
 

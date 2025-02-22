@@ -20,24 +20,6 @@ def validate_last_evaluated_key(lek: dict) -> None:
             raise ValueError(f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'")
 
 
-def _parse_receipt_details(
-    items: list[dict], receipt_index: int = 1
-) -> Dict[int, Dict[str, Union[Receipt, List[ReceiptWord], List[ReceiptWordTag]]]]:
-    payload = {}
-    for item in items:
-        if item["TYPE"]["S"] == "RECEIPT":
-            receipt = itemToReceipt(item)
-            payload[receipt_index] = {
-                "receipt": receipt,
-                "words": [],
-            }
-            receipt_index += 1
-        elif item["TYPE"]["S"] == "RECEIPT_WORD":
-            word = itemToReceiptWord(item)
-            payload[receipt_index - 1]["words"].append(word)
-    return payload
-
-
 class _Receipt:
     def addReceipt(self, receipt: Receipt):
         """Adds a receipt to the database
@@ -48,6 +30,10 @@ class _Receipt:
         Raises:
             ValueError: When a receipt with the same ID already exists
         """
+        if receipt is None:
+            raise ValueError("Receipt parameter is required and cannot be None.")
+        if not isinstance(receipt, Receipt):
+            raise ValueError("receipt must be an instance of the Receipt class.")
         try:
             self._client.put_item(
                 TableName=self.table_name,
@@ -55,15 +41,19 @@ class _Receipt:
                 ConditionExpression="attribute_not_exists(PK)",
             )
         except ClientError as e:
-            if (
-                e.response.get("Error", {}).get("Code")
-                == "ConditionalCheckFailedException"
-            ):
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
                     f"Receipt with ID {receipt.receipt_id} and Image ID '{receipt.image_id}' already exists"
-                )
+                ) from e
+            elif error_code == "ResourceNotFoundException":
+                raise Exception(f"Could not add receipt to DynamoDB: {e}") from e
+            elif error_code == "ProvisionedThroughputExceededException":
+                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+            elif error_code == "InternalServerError":
+                raise Exception(f"Internal server error: {e}") from e
             else:
-                raise e
+                raise Exception(f"Could not add receipt to DynamoDB: {e}") from e
 
     def addReceipts(self, receipts: list[Receipt]):
         """Adds a list of receipts to the database
