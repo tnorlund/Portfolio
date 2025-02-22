@@ -246,23 +246,6 @@ class _Receipt:
         except ClientError as e:
             raise ValueError(f"Error deleting receipts: {e}")
 
-    def deleteReceiptsFromImage(self, image_id: int):
-        """Deletes all receipts from an image
-
-        Args:
-            image_id (int): The ID of the image to delete receipts from
-
-        Raises:
-            ValueError: When there is an error deleting receipts from the image or no receipts found
-        """
-        try:
-            receipts_from_image = self.getReceiptsFromImage(image_id)
-            if not receipts_from_image:
-                raise ValueError(f"No receipts found for image ID {image_id}")
-            self.deleteReceipts(receipts_from_image)
-        except ClientError as e:
-            raise ValueError(f"Error deleting receipts from image: {e}")
-
     def getReceipt(self, image_id: int, receipt_id: int) -> Receipt:
         """Get a receipt from the database
 

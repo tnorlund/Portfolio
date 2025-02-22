@@ -537,7 +537,9 @@ def test_updateReceipt_raises_value_error_receipt_none(dynamodb_table, sample_re
     Tests that updateReceipt raises ValueError when the receipt parameter is None.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="Receipt parameter is required and cannot be None."):
+    with pytest.raises(
+        ValueError, match="Receipt parameter is required and cannot be None."
+    ):
         client.updateReceipt(None)  # type: ignore
 
 
@@ -553,6 +555,7 @@ def test_updateReceipt_raises_value_error_receipt_not_instance(
         ValueError, match="receipt must be an instance of the Receipt class."
     ):
         client.updateReceipt("not-a-receipt")  # type: ignore
+
 
 @pytest.mark.integration
 def test_updateReceipt_raises_conditional_check_failed(
@@ -734,12 +737,16 @@ def test_updateReceipts_success(dynamodb_table, sample_receipt):
 
 
 @pytest.mark.integration
-def test_updateReceipts_raises_value_error_receipts_none(dynamodb_table, sample_receipt):
+def test_updateReceipts_raises_value_error_receipts_none(
+    dynamodb_table, sample_receipt
+):
     """
     Tests that updateReceipts raises ValueError when the receipts parameter is None.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="Receipts parameter is required and cannot be None."):
+    with pytest.raises(
+        ValueError, match="Receipts parameter is required and cannot be None."
+    ):
         client.updateReceipts(None)  # type: ignore
 
 
@@ -846,7 +853,7 @@ def test_updateReceipts_raises_clienterror_internal_server_error(
     )
     with pytest.raises(Exception, match="Internal server error"):
         client.updateReceipts([sample_receipt])
-    mock_batch.assert_called_once() 
+    mock_batch.assert_called_once()
 
 
 @pytest.mark.integration
@@ -872,7 +879,7 @@ def test_updateReceipts_raises_clienterror_validation_exception(
     )
     with pytest.raises(Exception, match="One or more parameters given were invalid"):
         client.updateReceipts([sample_receipt])
-    mock_batch.assert_called_once() 
+    mock_batch.assert_called_once()
 
 
 @pytest.mark.integration
@@ -894,6 +901,7 @@ def test_updateReceipts_raises_clienterror_access_denied(
     with pytest.raises(Exception, match="Access denied"):
         client.updateReceipts([sample_receipt])
     mock_batch.assert_called_once()
+
 
 @pytest.mark.integration
 def test_updateReceipts_raises_client_error(dynamodb_table, sample_receipt, mocker):
@@ -1046,39 +1054,6 @@ def test_deleteReceipts_raises_client_error(dynamodb_table, sample_receipt, mock
         client.deleteReceipts([sample_receipt])
 
     mock_batch.assert_called_once()
-
-
-# -------------------------------------------------------------------
-#               deleteReceiptsFromImage
-# -------------------------------------------------------------------
-
-
-@pytest.mark.integration
-def test_deleteReceiptsFromImage_success(dynamodb_table, sample_receipt, sample_image):
-    """
-    Tests deleting all receipts from a given image.
-    """
-    client = DynamoClient(dynamodb_table)
-    client.addImage(sample_image)  # if you have addImage method
-    sample_receipt.image_id = sample_image.image_id
-    client.addReceipt(sample_receipt)
-
-    client.deleteReceiptsFromImage(sample_image.image_id)
-
-    with pytest.raises(ValueError):
-        client.getReceipt(sample_image.image_id, sample_receipt.receipt_id)
-
-
-@pytest.mark.integration
-def test_deleteReceiptsFromImage_no_receipts(dynamodb_table, sample_image):
-    """
-    Tests deleteReceiptsFromImage raises an error if no receipts exist.
-    """
-    client = DynamoClient(dynamodb_table)
-    client.addImage(sample_image)
-
-    with pytest.raises(ValueError, match="No receipts found"):
-        client.deleteReceiptsFromImage(sample_image.image_id)
 
 
 # -------------------------------------------------------------------
