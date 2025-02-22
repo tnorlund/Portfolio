@@ -1378,7 +1378,7 @@ def test_getReceipt_raises_value_error_image_id_not_uuid(
     Tests that getReceipt raises ValueError when the image_id parameter is not a valid UUID.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="Image ID must be a valid UUID."):
+    with pytest.raises(ValueError, match="uuid must be a valid UUIDv4"):
         client.getReceipt("not-a-uuid", sample_receipt.receipt_id)
 
 
