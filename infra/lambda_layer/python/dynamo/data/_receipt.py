@@ -146,14 +146,14 @@ class _Receipt:
         """
         Updates a list of receipts in the database using transactions.
         Each receipt update is conditional upon the receipt already existing.
-        
+
         Since DynamoDB's transact_write_items supports a maximum of 25 operations per call,
         the list of receipts is split into chunks of 25 items or less. Each chunk is updated
         in a separate transaction.
-        
+
         Args:
             receipts (list[Receipt]): The receipts to update in the database.
-        
+
         Raises:
             ValueError: When a receipt does not exist or if another error occurs.
         """
@@ -169,13 +169,15 @@ class _Receipt:
             chunk = receipts[i : i + 25]
             transact_items = []
             for receipt in chunk:
-                transact_items.append({
-                    "Put": {
-                        "TableName": self.table_name,
-                        "Item": receipt.to_item(),
-                        "ConditionExpression": "attribute_exists(PK)"
+                transact_items.append(
+                    {
+                        "Put": {
+                            "TableName": self.table_name,
+                            "Item": receipt.to_item(),
+                            "ConditionExpression": "attribute_exists(PK)",
+                        }
                     }
-                })
+                )
             try:
                 self._client.transact_write_items(TransactItems=transact_items)
             except ClientError as e:
@@ -187,7 +189,9 @@ class _Receipt:
                 elif error_code == "InternalServerError":
                     raise Exception(f"Internal server error: {e}") from e
                 elif error_code == "ValidationException":
-                    raise Exception(f"One or more parameters given were invalid: {e}") from e
+                    raise Exception(
+                        f"One or more parameters given were invalid: {e}"
+                    ) from e
                 elif error_code == "AccessDeniedException":
                     raise Exception(f"Access denied: {e}") from e
                 else:
@@ -202,6 +206,10 @@ class _Receipt:
         Raises:
             ValueError: When the receipt does not exist
         """
+        if receipt is None:
+            raise ValueError("Receipt parameter is required and cannot be None.")
+        if not isinstance(receipt, Receipt):
+            raise ValueError("receipt must be an instance of the Receipt class.")
         try:
             self._client.delete_item(
                 TableName=self.table_name,
@@ -209,42 +217,81 @@ class _Receipt:
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            if (
-                e.response.get("Error", {}).get("Code")
-                == "ConditionalCheckFailedException"
-            ):
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
                     f"Receipt with ID {receipt.receipt_id} and Image ID '{receipt.image_id}' does not exists"
                 )
+            elif error_code == "ProvisionedThroughputExceededException":
+                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+            elif error_code == "InternalServerError":
+                raise Exception(f"Internal server error: {e}") from e
+            elif error_code == "ValidationException":
+                raise Exception(
+                    f"One or more parameters given were invalid: {e}"
+                ) from e
+            elif error_code == "AccessDeniedException":
+                raise Exception(f"Access denied: {e}") from e
             else:
-                raise e
+                raise ValueError(f"Error deleting receipt: {e}") from e
+
 
     def deleteReceipts(self, receipts: list[Receipt]):
-        """Deletes a list of receipts from the database
+        """
+        Deletes a list of receipts from the database using transactions.
+        Each delete operation is conditional upon the receipt existing
+        (using the ConditionExpression "attribute_exists(PK)").
+
+        Since DynamoDB's transact_write_items supports a maximum of 25 operations
+        per transaction, the receipts list is split into chunks of 25 or fewer,
+        with each chunk processed in a separate transaction.
 
         Args:
-            receipts (list[Receipt]): The receipts to delete from the database
+            receipts (list[Receipt]): The receipts to delete from the database.
 
         Raises:
-            ValueError: When a receipt does not exist
+            ValueError: When a receipt does not exist or if another error occurs.
         """
+        if receipts is None:
+            raise ValueError("Receipts parameter is required and cannot be None.")
+        if not isinstance(receipts, list):
+            raise ValueError("receipts must be a list of Receipt instances.")
+        if not all(isinstance(receipt, Receipt) for receipt in receipts):
+            raise ValueError("All receipts must be instances of the Receipt class.")
+
         try:
+            # Process receipts in chunks of 25 items (the maximum allowed per transaction)
             for i in range(0, len(receipts), 25):
                 chunk = receipts[i : i + 25]
-                request_items = [
-                    {"DeleteRequest": {"Key": receipt.key()}} for receipt in chunk
-                ]
-                response = self._client.batch_write_item(
-                    RequestItems={self.table_name: request_items}
-                )
-                # Handle unprocessed items if they exist
-                unprocessed = response.get("UnprocessedItems", {})
-                while unprocessed.get(self.table_name):
-                    # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
-                    unprocessed = response.get("UnprocessedItems", {})
+                transact_items = []
+                for receipt in chunk:
+                    transact_items.append(
+                        {
+                            "Delete": {
+                                "TableName": self.table_name,
+                                "Key": receipt.key(),
+                                "ConditionExpression": "attribute_exists(PK)",
+                            }
+                        }
+                    )
+                # Execute the transaction for this chunk.
+                self._client.transact_write_items(TransactItems=transact_items)
         except ClientError as e:
-            raise ValueError(f"Error deleting receipts: {e}")
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ConditionalCheckFailedException":
+                raise ValueError("One or more receipts do not exist") from e
+            elif error_code == "ProvisionedThroughputExceededException":
+                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+            elif error_code == "InternalServerError":
+                raise Exception(f"Internal server error: {e}") from e
+            elif error_code == "ValidationException":
+                raise Exception(
+                    f"One or more parameters given were invalid: {e}"
+                ) from e
+            elif error_code == "AccessDeniedException":
+                raise Exception(f"Access denied: {e}") from e
+            else:
+                raise ValueError(f"Error deleting receipts: {e}") from e
 
     def getReceipt(self, image_id: int, receipt_id: int) -> Receipt:
         """Get a receipt from the database
