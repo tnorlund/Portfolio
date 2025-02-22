@@ -23,6 +23,7 @@ from dynamo import (
 
 image_id = str(uuid4())
 
+
 @pytest.fixture
 def sample_receipt():
     """
@@ -43,6 +44,7 @@ def sample_receipt():
         sha256="sha256",
     )
 
+
 @pytest.fixture
 def sample_receipt_word():
     return ReceiptWord(
@@ -61,6 +63,7 @@ def sample_receipt_word():
         confidence=1,
     )
 
+
 @pytest.fixture
 def sample_receipt_word_tag():
     return ReceiptWordTag(
@@ -71,6 +74,7 @@ def sample_receipt_word_tag():
         tag="SampleTag",
         timestamp_added=datetime.now().isoformat(),
     )
+
 
 @pytest.fixture
 def sample_receipt_letter():
@@ -91,6 +95,7 @@ def sample_receipt_letter():
         confidence=1,
     )
 
+
 @pytest.fixture
 def sample_image():
     return Image(
@@ -102,9 +107,11 @@ def sample_image():
         raw_s3_key="key",
     )
 
+
 # -------------------------------------------------------------------
 #                   addReceipt / addReceipts
 # -------------------------------------------------------------------
+
 
 @pytest.mark.integration
 def test_addReceipt_success(dynamodb_table: Literal["MyMockedTable"], sample_receipt):
@@ -118,23 +125,31 @@ def test_addReceipt_success(dynamodb_table: Literal["MyMockedTable"], sample_rec
     retrieved = client.getReceipt(sample_receipt.image_id, sample_receipt.receipt_id)
     assert retrieved == sample_receipt, "Stored and retrieved receipts should match."
 
+
 @pytest.mark.integration
 def test_addReceipt_raises_value_error(dynamodb_table, sample_receipt, mocker):
     """
     Tests that addReceipt raises ValueError when the receipt is None.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="Receipt parameter is required and cannot be None."):
-        client.addReceipt(None) # type: ignore
+    with pytest.raises(
+        ValueError, match="Receipt parameter is required and cannot be None."
+    ):
+        client.addReceipt(None)  # type: ignore
 
-@pytest.mark.integration    
-def test_addReceipt_raises_value_error_receipt_not_instance(dynamodb_table, sample_receipt, mocker):
+
+@pytest.mark.integration
+def test_addReceipt_raises_value_error_receipt_not_instance(
+    dynamodb_table, sample_receipt, mocker
+):
     """
     Tests that addReceipt raises ValueError when the receipt is not an instance of Receipt.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="receipt must be an instance of the Receipt class."):
-        client.addReceipt("not-a-receipt") # type: ignore
+    with pytest.raises(
+        ValueError, match="receipt must be an instance of the Receipt class."
+    ):
+        client.addReceipt("not-a-receipt")  # type: ignore
 
 
 @pytest.mark.integration
@@ -163,6 +178,7 @@ def test_addReceipt_raises_conditional_check_failed(
         client.addReceipt(sample_receipt)
     mock_put.assert_called_once()
 
+
 @pytest.mark.integration
 def test_addReceipt_raises_resource_not_found(dynamodb_table, sample_receipt, mocker):
     """
@@ -189,8 +205,11 @@ def test_addReceipt_raises_resource_not_found(dynamodb_table, sample_receipt, mo
         client.addReceipt(sample_receipt)
     mock_put.assert_called_once()
 
+
 @pytest.mark.integration
-def test_addReceipt_raises_provisioned_throughput_exceeded(dynamodb_table, sample_receipt, mocker):
+def test_addReceipt_raises_provisioned_throughput_exceeded(
+    dynamodb_table, sample_receipt, mocker
+):
     """
     Simulate a ProvisionedThroughputExceededException when adding a receipt.
     """
@@ -199,7 +218,12 @@ def test_addReceipt_raises_provisioned_throughput_exceeded(dynamodb_table, sampl
         client._client,
         "put_item",
         side_effect=ClientError(
-            {"Error": {"Code": "ProvisionedThroughputExceededException", "Message": "Provisioned throughput exceeded"}},
+            {
+                "Error": {
+                    "Code": "ProvisionedThroughputExceededException",
+                    "Message": "Provisioned throughput exceeded",
+                }
+            },
             "PutItem",
         ),
     )
@@ -228,6 +252,7 @@ def test_addReceipt_raises_unknown_error(dynamodb_table, sample_receipt, mocker)
         client.addReceipt(sample_receipt)
     mock_put.assert_called_once()
 
+
 @pytest.mark.integration
 def test_addReceipts_success(dynamodb_table, sample_receipt):
     """
@@ -249,6 +274,7 @@ def test_addReceipts_success(dynamodb_table, sample_receipt):
     assert len(stored) == 2
     assert sample_receipt in stored
     assert second_receipt in stored
+
 
 @pytest.mark.integration
 def test_addReceipts_unprocessed_items_retry(dynamodb_table, sample_receipt, mocker):
@@ -292,6 +318,7 @@ def test_addReceipts_unprocessed_items_retry(dynamodb_table, sample_receipt, moc
     assert sample_receipt in stored
     assert second_receipt in stored
 
+
 @pytest.mark.integration
 def test_addReceipts_raises_clienterror(dynamodb_table, sample_receipt, mocker):
     """
@@ -303,7 +330,12 @@ def test_addReceipts_raises_clienterror(dynamodb_table, sample_receipt, mocker):
         client._client,
         "batch_write_item",
         side_effect=ClientError(
-            {"Error": {"Code": "ResourceNotFoundException", "Message": "No table found"}},
+            {
+                "Error": {
+                    "Code": "ResourceNotFoundException",
+                    "Message": "No table found",
+                }
+            },
             "BatchWriteItem",
         ),
     )
@@ -312,9 +344,11 @@ def test_addReceipts_raises_clienterror(dynamodb_table, sample_receipt, mocker):
 
     mock_batch.assert_called_once()
 
+
 # -------------------------------------------------------------------
 #                  updateReceipt / updateReceipts
 # -------------------------------------------------------------------
+
 
 @pytest.mark.integration
 def test_updateReceipt_success(dynamodb_table, sample_receipt):
@@ -331,8 +365,11 @@ def test_updateReceipt_success(dynamodb_table, sample_receipt):
     updated = client.getReceipt(sample_receipt.image_id, sample_receipt.receipt_id)
     assert updated.raw_s3_key == "new/path"
 
+
 @pytest.mark.integration
-def test_updateReceipt_raises_conditional_check_failed(dynamodb_table, sample_receipt, mocker):
+def test_updateReceipt_raises_conditional_check_failed(
+    dynamodb_table, sample_receipt, mocker
+):
     """
     Simulate updating a receipt that does not exist.
     """
@@ -355,6 +392,7 @@ def test_updateReceipt_raises_conditional_check_failed(dynamodb_table, sample_re
         client.updateReceipt(sample_receipt)
     mock_put.assert_called_once()
 
+
 @pytest.mark.integration
 def test_updateReceipts_success(dynamodb_table, sample_receipt):
     """
@@ -362,7 +400,9 @@ def test_updateReceipts_success(dynamodb_table, sample_receipt):
     """
     client = DynamoClient(dynamodb_table)
     r1 = sample_receipt
-    r2 = Receipt(**{**sample_receipt.__dict__, "receipt_id": sample_receipt.receipt_id + 1})
+    r2 = Receipt(
+        **{**sample_receipt.__dict__, "receipt_id": sample_receipt.receipt_id + 1}
+    )
     client.addReceipts([r1, r2])
 
     # Now update them
@@ -379,6 +419,7 @@ def test_updateReceipts_success(dynamodb_table, sample_receipt):
         else:
             assert item.raw_s3_key == "updated/path/2"
 
+
 @pytest.mark.integration
 def test_updateReceipts_raises_client_error(dynamodb_table, sample_receipt, mocker):
     """
@@ -389,7 +430,12 @@ def test_updateReceipts_raises_client_error(dynamodb_table, sample_receipt, mock
         client._client,
         "batch_write_item",
         side_effect=ClientError(
-            {"Error": {"Code": "ResourceNotFoundException", "Message": "No table found"}},
+            {
+                "Error": {
+                    "Code": "ResourceNotFoundException",
+                    "Message": "No table found",
+                }
+            },
             "BatchWriteItem",
         ),
     )
@@ -399,9 +445,11 @@ def test_updateReceipts_raises_client_error(dynamodb_table, sample_receipt, mock
 
     mock_batch.assert_called_once()
 
+
 # -------------------------------------------------------------------
 #                  deleteReceipt / deleteReceipts
 # -------------------------------------------------------------------
+
 
 @pytest.mark.integration
 def test_deleteReceipt_success(dynamodb_table, sample_receipt):
@@ -415,8 +463,11 @@ def test_deleteReceipt_success(dynamodb_table, sample_receipt):
     receipts, _ = client.listReceipts()
     assert sample_receipt not in receipts, "Receipt should be deleted."
 
+
 @pytest.mark.integration
-def test_deleteReceipt_raises_conditional_check_failed(dynamodb_table, sample_receipt, mocker):
+def test_deleteReceipt_raises_conditional_check_failed(
+    dynamodb_table, sample_receipt, mocker
+):
     """
     Simulate trying to delete a non-existent receipt.
     """
@@ -439,6 +490,7 @@ def test_deleteReceipt_raises_conditional_check_failed(dynamodb_table, sample_re
         client.deleteReceipt(sample_receipt)
     mock_delete.assert_called_once()
 
+
 @pytest.mark.integration
 def test_deleteReceipts_success(dynamodb_table, sample_receipt):
     """
@@ -446,12 +498,15 @@ def test_deleteReceipts_success(dynamodb_table, sample_receipt):
     """
     client = DynamoClient(dynamodb_table)
     r1 = sample_receipt
-    r2 = Receipt(**{**sample_receipt.__dict__, "receipt_id": sample_receipt.receipt_id + 1})
+    r2 = Receipt(
+        **{**sample_receipt.__dict__, "receipt_id": sample_receipt.receipt_id + 1}
+    )
     client.addReceipts([r1, r2])
 
     client.deleteReceipts([r1, r2])
     receipts, _ = client.listReceipts()
     assert not receipts, "All receipts should be deleted."
+
 
 @pytest.mark.integration
 def test_deleteReceipts_unprocessed_items_retry(dynamodb_table, sample_receipt, mocker):
@@ -459,7 +514,9 @@ def test_deleteReceipts_unprocessed_items_retry(dynamodb_table, sample_receipt, 
     Partial mocking to simulate unprocessed items on deletion.
     """
     client = DynamoClient(dynamodb_table)
-    r2 = Receipt(**{**sample_receipt.__dict__, "receipt_id": sample_receipt.receipt_id + 1})
+    r2 = Receipt(
+        **{**sample_receipt.__dict__, "receipt_id": sample_receipt.receipt_id + 1}
+    )
     client.addReceipts([sample_receipt, r2])
 
     real_batch_delete = client._client.batch_write_item
@@ -488,6 +545,7 @@ def test_deleteReceipts_unprocessed_items_retry(dynamodb_table, sample_receipt, 
     receipts, _ = client.listReceipts()
     assert not receipts, "All receipts should be deleted after retry."
 
+
 @pytest.mark.integration
 def test_deleteReceipts_raises_client_error(dynamodb_table, sample_receipt, mocker):
     """
@@ -499,7 +557,12 @@ def test_deleteReceipts_raises_client_error(dynamodb_table, sample_receipt, mock
         client._client,
         "batch_write_item",
         side_effect=ClientError(
-            {"Error": {"Code": "ResourceNotFoundException", "Message": "No table found"}},
+            {
+                "Error": {
+                    "Code": "ResourceNotFoundException",
+                    "Message": "No table found",
+                }
+            },
             "BatchWriteItem",
         ),
     )
@@ -509,9 +572,11 @@ def test_deleteReceipts_raises_client_error(dynamodb_table, sample_receipt, mock
 
     mock_batch.assert_called_once()
 
+
 # -------------------------------------------------------------------
 #               deleteReceiptsFromImage
 # -------------------------------------------------------------------
+
 
 @pytest.mark.integration
 def test_deleteReceiptsFromImage_success(dynamodb_table, sample_receipt, sample_image):
@@ -528,6 +593,7 @@ def test_deleteReceiptsFromImage_success(dynamodb_table, sample_receipt, sample_
     with pytest.raises(ValueError):
         client.getReceipt(sample_image.image_id, sample_receipt.receipt_id)
 
+
 @pytest.mark.integration
 def test_deleteReceiptsFromImage_no_receipts(dynamodb_table, sample_image):
     """
@@ -539,9 +605,11 @@ def test_deleteReceiptsFromImage_no_receipts(dynamodb_table, sample_image):
     with pytest.raises(ValueError, match="No receipts found"):
         client.deleteReceiptsFromImage(sample_image.image_id)
 
+
 # -------------------------------------------------------------------
 #               getReceipt / getReceiptDetails
 # -------------------------------------------------------------------
+
 
 @pytest.mark.integration
 def test_getReceipt_success(dynamodb_table, sample_receipt):
@@ -553,6 +621,7 @@ def test_getReceipt_success(dynamodb_table, sample_receipt):
     retrieved = client.getReceipt(sample_receipt.image_id, sample_receipt.receipt_id)
     assert retrieved == sample_receipt
 
+
 @pytest.mark.integration
 def test_getReceipt_not_found(dynamodb_table, sample_receipt):
     """
@@ -561,6 +630,7 @@ def test_getReceipt_not_found(dynamodb_table, sample_receipt):
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match="does not exist"):
         client.getReceipt(sample_receipt.image_id, sample_receipt.receipt_id)
+
 
 @pytest.mark.integration
 def test_getReceiptDetails_success(
@@ -598,9 +668,11 @@ def test_getReceiptDetails_success(
     assert validations == []
     assert initial_taggings == []
 
+
 # -------------------------------------------------------------------
 #                  listReceipts
 # -------------------------------------------------------------------
+
 
 @pytest.mark.integration
 def test_listReceipts_no_limit(dynamodb_table, sample_receipt):
@@ -609,7 +681,9 @@ def test_listReceipts_no_limit(dynamodb_table, sample_receipt):
     """
     client = DynamoClient(dynamodb_table)
     client.addReceipt(sample_receipt)
-    r2 = Receipt(**{**sample_receipt.__dict__, "receipt_id": sample_receipt.receipt_id + 1})
+    r2 = Receipt(
+        **{**sample_receipt.__dict__, "receipt_id": sample_receipt.receipt_id + 1}
+    )
     client.addReceipt(r2)
 
     receipts, lek = client.listReceipts()
@@ -617,6 +691,7 @@ def test_listReceipts_no_limit(dynamodb_table, sample_receipt):
     assert sample_receipt in receipts
     assert r2 in receipts
     assert lek is None, "Should have no pagination key if all items are fetched."
+
 
 @pytest.mark.integration
 def test_listReceipts_with_pagination(dynamodb_table, sample_receipt, mocker):
@@ -642,6 +717,7 @@ def test_listReceipts_with_pagination(dynamodb_table, sample_receipt, mocker):
     assert lek is None
     assert mock_query.call_count == 2
 
+
 @pytest.mark.integration
 def test_listReceipts_with_starting_LEK(dynamodb_table, sample_receipt, mocker):
     """
@@ -664,9 +740,7 @@ def test_listReceipts_with_starting_LEK(dynamodb_table, sample_receipt, mocker):
 
     # Patch the query method so that it returns first_page on the first call and second_page on the second.
     mock_query = mocker.patch.object(
-        client._client,
-        "query",
-        side_effect=[first_page, second_page]
+        client._client, "query", side_effect=[first_page, second_page]
     )
 
     # Call listReceipts with limit=5 and starting LEK.
@@ -689,6 +763,7 @@ def test_listReceipts_with_starting_LEK(dynamodb_table, sample_receipt, mocker):
     # Finally, only the one item from the first page should be returned.
     assert len(receipts) == 1
 
+
 @pytest.mark.integration
 def test_listReceipts_limit_trim(mocker, dynamodb_table, sample_receipt):
     """
@@ -702,11 +777,13 @@ def test_listReceipts_limit_trim(mocker, dynamodb_table, sample_receipt):
     fake_items = [sample_receipt.to_item() for _ in range(4)]
     fake_response = {
         "Items": fake_items,
-        "LastEvaluatedKey": {"PK": {"S": "dummy"}, "SK": {"S": "dummy"}}
+        "LastEvaluatedKey": {"PK": {"S": "dummy"}, "SK": {"S": "dummy"}},
     }
 
     # Patch the query method to return this fake response
-    mock_query = mocker.patch.object(client._client, "query", return_value=fake_response)
+    mock_query = mocker.patch.object(
+        client._client, "query", return_value=fake_response
+    )
 
     # Call listReceipts with a limit of 3
     receipts, lek = client.listReceipts(limit=limit)
@@ -715,10 +792,13 @@ def test_listReceipts_limit_trim(mocker, dynamodb_table, sample_receipt):
     assert len(receipts) == limit, "Should return exactly the limit number of items"
 
     # The returned LEK should be taken from the fake_response
-    assert lek == fake_response.get("LastEvaluatedKey"), "LEK should match that of the fake response"
+    assert lek == fake_response.get(
+        "LastEvaluatedKey"
+    ), "LEK should match that of the fake response"
 
     # Ensure that the query was called only once, since the first page returned enough items.
     mock_query.assert_called_once()
+
 
 @pytest.mark.integration
 def test_listReceipts_invalid_limit(dynamodb_table):
@@ -731,14 +811,24 @@ def test_listReceipts_invalid_limit(dynamodb_table):
     with pytest.raises(ValueError, match="Limit must be greater than 0"):
         client.listReceipts(limit=0)
 
+
 @pytest.mark.integration
-@pytest.mark.parametrize("invalid_lek", [
-    "not-a-dict",  # not a dict at all
-    {"PK": {"S": "IMAGE#start"}},             # missing SK key
-    {"SK": {"S": "DUMMY_START"}},              # missing PK key
-    {"PK": "not-a-dict", "SK": {"S": "DUMMY_START"}},  # PK value not in proper format
-    {"PK": {"S": "IMAGE#start"}, "SK": "not-a-dict"}    # SK value not in proper format
-])
+@pytest.mark.parametrize(
+    "invalid_lek",
+    [
+        "not-a-dict",  # not a dict at all
+        {"PK": {"S": "IMAGE#start"}},  # missing SK key
+        {"SK": {"S": "DUMMY_START"}},  # missing PK key
+        {
+            "PK": "not-a-dict",
+            "SK": {"S": "DUMMY_START"},
+        },  # PK value not in proper format
+        {
+            "PK": {"S": "IMAGE#start"},
+            "SK": "not-a-dict",
+        },  # SK value not in proper format
+    ],
+)
 def test_listReceipts_invalid_lastEvaluatedKey(dynamodb_table, invalid_lek):
     """
     Verifies that listReceipts raises a ValueError when lastEvaluatedKey is invalid.
@@ -746,6 +836,7 @@ def test_listReceipts_invalid_lastEvaluatedKey(dynamodb_table, invalid_lek):
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match="LastEvaluatedKey"):
         client.listReceipts(lastEvaluatedKey=invalid_lek)
+
 
 @pytest.mark.integration
 def test_listReceipts_raises_resource_not_found(dynamodb_table, sample_receipt, mocker):
@@ -765,6 +856,7 @@ def test_listReceipts_raises_resource_not_found(dynamodb_table, sample_receipt, 
         client.listReceipts()
     mock_query.assert_called_once()
 
+
 @pytest.mark.integration
 def test_listReceipts_raises_throughput(dynamodb_table, sample_receipt, mocker):
     """
@@ -783,8 +875,11 @@ def test_listReceipts_raises_throughput(dynamodb_table, sample_receipt, mocker):
         client.listReceipts()
     mock_query.assert_called_once()
 
+
 @pytest.mark.integration
-def test_listReceipts_raises_validation_exception(dynamodb_table, sample_receipt, mocker):
+def test_listReceipts_raises_validation_exception(
+    dynamodb_table, sample_receipt, mocker
+):
     """
     Simulates ValidationException while listing receipts.
     """
@@ -801,8 +896,11 @@ def test_listReceipts_raises_validation_exception(dynamodb_table, sample_receipt
         client.listReceipts()
     mock_query.assert_called_once()
 
+
 @pytest.mark.integration
-def test_listReceipts_raises_internal_server_error(dynamodb_table, sample_receipt, mocker):
+def test_listReceipts_raises_internal_server_error(
+    dynamodb_table, sample_receipt, mocker
+):
     """
     Simulates InternalServerError while listing receipts.
     """
@@ -818,6 +916,7 @@ def test_listReceipts_raises_internal_server_error(dynamodb_table, sample_receip
     with pytest.raises(Exception, match="Internal server error"):
         client.listReceipts()
     mock_query.assert_called_once()
+
 
 @pytest.mark.integration
 def test_listReceipts_raises_unknown_error(dynamodb_table, sample_receipt, mocker):
