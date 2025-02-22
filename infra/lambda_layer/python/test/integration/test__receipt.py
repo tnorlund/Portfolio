@@ -1351,6 +1351,62 @@ def test_getReceipt_success(dynamodb_table, sample_receipt):
 
 
 @pytest.mark.integration
+def test_getReceipt_raises_value_error_image_id_none(dynamodb_table, sample_receipt):
+    """
+    Tests that getReceipt raises ValueError when the image_id parameter is None.
+    """
+    client = DynamoClient(dynamodb_table)
+    with pytest.raises(ValueError, match="Image ID is required and cannot be None."):
+        client.getReceipt(None, sample_receipt.receipt_id)
+
+
+@pytest.mark.integration
+def test_getReceipt_raises_value_error_receipt_id_none(dynamodb_table, sample_receipt):
+    """
+    Tests that getReceipt raises ValueError when the receipt_id parameter is None.
+    """
+    client = DynamoClient(dynamodb_table)
+    with pytest.raises(ValueError, match="Receipt ID is required and cannot be None."):
+        client.getReceipt(sample_receipt.image_id, None)
+
+
+@pytest.mark.integration
+def test_getReceipt_raises_value_error_image_id_not_uuid(
+    dynamodb_table, sample_receipt
+):
+    """
+    Tests that getReceipt raises ValueError when the image_id parameter is not a valid UUID.
+    """
+    client = DynamoClient(dynamodb_table)
+    with pytest.raises(ValueError, match="Image ID must be a valid UUID."):
+        client.getReceipt("not-a-uuid", sample_receipt.receipt_id)
+
+
+@pytest.mark.integration
+def test_getReceipt_raises_value_error_receipt_id_not_int(
+    dynamodb_table, sample_receipt
+):
+    """
+    Tests that getReceipt raises ValueError when the receipt_id parameter is not an integer.
+    """
+    client = DynamoClient(dynamodb_table)
+    with pytest.raises(ValueError, match="Receipt ID must be an integer."):
+        client.getReceipt(sample_receipt.image_id, "not-an-int")
+
+
+@pytest.mark.integration
+def test_getReceipt_raises_value_error_receipt_id_negative(
+    dynamodb_table, sample_receipt
+):
+    """
+    Tests that getReceipt raises ValueError when the receipt_id parameter is negative.
+    """
+    client = DynamoClient(dynamodb_table)
+    with pytest.raises(ValueError, match="Receipt ID must be a positive integer."):
+        client.getReceipt(sample_receipt.image_id, -1)
+
+
+@pytest.mark.integration
 def test_getReceipt_not_found(dynamodb_table, sample_receipt):
     """
     Tests getReceipt raises ValueError if not found.
@@ -1358,6 +1414,125 @@ def test_getReceipt_not_found(dynamodb_table, sample_receipt):
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match="does not exist"):
         client.getReceipt(sample_receipt.image_id, sample_receipt.receipt_id)
+
+
+@pytest.mark.integration
+def test_getReceipt_raises_provisioned_throughput_exceeded(
+    dynamodb_table, sample_receipt, mocker
+):
+    """
+    Tests that getReceipt raises an Exception when the ProvisionedThroughputExceededException error is raised.
+    """
+    client = DynamoClient(dynamodb_table)
+    mock_get = mocker.patch.object(
+        client._client,
+        "get_item",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": "ProvisionedThroughputExceededException",
+                    "Message": "Provisioned throughput exceeded",
+                }
+            },
+            "GetItem",
+        ),
+    )
+    with pytest.raises(Exception, match="Provisioned throughput exceeded"):
+        client.getReceipt(sample_receipt.image_id, sample_receipt.receipt_id)
+    mock_get.assert_called_once()
+
+
+@pytest.mark.integration
+def test_getReceipt_raises_validation_exception(dynamodb_table, sample_receipt, mocker):
+    """
+    Tests that getReceipt raises an Exception when the ValidationException error is raised.
+    """
+    client = DynamoClient(dynamodb_table)
+    mock_get = mocker.patch.object(
+        client._client,
+        "get_item",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": "ValidationException",
+                    "Message": "One or more parameters given were invalid",
+                }
+            },
+            "GetItem",
+        ),
+    )
+    with pytest.raises(Exception, match="Validation error"):
+        client.getReceipt(sample_receipt.image_id, sample_receipt.receipt_id)
+    mock_get.assert_called_once()
+
+
+@pytest.mark.integration
+def test_getReceipt_raises_internal_server_error(
+    dynamodb_table, sample_receipt, mocker
+):
+    """
+    Tests that getReceipt raises an Exception when the InternalServerError error is raised.
+    """
+    client = DynamoClient(dynamodb_table)
+    mock_get = mocker.patch.object(
+        client._client,
+        "get_item",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": "InternalServerError",
+                    "Message": "Internal server error",
+                }
+            },
+            "GetItem",
+        ),
+    )
+    with pytest.raises(Exception, match="Internal server error"):
+        client.getReceipt(sample_receipt.image_id, sample_receipt.receipt_id)
+    mock_get.assert_called_once()
+
+
+@pytest.mark.integration
+def test_getReceipt_raises_access_denied(dynamodb_table, sample_receipt, mocker):
+    """
+    Tests that getReceipt raises an Exception when the AccessDeniedException error is raised.
+    """
+    client = DynamoClient(dynamodb_table)
+    mock_get = mocker.patch.object(
+        client._client,
+        "get_item",
+        side_effect=ClientError(
+            {"Error": {"Code": "AccessDeniedException", "Message": "Access denied"}},
+            "GetItem",
+        ),
+    )
+    with pytest.raises(Exception, match="Access denied"):
+        client.getReceipt(sample_receipt.image_id, sample_receipt.receipt_id)
+    mock_get.assert_called_once()
+
+
+@pytest.mark.integration
+def test_getReceipt_raises_client_error(dynamodb_table, sample_receipt, mocker):
+    """
+    Simulate any error (ResourceNotFound, ProvisionedThroughputExceeded, etc.) in get_item.
+    """
+    client = DynamoClient(dynamodb_table)
+    mock_get = mocker.patch.object(
+        client._client,
+        "get_item",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": "ResourceNotFoundException",
+                    "Message": "No table found",
+                }
+            },
+            "GetItem",
+        ),
+    )
+    with pytest.raises(Exception, match="Error getting receipt"):
+        client.getReceipt(sample_receipt.image_id, sample_receipt.receipt_id)
+    mock_get.assert_called_once()
 
 
 @pytest.mark.integration

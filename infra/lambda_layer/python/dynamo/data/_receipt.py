@@ -9,6 +9,7 @@ from dynamo.entities.receipt_word_tag import ReceiptWordTag, itemToReceiptWordTa
 from dynamo.entities.gpt_validation import itemToGPTValidation
 from dynamo.entities.gpt_initial_tagging import itemToGPTInitialTagging
 from dynamo.entities.receipt_window import itemToReceiptWindow
+from dynamo.entities.util import assert_valid_uuid
 
 
 def validate_last_evaluated_key(lek: dict) -> None:
@@ -293,16 +294,39 @@ class _Receipt:
             else:
                 raise ValueError(f"Error deleting receipts: {e}") from e
 
-    def getReceipt(self, image_id: int, receipt_id: int) -> Receipt:
-        """Get a receipt from the database
+    def getReceipt(self, image_id: str, receipt_id: int) -> Receipt:
+        """
+        Retrieves a receipt from the database.
 
         Args:
-            image_id (int): The ID of the image the receipt belongs to
-            receipt_id (int): The ID of the receipt to get
+            image_id (str): The ID of the image the receipt belongs to.
+            receipt_id (int): The ID of the receipt to retrieve.
 
         Returns:
-            Receipt: The receipt object
+            Receipt: The receipt object.
+
+        Raises:
+            ValueError: If input parameters are invalid or if the receipt does not exist.
+            Exception: For underlying DynamoDB errors such as:
+                - ResourceNotFoundException (table or index not found)
+                - ProvisionedThroughputExceededException (exceeded capacity)
+                - ValidationException (invalid parameters)
+                - InternalServerError (server-side error)
+                - AccessDeniedException (permission issues)
+                - or any other unexpected errors.
         """
+        if image_id is None:
+            raise ValueError("Image ID is required and cannot be None.")
+        if receipt_id is None:
+            raise ValueError("Receipt ID is required and cannot be None.")
+        
+        # Validate image_id as a UUID and receipt_id as a positive integer.
+        assert_valid_uuid(image_id)
+        if not isinstance(receipt_id, int):
+            raise ValueError("Receipt ID must be an integer.")
+        if receipt_id < 0:
+            raise ValueError("Receipt ID must be a positive integer.")
+        
         try:
             response = self._client.get_item(
                 TableName=self.table_name,
@@ -315,19 +339,20 @@ class _Receipt:
                 return itemToReceipt(response["Item"])
             else:
                 raise ValueError(
-                    f"Receipt with ID {receipt_id} and Image ID '{image_id}' does not exist"
+                    f"Receipt with ID {receipt_id} and Image ID '{image_id}' does not exist."
                 )
-
         except ClientError as e:
-            if (
-                e.response.get("Error", {}).get("Code")
-                == "ConditionalCheckFailedException"
-            ):
-                raise ValueError(
-                    f"Receipt with ID {receipt_id} and Image ID '{image_id}' does not exist"
-                )
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ProvisionedThroughputExceededException":
+                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+            elif error_code == "ValidationException":
+                raise Exception(f"Validation error: {e}") from e
+            elif error_code == "InternalServerError":
+                raise Exception(f"Internal server error: {e}") from e
+            elif error_code == "AccessDeniedException":
+                raise Exception(f"Access denied: {e}") from e
             else:
-                raise e
+                raise Exception(f"Error getting receipt: {e}") from e
 
     def getReceiptDetails(self, image_id: str, receipt_id: int) -> Tuple[
         Receipt,
