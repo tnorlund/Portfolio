@@ -234,6 +234,32 @@ def test_addReceipt_raises_provisioned_throughput_exceeded(
 
 
 @pytest.mark.integration
+def test_addReceipt_raises_internal_server_error(
+    dynamodb_table, sample_receipt, mocker
+):
+    """
+    Simulate an InternalServerError when adding a receipt.
+    """
+    client = DynamoClient(dynamodb_table)
+    mock_put = mocker.patch.object(
+        client._client,
+        "put_item",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": "InternalServerError",
+                    "Message": "Internal server error",
+                }
+            },
+            "PutItem",
+        ),
+    )
+
+    with pytest.raises(Exception, match="Internal server error"):
+        client.addReceipt(sample_receipt)
+
+
+@pytest.mark.integration
 def test_addReceipt_raises_unknown_error(dynamodb_table, sample_receipt, mocker):
     """
     Simulate an unknown exception from DynamoDB.
@@ -274,6 +300,46 @@ def test_addReceipts_success(dynamodb_table, sample_receipt):
     assert len(stored) == 2
     assert sample_receipt in stored
     assert second_receipt in stored
+
+
+@pytest.mark.integration
+def test_addReceipts_raises_value_error_receipts_none(dynamodb_table, sample_receipt):
+    """
+    Tests that addReceipts raises ValueError when the receipts parameter is None.
+    """
+    client = DynamoClient(dynamodb_table)
+    with pytest.raises(
+        ValueError, match="Receipts parameter is required and cannot be None."
+    ):
+        client.addReceipts(None)  # type: ignore
+
+
+@pytest.mark.integration
+def test_addReceipts_raises_value_error_receipts_not_list(
+    dynamodb_table, sample_receipt
+):
+    """
+    Tests that addReceipts raises ValueError when the receipts parameter is not a list.
+    """
+    client = DynamoClient(dynamodb_table)
+    with pytest.raises(
+        ValueError, match="receipts must be a list of Receipt instances."
+    ):
+        client.addReceipts("not-a-list")  # type: ignore
+
+
+@pytest.mark.integration
+def test_addReceipts_raises_value_error_receipts_not_list_of_receipts(
+    dynamodb_table, sample_receipt
+):
+    """
+    Tests that addReceipts raises ValueError when the receipts parameter is not a list of Receipt instances.
+    """
+    client = DynamoClient(dynamodb_table)
+    with pytest.raises(
+        ValueError, match="All receipts must be instances of the Receipt class."
+    ):
+        client.addReceipts([sample_receipt, "not-a-receipt"])  # type: ignore
 
 
 @pytest.mark.integration
@@ -320,6 +386,105 @@ def test_addReceipts_unprocessed_items_retry(dynamodb_table, sample_receipt, moc
 
 
 @pytest.mark.integration
+def test_addReceipts_raises_clienterror_provisioned_throughput_exceeded(
+    dynamodb_table, sample_receipt, mocker
+):
+    """
+    Tests that addReceipts raises an Exception when the ProvisionedThroughputExceededException error is raised.
+    """
+    client = DynamoClient(dynamodb_table)
+    mock_batch = mocker.patch.object(
+        client._client,
+        "batch_write_item",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": "ProvisionedThroughputExceededException",
+                    "Message": "Provisioned throughput exceeded",
+                }
+            },
+            "BatchWriteItem",
+        ),
+    )
+    with pytest.raises(Exception, match="Provisioned throughput exceeded"):
+        client.addReceipts([sample_receipt])
+    mock_batch.assert_called_once()
+
+
+@pytest.mark.integration
+def test_addReceipts_raises_clienterror_internal_server_error(
+    dynamodb_table, sample_receipt, mocker
+):
+    """
+    Tests that addReceipts raises an Exception when the InternalServerError error is raised.
+    """
+    client = DynamoClient(dynamodb_table)
+    mock_batch = mocker.patch.object(
+        client._client,
+        "batch_write_item",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": "InternalServerError",
+                    "Message": "Internal server error",
+                }
+            },
+            "BatchWriteItem",
+        ),
+    )
+    with pytest.raises(Exception, match="Internal server error"):
+        client.addReceipts([sample_receipt])
+    mock_batch.assert_called_once()
+
+
+@pytest.mark.integration
+def test_addReceipts_raises_clienterror_validation_exception(
+    dynamodb_table, sample_receipt, mocker
+):
+    """
+    Tests that addReceipts raises an Exception when the ValidationException error is raised.
+    """
+    client = DynamoClient(dynamodb_table)
+    mock_batch = mocker.patch.object(
+        client._client,
+        "batch_write_item",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": "ValidationException",
+                    "Message": "One or more parameters given were invalid",
+                }
+            },
+            "BatchWriteItem",
+        ),
+    )
+    with pytest.raises(Exception, match="One or more parameters given were invalid"):
+        client.addReceipts([sample_receipt])
+    mock_batch.assert_called_once()
+
+
+@pytest.mark.integration
+def test_addReceipts_raises_clienterror_access_denied(
+    dynamodb_table, sample_receipt, mocker
+):
+    """
+    Tests that addReceipts raises an Exception when the ValidationException error is raised.
+    """
+    client = DynamoClient(dynamodb_table)
+    mock_batch = mocker.patch.object(
+        client._client,
+        "batch_write_item",
+        side_effect=ClientError(
+            {"Error": {"Code": "AccessDeniedException", "Message": "Access denied"}},
+            "BatchWriteItem",
+        ),
+    )
+    with pytest.raises(Exception, match="Access denied"):
+        client.addReceipts([sample_receipt])
+    mock_batch.assert_called_once()
+
+
+@pytest.mark.integration
 def test_addReceipts_raises_clienterror(dynamodb_table, sample_receipt, mocker):
     """
     Simulates a client error like ResourceNotFound or ProvisionedThroughputExceeded, etc.
@@ -339,7 +504,7 @@ def test_addReceipts_raises_clienterror(dynamodb_table, sample_receipt, mocker):
             "BatchWriteItem",
         ),
     )
-    with pytest.raises(ValueError, match="Error adding receipts"):
+    with pytest.raises(Exception, match="Error adding receipts: "):
         client.addReceipts([sample_receipt])
 
     mock_batch.assert_called_once()

@@ -64,6 +64,12 @@ class _Receipt:
         Raises:
             ValueError: When a receipt with the same ID already exists
         """
+        if receipts is None:
+            raise ValueError("Receipts parameter is required and cannot be None.")
+        if not isinstance(receipts, list):
+            raise ValueError("receipts must be a list of Receipt instances.")
+        if not all(isinstance(receipt, Receipt) for receipt in receipts):
+            raise ValueError("All receipts must be instances of the Receipt class.")
         try:
             for i in range(0, len(receipts), 25):
                 chunk = receipts[i : i + 25]
@@ -80,7 +86,17 @@ class _Receipt:
                     response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
-            raise ValueError(f"Error adding receipts: {e}")
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ProvisionedThroughputExceededException":
+                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+            elif error_code == "InternalServerError":
+                raise Exception(f"Internal server error: {e}") from e
+            elif error_code == "ValidationException":
+                raise Exception(f"One or more parameters given were invalid: {e}") from e
+            elif error_code == "AccessDeniedException":
+                raise Exception(f"Access denied: {e}") from e
+            else:
+                raise ValueError(f"Error adding receipts: {e}")
 
     def updateReceipt(self, receipt: Receipt):
         """Updates a receipt in the database
