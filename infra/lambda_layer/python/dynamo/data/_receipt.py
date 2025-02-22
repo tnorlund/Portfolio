@@ -10,6 +10,7 @@ from dynamo.entities.gpt_validation import itemToGPTValidation
 from dynamo.entities.gpt_initial_tagging import itemToGPTInitialTagging
 from dynamo.entities.receipt_window import itemToReceiptWindow
 
+
 def validate_last_evaluated_key(lek: dict) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
@@ -17,7 +18,9 @@ def validate_last_evaluated_key(lek: dict) -> None:
     # You might also check that each key maps to a dictionary with a DynamoDB type key (e.g., "S")
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
-            raise ValueError(f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'")
+            raise ValueError(
+                f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'"
+            )
 
 
 class _Receipt:
@@ -92,7 +95,9 @@ class _Receipt:
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             elif error_code == "ValidationException":
-                raise Exception(f"One or more parameters given were invalid: {e}") from e
+                raise Exception(
+                    f"One or more parameters given were invalid: {e}"
+                ) from e
             elif error_code == "AccessDeniedException":
                 raise Exception(f"Access denied: {e}") from e
             else:
@@ -107,6 +112,11 @@ class _Receipt:
         Raises:
             ValueError: When the receipt does not exist
         """
+        if receipt is None:
+            raise ValueError("Receipt parameter is required and cannot be None.")
+        if not isinstance(receipt, Receipt):
+            raise ValueError("receipt must be an instance of the Receipt class.")
+
         try:
             self._client.put_item(
                 TableName=self.table_name,
@@ -114,42 +124,74 @@ class _Receipt:
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            if (
-                e.response.get("Error", {}).get("Code")
-                == "ConditionalCheckFailedException"
-            ):
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
                     f"Receipt with ID {receipt.receipt_id} and Image ID '{receipt.image_id}' does not exist"
                 )
+            elif error_code == "ProvisionedThroughputExceededException":
+                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+            elif error_code == "InternalServerError":
+                raise Exception(f"Internal server error: {e}") from e
+            elif error_code == "ValidationException":
+                raise Exception(
+                    f"One or more parameters given were invalid: {e}"
+                ) from e
+            elif error_code == "AccessDeniedException":
+                raise Exception(f"Access denied: {e}") from e
             else:
-                raise e
+                raise ValueError(f"Error updating receipt: {e}")
 
     def updateReceipts(self, receipts: list[Receipt]):
-        """Updates a list of receipts in the database
-
-        Args:
-            receipts (list[Receipt]): The receipts to update in the database
-
-        Raises:
-            ValueError: When a receipt does not exist
         """
-        try:
-            for i in range(0, len(receipts), 25):
-                chunk = receipts[i : i + 25]
-                request_items = [
-                    {"PutRequest": {"Item": receipt.to_item()}} for receipt in chunk
-                ]
-                response = self._client.batch_write_item(
-                    RequestItems={self.table_name: request_items}
-                )
-                # Handle unprocessed items if they exist
-                unprocessed = response.get("UnprocessedItems", {})
-                while unprocessed.get(self.table_name):
-                    # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
-                    unprocessed = response.get("UnprocessedItems", {})
-        except ClientError as e:
-            raise ValueError(f"Error updating receipts: {e}")
+        Updates a list of receipts in the database using transactions.
+        Each receipt update is conditional upon the receipt already existing.
+        
+        Since DynamoDB's transact_write_items supports a maximum of 25 operations per call,
+        the list of receipts is split into chunks of 25 items or less. Each chunk is updated
+        in a separate transaction.
+        
+        Args:
+            receipts (list[Receipt]): The receipts to update in the database.
+        
+        Raises:
+            ValueError: When a receipt does not exist or if another error occurs.
+        """
+        if receipts is None:
+            raise ValueError("Receipts parameter is required and cannot be None.")
+        if not isinstance(receipts, list):
+            raise ValueError("receipts must be a list of Receipt instances.")
+        if not all(isinstance(receipt, Receipt) for receipt in receipts):
+            raise ValueError("All receipts must be instances of the Receipt class.")
+
+        # Process receipts in chunks of 25 because transact_write_items supports a maximum of 25 operations.
+        for i in range(0, len(receipts), 25):
+            chunk = receipts[i : i + 25]
+            transact_items = []
+            for receipt in chunk:
+                transact_items.append({
+                    "Put": {
+                        "TableName": self.table_name,
+                        "Item": receipt.to_item(),
+                        "ConditionExpression": "attribute_exists(PK)"
+                    }
+                })
+            try:
+                self._client.transact_write_items(TransactItems=transact_items)
+            except ClientError as e:
+                error_code = e.response.get("Error", {}).get("Code", "")
+                if error_code == "ConditionalCheckFailedException":
+                    raise ValueError("One or more receipts do not exist") from e
+                elif error_code == "ProvisionedThroughputExceededException":
+                    raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                elif error_code == "InternalServerError":
+                    raise Exception(f"Internal server error: {e}") from e
+                elif error_code == "ValidationException":
+                    raise Exception(f"One or more parameters given were invalid: {e}") from e
+                elif error_code == "AccessDeniedException":
+                    raise Exception(f"Access denied: {e}") from e
+                else:
+                    raise ValueError(f"Error updating receipts: {e}") from e
 
     def deleteReceipt(self, receipt: Receipt):
         """Deletes a receipt from the database
@@ -332,7 +374,7 @@ class _Receipt:
 
         Parameters:
             limit (int, optional): The maximum number of receipt items to return. If set to None, all receipts are fetched.
-            lastEvaluatedKey (dict, optional): A key that marks the starting point for the query, used to continue a 
+            lastEvaluatedKey (dict, optional): A key that marks the starting point for the query, used to continue a
                 previous pagination session.
 
         Returns:
@@ -346,7 +388,7 @@ class _Receipt:
             Exception: If the underlying database query fails.
 
         Notes:
-            - For each query iteration, if a limit is provided, the method dynamically calculates the remaining number of 
+            - For each query iteration, if a limit is provided, the method dynamically calculates the remaining number of
             items needed and adjusts the query's Limit parameter accordingly.
             - This approach ensures that exactly the specified number of receipts is returned (when available),
             even if it requires multiple query operations.
@@ -398,7 +440,9 @@ class _Receipt:
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(f"Could not list receipts from the database: {e}") from e
+                raise Exception(
+                    f"Could not list receipts from the database: {e}"
+                ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "ValidationException":
@@ -408,7 +452,9 @@ class _Receipt:
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(f"Could not list receipts from the database: {e}") from e
+                raise Exception(
+                    f"Could not list receipts from the database: {e}"
+                ) from e
 
     def getReceiptsFromImage(self, image_id: int) -> list[Receipt]:
         """List all receipts from an image using the GSI
@@ -451,7 +497,7 @@ class _Receipt:
         """List receipts with their windows from GSI3.
 
         Returns:
-            Tuple[Dict[str, Dict], Optional[Dict]]: 
+            Tuple[Dict[str, Dict], Optional[Dict]]:
             - A dict of {
                 "<image_id>_<receipt_id>": {
                     "receipt": Receipt,
@@ -529,7 +575,7 @@ class _Receipt:
 
         except ClientError as e:
             raise ValueError("Could not list receipt windows from the database") from e
-        
+
     def listReceiptDetails(
         self, limit: Optional[int] = None, last_evaluated_key: Optional[dict] = None
     ) -> Tuple[
