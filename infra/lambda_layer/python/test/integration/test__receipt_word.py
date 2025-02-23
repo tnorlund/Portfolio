@@ -130,7 +130,7 @@ def test_receipt_word_list(dynamodb_table: Literal["MyMockedTable"]):
         client.addReceiptWord(w)
 
     # Act
-    returned_words = client.listReceiptWords()
+    returned_words, _ = client.listReceiptWords()
 
     # Assert
     for w in words:

@@ -1,3 +1,4 @@
+# infra/lambda_layer/python/dynamo/entities/word.py
 from typing import Generator, Tuple
 from dynamo.entities.util import (
     _repr_str,
@@ -150,6 +151,14 @@ class Word:
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {"S": f"LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"},
         }
+    
+    def gsi2_key(self) -> dict:
+        """Generates the GSI2 key for the Word.
+
+        Returns:
+            dict: The GSI2 key for the Word.
+        """
+        return {"GSI2PK": {"S": f"IMAGE#{self.image_id}"}, "GSI2SK": {"S": f"LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"}}
 
     def to_item(self) -> dict:
         """Converts the Word object to a DynamoDB item.
@@ -159,6 +168,7 @@ class Word:
         """
         item = {
             **self.key(),
+            **self.gsi2_key(),
             "TYPE": {"S": "WORD"},
             "text": {"S": self.text},
             "bounding_box": {
@@ -210,12 +220,25 @@ class Word:
 
         return item
 
-    def calculate_centroid(self) -> Tuple[float, float]:
+    def calculate_centroid(
+        self, width: int = None, height: int = None, flip_y: bool = False
+    ) -> Tuple[float, float]:
         """Calculates the centroid of the Word.
+
+        Args:
+            width (int, optional): The width of the image to scale coordinates. Defaults to None.
+            height (int, optional): The height of the image to scale coordinates. Defaults to None.
+            flip_y (bool, optional): Whether to flip the y coordinate. Defaults to False.
 
         Returns:
             Tuple[float, float]: The (x, y) coordinates of the centroid.
+
+        Raises:
+            ValueError: If only one of width or height is provided.
         """
+        if (width is None) != (height is None):
+            raise ValueError("Both width and height must be provided together")
+
         x = (
             self.top_right["x"]
             + self.top_left["x"]
@@ -228,7 +251,99 @@ class Word:
             + self.bottom_right["y"]
             + self.bottom_left["y"]
         ) / 4
+
+        if width is not None and height is not None:
+            x *= width
+            y *= height
+            if flip_y:
+                y = height - y
+
         return x, y
+
+    def calculate_bounding_box(
+        self, width: int = None, height: int = None, flip_y: bool = False
+    ) -> Tuple[float, float, float, float]:
+        """Calculates the bounding box of the Word.
+
+        Args:
+            width (int, optional): The width of the image to scale coordinates. Defaults to None.
+            height (int, optional): The height of the image to scale coordinates. Defaults to None.
+            flip_y (bool, optional): Whether to flip the y coordinate. Defaults to False.
+
+        Returns:
+            Tuple[float, float, float, float]: The bounding box of the Word with keys 'x', 'y', 'width', and 'height'.
+
+        Raises:
+            ValueError: If only one of width or height is provided.
+        """
+        if (width is None) != (height is None):
+            raise ValueError("Both width and height must be provided together")
+
+        x = self.bounding_box["x"]
+        y = self.bounding_box["y"]
+        w = self.bounding_box["width"]
+        h = self.bounding_box["height"]
+
+        if width is not None and height is not None:
+            x *= width
+            y *= height
+            if flip_y:
+                y = height - y
+
+        return x, y, w, h
+
+    def calculate_corners(
+        self, width: int = None, height: int = None, flip_y: bool = False
+    ) -> Tuple[
+        Tuple[float, float],
+        Tuple[float, float],
+        Tuple[float, float],
+        Tuple[float, float],
+    ]:
+        """Calculates the top-left, top-right, bottom-left, and bottom-right corners of the Word in image coordinates.
+
+        Args:
+            width (int, optional): The width of the image to scale coordinates. Defaults to None.
+            height (int, optional): The height of the image to scale coordinates. Defaults to None.
+            flip_y (bool, optional): Whether to flip the y coordinate. Defaults to False.
+
+        Returns:
+            Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float], Tuple[float, float]]: The corners of the Word.
+
+        Raises:
+            ValueError: If only one of width or height is provided.
+        """
+        if (width is None) != (height is None):
+            raise ValueError("Both width and height must be provided together")
+
+        if width is not None and height is not None:
+            x_scale = width
+            y_scale = height
+        else:
+            x_scale = y_scale = 1.0
+
+        top_left_x = self.top_left["x"] * x_scale
+        top_right_x = self.top_right["x"] * x_scale
+        bottom_left_x = self.bottom_left["x"] * x_scale
+        bottom_right_x = self.bottom_right["x"] * x_scale
+
+        if flip_y:
+            top_left_y = height - (self.top_left["y"] * y_scale)
+            top_right_y = height - (self.top_right["y"] * y_scale)
+            bottom_left_y = height - (self.bottom_left["y"] * y_scale)
+            bottom_right_y = height - (self.bottom_right["y"] * y_scale)
+        else:
+            top_left_y = self.top_left["y"] * y_scale
+            top_right_y = self.top_right["y"] * y_scale
+            bottom_left_y = self.bottom_left["y"] * y_scale
+            bottom_right_y = self.bottom_right["y"] * y_scale
+
+        return (
+            (top_left_x, top_left_y),
+            (top_right_x, top_right_y),
+            (bottom_left_x, bottom_left_y),
+            (bottom_right_x, bottom_right_y),
+        )
 
     def translate(self, x: float, y: float) -> None:
         """Translates the Word by the specified x and y offsets.
@@ -469,6 +584,74 @@ class Word:
         angle_rad = atan2(dy, dx)
         self.angle_radians = angle_rad
         self.angle_degrees = degrees(angle_rad)
+    def warp_transform(
+        self,
+        a: float,
+        b: float,
+        c: float,
+        d: float,
+        e: float,
+        f: float,
+        g: float,
+        h: float,
+        src_width: int,
+        src_height: int,
+        dst_width: int,
+        dst_height: int,
+        # We will assume the corners come in as Vision bottom-left coords
+        # and we want them to end as Vision bottom-left coords in the original image.
+    ):
+        """
+        Maps Vision (bottom-left) normalized coords in the 'warped' image
+        back to Vision (bottom-left) normalized coords in the 'original' image.
+        """
+
+        corners = [self.top_left, self.top_right, self.bottom_left, self.bottom_right]
+        corner_names = ["top_left", "top_right", "bottom_left", "bottom_right"]
+
+        for corner, name in zip(corners, corner_names):
+            # 1) Flip Y from bottom-left to top-left
+            #    Because the perspective transform code uses top-left orientation
+            x_vision_warped = corner["x"]  # 0..1
+            y_vision_warped = corner["y"]  # 0..1, bottom=0
+            y_top_left_warped = 1.0 - y_vision_warped
+
+            # 2) Scale to pixel coordinates in the *warped* image
+            x_warped_px = x_vision_warped * dst_width
+            y_warped_px = y_top_left_warped * dst_height
+
+            # 3) Apply the *inverse* perspective (already inverted) to get original top-left px
+            denom = (g * x_warped_px) + (h * y_warped_px) + 1.0
+            if abs(denom) < 1e-12:
+                raise ValueError("Inverse warp denominator ~ 0 at corner: " + name)
+
+            X_old_px = (a * x_warped_px + b * y_warped_px + c) / denom
+            Y_old_px = (d * x_warped_px + e * y_warped_px + f) / denom
+
+            # 4) Convert to normalized coordinates in top-left of the *original* image
+            X_old_norm_tl = X_old_px / src_width
+            Y_old_norm_tl = Y_old_px / src_height
+
+            # 5) Flip Y back to bottom-left for Vision
+            X_old_vision = X_old_norm_tl
+            Y_old_vision = 1.0 - Y_old_norm_tl
+
+            # Update the corner
+            corner["x"] = X_old_vision
+            corner["y"] = Y_old_vision
+
+        xs = [pt["x"] for pt in corners]
+        ys = [pt["y"] for pt in corners]
+        self.bounding_box["x"] = min(xs)
+        self.bounding_box["y"] = min(ys)
+        self.bounding_box["width"] = max(xs) - min(xs)
+        self.bounding_box["height"] = max(ys) - min(ys)
+        dx = self.top_right["x"] - self.top_left["x"]
+        dy = self.top_right["y"] - self.top_left["y"]
+        angle_rad = atan2(dy, dx)
+        self.angle_radians = angle_rad
+        self.angle_degrees = degrees(angle_rad)
+
 
     def rotate_90_ccw_in_place(self, old_w: int, old_h: int):
         """Rotates the Word 90 degrees counter-clockwise in-place.

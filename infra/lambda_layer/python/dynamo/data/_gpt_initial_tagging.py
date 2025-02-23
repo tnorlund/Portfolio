@@ -1,5 +1,5 @@
 # _gpt_initial_tagging.py
-from typing import List
+from typing import Dict, List, Optional, Tuple
 from dynamo.entities.gpt_initial_tagging import GPTInitialTagging, itemToGPTInitialTagging
 from botocore.exceptions import ClientError
 
@@ -161,36 +161,62 @@ class _GPTInitialTagging:
         except ClientError as e:
             raise ValueError(f"Error deleting GPTInitialTaggings: {e}")
 
-    def listGPTInitialTaggings(self) -> List[GPTInitialTagging]:
+    def listGPTInitialTaggings(
+        self, limit: Optional[int] = None, lastEvaluatedKey: Optional[Dict] = None
+    ) -> Tuple[List[GPTInitialTagging], Optional[Dict]]:
         """
-        Lists all GPTInitialTagging records in the database.
+        Lists GPTInitialTagging records from the database via a global secondary index.
+        The query uses the GSITYPE index on the "TYPE" attribute where the value is "GPT_INITIAL_TAGGING".
 
-        Returns:
-            List[GPTInitialTagging]: A list of GPTInitialTagging records.
+        If 'limit' is provided, a single query up to that many items is returned,
+        along with a LastEvaluatedKey for pagination if more records remain.
+        If 'limit' is None, all GPTInitialTagging records are retrieved by paginating until exhausted.
 
-        Raises:
-            Exception: If there is an error querying the database.
+        Parameters
+        ----------
+        limit : int, optional
+            The maximum number of GPTInitialTagging records to return in one query.
+        lastEvaluatedKey : dict, optional
+            The key from which to continue a previous paginated query.
+
+        Returns
+        -------
+        tuple
+            A tuple containing:
+            1) A list of GPTInitialTagging records.
+            2) The LastEvaluatedKey (dict) if more items remain; otherwise, None.
+
+        Raises
+        ------
+        Exception
+            If there is an error querying the database.
         """
         taggings = []
         try:
-            response = self._client.query(
-                TableName=self.table_name,
-                IndexName="GSITYPE",
-                KeyConditionExpression="#t = :val",
-                ExpressionAttributeNames={"#t": "TYPE"},
-                ExpressionAttributeValues={":val": {"S": "GPT_INITIAL_TAGGING"}},
-            )
+            query_params = {
+                "TableName": self.table_name,
+                "IndexName": "GSITYPE",
+                "KeyConditionExpression": "#t = :val",
+                "ExpressionAttributeNames": {"#t": "TYPE"},
+                "ExpressionAttributeValues": {":val": {"S": "GPT_INITIAL_TAGGING"}},
+            }
+            if lastEvaluatedKey is not None:
+                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if limit is not None:
+                query_params["Limit"] = limit
+
+            response = self._client.query(**query_params)
             taggings.extend([itemToGPTInitialTagging(item) for item in response["Items"]])
-            while "LastEvaluatedKey" in response:
-                response = self._client.query(
-                    TableName=self.table_name,
-                    IndexName="GSITYPE",
-                    KeyConditionExpression="#t = :val",
-                    ExpressionAttributeNames={"#t": "TYPE"},
-                    ExpressionAttributeValues={":val": {"S": "GPT_INITIAL_TAGGING"}},
-                    ExclusiveStartKey=response["LastEvaluatedKey"],
-                )
-                taggings.extend([itemToGPTInitialTagging(item) for item in response["Items"]])
-            return taggings
+            if limit is None:
+                # Paginate until no more items are available.
+                while "LastEvaluatedKey" in response and response["LastEvaluatedKey"]:
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    response = self._client.query(**query_params)
+                    taggings.extend([itemToGPTInitialTagging(item) for item in response["Items"]])
+                lek = None
+            else:
+                lek = response.get("LastEvaluatedKey", None)
+
+            return taggings, lek
         except Exception as e:
             raise Exception(f"Error listing GPTInitialTaggings: {e}")

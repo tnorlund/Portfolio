@@ -1,4 +1,4 @@
-from math import atan2
+from math import atan2, pi
 from typing import Generator, Tuple
 from dynamo.entities.util import (
     assert_valid_uuid,
@@ -231,6 +231,106 @@ class ReceiptWord:
         if self.tags:
             item["tags"] = {"SS": self.tags}
         return item
+    
+    def warp_transform(
+        self,
+        a: float,
+        b: float,
+        c: float,
+        d: float,
+        e: float,
+        f: float,
+        g: float,
+        h: float,
+        src_width: int,
+        src_height: int,
+        dst_width: int,
+        dst_height: int,
+        flip_y: bool = False,
+    ):
+        """
+        Inverse perspective transform from 'new' space back to 'old' space.
+
+        Args:
+            a, b, c, d, e, f, g, h (float): The perspective coefficients that mapped
+                the original image -> new image.  We will invert them here
+                so we can map new coords -> old coords.
+            src_width (int): The original (old) image width in pixels.
+            src_height (int): The original (old) image height in pixels.
+            dst_width (int): The new (warped) image width in pixels.
+            dst_height (int): The new (warped) image height in pixels.
+            flip_y (bool): If True, we treat the new coordinate system as flipped in Y
+                (e.g. some OCR engines treat top=0).  Mirrors the logic in
+                warp_affine_normalized_forward(...).
+        """
+        # For each corner in the new space, we want to find (x_old_px, y_old_px).
+        # The forward perspective mapping was:
+        #   x_new = (a*x_old + b*y_old + c) / (1 + g*x_old + h*y_old)
+        #   y_new = (d*x_old + e*y_old + f) / (1 + g*x_old + h*y_old)
+        #
+        # We invert it by treating (x_new, y_new) as known, and solving
+        # for (x_old, y_old).  The code below does that in a 2×2 linear system.
+
+        corners = [self.top_left, self.top_right, self.bottom_left, self.bottom_right]
+
+        for corner in corners:
+            # 1) Convert normalized new coords -> pixel coords in the 'new' (warped) image
+            x_new_px = corner["x"] * dst_width
+            y_new_px = corner["y"] * dst_height
+
+            if flip_y:
+                # If the new system’s Y=0 was at the top, then from the perspective
+                # of a typical "bottom=0" system, we flip:
+                y_new_px = dst_height - y_new_px
+
+            # 2) Solve the perspective equations for old pixel coords (X_old, Y_old).
+            # We have the system:
+            #   x_new_px = (a*X_old + b*Y_old + c) / (1 + g*X_old + h*Y_old)
+            #   y_new_px = (d*X_old + e*Y_old + f) / (1 + g*X_old + h*Y_old)
+            #
+            # Put it in the form:
+            #    (g*x_new_px - a)*X_old + (h*x_new_px - b)*Y_old = c - x_new_px
+            #    (g*y_new_px - d)*X_old + (h*y_new_px - e)*Y_old = f - y_new_px
+
+            A11 = g * x_new_px - a
+            A12 = h * x_new_px - b
+            B1  = c - x_new_px
+
+            A21 = g * y_new_px - d
+            A22 = h * y_new_px - e
+            B2  = f - y_new_px
+
+            # Solve the 2×2 linear system via determinant
+            det = A11 * A22 - A12 * A21
+            if abs(det) < 1e-12:
+                # Degenerate or singular.  You can raise an exception or skip.
+                # For robust code, handle it gracefully:
+                raise ValueError("Inverse perspective transform is singular for this corner.")
+
+            X_old_px = (B1 * A22 - B2 * A12) / det
+            Y_old_px = (A11 * B2 - A21 * B1) / det
+
+            # 3) Convert old pixel coords -> old normalized coords in [0..1]
+            corner["x"] = X_old_px / src_width
+            corner["y"] = Y_old_px / src_height
+
+            if flip_y:
+                # If the old/original system also had Y=0 at top, do the final flip:
+                corner["y"] = 1.0 - corner["y"]
+
+        # 4) Recompute bounding box + angle
+        xs = [pt["x"] for pt in corners]
+        ys = [pt["y"] for pt in corners]
+        self.bounding_box["x"] = min(xs)
+        self.bounding_box["y"] = min(ys)
+        self.bounding_box["width"] = max(xs) - min(xs)
+        self.bounding_box["height"] = max(ys) - min(ys)
+
+        dx = self.top_right["x"] - self.top_left["x"]
+        dy = self.top_right["y"] - self.top_left["y"]
+        angle_radians = atan2(dy, dx)
+        self.angle_radians = angle_radians
+        self.angle_degrees = angle_radians * 180.0 / pi
 
     def __repr__(self) -> str:
         """

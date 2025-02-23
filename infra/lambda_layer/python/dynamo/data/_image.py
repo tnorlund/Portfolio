@@ -1,3 +1,4 @@
+# infra/lambda_layer/python/dynamo/data/_image.py
 from typing import Optional, List, Tuple, Dict, Union
 from dynamo import (
     Image,
@@ -27,6 +28,8 @@ from dynamo import (
 )
 from dynamo.entities import assert_valid_uuid
 from botocore.exceptions import ClientError
+
+from dynamo.entities.receipt_window import itemToReceiptWindow
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 # So we chunk the items in groups of 25 for bulk operations.
@@ -263,6 +266,67 @@ class _Image:
                 raise ValueError(f"Image with ID {image.image_id} not found") from e
             else:
                 raise Exception(f"Error updating image: {e}") from e
+            
+    def updateImages(self, images: List[Image]):
+        """
+        Updates multiple Image items in the database.
+
+        This method validates that the provided parameter is a list of Image instances.
+        It uses DynamoDB's transact_write_items operation, which can handle up to 25 items
+        per transaction. Any unprocessed items are automatically retried until no unprocessed
+        items remain.
+
+        Parameters
+        ----------
+        images : list[Image]
+            The list of Image objects to update.
+
+        Raises
+        ------
+        ValueError: When given a bad parameter.
+        Exception: For underlying DynamoDB errors such as:
+            - ProvisionedThroughputExceededException (exceeded capacity)
+            - InternalServerError (server-side error)
+            - ValidationException (invalid parameters)
+            - AccessDeniedException (permission issues)
+            - or any other unexpected errors.
+        """
+        if images is None:
+            raise ValueError("Images parameter is required and cannot be None.")
+        if not isinstance(images, list):
+            raise ValueError("Images must be provided as a list.")
+        if not all(isinstance(img, Image) for img in images):
+            raise ValueError("All items in the images list must be instances of the Image class.")
+        
+        for i in range(0, len(images), 25):
+            chunk = images[i : i + 25]
+            transact_items = []
+            for image in chunk:
+                transact_items.append(
+                    {
+                        "Put": {
+                            "TableName": self.table_name,
+                            "Item": image.to_item(),
+                            "ConditionExpression": "attribute_exists(PK)",
+                        }
+                    }
+                )
+            try:
+                self._client.transact_write_items(TransactItems=transact_items)
+            except ClientError as e:
+                error_code = e.response.get("Error", {}).get("Code", "")
+                if error_code == "ConditionalCheckFailedException":
+                    raise ValueError(f"One or more images do not exist") from e
+                elif error_code == "ProvisionedThroughputExceededException":
+                    raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                elif error_code == "InternalServerError":
+                    raise Exception(f"Internal server error: {e}") from e
+                elif error_code == "ValidationException":
+                    raise Exception(f"One or more parameters given were invalid: {e}") from e
+                elif error_code == "AccessDeniedException":
+                    raise Exception(f"Access denied: {e}") from e
+                else:
+                    raise ValueError(f"Error updating images: {e}") from e
 
     def getImageDetails(self, image_id: str) -> tuple[
         list[Image],
@@ -288,8 +352,8 @@ class _Image:
 
         Parameters
         ----------
-        image_id : int
-            The ID of the image for which to retrieve details.
+        image_id : str
+            The UUID of the image for which to retrieve details.
 
         Returns
         -------
@@ -314,6 +378,7 @@ class _Image:
         word_tags = []
         letters = []
         receipts = []
+        receipt_windows = []
         receipt_lines = []
         receipt_words = []
         receipt_word_tags = []
@@ -357,6 +422,8 @@ class _Image:
                     letters.append(itemToLetter(item))
                 elif item["TYPE"]["S"] == "RECEIPT":
                     receipts.append(itemToReceipt(item))
+                elif item["TYPE"]["S"] == "RECEIPT_WINDOW":
+                    receipt_windows.append(itemToReceiptWindow(item))
                 elif item["TYPE"]["S"] == "RECEIPT_LINE":
                     receipt_lines.append(itemToReceiptLine(item))
                 elif item["TYPE"]["S"] == "RECEIPT_WORD":
@@ -377,6 +444,7 @@ class _Image:
                 word_tags,
                 letters,
                 receipts,
+                receipt_windows,
                 receipt_lines,
                 receipt_words,
                 receipt_word_tags,
@@ -388,7 +456,7 @@ class _Image:
         except Exception as e:
             raise Exception(f"Error getting image details: {e}")
 
-    def deleteImage(self, image_id: int):
+    def deleteImage(self, image_id: str):
         """
         Deletes an Image item from the database by its ID.
 
@@ -396,8 +464,8 @@ class _Image:
 
         Parameters
         ----------
-        image_id : int
-            The ID of the image to delete.
+        image_id : str
+            The UUID of the image to delete.
 
         Raises
         ------
@@ -629,6 +697,70 @@ class _Image:
                 break
 
         return payload, lek_to_return
+
+    def listImagesWordsTags(
+        self, image_id: str, limit: Optional[int] = None, lastEvaluatedKey: Optional[Dict] = None
+    ) -> Tuple[List[Image], List[WordTag], Optional[Dict]]:
+        """
+        Lists images and their associated words and tags from the database.
+
+        This function retrieves images along with their associated words and tags
+        from the database.
+
+        Parameters
+        ----------
+        image_id : str
+            The ID of the image to retrieve.
+        limit : int, optional
+            The maximum number of images to return in one query.
+        lastEvaluatedKey : dict, optional
+            The key from which to continue a previous paginated query.
+
+        Returns
+        -------
+        tuple
+            A tuple containing:
+            1) The Image object.
+            2) A list of Word objects.
+            3) A list of WordTag objects.
+            4) The LastEvaluatedKey (dict) if more items remain, otherwise None.
+
+        Raises
+        ------
+        ValueError
+            If there's an error listing images from DynamoDB.
+        """
+        image = None
+        words = []
+        word_tags = []
+        try:
+            query_params = {
+                "TableName": self.table_name,
+                "IndexName": "GSI2",
+                "KeyConditionExpression": "GSI2PK = :val",
+                "ExpressionAttributeValues": {":val": {"S": f"IMAGE#{image_id}"}},
+            }
+
+            if lastEvaluatedKey is not None:
+                query_params["ExclusiveStartKey"] = lastEvaluatedKey    
+
+            if limit is not None:
+                query_params["Limit"] = limit
+
+            response = self._client.query(**query_params)
+            for item in response["Items"]:
+                if item["TYPE"]["S"] == "IMAGE":
+                    image = itemToImage(item)
+                elif item["TYPE"]["S"] == "WORD":
+                    words.append(itemToWord(item))
+                elif item["TYPE"]["S"] == "WORD_TAG":
+                    word_tags.append(itemToWordTag(item))
+
+            last_evaluated_key = response.get("LastEvaluatedKey", None)
+            return image, words, word_tags, last_evaluated_key
+
+        except ClientError as e:
+            raise ValueError(f"Could not list images and words and tags from the database: {e}")
 
     def listImages(
         self, limit: Optional[int] = None, lastEvaluatedKey: Optional[Dict] = None
