@@ -127,7 +127,7 @@ def test_receipt_line_list(dynamodb_table: Literal["MyMockedTable"]):
         client.addReceiptLine(ln)
 
     # Act
-    returned_lines = client.listReceiptLines()
+    returned_lines, _ = client.listReceiptLines()
 
     # Assert
     # Might return lines for multiple receipts/images if your table is reused, so filter by ID

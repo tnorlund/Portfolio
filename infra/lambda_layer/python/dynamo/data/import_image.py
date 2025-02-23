@@ -1,10 +1,11 @@
+# infra/lambda_layer/python/dynamo/data/import_image.py
 import os
 import json
 from typing import Dict, Any
 from dynamo.data.dynamo_client import DynamoClient
 from dynamo.entities import (
     Image, Line, Word, WordTag, Letter,
-    Receipt, ReceiptLine, ReceiptWord, ReceiptWordTag, ReceiptLetter,
+    Receipt, ReceiptWindow, ReceiptLine, ReceiptWord, ReceiptWordTag, ReceiptLetter,
     GPTInitialTagging, GPTValidation
 )
 
@@ -26,11 +27,6 @@ def import_image(table_name: str, json_path: str) -> None:
     Example:
         >>> import_image("ReceiptsTable", "./export/image-id.json")
     """
-    if not table_name:
-        # Check the environment variable
-        table_name = os.getenv("DYNAMO_DB_TABLE")
-        if not table_name:
-            raise ValueError("The table_name parameter is required")
 
     if not os.path.exists(json_path):
         raise FileNotFoundError(f"JSON file not found: {json_path}")
@@ -50,6 +46,7 @@ def import_image(table_name: str, json_path: str) -> None:
         "word_tags": [WordTag(**item) for item in data["word_tags"]],
         "letters": [Letter(**item) for item in data["letters"]],
         "receipts": [Receipt(**item) for item in data["receipts"]],
+        "receipt_windows": [ReceiptWindow(**item) for item in data["receipt_windows"]],
         "receipt_lines": [ReceiptLine(**item) for item in data["receipt_lines"]],
         "receipt_words": [ReceiptWord(**item) for item in data["receipt_words"]],
         "receipt_word_tags": [ReceiptWordTag(**item) for item in data["receipt_word_tags"]],
@@ -76,6 +73,9 @@ def import_image(table_name: str, json_path: str) -> None:
     
     if entities["receipts"]:
         dynamo_client.addReceipts(entities["receipts"])
+    
+    if entities["receipt_windows"]:
+        dynamo_client.addReceiptWindows(entities["receipt_windows"])
     
     if entities["receipt_lines"]:
         dynamo_client.addReceiptLines(entities["receipt_lines"])

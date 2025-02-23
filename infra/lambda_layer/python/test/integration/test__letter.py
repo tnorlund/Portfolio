@@ -185,7 +185,7 @@ def test_letter_list(dynamodb_table: Literal["MyMockedTable"]):
     client.addLetters(letters)
 
     # Act
-    letters_retrieved = client.listLetters()
+    letters_retrieved, _ = client.listLetters()
 
     # Assert
     assert letters_retrieved == letters

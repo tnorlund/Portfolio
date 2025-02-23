@@ -135,7 +135,7 @@ def test_receipt_letter_list(dynamodb_table: Literal["MyMockedTable"]):
         client.addReceiptLetter(lt)
 
     # Act
-    returned_letters = client.listReceiptLetters()
+    returned_letters, _ = client.listReceiptLetters()
 
     # Assert
     for lt in letters:

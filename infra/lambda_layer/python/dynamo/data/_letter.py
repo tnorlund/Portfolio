@@ -1,6 +1,6 @@
 from dynamo import Letter, itemToLetter
 from botocore.exceptions import ClientError
-
+from typing import Optional, Dict, Tuple
 # DynamoDB batch_write_item can only handle up to 25 items per call
 # So let's chunk the items in groups of 25
 CHUNK_SIZE = 25
@@ -140,33 +140,34 @@ class _Letter:
         except KeyError:
             raise ValueError(f"Letter with ID {letter_id} not found")
 
-    def listLetters(self) -> list[Letter]:
+    def listLetters(self, limit: Optional[int] = None, last_evaluated_key: Optional[Dict] = None) -> Tuple[list[Letter], Optional[Dict]]:
         """Lists all letters in the database"""
         letters = []
         try:
-            response = self._client.query(
-                TableName=self.table_name,
-                IndexName="GSITYPE",
-                KeyConditionExpression="#t = :val",
-                ExpressionAttributeNames={"#t": "TYPE"},
-                ExpressionAttributeValues={":val": {"S": "LETTER"}},
-                ScanIndexForward=True,
-            )
+            query_params = {
+                "TableName": self.table_name,
+                "IndexName": "GSITYPE",
+                "KeyConditionExpression": "#t = :val",
+                "ExpressionAttributeNames": {"#t": "TYPE"},
+                "ExpressionAttributeValues": {":val": {"S": "LETTER"}},
+                "ScanIndexForward": True,
+            }
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
+            if limit is not None:
+                query_params["Limit"] = limit
+            response = self._client.query(**query_params)
             letters.extend([itemToLetter(item) for item in response["Items"]])
 
-            while "LastEvaluatedKey" in response:
-                response = self._client.query(
-                    TableName=self.table_name,
-                    IndexName="GSITYPE",
-                    KeyConditionExpression="#t = :val",
-                    ExpressionAttributeNames={"#t": "TYPE"},
-                    ExpressionAttributeValues={":val": {"S": "LETTER"}},
-                    ExclusiveStartKey=response["LastEvaluatedKey"],
-                    ScanIndexForward=True,
-                )
-                letters.extend([itemToLetter(item) for item in response["Items"]])
-            return letters
-
+            if limit is None:
+                while "LastEvaluatedKey" in response:
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    response = self._client.query(**query_params)
+                    letters.extend([itemToLetter(item) for item in response["Items"]])
+                last_evaluated_key = None
+            else:
+                last_evaluated_key = response.get("LastEvaluatedKey", None)
+            return letters, last_evaluated_key
         except ClientError as e:
             raise ValueError("Could not list letters from the database") from e
 

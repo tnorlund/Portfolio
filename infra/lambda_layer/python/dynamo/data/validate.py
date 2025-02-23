@@ -55,6 +55,7 @@ def validate(table_name: str, image_id: str) -> None:
         word_tags,
         _,
         receipts,
+        _,
         receipt_lines,
         receipt_words,
         receipt_word_tags,

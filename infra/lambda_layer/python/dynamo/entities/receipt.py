@@ -156,6 +156,17 @@ class Receipt:
             "GSI2PK": {"S": "RECEIPT"},
             "GSI2SK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"},
         }
+    
+    def gsi3_key(self) -> dict:
+        """Generates the GSI3 key for the receipt.
+
+        Returns:
+            dict: The GSI3 key for the receipt.
+        """
+        return {
+            "GSI3PK": {"S": "RECEIPT"},
+            "GSI3SK": {"S": f"RECEIPT#{self.receipt_id:05d}"},
+        }
 
     def to_item(self) -> dict:
         """Converts the Receipt object to a DynamoDB item.
@@ -167,6 +178,7 @@ class Receipt:
             **self.key(),
             **self.gsi1_key(),
             **self.gsi2_key(),
+            **self.gsi3_key(),
             "TYPE": {"S": "RECEIPT"},
             "width": {"N": str(self.width)},
             "height": {"N": str(self.height)},
