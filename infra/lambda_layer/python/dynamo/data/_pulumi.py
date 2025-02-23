@@ -1,4 +1,5 @@
-from pulumi import automation as auto
+import json
+import subprocess
 
 
 def load_env(env: str = "dev") -> dict:
@@ -11,9 +12,20 @@ def load_env(env: str = "dev") -> dict:
     Returns:
         dict: A dictionary of key-value pairs from the Pulumi stack outputs.
     """
-    stack = auto.select_stack(
-        stack_name=f"tnorlund/portfolio/{env}",
-        project_name="portfolio",
-        program=lambda: None,
-    )
-    return {key: val.value for key, val in stack.outputs().items()}
+    try:
+        result = subprocess.run(
+            [
+                "pulumi",
+                "stack",
+                "output",
+                "--stack",
+                f"tnorlund/portfolio/{env}",
+                "--json",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return json.loads(result.stdout)
+    except (subprocess.CalledProcessError, json.JSONDecodeError):
+        return {}  # Return an empty dictionary on failure
