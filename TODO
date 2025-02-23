@@ -29,9 +29,9 @@
   - [x] **Output**  
     - [x] Print relevant info (ASG name, S3 bucket name, security group ID)
 
-- [ ] **Pulumi Deployment**
-  - [ ] Run `pulumi up` to create all infrastructure
-  - [ ] Verify resources are created successfully on AWS
+- [x] **Pulumi Deployment**
+  - [x] Run `pulumi up` to create all infrastructure
+  - [x] Verify resources are created successfully on AWS
 
 ## 2. Configure W&B Sweeps
 
@@ -84,3 +84,122 @@
   - [ ] Tune checkpoint intervals if you see too much overhead or risk of losing data
   - [ ] Try different instance types or regions to find lower interruption rates and costs
   - [ ] Consider partial on-demand usage if final training run needs guaranteed uninterrupted compute
+
+## 6. Wrapper Class Implementation
+
+- [ ] **Core Class Structure**
+  - [ ] Create `ReceiptTrainer` class
+  - [ ] Initialize with configuration parameters:
+    - [ ] W&B project settings
+    - [ ] Model configuration (LayoutLM parameters)
+    - [ ] Training hyperparameters
+    - [ ] AWS/DynamoDB configuration
+    - [ ] Data processing settings
+
+- [ ] **Data Management**
+  - [ ] **Dataset Loading**
+    - [ ] Integrate DynamoDB data loading from `dev.make_dataset.py`
+    - [ ] Add SROIE dataset integration from `dev.prepare_sroie.py`
+    - [ ] Create unified data loading pipeline
+  - [ ] **Data Processing**
+    - [ ] Port balancing logic from `balance_dataset()`
+    - [ ] Implement sliding window functionality from `create_sliding_windows()`
+    - [ ] Add data augmentation methods
+  - [ ] **Data Validation**
+    - [ ] Add input validation for DynamoDB data
+    - [ ] Validate combined dataset structure
+    - [ ] Add dataset statistics reporting
+
+- [ ] **Model Management**
+  - [ ] **Model Configuration**
+    - [ ] Encapsulate LayoutLM model setup
+    - [ ] Add model checkpoint handling
+    - [ ] Implement model versioning
+  - [ ] **Training Pipeline**
+    - [ ] Port training logic from `dev.training.py`
+    - [ ] Add early stopping and model selection
+    - [ ] Implement gradient accumulation and mixed precision
+  - [ ] **Evaluation**
+    - [ ] Add metrics computation
+    - [ ] Implement validation loop
+    - [ ] Add performance reporting
+
+- [ ] **W&B Integration**
+  - [ ] **Project Setup**
+    - [ ] Initialize W&B project
+    - [ ] Configure artifact storage with S3 bucket
+    - [ ] Set up experiment tracking
+  - [ ] **Logging**
+    - [ ] Add metric logging
+    - [ ] Log model checkpoints
+    - [ ] Track dataset versions
+  - [ ] **Sweep Management**
+    - [ ] Implement sweep configuration
+    - [ ] Add hyperparameter optimization
+    - [ ] Handle distributed training
+
+- [ ] **AWS Integration**
+  - [ ] **S3 Management**
+    - [ ] Add checkpoint saving/loading
+    - [ ] Implement artifact storage
+    - [ ] Handle dataset caching
+  - [ ] **Spot Instance Handling**
+    - [ ] Add spot interruption handlers
+    - [ ] Implement training resumption
+    - [ ] Add auto-scaling management
+
+- [ ] **Utility Functions**
+  - [ ] Add logging and error handling
+  - [ ] Create progress tracking
+  - [ ] Implement performance profiling
+  - [ ] Add debugging tools
+
+- [ ] **Documentation**
+  - [ ] Write class and method documentation
+  - [ ] Add usage examples
+  - [ ] Create training pipeline guide
+  - [ ] Document configuration options
+
+- [ ] **Testing**
+  - [ ] Add unit tests for core functionality
+  - [ ] Create integration tests
+  - [ ] Add performance benchmarks
+  - [ ] Test spot instance recovery
+
+Example Usage (Draft):
+```python
+from receipt_trainer import ReceiptTrainer
+
+# Initialize trainer
+trainer = ReceiptTrainer(
+    wandb_project="receipt-training",
+    model_name="microsoft/layoutlm-base-uncased",
+    dynamo_table="prod-receipts",
+    s3_bucket="training-artifacts"
+)
+
+# Load and prepare data
+trainer.load_data(
+    use_sroie=True,
+    balance_ratio=0.7,
+    augment=True
+)
+
+# Configure training
+trainer.configure_training(
+    batch_size=16,
+    learning_rate=3e-4,
+    num_epochs=20,
+    gradient_accumulation_steps=32
+)
+
+# Start training
+trainer.train(
+    enable_checkpointing=True,
+    enable_early_stopping=True,
+    log_to_wandb=True
+)
+
+# Export model
+trainer.save_model("./trained_model")
+```
