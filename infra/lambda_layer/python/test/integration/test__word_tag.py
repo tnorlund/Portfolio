@@ -3,6 +3,7 @@
 import pytest
 from typing import Literal
 from dynamo import WordTag, DynamoClient
+from botocore.exceptions import ClientError
 
 
 @pytest.fixture
@@ -275,3 +276,227 @@ def test_word_tag_get_pagination(dynamodb_table: Literal["MyMockedTable"]):
     returned_ids = {(r.image_id, r.line_id, r.word_id) for r in results}
     expected_ids = {("3f52804b-2fad-4e00-92c8-b593da3a8ed4", 1, i) for i in range(30)}
     assert returned_ids == expected_ids
+
+
+@pytest.mark.integration
+def test_updateWordTags_success(dynamodb_table, sample_word_tag):
+    """
+    Tests happy path for updateWordTags.
+    """
+    client = DynamoClient(dynamodb_table)
+    tag1 = sample_word_tag
+    tag2 = WordTag(
+        image_id=sample_word_tag.image_id,
+        line_id=11,
+        word_id=6,
+        tag="AnotherTag",
+        timestamp_added="2021-01-01T00:00:00",
+    )
+    client.addWordTags([tag1, tag2])
+
+    # Store the original keys before updating
+    old_tag1_key = tag1.key()
+    old_tag2_key = tag2.key()
+
+    # Now update them
+    tag1.tag = "UpdatedTag1"
+    tag2.tag = "UpdatedTag2"
+
+    # First delete the old tags
+    client.deleteWordTags([
+        WordTag(
+            image_id=tag1.image_id,
+            line_id=tag1.line_id,
+            word_id=tag1.word_id,
+            tag=sample_word_tag.tag,  # Original tag value
+            timestamp_added=tag1.timestamp_added
+        ),
+        WordTag(
+            image_id=tag2.image_id,
+            line_id=tag2.line_id,
+            word_id=tag2.word_id,
+            tag="AnotherTag",  # Original tag value
+            timestamp_added=tag2.timestamp_added
+        )
+    ])
+
+    # Then add the updated tags
+    client.addWordTags([tag1, tag2])
+
+    # Verify updates - use getWordTags to find by tag value
+    tags_with_updated_tag1 = client.getWordTags("UpdatedTag1")
+    tags_with_updated_tag2 = client.getWordTags("UpdatedTag2")
+    
+    assert len(tags_with_updated_tag1) == 1
+    assert len(tags_with_updated_tag2) == 1
+    assert tags_with_updated_tag1[0].tag == "UpdatedTag1"
+    assert tags_with_updated_tag2[0].tag == "UpdatedTag2"
+
+
+@pytest.mark.integration
+def test_updateWordTags_raises_value_error_word_tags_none(dynamodb_table):
+    """
+    Tests that updateWordTags raises ValueError when the word_tags parameter is None.
+    """
+    client = DynamoClient(dynamodb_table)
+    with pytest.raises(ValueError, match="WordTags parameter is required and cannot be None."):
+        client.updateWordTags(None)  # type: ignore
+
+
+@pytest.mark.integration
+def test_updateWordTags_raises_value_error_word_tags_not_list(dynamodb_table):
+    """
+    Tests that updateWordTags raises ValueError when the word_tags parameter is not a list.
+    """
+    client = DynamoClient(dynamodb_table)
+    with pytest.raises(ValueError, match="WordTags must be provided as a list."):
+        client.updateWordTags("not-a-list")  # type: ignore
+
+
+@pytest.mark.integration
+def test_updateWordTags_raises_value_error_word_tags_not_list_of_word_tags(dynamodb_table, sample_word_tag):
+    """
+    Tests that updateWordTags raises ValueError when the word_tags parameter is not a list of WordTag instances.
+    """
+    client = DynamoClient(dynamodb_table)
+    with pytest.raises(ValueError, match="All items in the word_tags list must be instances of the WordTag class."):
+        client.updateWordTags([sample_word_tag, "not-a-word-tag"])  # type: ignore
+
+
+@pytest.mark.integration
+def test_updateWordTags_raises_clienterror_conditional_check_failed(dynamodb_table, sample_word_tag, mocker):
+    """
+    Tests that updateWordTags raises ValueError when trying to update non-existent word tags.
+    """
+    client = DynamoClient(dynamodb_table)
+    mock_transact = mocker.patch.object(
+        client._client,
+        "transact_write_items",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": "ConditionalCheckFailedException",
+                    "Message": "One or more word tags do not exist",
+                }
+            },
+            "TransactWriteItems",
+        ),
+    )
+    with pytest.raises(ValueError, match="One or more word tags do not exist"):
+        client.updateWordTags([sample_word_tag])
+    mock_transact.assert_called_once()
+
+
+@pytest.mark.integration
+def test_updateWordTags_raises_clienterror_provisioned_throughput_exceeded(dynamodb_table, sample_word_tag, mocker):
+    """
+    Tests that updateWordTags raises an Exception when the ProvisionedThroughputExceededException error is raised.
+    """
+    client = DynamoClient(dynamodb_table)
+    mock_transact = mocker.patch.object(
+        client._client,
+        "transact_write_items",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": "ProvisionedThroughputExceededException",
+                    "Message": "Provisioned throughput exceeded",
+                }
+            },
+            "TransactWriteItems",
+        ),
+    )
+    with pytest.raises(Exception, match="Provisioned throughput exceeded"):
+        client.updateWordTags([sample_word_tag])
+    mock_transact.assert_called_once()
+
+
+@pytest.mark.integration
+def test_updateWordTags_raises_clienterror_internal_server_error(dynamodb_table, sample_word_tag, mocker):
+    """
+    Tests that updateWordTags raises an Exception when the InternalServerError error is raised.
+    """
+    client = DynamoClient(dynamodb_table)
+    mock_transact = mocker.patch.object(
+        client._client,
+        "transact_write_items",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": "InternalServerError",
+                    "Message": "Internal server error",
+                }
+            },
+            "TransactWriteItems",
+        ),
+    )
+    with pytest.raises(Exception, match="Internal server error"):
+        client.updateWordTags([sample_word_tag])
+    mock_transact.assert_called_once()
+
+
+@pytest.mark.integration
+def test_updateWordTags_raises_clienterror_validation_exception(dynamodb_table, sample_word_tag, mocker):
+    """
+    Tests that updateWordTags raises an Exception when the ValidationException error is raised.
+    """
+    client = DynamoClient(dynamodb_table)
+    mock_transact = mocker.patch.object(
+        client._client,
+        "transact_write_items",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": "ValidationException",
+                    "Message": "One or more parameters given were invalid",
+                }
+            },
+            "TransactWriteItems",
+        ),
+    )
+    with pytest.raises(Exception, match="One or more parameters given were invalid"):
+        client.updateWordTags([sample_word_tag])
+    mock_transact.assert_called_once()
+
+
+@pytest.mark.integration
+def test_updateWordTags_raises_clienterror_access_denied(dynamodb_table, sample_word_tag, mocker):
+    """
+    Tests that updateWordTags raises an Exception when the AccessDeniedException error is raised.
+    """
+    client = DynamoClient(dynamodb_table)
+    mock_transact = mocker.patch.object(
+        client._client,
+        "transact_write_items",
+        side_effect=ClientError(
+            {"Error": {"Code": "AccessDeniedException", "Message": "Access denied"}},
+            "TransactWriteItems",
+        ),
+    )
+    with pytest.raises(Exception, match="Access denied"):
+        client.updateWordTags([sample_word_tag])
+    mock_transact.assert_called_once()
+
+
+@pytest.mark.integration
+def test_updateWordTags_raises_client_error(dynamodb_table, sample_word_tag, mocker):
+    """
+    Simulate any error (ResourceNotFound, etc.) in transact_write_items.
+    """
+    client = DynamoClient(dynamodb_table)
+    mock_transact = mocker.patch.object(
+        client._client,
+        "transact_write_items",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": "ResourceNotFoundException",
+                    "Message": "No table found",
+                }
+            },
+            "TransactWriteItems",
+        ),
+    )
+    with pytest.raises(ValueError, match="Error updating word tags"):
+        client.updateWordTags([sample_word_tag])
+    mock_transact.assert_called_once()

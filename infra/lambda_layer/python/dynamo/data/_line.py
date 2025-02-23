@@ -1,6 +1,6 @@
 from dynamo import Line, itemToLine
 from botocore.exceptions import ClientError
-
+from typing import Optional, Dict, Tuple
 # DynamoDB batch_write_item can only handle up to 25 items per call
 # So let's chunk the items in groups of 25
 CHUNK_SIZE = 25
@@ -145,32 +145,39 @@ class _Line:
         except KeyError:
             raise ValueError(f"Line with ID {line_id} not found")
 
-    def listLines(self) -> list[Line]:
+    def listLines(self, limit: Optional[int] = None, last_evaluated_key: Optional[Dict] = None) -> Tuple[list[Line], Optional[Dict]]:
         """Lists all lines in the database"""
         lines = []
         try:
-            response = self._client.query(
-                TableName=self.table_name,
-                IndexName="GSITYPE",
-                KeyConditionExpression="#t = :val",
-                ExpressionAttributeNames={"#t": "TYPE"},
-                ExpressionAttributeValues={":val": {"S": "LINE"}},
-                ScanIndexForward=True,  # Sorts the results in ascending order by PK
-            )
+            query_params = {
+                "TableName": self.table_name,
+                "IndexName": "GSITYPE",
+                "KeyConditionExpression": "#t = :val",
+                "ExpressionAttributeNames": {"#t": "TYPE"},
+                "ExpressionAttributeValues": {":val": {"S": "LINE"}},
+                "ScanIndexForward": True,  # Sorts the results in ascending order by PK
+            }
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
+
+            if limit is not None:
+                query_params["Limit"] = limit
+
+            response = self._client.query(**query_params)
             lines.extend([itemToLine(item) for item in response["Items"]])
 
-            while "LastEvaluatedKey" in response:
-                response = self._client.query(
-                    TableName=self.table_name,
-                    IndexName="GSITYPE",
-                    KeyConditionExpression="#t = :val",
-                    ExpressionAttributeNames={"#t": "TYPE"},
-                    ExpressionAttributeValues={":val": {"S": "LINE"}},
-                    ExclusiveStartKey=response["LastEvaluatedKey"],
-                    ScanIndexForward=True,  # Sorts the results in ascending order by PK
-                )
-                lines.extend([itemToLine(item) for item in response["Items"]])
-            return lines
+            if limit is None:
+                # If no limit is provided, paginate until all items are retrieved
+                while "LastEvaluatedKey" in response and response["LastEvaluatedKey"]:
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    response = self._client.query(**query_params)
+                    lines.extend([itemToLine(item) for item in response["Items"]])  
+                last_evaluated_key = None
+            else:
+                # If a limit is provided, capture the LastEvaluatedKey (if any)
+                last_evaluated_key = response.get("LastEvaluatedKey", None)
+
+            return lines, last_evaluated_key    
 
         except ClientError as e:
             raise ValueError("Could not list lines from the database") from e

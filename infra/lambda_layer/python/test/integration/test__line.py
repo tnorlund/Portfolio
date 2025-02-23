@@ -170,7 +170,7 @@ def test_line_list(dynamodb_table: Literal["MyMockedTable"]):
     client.addLine(line_2)
 
     # Act
-    lines = client.listLines()
+    lines, _ = client.listLines()
 
     # Assert
     assert line_1 in lines
@@ -183,7 +183,7 @@ def test_line_list_empty(dynamodb_table: Literal["MyMockedTable"]):
     client = DynamoClient(dynamodb_table)
 
     # Act
-    lines = client.listLines()
+    lines, _ = client.listLines()
 
     # Assert
     assert len(lines) == 0
