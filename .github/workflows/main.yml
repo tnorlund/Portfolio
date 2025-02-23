@@ -32,20 +32,34 @@ jobs:
         run: pytest -m integration
         working-directory: infra/lambda_layer/python
 
+      - name: Install Pulumi Python dependencies
+        run: pip install -r requirements.txt
+        working-directory: infra
+
+      - name: Configure Pulumi Stack
+        run: pulumi stack select tnorlund/portfolio/prod
+        working-directory: infra
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+
       - name: Configure Pulumi
         uses: pulumi/actions@v6
         with:
-          command: stack
+          command: preview
           stack-name: tnorlund/portfolio/prod
           work-dir: infra
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
       - name: Run end-to-end tests
         run: pytest -m end_to_end
         working-directory: infra/lambda_layer/python
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
   up:
     name: Build React app and Pulumi Up to Production
