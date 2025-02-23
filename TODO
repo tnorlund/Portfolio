@@ -1,0 +1,86 @@
+# TODO
+
+## 1. Infrastructure Setup
+
+- [x] **Pulumi Project Initialization**
+  - [x] Initialize a new Pulumi project (Python)
+  - [x] Install the Pulumi AWS provider
+  - [x] Configure Pulumi to deploy resources in the correct AWS region
+
+- [x] **Create AWS Resources via Pulumi**
+  - [x] **S3 Bucket**  
+    - [x] Create an S3 bucket for logs, checkpoints, artifacts
+    - [x] Configure bucket policies / encryption / versioning (enabled AES256 encryption and versioning)
+    - [x] Add lifecycle rules to move old data to cheaper storage (30 days -> STANDARD_IA, 90 days -> GLACIER)
+  - [x] **IAM Role**  
+    - [x] Create an IAM role for EC2, granting read/write to the S3 bucket
+    - [x] Attach role to instance profile
+  - [x] **EC2 Launch Template**  
+    - [x] Base AMI (using AWS Deep Learning AMI)
+    - [x] User data script to install dependencies and set up environment
+  - [x] **Auto Scaling Group**  
+    - [x] Configure mixed instances policy with multiple GPU instance types (p3.2xlarge, p3.8xlarge, g4dn.xlarge)
+    - [x] Set the purchasing option to Spot
+    - [x] Use capacity-optimized allocation strategy
+    - [x] Set desired capacity (0 by default, configurable)
+  - [x] **Security Group**  
+    - [x] Open required ports (SSH port 22)
+    - [x] Attach the security group to the ASG/instances
+  - [x] **Output**  
+    - [x] Print relevant info (ASG name, S3 bucket name, security group ID)
+
+- [ ] **Pulumi Deployment**
+  - [ ] Run `pulumi up` to create all infrastructure
+  - [ ] Verify resources are created successfully on AWS
+
+## 2. Configure W&B Sweeps
+
+- [ ] **W&B Project Setup**
+  - [ ] Create or select a W&B project for hyperparameter sweeps
+  - [ ] (Optional) Enable "Bring Your Own Bucket" (BYOB) in W&B if you want artifacts stored in your new S3 bucket
+
+- [ ] **Sweep Configuration**
+  - [ ] Define sweep config (hyperparameter search space, optimization metric, search method, etc.)
+  - [ ] Save config in a YAML or JSON file (e.g., `sweep.yaml`)
+  - [ ] Run `wandb sweep sweep.yaml` to create a sweep and retrieve the sweep ID
+
+## 3. Training Script Updates
+
+- [ ] **Checkpointing**
+  - [ ] Add periodic `torch.save()` calls to save model/optimizer states to S3
+  - [ ] (Optional) Use 2-minute spot interruption notice to trigger final checkpoint save
+  
+- [ ] **W&B Integration**
+  - [ ] Use `wandb.init()` in the training script
+  - [ ] Log metrics, artifacts, etc. to W&B
+  - [ ] (Optional) Implement run resume logic with `wandb.run.resume()` if needed
+
+## 4. Testing & Validation
+
+- [ ] **Spot Interruption Simulation**
+  - [ ] Force-stop or terminate an instance mid-training
+  - [ ] Confirm you can resume from checkpoint on a new instance
+  - [ ] Verify logs and metrics are available in W&B
+
+- [ ] **Monitor Costs & Interruptions**
+  - [ ] Check AWS Spot Instance dashboard for frequency of interruptions
+  - [ ] Verify you are getting the expected savings vs. on-demand
+
+- [ ] **Sweep Execution**
+  - [ ] Launch multiple parallel runs by setting the ASG desired capacity or using `wandb agent <sweep-id>`
+  - [ ] Confirm W&B is tracking all runs properly (metrics, logs, artifacts)
+  - [ ] Adjust hyperparameter search strategy if needed (e.g., reduce search space, early stopping, etc.)
+
+## 5. Cleanup & Optimization
+
+- [ ] **Resource Teardown**
+  - [ ] After sweeps complete, either:
+    - [ ] Scale ASG desired capacity to 0 or
+    - [ ] `pulumi destroy` the entire stack
+  - [ ] Retain or archive S3 logs and checkpoints for reference
+
+- [ ] **Further Optimization**
+  - [ ] Use Bayesian search or other advanced search methods to reduce trials
+  - [ ] Tune checkpoint intervals if you see too much overhead or risk of losing data
+  - [ ] Try different instance types or regions to find lower interruption rates and costs
+  - [ ] Consider partial on-demand usage if final training run needs guaranteed uninterrupted compute
