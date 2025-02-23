@@ -115,11 +115,11 @@ class _WordTag:
         # Remember to underscore-pad the tag if your WordTag class does so in SK
         # Here, we'll replicate minimal logic to find the padded tag
         word_tag = WordTag(
-            image_id, 
-            line_id, 
-            word_id, 
+            image_id,
+            line_id,
+            word_id,
             tag,
-            timestamp_added="2021-01-01T00:00:00" # This is a placeholder value
+            timestamp_added="2021-01-01T00:00:00",  # This is a placeholder value
         )
 
         try:
@@ -170,7 +170,11 @@ class _WordTag:
         self.deleteWordTags(tags)
 
     def getWordTag(
-        self, image_id: int, line_id: int, word_id: int, tag: str,
+        self,
+        image_id: int,
+        line_id: int,
+        word_id: int,
+        tag: str,
     ) -> WordTag:
         """
         Retrieves a single WordTag from DynamoDB by its primary key.
@@ -188,12 +192,12 @@ class _WordTag:
             ValueError: If the item does not exist.
         """
         word_tag = WordTag(
-            image_id, 
-            line_id, 
-            word_id, 
-            tag, 
-            timestamp_added="2021-01-01T00:00:00" # This is a placeholder value
-            )
+            image_id,
+            line_id,
+            word_id,
+            tag,
+            timestamp_added="2021-01-01T00:00:00",  # This is a placeholder value
+        )
 
         try:
             response = self._client.get_item(
@@ -208,7 +212,7 @@ class _WordTag:
             )
         except ClientError as e:
             raise Exception(f"Error getting WordTag: {e}")
-    
+
     def getWordTags(self, tag: str) -> list[WordTag]:
         """
         Retrieves all WordTag items with a given tag from the database,
@@ -221,9 +225,7 @@ class _WordTag:
                 TableName=self.table_name,
                 IndexName="GSI1",  # Make sure this is the correct GSI name
                 KeyConditionExpression="GSI1PK = :gsi1pk",
-                ExpressionAttributeValues={
-                    ":gsi1pk": {"S": f"TAG#{tag:_>40}"}
-                },
+                ExpressionAttributeValues={":gsi1pk": {"S": f"TAG#{tag:_>40}"}},
             )
             word_tags.extend([itemToWordTag(item) for item in response["Items"]])
 
@@ -233,9 +235,7 @@ class _WordTag:
                     TableName=self.table_name,
                     IndexName="GSI1",
                     KeyConditionExpression="GSI1PK = :gsi1pk",
-                    ExpressionAttributeValues={
-                        ":gsi1pk": {"S": f"TAG#{tag:_>40}"}
-                    },
+                    ExpressionAttributeValues={":gsi1pk": {"S": f"TAG#{tag:_>40}"}},
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                 )
                 word_tags.extend([itemToWordTag(item) for item in response["Items"]])
@@ -287,7 +287,9 @@ class _WordTag:
                 while "LastEvaluatedKey" in response and response["LastEvaluatedKey"]:
                     query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                     response = self._client.query(**query_params)
-                    word_tags.extend([itemToWordTag(item) for item in response["Items"]])
+                    word_tags.extend(
+                        [itemToWordTag(item) for item in response["Items"]]
+                    )
                 last_evaluated_key = None
             else:
                 last_evaluated_key = response.get("LastEvaluatedKey", None)
@@ -343,10 +345,10 @@ class _WordTag:
         """
         Updates multiple WordTag items in the database.
 
-        Note: Since WordTag's sort key includes the tag value itself,
-        updating a tag requires deleting the old item and creating a new one.
-        This method uses addWordTags internally, which does not enforce
-        conditional checks.
+        This method validates that the provided parameter is a list of WordTag instances.
+        It uses DynamoDB's transact_write_items operation, which can handle up to 25 items
+        per transaction. Any unprocessed items are automatically retried until no unprocessed
+        items remain.
 
         Parameters
         ----------
@@ -356,27 +358,50 @@ class _WordTag:
         Raises
         ------
         ValueError: When given a bad parameter.
-        Exception: For underlying DynamoDB errors.
+        Exception: For underlying DynamoDB errors such as:
+            - ProvisionedThroughputExceededException (exceeded capacity)
+            - InternalServerError (server-side error)
+            - ValidationException (invalid parameters)
+            - AccessDeniedException (permission issues)
+            - or any other unexpected errors.
         """
         if word_tags is None:
             raise ValueError("WordTags parameter is required and cannot be None.")
         if not isinstance(word_tags, list):
             raise ValueError("WordTags must be provided as a list.")
         if not all(isinstance(tag, WordTag) for tag in word_tags):
-            raise ValueError("All items in the word_tags list must be instances of the WordTag class.")
+            raise ValueError(
+                "All items in the word_tags list must be instances of the WordTag class."
+            )
 
-        try:
-            # Simply use addWordTags since we're effectively creating new items
-            self.addWordTags(word_tags)
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
-            elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
-            elif error_code == "ValidationException":
-                raise Exception(f"One or more parameters given were invalid: {e}") from e
-            elif error_code == "AccessDeniedException":
-                raise Exception(f"Access denied: {e}") from e
-            else:
-                raise ValueError(f"Error updating word tags: {e}") from e
+        for i in range(0, len(word_tags), CHUNK_SIZE):
+            chunk = word_tags[i : i + CHUNK_SIZE]
+            transact_items = []
+            for word_tag in chunk:
+                transact_items.append(
+                    {
+                        "Put": {
+                            "TableName": self.table_name,
+                            "Item": word_tag.to_item(),
+                            "ConditionExpression": "attribute_exists(PK)",
+                        }
+                    }
+                )
+            try:
+                self._client.transact_write_items(TransactItems=transact_items)
+            except ClientError as e:
+                error_code = e.response.get("Error", {}).get("Code", "")
+                if error_code == "TransactionCanceledException":
+                    raise ValueError("One or more word tags do not exist") from e
+                elif error_code == "ProvisionedThroughputExceededException":
+                    raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                elif error_code == "InternalServerError":
+                    raise Exception(f"Internal server error: {e}") from e
+                elif error_code == "ValidationException":
+                    raise Exception(
+                        f"One or more parameters given were invalid: {e}"
+                    ) from e
+                elif error_code == "AccessDeniedException":
+                    raise Exception(f"Access denied: {e}") from e
+                else:
+                    raise ValueError(f"Error updating word tags: {e}") from e
