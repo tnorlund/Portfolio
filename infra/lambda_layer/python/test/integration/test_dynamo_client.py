@@ -18,7 +18,7 @@ def test_dynamo_client_init_success(dynamodb_table: Literal["MyMockedTable"]):
 
 
 @pytest.mark.integration
-def test_dynamo_client_init_table_not_found():
+def test_dynamo_client_init_table_not_found(dynamodb_table):
     """
     Tests that DynamoClient raises a ValueError when the specified table does not exist.
     """
