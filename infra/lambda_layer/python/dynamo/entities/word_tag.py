@@ -257,7 +257,22 @@ class WordTag:
                 "S": f"IMAGE#{self.image_id}#LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"
             },
         }
+    
+    def gsi2_key(self) -> dict:
+        """Generates the secondary index key for the WordTag.
 
+        This key is used to query tags in DynamoDB based on the tag attribute.
+
+        Returns:
+            dict: A dictionary containing the secondary index key for the WordTag.
+        """
+        tag_upper = self.tag
+        spaced_tag_upper = f"{tag_upper:_>40}"
+        return {
+            "GSI2PK": {"S": f"IMAGE#{self.image_id}"},
+            "GSI2SK": {"S": f"LINE#{self.line_id:05d}#WORD#{self.word_id:05d}#TAG#{spaced_tag_upper}"},
+        }
+    
     def to_item(self) -> dict:
         """Converts the WordTag object to a DynamoDB item.
 
@@ -267,6 +282,7 @@ class WordTag:
         return {
             **self.key(),
             **self.gsi1_key(),
+            **self.gsi2_key(),
             "TYPE": {"S": "WORD_TAG"},
             "tag_name": {"S": self.tag},
             "timestamp_added": {"S": self.timestamp_added},

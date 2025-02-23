@@ -637,6 +637,70 @@ class _Image:
 
         return payload, lek_to_return
 
+    def listImagesWordsTags(
+        self, image_id: str, limit: Optional[int] = None, lastEvaluatedKey: Optional[Dict] = None
+    ) -> Tuple[List[Image], List[WordTag], Optional[Dict]]:
+        """
+        Lists images and their associated words and tags from the database.
+
+        This function retrieves images along with their associated words and tags
+        from the database.
+
+        Parameters
+        ----------
+        image_id : str
+            The ID of the image to retrieve.
+        limit : int, optional
+            The maximum number of images to return in one query.
+        lastEvaluatedKey : dict, optional
+            The key from which to continue a previous paginated query.
+
+        Returns
+        -------
+        tuple
+            A tuple containing:
+            1) The Image object.
+            2) A list of Word objects.
+            3) A list of WordTag objects.
+            4) The LastEvaluatedKey (dict) if more items remain, otherwise None.
+
+        Raises
+        ------
+        ValueError
+            If there's an error listing images from DynamoDB.
+        """
+        image = None
+        words = []
+        word_tags = []
+        try:
+            query_params = {
+                "TableName": self.table_name,
+                "IndexName": "GSI2",
+                "KeyConditionExpression": "GSI2PK = :val",
+                "ExpressionAttributeValues": {":val": {"S": f"IMAGE#{image_id}"}},
+            }
+
+            if lastEvaluatedKey is not None:
+                query_params["ExclusiveStartKey"] = lastEvaluatedKey    
+
+            if limit is not None:
+                query_params["Limit"] = limit
+
+            response = self._client.query(**query_params)
+            for item in response["Items"]:
+                if item["TYPE"]["S"] == "IMAGE":
+                    image = itemToImage(item)
+                elif item["TYPE"]["S"] == "WORD":
+                    words.append(itemToWord(item))
+                elif item["TYPE"]["S"] == "WORD_TAG":
+                    word_tags.append(itemToWordTag(item))
+
+            last_evaluated_key = response.get("LastEvaluatedKey", None)
+            return image, words, word_tags, last_evaluated_key
+
+        except ClientError as e:
+            raise ValueError(f"Could not list images and words and tags from the database: {e}")
+
     def listImages(
         self, limit: Optional[int] = None, lastEvaluatedKey: Optional[Dict] = None
     ) -> Tuple[List[Image], Optional[Dict]]:

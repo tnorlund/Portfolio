@@ -150,6 +150,14 @@ class Word:
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {"S": f"LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"},
         }
+    
+    def gsi2_key(self) -> dict:
+        """Generates the GSI2 key for the Word.
+
+        Returns:
+            dict: The GSI2 key for the Word.
+        """
+        return {"GSI2PK": {"S": f"IMAGE#{self.image_id}"}, "GSI2SK": {"S": f"LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"}}
 
     def to_item(self) -> dict:
         """Converts the Word object to a DynamoDB item.
@@ -159,6 +167,7 @@ class Word:
         """
         item = {
             **self.key(),
+            **self.gsi2_key(),
             "TYPE": {"S": "WORD"},
             "text": {"S": self.text},
             "bounding_box": {
