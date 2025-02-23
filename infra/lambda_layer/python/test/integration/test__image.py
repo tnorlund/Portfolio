@@ -590,3 +590,197 @@ def test_listImageDetails_lek_structure_and_usage(dynamodb_table):
     assert sorted(all_returned, key=lambda x: x.image_id) == sorted(
         images_created, key=lambda x: x.image_id
     )
+
+@pytest.mark.integration
+def test_updateImages_success(dynamodb_table, example_image):
+    """
+    Tests happy path for updateImages.
+    """
+    client = DynamoClient(dynamodb_table)
+    img1 = example_image
+    img2 = Image(
+        str(uuid4()),
+        10,
+        20,
+        "2021-01-01T00:00:00",
+        "bucket",
+        "key2",
+    )
+    client.addImages([img1, img2])
+
+    # Now update them
+    img1.raw_s3_key = "updated/path/1"
+    img2.raw_s3_key = "updated/path/2"
+    client.updateImages([img1, img2])
+
+    # Verify updates
+    stored_images, _ = client.listImages()
+    assert len(stored_images) == 2
+    # Confirm the updated s3_keys
+    for img in stored_images:
+        if img.image_id == img1.image_id:
+            assert img.raw_s3_key == "updated/path/1"
+        else:
+            assert img.raw_s3_key == "updated/path/2"
+
+@pytest.mark.integration
+def test_updateImages_raises_value_error_images_none(dynamodb_table, example_image):
+    """
+    Tests that updateImages raises ValueError when the images parameter is None.
+    """
+    client = DynamoClient(dynamodb_table)
+    with pytest.raises(ValueError, match="Images parameter is required and cannot be None."):
+        client.updateImages(None)  # type: ignore
+
+@pytest.mark.integration
+def test_updateImages_raises_value_error_images_not_list(dynamodb_table, example_image):
+    """
+    Tests that updateImages raises ValueError when the images parameter is not a list.
+    """
+    client = DynamoClient(dynamodb_table)
+    with pytest.raises(ValueError, match="Images must be provided as a list."):
+        client.updateImages("not-a-list")  # type: ignore
+
+@pytest.mark.integration
+def test_updateImages_raises_value_error_images_not_list_of_images(dynamodb_table, example_image):
+    """
+    Tests that updateImages raises ValueError when the images parameter is not a list of Image instances.
+    """
+    client = DynamoClient(dynamodb_table)
+    with pytest.raises(ValueError, match="All items in the images list must be instances of the Image class."):
+        client.updateImages([example_image, "not-an-image"])  # type: ignore
+
+@pytest.mark.integration
+def test_updateImages_raises_clienterror_conditional_check_failed(dynamodb_table, example_image, mocker):
+    """
+    Tests that updateImages raises an Exception when the ConditionalCheckFailedException error is raised.
+    """
+    client = DynamoClient(dynamodb_table)
+    mock_transact = mocker.patch.object(
+        client._client,
+        "transact_write_items",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": "ConditionalCheckFailedException",
+                    "Message": "One or more images do not exist",
+                }
+            },
+            "TransactWriteItems",
+        ),
+    )
+    with pytest.raises(ValueError, match="One or more images do not exist"):
+        client.updateImages([example_image])
+    mock_transact.assert_called_once()
+
+@pytest.mark.integration
+def test_updateImages_raises_clienterror_provisioned_throughput_exceeded(dynamodb_table, example_image, mocker):
+    """
+    Tests that updateImages raises an Exception when the ProvisionedThroughputExceededException error is raised.
+    """
+    client = DynamoClient(dynamodb_table)
+    mock_transact = mocker.patch.object(
+        client._client,
+        "transact_write_items",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": "ProvisionedThroughputExceededException",
+                    "Message": "Provisioned throughput exceeded",
+                }
+            },
+            "TransactWriteItems",
+        ),
+    )
+    with pytest.raises(Exception, match="Provisioned throughput exceeded"):
+        client.updateImages([example_image])
+    mock_transact.assert_called_once()
+
+@pytest.mark.integration
+def test_updateImages_raises_clienterror_internal_server_error(dynamodb_table, example_image, mocker):
+    """
+    Tests that updateImages raises an Exception when the InternalServerError error is raised.
+    """
+    client = DynamoClient(dynamodb_table)
+    mock_transact = mocker.patch.object(
+        client._client,
+        "transact_write_items",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": "InternalServerError",
+                    "Message": "Internal server error",
+                }
+            },
+            "TransactWriteItems",
+        ),
+    )
+    with pytest.raises(Exception, match="Internal server error"):
+        client.updateImages([example_image])
+    mock_transact.assert_called_once()
+
+@pytest.mark.integration
+def test_updateImages_raises_clienterror_validation_exception(dynamodb_table, example_image, mocker):
+    """
+    Tests that updateImages raises an Exception when the ValidationException error is raised.
+    """
+    client = DynamoClient(dynamodb_table)
+    mock_transact = mocker.patch.object(
+        client._client,
+        "transact_write_items",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": "ValidationException",
+                    "Message": "One or more parameters given were invalid",
+                }
+            },
+            "TransactWriteItems",
+        ),
+    )
+    with pytest.raises(Exception, match="One or more parameters given were invalid"):
+        client.updateImages([example_image])
+    mock_transact.assert_called_once()
+
+@pytest.mark.integration
+def test_updateImages_raises_clienterror_access_denied(dynamodb_table, example_image, mocker):
+    """
+    Tests that updateImages raises an Exception when the AccessDeniedException error is raised.
+    """
+    client = DynamoClient(dynamodb_table)
+    mock_transact = mocker.patch.object(
+        client._client,
+        "transact_write_items",
+        side_effect=ClientError(
+            {"Error": {"Code": "AccessDeniedException", "Message": "Access denied"}},
+            "TransactWriteItems",
+        ),
+    )
+    with pytest.raises(Exception, match="Access denied"):
+        client.updateImages([example_image])
+    mock_transact.assert_called_once()
+
+@pytest.mark.integration
+def test_updateImages_raises_client_error(dynamodb_table, example_image, mocker):
+    """
+    Simulate any error (ResourceNotFound, etc.) in transact_write_items.
+    """
+    client = DynamoClient(dynamodb_table)
+    mock_transact = mocker.patch.object(
+        client._client,
+        "transact_write_items",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": "ResourceNotFoundException",
+                    "Message": "No table found",
+                }
+            },
+            "TransactWriteItems",
+        ),
+    )
+
+    with pytest.raises(ValueError, match="Error updating images"):
+        client.updateImages([example_image])
+
+    mock_transact.assert_called_once()

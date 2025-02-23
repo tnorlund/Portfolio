@@ -266,6 +266,67 @@ class _Image:
                 raise ValueError(f"Image with ID {image.image_id} not found") from e
             else:
                 raise Exception(f"Error updating image: {e}") from e
+            
+    def updateImages(self, images: List[Image]):
+        """
+        Updates multiple Image items in the database.
+
+        This method validates that the provided parameter is a list of Image instances.
+        It uses DynamoDB's transact_write_items operation, which can handle up to 25 items
+        per transaction. Any unprocessed items are automatically retried until no unprocessed
+        items remain.
+
+        Parameters
+        ----------
+        images : list[Image]
+            The list of Image objects to update.
+
+        Raises
+        ------
+        ValueError: When given a bad parameter.
+        Exception: For underlying DynamoDB errors such as:
+            - ProvisionedThroughputExceededException (exceeded capacity)
+            - InternalServerError (server-side error)
+            - ValidationException (invalid parameters)
+            - AccessDeniedException (permission issues)
+            - or any other unexpected errors.
+        """
+        if images is None:
+            raise ValueError("Images parameter is required and cannot be None.")
+        if not isinstance(images, list):
+            raise ValueError("Images must be provided as a list.")
+        if not all(isinstance(img, Image) for img in images):
+            raise ValueError("All items in the images list must be instances of the Image class.")
+        
+        for i in range(0, len(images), 25):
+            chunk = images[i : i + 25]
+            transact_items = []
+            for image in chunk:
+                transact_items.append(
+                    {
+                        "Put": {
+                            "TableName": self.table_name,
+                            "Item": image.to_item(),
+                            "ConditionExpression": "attribute_exists(PK)",
+                        }
+                    }
+                )
+            try:
+                self._client.transact_write_items(TransactItems=transact_items)
+            except ClientError as e:
+                error_code = e.response.get("Error", {}).get("Code", "")
+                if error_code == "ConditionalCheckFailedException":
+                    raise ValueError(f"One or more images do not exist") from e
+                elif error_code == "ProvisionedThroughputExceededException":
+                    raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                elif error_code == "InternalServerError":
+                    raise Exception(f"Internal server error: {e}") from e
+                elif error_code == "ValidationException":
+                    raise Exception(f"One or more parameters given were invalid: {e}") from e
+                elif error_code == "AccessDeniedException":
+                    raise Exception(f"Access denied: {e}") from e
+                else:
+                    raise ValueError(f"Error updating images: {e}") from e
 
     def getImageDetails(self, image_id: str) -> tuple[
         list[Image],
