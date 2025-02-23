@@ -32,10 +32,6 @@ jobs:
         run: pytest -m integration
         working-directory: infra/lambda_layer/python
 
-      - name: Install Pulumi Python dependencies
-        run: pip install -r requirements.txt
-        working-directory: infra
-
       - name: Configure Pulumi Stack
         run: pulumi stack select tnorlund/portfolio/prod
         working-directory: infra
