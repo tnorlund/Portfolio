@@ -1,3 +1,4 @@
+# infra/lambda_layer/python/dynamo/entities/image.py
 from typing import Any, Generator, Tuple
 from datetime import datetime
 from dynamo.entities.util import assert_valid_uuid, _repr_str

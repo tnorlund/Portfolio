@@ -1,3 +1,4 @@
+# infra/lambda_layer/python/dynamo/entities/word.py
 from typing import Generator, Tuple
 from dynamo.entities.util import (
     _repr_str,

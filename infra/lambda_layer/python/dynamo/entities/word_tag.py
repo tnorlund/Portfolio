@@ -1,3 +1,4 @@
+# infra/lambda_layer/python/dynamo/entities/word_tag.py
 from typing import Generator, Optional, Tuple, Union
 from datetime import datetime
 from dynamo.entities.util import assert_valid_uuid, _repr_str
