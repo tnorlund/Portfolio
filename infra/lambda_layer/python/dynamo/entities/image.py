@@ -1,3 +1,4 @@
+# infra/lambda_layer/python/dynamo/entities/image.py
 from typing import Any, Generator, Tuple
 from datetime import datetime
 from dynamo.entities.util import assert_valid_uuid, _repr_str
@@ -106,6 +107,14 @@ class Image:
             dict: The GSI1 key for the image.
         """
         return {"GSI1PK": {"S": "IMAGE"}, "GSI1SK": {"S": f"IMAGE#{self.image_id}"}}
+    
+    def gsi2_key(self) -> dict:
+        """Generates the GSI2 key for the image.
+
+        Returns:
+            dict: The GSI2 key for the image.
+        """
+        return {"GSI2PK": {"S": f"IMAGE#{self.image_id}"}, "GSI2SK": {"S": "IMAGE"}}
 
     def to_item(self) -> dict:
         """Converts the Image object to a DynamoDB item.
@@ -116,6 +125,7 @@ class Image:
         return {
             **self.key(),
             **self.gsi1_key(),
+            **self.gsi2_key(),
             "TYPE": {"S": "IMAGE"},
             "width": {"N": str(self.width)},
             "height": {"N": str(self.height)},

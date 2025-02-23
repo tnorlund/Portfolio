@@ -1,3 +1,4 @@
+# infra/lambda_layer/python/dynamo/data/export_image.py
 import os
 import json
 from dynamo.data.dynamo_client import DynamoClient
@@ -19,11 +20,6 @@ def export_image(table_name: str, image_id: str, output_dir: str) -> None:
     Example:
         >>> export_image("ReceiptsTable", "550e8400-e29b-41d4-a716-446655440000", "./export")
     """
-    if not table_name:
-        # Check the environment variable
-        table_name = os.getenv("DYNAMO_DB_TABLE")
-        if not table_name:
-            raise ValueError("The table_name parameter is required")
 
     # Initialize DynamoDB client
     dynamo_client = DynamoClient(table_name)
@@ -39,6 +35,7 @@ def export_image(table_name: str, image_id: str, output_dir: str) -> None:
         word_tags,
         letters,
         receipts,
+        receipt_windows,
         receipt_lines,
         receipt_words,
         receipt_word_tags,
@@ -58,6 +55,7 @@ def export_image(table_name: str, image_id: str, output_dir: str) -> None:
         "word_tags": [dict(word_tag) for word_tag in word_tags],
         "letters": [dict(letter) for letter in letters],
         "receipts": [dict(receipt) for receipt in receipts],
+        "receipt_windows": [dict(window) for window in receipt_windows],
         "receipt_lines": [dict(line) for line in receipt_lines],
         "receipt_words": [dict(word) for word in receipt_words],
         "receipt_word_tags": [dict(word_tag) for word_tag in receipt_word_tags],

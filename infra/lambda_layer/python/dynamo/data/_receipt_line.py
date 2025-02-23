@@ -121,37 +121,63 @@ class _ReceiptLine:
         except KeyError:
             raise ValueError(f"ReceiptLine with ID {line_id} not found")
 
-    def listReceiptLines(self) -> list[ReceiptLine]:
+    def listReceiptLines(
+        self, limit: int = None, lastEvaluatedKey: dict | None = None
+    ) -> list[ReceiptLine]:
         """Returns all ReceiptLines from the table."""
+        if limit is not None and not isinstance(limit, int):
+            raise ValueError("limit must be an integer or None.")
+        if lastEvaluatedKey is not None and not isinstance(lastEvaluatedKey, dict):
+            raise ValueError("lastEvaluatedKey must be a dictionary or None.")
         receipt_lines = []
         try:
-            response = self._client.query(
-                TableName=self.table_name,
-                IndexName="GSITYPE",
-                KeyConditionExpression="#t = :val",
-                ExpressionAttributeNames={"#t": "TYPE"},
-                ExpressionAttributeValues={":val": {"S": "RECEIPT_LINE"}},
-            )
+            query_params = {
+                "TableName": self.table_name,
+                "IndexName": "GSITYPE",
+                "KeyConditionExpression": "#t = :val",
+                "ExpressionAttributeNames": {"#t": "TYPE"},
+                "ExpressionAttributeValues": {":val": {"S": "RECEIPT_LINE"}},
+            }
+            if lastEvaluatedKey is not None:
+                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if limit is not None:
+                query_params["Limit"] = limit
+            response = self._client.query(**query_params)
             receipt_lines.extend(
                 [itemToReceiptLine(item) for item in response["Items"]]
             )
 
-            while "LastEvaluatedKey" in response:
-                response = self._client.query(
-                    TableName=self.table_name,
-                    IndexName="GSITYPE",
-                    KeyConditionExpression="#t = :val",
-                    ExpressionAttributeNames={"#t": "TYPE"},
-                    ExpressionAttributeValues={":val": {"S": "RECEIPT_LINE"}},
-                    ExclusiveStartKey=response["LastEvaluatedKey"],
-                )
-                receipt_lines.extend(
-                    [itemToReceiptLine(item) for item in response["Items"]]
-                )
+            if limit is None:
+                # Paginate through all the receipt lines.
+                while "LastEvaluatedKey" in response:
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    response = self._client.query(**query_params)
+                    receipt_lines.extend(
+                        [itemToReceiptLine(item) for item in response["Items"]]
+                    )
+                # No further pages left. LEK is None.
+                last_evaluated_key = None
+            else:
+                last_evaluated_key = response.get("LastEvaluatedKey", None)
 
-            return receipt_lines
+            return receipt_lines, last_evaluated_key
+        
         except ClientError as e:
-            raise ValueError("Could not list ReceiptLines from the database") from e
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ResourceNotFoundException":
+                raise Exception(
+                    f"Could not list receipt lines from DynamoDB: {e}"
+                ) from e
+            elif error_code == "ProvisionedThroughputExceededException":
+                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+            elif error_code == "ValidationException":
+                raise ValueError(
+                    f"One or more parameters given were invalid: {e}"
+                ) from e
+            elif error_code == "InternalServerError":
+                raise Exception(f"Internal server error: {e}") from e
+            else:
+                raise Exception(f"Error listing receipt lines: {e}") from e
 
     def listReceiptLinesFromReceipt(
         self, receipt_id: int, image_id: str
