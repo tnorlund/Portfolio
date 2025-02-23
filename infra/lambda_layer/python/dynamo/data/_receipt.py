@@ -156,7 +156,13 @@ class _Receipt:
             receipts (list[Receipt]): The receipts to update in the database.
 
         Raises:
-            ValueError: When a receipt does not exist or if another error occurs.
+            ValueError: When given a bad parameter.
+            Exception: For underlying DynamoDB errors such as:
+                - ProvisionedThroughputExceededException (exceeded capacity)
+                - InternalServerError (server-side error)
+                - ValidationException (invalid parameters)
+                - AccessDeniedException (permission issues)
+                - or any other unexpected errors.
         """
         if receipts is None:
             raise ValueError("Receipts parameter is required and cannot be None.")
