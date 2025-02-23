@@ -338,3 +338,45 @@ class _WordTag:
 
         except ClientError as e:
             raise ValueError("Could not list WordTags from the database") from e
+
+    def updateWordTags(self, word_tags: list[WordTag]):
+        """
+        Updates multiple WordTag items in the database.
+
+        Note: Since WordTag's sort key includes the tag value itself,
+        updating a tag requires deleting the old item and creating a new one.
+        This method uses addWordTags internally, which does not enforce
+        conditional checks.
+
+        Parameters
+        ----------
+        word_tags : list[WordTag]
+            The list of WordTag objects to update.
+
+        Raises
+        ------
+        ValueError: When given a bad parameter.
+        Exception: For underlying DynamoDB errors.
+        """
+        if word_tags is None:
+            raise ValueError("WordTags parameter is required and cannot be None.")
+        if not isinstance(word_tags, list):
+            raise ValueError("WordTags must be provided as a list.")
+        if not all(isinstance(tag, WordTag) for tag in word_tags):
+            raise ValueError("All items in the word_tags list must be instances of the WordTag class.")
+
+        try:
+            # Simply use addWordTags since we're effectively creating new items
+            self.addWordTags(word_tags)
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ProvisionedThroughputExceededException":
+                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+            elif error_code == "InternalServerError":
+                raise Exception(f"Internal server error: {e}") from e
+            elif error_code == "ValidationException":
+                raise Exception(f"One or more parameters given were invalid: {e}") from e
+            elif error_code == "AccessDeniedException":
+                raise Exception(f"Access denied: {e}") from e
+            else:
+                raise ValueError(f"Error updating word tags: {e}") from e
