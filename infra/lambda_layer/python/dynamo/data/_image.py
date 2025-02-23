@@ -1,3 +1,4 @@
+# infra/lambda_layer/python/dynamo/data/_image.py
 from typing import Optional, List, Tuple, Dict, Union
 from dynamo import (
     Image,

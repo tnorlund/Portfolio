@@ -176,40 +176,62 @@ class _GPTValidation:
         except ClientError as e:
             raise ValueError(f"Error deleting GPTValidations: {e}")
 
-    def listGPTValidations(self) -> List[GPTValidation]:
+    def listGPTValidations(
+        self, limit: Optional[int] = None, lastEvaluatedKey: Optional[Dict] = None
+    ) -> Tuple[List[GPTValidation], Optional[Dict]]:
         """
-        Lists all GPTValidation records in the database.
+        Lists GPTValidation records from the database via a global secondary index.
+        The query uses the GSITYPE index on the "TYPE" attribute where the value is "GPT_VALIDATION".
 
-        Returns:
-            List[GPTValidation]: A list of GPTValidation records.
+        If 'limit' is provided, a single query up to that many items is returned,
+        along with a LastEvaluatedKey for pagination if more records remain.
+        If 'limit' is None, all GPTValidation records are retrieved by paginating until exhausted.
 
-        Raises:
-            Exception: If there is an error querying the database.
+        Parameters
+        ----------
+        limit : int, optional
+            The maximum number of GPTValidation records to return in one query.
+        lastEvaluatedKey : dict, optional
+            The key from which to continue a previous paginated query.
+
+        Returns
+        -------
+        tuple
+            A tuple containing:
+            1) A list of GPTValidation records.
+            2) The LastEvaluatedKey (dict) if more items remain; otherwise, None.
+
+        Raises
+        ------
+        Exception
+            If there is an error querying the database.
         """
         validations = []
         try:
-            response = self._client.query(
-                TableName=self.table_name,
-                IndexName="GSITYPE",  # Assumes you have a GSI indexing on TYPE.
-                KeyConditionExpression="#t = :val",
-                ExpressionAttributeNames={"#t": "TYPE"},
-                ExpressionAttributeValues={":val": {"S": "GPT_VALIDATION"}},
-            )
-            validations.extend(
-                [itemToGPTValidation(item) for item in response["Items"]]
-            )
-            while "LastEvaluatedKey" in response:
-                response = self._client.query(
-                    TableName=self.table_name,
-                    IndexName="GSITYPE",
-                    KeyConditionExpression="#t = :val",
-                    ExpressionAttributeNames={"#t": "TYPE"},
-                    ExpressionAttributeValues={":val": {"S": "GPT_VALIDATION"}},
-                    ExclusiveStartKey=response["LastEvaluatedKey"],
-                )
-                validations.extend(
-                    [itemToGPTValidation(item) for item in response["Items"]]
-                )
-            return validations
+            query_params = {
+                "TableName": self.table_name,
+                "IndexName": "GSITYPE",
+                "KeyConditionExpression": "#t = :val",
+                "ExpressionAttributeNames": {"#t": "TYPE"},
+                "ExpressionAttributeValues": {":val": {"S": "GPT_VALIDATION"}},
+            }
+            if lastEvaluatedKey is not None:
+                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if limit is not None:
+                query_params["Limit"] = limit
+
+            response = self._client.query(**query_params)
+            validations.extend([itemToGPTValidation(item) for item in response["Items"]])
+            if limit is None:
+                # If no limit is provided, continue paginating until all items are retrieved.
+                while "LastEvaluatedKey" in response and response["LastEvaluatedKey"]:
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    response = self._client.query(**query_params)
+                    validations.extend([itemToGPTValidation(item) for item in response["Items"]])
+                lek = None
+            else:
+                lek = response.get("LastEvaluatedKey", None)
+
+            return validations, lek
         except Exception as e:
             raise Exception(f"Error listing GPTValidations: {e}")
