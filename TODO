@@ -87,14 +87,14 @@
 
 ## 6. Wrapper Class Implementation
 
-- [ ] **Core Class Structure**
-  - [ ] Create `ReceiptTrainer` class
-  - [ ] Initialize with configuration parameters:
-    - [ ] W&B project settings
-    - [ ] Model configuration (LayoutLM parameters)
-    - [ ] Training hyperparameters
-    - [ ] AWS/DynamoDB configuration
-    - [ ] Data processing settings
+- [x] **Core Class Structure**
+  - [x] Create `ReceiptTrainer` class
+  - [x] Initialize with configuration parameters:
+    - [x] W&B project settings
+    - [x] Model configuration (LayoutLM parameters)
+    - [x] Training hyperparameters
+    - [x] AWS/DynamoDB configuration
+    - [x] Data processing settings
 
 - [ ] **Data Management**
   - [ ] **Dataset Loading**
