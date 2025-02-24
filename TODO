@@ -97,18 +97,18 @@
     - [x] Data processing settings
 
 - [ ] **Data Management**
-  - [ ] **Dataset Loading**
-    - [ ] Integrate DynamoDB data loading from `dev.make_dataset.py`
-    - [ ] Add SROIE dataset integration from `dev.prepare_sroie.py`
-    - [ ] Create unified data loading pipeline
+  - [x] **Dataset Loading**
+    - [x] Integrate DynamoDB data loading from `dev.make_dataset.py`
+    - [x] Add SROIE dataset integration from `dev.prepare_sroie.py`
+    - [x] Create unified data loading pipeline
   - [ ] **Data Processing**
     - [ ] Port balancing logic from `balance_dataset()`
     - [ ] Implement sliding window functionality from `create_sliding_windows()`
     - [ ] Add data augmentation methods
-  - [ ] **Data Validation**
-    - [ ] Add input validation for DynamoDB data
-    - [ ] Validate combined dataset structure
-    - [ ] Add dataset statistics reporting
+  - [x] **Data Validation**
+    - [x] Add input validation for DynamoDB data
+    - [x] Validate combined dataset structure
+    - [x] Add dataset statistics reporting
 
 - [ ] **Model Management**
   - [ ] **Model Configuration**
