@@ -95,7 +95,12 @@
 
 - [ ] **Hyperparameter Optimization**
   - [x] Set up W&B sweeps configuration
-  - [ ] Implement distributed training support
+  - [x] Implement distributed training support
+    - [x] Added distributed training configuration parameters
+    - [x] Modified training loop for multi-GPU training
+    - [x] Implemented proper data loading for distributed processes
+    - [x] Added process synchronization and cleanup
+    - [x] Created example script for distributed training
   - [ ] Add early stopping for sweeps
   - [ ] Add automated hyperparameter reporting
   - [ ] Implement parallel sweep execution

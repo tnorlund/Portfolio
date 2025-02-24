@@ -286,8 +286,9 @@ class ReceiptTrainer:
         # Set up spot interruption handling
         self._setup_spot_interruption_handler()
         
-        # Initialize W&B if enabled
-        if log_to_wandb and not self.wandb_run:
+        # Initialize W&B if enabled and this is the main process
+        is_main_process = not self.training_config.distributed_training or self.training_config.local_rank in [-1, 0]
+        if log_to_wandb and not self.wandb_run and is_main_process:
             self.initialize_wandb()
             
         # Try to resume training if requested
@@ -302,13 +303,18 @@ class ReceiptTrainer:
                 resume_from_checkpoint=self.last_checkpoint if enable_checkpointing else None
             )
             
-            # Save final model if not interrupted
-            if not self.is_interrupted and enable_checkpointing:
+            # Save final model if not interrupted and this is the main process
+            if not self.is_interrupted and enable_checkpointing and is_main_process:
                 trainer.save_model(self.output_dir)
                 self.logger.info(f"Final model saved to {self.output_dir}")
                 
-            # Log metrics
-            self._log_training_results(train_result)
+            # Log metrics from main process only
+            if is_main_process:
+                self._log_training_results(train_result)
+            
+            # Clean up distributed training
+            if self.training_config.distributed_training:
+                torch.distributed.destroy_process_group()
             
             return train_result
             
@@ -318,7 +324,7 @@ class ReceiptTrainer:
             
         finally:
             # Cleanup
-            if self.wandb_run:
+            if self.wandb_run and is_main_process:
                 self.wandb_run.finish()
             torch.cuda.empty_cache()
 
@@ -657,6 +663,34 @@ class ReceiptTrainer:
             label2id=self.label2id,
             id2label=self.id2label,
         )
+
+        # Set up distributed training if enabled
+        if self.training_config.distributed_training:
+            # Initialize distributed environment
+            if self.training_config.local_rank != -1:
+                torch.cuda.set_device(self.training_config.local_rank)
+                self.device = torch.device("cuda", self.training_config.local_rank)
+                torch.distributed.init_process_group(
+                    backend=self.training_config.ddp_backend,
+                    world_size=self.training_config.world_size,
+                    rank=self.training_config.local_rank,
+                )
+                self.logger.info(f"Initialized distributed training with rank {self.training_config.local_rank}")
+
+                # Convert BatchNorm to SyncBatchNorm if enabled
+                if self.training_config.sync_bn:
+                    self.model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(self.model)
+                    self.logger.info("Converted BatchNorm layers to SyncBatchNorm")
+
+                # Wrap model with DistributedDataParallel
+                self.model = torch.nn.parallel.DistributedDataParallel(
+                    self.model,
+                    device_ids=[self.training_config.local_rank],
+                    output_device=self.training_config.local_rank,
+                    find_unused_parameters=self.training_config.find_unused_parameters,
+                )
+                self.logger.info("Model wrapped with DistributedDataParallel")
+
         self.model.to(self.device)
 
         # Create training arguments
@@ -669,7 +703,7 @@ class ReceiptTrainer:
             weight_decay=self.training_config.weight_decay,
             max_grad_norm=self.training_config.max_grad_norm,
             warmup_ratio=self.training_config.warmup_ratio,
-            bf16=self.training_config.bf16 and self.device == "cuda",
+            bf16=self.training_config.bf16 and self.device.type == "cuda",
             evaluation_strategy="steps",
             eval_steps=self.training_config.evaluation_steps,
             save_strategy="steps",
@@ -678,6 +712,10 @@ class ReceiptTrainer:
             load_best_model_at_end=True,
             metric_for_best_model="eval_loss",
             greater_is_better=False,
+            # Distributed training arguments
+            local_rank=self.training_config.local_rank,
+            ddp_backend=self.training_config.ddp_backend if self.training_config.distributed_training else None,
+            dataloader_num_workers=4 if self.training_config.distributed_training else 0,
         )
 
         self.logger.info("Training configuration complete")
@@ -1059,31 +1097,44 @@ class ReceiptTrainer:
             output_path: Path where to save the model
         
         Raises:
-            ValueError: If model or tokenizer is not initialized
+            ValueError: If model or tokenizer is not initialized, or if validation fails
         """
         if not self.model or not self.tokenizer:
             raise ValueError("Model and tokenizer must be initialized before saving")
         
         self.logger.info(f"Saving model to {output_path}")
         
-        # Create output directory if it doesn't exist
-        os.makedirs(output_path, exist_ok=True)
-        
-        # Save model
-        self.model.save_pretrained(output_path)
-        
-        # Save tokenizer
-        self.tokenizer.save_pretrained(output_path)
-        
-        # Save label mappings
-        if hasattr(self, 'label_list'):
-            label_config = {
-                'label_list': self.label_list,
-                'label2id': self.label2id,
-                'id2label': self.id2label,
-                'num_labels': self.num_labels
-            }
-            with open(os.path.join(output_path, 'label_config.json'), 'w') as f:
-                json.dump(label_config, f)
-        
-        self.logger.info("Model saved successfully")
+        try:
+            # Create output directory if it doesn't exist
+            os.makedirs(output_path, exist_ok=True)
+            
+            # Save model
+            self.model.save_pretrained(output_path)
+            
+            # Save tokenizer
+            self.tokenizer.save_pretrained(output_path)
+            
+            # Save label mappings
+            if hasattr(self, 'label_list'):
+                label_config = {
+                    'label_list': self.label_list,
+                    'label2id': self.label2id,
+                    'id2label': self.id2label,
+                    'num_labels': self.num_labels
+                }
+                with open(os.path.join(output_path, 'label_config.json'), 'w') as f:
+                    json.dump(label_config, f)
+            
+            # Validate saved model
+            try:
+                AutoModel.from_pretrained(output_path)
+                AutoTokenizer.from_pretrained(output_path)
+            except Exception as e:
+                raise ValueError(f"Model validation failed: {str(e)}")
+            
+            self.logger.info("Model saved successfully")
+            
+        except ValueError as ve:
+            raise ve
+        except Exception as e:
+            raise Exception(f"Failed to save model: {str(e)}")

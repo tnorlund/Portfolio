@@ -385,6 +385,11 @@ def test_configure_training(trainer, mock_dataset, mock_tokenizer, tmp_path, moc
     trainer.tokenizer = mock_tokenizer
     output_dir = str(tmp_path / "checkpoints")
 
+    # Mock device
+    mock_device = mocker.Mock()
+    mock_device.type = "cpu"
+    trainer.device = mock_device
+
     mock_model = mocker.Mock()
     mock_model_init = mocker.patch(
         "transformers.LayoutLMForTokenClassification.from_pretrained",
@@ -434,26 +439,35 @@ def test_save_model(trainer, mock_model, mock_tokenizer, tmp_path, mocker):
     trainer.num_labels = 3
     output_path = str(tmp_path / "saved_model")
 
-    # Mock save_pretrained to create necessary files
+    # Mock save_pretrained to create necessary files with correct model type
     def mock_save_pretrained(path):
         os.makedirs(path, exist_ok=True)
+        config = {
+            "model_type": "layoutlm",
+            "architectures": ["LayoutLMForTokenClassification"],
+            "num_labels": 3,
+            "id2label": {0: "O", 1: "B-total", 2: "I-total"},
+            "label2id": {"O": 0, "B-total": 1, "I-total": 2}
+        }
         with open(os.path.join(path, "config.json"), "w") as f:
-            json.dump({"mock": "config"}, f)
-    
+            json.dump(config, f)
+
     mock_model.save_pretrained.side_effect = mock_save_pretrained
     mock_tokenizer.save_pretrained.side_effect = mock_save_pretrained
 
-    # Mock AutoModel.from_pretrained to succeed
+    # Mock AutoModel and AutoTokenizer
     mock_auto_model = mocker.patch("transformers.AutoModel.from_pretrained")
     mock_auto_model.return_value = mocker.Mock()
+    mock_auto_tokenizer = mocker.patch("transformers.AutoTokenizer.from_pretrained")
+    mock_auto_tokenizer.return_value = mocker.Mock()
 
     # Test successful save
     trainer.save_model(output_path)
 
-    # Verify directories and files were created
+    # Verify the model and tokenizer were saved
     assert os.path.exists(output_path)
-    assert os.path.exists(os.path.join(output_path, "label_config.json"))
     assert os.path.exists(os.path.join(output_path, "config.json"))
+    assert os.path.exists(os.path.join(output_path, "label_config.json"))
 
     # Verify model and tokenizer were saved
     trainer.model.save_pretrained.assert_called_once_with(output_path)
@@ -495,10 +509,27 @@ def test_save_model_errors(trainer, tmp_path, mocker):
 
     # Reset side effect for next test
     mock_model.save_pretrained.side_effect = None
+    mock_model.save_pretrained.return_value = None
+    mock_tokenizer.save_pretrained.return_value = None
 
-    # Test validation failure
+    # Mock AutoModel and AutoTokenizer for validation
     mock_auto_model = mocker.patch("transformers.AutoModel.from_pretrained")
-    mock_auto_model.side_effect = Exception("Validation failed")
+    mock_auto_tokenizer = mocker.patch("transformers.AutoTokenizer.from_pretrained")
+    
+    # Make validation fail by raising an exception
+    mock_auto_model.side_effect = Exception("Model validation failed")
+    mock_auto_tokenizer.side_effect = Exception("Tokenizer validation failed")
+    
+    # Mock the save_pretrained methods to create necessary files
+    def mock_save_pretrained(path):
+        os.makedirs(path, exist_ok=True)
+        with open(os.path.join(path, "config.json"), "w") as f:
+            json.dump({"mock": "config"}, f)
+    
+    mock_model.save_pretrained.side_effect = mock_save_pretrained
+    mock_tokenizer.save_pretrained.side_effect = mock_save_pretrained
+
+    # This should now raise a ValueError due to validation failure
     with pytest.raises(ValueError) as exc_info:
         trainer.save_model(output_path)
-    assert "Saved model validation failed" in str(exc_info.value)
+    assert "Model validation failed" in str(exc_info.value)

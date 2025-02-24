@@ -20,6 +20,13 @@ class TrainingConfig:
     logging_steps: int = 50
     bf16: bool = True  # Use bfloat16 precision
     early_stopping_patience: int = 5
+    # Distributed training parameters
+    distributed_training: bool = False
+    local_rank: int = -1  # Process rank within node
+    world_size: int = 1  # Total number of processes
+    ddp_backend: str = "nccl"  # DDP backend (nccl for GPU, gloo for CPU)
+    find_unused_parameters: bool = False  # Whether to find unused parameters in DDP
+    sync_bn: bool = False  # Whether to use SyncBatchNorm in distributed training
 
 
 class DataConfig:
