@@ -2,21 +2,53 @@
 
 import os
 from receipt_trainer import ReceiptTrainer, TrainingConfig, DataConfig
+from receipt_trainer.utils.aws import get_dynamo_table
+
+
+def validate_environment():
+    """Validate that all required environment variables are set.
+
+    Raises:
+        ValueError: If any required environment variable is missing or empty.
+    """
+    required_vars = {
+        "WANDB_API_KEY": "API key for Weights & Biases",
+        "HF_TOKEN": "Hugging Face token for accessing models",
+        "AWS_ACCESS_KEY_ID": "AWS access key for DynamoDB and S3",
+        "AWS_SECRET_ACCESS_KEY": "AWS secret key for DynamoDB and S3",
+        "AWS_DEFAULT_REGION": "AWS region for services",
+        "CHECKPOINT_BUCKET": "S3 bucket for checkpoints",
+    }
+
+    missing_vars = []
+    for var, description in required_vars.items():
+        if not os.getenv(var):
+            missing_vars.append(f"{var} ({description})")
+
+    if missing_vars:
+        raise ValueError(
+            "Missing required environment variables:\n"
+            + "\n".join(f"- {var}" for var in missing_vars)
+        )
 
 
 def main():
     """Run the training example with spot instance handling."""
-    # Set environment variables (in production, use a .env file or environment)
-    os.environ.update(
-        {
-            "WANDB_API_KEY": "your-wandb-key",
-            "HF_TOKEN": "your-hf-token",
-            "AWS_ACCESS_KEY_ID": "your-aws-key",
-            "AWS_SECRET_ACCESS_KEY": "your-aws-secret",
-            "AWS_DEFAULT_REGION": "us-west-2",
-            "CHECKPOINT_BUCKET": "your-checkpoint-bucket",  # S3 bucket for checkpoints
-        }
-    )
+
+    # Validate environment variables
+    validate_environment()
+
+    try:
+        # Get DynamoDB table name from Pulumi stack
+        dynamo_table = get_dynamo_table(env="prod")
+        if not dynamo_table:
+            raise ValueError(
+                "Could not find DynamoDB table name in Pulumi stack outputs"
+            )
+    except Exception as e:
+        print(f"Error getting DynamoDB table name: {str(e)}")
+        print("Please ensure you have proper AWS credentials and permissions")
+        raise
 
     # Create configurations with spot-instance-friendly settings
     training_config = TrainingConfig(
@@ -36,20 +68,31 @@ def main():
         env="prod",  # Use production DynamoDB table
     )
 
-    # Initialize trainer
+    # Initialize trainer with DynamoDB table
     trainer = ReceiptTrainer(
         wandb_project="receipt-training",
         model_name="microsoft/layoutlm-base-uncased",
         training_config=training_config,
         data_config=data_config,
+        dynamo_table=dynamo_table,  # Pass the DynamoDB table name
     )
 
     try:
+        # Initialize DynamoDB client explicitly
+        trainer.initialize_dynamo()
+
         # Load and prepare data
         dataset = trainer.load_data()
-        print(
-            f"Loaded dataset with {len(dataset['train'])} training and {len(dataset['validation'])} validation examples"
-        )
+        
+        # Convert data to the expected format for balancing
+        if len(dataset) > 0:
+            print(
+                f"Loaded dataset with {len(dataset['train'])} training and "
+                f"{len(dataset['validation'])} validation examples"
+            )
+        else:
+            print("Warning: No data was loaded from either DynamoDB or SROIE dataset")
+            return
 
         # Initialize model and W&B
         trainer.initialize_model()
@@ -57,7 +100,7 @@ def main():
 
         # Configure and start training with spot instance handling
         trainer.configure_training()
-        
+
         # Start training with spot instance handling enabled
         trainer.train(
             enable_checkpointing=True,  # Enable checkpointing for spot instances
@@ -69,7 +112,7 @@ def main():
     except KeyboardInterrupt:
         print("\nTraining interrupted by user. Saving checkpoint...")
         trainer.save_checkpoint("interrupt_checkpoint")
-        
+
     except Exception as e:
         print(f"Training failed: {str(e)}")
         # Even on failure, try to save a checkpoint

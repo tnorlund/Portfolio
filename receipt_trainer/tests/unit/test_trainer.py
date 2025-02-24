@@ -347,7 +347,7 @@ def mock_dataset():
     train_data = Dataset.from_dict(
         {
             "words": [["word1", "word2"], ["word3", "word4"]],
-            "bbox": [[[1, 2, 3, 4], [5, 6, 7, 8]], [[9, 10, 11, 12], [13, 14, 15, 16]]],
+            "bboxes": [[[1, 2, 3, 4], [5, 6, 7, 8]], [[9, 10, 11, 12], [13, 14, 15, 16]]],
             "labels": [["O", "B-total"], ["I-total", "O"]],
             "image_id": ["id1", "id2"],
         }
@@ -355,7 +355,7 @@ def mock_dataset():
     val_data = Dataset.from_dict(
         {
             "words": [["word5", "word6"]],
-            "bbox": [[[17, 18, 19, 20], [21, 22, 23, 24]]],
+            "bboxes": [[[17, 18, 19, 20], [21, 22, 23, 24]]],
             "labels": [["B-total", "I-total"]],
             "image_id": ["id3"],
         }

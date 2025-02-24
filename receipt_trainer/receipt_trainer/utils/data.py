@@ -50,7 +50,7 @@ def process_receipt_details(
         center_y = (y1 + y2) / 2
 
         # Scale to 0-1000 maintaining aspect ratio
-        normalized_bbox = [
+        normalized_bboxes = [
             int(x1 * scaled_width),
             int(y1 * scaled_height),
             int(x2 * scaled_width),
@@ -60,7 +60,7 @@ def process_receipt_details(
         word_data.append(
             {
                 "text": word.text,
-                "bbox": normalized_bbox,
+                "bboxes": normalized_bboxes,
                 "base_label": tag_label,
                 "word_id": word.word_id,
                 "line_id": word.line_id,
@@ -98,12 +98,12 @@ def process_receipt_details(
             iob_label = f"I-{base_label}" if is_continuation else f"B-{base_label}"
 
         processed_words.append(
-            {"text": word["text"], "bbox": word["bbox"], "label": iob_label}
+            {"text": word["text"], "bboxes": word["bboxes"], "label": iob_label}
         )
 
     return {
         "words": [w["text"] for w in processed_words],
-        "bboxes": [w["bbox"] for w in processed_words],
+        "bboxes": [w["bboxes"] for w in processed_words],
         "labels": [w["label"] for w in processed_words],
         "image_id": receipt.image_id,
         "receipt_id": receipt.receipt_id,
@@ -177,7 +177,7 @@ def balance_dataset(
     """Balance dataset with focus on entity distribution.
     
     Args:
-        examples: Dictionary containing 'words', 'bbox', 'labels', and optionally 'image_id' lists
+        examples: Dictionary containing 'words', 'bboxes', 'labels', and optionally 'image_id' lists
         target_entity_ratio: Target ratio of entity tokens to total tokens
     
     Returns:
@@ -201,7 +201,7 @@ def balance_dataset(
     image_ids = examples.get("image_id", [None] * len(examples["words"]))
 
     for words, bboxes, labels, image_id in zip(
-        examples["words"], examples["bbox"], examples["labels"], image_ids
+        examples["words"], examples["bboxes"], examples["labels"], image_ids
     ):
         i = 0
         while i < len(labels):
@@ -220,7 +220,7 @@ def balance_dataset(
 
                 span = {
                     "words": words[start:end],
-                    "bbox": bboxes[start:end],
+                    "bboxes": bboxes[start:end],
                     "labels": labels[start:end],
                     "entity_start": i - start,  # Track where entity starts in window
                     "entity_end": j - start,
@@ -246,7 +246,7 @@ def balance_dataset(
     # 3. Convert back to dataset format
     result = {
         "words": [s["words"] for s in balanced_data],
-        "bbox": [s["bbox"] for s in balanced_data],
+        "bboxes": [s["bboxes"] for s in balanced_data],
         "labels": [s["labels"] for s in balanced_data],
     }
     
@@ -261,14 +261,14 @@ def augment_example(examples: Dict[str, List[Any]]) -> Dict[str, List[Any]]:
     """Augment examples with random bbox shifts.
     
     Args:
-        examples: Dictionary containing 'words', 'bbox', 'labels', and optionally 'image_id' lists
+        examples: Dictionary containing 'words', 'bboxes', 'labels', and optionally 'image_id' lists
     
     Returns:
         Dictionary containing augmented examples
     """
     augmented_bboxes = []
 
-    for bbox_list in examples["bbox"]:
+    for bbox_list in examples["bboxes"]:
         # Randomly shift all bboxes in this example
         if random.random() < 0.5:
             shift = random.randint(-20, 20)
@@ -288,4 +288,4 @@ def augment_example(examples: Dict[str, List[Any]]) -> Dict[str, List[Any]]:
             augmented_bboxes.append(bbox_list)
 
     # Return augmented examples, preserving all fields including image_id
-    return {**examples, "bbox": augmented_bboxes}
+    return {**examples, "bboxes": augmented_bboxes}

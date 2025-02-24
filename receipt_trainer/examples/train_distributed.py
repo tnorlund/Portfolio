@@ -1,6 +1,7 @@
 """Example script demonstrating how to use distributed training with Receipt Trainer."""
 
 import os
+import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
 from receipt_trainer import ReceiptTrainer, TrainingConfig, DataConfig

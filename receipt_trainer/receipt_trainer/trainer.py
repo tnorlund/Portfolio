@@ -26,6 +26,12 @@ import random
 import seaborn as sns
 from collections import defaultdict
 from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix, classification_report
+import threading
+import time
+import glob
+
+# Set tokenizer parallelism to false to avoid deadlocks
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 from receipt_trainer.config import TrainingConfig, DataConfig
 from receipt_trainer.utils.data import (
@@ -66,6 +72,16 @@ class ReceiptTrainer:
         self.model_name = model_name
         self.training_config = training_config or TrainingConfig()
         self.data_config = data_config or DataConfig()
+        
+        # Ensure we have a valid cache directory
+        if not self.data_config.cache_dir:
+            self.data_config.cache_dir = os.path.join(
+                os.path.expanduser("~/.cache"),
+                "receipt_trainer"
+            )
+            self.logger.info(f"No cache directory specified, using default: {self.data_config.cache_dir}")
+        os.makedirs(self.data_config.cache_dir, exist_ok=True)
+        
         self.dynamo_table = dynamo_table
         
         # Initialize components as None
@@ -239,28 +255,56 @@ class ReceiptTrainer:
         Args:
             run_id: Optional W&B run ID to resume from
         """
-        # Try to download checkpoint from S3
-        checkpoint_dir = self._download_checkpoint_from_s3(run_id)
+        checkpoint_dir = None
+        
+        # First try to find local checkpoint
+        if self.output_dir:
+            local_checkpoint = os.path.join(self.output_dir, "checkpoint-*")
+            checkpoints = sorted(
+                glob.glob(local_checkpoint),
+                key=lambda x: int(x.split("-")[-1])
+            )
+            if checkpoints:
+                checkpoint_dir = checkpoints[-1]  # Use the latest checkpoint
+                self.logger.info(f"Found local checkpoint: {checkpoint_dir}")
+                self.last_checkpoint = checkpoint_dir
+                return checkpoint_dir
+            
+        # If no local checkpoint, try S3
+        if not checkpoint_dir:
+            checkpoint_dir = self._download_checkpoint_from_s3(run_id)
         
         if not checkpoint_dir:
-            self.logger.warning("No checkpoint found in S3, starting fresh training")
+            self.logger.warning("No checkpoints found locally or in S3, starting fresh training")
             return
-            
-        # Load model and tokenizer from checkpoint
-        self.model = AutoModel.from_pretrained(checkpoint_dir)
-        self.tokenizer = AutoTokenizer.from_pretrained(checkpoint_dir)
         
-        # Load training state if available
-        training_state_path = os.path.join(checkpoint_dir, 'training_state.pt')
-        if os.path.exists(training_state_path):
-            training_state = torch.load(training_state_path)
-            self.optimizer.load_state_dict(training_state['optimizer_state_dict'])
-            if training_state['scheduler_state_dict'] and self.scheduler:
-                self.scheduler.load_state_dict(training_state['scheduler_state_dict'])
-            self.current_epoch = training_state['epoch']
-            self.global_step = training_state['global_step']
+        # Load model and tokenizer from checkpoint
+        try:
+            self.model = LayoutLMForTokenClassification.from_pretrained(
+                checkpoint_dir,
+                num_labels=self.num_labels,
+                label2id=self.label2id,
+                id2label=self.id2label,
+            )
+            self.tokenizer = LayoutLMTokenizerFast.from_pretrained(checkpoint_dir)
             
-        self.logger.info(f"Resumed training from checkpoint at step {self.global_step}")
+            # Load training state if available
+            training_state_path = os.path.join(checkpoint_dir, "training_state.pt")
+            if os.path.exists(training_state_path):
+                training_state = torch.load(training_state_path)
+                if hasattr(self, "optimizer"):
+                    self.optimizer.load_state_dict(training_state["optimizer_state_dict"])
+                if hasattr(self, "scheduler") and training_state["scheduler_state_dict"]:
+                    self.scheduler.load_state_dict(training_state["scheduler_state_dict"])
+                self.current_epoch = training_state["epoch"]
+                self.global_step = training_state["global_step"]
+            
+            self.logger.info(f"Resumed training from checkpoint at step {self.global_step}")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to load checkpoint: {e}")
+            self.logger.warning("Starting fresh training")
+            return None
 
     def train(
         self,
@@ -282,13 +326,19 @@ class ReceiptTrainer:
         if not self.model or not self.training_args:
             raise ValueError("Training must be configured before starting training")
             
-        # Set up spot interruption handling
-        self._setup_spot_interruption_handler()
-        
         # Initialize W&B if enabled and this is the main process
         is_main_process = not self.training_config.distributed_training or self.training_config.local_rank in [-1, 0]
+        
+        # Set up spot interruption handling only in main thread
+        if threading.current_thread() is threading.main_thread():
+            self._setup_spot_interruption_handler()
+            
         if log_to_wandb and not self.wandb_run and is_main_process:
-            self.initialize_wandb()
+            try:
+                self.initialize_wandb()
+            except Exception as e:
+                self.logger.warning(f"Failed to initialize W&B: {e}. Continuing without W&B logging.")
+                log_to_wandb = False
             
         # Try to resume training if requested
         if resume_training:
@@ -308,8 +358,11 @@ class ReceiptTrainer:
                 self.logger.info(f"Final model saved to {self.output_dir}")
                 
             # Log metrics from main process only
-            if is_main_process:
-                self._log_training_results(train_result)
+            if is_main_process and log_to_wandb and self.wandb_run:
+                try:
+                    self._log_training_results(train_result)
+                except Exception as e:
+                    self.logger.warning(f"Failed to log results to W&B: {e}")
             
             # Clean up distributed training
             if self.training_config.distributed_training:
@@ -324,7 +377,10 @@ class ReceiptTrainer:
         finally:
             # Cleanup
             if self.wandb_run and is_main_process:
-                self.wandb_run.finish()
+                try:
+                    self.wandb_run.finish()
+                except Exception as e:
+                    self.logger.warning(f"Failed to finish W&B run cleanly: {e}")
             torch.cuda.empty_cache()
 
     def initialize_model(self):
@@ -339,9 +395,60 @@ class ReceiptTrainer:
 
         self.logger.info("Model and tokenizer initialized")
 
+    def _check_wandb_setup(self) -> bool:
+        """Check if W&B is properly set up.
+        
+        Returns:
+            bool: True if W&B is properly configured, False otherwise
+        """
+        try:
+            # Check if wandb is installed
+            import wandb
+            
+            # Check if user is logged in
+            if not wandb.api.api_key:
+                self.logger.error(
+                    "\nW&B not logged in. Please follow these steps:\n"
+                    "1. Run `pip install wandb` if not installed\n"
+                    "2. Run `wandb login` and follow the instructions\n"
+                    "3. Get your API key from https://wandb.ai/settings\n"
+                    "4. Set your API key when prompted by `wandb login`"
+                )
+                return False
+                
+            # Check if WANDB_MODE is set correctly
+            if os.environ.get("WANDB_MODE") == "offline":
+                self.logger.warning(
+                    "\nW&B is set to offline mode. To enable online syncing:\n"
+                    "1. Run `wandb online` in your terminal\n"
+                    "2. Set environment variable: export WANDB_MODE=online\n"
+                    "   or add os.environ['WANDB_MODE'] = 'online' to your script"
+                )
+                return False
+                
+            return True
+            
+        except ImportError:
+            self.logger.error(
+                "\nW&B not installed. Please install it with:\n"
+                "pip install wandb"
+            )
+            return False
+        except Exception as e:
+            self.logger.error(f"Error checking W&B setup: {str(e)}")
+            return False
+
     def initialize_wandb(self, config: Optional[Dict[str, Any]] = None):
-        """Initialize Weights & Biases for experiment tracking."""
+        """Initialize Weights & Biases for experiment tracking.
+        
+        Args:
+            config: Optional configuration dictionary to log to W&B
+        """
         self.logger.info("Initializing W&B...")
+
+        # Check W&B setup first
+        if not self._check_wandb_setup():
+            self.logger.warning("W&B setup incomplete. Will attempt to continue in offline mode.")
 
         if config is None:
             config = {
@@ -350,13 +457,44 @@ class ReceiptTrainer:
                 "data": self.data_config.__dict__,
             }
 
-        self.wandb_run = wandb.init(
-            project=self.wandb_project,
-            config=config,
-            resume=True,
-        )
-
-        self.logger.info(f"W&B initialized: {self.wandb_run.name}")
+        # First try to initialize in online mode
+        try:
+            # Force online mode
+            os.environ["WANDB_MODE"] = "online"
+            
+            self.wandb_run = wandb.init(
+                project=self.wandb_project,
+                config=config,
+                resume=True,
+                mode="online"
+            )
+            self.logger.info(f"W&B initialized in online mode: {self.wandb_run.name}")
+            return
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to initialize W&B in online mode: {e}")
+            self.logger.warning("Attempting to initialize in offline mode...")
+            
+            try:
+                # Fall back to offline mode
+                os.environ["WANDB_MODE"] = "offline"
+                self.wandb_run = wandb.init(
+                    project=self.wandb_project,
+                    config=config,
+                    resume=True,
+                    mode="offline"
+                )
+                self.logger.warning(
+                    "W&B initialized in offline mode. To sync to W&B cloud:\n"
+                    "1. Ensure you are logged in (`wandb login`)\n"
+                    "2. Run `wandb online` in your terminal\n"
+                    "3. Set WANDB_MODE=online in your environment\n"
+                    "4. Run your training script again"
+                )
+            except Exception as offline_error:
+                self.logger.error(f"Failed to initialize W&B in offline mode: {offline_error}")
+                self.logger.error("Continuing without W&B logging")
+                self.wandb_run = None
 
     def initialize_dynamo(self):
         """Initialize DynamoDB client."""
@@ -481,6 +619,118 @@ class ReceiptTrainer:
         )
         return {"train": train_data, "test": test_data}
 
+    def encode_example_for_layoutlm(self, example, tokenizer, label2id):
+        """Encode a single example for LayoutLM model.
+        
+        Args:
+            example: Dictionary containing words, bboxes, and labels
+            tokenizer: LayoutLM tokenizer
+            label2id: Label to ID mapping
+            
+        Returns:
+            Dictionary containing encoded inputs
+        """
+        # Convert words to token IDs with special tokens
+        tokens = []
+        token_boxes = []
+        token_labels = []
+
+        # Add CLS token at start
+        tokens.append(tokenizer.cls_token_id)
+        token_boxes.append([0, 0, 0, 0])
+        token_labels.append(-100)  # Special tokens get -100
+
+        # Process each word
+        for word, box, label in zip(example["words"], example["bboxes"], example["labels"]):
+            # Tokenize word into subwords
+            word_tokens = tokenizer.tokenize(word)
+            word_ids = tokenizer.convert_tokens_to_ids(word_tokens)
+            
+            # Add tokens and replicate box for each subword
+            tokens.extend(word_ids)
+            token_boxes.extend([box] * len(word_ids))
+            
+            # First subword gets the label, rest get -100
+            if label in label2id:  # Only convert valid labels
+                token_labels.append(label2id[label])
+                token_labels.extend([-100] * (len(word_ids) - 1))
+            else:
+                token_labels.extend([-100] * len(word_ids))
+
+        # Add SEP token at end
+        tokens.append(tokenizer.sep_token_id)
+        token_boxes.append([0, 0, 0, 0])
+        token_labels.append(-100)
+
+        # Pad or truncate to max length
+        padding_length = 512 - len(tokens)
+        if padding_length > 0:
+            # Pad
+            tokens.extend([tokenizer.pad_token_id] * padding_length)
+            token_boxes.extend([[0, 0, 0, 0]] * padding_length)
+            token_labels.extend([-100] * padding_length)
+        else:
+            # Truncate
+            tokens = tokens[:512]
+            token_boxes = token_boxes[:512]
+            token_labels = token_labels[:512]
+
+        # Create attention mask (1 for real tokens, 0 for padding)
+        attention_mask = [1] * min(len(example["words"]) + 2, 512)  # +2 for CLS and SEP
+        attention_mask.extend([0] * max(512 - len(attention_mask), 0))
+
+        # Normalize box coordinates
+        normalized_boxes = []
+        for box in token_boxes:
+            normalized_boxes.append([
+                min(max(0, int(coord)), 1000) for coord in box
+            ])
+
+        return {
+            "input_ids": tokens,
+            "attention_mask": attention_mask,
+            "bbox": normalized_boxes,
+            "labels": token_labels,
+        }
+
+    def _preprocess_dataset(self, dataset: Dataset) -> Dataset:
+        """Preprocess dataset by encoding inputs for LayoutLM.
+        
+        Args:
+            dataset: Raw dataset with words, bboxes, and labels
+            
+        Returns:
+            Processed dataset with encoded inputs
+        """
+        # Create a preprocessing function that uses the class tokenizer and label mappings
+        def preprocess_function(example):
+            return self.encode_example_for_layoutlm(
+                example,
+                tokenizer=self.tokenizer,
+                label2id=self.label2id
+            )
+
+        # Apply preprocessing to each split with caching enabled
+        processed_dataset = {}
+        for split, data in dataset.items():
+            self.logger.info(f"Preprocessing {split} split...")
+            # Enable caching by providing a descriptive cache_file_name
+            cache_dir = os.path.join(self.data_config.cache_dir, "preprocessed")
+            os.makedirs(cache_dir, exist_ok=True)
+            
+            processed_dataset[split] = data.map(
+                preprocess_function,
+                load_from_cache_file=True,
+                cache_file_name=os.path.join(
+                    cache_dir,
+                    f"layoutlm_processed_{split}_{self.model_name.replace('/', '_')}"
+                ),
+                desc=f"Preprocessing {split} split"
+            )
+            self.logger.info(f"Finished preprocessing {split} split")
+        
+        return DatasetDict(processed_dataset)
+
     def load_data(
         self,
         use_sroie: bool = True,
@@ -502,10 +752,29 @@ class ReceiptTrainer:
         self.logger.info(f"Balance ratio: {balance_ratio}")
         self.logger.info(f"Augment: {augment}")
 
+        # Initialize tokenizer if not already done
+        if not self.tokenizer:
+            self.logger.info("Initializing tokenizer before data loading...")
+            self.initialize_model()
+
         # Load data from DynamoDB
         self.logger.info("Loading data from DynamoDB...")
-        examples = self._load_dynamo_data()
-        self.logger.info(f"Loaded {len(examples)} receipts from DynamoDB")
+        dynamo_examples = self._load_dynamo_data()
+        self.logger.info(f"Loaded {len(dynamo_examples)} receipts from DynamoDB")
+
+        # Convert DynamoDB data to list format
+        examples = {
+            "words": [],
+            "bboxes": [],
+            "labels": [],
+            "image_id": []
+        }
+        
+        for example in dynamo_examples.values():
+            examples["words"].append(example["words"])
+            examples["bboxes"].append(example["bboxes"])
+            examples["labels"].append(example["labels"])
+            examples["image_id"].append(example["image_id"])
 
         # Load SROIE dataset if requested
         if use_sroie:
@@ -518,25 +787,27 @@ class ReceiptTrainer:
             sroie_examples = {"train": [], "test": []}
 
         # Balance dataset if requested and if we have examples
-        if balance_ratio > 0 and examples:
+        if balance_ratio > 0 and len(examples["words"]) > 0:
             self.logger.info(f"Balancing dataset with target ratio {balance_ratio}...")
             examples = balance_dataset(examples, target_entity_ratio=balance_ratio)
 
         # Apply data augmentation if requested and if we have examples
-        if augment and examples:
+        if augment and len(examples["words"]) > 0:
             self.logger.info("Applying data augmentation...")
             examples = augment_example(examples)
 
         # Create sliding windows
         self.logger.info(f"Creating sliding windows of size {self.data_config.window_size}...")
         train_windows = []
-        if examples:  # Only process if we have examples
-            for example in examples:
+        
+        # Process DynamoDB examples
+        if len(examples["words"]) > 0:
+            for i in range(len(examples["words"])):
                 windows = create_sliding_windows(
-                    example["words"],
-                    example["bboxes"],
-                    example["labels"],
-                    image_id=example.get("image_id"),  # Pass image_id if it exists
+                    examples["words"][i],
+                    examples["bboxes"][i],
+                    examples["labels"][i],
+                    image_id=examples["image_id"][i],
                     window_size=self.data_config.window_size,
                     overlap=self.data_config.window_overlap,
                 )
@@ -545,13 +816,13 @@ class ReceiptTrainer:
         # Process SROIE examples
         sroie_train_windows = []
         sroie_test_windows = []
-        for split, examples in sroie_examples.items():
-            for example in examples:
+        for split, split_examples in sroie_examples.items():
+            for example in split_examples:
                 windows = create_sliding_windows(
                     example["words"],
                     example["bboxes"],
                     example["labels"],
-                    image_id=example.get("image_id"),  # Pass image_id if it exists
+                    image_id=example.get("image_id"),
                     window_size=self.data_config.window_size,
                     overlap=self.data_config.window_overlap,
                 )
@@ -581,7 +852,22 @@ class ReceiptTrainer:
         self._print_dataset_statistics(train_dataset, "Train")
         self._print_dataset_statistics(val_dataset, "Validation")
 
-        return DatasetDict({"train": train_dataset, "validation": val_dataset})
+        # Create dataset dictionary
+        dataset_dict = DatasetDict({"train": train_dataset, "validation": val_dataset})
+
+        # Create label mappings before preprocessing
+        unique_labels = set()
+        for split in dataset_dict.values():
+            for label_sequence in split["labels"]:
+                unique_labels.update(label_sequence)
+        self.label_list = sorted(list(unique_labels))
+        self.num_labels = len(self.label_list)
+        self.label2id = {label: i for i, label in enumerate(self.label_list)}
+        self.id2label = {i: label for label, i in self.label2id.items()}
+        self.logger.info(f"Found {self.num_labels} unique labels")
+
+        # Now preprocess with tokenizer and label mappings in place
+        return self._preprocess_dataset(dataset_dict)
 
     def _print_dataset_statistics(self, dataset: Dataset, split_name: str):
         """Print statistics about the loaded dataset."""
@@ -625,104 +911,153 @@ class ReceiptTrainer:
         Args:
             output_dir: Directory to save model checkpoints
             **kwargs: Additional training configuration parameters
+
+        Raises:
+            ValueError: If dataset validation fails or model initialization fails
+            OSError: If output directory cannot be created
         """
-        self.logger.info("Configuring training...")
+        self.logger.info("Starting training configuration...")
 
-        if not self.dataset:
-            raise ValueError("Dataset must be loaded before configuring training")
+        # Initialize model if not done yet (tokenizer should already be initialized)
+        if not self.model:
+            self.logger.info("Initializing model...")
+            try:
+                # Model will be initialized with correct number of labels
+                self.model = LayoutLMForTokenClassification.from_pretrained(
+                    self.model_name,
+                    num_labels=self.num_labels,
+                    label2id=self.label2id,
+                    id2label=self.id2label,
+                )
+                self.logger.info(f"Successfully initialized model: {self.model_name}")
+            except Exception as e:
+                raise ValueError(f"Failed to initialize model: {str(e)}")
 
-        if not self.tokenizer:
-            raise ValueError("Model and tokenizer must be initialized before configuring training")
+        # Load dataset if not already loaded
+        if not hasattr(self, 'dataset') or not self.dataset:
+            self.logger.info("Loading dataset...")
+            try:
+                self.dataset = self.load_data()  # This now handles tokenizer initialization and preprocessing
+                self.logger.info("Successfully loaded dataset")
+            except Exception as e:
+                raise ValueError(f"Failed to load dataset: {str(e)}")
 
         # Update training config with any provided kwargs
+        self.logger.info("Updating training configuration...")
         for key, value in kwargs.items():
             if hasattr(self.training_config, key):
+                self.logger.debug(f"Setting {key} = {value}")
                 setattr(self.training_config, key, value)
             else:
                 self.logger.warning(f"Unknown training config parameter: {key}")
 
-        # Set up output directory
-        self.output_dir = output_dir or os.path.join(self.data_config.cache_dir, "checkpoints")
-        os.makedirs(self.output_dir, exist_ok=True)
+        # Set up output directory with path validation
+        try:
+            if output_dir:
+                self.output_dir = output_dir
+            else:
+                # Use cache_dir from data_config if available, otherwise use a default
+                cache_dir = getattr(self.data_config, 'cache_dir', None)
+                if not cache_dir:
+                    # Default to a directory in the user's home directory
+                    cache_dir = os.path.expanduser("~/.cache/receipt_trainer")
+                    self.logger.warning(f"No cache directory specified, using default: {cache_dir}")
+                
+                self.output_dir = os.path.join(cache_dir, "checkpoints")
+            
+            self.output_dir = os.path.abspath(self.output_dir)  # Convert to absolute path
+            os.makedirs(self.output_dir, exist_ok=True)
+            self.logger.info(f"Output directory set to: {self.output_dir}")
+        except OSError as e:
+            raise OSError(f"Failed to create output directory: {str(e)}")
 
-        # Get unique labels from dataset
-        unique_labels = set()
-        for split in self.dataset.values():
-            for label_sequence in split["labels"]:
-                unique_labels.update(label_sequence)
-        self.label_list = sorted(list(unique_labels))
-        self.num_labels = len(self.label_list)
-        self.label2id = {label: i for i, label in enumerate(self.label_list)}
-        self.id2label = {i: label for label, i in self.label2id.items()}
+        # Get the appropriate device
+        try:
+            self.device = self._get_device()
+            self.logger.info(f"Using device: {self.device}")
+            
+            # Apply device-specific optimizations
+            if self.device.type == "mps":
+                self.logger.info("Applying MPS-specific optimizations...")
+                # MPS doesn't support mixed precision training
+                self.training_config.bf16 = False
+                self.training_config.fp16 = False
+                
+                # Adjust batch size and gradient accumulation for M-series chips
+                if not kwargs.get("batch_size"):
+                    self.training_config.batch_size = min(self.training_config.batch_size, 16)
+                if not kwargs.get("gradient_accumulation_steps"):
+                    self.training_config.gradient_accumulation_steps = max(
+                        self.training_config.gradient_accumulation_steps, 4
+                    )
+                self.logger.info("MPS optimizations applied successfully")
 
-        # Initialize model with correct number of labels
-        self.model = LayoutLMForTokenClassification.from_pretrained(
-            self.model_name,
-            num_labels=self.num_labels,
-            label2id=self.label2id,
-            id2label=self.id2label,
-        )
+            # Set up distributed training if enabled
+            if self.training_config.distributed_training:
+                if self.device.type != "cuda":
+                    self.logger.warning("Distributed training is only supported with CUDA devices")
+                    self.training_config.distributed_training = False
+                else:
+                    self.logger.info("Setting up distributed training...")
+                    # Initialize distributed environment
+                    if self.training_config.local_rank != -1:
+                        torch.cuda.set_device(self.training_config.local_rank)
+                        self.device = torch.device("cuda", self.training_config.local_rank)
+                        torch.distributed.init_process_group(
+                            backend=self.training_config.ddp_backend,
+                            world_size=self.training_config.world_size,
+                            rank=self.training_config.local_rank,
+                        )
+                        self.logger.info(f"Initialized distributed training with rank {self.training_config.local_rank}")
 
-        # Set up distributed training if enabled
-        if self.training_config.distributed_training:
-            # Initialize distributed environment
-            if self.training_config.local_rank != -1:
-                torch.cuda.set_device(self.training_config.local_rank)
-                self.device = torch.device("cuda", self.training_config.local_rank)
-                torch.distributed.init_process_group(
-                    backend=self.training_config.ddp_backend,
-                    world_size=self.training_config.world_size,
-                    rank=self.training_config.local_rank,
-                )
-                self.logger.info(f"Initialized distributed training with rank {self.training_config.local_rank}")
-
-                # Convert BatchNorm to SyncBatchNorm if enabled
-                if self.training_config.sync_bn:
-                    self.model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(self.model)
-                    self.logger.info("Converted BatchNorm layers to SyncBatchNorm")
-
-                # Wrap model with DistributedDataParallel
-                self.model = torch.nn.parallel.DistributedDataParallel(
-                    self.model,
-                    device_ids=[self.training_config.local_rank],
-                    output_device=self.training_config.local_rank,
-                    find_unused_parameters=self.training_config.find_unused_parameters,
-                )
-                self.logger.info("Model wrapped with DistributedDataParallel")
-
-        self.model.to(self.device)
+            self.model.to(self.device)
+            self.logger.info(f"Model moved to device: {self.device}")
+            
+        except Exception as e:
+            raise ValueError(f"Failed to configure device and optimizations: {str(e)}")
 
         # Create training arguments
-        self.training_args = TrainingArguments(
-            output_dir=self.output_dir,
-            num_train_epochs=self.training_config.num_epochs,
-            per_device_train_batch_size=self.training_config.batch_size,
-            gradient_accumulation_steps=self.training_config.gradient_accumulation_steps,
-            learning_rate=self.training_config.learning_rate,
-            weight_decay=self.training_config.weight_decay,
-            max_grad_norm=self.training_config.max_grad_norm,
-            warmup_ratio=self.training_config.warmup_ratio,
-            bf16=self.training_config.bf16 and self.device.type == "cuda",
-            evaluation_strategy="steps",
-            eval_steps=self.training_config.evaluation_steps,
-            save_strategy="steps",
-            save_steps=self.training_config.save_steps,
-            logging_steps=self.training_config.logging_steps,
-            load_best_model_at_end=True,
-            metric_for_best_model="eval_loss",
-            greater_is_better=False,
-            # Distributed training arguments
-            local_rank=self.training_config.local_rank,
-            ddp_backend=self.training_config.ddp_backend if self.training_config.distributed_training else None,
-            dataloader_num_workers=4 if self.training_config.distributed_training else 0,
-        )
+        try:
+            self.logger.info("Setting up training arguments...")
+            self.training_args = TrainingArguments(
+                output_dir=self.output_dir,
+                num_train_epochs=self.training_config.num_epochs,
+                per_device_train_batch_size=self.training_config.batch_size,
+                gradient_accumulation_steps=self.training_config.gradient_accumulation_steps,
+                learning_rate=self.training_config.learning_rate,
+                weight_decay=self.training_config.weight_decay,
+                max_grad_norm=self.training_config.max_grad_norm,
+                warmup_ratio=self.training_config.warmup_ratio,
+                fp16=self.training_config.fp16 and self.device.type == "cuda",
+                bf16=self.training_config.bf16 and self.device.type == "cuda",
+                evaluation_strategy="steps",
+                eval_steps=self.training_config.evaluation_steps,
+                save_strategy="steps",
+                save_steps=self.training_config.save_steps,
+                logging_steps=self.training_config.logging_steps,
+                load_best_model_at_end=True,
+                metric_for_best_model="eval_loss",
+                greater_is_better=False,
+                # Distributed training arguments
+                local_rank=self.training_config.local_rank,
+                ddp_backend=self.training_config.ddp_backend if self.training_config.distributed_training else None,
+                dataloader_num_workers=4 if self.training_config.distributed_training else 0,
+            )
+            self.logger.info("Training arguments configured successfully")
+        except Exception as e:
+            raise ValueError(f"Failed to configure training arguments: {str(e)}")
 
-        self.logger.info("Training configuration complete")
+        # Log final configuration summary
+        self.logger.info("\nTraining Configuration Summary:")
         self.logger.info(f"Number of labels: {self.num_labels}")
         self.logger.info(f"Labels: {', '.join(self.label_list)}")
         self.logger.info(f"Output directory: {self.output_dir}")
         self.logger.info(f"Device: {self.device}")
-        self.logger.info(f"Training arguments: {self.training_args}")
+        if self.device.type == "mps":
+            self.logger.info("Using Apple Neural Engine optimizations")
+            self.logger.info(f"Batch size: {self.training_config.batch_size}")
+            self.logger.info(f"Gradient accumulation steps: {self.training_config.gradient_accumulation_steps}")
+        self.logger.info("Training configuration completed successfully")
 
     def _create_trainer(self, enable_early_stopping: bool):
         """Create and configure the Trainer object."""
@@ -758,10 +1093,13 @@ class ReceiptTrainer:
         """Log training results to W&B and print summary."""
         # Run detailed evaluation on both splits
         eval_output_dir = os.path.join(self.output_dir, "eval")
-        train_metrics = self.evaluate("train", eval_output_dir)
-        val_metrics = self.evaluate("validation", eval_output_dir)
+        os.makedirs(eval_output_dir, exist_ok=True)
+        
+        # Get metrics for both splits
+        train_metrics = self.evaluate("train", eval_output_dir, detailed_report=True)
+        val_metrics = self.evaluate("validation", eval_output_dir, detailed_report=True)
 
-        # Log metrics
+        # Prepare metrics for logging
         metrics = {
             **train_metrics,
             **val_metrics,
@@ -770,13 +1108,80 @@ class ReceiptTrainer:
         }
 
         if self.wandb_run:
+            # Log basic metrics
             self.wandb_run.log(metrics)
+            
+            # Create and log custom visualizations
+            for split in ["train", "validation"]:
+                # Create per-label performance plot
+                plt.figure(figsize=(12, 6))
+                labels = []
+                f1_scores = []
+                precisions = []
+                recalls = []
+                
+                for label in self.label_list:
+                    if label != "O":  # Skip the Outside label
+                        labels.append(label)
+                        f1_scores.append(metrics[f"{split}/{label}/f1-score"])
+                        precisions.append(metrics[f"{split}/{label}/precision"])
+                        recalls.append(metrics[f"{split}/{label}/recall"])
+                
+                x = np.arange(len(labels))
+                width = 0.25
+                
+                plt.bar(x - width, precisions, width, label='Precision')
+                plt.bar(x, recalls, width, label='Recall')
+                plt.bar(x + width, f1_scores, width, label='F1')
+                
+                plt.xlabel('Labels')
+                plt.ylabel('Score')
+                plt.title(f'{split.capitalize()} Performance by Label')
+                plt.xticks(x, labels, rotation=45, ha='right')
+                plt.legend()
+                plt.tight_layout()
+                
+                # Log to W&B
+                self.wandb_run.log({
+                    f"{split}/label_performance": wandb.Image(plt),
+                    f"{split}/confusion_matrix": wandb.Image(
+                        os.path.join(eval_output_dir, f"confusion_matrix_{split}.png")
+                    )
+                })
+                plt.close()
+                
+            # Log learning curves
+            self.wandb_run.log({
+                "learning_curves": {
+                    "train_loss": metrics["train/total_loss"],
+                    "val_loss": metrics["validation/macro_avg/f1-score"],
+                    "step": train_result.global_step
+                }
+            })
 
-        self.logger.info("Training complete")
+        # Print summary
+        self.logger.info("\nTraining Results Summary:")
         self.logger.info(f"Total steps: {train_result.global_step}")
         self.logger.info(f"Average training loss: {train_result.training_loss:.4f}")
-        self.logger.info(f"Train Macro F1: {train_metrics['train/macro_avg/f1-score']:.4f}")
-        self.logger.info(f"Validation Macro F1: {val_metrics['validation/macro_avg/f1-score']:.4f}")
+        self.logger.info(f"\nTrain Metrics:")
+        self.logger.info(f"Macro F1: {train_metrics['train/macro_avg/f1-score']:.4f}")
+        self.logger.info(f"Weighted F1: {train_metrics['train/weighted_avg/f1-score']:.4f}")
+        self.logger.info(f"\nValidation Metrics:")
+        self.logger.info(f"Macro F1: {val_metrics['validation/macro_avg/f1-score']:.4f}")
+        self.logger.info(f"Weighted F1: {val_metrics['validation/weighted_avg/f1-score']:.4f}")
+        
+        # Print per-label performance
+        self.logger.info("\nPer-Label Performance (Validation):")
+        for label in self.label_list:
+            if label != "O":  # Skip the Outside label
+                f1 = val_metrics.get(f"validation/{label}/f1-score", 0)
+                prec = val_metrics.get(f"validation/{label}/precision", 0)
+                rec = val_metrics.get(f"validation/{label}/recall", 0)
+                support = val_metrics.get(f"validation/{label}/support", 0)
+                self.logger.info(
+                    f"{label:15} F1: {f1:.4f} | Precision: {prec:.4f} | "
+                    f"Recall: {rec:.4f} | Support: {support}"
+                )
 
     def evaluate(
         self,
@@ -981,12 +1386,25 @@ class ReceiptTrainer:
         return metrics
 
     def _get_device(self):
-        """Get the default device for training."""
-        if torch.cuda.is_available():
-            return "cuda"
-        elif torch.backends.mps.is_available():
-            return "mps"
-        return "cpu"
+        """Get the default device for training.
+        
+        Returns:
+            torch.device: The device to use for training
+        """
+        # Use device from config if specified
+        if self.training_config.device:
+            return torch.device(self.training_config.device)
+        
+        # Auto-detect device
+        if torch.backends.mps.is_available() and torch.backends.mps.is_built():
+            self.logger.info("Using Apple Neural Engine (MPS)")
+            return torch.device("mps")
+        elif torch.cuda.is_available():
+            self.logger.info(f"Using CUDA GPU: {torch.cuda.get_device_name(0)}")
+            return torch.device("cuda")
+        
+        self.logger.info("Using CPU")
+        return torch.device("cpu")
 
     def _generate_hyperparameter_report(self, sweep_id: str) -> Dict[str, Any]:
         """Generate a comprehensive report of hyperparameter performance.
@@ -1077,217 +1495,125 @@ class ReceiptTrainer:
 
     def run_hyperparameter_sweep(
         self,
-        sweep_config: Optional[Dict[str, Any]] = None,
-        num_trials: int = 10,
+        sweep_config: Dict[str, Any],
+        num_trials: int = 20,
         early_stopping_min_trials: int = 5,
         early_stopping_grace_trials: int = 3,
-        parallel_workers: Optional[int] = None,
+        parallel_workers: int = 1,
         gpu_ids: Optional[List[int]] = None,
     ) -> str:
-        """Run hyperparameter optimization using W&B sweeps.
-        
+        """Run hyperparameter sweep using W&B.
+
         Args:
-            sweep_config: Optional custom sweep configuration. If None, uses default config.
-            num_trials: Number of trials to run in the sweep.
-            early_stopping_min_trials: Minimum number of trials to run before considering early stopping.
-            early_stopping_grace_trials: Number of trials without improvement before stopping.
-            parallel_workers: Number of parallel workers to run. If None, uses training_config.parallel_sweep_workers.
-            gpu_ids: List of GPU IDs to use. If None, uses training_config.parallel_sweep_gpu_ids.
-            
+            sweep_config: W&B sweep configuration dictionary
+            num_trials: Total number of trials to run
+            early_stopping_min_trials: Minimum number of trials before early stopping
+            early_stopping_grace_trials: Number of trials to wait for improvement
+            parallel_workers: Number of parallel workers to use
+            gpu_ids: List of GPU IDs to use for parallel workers
+
         Returns:
-            ID of the best performing run
+            ID of the best run from the sweep
         """
-        import torch.multiprocessing as mp
-        from functools import partial
-        
-        self.logger.info("Setting up hyperparameter sweep...")
-        
-        # Set up parallel execution parameters
-        n_workers = parallel_workers or self.training_config.parallel_sweep_workers
-        gpu_list = gpu_ids or self.training_config.parallel_sweep_gpu_ids
-        
-        if n_workers > 1:
-            # Validate GPU configuration
-            available_gpus = torch.cuda.device_count()
-            if available_gpus < 1:
-                self.logger.warning("No GPUs available. Falling back to single-process execution.")
-                n_workers = 1
-            elif gpu_list and len(gpu_list) < n_workers:
-                self.logger.warning(
-                    f"Not enough GPUs specified ({len(gpu_list)}) for requested workers ({n_workers}). "
-                    "Some workers will run on the same GPU."
-                )
-            
-            # Calculate trials per worker
-            trials_per_worker = num_trials // n_workers
-            if trials_per_worker < 1:
-                trials_per_worker = 1
-                n_workers = num_trials
-            
-            self.logger.info(f"Running sweep with {n_workers} parallel workers")
-            self.logger.info(f"Each worker will run {trials_per_worker} trials")
-        
-        if not sweep_config:
-            # Default sweep configuration targeting key hyperparameters
-            sweep_config = {
-                "method": "bayes",  # Bayesian optimization
-                "metric": {
-                    "name": "validation/macro_avg/f1-score",
-                    "goal": "maximize"
-                },
-                "parameters": {
-                    "learning_rate": {
-                        "distribution": "log_uniform",
-                        "min": -9.21,  # 1e-4
-                        "max": -6.91,  # 1e-3
-                    },
-                    "batch_size": {
-                        "values": [8, 16, 32]
-                    },
-                    "gradient_accumulation_steps": {
-                        "values": [16, 32, 64]
-                    },
-                    "warmup_ratio": {
-                        "distribution": "uniform",
-                        "min": 0.0,
-                        "max": 0.3
-                    },
-                    "weight_decay": {
-                        "distribution": "log_uniform",
-                        "min": -9.21,  # 1e-4
-                        "max": -4.61,  # 1e-2
-                    },
-                    "max_grad_norm": {
-                        "values": [0.5, 1.0, 2.0]
-                    },
-                    "early_stopping_patience": {
-                        "values": [3, 5, 7]
-                    }
-                }
-            }
-            
-            # Add early stopping to sweep config
-            sweep_config["early_termination"] = {
-                "type": "hyperband",
-                "min_iter": early_stopping_min_trials,
-                "eta": early_stopping_grace_trials
-            }
-        
-        # Initialize sweep
-        sweep_id = wandb.sweep(sweep_config, project=self.wandb_project)
-        self.logger.info(f"Created sweep with ID: {sweep_id}")
-        
-        def train_sweep_worker(worker_id: int, n_trials: int, gpu_id: Optional[int] = None):
-            """Training function for each sweep worker."""
-            if gpu_id is not None:
-                torch.cuda.set_device(gpu_id)
-                self.logger.info(f"Worker {worker_id} using GPU {gpu_id}")
-            
-            def train_sweep():
-                """Training function for each sweep run."""
-                # Initialize a new W&B run
-                with wandb.init() as run:
-                    # Update training config with sweep parameters
-                    sweep_params = run.config
-                    for key, value in sweep_params.items():
+        self.logger.info("Starting hyperparameter sweep...")
+        self.logger.info(f"Sweep config: {sweep_config}")
+
+        def train_one_config():
+            """Run a single training configuration."""
+            wandb_run = None
+            try:
+                with wandb.init(mode="offline") as run:  # Start in offline mode
+                    wandb_run = run
+                    config = wandb.config
+                    
+                    # Try to switch to online mode
+                    try:
+                        wandb.init(mode="online")
+                    except Exception as e:
+                        self.logger.warning(f"Failed to switch to online mode: {e}. Staying in offline mode.")
+                    
+                    # Update training configuration with sweep parameters
+                    for key, value in config.items():
                         if hasattr(self.training_config, key):
                             setattr(self.training_config, key, value)
-                    
-                    # Configure training with updated parameters
+                            
+                    # Configure training with current parameters
                     self.configure_training()
                     
-                    # Train the model
-                    train_result = self.train(
+                    # Run training
+                    return self.train(
                         enable_checkpointing=True,
                         enable_early_stopping=True,
                         log_to_wandb=True
                     )
-                    
-                    # Log final metrics
-                    metrics = self.evaluate("validation")
-                    run.log(metrics)
-                    
-                    # Save best model if this is the best run so far
-                    if run.summary.get("validation/macro_avg/f1-score", 0) == wandb.run.best_metric:
-                        self.save_model(os.path.join(self.output_dir, f"best_model_worker_{worker_id}"))
+            except Exception as e:
+                self.logger.error(f"Error in training run: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                return None
+            finally:
+                if wandb_run:
+                    try:
+                        wandb_run.finish()
+                    except Exception as e:
+                        self.logger.warning(f"Failed to finish W&B run cleanly: {e}")
+
+        try:
+            # Create sweep with retries
+            max_retries = 3
+            retry_delay = 5
+            sweep_id = None
             
-            # Run the sweep agent
-            wandb.agent(sweep_id, function=train_sweep, count=n_trials)
-        
-        if n_workers > 1:
-            # Run parallel sweep with multiple workers
-            processes = []
-            for i in range(n_workers):
-                gpu_id = gpu_list[i] if gpu_list and i < len(gpu_list) else None
-                p = mp.Process(
-                    target=train_sweep_worker,
-                    args=(i, trials_per_worker, gpu_id)
+            for attempt in range(max_retries):
+                try:
+                    sweep_id = wandb.sweep(sweep_config, project=self.wandb_project)
+                    self.logger.info(f"Created sweep with ID: {sweep_id}")
+                    break
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        self.logger.warning(f"Failed to create sweep (attempt {attempt + 1}): {e}. Retrying...")
+                        time.sleep(retry_delay)
+                        retry_delay *= 2
+                    else:
+                        raise
+            
+            if not sweep_id:
+                raise RuntimeError("Failed to create sweep after all retries")
+            
+            # Run the sweep with error handling
+            try:
+                wandb.agent(
+                    sweep_id,
+                    function=train_one_config,
+                    count=num_trials // parallel_workers
                 )
-                p.start()
-                processes.append(p)
-            
-            # Wait for all processes to complete
-            for p in processes:
-                p.join()
-        else:
-            # Run single-process sweep
-            train_sweep_worker(0, num_trials)
-        
-        # Generate and log hyperparameter report
-        report = self._generate_hyperparameter_report(sweep_id)
-        
-        # Log report to W&B
-        with wandb.init(project=self.wandb_project, job_type="sweep_report") as run:
-            # Log report data
-            run.log({
-                "sweep_summary": report,
-                "param_importance": report["param_importance"],
-                "param_correlations": report["param_correlations"]
-            })
-            
-            # Create parameter importance plot
-            if report["param_importance"]:
-                plt.figure(figsize=(10, 6))
-                params = list(report["param_importance"].keys())
-                importance = list(report["param_importance"].values())
-                plt.barh(params, importance)
-                plt.title("Hyperparameter Importance")
-                plt.xlabel("Absolute Correlation with Performance")
-                
-                # Save and log plot
-                plot_path = os.path.join(self.output_dir, "param_importance.png")
-                plt.savefig(plot_path)
-                plt.close()
-                run.log({"param_importance_plot": wandb.Image(plot_path)})
-            
-            # Log best configurations table
-            if report["best_configs"]:
-                best_configs_table = wandb.Table(
-                    columns=["Rank", "Run ID", "F1 Score"] + 
-                            list(report["best_configs"][0]["params"].keys())
-                )
-                for i, config in enumerate(report["best_configs"], 1):
-                    row = [
-                        i,
-                        config["run_id"],
-                        config["metrics"]["validation/macro_avg/f1-score"]
-                    ] + list(config["params"].values())
-                    best_configs_table.add_data(*row)
-                run.log({"best_configurations": best_configs_table})
-        
-        # Print summary to console
-        self.logger.info("\nHyperparameter Sweep Summary:")
-        self.logger.info(f"Total runs: {report['total_runs']}")
-        self.logger.info(f"Completed runs: {report['completed_runs']}")
-        if report["best_run"]:
-            self.logger.info("\nBest Configuration:")
-            self.logger.info(f"Run ID: {report['best_run']['run_id']}")
-            self.logger.info(f"Validation F1: {report['best_run']['metrics']['validation/macro_avg/f1-score']:.4f}")
-            self.logger.info("\nParameters:")
-            for param, value in report['best_run']['params'].items():
-                self.logger.info(f"{param}: {value}")
-        
-        return report["best_run"]["run_id"] if report["best_run"] else None
+            except KeyboardInterrupt:
+                self.logger.info("Sweep interrupted by user")
+                raise
+            except Exception as e:
+                self.logger.error(f"Error during sweep: {e}")
+                raise
+
+            # Get best run with retries
+            for attempt in range(max_retries):
+                try:
+                    api = wandb.Api()
+                    sweep = api.sweep(f"{self.wandb_project}/{sweep_id}")
+                    best_run = sweep.best_run()
+                    self.logger.info(f"Best run: {best_run.id}")
+                    return best_run.id
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        self.logger.warning(f"Failed to get best run (attempt {attempt + 1}): {e}. Retrying...")
+                        time.sleep(retry_delay)
+                        retry_delay *= 2
+                    else:
+                        self.logger.error("Failed to get best run after all retries")
+                        return None
+
+        except Exception as e:
+            self.logger.error(f"Error during hyperparameter sweep: {e}")
+            raise
 
     def save_model(self, output_path: str):
         """Save the trained model and tokenizer.

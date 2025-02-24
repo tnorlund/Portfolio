@@ -19,6 +19,8 @@ class TrainingConfig:
     save_steps: int = 100
     logging_steps: int = 50
     bf16: bool = True  # Use bfloat16 precision
+    fp16: bool = False  # Use float16 precision
+    device: Optional[str] = None  # Device to use for training (cuda/mps/cpu)
     early_stopping_patience: int = 5
     # Distributed training parameters
     distributed_training: bool = False

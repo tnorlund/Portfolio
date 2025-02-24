@@ -263,7 +263,7 @@ class ReceiptTrainer:
             
             word_data.append({
                 "text": word.text,
-                "bbox": normalized_bbox,
+                "bboxes": normalized_bbox,
                 "base_label": tag_label,
                 "word_id": word.word_id,
                 "line_id": word.line_id,
@@ -298,13 +298,13 @@ class ReceiptTrainer:
             
             processed_words.append({
                 "text": word["text"],
-                "bbox": word["bbox"],
+                "bboxes": word["bboxes"],
                 "label": iob_label
             })
         
         return {
             "words": [w["text"] for w in processed_words],
-            "bboxes": [w["bbox"] for w in processed_words],
+            "bboxes": [w["bboxes"] for w in processed_words],
             "labels": [w["label"] for w in processed_words],
             "image_id": receipt.image_id,
             "receipt_id": receipt.receipt_id,
@@ -405,14 +405,14 @@ class ReceiptTrainer:
         # Convert to Dataset format
         train_dataset = Dataset.from_dict({
             "words": [example["words"] for example in all_train_data.values()],
-            "bbox": [example["bboxes"] for example in all_train_data.values()],
+            "bboxes": [example["bboxes"] for example in all_train_data.values()],
             "labels": [example["labels"] for example in all_train_data.values()],
             "image_id": [example["image_id"] for example in all_train_data.values()]
         })
         
         val_dataset = Dataset.from_dict({
             "words": [example["words"] for example in sroie_test_data.values()],
-            "bbox": [example["bboxes"] for example in sroie_test_data.values()],
+            "bboxes": [example["bboxes"] for example in sroie_test_data.values()],
             "labels": [example["labels"] for example in sroie_test_data.values()],
             "image_id": [example["image_id"] for example in sroie_test_data.values()]
         })
