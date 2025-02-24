@@ -115,8 +115,8 @@
 - [ ] **Documentation**
   - [x] Add docstrings and type hints
   - [x] Create README with usage examples
-  - [ ] Add API documentation
-  - [ ] Create training guide
+  - [x] Add API documentation
+  - [x] Create training guide
   - [ ] Add architecture diagrams
   - [ ] Document performance benchmarks
   - [ ] Create troubleshooting guide
