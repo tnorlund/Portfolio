@@ -5,6 +5,8 @@ import json
 import tempfile
 import logging
 import torch
+import numpy as np
+import matplotlib.pyplot as plt
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Tuple, Union
 from datasets import Dataset, DatasetDict, load_dataset, Value, Features, Sequence
@@ -21,12 +23,9 @@ from transformers import (
 import wandb
 from dynamo import DynamoClient
 import random
-import numpy as np
-from sklearn.metrics import confusion_matrix, classification_report
 import seaborn as sns
-import matplotlib.pyplot as plt
 from collections import defaultdict
-from sklearn.metrics import precision_score, recall_score, f1_score
+from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix, classification_report
 
 from receipt_trainer.config import TrainingConfig, DataConfig
 from receipt_trainer.utils.data import (
@@ -989,6 +988,93 @@ class ReceiptTrainer:
             return "mps"
         return "cpu"
 
+    def _generate_hyperparameter_report(self, sweep_id: str) -> Dict[str, Any]:
+        """Generate a comprehensive report of hyperparameter performance.
+        
+        Args:
+            sweep_id: The W&B sweep ID to analyze
+            
+        Returns:
+            Dictionary containing report data
+        """
+        self.logger.info("Generating hyperparameter report...")
+        
+        # Get sweep data from W&B
+        api = wandb.Api()
+        sweep = api.sweep(f"{self.wandb_project}/{sweep_id}")
+        runs = sweep.runs
+        
+        # Collect data for analysis
+        run_data = []
+        for run in runs:
+            if run.state == "finished":
+                run_data.append({
+                    "run_id": run.id,
+                    "metrics": {
+                        "validation/macro_avg/f1-score": run.summary.get("validation/macro_avg/f1-score", 0),
+                        "validation/weighted_avg/f1-score": run.summary.get("validation/weighted_avg/f1-score", 0),
+                        "train/total_loss": run.summary.get("train/total_loss", 0)
+                    },
+                    "params": run.config
+                })
+        
+        # Generate report data
+        report = {
+            "sweep_id": sweep_id,
+            "total_runs": len(runs),
+            "completed_runs": len(run_data),
+            "best_run": None,
+            "param_importance": {},
+            "param_correlations": {},
+            "best_configs": [],
+        }
+        
+        if run_data:
+            # Find best run
+            best_run = max(run_data, key=lambda x: x["metrics"]["validation/macro_avg/f1-score"])
+            report["best_run"] = {
+                "run_id": best_run["run_id"],
+                "metrics": best_run["metrics"],
+                "params": best_run["params"]
+            }
+            
+            # Calculate parameter importance (using validation F1 score)
+            param_values = {}
+            param_scores = {}
+            for run in run_data:
+                for param, value in run["params"].items():
+                    if param not in param_values:
+                        param_values[param] = []
+                        param_scores[param] = []
+                    param_values[param].append(value)
+                    param_scores[param].append(run["metrics"]["validation/macro_avg/f1-score"])
+            
+            # Calculate correlation between parameters and performance
+            for param in param_values:
+                if len(set(param_values[param])) > 1:  # Only calculate if parameter varied
+                    correlation = np.corrcoef(param_values[param], param_scores[param])[0, 1]
+                    report["param_correlations"][param] = float(correlation)
+                    
+                    # Calculate importance score (absolute correlation)
+                    report["param_importance"][param] = float(abs(correlation))
+            
+            # Get top 3 best configurations
+            sorted_runs = sorted(
+                run_data,
+                key=lambda x: x["metrics"]["validation/macro_avg/f1-score"],
+                reverse=True
+            )
+            report["best_configs"] = [
+                {
+                    "run_id": run["run_id"],
+                    "metrics": run["metrics"],
+                    "params": run["params"]
+                }
+                for run in sorted_runs[:3]
+            ]
+        
+        return report
+
     def run_hyperparameter_sweep(
         self,
         sweep_config: Optional[Dict[str, Any]] = None,
@@ -1005,7 +1091,7 @@ class ReceiptTrainer:
             early_stopping_grace_trials: Number of trials without improvement before stopping.
             
         Returns:
-            ID of the best performing sweep run.
+            ID of the best performing run
         """
         self.logger.info("Setting up hyperparameter sweep...")
         
@@ -1088,18 +1174,63 @@ class ReceiptTrainer:
                     self.save_model(os.path.join(self.output_dir, "best_model"))
         
         # Run the sweep
-        self.logger.info(f"Starting sweep with {num_trials} trials (early stopping enabled)...")
         wandb.agent(sweep_id, function=train_sweep, count=num_trials)
         
-        # Get best run ID
-        api = wandb.Api()
-        sweep = api.sweep(f"{self.wandb_project}/{sweep_id}")
-        best_run = sweep.best_run()
+        # Generate and log hyperparameter report
+        report = self._generate_hyperparameter_report(sweep_id)
         
-        self.logger.info(f"Sweep completed. Best run: {best_run.id}")
-        self.logger.info(f"Best validation F1: {best_run.summary.get('validation/macro_avg/f1-score', 0):.4f}")
+        # Log report to W&B
+        with wandb.init(project=self.wandb_project, job_type="sweep_report") as run:
+            # Log report data
+            run.log({
+                "sweep_summary": report,
+                "param_importance": report["param_importance"],
+                "param_correlations": report["param_correlations"]
+            })
+            
+            # Create parameter importance plot
+            if report["param_importance"]:
+                plt.figure(figsize=(10, 6))
+                params = list(report["param_importance"].keys())
+                importance = list(report["param_importance"].values())
+                plt.barh(params, importance)
+                plt.title("Hyperparameter Importance")
+                plt.xlabel("Absolute Correlation with Performance")
+                
+                # Save and log plot
+                plot_path = os.path.join(self.output_dir, "param_importance.png")
+                plt.savefig(plot_path)
+                plt.close()
+                run.log({"param_importance_plot": wandb.Image(plot_path)})
+            
+            # Log best configurations table
+            if report["best_configs"]:
+                best_configs_table = wandb.Table(
+                    columns=["Rank", "Run ID", "F1 Score"] + 
+                            list(report["best_configs"][0]["params"].keys())
+                )
+                for i, config in enumerate(report["best_configs"], 1):
+                    row = [
+                        i,
+                        config["run_id"],
+                        config["metrics"]["validation/macro_avg/f1-score"]
+                    ] + list(config["params"].values())
+                    best_configs_table.add_data(*row)
+                run.log({"best_configurations": best_configs_table})
         
-        return best_run.id
+        # Print summary to console
+        self.logger.info("\nHyperparameter Sweep Summary:")
+        self.logger.info(f"Total runs: {report['total_runs']}")
+        self.logger.info(f"Completed runs: {report['completed_runs']}")
+        if report["best_run"]:
+            self.logger.info("\nBest Configuration:")
+            self.logger.info(f"Run ID: {report['best_run']['run_id']}")
+            self.logger.info(f"Validation F1: {report['best_run']['metrics']['validation/macro_avg/f1-score']:.4f}")
+            self.logger.info("\nParameters:")
+            for param, value in report['best_run']['params'].items():
+                self.logger.info(f"{param}: {value}")
+        
+        return report["best_run"]["run_id"] if report["best_run"] else None
 
     def save_model(self, output_path: str):
         """Save the trained model and tokenizer.
