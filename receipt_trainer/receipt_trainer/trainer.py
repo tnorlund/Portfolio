@@ -993,12 +993,16 @@ class ReceiptTrainer:
         self,
         sweep_config: Optional[Dict[str, Any]] = None,
         num_trials: int = 10,
+        early_stopping_min_trials: int = 5,
+        early_stopping_grace_trials: int = 3,
     ) -> str:
         """Run hyperparameter optimization using W&B sweeps.
         
         Args:
             sweep_config: Optional custom sweep configuration. If None, uses default config.
             num_trials: Number of trials to run in the sweep.
+            early_stopping_min_trials: Minimum number of trials to run before considering early stopping.
+            early_stopping_grace_trials: Number of trials without improvement before stopping.
             
         Returns:
             ID of the best performing sweep run.
@@ -1043,6 +1047,13 @@ class ReceiptTrainer:
                     }
                 }
             }
+            
+            # Add early stopping to sweep config
+            sweep_config["early_termination"] = {
+                "type": "hyperband",
+                "min_iter": early_stopping_min_trials,
+                "eta": early_stopping_grace_trials
+            }
         
         # Initialize sweep
         sweep_id = wandb.sweep(sweep_config, project=self.wandb_project)
@@ -1077,7 +1088,7 @@ class ReceiptTrainer:
                     self.save_model(os.path.join(self.output_dir, "best_model"))
         
         # Run the sweep
-        self.logger.info(f"Starting sweep with {num_trials} trials...")
+        self.logger.info(f"Starting sweep with {num_trials} trials (early stopping enabled)...")
         wandb.agent(sweep_id, function=train_sweep, count=num_trials)
         
         # Get best run ID

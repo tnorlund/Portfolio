@@ -82,10 +82,12 @@ def main():
         trainer.initialize_model()
         trainer.initialize_wandb()
 
-        # Run hyperparameter sweep
+        # Run hyperparameter sweep with early stopping
         best_run_id = trainer.run_hyperparameter_sweep(
             sweep_config=sweep_config,
-            num_trials=10  # Number of trials to run
+            num_trials=20,  # Increased number of maximum trials
+            early_stopping_min_trials=5,  # Run at least 5 trials
+            early_stopping_grace_trials=3  # Stop if no improvement after 3 trials
         )
 
         print(f"Hyperparameter optimization completed. Best run: {best_run_id}")

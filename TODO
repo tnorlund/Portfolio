@@ -101,7 +101,7 @@
     - [x] Implemented proper data loading for distributed processes
     - [x] Added process synchronization and cleanup
     - [x] Created example script for distributed training
-  - [ ] Add early stopping for sweeps
+  - [x] Add early stopping for sweeps
   - [ ] Add automated hyperparameter reporting
   - [ ] Implement parallel sweep execution
 
