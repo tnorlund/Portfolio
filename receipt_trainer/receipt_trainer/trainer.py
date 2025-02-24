@@ -16,6 +16,7 @@ from transformers import (
     EarlyStoppingCallback,
     Trainer,
     AutoModel,
+    AutoTokenizer,
 )
 import wandb
 from dynamo import DynamoClient
@@ -45,66 +46,46 @@ class ReceiptTrainer:
     def __init__(
         self,
         wandb_project: str,
-        model_name: str = "microsoft/layoutlm-base-uncased",
-        dynamo_table: Optional[str] = None,
-        s3_bucket: Optional[str] = None,
+        model_name: str,
         training_config: Optional[TrainingConfig] = None,
         data_config: Optional[DataConfig] = None,
-        device: Optional[str] = None,
+        dynamo_table: Optional[str] = None,
     ):
-        """Initialize the ReceiptTrainer."""
-        # Setup logging first for other initialization steps
-        self.logger = logging.getLogger("ReceiptTrainer")
-        self.logger.setLevel(logging.INFO)
+        """Initialize the trainer.
 
-        # Create console handler if none exists
-        if not self.logger.handlers:
-            handler = logging.StreamHandler()
-            handler.setLevel(logging.INFO)
-            formatter = logging.Formatter(
-                "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-            )
-            handler.setFormatter(formatter)
-            self.logger.addHandler(handler)
-
-        # First, validate environment variables
+        Args:
+            wandb_project: Name of the W&B project
+            model_name: Name/path of the pre-trained model
+            training_config: Training configuration
+            data_config: Data loading configuration
+            dynamo_table: DynamoDB table name for data loading
+        """
+        self.logger = logging.getLogger(__name__)
         self._validate_env_vars()
-
+        
         self.wandb_project = wandb_project
         self.model_name = model_name
-        self.s3_bucket = s3_bucket
-
-        # Set configurations
         self.training_config = training_config or TrainingConfig()
         self.data_config = data_config or DataConfig()
-
-        # Create cache directory if needed
-        if not self.data_config.cache_dir:
-            self.data_config.cache_dir = os.path.join(
-                tempfile.gettempdir(), "receipt_trainer"
-            )
-        os.makedirs(self.data_config.cache_dir, exist_ok=True)
-
-        # Get DynamoDB table name from Pulumi stack if not provided
-        self.dynamo_table = get_dynamo_table(dynamo_table, self.data_config.env)
-
-        # Initialize device
-        self.device = device or self._get_default_device()
-
+        self.dynamo_table = dynamo_table
+        
         # Initialize components as None
-        self.model = None
         self.tokenizer = None
+        self.model = None
         self.dataset = None
-        self.label_map = None
-        self.dynamo_client = None
+        self.training_args = None
         self.wandb_run = None
-
-        self.logger.info(f"Initialized ReceiptTrainer with device: {self.device}")
-        self.logger.info(f"Model: {self.model_name}")
-        self.logger.info(f"W&B Project: {self.wandb_project}")
-        self.logger.info(f"DynamoDB Table: {self.dynamo_table}")
-        self.logger.info(f"Environment: {self.data_config.env}")
-        self.logger.info(f"Cache directory: {self.data_config.cache_dir}")
+        self.dynamo_client = None
+        self.output_dir = None
+        
+        # Set device
+        self.device = self._get_device()
+        
+        # Initialize checkpoint tracking
+        self.last_checkpoint = None
+        self.is_interrupted = False
+        
+        self.logger.info("ReceiptTrainer initialized")
 
     def _validate_env_vars(self):
         """Validate that all required environment variables are set."""
@@ -120,31 +101,226 @@ class ReceiptTrainer:
                 )
             )
 
-    def _setup_logging(self):
-        """Setup logging configuration."""
-        self.logger = logging.getLogger("ReceiptTrainer")
-        self.logger.setLevel(logging.INFO)
+    def _setup_spot_interruption_handler(self):
+        """Set up handler for spot instance interruption.
+        
+        This method sets up a signal handler for SIGTERM, which AWS sends
+        2 minutes before interrupting a spot instance.
+        """
+        import signal
+        
+        def handle_sigterm(*args):
+            """Handle SIGTERM signal from AWS."""
+            self.logger.warning("Received SIGTERM - spot instance interruption imminent")
+            self.is_interrupted = True
+            
+            # Save checkpoint if we're in the middle of training
+            if self.model and self.training_args:
+                self.logger.info("Saving emergency checkpoint...")
+                checkpoint_dir = os.path.join(self.output_dir, "interrupt_checkpoint")
+                self.save_checkpoint(checkpoint_dir)
+                
+                # Upload checkpoint to S3 if possible
+                try:
+                    self._upload_checkpoint_to_s3(checkpoint_dir)
+                except Exception as e:
+                    self.logger.error(f"Failed to upload checkpoint to S3: {e}")
+            
+            # Clean up W&B
+            if self.wandb_run:
+                self.wandb_run.finish()
+        
+        signal.signal(signal.SIGTERM, handle_sigterm)
+        self.logger.info("Spot interruption handler configured")
 
-        # Create console handler
-        handler = logging.StreamHandler()
-        handler.setLevel(logging.INFO)
+    def save_checkpoint(self, checkpoint_dir: str):
+        """Save a training checkpoint.
+        
+        Args:
+            checkpoint_dir: Directory to save the checkpoint
+        """
+        if not self.model or not self.tokenizer:
+            raise ValueError("Model and tokenizer must be initialized before saving checkpoint")
+            
+        os.makedirs(checkpoint_dir, exist_ok=True)
+        
+        # Save model and tokenizer
+        self.model.save_pretrained(checkpoint_dir)
+        self.tokenizer.save_pretrained(checkpoint_dir)
+        
+        # Save optimizer and scheduler states
+        if hasattr(self, 'optimizer') and hasattr(self, 'scheduler'):
+            torch.save(
+                {
+                    'optimizer_state_dict': self.optimizer.state_dict(),
+                    'scheduler_state_dict': self.scheduler.state_dict() if self.scheduler else None,
+                    'epoch': self.current_epoch,
+                    'global_step': self.global_step,
+                },
+                os.path.join(checkpoint_dir, 'training_state.pt')
+            )
+        
+        self.last_checkpoint = checkpoint_dir
+        self.logger.info(f"Checkpoint saved to {checkpoint_dir}")
 
-        # Create formatter
-        formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        )
-        handler.setFormatter(formatter)
+    def _upload_checkpoint_to_s3(self, checkpoint_dir: str):
+        """Upload checkpoint to S3.
+        
+        Args:
+            checkpoint_dir: Local directory containing checkpoint files
+        """
+        import boto3
+        from botocore.exceptions import ClientError
+        
+        s3 = boto3.client('s3')
+        bucket_name = os.getenv('CHECKPOINT_BUCKET')
+        
+        if not bucket_name:
+            raise ValueError("CHECKPOINT_BUCKET environment variable not set")
+            
+        # Upload all files in checkpoint directory
+        for root, _, files in os.walk(checkpoint_dir):
+            for file in files:
+                local_path = os.path.join(root, file)
+                s3_path = os.path.join(
+                    'checkpoints',
+                    self.wandb_run.id if self.wandb_run else 'latest',
+                    file
+                )
+                
+                try:
+                    s3.upload_file(local_path, bucket_name, s3_path)
+                except ClientError as e:
+                    self.logger.error(f"Failed to upload {file} to S3: {e}")
+                    raise
 
-        # Add handler to logger
-        self.logger.addHandler(handler)
+    def _download_checkpoint_from_s3(self, run_id: Optional[str] = None) -> Optional[str]:
+        """Download checkpoint from S3.
+        
+        Args:
+            run_id: W&B run ID to download checkpoint for. If None, gets latest.
+            
+        Returns:
+            Path to downloaded checkpoint directory, or None if not found
+        """
+        import boto3
+        from botocore.exceptions import ClientError
+        
+        s3 = boto3.client('s3')
+        bucket_name = os.getenv('CHECKPOINT_BUCKET')
+        
+        if not bucket_name:
+            raise ValueError("CHECKPOINT_BUCKET environment variable not set")
+            
+        # Create temporary directory for checkpoint
+        checkpoint_dir = tempfile.mkdtemp()
+        
+        try:
+            # List objects in checkpoint directory
+            prefix = f"checkpoints/{run_id if run_id else 'latest'}/"
+            response = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
+            
+            if 'Contents' not in response:
+                return None
+                
+            # Download all checkpoint files
+            for obj in response['Contents']:
+                local_path = os.path.join(checkpoint_dir, os.path.basename(obj['Key']))
+                s3.download_file(bucket_name, obj['Key'], local_path)
+                
+            return checkpoint_dir
+            
+        except ClientError as e:
+            self.logger.error(f"Failed to download checkpoint from S3: {e}")
+            return None
 
-    def _get_default_device(self) -> str:
-        """Get the default device for training."""
-        if torch.cuda.is_available():
-            return "cuda"
-        elif torch.backends.mps.is_available():
-            return "mps"
-        return "cpu"
+    def resume_training(self, run_id: Optional[str] = None):
+        """Resume training from the latest checkpoint.
+        
+        Args:
+            run_id: Optional W&B run ID to resume from
+        """
+        # Try to download checkpoint from S3
+        checkpoint_dir = self._download_checkpoint_from_s3(run_id)
+        
+        if not checkpoint_dir:
+            self.logger.warning("No checkpoint found in S3, starting fresh training")
+            return
+            
+        # Load model and tokenizer from checkpoint
+        self.model = AutoModel.from_pretrained(checkpoint_dir)
+        self.tokenizer = AutoTokenizer.from_pretrained(checkpoint_dir)
+        
+        # Load training state if available
+        training_state_path = os.path.join(checkpoint_dir, 'training_state.pt')
+        if os.path.exists(training_state_path):
+            training_state = torch.load(training_state_path)
+            self.optimizer.load_state_dict(training_state['optimizer_state_dict'])
+            if training_state['scheduler_state_dict'] and self.scheduler:
+                self.scheduler.load_state_dict(training_state['scheduler_state_dict'])
+            self.current_epoch = training_state['epoch']
+            self.global_step = training_state['global_step']
+            
+        self.logger.info(f"Resumed training from checkpoint at step {self.global_step}")
+
+    def train(
+        self,
+        enable_checkpointing: bool = True,
+        enable_early_stopping: bool = True,
+        log_to_wandb: bool = True,
+        resume_training: bool = True
+    ):
+        """Train the model.
+
+        Args:
+            enable_checkpointing: Whether to save model checkpoints
+            enable_early_stopping: Whether to enable early stopping
+            log_to_wandb: Whether to log metrics to W&B
+            resume_training: Whether to attempt to resume from checkpoint
+        """
+        self.logger.info("Starting training...")
+        
+        if not self.model or not self.training_args:
+            raise ValueError("Training must be configured before starting training")
+            
+        # Set up spot interruption handling
+        self._setup_spot_interruption_handler()
+        
+        # Initialize W&B if enabled
+        if log_to_wandb and not self.wandb_run:
+            self.initialize_wandb()
+            
+        # Try to resume training if requested
+        if resume_training:
+            self.resume_training()
+            
+        try:
+            # Create trainer and start training
+            trainer = self._create_trainer(enable_early_stopping)
+            
+            train_result = trainer.train(
+                resume_from_checkpoint=self.last_checkpoint if enable_checkpointing else None
+            )
+            
+            # Save final model if not interrupted
+            if not self.is_interrupted and enable_checkpointing:
+                trainer.save_model(self.output_dir)
+                self.logger.info(f"Final model saved to {self.output_dir}")
+                
+            # Log metrics
+            self._log_training_results(train_result)
+            
+            return train_result
+            
+        except Exception as e:
+            self.logger.error(f"Training failed: {str(e)}")
+            raise
+            
+        finally:
+            # Cleanup
+            if self.wandb_run:
+                self.wandb_run.finish()
+            torch.cuda.empty_cache()
 
     def initialize_model(self):
         """Initialize the LayoutLM model and tokenizer."""
@@ -511,24 +687,8 @@ class ReceiptTrainer:
         self.logger.info(f"Device: {self.device}")
         self.logger.info(f"Training arguments: {self.training_args}")
 
-    def train(
-        self,
-        enable_checkpointing: bool = True,
-        enable_early_stopping: bool = True,
-        log_to_wandb: bool = True,
-    ):
-        """Train the model.
-
-        Args:
-            enable_checkpointing: Whether to save model checkpoints
-            enable_early_stopping: Whether to enable early stopping
-            log_to_wandb: Whether to log metrics to W&B
-        """
-        self.logger.info("Starting training...")
-
-        if not self.model or not self.training_args:
-            raise ValueError("Training must be configured before starting training")
-
+    def _create_trainer(self, enable_early_stopping: bool):
+        """Create and configure the Trainer object."""
         # Create data collator
         data_collator = DataCollatorForTokenClassification(
             self.tokenizer,
@@ -544,129 +704,42 @@ class ReceiptTrainer:
                 )
             )
 
-        # Initialize W&B if enabled
-        if log_to_wandb and not self.wandb_run:
-            self.initialize_wandb()
+        # Create Trainer
+        trainer = Trainer(
+            model=self.model,
+            args=self.training_args,
+            train_dataset=self.dataset["train"],
+            eval_dataset=self.dataset["validation"],
+            data_collator=data_collator,
+            tokenizer=self.tokenizer,
+            callbacks=callbacks,
+        )
 
-        try:
-            # Create Trainer
-            trainer = Trainer(
-                model=self.model,
-                args=self.training_args,
-                train_dataset=self.dataset["train"],
-                eval_dataset=self.dataset["validation"],
-                data_collator=data_collator,
-                tokenizer=self.tokenizer,
-                callbacks=callbacks,
-            )
+        return trainer
 
-            # Start training
-            train_result = trainer.train(
-                resume_from_checkpoint=enable_checkpointing
-            )
+    def _log_training_results(self, train_result):
+        """Log training results to W&B and print summary."""
+        # Run detailed evaluation on both splits
+        eval_output_dir = os.path.join(self.output_dir, "eval")
+        train_metrics = self.evaluate("train", eval_output_dir)
+        val_metrics = self.evaluate("validation", eval_output_dir)
 
-            # Save final model
-            if enable_checkpointing:
-                trainer.save_model(self.output_dir)
-                self.logger.info(f"Final model saved to {self.output_dir}")
+        # Log metrics
+        metrics = {
+            **train_metrics,
+            **val_metrics,
+            "train/total_steps": train_result.global_step,
+            "train/total_loss": train_result.training_loss,
+        }
 
-            # Run detailed evaluation on both splits
-            eval_output_dir = os.path.join(self.output_dir, "eval")
-            train_metrics = self.evaluate("train", eval_output_dir)
-            val_metrics = self.evaluate("validation", eval_output_dir)
+        if self.wandb_run:
+            self.wandb_run.log(metrics)
 
-            # Log metrics
-            metrics = {
-                **train_metrics,
-                **val_metrics,
-                "train/total_steps": train_result.global_step,
-                "train/total_loss": train_result.training_loss,
-            }
-
-            if self.wandb_run:
-                self.wandb_run.log(metrics)
-
-            self.logger.info("Training complete")
-            self.logger.info(f"Total steps: {train_result.global_step}")
-            self.logger.info(f"Average training loss: {train_result.training_loss:.4f}")
-            self.logger.info(f"Train Macro F1: {train_metrics['train/macro_avg/f1-score']:.4f}")
-            self.logger.info(f"Validation Macro F1: {val_metrics['validation/macro_avg/f1-score']:.4f}")
-
-            return train_result
-
-        except Exception as e:
-            self.logger.error(f"Training failed: {str(e)}")
-            raise
-
-        finally:
-            # Cleanup
-            if self.wandb_run:
-                self.wandb_run.finish()
-            torch.cuda.empty_cache()
-
-    def save_model(self, output_path: str):
-        """Save the trained model, tokenizer, and configuration.
-
-        Args:
-            output_path: Path to save the model
-        """
-        self.logger.info(f"Saving model to {output_path}...")
-
-        if not self.model or not self.tokenizer:
-            raise ValueError("Model and tokenizer must be initialized before saving")
-
-        try:
-            # Create output directory
-            os.makedirs(output_path, exist_ok=True)
-
-            # Save model
-            self.model.save_pretrained(output_path)
-            self.logger.info("Model saved successfully")
-
-            # Save tokenizer
-            self.tokenizer.save_pretrained(output_path)
-            self.logger.info("Tokenizer saved successfully")
-
-            # Save label mappings
-            label_config = {
-                "label_list": self.label_list,
-                "label2id": self.label2id,
-                "id2label": self.id2label,
-                "num_labels": self.num_labels,
-            }
-            with open(os.path.join(output_path, "label_config.json"), "w") as f:
-                json.dump(label_config, f, indent=2)
-            self.logger.info("Label configuration saved successfully")
-
-            # Save training configuration
-            config = {
-                "model_name": self.model_name,
-                "training": self.training_config.__dict__,
-                "data": self.data_config.__dict__,
-                "device": self.device,
-                "version": __version__,
-            }
-            with open(os.path.join(output_path, "config.json"), "w") as f:
-                json.dump(config, f, indent=2)
-            self.logger.info("Training configuration saved successfully")
-
-            # Validate saved model
-            try:
-                loaded_model = AutoModel.from_pretrained(output_path)
-                del loaded_model  # Free memory
-                self.logger.info("Saved model validated successfully")
-            except Exception as e:
-                self.logger.error(f"Model validation failed: {str(e)}")
-                raise ValueError("Saved model validation failed") from e
-
-        except Exception as e:
-            self.logger.error(f"Failed to save model: {str(e)}")
-            raise
-
-        finally:
-            torch.cuda.empty_cache()
-
-        self.logger.info(f"Model successfully saved to {output_path}")
+        self.logger.info("Training complete")
+        self.logger.info(f"Total steps: {train_result.global_step}")
+        self.logger.info(f"Average training loss: {train_result.training_loss:.4f}")
+        self.logger.info(f"Train Macro F1: {train_metrics['train/macro_avg/f1-score']:.4f}")
+        self.logger.info(f"Validation Macro F1: {val_metrics['validation/macro_avg/f1-score']:.4f}")
 
     def evaluate(
         self,
@@ -869,3 +942,11 @@ class ReceiptTrainer:
             metrics[f"doc_avg/{label}/f1-score"] = avg_f1
 
         return metrics
+
+    def _get_device(self):
+        """Get the default device for training."""
+        if torch.cuda.is_available():
+            return "cuda"
+        elif torch.backends.mps.is_available():
+            return "mps"
+        return "cpu"

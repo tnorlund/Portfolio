@@ -28,7 +28,7 @@
   - [x] **Output**  
     - [x] Print relevant infrastructure info
 
-## 2. Wrapper Class Implementation
+## 2. Wrapper Class Implementation ✅
 
 - [x] **Core Class Structure**
   - [x] Create `ReceiptTrainer` class
@@ -75,15 +75,15 @@
     - [x] Log model checkpoints
     - [x] Track dataset versions
 
-- [ ] **AWS Integration**
+- [x] **AWS Integration**
   - [x] **S3 Management**
     - [x] Add checkpoint saving/loading
     - [x] Implement artifact storage
     - [x] Handle dataset caching
-  - [ ] **Spot Instance Handling**
-    - [ ] Add spot interruption handlers
-    - [ ] Implement training resumption
-    - [ ] Add auto-scaling management
+  - [x] **Spot Instance Handling**
+    - [x] Add spot interruption handlers
+    - [x] Implement training resumption
+    - [x] Add auto-scaling management
 
 - [x] **Testing**
   - [x] Add unit tests for core functionality
