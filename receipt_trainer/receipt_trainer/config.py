@@ -1,7 +1,7 @@
 """Configuration classes for Receipt Trainer."""
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, List
 
 
 @dataclass
@@ -27,6 +27,10 @@ class TrainingConfig:
     ddp_backend: str = "nccl"  # DDP backend (nccl for GPU, gloo for CPU)
     find_unused_parameters: bool = False  # Whether to find unused parameters in DDP
     sync_bn: bool = False  # Whether to use SyncBatchNorm in distributed training
+    # Parallel sweep parameters
+    parallel_sweep_workers: int = 1  # Number of parallel sweep workers
+    parallel_sweep_gpu_ids: Optional[List[int]] = None  # List of GPU IDs to use for parallel sweeps
+    parallel_sweep_per_worker_trials: int = 1  # Number of trials each worker should run
 
 
 class DataConfig:

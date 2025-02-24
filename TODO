@@ -93,7 +93,7 @@
 
 ## 3. Additional Features
 
-- [ ] **Hyperparameter Optimization**
+- [x] **Hyperparameter Optimization**
   - [x] Set up W&B sweeps configuration
   - [x] Implement distributed training support
     - [x] Added distributed training configuration parameters
@@ -102,8 +102,8 @@
     - [x] Added process synchronization and cleanup
     - [x] Created example script for distributed training
   - [x] Add early stopping for sweeps
-  - [ ] Add automated hyperparameter reporting
-  - [ ] Implement parallel sweep execution
+  - [x] Add automated hyperparameter reporting
+  - [x] Implement parallel sweep execution
 
 - [x] **Performance Optimization**
   - [x] Implement gradient accumulation

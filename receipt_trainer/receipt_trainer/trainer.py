@@ -1081,6 +1081,8 @@ class ReceiptTrainer:
         num_trials: int = 10,
         early_stopping_min_trials: int = 5,
         early_stopping_grace_trials: int = 3,
+        parallel_workers: Optional[int] = None,
+        gpu_ids: Optional[List[int]] = None,
     ) -> str:
         """Run hyperparameter optimization using W&B sweeps.
         
@@ -1089,11 +1091,41 @@ class ReceiptTrainer:
             num_trials: Number of trials to run in the sweep.
             early_stopping_min_trials: Minimum number of trials to run before considering early stopping.
             early_stopping_grace_trials: Number of trials without improvement before stopping.
+            parallel_workers: Number of parallel workers to run. If None, uses training_config.parallel_sweep_workers.
+            gpu_ids: List of GPU IDs to use. If None, uses training_config.parallel_sweep_gpu_ids.
             
         Returns:
             ID of the best performing run
         """
+        import torch.multiprocessing as mp
+        from functools import partial
+        
         self.logger.info("Setting up hyperparameter sweep...")
+        
+        # Set up parallel execution parameters
+        n_workers = parallel_workers or self.training_config.parallel_sweep_workers
+        gpu_list = gpu_ids or self.training_config.parallel_sweep_gpu_ids
+        
+        if n_workers > 1:
+            # Validate GPU configuration
+            available_gpus = torch.cuda.device_count()
+            if available_gpus < 1:
+                self.logger.warning("No GPUs available. Falling back to single-process execution.")
+                n_workers = 1
+            elif gpu_list and len(gpu_list) < n_workers:
+                self.logger.warning(
+                    f"Not enough GPUs specified ({len(gpu_list)}) for requested workers ({n_workers}). "
+                    "Some workers will run on the same GPU."
+                )
+            
+            # Calculate trials per worker
+            trials_per_worker = num_trials // n_workers
+            if trials_per_worker < 1:
+                trials_per_worker = 1
+                n_workers = num_trials
+            
+            self.logger.info(f"Running sweep with {n_workers} parallel workers")
+            self.logger.info(f"Each worker will run {trials_per_worker} trials")
         
         if not sweep_config:
             # Default sweep configuration targeting key hyperparameters
@@ -1145,36 +1177,61 @@ class ReceiptTrainer:
         sweep_id = wandb.sweep(sweep_config, project=self.wandb_project)
         self.logger.info(f"Created sweep with ID: {sweep_id}")
         
-        def train_sweep():
-            """Training function for each sweep run."""
-            # Initialize a new W&B run
-            with wandb.init() as run:
-                # Update training config with sweep parameters
-                sweep_params = run.config
-                for key, value in sweep_params.items():
-                    if hasattr(self.training_config, key):
-                        setattr(self.training_config, key, value)
-                
-                # Configure training with updated parameters
-                self.configure_training()
-                
-                # Train the model
-                train_result = self.train(
-                    enable_checkpointing=True,
-                    enable_early_stopping=True,
-                    log_to_wandb=True
-                )
-                
-                # Log final metrics
-                metrics = self.evaluate("validation")
-                run.log(metrics)
-                
-                # Save best model if this is the best run so far
-                if run.summary.get("validation/macro_avg/f1-score", 0) == wandb.run.best_metric:
-                    self.save_model(os.path.join(self.output_dir, "best_model"))
+        def train_sweep_worker(worker_id: int, n_trials: int, gpu_id: Optional[int] = None):
+            """Training function for each sweep worker."""
+            if gpu_id is not None:
+                torch.cuda.set_device(gpu_id)
+                self.logger.info(f"Worker {worker_id} using GPU {gpu_id}")
+            
+            def train_sweep():
+                """Training function for each sweep run."""
+                # Initialize a new W&B run
+                with wandb.init() as run:
+                    # Update training config with sweep parameters
+                    sweep_params = run.config
+                    for key, value in sweep_params.items():
+                        if hasattr(self.training_config, key):
+                            setattr(self.training_config, key, value)
+                    
+                    # Configure training with updated parameters
+                    self.configure_training()
+                    
+                    # Train the model
+                    train_result = self.train(
+                        enable_checkpointing=True,
+                        enable_early_stopping=True,
+                        log_to_wandb=True
+                    )
+                    
+                    # Log final metrics
+                    metrics = self.evaluate("validation")
+                    run.log(metrics)
+                    
+                    # Save best model if this is the best run so far
+                    if run.summary.get("validation/macro_avg/f1-score", 0) == wandb.run.best_metric:
+                        self.save_model(os.path.join(self.output_dir, f"best_model_worker_{worker_id}"))
+            
+            # Run the sweep agent
+            wandb.agent(sweep_id, function=train_sweep, count=n_trials)
         
-        # Run the sweep
-        wandb.agent(sweep_id, function=train_sweep, count=num_trials)
+        if n_workers > 1:
+            # Run parallel sweep with multiple workers
+            processes = []
+            for i in range(n_workers):
+                gpu_id = gpu_list[i] if gpu_list and i < len(gpu_list) else None
+                p = mp.Process(
+                    target=train_sweep_worker,
+                    args=(i, trials_per_worker, gpu_id)
+                )
+                p.start()
+                processes.append(p)
+            
+            # Wait for all processes to complete
+            for p in processes:
+                p.join()
+        else:
+            # Run single-process sweep
+            train_sweep_worker(0, num_trials)
         
         # Generate and log hyperparameter report
         report = self._generate_hyperparameter_report(sweep_id)
