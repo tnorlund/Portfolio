@@ -19,6 +19,7 @@ from transformers import (
     Trainer,
     AutoModel,
     AutoTokenizer,
+    TrainerCallback,
 )
 import wandb
 from dynamo import DynamoClient
@@ -73,6 +74,43 @@ class ReceiptTrainer:
         self.training_config = training_config or TrainingConfig()
         self.data_config = data_config or DataConfig()
         
+        # Initialize components as None
+        self.tokenizer = None
+        self.model = None
+        self.dataset = None
+        self.training_args = None
+        self.dynamo_client = None
+        self.output_dir = None
+        
+        # Set device
+        self.device = self._get_device()
+        
+        # Initialize checkpoint tracking
+        self.last_checkpoint = None
+        self.is_interrupted = False
+
+        # Initialize W&B
+        self.wandb_run = None
+        if wandb.run is None:
+            try:
+                self.wandb_run = wandb.init(
+                    project=self.wandb_project,
+                    name=f"training-{int(time.time())}",
+                    config={
+                        "model_name": self.model_name,
+                        "training": self.training_config.__dict__,
+                        "data": self.data_config.__dict__,
+                    },
+                    reinit=False,
+                    settings=wandb.Settings(start_method="thread")
+                )
+                self.logger.info("W&B initialized successfully")
+            except Exception as e:
+                self.logger.warning(f"Failed to initialize W&B: {e}. Will continue without W&B logging.")
+        else:
+            self.wandb_run = wandb.run
+            self.logger.info("Using existing W&B run")
+        
         # Ensure we have a valid cache directory
         if not self.data_config.cache_dir:
             self.data_config.cache_dir = os.path.join(
@@ -83,23 +121,6 @@ class ReceiptTrainer:
         os.makedirs(self.data_config.cache_dir, exist_ok=True)
         
         self.dynamo_table = dynamo_table
-        
-        # Initialize components as None
-        self.tokenizer = None
-        self.model = None
-        self.dataset = None
-        self.training_args = None
-        self.wandb_run = None
-        self.dynamo_client = None
-        self.output_dir = None
-        
-        # Set device
-        self.device = self._get_device()
-        
-        # Initialize checkpoint tracking
-        self.last_checkpoint = None
-        self.is_interrupted = False
-        
         self.logger.info("ReceiptTrainer initialized")
 
     def _validate_env_vars(self):
@@ -306,82 +327,15 @@ class ReceiptTrainer:
             self.logger.warning("Starting fresh training")
             return None
 
-    def train(
-        self,
-        enable_checkpointing: bool = True,
-        enable_early_stopping: bool = True,
-        log_to_wandb: bool = True,
-        resume_training: bool = True
-    ):
-        """Train the model.
+    def _initialize_wandb_early(self):
+        """Initialize W&B at the start to ensure single process."""
+        # This is now a no-op since W&B is initialized in __init__
+        pass
 
-        Args:
-            enable_checkpointing: Whether to save model checkpoints
-            enable_early_stopping: Whether to enable early stopping
-            log_to_wandb: Whether to log metrics to W&B
-            resume_training: Whether to attempt to resume from checkpoint
-        """
-        self.logger.info("Starting training...")
-        
-        if not self.model or not self.training_args:
-            raise ValueError("Training must be configured before starting training")
-            
-        # Initialize W&B if enabled and this is the main process
-        is_main_process = not self.training_config.distributed_training or self.training_config.local_rank in [-1, 0]
-        
-        # Set up spot interruption handling only in main thread
-        if threading.current_thread() is threading.main_thread():
-            self._setup_spot_interruption_handler()
-            
-        if log_to_wandb and not self.wandb_run and is_main_process:
-            try:
-                self.initialize_wandb()
-            except Exception as e:
-                self.logger.warning(f"Failed to initialize W&B: {e}. Continuing without W&B logging.")
-                log_to_wandb = False
-            
-        # Try to resume training if requested
-        if resume_training:
-            self.resume_training()
-            
-        try:
-            # Create trainer and start training
-            trainer = self._create_trainer(enable_early_stopping)
-            
-            train_result = trainer.train(
-                resume_from_checkpoint=self.last_checkpoint if enable_checkpointing else None
-            )
-            
-            # Save final model if not interrupted and this is the main process
-            if not self.is_interrupted and enable_checkpointing and is_main_process:
-                trainer.save_model(self.output_dir)
-                self.logger.info(f"Final model saved to {self.output_dir}")
-                
-            # Log metrics from main process only
-            if is_main_process and log_to_wandb and self.wandb_run:
-                try:
-                    self._log_training_results(train_result)
-                except Exception as e:
-                    self.logger.warning(f"Failed to log results to W&B: {e}")
-            
-            # Clean up distributed training
-            if self.training_config.distributed_training:
-                torch.distributed.destroy_process_group()
-            
-            return train_result
-            
-        except Exception as e:
-            self.logger.error(f"Training failed: {str(e)}")
-            raise
-            
-        finally:
-            # Cleanup
-            if self.wandb_run and is_main_process:
-                try:
-                    self.wandb_run.finish()
-                except Exception as e:
-                    self.logger.warning(f"Failed to finish W&B run cleanly: {e}")
-            torch.cuda.empty_cache()
+    def initialize_wandb(self):
+        """Initialize Weights & Biases for experiment tracking."""
+        # This is now a no-op since W&B is initialized in __init__
+        pass
 
     def initialize_model(self):
         """Initialize the LayoutLM model and tokenizer."""
@@ -394,107 +348,6 @@ class ReceiptTrainer:
         self.model = None  # Will be initialized after data loading
 
         self.logger.info("Model and tokenizer initialized")
-
-    def _check_wandb_setup(self) -> bool:
-        """Check if W&B is properly set up.
-        
-        Returns:
-            bool: True if W&B is properly configured, False otherwise
-        """
-        try:
-            # Check if wandb is installed
-            import wandb
-            
-            # Check if user is logged in
-            if not wandb.api.api_key:
-                self.logger.error(
-                    "\nW&B not logged in. Please follow these steps:\n"
-                    "1. Run `pip install wandb` if not installed\n"
-                    "2. Run `wandb login` and follow the instructions\n"
-                    "3. Get your API key from https://wandb.ai/settings\n"
-                    "4. Set your API key when prompted by `wandb login`"
-                )
-                return False
-                
-            # Check if WANDB_MODE is set correctly
-            if os.environ.get("WANDB_MODE") == "offline":
-                self.logger.warning(
-                    "\nW&B is set to offline mode. To enable online syncing:\n"
-                    "1. Run `wandb online` in your terminal\n"
-                    "2. Set environment variable: export WANDB_MODE=online\n"
-                    "   or add os.environ['WANDB_MODE'] = 'online' to your script"
-                )
-                return False
-                
-            return True
-            
-        except ImportError:
-            self.logger.error(
-                "\nW&B not installed. Please install it with:\n"
-                "pip install wandb"
-            )
-            return False
-        except Exception as e:
-            self.logger.error(f"Error checking W&B setup: {str(e)}")
-            return False
-
-    def initialize_wandb(self, config: Optional[Dict[str, Any]] = None):
-        """Initialize Weights & Biases for experiment tracking.
-        
-        Args:
-            config: Optional configuration dictionary to log to W&B
-        """
-        self.logger.info("Initializing W&B...")
-
-        # Check W&B setup first
-        if not self._check_wandb_setup():
-            self.logger.warning("W&B setup incomplete. Will attempt to continue in offline mode.")
-
-        if config is None:
-            config = {
-                "model_name": self.model_name,
-                "training": self.training_config.__dict__,
-                "data": self.data_config.__dict__,
-            }
-
-        # First try to initialize in online mode
-        try:
-            # Force online mode
-            os.environ["WANDB_MODE"] = "online"
-            
-            self.wandb_run = wandb.init(
-                project=self.wandb_project,
-                config=config,
-                resume=True,
-                mode="online"
-            )
-            self.logger.info(f"W&B initialized in online mode: {self.wandb_run.name}")
-            return
-            
-        except Exception as e:
-            self.logger.warning(f"Failed to initialize W&B in online mode: {e}")
-            self.logger.warning("Attempting to initialize in offline mode...")
-            
-            try:
-                # Fall back to offline mode
-                os.environ["WANDB_MODE"] = "offline"
-                self.wandb_run = wandb.init(
-                    project=self.wandb_project,
-                    config=config,
-                    resume=True,
-                    mode="offline"
-                )
-                self.logger.warning(
-                    "W&B initialized in offline mode. To sync to W&B cloud:\n"
-                    "1. Ensure you are logged in (`wandb login`)\n"
-                    "2. Run `wandb online` in your terminal\n"
-                    "3. Set WANDB_MODE=online in your environment\n"
-                    "4. Run your training script again"
-                )
-            except Exception as offline_error:
-                self.logger.error(f"Failed to initialize W&B in offline mode: {offline_error}")
-                self.logger.error("Continuing without W&B logging")
-                self.wandb_run = None
 
     def initialize_dynamo(self):
         """Initialize DynamoDB client."""
@@ -1042,6 +895,8 @@ class ReceiptTrainer:
                 local_rank=self.training_config.local_rank,
                 ddp_backend=self.training_config.ddp_backend if self.training_config.distributed_training else None,
                 dataloader_num_workers=4 if self.training_config.distributed_training else 0,
+                # Disable automatic W&B initialization
+                report_to=[],
             )
             self.logger.info("Training arguments configured successfully")
         except Exception as e:
@@ -1059,7 +914,7 @@ class ReceiptTrainer:
             self.logger.info(f"Gradient accumulation steps: {self.training_config.gradient_accumulation_steps}")
         self.logger.info("Training configuration completed successfully")
 
-    def _create_trainer(self, enable_early_stopping: bool):
+    def _create_trainer(self, enable_early_stopping: bool, callbacks: Optional[List[TrainerCallback]] = None):
         """Create and configure the Trainer object."""
         # Create data collator
         data_collator = DataCollatorForTokenClassification(
@@ -1067,14 +922,16 @@ class ReceiptTrainer:
             pad_to_multiple_of=8 if self.training_config.bf16 else None
         )
 
-        # Setup early stopping if enabled
-        callbacks = []
+        # Setup callbacks
+        trainer_callbacks = []
         if enable_early_stopping:
-            callbacks.append(
+            trainer_callbacks.append(
                 EarlyStoppingCallback(
                     early_stopping_patience=self.training_config.early_stopping_patience
                 )
             )
+        if callbacks:
+            trainer_callbacks.extend(callbacks)
 
         # Create Trainer
         trainer = Trainer(
@@ -1084,7 +941,7 @@ class ReceiptTrainer:
             eval_dataset=self.dataset["validation"],
             data_collator=data_collator,
             tokenizer=self.tokenizer,
-            callbacks=callbacks,
+            callbacks=trainer_callbacks,
         )
 
         return trainer
@@ -1189,16 +1046,7 @@ class ReceiptTrainer:
         output_dir: Optional[str] = None,
         detailed_report: bool = True,
     ) -> Dict[str, float]:
-        """Evaluate the model on a specific dataset split.
-
-        Args:
-            split: Dataset split to evaluate on ("train" or "validation")
-            output_dir: Directory to save evaluation artifacts (plots, reports)
-            detailed_report: Whether to generate detailed performance analysis
-
-        Returns:
-            Dictionary containing evaluation metrics
-        """
+        """Evaluate the model on a specific dataset split."""
         self.logger.info(f"Starting evaluation on {split} split...")
 
         if not self.model or not self.dataset:
@@ -1270,7 +1118,18 @@ class ReceiptTrainer:
             labels = sorted(list(set(true_flat)))
             cm = confusion_matrix(true_flat, pred_flat, labels=labels)
             
-            # Plot confusion matrix
+            if self.wandb_run:
+                # Log confusion matrix using wandb's built-in confusion matrix plot
+                self.wandb_run.log({
+                    f"{split}/confusion_matrix": wandb.plot.confusion_matrix(
+                        probs=None,
+                        y_true=true_flat,
+                        preds=pred_flat,
+                        class_names=labels
+                    )
+                })
+            
+            # Also save a local version with matplotlib
             plt.figure(figsize=(12, 10))
             sns.heatmap(
                 cm,
@@ -1284,7 +1143,7 @@ class ReceiptTrainer:
             plt.xlabel("Predicted")
             plt.ylabel("True")
             
-            # Save plot
+            # Save plot locally if output directory is specified
             if output_dir:
                 plt.savefig(os.path.join(output_dir, f"confusion_matrix_{split}.png"))
                 plt.close()
@@ -1301,14 +1160,6 @@ class ReceiptTrainer:
         if self.wandb_run:
             # Log metrics
             self.wandb_run.log(metrics)
-            
-            # Log confusion matrix plot if generated
-            if detailed_report and output_dir:
-                self.wandb_run.log({
-                    f"{split}/confusion_matrix": wandb.Image(
-                        os.path.join(output_dir, f"confusion_matrix_{split}.png")
-                    )
-                })
 
         # Print summary
         self.logger.info("\nEvaluation Results:")
@@ -1663,3 +1514,78 @@ class ReceiptTrainer:
             raise ve
         except Exception as e:
             raise Exception(f"Failed to save model: {str(e)}")
+
+    def train(
+        self,
+        enable_checkpointing: bool = True,
+        enable_early_stopping: bool = True,
+        log_to_wandb: bool = True,
+        resume_training: bool = True,
+        callbacks: Optional[List[TrainerCallback]] = None
+    ):
+        """Train the model.
+
+        Args:
+            enable_checkpointing: Whether to save model checkpoints
+            enable_early_stopping: Whether to enable early stopping
+            log_to_wandb: Whether to log metrics to W&B
+            resume_training: Whether to attempt to resume from checkpoint
+            callbacks: Optional list of TrainerCallback objects
+        """
+        self.logger.info("Starting training...")
+        
+        if not self.model or not self.training_args:
+            raise ValueError("Training must be configured before starting training")
+            
+        # Check if we're in the main process
+        is_main_process = not self.training_config.distributed_training or self.training_config.local_rank in [-1, 0]
+        
+        # Set up spot interruption handling only in main thread
+        if threading.current_thread() is threading.main_thread():
+            self._setup_spot_interruption_handler()
+            
+        # Try to resume training if requested
+        if resume_training:
+            self.resume_training()
+            
+        try:
+            # Create trainer and start training
+            trainer = self._create_trainer(enable_early_stopping, callbacks)
+            
+            train_result = trainer.train(
+                resume_from_checkpoint=self.last_checkpoint if enable_checkpointing else None
+            )
+            
+            # Save final model if not interrupted and this is the main process
+            if not self.is_interrupted and enable_checkpointing and is_main_process:
+                trainer.save_model(self.output_dir)
+                self.logger.info(f"Final model saved to {self.output_dir}")
+                
+            # Log metrics from main process only
+            if is_main_process and log_to_wandb and self.wandb_run:
+                try:
+                    self._log_training_results(train_result)
+                except Exception as e:
+                    self.logger.warning(f"Failed to log results to W&B: {e}")
+            
+            # Clean up distributed training
+            if self.training_config.distributed_training:
+                torch.distributed.destroy_process_group()
+            
+            return train_result
+            
+        except Exception as e:
+            self.logger.error(f"Training failed: {str(e)}")
+            raise
+            
+        finally:
+            # Cleanup
+            if self.wandb_run and is_main_process:
+                try:
+                    self.wandb_run.finish()
+                    # Ensure we don't have any lingering W&B runs
+                    if wandb.run is not None and wandb.run != self.wandb_run:
+                        wandb.finish()
+                except Exception as e:
+                    self.logger.warning(f"Failed to finish W&B run cleanly: {e}")
+            torch.cuda.empty_cache()
