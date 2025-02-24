@@ -5,6 +5,15 @@ import pytest
 from pathlib import Path
 import wandb
 from datasets import Dataset, DatasetDict
+import json
+import torch
+from transformers import (
+    LayoutLMForTokenClassification,
+    LayoutLMTokenizerFast,
+    TrainingArguments,
+    Trainer,
+    LayoutLMConfig,
+)
 
 from receipt_trainer import ReceiptTrainer, TrainingConfig, DataConfig
 
@@ -101,14 +110,16 @@ def trainer(mock_env_vars, monkeypatch, mocker):
         "receipt_trainer.utils.aws.get_dynamo_table", lambda *args: "mock-table"
     )
 
-    return ReceiptTrainer(wandb_project="test-project", model_name="test/model")
+    return ReceiptTrainer(
+        wandb_project="test-project", model_name="/path/to/dummy_model"
+    )
 
 
 @pytest.mark.integration
 def test_trainer_initialization(trainer):
     """Test trainer initialization with mocked dependencies."""
     assert trainer.wandb_project == "test-project"
-    assert trainer.model_name == "test/model"
+    assert trainer.model_name == "/path/to/dummy_model"
     assert trainer.device == "cpu"
     assert isinstance(trainer.training_config, TrainingConfig)
     assert isinstance(trainer.data_config, DataConfig)
@@ -315,3 +326,155 @@ def test_cleanup(trainer, tmp_path, mocker):
     os.makedirs(trainer.data_config.cache_dir, exist_ok=True)
     cache_dir = Path(trainer.data_config.cache_dir)
     assert cache_dir.exists()  # Should still exist during test
+
+
+@pytest.fixture
+def mock_dataset():
+    """Create a mock dataset for testing."""
+    train_data = Dataset.from_dict(
+        {
+            "words": [["word1", "word2"], ["word3", "word4"]],
+            "bbox": [[[1, 2, 3, 4], [5, 6, 7, 8]], [[9, 10, 11, 12], [13, 14, 15, 16]]],
+            "labels": [["O", "B-total"], ["I-total", "O"]],
+            "image_id": ["id1", "id2"],
+        }
+    )
+    val_data = Dataset.from_dict(
+        {
+            "words": [["word5", "word6"]],
+            "bbox": [[[17, 18, 19, 20], [21, 22, 23, 24]]],
+            "labels": [["B-total", "I-total"]],
+            "image_id": ["id3"],
+        }
+    )
+    return DatasetDict({"train": train_data, "validation": val_data})
+
+
+@pytest.fixture
+def mock_tokenizer(mocker):
+    """Create a mock tokenizer for testing."""
+    tokenizer = mocker.Mock(spec=LayoutLMTokenizerFast)
+    tokenizer.from_pretrained.return_value = tokenizer
+    return tokenizer
+
+
+@pytest.fixture
+def mock_model(mocker):
+    """Create a mock model for testing."""
+    model = mocker.Mock(spec=LayoutLMForTokenClassification)
+    model.to.return_value = model
+    return model
+
+
+def test_configure_training(trainer, mock_dataset, mock_tokenizer, tmp_path, mocker):
+    """Test configure_training method."""
+    trainer.dataset = mock_dataset
+    trainer.tokenizer = mock_tokenizer
+    output_dir = str(tmp_path / "checkpoints")
+
+    mock_model = mocker.Mock()
+    mock_model_init = mocker.patch(
+        "transformers.LayoutLMForTokenClassification.from_pretrained",
+        return_value=mock_model,
+    )
+
+    # Test with custom output directory
+    trainer.configure_training(output_dir=output_dir)
+
+    # Verify output directory was created
+    assert os.path.exists(output_dir)
+
+    # Verify model initialization
+    assert trainer.model is not None
+    assert trainer.num_labels == 3  # O, B-total, I-total
+    assert set(trainer.label_list) == {"O", "B-total", "I-total"}
+
+    # Verify training arguments
+    assert isinstance(trainer.training_args, TrainingArguments)
+    assert trainer.training_args.output_dir == output_dir
+    assert trainer.training_args.num_train_epochs == trainer.training_config.num_epochs
+
+
+def make_dummy_layoutlm_model(num_labels=3):
+    """
+    Return a small-but-real LayoutLMForTokenClassification instance
+    so that HF Trainer won't crash calling named_children().
+    """
+    config = LayoutLMConfig(
+        hidden_size=32,
+        num_attention_heads=2,
+        num_labels=num_labels,
+        intermediate_size=64,
+        max_position_embeddings=128,
+        vocab_size=30522,
+    )
+    return LayoutLMForTokenClassification(config)
+
+
+def test_save_model(trainer, mock_model, mock_tokenizer, tmp_path, mocker):
+    """Test save_model method."""
+    trainer.model = mock_model
+    trainer.tokenizer = mock_tokenizer
+    trainer.label_list = ["O", "B-total", "I-total"]
+    trainer.label2id = {"O": 0, "B-total": 1, "I-total": 2}
+    trainer.id2label = {0: "O", 1: "B-total", 2: "I-total"}
+    trainer.num_labels = 3
+    output_path = str(tmp_path / "saved_model")
+
+    mocker.patch("transformers.AutoModel.from_pretrained")
+
+    # Test successful save
+    trainer.save_model(output_path)
+
+    # Verify directories and files were created
+    assert os.path.exists(output_path)
+    assert os.path.exists(os.path.join(output_path, "label_config.json"))
+    assert os.path.exists(os.path.join(output_path, "config.json"))
+
+    # Verify model and tokenizer were saved
+    trainer.model.save_pretrained.assert_called_once_with(output_path)
+    trainer.tokenizer.save_pretrained.assert_called_once_with(output_path)
+
+    # Verify config files content
+    with open(os.path.join(output_path, "label_config.json")) as f:
+        label_config = json.load(f)
+        assert label_config["num_labels"] == 3
+        assert set(label_config["label_list"]) == {"O", "B-total", "I-total"}
+
+
+def test_save_model_errors(trainer, tmp_path, mocker):
+    """Test save_model error handling."""
+    output_path = str(tmp_path / "failed_save")
+
+    # Test without model
+    trainer.model = None
+    trainer.tokenizer = None
+    with pytest.raises(ValueError) as exc_info:
+        trainer.save_model(output_path)
+    assert "Model and tokenizer must be initialized" in str(exc_info.value)
+
+    # Mock model and tokenizer
+    mock_model = mocker.Mock()
+    mock_tokenizer = mocker.Mock()
+    trainer.model = mock_model
+    trainer.tokenizer = mock_tokenizer
+    trainer.label_list = ["O", "B-total", "I-total"]
+    trainer.label2id = {"O": 0, "B-total": 1, "I-total": 2}
+    trainer.id2label = {0: "O", 1: "B-total", 2: "I-total"}
+    trainer.num_labels = 3
+
+    # Test save failure
+    mock_model.save_pretrained.side_effect = Exception("Failed to save model")
+    with pytest.raises(Exception) as exc_info:
+        trainer.save_model(output_path)
+    assert "Failed to save model" in str(exc_info.value)
+
+    # Reset side effect for next test
+    mock_model.save_pretrained.side_effect = None
+
+    # Test validation failure
+    mock_auto_model = mocker.patch("transformers.AutoModel.from_pretrained")
+    mock_auto_model.side_effect = Exception("Validation failed")
+    with pytest.raises(ValueError) as exc_info:
+        trainer.save_model(output_path)
+    assert "Saved model validation failed" in str(exc_info.value)
