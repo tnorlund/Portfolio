@@ -6,7 +6,7 @@ import tempfile
 import logging
 import torch
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple, Union
 from datasets import Dataset, DatasetDict, load_dataset, Value, Features, Sequence
 from transformers import (
     LayoutLMForTokenClassification,
@@ -20,6 +20,12 @@ from transformers import (
 import wandb
 from dynamo import DynamoClient
 import random
+import numpy as np
+from sklearn.metrics import confusion_matrix, classification_report
+import seaborn as sns
+import matplotlib.pyplot as plt
+from collections import defaultdict
+from sklearn.metrics import precision_score, recall_score, f1_score
 
 from receipt_trainer.config import TrainingConfig, DataConfig
 from receipt_trainer.utils.data import (
@@ -564,19 +570,27 @@ class ReceiptTrainer:
                 trainer.save_model(self.output_dir)
                 self.logger.info(f"Final model saved to {self.output_dir}")
 
-            # Log metrics
-            metrics = train_result.metrics
-            trainer.log_metrics("train", metrics)
-            trainer.save_metrics("train", metrics)
+            # Run detailed evaluation on both splits
+            eval_output_dir = os.path.join(self.output_dir, "eval")
+            train_metrics = self.evaluate("train", eval_output_dir)
+            val_metrics = self.evaluate("validation", eval_output_dir)
 
-            # Run final evaluation
-            eval_metrics = trainer.evaluate()
-            trainer.log_metrics("eval", eval_metrics)
-            trainer.save_metrics("eval", eval_metrics)
+            # Log metrics
+            metrics = {
+                **train_metrics,
+                **val_metrics,
+                "train/total_steps": train_result.global_step,
+                "train/total_loss": train_result.training_loss,
+            }
+
+            if self.wandb_run:
+                self.wandb_run.log(metrics)
 
             self.logger.info("Training complete")
-            self.logger.info(f"Final training metrics: {metrics}")
-            self.logger.info(f"Final evaluation metrics: {eval_metrics}")
+            self.logger.info(f"Total steps: {train_result.global_step}")
+            self.logger.info(f"Average training loss: {train_result.training_loss:.4f}")
+            self.logger.info(f"Train Macro F1: {train_metrics['train/macro_avg/f1-score']:.4f}")
+            self.logger.info(f"Validation Macro F1: {val_metrics['validation/macro_avg/f1-score']:.4f}")
 
             return train_result
 
@@ -653,3 +667,205 @@ class ReceiptTrainer:
             torch.cuda.empty_cache()
 
         self.logger.info(f"Model successfully saved to {output_path}")
+
+    def evaluate(
+        self,
+        split: str = "validation",
+        output_dir: Optional[str] = None,
+        detailed_report: bool = True,
+    ) -> Dict[str, float]:
+        """Evaluate the model on a specific dataset split.
+
+        Args:
+            split: Dataset split to evaluate on ("train" or "validation")
+            output_dir: Directory to save evaluation artifacts (plots, reports)
+            detailed_report: Whether to generate detailed performance analysis
+
+        Returns:
+            Dictionary containing evaluation metrics
+        """
+        self.logger.info(f"Starting evaluation on {split} split...")
+
+        if not self.model or not self.dataset:
+            raise ValueError("Model and dataset must be initialized before evaluation")
+
+        if split not in self.dataset:
+            raise ValueError(f"Dataset split '{split}' not found")
+
+        # Create output directory if needed
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+
+        # Create trainer for evaluation
+        trainer = Trainer(
+            model=self.model,
+            args=self.training_args,
+            tokenizer=self.tokenizer,
+            data_collator=DataCollatorForTokenClassification(
+                self.tokenizer,
+                pad_to_multiple_of=8 if self.training_config.bf16 else None
+            ),
+        )
+
+        # Run prediction
+        self.logger.info("Running predictions...")
+        predictions = trainer.predict(self.dataset[split])
+        
+        # Convert predictions to labels
+        logits = predictions.predictions
+        pred_labels = np.argmax(logits, axis=2)
+        
+        # Get true labels
+        true_labels = predictions.label_ids
+
+        # Flatten predictions and labels, removing padding (-100)
+        true_flat = []
+        pred_flat = []
+        for i in range(len(true_labels)):
+            for j in range(len(true_labels[i])):
+                if true_labels[i][j] != -100:
+                    true_flat.append(self.id2label[true_labels[i][j]])
+                    pred_flat.append(self.id2label[pred_labels[i][j]])
+
+        # Compute metrics
+        metrics = {}
+        
+        # Get classification report
+        report = classification_report(
+            true_flat,
+            pred_flat,
+            output_dict=True,
+            zero_division=0
+        )
+
+        # Extract metrics per label
+        for label, stats in report.items():
+            if isinstance(stats, dict):
+                for metric, value in stats.items():
+                    metrics[f"{split}/{label}/{metric}"] = value
+
+        # Add macro and weighted averages
+        for avg_type in ["macro avg", "weighted avg"]:
+            if avg_type in report:
+                for metric, value in report[avg_type].items():
+                    metrics[f"{split}/{avg_type.replace(' ', '_')}/{metric}"] = value
+
+        if detailed_report:
+            # Generate confusion matrix
+            labels = sorted(list(set(true_flat)))
+            cm = confusion_matrix(true_flat, pred_flat, labels=labels)
+            
+            # Plot confusion matrix
+            plt.figure(figsize=(12, 10))
+            sns.heatmap(
+                cm,
+                annot=True,
+                fmt="d",
+                cmap="Blues",
+                xticklabels=labels,
+                yticklabels=labels
+            )
+            plt.title(f"Confusion Matrix - {split.capitalize()} Split")
+            plt.xlabel("Predicted")
+            plt.ylabel("True")
+            
+            # Save plot
+            if output_dir:
+                plt.savefig(os.path.join(output_dir, f"confusion_matrix_{split}.png"))
+                plt.close()
+
+            # Add per-document analysis
+            doc_metrics = self._compute_document_metrics(
+                self.dataset[split],
+                predictions.predictions,
+                predictions.label_ids
+            )
+            metrics.update(doc_metrics)
+
+        # Log metrics to W&B
+        if self.wandb_run:
+            # Log metrics
+            self.wandb_run.log(metrics)
+            
+            # Log confusion matrix plot if generated
+            if detailed_report and output_dir:
+                self.wandb_run.log({
+                    f"{split}/confusion_matrix": wandb.Image(
+                        os.path.join(output_dir, f"confusion_matrix_{split}.png")
+                    )
+                })
+
+        # Print summary
+        self.logger.info("\nEvaluation Results:")
+        self.logger.info(f"Split: {split}")
+        self.logger.info(f"Macro F1: {metrics[f'{split}/macro_avg/f1-score']:.4f}")
+        self.logger.info(f"Weighted F1: {metrics[f'{split}/weighted_avg/f1-score']:.4f}")
+        self.logger.info("\nPer-Label Performance:")
+        for label in self.label_list:
+            if label != "O":  # Skip the 'Outside' label in summary
+                f1 = metrics.get(f"{split}/{label}/f1-score", 0)
+                support = metrics.get(f"{split}/{label}/support", 0)
+                self.logger.info(f"{label:15} F1: {f1:.4f} (n={support})")
+
+        return metrics
+
+    def _compute_document_metrics(
+        self,
+        dataset: Dataset,
+        predictions: np.ndarray,
+        true_labels: np.ndarray,
+    ) -> Dict[str, float]:
+        """Compute document-level metrics.
+        
+        Args:
+            dataset: The dataset split being evaluated
+            predictions: Model predictions (logits)
+            true_labels: True labels
+
+        Returns:
+            Dictionary of document-level metrics
+        """
+        metrics = {}
+        pred_labels = np.argmax(predictions, axis=2)
+
+        # Group by document
+        doc_metrics = defaultdict(list)
+        current_doc = None
+        doc_true = []
+        doc_pred = []
+
+        for i, image_id in enumerate(dataset["image_id"]):
+            if current_doc != image_id:
+                if doc_true:
+                    # Compute metrics for previous document
+                    for label in self.label_list:
+                        if label != "O":
+                            label_true = [l == label for l in doc_true]
+                            label_pred = [l == label for l in doc_pred]
+                            if any(label_true):  # Only compute if label exists in document
+                                precision = precision_score(label_true, label_pred, zero_division=0)
+                                recall = recall_score(label_true, label_pred, zero_division=0)
+                                f1 = f1_score(label_true, label_pred, zero_division=0)
+                                doc_metrics[label].append((precision, recall, f1))
+                
+                # Reset for new document
+                current_doc = image_id
+                doc_true = []
+                doc_pred = []
+
+            # Add predictions for current document
+            for j in range(len(true_labels[i])):
+                if true_labels[i][j] != -100:
+                    doc_true.append(self.id2label[true_labels[i][j]])
+                    doc_pred.append(self.id2label[pred_labels[i][j]])
+
+        # Compute average metrics per label across documents
+        for label, scores in doc_metrics.items():
+            avg_precision = np.mean([s[0] for s in scores])
+            avg_recall = np.mean([s[1] for s in scores])
+            avg_f1 = np.mean([s[2] for s in scores])
+            metrics[f"doc_avg/{label}/precision"] = avg_precision
+            metrics[f"doc_avg/{label}/recall"] = avg_recall
+            metrics[f"doc_avg/{label}/f1-score"] = avg_f1
+
+        return metrics

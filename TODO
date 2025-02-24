@@ -60,10 +60,10 @@
     - [x] Add early stopping
     - [x] Implement gradient accumulation
     - [x] Add mixed precision training
-  - [ ] **Evaluation**
-    - [ ] Add metrics computation
+  - [x] **Evaluation**
+    - [x] Add metrics computation
     - [x] Implement validation loop
-    - [ ] Add performance reporting
+    - [x] Add performance reporting
 
 - [x] **W&B Integration**
   - [x] **Project Setup**
