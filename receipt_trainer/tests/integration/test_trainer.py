@@ -204,6 +204,10 @@ def test_data_loading_pipeline(trainer, mock_dynamo_data, mock_sroie_data, mocke
     mocker.patch("dynamo.DynamoClient", return_value=mock_client)
     mocker.patch("datasets.load_dataset", return_value=mock_sroie_data)
 
+    # Set the dynamo_table and initialize the client
+    trainer.dynamo_table = "mock-table"
+    trainer.initialize_dynamo()
+
     # Load data
     dataset = trainer.load_data(use_sroie=True)
 
@@ -292,19 +296,19 @@ def test_device_selection(mocker):
     # Test CUDA
     mocker.patch("torch.cuda.is_available", return_value=True)
     mocker.patch("torch.backends.mps.is_available", return_value=False)
-    trainer = ReceiptTrainer(wandb_project="test")
+    trainer = ReceiptTrainer(wandb_project="test", model_name="test/model")
     assert trainer.device == "cuda"
 
     # Test MPS
     mocker.patch("torch.cuda.is_available", return_value=False)
     mocker.patch("torch.backends.mps.is_available", return_value=True)
-    trainer = ReceiptTrainer(wandb_project="test")
+    trainer = ReceiptTrainer(wandb_project="test", model_name="test/model")
     assert trainer.device == "mps"
 
     # Test CPU fallback
     mocker.patch("torch.cuda.is_available", return_value=False)
     mocker.patch("torch.backends.mps.is_available", return_value=False)
-    trainer = ReceiptTrainer(wandb_project="test")
+    trainer = ReceiptTrainer(wandb_project="test", model_name="test/model")
     assert trainer.device == "cpu"
 
 

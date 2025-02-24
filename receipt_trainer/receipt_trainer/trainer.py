@@ -950,3 +950,140 @@ class ReceiptTrainer:
         elif torch.backends.mps.is_available():
             return "mps"
         return "cpu"
+
+    def run_hyperparameter_sweep(
+        self,
+        sweep_config: Optional[Dict[str, Any]] = None,
+        num_trials: int = 10,
+    ) -> str:
+        """Run hyperparameter optimization using W&B sweeps.
+        
+        Args:
+            sweep_config: Optional custom sweep configuration. If None, uses default config.
+            num_trials: Number of trials to run in the sweep.
+            
+        Returns:
+            ID of the best performing sweep run.
+        """
+        self.logger.info("Setting up hyperparameter sweep...")
+        
+        if not sweep_config:
+            # Default sweep configuration targeting key hyperparameters
+            sweep_config = {
+                "method": "bayes",  # Bayesian optimization
+                "metric": {
+                    "name": "validation/macro_avg/f1-score",
+                    "goal": "maximize"
+                },
+                "parameters": {
+                    "learning_rate": {
+                        "distribution": "log_uniform",
+                        "min": -9.21,  # 1e-4
+                        "max": -6.91,  # 1e-3
+                    },
+                    "batch_size": {
+                        "values": [8, 16, 32]
+                    },
+                    "gradient_accumulation_steps": {
+                        "values": [16, 32, 64]
+                    },
+                    "warmup_ratio": {
+                        "distribution": "uniform",
+                        "min": 0.0,
+                        "max": 0.3
+                    },
+                    "weight_decay": {
+                        "distribution": "log_uniform",
+                        "min": -9.21,  # 1e-4
+                        "max": -4.61,  # 1e-2
+                    },
+                    "max_grad_norm": {
+                        "values": [0.5, 1.0, 2.0]
+                    },
+                    "early_stopping_patience": {
+                        "values": [3, 5, 7]
+                    }
+                }
+            }
+        
+        # Initialize sweep
+        sweep_id = wandb.sweep(sweep_config, project=self.wandb_project)
+        self.logger.info(f"Created sweep with ID: {sweep_id}")
+        
+        def train_sweep():
+            """Training function for each sweep run."""
+            # Initialize a new W&B run
+            with wandb.init() as run:
+                # Update training config with sweep parameters
+                sweep_params = run.config
+                for key, value in sweep_params.items():
+                    if hasattr(self.training_config, key):
+                        setattr(self.training_config, key, value)
+                
+                # Configure training with updated parameters
+                self.configure_training()
+                
+                # Train the model
+                train_result = self.train(
+                    enable_checkpointing=True,
+                    enable_early_stopping=True,
+                    log_to_wandb=True
+                )
+                
+                # Log final metrics
+                metrics = self.evaluate("validation")
+                run.log(metrics)
+                
+                # Save best model if this is the best run so far
+                if run.summary.get("validation/macro_avg/f1-score", 0) == wandb.run.best_metric:
+                    self.save_model(os.path.join(self.output_dir, "best_model"))
+        
+        # Run the sweep
+        self.logger.info(f"Starting sweep with {num_trials} trials...")
+        wandb.agent(sweep_id, function=train_sweep, count=num_trials)
+        
+        # Get best run ID
+        api = wandb.Api()
+        sweep = api.sweep(f"{self.wandb_project}/{sweep_id}")
+        best_run = sweep.best_run()
+        
+        self.logger.info(f"Sweep completed. Best run: {best_run.id}")
+        self.logger.info(f"Best validation F1: {best_run.summary.get('validation/macro_avg/f1-score', 0):.4f}")
+        
+        return best_run.id
+
+    def save_model(self, output_path: str):
+        """Save the trained model and tokenizer.
+        
+        Args:
+            output_path: Path where to save the model
+        
+        Raises:
+            ValueError: If model or tokenizer is not initialized
+        """
+        if not self.model or not self.tokenizer:
+            raise ValueError("Model and tokenizer must be initialized before saving")
+        
+        self.logger.info(f"Saving model to {output_path}")
+        
+        # Create output directory if it doesn't exist
+        os.makedirs(output_path, exist_ok=True)
+        
+        # Save model
+        self.model.save_pretrained(output_path)
+        
+        # Save tokenizer
+        self.tokenizer.save_pretrained(output_path)
+        
+        # Save label mappings
+        if hasattr(self, 'label_list'):
+            label_config = {
+                'label_list': self.label_list,
+                'label2id': self.label2id,
+                'id2label': self.id2label,
+                'num_labels': self.num_labels
+            }
+            with open(os.path.join(output_path, 'label_config.json'), 'w') as f:
+                json.dump(label_config, f)
+        
+        self.logger.info("Model saved successfully")

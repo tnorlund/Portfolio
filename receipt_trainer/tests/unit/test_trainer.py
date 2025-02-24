@@ -224,6 +224,10 @@ def test_data_loading_pipeline(trainer, mock_dynamo_data, mock_sroie_data, mocke
     mocker.patch("dynamo.DynamoClient", return_value=mock_client)
     mocker.patch("datasets.load_dataset", return_value=mock_sroie_data)
 
+    # Set the dynamo_table and initialize the client
+    trainer.dynamo_table = "mock-table"
+    trainer.initialize_dynamo()
+
     # Load data
     dataset = trainer.load_data(use_sroie=True)
 
@@ -305,19 +309,19 @@ def test_device_selection(monkeypatch, mocker, mock_env_vars):
     # Test CUDA
     monkeypatch.setattr("torch.cuda.is_available", lambda: True)
     monkeypatch.setattr("torch.backends.mps.is_available", lambda: False)
-    trainer = ReceiptTrainer(wandb_project="test")
+    trainer = ReceiptTrainer(wandb_project="test", model_name="test/model")
     assert trainer.device == "cuda"
 
     # Test MPS
     monkeypatch.setattr("torch.cuda.is_available", lambda: False)
     monkeypatch.setattr("torch.backends.mps.is_available", lambda: True)
-    trainer = ReceiptTrainer(wandb_project="test")
+    trainer = ReceiptTrainer(wandb_project="test", model_name="test/model")
     assert trainer.device == "mps"
 
     # Test CPU fallback
     monkeypatch.setattr("torch.cuda.is_available", lambda: False)
     monkeypatch.setattr("torch.backends.mps.is_available", lambda: False)
-    trainer = ReceiptTrainer(wandb_project="test")
+    trainer = ReceiptTrainer(wandb_project="test", model_name="test/model")
     assert trainer.device == "cpu"
 
 
@@ -430,7 +434,18 @@ def test_save_model(trainer, mock_model, mock_tokenizer, tmp_path, mocker):
     trainer.num_labels = 3
     output_path = str(tmp_path / "saved_model")
 
-    mocker.patch("transformers.AutoModel.from_pretrained")
+    # Mock save_pretrained to create necessary files
+    def mock_save_pretrained(path):
+        os.makedirs(path, exist_ok=True)
+        with open(os.path.join(path, "config.json"), "w") as f:
+            json.dump({"mock": "config"}, f)
+    
+    mock_model.save_pretrained.side_effect = mock_save_pretrained
+    mock_tokenizer.save_pretrained.side_effect = mock_save_pretrained
+
+    # Mock AutoModel.from_pretrained to succeed
+    mock_auto_model = mocker.patch("transformers.AutoModel.from_pretrained")
+    mock_auto_model.return_value = mocker.Mock()
 
     # Test successful save
     trainer.save_model(output_path)
