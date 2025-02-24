@@ -216,7 +216,7 @@ def test_data_loading_pipeline(trainer, mock_dynamo_data, mock_sroie_data, mocke
     for split in dataset.values():
         assert isinstance(split, Dataset)
         assert all(
-            field in split.features for field in ["words", "bbox", "labels", "image_id"]
+            field in split.features for field in ["words", "bboxes", "labels", "image_id"]
         )
         assert len(split) > 0
 

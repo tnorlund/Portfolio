@@ -7,7 +7,7 @@ import logging
 import torch
 from pathlib import Path
 from typing import Optional, Dict, Any, List
-from datasets import Dataset, DatasetDict, load_dataset
+from datasets import Dataset, DatasetDict, load_dataset, Value, Features, Sequence
 from transformers import (
     LayoutLMForTokenClassification,
     LayoutLMTokenizerFast,
@@ -19,9 +19,15 @@ from transformers import (
 )
 import wandb
 from dynamo import DynamoClient
+import random
 
 from receipt_trainer.config import TrainingConfig, DataConfig
-from receipt_trainer.utils.data import process_receipt_details, create_sliding_windows
+from receipt_trainer.utils.data import (
+    process_receipt_details,
+    create_sliding_windows,
+    balance_dataset,
+    augment_example,
+)
 from receipt_trainer.utils.aws import get_dynamo_table, get_s3_bucket
 from receipt_trainer.constants import REQUIRED_ENV_VARS
 from receipt_trainer.version import __version__
@@ -204,7 +210,11 @@ class ReceiptTrainer:
         return dataset
 
     def _load_sroie_data(self):
-        """Load and prepare the SROIE dataset."""
+        """Load and prepare the SROIE dataset.
+        
+        Returns:
+            Dictionary containing 'train' and 'test' splits of SROIE data
+        """
         self.logger.info("Loading SROIE dataset...")
 
         # Define numeric to string mapping for SROIE labels
@@ -234,8 +244,8 @@ class ReceiptTrainer:
         }
 
         dataset = load_dataset("darentang/sroie")
-        train_data = {}
-        test_data = {}
+        train_data = []
+        test_data = []
 
         def convert_example(
             example: Dict[str, Any], idx: int, split: str
@@ -273,118 +283,150 @@ class ReceiptTrainer:
 
         # Convert train split
         for idx, example in enumerate(dataset["train"]):
-            train_data[f"sroie_train_{idx}"] = convert_example(example, idx, "train")
+            train_data.append(convert_example(example, idx, "train"))
 
         # Convert test split
         for idx, example in enumerate(dataset["test"]):
-            test_data[f"sroie_test_{idx}"] = convert_example(example, idx, "test")
+            test_data.append(convert_example(example, idx, "test"))
 
         self.logger.info(
             f"Loaded {len(train_data)} training and {len(test_data)} test examples from SROIE"
         )
-        return train_data, test_data
+        return {"train": train_data, "test": test_data}
 
     def load_data(
         self,
-        use_sroie: Optional[bool] = None,
-        balance_ratio: Optional[float] = None,
-        augment: Optional[bool] = None,
+        use_sroie: bool = True,
+        balance_ratio: float = 0.7,
+        augment: bool = True,
     ) -> DatasetDict:
-        """Load and prepare the complete dataset.
+        """Load and preprocess training data.
 
         Args:
             use_sroie: Whether to include SROIE dataset
-            balance_ratio: Ratio for dataset balancing
+            balance_ratio: Target ratio of entity tokens to total tokens
             augment: Whether to apply data augmentation
 
         Returns:
             DatasetDict containing train and validation splits
         """
-        # Update config with any provided parameters
-        if use_sroie is not None:
-            self.data_config.use_sroie = use_sroie
-        if balance_ratio is not None:
-            self.data_config.balance_ratio = balance_ratio
-        if augment is not None:
-            self.data_config.augment = augment
+        self.logger.info("Loading dataset...")
+        self.logger.info(f"Use SROIE: {use_sroie}")
+        self.logger.info(f"Balance ratio: {balance_ratio}")
+        self.logger.info(f"Augment: {augment}")
 
-        self.logger.info("Starting dataset loading process...")
+        # Load data from DynamoDB
+        self.logger.info("Loading data from DynamoDB...")
+        examples = self._load_dynamo_data()
+        self.logger.info(f"Loaded {len(examples)} receipts from DynamoDB")
 
-        # Load DynamoDB data
-        dynamo_data = self._load_dynamo_data()
+        # Load SROIE dataset if requested
+        if use_sroie:
+            self.logger.info("Loading SROIE dataset...")
+            sroie_examples = self._load_sroie_data()
+            self.logger.info(
+                f"Loaded {len(sroie_examples['train'])} training and {len(sroie_examples['test'])} test examples from SROIE"
+            )
+        else:
+            sroie_examples = {"train": [], "test": []}
 
-        # Load SROIE data if requested
-        sroie_train_data = {}
-        sroie_test_data = {}
-        if self.data_config.use_sroie:
-            sroie_train_data, sroie_test_data = self._load_sroie_data()
+        # Balance dataset if requested and if we have examples
+        if balance_ratio > 0 and examples:
+            self.logger.info(f"Balancing dataset with target ratio {balance_ratio}...")
+            examples = balance_dataset(examples, target_entity_ratio=balance_ratio)
 
-        # Combine datasets
-        all_train_data = {**dynamo_data, **sroie_train_data}
+        # Apply data augmentation if requested and if we have examples
+        if augment and examples:
+            self.logger.info("Applying data augmentation...")
+            examples = augment_example(examples)
 
-        # Convert to Dataset format
-        train_dataset = Dataset.from_dict(
-            {
-                "words": [example["words"] for example in all_train_data.values()],
-                "bbox": [example["bboxes"] for example in all_train_data.values()],
-                "labels": [example["labels"] for example in all_train_data.values()],
-                "image_id": [
-                    example["image_id"] for example in all_train_data.values()
-                ],
-            }
-        )
+        # Create sliding windows
+        self.logger.info(f"Creating sliding windows of size {self.data_config.window_size}...")
+        train_windows = []
+        if examples:  # Only process if we have examples
+            for example in examples:
+                windows = create_sliding_windows(
+                    example["words"],
+                    example["bboxes"],
+                    example["labels"],
+                    image_id=example.get("image_id"),  # Pass image_id if it exists
+                    window_size=self.data_config.window_size,
+                    overlap=self.data_config.window_overlap,
+                )
+                train_windows.extend(windows)
 
-        val_dataset = Dataset.from_dict(
-            {
-                "words": [example["words"] for example in sroie_test_data.values()],
-                "bbox": [example["bboxes"] for example in sroie_test_data.values()],
-                "labels": [example["labels"] for example in sroie_test_data.values()],
-                "image_id": [
-                    example["image_id"] for example in sroie_test_data.values()
-                ],
-            }
-        )
+        # Process SROIE examples
+        sroie_train_windows = []
+        sroie_test_windows = []
+        for split, examples in sroie_examples.items():
+            for example in examples:
+                windows = create_sliding_windows(
+                    example["words"],
+                    example["bboxes"],
+                    example["labels"],
+                    image_id=example.get("image_id"),  # Pass image_id if it exists
+                    window_size=self.data_config.window_size,
+                    overlap=self.data_config.window_overlap,
+                )
+                if split == "train":
+                    sroie_train_windows.extend(windows)
+                else:
+                    sroie_test_windows.extend(windows)
 
-        # Create the final dataset dictionary
-        self.dataset = DatasetDict({"train": train_dataset, "validation": val_dataset})
+        # Combine all examples
+        train_windows.extend(sroie_train_windows)
+        
+        # Create datasets
+        train_dataset = Dataset.from_list(train_windows, features=Features({
+            "words": Sequence(Value("string")),
+            "bboxes": Sequence(Sequence(Value("int64"))),
+            "labels": Sequence(Value("string")),
+            "image_id": Value("string"),
+        }))
+        val_dataset = Dataset.from_list(sroie_test_windows, features=Features({
+            "words": Sequence(Value("string")),
+            "bboxes": Sequence(Sequence(Value("int64"))),
+            "labels": Sequence(Value("string")),
+            "image_id": Value("string"),
+        }))
 
-        # Log dataset statistics
-        self._log_dataset_statistics()
+        # Print statistics
+        self._print_dataset_statistics(train_dataset, "Train")
+        self._print_dataset_statistics(val_dataset, "Validation")
 
-        return self.dataset
+        return DatasetDict({"train": train_dataset, "validation": val_dataset})
 
-    def _log_dataset_statistics(self):
-        """Log statistics about the loaded dataset."""
-        if not self.dataset:
+    def _print_dataset_statistics(self, dataset: Dataset, split_name: str):
+        """Print statistics about the loaded dataset."""
+        if not dataset:
             return
 
-        for split_name, split_dataset in self.dataset.items():
-            total_words = sum(len(words) for words in split_dataset["words"])
-            label_counts = {}
-            for labels in split_dataset["labels"]:
-                for label in labels:
-                    label_counts[label] = label_counts.get(label, 0) + 1
+        total_words = sum(len(words) for words in dataset["words"])
+        label_counts = {}
+        for labels in dataset["labels"]:
+            for label in labels:
+                label_counts[label] = label_counts.get(label, 0) + 1
 
-            self.logger.info(f"\n{split_name.capitalize()} Split Statistics:")
-            self.logger.info(f"Total documents: {len(split_dataset)}")
-            self.logger.info(f"Total words: {total_words}")
-            self.logger.info("\nLabel distribution:")
-            for label, count in sorted(label_counts.items()):
-                percentage = (count / total_words) * 100
-                self.logger.info(f"{label}: {count} ({percentage:.2f}%)")
+        self.logger.info(f"\n{split_name.capitalize()} Split Statistics:")
+        self.logger.info(f"Total documents: {len(dataset)}")
+        self.logger.info(f"Total words: {total_words}")
+        self.logger.info("\nLabel distribution:")
+        for label, count in sorted(label_counts.items()):
+            percentage = (count / total_words) * 100
+            self.logger.info(f"{label}: {count} ({percentage:.2f}%)")
 
-            if self.wandb_run:
-                # Log statistics to W&B
-                self.wandb_run.log(
-                    {
-                        f"{split_name}/total_documents": len(split_dataset),
-                        f"{split_name}/total_words": total_words,
-                        **{
-                            f"{split_name}/label_{label}": count
-                            for label, count in label_counts.items()
-                        },
-                    }
-                )
+        if self.wandb_run:
+            # Log statistics to W&B
+            self.wandb_run.log(
+                {
+                    f"{split_name}/total_documents": len(dataset),
+                    f"{split_name}/total_words": total_words,
+                    **{
+                        f"{split_name}/label_{label}": count
+                        for label, count in label_counts.items()
+                    },
+                }
+            )
 
     def configure_training(
         self,

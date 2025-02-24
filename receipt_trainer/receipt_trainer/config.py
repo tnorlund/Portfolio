@@ -22,15 +22,41 @@ class TrainingConfig:
     early_stopping_patience: int = 5
 
 
-@dataclass
 class DataConfig:
-    """Configuration for data processing."""
+    """Configuration for data loading and processing."""
 
-    balance_ratio: float = 0.7
-    use_sroie: bool = True
-    augment: bool = True
-    max_length: int = 512
-    sliding_window_size: int = 50
-    sliding_window_overlap: int = 10
-    env: str = "dev"  # Pulumi stack environment (dev/prod)
-    cache_dir: Optional[str] = None  # Directory to cache datasets
+    def __init__(
+        self,
+        env: str = "dev",
+        cache_dir: Optional[str] = None,
+        use_sroie: bool = True,
+        balance_ratio: float = 0.7,
+        augment: bool = True,
+        sliding_window_size: int = 50,
+        sliding_window_overlap: int = 10,
+        max_length: int = 512,
+    ):
+        """Initialize data configuration.
+        
+        Args:
+            env: Environment name (dev/prod)
+            cache_dir: Directory for caching data
+            use_sroie: Whether to include SROIE dataset
+            balance_ratio: Target ratio of entity tokens to total tokens
+            augment: Whether to apply data augmentation
+            sliding_window_size: Size of sliding windows (0 to disable)
+            sliding_window_overlap: Number of overlapping tokens between windows
+            max_length: Maximum sequence length for tokenization
+        """
+        self.env = env
+        self.cache_dir = cache_dir
+        self.use_sroie = use_sroie
+        self.balance_ratio = balance_ratio
+        self.augment = augment
+        self.sliding_window_size = sliding_window_size
+        self.sliding_window_overlap = sliding_window_overlap
+        self.max_length = max_length
+        
+        # Aliases for backward compatibility with new code
+        self.window_size = self.sliding_window_size
+        self.window_overlap = self.sliding_window_overlap

@@ -2,6 +2,7 @@
 
 from typing import Dict, Any, List, Tuple, Optional
 import logging
+import random
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +116,7 @@ def create_sliding_windows(
     words: List[str],
     bboxes: List[List[int]],
     labels: List[str],
+    image_id: Optional[str] = None,
     window_size: int = 50,
     overlap: int = 10,
 ) -> List[Dict[str, Any]]:
@@ -130,16 +132,21 @@ def create_sliding_windows(
         words: List of words.
         bboxes: Corresponding bounding boxes for each word.
         labels: Corresponding labels for each word.
+        image_id: Optional ID of the source image/document.
         window_size: Number of tokens per window.
         overlap: Step size—the number of tokens to move before creating the next window.
 
     Returns:
         A list of windows, where each window is a dictionary containing
-        "words", "bboxes", and "labels" for that slice of the input.
+        "words", "bboxes", "labels", and optionally "image_id" for that slice.
     """
     # If the input doesn't exceed the window size, just return it as a single window.
+    window = {"words": words, "bboxes": bboxes, "labels": labels}
+    if image_id is not None:
+        window["image_id"] = image_id
+        
     if len(words) <= window_size:
-        return [{"words": words, "bboxes": bboxes, "labels": labels}]
+        return [window]
 
     # Calculate the start indices for each window using `overlap` as our step size.
     indices = list(range(0, len(words) - window_size + 1, overlap))
@@ -152,12 +159,133 @@ def create_sliding_windows(
     # Build each window from the calculated start indices.
     windows = []
     for start in indices:
-        windows.append(
-            {
-                "words": words[start : start + window_size],
-                "bboxes": bboxes[start : start + window_size],
-                "labels": labels[start : start + window_size],
-            }
-        )
+        window = {
+            "words": words[start : start + window_size],
+            "bboxes": bboxes[start : start + window_size],
+            "labels": labels[start : start + window_size],
+        }
+        if image_id is not None:
+            window["image_id"] = image_id
+        windows.append(window)
 
     return windows
+
+
+def balance_dataset(
+    examples: Dict[str, List[Any]], target_entity_ratio: float = 0.7
+) -> Dict[str, List[Any]]:
+    """Balance dataset with focus on entity distribution.
+    
+    Args:
+        examples: Dictionary containing 'words', 'bbox', 'labels', and optionally 'image_id' lists
+        target_entity_ratio: Target ratio of entity tokens to total tokens
+    
+    Returns:
+        Dictionary containing balanced dataset
+    """
+    # 1. First collect all entity spans with context
+    entity_spans = {
+        "store_name": [],
+        "address": [],
+        "date": [],
+        "line_item_name": [],
+        "line_item_price": [],
+        "phone_number": [],
+        "time": [],
+        "total_amount": [],
+        "taxes": [],
+    }
+
+    # Get image_ids if they exist
+    has_image_ids = "image_id" in examples
+    image_ids = examples.get("image_id", [None] * len(examples["words"]))
+
+    for words, bboxes, labels, image_id in zip(
+        examples["words"], examples["bbox"], examples["labels"], image_ids
+    ):
+        i = 0
+        while i < len(labels):
+            if labels[i].startswith("B-"):
+                # Found start of entity
+                entity_type = labels[i].split("-")[1].split("_")[0]  # Get base type
+
+                # Find entity end
+                j = i + 1
+                while j < len(labels) and labels[j].startswith("I-"):
+                    j += 1
+
+                # Take context window around entity
+                start = max(0, i - 5)  # 5 words before
+                end = min(len(words), j + 5)  # 5 words after
+
+                span = {
+                    "words": words[start:end],
+                    "bbox": bboxes[start:end],
+                    "labels": labels[start:end],
+                    "entity_start": i - start,  # Track where entity starts in window
+                    "entity_end": j - start,
+                    "image_id": image_id,
+                }
+
+                if entity_type in entity_spans:
+                    entity_spans[entity_type].append(span)
+                i = j
+            else:
+                i += 1
+
+    # 2. Balance entity representations
+    target_spans_per_type = max(len(spans) for spans in entity_spans.values())
+    balanced_data = []
+
+    for entity_type, spans in entity_spans.items():
+        if spans:  # If we have any spans of this type
+            # Oversample rare entities to match most common
+            multiplier = max(1, target_spans_per_type // len(spans))
+            balanced_data.extend(spans * multiplier)
+
+    # 3. Convert back to dataset format
+    result = {
+        "words": [s["words"] for s in balanced_data],
+        "bbox": [s["bbox"] for s in balanced_data],
+        "labels": [s["labels"] for s in balanced_data],
+    }
+    
+    # Only include image_ids if they existed in input
+    if has_image_ids:
+        result["image_id"] = [s["image_id"] for s in balanced_data]
+    
+    return result
+
+
+def augment_example(examples: Dict[str, List[Any]]) -> Dict[str, List[Any]]:
+    """Augment examples with random bbox shifts.
+    
+    Args:
+        examples: Dictionary containing 'words', 'bbox', 'labels', and optionally 'image_id' lists
+    
+    Returns:
+        Dictionary containing augmented examples
+    """
+    augmented_bboxes = []
+
+    for bbox_list in examples["bbox"]:
+        # Randomly shift all bboxes in this example
+        if random.random() < 0.5:
+            shift = random.randint(-20, 20)
+            shifted_bboxes = []
+            for bbox in bbox_list:
+                # Each bbox is a list of 4 values: [x1, y1, x2, y2]
+                shifted_bboxes.append(
+                    [
+                        bbox[0] + shift,  # x1
+                        bbox[1] + shift,  # y1
+                        bbox[2] + shift,  # x2
+                        bbox[3] + shift,  # y2
+                    ]
+                )
+            augmented_bboxes.append(shifted_bboxes)
+        else:
+            augmented_bboxes.append(bbox_list)
+
+    # Return augmented examples, preserving all fields including image_id
+    return {**examples, "bbox": augmented_bboxes}

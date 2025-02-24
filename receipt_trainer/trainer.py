@@ -1,3 +1,20 @@
+"""Main trainer class for Receipt Trainer."""
+
+import os
+import json
+import tempfile
+import logging
+import torch
+from pathlib import Path
+from typing import Optional, Dict, Any, List
+from datasets import Dataset, DatasetDict, load_dataset, Value
+from transformers import (
+    AutoModelForTokenClassification,
+    AutoTokenizer,
+    Trainer,
+    TrainingArguments,
+)
+
 def _load_sroie_data(self):
     """Load and prepare the SROIE dataset."""
     self.logger.info("Loading SROIE dataset...")
@@ -77,4 +94,23 @@ def _load_sroie_data(self):
     self.logger.info(
         f"Loaded {len(train_data)} training and {len(test_data)} test examples from SROIE"
     )
-    return train_data, test_data
+
+    # Create datasets
+    train_dataset = Dataset.from_list(train_data.values(), features={
+        "words": [Value("string")],
+        "bbox": [[Value("int64")] * 4],
+        "labels": [Value("string")],
+        "image_id": Value("string"),
+    })
+    val_dataset = Dataset.from_list(test_data.values(), features={
+        "words": [Value("string")],
+        "bbox": [[Value("int64")] * 4],
+        "labels": [Value("string")],
+        "image_id": Value("string"),
+    })
+
+    # Print statistics
+    self._print_dataset_statistics(train_dataset, "Train")
+    self._print_dataset_statistics(val_dataset, "Validation")
+
+    return DatasetDict({"train": train_dataset, "validation": val_dataset})

@@ -36,25 +36,34 @@ def mock_env_vars(monkeypatch):
 @pytest.fixture
 def mock_dynamo_data(mocker):
     """Create mock DynamoDB data."""
+    # Create mock receipt
+    mock_receipt = mocker.Mock()
+    mock_receipt.image_id = "img1"
+    mock_receipt.receipt_id = "rec1"
+    mock_receipt.width = 800
+    mock_receipt.height = 1000
+
+    # Create mock word
+    mock_word = mocker.Mock()
+    mock_word.word_id = 1
+    mock_word.line_id = 1
+    mock_word.text = "Store"
+    mock_word.top_left = {"x": 0.1, "y": 0.1}
+    mock_word.top_right = {"x": 0.2, "y": 0.1}
+    mock_word.bottom_left = {"x": 0.1, "y": 0.2}
+    mock_word.bottom_right = {"x": 0.2, "y": 0.2}
+
+    # Create mock word tag
+    mock_word_tag = mocker.Mock()
+    mock_word_tag.word_id = 1
+    mock_word_tag.tag = "store_name"
+    mock_word_tag.human_validated = True
+
     return {
         "receipt1": {
-            "receipt": mocker.Mock(
-                image_id="img1", receipt_id="rec1", width=800, height=1000
-            ),
-            "words": [
-                mocker.Mock(
-                    word_id=1,
-                    line_id=1,
-                    text="Store",
-                    top_left={"x": 0.1, "y": 0.1},
-                    top_right={"x": 0.2, "y": 0.1},
-                    bottom_left={"x": 0.1, "y": 0.2},
-                    bottom_right={"x": 0.2, "y": 0.2},
-                )
-            ],
-            "word_tags": [
-                mocker.Mock(word_id=1, tag="store_name", human_validated=True)
-            ],
+            "receipt": mock_receipt,
+            "words": [mock_word],
+            "word_tags": [mock_word_tag],
         }
     }
 
@@ -227,7 +236,7 @@ def test_data_loading_pipeline(trainer, mock_dynamo_data, mock_sroie_data, mocke
     for split in dataset.values():
         assert isinstance(split, Dataset)
         assert all(
-            field in split.features for field in ["words", "bbox", "labels", "image_id"]
+            field in split.features for field in ["words", "bboxes", "labels", "image_id"]
         )
         assert len(split) > 0
 
