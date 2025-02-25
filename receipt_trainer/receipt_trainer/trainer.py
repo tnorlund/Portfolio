@@ -8,6 +8,8 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
+from sklearn.metrics import confusion_matrix, precision_recall_fscore_support, accuracy_score
+
 from typing import Optional, Dict, Any, List, Tuple, Union
 from datasets import Dataset, DatasetDict, load_dataset, Value, Features, Sequence
 from transformers import (
@@ -26,10 +28,18 @@ from dynamo import DynamoClient
 import random
 import seaborn as sns
 from collections import defaultdict
-from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix, classification_report
+from sklearn.metrics import (
+    precision_score,
+    recall_score,
+    f1_score,
+    confusion_matrix,
+    classification_report,
+)
 import threading
 import time
 import glob
+from receipt_trainer.utils.aws import get_dynamo_table
+import traceback
 
 # Set tokenizer parallelism to false to avoid deadlocks
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -41,9 +51,166 @@ from receipt_trainer.utils.data import (
     balance_dataset,
     augment_example,
 )
-from receipt_trainer.utils.aws import get_dynamo_table, get_s3_bucket
 from receipt_trainer.constants import REQUIRED_ENV_VARS
 from receipt_trainer.version import __version__
+
+class MetricsCallback(TrainerCallback):
+    """Custom callback to log confusion matrix and evaluation metrics during training."""
+    
+    def __init__(self):
+        """Initialize the callback."""
+        super().__init__()
+        self.trainer = None
+        self.step = 0
+        # Store the existing W&B run
+        self.wandb_run = wandb.run
+        if not self.wandb_run:
+            raise ValueError("No active W&B run found. Make sure W&B is initialized before creating the callback.")
+    
+    def setup(self, trainer):
+        """Set up the callback with a trainer instance."""
+        self.trainer = trainer
+        print(f"MetricsCallback setup complete with trainer: {trainer}")
+    
+    def on_train_begin(self, args, state, control, **kwargs):
+        """Called when training begins."""
+        if 'trainer' in kwargs:
+            self.trainer = kwargs['trainer']
+        print("Training started - MetricsCallback initialized")
+        if not self.trainer:
+            print("Warning: Trainer not available in on_train_begin")
+    
+    def on_evaluate(self, args, state, control, metrics=None, **kwargs):
+        """Log confusion matrix and metrics after each evaluation."""
+        print("\nStarting evaluation logging...")
+        
+        if not metrics:
+            print("Warning: No metrics provided to callback")
+            return
+            
+        # Try to get trainer from kwargs if not already set
+        if not self.trainer and 'trainer' in kwargs:
+            self.trainer = kwargs['trainer']
+            print("Retrieved trainer from kwargs")
+        
+        if not self.trainer:
+            print("Warning: No trainer available in callback")
+            if 'model' in kwargs:
+                print("Model available in kwargs")
+            if 'eval_dataset' in kwargs:
+                print("Eval dataset available in kwargs")
+            return
+            
+        try:
+            print(f"Current metrics received: {metrics}")
+            print(f"Trainer state: {state.__dict__ if state else 'None'}")
+            
+            # Get predictions for validation set
+            print("Getting predictions...")
+            predictions = self.trainer.predict(self.trainer.eval_dataset)
+            
+            # Convert predictions to labels
+            pred_labels = np.argmax(predictions.predictions, axis=2)
+            true_labels = predictions.label_ids
+            
+            # Flatten predictions and labels, removing padding (-100)
+            true_flat = []
+            pred_flat = []
+            for i in range(len(true_labels)):
+                for j in range(len(true_labels[i])):
+                    if true_labels[i][j] != -100:
+                        true_flat.append(true_labels[i][j])
+                        pred_flat.append(pred_labels[i][j])
+            
+            print(f"Processed {len(true_flat)} valid predictions")
+            
+            # Get label names
+            id2label = self.trainer.model.config.id2label
+            labels = list(range(len(id2label)))
+            label_names = [id2label[i] for i in labels]
+            
+            # Calculate metrics
+            precision, recall, f1, support = precision_recall_fscore_support(
+                true_flat, 
+                pred_flat, 
+                labels=labels, 
+                zero_division=0
+            )
+            accuracy = accuracy_score(true_flat, pred_flat)
+            
+            # Create metrics dictionary with step information
+            self.step = state.global_step if state else 0
+            
+            # Log metrics individually to ensure they show up in W&B
+            metric_dict = {
+                "train/global_step": self.step,
+                "eval/accuracy": float(accuracy),
+                "eval/f1": float(np.mean(f1)),
+                "eval/loss": float(metrics.get("eval_loss", 0.0))
+            }
+            
+            # Log per-label metrics
+            for i, label in enumerate(label_names):
+                if label != "O":  # Skip the "Outside" label
+                    metric_dict.update({
+                        f"eval/precision_{label}": float(precision[i]),
+                        f"eval/recall_{label}": float(recall[i]),
+                        f"eval/f1_{label}": float(f1[i]),
+                        f"eval/support_{label}": int(support[i])
+                    })
+            
+            print("\nLogging metrics to W&B:")
+            for key, value in metric_dict.items():
+                print(f"{key}: {value}")
+            # Use the existing W&B run
+            self.wandb_run.log(metric_dict, step=self.step)
+            
+            # Create confusion matrix
+            cm = confusion_matrix(true_flat, pred_flat, labels=labels)
+            
+            # Log confusion matrix - using table format instead of plotting
+            self.wandb_run.log({
+                "eval/confusion_matrix": wandb.plot.confusion_matrix(
+                    probs=None,
+                    y_true=true_flat,
+                    preds=pred_flat,
+                    class_names=label_names
+                )
+            }, step=self.step)
+            
+            # DISABLED: Create and log performance plot (to avoid matplotlib crashes)
+            # plt.figure(figsize=(12, 6))
+            # x = np.arange(len(label_names))
+            # width = 0.25
+            # 
+            # plt.bar(x - width, precision, width, label='Precision')
+            # plt.bar(x, recall, width, label='Recall')
+            # plt.bar(x + width, f1, width, label='F1')
+            # 
+            # plt.xlabel('Labels')
+            # plt.ylabel('Score')
+            # plt.title('Performance by Label')
+            # plt.xticks(x, label_names, rotation=45, ha='right')
+            # plt.legend()
+            # plt.tight_layout()
+            # 
+            # self.wandb_run.log({
+            #     "eval/performance_plot": wandb.Image(plt)
+            # }, step=self.step)
+            # 
+            # plt.close('all')
+            
+            # Print per-label performance
+            print("\nPer-label Performance:")
+            for i, label in enumerate(label_names):
+                if label != "O":
+                    print(f"{label:15} F1: {f1[i]:.4f} | Precision: {precision[i]:.4f} | Recall: {recall[i]:.4f}")
+            
+        except Exception as e:
+            print(f"Error in metrics callback: {str(e)}")
+            print("Full error details:")
+            traceback.print_exc()
+            # Don't raise the exception to avoid interrupting training
 
 
 class ReceiptTrainer:
@@ -60,67 +227,64 @@ class ReceiptTrainer:
         """Initialize the trainer.
 
         Args:
-            wandb_project: Name of the W&B project
-            model_name: Name/path of the pre-trained model
-            training_config: Training configuration
-            data_config: Data loading configuration
-            dynamo_table: DynamoDB table name for data loading
+            wandb_project: Name of the W&B project.
+            model_name: Name/path of the pre-trained model.
+            training_config: Training configuration.
+            data_config: Data loading configuration.
+            dynamo_table: DynamoDB table name for data loading (optional; will try to load from Pulumi if not provided).
         """
         self.logger = logging.getLogger(__name__)
         self._validate_env_vars()
-        
+
         self.wandb_project = wandb_project
         self.model_name = model_name
         self.training_config = training_config or TrainingConfig()
         self.data_config = data_config or DataConfig()
-        
-        # Initialize components as None
+
+        # Do NOT initialize a WandB run here.
+        self.wandb_run = None
+
+        # Initialize other components as None.
         self.tokenizer = None
         self.model = None
         self.dataset = None
         self.training_args = None
         self.dynamo_client = None
         self.output_dir = None
-        
-        # Set device
+
+        # Set the training device.
         self.device = self._get_device()
-        
-        # Initialize checkpoint tracking
+
+        # Initialize checkpoint tracking.
         self.last_checkpoint = None
         self.is_interrupted = False
 
-        # Initialize W&B
-        self.wandb_run = None
-        if wandb.run is None:
-            try:
-                self.wandb_run = wandb.init(
-                    project=self.wandb_project,
-                    name=f"training-{int(time.time())}",
-                    config={
-                        "model_name": self.model_name,
-                        "training": self.training_config.__dict__,
-                        "data": self.data_config.__dict__,
-                    },
-                    reinit=False,
-                    settings=wandb.Settings(start_method="thread")
-                )
-                self.logger.info("W&B initialized successfully")
-            except Exception as e:
-                self.logger.warning(f"Failed to initialize W&B: {e}. Will continue without W&B logging.")
-        else:
-            self.wandb_run = wandb.run
-            self.logger.info("Using existing W&B run")
-        
-        # Ensure we have a valid cache directory
+        # Ensure we have a valid cache directory.
         if not self.data_config.cache_dir:
             self.data_config.cache_dir = os.path.join(
-                os.path.expanduser("~/.cache"),
-                "receipt_trainer"
+                os.path.expanduser("~/.cache"), "receipt_trainer"
             )
-            self.logger.info(f"No cache directory specified, using default: {self.data_config.cache_dir}")
+            self.logger.info(
+                f"No cache directory specified, using default: {self.data_config.cache_dir}"
+            )
         os.makedirs(self.data_config.cache_dir, exist_ok=True)
-        
-        self.dynamo_table = dynamo_table
+
+        # Initialize DynamoDB table name and client.
+        try:
+            self.dynamo_table = dynamo_table or get_dynamo_table(
+                env=self.data_config.env
+            )
+            self.logger.info(f"Using DynamoDB table: {self.dynamo_table}")
+            # Initialize DynamoDB client immediately to fail fast if there are issues.
+            self.dynamo_client = DynamoClient(self.dynamo_table)
+            self.logger.info("Successfully initialized DynamoDB client")
+        except Exception as e:
+            self.logger.error(f"Failed to initialize DynamoDB: {e}")
+            raise ValueError(
+                f"Failed to initialize DynamoDB. Please ensure your Pulumi stack '{self.data_config.env}' "
+                f"is properly configured and accessible. Error: {str(e)}"
+            )
+
         self.logger.info("ReceiptTrainer initialized")
 
     def _validate_env_vars(self):
@@ -139,166 +303,175 @@ class ReceiptTrainer:
 
     def _setup_spot_interruption_handler(self):
         """Set up handler for spot instance interruption.
-        
+
         This method sets up a signal handler for SIGTERM, which AWS sends
         2 minutes before interrupting a spot instance.
         """
         import signal
-        
+
         def handle_sigterm(*args):
             """Handle SIGTERM signal from AWS."""
-            self.logger.warning("Received SIGTERM - spot instance interruption imminent")
+            self.logger.warning(
+                "Received SIGTERM - spot instance interruption imminent"
+            )
             self.is_interrupted = True
-            
+
             # Save checkpoint if we're in the middle of training
             if self.model and self.training_args:
                 self.logger.info("Saving emergency checkpoint...")
                 checkpoint_dir = os.path.join(self.output_dir, "interrupt_checkpoint")
                 self.save_checkpoint(checkpoint_dir)
-                
+
                 # Upload checkpoint to S3 if possible
                 try:
                     self._upload_checkpoint_to_s3(checkpoint_dir)
                 except Exception as e:
                     self.logger.error(f"Failed to upload checkpoint to S3: {e}")
-            
+
             # Clean up W&B
             if self.wandb_run:
                 self.wandb_run.finish()
-        
+
         signal.signal(signal.SIGTERM, handle_sigterm)
         self.logger.info("Spot interruption handler configured")
 
     def save_checkpoint(self, checkpoint_dir: str):
         """Save a training checkpoint.
-        
+
         Args:
             checkpoint_dir: Directory to save the checkpoint
         """
         if not self.model or not self.tokenizer:
-            raise ValueError("Model and tokenizer must be initialized before saving checkpoint")
-            
+            raise ValueError(
+                "Model and tokenizer must be initialized before saving checkpoint"
+            )
+
         os.makedirs(checkpoint_dir, exist_ok=True)
-        
+
         # Save model and tokenizer
         self.model.save_pretrained(checkpoint_dir)
         self.tokenizer.save_pretrained(checkpoint_dir)
-        
+
         # Save optimizer and scheduler states
-        if hasattr(self, 'optimizer') and hasattr(self, 'scheduler'):
+        if hasattr(self, "optimizer") and hasattr(self, "scheduler"):
             torch.save(
                 {
-                    'optimizer_state_dict': self.optimizer.state_dict(),
-                    'scheduler_state_dict': self.scheduler.state_dict() if self.scheduler else None,
-                    'epoch': self.current_epoch,
-                    'global_step': self.global_step,
+                    "optimizer_state_dict": self.optimizer.state_dict(),
+                    "scheduler_state_dict": (
+                        self.scheduler.state_dict() if self.scheduler else None
+                    ),
+                    "epoch": self.current_epoch,
+                    "global_step": self.global_step,
                 },
-                os.path.join(checkpoint_dir, 'training_state.pt')
+                os.path.join(checkpoint_dir, "training_state.pt"),
             )
-        
+
         self.last_checkpoint = checkpoint_dir
         self.logger.info(f"Checkpoint saved to {checkpoint_dir}")
 
     def _upload_checkpoint_to_s3(self, checkpoint_dir: str):
         """Upload checkpoint to S3.
-        
+
         Args:
             checkpoint_dir: Local directory containing checkpoint files
         """
         import boto3
         from botocore.exceptions import ClientError
-        
-        s3 = boto3.client('s3')
-        bucket_name = os.getenv('CHECKPOINT_BUCKET')
-        
+
+        s3 = boto3.client("s3")
+        bucket_name = os.getenv("CHECKPOINT_BUCKET")
+
         if not bucket_name:
             raise ValueError("CHECKPOINT_BUCKET environment variable not set")
-            
+
         # Upload all files in checkpoint directory
         for root, _, files in os.walk(checkpoint_dir):
             for file in files:
                 local_path = os.path.join(root, file)
                 s3_path = os.path.join(
-                    'checkpoints',
-                    self.wandb_run.id if self.wandb_run else 'latest',
-                    file
+                    "checkpoints",
+                    self.wandb_run.id if self.wandb_run else "latest",
+                    file,
                 )
-                
+
                 try:
                     s3.upload_file(local_path, bucket_name, s3_path)
                 except ClientError as e:
                     self.logger.error(f"Failed to upload {file} to S3: {e}")
                     raise
 
-    def _download_checkpoint_from_s3(self, run_id: Optional[str] = None) -> Optional[str]:
+    def _download_checkpoint_from_s3(
+        self, run_id: Optional[str] = None
+    ) -> Optional[str]:
         """Download checkpoint from S3.
-        
+
         Args:
             run_id: W&B run ID to download checkpoint for. If None, gets latest.
-            
+
         Returns:
             Path to downloaded checkpoint directory, or None if not found
         """
         import boto3
         from botocore.exceptions import ClientError
-        
-        s3 = boto3.client('s3')
-        bucket_name = os.getenv('CHECKPOINT_BUCKET')
-        
+
+        s3 = boto3.client("s3")
+        bucket_name = os.getenv("CHECKPOINT_BUCKET")
+
         if not bucket_name:
             raise ValueError("CHECKPOINT_BUCKET environment variable not set")
-            
+
         # Create temporary directory for checkpoint
         checkpoint_dir = tempfile.mkdtemp()
-        
+
         try:
             # List objects in checkpoint directory
             prefix = f"checkpoints/{run_id if run_id else 'latest'}/"
             response = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
-            
-            if 'Contents' not in response:
+
+            if "Contents" not in response:
                 return None
-                
+
             # Download all checkpoint files
-            for obj in response['Contents']:
-                local_path = os.path.join(checkpoint_dir, os.path.basename(obj['Key']))
-                s3.download_file(bucket_name, obj['Key'], local_path)
-                
+            for obj in response["Contents"]:
+                local_path = os.path.join(checkpoint_dir, os.path.basename(obj["Key"]))
+                s3.download_file(bucket_name, obj["Key"], local_path)
+
             return checkpoint_dir
-            
+
         except ClientError as e:
             self.logger.error(f"Failed to download checkpoint from S3: {e}")
             return None
 
     def resume_training(self, run_id: Optional[str] = None):
         """Resume training from the latest checkpoint.
-        
+
         Args:
             run_id: Optional W&B run ID to resume from
         """
         checkpoint_dir = None
-        
+
         # First try to find local checkpoint
         if self.output_dir:
             local_checkpoint = os.path.join(self.output_dir, "checkpoint-*")
             checkpoints = sorted(
-                glob.glob(local_checkpoint),
-                key=lambda x: int(x.split("-")[-1])
+                glob.glob(local_checkpoint), key=lambda x: int(x.split("-")[-1])
             )
             if checkpoints:
                 checkpoint_dir = checkpoints[-1]  # Use the latest checkpoint
                 self.logger.info(f"Found local checkpoint: {checkpoint_dir}")
                 self.last_checkpoint = checkpoint_dir
                 return checkpoint_dir
-            
+
         # If no local checkpoint, try S3
         if not checkpoint_dir:
             checkpoint_dir = self._download_checkpoint_from_s3(run_id)
-        
+
         if not checkpoint_dir:
-            self.logger.warning("No checkpoints found locally or in S3, starting fresh training")
+            self.logger.warning(
+                "No checkpoints found locally or in S3, starting fresh training"
+            )
             return
-        
+
         # Load model and tokenizer from checkpoint
         try:
             self.model = LayoutLMForTokenClassification.from_pretrained(
@@ -308,20 +481,29 @@ class ReceiptTrainer:
                 id2label=self.id2label,
             )
             self.tokenizer = LayoutLMTokenizerFast.from_pretrained(checkpoint_dir)
-            
+
             # Load training state if available
             training_state_path = os.path.join(checkpoint_dir, "training_state.pt")
             if os.path.exists(training_state_path):
                 training_state = torch.load(training_state_path)
                 if hasattr(self, "optimizer"):
-                    self.optimizer.load_state_dict(training_state["optimizer_state_dict"])
-                if hasattr(self, "scheduler") and training_state["scheduler_state_dict"]:
-                    self.scheduler.load_state_dict(training_state["scheduler_state_dict"])
+                    self.optimizer.load_state_dict(
+                        training_state["optimizer_state_dict"]
+                    )
+                if (
+                    hasattr(self, "scheduler")
+                    and training_state["scheduler_state_dict"]
+                ):
+                    self.scheduler.load_state_dict(
+                        training_state["scheduler_state_dict"]
+                    )
                 self.current_epoch = training_state["epoch"]
                 self.global_step = training_state["global_step"]
-            
-            self.logger.info(f"Resumed training from checkpoint at step {self.global_step}")
-            
+
+            self.logger.info(
+                f"Resumed training from checkpoint at step {self.global_step}"
+            )
+
         except Exception as e:
             self.logger.error(f"Failed to load checkpoint: {e}")
             self.logger.warning("Starting fresh training")
@@ -350,14 +532,34 @@ class ReceiptTrainer:
         self.logger.info("Model and tokenizer initialized")
 
     def initialize_dynamo(self):
-        """Initialize DynamoDB client."""
-        if self.dynamo_table:
-            self.logger.info(
-                f"Initializing DynamoDB client for table: {self.dynamo_table}"
-            )
+        """Initialize DynamoDB client if not already initialized.
+
+        This is a no-op if the client is already initialized. If not initialized,
+        it will attempt to initialize using the table name from constructor or Pulumi.
+
+        Raises:
+            ValueError: If DynamoDB client cannot be initialized.
+        """
+        if self.dynamo_client is not None:
+            self.logger.debug("DynamoDB client already initialized")
+            return
+
+        if not self.dynamo_table:
+            try:
+                self.dynamo_table = get_dynamo_table(env=self.data_config.env)
+                self.logger.info(
+                    f"Retrieved DynamoDB table name from Pulumi: {self.dynamo_table}"
+                )
+            except Exception as e:
+                raise ValueError(f"Failed to get DynamoDB table name from Pulumi: {e}")
+
+        try:
             self.dynamo_client = DynamoClient(self.dynamo_table)
-        else:
-            self.logger.warning("No DynamoDB table specified")
+            self.logger.info(
+                f"Successfully initialized DynamoDB client for table: {self.dynamo_table}"
+            )
+        except Exception as e:
+            raise ValueError(f"Failed to initialize DynamoDB client: {e}")
 
     def _load_dynamo_data(self) -> Dict[str, Any]:
         """Load receipt data from DynamoDB."""
@@ -389,7 +591,7 @@ class ReceiptTrainer:
 
     def _load_sroie_data(self):
         """Load and prepare the SROIE dataset.
-        
+
         Returns:
             Dictionary containing 'train' and 'test' splits of SROIE data
         """
@@ -474,12 +676,12 @@ class ReceiptTrainer:
 
     def encode_example_for_layoutlm(self, example, tokenizer, label2id):
         """Encode a single example for LayoutLM model.
-        
+
         Args:
             example: Dictionary containing words, bboxes, and labels
             tokenizer: LayoutLM tokenizer
             label2id: Label to ID mapping
-            
+
         Returns:
             Dictionary containing encoded inputs
         """
@@ -494,15 +696,17 @@ class ReceiptTrainer:
         token_labels.append(-100)  # Special tokens get -100
 
         # Process each word
-        for word, box, label in zip(example["words"], example["bboxes"], example["labels"]):
+        for word, box, label in zip(
+            example["words"], example["bboxes"], example["labels"]
+        ):
             # Tokenize word into subwords
             word_tokens = tokenizer.tokenize(word)
             word_ids = tokenizer.convert_tokens_to_ids(word_tokens)
-            
+
             # Add tokens and replicate box for each subword
             tokens.extend(word_ids)
             token_boxes.extend([box] * len(word_ids))
-            
+
             # First subword gets the label, rest get -100
             if label in label2id:  # Only convert valid labels
                 token_labels.append(label2id[label])
@@ -535,9 +739,7 @@ class ReceiptTrainer:
         # Normalize box coordinates
         normalized_boxes = []
         for box in token_boxes:
-            normalized_boxes.append([
-                min(max(0, int(coord)), 1000) for coord in box
-            ])
+            normalized_boxes.append([min(max(0, int(coord)), 1000) for coord in box])
 
         return {
             "input_ids": tokens,
@@ -548,19 +750,18 @@ class ReceiptTrainer:
 
     def _preprocess_dataset(self, dataset: Dataset) -> Dataset:
         """Preprocess dataset by encoding inputs for LayoutLM.
-        
+
         Args:
             dataset: Raw dataset with words, bboxes, and labels
-            
+
         Returns:
             Processed dataset with encoded inputs
         """
+
         # Create a preprocessing function that uses the class tokenizer and label mappings
         def preprocess_function(example):
             return self.encode_example_for_layoutlm(
-                example,
-                tokenizer=self.tokenizer,
-                label2id=self.label2id
+                example, tokenizer=self.tokenizer, label2id=self.label2id
             )
 
         # Apply preprocessing to each split with caching enabled
@@ -570,18 +771,18 @@ class ReceiptTrainer:
             # Enable caching by providing a descriptive cache_file_name
             cache_dir = os.path.join(self.data_config.cache_dir, "preprocessed")
             os.makedirs(cache_dir, exist_ok=True)
-            
+
             processed_dataset[split] = data.map(
                 preprocess_function,
                 load_from_cache_file=True,
                 cache_file_name=os.path.join(
                     cache_dir,
-                    f"layoutlm_processed_{split}_{self.model_name.replace('/', '_')}"
+                    f"layoutlm_processed_{split}_{self.model_name.replace('/', '_')}",
                 ),
-                desc=f"Preprocessing {split} split"
+                desc=f"Preprocessing {split} split",
             )
             self.logger.info(f"Finished preprocessing {split} split")
-        
+
         return DatasetDict(processed_dataset)
 
     def load_data(
@@ -616,13 +817,8 @@ class ReceiptTrainer:
         self.logger.info(f"Loaded {len(dynamo_examples)} receipts from DynamoDB")
 
         # Convert DynamoDB data to list format
-        examples = {
-            "words": [],
-            "bboxes": [],
-            "labels": [],
-            "image_id": []
-        }
-        
+        examples = {"words": [], "bboxes": [], "labels": [], "image_id": []}
+
         for example in dynamo_examples.values():
             examples["words"].append(example["words"])
             examples["bboxes"].append(example["bboxes"])
@@ -650,9 +846,11 @@ class ReceiptTrainer:
             examples = augment_example(examples)
 
         # Create sliding windows
-        self.logger.info(f"Creating sliding windows of size {self.data_config.window_size}...")
+        self.logger.info(
+            f"Creating sliding windows of size {self.data_config.window_size}..."
+        )
         train_windows = []
-        
+
         # Process DynamoDB examples
         if len(examples["words"]) > 0:
             for i in range(len(examples["words"])):
@@ -686,20 +884,30 @@ class ReceiptTrainer:
 
         # Combine all examples
         train_windows.extend(sroie_train_windows)
-        
+
         # Create datasets
-        train_dataset = Dataset.from_list(train_windows, features=Features({
-            "words": Sequence(Value("string")),
-            "bboxes": Sequence(Sequence(Value("int64"))),
-            "labels": Sequence(Value("string")),
-            "image_id": Value("string"),
-        }))
-        val_dataset = Dataset.from_list(sroie_test_windows, features=Features({
-            "words": Sequence(Value("string")),
-            "bboxes": Sequence(Sequence(Value("int64"))),
-            "labels": Sequence(Value("string")),
-            "image_id": Value("string"),
-        }))
+        train_dataset = Dataset.from_list(
+            train_windows,
+            features=Features(
+                {
+                    "words": Sequence(Value("string")),
+                    "bboxes": Sequence(Sequence(Value("int64"))),
+                    "labels": Sequence(Value("string")),
+                    "image_id": Value("string"),
+                }
+            ),
+        )
+        val_dataset = Dataset.from_list(
+            sroie_test_windows,
+            features=Features(
+                {
+                    "words": Sequence(Value("string")),
+                    "bboxes": Sequence(Sequence(Value("int64"))),
+                    "labels": Sequence(Value("string")),
+                    "image_id": Value("string"),
+                }
+            ),
+        )
 
         # Print statistics
         self._print_dataset_statistics(train_dataset, "Train")
@@ -787,10 +995,12 @@ class ReceiptTrainer:
                 raise ValueError(f"Failed to initialize model: {str(e)}")
 
         # Load dataset if not already loaded
-        if not hasattr(self, 'dataset') or not self.dataset:
+        if not hasattr(self, "dataset") or not self.dataset:
             self.logger.info("Loading dataset...")
             try:
-                self.dataset = self.load_data()  # This now handles tokenizer initialization and preprocessing
+                self.dataset = (
+                    self.load_data()
+                )  # This now handles tokenizer initialization and preprocessing
                 self.logger.info("Successfully loaded dataset")
             except Exception as e:
                 raise ValueError(f"Failed to load dataset: {str(e)}")
@@ -810,15 +1020,19 @@ class ReceiptTrainer:
                 self.output_dir = output_dir
             else:
                 # Use cache_dir from data_config if available, otherwise use a default
-                cache_dir = getattr(self.data_config, 'cache_dir', None)
+                cache_dir = getattr(self.data_config, "cache_dir", None)
                 if not cache_dir:
                     # Default to a directory in the user's home directory
                     cache_dir = os.path.expanduser("~/.cache/receipt_trainer")
-                    self.logger.warning(f"No cache directory specified, using default: {cache_dir}")
-                
+                    self.logger.warning(
+                        f"No cache directory specified, using default: {cache_dir}"
+                    )
+
                 self.output_dir = os.path.join(cache_dir, "checkpoints")
-            
-            self.output_dir = os.path.abspath(self.output_dir)  # Convert to absolute path
+
+            self.output_dir = os.path.abspath(
+                self.output_dir
+            )  # Convert to absolute path
             os.makedirs(self.output_dir, exist_ok=True)
             self.logger.info(f"Output directory set to: {self.output_dir}")
         except OSError as e:
@@ -828,17 +1042,19 @@ class ReceiptTrainer:
         try:
             self.device = self._get_device()
             self.logger.info(f"Using device: {self.device}")
-            
+
             # Apply device-specific optimizations
             if self.device.type == "mps":
                 self.logger.info("Applying MPS-specific optimizations...")
                 # MPS doesn't support mixed precision training
                 self.training_config.bf16 = False
                 self.training_config.fp16 = False
-                
+
                 # Adjust batch size and gradient accumulation for M-series chips
                 if not kwargs.get("batch_size"):
-                    self.training_config.batch_size = min(self.training_config.batch_size, 16)
+                    self.training_config.batch_size = min(
+                        self.training_config.batch_size, 16
+                    )
                 if not kwargs.get("gradient_accumulation_steps"):
                     self.training_config.gradient_accumulation_steps = max(
                         self.training_config.gradient_accumulation_steps, 4
@@ -848,24 +1064,30 @@ class ReceiptTrainer:
             # Set up distributed training if enabled
             if self.training_config.distributed_training:
                 if self.device.type != "cuda":
-                    self.logger.warning("Distributed training is only supported with CUDA devices")
+                    self.logger.warning(
+                        "Distributed training is only supported with CUDA devices"
+                    )
                     self.training_config.distributed_training = False
                 else:
                     self.logger.info("Setting up distributed training...")
                     # Initialize distributed environment
                     if self.training_config.local_rank != -1:
                         torch.cuda.set_device(self.training_config.local_rank)
-                        self.device = torch.device("cuda", self.training_config.local_rank)
+                        self.device = torch.device(
+                            "cuda", self.training_config.local_rank
+                        )
                         torch.distributed.init_process_group(
                             backend=self.training_config.ddp_backend,
                             world_size=self.training_config.world_size,
                             rank=self.training_config.local_rank,
                         )
-                        self.logger.info(f"Initialized distributed training with rank {self.training_config.local_rank}")
+                        self.logger.info(
+                            f"Initialized distributed training with rank {self.training_config.local_rank}"
+                        )
 
             self.model.to(self.device)
             self.logger.info(f"Model moved to device: {self.device}")
-            
+
         except Exception as e:
             raise ValueError(f"Failed to configure device and optimizations: {str(e)}")
 
@@ -893,8 +1115,14 @@ class ReceiptTrainer:
                 greater_is_better=False,
                 # Distributed training arguments
                 local_rank=self.training_config.local_rank,
-                ddp_backend=self.training_config.ddp_backend if self.training_config.distributed_training else None,
-                dataloader_num_workers=4 if self.training_config.distributed_training else 0,
+                ddp_backend=(
+                    self.training_config.ddp_backend
+                    if self.training_config.distributed_training
+                    else None
+                ),
+                dataloader_num_workers=(
+                    4 if self.training_config.distributed_training else 0
+                ),
                 # Disable automatic W&B initialization
                 report_to=[],
             )
@@ -911,15 +1139,20 @@ class ReceiptTrainer:
         if self.device.type == "mps":
             self.logger.info("Using Apple Neural Engine optimizations")
             self.logger.info(f"Batch size: {self.training_config.batch_size}")
-            self.logger.info(f"Gradient accumulation steps: {self.training_config.gradient_accumulation_steps}")
+            self.logger.info(
+                f"Gradient accumulation steps: {self.training_config.gradient_accumulation_steps}"
+            )
         self.logger.info("Training configuration completed successfully")
 
-    def _create_trainer(self, enable_early_stopping: bool, callbacks: Optional[List[TrainerCallback]] = None):
+    def _create_trainer(
+        self,
+        enable_early_stopping: bool,
+        callbacks: Optional[List[TrainerCallback]] = None,
+    ):
         """Create and configure the Trainer object."""
         # Create data collator
         data_collator = DataCollatorForTokenClassification(
-            self.tokenizer,
-            pad_to_multiple_of=8 if self.training_config.bf16 else None
+            self.tokenizer, pad_to_multiple_of=8 if self.training_config.bf16 else None
         )
 
         # Setup callbacks
@@ -951,7 +1184,7 @@ class ReceiptTrainer:
         # Run detailed evaluation on both splits
         eval_output_dir = os.path.join(self.output_dir, "eval")
         os.makedirs(eval_output_dir, exist_ok=True)
-        
+
         # Get metrics for both splits
         train_metrics = self.evaluate("train", eval_output_dir, detailed_report=True)
         val_metrics = self.evaluate("validation", eval_output_dir, detailed_report=True)
@@ -967,54 +1200,60 @@ class ReceiptTrainer:
         if self.wandb_run:
             # Log basic metrics
             self.wandb_run.log(metrics)
-            
-            # Create and log custom visualizations
-            for split in ["train", "validation"]:
-                # Create per-label performance plot
-                plt.figure(figsize=(12, 6))
-                labels = []
-                f1_scores = []
-                precisions = []
-                recalls = []
-                
-                for label in self.label_list:
-                    if label != "O":  # Skip the Outside label
-                        labels.append(label)
-                        f1_scores.append(metrics[f"{split}/{label}/f1-score"])
-                        precisions.append(metrics[f"{split}/{label}/precision"])
-                        recalls.append(metrics[f"{split}/{label}/recall"])
-                
-                x = np.arange(len(labels))
-                width = 0.25
-                
-                plt.bar(x - width, precisions, width, label='Precision')
-                plt.bar(x, recalls, width, label='Recall')
-                plt.bar(x + width, f1_scores, width, label='F1')
-                
-                plt.xlabel('Labels')
-                plt.ylabel('Score')
-                plt.title(f'{split.capitalize()} Performance by Label')
-                plt.xticks(x, labels, rotation=45, ha='right')
-                plt.legend()
-                plt.tight_layout()
-                
-                # Log to W&B
-                self.wandb_run.log({
-                    f"{split}/label_performance": wandb.Image(plt),
-                    f"{split}/confusion_matrix": wandb.Image(
-                        os.path.join(eval_output_dir, f"confusion_matrix_{split}.png")
-                    )
-                })
-                plt.close()
-                
+
+            # DISABLED: Create and log custom visualizations (to avoid matplotlib crashes)
+            # for split in ["train", "validation"]:
+            #     # Create per-label performance plot
+            #     plt.figure(figsize=(12, 6))
+            #     labels = []
+            #     f1_scores = []
+            #     precisions = []
+            #     recalls = []
+            # 
+            #     for label in self.label_list:
+            #         if label != "O":  # Skip the Outside label
+            #             labels.append(label)
+            #             f1_scores.append(metrics[f"{split}/{label}/f1-score"])
+            #             precisions.append(metrics[f"{split}/{label}/precision"])
+            #             recalls.append(metrics[f"{split}/{label}/recall"])
+            # 
+            #     x = np.arange(len(labels))
+            #     width = 0.25
+            # 
+            #     plt.bar(x - width, precisions, width, label="Precision")
+            #     plt.bar(x, recalls, width, label="Recall")
+            #     plt.bar(x + width, f1_scores, width, label="F1")
+            # 
+            #     plt.xlabel("Labels")
+            #     plt.ylabel("Score")
+            #     plt.title(f"{split.capitalize()} Performance by Label")
+            #     plt.xticks(x, labels, rotation=45, ha="right")
+            #     plt.legend()
+            #     plt.tight_layout()
+            # 
+            #     # Log to W&B
+            #     self.wandb_run.log(
+            #         {
+            #             f"{split}/label_performance": wandb.Image(plt),
+            #             f"{split}/confusion_matrix": wandb.Image(
+            #                 os.path.join(
+            #                     eval_output_dir, f"confusion_matrix_{split}.png"
+            #                 )
+            #             ),
+            #         }
+            #     )
+            #     plt.close()
+
             # Log learning curves
-            self.wandb_run.log({
-                "learning_curves": {
-                    "train_loss": metrics["train/total_loss"],
-                    "val_loss": metrics["validation/macro_avg/f1-score"],
-                    "step": train_result.global_step
+            self.wandb_run.log(
+                {
+                    "learning_curves": {
+                        "train_loss": metrics["train/total_loss"],
+                        "val_loss": metrics["validation/macro_avg/f1-score"],
+                        "step": train_result.global_step,
+                    }
                 }
-            })
+            )
 
         # Print summary
         self.logger.info("\nTraining Results Summary:")
@@ -1022,11 +1261,17 @@ class ReceiptTrainer:
         self.logger.info(f"Average training loss: {train_result.training_loss:.4f}")
         self.logger.info(f"\nTrain Metrics:")
         self.logger.info(f"Macro F1: {train_metrics['train/macro_avg/f1-score']:.4f}")
-        self.logger.info(f"Weighted F1: {train_metrics['train/weighted_avg/f1-score']:.4f}")
+        self.logger.info(
+            f"Weighted F1: {train_metrics['train/weighted_avg/f1-score']:.4f}"
+        )
         self.logger.info(f"\nValidation Metrics:")
-        self.logger.info(f"Macro F1: {val_metrics['validation/macro_avg/f1-score']:.4f}")
-        self.logger.info(f"Weighted F1: {val_metrics['validation/weighted_avg/f1-score']:.4f}")
-        
+        self.logger.info(
+            f"Macro F1: {val_metrics['validation/macro_avg/f1-score']:.4f}"
+        )
+        self.logger.info(
+            f"Weighted F1: {val_metrics['validation/weighted_avg/f1-score']:.4f}"
+        )
+
         # Print per-label performance
         self.logger.info("\nPer-Label Performance (Validation):")
         for label in self.label_list:
@@ -1066,18 +1311,18 @@ class ReceiptTrainer:
             tokenizer=self.tokenizer,
             data_collator=DataCollatorForTokenClassification(
                 self.tokenizer,
-                pad_to_multiple_of=8 if self.training_config.bf16 else None
+                pad_to_multiple_of=8 if self.training_config.bf16 else None,
             ),
         )
 
         # Run prediction
         self.logger.info("Running predictions...")
         predictions = trainer.predict(self.dataset[split])
-        
+
         # Convert predictions to labels
         logits = predictions.predictions
         pred_labels = np.argmax(logits, axis=2)
-        
+
         # Get true labels
         true_labels = predictions.label_ids
 
@@ -1092,13 +1337,10 @@ class ReceiptTrainer:
 
         # Compute metrics
         metrics = {}
-        
+
         # Get classification report
         report = classification_report(
-            true_flat,
-            pred_flat,
-            output_dict=True,
-            zero_division=0
+            true_flat, pred_flat, output_dict=True, zero_division=0
         )
 
         # Extract metrics per label
@@ -1117,42 +1359,42 @@ class ReceiptTrainer:
             # Generate confusion matrix
             labels = sorted(list(set(true_flat)))
             cm = confusion_matrix(true_flat, pred_flat, labels=labels)
-            
+
             if self.wandb_run:
                 # Log confusion matrix using wandb's built-in confusion matrix plot
-                self.wandb_run.log({
-                    f"{split}/confusion_matrix": wandb.plot.confusion_matrix(
-                        probs=None,
-                        y_true=true_flat,
-                        preds=pred_flat,
-                        class_names=labels
-                    )
-                })
-            
+                self.wandb_run.log(
+                    {
+                        f"{split}/confusion_matrix": wandb.plot.confusion_matrix(
+                            probs=None,
+                            y_true=true_flat,
+                            preds=pred_flat,
+                            class_names=labels,
+                        )
+                    }
+                )
+
             # Also save a local version with matplotlib
-            plt.figure(figsize=(12, 10))
-            sns.heatmap(
-                cm,
-                annot=True,
-                fmt="d",
-                cmap="Blues",
-                xticklabels=labels,
-                yticklabels=labels
-            )
-            plt.title(f"Confusion Matrix - {split.capitalize()} Split")
-            plt.xlabel("Predicted")
-            plt.ylabel("True")
-            
-            # Save plot locally if output directory is specified
-            if output_dir:
-                plt.savefig(os.path.join(output_dir, f"confusion_matrix_{split}.png"))
-                plt.close()
+            # plt.figure(figsize=(12, 10))
+            # sns.heatmap(
+            #     cm,
+            #     annot=True,
+            #     fmt="d",
+            #     cmap="Blues",
+            #     xticklabels=labels,
+            #     yticklabels=labels,
+            # )
+            # plt.title(f"Confusion Matrix - {split.capitalize()} Split")
+            # plt.xlabel("Predicted")
+            # plt.ylabel("True")
+            #
+            # # Save plot locally if output directory is specified
+            # if output_dir:
+            #     plt.savefig(os.path.join(output_dir, f"confusion_matrix_{split}.png"))
+            #     plt.close()
 
             # Add per-document analysis
             doc_metrics = self._compute_document_metrics(
-                self.dataset[split],
-                predictions.predictions,
-                predictions.label_ids
+                self.dataset[split], predictions.predictions, predictions.label_ids
             )
             metrics.update(doc_metrics)
 
@@ -1165,7 +1407,9 @@ class ReceiptTrainer:
         self.logger.info("\nEvaluation Results:")
         self.logger.info(f"Split: {split}")
         self.logger.info(f"Macro F1: {metrics[f'{split}/macro_avg/f1-score']:.4f}")
-        self.logger.info(f"Weighted F1: {metrics[f'{split}/weighted_avg/f1-score']:.4f}")
+        self.logger.info(
+            f"Weighted F1: {metrics[f'{split}/weighted_avg/f1-score']:.4f}"
+        )
         self.logger.info("\nPer-Label Performance:")
         for label in self.label_list:
             if label != "O":  # Skip the 'Outside' label in summary
@@ -1182,7 +1426,7 @@ class ReceiptTrainer:
         true_labels: np.ndarray,
     ) -> Dict[str, float]:
         """Compute document-level metrics.
-        
+
         Args:
             dataset: The dataset split being evaluated
             predictions: Model predictions (logits)
@@ -1208,12 +1452,18 @@ class ReceiptTrainer:
                         if label != "O":
                             label_true = [l == label for l in doc_true]
                             label_pred = [l == label for l in doc_pred]
-                            if any(label_true):  # Only compute if label exists in document
-                                precision = precision_score(label_true, label_pred, zero_division=0)
-                                recall = recall_score(label_true, label_pred, zero_division=0)
+                            if any(
+                                label_true
+                            ):  # Only compute if label exists in document
+                                precision = precision_score(
+                                    label_true, label_pred, zero_division=0
+                                )
+                                recall = recall_score(
+                                    label_true, label_pred, zero_division=0
+                                )
                                 f1 = f1_score(label_true, label_pred, zero_division=0)
                                 doc_metrics[label].append((precision, recall, f1))
-                
+
                 # Reset for new document
                 current_doc = image_id
                 doc_true = []
@@ -1238,14 +1488,14 @@ class ReceiptTrainer:
 
     def _get_device(self):
         """Get the default device for training.
-        
+
         Returns:
             torch.device: The device to use for training
         """
         # Use device from config if specified
         if self.training_config.device:
             return torch.device(self.training_config.device)
-        
+
         # Auto-detect device
         if torch.backends.mps.is_available() and torch.backends.mps.is_built():
             self.logger.info("Using Apple Neural Engine (MPS)")
@@ -1253,40 +1503,46 @@ class ReceiptTrainer:
         elif torch.cuda.is_available():
             self.logger.info(f"Using CUDA GPU: {torch.cuda.get_device_name(0)}")
             return torch.device("cuda")
-        
+
         self.logger.info("Using CPU")
         return torch.device("cpu")
 
     def _generate_hyperparameter_report(self, sweep_id: str) -> Dict[str, Any]:
         """Generate a comprehensive report of hyperparameter performance.
-        
+
         Args:
             sweep_id: The W&B sweep ID to analyze
-            
+
         Returns:
             Dictionary containing report data
         """
         self.logger.info("Generating hyperparameter report...")
-        
+
         # Get sweep data from W&B
         api = wandb.Api()
         sweep = api.sweep(f"{self.wandb_project}/{sweep_id}")
         runs = sweep.runs
-        
+
         # Collect data for analysis
         run_data = []
         for run in runs:
             if run.state == "finished":
-                run_data.append({
-                    "run_id": run.id,
-                    "metrics": {
-                        "validation/macro_avg/f1-score": run.summary.get("validation/macro_avg/f1-score", 0),
-                        "validation/weighted_avg/f1-score": run.summary.get("validation/weighted_avg/f1-score", 0),
-                        "train/total_loss": run.summary.get("train/total_loss", 0)
-                    },
-                    "params": run.config
-                })
-        
+                run_data.append(
+                    {
+                        "run_id": run.id,
+                        "metrics": {
+                            "validation/macro_avg/f1-score": run.summary.get(
+                                "validation/macro_avg/f1-score", 0
+                            ),
+                            "validation/weighted_avg/f1-score": run.summary.get(
+                                "validation/weighted_avg/f1-score", 0
+                            ),
+                            "train/total_loss": run.summary.get("train/total_loss", 0),
+                        },
+                        "params": run.config,
+                    }
+                )
+
         # Generate report data
         report = {
             "sweep_id": sweep_id,
@@ -1297,16 +1553,18 @@ class ReceiptTrainer:
             "param_correlations": {},
             "best_configs": [],
         }
-        
+
         if run_data:
             # Find best run
-            best_run = max(run_data, key=lambda x: x["metrics"]["validation/macro_avg/f1-score"])
+            best_run = max(
+                run_data, key=lambda x: x["metrics"]["validation/macro_avg/f1-score"]
+            )
             report["best_run"] = {
                 "run_id": best_run["run_id"],
                 "metrics": best_run["metrics"],
-                "params": best_run["params"]
+                "params": best_run["params"],
             }
-            
+
             # Calculate parameter importance (using validation F1 score)
             param_values = {}
             param_scores = {}
@@ -1316,33 +1574,40 @@ class ReceiptTrainer:
                         param_values[param] = []
                         param_scores[param] = []
                     param_values[param].append(value)
-                    param_scores[param].append(run["metrics"]["validation/macro_avg/f1-score"])
-            
+                    param_scores[param].append(
+                        run["metrics"]["validation/macro_avg/f1-score"]
+                    )
+
             # Calculate correlation between parameters and performance
             for param in param_values:
-                if len(set(param_values[param])) > 1:  # Only calculate if parameter varied
-                    correlation = np.corrcoef(param_values[param], param_scores[param])[0, 1]
+                if (
+                    len(set(param_values[param])) > 1
+                ):  # Only calculate if parameter varied
+                    correlation = np.corrcoef(param_values[param], param_scores[param])[
+                        0, 1
+                    ]
                     report["param_correlations"][param] = float(correlation)
-                    
+
                     # Calculate importance score (absolute correlation)
                     report["param_importance"][param] = float(abs(correlation))
-            
+
             # Get top 3 best configurations
             sorted_runs = sorted(
                 run_data,
                 key=lambda x: x["metrics"]["validation/macro_avg/f1-score"],
-                reverse=True
+                reverse=True,
             )
             report["best_configs"] = [
                 {
                     "run_id": run["run_id"],
                     "metrics": run["metrics"],
-                    "params": run["params"]
+                    "params": run["params"],
                 }
                 for run in sorted_runs[:3]
             ]
-        
+
         return report
+    
 
     def run_hyperparameter_sweep(
         self,
@@ -1368,53 +1633,41 @@ class ReceiptTrainer:
         """
         self.logger.info("Starting hyperparameter sweep...")
         self.logger.info(f"Sweep config: {sweep_config}")
-
         def train_one_config():
-            """Run a single training configuration."""
-            wandb_run = None
             try:
-                with wandb.init(mode="offline") as run:  # Start in offline mode
-                    wandb_run = run
-                    config = wandb.config
-                    
-                    # Try to switch to online mode
-                    try:
-                        wandb.init(mode="online")
-                    except Exception as e:
-                        self.logger.warning(f"Failed to switch to online mode: {e}. Staying in offline mode.")
-                    
-                    # Update training configuration with sweep parameters
-                    for key, value in config.items():
-                        if hasattr(self.training_config, key):
-                            setattr(self.training_config, key, value)
-                            
-                    # Configure training with current parameters
-                    self.configure_training()
-                    
-                    # Run training
-                    return self.train(
-                        enable_checkpointing=True,
-                        enable_early_stopping=True,
-                        log_to_wandb=True
-                    )
+                run = wandb.init(mode="online", project=self.wandb_project)
+                self.wandb_run = run  # attach active run for logging
+                unique_output_dir = os.path.join(
+                    self.data_config.cache_dir, "checkpoints", f"trial_{run.id}"
+                )
+                self.configure_training(output_dir=unique_output_dir)
+                config = wandb.config
+                for key, value in config.items():
+                    if hasattr(self.training_config, key):
+                        setattr(self.training_config, key, value)
+                
+                # Instantiate the rich MetricsCallback from train_model.py.
+                metrics_callback = MetricsCallback()
+                # Create the trainer with the callback attached.
+                trainer_instance = self._create_trainer(
+                    enable_early_stopping=True, callbacks=[metrics_callback]
+                )
+                # Manually call setup so that the callback has a reference to the trainer.
+                metrics_callback.setup(trainer_instance)
+                return trainer_instance.train(
+                    resume_from_checkpoint=None
+                )
             except Exception as e:
-                self.logger.error(f"Error in training run: {str(e)}")
+                self.logger.error(f"Error in training run: {e}")
                 import traceback
                 traceback.print_exc()
                 return None
-            finally:
-                if wandb_run:
-                    try:
-                        wandb_run.finish()
-                    except Exception as e:
-                        self.logger.warning(f"Failed to finish W&B run cleanly: {e}")
-
         try:
             # Create sweep with retries
             max_retries = 3
             retry_delay = 5
             sweep_id = None
-            
+
             for attempt in range(max_retries):
                 try:
                     sweep_id = wandb.sweep(sweep_config, project=self.wandb_project)
@@ -1422,21 +1675,23 @@ class ReceiptTrainer:
                     break
                 except Exception as e:
                     if attempt < max_retries - 1:
-                        self.logger.warning(f"Failed to create sweep (attempt {attempt + 1}): {e}. Retrying...")
+                        self.logger.warning(
+                            f"Failed to create sweep (attempt {attempt + 1}): {e}. Retrying..."
+                        )
                         time.sleep(retry_delay)
                         retry_delay *= 2
                     else:
                         raise
-            
+
             if not sweep_id:
                 raise RuntimeError("Failed to create sweep after all retries")
-            
+
             # Run the sweep with error handling
             try:
                 wandb.agent(
                     sweep_id,
                     function=train_one_config,
-                    count=num_trials // parallel_workers
+                    count=num_trials // parallel_workers,
                 )
             except KeyboardInterrupt:
                 self.logger.info("Sweep interrupted by user")
@@ -1455,7 +1710,9 @@ class ReceiptTrainer:
                     return best_run.id
                 except Exception as e:
                     if attempt < max_retries - 1:
-                        self.logger.warning(f"Failed to get best run (attempt {attempt + 1}): {e}. Retrying...")
+                        self.logger.warning(
+                            f"Failed to get best run (attempt {attempt + 1}): {e}. Retrying..."
+                        )
                         time.sleep(retry_delay)
                         retry_delay *= 2
                     else:
@@ -1468,48 +1725,48 @@ class ReceiptTrainer:
 
     def save_model(self, output_path: str):
         """Save the trained model and tokenizer.
-        
+
         Args:
             output_path: Path where to save the model
-        
+
         Raises:
             ValueError: If model or tokenizer is not initialized, or if validation fails
         """
         if not self.model or not self.tokenizer:
             raise ValueError("Model and tokenizer must be initialized before saving")
-        
+
         self.logger.info(f"Saving model to {output_path}")
-        
+
         try:
             # Create output directory if it doesn't exist
             os.makedirs(output_path, exist_ok=True)
-            
+
             # Save model
             self.model.save_pretrained(output_path)
-            
+
             # Save tokenizer
             self.tokenizer.save_pretrained(output_path)
-            
+
             # Save label mappings
-            if hasattr(self, 'label_list'):
+            if hasattr(self, "label_list"):
                 label_config = {
-                    'label_list': self.label_list,
-                    'label2id': self.label2id,
-                    'id2label': self.id2label,
-                    'num_labels': self.num_labels
+                    "label_list": self.label_list,
+                    "label2id": self.label2id,
+                    "id2label": self.id2label,
+                    "num_labels": self.num_labels,
                 }
-                with open(os.path.join(output_path, 'label_config.json'), 'w') as f:
+                with open(os.path.join(output_path, "label_config.json"), "w") as f:
                     json.dump(label_config, f)
-            
+
             # Validate saved model
             try:
                 AutoModel.from_pretrained(output_path)
                 AutoTokenizer.from_pretrained(output_path)
             except Exception as e:
                 raise ValueError(f"Model validation failed: {str(e)}")
-            
+
             self.logger.info("Model saved successfully")
-            
+
         except ValueError as ve:
             raise ve
         except Exception as e:
@@ -1521,7 +1778,7 @@ class ReceiptTrainer:
         enable_early_stopping: bool = True,
         log_to_wandb: bool = True,
         resume_training: bool = True,
-        callbacks: Optional[List[TrainerCallback]] = None
+        callbacks: Optional[List[TrainerCallback]] = None,
     ):
         """Train the model.
 
@@ -1533,51 +1790,56 @@ class ReceiptTrainer:
             callbacks: Optional list of TrainerCallback objects
         """
         self.logger.info("Starting training...")
-        
+
         if not self.model or not self.training_args:
             raise ValueError("Training must be configured before starting training")
-            
+
         # Check if we're in the main process
-        is_main_process = not self.training_config.distributed_training or self.training_config.local_rank in [-1, 0]
-        
+        is_main_process = (
+            not self.training_config.distributed_training
+            or self.training_config.local_rank in [-1, 0]
+        )
+
         # Set up spot interruption handling only in main thread
         if threading.current_thread() is threading.main_thread():
             self._setup_spot_interruption_handler()
-            
+
         # Try to resume training if requested
         if resume_training:
             self.resume_training()
-            
+
         try:
             # Create trainer and start training
             trainer = self._create_trainer(enable_early_stopping, callbacks)
-            
+
             train_result = trainer.train(
-                resume_from_checkpoint=self.last_checkpoint if enable_checkpointing else None
+                resume_from_checkpoint=(
+                    self.last_checkpoint if enable_checkpointing else None
+                )
             )
-            
+
             # Save final model if not interrupted and this is the main process
             if not self.is_interrupted and enable_checkpointing and is_main_process:
                 trainer.save_model(self.output_dir)
                 self.logger.info(f"Final model saved to {self.output_dir}")
-                
+
             # Log metrics from main process only
             if is_main_process and log_to_wandb and self.wandb_run:
                 try:
                     self._log_training_results(train_result)
                 except Exception as e:
                     self.logger.warning(f"Failed to log results to W&B: {e}")
-            
+
             # Clean up distributed training
             if self.training_config.distributed_training:
                 torch.distributed.destroy_process_group()
-            
+
             return train_result
-            
+
         except Exception as e:
             self.logger.error(f"Training failed: {str(e)}")
             raise
-            
+
         finally:
             # Cleanup
             if self.wandb_run and is_main_process:
@@ -1589,3 +1851,37 @@ class ReceiptTrainer:
                 except Exception as e:
                     self.logger.warning(f"Failed to finish W&B run cleanly: {e}")
             torch.cuda.empty_cache()
+
+    def get_logs(self, max_entries=100):
+        """Get recent log entries from the trainer.
+        
+        Args:
+            max_entries: Maximum number of log entries to return
+            
+        Returns:
+            List of recent log entries
+        """
+        # Create a memory handler to capture logs
+        import io
+        import logging
+        
+        log_stream = io.StringIO()
+        handler = logging.StreamHandler(log_stream)
+        handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+        
+        # Get logs from the current logger
+        self.logger.addHandler(handler)
+        
+        # Force a log entry to ensure handler is working
+        self.logger.info("Retrieving logs...")
+        
+        # Get the log content and split into lines
+        handler.flush()
+        logs = log_stream.getvalue().splitlines()
+        
+        # Clean up
+        self.logger.removeHandler(handler)
+        
+        # Return the most recent logs
+        return logs[-max_entries:] if max_entries < len(logs) else logs
+
