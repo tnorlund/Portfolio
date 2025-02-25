@@ -1,3 +1,4 @@
+# receipt_trainer/examples/train_model.py
 """Example script demonstrating how to use the Receipt Trainer package with spot instance handling."""
 
 import os
@@ -275,6 +276,12 @@ def parse_args():
         default=None,
         help="Path to resume training from."
     )
+    parser.add_argument(
+        "--dynamo_table",
+        type=str,
+        required=True,
+        help="Name of the DynamoDB table to use."
+    )
     return parser.parse_args()
 
 
@@ -285,11 +292,6 @@ def main():
     
     # Validate environment variables
     validate_environment()
-    
-    # Get DynamoDB table name
-    dynamo_table = get_dynamo_table(env="prod")
-    if not dynamo_table:
-        raise ValueError("Could not find DynamoDB table name")
     
     # Initialize wandb first
     wandb.init(
@@ -323,32 +325,40 @@ def main():
         augment=True,  # Enable data augmentation
     )
     
-    # Create trainer
+    # Create trainer with explicit DynamoDB table name
     trainer = ReceiptTrainer(
-        wandb_project="receipt-training",
+        wandb_project="receipt-ocr",
         model_name=args.model_name,
         training_config=training_config,
         data_config=data_config,
-        dynamo_table=dynamo_table  # Pass the DynamoDB table name
+        dynamo_table=args.dynamo_table  # Use the table name from arguments
     )
     
     # Create metrics callback
     metrics_callback = MetricsCallback()
     
     try:
-        # Initialize DynamoDB client
+        # Initialize DynamoDB client explicitly
         trainer.initialize_dynamo()
         
-        # Initialize model and tokenizer
+        # Load and prepare data
+        print("Loading and preparing data...")
+        trainer.dataset = trainer.load_data()
+        print(
+            f"Loaded dataset with {len(trainer.dataset['train'])} training and "
+            f"{len(trainer.dataset['validation'])} validation examples"
+        )
+        
+        # Initialize model
+        print("Initializing model...")
         trainer.initialize_model()
         
-        # Load and preprocess data
-        trainer.dataset = trainer.load_data()
-        
         # Configure training
+        print("Configuring training...")
         trainer.configure_training()
         
         # Train the model
+        print("Starting training...")
         trainer.train(
             enable_checkpointing=True,
             enable_early_stopping=True,
