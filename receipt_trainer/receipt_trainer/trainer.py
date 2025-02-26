@@ -24,7 +24,7 @@ from transformers import (
     TrainerCallback,
 )
 import wandb
-from dynamo import DynamoClient
+from receipt_dynamo import DynamoClient
 import random
 import seaborn as sns
 from collections import defaultdict

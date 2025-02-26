@@ -1,7 +1,7 @@
 import concurrent.futures
 import logging
 import json
-from dynamo import process
+from receipt_dynamo import process
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)

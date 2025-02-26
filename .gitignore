@@ -186,3 +186,6 @@ lambda_logs_dev*
 lambda_logs_e2e*
 infra/lambda_layer/python/test/integration/FAIL*
 dev.*
+
+# Update with new location for test failures
+receipt_dynamo/tests/integration/FAIL*
