@@ -29,9 +29,9 @@ jobs:
         with:
           python-version: 3.13
 
-      - name: Install package with test dependencies
+      - name: Install package with all dependencies
         run: |
-          pip install -e "${{ github.workspace }}/receipt_dynamo[test]"
+          pip install -e "${{ github.workspace }}/receipt_dynamo[test,dev]"
 
       - name: Run unit tests
         working-directory: receipt_dynamo
@@ -42,6 +42,9 @@ jobs:
         working-directory: receipt_dynamo
         run: |
           pytest -m integration
+
+      - name: Setup Pulumi
+        uses: pulumi/setup-pulumi@v2
 
       - name: Configure Pulumi Stack
         working-directory: infra
@@ -102,10 +105,12 @@ jobs:
         with:
           python-version: 3.13
       
-      - name: Install Pulumi Python dependencies
-        working-directory: infra
+      - name: Install package with all dependencies
         run: |
-          pip install -r requirements.txt
+          pip install -e "${{ github.workspace }}/receipt_dynamo[test,dev]"
+      
+      - name: Setup Pulumi
+        uses: pulumi/setup-pulumi@v2
 
       - name: Pulumi Deploy
         uses: pulumi/actions@v6
@@ -150,13 +155,11 @@ jobs:
       - name: Run Black formatter check
         working-directory: receipt_dynamo
         run: |
-          pip install black==24.10.0
           black --check .
 
       - name: Lint with flake8
         working-directory: receipt_dynamo
         run: |
-          pip install flake8
           flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
 
       - name: Test with pytest unit tests
