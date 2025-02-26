@@ -9,6 +9,16 @@ from .utils.data import (
     augment_example,
 )
 
+# Import job queue system
+from .jobs import (
+    Job,
+    JobStatus,
+    JobPriority,
+    JobQueue,
+    JobQueueConfig,
+    JobRetryStrategy,
+)
+
 __all__ = [
     "__version__",
     "ReceiptTrainer",
@@ -17,4 +27,11 @@ __all__ = [
     "create_sliding_windows",
     "balance_dataset",
     "augment_example",
+    # Job queue system
+    "Job",
+    "JobStatus",
+    "JobPriority",
+    "JobQueue",
+    "JobQueueConfig",
+    "JobRetryStrategy",
 ]
