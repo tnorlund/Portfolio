@@ -2,25 +2,51 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Python: Debug Pytest",
-      "type": "debugpy",
+      "name": "Python: Current File",
+      "type": "python",
       "request": "launch",
-
+      "program": "${file}",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Python: All Tests",
+      "type": "python",
+      "request": "launch",
       "module": "pytest",
-      // This part is important:
       "args": [
-        "--maxfail=1",
-        "--disable-warnings",
-        // You can also specify tests or directories here, e.g.:
-        // "development/lambda_layer/python/test"
-        // Coverage settings:
-        "--cov=development/lambda_layer/python",
-        // optionally:
-        "--cov-report=term-missing"
-        // or --cov-report=html, etc.
+        "receipt_dynamo/tests",
+        "--cov=receipt_dynamo/receipt_dynamo",
+        "--cov-config=receipt_dynamo/tests/.coveragerc"
       ],
       "console": "integratedTerminal",
-      "justMyCode": false,
+      "justMyCode": false
+    },
+    {
+      "name": "Python: Unit Tests",
+      "type": "python",
+      "request": "launch",
+      "module": "pytest",
+      "args": [
+        "receipt_dynamo/tests/unit",
+        "--cov=receipt_dynamo/receipt_dynamo",
+        "--cov-config=receipt_dynamo/tests/.coveragerc"
+      ],
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Python: Integration Tests",
+      "type": "python",
+      "request": "launch",
+      "module": "pytest",
+      "args": [
+        "receipt_dynamo/tests/integration",
+        "--cov=receipt_dynamo/receipt_dynamo",
+        "--cov-config=receipt_dynamo/tests/.coveragerc"
+      ],
+      "console": "integratedTerminal",
+      "justMyCode": false
     }
   ]
 }

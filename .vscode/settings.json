@@ -1,10 +1,17 @@
 {
   "python.testing.pytestArgs": [
-    "infra/lambda_layer/python/test",
-    "--cov=infra/lambda_layer/python/dynamo",
-    "--cov-config=infra/lambda_layer/python/test/.coveragerc"
+    "receipt_dynamo/tests",
+    "--cov=receipt_dynamo/receipt_dynamo",
+    "--cov-config=receipt_dynamo/tests/.coveragerc"
   ],
   "python.testing.unittestEnabled": false,
   "python.testing.pytestEnabled": true,
-  "python.analysis.extraPaths": ["${workspaceFolder}/infra/lambda_layer/python"]
+  "python.analysis.extraPaths": ["${workspaceFolder}/receipt_dynamo"],
+  "python.testing.pytestPath": "pytest",
+  "python.testing.cwd": "${workspaceFolder}",
+  "python.envFile": "${workspaceFolder}/.env",
+  "terminal.integrated.env.osx": {
+    "PYTHONPATH": "${workspaceFolder}"
+  },
+  "python.linting.enabled": true
 }

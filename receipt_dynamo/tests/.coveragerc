@@ -1,0 +1,40 @@
+[run]
+# Limit coverage collection to one or more paths.
+# This is usually easiest if you just want coverage on `app/` or `receipt_dynamo/`.
+source =
+    receipt_dynamo
+omit =
+    */__init__.py
+    */tests/*
+    */setup.py
+    */.eggs/*
+    *.egg-info/*
+    */dist/*
+    */build/*
+    */venv/*
+    */.venv/*
+
+[report]
+show_missing = True
+
+exclude_lines =
+    # Skip any pragmas
+    pragma: no cover
+    
+    # Skip defensive assertion code
+    raise NotImplementedError
+    
+    # Skip abstract methods
+    @abstractmethod
+    
+    # Skip main execution blocks
+    if __name__ == .__main__.:
+    
+    # Skip type checking blocks
+    if TYPE_CHECKING:
+    
+    # Skip debug-only code
+    def __repr__
+    
+    # Skip exception handling that can't be easily tested
+    except ImportError:
