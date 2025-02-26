@@ -9,7 +9,9 @@ import pulumi_aws as aws
 import pulumi_command as command
 
 # Constants
-PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Now points to the root directory
+PROJECT_DIR = os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__))
+)  # Now points to the root directory
 LAMBDA_LAYER_DIR = os.path.abspath(os.path.join(PROJECT_DIR, "receipt_dynamo"))
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "upload")
 ZIP_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "upload.zip")
@@ -38,27 +40,34 @@ def install_dependencies():
     arch = platform.machine().lower()
 
     docker_command = [
-        "docker", "run", "--rm",
+        "docker",
+        "run",
+        "--rm",
     ]
 
     # Only force x86_64 architecture if on ARM (e.g., Apple Silicon)
     if "arm" in arch or "aarch" in arch:
         docker_command.extend(["--platform", "linux/amd64"])
 
-    docker_command.extend([
-        "-v", f"{PROJECT_DIR}:{PROJECT_DIR}",
-        "--entrypoint", "bash",
-        "-w", LAMBDA_LAYER_DIR,  # Updated working directory
-        "public.ecr.aws/lambda/python:3.13",
-        "-c",
-        (
-            "dnf install -y gcc python3-devel libjpeg-devel zlib-devel && "
-            "pip install --upgrade pip && "
-            f"pip install --target {PYTHON_TARGET} -r {REQUIREMENTS_PATH} --upgrade --root-user-action=ignore && "
-            f"pip install --target {PYTHON_TARGET} . --upgrade --root-user-action=ignore && "
-            f"chmod -R a+w {PYTHON_TARGET}"
-        )
-    ])
+    docker_command.extend(
+        [
+            "-v",
+            f"{PROJECT_DIR}:{PROJECT_DIR}",
+            "--entrypoint",
+            "bash",
+            "-w",
+            LAMBDA_LAYER_DIR,  # Updated working directory
+            "public.ecr.aws/lambda/python:3.13",
+            "-c",
+            (
+                "dnf install -y gcc python3-devel libjpeg-devel zlib-devel && "
+                "pip install --upgrade pip && "
+                f"pip install --target {PYTHON_TARGET} -r {REQUIREMENTS_PATH} --upgrade --root-user-action=ignore && "
+                f"pip install --target {PYTHON_TARGET} . --upgrade --root-user-action=ignore && "
+                f"chmod -R a+w {PYTHON_TARGET}"
+            ),
+        ]
+    )
 
     try:
         subprocess.check_call(docker_command)
@@ -93,7 +102,7 @@ def prepare_lambda_layer():
     # Ensure clean output directory
     clean_previous_artifacts()
     ensure_directory_exists(PYTHON_TARGET)
-    
+
     # Clean Python target directory if it exists
     if os.path.exists(PYTHON_TARGET):
         print(f"Cleaning existing content in {PYTHON_TARGET}")
@@ -131,5 +140,5 @@ lambda_layer = aws.lambda_.LayerVersion(
 cleanup_local_artifacts = command.local.Command(
     "cleanup-local-build-artifacts",
     create=f"rm -rf {UPLOAD_DIR} {ZIP_FILE_PATH}",
-    opts=pulumi.ResourceOptions(depends_on=[lambda_layer])
+    opts=pulumi.ResourceOptions(depends_on=[lambda_layer]),
 )

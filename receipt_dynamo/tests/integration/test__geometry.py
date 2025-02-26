@@ -96,6 +96,7 @@ def test_invert_warp_det_zero():
     with pytest.raises(ValueError, match="Cannot invert perspective matrix"):
         invert_warp(*degenerate)
 
+
 @pytest.mark.unit
 def test_invert_warp_known_good_matrices():
     """
@@ -104,9 +105,9 @@ def test_invert_warp_known_good_matrices():
     """
     known_transforms = [
         # identity
-        [1,0,0, 0,1,0, 0,0],
+        [1, 0, 0, 0, 1, 0, 0, 0],
         # mild shear/perspective
-        [1,0.2,3, 0.1,1, -2, 0.001, 0.002],
+        [1, 0.2, 3, 0.1, 1, -2, 0.001, 0.002],
         # moderate but invertible
         [0.8, -0.3, 1.5, 0.2, 1.2, -1.0, -0.1, 0.1],
         # another stable example
@@ -115,10 +116,12 @@ def test_invert_warp_known_good_matrices():
     for mat in known_transforms:
         inv = invert_warp(*mat)
         prod = multiply_perspective(mat, inv)
-        identity = [1,0,0, 0,1,0, 0,0]
+        identity = [1, 0, 0, 0, 1, 0, 0, 0]
         for i in range(8):
-            assert isclose(prod[i], identity[i], abs_tol=0.5), \
-                f"Matrix {mat}: product index {i} => {prod[i]} vs {identity[i]}"
+            assert isclose(
+                prod[i], identity[i], abs_tol=0.5
+            ), f"Matrix {mat}: product index {i} => {prod[i]} vs {identity[i]}"
+
 
 @pytest.mark.unit
 def test_pad_corners_opposite_square_positive():

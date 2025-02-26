@@ -5,9 +5,10 @@ import pulumi_aws as aws
 from pulumi import ResourceOptions
 from typing import List, Optional
 
+
 class EFSStorage:
     """Pulumi component for creating an EFS file system for shared data across instances."""
-    
+
     def __init__(
         self,
         name: str,
@@ -22,7 +23,7 @@ class EFSStorage:
         opts: Optional[ResourceOptions] = None,
     ):
         """Initialize EFSStorage.
-        
+
         Args:
             name: Base name for created resources
             vpc_id: VPC ID where EFS will be deployed
@@ -60,24 +61,30 @@ class EFSStorage:
             ],
             opts=opts,
         )
-        
+
         # Create EFS file system
         self.file_system = aws.efs.FileSystem(
             f"{name}-efs",
             performance_mode=performance_mode,
             throughput_mode=throughput_mode,
             encrypted=encrypted,
-            lifecycle_policies=[
-                aws.efs.FileSystemLifecyclePolicyArgs(
-                    transition_to_ia=lifecycle_policies[0].get("transition_to_ia", "AFTER_30_DAYS"),
-                )
-            ] if lifecycle_policies else None,
+            lifecycle_policies=(
+                [
+                    aws.efs.FileSystemLifecyclePolicyArgs(
+                        transition_to_ia=lifecycle_policies[0].get(
+                            "transition_to_ia", "AFTER_30_DAYS"
+                        ),
+                    )
+                ]
+                if lifecycle_policies
+                else None
+            ),
             tags={
                 "Name": f"{name}-shared-storage",
             },
             opts=opts,
         )
-        
+
         # Create mount targets in each subnet
         self.mount_targets = []
         for i, subnet_id in enumerate(subnet_ids):
@@ -89,7 +96,7 @@ class EFSStorage:
                 opts=opts,
             )
             self.mount_targets.append(mount_target)
-        
+
         # Create an access point for shared training data
         self.training_access_point = aws.efs.AccessPoint(
             f"{name}-efs-ap-training",
@@ -108,7 +115,7 @@ class EFSStorage:
             ),
             opts=opts,
         )
-        
+
         # Create an access point for checkpoints
         self.checkpoints_access_point = aws.efs.AccessPoint(
             f"{name}-efs-ap-checkpoints",
@@ -127,7 +134,7 @@ class EFSStorage:
             ),
             opts=opts,
         )
-        
+
         # Create IAM policy for EFS access
         self.efs_policy = aws.iam.Policy(
             f"{name}-efs-policy",
@@ -171,7 +178,7 @@ class EFSStorage:
             ),
             opts=opts,
         )
-        
+
         # Attach policy to the instance role
         self.policy_attachment = aws.iam.RolePolicyAttachment(
             f"{name}-efs-policy-attachment",
@@ -179,14 +186,14 @@ class EFSStorage:
             policy_arn=self.efs_policy.arn,
             opts=opts,
         )
-        
+
         # Export the file system ID and DNS name
         self.file_system_id = self.file_system.id
         self.file_system_dns_name = self.file_system.dns_name
         self.training_access_point_id = self.training_access_point.id
         self.checkpoints_access_point_id = self.checkpoints_access_point.id
-        
+
         pulumi.export(f"{name}_efs_file_system_id", self.file_system_id)
         pulumi.export(f"{name}_efs_dns_name", self.file_system_dns_name)
         pulumi.export(f"{name}_efs_training_ap_id", self.training_access_point_id)
-        pulumi.export(f"{name}_efs_checkpoints_ap_id", self.checkpoints_access_point_id) 
+        pulumi.export(f"{name}_efs_checkpoints_ap_id", self.checkpoints_access_point_id)

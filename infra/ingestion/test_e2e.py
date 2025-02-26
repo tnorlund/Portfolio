@@ -102,7 +102,9 @@ def test_e2e(monkeypatch, setup_and_cleanup, pulumi_outputs):
     """
     temp_dir, grouped, cdn_keys, raw_keys, dynamo_backup_path = setup_and_cleanup
 
-    all_png_files = sorted(f for f in os.listdir(temp_dir) if f.lower().endswith(".png"))
+    all_png_files = sorted(
+        f for f in os.listdir(temp_dir) if f.lower().endswith(".png")
+    )
     if not all_png_files:
         pytest.skip("No .png files found in temp directory; nothing to test.")
 
@@ -123,7 +125,9 @@ def test_e2e(monkeypatch, setup_and_cleanup, pulumi_outputs):
         # Return the pre-collected image IDs (1 per PNG).
         return image_indexes
 
-    monkeypatch.setattr(upload_images_to_s3, "get_image_indexes", mock_get_image_indexes)
+    monkeypatch.setattr(
+        upload_images_to_s3, "get_image_indexes", mock_get_image_indexes
+    )
 
     # ACT: Upload images -> triggers ingestion + cluster + Dynamo insert
     upload_images_to_s3.upload_files_with_uuid_in_batches(
