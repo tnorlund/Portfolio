@@ -13,6 +13,7 @@ from dynamo_db import dynamodb_table  # Import DynamoDB table from original code
 from spot_interruption import SpotInterruptionHandler  # Import the class
 from efs_storage import EFSStorage  # Import the class
 from instance_registry import InstanceRegistry  # Import the class
+from job_queue import JobQueue  # Import the job queue class
 
 # Import other necessary components
 try:
@@ -137,6 +138,58 @@ instance_registry = InstanceRegistry(
     ttl_hours=2,  # Entries expire after 2 hours if not updated
 )
 
+# Create job queue for training job management
+job_queue = JobQueue(
+    "ml-training",
+    env=stack,
+    tags={
+        "Purpose": "ML Training Job Management",
+        "ManagedBy": "Pulumi",
+    }
+)
+
+# Update the IAM role to allow access to SQS
+sqs_policy_document = pulumi.Output.all(
+    queue_arn=job_queue.get_queue_arn(), 
+    dlq_arn=job_queue.get_dlq_arn()
+).apply(
+    lambda args: f"""{{
+        "Version": "2012-10-17",
+        "Statement": [
+            {{
+                "Effect": "Allow",
+                "Action": [
+                    "sqs:ReceiveMessage",
+                    "sqs:DeleteMessage",
+                    "sqs:GetQueueAttributes",
+                    "sqs:GetQueueUrl",
+                    "sqs:SendMessage",
+                    "sqs:ChangeMessageVisibility"
+                ],
+                "Resource": [
+                    "{args['queue_arn']}",
+                    "{args['dlq_arn']}"
+                ]
+            }}
+        ]
+    }}"""
+)
+
+# Create the policy
+sqs_policy = aws.iam.Policy(
+    "ml-training-sqs-policy",
+    description="Allow ML training instances to access SQS queues",
+    policy=sqs_policy_document
+)
+
+# Attach the policy to the role
+sqs_policy_attachment = aws.iam.RolePolicyAttachment(
+    "ml-sqs-policy-attachment",
+    role=ml_training_role.name,
+    policy_arn=sqs_policy.arn,
+    opts=ResourceOptions(depends_on=[ml_training_role])
+)
+
 # Generate instance registration script
 registration_script = instance_registry.create_registration_script(
     leader_election_enabled=True
@@ -149,6 +202,8 @@ user_data_script = pulumi.Output.all(
     checkpoints_ap_id=efs_storage.checkpoints_access_point_id,
     instance_registry_table=instance_registry.table_name,
     registration_script=registration_script,
+    job_queue_url=job_queue.get_queue_url(),
+    job_dlq_url=job_queue.get_dlq_url()
 ).apply(
     lambda args: f"""#!/bin/bash
 # User data script for ML training instances
@@ -158,6 +213,8 @@ echo "export INSTANCE_REGISTRY_TABLE={args['instance_registry_table']}" >> /etc/
 echo "export EFS_DNS_NAME={args['efs_dns_name']}" >> /etc/environment
 echo "export TRAINING_ACCESS_POINT_ID={args['training_ap_id']}" >> /etc/environment
 echo "export CHECKPOINTS_ACCESS_POINT_ID={args['checkpoints_ap_id']}" >> /etc/environment
+echo "export JOB_QUEUE_URL={args['job_queue_url']}" >> /etc/environment
+echo "export JOB_DLQ_URL={args['job_dlq_url']}" >> /etc/environment
 
 # Install necessary packages
 apt-get update
@@ -198,6 +255,8 @@ ln -s /mnt/checkpoints /home/ubuntu/training/checkpoints
 # Set up environment for training
 echo "export PYTHONPATH=/home/ubuntu/training:$PYTHONPATH" >> /home/ubuntu/.bashrc
 echo "export CHECKPOINT_DIR=/mnt/checkpoints" >> /home/ubuntu/.bashrc
+echo "export JOB_QUEUE_URL={args['job_queue_url']}" >> /home/ubuntu/.bashrc
+echo "export JOB_DLQ_URL={args['job_dlq_url']}" >> /home/ubuntu/.bashrc
 """
 )
 
@@ -323,3 +382,5 @@ pulumi.export("launch_template_id", launch_template.id)
 pulumi.export("auto_scaling_group_name", asg.name)
 pulumi.export("deep_learning_ami_id", dl_ami.id)
 pulumi.export("deep_learning_ami_name", dl_ami.name)
+pulumi.export("job_queue_url", job_queue.get_queue_url())
+pulumi.export("job_dlq_url", job_queue.get_dlq_url())
