@@ -4,25 +4,12 @@ on:
     branches:
       - main
 jobs:
-  lint_and_test:
-    name: Lint and Test Python
+  lint:
+    name: Lint Python
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-
-      - name: Debug - List Directory Structure
-        run: |
-          echo "Current directory: $(pwd)"
-          ls -la
-          echo "Contents of repository root:"
-          ls -la
-          if [ -d "receipt_dynamo" ]; then
-            echo "receipt_dynamo directory exists - listing contents:"
-            ls -la receipt_dynamo/
-          else
-            echo "receipt_dynamo directory does NOT exist!"
-          fi
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -43,21 +30,6 @@ jobs:
         run: |
           flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
 
-      - name: Run unit tests
-        working-directory: receipt_dynamo
-        run: |
-          pytest -m unit
-
-      - name: Run integration tests
-        working-directory: receipt_dynamo
-        run: |
-          pytest -m integration
-          
-      - name: Test coverage
-        working-directory: receipt_dynamo
-        run: |
-          pytest tests/unit tests/integration --cov=receipt_dynamo --cov-report=xml
-
       - uses: actions/cache@v3
         with:
           path: ~/.cache/pip
@@ -65,9 +37,42 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
+  test:
+    name: Run ${{ matrix.test-type }} Tests
+    needs: lint
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        test-type: [unit, integration]
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.13
+
+      - name: Install package with all dependencies
+        run: |
+          pip install -e "${{ github.workspace }}/receipt_dynamo[test,dev]"
+
+      - name: Run tests
+        working-directory: receipt_dynamo
+        run: |
+          pytest -m ${{ matrix.test-type }}
+          
+      - name: Upload test coverage
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-${{ matrix.test-type }}
+          path: receipt_dynamo/.coverage
+          retention-days: 1
+
   deploy:
     name: Build and Deploy
-    needs: lint_and_test
+    needs: test
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout Repository
@@ -152,6 +157,23 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
+  end_to_end_test:
+    name: Run End-to-End Tests
+    needs: deploy
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.13
+
+      - name: Install package with all dependencies
+        run: |
+          pip install -e "${{ github.workspace }}/receipt_dynamo[test,dev]"
+
       - name: Run end-to-end tests
         working-directory: receipt_dynamo
         run: |
@@ -160,3 +182,40 @@ jobs:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+  coverage:
+    name: Combine Test Coverage
+    needs: [test, end_to_end_test]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.13
+
+      - name: Install package with all dependencies
+        run: |
+          pip install -e "${{ github.workspace }}/receipt_dynamo[test,dev]"
+          pip install coverage
+
+      - name: Download coverage data
+        uses: actions/download-artifact@v3
+        with:
+          path: coverage-data
+
+      - name: Combine coverage
+        working-directory: receipt_dynamo
+        run: |
+          cp ../coverage-data/coverage-*/. .
+          coverage combine
+          coverage report
+          coverage xml
+
+      - name: Upload combined coverage
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-report
+          path: receipt_dynamo/coverage.xml
