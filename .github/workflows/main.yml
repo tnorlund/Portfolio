@@ -31,53 +31,23 @@ jobs:
 
       - name: Install dependencies
         run: |
-          if [ -d "receipt_dynamo" ]; then
-            cd receipt_dynamo
-            pip install -r requirements-dev.txt
-          else
-            echo "ERROR: receipt_dynamo directory not found!"
-            exit 1
-          fi
+          cd "$(pwd)/receipt_dynamo" && pip install -r requirements-dev.txt
 
       - name: Install package
         run: |
-          if [ -d "receipt_dynamo" ]; then
-            cd receipt_dynamo
-            pip install -e .
-          else
-            echo "ERROR: receipt_dynamo directory not found!"
-            exit 1
-          fi
+          cd "$(pwd)/receipt_dynamo" && pip install -e .
 
       - name: Run unit tests
         run: |
-          if [ -d "receipt_dynamo" ]; then
-            cd receipt_dynamo
-            pytest -m unit
-          else
-            echo "ERROR: receipt_dynamo directory not found!"
-            exit 1
-          fi
+          cd "$(pwd)/receipt_dynamo" && pytest -m unit
 
       - name: Run integration tests
         run: |
-          if [ -d "receipt_dynamo" ]; then
-            cd receipt_dynamo
-            pytest -m integration
-          else
-            echo "ERROR: receipt_dynamo directory not found!"
-            exit 1
-          fi
+          cd "$(pwd)/receipt_dynamo" && pytest -m integration
 
       - name: Configure Pulumi Stack
         run: |
-          if [ -d "infra" ]; then
-            cd infra
-            pulumi stack select tnorlund/portfolio/prod
-          else
-            echo "ERROR: infra directory not found!"
-            exit 1
-          fi
+          cd "$(pwd)/infra" && pulumi stack select tnorlund/portfolio/prod
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
 
@@ -94,13 +64,7 @@ jobs:
 
       - name: Run end-to-end tests
         run: |
-          if [ -d "receipt_dynamo" ]; then
-            cd receipt_dynamo
-            pytest -m end_to_end
-          else
-            echo "ERROR: receipt_dynamo directory not found!"
-            exit 1
-          fi
+          cd "$(pwd)/receipt_dynamo" && pytest -m end_to_end
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -130,14 +94,7 @@ jobs:
 
       - name: Install and build React app
         run: |
-          if [ -d "portfolio" ]; then
-            cd portfolio
-            yarn install
-            yarn build
-          else
-            echo "ERROR: portfolio directory not found!"
-            exit 1
-          fi
+          cd "$(pwd)/portfolio" && yarn install && yarn build
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -146,13 +103,7 @@ jobs:
       
       - name: Install Pulumi Python dependencies
         run: |
-          if [ -d "infra" ]; then
-            cd infra
-            pip install -r requirements.txt
-          else
-            echo "ERROR: infra directory not found!"
-            exit 1
-          fi
+          cd "$(pwd)/infra" && pip install -r requirements.txt
 
       - name: Pulumi Deploy
         uses: pulumi/actions@v6
@@ -168,14 +119,13 @@ jobs:
       - name: Get Pulumi outputs
         id: pulumi-outputs
         run: |
-          BUCKET_NAME=$(pulumi stack output cdn_bucket_name --stack tnorlund/portfolio/prod)
-          AWS_REGION_FROM_PULUMI=$(pulumi stack output region --stack tnorlund/portfolio/prod)
-          DISTRIBUTION_ID=$(pulumi stack output cdn_distribution_id --stack tnorlund/portfolio/prod)
-      
-          echo "cdn_bucket_name=$BUCKET_NAME" >> $GITHUB_ENV
-          echo "awsRegion=$AWS_REGION_FROM_PULUMI" >> $GITHUB_ENV
+          cd "$(pwd)/infra" && \
+          BUCKET_NAME=$(pulumi stack output cdn_bucket_name --stack tnorlund/portfolio/prod) && \
+          AWS_REGION_FROM_PULUMI=$(pulumi stack output region --stack tnorlund/portfolio/prod) && \
+          DISTRIBUTION_ID=$(pulumi stack output cdn_distribution_id --stack tnorlund/portfolio/prod) && \
+          echo "cdn_bucket_name=$BUCKET_NAME" >> $GITHUB_ENV && \
+          echo "awsRegion=$AWS_REGION_FROM_PULUMI" >> $GITHUB_ENV && \
           echo "distributionId=$DISTRIBUTION_ID" >> $GITHUB_ENV
-        working-directory: infra
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
