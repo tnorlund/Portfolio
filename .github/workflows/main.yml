@@ -158,7 +158,7 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
   end_to_end_test:
-    name: Run End-to-End Tests
+    name: Run end-to-end Tests
     needs: deploy
     runs-on: ubuntu-24.04
     steps:
