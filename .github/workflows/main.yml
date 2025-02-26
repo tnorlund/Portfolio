@@ -4,8 +4,8 @@ on:
     branches:
       - main
 jobs:
-  pytest:
-    name: Run tests
+  lint_and_test:
+    name: Lint and Test Python
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout Repository
@@ -33,6 +33,16 @@ jobs:
         run: |
           pip install -e "${{ github.workspace }}/receipt_dynamo[test,dev]"
 
+      - name: Run Black formatter check
+        working-directory: receipt_dynamo
+        run: |
+          black --check .
+
+      - name: Lint with flake8
+        working-directory: receipt_dynamo
+        run: |
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
       - name: Run unit tests
         working-directory: receipt_dynamo
         run: |
@@ -42,39 +52,22 @@ jobs:
         working-directory: receipt_dynamo
         run: |
           pytest -m integration
-
-      - name: Setup Pulumi
-        uses: pulumi/setup-pulumi@v2
-
-      - name: Configure Pulumi Stack
-        working-directory: infra
-        run: |
-          pulumi stack select tnorlund/portfolio/prod
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-
-      - name: Configure Pulumi
-        uses: pulumi/actions@v6
-        with:
-          command: preview
-          stack-name: tnorlund/portfolio/prod
-          work-dir: infra
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-
-      - name: Run end-to-end tests
+          
+      - name: Test coverage
         working-directory: receipt_dynamo
         run: |
-          pytest -m end_to_end
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          pytest tests/unit tests/integration --cov=receipt_dynamo --cov-report=xml
 
-  up:
-    name: Build React app and Pulumi Up to Production
+      - uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+  deploy:
+    name: Build and Deploy
+    needs: lint_and_test
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout Repository
@@ -111,6 +104,13 @@ jobs:
       
       - name: Setup Pulumi
         uses: pulumi/setup-pulumi@v2
+
+      - name: Configure Pulumi Stack
+        working-directory: infra
+        run: |
+          pulumi stack select tnorlund/portfolio/prod
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
 
       - name: Pulumi Deploy
         uses: pulumi/actions@v6
@@ -152,34 +152,11 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
-      - name: Run Black formatter check
+      - name: Run end-to-end tests
         working-directory: receipt_dynamo
         run: |
-          black --check .
-
-      - name: Lint with flake8
-        working-directory: receipt_dynamo
-        run: |
-          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-
-      - name: Test with pytest unit tests
-        working-directory: receipt_dynamo
-        run: |
-          pytest tests/unit
-
-      - name: Test with pytest integration
-        working-directory: receipt_dynamo
-        run: |
-          pytest tests/integration
-        
-      - name: Test coverage
-        working-directory: receipt_dynamo
-        run: |
-          pytest tests/unit tests/integration --cov=receipt_dynamo --cov-report=xml
-
-      - uses: actions/cache@v3
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
+          pytest -m end_to_end
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}

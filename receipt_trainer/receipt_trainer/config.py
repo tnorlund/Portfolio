@@ -31,7 +31,9 @@ class TrainingConfig:
     sync_bn: bool = False  # Whether to use SyncBatchNorm in distributed training
     # Parallel sweep parameters
     parallel_sweep_workers: int = 1  # Number of parallel sweep workers
-    parallel_sweep_gpu_ids: Optional[List[int]] = None  # List of GPU IDs to use for parallel sweeps
+    parallel_sweep_gpu_ids: Optional[List[int]] = (
+        None  # List of GPU IDs to use for parallel sweeps
+    )
     parallel_sweep_per_worker_trials: int = 1  # Number of trials each worker should run
 
 
@@ -50,7 +52,7 @@ class DataConfig:
         max_length: int = 512,
     ):
         """Initialize data configuration.
-        
+
         Args:
             env: Environment name (dev/prod)
             cache_dir: Directory for caching data
@@ -69,7 +71,7 @@ class DataConfig:
         self.sliding_window_size = sliding_window_size
         self.sliding_window_overlap = sliding_window_overlap
         self.max_length = max_length
-        
+
         # Aliases for backward compatibility with new code
         self.window_size = self.sliding_window_size
         self.window_overlap = self.sliding_window_overlap

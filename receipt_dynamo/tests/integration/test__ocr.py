@@ -22,7 +22,7 @@ def mock_ocr_json():
                     "width": 0.13322906897812287,
                     "y": 0.7911256041373611,
                     "x": 0.43150158271227484,
-                    "height": 0.017722232001168403
+                    "height": 0.017722232001168403,
                 },
                 "top_right": {"x": 0.5647306516903977, "y": 0.7911256041373611},
                 "top_left": {"x": 0.43150158271227484, "y": 0.7911256041373611},
@@ -38,12 +38,21 @@ def mock_ocr_json():
                             "width": 0.05329162759124915,
                             "y": 0.7911256041373611,
                             "x": 0.43150158271227484,
-                            "height": 0.017722232001168403
+                            "height": 0.017722232001168403,
                         },
-                        "top_right": {"x": 0.48479321030352399, "y": 0.7911256041373611},
+                        "top_right": {
+                            "x": 0.48479321030352399,
+                            "y": 0.7911256041373611,
+                        },
                         "top_left": {"x": 0.43150158271227484, "y": 0.7911256041373611},
-                        "bottom_right": {"x": 0.48479321030352399, "y": 0.8088478361385295},
-                        "bottom_left": {"x": 0.43150158271227484, "y": 0.8088478361385295},
+                        "bottom_right": {
+                            "x": 0.48479321030352399,
+                            "y": 0.8088478361385295,
+                        },
+                        "bottom_left": {
+                            "x": 0.43150158271227484,
+                            "y": 0.8088478361385295,
+                        },
                         "angle_degrees": 0,
                         "angle_radians": 0.0,
                         "confidence": 1.0,
@@ -54,12 +63,24 @@ def mock_ocr_json():
                                     "width": 0.013322906897812287,
                                     "y": 0.7911256041373611,
                                     "x": 0.43150158271227484,
-                                    "height": 0.017722232001168403
+                                    "height": 0.017722232001168403,
                                 },
-                                "top_right": {"x": 0.4448244896100871, "y": 0.7911256041373611},
-                                "top_left": {"x": 0.43150158271227484, "y": 0.7911256041373611},
-                                "bottom_right": {"x": 0.4448244896100871, "y": 0.8088478361385295},
-                                "bottom_left": {"x": 0.43150158271227484, "y": 0.8088478361385295},
+                                "top_right": {
+                                    "x": 0.4448244896100871,
+                                    "y": 0.7911256041373611,
+                                },
+                                "top_left": {
+                                    "x": 0.43150158271227484,
+                                    "y": 0.7911256041373611,
+                                },
+                                "bottom_right": {
+                                    "x": 0.4448244896100871,
+                                    "y": 0.8088478361385295,
+                                },
+                                "bottom_left": {
+                                    "x": 0.43150158271227484,
+                                    "y": 0.8088478361385295,
+                                },
                                 "angle_degrees": 0,
                                 "angle_radians": 0.0,
                                 "confidence": 1.0,
@@ -100,7 +121,9 @@ def test_apple_vision_ocr_integration(mocker, mock_ocr_json):
     # --- Assertions ---
     # The function normally returns a dict of { image_id: (lines, words, letters) }.
     assert isinstance(result, dict), "The OCR result should be a dictionary."
-    assert len(result) == 1, "Should have exactly one entry for the single mock JSON file."
+    assert (
+        len(result) == 1
+    ), "Should have exactly one entry for the single mock JSON file."
 
     image_id = list(result.keys())[0]
     lines, words, letters = result[image_id]
@@ -140,7 +163,9 @@ def test_apple_vision_ocr_not_darwin(mocker):
     # Mock platform.system to return "Windows" (or anything but Darwin)
     mocker.patch("receipt_dynamo.data._ocr.platform.system", return_value="Windows")
 
-    with pytest.raises(ValueError, match="Apple's Vision Framework can only be run on a Mac"):
+    with pytest.raises(
+        ValueError, match="Apple's Vision Framework can only be run on a Mac"
+    ):
         apple_vision_ocr(["some_image_path.png"])
 
 

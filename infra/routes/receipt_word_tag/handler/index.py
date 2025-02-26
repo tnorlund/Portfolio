@@ -25,34 +25,30 @@ dynamodb_table_name = os.environ["DYNAMODB_TABLE_NAME"]
 
 def handler(event, context):
     # Get the origin from the request headers
-    origin = event.get('headers', {}).get('origin', '')
+    origin = event.get("headers", {}).get("origin", "")
     allowed_origins = [
         "http://localhost:3000",
         "https://tylernorlund.com",
-        "https://dev.tylernorlund.com"
+        "https://dev.tylernorlund.com",
     ]
-    
+
     # Check if the origin is allowed
     if origin not in allowed_origins:
         origin = allowed_origins[0]  # Default to first allowed origin
-    
+
     # Common headers for CORS
     cors_headers = {
-        'Access-Control-Allow-Origin': origin,
-        'Access-Control-Allow-Credentials': 'true',
-        'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS,HEAD,PATCH',
-        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,Origin,Accept',
-        'Content-Type': 'application/json'
+        "Access-Control-Allow-Origin": origin,
+        "Access-Control-Allow-Credentials": "true",
+        "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS,HEAD,PATCH",
+        "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,Origin,Accept",
+        "Content-Type": "application/json",
     }
-    
+
     # For OPTIONS requests (preflight)
-    if event.get('requestContext', {}).get('http', {}).get('method') == 'OPTIONS':
-        return {
-            'statusCode': 200,
-            'headers': cors_headers,
-            'body': ''
-        }
-    
+    if event.get("requestContext", {}).get("http", {}).get("method") == "OPTIONS":
+        return {"statusCode": 200, "headers": cors_headers, "body": ""}
+
     logger.info("Received event: %s", event)
     http_method = event["requestContext"]["http"]["method"].upper()
 
@@ -72,14 +68,22 @@ def handler(event, context):
                 return {
                     "statusCode": 400,
                     "headers": cors_headers,
-                    "body": json.dumps({"error": "Request body must be an object"})
+                    "body": json.dumps({"error": "Request body must be an object"}),
                 }
 
-            if "selected_tag" not in body or "selected_word" not in body or "action" not in body:
+            if (
+                "selected_tag" not in body
+                or "selected_word" not in body
+                or "action" not in body
+            ):
                 return {
                     "statusCode": 400,
                     "headers": cors_headers,
-                    "body": json.dumps({"error": "Request must include 'selected_tag', 'selected_word', and 'action'"})
+                    "body": json.dumps(
+                        {
+                            "error": "Request must include 'selected_tag', 'selected_word', and 'action'"
+                        }
+                    ),
                 }
 
             selected_tag = body["selected_tag"]
@@ -103,11 +107,11 @@ def handler(event, context):
                 flag=receipt_word_tag.flag,
                 revised_tag=receipt_word_tag.revised_tag,
                 human_validated=receipt_word_tag.human_validated,
-                timestamp_human_validated=receipt_word_tag.timestamp_human_validated
+                timestamp_human_validated=receipt_word_tag.timestamp_human_validated,
             )
 
             # Remove receipt_id before creating Word entity
-            word_params = {k: v for k, v in selected_word.items() if k != 'receipt_id'}
+            word_params = {k: v for k, v in selected_word.items() if k != "receipt_id"}
             word = Word(**word_params)
 
             # Get current timestamp
@@ -120,10 +124,10 @@ def handler(event, context):
                 if new_validation_status is None:
                     # Fallback to toggle behavior if validation_value not provided
                     new_validation_status = not receipt_word_tag.human_validated
-                
+
                 receipt_word_tag.human_validated = new_validation_status
                 word_tag.human_validated = new_validation_status
-                
+
                 if new_validation_status:
                     receipt_word_tag.timestamp_human_validated = timestamp_str
                     word_tag.timestamp_human_validated = timestamp_str
@@ -139,9 +143,11 @@ def handler(event, context):
                     return {
                         "statusCode": 400,
                         "headers": cors_headers,
-                        "body": json.dumps({"error": "new_tag is required for change_tag action"})
+                        "body": json.dumps(
+                            {"error": "new_tag is required for change_tag action"}
+                        ),
                     }
-                
+
                 new_tag_type = body["new_tag"]
                 old_tag_type = receipt_word_tag.tag
 
@@ -150,14 +156,14 @@ def handler(event, context):
                     image_id=word_tag.image_id,
                     line_id=word_tag.line_id,
                     word_id=word_tag.word_id,
-                    tag=word_tag.tag
+                    tag=word_tag.tag,
                 )
                 client.deleteReceiptWordTag(
                     image_id=receipt_word_tag.image_id,
                     receipt_id=receipt_word_tag.receipt_id,
                     line_id=receipt_word_tag.line_id,
                     word_id=receipt_word_tag.word_id,
-                    tag=receipt_word_tag.tag
+                    tag=receipt_word_tag.tag,
                 )
 
                 # Create new tag entries with updated tag type
@@ -174,9 +180,9 @@ def handler(event, context):
                     flag=receipt_word_tag.flag,
                     revised_tag=receipt_word_tag.revised_tag,
                     human_validated=True,
-                    timestamp_human_validated=timestamp_str
+                    timestamp_human_validated=timestamp_str,
                 )
-                
+
                 new_word_tag = WordTag(
                     image_id=word_tag.image_id,
                     line_id=word_tag.line_id,
@@ -189,7 +195,7 @@ def handler(event, context):
                     flag=word_tag.flag,
                     revised_tag=word_tag.revised_tag,
                     human_validated=True,
-                    timestamp_human_validated=timestamp_str
+                    timestamp_human_validated=timestamp_str,
                 )
 
                 # Update word's tag list
@@ -212,11 +218,13 @@ def handler(event, context):
                     return {
                         "statusCode": 400,
                         "headers": cors_headers,
-                        "body": json.dumps({"error": "new_tag is required for add_tag action"})
+                        "body": json.dumps(
+                            {"error": "new_tag is required for add_tag action"}
+                        ),
                     }
-                
+
                 new_tag_type = body["new_tag"]
-                
+
                 # Add new tag type
                 receipt_word_tag.tag = new_tag_type
                 word_tag.tag = new_tag_type
@@ -233,7 +241,7 @@ def handler(event, context):
                 return {
                     "statusCode": 400,
                     "headers": cors_headers,
-                    "body": json.dumps({"error": f"Invalid action: {action}"})
+                    "body": json.dumps({"error": f"Invalid action: {action}"}),
                 }
 
             # Persist all changes
@@ -244,29 +252,27 @@ def handler(event, context):
 
             # Log the response we're sending back
             response = {
-                'updated': {
-                    'word': dict(word),
-                    'word_tag': dict(word_tag),
-                    'receipt_word': dict(receipt_word),
-                    'receipt_word_tag': dict(receipt_word_tag)
+                "updated": {
+                    "word": dict(word),
+                    "word_tag": dict(word_tag),
+                    "receipt_word": dict(receipt_word),
+                    "receipt_word_tag": dict(receipt_word_tag),
                 }
             }
             logger.info("Sending response: %s", response)
 
             return {
-                'statusCode': 200,
-                'headers': cors_headers,
-                'body': json.dumps(response)
+                "statusCode": 200,
+                "headers": cors_headers,
+                "body": json.dumps(response),
             }
 
         except Exception as e:
             logger.error(f"Error processing request: {str(e)}", exc_info=True)
             return {
-                'statusCode': 500,
-                'headers': cors_headers,
-                'body': json.dumps({
-                    'error': f'Internal server error: {str(e)}'
-                })
+                "statusCode": 500,
+                "headers": cors_headers,
+                "body": json.dumps({"error": f"Internal server error: {str(e)}"}),
             }
 
     else:

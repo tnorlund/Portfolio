@@ -228,7 +228,9 @@ def upload_files_with_uuid_in_batches(
 
             # Process files concurrently without artificial delays
             with ThreadPoolExecutor(max_workers=sub_batch_size) as executor:
-                futures = [executor.submit(process_single_uuid, uuid) for uuid in mapped_uuids]
+                futures = [
+                    executor.submit(process_single_uuid, uuid) for uuid in mapped_uuids
+                ]
                 for future in as_completed(futures):
                     future.result()
 
@@ -243,9 +245,13 @@ def upload_files_with_uuid_in_batches(
                     print("The following UUIDs still failed after retry:", failed_uuids)
 
             # Remove failed UUIDs from the mapped_uuids list before validation
-            successful_uuids = [uuid for uuid in mapped_uuids if uuid not in failed_uuids]
+            successful_uuids = [
+                uuid for uuid in mapped_uuids if uuid not in failed_uuids
+            ]
             if successful_uuids:
-                print(f"\nValidating {len(successful_uuids)} successfully processed images...")
+                print(
+                    f"\nValidating {len(successful_uuids)} successfully processed images..."
+                )
                 validation_failed_uuids: list[str] = []
 
                 def validate_single_uuid(uuid: str) -> None:
@@ -259,7 +265,10 @@ def upload_files_with_uuid_in_batches(
 
                 # Validate files concurrently without artificial delays
                 with ThreadPoolExecutor(max_workers=sub_batch_size) as executor:
-                    futures = [executor.submit(validate_single_uuid, uuid) for uuid in successful_uuids]
+                    futures = [
+                        executor.submit(validate_single_uuid, uuid)
+                        for uuid in successful_uuids
+                    ]
                     for future in as_completed(futures):
                         future.result()
 
@@ -271,7 +280,10 @@ def upload_files_with_uuid_in_batches(
                     for uuid in retry_list:
                         validate_single_uuid(uuid)
                     if validation_failed_uuids:
-                        print("The following validations still failed after retry:", validation_failed_uuids)
+                        print(
+                            "The following validations still failed after retry:",
+                            validation_failed_uuids,
+                        )
 
             print(f"Finished batch #{batch_index}.\n")
 

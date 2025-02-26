@@ -705,6 +705,7 @@ def test_letter_warp_affine():
     assert letter.angle_radians == pytest.approx(0.0)
     assert letter.angle_degrees == pytest.approx(0.0)
 
+
 @pytest.mark.unit
 def test_letter_warp_affine_normalized_forward(example_letter):
     """
@@ -746,17 +747,15 @@ def test_letter_warp_affine_normalized_forward(example_letter):
     flip_y = False
 
     # Expected values based on the observed behavior.
-    expected_top_left     = {"x": 10.02, "y": 20.1}
-    expected_top_right    = {"x": 15.02, "y": 20.1}
-    expected_bottom_left  = {"x": 10.02, "y": 22.1}
+    expected_top_left = {"x": 10.02, "y": 20.1}
+    expected_top_right = {"x": 15.02, "y": 20.1}
+    expected_bottom_left = {"x": 10.02, "y": 22.1}
     expected_bottom_right = {"x": 15.02, "y": 22.1}
     expected_bb = {"x": 10.02, "y": 20.1, "width": 5.0, "height": 2.0}
 
     # Apply the normalized affine transformation.
     example_letter.warp_affine_normalized_forward(
-        a, b, c, d, e, f,
-        orig_width, orig_height, new_width, new_height,
-        flip_y
+        a, b, c, d, e, f, orig_width, orig_height, new_width, new_height, flip_y
     )
 
     # Verify that each corner is updated correctly.
@@ -778,6 +777,7 @@ def test_letter_warp_affine_normalized_forward(example_letter):
     # Verify that the angles remain unchanged.
     assert example_letter.angle_degrees == pytest.approx(0.0)
     assert example_letter.angle_radians == pytest.approx(0.0)
+
 
 @pytest.mark.unit
 def test_letter_rotate_90_ccw_in_place(example_letter):
@@ -820,7 +820,7 @@ def test_letter_rotate_90_ccw_in_place(example_letter):
       5. The method then increments the existing angles by 90°:
              angle_degrees becomes 1.0 + 90 = 91.0,
              angle_radians becomes 5.0 + (pi/2).
-    
+
     The test verifies that after the rotation:
       - The corners are updated as expected.
       - The bounding box is correctly recalculated.
@@ -862,6 +862,7 @@ def test_letter_rotate_90_ccw_in_place(example_letter):
 
     assert example_letter.angle_degrees == pytest.approx(expected_angle_degrees)
     assert example_letter.angle_radians == pytest.approx(expected_angle_radians)
+
 
 @pytest.mark.unit
 def test_letter_repr(example_letter):
@@ -947,6 +948,7 @@ def test_letter_eq():
     assert l1 != l14
     assert l1 != "some string"
 
+
 @pytest.mark.unit
 def test_letter_hash(example_letter):
     """Test the Letter __hash__ and the set notation behavior for Letter objects"""
@@ -981,7 +983,6 @@ def test_letter_hash(example_letter):
     letter_set = {example_letter, duplicate_letter, different_letter}
     # Since duplicate_letter is a duplicate of example_letter, it should collapse
     assert len(letter_set) == 2
-
 
 
 @pytest.mark.unit

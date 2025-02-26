@@ -6,6 +6,7 @@ from receipt_dynamo import process
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+
 def handler(event, _):
     logger.info("Received event: %s", event)
     http_method = event["requestContext"]["http"]["method"].upper()
@@ -68,7 +69,7 @@ def handler(event, _):
                     }
                 ),
             }
-        
+
         table_name = query_params["table_name"]
         raw_bucket_name = query_params["raw_bucket_name"]
         raw_prefix = query_params["raw_prefix"]
@@ -94,7 +95,9 @@ def handler(event, _):
 
             return {
                 "statusCode": 200,
-                "body": json.dumps({"body": f"Processed {len(uuids)} UUIDs concurrently."}),
+                "body": json.dumps(
+                    {"body": f"Processed {len(uuids)} UUIDs concurrently."}
+                ),
             }
         except Exception as e:
             return {

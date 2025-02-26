@@ -206,6 +206,7 @@ def compare_entity_lists(
 
     return True
 
+
 @pytest.mark.skip("TODO: Mock call to GPT API")
 @pytest.mark.integration
 @freeze_time("2021-01-01T00:00:00+00:00")
@@ -279,7 +280,9 @@ def test_process(
     ) = expected_results(uuid)
 
     # Probably want to query get receipt details for image and check the receipt
-    _, _, _, _, _, receipts, _, _, _, _, _, _ = DynamoClient(table_name).getImageDetails(uuid)
+    _, _, _, _, _, receipts, _, _, _, _, _, _ = DynamoClient(
+        table_name
+    ).getImageDetails(uuid)
     assert len(receipts) == 1
     receipt = receipts[0]
 
@@ -302,13 +305,17 @@ def test_process(
     )
     assert expected_receipts == DynamoClient(table_name).listReceipts()
 
+
 @pytest.mark.skip("TODO: Mock call to GPT API")
 @pytest.mark.integration
 @freeze_time("2021-01-01T00:00:00+00:00")
 @pytest.mark.parametrize(
     "s3_buckets",
     [
-        ("raw-image-bucket", "cdn-bucket"),  # Or any two bucket names for your test fixture
+        (
+            "raw-image-bucket",
+            "cdn-bucket",
+        ),  # Or any two bucket names for your test fixture
     ],
     indirect=True,
 )
@@ -369,22 +376,16 @@ def test_process_upload(s3_buckets, dynamodb_table):
     #    - DynamoDB should have the expected data (lines, words, receipts, etc.)
     # --------------------------------------------------------------------
     # (a) Check the raw bucket
-    raw_json_resp = s3.get_object(
-        Bucket=raw_bucket, Key=f"{raw_prefix}/{uuid}.json"
-    )
+    raw_json_resp = s3.get_object(Bucket=raw_bucket, Key=f"{raw_prefix}/{uuid}.json")
     raw_json_body = raw_json_resp["Body"].read().decode("utf-8")
     assert json.loads(raw_json_body) == ocr_dict, "Raw JSON in S3 does not match input!"
 
-    raw_png_resp = s3.get_object(
-        Bucket=raw_bucket, Key=f"{raw_prefix}/{uuid}.png"
-    )
+    raw_png_resp = s3.get_object(Bucket=raw_bucket, Key=f"{raw_prefix}/{uuid}.png")
     raw_png_bytes = raw_png_resp["Body"].read()
     assert raw_png_bytes == png_data, "Raw PNG in S3 does not match input!"
 
     # (b) Check the CDN bucket
-    cdn_png_resp = s3.get_object(
-        Bucket=cdn_bucket, Key=f"assets/{uuid}.png"
-    )
+    cdn_png_resp = s3.get_object(Bucket=cdn_bucket, Key=f"assets/{uuid}.png")
     cdn_png_bytes = cdn_png_resp["Body"].read()
     assert cdn_png_bytes == png_data, "CDN copy of PNG does not match input!"
 
@@ -397,7 +398,9 @@ def test_process_upload(s3_buckets, dynamodb_table):
         Bucket=raw_bucket, Key=f"{raw_prefix}/{uuid}_RECEIPT_00001.png"
     )
     raw_receipt_bytes = raw_receipt_resp["Body"].read()
-    assert cdn_receipt_bytes == raw_receipt_bytes, "Receipt PNG differs between raw & CDN!"
+    assert (
+        cdn_receipt_bytes == raw_receipt_bytes
+    ), "Receipt PNG differs between raw & CDN!"
 
     # (d) Compare DynamoDB items to expected
     #     This reuses your existing helpers and the same references
@@ -424,8 +427,12 @@ def test_process_upload(s3_buckets, dynamodb_table):
     # assert expected_letters == dynamo_client.listLetters()
 
     # For receipts & derived items, use your existing compare helpers:
-    assert compare_entity_lists(expected_receipt_lines, dynamo_client.listReceiptLines())
-    assert compare_entity_lists(expected_receipt_words, dynamo_client.listReceiptWords())
+    assert compare_entity_lists(
+        expected_receipt_lines, dynamo_client.listReceiptLines()
+    )
+    assert compare_entity_lists(
+        expected_receipt_words, dynamo_client.listReceiptWords()
+    )
     assert expected_receipt_word_tags == dynamo_client.listReceiptWordTags()
     assert compare_entity_lists(
         expected_receipt_letters, dynamo_client.listReceiptLetters()
@@ -447,6 +454,7 @@ def test_process_upload(s3_buckets, dynamodb_table):
     #     receipt_path = os.path.join(fail_dir, f"{uuid}_RECEIPT_00001.png")
     #     if os.path.exists(receipt_path):
     #         os.remove(receipt_path)
+
 
 @pytest.mark.integration
 @pytest.mark.parametrize("s3_bucket", ["bad-bucket-name"], indirect=True)
@@ -545,7 +553,10 @@ def test_process_bad_png(s3_bucket):
     s3.put_object(Bucket=s3_bucket, Key="raw_prefix/uuid.png", Body=b"Fake PNG data")
 
     # 2. Act & Assert: The invalid PNG should raise a ValueError
-    with pytest.raises(ValueError, match="Corrupted or invalid PNG at s3://raw-image-bucket/raw_prefix/uuid.png"):
+    with pytest.raises(
+        ValueError,
+        match="Corrupted or invalid PNG at s3://raw-image-bucket/raw_prefix/uuid.png",
+    ):
         process("table_name", s3_bucket, "raw_prefix", "uuid", "cdn_bucket_name")
 
 

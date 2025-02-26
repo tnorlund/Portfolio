@@ -23,7 +23,7 @@ def main():
     num_gpus = torch.cuda.device_count()
     if num_gpus < 1:
         raise RuntimeError("No GPUs available for parallel sweep execution")
-    
+
     print(f"Found {num_gpus} GPUs available for parallel sweep")
 
     # Create base configurations with parallel sweep settings
@@ -54,33 +54,22 @@ def main():
     # Custom sweep configuration (optional)
     sweep_config = {
         "method": "bayes",  # Bayesian optimization
-        "metric": {
-            "name": "validation/macro_avg/f1-score",
-            "goal": "maximize"
-        },
+        "metric": {"name": "validation/macro_avg/f1-score", "goal": "maximize"},
         "parameters": {
             "learning_rate": {
                 "distribution": "log_uniform",
                 "min": -9.21,  # 1e-4
                 "max": -6.91,  # 1e-3
             },
-            "batch_size": {
-                "values": [8, 16, 32]
-            },
-            "gradient_accumulation_steps": {
-                "values": [16, 32, 64]
-            },
-            "warmup_ratio": {
-                "distribution": "uniform",
-                "min": 0.0,
-                "max": 0.3
-            },
+            "batch_size": {"values": [8, 16, 32]},
+            "gradient_accumulation_steps": {"values": [16, 32, 64]},
+            "warmup_ratio": {"distribution": "uniform", "min": 0.0, "max": 0.3},
             "weight_decay": {
                 "distribution": "log_uniform",
                 "min": -9.21,  # 1e-4
                 "max": -4.61,  # 1e-2
-            }
-        }
+            },
+        },
     }
 
     try:
@@ -102,10 +91,12 @@ def main():
             early_stopping_min_trials=5,  # Run at least 5 trials
             early_stopping_grace_trials=3,  # Stop if no improvement after 3 trials
             parallel_workers=num_gpus,  # Use all available GPUs
-            gpu_ids=list(range(num_gpus))  # Assign one worker per GPU
+            gpu_ids=list(range(num_gpus)),  # Assign one worker per GPU
         )
 
-        print(f"Parallel hyperparameter optimization completed. Best run: {best_run_id}")
+        print(
+            f"Parallel hyperparameter optimization completed. Best run: {best_run_id}"
+        )
 
     except Exception as e:
         print(f"Error during parallel hyperparameter optimization: {e}")
@@ -113,4 +104,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main() 
+    main()

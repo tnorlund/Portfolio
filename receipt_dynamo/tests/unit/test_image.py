@@ -333,7 +333,7 @@ def test_image_repr(example_image):
         "cdn_s3_bucket='cdn_bucket', "
         "cdn_s3_key='cdn_key'"
         ")"
-        )
+    )
 
 
 @pytest.mark.unit
