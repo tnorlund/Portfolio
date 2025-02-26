@@ -13,7 +13,7 @@ from uuid import uuid4
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pulumi.automation as auto
-from dynamo import DynamoClient, process, validate
+from receipt_dynamo import DynamoClient, process, validate
 
 
 def calculate_sha256(file_path: str) -> str:

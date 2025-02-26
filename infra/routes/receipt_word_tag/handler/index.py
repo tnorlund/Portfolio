@@ -12,7 +12,7 @@ POST:
 import os
 import logging
 import json
-from dynamo import DynamoClient, ReceiptWord, ReceiptWordTag, Word, WordTag
+from receipt_dynamo import DynamoClient, ReceiptWord, ReceiptWordTag, Word, WordTag
 import random
 from datetime import UTC, datetime
 
