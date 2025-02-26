@@ -78,10 +78,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: coverage-${{ matrix.test-type }}
-          path: |
-            receipt_dynamo/.coverage*
-            .coverage*
-            **/.coverage*
+          path: receipt_dynamo/.coverage.${{ matrix.test-type }}
           if-no-files-found: warn
           retention-days: 1
 
@@ -213,10 +210,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: coverage-end_to_end
-          path: |
-            receipt_dynamo/.coverage*
-            .coverage*
-            **/.coverage*
+          path: receipt_dynamo/.coverage.end_to_end
           if-no-files-found: warn
           retention-days: 1
 
