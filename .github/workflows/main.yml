@@ -30,27 +30,24 @@ jobs:
           python-version: 3.13
 
       - name: Install dependencies
-        run: |
-          pip install -r "$(pwd)/receipt_dynamo/requirements-dev.txt"
+        working-directory: receipt_dynamo
+        run: pip install -r requirements-dev.txt
 
       - name: Install package
-        run: |
-          pip install -e "$(pwd)/receipt_dynamo"
+        working-directory: receipt_dynamo
+        run: pip install -e .
 
       - name: Run unit tests
         working-directory: receipt_dynamo
-        run: |
-          pytest -m unit
+        run: pytest -m unit
 
       - name: Run integration tests
         working-directory: receipt_dynamo
-        run: |
-          pytest -m integration
+        run: pytest -m integration
 
       - name: Configure Pulumi Stack
         working-directory: infra
-        run: |
-          pulumi stack select tnorlund/portfolio/prod
+        run: pulumi stack select tnorlund/portfolio/prod
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
 
@@ -67,8 +64,7 @@ jobs:
 
       - name: Run end-to-end tests
         working-directory: receipt_dynamo
-        run: |
-          pytest -m end_to_end
+        run: pytest -m end_to_end
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -98,8 +94,7 @@ jobs:
 
       - name: Install and build React app
         working-directory: portfolio
-        run: |
-          yarn install && yarn build
+        run: yarn install && yarn build
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -107,8 +102,8 @@ jobs:
           python-version: 3.13
       
       - name: Install Pulumi Python dependencies
-        run: |
-          pip install -r "$(pwd)/infra/requirements.txt"
+        working-directory: infra
+        run: pip install -r requirements.txt
 
       - name: Pulumi Deploy
         uses: pulumi/actions@v6
@@ -151,29 +146,28 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
       - name: Run Black formatter check
+        working-directory: receipt_dynamo
         run: |
           pip install black==24.10.0
           black --check .
-        working-directory: receipt_dynamo
 
       - name: Lint with flake8
+        working-directory: receipt_dynamo
         run: |
           pip install flake8
           flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        working-directory: receipt_dynamo
 
       - name: Test with pytest unit tests
-        run: |
-          pytest tests/unit
         working-directory: receipt_dynamo
+        run: pytest tests/unit
+
       - name: Test with pytest integration
-        run: |
-          pytest tests/integration
         working-directory: receipt_dynamo
+        run: pytest tests/integration
+        
       - name: Test coverage
-        run: |
-          pytest tests/unit tests/integration --cov=receipt_dynamo --cov-report=xml
         working-directory: receipt_dynamo
+        run: pytest tests/unit tests/integration --cov=receipt_dynamo --cov-report=xml
 
       - uses: actions/cache@v3
         with:
