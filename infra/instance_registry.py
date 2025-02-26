@@ -4,6 +4,7 @@ import pulumi
 import pulumi_aws as aws
 from pulumi import ResourceOptions
 from typing import Optional
+import json
 
 class InstanceRegistry:
     """Pulumi component for creating a DynamoDB-based instance registry system."""
@@ -27,6 +28,9 @@ class InstanceRegistry:
             write_capacity: DynamoDB write capacity units
             opts: Optional resource options
         """
+        # Store ttl_hours as an instance variable
+        self.ttl_hours = ttl_hours
+        
         # Create DynamoDB table for instance registry
         self.table = aws.dynamodb.Table(
             f"{name}-instance-registry",
@@ -171,8 +175,8 @@ else
     GPU_COUNT=0
 fi
 
-# Calculate TTL (current time + {3600 * ttl_hours} seconds)
-TTL=$(($(date +%s) + {3600 * ttl_hours}))
+# Calculate TTL (current time + {3600 * self.ttl_hours} seconds)
+TTL=$(($(date +%s) + {3600 * self.ttl_hours}))
 
 # Register instance in DynamoDB
 aws dynamodb put-item \\
@@ -276,3 +280,21 @@ trap cleanup SIGTERM SIGINT
 """
         
         return script 
+
+# Remove these lines that were causing issues
+# Get stack-specific configuration
+# stack = pulumi.get_stack()
+# config = pulumi.Config()
+
+# Create the KeyPair resource
+# key_pair = aws.ec2.KeyPair("ml-training-key-pair",
+#     key_name=f"ml-training-{stack}",
+#     # In CI/CD, this would be provided via a secure environment variable
+#     # or configuration that's specific to each environment (dev/prod)
+#     public_key=config.require("ssh_public_key"),
+#     tags={
+#         "Name": f"ML-Training-KeyPair-{stack}",
+#         "Environment": stack,
+#         "ManagedBy": "Pulumi",
+#     }
+# ) 

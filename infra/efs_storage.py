@@ -67,12 +67,11 @@ class EFSStorage:
             performance_mode=performance_mode,
             throughput_mode=throughput_mode,
             encrypted=encrypted,
-            lifecycle_policy=(
+            lifecycle_policies=[
                 aws.efs.FileSystemLifecyclePolicyArgs(
                     transition_to_ia=lifecycle_policies[0].get("transition_to_ia", "AFTER_30_DAYS"),
                 )
-                if lifecycle_policies else None
-            ),
+            ] if lifecycle_policies else None,
             tags={
                 "Name": f"{name}-shared-storage",
             },

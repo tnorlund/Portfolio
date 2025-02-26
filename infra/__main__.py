@@ -3,29 +3,41 @@
 import pulumi
 import pulumi_aws as aws
 from pulumi import ResourceOptions
+import base64
 
 # Import our infrastructure components
-from raw_bucket import create_raw_bucket
-from s3_website import S3Website
-from api_gateway import ApiGateway
-from dynamo_db import ReceiptsTable
-from spot_interruption import SpotInterruptionHandler
-from efs_storage import EFSStorage
-from instance_registry import InstanceRegistry
+import s3_website  # noqa: F401
+import api_gateway  # noqa: F401
+import raw_bucket  # Import raw bucket module
+from dynamo_db import dynamodb_table  # Import DynamoDB table from original code
+from spot_interruption import SpotInterruptionHandler  # Import the class
+from efs_storage import EFSStorage  # Import the class
+from instance_registry import InstanceRegistry  # Import the class
 
 # Import other necessary components
 try:
-    from lambda_layer import create_lambda_layer
-    from ingestion.ocr_pipeline import create_ocr_pipeline
+    import lambda_layer  # noqa: F401
+    from routes.health_check.infra import health_check_lambda  # noqa: F401
 except ImportError:
     # These may not be available in all environments
     pass
 
-# Create core infrastructure components
-receipts_table = ReceiptsTable("receipts")
+# Original exports from main branch
+pulumi.export("region", aws.config.region)
 
-# Create S3 buckets for raw data and website
-raw_bucket = create_raw_bucket("receipt-raw-data")
+# Open template readme and read contents into stack output
+try:
+    with open("./Pulumi.README.md") as f:
+        pulumi.export("readme", f.read())
+except FileNotFoundError:
+    pulumi.export("readme", "README file not found")
+
+# ML Training Infrastructure
+# -------------------------
+
+# Use stack-specific existing key pair from AWS console
+stack = pulumi.get_stack()
+key_pair_name = f"portfolio-receipt-{stack}"  # Use existing key pairs created in AWS console
 
 # Create EC2 Instance Profile for ML training instances
 ml_training_role = aws.iam.Role("ml-training-role",
@@ -158,6 +170,9 @@ EOL
 chmod +x /usr/local/bin/register-instance.sh
 /usr/local/bin/register-instance.sh
 
+# Install required Python packages
+pip install wandb boto3 torch transformers
+
 # Clone repository and set up environment
 git clone https://github.com/yourusername/your-repo.git /home/ubuntu/training
 cd /home/ubuntu/training
@@ -173,16 +188,29 @@ echo "export CHECKPOINT_DIR=/mnt/checkpoints" >> /home/ubuntu/.bashrc
 """
 )
 
+# Get the latest Deep Learning AMI
+dl_ami = aws.ec2.get_ami(
+    most_recent=True,
+    owners=["amazon"],
+    filters=[
+        aws.ec2.GetAmiFilterArgs(
+            name="name", values=["Deep Learning AMI GPU PyTorch*"]
+        ),
+        aws.ec2.GetAmiFilterArgs(name="architecture", values=["x86_64"]),
+        aws.ec2.GetAmiFilterArgs(name="virtualization-type", values=["hvm"]),
+    ],
+)
+
 # Create EC2 Launch Template
 launch_template = aws.ec2.LaunchTemplate("ml-training-launch-template",
-    image_id="ami-0c7217cdde317cfec",  # Amazon Deep Learning AMI (Ubuntu 20.04)
+    image_id=dl_ami.id,  # Use the Deep Learning AMI we found
     instance_type="p3.2xlarge",         # Default instance type with GPU
-    key_name="your-key-pair",          # Specify your key pair name
+    key_name=key_pair_name,  # Reference existing key pair created in AWS console
     iam_instance_profile=aws.ec2.LaunchTemplateIamInstanceProfileArgs(
         name=ml_instance_profile.name,
     ),
     vpc_security_group_ids=[ml_security_group.id],
-    user_data=user_data_script.apply(lambda s: pulumi.Output.unsecret(s).encode("base64")),
+    user_data=user_data_script.apply(lambda s: base64.b64encode(s.encode('utf-8')).decode('utf-8')),
     tag_specifications=[
         aws.ec2.LaunchTemplateTagSpecificationArgs(
             resource_type="instance",
@@ -236,10 +264,6 @@ asg = aws.autoscaling.Group("ml-training-asg",
             ],
         ),
     ),
-    # Spread instances across AZs for better availability
-    availability_zones=pulumi.Output.all(ids=default_subnets.ids).apply(
-        lambda args: ["us-east-1a", "us-east-1b", "us-east-1c"]  # Replace with your region's AZs
-    ),
     # Configure health checks
     health_check_type="EC2",
     health_check_grace_period=300,
@@ -271,7 +295,7 @@ scaling_policy = aws.autoscaling.Policy("ml-training-scaling-policy",
     ),
 )
 
-# Export relevant outputs
+# ML Infrastructure Exports
 pulumi.export("instance_registry_table", instance_registry.table_name)
 pulumi.export("efs_dns_name", efs_storage.file_system_dns_name)
 pulumi.export("efs_training_access_point", efs_storage.training_access_point_id)
@@ -279,3 +303,5 @@ pulumi.export("efs_checkpoints_access_point", efs_storage.checkpoints_access_poi
 pulumi.export("spot_interruption_sns_topic", spot_handler.sns_topic_arn)
 pulumi.export("launch_template_id", launch_template.id)
 pulumi.export("auto_scaling_group_name", asg.name)
+pulumi.export("deep_learning_ami_id", dl_ami.id)
+pulumi.export("deep_learning_ami_name", dl_ami.name)
