@@ -4,7 +4,7 @@ import json
 from collections import defaultdict
 from typing import Dict, Tuple
 
-from dynamo import DynamoClient  # type: ignore
+from receipt_dynamo import DynamoClient  # type: ignore
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)

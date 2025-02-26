@@ -3,7 +3,7 @@
 from typing import Dict, Any, Optional, List, Tuple
 import logging
 import boto3
-from dynamo.data._pulumi import load_env as _load_pulumi_env
+from receipt_dynamo.data._pulumi import load_env as _load_pulumi_env
 import os
 import json
 import time

@@ -1,7 +1,7 @@
 import os
 import logging
 import json
-from dynamo import DynamoClient
+from receipt_dynamo import DynamoClient
 import random
 
 
@@ -46,24 +46,18 @@ def handler(event, context):
             image_details = client.getImageDetails(image_id)
             (
                 images,
-                _,
+                lines,
                 words,
-                _,
-                _,
+                letters,
+                word_tags,
                 receipts,
-                _,
+                receipt_lines,
                 receipt_words,
-                _,
-                _,
-                _,
-                _,
-                _,
-                _,
-                _,
-                _,
-                _,
-                _,
-                
+                receipt_word_tags,
+                receipt_letters,
+                gpt_validations,
+                gpt_initial_taggings,
+                receipt_windows,
             ) = image_details
             return {
                 "statusCode": 200,
