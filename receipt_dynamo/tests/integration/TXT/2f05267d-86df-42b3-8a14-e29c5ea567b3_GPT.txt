@@ -1,0 +1,35 @@
+{
+  "id": "chatcmpl-AwvKKBFuiGBI4qhBLCAwM0cWDQ5Il",
+  "object": "chat.completion",
+  "created": 1738606752,
+  "model": "gpt-3.5-turbo-0125",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"store_name\": [\n    {\"l\": 2, \"w\": 1}\n  ],\n  \"date\": [\n    {\"l\": 20, \"w\": 3}\n  ],\n  \"time\": [\n    {\"l\": 20, \"w\": 4}\n  ],\n  \"phone_number\": [\n    {\"l\": 39, \"w\": 1},\n    {\"l\": 39, \"w\": 6}\n  ],\n  \"total_amount\": [\n    {\"l\": 15, \"w\": 1}\n  ],\n  \"taxes\": [\n    {\"l\": 10, \"w\": 1}\n  ],\n  \"address\": [\n    {\"l\": 4, \"w\": 1},\n    {\"l\": 5, \"w\": 1},\n    {\"l\": 5, \"w\": 2},\n    {\"l\": 5, \"w\": 3}\n  ],\n  \"line_item\": [\n    {\"l\": 8, \"w\": 1},\n    {\"l\": 10, \"w\": 1},\n    {\"l\": 11, \"w\": 1}\n  ],\n  \"line_item_name\": [\n    {\"l\": 8, \"w\": 2},\n    {\"l\": 10, \"w\": 2},\n    {\"l\": 11, \"w\": 1}\n  ],\n  \"line_item_price\": [\n    {\"l\": 8, \"w\": 4},\n    {\"l\": 10, \"w\": 3},\n    {\"l\": 11, \"w\": 1}\n  ]\n}",
+        "refusal": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 4519,
+    "completion_tokens": 342,
+    "total_tokens": 4861,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "audio_tokens": 0
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 0,
+      "audio_tokens": 0,
+      "accepted_prediction_tokens": 0,
+      "rejected_prediction_tokens": 0
+    }
+  },
+  "service_tier": "default",
+  "system_fingerprint": null
+}

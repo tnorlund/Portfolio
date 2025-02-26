@@ -2,7 +2,7 @@ import os
 import logging
 import json
 from typing import Any, Dict
-from dynamo import DynamoClient  # type: ignore
+from receipt_dynamo import DynamoClient  # type: ignore
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)

@@ -10,7 +10,7 @@ import boto3
 from botocore.exceptions import ClientError
 import pulumi.automation as auto
 
-from dynamo import (
+from receipt_dynamo import (
     DynamoClient,
     Image,
     Line,

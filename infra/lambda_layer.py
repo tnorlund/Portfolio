@@ -9,11 +9,11 @@ import pulumi_aws as aws
 import pulumi_command as command
 
 # Constants
-PROJECT_DIR = os.path.dirname(__file__)
-LAMBDA_LAYER_DIR = os.path.abspath(os.path.join(PROJECT_DIR, "lambda_layer"))
-UPLOAD_DIR = os.path.join(PROJECT_DIR, "upload")
-ZIP_FILE_PATH = os.path.join(PROJECT_DIR, "upload.zip")
-PACKAGE_NAME = os.path.join(LAMBDA_LAYER_DIR, "python")
+PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Now points to the root directory
+LAMBDA_LAYER_DIR = os.path.abspath(os.path.join(PROJECT_DIR, "receipt_dynamo"))
+UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "upload")
+ZIP_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "upload.zip")
+PACKAGE_NAME = LAMBDA_LAYER_DIR
 PYTHON_TARGET = os.path.join(UPLOAD_DIR, "python")
 REQUIREMENTS_PATH = os.path.join(PACKAGE_NAME, "requirements.txt")
 S3_BUCKET_NAME = "lambdalayerpulumi"
@@ -48,14 +48,14 @@ def install_dependencies():
     docker_command.extend([
         "-v", f"{PROJECT_DIR}:{PROJECT_DIR}",
         "--entrypoint", "bash",
-        "-w", os.path.join(LAMBDA_LAYER_DIR, "python"),
+        "-w", LAMBDA_LAYER_DIR,  # Updated working directory
         "public.ecr.aws/lambda/python:3.13",
         "-c",
         (
             "dnf install -y gcc python3-devel libjpeg-devel zlib-devel && "
             "pip install --upgrade pip && "
-            f"pip install --target {PYTHON_TARGET} -r {REQUIREMENTS_PATH} && "
-            f"pip install --target {PYTHON_TARGET} . && "
+            f"pip install --target {PYTHON_TARGET} -r {REQUIREMENTS_PATH} --upgrade --root-user-action=ignore && "
+            f"pip install --target {PYTHON_TARGET} . --upgrade --root-user-action=ignore && "
             f"chmod -R a+w {PYTHON_TARGET}"
         )
     ])
@@ -93,6 +93,16 @@ def prepare_lambda_layer():
     # Ensure clean output directory
     clean_previous_artifacts()
     ensure_directory_exists(PYTHON_TARGET)
+    
+    # Clean Python target directory if it exists
+    if os.path.exists(PYTHON_TARGET):
+        print(f"Cleaning existing content in {PYTHON_TARGET}")
+        for item in os.listdir(PYTHON_TARGET):
+            item_path = os.path.join(PYTHON_TARGET, item)
+            if os.path.isfile(item_path):
+                os.remove(item_path)
+            elif os.path.isdir(item_path):
+                shutil.rmtree(item_path)
 
     # Install dependencies
     install_dependencies()
@@ -101,7 +111,7 @@ def prepare_lambda_layer():
     create_zip_file()
 
 
-layer_name = "dynamo-receipt"
+layer_name = "receipt-dynamo"
 compatible_runtimes = ["python3.13"]
 
 # 1) Build & package
