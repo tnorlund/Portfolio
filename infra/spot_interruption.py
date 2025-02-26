@@ -4,12 +4,13 @@ import pulumi
 import pulumi_aws as aws
 from pulumi import ResourceOptions
 
+
 class SpotInterruptionHandler:
     """Pulumi component for handling EC2 Spot Instance interruption notifications."""
-    
+
     def __init__(self, name, instance_role_name, sns_email=None, opts=None):
         """Initialize SpotInterruptionHandler.
-        
+
         Args:
             name: Base name for the created resources
             instance_role_name: Name of the IAM role used by EC2 instances
@@ -20,9 +21,9 @@ class SpotInterruptionHandler:
         self.sns_topic = aws.sns.Topic(
             f"{name}-spot-interruption",
             display_name="EC2 Spot Instance Interruption Notifications",
-            opts=opts
+            opts=opts,
         )
-        
+
         # Add email subscription if provided
         if sns_email:
             self.email_subscription = aws.sns.TopicSubscription(
@@ -30,9 +31,9 @@ class SpotInterruptionHandler:
                 topic=self.sns_topic.arn,
                 protocol="email",
                 endpoint=sns_email,
-                opts=opts
+                opts=opts,
             )
-            
+
         # Create CloudWatch Event Rule for spot interruption
         self.event_rule = aws.cloudwatch.EventRule(
             f"{name}-spot-interruption-rule",
@@ -43,17 +44,17 @@ class SpotInterruptionHandler:
                 "detail-type": ["EC2 Spot Instance Interruption Warning"]
             }
             """,
-            opts=opts
+            opts=opts,
         )
-        
+
         # Set up SNS as the target for the CloudWatch Event Rule
         self.event_target = aws.cloudwatch.EventTarget(
             f"{name}-spot-interruption-target",
             rule=self.event_rule.name,
             arn=self.sns_topic.arn,
-            opts=opts
+            opts=opts,
         )
-        
+
         # Create IAM policy for instances to publish to SNS
         self.sns_policy = aws.iam.Policy(
             f"{name}-spot-interruption-policy",
@@ -72,17 +73,17 @@ class SpotInterruptionHandler:
                     ]
                 }}"""
             ),
-            opts=opts
+            opts=opts,
         )
-        
+
         # Attach policy to the instance role
         self.policy_attachment = aws.iam.RolePolicyAttachment(
             f"{name}-spot-interruption-attachment",
             role=instance_role_name,
             policy_arn=self.sns_policy.arn,
-            opts=opts
+            opts=opts,
         )
-        
+
         # Export the SNS topic ARN
         self.sns_topic_arn = self.sns_topic.arn
-        pulumi.export(f"{name}_spot_interruption_sns_topic_arn", self.sns_topic_arn) 
+        pulumi.export(f"{name}_spot_interruption_sns_topic_arn", self.sns_topic_arn)

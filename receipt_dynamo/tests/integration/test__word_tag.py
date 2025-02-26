@@ -303,22 +303,24 @@ def test_updateWordTags_success(dynamodb_table, sample_word_tag):
     tag2.tag = "UpdatedTag2"
 
     # First delete the old tags
-    client.deleteWordTags([
-        WordTag(
-            image_id=tag1.image_id,
-            line_id=tag1.line_id,
-            word_id=tag1.word_id,
-            tag=sample_word_tag.tag,  # Original tag value
-            timestamp_added=tag1.timestamp_added
-        ),
-        WordTag(
-            image_id=tag2.image_id,
-            line_id=tag2.line_id,
-            word_id=tag2.word_id,
-            tag="AnotherTag",  # Original tag value
-            timestamp_added=tag2.timestamp_added
-        )
-    ])
+    client.deleteWordTags(
+        [
+            WordTag(
+                image_id=tag1.image_id,
+                line_id=tag1.line_id,
+                word_id=tag1.word_id,
+                tag=sample_word_tag.tag,  # Original tag value
+                timestamp_added=tag1.timestamp_added,
+            ),
+            WordTag(
+                image_id=tag2.image_id,
+                line_id=tag2.line_id,
+                word_id=tag2.word_id,
+                tag="AnotherTag",  # Original tag value
+                timestamp_added=tag2.timestamp_added,
+            ),
+        ]
+    )
 
     # Then add the updated tags
     client.addWordTags([tag1, tag2])
@@ -326,7 +328,7 @@ def test_updateWordTags_success(dynamodb_table, sample_word_tag):
     # Verify updates - use getWordTags to find by tag value
     tags_with_updated_tag1 = client.getWordTags("UpdatedTag1")
     tags_with_updated_tag2 = client.getWordTags("UpdatedTag2")
-    
+
     assert len(tags_with_updated_tag1) == 1
     assert len(tags_with_updated_tag2) == 1
     assert tags_with_updated_tag1[0].tag == "UpdatedTag1"
@@ -339,7 +341,9 @@ def test_updateWordTags_raises_value_error_word_tags_none(dynamodb_table):
     Tests that updateWordTags raises ValueError when the word_tags parameter is None.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="WordTags parameter is required and cannot be None."):
+    with pytest.raises(
+        ValueError, match="WordTags parameter is required and cannot be None."
+    ):
         client.updateWordTags(None)  # type: ignore
 
 
@@ -354,17 +358,24 @@ def test_updateWordTags_raises_value_error_word_tags_not_list(dynamodb_table):
 
 
 @pytest.mark.integration
-def test_updateWordTags_raises_value_error_word_tags_not_list_of_word_tags(dynamodb_table, sample_word_tag):
+def test_updateWordTags_raises_value_error_word_tags_not_list_of_word_tags(
+    dynamodb_table, sample_word_tag
+):
     """
     Tests that updateWordTags raises ValueError when the word_tags parameter is not a list of WordTag instances.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="All items in the word_tags list must be instances of the WordTag class."):
+    with pytest.raises(
+        ValueError,
+        match="All items in the word_tags list must be instances of the WordTag class.",
+    ):
         client.updateWordTags([sample_word_tag, "not-a-word-tag"])  # type: ignore
 
 
 @pytest.mark.integration
-def test_updateWordTags_raises_clienterror_conditional_check_failed(dynamodb_table, sample_word_tag, mocker):
+def test_updateWordTags_raises_clienterror_conditional_check_failed(
+    dynamodb_table, sample_word_tag, mocker
+):
     """
     Tests that updateWordTags raises ValueError when trying to update non-existent word tags.
     """
@@ -388,7 +399,9 @@ def test_updateWordTags_raises_clienterror_conditional_check_failed(dynamodb_tab
 
 
 @pytest.mark.integration
-def test_updateWordTags_raises_clienterror_provisioned_throughput_exceeded(dynamodb_table, sample_word_tag, mocker):
+def test_updateWordTags_raises_clienterror_provisioned_throughput_exceeded(
+    dynamodb_table, sample_word_tag, mocker
+):
     """
     Tests that updateWordTags raises an Exception when the ProvisionedThroughputExceededException error is raised.
     """
@@ -412,7 +425,9 @@ def test_updateWordTags_raises_clienterror_provisioned_throughput_exceeded(dynam
 
 
 @pytest.mark.integration
-def test_updateWordTags_raises_clienterror_internal_server_error(dynamodb_table, sample_word_tag, mocker):
+def test_updateWordTags_raises_clienterror_internal_server_error(
+    dynamodb_table, sample_word_tag, mocker
+):
     """
     Tests that updateWordTags raises an Exception when the InternalServerError error is raised.
     """
@@ -436,7 +451,9 @@ def test_updateWordTags_raises_clienterror_internal_server_error(dynamodb_table,
 
 
 @pytest.mark.integration
-def test_updateWordTags_raises_clienterror_validation_exception(dynamodb_table, sample_word_tag, mocker):
+def test_updateWordTags_raises_clienterror_validation_exception(
+    dynamodb_table, sample_word_tag, mocker
+):
     """
     Tests that updateWordTags raises an Exception when the ValidationException error is raised.
     """
@@ -460,7 +477,9 @@ def test_updateWordTags_raises_clienterror_validation_exception(dynamodb_table, 
 
 
 @pytest.mark.integration
-def test_updateWordTags_raises_clienterror_access_denied(dynamodb_table, sample_word_tag, mocker):
+def test_updateWordTags_raises_clienterror_access_denied(
+    dynamodb_table, sample_word_tag, mocker
+):
     """
     Tests that updateWordTags raises an Exception when the AccessDeniedException error is raised.
     """

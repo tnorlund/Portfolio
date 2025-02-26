@@ -71,8 +71,7 @@ def test_export_and_import_image(dynamodb_table, export_dir):
     client.addReceiptLines(receipt_lines)
     client.addReceiptWords(receipt_words)
     client.addReceiptWordTags(receipt_word_tags)
-    client.addReceiptLetters(receipt_letters)\
-    
+    client.addReceiptLetters(receipt_letters)
     # Act
     export_image(dynamodb_table, image.image_id, output_dir=export_dir)
 

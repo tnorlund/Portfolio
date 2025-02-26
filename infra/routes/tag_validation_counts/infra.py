@@ -47,10 +47,7 @@ lambda_policy = aws.iam.Policy(
                 "Statement": [
                     {
                         "Effect": "Allow",
-                        "Action": [
-                            "dynamodb:Query",
-                            "dynamodb:DescribeTable"
-                        ],
+                        "Action": ["dynamodb:Query", "dynamodb:DescribeTable"],
                         "Resource": [
                             arn,
                             f"{arn}/index/GSITYPE",

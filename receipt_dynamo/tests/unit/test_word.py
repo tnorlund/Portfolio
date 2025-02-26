@@ -470,10 +470,19 @@ def test_word_rotate_limited_range(angle, use_radians, should_raise):
             10.0,
             20.0,
             {
-                "top_right": {"x": 15.0 + 0.2 * (20.0 - 20.0), "y": 20.0},  # (15.0,20.0)
-                "top_left": {"x": 10.0 + 0.2 * (20.0 - 20.0), "y": 20.0},   # (10.0,20.0)
-                "bottom_right": {"x": 15.0 + 0.2 * (22.0 - 20.0), "y": 22.0},# (15.4,22.0)
-                "bottom_left": {"x": 10.0 + 0.2 * (22.0 - 20.0), "y": 22.0}, # (10.4,22.0)
+                "top_right": {
+                    "x": 15.0 + 0.2 * (20.0 - 20.0),
+                    "y": 20.0,
+                },  # (15.0,20.0)
+                "top_left": {"x": 10.0 + 0.2 * (20.0 - 20.0), "y": 20.0},  # (10.0,20.0)
+                "bottom_right": {
+                    "x": 15.0 + 0.2 * (22.0 - 20.0),
+                    "y": 22.0,
+                },  # (15.4,22.0)
+                "bottom_left": {
+                    "x": 10.0 + 0.2 * (22.0 - 20.0),
+                    "y": 22.0,
+                },  # (10.4,22.0)
             },
         ),
         # Test 2: Vertical shear only (shy nonzero, shx=0)
@@ -483,10 +492,19 @@ def test_word_rotate_limited_range(angle, use_radians, should_raise):
             10.0,
             20.0,
             {
-                "top_right": {"x": 15.0, "y": 20.0 + 0.2 * (15.0 - 10.0)},  # (15.0,21.0)
-                "top_left": {"x": 10.0, "y": 20.0 + 0.2 * (10.0 - 10.0)},   # (10.0,20.0)
-                "bottom_right": {"x": 15.0, "y": 22.0 + 0.2 * (15.0 - 10.0)},# (15.0,23.0)
-                "bottom_left": {"x": 10.0, "y": 22.0 + 0.2 * (10.0 - 10.0)}, # (10.0,22.0)
+                "top_right": {
+                    "x": 15.0,
+                    "y": 20.0 + 0.2 * (15.0 - 10.0),
+                },  # (15.0,21.0)
+                "top_left": {"x": 10.0, "y": 20.0 + 0.2 * (10.0 - 10.0)},  # (10.0,20.0)
+                "bottom_right": {
+                    "x": 15.0,
+                    "y": 22.0 + 0.2 * (15.0 - 10.0),
+                },  # (15.0,23.0)
+                "bottom_left": {
+                    "x": 10.0,
+                    "y": 22.0 + 0.2 * (10.0 - 10.0),
+                },  # (10.0,22.0)
             },
         ),
         # Test 3: Combined shear (both shx and shy nonzero)
@@ -562,13 +580,14 @@ def test_word_shear(shx, shy, pivot_x, pivot_y, expected_corners):
     assert word.bounding_box["width"] == pytest.approx(expected_bb["width"])
     assert word.bounding_box["height"] == pytest.approx(expected_bb["height"])
 
+
 @pytest.mark.unit
 def test_word_warp_affine_normalized_forward():
     """
     Test that warp_affine_normalized_forward(a, b, c, d, e, f) applies a normalized affine transform
     to all corners of the Word by operating on normalized coordinates (relative to the original bounding box),
     recalculates the bounding box correctly, and leaves the angle unchanged.
-    
+
     In this test, the transformation is defined as follows:
       - For each corner point, compute the normalized coordinates:
             u = (x - bounding_box.x) / bounding_box.width
@@ -625,6 +644,7 @@ def test_word_warp_affine_normalized_forward():
     assert word.angle_degrees == pytest.approx(0.0)
     assert word.angle_radians == pytest.approx(0.0)
 
+
 def test_word_rotate_90_ccw_in_place():
     """
     Test the rotate_90_ccw_in_place method of the Word class.
@@ -658,7 +678,7 @@ def test_word_rotate_90_ccw_in_place():
     # Use the helper to create a test Word.
     # (Make sure create_test_word() is available in your test file.)
     word = create_test_word()
-    
+
     # Reset angles to zero for a clean test.
     word.angle_degrees = 0.0
     word.angle_radians = 0.0
@@ -700,6 +720,7 @@ def test_word_rotate_90_ccw_in_place():
     # Check that the angles have been updated correctly.
     assert word.angle_degrees == pytest.approx(expected_angle_degrees)
     assert word.angle_radians == pytest.approx(expected_angle_radians)
+
 
 @pytest.mark.unit
 def test_word_warp_affine():
@@ -906,7 +927,7 @@ def test_word_hash(example_word):
         {"x": 10.0, "y": 22.0},
         1.0,
         5.0,
-        0.90
+        0.90,
     )
 
     # Add example_word, its duplicate, and the different word into a set.

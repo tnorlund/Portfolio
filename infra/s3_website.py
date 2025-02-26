@@ -36,6 +36,7 @@ certificate = aws.acm.Certificate(
     validation_method="DNS",
 )
 
+
 # 3) Create DNS validation records using an .apply()
 def create_validation_records(domain_validation_options):
     records = []
@@ -46,10 +47,11 @@ def create_validation_records(domain_validation_options):
             name=dvo.resource_record_name,
             type=dvo.resource_record_type,
             records=[dvo.resource_record_value],
-            ttl=60
+            ttl=60,
         )
         records.append(record)
     return records
+
 
 validation_records = certificate.domain_validation_options.apply(
     lambda dvos: create_validation_records(dvos)
@@ -59,13 +61,14 @@ validation_records = certificate.domain_validation_options.apply(
 # We also need to wait until 'validation_records' is created
 # in order to get the FQDNs to pass into CertificateValidation.
 certificate_validation = pulumi.Output.all(
-    certificate_arn=certificate.arn,
-    records=validation_records
-).apply(lambda args: aws.acm.CertificateValidation(
-    "siteCertificateValidation",
-    certificate_arn=args["certificate_arn"],
-    validation_record_fqdns=[r.fqdn for r in args["records"]],
-))
+    certificate_arn=certificate.arn, records=validation_records
+).apply(
+    lambda args: aws.acm.CertificateValidation(
+        "siteCertificateValidation",
+        certificate_arn=args["certificate_arn"],
+        validation_record_fqdns=[r.fqdn for r in args["records"]],
+    )
+)
 
 ########################
 # 5) Create S3 Bucket (for static site) + Public Access
@@ -82,15 +85,19 @@ bucket_policy = aws.s3.BucketPolicy(
     "bucketPolicy",
     bucket=site_bucket.bucket,
     policy=site_bucket.bucket.apply(
-        lambda bucket_name: json.dumps({
-            "Version": "2012-10-17",
-            "Statement": [{
-                "Effect": "Allow",
-                "Principal": "*",
-                "Action": "s3:GetObject",
-                "Resource": f"arn:aws:s3:::{bucket_name}/*"
-            }]
-        })
+        lambda bucket_name: json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": "*",
+                        "Action": "s3:GetObject",
+                        "Resource": f"arn:aws:s3:::{bucket_name}/*",
+                    }
+                ],
+            }
+        )
     ),
 )
 
@@ -110,10 +117,12 @@ public_access_block = aws.s3.BucketPublicAccessBlock(
 # Otherwise, it's just [<stack>.tylernorlund.com]
 cdn = aws.cloudfront.Distribution(
     "cdn",
-    origins=[{
-        "domainName": site_bucket.bucket_regional_domain_name,
-        "originId": site_bucket.id,
-    }],
+    origins=[
+        {
+            "domainName": site_bucket.bucket_regional_domain_name,
+            "originId": site_bucket.id,
+        }
+    ],
     enabled=True,
     default_root_object="index.html",
     default_cache_behavior={
@@ -130,9 +139,7 @@ cdn = aws.cloudfront.Distribution(
         "maxTtl": 86400,
     },
     price_class="PriceClass_100",
-    restrictions={
-        "geoRestriction": {"restrictionType": "none"}
-    },
+    restrictions={"geoRestriction": {"restrictionType": "none"}},
     viewer_certificate={
         "acmCertificateArn": certificate_validation.certificate_arn,
         "sslSupportMethod": "sni-only",
@@ -140,15 +147,15 @@ cdn = aws.cloudfront.Distribution(
     },
     custom_error_responses=[
         {
-        "errorCode": 403,
-        "responseCode": 200,
-        "responsePagePath": "/index.html",
-    },
-    {
-        "errorCode": 404,
-        "responseCode": 200,
-        "responsePagePath": "/index.html",
-    },
+            "errorCode": 403,
+            "responseCode": 200,
+            "responsePagePath": "/index.html",
+        },
+        {
+            "errorCode": 404,
+            "responseCode": 200,
+            "responsePagePath": "/index.html",
+        },
     ],
     # Add all domain names in 'aliases'
     aliases=site_domains,
@@ -171,11 +178,13 @@ for domain in site_domains:
         zone_id=hosted_zone.zone_id,
         name=domain,
         type="A",
-        aliases=[{
-            "name": cdn.domain_name,
-            "zone_id": cdn.hosted_zone_id,
-            "evaluateTargetHealth": True,
-        }],
+        aliases=[
+            {
+                "name": cdn.domain_name,
+                "zone_id": cdn.hosted_zone_id,
+                "evaluateTargetHealth": True,
+            }
+        ],
     )
 
 ########################

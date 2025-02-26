@@ -1,5 +1,8 @@
 import pytest
-from receipt_dynamo.entities.receipt_word_tag import ReceiptWordTag, itemToReceiptWordTag
+from receipt_dynamo.entities.receipt_word_tag import (
+    ReceiptWordTag,
+    itemToReceiptWordTag,
+)
 
 
 @pytest.fixture
@@ -19,53 +22,86 @@ def test_receipt_word_tag_init_valid(example_receipt_word_tag):
     assert example_receipt_word_tag.word_id == 789
     assert example_receipt_word_tag.tag == "food"
 
+
 @pytest.mark.unit
 def test_receipt_word_tag_init_invalid_image_id():
     """Test constructor raises ValueError if image_id is not a valid UUID."""
     with pytest.raises(ValueError, match="uuid must be a string"):
-        ReceiptWordTag(
-            123, 2, 3, 4, "tag", timestamp_added="2021-01-01T00:00:00"
-        )
+        ReceiptWordTag(123, 2, 3, 4, "tag", timestamp_added="2021-01-01T00:00:00")
     with pytest.raises(ValueError, match="uuid must be a valid UUIDv4"):
         ReceiptWordTag(
             "bad-uuid", 2, 3, 4, "tag", timestamp_added="2021-01-01T00:00:00"
         )
+
 
 @pytest.mark.unit
 def test_receipt_word_tag_init_invalid_receipt_id():
     """Test constructor raises ValueError if receipt_id is not an integer or is negative."""
     with pytest.raises(ValueError, match="receipt_id must be an integer"):
         ReceiptWordTag(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3", "bad", 3, 4, "tag", timestamp_added="2021-01-01T00:00:00"
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            "bad",
+            3,
+            4,
+            "tag",
+            timestamp_added="2021-01-01T00:00:00",
         )
     with pytest.raises(ValueError, match="receipt_id must be positive"):
         ReceiptWordTag(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3", -1, 3, 4, "tag", timestamp_added="2021-01-01T00:00:00"
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            -1,
+            3,
+            4,
+            "tag",
+            timestamp_added="2021-01-01T00:00:00",
         )
+
 
 @pytest.mark.unit
 def test_receipt_word_tag_init_invalid_line_id():
     """Test constructor raises ValueError if line_id is not an integer or is negative."""
     with pytest.raises(ValueError, match="line_id must be an integer"):
         ReceiptWordTag(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, "bad", 4, "tag", timestamp_added="2021-01-01T00:00"
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            2,
+            "bad",
+            4,
+            "tag",
+            timestamp_added="2021-01-01T00:00",
         )
     with pytest.raises(ValueError, match="line_id must be positive"):
         ReceiptWordTag(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, -3, 4, "tag", timestamp_added="2021-01-01T00:00"
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            2,
+            -3,
+            4,
+            "tag",
+            timestamp_added="2021-01-01T00:00",
         )
+
 
 @pytest.mark.unit
 def test_receipt_word_tag_init_invalid_word_id():
     """Test constructor raises ValueError if word_id is not an integer or is negative."""
     with pytest.raises(ValueError, match="word_id must be an integer"):
         ReceiptWordTag(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "bad", "tag", timestamp_added="2021-01-01T00:00"
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            2,
+            3,
+            "bad",
+            "tag",
+            timestamp_added="2021-01-01T00:00",
         )
     with pytest.raises(ValueError, match="word_id must be positive"):
         ReceiptWordTag(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, -4, "tag", timestamp_added="2021-01-01T00:00"
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            2,
+            3,
+            -4,
+            "tag",
+            timestamp_added="2021-01-01T00:00",
         )
+
 
 @pytest.mark.unit
 def test_receipt_word_tag_init_invalid_tag():
@@ -81,20 +117,32 @@ def test_receipt_word_tag_init_invalid_tag():
     with pytest.raises(ValueError, match="tag must not exceed 40 characters"):
         long_tag = "A" * 41
         ReceiptWordTag(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, 4, long_tag, "2021-01-01T00:00:00"
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            2,
+            3,
+            4,
+            long_tag,
+            "2021-01-01T00:00:00",
         )
     with pytest.raises(ValueError, match="tag must not start with an underscore"):
         ReceiptWordTag(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, 4, "_bad", "2021-01-01T00:00:00"
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            2,
+            3,
+            4,
+            "_bad",
+            "2021-01-01T00:00:00",
         )
+
 
 @pytest.mark.unit
 def test_receipt_word_tag_init_invalid_timestamp_added():
     """Test constructor raises ValueError if timestamp_added is not a datetime or string."""
-    with pytest.raises(ValueError, match="timestamp_added must be a datetime object or a string"):
-        ReceiptWordTag(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, 4, "tag", 123
-        )
+    with pytest.raises(
+        ValueError, match="timestamp_added must be a datetime object or a string"
+    ):
+        ReceiptWordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, 4, "tag", 123)
+
 
 @pytest.mark.unit
 def test_receipt_word_tag_eq():
@@ -180,14 +228,15 @@ def test_receipt_word_tag_gsi2_key(example_receipt_word_tag):
     Test that .gsi2_key() returns GSI2PK/GSI2SK.
       GSI2PK = "RECEIPT"
       GSI2SK = "IMAGE#<image_id>#RECEIPT#<receipt_id>#LINE#<line_id>#WORD#<word_id>#TAG#<tag>"
-    """ 
+    """
     gsi_key = example_receipt_word_tag.gsi2_key()
     assert gsi_key["GSI2PK"]["S"] == "RECEIPT"
     assert (
         gsi_key["GSI2SK"]["S"]
         == "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00045#LINE#00006#WORD#00789#TAG#____________________________________food"
     )
-    
+
+
 @pytest.mark.unit
 def test_receipt_word_tag_to_item(example_receipt_word_tag):
     """Test .to_item() combines all keys plus TYPE and tag_name."""
@@ -209,6 +258,7 @@ def test_receipt_word_tag_to_item(example_receipt_word_tag):
 
     # Check timestamp_added
     assert item["timestamp_added"]["S"] == "2021-01-01T00:00:00"
+
 
 @pytest.mark.unit
 def test_receipt_word_tag_to_receipt_word_key(example_receipt_word_tag):

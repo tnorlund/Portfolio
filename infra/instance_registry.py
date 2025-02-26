@@ -6,9 +6,10 @@ from pulumi import ResourceOptions
 from typing import Optional
 import json
 
+
 class InstanceRegistry:
     """Pulumi component for creating a DynamoDB-based instance registry system."""
-    
+
     def __init__(
         self,
         name: str,
@@ -19,7 +20,7 @@ class InstanceRegistry:
         opts: Optional[ResourceOptions] = None,
     ):
         """Initialize InstanceRegistry.
-        
+
         Args:
             name: Base name for created resources
             instance_role_name: Name of the IAM role used by EC2 instances
@@ -30,7 +31,7 @@ class InstanceRegistry:
         """
         # Store ttl_hours as an instance variable
         self.ttl_hours = ttl_hours
-        
+
         # Create DynamoDB table for instance registry
         self.table = aws.dynamodb.Table(
             f"{name}-instance-registry",
@@ -67,7 +68,7 @@ class InstanceRegistry:
             },
             opts=opts,
         )
-        
+
         # Create IAM policy for DynamoDB access
         self.dynamo_policy = aws.iam.Policy(
             f"{name}-instance-registry-policy",
@@ -100,7 +101,7 @@ class InstanceRegistry:
             ),
             opts=opts,
         )
-        
+
         # Create IAM policy for EC2 instance introspection
         self.ec2_introspection_policy = aws.iam.Policy(
             f"{name}-ec2-introspection-policy",
@@ -125,7 +126,7 @@ class InstanceRegistry:
             """,
             opts=opts,
         )
-        
+
         # Attach policies to the instance role
         self.dynamo_policy_attachment = aws.iam.RolePolicyAttachment(
             f"{name}-instance-registry-attachment",
@@ -133,27 +134,27 @@ class InstanceRegistry:
             policy_arn=self.dynamo_policy.arn,
             opts=opts,
         )
-        
+
         self.ec2_policy_attachment = aws.iam.RolePolicyAttachment(
             f"{name}-ec2-introspection-attachment",
             role=instance_role_name,
             policy_arn=self.ec2_introspection_policy.arn,
             opts=opts,
         )
-        
+
         # Export the table name and ARN
         self.table_name = self.table.name
         self.table_arn = self.table.arn
-        
+
         pulumi.export(f"{name}_instance_registry_table_name", self.table_name)
         pulumi.export(f"{name}_instance_registry_table_arn", self.table_arn)
-        
+
     def create_registration_script(self, leader_election_enabled: bool = True) -> str:
         """Generate a shell script for instance self-registration.
-        
+
         Args:
             leader_election_enabled: Whether to include leader election logic
-            
+
         Returns:
             Shell script for instance registration
         """
@@ -193,7 +194,7 @@ aws dynamodb put-item \\
              "is_leader":{{"BOOL":false}}}}'
 
 """
-        
+
         # Add leader election logic if enabled
         if leader_election_enabled:
             script += """
@@ -263,7 +264,7 @@ elect_leader
     done
 ) &
 """
-        
+
         # Add cleanup on instance shutdown
         script += """
 # Deregister on shutdown
@@ -278,8 +279,9 @@ cleanup() {
 # Register the cleanup function on termination signals
 trap cleanup SIGTERM SIGINT
 """
-        
-        return script 
+
+        return script
+
 
 # Remove these lines that were causing issues
 # Get stack-specific configuration
@@ -297,4 +299,4 @@ trap cleanup SIGTERM SIGINT
 #         "Environment": stack,
 #         "ManagedBy": "Pulumi",
 #     }
-# ) 
+# )

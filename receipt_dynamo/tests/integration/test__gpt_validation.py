@@ -4,6 +4,7 @@ import pytest
 from datetime import datetime
 from receipt_dynamo import DynamoClient, GPTValidation
 
+
 @pytest.fixture
 def sample_gpt_validation():
     """
@@ -16,6 +17,7 @@ def sample_gpt_validation():
         response="Yes, it is the total.",
         timestamp_added=datetime(2021, 1, 1, 0, 0, 0),
     )
+
 
 def test_add_and_get_gpt_validation(
     dynamodb_table: Literal["MyMockedTable"], sample_gpt_validation
@@ -32,6 +34,7 @@ def test_add_and_get_gpt_validation(
         receipt_id=sample_gpt_validation.receipt_id,
     )
     assert retrieved == sample_gpt_validation
+
 
 def test_update_gpt_validation(
     dynamodb_table: Literal["MyMockedTable"], sample_gpt_validation
@@ -53,6 +56,7 @@ def test_update_gpt_validation(
     )
     assert updated.response == "Updated response."
 
+
 def test_delete_gpt_validation(
     dynamodb_table: Literal["MyMockedTable"], sample_gpt_validation
 ):
@@ -69,6 +73,7 @@ def test_delete_gpt_validation(
             image_id=sample_gpt_validation.image_id,
             receipt_id=sample_gpt_validation.receipt_id,
         )
+
 
 def test_gpt_validation_batch_add_list(dynamodb_table: Literal["MyMockedTable"]):
     """
@@ -92,14 +97,14 @@ def test_gpt_validation_batch_add_list(dynamodb_table: Literal["MyMockedTable"])
     listed, _ = client.listGPTValidations()
     # Filter on image_id and receipt_id to ensure we are only looking at test records
     filtered = [
-        v for v in listed
-        if v.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+        v for v in listed if v.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     ]
     assert len(filtered) >= 3
     # Verify that the queries for our batch records are present
     queries = set(v.query for v in validations)
     listed_queries = set(v.query for v in filtered)
     assert queries.issubset(listed_queries)
+
 
 def test_gpt_validation_get_nonexistent(dynamodb_table: Literal["MyMockedTable"]):
     """
@@ -111,6 +116,7 @@ def test_gpt_validation_get_nonexistent(dynamodb_table: Literal["MyMockedTable"]
             receipt_id=1,
         )
 
+
 def test_update_nonexistent_gpt_validation(
     dynamodb_table: Literal["MyMockedTable"], sample_gpt_validation
 ):
@@ -120,6 +126,7 @@ def test_update_nonexistent_gpt_validation(
     # Do not add the record first.
     with pytest.raises(ValueError, match="GPTValidation record not found"):
         DynamoClient(dynamodb_table).updateGPTValidation(sample_gpt_validation)
+
 
 def test_delete_nonexistent_gpt_validation(
     dynamodb_table: Literal["MyMockedTable"], sample_gpt_validation
@@ -164,6 +171,7 @@ def test_listGPTValidations_no_limit(dynamodb_table, sample_gpt_validation):
     # With no limit, we expect pagination to complete.
     assert lek is None
 
+
 @pytest.mark.integration
 def test_listGPTValidations_with_limit_and_pagination(dynamodb_table):
     """
@@ -203,6 +211,7 @@ def test_listGPTValidations_with_limit_and_pagination(dynamodb_table):
     # Final page should have no LEK.
     if len(page3) < 2:
         assert lek3 is None
+
 
 @pytest.mark.integration
 def test_listGPTValidations_empty_table(dynamodb_table):

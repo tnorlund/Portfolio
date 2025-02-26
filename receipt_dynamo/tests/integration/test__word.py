@@ -309,7 +309,9 @@ def test_updateWords_raises_value_error_words_none(dynamodb_table):
     Tests that updateWords raises ValueError when the words parameter is None.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="Words parameter is required and cannot be None."):
+    with pytest.raises(
+        ValueError, match="Words parameter is required and cannot be None."
+    ):
         client.updateWords(None)  # type: ignore
 
 
@@ -330,7 +332,10 @@ def test_updateWords_raises_value_error_words_not_list_of_words(dynamodb_table):
     """
     client = DynamoClient(dynamodb_table)
     word = Word(**correct_word_params)
-    with pytest.raises(ValueError, match="All items in the words list must be instances of the Word class."):
+    with pytest.raises(
+        ValueError,
+        match="All items in the words list must be instances of the Word class.",
+    ):
         client.updateWords([word, "not-a-word"])  # type: ignore
 
 
@@ -346,7 +351,9 @@ def test_updateWords_raises_value_error_duplicate_tags(dynamodb_table):
 
 
 @pytest.mark.integration
-def test_updateWords_raises_clienterror_conditional_check_failed(dynamodb_table, mocker):
+def test_updateWords_raises_clienterror_conditional_check_failed(
+    dynamodb_table, mocker
+):
     """
     Tests that updateWords raises ValueError when trying to update non-existent words.
     """
@@ -371,7 +378,9 @@ def test_updateWords_raises_clienterror_conditional_check_failed(dynamodb_table,
 
 
 @pytest.mark.integration
-def test_updateWords_raises_clienterror_provisioned_throughput_exceeded(dynamodb_table, mocker):
+def test_updateWords_raises_clienterror_provisioned_throughput_exceeded(
+    dynamodb_table, mocker
+):
     """
     Tests that updateWords raises an Exception when the ProvisionedThroughputExceededException error is raised.
     """

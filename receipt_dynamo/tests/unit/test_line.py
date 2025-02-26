@@ -766,37 +766,38 @@ def create_test_line() -> Line:
         confidence=1.0,
     )
 
+
 @pytest.mark.unit
 def test_line_warp_affine_normalized_forward():
     """
     Test that Line.warp_affine_normalized_forward() applies a normalized affine transformation
     to all four corners, recalculates the bounding box correctly, and leaves the angle unchanged.
-    
+
     The transformation parameters are:
       - a_f = 1.0, b_f = 0.0, c_f = 0.1,
       - d_f = 0.0, e_f = 1.0, f_f = 0.2,
       - orig_width = 5.0, orig_height = 2.0,
       - new_width = 5.0, new_height = 2.0,
       - flip_y = False.
-    
+
     For example, for the top_left corner:
       x_old = 10.0 * 5.0 = 50.0,  y_old = 20.0 * 2.0 = 40.0;
       x_new_px = 1.0 * 50.0 + 0.0 * 40.0 + 0.1 = 50.1,
       y_new_px = 0.0 * 50.0 + 1.0 * 40.0 + 0.2 = 40.2;
       then x' = 50.1 / 5.0 = 10.02,  y' = 40.2 / 2.0 = 20.1.
-    
+
     Similar calculations yield:
       - top_right becomes (15.02, 20.1),
       - bottom_left becomes (10.02, 22.1),
       - bottom_right becomes (15.02, 22.1).
-    
+
     The new bounding box should be:
       {x: 10.02, y: 20.1, width: 5.0, height: 2.0},
     and the angle should remain 0.
     """
     # Create a test Line instance.
     line = create_test_line()
-    
+
     # Define the normalized affine transformation parameters.
     a_f, b_f, c_f = 1.0, 0.0, 0.1
     d_f, e_f, f_f = 0.0, 1.0, 0.2
@@ -805,17 +806,25 @@ def test_line_warp_affine_normalized_forward():
     flip_y = False
 
     # Expected new corner positions after the transformation.
-    expected_top_left     = {"x": 10.02, "y": 20.1}
-    expected_top_right    = {"x": 15.02, "y": 20.1}
-    expected_bottom_left  = {"x": 10.02, "y": 22.1}
+    expected_top_left = {"x": 10.02, "y": 20.1}
+    expected_top_right = {"x": 15.02, "y": 20.1}
+    expected_bottom_left = {"x": 10.02, "y": 22.1}
     expected_bottom_right = {"x": 15.02, "y": 22.1}
     expected_bb = {"x": 10.02, "y": 20.1, "width": 5.0, "height": 2.0}
 
     # Apply the normalized forward affine transformation.
     line.warp_affine_normalized_forward(
-        a_f, b_f, c_f, d_f, e_f, f_f,
-        orig_width, orig_height, new_width, new_height,
-        flip_y
+        a_f,
+        b_f,
+        c_f,
+        d_f,
+        e_f,
+        f_f,
+        orig_width,
+        orig_height,
+        new_width,
+        new_height,
+        flip_y,
     )
 
     # Verify that each corner was transformed correctly.
@@ -837,6 +846,7 @@ def test_line_warp_affine_normalized_forward():
     # Verify that the angle remains unchanged (i.e. still 0).
     assert line.angle_degrees == pytest.approx(0.0)
     assert line.angle_radians == pytest.approx(0.0)
+
 
 @pytest.mark.unit
 def test_line_rotate_90_ccw_in_place():
@@ -888,10 +898,10 @@ def test_line_rotate_90_ccw_in_place():
     line.rotate_90_ccw_in_place(old_w, old_h)
 
     # Expected corner positions after rotation.
-    expected_top_left     = {"x": 20.0, "y": -9.0}
-    expected_top_right    = {"x": 20.0, "y": -14.0}
+    expected_top_left = {"x": 20.0, "y": -9.0}
+    expected_top_right = {"x": 20.0, "y": -14.0}
     expected_bottom_right = {"x": 22.0, "y": -14.0}
-    expected_bottom_left  = {"x": 22.0, "y": -9.0}
+    expected_bottom_left = {"x": 22.0, "y": -9.0}
 
     # Expected bounding box and angle.
     expected_bb = {"x": 20.0, "y": -14.0, "width": 2.0, "height": 5.0}
@@ -917,6 +927,7 @@ def test_line_rotate_90_ccw_in_place():
     # Verify that the angle has been updated correctly.
     assert line.angle_degrees == pytest.approx(expected_angle_degrees)
     assert line.angle_radians == pytest.approx(expected_angle_radians)
+
 
 @pytest.mark.unit
 def test_line_repr(example_line):
@@ -1021,7 +1032,7 @@ def test_line_hash(example_line):
 
     # Confirm that converting a Line to an item and back yields the same hash.
     assert hash(example_line) == hash(duplicate_line)
-    
+
     # When added to a set with its duplicate, the set should contain only one Line object.
     line_set = {example_line, duplicate_line}
     assert len(line_set) == 1
@@ -1040,11 +1051,12 @@ def test_line_hash(example_line):
         angle_radians=0.0,
         confidence=1.0,
     )
-    
+
     # When added to a set with the original and its duplicate,
     # the set should contain two unique Line objects.
     line_set = {example_line, duplicate_line, different_line}
     assert len(line_set) == 2
+
 
 @pytest.mark.unit
 def test_item_to_line(example_line):
