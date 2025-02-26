@@ -90,16 +90,11 @@ def main():
 
     # Start processes
     try:
-        mp.spawn(
-            setup_trainer,
-            args=(world_size,),
-            nprocs=world_size,
-            join=True
-        )
+        mp.spawn(setup_trainer, args=(world_size,), nprocs=world_size, join=True)
     except Exception as e:
         print(f"Error during distributed training: {e}")
         raise
 
 
 if __name__ == "__main__":
-    main() 
+    main()

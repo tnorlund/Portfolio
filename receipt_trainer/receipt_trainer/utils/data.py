@@ -144,7 +144,7 @@ def create_sliding_windows(
     window = {"words": words, "bboxes": bboxes, "labels": labels}
     if image_id is not None:
         window["image_id"] = image_id
-        
+
     if len(words) <= window_size:
         return [window]
 
@@ -175,11 +175,11 @@ def balance_dataset(
     examples: Dict[str, List[Any]], target_entity_ratio: float = 0.7
 ) -> Dict[str, List[Any]]:
     """Balance dataset with focus on entity distribution.
-    
+
     Args:
         examples: Dictionary containing 'words', 'bboxes', 'labels', and optionally 'image_id' lists
         target_entity_ratio: Target ratio of entity tokens to total tokens
-    
+
     Returns:
         Dictionary containing balanced dataset
     """
@@ -249,20 +249,20 @@ def balance_dataset(
         "bboxes": [s["bboxes"] for s in balanced_data],
         "labels": [s["labels"] for s in balanced_data],
     }
-    
+
     # Only include image_ids if they existed in input
     if has_image_ids:
         result["image_id"] = [s["image_id"] for s in balanced_data]
-    
+
     return result
 
 
 def augment_example(examples: Dict[str, List[Any]]) -> Dict[str, List[Any]]:
     """Augment examples with random bbox shifts.
-    
+
     Args:
         examples: Dictionary containing 'words', 'bboxes', 'labels', and optionally 'image_id' lists
-    
+
     Returns:
         Dictionary containing augmented examples
     """

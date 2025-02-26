@@ -38,11 +38,11 @@ api = aws.apigatewayv2.Api(
     protocol_type="HTTP",
     cors_configuration=aws.apigatewayv2.ApiCorsConfigurationArgs(
         allow_origins=[
-            "http://localhost:3000", 
+            "http://localhost:3000",
             "https://tylernorlund.com",
             "https://www.tylernorlund.com",
             "https://dev.tylernorlund.com",
-            "http://192.168.4.117:3000"
+            "http://192.168.4.117:3000",
         ],
         allow_methods=["GET", "POST"],
         allow_headers=["Content-Type"],

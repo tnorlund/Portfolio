@@ -55,7 +55,9 @@ def get_dynamo_table(env: str = "dev") -> str:
                 break
 
         if not table_name:
-            raise ValueError(f"DynamoDB table name not found in Pulumi stack output for env: {env}")
+            raise ValueError(
+                f"DynamoDB table name not found in Pulumi stack output for env: {env}"
+            )
 
         return table_name
     except subprocess.CalledProcessError as e:
@@ -102,12 +104,16 @@ def get_instance_metadata() -> Dict[str, Any]:
     try:
         # Get instance ID
         instance_id_url = "http://169.254.169.254/latest/meta-data/instance-id"
-        instance_id = subprocess.check_output(["curl", "-s", instance_id_url], text=True)
+        instance_id = subprocess.check_output(
+            ["curl", "-s", instance_id_url], text=True
+        )
         metadata["instance_id"] = instance_id
 
         # Get instance type
         instance_type_url = "http://169.254.169.254/latest/meta-data/instance-type"
-        instance_type = subprocess.check_output(["curl", "-s", instance_type_url], text=True)
+        instance_type = subprocess.check_output(
+            ["curl", "-s", instance_type_url], text=True
+        )
         metadata["instance_type"] = instance_type
 
         # Get availability zone
@@ -119,7 +125,9 @@ def get_instance_metadata() -> Dict[str, Any]:
         # Get spot instance information if available
         try:
             spot_url = "http://169.254.169.254/latest/meta-data/spot/instance-action"
-            spot_info = subprocess.check_output(["curl", "-s", "-f", spot_url], text=True)
+            spot_info = subprocess.check_output(
+                ["curl", "-s", "-f", spot_url], text=True
+            )
             metadata["spot_instance_action"] = json.loads(spot_info)
         except subprocess.CalledProcessError:
             # Not a spot instance or no interruption
@@ -132,10 +140,10 @@ def get_instance_metadata() -> Dict[str, Any]:
 
 
 def register_instance(
-    registry_table: str, 
-    instance_id: Optional[str] = None, 
+    registry_table: str,
+    instance_id: Optional[str] = None,
     status: str = "running",
-    ttl_hours: int = 1
+    ttl_hours: int = 1,
 ) -> bool:
     """Register this instance in the instance registry.
 
@@ -156,51 +164,62 @@ def register_instance(
             if not instance_id:
                 logger.error("Failed to get instance ID from metadata")
                 return False
-            
+
             # Extract other useful metadata
             instance_type = metadata.get("instance_type", "unknown")
             availability_zone = metadata.get("availability_zone", "unknown")
-            region = metadata.get("region", "us-east-1")  # Default to us-east-1 if not found
+            region = metadata.get(
+                "region", "us-east-1"
+            )  # Default to us-east-1 if not found
         else:
             # If instance_id is provided, we might not have other metadata
             metadata = get_instance_metadata()
             instance_type = metadata.get("instance_type", "unknown")
             availability_zone = metadata.get("availability_zone", "unknown")
             region = metadata.get("region", "us-east-1")
-        
+
         # Detect GPUs
         gpu_info = "none"
         gpu_count = 0
         try:
-            nvidia_smi_output = subprocess.check_output(["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"], text=True)
-            gpu_info = nvidia_smi_output.replace('\n', '|').strip('|')
-            gpu_count_output = subprocess.check_output(["nvidia-smi", "--query-gpu=count", "--format=csv,noheader"], text=True)
+            nvidia_smi_output = subprocess.check_output(
+                [
+                    "nvidia-smi",
+                    "--query-gpu=name,memory.total",
+                    "--format=csv,noheader",
+                ],
+                text=True,
+            )
+            gpu_info = nvidia_smi_output.replace("\n", "|").strip("|")
+            gpu_count_output = subprocess.check_output(
+                ["nvidia-smi", "--query-gpu=count", "--format=csv,noheader"], text=True
+            )
             gpu_count = int(gpu_count_output.strip())
         except (subprocess.CalledProcessError, FileNotFoundError):
             logger.info("No GPUs detected or nvidia-smi not available")
-        
+
         # Calculate TTL
         ttl = int(time.time()) + (ttl_hours * 3600)
-        
+
         # Register in DynamoDB
-        dynamodb = boto3.resource('dynamodb', region_name=region)
+        dynamodb = boto3.resource("dynamodb", region_name=region)
         table = dynamodb.Table(registry_table)
-        
+
         response = table.put_item(
             Item={
-                'instance_id': instance_id,
-                'status': status,
-                'instance_type': instance_type,
-                'availability_zone': availability_zone,
-                'registration_time': int(time.time()),
-                'ttl': ttl,
-                'gpu_info': gpu_info,
-                'gpu_count': gpu_count,
-                'is_leader': False,
-                'hostname': socket.gethostname()
+                "instance_id": instance_id,
+                "status": status,
+                "instance_type": instance_type,
+                "availability_zone": availability_zone,
+                "registration_time": int(time.time()),
+                "ttl": ttl,
+                "gpu_info": gpu_info,
+                "gpu_count": gpu_count,
+                "is_leader": False,
+                "hostname": socket.gethostname(),
             }
         )
-        
+
         logger.info(f"Instance {instance_id} registered successfully")
         return True
     except Exception as e:
@@ -213,7 +232,7 @@ def update_instance_status(
     instance_id: Optional[str] = None,
     status: str = "running",
     ttl_hours: int = 1,
-    additional_attributes: Optional[Dict[str, Any]] = None
+    additional_attributes: Optional[Dict[str, Any]] = None,
 ) -> bool:
     """Update instance status in the registry.
 
@@ -235,44 +254,44 @@ def update_instance_status(
             if not instance_id:
                 logger.error("Failed to get instance ID from metadata")
                 return False
-            
+
         # Get region from metadata
         metadata = get_instance_metadata()
         region = metadata.get("region", "us-east-1")
-        
+
         # Calculate TTL
         ttl = int(time.time()) + (ttl_hours * 3600)
-        
+
         # Build update expression
-        update_expression = "SET #status = :status, ttl = :ttl, last_heartbeat = :heartbeat"
+        update_expression = (
+            "SET #status = :status, ttl = :ttl, last_heartbeat = :heartbeat"
+        )
         expression_attribute_names = {"#status": "status"}
         expression_attribute_values = {
             ":status": status,
             ":ttl": ttl,
-            ":heartbeat": int(time.time())
+            ":heartbeat": int(time.time()),
         }
-        
+
         # Add additional attributes
         if additional_attributes:
             for i, (key, value) in enumerate(additional_attributes.items()):
                 update_expression += f", #{i} = :{i}"
                 expression_attribute_names[f"#{i}"] = key
                 expression_attribute_values[f":{i}"] = value
-        
+
         # Update in DynamoDB
-        dynamodb = boto3.resource('dynamodb', region_name=region)
+        dynamodb = boto3.resource("dynamodb", region_name=region)
         table = dynamodb.Table(registry_table)
-        
+
         response = table.update_item(
-            Key={
-                'instance_id': instance_id
-            },
+            Key={"instance_id": instance_id},
             UpdateExpression=update_expression,
             ExpressionAttributeNames=expression_attribute_names,
             ExpressionAttributeValues=expression_attribute_values,
-            ReturnValues="UPDATED_NEW"
+            ReturnValues="UPDATED_NEW",
         )
-        
+
         logger.info(f"Instance {instance_id} status updated to '{status}'")
         return True
     except Exception as e:
@@ -298,21 +317,17 @@ def deregister_instance(registry_table: str, instance_id: Optional[str] = None) 
             if not instance_id:
                 logger.error("Failed to get instance ID from metadata")
                 return False
-            
+
         # Get region from metadata
         metadata = get_instance_metadata()
         region = metadata.get("region", "us-east-1")
-        
+
         # Remove from DynamoDB
-        dynamodb = boto3.resource('dynamodb', region_name=region)
+        dynamodb = boto3.resource("dynamodb", region_name=region)
         table = dynamodb.Table(registry_table)
-        
-        response = table.delete_item(
-            Key={
-                'instance_id': instance_id
-            }
-        )
-        
+
+        response = table.delete_item(Key={"instance_id": instance_id})
+
         logger.info(f"Instance {instance_id} deregistered successfully")
         return True
     except Exception as e:
@@ -338,42 +353,42 @@ def elect_leader(registry_table: str, instance_id: Optional[str] = None) -> bool
             if not instance_id:
                 logger.error("Failed to get instance ID from metadata")
                 return False
-            
+
         # Get region from metadata
         metadata = get_instance_metadata()
         region = metadata.get("region", "us-east-1")
-        
+
         # Check if there's already a leader
-        dynamodb = boto3.resource('dynamodb', region_name=region)
+        dynamodb = boto3.resource("dynamodb", region_name=region)
         table = dynamodb.Table(registry_table)
-        
+
         # Query for existing leaders
         response = table.scan(
             FilterExpression="is_leader = :true",
             ExpressionAttributeValues={":true": True},
-            Select="COUNT"
+            Select="COUNT",
         )
-        
+
         leader_count = response.get("Count", 0)
-        
+
         if leader_count == 0:
             # No leader, try to become one
             try:
                 response = table.update_item(
-                    Key={
-                        'instance_id': instance_id
-                    },
+                    Key={"instance_id": instance_id},
                     UpdateExpression="SET is_leader = :true",
                     ConditionExpression="attribute_exists(instance_id)",
                     ExpressionAttributeValues={":true": True},
-                    ReturnValues="UPDATED_NEW"
+                    ReturnValues="UPDATED_NEW",
                 )
-                
+
                 logger.info(f"Instance {instance_id} elected as leader")
                 return True
             except ClientError as e:
                 if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-                    logger.info(f"Leader election failed, instance {instance_id} not registered or leader already elected")
+                    logger.info(
+                        f"Leader election failed, instance {instance_id} not registered or leader already elected"
+                    )
                     return False
                 raise
         else:
@@ -397,18 +412,18 @@ def get_leader_instance(registry_table: str) -> Optional[Dict[str, Any]]:
         # Get region from metadata
         metadata = get_instance_metadata()
         region = metadata.get("region", "us-east-1")
-        
+
         # Query DynamoDB for leader
-        dynamodb = boto3.resource('dynamodb', region_name=region)
+        dynamodb = boto3.resource("dynamodb", region_name=region)
         table = dynamodb.Table(registry_table)
-        
+
         response = table.scan(
             FilterExpression="is_leader = :true",
-            ExpressionAttributeValues={":true": True}
+            ExpressionAttributeValues={":true": True},
         )
-        
+
         items = response.get("Items", [])
-        
+
         if items:
             return items[0]
         else:
@@ -419,7 +434,9 @@ def get_leader_instance(registry_table: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def get_all_instances(registry_table: str, status: Optional[str] = None) -> List[Dict[str, Any]]:
+def get_all_instances(
+    registry_table: str, status: Optional[str] = None
+) -> List[Dict[str, Any]]:
     """Get all registered instances, optionally filtered by status.
 
     Args:
@@ -433,23 +450,23 @@ def get_all_instances(registry_table: str, status: Optional[str] = None) -> List
         # Get region from metadata
         metadata = get_instance_metadata()
         region = metadata.get("region", "us-east-1")
-        
+
         # Query DynamoDB
-        dynamodb = boto3.resource('dynamodb', region_name=region)
+        dynamodb = boto3.resource("dynamodb", region_name=region)
         table = dynamodb.Table(registry_table)
-        
+
         if status:
             # Use GSI to query by status
             response = table.query(
                 IndexName="StatusIndex",
                 KeyConditionExpression="#status = :status",
                 ExpressionAttributeNames={"#status": "status"},
-                ExpressionAttributeValues={":status": status}
+                ExpressionAttributeValues={":status": status},
             )
         else:
             # Scan for all instances
             response = table.scan()
-        
+
         return response.get("Items", [])
     except Exception as e:
         logger.error(f"Failed to get instances: {e}")
@@ -467,26 +484,26 @@ def setup_efs_mounts() -> bool:
         efs_dns_name = os.environ.get("EFS_DNS_NAME")
         training_ap_id = os.environ.get("TRAINING_ACCESS_POINT_ID")
         checkpoints_ap_id = os.environ.get("CHECKPOINTS_ACCESS_POINT_ID")
-        
+
         if not all([efs_dns_name, training_ap_id, checkpoints_ap_id]):
             logger.error("EFS environment variables not set")
             return False
-        
+
         # Create mount directories
         os.makedirs("/mnt/training", exist_ok=True)
         os.makedirs("/mnt/checkpoints", exist_ok=True)
-        
+
         # Mount training directory
         training_cmd = f"mount -t efs -o tls,accesspoint={training_ap_id} {efs_dns_name}:/ /mnt/training"
         subprocess.run(training_cmd.split(), check=True)
-        
+
         # Mount checkpoints directory
         checkpoints_cmd = f"mount -t efs -o tls,accesspoint={checkpoints_ap_id} {efs_dns_name}:/ /mnt/checkpoints"
         subprocess.run(checkpoints_cmd.split(), check=True)
-        
+
         # Check if mounts are successful
         mounts = subprocess.check_output(["mount"], text=True)
-        
+
         if "/mnt/training" in mounts and "/mnt/checkpoints" in mounts:
             logger.info("EFS mounts set up successfully")
             return True
@@ -530,8 +547,8 @@ def acquire_lock(lock_file: str, timeout: int = 60) -> Optional[int]:
         File descriptor if lock acquired, None if timeout
     """
     start_time = time.time()
-    fd = open(lock_file, 'w')
-    
+    fd = open(lock_file, "w")
+
     while time.time() - start_time < timeout:
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -539,7 +556,7 @@ def acquire_lock(lock_file: str, timeout: int = 60) -> Optional[int]:
         except IOError:
             # Lock is held by another process
             time.sleep(1)
-    
+
     # Timeout expired
     fd.close()
     return None
@@ -555,7 +572,9 @@ def release_lock(fd: int) -> None:
     os.close(fd)
 
 
-def notify_spot_interruption(sns_topic_arn: str, instance_id: Optional[str] = None, message: Optional[str] = None) -> bool:
+def notify_spot_interruption(
+    sns_topic_arn: str, instance_id: Optional[str] = None, message: Optional[str] = None
+) -> bool:
     """Notify an SNS topic about spot interruption.
 
     Args:
@@ -574,24 +593,24 @@ def notify_spot_interruption(sns_topic_arn: str, instance_id: Optional[str] = No
             if not instance_id:
                 logger.error("Failed to get instance ID from metadata")
                 return False
-            
+
         # Get region from metadata
         metadata = get_instance_metadata()
         region = metadata.get("region", "us-east-1")
-        
+
         # Create message
         if not message:
             interruption_time = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())
             message = f"Spot instance {instance_id} is scheduled for interruption at {interruption_time}"
-        
+
         # Publish to SNS
-        sns = boto3.client('sns', region_name=region)
+        sns = boto3.client("sns", region_name=region)
         response = sns.publish(
             TopicArn=sns_topic_arn,
             Message=message,
-            Subject=f"Spot Instance Interruption: {instance_id}"
+            Subject=f"Spot Instance Interruption: {instance_id}",
         )
-        
+
         logger.info(f"Spot interruption notification sent to {sns_topic_arn}")
         return True
     except Exception as e:

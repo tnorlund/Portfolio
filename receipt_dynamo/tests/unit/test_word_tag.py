@@ -18,6 +18,7 @@ def test_word_tag_init_valid(sample_word_tag):
     assert sample_word_tag.word_id == 101
     assert sample_word_tag.tag == "example"
 
+
 @pytest.mark.unit
 def test_word_tag_init_invalid_image_id():
     """Test that WordTag raises ValueError if image_id is invalid."""
@@ -26,21 +27,44 @@ def test_word_tag_init_invalid_image_id():
     with pytest.raises(ValueError, match="uuid must be a valid UUIDv4"):
         WordTag("bad-uuid", 2, 3, "example", "2021-01-01T00:00:00")
 
+
 @pytest.mark.unit
 def test_word_tag_init_invalid_line_id():
     """Test that WordTag raises ValueError if line_id is invalid."""
     with pytest.raises(ValueError, match="line_id must be an integer"):
-        WordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "2", 3, "example", "2021-01-01T00:00:00")
+        WordTag(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            "2",
+            3,
+            "example",
+            "2021-01-01T00:00:00",
+        )
     with pytest.raises(ValueError, match="line_id must be positive"):
-        WordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", -2, 3, "example", "2021-01-01T00:00:00")
+        WordTag(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            -2,
+            3,
+            "example",
+            "2021-01-01T00:00:00",
+        )
+
 
 @pytest.mark.unit
 def test_word_tag_init_invalid_word_id():
     """Test that WordTag raises ValueError if word_id is invalid."""
     with pytest.raises(ValueError, match="word_id must be an integer"):
-        WordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, "3", "example", "2021-01-01T00:00:00")
+        WordTag(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            2,
+            "3",
+            "example",
+            "2021-01-01T00:00:00",
+        )
     with pytest.raises(ValueError, match="word_id must be positive"):
-        WordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, -3, "example", "2021-01-01T00:00")
+        WordTag(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, -3, "example", "2021-01-01T00:00"
+        )
+
 
 @pytest.mark.unit
 def test_word_tag_init_invalid_tag():
@@ -51,15 +75,27 @@ def test_word_tag_init_invalid_tag():
         WordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, 4, "2021-01-01T00:00:00")
     long_tag = "A" * 41
     with pytest.raises(ValueError, match="tag must not exceed 40 characters"):
-        WordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, long_tag, "2021-01-01T00:00:00")
+        WordTag(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            2,
+            3,
+            long_tag,
+            "2021-01-01T00:00:00",
+        )
     with pytest.raises(ValueError, match="tag must not start with an underscore"):
-        WordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "_bad", "2021-01-01T00:00:00")
+        WordTag(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "_bad", "2021-01-01T00:00:00"
+        )
+
 
 @pytest.mark.unit
 def test_word_tag_init_invalid_timestamp_added():
     """Test that WordTag raises ValueError if timestamp_added is invalid."""
-    with pytest.raises(ValueError, match="timestamp_added must be a datetime object or a string"):
-        WordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "example", 1234567890)    
+    with pytest.raises(
+        ValueError, match="timestamp_added must be a datetime object or a string"
+    ):
+        WordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "example", 1234567890)
+
 
 @pytest.mark.unit
 def test_word_tag_eq(sample_word_tag):
@@ -135,6 +171,7 @@ def test_word_tag_to_item(sample_word_tag):
     assert "GSI1PK" in item
     assert "GSI1SK" in item
     assert item["TYPE"]["S"] == "WORD_TAG"
+
 
 @pytest.mark.unit
 def test_word_tag_to_word_key(sample_word_tag):

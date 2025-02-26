@@ -37,10 +37,13 @@ except FileNotFoundError:
 
 # Use stack-specific existing key pair from AWS console
 stack = pulumi.get_stack()
-key_pair_name = f"portfolio-receipt-{stack}"  # Use existing key pairs created in AWS console
+key_pair_name = (
+    f"portfolio-receipt-{stack}"  # Use existing key pairs created in AWS console
+)
 
 # Create EC2 Instance Profile for ML training instances
-ml_training_role = aws.iam.Role("ml-training-role",
+ml_training_role = aws.iam.Role(
+    "ml-training-role",
     assume_role_policy="""
     {
         "Version": "2012-10-17",
@@ -50,28 +53,35 @@ ml_training_role = aws.iam.Role("ml-training-role",
             "Effect": "Allow"
         }]
     }
-    """)
+    """,
+)
 
 # Attach basic policies for S3 access
-s3_policy_attachment = aws.iam.RolePolicyAttachment("ml-s3-policy-attachment",
+s3_policy_attachment = aws.iam.RolePolicyAttachment(
+    "ml-s3-policy-attachment",
     role=ml_training_role.name,
-    policy_arn="arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess")
+    policy_arn="arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
+)
 
 # Create instance profile
-ml_instance_profile = aws.iam.InstanceProfile("ml-instance-profile",
-    role=ml_training_role.name)
+ml_instance_profile = aws.iam.InstanceProfile(
+    "ml-instance-profile", role=ml_training_role.name
+)
 
 # Get default VPC and subnets for EFS
 default_vpc = aws.ec2.get_vpc(default=True)
-default_subnets = aws.ec2.get_subnets(filters=[
-    aws.ec2.GetSubnetsFilterArgs(
-        name="vpc-id",
-        values=[default_vpc.id],
-    ),
-])
+default_subnets = aws.ec2.get_subnets(
+    filters=[
+        aws.ec2.GetSubnetsFilterArgs(
+            name="vpc-id",
+            values=[default_vpc.id],
+        ),
+    ]
+)
 
 # Create security group for ML training instances
-ml_security_group = aws.ec2.SecurityGroup("ml-security-group",
+ml_security_group = aws.ec2.SecurityGroup(
+    "ml-security-group",
     description="Security group for ML training instances",
     vpc_id=default_vpc.id,
     ingress=[
@@ -98,7 +108,8 @@ ml_security_group = aws.ec2.SecurityGroup("ml-security-group",
             protocol="-1",
             cidr_blocks=["0.0.0.0/0"],
         ),
-    ])
+    ],
+)
 
 # Create spot interruption handler
 spot_handler = SpotInterruptionHandler(
@@ -127,7 +138,9 @@ instance_registry = InstanceRegistry(
 )
 
 # Generate instance registration script
-registration_script = instance_registry.create_registration_script(leader_election_enabled=True)
+registration_script = instance_registry.create_registration_script(
+    leader_election_enabled=True
+)
 
 # Create user data script for EC2 instances
 user_data_script = pulumi.Output.all(
@@ -202,15 +215,18 @@ dl_ami = aws.ec2.get_ami(
 )
 
 # Create EC2 Launch Template
-launch_template = aws.ec2.LaunchTemplate("ml-training-launch-template",
+launch_template = aws.ec2.LaunchTemplate(
+    "ml-training-launch-template",
     image_id=dl_ami.id,  # Use the Deep Learning AMI we found
-    instance_type="p3.2xlarge",         # Default instance type with GPU
+    instance_type="p3.2xlarge",  # Default instance type with GPU
     key_name=key_pair_name,  # Reference existing key pair created in AWS console
     iam_instance_profile=aws.ec2.LaunchTemplateIamInstanceProfileArgs(
         name=ml_instance_profile.name,
     ),
     vpc_security_group_ids=[ml_security_group.id],
-    user_data=user_data_script.apply(lambda s: base64.b64encode(s.encode('utf-8')).decode('utf-8')),
+    user_data=user_data_script.apply(
+        lambda s: base64.b64encode(s.encode("utf-8")).decode("utf-8")
+    ),
     tag_specifications=[
         aws.ec2.LaunchTemplateTagSpecificationArgs(
             resource_type="instance",
@@ -224,7 +240,8 @@ launch_template = aws.ec2.LaunchTemplate("ml-training-launch-template",
 )
 
 # Create Auto Scaling Group
-asg = aws.autoscaling.Group("ml-training-asg",
+asg = aws.autoscaling.Group(
+    "ml-training-asg",
     max_size=4,
     min_size=0,
     desired_capacity=0,  # Start with 0 instances, scale up when needed
@@ -283,7 +300,8 @@ asg = aws.autoscaling.Group("ml-training-asg",
 )
 
 # Create a simple scaling policy based on CPU utilization
-scaling_policy = aws.autoscaling.Policy("ml-training-scaling-policy",
+scaling_policy = aws.autoscaling.Policy(
+    "ml-training-scaling-policy",
     autoscaling_group_name=asg.name,
     policy_type="TargetTrackingScaling",
     target_tracking_configuration=aws.autoscaling.PolicyTargetTrackingConfigurationArgs(
