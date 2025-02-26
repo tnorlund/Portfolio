@@ -29,25 +29,24 @@ jobs:
         with:
           python-version: 3.13
 
-      - name: Install dependencies
+      - name: Install package with test dependencies
         run: |
-          cd receipt_dynamo && pip install -r requirements-dev.txt
-
-      - name: Install package
-        run: |
-          cd receipt_dynamo && pip install -e .
+          pip install -e "${{ github.workspace }}/receipt_dynamo[test]"
 
       - name: Run unit tests
+        working-directory: receipt_dynamo
         run: |
-          cd receipt_dynamo && pytest -m unit
+          pytest -m unit
 
       - name: Run integration tests
+        working-directory: receipt_dynamo
         run: |
-          cd receipt_dynamo && pytest -m integration
+          pytest -m integration
 
       - name: Configure Pulumi Stack
+        working-directory: infra
         run: |
-          cd infra && pulumi stack select tnorlund/portfolio/prod
+          pulumi stack select tnorlund/portfolio/prod
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
 
@@ -63,8 +62,9 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
       - name: Run end-to-end tests
+        working-directory: receipt_dynamo
         run: |
-          cd receipt_dynamo && pytest -m end_to_end
+          pytest -m end_to_end
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -93,8 +93,9 @@ jobs:
           aws-region: us-east-1
 
       - name: Install and build React app
+        working-directory: portfolio
         run: |
-          cd portfolio && yarn install && yarn build
+          yarn install && yarn build
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -102,8 +103,9 @@ jobs:
           python-version: 3.13
       
       - name: Install Pulumi Python dependencies
+        working-directory: infra
         run: |
-          cd infra && pip install -r requirements.txt
+          pip install -r requirements.txt
 
       - name: Pulumi Deploy
         uses: pulumi/actions@v6
@@ -118,8 +120,8 @@ jobs:
 
       - name: Get Pulumi outputs
         id: pulumi-outputs
+        working-directory: infra
         run: |
-          cd infra
           BUCKET_NAME=$(pulumi stack output cdn_bucket_name --stack tnorlund/portfolio/prod)
           AWS_REGION_FROM_PULUMI=$(pulumi stack output region --stack tnorlund/portfolio/prod)
           DISTRIBUTION_ID=$(pulumi stack output cdn_distribution_id --stack tnorlund/portfolio/prod)
@@ -146,35 +148,35 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
       - name: Run Black formatter check
+        working-directory: receipt_dynamo
         run: |
-          cd receipt_dynamo
           pip install black==24.10.0
           black --check .
 
       - name: Lint with flake8
+        working-directory: receipt_dynamo
         run: |
-          cd receipt_dynamo
           pip install flake8
           flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
 
       - name: Test with pytest unit tests
+        working-directory: receipt_dynamo
         run: |
-          cd receipt_dynamo
           pytest tests/unit
 
       - name: Test with pytest integration
+        working-directory: receipt_dynamo
         run: |
-          cd receipt_dynamo
           pytest tests/integration
         
       - name: Test coverage
+        working-directory: receipt_dynamo
         run: |
-          cd receipt_dynamo
           pytest tests/unit tests/integration --cov=receipt_dynamo --cov-report=xml
 
       - uses: actions/cache@v3
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml') }}
           restore-keys: |
             ${{ runner.os }}-pip-
