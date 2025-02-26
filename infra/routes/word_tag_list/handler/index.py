@@ -1,7 +1,7 @@
 import os
 import logging
 import json
-from dynamo import DynamoClient
+from receipt_dynamo import DynamoClient
 import random
 
 
