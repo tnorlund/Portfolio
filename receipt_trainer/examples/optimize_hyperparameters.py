@@ -10,7 +10,7 @@ from receipt_trainer import ReceiptTrainer, TrainingConfig, DataConfig
 from transformers import TrainerCallback
 
 # Load environment variables from .env file
-env_path = Path(__file__).parent.parent.parent / '.env'
+env_path = Path(__file__).parent.parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
 # Disable wandb telemetry to help avoid BrokenPipe errors
@@ -19,22 +19,27 @@ os.environ["WANDB_DISABLE_TELEMETRY"] = "true"
 
 class PerStepLoggingCallback(TrainerCallback):
     """Logs training metrics and evaluation metrics to W&B at every step."""
+
     def __init__(self, wandb_run=None):
         super().__init__()
         self.wandb_run = wandb_run
 
     def on_step_end(self, args, state, control, logs=None, **kwargs):
         if logs and state.is_world_process_zero:
-            wandb.log({f"train/{k}": v for k, v in logs.items()}, step=state.global_step)
+            wandb.log(
+                {f"train/{k}": v for k, v in logs.items()}, step=state.global_step
+            )
 
     def on_evaluate(self, args, state, control, metrics=None, **kwargs):
         if metrics and state.is_world_process_zero:
-            wandb.log({f"eval/{k}": v for k, v in metrics.items()}, step=state.global_step)
+            wandb.log(
+                {f"eval/{k}": v for k, v in metrics.items()}, step=state.global_step
+            )
 
 
 def validate_environment():
     """Validate that all required environment variables are set.
-    
+
     Raises:
         ValueError: If any required environment variables are missing, with a detailed
             message listing which specific variables are not set.
@@ -47,14 +52,16 @@ def validate_environment():
         "AWS_DEFAULT_REGION": "AWS region for services",
         "CHECKPOINT_BUCKET": "S3 bucket for checkpoints",
     }
-    
+
     missing_vars = [var for var, desc in required_vars.items() if not os.getenv(var)]
-    
+
     if missing_vars:
         error_msg = "The following required environment variables are not set:\n"
         for var in missing_vars:
             error_msg += f"- {var}: {required_vars[var]}\n"
-        error_msg += "\nPlease set these environment variables before running the script."
+        error_msg += (
+            "\nPlease set these environment variables before running the script."
+        )
         raise ValueError(error_msg)
 
 
@@ -70,10 +77,7 @@ def main():
         logging_steps=1,  # <--- ADD THIS
     )
     data_config = DataConfig(
-        use_sroie=True,
-        balance_ratio=0.7,
-        augment=True,
-        env="prod"
+        use_sroie=True, balance_ratio=0.7, augment=True, env="prod"
     )
 
     try:
@@ -89,7 +93,9 @@ def main():
         # Load data and initialize model once before starting the sweep.
         print("Loading dataset...")
         dataset = trainer.load_data()
-        print(f"Loaded dataset with {len(dataset['train'])} training and {len(dataset['validation'])} validation examples")
+        print(
+            f"Loaded dataset with {len(dataset['train'])} training and {len(dataset['validation'])} validation examples"
+        )
 
         print("Initializing model...")
         trainer.initialize_model()
@@ -97,10 +103,7 @@ def main():
         # Define your sweep configuration (remove unsupported keys if needed)
         sweep_config = {
             "method": "bayes",
-            "metric": {
-                "name": "eval/f1",
-                "goal": "maximize"
-            },
+            "metric": {"name": "eval/f1", "goal": "maximize"},
             "parameters": {
                 "learning_rate": {
                     "distribution": "log_uniform_values",
@@ -122,7 +125,7 @@ def main():
                     "distribution": "log_uniform_values",
                     "min": 1e-4,
                     "max": 1e-2,
-                }
+                },
             },
         }
 
@@ -131,7 +134,7 @@ def main():
         best_run_id = trainer.run_hyperparameter_sweep(
             sweep_config=sweep_config,
             num_trials=10,  # Total number of trials to run
-            parallel_workers=1  # Ensure sequential runs
+            parallel_workers=1,  # Ensure sequential runs
         )
 
         print(f"Hyperparameter sweep completed. Best run ID: {best_run_id}")

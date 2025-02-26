@@ -337,7 +337,9 @@ def parse_dynamo_json(backup_path: str) -> Dict[str, Dict[str, Any]]:
                 "word_tags": [
                     tg for tg in receipt_word_tags if tg.receipt_id == receipt.id
                 ],
-                "letters": [lt for lt in receipt_letters if lt.receipt_id == receipt.id],
+                "letters": [
+                    lt for lt in receipt_letters if lt.receipt_id == receipt.id
+                ],
             }
             for receipt in relevant_receipts
         }
@@ -629,9 +631,7 @@ def assert_s3_raw(bucket_name: str, raw_backup: List[Tuple[str, str]]) -> None:
         )
 
 
-def compare_png_file(
-    s3, bucket_name: str, s3_key: str, local_path: str
-) -> None:
+def compare_png_file(s3, bucket_name: str, s3_key: str, local_path: str) -> None:
     """
     Compare a PNG file by direct byte equality. If there's a mismatch,
     save both files under test_failures for debugging.
@@ -743,9 +743,7 @@ def _raise_text_diff(s3_key: str, local_text: str, s3_text: str) -> None:
         tofile="s3",
     )
     diff_text = "".join(diff)
-    raise AssertionError(
-        f"File mismatch (text): {s3_key}\nUnified diff:\n{diff_text}"
-    )
+    raise AssertionError(f"File mismatch (text): {s3_key}\nUnified diff:\n{diff_text}")
 
 
 def assert_dynamo(dynamo_name: str, dynamo_backup_path: str) -> None:
@@ -753,7 +751,9 @@ def assert_dynamo(dynamo_name: str, dynamo_backup_path: str) -> None:
     Compare the expected DynamoDB items with the actual items in the database,
     ignoring 'timestamp_added'.
     """
-    current_dynamo_path = backup_dynamo_items(dynamo_name, backup_dir="/tmp/current_dynamo")
+    current_dynamo_path = backup_dynamo_items(
+        dynamo_name, backup_dir="/tmp/current_dynamo"
+    )
 
     with open(dynamo_backup_path, "r") as f:
         backup_data = json.load(f)

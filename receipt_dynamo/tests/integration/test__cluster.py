@@ -13,6 +13,7 @@ def test_dbscan_lines_clusters():
       2. Runs dbscan_lines on them.
       3. Asserts that lines are clustered as expected.
     """
+
     # We'll define a small helper to create a Line with a given centroid (cx, cy).
     # The corners are placed so that the centroid is roughly at (cx, cy).
     def make_line(line_id, cx, cy):
@@ -22,14 +23,19 @@ def test_dbscan_lines_clusters():
             image_id="29984038-5cb5-4ce9-bcf0-856dcfca3125",
             line_id=line_id,
             text=f"Line {line_id}",
-            bounding_box={"x": cx - half_size, "y": cy - half_size, "width": 2, "height": 2},
+            bounding_box={
+                "x": cx - half_size,
+                "y": cy - half_size,
+                "width": 2,
+                "height": 2,
+            },
             top_right={"x": cx + half_size, "y": cy + half_size},
             top_left={"x": cx - half_size, "y": cy + half_size},
             bottom_right={"x": cx + half_size, "y": cy - half_size},
             bottom_left={"x": cx - half_size, "y": cy - half_size},
             angle_degrees=0.0,
             angle_radians=0.0,
-            confidence=1.0
+            confidence=1.0,
         )
 
     # Create lines in two obvious clusters + 1 noise line
@@ -88,10 +94,14 @@ def test_dbscan_lines_clusters():
             label_for_line4 = lbl
 
     # Lines 1 and 2 share the same cluster label:
-    assert label_for_line2 == label_for_line1, "Line1 and Line2 must be in the same cluster."
+    assert (
+        label_for_line2 == label_for_line1
+    ), "Line1 and Line2 must be in the same cluster."
 
     # Lines 3 and 4 share the same cluster label:
-    assert label_for_line4 == label_for_line3, "Line3 and Line4 must be in the same cluster."
+    assert (
+        label_for_line4 == label_for_line3
+    ), "Line3 and Line4 must be in the same cluster."
     # Actually simpler approach: just check membership
     cluster_a = clusters[label_for_line1]
     cluster_b = clusters[label_for_line3]
@@ -105,5 +115,9 @@ def test_dbscan_lines_clusters():
     expected_b = {line3, line4}
 
     # Just ensure we got exactly those pairs
-    assert set_a == expected_a or set_b == expected_a, "One cluster should be lines 1 & 2"
-    assert set_a == expected_b or set_b == expected_b, "Another cluster should be lines 3 & 4"
+    assert (
+        set_a == expected_a or set_b == expected_a
+    ), "One cluster should be lines 1 & 2"
+    assert (
+        set_a == expected_b or set_b == expected_b
+    ), "Another cluster should be lines 3 & 4"

@@ -9,6 +9,7 @@ logger.setLevel(logging.INFO)
 # Get the environment variables
 dynamodb_table_name = os.environ["DYNAMODB_TABLE_NAME"]
 
+
 def handler(event, _):
     logger.info("Received event: %s", event)
     http_method = event["requestContext"]["http"]["method"].upper()
@@ -16,12 +17,12 @@ def handler(event, _):
     if http_method == "GET":
         client = DynamoClient(dynamodb_table_name)
         query_params = event.get("queryStringParameters") or {}
-        
+
         if "tag" in query_params:
             tag = query_params["tag"]
             # Set a default page size (limit) of 5 if not provided.
             limit = int(query_params.get("limit", 5))
-            
+
             # If a lastEvaluatedKey is provided, decode it from JSON.
             lastEvaluatedKey = None
             if "lastEvaluatedKey" in query_params:
@@ -30,23 +31,24 @@ def handler(event, _):
                 except json.JSONDecodeError:
                     logger.error("Error decoding lastEvaluatedKey; ignoring it.")
                     lastEvaluatedKey = None
-            
+
             # Query the DynamoDB GSI for words with the specified tag, paginated.
             # Assume getReceiptWordTagsByTag returns a tuple: (list_of_tags, lastEvaluatedKey)
-            rwts, lek = client.getReceiptWordTags(tag, limit=limit, lastEvaluatedKey=lastEvaluatedKey)
-            
+            rwts, lek = client.getReceiptWordTags(
+                tag, limit=limit, lastEvaluatedKey=lastEvaluatedKey
+            )
+
             # Convert the receipt word tags into receipt word keys, then fetch the full receipt words.
             # (You may already have a helper for this.)
-            rws = client.getReceiptWordsByKeys([rwt.to_ReceiptWord_key() for rwt in rwts])
-            
+            rws = client.getReceiptWordsByKeys(
+                [rwt.to_ReceiptWord_key() for rwt in rwts]
+            )
+
             response_body = {
                 "words": [dict(rw) for rw in rws],
-                "lastEvaluatedKey": lek  # This will be None if there are no more pages.
+                "lastEvaluatedKey": lek,  # This will be None if there are no more pages.
             }
-            return {
-                "statusCode": 200,
-                "body": json.dumps(response_body)
-            }
+            return {"statusCode": 200, "body": json.dumps(response_body)}
         else:
             return {"statusCode": 400, "body": "Missing required query parameter 'tag'"}
     elif http_method == "POST":

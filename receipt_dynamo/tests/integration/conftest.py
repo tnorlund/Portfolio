@@ -88,12 +88,13 @@ def s3_bucket(request):
     """
     with mock_aws():
         s3 = boto3.client("s3", region_name="us-east-1")
-        
+
         # Pull the bucket name to create from the test's parameter
         bucket_name = request.param
         s3.create_bucket(Bucket=bucket_name)
-        
+
         yield bucket_name
+
 
 @pytest.fixture
 def s3_buckets(request):
@@ -115,15 +116,16 @@ def s3_buckets(request):
         # Yield a tuple
         yield (bucket_name1, bucket_name2)
 
+
 @pytest.fixture
 def expected_results(request):
     """
     Fixture that loads expected results from a JSON file for a given UUID.
     The UUID is provided via parameterization (indirect=True).
-    
+
     The JSON file is expected to be in a directory called "JSON" (relative to this file)
     and have the name "<uuid>_RESULTS.json".
-    
+
     The fixture returns a tuple containing:
         (list[Image], list[Line], list[Word], list[WordTag], list[Letter],
          list[Receipt], list[ReceiptLine], list[ReceiptWord], list[ReceiptWordTag], list[ReceiptLetter])
@@ -142,8 +144,12 @@ def expected_results(request):
     receipts = [Receipt(**rcpt) for rcpt in results.get("receipts", [])]
     receipt_lines = [ReceiptLine(**rl) for rl in results.get("receipt_lines", [])]
     receipt_words = [ReceiptWord(**rw) for rw in results.get("receipt_words", [])]
-    receipt_word_tags = [ReceiptWordTag(**rwt) for rwt in results.get("receipt_word_tags", [])]
-    receipt_letters = [ReceiptLetter(**rltr) for rltr in results.get("receipt_letters", [])]
+    receipt_word_tags = [
+        ReceiptWordTag(**rwt) for rwt in results.get("receipt_word_tags", [])
+    ]
+    receipt_letters = [
+        ReceiptLetter(**rltr) for rltr in results.get("receipt_letters", [])
+    ]
 
     return (
         images,

@@ -240,7 +240,8 @@ def test_data_loading_pipeline(trainer, mock_dynamo_data, mock_sroie_data, mocke
     for split in dataset.values():
         assert isinstance(split, Dataset)
         assert all(
-            field in split.features for field in ["words", "bboxes", "labels", "image_id"]
+            field in split.features
+            for field in ["words", "bboxes", "labels", "image_id"]
         )
         assert len(split) > 0
 
@@ -347,7 +348,10 @@ def mock_dataset():
     train_data = Dataset.from_dict(
         {
             "words": [["word1", "word2"], ["word3", "word4"]],
-            "bboxes": [[[1, 2, 3, 4], [5, 6, 7, 8]], [[9, 10, 11, 12], [13, 14, 15, 16]]],
+            "bboxes": [
+                [[1, 2, 3, 4], [5, 6, 7, 8]],
+                [[9, 10, 11, 12], [13, 14, 15, 16]],
+            ],
             "labels": [["O", "B-total"], ["I-total", "O"]],
             "image_id": ["id1", "id2"],
         }
@@ -447,7 +451,7 @@ def test_save_model(trainer, mock_model, mock_tokenizer, tmp_path, mocker):
             "architectures": ["LayoutLMForTokenClassification"],
             "num_labels": 3,
             "id2label": {0: "O", 1: "B-total", 2: "I-total"},
-            "label2id": {"O": 0, "B-total": 1, "I-total": 2}
+            "label2id": {"O": 0, "B-total": 1, "I-total": 2},
         }
         with open(os.path.join(path, "config.json"), "w") as f:
             json.dump(config, f)
@@ -515,17 +519,17 @@ def test_save_model_errors(trainer, tmp_path, mocker):
     # Mock AutoModel and AutoTokenizer for validation
     mock_auto_model = mocker.patch("transformers.AutoModel.from_pretrained")
     mock_auto_tokenizer = mocker.patch("transformers.AutoTokenizer.from_pretrained")
-    
+
     # Make validation fail by raising an exception
     mock_auto_model.side_effect = Exception("Model validation failed")
     mock_auto_tokenizer.side_effect = Exception("Tokenizer validation failed")
-    
+
     # Mock the save_pretrained methods to create necessary files
     def mock_save_pretrained(path):
         os.makedirs(path, exist_ok=True)
         with open(os.path.join(path, "config.json"), "w") as f:
             json.dump({"mock": "config"}, f)
-    
+
     mock_model.save_pretrained.side_effect = mock_save_pretrained
     mock_tokenizer.save_pretrained.side_effect = mock_save_pretrained
 

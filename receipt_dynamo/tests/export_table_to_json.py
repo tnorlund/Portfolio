@@ -33,7 +33,6 @@ if __name__ == "__main__":
 
     s3 = boto3.client("s3")
 
-
     # Example: Get the GPT response from S3 (existing code)
     response = s3.list_objects_v2(
         Bucket=image.raw_s3_bucket,
@@ -144,8 +143,12 @@ if __name__ == "__main__":
                 ],
                 "receipt_word_tags": [dict(word_tag) for word_tag in receipt_word_tags],
                 "receipt_letters": [dict(letter) for letter in receipt_letters],
-                "gpt_initial_taggings": [dict(gpt_query) for gpt_query in gpt_initial_taggings],
-                "gpt_validations": [dict(gpt_validation) for gpt_validation in gpt_validations],
+                "gpt_initial_taggings": [
+                    dict(gpt_query) for gpt_query in gpt_initial_taggings
+                ],
+                "gpt_validations": [
+                    dict(gpt_validation) for gpt_validation in gpt_validations
+                ],
             },
             f,
             indent=4,

@@ -8,7 +8,11 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
-from sklearn.metrics import confusion_matrix, precision_recall_fscore_support, accuracy_score
+from sklearn.metrics import (
+    confusion_matrix,
+    precision_recall_fscore_support,
+    accuracy_score,
+)
 
 from typing import Optional, Dict, Any, List, Tuple, Union
 from datasets import Dataset, DatasetDict, load_dataset, Value, Features, Sequence
@@ -54,9 +58,10 @@ from receipt_trainer.utils.data import (
 from receipt_trainer.constants import REQUIRED_ENV_VARS
 from receipt_trainer.version import __version__
 
+
 class MetricsCallback(TrainerCallback):
     """Custom callback to log confusion matrix and evaluation metrics during training."""
-    
+
     def __init__(self):
         """Initialize the callback."""
         super().__init__()
@@ -65,54 +70,56 @@ class MetricsCallback(TrainerCallback):
         # Store the existing W&B run
         self.wandb_run = wandb.run
         if not self.wandb_run:
-            raise ValueError("No active W&B run found. Make sure W&B is initialized before creating the callback.")
-    
+            raise ValueError(
+                "No active W&B run found. Make sure W&B is initialized before creating the callback."
+            )
+
     def setup(self, trainer):
         """Set up the callback with a trainer instance."""
         self.trainer = trainer
         print(f"MetricsCallback setup complete with trainer: {trainer}")
-    
+
     def on_train_begin(self, args, state, control, **kwargs):
         """Called when training begins."""
-        if 'trainer' in kwargs:
-            self.trainer = kwargs['trainer']
+        if "trainer" in kwargs:
+            self.trainer = kwargs["trainer"]
         print("Training started - MetricsCallback initialized")
         if not self.trainer:
             print("Warning: Trainer not available in on_train_begin")
-    
+
     def on_evaluate(self, args, state, control, metrics=None, **kwargs):
         """Log confusion matrix and metrics after each evaluation."""
         print("\nStarting evaluation logging...")
-        
+
         if not metrics:
             print("Warning: No metrics provided to callback")
             return
-            
+
         # Try to get trainer from kwargs if not already set
-        if not self.trainer and 'trainer' in kwargs:
-            self.trainer = kwargs['trainer']
+        if not self.trainer and "trainer" in kwargs:
+            self.trainer = kwargs["trainer"]
             print("Retrieved trainer from kwargs")
-        
+
         if not self.trainer:
             print("Warning: No trainer available in callback")
-            if 'model' in kwargs:
+            if "model" in kwargs:
                 print("Model available in kwargs")
-            if 'eval_dataset' in kwargs:
+            if "eval_dataset" in kwargs:
                 print("Eval dataset available in kwargs")
             return
-            
+
         try:
             print(f"Current metrics received: {metrics}")
             print(f"Trainer state: {state.__dict__ if state else 'None'}")
-            
+
             # Get predictions for validation set
             print("Getting predictions...")
             predictions = self.trainer.predict(self.trainer.eval_dataset)
-            
+
             # Convert predictions to labels
             pred_labels = np.argmax(predictions.predictions, axis=2)
             true_labels = predictions.label_ids
-            
+
             # Flatten predictions and labels, removing padding (-100)
             true_flat = []
             pred_flat = []
@@ -121,91 +128,95 @@ class MetricsCallback(TrainerCallback):
                     if true_labels[i][j] != -100:
                         true_flat.append(true_labels[i][j])
                         pred_flat.append(pred_labels[i][j])
-            
+
             print(f"Processed {len(true_flat)} valid predictions")
-            
+
             # Get label names
             id2label = self.trainer.model.config.id2label
             labels = list(range(len(id2label)))
             label_names = [id2label[i] for i in labels]
-            
+
             # Calculate metrics
             precision, recall, f1, support = precision_recall_fscore_support(
-                true_flat, 
-                pred_flat, 
-                labels=labels, 
-                zero_division=0
+                true_flat, pred_flat, labels=labels, zero_division=0
             )
             accuracy = accuracy_score(true_flat, pred_flat)
-            
+
             # Create metrics dictionary with step information
             self.step = state.global_step if state else 0
-            
+
             # Log metrics individually to ensure they show up in W&B
             metric_dict = {
                 "train/global_step": self.step,
                 "eval/accuracy": float(accuracy),
                 "eval/f1": float(np.mean(f1)),
-                "eval/loss": float(metrics.get("eval_loss", 0.0))
+                "eval/loss": float(metrics.get("eval_loss", 0.0)),
             }
-            
+
             # Log per-label metrics
             for i, label in enumerate(label_names):
                 if label != "O":  # Skip the "Outside" label
-                    metric_dict.update({
-                        f"eval/precision_{label}": float(precision[i]),
-                        f"eval/recall_{label}": float(recall[i]),
-                        f"eval/f1_{label}": float(f1[i]),
-                        f"eval/support_{label}": int(support[i])
-                    })
-            
+                    metric_dict.update(
+                        {
+                            f"eval/precision_{label}": float(precision[i]),
+                            f"eval/recall_{label}": float(recall[i]),
+                            f"eval/f1_{label}": float(f1[i]),
+                            f"eval/support_{label}": int(support[i]),
+                        }
+                    )
+
             print("\nLogging metrics to W&B:")
             for key, value in metric_dict.items():
                 print(f"{key}: {value}")
             # Use the existing W&B run
             self.wandb_run.log(metric_dict, step=self.step)
-            
+
             # Create confusion matrix
             cm = confusion_matrix(true_flat, pred_flat, labels=labels)
-            
+
             # Log confusion matrix - using table format instead of plotting
-            self.wandb_run.log({
-                "eval/confusion_matrix": wandb.plot.confusion_matrix(
-                    probs=None,
-                    y_true=true_flat,
-                    preds=pred_flat,
-                    class_names=label_names
-                )
-            }, step=self.step)
-            
+            self.wandb_run.log(
+                {
+                    "eval/confusion_matrix": wandb.plot.confusion_matrix(
+                        probs=None,
+                        y_true=true_flat,
+                        preds=pred_flat,
+                        class_names=label_names,
+                    )
+                },
+                step=self.step,
+            )
+
             # DISABLED: Create and log performance plot (to avoid matplotlib crashes)
             # plt.figure(figsize=(12, 6))
             # x = np.arange(len(label_names))
             # width = 0.25
-            # 
+            #
             # plt.bar(x - width, precision, width, label='Precision')
             # plt.bar(x, recall, width, label='Recall')
             # plt.bar(x + width, f1, width, label='F1')
-            # 
+            #
             # plt.xlabel('Labels')
             # plt.ylabel('Score')
             # plt.title('Performance by Label')
             # plt.xticks(x, label_names, rotation=45, ha='right')
             # plt.legend()
             # plt.tight_layout()
-            # 
+            #
             # self.wandb_run.log({
             #     "eval/performance_plot": wandb.Image(plt)
             # }, step=self.step)
-            # 
+            #
             # plt.close('all')
-            
+
             # Print per-label performance
             print("\nPer-label Performance:")
             for i, label in enumerate(label_names):
                 if label != "O":
-                    print(f"{label:15} F1: {f1[i]:.4f} | Precision: {precision[i]:.4f} | Recall: {recall[i]:.4f}")
-            
+                    print(
+                        f"{label:15} F1: {f1[i]:.4f} | Precision: {precision[i]:.4f} | Recall: {recall[i]:.4f}"
+                    )
+
         except Exception as e:
             print(f"Error in metrics callback: {str(e)}")
             print("Full error details:")
@@ -1209,28 +1220,28 @@ class ReceiptTrainer:
             #     f1_scores = []
             #     precisions = []
             #     recalls = []
-            # 
+            #
             #     for label in self.label_list:
             #         if label != "O":  # Skip the Outside label
             #             labels.append(label)
             #             f1_scores.append(metrics[f"{split}/{label}/f1-score"])
             #             precisions.append(metrics[f"{split}/{label}/precision"])
             #             recalls.append(metrics[f"{split}/{label}/recall"])
-            # 
+            #
             #     x = np.arange(len(labels))
             #     width = 0.25
-            # 
+            #
             #     plt.bar(x - width, precisions, width, label="Precision")
             #     plt.bar(x, recalls, width, label="Recall")
             #     plt.bar(x + width, f1_scores, width, label="F1")
-            # 
+            #
             #     plt.xlabel("Labels")
             #     plt.ylabel("Score")
             #     plt.title(f"{split.capitalize()} Performance by Label")
             #     plt.xticks(x, labels, rotation=45, ha="right")
             #     plt.legend()
             #     plt.tight_layout()
-            # 
+            #
             #     # Log to W&B
             #     self.wandb_run.log(
             #         {
@@ -1607,7 +1618,6 @@ class ReceiptTrainer:
             ]
 
         return report
-    
 
     def run_hyperparameter_sweep(
         self,
@@ -1633,6 +1643,7 @@ class ReceiptTrainer:
         """
         self.logger.info("Starting hyperparameter sweep...")
         self.logger.info(f"Sweep config: {sweep_config}")
+
         def train_one_config():
             try:
                 run = wandb.init(mode="online", project=self.wandb_project)
@@ -1645,7 +1656,7 @@ class ReceiptTrainer:
                 for key, value in config.items():
                     if hasattr(self.training_config, key):
                         setattr(self.training_config, key, value)
-                
+
                 # Instantiate the rich MetricsCallback from train_model.py.
                 metrics_callback = MetricsCallback()
                 # Create the trainer with the callback attached.
@@ -1654,14 +1665,14 @@ class ReceiptTrainer:
                 )
                 # Manually call setup so that the callback has a reference to the trainer.
                 metrics_callback.setup(trainer_instance)
-                return trainer_instance.train(
-                    resume_from_checkpoint=None
-                )
+                return trainer_instance.train(resume_from_checkpoint=None)
             except Exception as e:
                 self.logger.error(f"Error in training run: {e}")
                 import traceback
+
                 traceback.print_exc()
                 return None
+
         try:
             # Create sweep with retries
             max_retries = 3
@@ -1854,34 +1865,35 @@ class ReceiptTrainer:
 
     def get_logs(self, max_entries=100):
         """Get recent log entries from the trainer.
-        
+
         Args:
             max_entries: Maximum number of log entries to return
-            
+
         Returns:
             List of recent log entries
         """
         # Create a memory handler to capture logs
         import io
         import logging
-        
+
         log_stream = io.StringIO()
         handler = logging.StreamHandler(log_stream)
-        handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-        
+        handler.setFormatter(
+            logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+        )
+
         # Get logs from the current logger
         self.logger.addHandler(handler)
-        
+
         # Force a log entry to ensure handler is working
         self.logger.info("Retrieving logs...")
-        
+
         # Get the log content and split into lines
         handler.flush()
         logs = log_stream.getvalue().splitlines()
-        
+
         # Clean up
         self.logger.removeHandler(handler)
-        
+
         # Return the most recent logs
         return logs[-max_entries:] if max_entries < len(logs) else logs
-
