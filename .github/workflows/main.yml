@@ -81,6 +81,7 @@ jobs:
           path: receipt_dynamo/.coverage.${{ matrix.test-type }}
           if-no-files-found: warn
           retention-days: 1
+          include-hidden-files: true
 
   deploy:
     name: Build and Deploy
@@ -213,6 +214,7 @@ jobs:
           path: receipt_dynamo/.coverage.end_to_end
           if-no-files-found: warn
           retention-days: 1
+          include-hidden-files: true
 
   coverage:
     name: Combine Test Coverage
