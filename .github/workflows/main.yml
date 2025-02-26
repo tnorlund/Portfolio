@@ -58,16 +58,16 @@ jobs:
         run: |
           pip install -e "${{ github.workspace }}/receipt_dynamo[test,dev]"
 
-      - name: Run tests
+      - name: Run tests with coverage
         working-directory: receipt_dynamo
         run: |
-          pytest -m ${{ matrix.test-type }}
+          pytest -m ${{ matrix.test-type }} --cov=receipt_dynamo --cov-report=term
           
       - name: Upload test coverage
         uses: actions/upload-artifact@v4
         with:
           name: coverage-${{ matrix.test-type }}
-          path: receipt_dynamo/.coverage
+          path: receipt_dynamo/.coverage.${{ github.run_id }}.${{ matrix.test-type }}
           retention-days: 1
 
   deploy:
@@ -174,14 +174,21 @@ jobs:
         run: |
           pip install -e "${{ github.workspace }}/receipt_dynamo[test,dev]"
 
-      - name: Run end-to-end tests
+      - name: Run end-to-end tests with coverage
         working-directory: receipt_dynamo
         run: |
-          pytest -m end_to_end
+          pytest -m end_to_end --cov=receipt_dynamo --cov-report=term
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          
+      - name: Upload end-to-end test coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-end_to_end
+          path: receipt_dynamo/.coverage.${{ github.run_id }}.end_to_end
+          retention-days: 1
 
   coverage:
     name: Combine Test Coverage
@@ -204,15 +211,22 @@ jobs:
       - name: Download coverage data
         uses: actions/download-artifact@v4
         with:
+          pattern: coverage-*
           path: coverage-data
+
+      - name: Debug coverage files
+        run: |
+          echo "Coverage files in coverage-data directory:"
+          find coverage-data -type f | sort
 
       - name: Combine coverage
         working-directory: receipt_dynamo
         run: |
-          cp ../coverage-data/coverage-*/. .
-          coverage combine
-          coverage report
-          coverage xml
+          cp ../coverage-data/coverage-*/* .
+          ls -la .coverage* || echo "No .coverage files found"
+          coverage combine || echo "No coverage files to combine"
+          coverage report || echo "No coverage data to report"
+          coverage xml || echo "Could not generate XML"
 
       - name: Upload combined coverage
         uses: actions/upload-artifact@v4
