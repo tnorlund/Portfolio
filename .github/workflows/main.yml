@@ -158,3 +158,10 @@ jobs:
         run: |
           pytest tests/unit tests/integration --cov=receipt_dynamo --cov-report=xml
         working-directory: receipt_dynamo
+
+      - uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-

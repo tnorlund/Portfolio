@@ -6,5 +6,12 @@
   ],
   "python.testing.unittestEnabled": false,
   "python.testing.pytestEnabled": true,
-  "python.analysis.extraPaths": ["${workspaceFolder}/receipt_dynamo"]
+  "python.analysis.extraPaths": ["${workspaceFolder}/receipt_dynamo"],
+  "python.testing.pytestPath": "pytest",
+  "python.testing.cwd": "${workspaceFolder}",
+  "python.envFile": "${workspaceFolder}/.env",
+  "terminal.integrated.env.osx": {
+    "PYTHONPATH": "${workspaceFolder}"
+  },
+  "python.linting.enabled": true
 }

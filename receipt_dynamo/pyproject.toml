@@ -8,19 +8,33 @@ version = "0.1.0"
 authors = [
   { name="Tyler Norlund", email="tnorlund@icloud.com" },
 ]
-description = "A Python package for accessing DynamoDB for receipt data"
+description = "A Python interface for accessing DynamoDB for receipt data processing and analysis"
 readme = "README.md"
 requires-python = ">=3.8"
 classifiers = [
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Database",
+    "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
     "requests",
     "Pillow",
     "boto3>=1.26.0",
 ]
+keywords = ["dynamo", "dynamodb", "receipts", "aws", "database"]
+
+[project.urls]
+"Homepage" = "https://github.com/tnorlund/example"
+"Bug Tracker" = "https://github.com/tnorlund/example/issues"
 
 [project.optional-dependencies]
 test = [
