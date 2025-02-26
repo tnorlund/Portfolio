@@ -44,6 +44,12 @@ test = [
     "moto",
     "freezegun",
 ]
+dev = [
+    "pulumi>=3.0.0",
+    "pulumi-aws>=6.0.0",
+    "black==24.10.0",
+    "flake8",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["receipt_dynamo"]
