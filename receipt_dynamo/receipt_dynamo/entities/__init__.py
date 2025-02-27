@@ -11,4 +11,6 @@ from .receipt_word_tag import ReceiptWordTag, itemToReceiptWordTag
 from .gpt_validation import GPTValidation, itemToGPTValidation
 from .gpt_initial_tagging import GPTInitialTagging, itemToGPTInitialTagging
 from .receipt_window import ReceiptWindow, itemToReceiptWindow
+from .job import Job, itemToJob
+from .job_status import JobStatus, itemToJobStatus
 from .util import assert_valid_uuid
