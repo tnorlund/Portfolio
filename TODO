@@ -214,8 +214,27 @@
 - [ ] **Training Job Management**
   - [ ] Create job definition format (YAML/JSON)
   - [ ] Implement job status tracking in DynamoDB
+    - [ ] Create core Job entity with status, priority, job_config
+    - [ ] Implement Job Status entity for historical status tracking
+    - [ ] Add Job Resource tracking for instance allocation
+    - [ ] Add Job Metrics collection and storage
+    - [ ] Implement Job Checkpoint management
+    - [ ] Add Job Logs collection for debugging
+    - [ ] Implement Job Dependency tracking
+  - [ ] Implement Queue management in DynamoDB
+    - [ ] Create Queue entity for managing job queues
+    - [ ] Add Queue Job association for organizing jobs
+  - [ ] Implement Instance tracking
+    - [ ] Create Instance entity for resource tracking
+    - [ ] Add Instance Job association
   - [ ] Build CLI tool for job submission/monitoring
+    - [ ] Create commands for job submission
+    - [ ] Add job status checking and monitoring
+    - [ ] Implement job cancellation and modification
   - [ ] Add support for dependency chains between jobs
+    - [ ] Implement dependency validation
+    - [ ] Add conditional execution based on dependency status
+    - [ ] Create visualization for job dependency graphs
 
 - [ ] **Instance Coordination**
   - [ ] Implement leader election for multi-instance coordination
