@@ -34,7 +34,7 @@ class _ReceiptWordTag:
         try:
             self._client.put_item(TableName=self.table_name,
                 Item=receipt_word_tag.to_item(),
-                ConditionExpression="attribute_not_exists(PK)",)
+                ConditionExpression="attribute_not_exists(PK)", )
         except ClientError as e:
             if (e.response["Error"]["Code"]
                 == "ConditionalCheckFailedException"):
@@ -81,7 +81,7 @@ class _ReceiptWordTag:
         """
         try:
             self._client.put_item(TableName=self.table_name,
-                Item=receipt_word_tag.to_item(),)
+                Item=receipt_word_tag.to_item(), )
         except ClientError as e:
             raise Exception(f"Error updating ReceiptWordTag: {e}")
 
@@ -90,7 +90,7 @@ class _ReceiptWordTag:
         receipt_id: int,
         line_id: int,
         word_id: int,
-        tag: str,):
+        tag: str, ):
         """
         Deletes a single ReceiptWordTag from DynamoDB with a conditional check
         that it exists (attribute_exists).
@@ -110,11 +110,11 @@ class _ReceiptWordTag:
             line_id=line_id,
             word_id=word_id,
             tag=tag,
-            timestamp_added="2000-01-01T00:00:00",  # placeholder)
+            timestamp_added="2000-01-01T00:00:00")  # placeholder
         try:
             self._client.delete_item(TableName=self.table_name,
                 Key=rwt.key(),
-                ConditionExpression="attribute_exists(PK)",)
+                ConditionExpression="attribute_exists(PK)", )
         except ClientError as e:
             if (e.response["Error"]["Code"]
                 == "ConditionalCheckFailedException"):
@@ -159,7 +159,7 @@ class _ReceiptWordTag:
         receipt_id: int,
         line_id: int,
         word_id: int,
-        tag: str,) -> ReceiptWordTag:
+        tag: str, ) -> ReceiptWordTag:
         """
         Retrieves a single ReceiptWordTag from DynamoDB by its key.
 
@@ -181,10 +181,10 @@ class _ReceiptWordTag:
             line_id=line_id,
             word_id=word_id,
             tag=tag,
-            timestamp_added="2000-01-01T00:00:00",  # placeholder)
+            timestamp_added="2000-01-01T00:00:00")  # placeholder
         try:
             response = self._client.get_item(TableName=self.table_name,
-                Key=rwt.key(),)
+                Key=rwt.key(), )
             return itemToReceiptWordTag(response["Item"])
         except KeyError:
             # No "Item" or missing fields
@@ -229,8 +229,8 @@ class _ReceiptWordTag:
                 "FilterExpression": "#t = :typeVal",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
                 "ExpressionAttributeValues": {":gsi1pk": {"S": f"TAG#{tag:_>40}"},
-                    ":typeVal": {"S": "RECEIPT_WORD_TAG"},},
-                "Limit": batch_limit,}
+                    ":typeVal": {"S": "RECEIPT_WORD_TAG"}, },
+                "Limit": batch_limit, }
 
             # Use the provided lastEvaluatedKey, if any.
             if lastEvaluatedKey is not None:
@@ -290,7 +290,7 @@ class _ReceiptWordTag:
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "RECEIPT_WORD_TAG"}},}
+                "ExpressionAttributeValues": {":val": {"S": "RECEIPT_WORD_TAG"}}, }
 
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
@@ -336,7 +336,7 @@ class _ReceiptWordTag:
                 ExpressionAttributeValues={":pk_val": {"S": f"IMAGE#{image_id}"},
                     ":sk_val": {"S": "RECEIPT#"},
                     # Only SKs that include '#TAG#'
-                    ":tag_val": {"S": "#TAG#"},},)
+                    ":tag_val": {"S": "#TAG#"}, }, )
             for item in response.get("Items", []):
                 receipt_word_tags.append(itemToReceiptWordTag(item))
 
@@ -347,8 +347,8 @@ class _ReceiptWordTag:
                     ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
                     ExpressionAttributeValues={":pk_val": {"S": f"IMAGE#{image_id}"},
                         ":sk_val": {"S": "RECEIPT#"},
-                        ":tag_val": {"S": "#TAG#"},},
-                    ExclusiveStartKey=response["LastEvaluatedKey"],)
+                        ":tag_val": {"S": "#TAG#"}, },
+                    ExclusiveStartKey=response["LastEvaluatedKey"], )
                 for item in response.get("Items", []):
                     receipt_word_tags.append(itemToReceiptWordTag(item))
 

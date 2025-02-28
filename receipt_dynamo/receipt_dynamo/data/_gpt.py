@@ -13,7 +13,7 @@ def gpt_request_tagging_validation(receipt: Receipt,
     receipt_lines: list[ReceiptLine],
     receipt_words: list[ReceiptWord],
     receipt_word_tags: list[ReceiptWordTag],
-    gpt_api_key=None,) -> tuple[dict, str, str]:
+    gpt_api_key=None, ) -> tuple[dict, str, str]:
     """
     Makes a request to the OpenAI API to validate the tagging of a receipt.
 
@@ -27,17 +27,17 @@ def gpt_request_tagging_validation(receipt: Receipt,
         environ["OPENAI_API_KEY"] = gpt_api_key
     url = "https://api.openai.com/v1/chat/completions"
     headers = {"Content-Type": "application/json",
-        "Authorization": f"Bearer {getenv('OPENAI_API_KEY')}",}
+        "Authorization": f"Bearer {getenv('OPENAI_API_KEY')}", }
     query = _llm_prompt_tagging_validation(receipt, receipt_lines, receipt_words, receipt_word_tags)
     payload = {"model": "gpt-3.5-turbo",
         "messages": [{"role": "system",
-                "content": "You extract structured data from text.",},
-            {"role": "user", "content": query},],}
+                "content": "You extract structured data from text.", },
+            {"role": "user", "content": query}, ], }
     response = requests.post(url, headers=headers, json=payload)
 
     return (_validate_gpt_response_tagging_validation(response),
         query,
-        response.text,)
+        response.text, )
 
 
 def gpt_request_initial_tagging(receipt: Receipt, receipt_words: list[ReceiptWord], gpt_api_key=None) -> tuple[dict, str, str]:
@@ -53,17 +53,17 @@ def gpt_request_initial_tagging(receipt: Receipt, receipt_words: list[ReceiptWor
         environ["OPENAI_API_KEY"] = gpt_api_key
     url = "https://api.openai.com/v1/chat/completions"
     headers = {"Content-Type": "application/json",
-        "Authorization": f"Bearer {getenv('OPENAI_API_KEY')}",}
+        "Authorization": f"Bearer {getenv('OPENAI_API_KEY')}", }
     query = _llm_prompt_initial_tagging(receipt, receipt_words)
     payload = {"model": "gpt-3.5-turbo",
         "messages": [{"role": "system",
-                "content": "You extract structured data from text.",},
-            {"role": "user", "content": query},],}
+                "content": "You extract structured data from text.", },
+            {"role": "user", "content": query}, ], }
     response = requests.post(url, headers=headers, json=payload)
 
     return (_validate_gpt_response_initial_tagging(response),
         query,
-        response.text,)
+        response.text, )
 
 
 def _validate_gpt_response_initial_tagging(response: Response) -> dict:
@@ -175,7 +175,7 @@ def _validate_gpt_response_tagging_validation(response: Response) -> dict:
                 "initial_tag",
                 "revised_tag",
                 "confidence",
-                "flag",]):
+                "flag", ]):
             raise ValueError("The response items do not contain the expected fields.")
     return content
 
@@ -206,8 +206,8 @@ def _llm_prompt_initial_tagging(receipt: Receipt, receipt_words: list[ReceiptWor
             "w": [{"t": word.text,
                     "c": list(_reduce_precision(word.calculate_centroid(), 4)),
                     "l": word.line_id,
-                    "w": word.word_id,}
-                for word in receipt_words],})
+                    "w": word.word_id, }
+                for word in receipt_words], })
     return ("\nYou are a helpful assistant that extracts structured data from a receipt.\n"
         "\nBelow is a sample of the JSON you will receive. Notice that each 'word' has a 'text', a 'centroid' [x, y], and a line/word ID (l, w):\n"
         "\n```json\n"
@@ -282,7 +282,7 @@ def _llm_prompt_initial_tagging(receipt: Receipt, receipt_words: list[ReceiptWor
 def _llm_prompt_tagging_validation(receipt: Receipt,
     receipt_lines: list[ReceiptLine],
     receipt_words: list[ReceiptWord],
-    receipt_word_tags: list[ReceiptWordTag],) -> str:
+    receipt_word_tags: list[ReceiptWordTag], ) -> str:
     """
     Generates a prompt string for validating and potentially revising receipt word tags.
 
@@ -319,7 +319,7 @@ def _llm_prompt_tagging_validation(receipt: Receipt,
               ensuring the output is a structured JSON matching the specified schema.
     """
     receipt_dict = {"width": receipt.width,
-        "height": receipt.height,}
+        "height": receipt.height, }
     line_dicts = []
 
     for line in receipt_lines:
@@ -341,13 +341,13 @@ def _llm_prompt_tagging_validation(receipt: Receipt,
                     "text": word.text,
                     "bounding_box": word.bounding_box,
                     "tags": [{"tag": tag.tag,
-                            "validated": tag.validated,}
-                        for tag in tags],})
+                            "validated": tag.validated, }
+                        for tag in tags], })
 
         line_dicts.append({"line_id": line.line_id,
                 "bounding_box": line.bounding_box,
                 "text": line.text,
-                "tagged_words": tagged_words,})
+                "tagged_words": tagged_words, })
 
     # Now, AFTER the loop, build the final JSON and return the full prompt:
     context_json = dumps({"receipt": receipt_dict, "lines": line_dicts})

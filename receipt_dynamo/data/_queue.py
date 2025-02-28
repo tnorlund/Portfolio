@@ -58,7 +58,7 @@ class Queue:
         query_params = {"TableName": self.table_name,
             "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk_prefix)",
             "ExpressionAttributeValues": {":pk": {"S": f"QUEUE#{queue_name}"},
-                ":sk_prefix": {"S": "JOB#"},},}
+                ":sk_prefix": {"S": "JOB#"}, }, }
 
         # Add the limit if provided
         if limit is not None:

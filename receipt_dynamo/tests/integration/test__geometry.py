@@ -13,26 +13,26 @@ from receipt_dynamo.data._geometry import (box_points,
     invert_warp,
     min_area_rect,
     pad_corners_opposite,
-    solve_8x8_system,)
+    solve_8x8_system, )
 
 
 def multiply_perspective(m1, m2):
     """
     Multiplies two 8-coefficient perspective transforms:
-    m1, m2 => [a,b,c,d,e,f,g,h]
+    m1, m2 => [a, b, c, d, e, f, g, h]
     Interpreted as 3x3:
        [a b c]
        [d e f]
        [g h 1]
-    Returns the 8-coefficient result of m1*m2 as a list [a2,b2,c2,d2,e2,f2,g2,h2].
+    Returns the 8-coefficient result of m1*m2 as a list [a2, b2, c2, d2, e2, f2, g2, h2].
     """
     # Convert to 3x3
     M1 = [[m1[0], m1[1], m1[2]],
         [m1[3], m1[4], m1[5]],
-        [m1[6], m1[7], 1.0],]
+        [m1[6], m1[7], 1.0], ]
     M2 = [[m2[0], m2[1], m2[2]],
         [m2[3], m2[4], m2[5]],
-        [m2[6], m2[7], 1.0],]
+        [m2[6], m2[7], 1.0], ]
     # Multiply
     M = [[0.0] * 3 for _ in range(3)]
     for r in range(3):
@@ -46,18 +46,18 @@ def multiply_perspective(m1, m2):
         M[1][1],
         M[1][2],
         M[2][0],
-        M[2][1],]
+        M[2][1], ]
 
 
 @pytest.mark.unit
 def test_invert_warp_identity():
     """
     Inverting the identity warp => identity again.
-    Identity warp => x' = x, y' = y, so [a,b,c,d,e,f,g,h] = [1,0,0, 0,1,0, 0,0].
+    Identity warp => x' = x, y' = y, so [a, b, c, d, e, f, g, h] = [1, 0, 0, 0, 1, 0, 0, 0].
     """
     # Identity perspective warp
     identity = [1, 0, 0, 0, 1, 0, 0, 0]
-    inv = invert_warp(*identity)  # unpack => (1,0,0,0,1,0,0,0)
+    inv = invert_warp(*identity)  # unpack => (1, 0, 0, 0, 1, 0, 0, 0)
     # Should still be the identity warp
     assert (inv == identity), f"Inverse of identity should be identity, got {inv}"
 
@@ -66,7 +66,7 @@ def test_invert_warp_identity():
 def test_invert_warp_det_zero():
     """
     Pass a warp that leads to determinant=0 => expect ValueError.
-    For instance, let g=0,h=0 but a,e=0 => or any degenerate 3x3 matrix.
+    For instance, let g=0, h=0 but a, e=0 => or any degenerate 3x3 matrix.
     We'll just pick a=0,e=0 => guaranteed zero determinant.
     """
     # We want the 3x3:
@@ -84,7 +84,7 @@ def test_invert_warp_det_zero():
         0,
         0,
         0,
-        0,]
+        0, ]
     # So effectively [0,0,0],[0,0,0],[0,0,1] => determinant=0
     with pytest.raises(ValueError, match="Cannot invert perspective matrix"):
         invert_warp(*degenerate)
@@ -103,7 +103,7 @@ def test_invert_warp_known_good_matrices():
         # moderate but invertible
         [0.8, -0.3, 1.5, 0.2, 1.2, -1.0, -0.1, 0.1],
         # another stable example
-        [0.9, -0.2, 0.3, 0.4, 1.1, 2.0, 0.05, -0.02],]
+        [0.9, -0.2, 0.3, 0.4, 1.1, 2.0, 0.05, -0.02], ]
     for mat in known_transforms:
         inv = invert_warp(*mat)
         prod = multiply_perspective(mat, inv)
@@ -115,7 +115,7 @@ def test_invert_warp_known_good_matrices():
 @pytest.mark.unit
 def test_pad_corners_opposite_square_positive():
     """
-    Test a simple square. corners = (0,0), (10,0), (10,10), (0,10).
+    Test a simple square. corners = (0, 0), (10, 0), (10, 10), (0, 10).
     pad=10 => each corner moves ~7.07 px outward along the diagonal away from its opposite corner.
     """
     square = [(0, 0), (10, 0), (10, 10), (0, 10)]
@@ -438,7 +438,7 @@ def test_compute_receipt_box_from_skewed_extents_no_bottom():
 def test_compute_receipt_box_from_skewed_extents_degrees():
     """
     Basic test with a rotation in degrees. We'll pick a simple rectangle,
-    rotate by 90 degrees around center=(0,0), then confirm corners.
+    rotate by 90 degrees around center=(0, 0), then confirm corners.
     """
     hull_pts = [(0, 0), (2, 0), (2, 1), (0, 1)]
     # If we rotate by 90 deg around (0,0), deskewing effectively puts points
@@ -509,9 +509,9 @@ def test_find_hull_extents_relative_to_centroid_single_point():
 @pytest.mark.unit
 def test_find_hull_extents_relative_to_centroid_square_no_rotation():
     """
-    A simple square from (0,0) to (10,10). Centroid is (5,5).
-    With no rotation, 'left' => (0,5), 'right' => (10,5),
-    'top' => (5,10), 'bottom' => (5,0).
+    A simple square from (0, 0) to (10, 10). Centroid is (5, 5).
+    With no rotation, 'left' => (0, 5), 'right' => (10, 5),
+    'top' => (5, 10), 'bottom' => (5, 0).
     """
     hull_pts = [(0, 0), (10, 0), (10, 10), (0, 10)]
     cx, cy = 5, 5
@@ -526,7 +526,7 @@ def test_find_hull_extents_relative_to_centroid_square_no_rotation():
 def test_find_hull_extents_relative_to_centroid_square_rotation_degrees():
     """
     Same square, but rotated by 45 degrees. We'll just check approximate intersection
-    points. The centroid is still (5,5).
+    points. The centroid is still (5, 5).
     """
     hull_pts = [(0, 0), (10, 0), (10, 10), (0, 10)]
     cx, cy = 5, 5
@@ -575,9 +575,9 @@ def test_find_hull_extents_relative_to_centroid_square_rotation_radians():
 @pytest.mark.unit
 def test_find_hull_extents_relative_to_centroid_line():
     """
-    For a hull defined by a single horizontal edge from (0,0) to (10,0) with centroid at (5,0):
+    For a hull defined by a single horizontal edge from (0, 0) to (10, 0) with centroid at (5, 0):
       - Horizontal rays ('left' and 'right') are collinear with the edge and yield no intersection (None).
-      - Vertical rays ('top' and 'bottom') intersect at the centroid, yielding (5,0).
+      - Vertical rays ('top' and 'bottom') intersect at the centroid, yielding (5, 0).
     """
     hull_pts = [(0, 0), (10, 0)]
     cx, cy = 5, 0
@@ -616,7 +616,7 @@ def test_compute_hull_centroid_two_points():
 def test_compute_hull_centroid_polygon():
     """
     Non-degenerate polygon. We'll take a square with corners (0,0),(4,0),(4,4),(0,4).
-    The centroid should be (2,2).
+    The centroid should be (2, 2).
     """
     pts = [(0, 0), (4, 0), (4, 4), (0, 4)]
     cx, cy = compute_hull_centroid(pts)
@@ -629,7 +629,7 @@ def test_compute_hull_centroid_degenerate_polygon():
     """
     Collinear points (area=0) -> returns average of hull points.
     For example, a line along x=0..4, y=0 => hull is just the same line.
-    The average of (0,0), (2,0), (4,0) is (2,0).
+    The average of (0, 0), (2, 0), (4, 0) is (2, 0).
     """
     pts = [(0, 0), (2, 0), (4, 0)]
     cx, cy = compute_hull_centroid(pts)

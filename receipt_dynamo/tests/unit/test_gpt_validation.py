@@ -1,8 +1,10 @@
 # test_gpt_validation.py
 import pytest
 
-from receipt_dynamo.entities.gpt_validation import (GPTValidation,
-    itemToGPTValidation,)
+from receipt_dynamo.entities.gpt_validation import (
+    GPTValidation,
+    itemToGPTValidation,
+)
 
 # --- Fixtures ---
 
@@ -12,11 +14,13 @@ def sample_gpt_validation():
     """
     Returns a sample GPTValidation instance with valid attributes.
     """
-    return GPTValidation(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+    return GPTValidation(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         receipt_id=7,
         query="Is this the total amount?",
         response="Yes, it is the total.",
-        timestamp_added="2021-01-01T00:00:00",)
+        timestamp_added="2021-01-01T00:00:00",
+    )
 
 
 # --- Initialization Tests ---
@@ -37,80 +41,99 @@ def test_gpt_validation_init_valid(sample_gpt_validation):
 def test_gpt_validation_init_invalid_image_id():
     """Test that GPTValidation raises ValueError for an invalid image_id."""
     with pytest.raises(ValueError):
-        GPTValidation(image_id=1,  # not a string
+        GPTValidation(
+            image_id=1,  # not a string
             receipt_id=7,
             query="Is this the total amount?",
             response="Yes, it is the total.",
-            timestamp_added="2021-01-01T00:00:00",)
+            timestamp_added="2021-01-01T00:00:00",
+        )
     with pytest.raises(ValueError):
-        GPTValidation(image_id="bad-uuid",
+        GPTValidation(
+            image_id="bad-uuid",
             receipt_id=7,
             query="Is this the total amount?",
             response="Yes, it is the total.",
-            timestamp_added="2021-01-01T00:00:00",)
+            timestamp_added="2021-01-01T00:00:00",
+        )
 
 
 @pytest.mark.unit
 def test_gpt_validation_init_invalid_receipt_id():
     """Test that GPTValidation raises ValueError for an invalid receipt_id."""
     with pytest.raises(ValueError, match="receipt_id must be an integer"):
-        GPTValidation(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        GPTValidation(
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id="7",  # wrong type
             query="Is this the total amount?",
             response="Yes, it is the total.",
-            timestamp_added="2021-01-01T00:00:00",)
+            timestamp_added="2021-01-01T00:00:00",
+        )
     with pytest.raises(ValueError, match="receipt_id must be positive"):
-        GPTValidation(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        GPTValidation(
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=0,  # zero value
             query="Is this the total amount?",
             response="Yes, it is the total.",
-            timestamp_added="2021-01-01T00:00:00",)
+            timestamp_added="2021-01-01T00:00:00",
+        )
 
 
 @pytest.mark.unit
 def test_gpt_validation_init_invalid_query():
     """Test that GPTValidation raises ValueError for an invalid query."""
     with pytest.raises(ValueError, match="query must be a non-empty string"):
-        GPTValidation(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        GPTValidation(
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=7,
             query="",  # empty string
             response="Yes, it is the total.",
-            timestamp_added="2021-01-01T00:00:00",)
+            timestamp_added="2021-01-01T00:00:00",
+        )
     with pytest.raises(ValueError, match="query must be a non-empty string"):
-        GPTValidation(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        GPTValidation(
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=7,
             query=123,  # wrong type
             response="Yes, it is the total.",
-            timestamp_added="2021-01-01T00:00:00",)
+            timestamp_added="2021-01-01T00:00:00",
+        )
 
 
 @pytest.mark.unit
 def test_gpt_validation_init_invalid_response():
     """Test that GPTValidation raises ValueError for an invalid response."""
     with pytest.raises(ValueError, match="response must be a non-empty string"):
-        GPTValidation(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        GPTValidation(
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=7,
             query="Is this the total amount?",
             response="",  # empty string
-            timestamp_added="2021-01-01T00:00:00",)
+            timestamp_added="2021-01-01T00:00:00",
+        )
     with pytest.raises(ValueError, match="response must be a non-empty string"):
-        GPTValidation(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        GPTValidation(
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=7,
             query="Is this the total amount?",
             response=123,  # wrong type
-            timestamp_added="2021-01-01T00:00:00",)
+            timestamp_added="2021-01-01T00:00:00",
+        )
 
 
 @pytest.mark.unit
 def test_gpt_validation_init_invalid_timestamp():
     """Test that GPTValidation raises ValueError for an invalid timestamp_added."""
-    with pytest.raises(ValueError,
-        match="timestamp_added must be a datetime object or a string",):
-        GPTValidation(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+    with pytest.raises(
+        ValueError, match="timestamp_added must be a datetime object or a string"
+    ):
+        GPTValidation(
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=7,
             query="Is this the total amount?",
             response="Yes, it is the total.",
-            timestamp_added=1234567890,  # wrong type)
+            timestamp_added=1234567890,
+        )  # wrong type
 
 
 # --- Equality, Iteration, and Representation Tests ---
@@ -120,18 +143,22 @@ def test_gpt_validation_init_invalid_timestamp():
 def test_gpt_validation_eq(sample_gpt_validation):
     """Test __eq__ method for GPTValidation."""
     gv1 = sample_gpt_validation
-    gv2 = GPTValidation(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+    gv2 = GPTValidation(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         receipt_id=7,
         query="Is this the total amount?",
         response="Yes, it is the total.",
-        timestamp_added="2021-01-01T00:00:00",)
+        timestamp_added="2021-01-01T00:00:00",
+    )
     assert gv1 == gv2
 
-    gv3 = GPTValidation(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+    gv3 = GPTValidation(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         receipt_id=7,
         query="Different query",
         response="Yes, it is the total.",
-        timestamp_added="2021-01-01T00:00:00",)
+        timestamp_added="2021-01-01T00:00:00",
+    )
     assert gv1 != gv3
     assert gv1 != "not a GPTValidation"
 
@@ -192,10 +219,12 @@ def test_item_to_gpt_validation(sample_gpt_validation):
 @pytest.mark.unit
 def test_item_to_gpt_validation_missing_keys():
     """Test that itemToGPTValidation raises an error if required keys are missing."""
-    incomplete_item = {"SK": {"S": "RECEIPT#00007#QUERY#VALIDATION"},
+    incomplete_item = {
+        "SK": {"S": "RECEIPT#00007#QUERY#VALIDATION"},
         "query": {"S": "Is this the total amount?"},
         "response": {"S": "Yes, it is the total."},
-        "timestamp_added": {"S": "2021-01-01T00:00:00"},}
+        "timestamp_added": {"S": "2021-01-01T00:00:00"},
+    }
     with pytest.raises(ValueError, match="Item is missing required keys:"):
         itemToGPTValidation(incomplete_item)
 
@@ -203,12 +232,14 @@ def test_item_to_gpt_validation_missing_keys():
 @pytest.mark.unit
 def test_item_to_gpt_validation_invalid_format():
     """Test that itemToGPTValidation raises an error for an improperly formatted item."""
-    bad_item = {"PK": {"S": "IMAGE#bad"},  # Improperly formatted
+    bad_item = {
+        "PK": {"S": "IMAGE#bad"},  # Improperly formatted
         "SK": {"S": "RECEIPT#00007"},  # Missing query validation suffix
         "TYPE": {"S": "GPT_VALIDATION"},
         "query": {"S": "Is this the total amount?"},
         "response": {"S": "Yes, it is the total."},
-        "timestamp_added": {"S": "2021-01-01T00:00:00"},}
+        "timestamp_added": {"S": "2021-01-01T00:00:00"},
+    }
     with pytest.raises(ValueError, match="Error converting item to GPTValidation"):
         itemToGPTValidation(bad_item)
 
@@ -217,19 +248,23 @@ def test_item_to_gpt_validation_invalid_format():
 def test_gpt_validation_hash(sample_gpt_validation):
     """Test that __hash__ returns consistent values for equal objects."""
     gv1 = sample_gpt_validation
-    gv2 = GPTValidation(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+    gv2 = GPTValidation(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         receipt_id=7,
         query="Is this the total amount?",
         response="Yes, it is the total.",
-        timestamp_added="2021-01-01T00:00:00",)
+        timestamp_added="2021-01-01T00:00:00",
+    )
 
     # Equal objects should have equal hash values
     assert hash(gv1) == hash(gv2)
 
     # Different objects should have different hash values
-    gv3 = GPTValidation(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+    gv3 = GPTValidation(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         receipt_id=7,
         query="Different query",  # Changed query
         response="Yes, it is the total.",
-        timestamp_added="2021-01-01T00:00:00",)
+        timestamp_added="2021-01-01T00:00:00",
+    )
     assert hash(gv1) != hash(gv3)

@@ -8,7 +8,7 @@ from receipt_dynamo.data._corner_process import (crop_polygon_region,
     extract_and_save_corner_windows,
     normalize,
     offset_corner_inward,
-    window_rectangle_for_corner,)
+    window_rectangle_for_corner, )
 
 
 @pytest.mark.integration
@@ -33,7 +33,7 @@ def test_normalize():
     result2 = normalize(tiny)
     # Because magnitude ~ 1.4142e-12 < 1e-8 => we expect (0, 0)
     assert result2 == (0.0,
-        0.0,), f"Expected (0,0) for near-zero vector, got {result2}"
+        0.0, ), f"Expected (0,0) for near-zero vector, got {result2}"
 
 
 @pytest.mark.integration
@@ -75,7 +75,7 @@ def test_window_rectangle_for_corner():
     adj1_top = (0.0, 0.0)
     adj2_top = (10.0, 10.0)
     edge_dir_top = (adj2_top[0] - corner_top[0],
-        adj2_top[1] - corner_top[1],)  # => (0,10)
+        adj2_top[1] - corner_top[1], )  # => (0, 10)
     offset_dist = 5.0
 
     poly_top = window_rectangle_for_corner(receipt_corner=corner_top,
@@ -84,7 +84,7 @@ def test_window_rectangle_for_corner():
         edge_direction=edge_dir_top,
         offset_distance=offset_dist,
         image_size=(img_w, img_h),
-        corner_position="top",)
+        corner_position="top", )
     xs_top = [p[0] for p in poly_top]
     ys_top = [p[1] for p in poly_top]
     assert (len(poly_top) == 4), "Should return 4 corner points for 'top' scenario."
@@ -105,7 +105,7 @@ def test_window_rectangle_for_corner():
     adj1_bottom = (0.0, 49.0)
     adj2_bottom = (10.0, 40.0)  # lower than corner => negative y
     edge_dir_bottom = (adj2_bottom[0] - corner_bottom[0],
-        adj2_bottom[1] - corner_bottom[1],)
+        adj2_bottom[1] - corner_bottom[1], )
     # => (0, -9)
 
     poly_bottom = window_rectangle_for_corner(receipt_corner=corner_bottom,
@@ -114,7 +114,7 @@ def test_window_rectangle_for_corner():
         edge_direction=edge_dir_bottom,
         offset_distance=offset_dist,
         image_size=(img_w, img_h),
-        corner_position="bottom",)
+        corner_position="bottom", )
     xs_bot = [p[0] for p in poly_bottom]
     ys_bot = [p[1] for p in poly_bottom]
     assert (len(poly_bottom) == 4), "Should return 4 corner points for 'bottom' scenario."
@@ -176,7 +176,7 @@ def test_extract_and_save_corner_windows():
     windows = extract_and_save_corner_windows(image=test_img,
         receipt_box_corners=receipt_corners,
         offset_distance=offset_distance,
-        max_dim=max_dim,)
+        max_dim=max_dim, )
 
     # 4) Check structure => keys = top_left, top_right, bottom_right,
     # bottom_left

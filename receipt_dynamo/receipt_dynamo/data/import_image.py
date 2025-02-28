@@ -15,7 +15,7 @@ from receipt_dynamo.entities import (GPTInitialTagging,
     ReceiptWord,
     ReceiptWordTag,
     Word,
-    WordTag,)
+    WordTag, )
 
 
 def import_image(table_name: str, json_path: str) -> None:
@@ -59,7 +59,7 @@ def import_image(table_name: str, json_path: str) -> None:
         "receipt_word_tags": [ReceiptWordTag(**item) for item in data["receipt_word_tags"]],
         "receipt_letters": [ReceiptLetter(**item) for item in data["receipt_letters"]],
         "gpt_initial_taggings": [GPTInitialTagging(**item) for item in data["gpt_initial_taggings"]],
-        "gpt_validations": [GPTValidation(**item) for item in data["gpt_validations"]],}
+        "gpt_validations": [GPTValidation(**item) for item in data["gpt_validations"]], }
 
     # Import data in batches using existing DynamoClient methods
     if entities["images"]:

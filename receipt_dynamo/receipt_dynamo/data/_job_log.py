@@ -30,7 +30,7 @@ class _JobLog:
         try:
             self._client.put_item(TableName=self.table_name,
                 Item=job_log.to_item(),
-                ConditionExpression="attribute_not_exists(PK) AND attribute_not_exists(SK)",)
+                ConditionExpression="attribute_not_exists(PK) AND attribute_not_exists(SK)", )
         except ClientError as e:
             if (e.response["Error"]["Code"]
                 == "ConditionalCheckFailedException"):
@@ -78,8 +78,8 @@ class _JobLog:
 
             if unprocessed_items:
                 raise ClientError({"Error": {"Code": "ProvisionedThroughputExceededException",
-                            "Message": f"Could not process all items after {max_retries} retries",}},
-                    "BatchWriteItem",)
+                            "Message": f"Could not process all items after {max_retries} retries", }},
+                    "BatchWriteItem", )
 
     def getJobLog(self, job_id: str, timestamp: str) -> JobLog:
         """Gets a job log entry from the DynamoDB table.
@@ -102,7 +102,7 @@ class _JobLog:
 
         response = self._client.get_item(TableName=self.table_name,
             Key={"PK": {"S": f"JOB#{job_id}"},
-                "SK": {"S": f"LOG#{timestamp}"},},)
+                "SK": {"S": f"LOG#{timestamp}"}, }, )
 
         item = response.get("Item")
         if not item:
@@ -113,7 +113,7 @@ class _JobLog:
     def listJobLogs(self,
         job_id: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict] = None,) -> Tuple[List[JobLog], Optional[Dict]]:
+        lastEvaluatedKey: Optional[Dict] = None, ) -> Tuple[List[JobLog], Optional[Dict]]:
         """Lists all log entries for a specific job.
 
         Args:
@@ -134,12 +134,12 @@ class _JobLog:
         # Prepare KeyConditionExpression
         key_condition_expression = "PK = :pk AND begins_with(SK, :sk_prefix)"
         expression_attribute_values = {":pk": {"S": f"JOB#{job_id}"},
-            ":sk_prefix": {"S": "LOG#"},}
+            ":sk_prefix": {"S": "LOG#"}, }
 
         # Prepare query parameters
         query_params = {"TableName": self.table_name,
             "KeyConditionExpression": key_condition_expression,
-            "ExpressionAttributeValues": expression_attribute_values,}
+            "ExpressionAttributeValues": expression_attribute_values, }
 
         if limit is not None:
             query_params["Limit"] = limit
@@ -174,8 +174,8 @@ class _JobLog:
         try:
             self._client.delete_item(TableName=self.table_name,
                 Key={"PK": {"S": f"JOB#{job_log.job_id}"},
-                    "SK": {"S": f"LOG#{job_log.timestamp}"},},
-                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",)
+                    "SK": {"S": f"LOG#{job_log.timestamp}"}, },
+                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)", )
         except ClientError as e:
             if (e.response["Error"]["Code"]
                 == "ConditionalCheckFailedException"):

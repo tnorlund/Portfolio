@@ -24,15 +24,15 @@ def test_load_env_happy_path(mocker):
             "output",
             "--stack",
             "tnorlund/portfolio/dev",
-            "--json",],
+            "--json", ],
         check=True,
         capture_output=True,
-        text=True,)
+        text=True, )
 
     # Validate the expected output
     assert isinstance(result, dict), "Expected a dictionary of stack outputs"
     assert result == {"someKey": "someValue",
-        "otherKey": 123,}, "Output dictionary should match the mocked Pulumi CLI output"
+        "otherKey": 123, }, "Output dictionary should match the mocked Pulumi CLI output"
 
 
 @pytest.mark.integration
@@ -59,7 +59,7 @@ def test_load_env_nonexistent_stack(mocker):
     mock_subprocess.side_effect = subprocess.CalledProcessError(returncode=1,
         cmd="pulumi stack output --json",
         output="",
-        stderr="Stack not found",)
+        stderr="Stack not found", )
 
     result = load_env("dev")
 
@@ -73,7 +73,7 @@ def test_load_env_invalid_json(mocker):
     Test behavior if Pulumi CLI returns malformed JSON.
     """
     mock_subprocess = mocker.patch("subprocess.run")
-    mock_subprocess.return_value.stdout = ("INVALID_JSON"  # Simulate corrupted JSON output)
+    mock_subprocess.return_value.stdout = ("INVALID_JSON")  # Simulate corrupted JSON output
 
     result = load_env("dev")
 

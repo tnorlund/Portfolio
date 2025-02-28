@@ -37,7 +37,7 @@ class _ReceiptWord:
         try:
             self._client.put_item(TableName=self.table_name,
                 Item=word.to_item(),
-                ConditionExpression="attribute_not_exists(PK)",)
+                ConditionExpression="attribute_not_exists(PK)", )
         except ClientError as e:
             # Check if it's a condition failure (duplicate key)
             if (e.response["Error"]["Code"]
@@ -65,7 +65,7 @@ class _ReceiptWord:
         try:
             self._client.put_item(TableName=self.table_name,
                 Item=word.to_item(),
-                ConditionExpression="attribute_exists(PK)",)
+                ConditionExpression="attribute_exists(PK)", )
         except ClientError as e:
             if (e.response["Error"]["Code"]
                 == "ConditionalCheckFailedException"):
@@ -92,8 +92,8 @@ class _ReceiptWord:
         try:
             self._client.delete_item(TableName=self.table_name,
                 Key={"PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}"},},
-                ConditionExpression="attribute_exists(PK)",)
+                    "SK": {"S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}"}, },
+                ConditionExpression="attribute_exists(PK)", )
         except ClientError as e:
             if (e.response["Error"]["Code"]
                 == "ConditionalCheckFailedException"):
@@ -125,7 +125,7 @@ class _ReceiptWord:
         try:
             response = self._client.get_item(TableName=self.table_name,
                 Key={"PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}"},},)
+                    "SK": {"S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}"}, }, )
             return itemToReceiptWord(response["Item"])
         except KeyError:
             raise ValueError(f"ReceiptWord with ID {word_id} not found")
@@ -152,7 +152,7 @@ class _ReceiptWord:
                 chunk = keys[i : i + CHUNK_SIZE]
 
                 # Prepare parameters for BatchGetItem
-                request = {"RequestItems": {self.table_name: {"Keys": chunk,}}}
+                request = {"RequestItems": {self.table_name: {"Keys": chunk, }}}
 
                 # Perform BatchGet
                 response = self._client.batch_get_item(**request)
@@ -187,7 +187,7 @@ class _ReceiptWord:
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "RECEIPT_WORD"}},}
+                "ExpressionAttributeValues": {":val": {"S": "RECEIPT_WORD"}}, }
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
             if limit is not None:
@@ -227,7 +227,7 @@ class _ReceiptWord:
                 KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
                 ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
                 ExpressionAttributeValues={":pk_val": {"S": f"IMAGE#{image_id}"},
-                    ":sk_val": {"S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#"},},)
+                    ":sk_val": {"S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#"}, }, )
             receipt_words.extend([itemToReceiptWord(item) for item in response["Items"]])
 
             while "LastEvaluatedKey" in response:
@@ -235,8 +235,8 @@ class _ReceiptWord:
                     KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
                     ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
                     ExpressionAttributeValues={":pk_val": {"S": f"IMAGE#{image_id}"},
-                        ":sk_val": {"S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#"},},
-                    ExclusiveStartKey=response["LastEvaluatedKey"],)
+                        ":sk_val": {"S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#"}, },
+                    ExclusiveStartKey=response["LastEvaluatedKey"], )
                 receipt_words.extend([itemToReceiptWord(item) for item in response["Items"]])
             return receipt_words
         except ClientError as e:

@@ -26,7 +26,7 @@ from receipt_dynamo import (GPTInitialTagging,
     itemToReceiptWord,
     itemToReceiptWordTag,
     itemToWord,
-    itemToWordTag,)
+    itemToWordTag, )
 from receipt_dynamo.entities import assert_valid_uuid
 from receipt_dynamo.entities.receipt_window import itemToReceiptWindow
 
@@ -115,7 +115,7 @@ class _Image:
         try:
             self._client.put_item(TableName=self.table_name,
                 Item=image.to_item(),
-                ConditionExpression="attribute_not_exists(PK)",)
+                ConditionExpression="attribute_not_exists(PK)", )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
@@ -200,7 +200,7 @@ class _Image:
         # Attempt to retrieve the image item from DynamoDB.
         try:
             response = self._client.get_item(TableName=self.table_name,
-                Key={"PK": {"S": f"IMAGE#{image_id}"}, "SK": {"S": "IMAGE"}},)
+                Key={"PK": {"S": f"IMAGE#{image_id}"}, "SK": {"S": "IMAGE"}}, )
             if "Item" not in response or not response["Item"]:
                 raise ValueError(f"Image with ID {image_id} not found")
             return itemToImage(response["Item"])
@@ -245,7 +245,7 @@ class _Image:
         try:
             self._client.put_item(TableName=self.table_name,
                 Item=image.to_item(),
-                ConditionExpression="attribute_exists(PK)",)
+                ConditionExpression="attribute_exists(PK)", )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
@@ -290,7 +290,7 @@ class _Image:
             for image in chunk:
                 transact_items.append({"Put": {"TableName": self.table_name,
                             "Item": image.to_item(),
-                            "ConditionExpression": "attribute_exists(PK)",}})
+                            "ConditionExpression": "attribute_exists(PK)", }})
             try:
                 self._client.transact_write_items(TransactItems=transact_items)
             except ClientError as e:
@@ -319,7 +319,7 @@ class _Image:
         list[ReceiptWordTag],
         list[ReceiptLetter],
         list[GPTInitialTagging],
-        list[GPTValidation],]:
+        list[GPTValidation], ]:
         """
         Retrieves detailed information about an Image from the database,
         including its lines, words, letters, and any associated receipts.
@@ -368,7 +368,7 @@ class _Image:
                 KeyConditionExpression="#pk = :pk_value",
                 ExpressionAttributeNames={"#pk": "PK"},
                 ExpressionAttributeValues={":pk_value": {"S": f"IMAGE#{image_id}"}},
-                ScanIndexForward=True,)
+                ScanIndexForward=True, )
             items = response["Items"]
 
             # Keep querying if there's a LastEvaluatedKey
@@ -376,9 +376,9 @@ class _Image:
                 response = self._client.query(TableName=self.table_name,
                     KeyConditionExpression="#pk = :pk_value",
                     ExpressionAttributeNames={"#pk": "PK"},
-                    ExpressionAttributeValues={":pk_value": {"S": f"IMAGE#{image_id}"},},
+                    ExpressionAttributeValues={":pk_value": {"S": f"IMAGE#{image_id}"}, },
                     ExclusiveStartKey=response["LastEvaluatedKey"],
-                    ScanIndexForward=True,)
+                    ScanIndexForward=True, )
                 items += response["Items"]
 
             for item in items:
@@ -421,7 +421,7 @@ class _Image:
                 receipt_word_tags,
                 receipt_letters,
                 gpt_initial_taggings,
-                gpt_validations,)
+                gpt_validations, )
 
         except Exception as e:
             raise Exception(f"Error getting image details: {e}")
@@ -447,7 +447,7 @@ class _Image:
         try:
             self._client.delete_item(TableName=self.table_name,
                 Key={"PK": {"S": f"IMAGE#{image_id}"}, "SK": {"S": "IMAGE"}},
-                ConditionExpression="attribute_exists(PK)",)
+                ConditionExpression="attribute_exists(PK)", )
         except ClientError as e:
             if (e.response["Error"]["Code"]
                 == "ConditionalCheckFailedException"):
@@ -485,8 +485,8 @@ class _Image:
 
     def listImageDetails(self,
         limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,) -> Tuple[Dict[int, Dict[str, Union[Image, List[Receipt], List[Line]]]],
-        Optional[Dict],]:
+        last_evaluated_key: Optional[Dict] = None, ) -> Tuple[Dict[int, Dict[str, Union[Image, List[Receipt], List[Line]]]],
+        Optional[Dict], ]:
         """
         Lists images and their basic associated details (lines, receipts) using a
         global secondary index where GSI1PK = 'IMAGE'. Supports optional pagination.
@@ -506,7 +506,7 @@ class _Image:
             1) A dictionary keyed by image_id, where each value is another dict with:
                {"image": Image,
                    "lines": List[Line],
-                   "receipts": List[Receipt],}
+                   "receipts": List[Receipt], }
             2) The LastEvaluatedKey dict if more items remain, otherwise None.
         """
         if limit is None and last_evaluated_key is None:
@@ -520,7 +520,7 @@ class _Image:
                         KeyConditionExpression="#pk = :pk_val",
                         ExpressionAttributeNames={"#pk": "GSI1PK"},
                         ExpressionAttributeValues={":pk_val": {"S": "IMAGE"}},
-                        ScanIndexForward=True,)
+                        ScanIndexForward=True, )
                 else:
                     if not response.get("LastEvaluatedKey"):
                         break
@@ -530,7 +530,7 @@ class _Image:
                         ExpressionAttributeNames={"#pk": "GSI1PK"},
                         ExpressionAttributeValues={":pk_val": {"S": "IMAGE"}},
                         ExclusiveStartKey=response["LastEvaluatedKey"],
-                        ScanIndexForward=True,)
+                        ScanIndexForward=True, )
 
                 all_items.extend(response["Items"])
                 if not response.get("LastEvaluatedKey"):
@@ -568,7 +568,7 @@ class _Image:
                 "KeyConditionExpression": "#pk = :pk_val",
                 "ExpressionAttributeNames": {"#pk": "GSI1PK"},
                 "ExpressionAttributeValues": {":pk_val": {"S": "IMAGE"}},
-                "ScanIndexForward": True,}
+                "ScanIndexForward": True, }
             # We ask for limit+1 so we can detect a leftover image
             if limit is not None:
                 query_params["Limit"] = limit + 1
@@ -595,7 +595,7 @@ class _Image:
                         included_image_ids.add(img.image_id)
                         images_found += 1
                         last_consumed_image_key = {**img.key(),
-                            **img.gsi1_key(),}
+                            **img.gsi1_key(), }
                     else:
                         # This is the (limit+1)-th image => leftover
                         leftover_img = itemToImage(item)
@@ -653,7 +653,7 @@ class _Image:
     def listImagesWordsTags(self,
         image_id: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict] = None,) -> Tuple[List[Image], List[WordTag], Optional[Dict]]:
+        lastEvaluatedKey: Optional[Dict] = None, ) -> Tuple[List[Image], List[WordTag], Optional[Dict]]:
         """
         Lists images and their associated words and tags from the database.
 
@@ -690,7 +690,7 @@ class _Image:
             query_params = {"TableName": self.table_name,
                 "IndexName": "GSI2",
                 "KeyConditionExpression": "GSI2PK = :val",
-                "ExpressionAttributeValues": {":val": {"S": f"IMAGE#{image_id}"}},}
+                "ExpressionAttributeValues": {":val": {"S": f"IMAGE#{image_id}"}}, }
 
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
@@ -715,7 +715,7 @@ class _Image:
 
     def listImages(self,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict] = None,) -> Tuple[List[Image], Optional[Dict]]:
+        lastEvaluatedKey: Optional[Dict] = None, ) -> Tuple[List[Image], Optional[Dict]]:
         """
         Lists images from the database via a global secondary index
         (named "GSITYPE" in this implementation) on the "TYPE" attribute.
@@ -749,7 +749,7 @@ class _Image:
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "IMAGE"}},}
+                "ExpressionAttributeValues": {":val": {"S": "IMAGE"}}, }
 
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey

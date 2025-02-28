@@ -16,11 +16,11 @@ def sample_gpt_initial_tagging():
         receipt_id=7,
         query="Is this the total amount?",
         response="Yes, it appears to be the total.",
-        timestamp_added=datetime(2021, 1, 1, 0, 0, 0),)
+        timestamp_added=datetime(2021, 1, 1, 0, 0, 0), )
 
 
 def test_add_and_get_gpt_initial_tagging(dynamodb_table: Literal["MyMockedTable"],
-    sample_gpt_initial_tagging: GPTInitialTagging,):
+    sample_gpt_initial_tagging: GPTInitialTagging, ):
     """
     Tests adding a GPTInitialTagging record and retrieving it.
     """
@@ -29,12 +29,12 @@ def test_add_and_get_gpt_initial_tagging(dynamodb_table: Literal["MyMockedTable"
     client.addGPTInitialTagging(sample_gpt_initial_tagging)
     # Retrieve it back using only image_id and receipt_id
     retrieved = client.getGPTInitialTagging(image_id=sample_gpt_initial_tagging.image_id,
-        receipt_id=sample_gpt_initial_tagging.receipt_id,)
+        receipt_id=sample_gpt_initial_tagging.receipt_id, )
     assert retrieved == sample_gpt_initial_tagging
 
 
 def test_update_gpt_initial_tagging(dynamodb_table: Literal["MyMockedTable"],
-    sample_gpt_initial_tagging: GPTInitialTagging,):
+    sample_gpt_initial_tagging: GPTInitialTagging, ):
     """
     Tests updating an existing GPTInitialTagging record.
     """
@@ -47,12 +47,12 @@ def test_update_gpt_initial_tagging(dynamodb_table: Literal["MyMockedTable"],
     client.updateGPTInitialTagging(sample_gpt_initial_tagging)
     # Retrieve the updated record and verify the change
     updated = client.getGPTInitialTagging(image_id=sample_gpt_initial_tagging.image_id,
-        receipt_id=sample_gpt_initial_tagging.receipt_id,)
+        receipt_id=sample_gpt_initial_tagging.receipt_id, )
     assert updated.response == "Updated response."
 
 
 def test_delete_gpt_initial_tagging(dynamodb_table: Literal["MyMockedTable"],
-    sample_gpt_initial_tagging: GPTInitialTagging,):
+    sample_gpt_initial_tagging: GPTInitialTagging, ):
     """
     Tests deleting a GPTInitialTagging record.
     """
@@ -63,10 +63,10 @@ def test_delete_gpt_initial_tagging(dynamodb_table: Literal["MyMockedTable"],
     # Attempting to retrieve it should raise a ValueError
     with pytest.raises(ValueError, match="GPTInitialTagging record not found"):
         client.getGPTInitialTagging(image_id=sample_gpt_initial_tagging.image_id,
-            receipt_id=sample_gpt_initial_tagging.receipt_id,)
+            receipt_id=sample_gpt_initial_tagging.receipt_id, )
 
 
-def test_batch_add_and_list_gpt_initial_tagging(dynamodb_table: Literal["MyMockedTable"],):
+def test_batch_add_and_list_gpt_initial_tagging(dynamodb_table: Literal["MyMockedTable"], ):
     """
     Tests adding multiple GPTInitialTagging records in batch and then listing them.
     """
@@ -79,7 +79,7 @@ def test_batch_add_and_list_gpt_initial_tagging(dynamodb_table: Literal["MyMocke
             receipt_id=7 + i,
             query=f"Query {i}",
             response=f"Response {i}",
-            timestamp_added=datetime(2021, 1, 1, 0, 0, 0),)
+            timestamp_added=datetime(2021, 1, 1, 0, 0, 0), )
         taggings.append(tagging)
     # Batch add the records
     client.addGPTInitialTaggings(taggings)
@@ -97,17 +97,17 @@ def test_batch_add_and_list_gpt_initial_tagging(dynamodb_table: Literal["MyMocke
     assert queries.issubset(listed_queries)
 
 
-def test_gpt_initial_tagging_get_nonexistent(dynamodb_table: Literal["MyMockedTable"],):
+def test_gpt_initial_tagging_get_nonexistent(dynamodb_table: Literal["MyMockedTable"], ):
     """
     Tests that attempting to get a non-existent record raises a ValueError.
     """
     with pytest.raises(ValueError, match="GPTInitialTagging record not found"):
         DynamoClient(dynamodb_table).getGPTInitialTagging(image_id="nonexistent-id",
-            receipt_id=1,)
+            receipt_id=1, )
 
 
 def test_update_nonexistent_gpt_initial_tagging(dynamodb_table: Literal["MyMockedTable"],
-    sample_gpt_initial_tagging: GPTInitialTagging,):
+    sample_gpt_initial_tagging: GPTInitialTagging, ):
     """
     Tests that attempting to update a non-existent record raises a ValueError.
     """
@@ -117,7 +117,7 @@ def test_update_nonexistent_gpt_initial_tagging(dynamodb_table: Literal["MyMocke
 
 
 def test_delete_nonexistent_gpt_initial_tagging(dynamodb_table: Literal["MyMockedTable"],
-    sample_gpt_initial_tagging: GPTInitialTagging,):
+    sample_gpt_initial_tagging: GPTInitialTagging, ):
     """
     Tests that attempting to delete a non-existent record raises a ValueError.
     """
@@ -166,7 +166,7 @@ def test_listGPTInitialTaggings_multiple_records(dynamodb_table):
             receipt_id=10 + i,
             timestamp_added=datetime(2021, 1, 1, 0, 0, 0),
             query=f"Query {i}",
-            response=f"Response {i}",)
+            response=f"Response {i}", )
         taggings_to_add.append(tagging)
         client.addGPTInitialTagging(tagging)
 

@@ -26,7 +26,7 @@ class JobDependency:
         dependency_job_id: str,
         type: str,
         created_at: datetime,
-        condition: Optional[str] = None,):
+        condition: Optional[str] = None, ):
         """Initializes a new JobDependency object for DynamoDB.
 
         Args:
@@ -71,7 +71,7 @@ class JobDependency:
             dict: The primary key for the job dependency.
         """
         return {"PK": {"S": f"JOB#{self.dependent_job_id}"},
-            "SK": {"S": f"DEPENDS_ON#{self.dependency_job_id}"},}
+            "SK": {"S": f"DEPENDS_ON#{self.dependency_job_id}"}, }
 
     def gsi1_key(self) -> dict:
         """Generates the GSI1 key for the job dependency.
@@ -80,7 +80,7 @@ class JobDependency:
             dict: The GSI1 key for the job dependency.
         """
         return {"GSI1PK": {"S": "DEPENDENCY"},
-            "GSI1SK": {"S": f"DEPENDENT#{self.dependent_job_id}#DEPENDENCY#{self.dependency_job_id}"},}
+            "GSI1SK": {"S": f"DEPENDENT#{self.dependent_job_id}#DEPENDENCY#{self.dependency_job_id}"}, }
 
     def gsi2_key(self) -> dict:
         """Generates the GSI2 key for the job dependency.
@@ -89,7 +89,7 @@ class JobDependency:
             dict: The GSI2 key for the job dependency.
         """
         return {"GSI2PK": {"S": "DEPENDENCY"},
-            "GSI2SK": {"S": f"DEPENDED_BY#{self.dependency_job_id}#DEPENDENT#{self.dependent_job_id}"},}
+            "GSI2SK": {"S": f"DEPENDED_BY#{self.dependency_job_id}#DEPENDENT#{self.dependent_job_id}"}, }
 
     def to_item(self) -> dict:
         """Converts the JobDependency object to a DynamoDB item.
@@ -104,7 +104,7 @@ class JobDependency:
             "dependent_job_id": {"S": self.dependent_job_id},
             "dependency_job_id": {"S": self.dependency_job_id},
             "type": {"S": self.type},
-            "created_at": {"S": self.created_at},}
+            "created_at": {"S": self.created_at}, }
 
         if self.condition is not None:
             item["condition"] = {"S": self.condition}
@@ -167,7 +167,7 @@ class JobDependency:
                 self.dependency_job_id,
                 self.type,
                 self.created_at,
-                self.condition,))
+                self.condition, ))
 
 
 def itemToJobDependency(item: dict) -> JobDependency:
@@ -188,7 +188,7 @@ def itemToJobDependency(item: dict) -> JobDependency:
         "dependent_job_id",
         "dependency_job_id",
         "type",
-        "created_at",}
+        "created_at", }
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
@@ -208,6 +208,6 @@ def itemToJobDependency(item: dict) -> JobDependency:
             dependency_job_id=dependency_job_id,
             type=type,
             created_at=created_at,
-            condition=condition,)
+            condition=condition, )
     except KeyError as e:
         raise ValueError(f"Error converting item to JobDependency: {e}")

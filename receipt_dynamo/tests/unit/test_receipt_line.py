@@ -6,7 +6,7 @@ from receipt_dynamo import ReceiptLine, itemToReceiptLine
 @pytest.fixture
 def example_receipt_line():
     # fmt: off
-    return ReceiptLine(receipt_id=1, image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=10, text="Line text", bounding_box={"x": 0.1, "y": 0.2, "width": 0.5, "height": 0.2}, top_left={"x": 0.1, "y": 0.2}, top_right={"x": 0.6, "y": 0.2}, bottom_left={"x": 0.1, "y": 0.4}, bottom_right={"x": 0.6, "y": 0.4}, angle_degrees=0.0, angle_radians=0.0, confidence=0.95,)
+    return ReceiptLine(receipt_id=1, image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=10, text="Line text", bounding_box={"x": 0.1, "y": 0.2, "width": 0.5, "height": 0.2}, top_left={"x": 0.1, "y": 0.2}, top_right={"x": 0.6, "y": 0.2}, bottom_left={"x": 0.1, "y": 0.4}, bottom_right={"x": 0.6, "y": 0.4}, angle_degrees=0.0, angle_radians=0.0, confidence=0.95, )
     # fmt: on
 
 
@@ -19,7 +19,7 @@ def test_receipt_line_init_valid(example_receipt_line):
     assert example_receipt_line.bounding_box == {"x": 0.1,
         "y": 0.2,
         "width": 0.5,
-        "height": 0.2,}
+        "height": 0.2, }
     assert example_receipt_line.top_left == {"x": 0.1, "y": 0.2}
     assert example_receipt_line.top_right == {"x": 0.6, "y": 0.2}
     assert example_receipt_line.bottom_left == {"x": 0.1, "y": 0.4}
@@ -43,7 +43,7 @@ def test_receipt_line_init_invalid_receipt_id():
             bottom_right={"x": 0.6, "y": 0.4},
             angle_degrees=0.0,
             angle_radians=0.0,
-            confidence=0.95,)
+            confidence=0.95, )
     with pytest.raises(ValueError, match="^receipt_id must be positive"):
         ReceiptLine(receipt_id=-1,  # invalid
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -56,7 +56,7 @@ def test_receipt_line_init_invalid_receipt_id():
             bottom_right={"x": 0.6, "y": 0.4},
             angle_degrees=0.0,
             angle_radians=0.0,
-            confidence=0.95,)
+            confidence=0.95, )
 
 
 @pytest.mark.unit
@@ -73,7 +73,7 @@ def test_receipt_line_init_invalid_image_id():
             bottom_right={"x": 0.6, "y": 0.4},
             angle_degrees=0.0,
             angle_radians=0.0,
-            confidence=0.95,)
+            confidence=0.95, )
     with pytest.raises(ValueError, match="uuid must be a valid UUID"):
         ReceiptLine(receipt_id=1,
             image_id="invalid",  # invalid
@@ -86,7 +86,7 @@ def test_receipt_line_init_invalid_image_id():
             bottom_right={"x": 0.6, "y": 0.4},
             angle_degrees=0.0,
             angle_radians=0.0,
-            confidence=0.95,)
+            confidence=0.95, )
 
 
 @pytest.mark.unit
@@ -103,7 +103,7 @@ def test_receipt_line_init_invalid_id():
             bottom_right={"x": 0.6, "y": 0.4},
             angle_degrees=0.0,
             angle_radians=0.0,
-            confidence=0.95,)
+            confidence=0.95, )
     with pytest.raises(ValueError, match="^id must be positive"):
         ReceiptLine(receipt_id=1,  # invalid
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -116,7 +116,7 @@ def test_receipt_line_init_invalid_id():
             bottom_right={"x": 0.6, "y": 0.4},
             angle_degrees=0.0,
             angle_radians=0.0,
-            confidence=0.95,)
+            confidence=0.95, )
 
 
 @pytest.mark.unit
@@ -133,7 +133,7 @@ def test_receipt_line_init_invalid_text():
             bottom_right={"x": 0.6, "y": 0.4},
             angle_degrees=0.0,
             angle_radians=0.0,
-            confidence=0.95,)
+            confidence=0.95, )
 
 
 @pytest.mark.unit
@@ -150,7 +150,7 @@ def test_receipt_line_init_invalid_angles():
             bottom_right={"x": 0.6, "y": 0.4},
             angle_degrees="0.0",  # invalid
             angle_radians=0.0,
-            confidence=0.95,)
+            confidence=0.95, )
     with pytest.raises(ValueError, match="angle_radians must be a float or int"):
         ReceiptLine(receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -163,7 +163,7 @@ def test_receipt_line_init_invalid_angles():
             bottom_right={"x": 0.6, "y": 0.4},
             angle_degrees=0.0,
             angle_radians="0.0",  # invalid
-            confidence=0.95,)
+            confidence=0.95, )
 
 
 @pytest.mark.unit
@@ -180,7 +180,7 @@ def test_receipt_line_init_invalid_confidence():
             bottom_right={"x": 0.6, "y": 0.4},
             angle_degrees=0.0,
             angle_radians=0.0,
-            confidence="0.95",  # invalid)
+            confidence="0.95")
     receipt = ReceiptLine(receipt_id=1,
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=1,
@@ -192,7 +192,7 @@ def test_receipt_line_init_invalid_confidence():
         bottom_right={"x": 0.6, "y": 0.4},
         angle_degrees=0.0,
         angle_radians=0.0,
-        confidence=1,)
+        confidence=1, )
     assert receipt.confidence == 1.0
     with pytest.raises(ValueError, match="confidence must be between 0 and 1"):
         ReceiptLine(receipt_id=1,
@@ -206,7 +206,7 @@ def test_receipt_line_init_invalid_confidence():
             bottom_right={"x": 0.6, "y": 0.4},
             angle_degrees=0.0,
             angle_radians=0.0,
-            confidence=-0.95,  # invalid)
+            confidence=-0.95)
     with pytest.raises(ValueError, match="confidence must be between 0 and 1"):
         ReceiptLine(receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -219,7 +219,7 @@ def test_receipt_line_init_invalid_confidence():
             bottom_right={"x": 0.6, "y": 0.4},
             angle_degrees=0.0,
             angle_radians=0.0,
-            confidence=1.1,  # invalid)
+            confidence=1.1)
 
 
 @pytest.mark.unit
@@ -232,15 +232,15 @@ def test_receipt_line_to_item(example_receipt_line):
     assert item["bounding_box"] == {"M": {"height": {"N": "0.20000000000000000000"},
             "width": {"N": "0.50000000000000000000"},
             "x": {"N": "0.10000000000000000000"},
-            "y": {"N": "0.20000000000000000000"},}}
+            "y": {"N": "0.20000000000000000000"}, }}
     assert item["top_right"] == {"M": {"x": {"N": "0.60000000000000000000"},
-            "y": {"N": "0.20000000000000000000"},}}
+            "y": {"N": "0.20000000000000000000"}, }}
     assert item["top_left"] == {"M": {"x": {"N": "0.10000000000000000000"},
-            "y": {"N": "0.20000000000000000000"},}}
+            "y": {"N": "0.20000000000000000000"}, }}
     assert item["bottom_right"] == {"M": {"x": {"N": "0.60000000000000000000"},
-            "y": {"N": "0.40000000000000000000"},}}
+            "y": {"N": "0.40000000000000000000"}, }}
     assert item["bottom_left"] == {"M": {"x": {"N": "0.10000000000000000000"},
-            "y": {"N": "0.40000000000000000000"},}}
+            "y": {"N": "0.40000000000000000000"}, }}
     assert item["angle_degrees"] == {"N": "0.000000000000000000"}
     assert item["angle_radians"] == {"N": "0.000000000000000000"}
     assert item["confidence"] == {"N": "0.95"}
@@ -261,7 +261,7 @@ def test_receipt_line_eq():
         bottom_right={"x": 0.6, "y": 0.4},
         angle_degrees=10.0,
         angle_radians=0.174533,
-        confidence=0.90,)
+        confidence=0.90, )
     line2 = ReceiptLine(receipt_id=1,
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=3,
@@ -273,7 +273,7 @@ def test_receipt_line_eq():
         bottom_right={"x": 0.6, "y": 0.4},
         angle_degrees=10.0,
         angle_radians=0.174533,
-        confidence=0.90,)
+        confidence=0.90, )
     assert line1 == line2
     assert line1 != "line1"
 
@@ -312,7 +312,7 @@ def test_receipt_line_iter(example_receipt_line):
         "angle_radians",
         "confidence",
         "histogram",
-        "num_chars",}
+        "num_chars", }
     assert set(receipt_line_dict.keys()) == expected_keys
     assert receipt_line_dict["receipt_id"] == 1
     assert (receipt_line_dict["image_id"] == "3f52804b-2fad-4e00-92c8-b593da3a8ed3")
@@ -321,7 +321,7 @@ def test_receipt_line_iter(example_receipt_line):
     assert receipt_line_dict["bounding_box"] == {"x": 0.1,
         "y": 0.2,
         "width": 0.5,
-        "height": 0.2,}
+        "height": 0.2, }
     assert receipt_line_dict["top_left"] == {"x": 0.1, "y": 0.2}
     assert receipt_line_dict["top_right"] == {"x": 0.6, "y": 0.2}
     assert receipt_line_dict["bottom_left"] == {"x": 0.1, "y": 0.4}
@@ -350,17 +350,17 @@ def test_item_to_receipt_line(example_receipt_line):
                 "bounding_box": {"M": {"height": {"N": "0.200000000000000000"},
                         "width": {"N": "0.500000000000000000"},
                         "x": {"N": "0.100000000000000000"},
-                        "y": {"N": "0.200000000000000000"},}},
+                        "y": {"N": "0.200000000000000000"}, }},
                 "top_right": {"M": {"x": {"N": "0.600000000000000000"},
-                        "y": {"N": "0.200000000000000000"},}},
+                        "y": {"N": "0.200000000000000000"}, }},
                 "top_left": {"M": {"x": {"N": "0.100000000000000000"},
-                        "y": {"N": "0.200000000000000000"},}},
+                        "y": {"N": "0.200000000000000000"}, }},
                 "bottom_right": {"M": {"x": {"N": "0.600000000000000000"},
-                        "y": {"N": "0.400000000000000000"},}},
+                        "y": {"N": "0.400000000000000000"}, }},
                 "bottom_left": {"M": {"x": {"N": "0.100000000000000000"},
-                        "y": {"N": "0.400000000000000000"},}},
+                        "y": {"N": "0.400000000000000000"}, }},
                 "angle_degrees": {"N": "0.0000000000"},
                 "angle_radians": {"N": "0.0000000000"},
                 "confidence": {"N": "0.95"},
                 "histogram": {"M": {}},
-                "num_chars": {"N": "0"},})
+                "num_chars": {"N": "0"}, })

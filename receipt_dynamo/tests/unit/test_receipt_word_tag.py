@@ -1,14 +1,14 @@
 import pytest
 
 from receipt_dynamo.entities.receipt_word_tag import (ReceiptWordTag,
-    itemToReceiptWordTag,)
+    itemToReceiptWordTag, )
 
 
 @pytest.fixture
 def example_receipt_word_tag():
     """Provides a sample ReceiptWordTag for testing."""
     # fmt: off
-    return ReceiptWordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", receipt_id=45, line_id=6, word_id=789, tag="food", timestamp_added="2021-01-01T00:00:00",)
+    return ReceiptWordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", receipt_id=45, line_id=6, word_id=789, tag="food", timestamp_added="2021-01-01T00:00:00", )
     # fmt: on
 
 
@@ -41,14 +41,14 @@ def test_receipt_word_tag_init_invalid_receipt_id():
             3,
             4,
             "tag",
-            timestamp_added="2021-01-01T00:00:00",)
+            timestamp_added="2021-01-01T00:00:00", )
     with pytest.raises(ValueError, match="receipt_id must be positive"):
         ReceiptWordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             -1,
             3,
             4,
             "tag",
-            timestamp_added="2021-01-01T00:00:00",)
+            timestamp_added="2021-01-01T00:00:00", )
 
 
 @pytest.mark.unit
@@ -60,14 +60,14 @@ def test_receipt_word_tag_init_invalid_line_id():
             "bad",
             4,
             "tag",
-            timestamp_added="2021-01-01T00:00",)
+            timestamp_added="2021-01-01T00:00", )
     with pytest.raises(ValueError, match="line_id must be positive"):
         ReceiptWordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             2,
             -3,
             4,
             "tag",
-            timestamp_added="2021-01-01T00:00",)
+            timestamp_added="2021-01-01T00:00", )
 
 
 @pytest.mark.unit
@@ -79,14 +79,14 @@ def test_receipt_word_tag_init_invalid_word_id():
             3,
             "bad",
             "tag",
-            timestamp_added="2021-01-01T00:00",)
+            timestamp_added="2021-01-01T00:00", )
     with pytest.raises(ValueError, match="word_id must be positive"):
         ReceiptWordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             2,
             3,
             -4,
             "tag",
-            timestamp_added="2021-01-01T00:00",)
+            timestamp_added="2021-01-01T00:00", )
 
 
 @pytest.mark.unit
@@ -98,14 +98,14 @@ def test_receipt_word_tag_init_invalid_tag():
             3,
             4,
             "",
-            "2021-01-01T00:00:00",)
+            "2021-01-01T00:00:00", )
     with pytest.raises(ValueError, match="tag must be a string"):
         ReceiptWordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             2,
             3,
             4,
             123,
-            "2021-01-01T00:00:00",)
+            "2021-01-01T00:00:00", )
     with pytest.raises(ValueError, match="tag must not exceed 40 characters"):
         long_tag = "A" * 41
         ReceiptWordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -113,21 +113,21 @@ def test_receipt_word_tag_init_invalid_tag():
             3,
             4,
             long_tag,
-            "2021-01-01T00:00:00",)
+            "2021-01-01T00:00:00", )
     with pytest.raises(ValueError, match="tag must not start with an underscore"):
         ReceiptWordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             2,
             3,
             4,
             "_bad",
-            "2021-01-01T00:00:00",)
+            "2021-01-01T00:00:00", )
 
 
 @pytest.mark.unit
 def test_receipt_word_tag_init_invalid_timestamp_added():
     """Test constructor raises ValueError if timestamp_added is not a datetime or string."""
     with pytest.raises(ValueError,
-        match="timestamp_added must be a datetime object or a string",):
+        match="timestamp_added must be a datetime object or a string", ):
         ReceiptWordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, 4, "tag", 123)
 
 
@@ -138,13 +138,13 @@ def test_receipt_word_tag_eq():
       - Two ReceiptWordTags are equal if (image_id, receipt_id, line_id, word_id, tag) match.
     """
     # fmt: off
-    rwt1 = ReceiptWordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 20, 30, 40, "TAG", timestamp_added="2021-01-01T00:00:00",)
-    rwt2 = ReceiptWordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 20, 30, 40, "TAG", timestamp_added="2021-01-01T00:00:00",)
-    rwt3 = ReceiptWordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 21, 30, 40, "TAG", timestamp_added="2021-01-01T00:00:00",)  # different receipt_id
-    rwt4 = ReceiptWordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 20, 31, 40, "TAG", timestamp_added="2021-01-01T00:00:00",)  # different line_id
-    rwt5 = ReceiptWordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 20, 30, 41, "TAG", timestamp_added="2021-01-01T00:00:00",)  # different word_id
-    rwt6 = ReceiptWordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 20, 30, 40, "TAg", timestamp_added="2022-01-01T00:00:00",)  # different tag
-    rwt7 = ReceiptWordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 20, 30, 40, "TAG", timestamp_added="2022-01-01T00:00:00",)  # different timestamp
+    rwt1 = ReceiptWordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 20, 30, 40, "TAG", timestamp_added="2021-01-01T00:00:00", )
+    rwt2 = ReceiptWordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 20, 30, 40, "TAG", timestamp_added="2021-01-01T00:00:00", )
+    rwt3 = ReceiptWordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 21, 30, 40, "TAG", timestamp_added="2021-01-01T00:00:00", )  # different receipt_id
+    rwt4 = ReceiptWordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 20, 31, 40, "TAG", timestamp_added="2021-01-01T00:00:00", )  # different line_id
+    rwt5 = ReceiptWordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 20, 30, 41, "TAG", timestamp_added="2021-01-01T00:00:00", )  # different word_id
+    rwt6 = ReceiptWordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 20, 30, 40, "TAg", timestamp_added="2022-01-01T00:00:00", )  # different tag
+    rwt7 = ReceiptWordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 20, 30, 40, "TAG", timestamp_added="2022-01-01T00:00:00", )  # different timestamp
     # fmt: on
 
     assert rwt1 == rwt2
@@ -261,7 +261,7 @@ def test_item_to_receipt_word_tag():
         "TYPE": {"S": "RECEIPT_WORD_TAG"},
         "tag_name": {"S": "food"},
         "timestamp_added": {"S": "2021-01-01T00:00:00"},
-        "validated": {"BOOL": True},}
+        "validated": {"BOOL": True}, }
 
     obj = itemToReceiptWordTag(raw_item)
     assert obj.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
@@ -281,7 +281,7 @@ def test_item_to_receipt_word_tag_missing_keys():
     bad_item = {# "PK" is missing
         "SK": {"S": "TAG#FOO#RECEIPT#00001#WORD#00010"},
         "GSI1SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001#LINE#00002#WORD#00010"},
-        "TYPE": {"S": "RECEIPT_WORD_TAG"},}
+        "TYPE": {"S": "RECEIPT_WORD_TAG"}, }
     with pytest.raises(ValueError, match="^Item is missing required keys:"):
         itemToReceiptWordTag(bad_item)
 
@@ -299,6 +299,6 @@ def test_item_to_receipt_word_tag_invalid_format():
         "TYPE": {"S": "RECEIPT_WORD_TAG"},
         "tag_name": {"S": "food"},
         "timestamp_added": {"N": "2021-01-01T00:00:00"},
-        "validated": {"BOOL": True},}
+        "validated": {"BOOL": True}, }
     with pytest.raises(ValueError, match="Error converting item to ReceiptWordTag"):
         itemToReceiptWordTag(bad_item)

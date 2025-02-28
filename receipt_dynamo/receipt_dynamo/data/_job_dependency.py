@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, Tuple
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.entities.job_dependency import (JobDependency,
-    itemToJobDependency,)
+    itemToJobDependency, )
 
 
 class _JobDependency:
@@ -31,7 +31,7 @@ class _JobDependency:
         try:
             self._client.put_item(TableName=self.table_name,
                 Item=job_dependency.to_item(),
-                ConditionExpression="attribute_not_exists(PK) AND attribute_not_exists(SK)",)
+                ConditionExpression="attribute_not_exists(PK) AND attribute_not_exists(SK)", )
         except ClientError as e:
             if (e.response["Error"]["Code"]
                 == "ConditionalCheckFailedException"):
@@ -59,7 +59,7 @@ class _JobDependency:
 
         response = self._client.get_item(TableName=self.table_name,
             Key={"PK": {"S": f"JOB#{dependent_job_id}"},
-                "SK": {"S": f"DEPENDS_ON#{dependency_job_id}"},},)
+                "SK": {"S": f"DEPENDS_ON#{dependency_job_id}"}, }, )
 
         item = response.get("Item")
         if not item:
@@ -70,7 +70,7 @@ class _JobDependency:
     def listDependencies(self,
         dependent_job_id: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict] = None,) -> Tuple[List[JobDependency], Optional[Dict]]:
+        lastEvaluatedKey: Optional[Dict] = None, ) -> Tuple[List[JobDependency], Optional[Dict]]:
         """Lists all dependencies for a specific job.
 
         Args:
@@ -92,12 +92,12 @@ class _JobDependency:
         # Prepare KeyConditionExpression
         key_condition_expression = "PK = :pk AND begins_with(SK, :sk_prefix)"
         expression_attribute_values = {":pk": {"S": f"JOB#{dependent_job_id}"},
-            ":sk_prefix": {"S": "DEPENDS_ON#"},}
+            ":sk_prefix": {"S": "DEPENDS_ON#"}, }
 
         # Prepare query parameters
         query_params = {"TableName": self.table_name,
             "KeyConditionExpression": key_condition_expression,
-            "ExpressionAttributeValues": expression_attribute_values,}
+            "ExpressionAttributeValues": expression_attribute_values, }
 
         if limit is not None:
             query_params["Limit"] = limit
@@ -117,7 +117,7 @@ class _JobDependency:
     def listDependents(self,
         dependency_job_id: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict] = None,) -> Tuple[List[JobDependency], Optional[Dict]]:
+        lastEvaluatedKey: Optional[Dict] = None, ) -> Tuple[List[JobDependency], Optional[Dict]]:
         """Lists all jobs that depend on a specific job.
 
         Args:
@@ -140,13 +140,13 @@ class _JobDependency:
         index_name = "GSI2"
         key_condition_expression = ("GSI2PK = :pk AND begins_with(GSI2SK, :sk_prefix)")
         expression_attribute_values = {":pk": {"S": "DEPENDENCY"},
-            ":sk_prefix": {"S": f"DEPENDED_BY#{dependency_job_id}#DEPENDENT#"},}
+            ":sk_prefix": {"S": f"DEPENDED_BY#{dependency_job_id}#DEPENDENT#"}, }
 
         # Prepare query parameters
         query_params = {"TableName": self.table_name,
             "IndexName": index_name,
             "KeyConditionExpression": key_condition_expression,
-            "ExpressionAttributeValues": expression_attribute_values,}
+            "ExpressionAttributeValues": expression_attribute_values, }
 
         if limit is not None:
             query_params["Limit"] = limit
@@ -181,8 +181,8 @@ class _JobDependency:
         try:
             self._client.delete_item(TableName=self.table_name,
                 Key={"PK": {"S": f"JOB#{job_dependency.dependent_job_id}"},
-                    "SK": {"S": f"DEPENDS_ON#{job_dependency.dependency_job_id}"},},
-                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",)
+                    "SK": {"S": f"DEPENDS_ON#{job_dependency.dependency_job_id}"}, },
+                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)", )
         except ClientError as e:
             if (e.response["Error"]["Code"]
                 == "ConditionalCheckFailedException"):
@@ -215,7 +215,7 @@ class _JobDependency:
             batch = dependencies[i : i + batch_size]
 
             request_items = {self.table_name: [{"DeleteRequest": {"Key": {"PK": {"S": f"JOB#{dep.dependent_job_id}"},
-                                "SK": {"S": f"DEPENDS_ON#{dep.dependency_job_id}"},}}}
+                                "SK": {"S": f"DEPENDS_ON#{dep.dependency_job_id}"}, }}}
                     for dep in batch]}
 
             response = self._client.batch_write_item(RequestItems=request_items)
@@ -232,5 +232,5 @@ class _JobDependency:
 
             if unprocessed_items:
                 raise ClientError({"Error": {"Code": "ProvisionedThroughputExceededException",
-                            "Message": f"Could not process all items after {max_retries} retries",}},
-                    "BatchWriteItem",)
+                            "Message": f"Could not process all items after {max_retries} retries", }},
+                    "BatchWriteItem", )

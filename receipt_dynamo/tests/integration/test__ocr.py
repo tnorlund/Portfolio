@@ -19,15 +19,15 @@ def mock_ocr_json():
                 "bounding_box": {"width": 0.13322906897812287,
                     "y": 0.7911256041373611,
                     "x": 0.43150158271227484,
-                    "height": 0.017722232001168403,},
+                    "height": 0.017722232001168403, },
                 "top_right": {"x": 0.5647306516903977,
-                    "y": 0.7911256041373611,},
+                    "y": 0.7911256041373611, },
                 "top_left": {"x": 0.43150158271227484,
-                    "y": 0.7911256041373611,},
+                    "y": 0.7911256041373611, },
                 "bottom_right": {"x": 0.5647306516903977,
-                    "y": 0.8088478361385295,},
+                    "y": 0.8088478361385295, },
                 "bottom_left": {"x": 0.43150158271227484,
-                    "y": 0.8088478361385295,},
+                    "y": 0.8088478361385295, },
                 "angle_degrees": 0,
                 "angle_radians": 0.0,
                 "confidence": 1.0,
@@ -35,15 +35,15 @@ def mock_ocr_json():
                         "bounding_box": {"width": 0.05329162759124915,
                             "y": 0.7911256041373611,
                             "x": 0.43150158271227484,
-                            "height": 0.017722232001168403,},
+                            "height": 0.017722232001168403, },
                         "top_right": {"x": 0.48479321030352399,
-                            "y": 0.7911256041373611,},
+                            "y": 0.7911256041373611, },
                         "top_left": {"x": 0.43150158271227484,
-                            "y": 0.7911256041373611,},
+                            "y": 0.7911256041373611, },
                         "bottom_right": {"x": 0.48479321030352399,
-                            "y": 0.8088478361385295,},
+                            "y": 0.8088478361385295, },
                         "bottom_left": {"x": 0.43150158271227484,
-                            "y": 0.8088478361385295,},
+                            "y": 0.8088478361385295, },
                         "angle_degrees": 0,
                         "angle_radians": 0.0,
                         "confidence": 1.0,
@@ -51,18 +51,18 @@ def mock_ocr_json():
                                 "bounding_box": {"width": 0.013322906897812287,
                                     "y": 0.7911256041373611,
                                     "x": 0.43150158271227484,
-                                    "height": 0.017722232001168403,},
+                                    "height": 0.017722232001168403, },
                                 "top_right": {"x": 0.4448244896100871,
-                                    "y": 0.7911256041373611,},
+                                    "y": 0.7911256041373611, },
                                 "top_left": {"x": 0.43150158271227484,
-                                    "y": 0.7911256041373611,},
+                                    "y": 0.7911256041373611, },
                                 "bottom_right": {"x": 0.4448244896100871,
-                                    "y": 0.8088478361385295,},
+                                    "y": 0.8088478361385295, },
                                 "bottom_left": {"x": 0.43150158271227484,
-                                    "y": 0.8088478361385295,},
+                                    "y": 0.8088478361385295, },
                                 "angle_degrees": 0,
                                 "angle_radians": 0.0,
-                                "confidence": 1.0,},],}],}]}
+                                "confidence": 1.0, }, ], }], }]}
 
 
 @pytest.mark.integration
@@ -150,7 +150,7 @@ def test_apple_vision_ocr_subprocess_error(mocker):
     # Make subprocess.run raise CalledProcessError
     mocker.patch.object(subprocess,
         "run",
-        side_effect=subprocess.CalledProcessError(1, "cmd"),)
+        side_effect=subprocess.CalledProcessError(1, "cmd"), )
 
     result = apple_vision_ocr(["some_image_path.png"])
     assert (result is False), "Should return False when subprocess raises an error."

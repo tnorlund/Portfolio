@@ -25,14 +25,14 @@ def test_dbscan_lines_clusters():
             bounding_box={"x": cx - half_size,
                 "y": cy - half_size,
                 "width": 2,
-                "height": 2,},
+                "height": 2, },
             top_right={"x": cx + half_size, "y": cy + half_size},
             top_left={"x": cx - half_size, "y": cy + half_size},
             bottom_right={"x": cx + half_size, "y": cy - half_size},
             bottom_left={"x": cx - half_size, "y": cy - half_size},
             angle_degrees=0.0,
             angle_radians=0.0,
-            confidence=1.0,)
+            confidence=1.0, )
 
     # Create lines in two obvious clusters + 1 noise line
     # Cluster A around (10, 10)
