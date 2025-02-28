@@ -25,8 +25,7 @@ class JobCheckpoint:
         is_best (bool): Whether this is the best checkpoint for the job so far.
     """
 
-    def __init__(
-        self,
+    def __init__(self,
         job_id: str,
         timestamp: str,
         s3_bucket: str,
@@ -37,8 +36,7 @@ class JobCheckpoint:
         model_state: bool = True,
         optimizer_state: bool = True,
         metrics: Optional[Dict[str, Any]] = None,
-        is_best: bool = False,
-    ):
+        is_best: bool = False,):
         """Initializes a new JobCheckpoint object for DynamoDB.
 
         Args:
@@ -106,10 +104,8 @@ class JobCheckpoint:
         Returns:
             dict: The primary key for the job checkpoint.
         """
-        return {
-            "PK": {"S": f"JOB#{self.job_id}"},
-            "SK": {"S": f"CHECKPOINT#{self.timestamp}"},
-        }
+        return {"PK": {"S": f"JOB#{self.job_id}"},
+            "SK": {"S": f"CHECKPOINT#{self.timestamp}"},}
 
     def gsi1_key(self) -> dict:
         """Generates the GSI1 key for the job checkpoint.
@@ -117,10 +113,8 @@ class JobCheckpoint:
         Returns:
             dict: The GSI1 key for the job checkpoint.
         """
-        return {
-            "GSI1PK": {"S": "CHECKPOINT"},
-            "GSI1SK": {"S": f"JOB#{self.job_id}#{self.timestamp}"},
-        }
+        return {"GSI1PK": {"S": "CHECKPOINT"},
+            "GSI1SK": {"S": f"JOB#{self.job_id}#{self.timestamp}"},}
 
     def to_item(self) -> dict:
         """Converts the JobCheckpoint object to a DynamoDB item.
@@ -128,8 +122,7 @@ class JobCheckpoint:
         Returns:
             dict: A dictionary representing the JobCheckpoint object as a DynamoDB item.
         """
-        item = {
-            **self.key(),
+        item = {**self.key(),
             **self.gsi1_key(),
             "TYPE": {"S": "JOB_CHECKPOINT"},
             "job_id": {"S": self.job_id},
@@ -141,8 +134,7 @@ class JobCheckpoint:
             "epoch": {"N": str(self.epoch)},
             "model_state": {"BOOL": self.model_state},
             "optimizer_state": {"BOOL": self.optimizer_state},
-            "is_best": {"BOOL": self.is_best},
-        }
+            "is_best": {"BOOL": self.is_best},}
 
         if self.metrics:
             item["metrics"] = {"M": self._dict_to_dynamodb_map(self.metrics)}
@@ -163,9 +155,7 @@ class JobCheckpoint:
             if isinstance(v, dict):
                 result[k] = {"M": self._dict_to_dynamodb_map(v)}
             elif isinstance(v, list):
-                result[k] = {
-                    "L": [self._to_dynamodb_value(item) for item in v]
-                }
+                result[k] = {"L": [self._to_dynamodb_value(item) for item in v]}
             elif isinstance(v, bool):
                 result[k] = {"BOOL": v}
             elif isinstance(v, (int, float)):
@@ -208,8 +198,7 @@ class JobCheckpoint:
         Returns:
             str: A string representation of the JobCheckpoint object.
         """
-        return (
-            "JobCheckpoint("
+        return ("JobCheckpoint("
             f"job_id={_repr_str(self.job_id)}, "
             f"timestamp={_repr_str(self.timestamp)}, "
             f"s3_bucket={_repr_str(self.s3_bucket)}, "
@@ -221,8 +210,7 @@ class JobCheckpoint:
             f"optimizer_state={self.optimizer_state}, "
             f"is_best={self.is_best}, "
             f"metrics={self.metrics}"
-            ")"
-        )
+            ")")
 
     def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
         """Returns an iterator over the JobCheckpoint object's attributes.
@@ -253,8 +241,7 @@ class JobCheckpoint:
         """
         if not isinstance(other, JobCheckpoint):
             return False
-        return (
-            self.job_id == other.job_id
+        return (self.job_id == other.job_id
             and self.timestamp == other.timestamp
             and self.s3_bucket == other.s3_bucket
             and self.s3_key == other.s3_key
@@ -264,8 +251,7 @@ class JobCheckpoint:
             and self.model_state == other.model_state
             and self.optimizer_state == other.optimizer_state
             and self.metrics == other.metrics
-            and self.is_best == other.is_best
-        )
+            and self.is_best == other.is_best)
 
     def __hash__(self) -> int:
         """Returns the hash value of the JobCheckpoint object.
@@ -273,9 +259,7 @@ class JobCheckpoint:
         Returns:
             int: The hash value of the JobCheckpoint object.
         """
-        return hash(
-            (
-                self.job_id,
+        return hash((self.job_id,
                 self.timestamp,
                 self.s3_bucket,
                 self.s3_key,
@@ -285,9 +269,7 @@ class JobCheckpoint:
                 self.model_state,
                 self.optimizer_state,
                 # Can't hash dict, so we don't include metrics
-                self.is_best,
-            )
-        )
+                self.is_best,))
 
 
 def _parse_dynamodb_map(m: Dict) -> Dict:
@@ -369,8 +351,7 @@ def itemToJobCheckpoint(item: dict) -> JobCheckpoint:
         step = int(item["step"]["N"])
         epoch = int(item["epoch"]["N"])
 
-        return JobCheckpoint(
-            job_id=item["job_id"]["S"],
+        return JobCheckpoint(job_id=item["job_id"]["S"],
             timestamp=item["timestamp"]["S"],
             s3_bucket=item["s3_bucket"]["S"],
             s3_key=item["s3_key"]["S"],
@@ -380,7 +361,6 @@ def itemToJobCheckpoint(item: dict) -> JobCheckpoint:
             model_state=item["model_state"]["BOOL"],
             optimizer_state=item["optimizer_state"]["BOOL"],
             metrics=metrics,
-            is_best=item["is_best"]["BOOL"],
-        )
+            is_best=item["is_best"]["BOOL"],)
     except (KeyError, ValueError) as e:
         raise ValueError(f"Error converting item to JobCheckpoint: {e}") from e

@@ -30,11 +30,9 @@ class _Word:
             ValueError: When a word with the same ID already
         """
         try:
-            self._client.put_item(
-                TableName=self.table_name,
+            self._client.put_item(TableName=self.table_name,
                 Item=word.to_item(),
-                ConditionExpression="attribute_not_exists(PK)",
-            )
+                ConditionExpression="attribute_not_exists(PK)",)
         except ClientError:
             raise ValueError(f"Word with ID {word.word_id} already exists")
 
@@ -50,19 +48,13 @@ class _Word:
         try:
             for i in range(0, len(words), CHUNK_SIZE):
                 chunk = words[i : i + CHUNK_SIZE]
-                request_items = [
-                    {"PutRequest": {"Item": word.to_item()}} for word in chunk
-                ]
-                response = self._client.batch_write_item(
-                    RequestItems={self.table_name: request_items}
-                )
+                request_items = [{"PutRequest": {"Item": word.to_item()}} for word in chunk]
+                response = self._client.batch_write_item(RequestItems={self.table_name: request_items})
                 # Handle unprocessed items if they exist
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
                     # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError:
             raise ValueError("Could not add words to the database")
@@ -81,16 +73,12 @@ class _Word:
             tags = word.tags
             if len(tags) != len(set(tags)):
                 raise ValueError("Word tags must be unique")
-            self._client.put_item(
-                TableName=self.table_name,
+            self._client.put_item(TableName=self.table_name,
                 Item=word.to_item(),
-                ConditionExpression="attribute_exists(PK)",
-            )
+                ConditionExpression="attribute_exists(PK)",)
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
+            if (e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"):
                 raise ValueError(f"Word with ID {word.word_id} not found")
             else:
                 raise Exception(f"Error updating word: {e}")
@@ -124,9 +112,7 @@ class _Word:
         if not isinstance(words, list):
             raise ValueError("Words must be provided as a list.")
         if not all(isinstance(word, Word) for word in words):
-            raise ValueError(
-                "All items in the words list must be instances of the Word class."
-            )
+            raise ValueError("All items in the words list must be instances of the Word class.")
 
         for i in range(0, len(words), CHUNK_SIZE):
             chunk = words[i : i + CHUNK_SIZE]
@@ -135,15 +121,9 @@ class _Word:
                 # Check for duplicate tags
                 if len(word.tags) != len(set(word.tags)):
                     raise ValueError("Word tags must be unique")
-                transact_items.append(
-                    {
-                        "Put": {
-                            "TableName": self.table_name,
+                transact_items.append({"Put": {"TableName": self.table_name,
                             "Item": word.to_item(),
-                            "ConditionExpression": "attribute_exists(PK)",
-                        }
-                    }
-                )
+                            "ConditionExpression": "attribute_exists(PK)",}})
             try:
                 self._client.transact_write_items(TransactItems=transact_items)
             except ClientError as e:
@@ -151,15 +131,11 @@ class _Word:
                 if error_code == "ConditionalCheckFailedException":
                     raise ValueError("One or more words do not exist") from e
                 elif error_code == "ProvisionedThroughputExceededException":
-                    raise Exception(
-                        f"Provisioned throughput exceeded: {e}"
-                    ) from e
+                    raise Exception(f"Provisioned throughput exceeded: {e}") from e
                 elif error_code == "InternalServerError":
                     raise Exception(f"Internal server error: {e}") from e
                 elif error_code == "ValidationException":
-                    raise Exception(
-                        f"One or more parameters given were invalid: {e}"
-                    ) from e
+                    raise Exception(f"One or more parameters given were invalid: {e}") from e
                 elif error_code == "AccessDeniedException":
                     raise Exception(f"Access denied: {e}") from e
                 else:
@@ -174,14 +150,10 @@ class _Word:
             word_id (int): The ID of the word to delete
         """
         try:
-            self._client.delete_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"LINE#{line_id:05d}#WORD#{word_id:05d}"},
-                },
-                ConditionExpression="attribute_exists(PK)",
-            )
+            self._client.delete_item(TableName=self.table_name,
+                Key={"PK": {"S": f"IMAGE#{image_id}"},
+                    "SK": {"S": f"LINE#{line_id:05d}#WORD#{word_id:05d}"},},
+                ConditionExpression="attribute_exists(PK)",)
         except ClientError:
             raise ValueError(f"Word with ID {word_id} not found")
 
@@ -190,19 +162,13 @@ class _Word:
         try:
             for i in range(0, len(words), CHUNK_SIZE):
                 chunk = words[i : i + CHUNK_SIZE]
-                request_items = [
-                    {"DeleteRequest": {"Key": word.key()}} for word in chunk
-                ]
-                response = self._client.batch_write_item(
-                    RequestItems={self.table_name: request_items}
-                )
+                request_items = [{"DeleteRequest": {"Key": word.key()}} for word in chunk]
+                response = self._client.batch_write_item(RequestItems={self.table_name: request_items})
                 # Handle unprocessed items if they exist
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
                     # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError:
             raise ValueError("Could not delete words from the database")
@@ -219,13 +185,9 @@ class _Word:
 
     def getWord(self, image_id: int, line_id: int, word_id: int) -> Word:
         try:
-            response = self._client.get_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"LINE#{line_id:05d}#WORD#{word_id:05d}"},
-                },
-            )
+            response = self._client.get_item(TableName=self.table_name,
+                Key={"PK": {"S": f"IMAGE#{image_id}"},
+                    "SK": {"S": f"LINE#{line_id:05d}#WORD#{word_id:05d}"},},)
             return itemToWord(response["Item"])
         except KeyError:
             raise ValueError(f"Word with ID {word_id} not found")
@@ -249,14 +211,8 @@ class _Word:
             chunk = keys[i : i + CHUNK_SIZE]
 
             # Prepare parameters for BatchGetItem
-            request = {
-                "RequestItems": {
-                    self.table_name: {
-                        "Keys": chunk,
-                        # (Optional) "ProjectionExpression": "..." if you only want certain attributes
-                    }
-                }
-            }
+            request = {"RequestItems": {self.table_name: {"Keys": chunk,
+                        # (Optional) "ProjectionExpression": "..." if you only want certain attributes}}}
 
             # Perform BatchGet
             response = self._client.batch_get_item(**request)
@@ -268,29 +224,23 @@ class _Word:
             # Retry unprocessed keys if any
             unprocessed = response.get("UnprocessedKeys", {})
             while unprocessed.get(self.table_name, {}).get("Keys"):
-                response = self._client.batch_get_item(
-                    RequestItems=unprocessed
-                )
+                response = self._client.batch_get_item(RequestItems=unprocessed)
                 batch_items = response["Responses"].get(self.table_name, [])
                 results.extend(batch_items)
                 unprocessed = response.get("UnprocessedKeys", {})
 
         return [itemToWord(result) for result in results]
 
-    def listWords(
-        self,
+    def listWords(self,
         limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> list[Word]:
+        last_evaluated_key: Optional[Dict] = None,) -> list[Word]:
         words = []
         try:
-            query_params = {
-                "TableName": self.table_name,
+            query_params = {"TableName": self.table_name,
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "WORD"}},
-            }
+                "ExpressionAttributeValues": {":val": {"S": "WORD"}},}
             if last_evaluated_key is not None:
                 query_params["ExclusiveStartKey"] = last_evaluated_key
             if limit is not None:
@@ -299,13 +249,9 @@ class _Word:
             words.extend([itemToWord(item) for item in response["Items"]])
             if limit is None:
                 while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                     response = self._client.query(**query_params)
-                    words.extend(
-                        [itemToWord(item) for item in response["Items"]]
-                    )
+                    words.extend([itemToWord(item) for item in response["Items"]])
                 last_evaluated_key = None
             else:
                 last_evaluated_key = response.get("LastEvaluatedKey", None)
@@ -316,31 +262,17 @@ class _Word:
     def listWordsFromLine(self, image_id: int, line_id: int) -> list[Word]:
         words = []
         try:
-            response = self._client.query(
-                TableName=self.table_name,
+            response = self._client.query(TableName=self.table_name,
                 KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
-                ExpressionAttributeValues={
-                    ":pkVal": {"S": f"IMAGE#{image_id}"},
-                    ":skPrefix": {
-                        "S": f"LINE#{
-                            line_id:05d}#WORD#"
-                    },
-                },
-            )
+                ExpressionAttributeValues={":pkVal": {"S": f"IMAGE#{image_id}"},
+                    ":skPrefix": {"S": f"LINE#{line_id:05d}#WORD#"},},)
             words.extend([itemToWord(item) for item in response["Items"]])
             while "LastEvaluatedKey" in response:
-                response = self._client.query(
-                    TableName=self.table_name,
+                response = self._client.query(TableName=self.table_name,
                     KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
-                    ExpressionAttributeValues={
-                        ":pkVal": {"S": f"IMAGE#{image_id}"},
-                        ":skPrefix": {
-                            "S": f"LINE#{
-                                line_id:05d}#WORD#"
-                        },
-                    },
-                    ExclusiveStartKey=response["LastEvaluatedKey"],
-                )
+                    ExpressionAttributeValues={":pkVal": {"S": f"IMAGE#{image_id}"},
+                        ":skPrefix": {"S": f"LINE#{line_id:05d}#WORD#"},},
+                    ExclusiveStartKey=response["LastEvaluatedKey"],)
                 words.extend([itemToWord(item) for item in response["Items"]])
             return words
         except ClientError as e:

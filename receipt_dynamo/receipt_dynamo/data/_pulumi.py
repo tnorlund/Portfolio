@@ -13,19 +13,15 @@ def load_env(env: str = "dev") -> dict:
         dict: A dictionary of key-value pairs from the Pulumi stack outputs.
     """
     try:
-        result = subprocess.run(
-            [
-                "pulumi",
+        result = subprocess.run(["pulumi",
                 "stack",
                 "output",
                 "--stack",
                 f"tnorlund/portfolio/{env}",
-                "--json",
-            ],
+                "--json",],
             check=True,
             capture_output=True,
-            text=True,
-        )
+            text=True,)
         return json.loads(result.stdout)
     except (subprocess.CalledProcessError, json.JSONDecodeError):
         return {}  # Return an empty dictionary on failure

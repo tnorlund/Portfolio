@@ -9,14 +9,10 @@ from receipt_dynamo.entities.util import assert_valid_uuid
 def validate_last_evaluated_key(lek: dict) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
-        raise ValueError(
-            f"LastEvaluatedKey must contain keys: {required_keys}"
-        )
+        raise ValueError(f"LastEvaluatedKey must contain keys: {required_keys}")
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
-            raise ValueError(
-                f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'"
-            )
+            raise ValueError(f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'")
 
 
 class _JobResource:
@@ -30,39 +26,25 @@ class _JobResource:
             ValueError: When a job resource with the same resource ID already exists
         """
         if job_resource is None:
-            raise ValueError(
-                "JobResource parameter is required and cannot be None."
-            )
+            raise ValueError("JobResource parameter is required and cannot be None.")
         if not isinstance(job_resource, JobResource):
-            raise ValueError(
-                "job_resource must be an instance of the JobResource class."
-            )
+            raise ValueError("job_resource must be an instance of the JobResource class.")
         try:
-            self._client.put_item(
-                TableName=self.table_name,
+            self._client.put_item(TableName=self.table_name,
                 Item=job_resource.to_item(),
-                ConditionExpression="attribute_not_exists(PK) OR attribute_not_exists(SK)",
-            )
+                ConditionExpression="attribute_not_exists(PK) OR attribute_not_exists(SK)",)
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"JobResource with resource ID {
-                        job_resource.resource_id} for job {
-                        job_resource.job_id} already exists"
-                ) from e
+                raise ValueError(f"JobResource with resource ID {job_resource.resource_id} for job {job_resource.job_id} already exists") from e
             elif error_code == "ResourceNotFoundException":
-                raise Exception(
-                    f"Could not add job resource to DynamoDB: {e}"
-                ) from e
+                raise Exception(f"Could not add job resource to DynamoDB: {e}") from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(
-                    f"Could not add job resource to DynamoDB: {e}"
-                ) from e
+                raise Exception(f"Could not add job resource to DynamoDB: {e}") from e
 
     def getJobResource(self, job_id: str, resource_id: str) -> JobResource:
         """Gets a specific job resource by job ID and resource ID
@@ -81,23 +63,15 @@ class _JobResource:
             raise ValueError("Job ID is required and cannot be None.")
         assert_valid_uuid(job_id)
         if not resource_id or not isinstance(resource_id, str):
-            raise ValueError(
-                "Resource ID is required and must be a non-empty string."
-            )
+            raise ValueError("Resource ID is required and must be a non-empty string.")
 
         try:
-            response = self._client.get_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"JOB#{job_id}"},
-                    "SK": {"S": f"RESOURCE#{resource_id}"},
-                },
-            )
+            response = self._client.get_item(TableName=self.table_name,
+                Key={"PK": {"S": f"JOB#{job_id}"},
+                    "SK": {"S": f"RESOURCE#{resource_id}"},},)
 
             if "Item" not in response:
-                raise ValueError(
-                    f"No job resource found with job ID {job_id} and resource ID {resource_id}"
-                )
+                raise ValueError(f"No job resource found with job ID {job_id} and resource ID {resource_id}")
 
             return itemToJobResource(response["Item"])
         except ClientError as e:
@@ -111,13 +85,11 @@ class _JobResource:
             else:
                 raise Exception(f"Error getting job resource: {e}") from e
 
-    def updateJobResourceStatus(
-        self,
+    def updateJobResourceStatus(self,
         job_id: str,
         resource_id: str,
         status: str,
-        released_at: Optional[str] = None,
-    ):
+        released_at: Optional[str] = None,):
         """Updates the status of a job resource
 
         Args:
@@ -133,24 +105,16 @@ class _JobResource:
             raise ValueError("Job ID is required and cannot be None.")
         assert_valid_uuid(job_id)
         if not resource_id or not isinstance(resource_id, str):
-            raise ValueError(
-                "Resource ID is required and must be a non-empty string."
-            )
+            raise ValueError("Resource ID is required and must be a non-empty string.")
         if not status or not isinstance(status, str):
-            raise ValueError(
-                "Status is required and must be a non-empty string."
-            )
+            raise ValueError("Status is required and must be a non-empty string.")
 
         valid_statuses = ["allocated", "released", "failed", "pending"]
         if status.lower() not in valid_statuses:
-            raise ValueError(
-                f"Invalid status. Must be one of {valid_statuses}"
-            )
+            raise ValueError(f"Invalid status. Must be one of {valid_statuses}")
 
         if status.lower() == "released" and not released_at:
-            raise ValueError(
-                "released_at timestamp is required when status is 'released'"
-            )
+            raise ValueError("released_at timestamp is required when status is 'released'")
 
         try:
             update_expression = "SET #status = :status"
@@ -159,46 +123,32 @@ class _JobResource:
 
             if released_at:
                 update_expression += ", released_at = :released_at"
-                expression_attribute_values[":released_at"] = {
-                    "S": released_at
-                }
+                expression_attribute_values[":released_at"] = {"S": released_at}
 
-            self._client.update_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"JOB#{job_id}"},
-                    "SK": {"S": f"RESOURCE#{resource_id}"},
-                },
+            self._client.update_item(TableName=self.table_name,
+                Key={"PK": {"S": f"JOB#{job_id}"},
+                    "SK": {"S": f"RESOURCE#{resource_id}"},},
                 UpdateExpression=update_expression,
                 ExpressionAttributeNames=expression_attribute_names,
                 ExpressionAttributeValues=expression_attribute_values,
-                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
-            )
+                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",)
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"No job resource found with job ID {job_id} and resource ID {resource_id}"
-                ) from e
+                raise ValueError(f"No job resource found with job ID {job_id} and resource ID {resource_id}") from e
             elif error_code == "ResourceNotFoundException":
-                raise Exception(
-                    f"Could not update job resource status: {e}"
-                ) from e
+                raise Exception(f"Could not update job resource status: {e}") from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(
-                    f"Error updating job resource status: {e}"
-                ) from e
+                raise Exception(f"Error updating job resource status: {e}") from e
 
-    def listJobResources(
-        self,
+    def listJobResources(self,
         job_id: str,
         limit: int = None,
-        lastEvaluatedKey: dict | None = None,
-    ) -> tuple[list[JobResource], dict | None]:
+        lastEvaluatedKey: dict | None = None,) -> tuple[list[JobResource], dict | None]:
         """
         Retrieve resources for a job from the database.
 
@@ -231,15 +181,11 @@ class _JobResource:
 
         resources = []
         try:
-            query_params = {
-                "TableName": self.table_name,
+            query_params = {"TableName": self.table_name,
                 "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
-                "ExpressionAttributeValues": {
-                    ":pk": {"S": f"JOB#{job_id}"},
-                    ":sk": {"S": "RESOURCE#"},
-                },
-                "ScanIndexForward": True,  # Ascending order by default
-            }
+                "ExpressionAttributeValues": {":pk": {"S": f"JOB#{job_id}"},
+                    ":sk": {"S": "RESOURCE#"},},
+                "ScanIndexForward": True,  # Ascending order by default}
 
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
@@ -260,9 +206,7 @@ class _JobResource:
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     last_evaluated_key = None
                     break
@@ -271,28 +215,20 @@ class _JobResource:
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(
-                    f"Could not list job resources from the database: {e}"
-                ) from e
+                raise Exception(f"Could not list job resources from the database: {e}") from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "ValidationException":
-                raise Exception(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
+                raise Exception(f"One or more parameters given were invalid: {e}") from e
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(
-                    f"Could not list job resources from the database: {e}"
-                ) from e
+                raise Exception(f"Could not list job resources from the database: {e}") from e
 
-    def listResourcesByType(
-        self,
+    def listResourcesByType(self,
         resource_type: str,
         limit: int = None,
-        lastEvaluatedKey: dict | None = None,
-    ) -> tuple[list[JobResource], dict | None]:
+        lastEvaluatedKey: dict | None = None,) -> tuple[list[JobResource], dict | None]:
         """
         Retrieve all resources of a specific type across all jobs.
 
@@ -311,9 +247,7 @@ class _JobResource:
             Exception: If the underlying database query fails.
         """
         if not resource_type or not isinstance(resource_type, str):
-            raise ValueError(
-                "Resource type is required and must be a non-empty string."
-            )
+            raise ValueError("Resource type is required and must be a non-empty string.")
 
         if limit is not None and not isinstance(limit, int):
             raise ValueError("Limit must be an integer")
@@ -326,17 +260,13 @@ class _JobResource:
 
         resources = []
         try:
-            query_params = {
-                "TableName": self.table_name,
+            query_params = {"TableName": self.table_name,
                 "IndexName": "GSI1",
                 "KeyConditionExpression": "GSI1PK = :pk",
-                "ExpressionAttributeValues": {
-                    ":pk": {"S": "RESOURCE"},
-                    ":rt": {"S": resource_type},
-                },
+                "ExpressionAttributeValues": {":pk": {"S": "RESOURCE"},
+                    ":rt": {"S": resource_type},},
                 "FilterExpression": "resource_type = :rt",
-                "ScanIndexForward": True,  # Ascending order by default
-            }
+                "ScanIndexForward": True,  # Ascending order by default}
 
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
@@ -357,9 +287,7 @@ class _JobResource:
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     last_evaluated_key = None
                     break
@@ -368,25 +296,17 @@ class _JobResource:
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(
-                    f"Could not query resources by type from the database: {e}"
-                ) from e
+                raise Exception(f"Could not query resources by type from the database: {e}") from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "ValidationException":
-                raise Exception(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
+                raise Exception(f"One or more parameters given were invalid: {e}") from e
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(
-                    f"Could not query resources by type from the database: {e}"
-                ) from e
+                raise Exception(f"Could not query resources by type from the database: {e}") from e
 
-    def getResourceById(
-        self, resource_id: str
-    ) -> tuple[list[JobResource], dict | None]:
+    def getResourceById(self, resource_id: str) -> tuple[list[JobResource], dict | None]:
         """
         Retrieve a specific resource by its ID (may be attached to multiple jobs).
 
@@ -403,20 +323,14 @@ class _JobResource:
             Exception: If the underlying database query fails.
         """
         if not resource_id or not isinstance(resource_id, str):
-            raise ValueError(
-                "Resource ID is required and must be a non-empty string."
-            )
+            raise ValueError("Resource ID is required and must be a non-empty string.")
 
         try:
-            response = self._client.query(
-                TableName=self.table_name,
+            response = self._client.query(TableName=self.table_name,
                 IndexName="GSI1",
                 KeyConditionExpression="GSI1PK = :pk AND GSI1SK = :sk",
-                ExpressionAttributeValues={
-                    ":pk": {"S": "RESOURCE"},
-                    ":sk": {"S": f"RESOURCE#{resource_id}"},
-                },
-            )
+                ExpressionAttributeValues={":pk": {"S": "RESOURCE"},
+                    ":sk": {"S": f"RESOURCE#{resource_id}"},},)
 
             resources = []
             for item in response["Items"]:
@@ -432,9 +346,7 @@ class _JobResource:
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "ValidationException":
-                raise Exception(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
+                raise Exception(f"One or more parameters given were invalid: {e}") from e
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:

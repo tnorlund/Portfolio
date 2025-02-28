@@ -8,8 +8,7 @@ from receipt_dynamo import DynamoClient, ReceiptLine
 @pytest.fixture
 def sample_receipt_line():
     """Returns a valid ReceiptLine object with placeholder data."""
-    return ReceiptLine(
-        receipt_id=1,
+    return ReceiptLine(receipt_id=1,
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=10,
         text="Sample receipt line",
@@ -20,14 +19,11 @@ def sample_receipt_line():
         bottom_right={"x": 0.5, "y": 0.25},
         angle_degrees=5.0,
         angle_radians=0.0872665,
-        confidence=0.98,
-    )
+        confidence=0.98,)
 
 
 @pytest.mark.integration
-def test_add_receipt_line(
-    dynamodb_table: Literal["MyMockedTable"], sample_receipt_line: ReceiptLine
-):
+def test_add_receipt_line(dynamodb_table: Literal["MyMockedTable"], sample_receipt_line: ReceiptLine):
     # Arrange
     client = DynamoClient(dynamodb_table)
 
@@ -35,18 +31,14 @@ def test_add_receipt_line(
     client.addReceiptLine(sample_receipt_line)
 
     # Assert
-    retrieved_line = client.getReceiptLine(
-        sample_receipt_line.receipt_id,
+    retrieved_line = client.getReceiptLine(sample_receipt_line.receipt_id,
         sample_receipt_line.image_id,
-        sample_receipt_line.line_id,
-    )
+        sample_receipt_line.line_id,)
     assert retrieved_line == sample_receipt_line
 
 
 @pytest.mark.integration
-def test_add_receipt_line_duplicate_raises(
-    dynamodb_table: Literal["MyMockedTable"], sample_receipt_line: ReceiptLine
-):
+def test_add_receipt_line_duplicate_raises(dynamodb_table: Literal["MyMockedTable"], sample_receipt_line: ReceiptLine):
     # Arrange
     client = DynamoClient(dynamodb_table)
     client.addReceiptLine(sample_receipt_line)
@@ -57,9 +49,7 @@ def test_add_receipt_line_duplicate_raises(
 
 
 @pytest.mark.integration
-def test_update_receipt_line(
-    dynamodb_table: Literal["MyMockedTable"], sample_receipt_line: ReceiptLine
-):
+def test_update_receipt_line(dynamodb_table: Literal["MyMockedTable"], sample_receipt_line: ReceiptLine):
     # Arrange
     client = DynamoClient(dynamodb_table)
     client.addReceiptLine(sample_receipt_line)
@@ -72,45 +62,35 @@ def test_update_receipt_line(
     client.updateReceiptLine(sample_receipt_line)
 
     # Assert
-    retrieved_line = client.getReceiptLine(
-        sample_receipt_line.receipt_id,
+    retrieved_line = client.getReceiptLine(sample_receipt_line.receipt_id,
         sample_receipt_line.image_id,
-        sample_receipt_line.line_id,
-    )
+        sample_receipt_line.line_id,)
     assert retrieved_line.text == updated_text
 
 
 @pytest.mark.integration
-def test_delete_receipt_line(
-    dynamodb_table: Literal["MyMockedTable"], sample_receipt_line: ReceiptLine
-):
+def test_delete_receipt_line(dynamodb_table: Literal["MyMockedTable"], sample_receipt_line: ReceiptLine):
     # Arrange
     client = DynamoClient(dynamodb_table)
     client.addReceiptLine(sample_receipt_line)
 
     # Act
-    client.deleteReceiptLine(
-        sample_receipt_line.receipt_id,
+    client.deleteReceiptLine(sample_receipt_line.receipt_id,
         sample_receipt_line.image_id,
-        sample_receipt_line.line_id,
-    )
+        sample_receipt_line.line_id,)
 
     # Assert
     with pytest.raises(ValueError, match="not found"):
-        client.getReceiptLine(
-            sample_receipt_line.receipt_id,
+        client.getReceiptLine(sample_receipt_line.receipt_id,
             sample_receipt_line.image_id,
-            sample_receipt_line.line_id,
-        )
+            sample_receipt_line.line_id,)
 
 
 @pytest.mark.integration
 def test_receipt_line_list(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    lines = [
-        ReceiptLine(
-            receipt_id=1,
+    lines = [ReceiptLine(receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id=i,
             text=f"Line {i}",
@@ -121,10 +101,8 @@ def test_receipt_line_list(dynamodb_table: Literal["MyMockedTable"]):
             bottom_right={"x": 1, "y": 1},
             angle_degrees=0,
             angle_radians=0,
-            confidence=1.0,
-        )
-        for i in range(1, 4)
-    ]
+            confidence=1.0,)
+        for i in range(1, 4)]
     for ln in lines:
         client.addReceiptLine(ln)
 
@@ -139,15 +117,11 @@ def test_receipt_line_list(dynamodb_table: Literal["MyMockedTable"]):
 
 
 @pytest.mark.integration
-def test_receipt_line_list_from_receipt(
-    dynamodb_table: Literal["MyMockedTable"],
-):
+def test_receipt_line_list_from_receipt(dynamodb_table: Literal["MyMockedTable"],):
     # Arrange
     client = DynamoClient(dynamodb_table)
     # Lines for receipt_id=1, image_id=1
-    lines_same_receipt = [
-        ReceiptLine(
-            receipt_id=1,
+    lines_same_receipt = [ReceiptLine(receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id=i,
             text=f"Line {i}",
@@ -158,13 +132,10 @@ def test_receipt_line_list_from_receipt(
             bottom_right={"x": 1, "y": 1},
             angle_degrees=0,
             angle_radians=0,
-            confidence=1.0,
-        )
-        for i in range(1, 3)
-    ]
+            confidence=1.0,)
+        for i in range(1, 3)]
     # A line for a different receipt
-    another_line = ReceiptLine(
-        receipt_id=2,
+    another_line = ReceiptLine(receipt_id=2,
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=10,
         text="Different",
@@ -175,15 +146,12 @@ def test_receipt_line_list_from_receipt(
         bottom_right={"x": 0.3, "y": 0.3},
         angle_degrees=10,
         angle_radians=0.17453,
-        confidence=0.99,
-    )
+        confidence=0.99,)
     for ln in lines_same_receipt + [another_line]:
         client.addReceiptLine(ln)
 
     # Act
-    found_lines = client.listReceiptLinesFromReceipt(
-        receipt_id=1, image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    )
+    found_lines = client.listReceiptLinesFromReceipt(receipt_id=1, image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3")
 
     # Assert
     assert len(found_lines) == 2
