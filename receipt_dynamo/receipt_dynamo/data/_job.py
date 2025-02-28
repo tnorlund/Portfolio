@@ -39,9 +39,7 @@ class _Job:
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"Job with ID {job.job_id} already exists"
-                ) from e
+                raise ValueError(f"Job with ID {job.job_id} already exists") from e
             elif error_code == "ResourceNotFoundException":
                 raise Exception(f"Could not add job to DynamoDB: {e}") from e
             elif error_code == "ProvisionedThroughputExceededException":
@@ -119,9 +117,7 @@ class _Job:
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"Job with ID {job.job_id} does not exist"
-                )
+                raise ValueError(f"Job with ID {job.job_id} does not exist")
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "InternalServerError":
@@ -213,9 +209,7 @@ class _Job:
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"Job with ID {job.job_id} does not exist"
-                )
+                raise ValueError(f"Job with ID {job.job_id} does not exist")
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "InternalServerError":
@@ -337,12 +331,12 @@ class _Job:
         """
         # Use the protected method instead of trying to access a private method
         job_item, statuses = self._getJobWithStatus(job_id)
-        
+
         if job_item is None:
             raise ValueError(f"Job with ID {job_id} does not exist.")
-            
+
         job = itemToJob(job_item)
-        
+
         return job, statuses
 
     def listJobs(
@@ -411,9 +405,7 @@ class _Job:
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(
-                    f"Could not list jobs from the database: {e}"
-                ) from e
+                raise Exception(f"Could not list jobs from the database: {e}") from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "ValidationException":
@@ -423,9 +415,7 @@ class _Job:
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(
-                    f"Could not list jobs from the database: {e}"
-                ) from e
+                raise Exception(f"Could not list jobs from the database: {e}") from e
 
     def listJobsByStatus(
         self, status: str, limit: int = None, lastEvaluatedKey: dict | None = None
@@ -447,10 +437,17 @@ class _Job:
             ValueError: If parameters are invalid.
             Exception: If the underlying database query fails.
         """
-        valid_statuses = ["pending", "running", "succeeded", "failed", "cancelled", "interrupted"]
+        valid_statuses = [
+            "pending",
+            "running",
+            "succeeded",
+            "failed",
+            "cancelled",
+            "interrupted",
+        ]
         if not isinstance(status, str) or status.lower() not in valid_statuses:
             raise ValueError(f"status must be one of {valid_statuses}")
-        
+
         if limit is not None and not isinstance(limit, int):
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
@@ -460,7 +457,9 @@ class _Job:
                 raise ValueError("LastEvaluatedKey must be a dictionary")
             # Validate the LastEvaluatedKey structure specific to GSI1
             if not all(k in lastEvaluatedKey for k in ["PK", "SK", "GSI1PK", "GSI1SK"]):
-                raise ValueError("LastEvaluatedKey must contain PK, SK, GSI1PK, and GSI1SK keys")
+                raise ValueError(
+                    "LastEvaluatedKey must contain PK, SK, GSI1PK, and GSI1SK keys"
+                )
 
         jobs = []
         try:
@@ -545,7 +544,7 @@ class _Job:
         """
         if not isinstance(user_id, str) or not user_id:
             raise ValueError("user_id must be a non-empty string")
-            
+
         if limit is not None and not isinstance(limit, int):
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
@@ -555,7 +554,9 @@ class _Job:
                 raise ValueError("LastEvaluatedKey must be a dictionary")
             # Validate the LastEvaluatedKey structure specific to GSI2
             if not all(k in lastEvaluatedKey for k in ["PK", "SK", "GSI2PK", "GSI2SK"]):
-                raise ValueError("LastEvaluatedKey must contain PK, SK, GSI2PK, and GSI2SK keys")
+                raise ValueError(
+                    "LastEvaluatedKey must contain PK, SK, GSI2PK, and GSI2SK keys"
+                )
 
         jobs = []
         try:
@@ -616,4 +617,4 @@ class _Job:
             else:
                 raise Exception(
                     f"Could not list jobs by user from the database: {e}"
-                ) from e 
+                ) from e

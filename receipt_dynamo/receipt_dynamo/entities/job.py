@@ -77,7 +77,14 @@ class Job:
             raise ValueError("created_by must be a non-empty string")
         self.created_by = created_by
 
-        valid_statuses = ["pending", "running", "succeeded", "failed", "cancelled", "interrupted"]
+        valid_statuses = [
+            "pending",
+            "running",
+            "succeeded",
+            "failed",
+            "cancelled",
+            "interrupted",
+        ]
         if not isinstance(status, str) or status.lower() not in valid_statuses:
             raise ValueError(f"status must be one of {valid_statuses}")
         self.status = status.lower()
@@ -116,7 +123,7 @@ class Job:
         """
         return {
             "GSI1PK": {"S": f"STATUS#{self.status}"},
-            "GSI1SK": {"S": f"CREATED#{self.created_at}"}
+            "GSI1SK": {"S": f"CREATED#{self.created_at}"},
         }
 
     def gsi2_key(self) -> dict:
@@ -127,7 +134,7 @@ class Job:
         """
         return {
             "GSI2PK": {"S": f"USER#{self.created_by}"},
-            "GSI2SK": {"S": f"CREATED#{self.created_at}"}
+            "GSI2SK": {"S": f"CREATED#{self.created_at}"},
         }
 
     def to_item(self) -> dict:
@@ -328,11 +335,11 @@ def itemToJob(item: dict) -> Job:
         raise ValueError(
             f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
         )
-    
+
     try:
         # Parse job_id from the PK
         job_id = item["PK"]["S"].split("#")[1]
-        
+
         # Extract basic string fields
         name = item["name"]["S"]
         description = item["description"]["S"]
@@ -340,18 +347,22 @@ def itemToJob(item: dict) -> Job:
         created_by = item["created_by"]["S"]
         status = item["status"]["S"]
         priority = item["priority"]["S"]
-        
+
         # Parse job_config from DynamoDB map
         job_config = _parse_dynamodb_map(item["job_config"]["M"])
-        
+
         # Parse optional fields
-        estimated_duration = int(item["estimated_duration"]["N"]) if "estimated_duration" in item else None
-        
+        estimated_duration = (
+            int(item["estimated_duration"]["N"])
+            if "estimated_duration" in item
+            else None
+        )
+
         # Parse tags if present
         tags = None
         if "tags" in item and "M" in item["tags"]:
             tags = {k: v["S"] for k, v in item["tags"]["M"].items()}
-        
+
         return Job(
             job_id=job_id,
             name=name,
@@ -428,4 +439,4 @@ def _parse_dynamodb_value(dynamodb_value: Dict) -> Any:
         return None
     else:
         # Default fallback
-        return str(dynamodb_value) 
+        return str(dynamodb_value)

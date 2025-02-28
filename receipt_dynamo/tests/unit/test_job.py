@@ -50,7 +50,11 @@ def test_job_init_valid(example_job):
     assert example_job.created_by == "user123"
     assert example_job.status == "pending"
     assert example_job.priority == "medium"
-    assert example_job.job_config == {"model": "layoutlm", "batch_size": 32, "epochs": 10}
+    assert example_job.job_config == {
+        "model": "layoutlm",
+        "batch_size": 32,
+        "epochs": 10,
+    }
     assert example_job.estimated_duration == 3600
     assert example_job.tags == {"project": "receipts", "environment": "dev"}
 
@@ -61,25 +65,25 @@ def test_job_init_invalid_id():
     with pytest.raises(ValueError, match="uuid must be a string"):
         Job(
             1,  # Invalid: should be a string
-            "Training Job", 
+            "Training Job",
             "Example description",
             "2021-01-01T00:00:00",
             "user123",
             "pending",
             "medium",
-            {"model": "layoutlm"}
+            {"model": "layoutlm"},
         )
-    
+
     with pytest.raises(ValueError, match="uuid must be a valid UUID"):
         Job(
             "not-a-uuid",  # Invalid: not a valid UUID format
-            "Training Job", 
+            "Training Job",
             "Example description",
             "2021-01-01T00:00:00",
             "user123",
             "pending",
             "medium",
-            {"model": "layoutlm"}
+            {"model": "layoutlm"},
         )
 
 
@@ -95,9 +99,9 @@ def test_job_init_invalid_name():
             "user123",
             "pending",
             "medium",
-            {"model": "layoutlm"}
+            {"model": "layoutlm"},
         )
-    
+
     with pytest.raises(ValueError, match="name must be a non-empty string"):
         Job(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -107,7 +111,7 @@ def test_job_init_invalid_name():
             "user123",
             "pending",
             "medium",
-            {"model": "layoutlm"}
+            {"model": "layoutlm"},
         )
 
 
@@ -123,14 +127,16 @@ def test_job_init_invalid_description():
             "user123",
             "pending",
             "medium",
-            {"model": "layoutlm"}
+            {"model": "layoutlm"},
         )
 
 
 @pytest.mark.unit
 def test_job_init_invalid_created_at():
     """Test the Job constructor with invalid created_at."""
-    with pytest.raises(ValueError, match="created_at must be a datetime object or a string"):
+    with pytest.raises(
+        ValueError, match="created_at must be a datetime object or a string"
+    ):
         Job(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "Training Job",
@@ -139,7 +145,7 @@ def test_job_init_invalid_created_at():
             "user123",
             "pending",
             "medium",
-            {"model": "layoutlm"}
+            {"model": "layoutlm"},
         )
 
 
@@ -155,9 +161,9 @@ def test_job_init_invalid_created_by():
             "",  # Invalid: empty string
             "pending",
             "medium",
-            {"model": "layoutlm"}
+            {"model": "layoutlm"},
         )
-    
+
     with pytest.raises(ValueError, match="created_by must be a non-empty string"):
         Job(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -167,7 +173,7 @@ def test_job_init_invalid_created_by():
             123,  # Invalid: not a string
             "pending",
             "medium",
-            {"model": "layoutlm"}
+            {"model": "layoutlm"},
         )
 
 
@@ -183,9 +189,9 @@ def test_job_init_invalid_status():
             "user123",
             "invalid_status",  # Invalid: not a valid status
             "medium",
-            {"model": "layoutlm"}
+            {"model": "layoutlm"},
         )
-    
+
     with pytest.raises(ValueError, match="status must be one of"):
         Job(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -195,7 +201,7 @@ def test_job_init_invalid_status():
             "user123",
             123,  # Invalid: not a string
             "medium",
-            {"model": "layoutlm"}
+            {"model": "layoutlm"},
         )
 
 
@@ -211,9 +217,9 @@ def test_job_init_invalid_priority():
             "user123",
             "pending",
             "invalid_priority",  # Invalid: not a valid priority
-            {"model": "layoutlm"}
+            {"model": "layoutlm"},
         )
-    
+
     with pytest.raises(ValueError, match="priority must be one of"):
         Job(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -223,7 +229,7 @@ def test_job_init_invalid_priority():
             "user123",
             "pending",
             123,  # Invalid: not a string
-            {"model": "layoutlm"}
+            {"model": "layoutlm"},
         )
 
 
@@ -239,14 +245,16 @@ def test_job_init_invalid_job_config():
             "user123",
             "pending",
             "medium",
-            "not_a_dict"  # Invalid: not a dictionary
+            "not_a_dict",  # Invalid: not a dictionary
         )
 
 
 @pytest.mark.unit
 def test_job_init_invalid_estimated_duration():
     """Test the Job constructor with invalid estimated_duration."""
-    with pytest.raises(ValueError, match="estimated_duration must be a positive integer"):
+    with pytest.raises(
+        ValueError, match="estimated_duration must be a positive integer"
+    ):
         Job(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "Training Job",
@@ -256,10 +264,12 @@ def test_job_init_invalid_estimated_duration():
             "pending",
             "medium",
             {"model": "layoutlm"},
-            estimated_duration=0  # Invalid: not positive
+            estimated_duration=0,  # Invalid: not positive
         )
-    
-    with pytest.raises(ValueError, match="estimated_duration must be a positive integer"):
+
+    with pytest.raises(
+        ValueError, match="estimated_duration must be a positive integer"
+    ):
         Job(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "Training Job",
@@ -269,10 +279,12 @@ def test_job_init_invalid_estimated_duration():
             "pending",
             "medium",
             {"model": "layoutlm"},
-            estimated_duration=-100  # Invalid: negative
+            estimated_duration=-100,  # Invalid: negative
         )
-    
-    with pytest.raises(ValueError, match="estimated_duration must be a positive integer"):
+
+    with pytest.raises(
+        ValueError, match="estimated_duration must be a positive integer"
+    ):
         Job(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "Training Job",
@@ -282,7 +294,7 @@ def test_job_init_invalid_estimated_duration():
             "pending",
             "medium",
             {"model": "layoutlm"},
-            estimated_duration="3600"  # Invalid: not an integer
+            estimated_duration="3600",  # Invalid: not an integer
         )
 
 
@@ -299,7 +311,7 @@ def test_job_init_invalid_tags():
             "pending",
             "medium",
             {"model": "layoutlm"},
-            tags="not_a_dict"  # Invalid: not a dictionary
+            tags="not_a_dict",  # Invalid: not a dictionary
         )
 
 
@@ -308,7 +320,7 @@ def test_job_key(example_job):
     """Test the Job.key() method."""
     assert example_job.key() == {
         "PK": {"S": "JOB#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-        "SK": {"S": "JOB"}
+        "SK": {"S": "JOB"},
     }
 
 
@@ -317,7 +329,7 @@ def test_job_gsi1_key(example_job):
     """Test the Job.gsi1_key() method."""
     assert example_job.gsi1_key() == {
         "GSI1PK": {"S": "STATUS#pending"},
-        "GSI1SK": {"S": "CREATED#2021-01-01T00:00:00"}
+        "GSI1SK": {"S": "CREATED#2021-01-01T00:00:00"},
     }
 
 
@@ -326,7 +338,7 @@ def test_job_gsi2_key(example_job):
     """Test the Job.gsi2_key() method."""
     assert example_job.gsi2_key() == {
         "GSI2PK": {"S": "USER#user123"},
-        "GSI2SK": {"S": "CREATED#2021-01-01T00:00:00"}
+        "GSI2SK": {"S": "CREATED#2021-01-01T00:00:00"},
     }
 
 
@@ -354,7 +366,7 @@ def test_job_to_item(example_job, example_job_minimal):
     assert item["estimated_duration"] == {"N": "3600"}
     assert item["tags"]["M"]["project"] == {"S": "receipts"}
     assert item["tags"]["M"]["environment"] == {"S": "dev"}
-    
+
     # Test minimal job
     item = example_job_minimal.to_item()
     assert "estimated_duration" not in item
@@ -393,7 +405,11 @@ def test_job_iter(example_job):
     assert job_dict["created_by"] == "user123"
     assert job_dict["status"] == "pending"
     assert job_dict["priority"] == "medium"
-    assert job_dict["job_config"] == {"model": "layoutlm", "batch_size": 32, "epochs": 10}
+    assert job_dict["job_config"] == {
+        "model": "layoutlm",
+        "batch_size": 32,
+        "epochs": 10,
+    }
     assert job_dict["estimated_duration"] == 3600
     assert job_dict["tags"] == {"project": "receipts", "environment": "dev"}
 
@@ -415,7 +431,7 @@ def test_job_eq():
     job11 = Job("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "Training Job", "Example training job description", "2021-01-01T00:00:00", "user123", "pending", "medium", {"model": "layoutlm", "batch_size": 32, "epochs": 10}, 7200, {"project": "receipts", "environment": "dev"})  # Different estimated_duration
     job12 = Job("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "Training Job", "Example training job description", "2021-01-01T00:00:00", "user123", "pending", "medium", {"model": "layoutlm", "batch_size": 32, "epochs": 10}, 3600, {"project": "different", "environment": "dev"})  # Different tags
     # fmt: on
-    
+
     assert job1 == job2, "Should be equal"
     assert job1 != job3, "Different job_id"
     assert job1 != job4, "Different name"
@@ -427,7 +443,7 @@ def test_job_eq():
     assert job1 != job10, "Different job_config"
     assert job1 != job11, "Different estimated_duration"
     assert job1 != job12, "Different tags"
-    
+
     # Compare with non-Job object
     assert job1 != 42, "Not a Job object"
 
@@ -439,30 +455,32 @@ def test_itemToJob(example_job, example_job_minimal):
     item = example_job.to_item()
     job = itemToJob(item)
     assert job == example_job
-    
+
     # Test with minimal job
     item = example_job_minimal.to_item()
     job = itemToJob(item)
     assert job == example_job_minimal
-    
+
     # Test with missing required keys
     with pytest.raises(ValueError, match="Invalid item format"):
         itemToJob({"PK": {"S": "JOB#id"}, "SK": {"S": "JOB"}})
-    
+
     # Test with invalid item format
     with pytest.raises(ValueError, match="Error converting item to Job"):
-        itemToJob({
-            "PK": {"S": "JOB#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-            "SK": {"S": "JOB"},
-            "TYPE": {"S": "JOB"},
-            "name": {"S": "Training Job"},
-            "description": {"S": "Example training job description"},
-            "created_at": {"S": "2021-01-01T00:00:00"},
-            "created_by": {"S": "user123"},
-            "status": {"INVALID_TYPE": "pending"},  # Invalid type
-            "priority": {"S": "medium"},
-            "job_config": {"M": {"model": {"S": "layoutlm"}}}
-        })
+        itemToJob(
+            {
+                "PK": {"S": "JOB#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+                "SK": {"S": "JOB"},
+                "TYPE": {"S": "JOB"},
+                "name": {"S": "Training Job"},
+                "description": {"S": "Example training job description"},
+                "created_at": {"S": "2021-01-01T00:00:00"},
+                "created_by": {"S": "user123"},
+                "status": {"INVALID_TYPE": "pending"},  # Invalid type
+                "priority": {"S": "medium"},
+                "job_config": {"M": {"model": {"S": "layoutlm"}}},
+            }
+        )
 
 
 @pytest.mark.unit
@@ -475,18 +493,19 @@ def test_parse_dynamodb_map():
         "decimal": {"N": "3.14"},
         "boolean": {"BOOL": True},
         "null": {"NULL": True},
-        "nested_map": {"M": {
-            "inner_string": {"S": "inner_value"},
-            "inner_number": {"N": "10"}
-        }},
-        "list": {"L": [
-            {"S": "item1"},
-            {"N": "2"},
-            {"BOOL": False},
-            {"M": {"key": {"S": "value"}}}
-        ]}
+        "nested_map": {
+            "M": {"inner_string": {"S": "inner_value"}, "inner_number": {"N": "10"}}
+        },
+        "list": {
+            "L": [
+                {"S": "item1"},
+                {"N": "2"},
+                {"BOOL": False},
+                {"M": {"key": {"S": "value"}}},
+            ]
+        },
     }
-    
+
     # Use the job's _parse_dynamodb_map by creating a temporary job
     temp_job = Job(
         "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -496,9 +515,9 @@ def test_parse_dynamodb_map():
         "user123",
         "pending",
         "medium",
-        {}
+        {},
     )
-    
+
     # Convert to Python values and test
     result = _parse_dynamodb_map(dynamodb_map)
     assert result["string"] == "value"
@@ -511,4 +530,4 @@ def test_parse_dynamodb_map():
     assert result["list"][0] == "item1"
     assert result["list"][1] == 2
     assert result["list"][2] is False
-    assert result["list"][3]["key"] == "value" 
+    assert result["list"][3]["key"] == "value"

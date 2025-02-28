@@ -59,17 +59,13 @@ def test_job_status_init_minimal(example_job_status_minimal):
 def test_job_status_init_invalid_id():
     """Test the JobStatus constructor with invalid job_id."""
     with pytest.raises(ValueError, match="uuid must be a string"):
-        JobStatus(
-            1,  # Invalid: should be a string
-            "running",
-            "2021-01-01T00:00:00"
-        )
-    
+        JobStatus(1, "running", "2021-01-01T00:00:00")  # Invalid: should be a string
+
     with pytest.raises(ValueError, match="uuid must be a valid UUID"):
         JobStatus(
             "not-a-uuid",  # Invalid: not a valid UUID format
             "running",
-            "2021-01-01T00:00:00"
+            "2021-01-01T00:00:00",
         )
 
 
@@ -80,25 +76,27 @@ def test_job_status_init_invalid_status():
         JobStatus(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "invalid_status",  # Invalid: not a valid status
-            "2021-01-01T00:00:00"
+            "2021-01-01T00:00:00",
         )
-    
+
     with pytest.raises(ValueError, match="status must be one of"):
         JobStatus(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             123,  # Invalid: not a string
-            "2021-01-01T00:00:00"
+            "2021-01-01T00:00:00",
         )
 
 
 @pytest.mark.unit
 def test_job_status_init_invalid_updated_at():
     """Test the JobStatus constructor with invalid updated_at."""
-    with pytest.raises(ValueError, match="updated_at must be a datetime object or a string"):
+    with pytest.raises(
+        ValueError, match="updated_at must be a datetime object or a string"
+    ):
         JobStatus(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "running",
-            123  # Invalid: not a datetime or string
+            123,  # Invalid: not a datetime or string
         )
 
 
@@ -110,23 +108,23 @@ def test_job_status_init_invalid_progress():
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "running",
             "2021-01-01T00:00:00",
-            progress=-10  # Invalid: negative value
+            progress=-10,  # Invalid: negative value
         )
-    
+
     with pytest.raises(ValueError, match="progress must be a number between 0 and 100"):
         JobStatus(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "running",
             "2021-01-01T00:00:00",
-            progress=101  # Invalid: above 100
+            progress=101,  # Invalid: above 100
         )
-    
+
     with pytest.raises(ValueError, match="progress must be a number between 0 and 100"):
         JobStatus(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "running",
             "2021-01-01T00:00:00",
-            progress="50"  # Invalid: not a number
+            progress="50",  # Invalid: not a number
         )
 
 
@@ -138,7 +136,7 @@ def test_job_status_init_invalid_message():
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "running",
             "2021-01-01T00:00:00",
-            message=123  # Invalid: not a string
+            message=123,  # Invalid: not a string
         )
 
 
@@ -150,7 +148,7 @@ def test_job_status_init_invalid_updated_by():
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "running",
             "2021-01-01T00:00:00",
-            updated_by=123  # Invalid: not a string
+            updated_by=123,  # Invalid: not a string
         )
 
 
@@ -162,7 +160,7 @@ def test_job_status_init_invalid_instance_id():
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "running",
             "2021-01-01T00:00:00",
-            instance_id=123  # Invalid: not a string
+            instance_id=123,  # Invalid: not a string
         )
 
 
@@ -171,7 +169,7 @@ def test_job_status_key(example_job_status):
     """Test the JobStatus.key() method."""
     assert example_job_status.key() == {
         "PK": {"S": "JOB#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-        "SK": {"S": "STATUS#2021-01-01T00:00:00"}
+        "SK": {"S": "STATUS#2021-01-01T00:00:00"},
     }
 
 
@@ -180,7 +178,7 @@ def test_job_status_gsi1_key(example_job_status):
     """Test the JobStatus.gsi1_key() method."""
     assert example_job_status.gsi1_key() == {
         "GSI1PK": {"S": "STATUS#running"},
-        "GSI1SK": {"S": "UPDATED#2021-01-01T00:00:00"}
+        "GSI1SK": {"S": "UPDATED#2021-01-01T00:00:00"},
     }
 
 
@@ -200,7 +198,7 @@ def test_job_status_to_item(example_job_status, example_job_status_minimal):
     assert item["message"] == {"S": "Training in progress"}
     assert item["updated_by"] == {"S": "user123"}
     assert item["instance_id"] == {"S": "i-abc123def456"}
-    
+
     # Test minimal job status
     item = example_job_status_minimal.to_item()
     assert "progress" not in item
@@ -250,7 +248,7 @@ def test_job_status_eq():
     js8 = JobStatus("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "running", "2021-01-01T00:00:00", 75.5, "Training in progress", "different_user", "i-abc123def456")  # Different updated_by
     js9 = JobStatus("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "running", "2021-01-01T00:00:00", 75.5, "Training in progress", "user123", "i-different")  # Different instance_id
     # fmt: on
-    
+
     assert js1 == js2, "Should be equal"
     assert js1 != js3, "Different job_id"
     assert js1 != js4, "Different status"
@@ -259,7 +257,7 @@ def test_job_status_eq():
     assert js1 != js7, "Different message"
     assert js1 != js8, "Different updated_by"
     assert js1 != js9, "Different instance_id"
-    
+
     # Compare with non-JobStatus object
     assert js1 != 42, "Not a JobStatus object"
 
@@ -271,22 +269,24 @@ def test_itemToJobStatus(example_job_status, example_job_status_minimal):
     item = example_job_status.to_item()
     job_status = itemToJobStatus(item)
     assert job_status == example_job_status
-    
+
     # Test with minimal job status
     item = example_job_status_minimal.to_item()
     job_status = itemToJobStatus(item)
     assert job_status == example_job_status_minimal
-    
+
     # Test with missing required keys
     with pytest.raises(ValueError, match="Invalid item format"):
         itemToJobStatus({"PK": {"S": "JOB#id"}, "SK": {"S": "STATUS#timestamp"}})
-    
+
     # Test with invalid item format
     with pytest.raises(ValueError, match="Error converting item to JobStatus"):
-        itemToJobStatus({
-            "PK": {"S": "JOB#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-            "SK": {"S": "STATUS#2021-01-01T00:00:00"},
-            "TYPE": {"S": "JOB_STATUS"},
-            "status": {"INVALID_TYPE": "running"},  # Invalid type
-            "updated_at": {"S": "2021-01-01T00:00:00"},
-        }) 
+        itemToJobStatus(
+            {
+                "PK": {"S": "JOB#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+                "SK": {"S": "STATUS#2021-01-01T00:00:00"},
+                "TYPE": {"S": "JOB_STATUS"},
+                "status": {"INVALID_TYPE": "running"},  # Invalid type
+                "updated_at": {"S": "2021-01-01T00:00:00"},
+            }
+        )

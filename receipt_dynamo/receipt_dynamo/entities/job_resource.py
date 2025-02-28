@@ -67,8 +67,18 @@ class JobResource:
             raise ValueError("instance_type must be a non-empty string")
         self.instance_type = instance_type
 
-        valid_resource_types = ["cpu", "gpu", "memory", "storage", "network", "combined"]
-        if not isinstance(resource_type, str) or resource_type.lower() not in valid_resource_types:
+        valid_resource_types = [
+            "cpu",
+            "gpu",
+            "memory",
+            "storage",
+            "network",
+            "combined",
+        ]
+        if (
+            not isinstance(resource_type, str)
+            or resource_type.lower() not in valid_resource_types
+        ):
             raise ValueError(f"resource_type must be one of {valid_resource_types}")
         self.resource_type = resource_type.lower()
 
@@ -109,7 +119,10 @@ class JobResource:
         Returns:
             dict: The primary key for the job resource.
         """
-        return {"PK": {"S": f"JOB#{self.job_id}"}, "SK": {"S": f"RESOURCE#{self.resource_id}"}}
+        return {
+            "PK": {"S": f"JOB#{self.job_id}"},
+            "SK": {"S": f"RESOURCE#{self.resource_id}"},
+        }
 
     def gsi1_key(self) -> dict:
         """Generates the GSI1 key for the job resource.
@@ -119,7 +132,7 @@ class JobResource:
         """
         return {
             "GSI1PK": {"S": "RESOURCE"},
-            "GSI1SK": {"S": f"RESOURCE#{self.resource_id}"}
+            "GSI1SK": {"S": f"RESOURCE#{self.resource_id}"},
         }
 
     def to_item(self) -> dict:
@@ -148,7 +161,9 @@ class JobResource:
             item["released_at"] = {"S": self.released_at}
 
         if self.resource_config:
-            item["resource_config"] = {"M": self._dict_to_dynamodb_map(self.resource_config)}
+            item["resource_config"] = {
+                "M": self._dict_to_dynamodb_map(self.resource_config)
+            }
 
         return item
 
@@ -282,8 +297,7 @@ class JobResource:
                 self.released_at,
                 self.status,
                 self.gpu_count,
-                # Can't hash dictionaries, so convert to tuple of sorted items
-                tuple(sorted((k, str(v)) for k, v in self.resource_config.items())) if self.resource_config else None,
+                # Since dictionaries aren't hashable, we exclude resource_config from the hash
             )
         )
 
@@ -318,9 +332,8 @@ def itemToJobResource(item: dict) -> JobResource:
         raise ValueError(
             f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
         )
-    
+
     try:
-        # Extract basic string fields
         job_id = item["job_id"]["S"]
         resource_id = item["resource_id"]["S"]
         instance_id = item["instance_id"]["S"]
@@ -328,16 +341,14 @@ def itemToJobResource(item: dict) -> JobResource:
         resource_type = item["resource_type"]["S"]
         allocated_at = item["allocated_at"]["S"]
         status = item["status"]["S"]
-        
-        # Parse optional fields
+
+        released_at = item.get("released_at", {}).get("S", None)
         gpu_count = int(item["gpu_count"]["N"]) if "gpu_count" in item else None
-        released_at = item["released_at"]["S"] if "released_at" in item else None
-        
-        # Parse resource_config if present
+
         resource_config = None
-        if "resource_config" in item and "M" in item["resource_config"]:
+        if "resource_config" in item:
             resource_config = _parse_dynamodb_map(item["resource_config"]["M"])
-        
+
         return JobResource(
             job_id=job_id,
             resource_id=resource_id,
@@ -350,60 +361,25 @@ def itemToJobResource(item: dict) -> JobResource:
             released_at=released_at,
             resource_config=resource_config,
         )
-    except KeyError as e:
-        raise ValueError(f"Error converting item to JobResource: {e}")
-
-
-def _parse_dynamodb_map(dynamodb_map: Dict) -> Dict:
-    """Parses a DynamoDB map to a Python dictionary.
-
-    Args:
-        dynamodb_map (Dict): The DynamoDB map to parse.
-
-    Returns:
-        Dict: The parsed Python dictionary.
-    """
-    result = {}
-    for k, v in dynamodb_map.items():
-        if "M" in v:
-            result[k] = _parse_dynamodb_map(v["M"])
-        elif "L" in v:
-            result[k] = [_parse_dynamodb_value(item) for item in v["L"]]
-        elif "S" in v:
-            result[k] = v["S"]
-        elif "N" in v:
-            # Try to convert to int first, then float if that fails
-            try:
-                result[k] = int(v["N"])
-            except ValueError:
-                result[k] = float(v["N"])
-        elif "BOOL" in v:
-            result[k] = v["BOOL"]
-        elif "NULL" in v:
-            result[k] = None
-        else:
-            # Default fallback
-            result[k] = str(v)
-    return result
+    except (KeyError, ValueError) as e:
+        raise ValueError(f"Error converting item to JobResource: {e}") from e
 
 
 def _parse_dynamodb_value(dynamodb_value: Dict) -> Any:
-    """Parses a DynamoDB value to a Python value.
+    """Parse a DynamoDB-formatted value back to a Python value.
 
     Args:
-        dynamodb_value (Dict): The DynamoDB value to parse.
+        dynamodb_value (Dict): A DynamoDB-formatted value.
 
     Returns:
-        Any: The parsed Python value.
+        Any: The Python-native value.
+
+    Raises:
+        ValueError: If the DynamoDB value format is invalid.
     """
-    if "M" in dynamodb_value:
-        return _parse_dynamodb_map(dynamodb_value["M"])
-    elif "L" in dynamodb_value:
-        return [_parse_dynamodb_value(item) for item in dynamodb_value["L"]]
-    elif "S" in dynamodb_value:
+    if "S" in dynamodb_value:
         return dynamodb_value["S"]
     elif "N" in dynamodb_value:
-        # Try to convert to int first, then float if that fails
         try:
             return int(dynamodb_value["N"])
         except ValueError:
@@ -412,6 +388,27 @@ def _parse_dynamodb_value(dynamodb_value: Dict) -> Any:
         return dynamodb_value["BOOL"]
     elif "NULL" in dynamodb_value:
         return None
+    elif "M" in dynamodb_value:
+        return _parse_dynamodb_map(dynamodb_value["M"])
+    elif "L" in dynamodb_value:
+        return [_parse_dynamodb_value(item) for item in dynamodb_value["L"]]
     else:
-        # Default fallback
-        return str(dynamodb_value) 
+        raise ValueError(f"Unknown DynamoDB value format: {dynamodb_value}")
+
+
+def _parse_dynamodb_map(dynamodb_map: Dict) -> Dict:
+    """Parse a DynamoDB-formatted map back to a Python dictionary.
+
+    Args:
+        dynamodb_map (Dict): A DynamoDB-formatted map.
+
+    Returns:
+        Dict: The equivalent Python dictionary.
+
+    Raises:
+        ValueError: If the DynamoDB map format is invalid.
+    """
+    result = {}
+    for k, v in dynamodb_map.items():
+        result[k] = _parse_dynamodb_value(v)
+    return result

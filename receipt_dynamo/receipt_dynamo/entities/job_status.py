@@ -49,7 +49,14 @@ class JobStatus:
         assert_valid_uuid(job_id)
         self.job_id = job_id
 
-        valid_statuses = ["pending", "running", "succeeded", "failed", "cancelled", "interrupted"]
+        valid_statuses = [
+            "pending",
+            "running",
+            "succeeded",
+            "failed",
+            "cancelled",
+            "interrupted",
+        ]
         if not isinstance(status, str) or status.lower() not in valid_statuses:
             raise ValueError(f"status must be one of {valid_statuses}")
         self.status = status.lower()
@@ -88,7 +95,7 @@ class JobStatus:
         """
         return {
             "PK": {"S": f"JOB#{self.job_id}"},
-            "SK": {"S": f"STATUS#{self.updated_at}"}
+            "SK": {"S": f"STATUS#{self.updated_at}"},
         }
 
     def gsi1_key(self) -> dict:
@@ -99,7 +106,7 @@ class JobStatus:
         """
         return {
             "GSI1PK": {"S": f"STATUS#{self.status}"},
-            "GSI1SK": {"S": f"UPDATED#{self.updated_at}"}
+            "GSI1SK": {"S": f"UPDATED#{self.updated_at}"},
         }
 
     def to_item(self) -> dict:
@@ -230,21 +237,21 @@ def itemToJobStatus(item: dict) -> JobStatus:
         raise ValueError(
             f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
         )
-    
+
     try:
         # Parse job_id from the PK
         job_id = item["PK"]["S"].split("#")[1]
-        
+
         # Extract basic fields
         status = item["status"]["S"]
         updated_at = item["updated_at"]["S"]
-        
+
         # Parse optional fields
         progress = float(item["progress"]["N"]) if "progress" in item else None
         message = item["message"]["S"] if "message" in item else None
         updated_by = item["updated_by"]["S"] if "updated_by" in item else None
         instance_id = item["instance_id"]["S"] if "instance_id" in item else None
-        
+
         return JobStatus(
             job_id=job_id,
             status=status,
@@ -255,4 +262,4 @@ def itemToJobStatus(item: dict) -> JobStatus:
             instance_id=instance_id,
         )
     except KeyError as e:
-        raise ValueError(f"Error converting item to JobStatus: {e}") 
+        raise ValueError(f"Error converting item to JobStatus: {e}")

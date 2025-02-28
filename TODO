@@ -217,7 +217,7 @@
     - [x] Create core Job entity with status, priority, job_config
     - [x] Implement Job Status entity for historical status tracking
     - [ ] Add Job Resource tracking for instance allocation
-    - [ ] Add Job Metrics collection and storage
+    - [x] Add Job Metrics collection and storage
     - [ ] Implement Job Checkpoint management
     - [ ] Add Job Logs collection for debugging
     - [ ] Implement Job Dependency tracking
