@@ -4,8 +4,8 @@ Simple test script to verify that the receipt_dynamo package can be imported cor
 This helps diagnose issues with package paths in the IDE.
 """
 
-import sys
 import os
+import sys
 
 print(f"Python executable: {sys.executable}")
 print(f"Python version: {sys.version}")
@@ -16,18 +16,19 @@ try:
     import receipt_dynamo
 
     print(
-        f"\nSuccessfully imported receipt_dynamo package from: {receipt_dynamo.__file__}"
-    )
+        f"\nSuccessfully imported receipt_dynamo package from: {
+            receipt_dynamo.__file__}")
 
     # Try importing a few key modules
-    from receipt_dynamo import DynamoClient
 
-    print(f"Successfully imported DynamoClient")
+    print("Successfully imported DynamoClient")
 
     # Print package version
     print(
-        f"Package version: {receipt_dynamo.__version__ if hasattr(receipt_dynamo, '__version__') else 'Not defined'}"
-    )
+        f"Package version: {
+            receipt_dynamo.__version__ if hasattr(
+                receipt_dynamo,
+                '__version__') else 'Not defined'}")
 
     print("\nImport test successful!")
 except ImportError as e:

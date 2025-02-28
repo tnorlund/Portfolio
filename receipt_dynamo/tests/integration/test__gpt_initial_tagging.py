@@ -1,7 +1,9 @@
 # test__gpt_initial_tagging.py
-from typing import Literal
-import pytest
 from datetime import datetime
+from typing import Literal
+
+import pytest
+
 from receipt_dynamo import DynamoClient, GPTInitialTagging
 
 
@@ -86,7 +88,8 @@ def test_batch_add_and_list_gpt_initial_tagging(
     """
     taggings = []
     client = DynamoClient(dynamodb_table)
-    # Create several sample records with different receipt_ids so they are unique
+    # Create several sample records with different receipt_ids so they are
+    # unique
     for i in range(3):
         tagging = GPTInitialTagging(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -102,7 +105,9 @@ def test_batch_add_and_list_gpt_initial_tagging(
     listed, _ = client.listGPTInitialTaggings()
     # Filter results for our specific image_id
     filtered = [
-        t for t in listed if t.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+        t
+        for t in listed
+        if t.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     ]
     # We expect at least our 3 records to be present
     assert len(filtered) >= 3
@@ -112,7 +117,9 @@ def test_batch_add_and_list_gpt_initial_tagging(
     assert queries.issubset(listed_queries)
 
 
-def test_gpt_initial_tagging_get_nonexistent(dynamodb_table: Literal["MyMockedTable"]):
+def test_gpt_initial_tagging_get_nonexistent(
+    dynamodb_table: Literal["MyMockedTable"],
+):
     """
     Tests that attempting to get a non-existent record raises a ValueError.
     """
@@ -132,7 +139,9 @@ def test_update_nonexistent_gpt_initial_tagging(
     """
     # Do not add the record first.
     with pytest.raises(ValueError, match="GPTInitialTagging record not found"):
-        DynamoClient(dynamodb_table).updateGPTInitialTagging(sample_gpt_initial_tagging)
+        DynamoClient(dynamodb_table).updateGPTInitialTagging(
+            sample_gpt_initial_tagging
+        )
 
 
 def test_delete_nonexistent_gpt_initial_tagging(
@@ -143,7 +152,9 @@ def test_delete_nonexistent_gpt_initial_tagging(
     Tests that attempting to delete a non-existent record raises a ValueError.
     """
     with pytest.raises(ValueError, match="GPTInitialTagging record not found"):
-        DynamoClient(dynamodb_table).deleteGPTInitialTagging(sample_gpt_initial_tagging)
+        DynamoClient(dynamodb_table).deleteGPTInitialTagging(
+            sample_gpt_initial_tagging
+        )
 
 
 @pytest.mark.integration

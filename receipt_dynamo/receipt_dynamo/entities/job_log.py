@@ -1,6 +1,7 @@
-from typing import Any, Dict, Generator, List, Optional, Tuple
 from datetime import datetime
-from receipt_dynamo.entities.util import assert_valid_uuid, _repr_str
+from typing import Any, Generator, Optional, Tuple
+
+from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
 
 class JobLog:
@@ -54,7 +55,10 @@ class JobLog:
             raise ValueError("timestamp must be a datetime object or a string")
 
         valid_log_levels = ["INFO", "WARNING", "ERROR", "DEBUG", "CRITICAL"]
-        if not isinstance(log_level, str) or log_level.upper() not in valid_log_levels:
+        if (
+            not isinstance(log_level, str)
+            or log_level.upper() not in valid_log_levels
+        ):
             raise ValueError(f"log_level must be one of {valid_log_levels}")
         self.log_level = log_level.upper()
 
@@ -76,7 +80,16 @@ class JobLog:
         Returns:
             dict: The primary key for the job log.
         """
-        return {"PK": {"S": f"JOB#{self.job_id}"}, "SK": {"S": f"LOG#{self.timestamp}"}}
+        return {
+            "PK": {
+                "S": f"JOB#{
+                    self.job_id}"
+            },
+            "SK": {
+                "S": f"LOG#{
+                    self.timestamp}"
+            },
+        }
 
     def gsi1_key(self) -> dict:
         """Generates the GSI1 key for the job log.

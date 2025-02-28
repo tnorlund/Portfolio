@@ -1,7 +1,9 @@
-import os
 import json
-from receipt_dynamo import DynamoClient
+import os
+
 import boto3
+
+from receipt_dynamo import DynamoClient
 
 CURRENT_DIR = os.path.dirname(__file__)
 
@@ -9,7 +11,9 @@ IMAGE_ID = "2f05267d-86df-42b3-8a14-e29c5ea567b3"
 
 if __name__ == "__main__":
     # 1) Grab data from Dynamo or wherever
-    dynamo_client = DynamoClient(os.getenv("DYNAMO_DB_TABLE"))  # Adjust as needed
+    dynamo_client = DynamoClient(
+        os.getenv("DYNAMO_DB_TABLE")
+    )  # Adjust as needed
 
     # For example, get an image and lines from your DB:
     (
@@ -38,7 +42,9 @@ if __name__ == "__main__":
         Bucket=image.raw_s3_bucket,
         Prefix=f"raw/{image.image_id}",
     )
-    gpt_objects = [obj for obj in response.get("Contents", []) if "GPT" in obj["Key"]]
+    gpt_objects = [
+        obj for obj in response.get("Contents", []) if "GPT" in obj["Key"]
+    ]
     for obj in gpt_objects:
         response = s3.get_object(
             Bucket=image.raw_s3_bucket,
@@ -57,7 +63,9 @@ if __name__ == "__main__":
     image_filename = os.path.basename(image.raw_s3_key)
     image_local_path = os.path.join(png_dir, image_filename)
     print(
-        f"Downloading raw image file from {image.raw_s3_bucket}/{image.raw_s3_key} to {image_local_path}"
+        f"Downloading raw image file from {
+            image.raw_s3_bucket}/{
+            image.raw_s3_key} to {image_local_path}"
     )
     s3.download_file(image.raw_s3_bucket, image.raw_s3_key, image_local_path)
     # -------------------------------------------------------------------------
@@ -67,11 +75,13 @@ if __name__ == "__main__":
     os.makedirs(json_dir, exist_ok=True)
     # -------------------------------------------------------------------------
     # NEW CODE: Download the Swift OCR results JSON from S3.
-    # Assume that the Swift OCR JSON is stored in the same S3 prefix as the raw image.
+    # Assume that the Swift OCR JSON is stored in the same S3 prefix as the
+    # raw image.
     swift_ocr_key = image.raw_s3_key.replace(".png", ".json")
     swift_ocr_local_path = os.path.join(json_dir, f"{IMAGE_ID}_SWIFT_OCR.json")
     print(
-        f"Downloading swift OCR JSON from {image.raw_s3_bucket}/{swift_ocr_key} to {swift_ocr_local_path}"
+        f"Downloading swift OCR JSON from {
+            image.raw_s3_bucket}/{swift_ocr_key} to {swift_ocr_local_path}"
     )
     s3.download_file(image.raw_s3_bucket, swift_ocr_key, swift_ocr_local_path)
 
@@ -82,9 +92,13 @@ if __name__ == "__main__":
         receipt_filename = os.path.basename(receipt.raw_s3_key)
         receipt_local_path = os.path.join(png_dir, receipt_filename)
         print(
-            f"Downloading raw receipt file from {receipt.raw_s3_bucket}/{receipt.raw_s3_key} to {receipt_local_path}"
+            f"Downloading raw receipt file from {
+                receipt.raw_s3_bucket}/{
+                receipt.raw_s3_key} to {receipt_local_path}"
         )
-        s3.download_file(receipt.raw_s3_bucket, receipt.raw_s3_key, receipt_local_path)
+        s3.download_file(
+            receipt.raw_s3_bucket, receipt.raw_s3_key, receipt_local_path
+        )
     # -------------------------------------------------------------------------
 
     with open(os.path.join(json_dir, f"{IMAGE_ID}_RESULTS.json"), "w") as f:
@@ -141,8 +155,12 @@ if __name__ == "__main__":
                     }
                     for word in receipt_words
                 ],
-                "receipt_word_tags": [dict(word_tag) for word_tag in receipt_word_tags],
-                "receipt_letters": [dict(letter) for letter in receipt_letters],
+                "receipt_word_tags": [
+                    dict(word_tag) for word_tag in receipt_word_tags
+                ],
+                "receipt_letters": [
+                    dict(letter) for letter in receipt_letters
+                ],
                 "gpt_initial_taggings": [
                     dict(gpt_query) for gpt_query in gpt_initial_taggings
                 ],

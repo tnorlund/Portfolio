@@ -1,6 +1,8 @@
-from receipt_dynamo import Line, itemToLine
+from typing import Dict, Optional, Tuple
+
 from botocore.exceptions import ClientError
-from typing import Optional, Dict, Tuple
+
+from receipt_dynamo import Line, itemToLine
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 # So let's chunk the items in groups of 25
@@ -33,7 +35,7 @@ class _Line:
                 Item=line.to_item(),
                 ConditionExpression="attribute_not_exists(PK)",
             )
-        except ClientError as e:
+        except ClientError:
             raise ValueError(f"Line with ID {line.line_id} already exists")
 
     def addLines(self, lines: list[Line]):
@@ -58,10 +60,12 @@ class _Line:
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
                     # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
-        except ClientError as e:
-            raise ValueError(f"Could not add lines to the database")
+        except ClientError:
+            raise ValueError("Could not add lines to the database")
 
     def updateLine(self, line: Line):
         """Updates a line in the database
@@ -76,7 +80,10 @@ class _Line:
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
                 raise ValueError(f"Line with ID {line.line_id} not found")
             else:
                 raise Exception(f"Error updating line: {e}")
@@ -97,7 +104,7 @@ class _Line:
                 },
                 ConditionExpression="attribute_exists(PK)",
             )
-        except ClientError as e:
+        except ClientError:
             raise ValueError(f"Line with ID {line_id} not found")
 
     def deleteLines(self, lines: list[Line]):
@@ -119,10 +126,12 @@ class _Line:
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
                     # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
-        except ClientError as e:
-            raise ValueError(f"Could not delete lines from the database")
+        except ClientError:
+            raise ValueError("Could not delete lines from the database")
 
     def deleteLinesFromImage(self, image_id: int):
         """Deletes all lines from an image
@@ -147,7 +156,9 @@ class _Line:
             raise ValueError(f"Line with ID {line_id} not found")
 
     def listLines(
-        self, limit: Optional[int] = None, last_evaluated_key: Optional[Dict] = None
+        self,
+        limit: Optional[int] = None,
+        last_evaluated_key: Optional[Dict] = None,
     ) -> Tuple[list[Line], Optional[Dict]]:
         """Lists all lines in the database"""
         lines = []
@@ -170,11 +181,19 @@ class _Line:
             lines.extend([itemToLine(item) for item in response["Items"]])
 
             if limit is None:
-                # If no limit is provided, paginate until all items are retrieved
-                while "LastEvaluatedKey" in response and response["LastEvaluatedKey"]:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                # If no limit is provided, paginate until all items are
+                # retrieved
+                while (
+                    "LastEvaluatedKey" in response
+                    and response["LastEvaluatedKey"]
+                ):
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                     response = self._client.query(**query_params)
-                    lines.extend([itemToLine(item) for item in response["Items"]])
+                    lines.extend(
+                        [itemToLine(item) for item in response["Items"]]
+                    )
                 last_evaluated_key = None
             else:
                 # If a limit is provided, capture the LastEvaluatedKey (if any)

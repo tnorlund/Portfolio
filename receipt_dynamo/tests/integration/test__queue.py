@@ -1,15 +1,13 @@
-import pytest
-import boto3
-import uuid
 from datetime import datetime
-from botocore.exceptions import ClientError
-from typing import Literal
 
+import pytest
+from botocore.exceptions import ClientError
+
+from receipt_dynamo.data._queue import validate_last_evaluated_key
+from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.entities.job import Job
 from receipt_dynamo.entities.queue import Queue
 from receipt_dynamo.entities.queue_job import QueueJob
-from receipt_dynamo.entities.job import Job
-from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.data._queue import validate_last_evaluated_key
 
 
 @pytest.fixture
@@ -43,7 +41,11 @@ def sample_job():
         created_by="test_user",
         status="pending",
         priority="medium",
-        job_config={"type": "training", "model": "receipt_model", "batch_size": 32},
+        job_config={
+            "type": "training",
+            "model": "receipt_model",
+            "batch_size": 32,
+        },
         estimated_duration=3600,
         tags={"env": "test", "purpose": "integration-test"},
     )
@@ -104,7 +106,9 @@ def test_addQueue_raises_conditional_check_failed(queue_dynamo, sample_queue):
 
 
 @pytest.mark.integration
-def test_addQueue_raises_resource_not_found(queue_dynamo, sample_queue, monkeypatch):
+def test_addQueue_raises_resource_not_found(
+    queue_dynamo, sample_queue, monkeypatch
+):
     """Test that trying to add a queue to a non-existent table raises a ClientError."""
 
     def mock_put_item(*args, **kwargs):
@@ -186,7 +190,8 @@ def test_addQueues_handles_unprocessed_items(queue_dynamo, monkeypatch):
 
     monkeypatch.setattr(queue_dynamo._client, "get_item", mock_get_item)
 
-    # Mock batch_write_item to return unprocessed items on first call, then succeed
+    # Mock batch_write_item to return unprocessed items on first call, then
+    # succeed
     call_count = 0
     original_batch_write = queue_dynamo._client.batch_write_item
 
@@ -196,13 +201,17 @@ def test_addQueues_handles_unprocessed_items(queue_dynamo, monkeypatch):
             call_count += 1
             # Return unprocessed items for the first queue
             unprocessed_item = {
-                queue_dynamo.table_name: [{"PutRequest": {"Item": queues[0].to_item()}}]
+                queue_dynamo.table_name: [
+                    {"PutRequest": {"Item": queues[0].to_item()}}
+                ]
             }
             return {"UnprocessedItems": unprocessed_item}
         # On subsequent calls, use the original method
         return original_batch_write(*args, **kwargs)
 
-    monkeypatch.setattr(queue_dynamo._client, "batch_write_item", mock_batch_write)
+    monkeypatch.setattr(
+        queue_dynamo._client, "batch_write_item", mock_batch_write
+    )
 
     # This should handle the unprocessed items
     queue_dynamo.addQueues(queues)
@@ -269,7 +278,9 @@ def test_deleteQueue_success(queue_dynamo, sample_queue):
     queue_dynamo.deleteQueue(sample_queue)
 
     # Verify the queue was deleted
-    with pytest.raises(ValueError, match=f"Queue {sample_queue.queue_name} not found"):
+    with pytest.raises(
+        ValueError, match=f"Queue {sample_queue.queue_name} not found"
+    ):
         queue_dynamo.getQueue(sample_queue.queue_name)
 
 
@@ -479,7 +490,9 @@ def test_addJobToQueue_queue_not_found(queue_dynamo, sample_queue_job):
 
 
 @pytest.mark.integration
-def test_removeJobFromQueue_success(queue_dynamo, sample_queue, sample_queue_job):
+def test_removeJobFromQueue_success(
+    queue_dynamo, sample_queue, sample_queue_job
+):
     """Test that removing a job from a queue is successful."""
     # Add the queue first
     queue_dynamo.addQueue(sample_queue)
@@ -550,7 +563,8 @@ def test_listJobsInQueue_success(queue_dynamo, sample_queue, sample_job):
 
     # Add multiple jobs to the queue
     for i in range(3):
-        job_id = f"12345678-1234-4678-9{i}34-567812345678"  # Ensure valid UUIDv4 format
+        # Ensure valid UUIDv4 format
+        job_id = f"12345678-1234-4678-9{i}34-567812345678"
         queue_job = QueueJob(
             queue_name=sample_queue.queue_name,
             job_id=job_id,
@@ -581,7 +595,8 @@ def test_listJobsInQueue_with_limit(queue_dynamo, sample_queue, sample_job):
 
     # Add multiple jobs to the queue
     for i in range(5):
-        job_id = f"12345678-1234-4678-9{i}34-567812345678"  # Ensure valid UUIDv4 format
+        # Ensure valid UUIDv4 format
+        job_id = f"12345678-1234-4678-9{i}34-567812345678"
         queue_job = QueueJob(
             queue_name=sample_queue.queue_name,
             job_id=job_id,
@@ -766,7 +781,9 @@ def test_validate_last_evaluated_key_invalid_missing_key():
         # Missing SK
     }
 
-    with pytest.raises(ValueError, match="LastEvaluatedKey must contain PK and SK"):
+    with pytest.raises(
+        ValueError, match="LastEvaluatedKey must contain PK and SK"
+    ):
         validate_last_evaluated_key(invalid_lek)
 
 

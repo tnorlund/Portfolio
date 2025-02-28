@@ -1,6 +1,8 @@
-from typing import Literal
-import pytest
 import uuid
+from typing import Literal
+
+import pytest
+
 from receipt_dynamo import DynamoClient
 
 

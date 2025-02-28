@@ -1,10 +1,11 @@
-from typing import Any, Generator, Tuple
 from datetime import datetime
+from typing import Any, Generator, Tuple
+
 from receipt_dynamo.entities.util import (
-    assert_valid_uuid,
-    assert_valid_point,
     _format_float,
     _repr_str,
+    assert_valid_point,
+    assert_valid_uuid,
 )
 
 
@@ -96,7 +97,9 @@ class Receipt:
         elif isinstance(timestamp_added, str):
             self.timestamp_added = timestamp_added
         else:
-            raise ValueError("timestamp_added must be a datetime object or a string")
+            raise ValueError(
+                "timestamp_added must be a datetime object or a string"
+            )
 
         if raw_s3_bucket and not isinstance(raw_s3_bucket, str):
             raise ValueError("raw_s3_bucket must be a string")
@@ -144,7 +147,11 @@ class Receipt:
         """
         return {
             "GSI1PK": {"S": "IMAGE"},
-            "GSI1SK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"},
+            "GSI1SK": {
+                "S": f"IMAGE#{
+                    self.image_id}#RECEIPT#{
+                    self.receipt_id:05d}"
+            },
         }
 
     def gsi2_key(self) -> dict:
@@ -155,7 +162,11 @@ class Receipt:
         """
         return {
             "GSI2PK": {"S": "RECEIPT"},
-            "GSI2SK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"},
+            "GSI2SK": {
+                "S": f"IMAGE#{
+                    self.image_id}#RECEIPT#{
+                    self.receipt_id:05d}"
+            },
         }
 
     def gsi3_key(self) -> dict:
@@ -212,9 +223,13 @@ class Receipt:
             },
             "sha256": {"S": self.sha256} if self.sha256 else {"NULL": True},
             "cdn_s3_bucket": (
-                {"S": self.cdn_s3_bucket} if self.cdn_s3_bucket else {"NULL": True}
+                {"S": self.cdn_s3_bucket}
+                if self.cdn_s3_bucket
+                else {"NULL": True}
             ),
-            "cdn_s3_key": {"S": self.cdn_s3_key} if self.cdn_s3_key else {"NULL": True},
+            "cdn_s3_key": (
+                {"S": self.cdn_s3_key} if self.cdn_s3_key else {"NULL": True}
+            ),
         }
 
     def __repr__(self) -> str:
@@ -361,10 +376,12 @@ def itemToReceipt(item: dict) -> Receipt:
             raw_s3_bucket=item["raw_s3_bucket"]["S"],
             raw_s3_key=item["raw_s3_key"]["S"],
             top_left={
-                key: float(value["N"]) for key, value in item["top_left"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["top_left"]["M"].items()
             },
             top_right={
-                key: float(value["N"]) for key, value in item["top_right"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["top_right"]["M"].items()
             },
             bottom_left={
                 key: float(value["N"])

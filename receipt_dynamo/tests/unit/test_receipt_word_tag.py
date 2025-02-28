@@ -1,4 +1,5 @@
 import pytest
+
 from receipt_dynamo.entities.receipt_word_tag import (
     ReceiptWordTag,
     itemToReceiptWordTag,
@@ -16,7 +17,10 @@ def example_receipt_word_tag():
 @pytest.mark.unit
 def test_receipt_word_tag_init_valid(example_receipt_word_tag):
     """Test constructor initializes the correct fields."""
-    assert example_receipt_word_tag.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    assert (
+        example_receipt_word_tag.image_id
+        == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    )
     assert example_receipt_word_tag.receipt_id == 45
     assert example_receipt_word_tag.line_id == 6
     assert example_receipt_word_tag.word_id == 789
@@ -27,7 +31,9 @@ def test_receipt_word_tag_init_valid(example_receipt_word_tag):
 def test_receipt_word_tag_init_invalid_image_id():
     """Test constructor raises ValueError if image_id is not a valid UUID."""
     with pytest.raises(ValueError, match="uuid must be a string"):
-        ReceiptWordTag(123, 2, 3, 4, "tag", timestamp_added="2021-01-01T00:00:00")
+        ReceiptWordTag(
+            123, 2, 3, 4, "tag", timestamp_added="2021-01-01T00:00:00"
+        )
     with pytest.raises(ValueError, match="uuid must be a valid UUIDv4"):
         ReceiptWordTag(
             "bad-uuid", 2, 3, 4, "tag", timestamp_added="2021-01-01T00:00:00"
@@ -108,11 +114,21 @@ def test_receipt_word_tag_init_invalid_tag():
     """Test constructor raises ValueError if tag is not a string."""
     with pytest.raises(ValueError, match="tag must not be empty"):
         ReceiptWordTag(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, 4, "", "2021-01-01T00:00:00"
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            2,
+            3,
+            4,
+            "",
+            "2021-01-01T00:00:00",
         )
     with pytest.raises(ValueError, match="tag must be a string"):
         ReceiptWordTag(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, 4, 123, "2021-01-01T00:00:00"
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            2,
+            3,
+            4,
+            123,
+            "2021-01-01T00:00:00",
         )
     with pytest.raises(ValueError, match="tag must not exceed 40 characters"):
         long_tag = "A" * 41
@@ -124,7 +140,9 @@ def test_receipt_word_tag_init_invalid_tag():
             long_tag,
             "2021-01-01T00:00:00",
         )
-    with pytest.raises(ValueError, match="tag must not start with an underscore"):
+    with pytest.raises(
+        ValueError, match="tag must not start with an underscore"
+    ):
         ReceiptWordTag(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             2,
@@ -139,9 +157,12 @@ def test_receipt_word_tag_init_invalid_tag():
 def test_receipt_word_tag_init_invalid_timestamp_added():
     """Test constructor raises ValueError if timestamp_added is not a datetime or string."""
     with pytest.raises(
-        ValueError, match="timestamp_added must be a datetime object or a string"
+        ValueError,
+        match="timestamp_added must be a datetime object or a string",
     ):
-        ReceiptWordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, 4, "tag", 123)
+        ReceiptWordTag(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, 4, "tag", 123
+        )
 
 
 @pytest.mark.unit
@@ -295,7 +316,7 @@ def test_item_to_receipt_word_tag():
     assert obj.word_id == 99
     assert obj.tag == "food"
     assert obj.timestamp_added == "2021-01-01T00:00:00"
-    assert obj.validated == True
+    assert obj.validated
 
 
 @pytest.mark.unit
@@ -333,5 +354,7 @@ def test_item_to_receipt_word_tag_invalid_format():
         "timestamp_added": {"N": "2021-01-01T00:00:00"},
         "validated": {"BOOL": True},
     }
-    with pytest.raises(ValueError, match="Error converting item to ReceiptWordTag"):
+    with pytest.raises(
+        ValueError, match="Error converting item to ReceiptWordTag"
+    ):
         itemToReceiptWordTag(bad_item)

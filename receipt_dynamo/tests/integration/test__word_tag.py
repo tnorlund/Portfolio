@@ -1,9 +1,11 @@
 # test__word_tag.py
 
-import pytest
 from typing import Literal
-from receipt_dynamo import WordTag, DynamoClient
+
+import pytest
 from botocore.exceptions import ClientError
+
+from receipt_dynamo import DynamoClient, WordTag
 
 
 @pytest.fixture
@@ -156,7 +158,9 @@ def test_word_tag_list_from_image(dynamodb_table: Literal["MyMockedTable"]):
         client.addWordTag(wt)
 
     # Act
-    found_tags = client.listWordTagsFromImage("3f52804b-2fad-4e00-92c8-b593da3a8ed3")
+    found_tags = client.listWordTagsFromImage(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    )
 
     # Assert
     assert len(found_tags) == len(same_image_tags)
@@ -217,13 +221,16 @@ def test_get_word_tags(
     foo_tags = client.getWordTags("FOO")
 
     # Assert: We expect 3 items with tag=FOO
-    # Convert objects to sets of (image_id, line_id, word_id, tag) to compare easily
+    # Convert objects to sets of (image_id, line_id, word_id, tag) to compare
+    # easily
     foo_expected = {
         ("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 10, 100, "FOO"),
         ("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 11, 101, "FOO"),
         ("3f52804b-2fad-4e00-92c8-b593da3a8ed5", 30, 300, "FOO"),
     }
-    foo_returned = {(w.image_id, w.line_id, w.word_id, w.tag) for w in foo_tags}
+    foo_returned = {
+        (w.image_id, w.line_id, w.word_id, w.tag) for w in foo_tags
+    }
     assert foo_returned == foo_expected
 
     # Also check that "BAR" is distinct
@@ -231,7 +238,9 @@ def test_get_word_tags(
     bar_expected = {
         ("3f52804b-2fad-4e00-92c8-b593da3a8ed4", 20, 200, "BAR"),
     }
-    bar_returned = {(w.image_id, w.line_id, w.word_id, w.tag) for w in bar_tags}
+    bar_returned = {
+        (w.image_id, w.line_id, w.word_id, w.tag) for w in bar_tags
+    }
     assert bar_returned == bar_expected
 
 
@@ -274,7 +283,9 @@ def test_word_tag_get_pagination(dynamodb_table: Literal["MyMockedTable"]):
     assert len(results) == 30
     # Compare sets
     returned_ids = {(r.image_id, r.line_id, r.word_id) for r in results}
-    expected_ids = {("3f52804b-2fad-4e00-92c8-b593da3a8ed4", 1, i) for i in range(30)}
+    expected_ids = {
+        ("3f52804b-2fad-4e00-92c8-b593da3a8ed4", 1, i) for i in range(30)
+    }
     assert returned_ids == expected_ids
 
 
@@ -295,8 +306,8 @@ def test_updateWordTags_success(dynamodb_table, sample_word_tag):
     client.addWordTags([tag1, tag2])
 
     # Store the original keys before updating
-    old_tag1_key = tag1.key()
-    old_tag2_key = tag2.key()
+    tag1.key()
+    tag2.key()
 
     # Now update them
     tag1.tag = "UpdatedTag1"
@@ -353,7 +364,9 @@ def test_updateWordTags_raises_value_error_word_tags_not_list(dynamodb_table):
     Tests that updateWordTags raises ValueError when the word_tags parameter is not a list.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="WordTags must be provided as a list."):
+    with pytest.raises(
+        ValueError, match="WordTags must be provided as a list."
+    ):
         client.updateWordTags("not-a-list")  # type: ignore
 
 
@@ -369,7 +382,9 @@ def test_updateWordTags_raises_value_error_word_tags_not_list_of_word_tags(
         ValueError,
         match="All items in the word_tags list must be instances of the WordTag class.",
     ):
-        client.updateWordTags([sample_word_tag, "not-a-word-tag"])  # type: ignore
+        client.updateWordTags(
+            [sample_word_tag, "not-a-word-tag"]
+        )  # type: ignore
 
 
 @pytest.mark.integration
@@ -471,7 +486,9 @@ def test_updateWordTags_raises_clienterror_validation_exception(
             "TransactWriteItems",
         ),
     )
-    with pytest.raises(Exception, match="One or more parameters given were invalid"):
+    with pytest.raises(
+        Exception, match="One or more parameters given were invalid"
+    ):
         client.updateWordTags([sample_word_tag])
     mock_transact.assert_called_once()
 
@@ -488,7 +505,12 @@ def test_updateWordTags_raises_clienterror_access_denied(
         client._client,
         "transact_write_items",
         side_effect=ClientError(
-            {"Error": {"Code": "AccessDeniedException", "Message": "Access denied"}},
+            {
+                "Error": {
+                    "Code": "AccessDeniedException",
+                    "Message": "Access denied",
+                }
+            },
             "TransactWriteItems",
         ),
     )
@@ -498,7 +520,9 @@ def test_updateWordTags_raises_clienterror_access_denied(
 
 
 @pytest.mark.integration
-def test_updateWordTags_raises_client_error(dynamodb_table, sample_word_tag, mocker):
+def test_updateWordTags_raises_client_error(
+    dynamodb_table, sample_word_tag, mocker
+):
     """
     Simulate any error (ResourceNotFound, etc.) in transact_write_items.
     """

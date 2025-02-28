@@ -1,6 +1,6 @@
 # dynamo/entities/receipt_window.py
-from datetime import datetime
-from typing import Any, Generator, Tuple, List
+from typing import Any, Generator, List, Tuple
+
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
@@ -31,7 +31,12 @@ class ReceiptWindow:
         if corner_name and not isinstance(corner_name, str):
             raise ValueError("corner_name must be a string")
         corner_name = corner_name.upper()
-        if corner_name not in ["TOP_LEFT", "TOP_RIGHT", "BOTTOM_RIGHT", "BOTTOM_LEFT"]:
+        if corner_name not in [
+            "TOP_LEFT",
+            "TOP_RIGHT",
+            "BOTTOM_RIGHT",
+            "BOTTOM_LEFT",
+        ]:
             raise ValueError(
                 "corner_name must be one of: TOP_LEFT, TOP_RIGHT, BOTTOM_RIGHT, BOTTOM_LEFT"
             )
@@ -43,24 +48,33 @@ class ReceiptWindow:
             raise ValueError("height must be positive")
         self.height = height
         if not isinstance(inner_corner_coordinates, (tuple, list)):
-            raise ValueError("inner_corner_coordinates must be a tuple or list")
+            raise ValueError(
+                "inner_corner_coordinates must be a tuple or list"
+            )
         # Always store as tuple
         self.inner_corner_coordinates = tuple(inner_corner_coordinates)
         self.gpt_guess = gpt_guess
 
     def key(self) -> dict:
         return {
-            "PK": {"S": f"IMAGE#{self.image_id}"},
+            "PK": {
+                "S": f"IMAGE#{
+                    self.image_id}"
+            },
             "SK": {
-                "S": f"RECEIPT#{self.receipt_id:05d}#RECEIPT_WINDOW#{self.corner_name}"
+                "S": f"RECEIPT#{
+                    self.receipt_id:05d}#RECEIPT_WINDOW#{
+                        self.corner_name}"
             },
         }
 
     def gsi3_key(self) -> dict:
         return {
-            "GSI3PK": {"S": f"RECEIPT"},
+            "GSI3PK": {"S": "RECEIPT"},
             "GSI3SK": {
-                "S": f"RECEIPT#{self.receipt_id:05d}#RECEIPT_WINDOW#{self.corner_name}"
+                "S": f"RECEIPT#{
+                    self.receipt_id:05d}#RECEIPT_WINDOW#{
+                    self.corner_name}"
             },
         }
 
@@ -75,7 +89,10 @@ class ReceiptWindow:
             "width": {"N": str(self.width)},
             "height": {"N": str(self.height)},
             "inner_corner_coordinates": {
-                "L": [{"N": str(coord)} for coord in self.inner_corner_coordinates]
+                "L": [
+                    {"N": str(coord)}
+                    for coord in self.inner_corner_coordinates
+                ]
             },
             "gpt_guess": (
                 {"L": [{"N": str(guess)} for guess in self.gpt_guess]}
@@ -85,7 +102,13 @@ class ReceiptWindow:
         }
 
     def __repr__(self) -> str:
-        return f"ReceiptWindow(image_id={self.image_id}, receipt_id={self.receipt_id}, corner_name={self.corner_name}, width={self.width}, height={self.height}, gpt_guess={self.gpt_guess})"
+        return f"ReceiptWindow(image_id={
+            self.image_id}, receipt_id={
+            self.receipt_id}, corner_name={
+            self.corner_name}, width={
+                self.width}, height={
+                    self.height}, gpt_guess={
+                        self.gpt_guess})"
 
     def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
         yield "image_id", self.image_id
@@ -113,7 +136,9 @@ class ReceiptWindow:
 
     def __hash__(self) -> int:
         # Convert inner_corner_coordinates tuple of floats to hashable form
-        hashable_coords = tuple(float(x) for x in self.inner_corner_coordinates)
+        hashable_coords = tuple(
+            float(x) for x in self.inner_corner_coordinates
+        )
         return hash(
             (
                 self.image_id,
@@ -148,7 +173,8 @@ def itemToReceiptWindow(item: dict) -> ReceiptWindow:
             f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
         )
     try:
-        # Process gpt_guess correctly: if the item indicates NULL, set it to None.
+        # Process gpt_guess correctly: if the item indicates NULL, set it to
+        # None.
         gpt_guess_field = item.get("gpt_guess")
         if gpt_guess_field and gpt_guess_field.get("NULL", False):
             gpt_guess = None
@@ -161,14 +187,17 @@ def itemToReceiptWindow(item: dict) -> ReceiptWindow:
 
         return ReceiptWindow(
             image_id=item["PK"]["S"].split("#")[1],
-            receipt_id=int(item["SK"]["S"].split("#")[1].split("RECEIPT_WINDOW")[0]),
+            receipt_id=int(
+                item["SK"]["S"].split("#")[1].split("RECEIPT_WINDOW")[0]
+            ),
             cdn_s3_bucket=item["cdn_s3_bucket"]["S"],
             cdn_s3_key=item["cdn_s3_key"]["S"],
             corner_name=item["corner_name"]["S"],
             width=int(item["width"]["N"]),
             height=int(item["height"]["N"]),
             inner_corner_coordinates=tuple(
-                float(coord["N"]) for coord in item["inner_corner_coordinates"]["L"]
+                float(coord["N"])
+                for coord in item["inner_corner_coordinates"]["L"]
             ),
             gpt_guess=gpt_guess,
         )

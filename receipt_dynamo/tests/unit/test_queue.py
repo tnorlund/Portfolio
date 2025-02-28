@@ -1,5 +1,7 @@
-import pytest
 from datetime import datetime
+
+import pytest
+
 from receipt_dynamo.entities.queue import Queue, itemToQueue
 
 
@@ -40,24 +42,44 @@ def test_queue_init_valid(example_queue):
 @pytest.mark.unit
 def test_queue_init_invalid_queue_name():
     """Tests that the Queue constructor raises a ValueError with an invalid queue_name."""
-    with pytest.raises(ValueError, match="queue_name must be a non-empty string"):
-        Queue(queue_name="", description="Test queue", created_at=datetime.now())
+    with pytest.raises(
+        ValueError, match="queue_name must be a non-empty string"
+    ):
+        Queue(
+            queue_name="", description="Test queue", created_at=datetime.now()
+        )
 
-    with pytest.raises(ValueError, match="queue_name must be a non-empty string"):
-        Queue(queue_name=None, description="Test queue", created_at=datetime.now())
+    with pytest.raises(
+        ValueError, match="queue_name must be a non-empty string"
+    ):
+        Queue(
+            queue_name=None,
+            description="Test queue",
+            created_at=datetime.now(),
+        )
 
-    with pytest.raises(ValueError, match="queue_name must be a non-empty string"):
-        Queue(queue_name=123, description="Test queue", created_at=datetime.now())
+    with pytest.raises(
+        ValueError, match="queue_name must be a non-empty string"
+    ):
+        Queue(
+            queue_name=123, description="Test queue", created_at=datetime.now()
+        )
 
 
 @pytest.mark.unit
 def test_queue_init_invalid_description():
     """Tests that the Queue constructor raises a ValueError with an invalid description."""
     with pytest.raises(ValueError, match="description must be a string"):
-        Queue(queue_name="test-queue", description=123, created_at=datetime.now())
+        Queue(
+            queue_name="test-queue", description=123, created_at=datetime.now()
+        )
 
     with pytest.raises(ValueError, match="description must be a string"):
-        Queue(queue_name="test-queue", description=None, created_at=datetime.now())
+        Queue(
+            queue_name="test-queue",
+            description=None,
+            created_at=datetime.now(),
+        )
 
 
 @pytest.mark.unit
@@ -66,12 +88,16 @@ def test_queue_init_invalid_created_at():
     with pytest.raises(
         ValueError, match="created_at must be a datetime object or a string"
     ):
-        Queue(queue_name="test-queue", description="Test queue", created_at=123)
+        Queue(
+            queue_name="test-queue", description="Test queue", created_at=123
+        )
 
     with pytest.raises(
         ValueError, match="created_at must be a datetime object or a string"
     ):
-        Queue(queue_name="test-queue", description="Test queue", created_at=None)
+        Queue(
+            queue_name="test-queue", description="Test queue", created_at=None
+        )
 
 
 @pytest.mark.unit
@@ -131,7 +157,9 @@ def test_queue_init_invalid_priority():
 @pytest.mark.unit
 def test_queue_init_invalid_job_count():
     """Tests that the Queue constructor raises a ValueError with an invalid job_count."""
-    with pytest.raises(ValueError, match="job_count must be a non-negative integer"):
+    with pytest.raises(
+        ValueError, match="job_count must be a non-negative integer"
+    ):
         Queue(
             queue_name="test-queue",
             description="Test queue",
@@ -139,7 +167,9 @@ def test_queue_init_invalid_job_count():
             job_count=-1,
         )
 
-    with pytest.raises(ValueError, match="job_count must be a non-negative integer"):
+    with pytest.raises(
+        ValueError, match="job_count must be a non-negative integer"
+    ):
         Queue(
             queue_name="test-queue",
             description="Test queue",

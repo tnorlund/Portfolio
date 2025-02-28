@@ -1,10 +1,12 @@
 # infra/lambda_layer/python/test/integration/test__image.py
-import pytest
-import boto3
 from datetime import datetime
 from uuid import uuid4
-from receipt_dynamo import Image, Line, Word, Letter, Receipt, DynamoClient
+
+import boto3
+import pytest
 from botocore.exceptions import ClientError
+
+from receipt_dynamo import DynamoClient, Image, Letter, Line, Receipt, Word
 
 
 @pytest.fixture
@@ -80,7 +82,9 @@ def test_addImage_raises_conditional_check_failed(
 
 
 @pytest.mark.integration
-def test_addImage_raises_provisioned_throughput(dynamodb_table, example_image, mocker):
+def test_addImage_raises_provisioned_throughput(
+    dynamodb_table, example_image, mocker
+):
     """
     Tests that addImage raises an Exception with a message indicating that the
     provisioned throughput was exceeded when the DynamoDB put_item call returns a
@@ -110,14 +114,17 @@ def test_addImage_raises_provisioned_throughput(dynamodb_table, example_image, m
 
 
 @pytest.mark.integration
-def test_addImage_raises_internal_server_error(dynamodb_table, example_image, mocker):
+def test_addImage_raises_internal_server_error(
+    dynamodb_table, example_image, mocker
+):
     """
     Tests that addImage raises an Exception with a message indicating that an internal server error occurred,
     when the DynamoDB put_item call returns an InternalServerError.
     """
     client = DynamoClient(dynamodb_table)
 
-    # Patch the client's put_item to raise a ClientError with code "InternalServerError"
+    # Patch the client's put_item to raise a ClientError with code
+    # "InternalServerError"
     mock_put = mocker.patch.object(
         client._client,
         "put_item",
@@ -139,14 +146,17 @@ def test_addImage_raises_internal_server_error(dynamodb_table, example_image, mo
 
 
 @pytest.mark.integration
-def test_addImage_raises_unknown_exception(dynamodb_table, example_image, mocker):
+def test_addImage_raises_unknown_exception(
+    dynamodb_table, example_image, mocker
+):
     """
     Tests that addImage raises a generic Exception with a message indicating an error putting the image,
     when the DynamoDB put_item call returns a ClientError with an unhandled error code.
     """
     client = DynamoClient(dynamodb_table)
 
-    # Patch the client's put_item to raise a ClientError with an unknown error code.
+    # Patch the client's put_item to raise a ClientError with an unknown error
+    # code.
     mock_put = mocker.patch.object(
         client._client,
         "put_item",
@@ -393,7 +403,9 @@ def test_image_list_details(dynamodb_table):
     lines_different_image = [
         Line(image_id_3, 4, **correct_line_params),
     ]
-    client.addLines(lines_in_image_1 + lines_in_image_2 + lines_different_image)
+    client.addLines(
+        lines_in_image_1 + lines_in_image_2 + lines_different_image
+    )
 
     receipts_in_image_1 = [
         Receipt(image_id_1, **correct_receipt_params, receipt_id=1),
@@ -429,12 +441,16 @@ def test_listImageDetails_pagination_returns_page_and_token(dynamodb_table):
     images_created = []
     uuids = [str(uuid4()) for _ in range(6)]
     for i in range(1, 6):
-        img = Image(uuids[i], 100, 200, f"2021-01-0{i}T00:00:00", "bucket", f"key-{i}")
+        img = Image(
+            uuids[i], 100, 200, f"2021-01-0{i}T00:00:00", "bucket", f"key-{i}"
+        )
         client.addImage(img)
         images_created.append(img)
     payload, lek = client.listImageDetails(limit=2)
     assert len(payload) == 2, "Should only return 'limit' items"
-    assert lek is not None, "Should return a lastEvaluatedKey since more items exist"
+    assert (
+        lek is not None
+    ), "Should return a lastEvaluatedKey since more items exist"
     # Ensure the returned images are among those created.
     for img in images_created:
         assert (
@@ -448,12 +464,18 @@ def test_listImageDetails_pagination_uses_lastEvaluatedKey(dynamodb_table):
     images_created = []
     uuids = [str(uuid4()) for _ in range(6)]
     for i in range(1, 6):
-        img = Image(uuids[i], 100, 200, f"2021-01-0{i}T00:00:00", "bucket", f"key-{i}")
+        img = Image(
+            uuids[i], 100, 200, f"2021-01-0{i}T00:00:00", "bucket", f"key-{i}"
+        )
         client.addImage(img)
         images_created.append(img)
     page_1_payload, lek_1 = client.listImageDetails(limit=2)
-    page_2_payload, lek_2 = client.listImageDetails(limit=2, last_evaluated_key=lek_1)
-    page_3_payload, lek_3 = client.listImageDetails(limit=2, last_evaluated_key=lek_2)
+    page_2_payload, lek_2 = client.listImageDetails(
+        limit=2, last_evaluated_key=lek_1
+    )
+    page_3_payload, lek_3 = client.listImageDetails(
+        limit=2, last_evaluated_key=lek_2
+    )
 
     def extract_images(payload_dict):
         return [v["image"] for v in payload_dict.values() if "image" in v]
@@ -467,7 +489,9 @@ def test_listImageDetails_pagination_uses_lastEvaluatedKey(dynamodb_table):
     assert lek_2 is not None, "Second call should return a LEK"
 
     page_3_images = extract_images(page_3_payload)
-    assert len(page_3_images) == 1, "Third page should have the last remaining image"
+    assert (
+        len(page_3_images) == 1
+    ), "Third page should have the last remaining image"
     assert lek_3 is None, "No more images left, so LEK should be None"
 
     all_images = page_1_images + page_2_images + page_3_images
@@ -514,7 +538,9 @@ def test_listImageDetails_pagination_no_limit_returns_all(dynamodb_table):
 
     returned_images = extract_images(payload)
     assert len(returned_images) == 3, "Should return all images"
-    assert lek is None, "No pagination token should be returned if we got everything"
+    assert (
+        lek is None
+    ), "No pagination token should be returned if we got everything"
     for img in (image_1, image_2, image_3):
         assert img in returned_images
 
@@ -550,7 +576,9 @@ def test_listImageDetails_pagination_with_limit_exceeds_count(dynamodb_table):
     assert (
         len(returned_images) == 2
     ), "Should return all images if limit exceeds total count"
-    assert lek is None, "Should not return a lastEvaluatedKey if no more pages remain"
+    assert (
+        lek is None
+    ), "Should not return a lastEvaluatedKey if no more pages remain"
     assert image_1 in returned_images
     assert image_2 in returned_images
 
@@ -559,7 +587,9 @@ def test_listImageDetails_pagination_with_limit_exceeds_count(dynamodb_table):
 def test_listImageDetails_pagination_empty_table(dynamodb_table):
     client = DynamoClient(dynamodb_table)
     payload, lek = client.listImageDetails(limit=5)
-    assert len(payload) == 0, "Should return empty dictionary if no images exist"
+    assert (
+        len(payload) == 0
+    ), "Should return empty dictionary if no images exist"
     assert lek is None, "No next token if no images"
 
 
@@ -569,22 +599,30 @@ def test_listImageDetails_lek_structure_and_usage(dynamodb_table):
     images_created = []
     uuids = [str(uuid4()) for _ in range(6)]
     for i in range(1, 6):
-        img = Image(uuids[i], 100, 200, f"2021-01-0{i}T00:00:00", "bucket", f"key-{i}")
+        img = Image(
+            uuids[i], 100, 200, f"2021-01-0{i}T00:00:00", "bucket", f"key-{i}"
+        )
         client.addImage(img)
         images_created.append(img)
 
     payload_1, lek_1 = client.listImageDetails(limit=2)
     assert len(payload_1) == 2, "Page 1 should contain 2 images"
-    assert lek_1 is not None, "Should return a valid LastEvaluatedKey from page 1"
+    assert (
+        lek_1 is not None
+    ), "Should return a valid LastEvaluatedKey from page 1"
     assert isinstance(lek_1, dict), "LEK should be a dictionary"
     for key in ("PK", "SK", "GSI1PK", "GSI1SK"):
         assert key in lek_1, f"LEK dictionary should contain {key}"
 
-    payload_2, lek_2 = client.listImageDetails(limit=2, last_evaluated_key=lek_1)
+    payload_2, lek_2 = client.listImageDetails(
+        limit=2, last_evaluated_key=lek_1
+    )
     assert len(payload_2) == 2, "Page 2 should return the next 2 images"
     assert lek_2 is not None, "We still have a third image left"
 
-    payload_3, lek_3 = client.listImageDetails(limit=2, last_evaluated_key=lek_2)
+    payload_3, lek_3 = client.listImageDetails(
+        limit=2, last_evaluated_key=lek_2
+    )
     assert len(payload_3) == 1, "Page 3 should have the last remaining image"
     assert lek_3 is None, "No more pages expected"
 
@@ -635,7 +673,9 @@ def test_updateImages_success(dynamodb_table, example_image):
 
 
 @pytest.mark.integration
-def test_updateImages_raises_value_error_images_none(dynamodb_table, example_image):
+def test_updateImages_raises_value_error_images_none(
+    dynamodb_table, example_image
+):
     """
     Tests that updateImages raises ValueError when the images parameter is None.
     """
@@ -647,7 +687,9 @@ def test_updateImages_raises_value_error_images_none(dynamodb_table, example_ima
 
 
 @pytest.mark.integration
-def test_updateImages_raises_value_error_images_not_list(dynamodb_table, example_image):
+def test_updateImages_raises_value_error_images_not_list(
+    dynamodb_table, example_image
+):
     """
     Tests that updateImages raises ValueError when the images parameter is not a list.
     """
@@ -770,7 +812,9 @@ def test_updateImages_raises_clienterror_validation_exception(
             "TransactWriteItems",
         ),
     )
-    with pytest.raises(Exception, match="One or more parameters given were invalid"):
+    with pytest.raises(
+        Exception, match="One or more parameters given were invalid"
+    ):
         client.updateImages([example_image])
     mock_transact.assert_called_once()
 
@@ -787,7 +831,12 @@ def test_updateImages_raises_clienterror_access_denied(
         client._client,
         "transact_write_items",
         side_effect=ClientError(
-            {"Error": {"Code": "AccessDeniedException", "Message": "Access denied"}},
+            {
+                "Error": {
+                    "Code": "AccessDeniedException",
+                    "Message": "Access denied",
+                }
+            },
             "TransactWriteItems",
         ),
     )
@@ -797,7 +846,9 @@ def test_updateImages_raises_clienterror_access_denied(
 
 
 @pytest.mark.integration
-def test_updateImages_raises_client_error(dynamodb_table, example_image, mocker):
+def test_updateImages_raises_client_error(
+    dynamodb_table, example_image, mocker
+):
     """
     Simulate any error (ResourceNotFound, etc.) in transact_write_items.
     """

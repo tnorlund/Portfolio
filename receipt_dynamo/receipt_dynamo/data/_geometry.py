@@ -1,4 +1,4 @@
-from math import radians, cos, sin, atan2, degrees, hypot
+from math import atan2, cos, degrees, hypot, radians, sin
 from typing import Dict, List, Optional, Tuple
 
 
@@ -143,7 +143,9 @@ def solve_8x8_system(A, b):
         # 3) Normalize pivot row (so A[i][i] = 1)
         pivot_val = A[i][i]
         if abs(pivot_val) < 1e-12:
-            raise ValueError("Matrix is singular or poorly conditioned for pivoting.")
+            raise ValueError(
+                "Matrix is singular or poorly conditioned for pivoting."
+            )
         inv_pivot = 1.0 / pivot_val
         A[i] = [val * inv_pivot for val in A[i]]
         b[i] = b[i] * inv_pivot
@@ -164,7 +166,8 @@ def solve_8x8_system(A, b):
 
 
 def find_perspective_coeffs(
-    src_points: List[Tuple[float, float]], dst_points: List[Tuple[float, float]]
+    src_points: List[Tuple[float, float]],
+    dst_points: List[Tuple[float, float]],
 ) -> List[float]:
     """
     src_points: list of 4 (x, y) source corners
@@ -320,11 +323,15 @@ def compute_receipt_box_from_skewed_extents(
         x_int = x1 + t * (x2 - x1)
         return (x_int, desired_y)
 
-    left_top_point = interpolate_vertex(left_top_vertex, left_bottom_vertex, top_y)
+    left_top_point = interpolate_vertex(
+        left_top_vertex, left_bottom_vertex, top_y
+    )
     left_bottom_point = interpolate_vertex(
         left_top_vertex, left_bottom_vertex, bottom_y
     )
-    right_top_point = interpolate_vertex(right_top_vertex, right_bottom_vertex, top_y)
+    right_top_point = interpolate_vertex(
+        right_top_vertex, right_bottom_vertex, top_y
+    )
     right_bottom_point = interpolate_vertex(
         right_top_vertex, right_bottom_vertex, bottom_y
     )
@@ -432,7 +439,9 @@ def find_hull_extents_relative_to_centroid(
 
     results = {}
     for key, direction_vector in directions.items():
-        pt = _intersection_point_for_direction(hull_pts, cx, cy, direction_vector)
+        pt = _intersection_point_for_direction(
+            hull_pts, cx, cy, direction_vector
+        )
         if pt is not None:
             x_int = int(round(pt[0]))
             y_int = int(round(pt[1]))
@@ -505,7 +514,8 @@ def _intersection_point_for_direction(
         t = cross_rp_e / denom
         s = cross_rp_d / denom
 
-        # We want intersection where t >= 0 (ray is forward) and s in [0..1] (on segment)
+        # We want intersection where t >= 0 (ray is forward) and s in [0..1]
+        # (on segment)
         if t >= 0 and 0 <= s <= 1:
             if t < best_t:
                 best_t = t
@@ -574,14 +584,16 @@ def compute_hull_centroid(
             cx += (x0 + x1) * cross
             cy += (y0 + y1) * cross
 
-        # Polygon area is half the cross sum. For a CCW polygon, area_sum should be > 0.
+        # Polygon area is half the cross sum. For a CCW polygon, area_sum
+        # should be > 0.
         area = area_sum / 2.0
 
         # Centroid is (1/(6A)) * sum( (x_i + x_{i+1}) * cross, (y_i + y_{i+1}) * cross )
         # (make sure area != 0 for safety)
         if abs(area) < 1e-14:
             # Very thin or degenerate polygon, gracefully handle
-            # Here you might just return average of hull points if extremely degenerate
+            # Here you might just return average of hull points if extremely
+            # degenerate
             x_avg = sum(p[0] for p in hull_vertices) / n
             y_avg = sum(p[1] for p in hull_vertices) / n
             return (x_avg, y_avg)
@@ -592,7 +604,9 @@ def compute_hull_centroid(
         return (cx, cy)
 
 
-def convex_hull(points: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
+def convex_hull(
+    points: List[Tuple[float, float]]
+) -> List[Tuple[float, float]]:
     """
     Compute the convex hull of a set of 2D points (in CCW order) using the
     monotone chain algorithm.
@@ -648,7 +662,8 @@ def min_area_rect(
 
     hull = convex_hull(points)
     if len(hull) == 2:
-        # Two-point degenerate case: return a "line segment" as the minimal rectangle.
+        # Two-point degenerate case: return a "line segment" as the minimal
+        # rectangle.
         (x0, y0), (x1, y1) = hull
         center = ((x0 + x1) / 2.0, (y0 + y1) / 2.0)
         dx = x1 - x0

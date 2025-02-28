@@ -1,5 +1,6 @@
-from receipt_dynamo import ReceiptLetter, itemToReceiptLetter
 from botocore.exceptions import ClientError
+
+from receipt_dynamo import ReceiptLetter, itemToReceiptLetter
 
 CHUNK_SIZE = 25
 
@@ -37,7 +38,10 @@ class _ReceiptLetter:
                 ConditionExpression="attribute_not_exists(PK)",
             )
         except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
                 raise ValueError(
                     f"ReceiptLetter with ID {letter.letter_id} already exists"
                 )
@@ -49,16 +53,22 @@ class _ReceiptLetter:
         try:
             for i in range(0, len(letters), CHUNK_SIZE):
                 chunk = letters[i : i + CHUNK_SIZE]
-                request_items = [{"PutRequest": {"Item": lt.to_item()}} for lt in chunk]
+                request_items = [
+                    {"PutRequest": {"Item": lt.to_item()}} for lt in chunk
+                ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
-            raise ValueError("Could not add ReceiptLetters to the database") from e
+            raise ValueError(
+                "Could not add ReceiptLetters to the database"
+            ) from e
 
     def updateReceiptLetter(self, letter: ReceiptLetter):
         """Updates an existing ReceiptLetter in DynamoDB."""
@@ -69,7 +79,10 @@ class _ReceiptLetter:
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
                 raise ValueError(
                     f"ReceiptLetter with ID {letter.letter_id} does not exist"
                 )
@@ -77,7 +90,12 @@ class _ReceiptLetter:
                 raise
 
     def deleteReceiptLetter(
-        self, receipt_id: int, image_id: str, line_id: int, word_id: int, letter_id: int
+        self,
+        receipt_id: int,
+        image_id: str,
+        line_id: int,
+        word_id: int,
+        letter_id: int,
     ):
         """Deletes a single ReceiptLetter by IDs."""
         try:
@@ -86,14 +104,23 @@ class _ReceiptLetter:
                 Key={
                     "PK": {"S": f"IMAGE#{image_id}"},
                     "SK": {
-                        "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"
+                        "S": f"RECEIPT#{
+                            receipt_id:05d}#LINE#{
+                            line_id:05d}#WORD#{
+                            word_id:05d}#LETTER#{
+                                letter_id:05d}"
                     },
                 },
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-                raise ValueError(f"ReceiptLetter with ID {letter_id} not found")
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
+                raise ValueError(
+                    f"ReceiptLetter with ID {letter_id} not found"
+                )
             else:
                 raise
 
@@ -102,19 +129,30 @@ class _ReceiptLetter:
         try:
             for i in range(0, len(letters), CHUNK_SIZE):
                 chunk = letters[i : i + CHUNK_SIZE]
-                request_items = [{"DeleteRequest": {"Key": lt.key()}} for lt in chunk]
+                request_items = [
+                    {"DeleteRequest": {"Key": lt.key()}} for lt in chunk
+                ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
-            raise ValueError("Could not delete ReceiptLetters from the database") from e
+            raise ValueError(
+                "Could not delete ReceiptLetters from the database"
+            ) from e
 
     def getReceiptLetter(
-        self, receipt_id: int, image_id: str, line_id: int, word_id: int, letter_id: int
+        self,
+        receipt_id: int,
+        image_id: str,
+        line_id: int,
+        word_id: int,
+        letter_id: int,
     ) -> ReceiptLetter:
         """Retrieves a single ReceiptLetter by IDs."""
         try:
@@ -123,7 +161,11 @@ class _ReceiptLetter:
                 Key={
                     "PK": {"S": f"IMAGE#{image_id}"},
                     "SK": {
-                        "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"
+                        "S": f"RECEIPT#{
+                            receipt_id:05d}#LINE#{
+                            line_id:05d}#WORD#{
+                            word_id:05d}#LETTER#{
+                                letter_id:05d}"
                     },
                 },
             )
@@ -137,7 +179,9 @@ class _ReceiptLetter:
         """Returns all ReceiptLetters from the table."""
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None.")
-        if lastEvaluatedKey is not None and not isinstance(lastEvaluatedKey, dict):
+        if lastEvaluatedKey is not None and not isinstance(
+            lastEvaluatedKey, dict
+        ):
             raise ValueError("lastEvaluatedKey must be a dictionary or None.")
 
         receipt_letters = []
@@ -161,10 +205,15 @@ class _ReceiptLetter:
             if limit is None:
                 # Paginate through all the receipt letters.
                 while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                     response = self._client.query(**query_params)
                     receipt_letters.extend(
-                        [itemToReceiptLetter(item) for item in response["Items"]]
+                        [
+                            itemToReceiptLetter(item)
+                            for item in response["Items"]
+                        ]
                     )
                 last_evaluated_key = None
             else:
@@ -201,9 +250,12 @@ class _ReceiptLetter:
                     ":pkVal": {"S": f"IMAGE#{image_id}"},
                     ":skPrefix": {
                         "S": (
-                            f"RECEIPT#{receipt_id:05d}"
-                            f"#LINE#{line_id:05d}"
-                            f"#WORD#{word_id:05d}"
+                            f"RECEIPT#{
+                                receipt_id:05d}"
+                            f"#LINE#{
+                                line_id:05d}"
+                            f"#WORD#{
+                                word_id:05d}"
                             f"#LETTER#"
                         )
                     },
@@ -221,9 +273,12 @@ class _ReceiptLetter:
                         ":pkVal": {"S": f"IMAGE#{image_id}"},
                         ":skPrefix": {
                             "S": (
-                                f"RECEIPT#{receipt_id:05d}"
-                                f"#LINE#{line_id:05d}"
-                                f"#WORD#{word_id:05d}"
+                                f"RECEIPT#{
+                                    receipt_id:05d}"
+                                f"#LINE#{
+                                    line_id:05d}"
+                                f"#WORD#{
+                                    word_id:05d}"
                                 f"#LETTER#"
                             )
                         },
@@ -236,4 +291,6 @@ class _ReceiptLetter:
             return receipt_letters
 
         except ClientError as e:
-            raise ValueError("Could not list ReceiptLetters from the database") from e
+            raise ValueError(
+                "Could not list ReceiptLetters from the database"
+            ) from e

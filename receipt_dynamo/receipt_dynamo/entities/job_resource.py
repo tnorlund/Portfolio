@@ -1,6 +1,7 @@
-from typing import Any, Dict, Generator, List, Optional, Tuple
 from datetime import datetime
-from receipt_dynamo.entities.util import assert_valid_uuid, _repr_str
+from typing import Any, Dict, Generator, Optional, Tuple
+
+from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
 
 class JobResource:
@@ -79,7 +80,9 @@ class JobResource:
             not isinstance(resource_type, str)
             or resource_type.lower() not in valid_resource_types
         ):
-            raise ValueError(f"resource_type must be one of {valid_resource_types}")
+            raise ValueError(
+                f"resource_type must be one of {valid_resource_types}"
+            )
         self.resource_type = resource_type.lower()
 
         if isinstance(allocated_at, datetime):
@@ -87,7 +90,9 @@ class JobResource:
         elif isinstance(allocated_at, str):
             self.allocated_at = allocated_at
         else:
-            raise ValueError("allocated_at must be a datetime object or a string")
+            raise ValueError(
+                "allocated_at must be a datetime object or a string"
+            )
 
         if released_at is not None:
             if isinstance(released_at, datetime):
@@ -95,7 +100,9 @@ class JobResource:
             elif isinstance(released_at, str):
                 self.released_at = released_at
             else:
-                raise ValueError("released_at must be a datetime object or a string")
+                raise ValueError(
+                    "released_at must be a datetime object or a string"
+                )
         else:
             self.released_at = None
 
@@ -109,7 +116,9 @@ class JobResource:
                 raise ValueError("gpu_count must be a non-negative integer")
         self.gpu_count = gpu_count
 
-        if resource_config is not None and not isinstance(resource_config, dict):
+        if resource_config is not None and not isinstance(
+            resource_config, dict
+        ):
             raise ValueError("resource_config must be a dictionary")
         self.resource_config = resource_config or {}
 
@@ -181,7 +190,9 @@ class JobResource:
             if isinstance(v, dict):
                 result[k] = {"M": self._dict_to_dynamodb_map(v)}
             elif isinstance(v, list):
-                result[k] = {"L": [self._to_dynamodb_value(item) for item in v]}
+                result[k] = {
+                    "L": [self._to_dynamodb_value(item) for item in v]
+                }
             elif isinstance(v, str):
                 result[k] = {"S": v}
             elif isinstance(v, (int, float)):
@@ -297,7 +308,8 @@ class JobResource:
                 self.released_at,
                 self.status,
                 self.gpu_count,
-                # Since dictionaries aren't hashable, we exclude resource_config from the hash
+                # Since dictionaries aren't hashable, we exclude
+                # resource_config from the hash
             )
         )
 
@@ -343,7 +355,9 @@ def itemToJobResource(item: dict) -> JobResource:
         status = item["status"]["S"]
 
         released_at = item.get("released_at", {}).get("S", None)
-        gpu_count = int(item["gpu_count"]["N"]) if "gpu_count" in item else None
+        gpu_count = (
+            int(item["gpu_count"]["N"]) if "gpu_count" in item else None
+        )
 
         resource_config = None
         if "resource_config" in item:

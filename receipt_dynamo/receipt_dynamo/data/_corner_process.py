@@ -1,7 +1,8 @@
 # infra/lambda_layer/python/dynamo/data/_corner_process.py
-from PIL.Image import Image, Resampling
-from typing import List, Tuple, Dict
 import math
+from typing import Dict, List, Tuple
+
+from PIL.Image import Image, Resampling
 
 
 def normalize(v: Tuple[float, float]) -> Tuple[float, float]:
@@ -125,7 +126,8 @@ def window_rectangle_for_corner(
 
     # 3. Compute perpendicular vector p = (-r_y, r_x)
     p = (-r[1], r[0])
-    # Determine if this is a left or right corner based on the receipt corner's x.
+    # Determine if this is a left or right corner based on the receipt
+    # corner's x.
     if receipt_corner[0] < img_w / 2.0:
         # Left corner: ensure p_x is negative.
         if p[0] > 0:
@@ -160,7 +162,9 @@ def window_rectangle_for_corner(
     return [pt1, pt2, pt3, pt4]
 
 
-def crop_polygon_region(image: Image, poly: List[Tuple[float, float]]) -> Image:
+def crop_polygon_region(
+    image: Image, poly: List[Tuple[float, float]]
+) -> Image:
     """
     Given a polygon (a list of (x,y) coordinates), computes its axis-aligned bounding box
     and crops that region from the image.
@@ -266,7 +270,8 @@ def extract_and_save_corner_windows(
     cropped_br = crop_polygon_region(image, poly_br)
     cropped_bl = crop_polygon_region(image, poly_bl)
 
-    # Helper function: down_sample image so that its largest dimension is max_dim.
+    # Helper function: down_sample image so that its largest dimension is
+    # max_dim.
     def down_sample(image: Image, max_dim: int) -> Tuple[Image, int, int]:
         width, height = image.size
         scale = min(max_dim / width, max_dim / height, 1.0)
@@ -280,7 +285,8 @@ def extract_and_save_corner_windows(
     image_br, width_br, height_br = down_sample(cropped_br, max_dim)
     image_bl, width_bl, height_bl = down_sample(cropped_bl, max_dim)
 
-    # Since the inner corner I is the first element of each polygon, include it in the output.
+    # Since the inner corner I is the first element of each polygon, include
+    # it in the output.
     return {
         "top_left": {
             "image": image_tl,

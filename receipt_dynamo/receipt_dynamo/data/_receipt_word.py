@@ -1,5 +1,6 @@
-from receipt_dynamo import ReceiptWord, itemToReceiptWord
 from botocore.exceptions import ClientError
+
+from receipt_dynamo import ReceiptWord, itemToReceiptWord
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 CHUNK_SIZE = 25
@@ -41,26 +42,40 @@ class _ReceiptWord:
             )
         except ClientError as e:
             # Check if it's a condition failure (duplicate key)
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-                raise ValueError(f"ReceiptWord with ID {word.word_id} already exists")
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
+                raise ValueError(
+                    f"ReceiptWord with ID {
+                        word.word_id} already exists"
+                )
             else:
-                raise Exception(f"Could not add ReceiptWord to the database: {e}")
+                raise Exception(
+                    f"Could not add ReceiptWord to the database: {e}"
+                )
 
     def addReceiptWords(self, words: list[ReceiptWord]):
         """Adds multiple ReceiptWords to DynamoDB in batches of CHUNK_SIZE."""
         try:
             for i in range(0, len(words), CHUNK_SIZE):
                 chunk = words[i : i + CHUNK_SIZE]
-                request_items = [{"PutRequest": {"Item": w.to_item()}} for w in chunk]
+                request_items = [
+                    {"PutRequest": {"Item": w.to_item()}} for w in chunk
+                ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
-            raise ValueError(f"Could not add ReceiptWords to the database: {e}")
+            raise ValueError(
+                f"Could not add ReceiptWords to the database: {e}"
+            )
 
     def updateReceiptWord(self, word: ReceiptWord):
         """Updates an existing ReceiptWord in DynamoDB."""
@@ -71,26 +86,40 @@ class _ReceiptWord:
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-                raise ValueError(f"ReceiptWord with ID {word.word_id} does not exist")
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
+                raise ValueError(
+                    f"ReceiptWord with ID {
+                        word.word_id} does not exist"
+                )
             else:
-                raise Exception(f"Could not update ReceiptWord in the database: {e}")
+                raise Exception(
+                    f"Could not update ReceiptWord in the database: {e}"
+                )
 
     def updateReceiptWords(self, words: list[ReceiptWord]):
         """Updates multiple existing ReceiptWords in DynamoDB."""
         try:
             for i in range(0, len(words), CHUNK_SIZE):
                 chunk = words[i : i + CHUNK_SIZE]
-                request_items = [{"PutRequest": {"Item": w.to_item()}} for w in chunk]
+                request_items = [
+                    {"PutRequest": {"Item": w.to_item()}} for w in chunk
+                ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
-            raise ValueError(f"Could not update ReceiptWords in the database: {e}")
+            raise ValueError(
+                f"Could not update ReceiptWords in the database: {e}"
+            )
 
     def deleteReceiptWord(
         self, receipt_id: int, image_id: str, line_id: int, word_id: int
@@ -102,13 +131,19 @@ class _ReceiptWord:
                 Key={
                     "PK": {"S": f"IMAGE#{image_id}"},
                     "SK": {
-                        "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}"
+                        "S": f"RECEIPT#{
+                            receipt_id:05d}#LINE#{
+                            line_id:05d}#WORD#{
+                            word_id:05d}"
                     },
                 },
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
                 raise ValueError(f"ReceiptWord with ID {word_id} not found")
             else:
                 raise
@@ -118,18 +153,26 @@ class _ReceiptWord:
         try:
             for i in range(0, len(words), CHUNK_SIZE):
                 chunk = words[i : i + CHUNK_SIZE]
-                request_items = [{"DeleteRequest": {"Key": w.key()}} for w in chunk]
+                request_items = [
+                    {"DeleteRequest": {"Key": w.key()}} for w in chunk
+                ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
-            raise ValueError(f"Could not delete ReceiptWords from the database: {e}")
+            raise ValueError(
+                f"Could not delete ReceiptWords from the database: {e}"
+            )
 
-    def deleteReceiptWordsFromLine(self, receipt_id: int, image_id: str, line_id: int):
+    def deleteReceiptWordsFromLine(
+        self, receipt_id: int, image_id: str, line_id: int
+    ):
         """Deletes all ReceiptWords from a given line within a receipt/image."""
         words = self.listReceiptWordsFromLine(receipt_id, image_id, line_id)
         self.deleteReceiptWords(words)
@@ -144,7 +187,10 @@ class _ReceiptWord:
                 Key={
                     "PK": {"S": f"IMAGE#{image_id}"},
                     "SK": {
-                        "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}"
+                        "S": f"RECEIPT#{
+                            receipt_id:05d}#LINE#{
+                            line_id:05d}#WORD#{
+                            word_id:05d}"
                     },
                 },
             )
@@ -192,15 +238,21 @@ class _ReceiptWord:
                 # Retry unprocessed keys if any
                 unprocessed = response.get("UnprocessedKeys", {})
                 while unprocessed.get(self.table_name, {}).get("Keys"):
-                    response = self._client.batch_get_item(RequestItems=unprocessed)
-                    batch_items = response["Responses"].get(self.table_name, [])
+                    response = self._client.batch_get_item(
+                        RequestItems=unprocessed
+                    )
+                    batch_items = response["Responses"].get(
+                        self.table_name, []
+                    )
                     results.extend(batch_items)
                     unprocessed = response.get("UnprocessedKeys", {})
 
             return [itemToReceiptWord(result) for result in results]
 
         except ClientError as e:
-            raise ValueError(f"Could not delete ReceiptWords from the database: {e}")
+            raise ValueError(
+                f"Could not delete ReceiptWords from the database: {e}"
+            )
 
     def listReceiptWords(
         self, limit: int = None, lastEvaluatedKey: dict | None = None
@@ -208,7 +260,9 @@ class _ReceiptWord:
         """Returns all ReceiptWords from the table."""
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None.")
-        if lastEvaluatedKey is not None and not isinstance(lastEvaluatedKey, dict):
+        if lastEvaluatedKey is not None and not isinstance(
+            lastEvaluatedKey, dict
+        ):
             raise ValueError("lastEvaluatedKey must be a dictionary or None.")
 
         receipt_words = []
@@ -232,7 +286,9 @@ class _ReceiptWord:
             if limit is None:
                 # Paginate through all the receipt words.
                 while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                     response = self._client.query(**query_params)
                     receipt_words.extend(
                         [itemToReceiptWord(item) for item in response["Items"]]
@@ -272,7 +328,9 @@ class _ReceiptWord:
                 ExpressionAttributeValues={
                     ":pk_val": {"S": f"IMAGE#{image_id}"},
                     ":sk_val": {
-                        "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#"
+                        "S": f"RECEIPT#{
+                            receipt_id:05d}#LINE#{
+                            line_id:05d}#WORD#"
                     },
                 },
             )
@@ -288,7 +346,9 @@ class _ReceiptWord:
                     ExpressionAttributeValues={
                         ":pk_val": {"S": f"IMAGE#{image_id}"},
                         ":sk_val": {
-                            "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#"
+                            "S": f"RECEIPT#{
+                                receipt_id:05d}#LINE#{
+                                line_id:05d}#WORD#"
                         },
                     },
                     ExclusiveStartKey=response["LastEvaluatedKey"],
@@ -298,4 +358,6 @@ class _ReceiptWord:
                 )
             return receipt_words
         except ClientError as e:
-            raise ValueError(f"Could not list ReceiptWords from the database: {e}")
+            raise ValueError(
+                f"Could not list ReceiptWords from the database: {e}"
+            )

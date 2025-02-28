@@ -1,6 +1,6 @@
-from typing import Any, Dict, Generator, List, Optional, Tuple
-from datetime import datetime
-from receipt_dynamo.entities.util import assert_valid_uuid, _repr_str
+from typing import Any, Dict, Generator, Optional, Tuple
+
+from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
 
 class JobCheckpoint:
@@ -163,7 +163,9 @@ class JobCheckpoint:
             if isinstance(v, dict):
                 result[k] = {"M": self._dict_to_dynamodb_map(v)}
             elif isinstance(v, list):
-                result[k] = {"L": [self._to_dynamodb_value(item) for item in v]}
+                result[k] = {
+                    "L": [self._to_dynamodb_value(item) for item in v]
+                }
             elif isinstance(v, bool):
                 result[k] = {"BOOL": v}
             elif isinstance(v, (int, float)):

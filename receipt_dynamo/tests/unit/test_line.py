@@ -1,5 +1,7 @@
-import pytest
 import math
+
+import pytest
+
 from receipt_dynamo import Line, itemToLine
 
 
@@ -293,7 +295,9 @@ def test_line_gsi1_key(example_line):
     """Test the Line.gsi1_key() method"""
     assert example_line.gsi1_key() == {
         "GSI1PK": {"S": "IMAGE"},
-        "GSI1SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#LINE#00001"},
+        "GSI1SK": {
+            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#LINE#00001"
+        },
     }
 
 
@@ -516,7 +520,8 @@ def test_line_rotate_limited_range(angle, use_radians, should_raise):
         # fmt: on
         assert line.bounding_box == expected_bb
 
-        # Verify that at least one of the corners has changed unless the rotation angle is zero.
+        # Verify that at least one of the corners has changed unless the
+        # rotation angle is zero.
         if angle not in (0, 0.0):
             corners_changed = (
                 any(
@@ -524,7 +529,8 @@ def test_line_rotate_limited_range(angle, use_radians, should_raise):
                     for k in ["x", "y"]
                 )
                 or any(
-                    line.top_left[k] != orig_corners["top_left"][k] for k in ["x", "y"]
+                    line.top_left[k] != orig_corners["top_left"][k]
+                    for k in ["x", "y"]
                 )
                 or any(
                     line.bottom_right[k] != orig_corners["bottom_right"][k]
@@ -535,7 +541,9 @@ def test_line_rotate_limited_range(angle, use_radians, should_raise):
                     for k in ["x", "y"]
                 )
             )
-            assert corners_changed, "Expected corners to change after valid rotation."
+            assert (
+                corners_changed
+            ), "Expected corners to change after valid rotation."
         else:
             assert line.top_right == orig_corners["top_right"]
             assert line.top_left == orig_corners["top_left"]
@@ -572,8 +580,10 @@ def test_line_rotate_limited_range(angle, use_radians, should_raise):
             10.0,
             20.0,
             {
-                "top_right": {"x": 15.0 + 0.2 * (20.0 - 20.0), "y": 20.0},  # (15,20)
-                "top_left": {"x": 10.0 + 0.2 * (20.0 - 20.0), "y": 20.0},  # (10,20)
+                # (15,20)
+                "top_right": {"x": 15.0 + 0.2 * (20.0 - 20.0), "y": 20.0},
+                # (10,20)
+                "top_left": {"x": 10.0 + 0.2 * (20.0 - 20.0), "y": 20.0},
                 "bottom_right": {
                     "x": 15.0 + 0.2 * (22.0 - 20.0),
                     "y": 22.0,
@@ -591,10 +601,14 @@ def test_line_rotate_limited_range(angle, use_radians, should_raise):
             10.0,
             20.0,
             {
-                "top_right": {"x": 15.0, "y": 20.0 + 0.2 * (15.0 - 10.0)},  # (15,21)
-                "top_left": {"x": 10.0, "y": 20.0 + 0.2 * (10.0 - 10.0)},  # (10,20)
-                "bottom_right": {"x": 15.0, "y": 22.0 + 0.2 * (15.0 - 10.0)},  # (15,23)
-                "bottom_left": {"x": 10.0, "y": 22.0 + 0.2 * (10.0 - 10.0)},  # (10,22)
+                # (15,21)
+                "top_right": {"x": 15.0, "y": 20.0 + 0.2 * (15.0 - 10.0)},
+                # (10,20)
+                "top_left": {"x": 10.0, "y": 20.0 + 0.2 * (10.0 - 10.0)},
+                # (15,23)
+                "bottom_right": {"x": 15.0, "y": 22.0 + 0.2 * (15.0 - 10.0)},
+                # (10,22)
+                "bottom_left": {"x": 10.0, "y": 22.0 + 0.2 * (10.0 - 10.0)},
             },
         ),
         # Test 3: Combined shear
@@ -638,7 +652,12 @@ def test_line_shear(shx, shy, pivot_x, pivot_y, expected_corners):
     line.shear(shx, shy, pivot_x, pivot_y)
 
     # Check each corner against the expected values
-    for corner_name in ["top_right", "top_left", "bottom_right", "bottom_left"]:
+    for corner_name in [
+        "top_right",
+        "top_left",
+        "bottom_right",
+        "bottom_left",
+    ]:
         for coord in ["x", "y"]:
             expected_value = expected_corners[corner_name][coord]
             actual_value = line.__dict__[corner_name][coord]
@@ -741,7 +760,8 @@ def test_line_warp_affine():
     assert line.bounding_box["height"] == pytest.approx(expected_bb["height"])
 
     # Verify that the angle has been updated correctly.
-    # Here we expect 0 radians and 0 degrees since the top edge remains horizontal.
+    # Here we expect 0 radians and 0 degrees since the top edge remains
+    # horizontal.
     assert line.angle_radians == pytest.approx(0.0)
     assert line.angle_degrees == pytest.approx(0.0)
 
@@ -1033,7 +1053,8 @@ def test_line_hash(example_line):
     # Confirm that converting a Line to an item and back yields the same hash.
     assert hash(example_line) == hash(duplicate_line)
 
-    # When added to a set with its duplicate, the set should contain only one Line object.
+    # When added to a set with its duplicate, the set should contain only one
+    # Line object.
     line_set = {example_line, duplicate_line}
     assert len(line_set) == 1
 
