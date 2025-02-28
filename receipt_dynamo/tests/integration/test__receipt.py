@@ -1282,13 +1282,15 @@ def test_listReceipts_invalid_limit(dynamodb_table):
 
 @pytest.mark.integration
 @pytest.mark.parametrize("invalid_lek",
-    ["not-a-dict",  # not a dict at all
-        {"PK": {"S": "IMAGE#start"}},  # missing SK key
-        {"SK": {"S": "DUMMY_START"}},  # missing PK key
+    ["not-a-dict",
+        {"PK": {"S": "IMAGE#start"}},
+        {"SK": {"S": "DUMMY_START"}},
         {"PK": "not-a-dict",
-            "SK": {"S": "DUMMY_START"},},  # PK value not in proper format
+            "SK": {"S": "DUMMY_START"},},
         {"PK": {"S": "IMAGE#start"},
-            "SK": "not-a-dict",},  # SK value not in proper format],)
+            "SK": "not-a-dict",},
+    ],
+)
 def test_listReceipts_invalid_lastEvaluatedKey(dynamodb_table, invalid_lek):
     """
     Verifies that listReceipts raises a ValueError when lastEvaluatedKey is invalid.

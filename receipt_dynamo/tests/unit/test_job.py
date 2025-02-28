@@ -46,9 +46,11 @@ def test_job_init_valid(example_job):
     assert example_job.created_by == "user123"
     assert example_job.status == "pending"
     assert example_job.priority == "medium"
-    assert example_job.job_config == {"model": "layoutlm",
+    assert example_job.job_config == {
+        "model": "layoutlm",
         "batch_size": 32,
-        "epochs": 10,}
+        "epochs": 10,
+    }
     assert example_job.estimated_duration == 3600
     assert example_job.tags == {"project": "receipts", "environment": "dev"}
 
@@ -57,169 +59,200 @@ def test_job_init_valid(example_job):
 def test_job_init_invalid_id():
     """Test the Job constructor with invalid job_id."""
     with pytest.raises(ValueError, match="uuid must be a string"):
-        Job(1,  # Invalid: should be a string
+        Job(
+            1,  # Invalid: should be a string
             "Training Job",
             "Example description",
             "2021-01-01T00:00:00",
             "user123",
             "pending",
             "medium",
-            {"model": "layoutlm"},)
+            {"model": "layoutlm"},
+        )
 
     with pytest.raises(ValueError, match="uuid must be a valid UUID"):
-        Job("not-a-uuid",  # Invalid: not a valid UUID format
+        Job(
+            "not-a-uuid",  # Invalid: not a valid UUID format
             "Training Job",
             "Example description",
             "2021-01-01T00:00:00",
             "user123",
             "pending",
             "medium",
-            {"model": "layoutlm"},)
+            {"model": "layoutlm"},
+        )
 
 
 @pytest.mark.unit
 def test_job_init_invalid_name():
     """Test the Job constructor with invalid name."""
     with pytest.raises(ValueError, match="name must be a non-empty string"):
-        Job("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        Job(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "",  # Invalid: empty string
             "Example description",
             "2021-01-01T00:00:00",
             "user123",
             "pending",
             "medium",
-            {"model": "layoutlm"},)
+            {"model": "layoutlm"},
+        )
 
     with pytest.raises(ValueError, match="name must be a non-empty string"):
-        Job("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        Job(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             123,  # Invalid: not a string
             "Example description",
             "2021-01-01T00:00:00",
             "user123",
             "pending",
             "medium",
-            {"model": "layoutlm"},)
+            {"model": "layoutlm"},
+        )
 
 
 @pytest.mark.unit
 def test_job_init_invalid_description():
     """Test the Job constructor with invalid description."""
     with pytest.raises(ValueError, match="description must be a string"):
-        Job("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        Job(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "Training Job",
             123,  # Invalid: not a string
             "2021-01-01T00:00:00",
             "user123",
             "pending",
             "medium",
-            {"model": "layoutlm"},)
+            {"model": "layoutlm"},
+        )
 
 
 @pytest.mark.unit
 def test_job_init_invalid_created_at():
     """Test the Job constructor with invalid created_at."""
-    with pytest.raises(ValueError, match="created_at must be a datetime object or a string"):
-        Job("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+    with pytest.raises(
+        ValueError, match="created_at must be a datetime object or a string"
+    ):
+        Job(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "Training Job",
             "Example description",
             123,  # Invalid: not a datetime or string
             "user123",
             "pending",
             "medium",
-            {"model": "layoutlm"},)
+            {"model": "layoutlm"},
+        )
 
 
 @pytest.mark.unit
 def test_job_init_invalid_created_by():
     """Test the Job constructor with invalid created_by."""
     with pytest.raises(ValueError, match="created_by must be a non-empty string"):
-        Job("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        Job(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "Training Job",
             "Example description",
             "2021-01-01T00:00:00",
             "",  # Invalid: empty string
             "pending",
             "medium",
-            {"model": "layoutlm"},)
+            {"model": "layoutlm"},
+        )
 
     with pytest.raises(ValueError, match="created_by must be a non-empty string"):
-        Job("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        Job(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "Training Job",
             "Example description",
             "2021-01-01T00:00:00",
             123,  # Invalid: not a string
             "pending",
             "medium",
-            {"model": "layoutlm"},)
+            {"model": "layoutlm"},
+        )
 
 
 @pytest.mark.unit
 def test_job_init_invalid_status():
     """Test the Job constructor with invalid status."""
     with pytest.raises(ValueError, match="status must be one of"):
-        Job("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        Job(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "Training Job",
             "Example description",
             "2021-01-01T00:00:00",
             "user123",
             "invalid_status",  # Invalid: not a valid status
             "medium",
-            {"model": "layoutlm"},)
+            {"model": "layoutlm"},
+        )
 
     with pytest.raises(ValueError, match="status must be one of"):
-        Job("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        Job(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "Training Job",
             "Example description",
             "2021-01-01T00:00:00",
             "user123",
             123,  # Invalid: not a string
             "medium",
-            {"model": "layoutlm"},)
+            {"model": "layoutlm"},
+        )
 
 
 @pytest.mark.unit
 def test_job_init_invalid_priority():
     """Test the Job constructor with invalid priority."""
     with pytest.raises(ValueError, match="priority must be one of"):
-        Job("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        Job(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "Training Job",
             "Example description",
             "2021-01-01T00:00:00",
             "user123",
             "pending",
             "invalid_priority",  # Invalid: not a valid priority
-            {"model": "layoutlm"},)
+            {"model": "layoutlm"},
+        )
 
     with pytest.raises(ValueError, match="priority must be one of"):
-        Job("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        Job(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "Training Job",
             "Example description",
             "2021-01-01T00:00:00",
             "user123",
             "pending",
             123,  # Invalid: not a string
-            {"model": "layoutlm"},)
+            {"model": "layoutlm"},
+        )
 
 
 @pytest.mark.unit
 def test_job_init_invalid_job_config():
     """Test the Job constructor with invalid job_config."""
     with pytest.raises(ValueError, match="job_config must be a dictionary"):
-        Job("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        Job(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "Training Job",
             "Example description",
             "2021-01-01T00:00:00",
             "user123",
             "pending",
             "medium",
-            "not_a_dict",  # Invalid: not a dictionary)
+            "not_a_dict",
+        )
 
 
 @pytest.mark.unit
 def test_job_init_invalid_estimated_duration():
     """Test the Job constructor with invalid estimated_duration."""
-    with pytest.raises(ValueError, match="estimated_duration must be a positive integer"):
-        Job("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+    with pytest.raises(
+        ValueError, match="estimated_duration must be a positive integer"
+    ):
+        Job(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "Training Job",
             "Example description",
             "2021-01-01T00:00:00",
@@ -227,10 +260,14 @@ def test_job_init_invalid_estimated_duration():
             "pending",
             "medium",
             {"model": "layoutlm"},
-            estimated_duration=0,  # Invalid: not positive)
+            estimated_duration=0,
+        )
 
-    with pytest.raises(ValueError, match="estimated_duration must be a positive integer"):
-        Job("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+    with pytest.raises(
+        ValueError, match="estimated_duration must be a positive integer"
+    ):
+        Job(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "Training Job",
             "Example description",
             "2021-01-01T00:00:00",
@@ -238,10 +275,14 @@ def test_job_init_invalid_estimated_duration():
             "pending",
             "medium",
             {"model": "layoutlm"},
-            estimated_duration=-100,  # Invalid: negative)
+            estimated_duration=-100,
+        )
 
-    with pytest.raises(ValueError, match="estimated_duration must be a positive integer"):
-        Job("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+    with pytest.raises(
+        ValueError, match="estimated_duration must be a positive integer"
+    ):
+        Job(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "Training Job",
             "Example description",
             "2021-01-01T00:00:00",
@@ -249,14 +290,16 @@ def test_job_init_invalid_estimated_duration():
             "pending",
             "medium",
             {"model": "layoutlm"},
-            estimated_duration="3600",  # Invalid: not an integer)
+            estimated_duration="3600",
+        )
 
 
 @pytest.mark.unit
 def test_job_init_invalid_tags():
     """Test the Job constructor with invalid tags."""
     with pytest.raises(ValueError, match="tags must be a dictionary"):
-        Job("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        Job(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "Training Job",
             "Example description",
             "2021-01-01T00:00:00",
@@ -264,28 +307,35 @@ def test_job_init_invalid_tags():
             "pending",
             "medium",
             {"model": "layoutlm"},
-            tags="not_a_dict",  # Invalid: not a dictionary)
+            tags="not_a_dict",
+        )
 
 
 @pytest.mark.unit
 def test_job_key(example_job):
     """Test the Job.key() method."""
-    assert example_job.key() == {"PK": {"S": "JOB#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-        "SK": {"S": "JOB"},}
+    assert example_job.key() == {
+        "PK": {"S": "JOB#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "SK": {"S": "JOB"},
+    }
 
 
 @pytest.mark.unit
 def test_job_gsi1_key(example_job):
     """Test the Job.gsi1_key() method."""
-    assert example_job.gsi1_key() == {"GSI1PK": {"S": "STATUS#pending"},
-        "GSI1SK": {"S": "CREATED#2021-01-01T00:00:00"},}
+    assert example_job.gsi1_key() == {
+        "GSI1PK": {"S": "STATUS#pending"},
+        "GSI1SK": {"S": "CREATED#2021-01-01T00:00:00"},
+    }
 
 
 @pytest.mark.unit
 def test_job_gsi2_key(example_job):
     """Test the Job.gsi2_key() method."""
-    assert example_job.gsi2_key() == {"GSI2PK": {"S": "USER#user123"},
-        "GSI2SK": {"S": "CREATED#2021-01-01T00:00:00"},}
+    assert example_job.gsi2_key() == {
+        "GSI2PK": {"S": "USER#user123"},
+        "GSI2SK": {"S": "CREATED#2021-01-01T00:00:00"},
+    }
 
 
 @pytest.mark.unit
@@ -351,9 +401,11 @@ def test_job_iter(example_job):
     assert job_dict["created_by"] == "user123"
     assert job_dict["status"] == "pending"
     assert job_dict["priority"] == "medium"
-    assert job_dict["job_config"] == {"model": "layoutlm",
+    assert job_dict["job_config"] == {
+        "model": "layoutlm",
         "batch_size": 32,
-        "epochs": 10,}
+        "epochs": 10,
+    }
     assert job_dict["estimated_duration"] == 3600
     assert job_dict["tags"] == {"project": "receipts", "environment": "dev"}
 
@@ -411,7 +463,9 @@ def test_itemToJob(example_job, example_job_minimal):
 
     # Test with invalid item format
     with pytest.raises(ValueError, match="Error converting item to Job"):
-        itemToJob({"PK": {"S": "JOB#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        itemToJob(
+            {
+                "PK": {"S": "JOB#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
                 "SK": {"S": "JOB"},
                 "TYPE": {"S": "JOB"},
                 "name": {"S": "Training Job"},
@@ -420,34 +474,48 @@ def test_itemToJob(example_job, example_job_minimal):
                 "created_by": {"S": "user123"},
                 "status": {"INVALID_TYPE": "pending"},  # Invalid type
                 "priority": {"S": "medium"},
-                "job_config": {"M": {"model": {"S": "layoutlm"}}},})
+                "job_config": {"M": {"model": {"S": "layoutlm"}}},
+            }
+        )
 
 
 @pytest.mark.unit
 def test_parse_dynamodb_map():
     """Test the _parse_dynamodb_map function."""
     # Create a complex DynamoDB map
-    dynamodb_map = {"string": {"S": "value"},
+    dynamodb_map = {
+        "string": {"S": "value"},
         "number": {"N": "42"},
         "decimal": {"N": "3.14"},
         "boolean": {"BOOL": True},
         "null": {"NULL": True},
-        "nested_map": {"M": {"inner_string": {"S": "inner_value"},
-                "inner_number": {"N": "10"},}},
-        "list": {"L": [{"S": "item1"},
+        "nested_map": {
+            "M": {
+                "inner_string": {"S": "inner_value"},
+                "inner_number": {"N": "10"},
+            }
+        },
+        "list": {
+            "L": [
+                {"S": "item1"},
                 {"N": "2"},
                 {"BOOL": False},
-                {"M": {"key": {"S": "value"}}},]},}
+                {"M": {"key": {"S": "value"}}},
+            ]
+        },
+    }
 
     # Use the job's _parse_dynamodb_map by creating a temporary job
-    temp_job = Job("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+    temp_job = Job(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         "Test Job",
         "Test description",
         "2021-01-01T00:00:00",
         "user123",
         "pending",
         "medium",
-        {},)
+        {},
+    )
 
     # Convert to Python values and test
     result = _parse_dynamodb_map(dynamodb_map)

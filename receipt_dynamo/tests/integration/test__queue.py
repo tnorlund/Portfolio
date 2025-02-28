@@ -684,8 +684,8 @@ def test_validate_last_evaluated_key_invalid_none():
 @pytest.mark.integration
 def test_validate_last_evaluated_key_invalid_missing_key():
     """Test that lastEvaluatedKey with missing key raises ValueError."""
-    invalid_lek = {"PK": {"S": "QUEUE#test-queue"}
-        # Missing SK}
+    # This is missing the SK key
+    invalid_lek = {"PK": {"S": "QUEUE#test-queue"}}
 
     with pytest.raises(ValueError, match="LastEvaluatedKey must contain PK and SK"):
         validate_last_evaluated_key(invalid_lek)
