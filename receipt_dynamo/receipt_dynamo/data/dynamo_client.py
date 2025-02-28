@@ -24,6 +24,7 @@ from receipt_dynamo.data._job_metric import _JobMetric
 from receipt_dynamo.data._job_checkpoint import _JobCheckpoint
 from receipt_dynamo.data._job_log import _JobLog
 from receipt_dynamo.data._job_dependency import _JobDependency
+from receipt_dynamo.data._queue import _Queue
 
 
 class DynamoClient(
@@ -47,6 +48,7 @@ class DynamoClient(
     _JobCheckpoint,
     _JobLog,
     _JobDependency,
+    _Queue,
 ):
     """A class used to represent a DynamoDB client."""
 

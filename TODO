@@ -221,9 +221,9 @@
     - [x] Implement Job Checkpoint management
     - [x] Add Job Logs collection for debugging
     - [x] Implement Job Dependency tracking
-  - [ ] Implement Queue management in DynamoDB
-    - [ ] Create Queue entity for managing job queues
-    - [ ] Add Queue Job association for organizing jobs
+  - [x] Implement Queue management in DynamoDB
+    - [x] Create Queue entity for managing job queues
+    - [x] Add Queue Job association for organizing jobs
   - [ ] Implement Instance tracking
     - [ ] Create Instance entity for resource tracking
     - [ ] Add Instance Job association
