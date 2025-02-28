@@ -218,8 +218,8 @@
     - [x] Implement Job Status entity for historical status tracking
     - [x] Add Job Resource tracking for instance allocation
     - [x] Add Job Metrics collection and storage
-    - [ ] Implement Job Checkpoint management
-    - [ ] Add Job Logs collection for debugging
+    - [x] Implement Job Checkpoint management
+    - [x] Add Job Logs collection for debugging
     - [ ] Implement Job Dependency tracking
   - [ ] Implement Queue management in DynamoDB
     - [ ] Create Queue entity for managing job queues
