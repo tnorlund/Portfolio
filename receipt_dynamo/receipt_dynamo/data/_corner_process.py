@@ -114,7 +114,7 @@ def window_rectangle_for_corner(
     """
     img_w, img_h = image_size
     # 1. Compute the inner corner I.
-    I = offset_corner_inward(receipt_corner, adj1, adj2, offset_distance)
+    inner_corner = offset_corner_inward(receipt_corner, adj1, adj2, offset_distance)
 
     # 2. Compute ray direction r from edge_direction.
     r = normalize(edge_direction)
@@ -141,23 +141,23 @@ def window_rectangle_for_corner(
     # For a top corner, we want I + d_v*r to reach y=0.
     # For a bottom corner, to reach y=img_h - 1.
     if corner_position == "top":
-        d_v = -I[1] / r[1] if r[1] != 0 else 0
+        d_v = -inner_corner[1] / r[1] if r[1] != 0 else 0
     else:
-        d_v = ((img_h - 1) - I[1]) / r[1] if r[1] != 0 else 0
+        d_v = ((img_h - 1) - inner_corner[1]) / r[1] if r[1] != 0 else 0
 
     # 5. Compute horizontal distance d_h.
     # For left corners, we want I + d_h*p to reach x=0.
     # For right corners, to reach x=img_w - 1.
     if receipt_corner[0] < img_w / 2.0:
-        d_h = -I[0] / p[0] if p[0] != 0 else 0
+        d_h = -inner_corner[0] / p[0] if p[0] != 0 else 0
     else:
-        d_h = ((img_w - 1) - I[0]) / p[0] if p[0] != 0 else 0
+        d_h = ((img_w - 1) - inner_corner[0]) / p[0] if p[0] != 0 else 0
 
     # 6. Define the polygon.
-    pt1 = I
-    pt2 = (I[0] + d_v * r[0], I[1] + d_v * r[1])
+    pt1 = inner_corner
+    pt2 = (inner_corner[0] + d_v * r[0], inner_corner[1] + d_v * r[1])
     pt3 = (pt2[0] + d_h * p[0], pt2[1] + d_h * p[1])
-    pt4 = (I[0] + d_h * p[0], I[1] + d_h * p[1])
+    pt4 = (inner_corner[0] + d_h * p[0], inner_corner[1] + d_h * p[1])
 
     return [pt1, pt2, pt3, pt4]
 

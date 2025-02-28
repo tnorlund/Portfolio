@@ -332,12 +332,9 @@ class _JobResource:
                 "KeyConditionExpression": "GSI1PK = :pk",
                 "ExpressionAttributeValues": {
                     ":pk": {"S": "RESOURCE"},
-                },
-                "FilterExpression": "resource_type = :rt",
-                "ExpressionAttributeValues": {
-                    ":pk": {"S": "RESOURCE"},
                     ":rt": {"S": resource_type},
                 },
+                "FilterExpression": "resource_type = :rt",
                 "ScanIndexForward": True,  # Ascending order by default
             }
 
