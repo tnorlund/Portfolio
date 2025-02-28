@@ -224,9 +224,9 @@
   - [x] Implement Queue management in DynamoDB
     - [x] Create Queue entity for managing job queues
     - [x] Add Queue Job association for organizing jobs
-  - [ ] Implement Instance tracking
-    - [ ] Create Instance entity for resource tracking
-    - [ ] Add Instance Job association
+  - [x] Implement Instance tracking
+    - [x] Create Instance entity for resource tracking
+    - [x] Add Instance Job association
   - [ ] Build CLI tool for job submission/monitoring
     - [ ] Create commands for job submission
     - [ ] Add job status checking and monitoring
