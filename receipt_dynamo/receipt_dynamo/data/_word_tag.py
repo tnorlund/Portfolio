@@ -42,24 +42,15 @@ class _WordTag:
             ValueError: If a WordTag with the same PK/SK already exists.
         """
         try:
-            self._client.put_item(
-                TableName=self.table_name,
+            self._client.put_item(TableName=self.table_name,
                 Item=word_tag.to_item(),
-                ConditionExpression="attribute_not_exists(PK)",
-            )
+                ConditionExpression="attribute_not_exists(PK)",)
         except ClientError as e:
             # Check if it's a ConditionalCheckFailed (duplicate item)
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
-                raise ValueError(
-                    f"WordTag for image_id={
-                        word_tag.image_id}, "
-                    f"word_id={
-                        word_tag.word_id}, tag={
-                        word_tag.tag} already exists."
-                ) from e
+            if (e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"):
+                raise ValueError(f"WordTag for image_id={word_tag.image_id}, "
+                    f"word_id={word_tag.word_id}, tag={word_tag.tag} already exists.") from e
             else:
                 raise Exception(f"Error adding WordTag: {e}")
 
@@ -77,18 +68,12 @@ class _WordTag:
         try:
             for i in range(0, len(word_tags), CHUNK_SIZE):
                 chunk = word_tags[i : i + CHUNK_SIZE]
-                request_items = [
-                    {"PutRequest": {"Item": wt.to_item()}} for wt in chunk
-                ]
-                response = self._client.batch_write_item(
-                    RequestItems={self.table_name: request_items}
-                )
+                request_items = [{"PutRequest": {"Item": wt.to_item()}} for wt in chunk]
+                response = self._client.batch_write_item(RequestItems={self.table_name: request_items})
                 # Handle unprocessed items if they exist
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             raise ValueError("Could not add WordTags to the database") from e
@@ -104,16 +89,12 @@ class _WordTag:
             ValueError: If the item does not exist in the table.
         """
         try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=word_tag.to_item(),
-            )
+            self._client.put_item(TableName=self.table_name,
+                Item=word_tag.to_item(),)
         except ClientError as e:
             raise Exception(f"Error updating WordTag: {e}")
 
-    def deleteWordTag(
-        self, image_id: int, line_id: int, word_id: int, tag: str
-    ):
+    def deleteWordTag(self, image_id: int, line_id: int, word_id: int, tag: str):
         """
         Deletes a single WordTag from the database, ensuring it exists.
 
@@ -128,29 +109,21 @@ class _WordTag:
         # Build the same PK/SK used by WordTag
         # Remember to underscore-pad the tag if your WordTag class does so in SK
         # Here, we'll replicate minimal logic to find the padded tag
-        word_tag = WordTag(
-            image_id,
+        word_tag = WordTag(image_id,
             line_id,
             word_id,
             tag,
-            timestamp_added="2021-01-01T00:00:00",  # This is a placeholder value
-        )
+            timestamp_added="2021-01-01T00:00:00",  # This is a placeholder value)
 
         try:
-            self._client.delete_item(
-                TableName=self.table_name,
+            self._client.delete_item(TableName=self.table_name,
                 Key=word_tag.key(),
-                ConditionExpression="attribute_exists(PK)",
-            )
+                ConditionExpression="attribute_exists(PK)",)
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
-                raise ValueError(
-                    f"WordTag not found for image_id={image_id}, "
-                    f"tag={tag}, word_id={word_id}"
-                ) from e
+            if (e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"):
+                raise ValueError(f"WordTag not found for image_id={image_id}, "
+                    f"tag={tag}, word_id={word_id}") from e
             else:
                 raise Exception(f"Error deleting WordTag: {e}")
 
@@ -164,22 +137,14 @@ class _WordTag:
         try:
             for i in range(0, len(word_tags), CHUNK_SIZE):
                 chunk = word_tags[i : i + CHUNK_SIZE]
-                request_items = [
-                    {"DeleteRequest": {"Key": wt.key()}} for wt in chunk
-                ]
-                response = self._client.batch_write_item(
-                    RequestItems={self.table_name: request_items}
-                )
+                request_items = [{"DeleteRequest": {"Key": wt.key()}} for wt in chunk]
+                response = self._client.batch_write_item(RequestItems={self.table_name: request_items})
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
-            raise ValueError(
-                "Could not delete WordTags from the database"
-            ) from e
+            raise ValueError("Could not delete WordTags from the database") from e
 
     def deleteWordTagsFromImage(self, image_id: str):
         """
@@ -192,13 +157,11 @@ class _WordTag:
         tags = self.listWordTagsFromImage(image_id)
         self.deleteWordTags(tags)
 
-    def getWordTag(
-        self,
+    def getWordTag(self,
         image_id: int,
         line_id: int,
         word_id: int,
-        tag: str,
-    ) -> WordTag:
+        tag: str,) -> WordTag:
         """
         Retrieves a single WordTag from DynamoDB by its primary key.
 
@@ -214,25 +177,19 @@ class _WordTag:
         Raises:
             ValueError: If the item does not exist.
         """
-        word_tag = WordTag(
-            image_id,
+        word_tag = WordTag(image_id,
             line_id,
             word_id,
             tag,
-            timestamp_added="2021-01-01T00:00:00",  # This is a placeholder value
-        )
+            timestamp_added="2021-01-01T00:00:00",  # This is a placeholder value)
 
         try:
-            response = self._client.get_item(
-                TableName=self.table_name,
-                Key=word_tag.key(),
-            )
+            response = self._client.get_item(TableName=self.table_name,
+                Key=word_tag.key(),)
             return itemToWordTag(response["Item"])
         except KeyError:
             # Means response had no "Item" or missing fields
-            raise ValueError(
-                f"WordTag not found for image_id={image_id}, tag={tag}, word_id={word_id}"
-            )
+            raise ValueError(f"WordTag not found for image_id={image_id}, tag={tag}, word_id={word_id}")
         except ClientError as e:
             raise Exception(f"Error getting WordTag: {e}")
 
@@ -244,48 +201,29 @@ class _WordTag:
         word_tags: list[WordTag] = []
         try:
             # Initial query
-            response = self._client.query(
-                TableName=self.table_name,
+            response = self._client.query(TableName=self.table_name,
                 IndexName="GSI1",  # Make sure this is the correct GSI name
                 KeyConditionExpression="GSI1PK = :gsi1pk",
-                ExpressionAttributeValues={
-                    ":gsi1pk": {"S": f"TAG#{tag:_>40}"}
-                },
-            )
-            word_tags.extend(
-                [itemToWordTag(item) for item in response["Items"]]
-            )
+                ExpressionAttributeValues={":gsi1pk": {"S": f"TAG#{tag:_>40}"}},)
+            word_tags.extend([itemToWordTag(item) for item in response["Items"]])
 
             # Paginate if necessary
             while "LastEvaluatedKey" in response:
-                response = self._client.query(
-                    TableName=self.table_name,
+                response = self._client.query(TableName=self.table_name,
                     IndexName="GSI1",
                     KeyConditionExpression="GSI1PK = :gsi1pk",
-                    ExpressionAttributeValues={
-                        ":gsi1pk": {
-                            "S": f"TAG#{
-                                tag:_>40}"
-                        }
-                    },
-                    ExclusiveStartKey=response["LastEvaluatedKey"],
-                )
-                word_tags.extend(
-                    [itemToWordTag(item) for item in response["Items"]]
-                )
+                    ExpressionAttributeValues={":gsi1pk": {"S": f"TAG#{tag:_>40}"}},
+                    ExclusiveStartKey=response["LastEvaluatedKey"],)
+                word_tags.extend([itemToWordTag(item) for item in response["Items"]])
 
             return word_tags
 
         except ClientError as e:
-            raise ValueError(
-                "Could not list WordTags from the database"
-            ) from e
+            raise ValueError("Could not list WordTags from the database") from e
 
-    def listWordTags(
-        self,
+    def listWordTags(self,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict] = None,
-    ) -> Tuple[List[WordTag], Optional[Dict]]:
+        lastEvaluatedKey: Optional[Dict] = None,) -> Tuple[List[WordTag], Optional[Dict]]:
         """
         Lists WordTag items from the database via the GSITYPE index (using the "TYPE" attribute).
         Supports optional pagination via a limit and a LastEvaluatedKey.
@@ -304,13 +242,11 @@ class _WordTag:
         """
         word_tags: List[WordTag] = []
         try:
-            query_params = {
-                "TableName": self.table_name,
+            query_params = {"TableName": self.table_name,
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "WORD_TAG"}},
-            }
+                "ExpressionAttributeValues": {":val": {"S": "WORD_TAG"}},}
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
 
@@ -318,24 +254,16 @@ class _WordTag:
                 query_params["Limit"] = limit
 
             response = self._client.query(**query_params)
-            word_tags.extend(
-                [itemToWordTag(item) for item in response["Items"]]
-            )
+            word_tags.extend([itemToWordTag(item) for item in response["Items"]])
 
             if limit is None:
                 # If no limit is provided, paginate until all items are
                 # retrieved.
-                while (
-                    "LastEvaluatedKey" in response
-                    and response["LastEvaluatedKey"]
-                ):
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                while ("LastEvaluatedKey" in response
+                    and response["LastEvaluatedKey"]):
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                     response = self._client.query(**query_params)
-                    word_tags.extend(
-                        [itemToWordTag(item) for item in response["Items"]]
-                    )
+                    word_tags.extend([itemToWordTag(item) for item in response["Items"]])
                 last_evaluated_key = None
             else:
                 last_evaluated_key = response.get("LastEvaluatedKey", None)
@@ -354,44 +282,30 @@ class _WordTag:
         """
         word_tags = []
         try:
-            response = self._client.query(
-                TableName=self.table_name,
+            response = self._client.query(TableName=self.table_name,
                 KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
                 FilterExpression="contains(#sk, :tag_marker)",
                 ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
-                ExpressionAttributeValues={
-                    ":pk_val": {"S": f"IMAGE#{image_id}"},
+                ExpressionAttributeValues={":pk_val": {"S": f"IMAGE#{image_id}"},
                     ":sk_val": {"S": "LINE#"},
-                    ":tag_marker": {"S": "#TAG#"},
-                },
-            )
-            word_tags.extend(
-                [itemToWordTag(item) for item in response["Items"]]
-            )
+                    ":tag_marker": {"S": "#TAG#"},},)
+            word_tags.extend([itemToWordTag(item) for item in response["Items"]])
 
             # Handle pagination
             while "LastEvaluatedKey" in response:
-                response = self._client.query(
-                    TableName=self.table_name,
+                response = self._client.query(TableName=self.table_name,
                     KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
                     FilterExpression="contains(#sk, :tag_marker)",
                     ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
-                    ExpressionAttributeValues={
-                        ":pk_val": {"S": f"IMAGE#{image_id}"},
+                    ExpressionAttributeValues={":pk_val": {"S": f"IMAGE#{image_id}"},
                         ":sk_val": {"S": "LINE#"},
-                        ":tag_marker": {"S": "#TAG#"},
-                    },
-                    ExclusiveStartKey=response["LastEvaluatedKey"],
-                )
-                word_tags.extend(
-                    [itemToWordTag(item) for item in response["Items"]]
-                )
+                        ":tag_marker": {"S": "#TAG#"},},
+                    ExclusiveStartKey=response["LastEvaluatedKey"],)
+                word_tags.extend([itemToWordTag(item) for item in response["Items"]])
             return word_tags
 
         except ClientError as e:
-            raise ValueError(
-                "Could not list WordTags from the database"
-            ) from e
+            raise ValueError("Could not list WordTags from the database") from e
 
     def updateWordTags(self, word_tags: list[WordTag]):
         """
@@ -418,47 +332,31 @@ class _WordTag:
             - or any other unexpected errors.
         """
         if word_tags is None:
-            raise ValueError(
-                "WordTags parameter is required and cannot be None."
-            )
+            raise ValueError("WordTags parameter is required and cannot be None.")
         if not isinstance(word_tags, list):
             raise ValueError("WordTags must be provided as a list.")
         if not all(isinstance(tag, WordTag) for tag in word_tags):
-            raise ValueError(
-                "All items in the word_tags list must be instances of the WordTag class."
-            )
+            raise ValueError("All items in the word_tags list must be instances of the WordTag class.")
 
         for i in range(0, len(word_tags), CHUNK_SIZE):
             chunk = word_tags[i : i + CHUNK_SIZE]
             transact_items = []
             for word_tag in chunk:
-                transact_items.append(
-                    {
-                        "Put": {
-                            "TableName": self.table_name,
+                transact_items.append({"Put": {"TableName": self.table_name,
                             "Item": word_tag.to_item(),
-                            "ConditionExpression": "attribute_exists(PK)",
-                        }
-                    }
-                )
+                            "ConditionExpression": "attribute_exists(PK)",}})
             try:
                 self._client.transact_write_items(TransactItems=transact_items)
             except ClientError as e:
                 error_code = e.response.get("Error", {}).get("Code", "")
                 if error_code == "TransactionCanceledException":
-                    raise ValueError(
-                        "One or more word tags do not exist"
-                    ) from e
+                    raise ValueError("One or more word tags do not exist") from e
                 elif error_code == "ProvisionedThroughputExceededException":
-                    raise Exception(
-                        f"Provisioned throughput exceeded: {e}"
-                    ) from e
+                    raise Exception(f"Provisioned throughput exceeded: {e}") from e
                 elif error_code == "InternalServerError":
                     raise Exception(f"Internal server error: {e}") from e
                 elif error_code == "ValidationException":
-                    raise Exception(
-                        f"One or more parameters given were invalid: {e}"
-                    ) from e
+                    raise Exception(f"One or more parameters given were invalid: {e}") from e
                 elif error_code == "AccessDeniedException":
                     raise Exception(f"Access denied: {e}") from e
                 else:

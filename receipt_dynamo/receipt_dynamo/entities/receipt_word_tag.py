@@ -37,8 +37,7 @@ class ReceiptWordTag:
     human_validated: Optional[bool]
     timestamp_human_validated: Optional[str]  # Explicitly declare as str
 
-    def __init__(
-        self,
+    def __init__(self,
         image_id: str,
         receipt_id: int,
         line_id: int,
@@ -51,8 +50,7 @@ class ReceiptWordTag:
         flag: Optional[str] = None,
         revised_tag: Optional[str] = None,
         human_validated: Optional[bool] = None,
-        timestamp_human_validated: Optional[Union[str, datetime]] = None,
-    ):
+        timestamp_human_validated: Optional[Union[str, datetime]] = None,):
         """Initializes a new ReceiptWordTag object for DynamoDB.
 
         Args:
@@ -105,9 +103,7 @@ class ReceiptWordTag:
         elif isinstance(timestamp_added, str):
             self.timestamp_added = timestamp_added
         else:
-            raise ValueError(
-                "timestamp_added must be a datetime object or a string"
-            )
+            raise ValueError("timestamp_added must be a datetime object or a string")
 
         if validated not in (True, False, None):
             raise ValueError("validated must be a boolean or None")
@@ -118,9 +114,7 @@ class ReceiptWordTag:
             self.timestamp_validated = timestamp_validated.isoformat()
         elif not isinstance(timestamp_validated, (str, type(None))):
             # Raise an error if it's neither a string nor None.
-            raise ValueError(
-                "timestamp_validated must be a datetime object, a string, or None"
-            )
+            raise ValueError("timestamp_validated must be a datetime object, a string, or None")
         else:
             # If it's already a string or None, just assign it.
             self.timestamp_validated = timestamp_validated
@@ -142,13 +136,9 @@ class ReceiptWordTag:
         self.human_validated = human_validated
 
         if isinstance(timestamp_human_validated, datetime):
-            self.timestamp_human_validated = (
-                timestamp_human_validated.isoformat()
-            )
+            self.timestamp_human_validated = (timestamp_human_validated.isoformat())
         elif not isinstance(timestamp_human_validated, (str, type(None))):
-            raise ValueError(
-                "timestamp_human_validated must be a datetime object, a string, or None"
-            )
+            raise ValueError("timestamp_human_validated must be a datetime object, a string, or None")
         else:
             self.timestamp_human_validated = timestamp_human_validated
 
@@ -164,8 +154,7 @@ class ReceiptWordTag:
         """
         if not isinstance(other, ReceiptWordTag):
             return False
-        return (
-            self.image_id == other.image_id
+        return (self.image_id == other.image_id
             and self.receipt_id == other.receipt_id
             and self.line_id == other.line_id
             and self.word_id == other.word_id
@@ -177,8 +166,7 @@ class ReceiptWordTag:
             and self.revised_tag == other.revised_tag
             and self.human_validated == other.human_validated
             and self.timestamp_human_validated
-            == other.timestamp_human_validated
-        )
+            == other.timestamp_human_validated)
 
     def __iter__(self) -> Generator[Tuple[str, str], None, None]:
         """Yields the attributes of the ReceiptWordTag as key-value pairs.
@@ -206,8 +194,7 @@ class ReceiptWordTag:
         Returns:
             str: A developer-friendly string representation of the ReceiptWordTag.
         """
-        return (
-            "ReceiptWordTag("
+        return ("ReceiptWordTag("
             f"image_id={_repr_str(self.image_id)}, "
             f"receipt_id={self.receipt_id}, "
             f"line_id={self.line_id}, "
@@ -221,8 +208,7 @@ class ReceiptWordTag:
             f"revised_tag={_repr_str(self.revised_tag)}, "
             f"human_validated={self.human_validated}, "
             f"timestamp_human_validated={_repr_str(self.timestamp_human_validated)}"
-            ")"
-        )
+            ")")
 
     def key(self) -> dict:
         """Generates the primary key for the ReceiptWordTag.
@@ -234,17 +220,11 @@ class ReceiptWordTag:
         """
         tag_upper = self.tag
         spaced_tag_upper = f"{tag_upper:_>40}"
-        return {
-            "PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {
-                "S": (
-                    f"RECEIPT#{self.receipt_id:05d}"
+        return {"PK": {"S": f"IMAGE#{self.image_id}"},
+            "SK": {"S": (f"RECEIPT#{self.receipt_id:05d}"
                     f"#LINE#{self.line_id:05d}"
                     f"#WORD#{self.word_id:05d}"
-                    f"#TAG#{spaced_tag_upper}"
-                )
-            },
-        }
+                    f"#TAG#{spaced_tag_upper}")},}
 
     def gsi1_key(self) -> dict:
         """Generates the secondary index key for the ReceiptWordTag.
@@ -256,17 +236,11 @@ class ReceiptWordTag:
         """
         tag_upper = self.tag
         spaced_tag_upper = f"{tag_upper:_>40}"
-        return {
-            "GSI1PK": {"S": f"TAG#{spaced_tag_upper}"},
-            "GSI1SK": {
-                "S": (
-                    f"IMAGE#{self.image_id}"
+        return {"GSI1PK": {"S": f"TAG#{spaced_tag_upper}"},
+            "GSI1SK": {"S": (f"IMAGE#{self.image_id}"
                     f"#RECEIPT#{self.receipt_id:05d}"
                     f"#LINE#{self.line_id:05d}"
-                    f"#WORD#{self.word_id:05d}"
-                )
-            },
-        }
+                    f"#WORD#{self.word_id:05d}")},}
 
     def gsi2_key(self) -> dict:
         """Generates the secondary index key for the ReceiptWordTag.
@@ -278,16 +252,12 @@ class ReceiptWordTag:
         """
         tag_upper = self.tag
         spaced_tag_upper = f"{tag_upper:_>40}"
-        return {
-            "GSI2PK": {"S": "RECEIPT"},
-            "GSI2SK": {
-                "S": f"IMAGE#{self.image_id}"
+        return {"GSI2PK": {"S": "RECEIPT"},
+            "GSI2SK": {"S": f"IMAGE#{self.image_id}"
                 f"#RECEIPT#{self.receipt_id:05d}"
                 f"#LINE#{self.line_id:05d}"
                 f"#WORD#{self.word_id:05d}"
-                f"#TAG#{spaced_tag_upper}"
-            },
-        }
+                f"#TAG#{spaced_tag_upper}"},}
 
     def to_item(self) -> dict:
         """Converts the ReceiptWordTag object to a DynamoDB item.
@@ -295,47 +265,31 @@ class ReceiptWordTag:
         Returns:
             dict: A dictionary representing the ReceiptWordTag as a DynamoDB item.
         """
-        return {
-            **self.key(),
+        return {**self.key(),
             **self.gsi1_key(),
             **self.gsi2_key(),
             "TYPE": {"S": "RECEIPT_WORD_TAG"},
             "tag_name": {"S": self.tag},
             "timestamp_added": {"S": self.timestamp_added},
-            "validated": (
-                {"BOOL": self.validated}
+            "validated": ({"BOOL": self.validated}
                 if self.validated is not None
-                else {"NULL": True}
-            ),
-            "timestamp_validated": (
-                {"S": self.timestamp_validated}
+                else {"NULL": True}),
+            "timestamp_validated": ({"S": self.timestamp_validated}
                 if self.timestamp_validated is not None
-                else {"NULL": True}
-            ),
-            "gpt_confidence": (
-                {"N": str(self.gpt_confidence)}
+                else {"NULL": True}),
+            "gpt_confidence": ({"N": str(self.gpt_confidence)}
                 if self.gpt_confidence is not None
-                else {"NULL": True}
-            ),
-            "flag": (
-                {"S": self.flag} if self.flag is not None else {"NULL": True}
-            ),
-            "revised_tag": (
-                {"S": self.revised_tag}
+                else {"NULL": True}),
+            "flag": ({"S": self.flag} if self.flag is not None else {"NULL": True}),
+            "revised_tag": ({"S": self.revised_tag}
                 if self.revised_tag is not None
-                else {"NULL": True}
-            ),
-            "human_validated": (
-                {"BOOL": self.human_validated}
+                else {"NULL": True}),
+            "human_validated": ({"BOOL": self.human_validated}
                 if self.human_validated is not None
-                else {"NULL": True}
-            ),
-            "timestamp_human_validated": (
-                {"S": self.timestamp_human_validated}
+                else {"NULL": True}),
+            "timestamp_human_validated": ({"S": self.timestamp_human_validated}
                 if self.timestamp_human_validated is not None
-                else {"NULL": True}
-            ),
-        }
+                else {"NULL": True}),}
 
     def to_ReceiptWord_key(self) -> dict:
         """Generates the key for the ReceiptWord table associated with this tag.
@@ -343,16 +297,10 @@ class ReceiptWordTag:
         Returns:
             dict: A dictionary representing the key for the ReceiptWord in DynamoDB.
         """
-        return {
-            "PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {
-                "S": (
-                    f"RECEIPT#{self.receipt_id:05d}"
+        return {"PK": {"S": f"IMAGE#{self.image_id}"},
+            "SK": {"S": (f"RECEIPT#{self.receipt_id:05d}"
                     f"#LINE#{self.line_id:05d}"
-                    f"#WORD#{self.word_id:05d}"
-                )
-            },
-        }
+                    f"#WORD#{self.word_id:05d}")},}
 
     def __hash__(self) -> int:
         """Returns the hash value of the ReceiptWordTag.
@@ -360,9 +308,7 @@ class ReceiptWordTag:
         Returns:
             int: The hash value of the ReceiptWordTag.
         """
-        return hash(
-            (
-                self.image_id,
+        return hash((self.image_id,
                 self.receipt_id,
                 self.line_id,
                 self.word_id,
@@ -373,9 +319,7 @@ class ReceiptWordTag:
                 self.flag,
                 self.revised_tag,
                 self.human_validated,
-                self.timestamp_human_validated,
-            )
-        )
+                self.timestamp_human_validated,))
 
 
 def itemToReceiptWordTag(item: dict) -> ReceiptWordTag:
@@ -403,25 +347,19 @@ def itemToReceiptWordTag(item: dict) -> ReceiptWordTag:
         word_id = int(sk_parts[5])
         tag = sk_parts[7].lstrip("_").strip()
         timestamp_added = datetime.fromisoformat(item["timestamp_added"]["S"])
-        validated = (
-            bool(item["validated"]["BOOL"])
+        validated = (bool(item["validated"]["BOOL"])
             if "BOOL" in item["validated"]
-            else None
-        )
+            else None)
         if "timestamp_validated" in item:
-            timestamp_validated = (
-                datetime.fromisoformat(item["timestamp_validated"]["S"])
+            timestamp_validated = (datetime.fromisoformat(item["timestamp_validated"]["S"])
                 if "S" in item["timestamp_validated"]
-                else None
-            )
+                else None)
         else:
             timestamp_validated = None
         if "gpt_confidence" in item:
-            gpt_confidence = (
-                int(item["gpt_confidence"]["N"])
+            gpt_confidence = (int(item["gpt_confidence"]["N"])
                 if "N" in item["gpt_confidence"]
-                else None
-            )
+                else None)
         else:
             gpt_confidence = None
         if "flag" in item:
@@ -429,31 +367,24 @@ def itemToReceiptWordTag(item: dict) -> ReceiptWordTag:
         else:
             flag = None
         if "revised_tag" in item:
-            revised_tag = (
-                item["revised_tag"]["S"]
+            revised_tag = (item["revised_tag"]["S"]
                 if "S" in item["revised_tag"]
-                else None
-            )
+                else None)
         else:
             revised_tag = None
         if "human_validated" in item:
-            human_validated = (
-                bool(item["human_validated"]["BOOL"])
+            human_validated = (bool(item["human_validated"]["BOOL"])
                 if "BOOL" in item["human_validated"]
-                else None
-            )
+                else None)
         else:
             human_validated = None
         if "timestamp_human_validated" in item:
-            timestamp_human_validated = (
-                item["timestamp_human_validated"]["S"]
+            timestamp_human_validated = (item["timestamp_human_validated"]["S"]
                 if "S" in item["timestamp_human_validated"]
-                else None
-            )
+                else None)
         else:
             timestamp_human_validated = None
-        return ReceiptWordTag(
-            image_id=image_id,
+        return ReceiptWordTag(image_id=image_id,
             receipt_id=receipt_id,
             line_id=line_id,
             word_id=word_id,
@@ -465,7 +396,6 @@ def itemToReceiptWordTag(item: dict) -> ReceiptWordTag:
             flag=flag,
             revised_tag=revised_tag,
             human_validated=human_validated,
-            timestamp_human_validated=timestamp_human_validated,
-        )
+            timestamp_human_validated=timestamp_human_validated,)
     except (IndexError, ValueError, KeyError) as e:
         raise ValueError(f"Error converting item to ReceiptWordTag: {e}")

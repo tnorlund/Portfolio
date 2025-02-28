@@ -32,24 +32,18 @@ class _ReceiptWordTag:
             ValueError: If a ReceiptWordTag with the same PK/SK already exists.
         """
         try:
-            self._client.put_item(
-                TableName=self.table_name,
+            self._client.put_item(TableName=self.table_name,
                 Item=receipt_word_tag.to_item(),
-                ConditionExpression="attribute_not_exists(PK)",
-            )
+                ConditionExpression="attribute_not_exists(PK)",)
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
-                raise ValueError(
-                    f"ReceiptWordTag already exists for "
+            if (e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"):
+                raise ValueError(f"ReceiptWordTag already exists for "
                     f"image_id={receipt_word_tag.image_id}, "
                     f"receipt_id={receipt_word_tag.receipt_id}, "
                     f"word_id={receipt_word_tag.word_id}, "
                     f"tag={receipt_word_tag.tag}"
-                    f"timestamp_added={receipt_word_tag.timestamp_added}"
-                ) from e
+                    f"timestamp_added={receipt_word_tag.timestamp_added}") from e
             else:
                 raise Exception(f"Error adding ReceiptWordTag: {e}")
 
@@ -67,23 +61,15 @@ class _ReceiptWordTag:
         try:
             for i in range(0, len(receipt_word_tags), CHUNK_SIZE):
                 chunk = receipt_word_tags[i : i + CHUNK_SIZE]
-                request_items = [
-                    {"PutRequest": {"Item": rwt.to_item()}} for rwt in chunk
-                ]
-                response = self._client.batch_write_item(
-                    RequestItems={self.table_name: request_items}
-                )
+                request_items = [{"PutRequest": {"Item": rwt.to_item()}} for rwt in chunk]
+                response = self._client.batch_write_item(RequestItems={self.table_name: request_items})
                 # Handle unprocessed items if they exist
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
-            raise ValueError(
-                f"Could not add ReceiptWordTags to the database: {e}"
-            ) from e
+            raise ValueError(f"Could not add ReceiptWordTags to the database: {e}") from e
 
     def updateReceiptWordTag(self, receipt_word_tag: ReceiptWordTag):
         """
@@ -94,21 +80,17 @@ class _ReceiptWordTag:
             receipt_word_tag (ReceiptWordTag): The object to update.
         """
         try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=receipt_word_tag.to_item(),
-            )
+            self._client.put_item(TableName=self.table_name,
+                Item=receipt_word_tag.to_item(),)
         except ClientError as e:
             raise Exception(f"Error updating ReceiptWordTag: {e}")
 
-    def deleteReceiptWordTag(
-        self,
+    def deleteReceiptWordTag(self,
         image_id: int,
         receipt_id: int,
         line_id: int,
         word_id: int,
-        tag: str,
-    ):
+        tag: str,):
         """
         Deletes a single ReceiptWordTag from DynamoDB with a conditional check
         that it exists (attribute_exists).
@@ -123,30 +105,22 @@ class _ReceiptWordTag:
         Raises:
             ValueError: If the item does not exist.
         """
-        rwt = ReceiptWordTag(
-            image_id=image_id,
+        rwt = ReceiptWordTag(image_id=image_id,
             receipt_id=receipt_id,
             line_id=line_id,
             word_id=word_id,
             tag=tag,
-            timestamp_added="2000-01-01T00:00:00",  # placeholder
-        )
+            timestamp_added="2000-01-01T00:00:00",  # placeholder)
         try:
-            self._client.delete_item(
-                TableName=self.table_name,
+            self._client.delete_item(TableName=self.table_name,
                 Key=rwt.key(),
-                ConditionExpression="attribute_exists(PK)",
-            )
+                ConditionExpression="attribute_exists(PK)",)
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
-                raise ValueError(
-                    f"ReceiptWordTag not found for image_id={image_id}, "
+            if (e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"):
+                raise ValueError(f"ReceiptWordTag not found for image_id={image_id}, "
                     f"receipt_id={receipt_id}, line_id={line_id}, "
-                    f"word_id={word_id}, tag={tag}"
-                ) from e
+                    f"word_id={word_id}, tag={tag}") from e
             else:
                 raise Exception(f"Error deleting ReceiptWordTag: {e}")
 
@@ -160,22 +134,14 @@ class _ReceiptWordTag:
         try:
             for i in range(0, len(receipt_word_tags), CHUNK_SIZE):
                 chunk = receipt_word_tags[i : i + CHUNK_SIZE]
-                request_items = [
-                    {"DeleteRequest": {"Key": rwt.key()}} for rwt in chunk
-                ]
-                response = self._client.batch_write_item(
-                    RequestItems={self.table_name: request_items}
-                )
+                request_items = [{"DeleteRequest": {"Key": rwt.key()}} for rwt in chunk]
+                response = self._client.batch_write_item(RequestItems={self.table_name: request_items})
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
-            raise ValueError(
-                "Could not delete ReceiptWordTags from the database"
-            ) from e
+            raise ValueError("Could not delete ReceiptWordTags from the database") from e
 
     def deleteReceiptWordTagsFromImage(self, image_id: int):
         """
@@ -188,14 +154,12 @@ class _ReceiptWordTag:
         tags = self.listReceiptWordTagsFromImage(image_id)
         self.deleteReceiptWordTags(tags)
 
-    def getReceiptWordTag(
-        self,
+    def getReceiptWordTag(self,
         image_id: int,
         receipt_id: int,
         line_id: int,
         word_id: int,
-        tag: str,
-    ) -> ReceiptWordTag:
+        tag: str,) -> ReceiptWordTag:
         """
         Retrieves a single ReceiptWordTag from DynamoDB by its key.
 
@@ -212,33 +176,25 @@ class _ReceiptWordTag:
         Raises:
             ValueError: If the item does not exist.
         """
-        rwt = ReceiptWordTag(
-            image_id=image_id,
+        rwt = ReceiptWordTag(image_id=image_id,
             receipt_id=receipt_id,
             line_id=line_id,
             word_id=word_id,
             tag=tag,
-            timestamp_added="2000-01-01T00:00:00",  # placeholder
-        )
+            timestamp_added="2000-01-01T00:00:00",  # placeholder)
         try:
-            response = self._client.get_item(
-                TableName=self.table_name,
-                Key=rwt.key(),
-            )
+            response = self._client.get_item(TableName=self.table_name,
+                Key=rwt.key(),)
             return itemToReceiptWordTag(response["Item"])
         except KeyError:
             # No "Item" or missing fields
-            raise ValueError(
-                f"ReceiptWordTag not found for image_id={image_id}, "
+            raise ValueError(f"ReceiptWordTag not found for image_id={image_id}, "
                 f"receipt_id={receipt_id}, line_id={line_id}, "
-                f"word_id={word_id}, tag={tag}"
-            )
+                f"word_id={word_id}, tag={tag}")
         except ClientError as e:
             raise Exception(f"Error getting ReceiptWordTag: {e}")
 
-    def getReceiptWordTags(
-        self, tag: str, limit: int = None, lastEvaluatedKey: dict = None
-    ) -> tuple[list[ReceiptWordTag], dict | None]:
+    def getReceiptWordTags(self, tag: str, limit: int = None, lastEvaluatedKey: dict = None) -> tuple[list[ReceiptWordTag], dict | None]:
         """
         Retrieves ReceiptWordTag items with a given tag from the database, using the GSI1 index
         (where GSI1PK = "TAG#<tag_upper_padded>"). This method supports pagination via the
@@ -266,19 +222,15 @@ class _ReceiptWordTag:
             batch_limit = limit if limit is not None else 100
 
             # Set up the base query parameters.
-            base_params = {
-                "TableName": self.table_name,
+            base_params = {"TableName": self.table_name,
                 # Ensure this is the correct name of your GSI.
                 "IndexName": "GSI1",
                 "KeyConditionExpression": "GSI1PK = :gsi1pk",
                 "FilterExpression": "#t = :typeVal",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {
-                    ":gsi1pk": {"S": f"TAG#{tag:_>40}"},
-                    ":typeVal": {"S": "RECEIPT_WORD_TAG"},
-                },
-                "Limit": batch_limit,
-            }
+                "ExpressionAttributeValues": {":gsi1pk": {"S": f"TAG#{tag:_>40}"},
+                    ":typeVal": {"S": "RECEIPT_WORD_TAG"},},
+                "Limit": batch_limit,}
 
             # Use the provided lastEvaluatedKey, if any.
             if lastEvaluatedKey is not None:
@@ -292,9 +244,7 @@ class _ReceiptWordTag:
                 response = self._client.query(**base_params)
                 items = response.get("Items", [])
                 # Append the filtered items.
-                receipt_tags.extend(
-                    [itemToReceiptWordTag(item) for item in items]
-                )
+                receipt_tags.extend([itemToReceiptWordTag(item) for item in items])
                 last_key = response.get("LastEvaluatedKey", None)
 
                 # If a limit was provided and we have reached/exceeded it,
@@ -315,13 +265,9 @@ class _ReceiptWordTag:
 
             return receipt_tags, last_key
         except ClientError as e:
-            raise ValueError(
-                "Could not list ReceiptWordTags from the database"
-            ) from e
+            raise ValueError("Could not list ReceiptWordTags from the database") from e
 
-    def listReceiptWordTags(
-        self, limit: int = None, lastEvaluatedKey: dict = None
-    ) -> tuple[list[ReceiptWordTag], dict | None]:
+    def listReceiptWordTags(self, limit: int = None, lastEvaluatedKey: dict = None) -> tuple[list[ReceiptWordTag], dict | None]:
         """
         Lists ReceiptWordTag items from the database via the GSITYPE index (using the "TYPE" attribute).
         Supports optional pagination via a limit and a LastEvaluatedKey.
@@ -340,15 +286,11 @@ class _ReceiptWordTag:
         """
         receipt_tags: list[ReceiptWordTag] = []
         try:
-            query_params = {
-                "TableName": self.table_name,
+            query_params = {"TableName": self.table_name,
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {
-                    ":val": {"S": "RECEIPT_WORD_TAG"}
-                },
-            }
+                "ExpressionAttributeValues": {":val": {"S": "RECEIPT_WORD_TAG"}},}
 
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
@@ -357,30 +299,18 @@ class _ReceiptWordTag:
                 query_params["Limit"] = limit
 
             response = self._client.query(**query_params)
-            receipt_tags.extend(
-                [
-                    itemToReceiptWordTag(item)
-                    for item in response.get("Items", [])
-                ]
-            )
+            receipt_tags.extend([itemToReceiptWordTag(item)
+                    for item in response.get("Items", [])])
 
             if limit is None:
                 # If no limit is provided, continue paginating until all items
                 # are retrieved.
-                while (
-                    "LastEvaluatedKey" in response
-                    and response["LastEvaluatedKey"]
-                ):
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                while ("LastEvaluatedKey" in response
+                    and response["LastEvaluatedKey"]):
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                     response = self._client.query(**query_params)
-                    receipt_tags.extend(
-                        [
-                            itemToReceiptWordTag(item)
-                            for item in response.get("Items", [])
-                        ]
-                    )
+                    receipt_tags.extend([itemToReceiptWordTag(item)
+                            for item in response.get("Items", [])])
                 last_evaluated_key = None
             else:
                 last_evaluated_key = response.get("LastEvaluatedKey", None)
@@ -388,13 +318,9 @@ class _ReceiptWordTag:
             return receipt_tags, last_evaluated_key
 
         except ClientError as e:
-            raise ValueError(
-                "Could not list ReceiptWordTags from the database"
-            ) from e
+            raise ValueError("Could not list ReceiptWordTags from the database") from e
 
-    def listReceiptWordTagsFromImage(
-        self, image_id: int
-    ) -> list[ReceiptWordTag]:
+    def listReceiptWordTagsFromImage(self, image_id: int) -> list[ReceiptWordTag]:
         """
         Lists all ReceiptWordTag items for a given image by querying:
             PK = "IMAGE#<image_id>"
@@ -403,40 +329,30 @@ class _ReceiptWordTag:
         """
         receipt_word_tags = []
         try:
-            response = self._client.query(
-                TableName=self.table_name,
+            response = self._client.query(TableName=self.table_name,
                 KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
                 FilterExpression="contains(#sk, :tag_val)",
                 ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
-                ExpressionAttributeValues={
-                    ":pk_val": {"S": f"IMAGE#{image_id}"},
+                ExpressionAttributeValues={":pk_val": {"S": f"IMAGE#{image_id}"},
                     ":sk_val": {"S": "RECEIPT#"},
                     # Only SKs that include '#TAG#'
-                    ":tag_val": {"S": "#TAG#"},
-                },
-            )
+                    ":tag_val": {"S": "#TAG#"},},)
             for item in response.get("Items", []):
                 receipt_word_tags.append(itemToReceiptWordTag(item))
 
             while "LastEvaluatedKey" in response:
-                response = self._client.query(
-                    TableName=self.table_name,
+                response = self._client.query(TableName=self.table_name,
                     KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
                     FilterExpression="contains(#sk, :tag_val)",
                     ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
-                    ExpressionAttributeValues={
-                        ":pk_val": {"S": f"IMAGE#{image_id}"},
+                    ExpressionAttributeValues={":pk_val": {"S": f"IMAGE#{image_id}"},
                         ":sk_val": {"S": "RECEIPT#"},
-                        ":tag_val": {"S": "#TAG#"},
-                    },
-                    ExclusiveStartKey=response["LastEvaluatedKey"],
-                )
+                        ":tag_val": {"S": "#TAG#"},},
+                    ExclusiveStartKey=response["LastEvaluatedKey"],)
                 for item in response.get("Items", []):
                     receipt_word_tags.append(itemToReceiptWordTag(item))
 
             return receipt_word_tags
 
         except ClientError as e:
-            raise ValueError(
-                "Could not list ReceiptWordTags from the database"
-            ) from e
+            raise ValueError("Could not list ReceiptWordTags from the database") from e

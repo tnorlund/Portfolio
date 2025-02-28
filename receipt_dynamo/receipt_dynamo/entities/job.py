@@ -26,8 +26,7 @@ class Job:
         tags (Dict[str, str]): Tags associated with the job.
     """
 
-    def __init__(
-        self,
+    def __init__(self,
         job_id: str,
         name: str,
         description: str,
@@ -37,8 +36,7 @@ class Job:
         priority: str,
         job_config: Dict[str, Any],
         estimated_duration: Optional[int] = None,
-        tags: Optional[Dict[str, str]] = None,
-    ):
+        tags: Optional[Dict[str, str]] = None,):
         """Initializes a new Job object for DynamoDB.
 
         Args:
@@ -72,31 +70,25 @@ class Job:
         elif isinstance(created_at, str):
             self.created_at = created_at
         else:
-            raise ValueError(
-                "created_at must be a datetime object or a string"
-            )
+            raise ValueError("created_at must be a datetime object or a string")
 
         if not isinstance(created_by, str) or not created_by:
             raise ValueError("created_by must be a non-empty string")
         self.created_by = created_by
 
-        valid_statuses = [
-            "pending",
+        valid_statuses = ["pending",
             "running",
             "succeeded",
             "failed",
             "cancelled",
-            "interrupted",
-        ]
+            "interrupted",]
         if not isinstance(status, str) or status.lower() not in valid_statuses:
             raise ValueError(f"status must be one of {valid_statuses}")
         self.status = status.lower()
 
         valid_priorities = ["low", "medium", "high", "critical"]
-        if (
-            not isinstance(priority, str)
-            or priority.lower() not in valid_priorities
-        ):
+        if (not isinstance(priority, str)
+            or priority.lower() not in valid_priorities):
             raise ValueError(f"priority must be one of {valid_priorities}")
         self.priority = priority.lower()
 
@@ -105,13 +97,9 @@ class Job:
         self.job_config = job_config
 
         if estimated_duration is not None:
-            if (
-                not isinstance(estimated_duration, int)
-                or estimated_duration <= 0
-            ):
-                raise ValueError(
-                    "estimated_duration must be a positive integer"
-                )
+            if (not isinstance(estimated_duration, int)
+                or estimated_duration <= 0):
+                raise ValueError("estimated_duration must be a positive integer")
         self.estimated_duration = estimated_duration
 
         if tags is not None and not isinstance(tags, dict):
@@ -132,10 +120,8 @@ class Job:
         Returns:
             dict: The GSI1 key for the job.
         """
-        return {
-            "GSI1PK": {"S": f"STATUS#{self.status}"},
-            "GSI1SK": {"S": f"CREATED#{self.created_at}"},
-        }
+        return {"GSI1PK": {"S": f"STATUS#{self.status}"},
+            "GSI1SK": {"S": f"CREATED#{self.created_at}"},}
 
     def gsi2_key(self) -> dict:
         """Generates the GSI2 key for the job.
@@ -143,10 +129,8 @@ class Job:
         Returns:
             dict: The GSI2 key for the job.
         """
-        return {
-            "GSI2PK": {"S": f"USER#{self.created_by}"},
-            "GSI2SK": {"S": f"CREATED#{self.created_at}"},
-        }
+        return {"GSI2PK": {"S": f"USER#{self.created_by}"},
+            "GSI2SK": {"S": f"CREATED#{self.created_at}"},}
 
     def to_item(self) -> dict:
         """Converts the Job object to a DynamoDB item.
@@ -154,8 +138,7 @@ class Job:
         Returns:
             dict: A dictionary representing the Job object as a DynamoDB item.
         """
-        item = {
-            **self.key(),
+        item = {**self.key(),
             **self.gsi1_key(),
             **self.gsi2_key(),
             "TYPE": {"S": "JOB"},
@@ -165,8 +148,7 @@ class Job:
             "created_by": {"S": self.created_by},
             "status": {"S": self.status},
             "priority": {"S": self.priority},
-            "job_config": {"M": self._dict_to_dynamodb_map(self.job_config)},
-        }
+            "job_config": {"M": self._dict_to_dynamodb_map(self.job_config)},}
 
         if self.estimated_duration is not None:
             item["estimated_duration"] = {"N": str(self.estimated_duration)}
@@ -190,9 +172,7 @@ class Job:
             if isinstance(v, dict):
                 result[k] = {"M": self._dict_to_dynamodb_map(v)}
             elif isinstance(v, list):
-                result[k] = {
-                    "L": [self._to_dynamodb_value(item) for item in v]
-                }
+                result[k] = {"L": [self._to_dynamodb_value(item) for item in v]}
             elif isinstance(v, str):
                 result[k] = {"S": v}
             elif isinstance(v, (int, float)):
@@ -235,8 +215,7 @@ class Job:
         Returns:
             str: A string representation of the Job object.
         """
-        return (
-            "Job("
+        return ("Job("
             f"job_id={_repr_str(self.job_id)}, "
             f"name={_repr_str(self.name)}, "
             f"description={_repr_str(self.description)}, "
@@ -247,8 +226,7 @@ class Job:
             f"job_config={self.job_config}, "
             f"estimated_duration={self.estimated_duration}, "
             f"tags={self.tags}"
-            ")"
-        )
+            ")")
 
     def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
         """Returns an iterator over the Job object's attributes.
@@ -281,8 +259,7 @@ class Job:
         """
         if not isinstance(other, Job):
             return False
-        return (
-            self.job_id == other.job_id
+        return (self.job_id == other.job_id
             and self.name == other.name
             and self.description == other.description
             and self.created_at == other.created_at
@@ -291,8 +268,7 @@ class Job:
             and self.priority == other.priority
             and self.job_config == other.job_config
             and self.estimated_duration == other.estimated_duration
-            and self.tags == other.tags
-        )
+            and self.tags == other.tags)
 
     def __hash__(self) -> int:
         """Returns the hash value of the Job object.
@@ -300,9 +276,7 @@ class Job:
         Returns:
             int: The hash value of the Job object.
         """
-        return hash(
-            (
-                self.job_id,
+        return hash((self.job_id,
                 self.name,
                 self.description,
                 self.created_at,
@@ -313,9 +287,7 @@ class Job:
                 tuple(sorted((k, str(v)) for k, v in self.job_config.items())),
                 self.estimated_duration,
                 # Can't hash dictionaries, so convert to tuple of sorted items
-                tuple(sorted(self.tags.items())) if self.tags else None,
-            )
-        )
+                tuple(sorted(self.tags.items())) if self.tags else None,))
 
 
 def itemToJob(item: dict) -> Job:
@@ -330,8 +302,7 @@ def itemToJob(item: dict) -> Job:
     Raises:
         ValueError: When the item format is invalid.
     """
-    required_keys = {
-        "PK",
+    required_keys = {"PK",
         "SK",
         "TYPE",
         "name",
@@ -340,14 +311,11 @@ def itemToJob(item: dict) -> Job:
         "created_by",
         "status",
         "priority",
-        "job_config",
-    }
+        "job_config",}
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
-        raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
-        )
+        raise ValueError(f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}")
 
     try:
         # Parse job_id from the PK
@@ -365,19 +333,16 @@ def itemToJob(item: dict) -> Job:
         job_config = _parse_dynamodb_map(item["job_config"]["M"])
 
         # Parse optional fields
-        estimated_duration = (
-            int(item["estimated_duration"]["N"])
+        estimated_duration = (int(item["estimated_duration"]["N"])
             if "estimated_duration" in item
-            else None
-        )
+            else None)
 
         # Parse tags if present
         tags = None
         if "tags" in item and "M" in item["tags"]:
             tags = {k: v["S"] for k, v in item["tags"]["M"].items()}
 
-        return Job(
-            job_id=job_id,
+        return Job(job_id=job_id,
             name=name,
             description=description,
             created_at=created_at,
@@ -386,8 +351,7 @@ def itemToJob(item: dict) -> Job:
             priority=priority,
             job_config=job_config,
             estimated_duration=estimated_duration,
-            tags=tags,
-        )
+            tags=tags,)
     except KeyError as e:
         raise ValueError(f"Error converting item to Job: {e}")
 

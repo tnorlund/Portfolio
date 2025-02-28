@@ -26,8 +26,7 @@ class Image:
         cdn_s3_key (str): The S3 key where the image is stored in the CDN.
     """
 
-    def __init__(
-        self,
+    def __init__(self,
         image_id: str,
         width: int,
         height: int,
@@ -36,8 +35,7 @@ class Image:
         raw_s3_key: str,
         sha256: str = None,
         cdn_s3_bucket: str = None,
-        cdn_s3_key: str = None,
-    ):
+        cdn_s3_key: str = None,):
         """Initializes a new Image object for DynamoDB.
 
         Args:
@@ -57,12 +55,10 @@ class Image:
         assert_valid_uuid(image_id)
         self.image_id = image_id
 
-        if (
-            width <= 0
+        if (width <= 0
             or height <= 0
             or not isinstance(width, int)
-            or not isinstance(height, int)
-        ):
+            or not isinstance(height, int)):
             raise ValueError("width and height must be positive integers")
         self.width = width
         self.height = height
@@ -72,9 +68,7 @@ class Image:
         elif isinstance(timestamp_added, str):
             self.timestamp_added = timestamp_added
         else:
-            raise ValueError(
-                "timestamp_added must be a datetime object or a string"
-            )
+            raise ValueError("timestamp_added must be a datetime object or a string")
 
         if raw_s3_bucket and not isinstance(raw_s3_bucket, str):
             raise ValueError("raw_s3_bucket must be a string")
@@ -109,13 +103,8 @@ class Image:
         Returns:
             dict: The GSI1 key for the image.
         """
-        return {
-            "GSI1PK": {"S": "IMAGE"},
-            "GSI1SK": {
-                "S": f"IMAGE#{
-                    self.image_id}"
-            },
-        }
+        return {"GSI1PK": {"S": "IMAGE"},
+            "GSI1SK": {"S": f"IMAGE#{self.image_id}"},}
 
     def gsi2_key(self) -> dict:
         """Generates the GSI2 key for the image.
@@ -123,13 +112,8 @@ class Image:
         Returns:
             dict: The GSI2 key for the image.
         """
-        return {
-            "GSI2PK": {
-                "S": f"IMAGE#{
-                    self.image_id}"
-            },
-            "GSI2SK": {"S": "IMAGE"},
-        }
+        return {"GSI2PK": {"S": f"IMAGE#{self.image_id}"},
+            "GSI2SK": {"S": "IMAGE"},}
 
     def to_item(self) -> dict:
         """Converts the Image object to a DynamoDB item.
@@ -137,8 +121,7 @@ class Image:
         Returns:
             dict: A dictionary representing the Image object as a DynamoDB item.
         """
-        return {
-            **self.key(),
+        return {**self.key(),
             **self.gsi1_key(),
             **self.gsi2_key(),
             "TYPE": {"S": "IMAGE"},
@@ -148,15 +131,10 @@ class Image:
             "raw_s3_bucket": {"S": self.raw_s3_bucket},
             "raw_s3_key": {"S": self.raw_s3_key},
             "sha256": {"S": self.sha256} if self.sha256 else {"NULL": True},
-            "cdn_s3_bucket": (
-                {"S": self.cdn_s3_bucket}
+            "cdn_s3_bucket": ({"S": self.cdn_s3_bucket}
                 if self.cdn_s3_bucket
-                else {"NULL": True}
-            ),
-            "cdn_s3_key": (
-                {"S": self.cdn_s3_key} if self.cdn_s3_key else {"NULL": True}
-            ),
-        }
+                else {"NULL": True}),
+            "cdn_s3_key": ({"S": self.cdn_s3_key} if self.cdn_s3_key else {"NULL": True}),}
 
     def __repr__(self) -> str:
         """Returns a string representation of the Image object.
@@ -164,8 +142,7 @@ class Image:
         Returns:
             str: A string representation of the Image object.
         """
-        return (
-            "Image("
+        return ("Image("
             f"image_id={_repr_str(self.image_id)}, "
             f"width={self.width}, "
             f"height={self.height}, "
@@ -175,8 +152,7 @@ class Image:
             f"sha256={_repr_str(self.sha256)}, "
             f"cdn_s3_bucket={_repr_str(self.cdn_s3_bucket)}, "
             f"cdn_s3_key={_repr_str(self.cdn_s3_key)}"
-            ")"
-        )
+            ")")
 
     def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
         """Returns an iterator over the Image object's attributes.
@@ -208,8 +184,7 @@ class Image:
         """
         if not isinstance(other, Image):
             return False
-        return (
-            self.image_id == other.image_id and
+        return (self.image_id == other.image_id and
             self.width == other.width and
             self.height == other.height and
             self.timestamp_added == other.timestamp_added and
@@ -217,8 +192,7 @@ class Image:
             self.raw_s3_key == other.raw_s3_key and
             self.sha256 == other.sha256 and
             self.cdn_s3_bucket == other.cdn_s3_bucket and
-            self.cdn_s3_key == other.cdn_s3_key
-        )
+            self.cdn_s3_key == other.cdn_s3_key)
 
     def __hash__(self) -> int:
         """Returns the hash value of the Image object.
@@ -226,9 +200,7 @@ class Image:
         Returns:
             int: The hash value of the Image object.
         """
-        return hash(
-            (
-                self.image_id,
+        return hash((self.image_id,
                 self.width,
                 self.height,
                 self.timestamp_added,
@@ -236,9 +208,7 @@ class Image:
                 self.raw_s3_key,
                 self.sha256,
                 self.cdn_s3_bucket,
-                self.cdn_s3_key,
-            )
-        )
+                self.cdn_s3_key,))
 
 
 def itemToImage(item: dict) -> Image:
@@ -253,38 +223,30 @@ def itemToImage(item: dict) -> Image:
     Raises:
         ValueError: When the item format is invalid.
     """
-    required_keys = {
-        "PK",
+    required_keys = {"PK",
         "SK",
         "TYPE",
         "width",
         "height",
         "timestamp_added",
         "raw_s3_bucket",
-        "raw_s3_key",
-    }
+        "raw_s3_key",}
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
-        raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
-        )
+        raise ValueError(f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}")
     try:
         sha256 = item.get("sha256", {}).get("S")
         cdn_s3_bucket = item.get("cdn_s3_bucket", {}).get("S")
         cdn_s3_key = item.get("cdn_s3_key", {}).get("S")
-        return Image(
-            image_id=item["PK"]["S"].split("#")[1],
+        return Image(image_id=item["PK"]["S"].split("#")[1],
             width=int(item["width"]["N"]),
             height=int(item["height"]["N"]),
-            timestamp_added=datetime.fromisoformat(
-                item["timestamp_added"]["S"]
-            ),
+            timestamp_added=datetime.fromisoformat(item["timestamp_added"]["S"]),
             raw_s3_bucket=item["raw_s3_bucket"]["S"],
             raw_s3_key=item["raw_s3_key"]["S"],
             sha256=sha256 if sha256 else None,
             cdn_s3_bucket=cdn_s3_bucket if cdn_s3_bucket else None,
-            cdn_s3_key=cdn_s3_key if cdn_s3_key else None,
-        )
+            cdn_s3_key=cdn_s3_key if cdn_s3_key else None,)
     except KeyError as e:
         raise ValueError(f"Error converting item to Image: {e}")

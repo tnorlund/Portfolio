@@ -23,16 +23,14 @@ class JobStatus:
         instance_id (str): The ID of the instance that updated the status.
     """
 
-    def __init__(
-        self,
+    def __init__(self,
         job_id: str,
         status: str,
         updated_at: datetime,
         progress: Optional[float] = None,
         message: Optional[str] = None,
         updated_by: Optional[str] = None,
-        instance_id: Optional[str] = None,
-    ):
+        instance_id: Optional[str] = None,):
         """Initializes a new JobStatus object for DynamoDB.
 
         Args:
@@ -50,14 +48,12 @@ class JobStatus:
         assert_valid_uuid(job_id)
         self.job_id = job_id
 
-        valid_statuses = [
-            "pending",
+        valid_statuses = ["pending",
             "running",
             "succeeded",
             "failed",
             "cancelled",
-            "interrupted",
-        ]
+            "interrupted",]
         if not isinstance(status, str) or status.lower() not in valid_statuses:
             raise ValueError(f"status must be one of {valid_statuses}")
         self.status = status.lower()
@@ -67,16 +63,12 @@ class JobStatus:
         elif isinstance(updated_at, str):
             self.updated_at = updated_at
         else:
-            raise ValueError(
-                "updated_at must be a datetime object or a string"
-            )
+            raise ValueError("updated_at must be a datetime object or a string")
 
         if progress is not None:
-            if (
-                not isinstance(progress, (int, float))
+            if (not isinstance(progress, (int, float))
                 or progress < 0
-                or progress > 100
-            ):
+                or progress > 100):
                 raise ValueError("progress must be a number between 0 and 100")
             self.progress = float(progress)
         else:
@@ -100,10 +92,8 @@ class JobStatus:
         Returns:
             dict: The primary key for the job status.
         """
-        return {
-            "PK": {"S": f"JOB#{self.job_id}"},
-            "SK": {"S": f"STATUS#{self.updated_at}"},
-        }
+        return {"PK": {"S": f"JOB#{self.job_id}"},
+            "SK": {"S": f"STATUS#{self.updated_at}"},}
 
     def gsi1_key(self) -> dict:
         """Generates the GSI1 key for the job status.
@@ -111,10 +101,8 @@ class JobStatus:
         Returns:
             dict: The GSI1 key for the job status.
         """
-        return {
-            "GSI1PK": {"S": f"STATUS#{self.status}"},
-            "GSI1SK": {"S": f"UPDATED#{self.updated_at}"},
-        }
+        return {"GSI1PK": {"S": f"STATUS#{self.status}"},
+            "GSI1SK": {"S": f"UPDATED#{self.updated_at}"},}
 
     def to_item(self) -> dict:
         """Converts the JobStatus object to a DynamoDB item.
@@ -122,13 +110,11 @@ class JobStatus:
         Returns:
             dict: A dictionary representing the JobStatus object as a DynamoDB item.
         """
-        item = {
-            **self.key(),
+        item = {**self.key(),
             **self.gsi1_key(),
             "TYPE": {"S": "JOB_STATUS"},
             "status": {"S": self.status},
-            "updated_at": {"S": self.updated_at},
-        }
+            "updated_at": {"S": self.updated_at},}
 
         if self.progress is not None:
             item["progress"] = {"N": str(self.progress)}
@@ -150,8 +136,7 @@ class JobStatus:
         Returns:
             str: A string representation of the JobStatus object.
         """
-        return (
-            "JobStatus("
+        return ("JobStatus("
             f"job_id={_repr_str(self.job_id)}, "
             f"status={_repr_str(self.status)}, "
             f"updated_at={_repr_str(self.updated_at)}, "
@@ -159,8 +144,7 @@ class JobStatus:
             f"message={_repr_str(self.message)}, "
             f"updated_by={_repr_str(self.updated_by)}, "
             f"instance_id={_repr_str(self.instance_id)}"
-            ")"
-        )
+            ")")
 
     def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
         """Returns an iterator over the JobStatus object's attributes.
@@ -190,15 +174,13 @@ class JobStatus:
         """
         if not isinstance(other, JobStatus):
             return False
-        return (
-            self.job_id == other.job_id
+        return (self.job_id == other.job_id
             and self.status == other.status
             and self.updated_at == other.updated_at
             and self.progress == other.progress
             and self.message == other.message
             and self.updated_by == other.updated_by
-            and self.instance_id == other.instance_id
-        )
+            and self.instance_id == other.instance_id)
 
     def __hash__(self) -> int:
         """Returns the hash value of the JobStatus object.
@@ -206,17 +188,13 @@ class JobStatus:
         Returns:
             int: The hash value of the JobStatus object.
         """
-        return hash(
-            (
-                self.job_id,
+        return hash((self.job_id,
                 self.status,
                 self.updated_at,
                 self.progress,
                 self.message,
                 self.updated_by,
-                self.instance_id,
-            )
-        )
+                self.instance_id,))
 
 
 def itemToJobStatus(item: dict) -> JobStatus:
@@ -231,19 +209,15 @@ def itemToJobStatus(item: dict) -> JobStatus:
     Raises:
         ValueError: When the item format is invalid.
     """
-    required_keys = {
-        "PK",
+    required_keys = {"PK",
         "SK",
         "TYPE",
         "status",
-        "updated_at",
-    }
+        "updated_at",}
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
-        raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
-        )
+        raise ValueError(f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}")
 
     try:
         # Parse job_id from the PK
@@ -257,18 +231,14 @@ def itemToJobStatus(item: dict) -> JobStatus:
         progress = float(item["progress"]["N"]) if "progress" in item else None
         message = item["message"]["S"] if "message" in item else None
         updated_by = item["updated_by"]["S"] if "updated_by" in item else None
-        instance_id = (
-            item["instance_id"]["S"] if "instance_id" in item else None
-        )
+        instance_id = (item["instance_id"]["S"] if "instance_id" in item else None)
 
-        return JobStatus(
-            job_id=job_id,
+        return JobStatus(job_id=job_id,
             status=status,
             updated_at=updated_at,
             progress=progress,
             message=message,
             updated_by=updated_by,
-            instance_id=instance_id,
-        )
+            instance_id=instance_id,)
     except KeyError as e:
         raise ValueError(f"Error converting item to JobStatus: {e}")
