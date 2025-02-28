@@ -196,7 +196,10 @@ def test_job_metric_gsi2_key(example_job_metric):
     assert "GSI2PK" in gsi2_key
     assert "GSI2SK" in gsi2_key
     assert gsi2_key["GSI2PK"]["S"] == f"METRIC#{example_job_metric.metric_name}"
-    assert gsi2_key["GSI2SK"]["S"] == f"JOB#{example_job_metric.job_id}#{example_job_metric.timestamp}"
+    assert (
+        gsi2_key["GSI2SK"]["S"]
+        == f"JOB#{example_job_metric.job_id}#{example_job_metric.timestamp}"
+    )
 
 
 @pytest.mark.unit
@@ -213,7 +216,10 @@ def test_job_metric_to_item(example_job_metric, example_job_metric_minimal):
     assert "GSI2PK" in item
     assert "GSI2SK" in item
     assert item["GSI2PK"]["S"] == f"METRIC#{example_job_metric.metric_name}"
-    assert item["GSI2SK"]["S"] == f"JOB#{example_job_metric.job_id}#{example_job_metric.timestamp}"
+    assert (
+        item["GSI2SK"]["S"]
+        == f"JOB#{example_job_metric.job_id}#{example_job_metric.timestamp}"
+    )
     assert item["job_id"] == {"S": example_job_metric.job_id}
     assert item["metric_name"] == {"S": example_job_metric.metric_name}
     assert item["timestamp"] == {"S": example_job_metric.timestamp}

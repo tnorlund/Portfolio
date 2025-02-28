@@ -134,9 +134,13 @@ def test_addJobLogs_raises_value_error_logs_not_list(job_log_dynamo):
 
 
 @pytest.mark.integration
-def test_addJobLogs_raises_value_error_logs_not_list_of_logs(job_log_dynamo, sample_job_log):
+def test_addJobLogs_raises_value_error_logs_not_list_of_logs(
+    job_log_dynamo, sample_job_log
+):
     """Test that addJobLogs raises ValueError when job_logs contains non-JobLog items."""
-    with pytest.raises(ValueError, match="All items in job_logs must be JobLog instances"):
+    with pytest.raises(
+        ValueError, match="All items in job_logs must be JobLog instances"
+    ):
         job_log_dynamo.addJobLogs([sample_job_log, "not a job log"])
 
 
@@ -195,13 +199,11 @@ def test_listJobLogs_success(job_log_dynamo, multiple_job_logs):
 
     # Check that all logs are returned
     assert len(logs) == len(multiple_job_logs)
-    
+
     # Check the content
     for log in multiple_job_logs:
         # Find the corresponding log in the returned list
-        matching_log = next(
-            (l for l in logs if l.timestamp == log.timestamp), None
-        )
+        matching_log = next((l for l in logs if l.timestamp == log.timestamp), None)
         assert matching_log is not None, f"Log with timestamp {log.timestamp} not found"
         assert matching_log == log
 
@@ -219,20 +221,24 @@ def test_listJobLogs_with_limit(job_log_dynamo, multiple_job_logs):
 
     # Check that only the specified number of logs are returned
     assert len(logs) == limit
-    
+
     # Check that the last evaluated key is returned
-    assert last_key is not None, "LastEvaluatedKey should be returned when limit is used"
+    assert (
+        last_key is not None
+    ), "LastEvaluatedKey should be returned when limit is used"
 
     # Use the last key to get the next batch
     next_logs, next_last_key = job_log_dynamo.listJobLogs(
         job_id=job_id, limit=limit, lastEvaluatedKey=last_key
     )
-    
+
     # Check that we got more logs
     assert len(next_logs) == limit
-    
+
     # Ensure we got different logs
-    assert all(log1.timestamp != log2.timestamp for log1 in logs for log2 in next_logs), "Should get different logs"
+    assert all(
+        log1.timestamp != log2.timestamp for log1 in logs for log2 in next_logs
+    ), "Should get different logs"
 
 
 @pytest.mark.integration
@@ -314,4 +320,4 @@ def test_listJobLogs_with_resource_not_found(job_log_dynamo, mocker):
     job_id = str(uuid.uuid4())
     with pytest.raises(ClientError) as excinfo:
         job_log_dynamo.listJobLogs(job_id=job_id)
-    assert excinfo.value.response["Error"]["Code"] == "ResourceNotFoundException" 
+    assert excinfo.value.response["Error"]["Code"] == "ResourceNotFoundException"

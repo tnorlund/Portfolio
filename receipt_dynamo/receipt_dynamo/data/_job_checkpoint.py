@@ -283,11 +283,11 @@ class _JobCheckpoint:
             }
 
             response = self._client.query(**query_params)
-            
+
             for item in response["Items"]:
                 if item.get("TYPE", {}).get("S") == "JOB_CHECKPOINT":
                     return itemToJobCheckpoint(item)
-            
+
             return None
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
@@ -296,7 +296,9 @@ class _JobCheckpoint:
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "ValidationException":
-                raise Exception(f"One or more parameters given were invalid: {e}") from e
+                raise Exception(
+                    f"One or more parameters given were invalid: {e}"
+                ) from e
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
@@ -419,4 +421,4 @@ class _JobCheckpoint:
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(f"Error listing all job checkpoints: {e}") from e 
+                raise Exception(f"Error listing all job checkpoints: {e}") from e

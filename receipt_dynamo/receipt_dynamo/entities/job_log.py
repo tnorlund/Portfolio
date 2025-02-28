@@ -232,4 +232,4 @@ def itemToJobLog(item: dict) -> JobLog:
             exception=exception,
         )
     except KeyError as e:
-        raise ValueError(f"Error converting item to JobLog: {e}") 
+        raise ValueError(f"Error converting item to JobLog: {e}")

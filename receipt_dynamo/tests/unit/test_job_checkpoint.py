@@ -5,7 +5,7 @@ from receipt_dynamo.entities.job_checkpoint import (
     JobCheckpoint,
     itemToJobCheckpoint,
     _parse_dynamodb_map,
-    _parse_dynamodb_value
+    _parse_dynamodb_value,
 )
 
 
@@ -25,7 +25,7 @@ def example_job_checkpoint():
         model_state=True,
         optimizer_state=True,
         metrics={"loss": 0.1234, "accuracy": 0.9876, "detailed": {"val_loss": 0.2345}},
-        is_best=True
+        is_best=True,
     )
 
 
@@ -41,7 +41,7 @@ def example_job_checkpoint_minimal():
         s3_key=f"jobs/{job_id}/checkpoints/model_{timestamp}.pt",
         size_bytes=512000,
         step=500,
-        epoch=2
+        epoch=2,
     )
 
 
@@ -447,7 +447,10 @@ def test_job_checkpoint_gsi1_key(example_job_checkpoint):
     """Test that a JobCheckpoint generates the correct GSI1 key"""
     gsi1_key = example_job_checkpoint.gsi1_key()
     assert gsi1_key["GSI1PK"]["S"] == "CHECKPOINT"
-    assert gsi1_key["GSI1SK"]["S"] == f"JOB#{example_job_checkpoint.job_id}#{example_job_checkpoint.timestamp}"
+    assert (
+        gsi1_key["GSI1SK"]["S"]
+        == f"JOB#{example_job_checkpoint.job_id}#{example_job_checkpoint.timestamp}"
+    )
 
 
 @pytest.mark.unit
@@ -458,7 +461,10 @@ def test_job_checkpoint_to_item(example_job_checkpoint, example_job_checkpoint_m
     assert item["PK"]["S"] == f"JOB#{example_job_checkpoint.job_id}"
     assert item["SK"]["S"] == f"CHECKPOINT#{example_job_checkpoint.timestamp}"
     assert item["GSI1PK"]["S"] == "CHECKPOINT"
-    assert item["GSI1SK"]["S"] == f"JOB#{example_job_checkpoint.job_id}#{example_job_checkpoint.timestamp}"
+    assert (
+        item["GSI1SK"]["S"]
+        == f"JOB#{example_job_checkpoint.job_id}#{example_job_checkpoint.timestamp}"
+    )
     assert item["TYPE"]["S"] == "JOB_CHECKPOINT"
     assert item["job_id"]["S"] == example_job_checkpoint.job_id
     assert item["timestamp"]["S"] == example_job_checkpoint.timestamp
@@ -497,7 +503,7 @@ def test_job_checkpoint_dict_to_dynamodb_map():
         step=1000,
         epoch=5,
     )
-    
+
     # Test with different types
     test_dict = {
         "string": "value",
@@ -510,12 +516,12 @@ def test_job_checkpoint_dict_to_dynamodb_map():
             "inner": "value",
             "innerNum": 456,
             "innerBool": False,
-            "innerList": [7, 8, 9]
-        }
+            "innerList": [7, 8, 9],
+        },
     }
-    
+
     result = checkpoint._dict_to_dynamodb_map(test_dict)
-    
+
     assert result["string"]["S"] == "value"
     assert result["number"]["N"] == "123"
     assert result["float"]["N"] == "123.45"
@@ -572,7 +578,7 @@ def test_job_checkpoint_eq():
     """Test that JobCheckpoint equality works correctly"""
     job_id = str(uuid.uuid4())
     timestamp = datetime.now(timezone.utc).isoformat()
-    
+
     # Create two identical checkpoints
     checkpoint1 = JobCheckpoint(
         job_id=job_id,
@@ -583,9 +589,9 @@ def test_job_checkpoint_eq():
         step=1000,
         epoch=5,
         metrics={"loss": 0.1234},
-        is_best=True
+        is_best=True,
     )
-    
+
     checkpoint2 = JobCheckpoint(
         job_id=job_id,
         timestamp=timestamp,
@@ -595,9 +601,9 @@ def test_job_checkpoint_eq():
         step=1000,
         epoch=5,
         metrics={"loss": 0.1234},
-        is_best=True
+        is_best=True,
     )
-    
+
     # Create a different checkpoint
     checkpoint3 = JobCheckpoint(
         job_id=job_id,
@@ -608,14 +614,14 @@ def test_job_checkpoint_eq():
         step=1000,
         epoch=5,
         metrics={"loss": 0.1234},
-        is_best=True
+        is_best=True,
     )
-    
+
     # Test equality
     assert checkpoint1 == checkpoint2
     assert checkpoint1 != checkpoint3
     assert checkpoint1 != "not a checkpoint"
-    
+
     # Check that hash works
     checkpoints = {checkpoint1, checkpoint2, checkpoint3}
     assert len(checkpoints) == 2
@@ -631,23 +637,12 @@ def test_parse_dynamodb_map():
         "float": {"N": "123.45"},
         "bool": {"BOOL": True},
         "null": {"NULL": True},
-        "map": {
-            "M": {
-                "inner": {"S": "value"},
-                "innerNum": {"N": "456"}
-            }
-        },
-        "list": {
-            "L": [
-                {"S": "item1"},
-                {"N": "789"},
-                {"BOOL": False}
-            ]
-        }
+        "map": {"M": {"inner": {"S": "value"}, "innerNum": {"N": "456"}}},
+        "list": {"L": [{"S": "item1"}, {"N": "789"}, {"BOOL": False}]},
     }
-    
+
     result = _parse_dynamodb_map(dynamodb_map)
-    
+
     assert result["string"] == "value"
     assert result["number"] == 123
     assert result["float"] == 123.45
@@ -668,19 +663,19 @@ def test_parse_dynamodb_value():
     assert _parse_dynamodb_value({"N": "123.45"}) == 123.45
     assert _parse_dynamodb_value({"BOOL": True}) is True
     assert _parse_dynamodb_value({"NULL": True}) is None
-    
+
     # Test list
     list_value = {"L": [{"S": "item1"}, {"N": "123"}]}
     result = _parse_dynamodb_value(list_value)
     assert result[0] == "item1"
     assert result[1] == 123
-    
+
     # Test map
     map_value = {"M": {"key": {"S": "value"}, "num": {"N": "123"}}}
     result = _parse_dynamodb_value(map_value)
     assert result["key"] == "value"
     assert result["num"] == 123
-    
+
     # Test empty value
     assert _parse_dynamodb_value({}) is None
 
@@ -691,7 +686,7 @@ def test_itemToJobCheckpoint(example_job_checkpoint, example_job_checkpoint_mini
     # Convert to item and back for the full example
     item = example_job_checkpoint.to_item()
     checkpoint = itemToJobCheckpoint(item)
-    
+
     assert checkpoint.job_id == example_job_checkpoint.job_id
     assert checkpoint.timestamp == example_job_checkpoint.timestamp
     assert checkpoint.s3_bucket == example_job_checkpoint.s3_bucket
@@ -703,16 +698,16 @@ def test_itemToJobCheckpoint(example_job_checkpoint, example_job_checkpoint_mini
     assert checkpoint.optimizer_state == example_job_checkpoint.optimizer_state
     assert checkpoint.metrics == example_job_checkpoint.metrics
     assert checkpoint.is_best == example_job_checkpoint.is_best
-    
+
     # Convert to item and back for the minimal example
     item_minimal = example_job_checkpoint_minimal.to_item()
     checkpoint_minimal = itemToJobCheckpoint(item_minimal)
-    
+
     assert checkpoint_minimal.job_id == example_job_checkpoint_minimal.job_id
     assert checkpoint_minimal.timestamp == example_job_checkpoint_minimal.timestamp
     assert checkpoint_minimal.metrics == {}
     assert checkpoint_minimal.is_best is False
-    
+
     # Test with invalid item
     with pytest.raises(ValueError, match="Error converting item to JobCheckpoint"):
-        itemToJobCheckpoint({"job_id": {"S": "invalid-job-id"}}) 
+        itemToJobCheckpoint({"job_id": {"S": "invalid-job-id"}})

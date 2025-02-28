@@ -145,9 +145,7 @@ class JobCheckpoint:
         }
 
         if self.metrics:
-            item["metrics"] = {
-                "M": self._dict_to_dynamodb_map(self.metrics)
-            }
+            item["metrics"] = {"M": self._dict_to_dynamodb_map(self.metrics)}
 
         return item
 
@@ -383,4 +381,4 @@ def itemToJobCheckpoint(item: dict) -> JobCheckpoint:
             is_best=item["is_best"]["BOOL"],
         )
     except (KeyError, ValueError) as e:
-        raise ValueError(f"Error converting item to JobCheckpoint: {e}") from e 
+        raise ValueError(f"Error converting item to JobCheckpoint: {e}") from e

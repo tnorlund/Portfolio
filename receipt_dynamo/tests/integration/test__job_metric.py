@@ -503,7 +503,9 @@ def test_getMetricsByNameAcrossJobs_success(
 
     # Add all job metrics
     job_metric_dynamo.addJobMetric(sample_job_metric)  # Original job, loss
-    job_metric_dynamo.addJobMetric(sample_job_metric_later)  # Original job, loss (later)
+    job_metric_dynamo.addJobMetric(
+        sample_job_metric_later
+    )  # Original job, loss (later)
     job_metric_dynamo.addJobMetric(second_job_metric)  # Second job, loss
 
     # Get metrics by name across jobs
@@ -525,13 +527,13 @@ def test_getMetricsByNameAcrossJobs_success(
     # Verify metrics are grouped by job and ordered by timestamp
     # The GSI2 should return metrics grouped by job since the sort key starts with JOB#
     job_ids_in_order = [m.job_id for m in metrics]
-    
+
     # Get all unique job IDs in the order they appear
     unique_job_ids = []
     for job_id in job_ids_in_order:
         if job_id not in unique_job_ids:
             unique_job_ids.append(job_id)
-    
+
     # Check that we have at least 2 different job IDs
     assert len(unique_job_ids) >= 2
 
@@ -580,7 +582,9 @@ def test_getMetricsByNameAcrossJobs_with_limit(
     job_metric_dynamo.addJobMetric(second_job_metric)
 
     # Get metrics by name across jobs with limit=2
-    metrics, last_evaluated_key = job_metric_dynamo.getMetricsByNameAcrossJobs("loss", limit=2)
+    metrics, last_evaluated_key = job_metric_dynamo.getMetricsByNameAcrossJobs(
+        "loss", limit=2
+    )
 
     # Verify
     assert len(metrics) == 2
@@ -589,7 +593,9 @@ def test_getMetricsByNameAcrossJobs_with_limit(
 
 
 @pytest.mark.integration
-def test_getMetricsByNameAcrossJobs_not_found(job_metric_dynamo, sample_job, sample_job_metric):
+def test_getMetricsByNameAcrossJobs_not_found(
+    job_metric_dynamo, sample_job, sample_job_metric
+):
     """Test getting metrics by name across jobs when none match"""
     # Add the job first
     job_metric_dynamo.addJob(sample_job)
@@ -598,7 +604,9 @@ def test_getMetricsByNameAcrossJobs_not_found(job_metric_dynamo, sample_job, sam
     job_metric_dynamo.addJobMetric(sample_job_metric)  # loss
 
     # Get metrics by a non-existent name
-    metrics, last_evaluated_key = job_metric_dynamo.getMetricsByNameAcrossJobs("nonexistent")
+    metrics, last_evaluated_key = job_metric_dynamo.getMetricsByNameAcrossJobs(
+        "nonexistent"
+    )
 
     # Verify
     assert len(metrics) == 0
