@@ -22,7 +22,7 @@ from receipt_dynamo import (
 @pytest.fixture
 def dynamodb_table():
     """
-    Spins up a mock DynamoDB instance, creates a table (with 2 GSIs: GSI1 and GSITYPE),
+    Spins up a mock DynamoDB instance, creates a table (with GSIs: GSI1, GSI2, and GSITYPE),
     waits until both the table and the GSIs are active, then yields
     the table name for tests.
 
@@ -43,6 +43,8 @@ def dynamodb_table():
                 {"AttributeName": "SK", "AttributeType": "S"},
                 {"AttributeName": "GSI1PK", "AttributeType": "S"},
                 {"AttributeName": "GSI1SK", "AttributeType": "S"},
+                {"AttributeName": "GSI2PK", "AttributeType": "S"},
+                {"AttributeName": "GSI2SK", "AttributeType": "S"},
                 {"AttributeName": "TYPE", "AttributeType": "S"},
             ],
             ProvisionedThroughput={"ReadCapacityUnits": 5, "WriteCapacityUnits": 5},
@@ -52,6 +54,18 @@ def dynamodb_table():
                     "KeySchema": [
                         {"AttributeName": "GSI1PK", "KeyType": "HASH"},
                         {"AttributeName": "GSI1SK", "KeyType": "RANGE"},
+                    ],
+                    "Projection": {"ProjectionType": "ALL"},
+                    "ProvisionedThroughput": {
+                        "ReadCapacityUnits": 5,
+                        "WriteCapacityUnits": 5,
+                    },
+                },
+                {
+                    "IndexName": "GSI2",
+                    "KeySchema": [
+                        {"AttributeName": "GSI2PK", "KeyType": "HASH"},
+                        {"AttributeName": "GSI2SK", "KeyType": "RANGE"},
                     ],
                     "Projection": {"ProjectionType": "ALL"},
                     "ProvisionedThroughput": {
