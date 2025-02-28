@@ -1,7 +1,12 @@
 # infra/lambda_layer/python/dynamo/data/_receipt_window.py
 from typing import List
+
 from botocore.exceptions import ClientError
-from receipt_dynamo.entities.receipt_window import ReceiptWindow, itemToReceiptWindow
+
+from receipt_dynamo.entities.receipt_window import (
+    ReceiptWindow,
+    itemToReceiptWindow,
+)
 
 
 class _ReceiptWindow:
@@ -20,7 +25,9 @@ class _ReceiptWindow:
         """
         # Validate the receipt window parameter.
         if receipt_window is None:
-            raise ValueError("ReceiptWindow parameter is required and cannot be None.")
+            raise ValueError(
+                "ReceiptWindow parameter is required and cannot be None."
+            )
         if not isinstance(receipt_window, ReceiptWindow):
             raise ValueError(
                 "receipt_window must be an instance of the ReceiptWindow class."
@@ -37,12 +44,17 @@ class _ReceiptWindow:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    f"ReceiptWindow with Image ID {receipt_window.image_id}, "
-                    f"Receipt ID {receipt_window.receipt_id}, "
-                    f"and corner name {receipt_window.corner_name} already exists"
+                    f"ReceiptWindow with Image ID {
+                        receipt_window.image_id}, "
+                    f"Receipt ID {
+                        receipt_window.receipt_id}, "
+                    f"and corner name {
+                        receipt_window.corner_name} already exists"
                 ) from e
             if error_code == "ResourceNotFoundException":
-                raise Exception(f"Could not add receipt window to DynamoDB: {e}") from e
+                raise Exception(
+                    f"Could not add receipt window to DynamoDB: {e}"
+                ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "InternalServerError":
@@ -73,13 +85,17 @@ class _ReceiptWindow:
         try:
             for i in range(0, len(receipt_windows), 25):
                 chunk = receipt_windows[i : i + 25]
-                request_items = [{"PutRequest": {"Item": rw.to_item()}} for rw in chunk]
+                request_items = [
+                    {"PutRequest": {"Item": rw.to_item()}} for rw in chunk
+                ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
@@ -98,7 +114,9 @@ class _ReceiptWindow:
             else:
                 raise Exception(f"Error adding receipt windows: {e}") from e
 
-    def deleteReceiptWindows(self, receipt_windows: List[ReceiptWindow]) -> None:
+    def deleteReceiptWindows(
+        self, receipt_windows: List[ReceiptWindow]
+    ) -> None:
         """
         Deletes multiple ReceiptWindow items from the database in batches of up to 25.
 
@@ -117,13 +135,17 @@ class _ReceiptWindow:
         try:
             for i in range(0, len(receipt_windows), 25):
                 chunk = receipt_windows[i : i + 25]
-                request_items = [{"DeleteRequest": {"Key": rw.key()}} for rw in chunk]
+                request_items = [
+                    {"DeleteRequest": {"Key": rw.key()}} for rw in chunk
+                ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
@@ -150,7 +172,9 @@ class _ReceiptWindow:
         """
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None.")
-        if lastEvaluatedKey is not None and not isinstance(lastEvaluatedKey, dict):
+        if lastEvaluatedKey is not None and not isinstance(
+            lastEvaluatedKey, dict
+        ):
             raise ValueError("lastEvaluatedKey must be a dictionary or None.")
         receipt_windows = []
         try:
@@ -167,13 +191,18 @@ class _ReceiptWindow:
                 query_params["Limit"] = limit
             response = self._client.query(**query_params)
             receipt_windows.extend(
-                [itemToReceiptWindow(item) for item in response.get("Items", [])]
+                [
+                    itemToReceiptWindow(item)
+                    for item in response.get("Items", [])
+                ]
             )
 
             if limit is None:
                 # Paginate through all the receipt windows.
                 while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                     response = self._client.query(**query_params)
                     receipt_windows.extend(
                         [
@@ -184,7 +213,8 @@ class _ReceiptWindow:
                 # No further pages left. LEK is None.
                 last_evaluated_key = None
             else:
-                # if limit is not None, we've reached the end of the paginated results.
+                # if limit is not None, we've reached the end of the paginated
+                # results.
                 last_evaluated_key = response.get("LastEvaluatedKey", None)
 
             return receipt_windows, last_evaluated_key

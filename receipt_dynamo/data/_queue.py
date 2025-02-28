@@ -1,3 +1,8 @@
+from botocore.exceptions import ClientError
+
+from receipt_dynamo.entities.queue_job import QueueJob, itemToQueueJob
+
+
 def validate_last_evaluated_key(lek: dict) -> None:
     """Validates the format of a LastEvaluatedKey for pagination.
 
@@ -15,7 +20,8 @@ def validate_last_evaluated_key(lek: dict) -> None:
         raise ValueError("LastEvaluatedKey must contain both PK and SK")
 
     # Check if the values are in the correct format
-    if not all(isinstance(lek[k], dict) and "S" in lek[k] for k in ["PK", "SK"]):
+    if not all(isinstance(lek[k], dict) and "S" in lek[k]
+               for k in ["PK", "SK"]):
         raise ValueError("LastEvaluatedKey has invalid format")
 
 
@@ -55,8 +61,10 @@ class Queue:
             "TableName": self.table_name,
             "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk_prefix)",
             "ExpressionAttributeValues": {
-                ":pk": {"S": f"QUEUE#{queue_name}"},
-                ":sk_prefix": {"S": "JOB#"},
+                ":pk": {
+                    "S": f"QUEUE#{queue_name}"},
+                ":sk_prefix": {
+                    "S": "JOB#"},
             },
         }
 
@@ -77,7 +85,8 @@ class Queue:
             for item in response.get("Items", []):
                 queue_jobs.append(itemToQueueJob(item))
 
-            # Return the list of QueueJob objects and the LastEvaluatedKey for pagination
+            # Return the list of QueueJob objects and the LastEvaluatedKey for
+            # pagination
             return queue_jobs, response.get("LastEvaluatedKey", {})
 
         except ClientError as e:

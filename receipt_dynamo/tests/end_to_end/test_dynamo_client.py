@@ -1,5 +1,5 @@
 import pytest
-from typing import Literal
+
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.data._pulumi import load_env
 
@@ -21,7 +21,7 @@ def test_dynamo_client_init_success(dynamodb_table: str):
     """
     Tests that DynamoClient initializes successfully when provided an existing table.
     """
-    client = DynamoClient(dynamodb_table)
+    DynamoClient(dynamodb_table)
 
 
 @pytest.mark.end_to_end

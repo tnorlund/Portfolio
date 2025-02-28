@@ -1,31 +1,33 @@
-import datetime
-import os
 import json
+import os
 from typing import Any, List, Literal
-from botocore.exceptions import ClientError
+
 import boto3
 import pytest
+from botocore.exceptions import ClientError
 from freezegun import freeze_time
+
 from receipt_dynamo import (
-    process,
     DynamoClient,
     Image,
-    Line,
-    Word,
-    WordTag,
     Letter,
+    Line,
     Receipt,
+    ReceiptLetter,
     ReceiptLine,
     ReceiptWord,
     ReceiptWordTag,
-    ReceiptLetter,
+    Word,
+    WordTag,
+    process,
 )
-from receipt_dynamo.data.process import process_ocr_dict
 
 
 def get_raw_bytes_receipt(uuid: str, receipt_id: int):
     """Checks the PNG directory for the receipt image and returns the bytes"""
-    base_dir = os.path.dirname(__file__)  # directory containing test__process.py
+    base_dir = os.path.dirname(
+        __file__
+    )  # directory containing test__process.py
     receipt_path = os.path.join(
         base_dir, "PNG", f"{uuid}_RECEIPT_{str(receipt_id).zfill(5)}.png"
     )
@@ -54,8 +56,10 @@ def upload_json_and_png_files_for_uuid(
         raw_prefix (str, optional): Prefix path in the bucket for the files. Defaults to "raw_prefix".
     """
 
-    # Get absolute paths to the JSON and PNG files in integration/JSON and integration/PNG
-    base_dir = os.path.dirname(__file__)  # directory containing test__process.py
+    # Get absolute paths to the JSON and PNG files in integration/JSON and
+    # integration/PNG
+    # directory containing test__process.py
+    base_dir = os.path.dirname(__file__)
     json_path = os.path.join(base_dir, "JSON", f"{uuid}_SWIFT_OCR.json")
     png_path = os.path.join(base_dir, "PNG", f"{uuid}.png")
 
@@ -93,7 +97,9 @@ def expected_results(
     list[ReceiptLetter],
 ]:
     """Get the expected results for the given UUID in the JSON directory"""
-    base_dir = os.path.dirname(__file__)  # directory containing test__process.py
+    base_dir = os.path.dirname(
+        __file__
+    )  # directory containing test__process.py
     json_path = os.path.join(base_dir, "JSON", f"{uuid}_RESULTS.json")
     with open(json_path, "r", encoding="utf-8") as json_file:
         results = json.load(json_file)
@@ -106,7 +112,10 @@ def expected_results(
             [Receipt(**receipt) for receipt in results["receipts"]],
             [ReceiptLine(**line) for line in results["receipt_lines"]],
             [ReceiptWord(**word) for word in results["receipt_words"]],
-            [ReceiptWordTag(**word_tag) for word_tag in results["receipt_word_tags"]],
+            [
+                ReceiptWordTag(**word_tag)
+                for word_tag in results["receipt_word_tags"]
+            ],
             [ReceiptLetter(**letter) for letter in results["receipt_letters"]],
         )
 
@@ -187,19 +196,29 @@ def compare_entity_lists(
                 return False
 
         # Compare complex attributes with precision.
-        if not compare_with_precision(l1.bounding_box, l2.bounding_box, precision):
+        if not compare_with_precision(
+            l1.bounding_box, l2.bounding_box, precision
+        ):
             return False
         if not compare_with_precision(l1.top_left, l2.top_left, precision):
             return False
         if not compare_with_precision(l1.top_right, l2.top_right, precision):
             return False
-        if not compare_with_precision(l1.bottom_left, l2.bottom_left, precision):
+        if not compare_with_precision(
+            l1.bottom_left, l2.bottom_left, precision
+        ):
             return False
-        if not compare_with_precision(l1.bottom_right, l2.bottom_right, precision):
+        if not compare_with_precision(
+            l1.bottom_right, l2.bottom_right, precision
+        ):
             return False
-        if not compare_with_precision(l1.angle_degrees, l2.angle_degrees, precision):
+        if not compare_with_precision(
+            l1.angle_degrees, l2.angle_degrees, precision
+        ):
             return False
-        if not compare_with_precision(l1.angle_radians, l2.angle_radians, precision):
+        if not compare_with_precision(
+            l1.angle_radians, l2.angle_radians, precision
+        ):
             return False
         if not compare_with_precision(l1.confidence, l2.confidence, precision):
             return False
@@ -213,7 +232,8 @@ def compare_entity_lists(
 @pytest.mark.parametrize(
     "s3_buckets",
     [
-        ("raw-image-bucket", "cdn-bucket"),  # You can specify any 2 bucket names here
+        # You can specify any 2 bucket names here
+        ("raw-image-bucket", "cdn-bucket"),
     ],
     indirect=True,
 )
@@ -229,7 +249,7 @@ def test_process(
     uuid = "02aa1d34-5c10-42b4-a463-c49b86214dd7"
     raw_prefix = "raw"
     upload_json_and_png_files_for_uuid(s3, raw_bucket, uuid, raw_prefix)
-    receipt_raw_bytes = get_raw_bytes_receipt(uuid, 1)
+    get_raw_bytes_receipt(uuid, 1)
 
     # Act
 
@@ -238,14 +258,18 @@ def test_process(
     # Assert
     # The PNG should be in both the raw and cdn buckets
     cdn_response = s3.get_object(
-        Bucket="cdn-bucket", Key="assets/02aa1d34-5c10-42b4-a463-c49b86214dd7.png"
+        Bucket="cdn-bucket",
+        Key="assets/02aa1d34-5c10-42b4-a463-c49b86214dd7.png",
     )
     cdn_png_bytes = cdn_response["Body"].read()
     raw_response = s3.get_object(
-        Bucket="raw-image-bucket", Key="raw/02aa1d34-5c10-42b4-a463-c49b86214dd7.png"
+        Bucket="raw-image-bucket",
+        Key="raw/02aa1d34-5c10-42b4-a463-c49b86214dd7.png",
     )
     raw_png_bytes = raw_response["Body"].read()
-    assert cdn_png_bytes == raw_png_bytes, "CDN copy of PNG does not match original!"
+    assert (
+        cdn_png_bytes == raw_png_bytes
+    ), "CDN copy of PNG does not match original!"
     assert cdn_response["ContentType"] == "image/png"
     assert raw_response["ContentType"] == "image/png"
 
@@ -279,12 +303,13 @@ def test_process(
         expected_receipt_letters,
     ) = expected_results(uuid)
 
-    # Probably want to query get receipt details for image and check the receipt
+    # Probably want to query get receipt details for image and check the
+    # receipt
     _, _, _, _, _, receipts, _, _, _, _, _, _ = DynamoClient(
         table_name
     ).getImageDetails(uuid)
     assert len(receipts) == 1
-    receipt = receipts[0]
+    receipts[0]
 
     assert expected_images == DynamoClient(table_name).listImages()[0]
     assert expected_lines == DynamoClient(table_name).listLines()
@@ -299,7 +324,10 @@ def test_process(
     assert compare_entity_lists(
         expected_receipt_words, DynamoClient(table_name).listReceiptWords()
     )
-    assert expected_receipt_word_tags == DynamoClient(table_name).listReceiptWordTags()
+    assert (
+        expected_receipt_word_tags
+        == DynamoClient(table_name).listReceiptWordTags()
+    )
     assert compare_entity_lists(
         expected_receipt_letters, DynamoClient(table_name).listReceiptLetters()
     )
@@ -344,7 +372,8 @@ def test_process_upload(s3_buckets, dynamodb_table):
     # 2) Read local JSON + PNG into memory (the same files your original
     #    test used). Convert the JSON into a dict.
     # --------------------------------------------------------------------
-    base_dir = os.path.dirname(__file__)  # directory containing test_process.py
+    # directory containing test_process.py
+    base_dir = os.path.dirname(__file__)
     json_path = os.path.join(base_dir, "JSON", f"{uuid}_SWIFT_OCR.json")
     png_path = os.path.join(base_dir, "PNG", f"{uuid}.png")
 
@@ -376,11 +405,17 @@ def test_process_upload(s3_buckets, dynamodb_table):
     #    - DynamoDB should have the expected data (lines, words, receipts, etc.)
     # --------------------------------------------------------------------
     # (a) Check the raw bucket
-    raw_json_resp = s3.get_object(Bucket=raw_bucket, Key=f"{raw_prefix}/{uuid}.json")
+    raw_json_resp = s3.get_object(
+        Bucket=raw_bucket, Key=f"{raw_prefix}/{uuid}.json"
+    )
     raw_json_body = raw_json_resp["Body"].read().decode("utf-8")
-    assert json.loads(raw_json_body) == ocr_dict, "Raw JSON in S3 does not match input!"
+    assert (
+        json.loads(raw_json_body) == ocr_dict
+    ), "Raw JSON in S3 does not match input!"
 
-    raw_png_resp = s3.get_object(Bucket=raw_bucket, Key=f"{raw_prefix}/{uuid}.png")
+    raw_png_resp = s3.get_object(
+        Bucket=raw_bucket, Key=f"{raw_prefix}/{uuid}.png"
+    )
     raw_png_bytes = raw_png_resp["Body"].read()
     assert raw_png_bytes == png_data, "Raw PNG in S3 does not match input!"
 
@@ -461,7 +496,11 @@ def test_process_upload(s3_buckets, dynamodb_table):
 def test_process_no_bucket(s3_bucket):
     with pytest.raises(ValueError, match="Bucket raw_bucket_name not found"):
         process(
-            "table_name", "raw_bucket_name", "raw_prefix", "uuid", "cdn_bucket_name"
+            "table_name",
+            "raw_bucket_name",
+            "raw_prefix",
+            "uuid",
+            "cdn_bucket_name",
         )
 
 
@@ -469,17 +508,23 @@ def test_process_no_bucket(s3_bucket):
 @pytest.mark.parametrize("s3_bucket", ["raw-image-bucket"], indirect=True)
 def test_process_no_files(s3_bucket):
     with pytest.raises(
-        ValueError, match="UUID uuid not found s3://raw-image-bucket/raw_prefix/uuid*"
+        ValueError,
+        match="UUID uuid not found s3://raw-image-bucket/raw_prefix/uuid*",
     ):
         process(
-            "table_name", "raw-image-bucket", "raw_prefix", "uuid", "cdn_bucket_name"
+            "table_name",
+            "raw-image-bucket",
+            "raw_prefix",
+            "uuid",
+            "cdn_bucket_name",
         )
 
 
 @pytest.mark.integration
 @pytest.mark.parametrize("s3_bucket", ["raw-image-bucket"], indirect=True)
 def test_process_access_denied_raw_bucket(s3_bucket, monkeypatch):
-    # 1. Arrange: upload objects in the raw bucket so we don't trigger 'NoSuchKey'
+    # 1. Arrange: upload objects in the raw bucket so we don't trigger
+    # 'NoSuchKey'
     s3_for_test = boto3.client("s3", region_name="us-east-1")
     s3_for_test.put_object(
         Bucket=s3_bucket, Key="raw_prefix/uuid.json", Body='{"valid": "json"}'
@@ -488,10 +533,12 @@ def test_process_access_denied_raw_bucket(s3_bucket, monkeypatch):
         Bucket=s3_bucket, Key="raw_prefix/uuid.png", Body=b"Fake PNG data"
     )
 
-    # 2. Capture the real boto3.client (so we can still create real Moto-based clients)
+    # 2. Capture the real boto3.client (so we can still create real Moto-based
+    # clients)
     real_boto3_client = boto3.client
 
-    # 3. Define a mock that returns an S3 client whose head_object is patched to raise AccessDenied
+    # 3. Define a mock that returns an S3 client whose head_object is patched
+    # to raise AccessDenied
     def mock_boto3_client(service_name, *args, **kwargs):
         client = real_boto3_client(service_name, *args, **kwargs)
         if service_name == "s3":
@@ -502,7 +549,12 @@ def test_process_access_denied_raw_bucket(s3_bucket, monkeypatch):
                 # Raise AccessDenied specifically for the ".png" key
                 if key.endswith(".png"):
                     raise ClientError(
-                        {"Error": {"Code": "AccessDenied", "Message": "Access Denied"}},
+                        {
+                            "Error": {
+                                "Code": "AccessDenied",
+                                "Message": "Access Denied",
+                            }
+                        },
                         "HeadObject",
                     )
                 return original_head_object(*h_args, **h_kwargs)
@@ -511,10 +563,12 @@ def test_process_access_denied_raw_bucket(s3_bucket, monkeypatch):
             monkeypatch.setattr(client, "head_object", mock_head_object)
         return client
 
-    # 4. Patch the global "boto3.client" so that process(...) gets our mocked client
+    # 4. Patch the global "boto3.client" so that process(...) gets our mocked
+    # client
     monkeypatch.setattr("boto3.client", mock_boto3_client)
 
-    # 5. Act & Assert: PNG file should trigger AccessDenied, causing a ValueError
+    # 5. Act & Assert: PNG file should trigger AccessDenied, causing a
+    # ValueError
     with pytest.raises(
         ValueError, match="Access denied to s3://raw-image-bucket/raw_prefix/*"
     ):
@@ -533,13 +587,19 @@ def test_process_bad_json(s3_bucket):
     # 1. Arrange: Put a malformed JSON file and a ".png" in the bucket
     s3 = boto3.client("s3", region_name="us-east-1")
     s3.put_object(
-        Bucket=s3_bucket, Key="raw_prefix/uuid.json", Body="Not valid JSON content"
+        Bucket=s3_bucket,
+        Key="raw_prefix/uuid.json",
+        Body="Not valid JSON content",
     )
-    s3.put_object(Bucket=s3_bucket, Key="raw_prefix/uuid.png", Body=b"Fake PNG data")
+    s3.put_object(
+        Bucket=s3_bucket, Key="raw_prefix/uuid.png", Body=b"Fake PNG data"
+    )
 
     # 2. Act & Assert: The invalid JSON should raise a ValueError
     with pytest.raises(ValueError, match="Error decoding OCR results: "):
-        process("table_name", s3_bucket, "raw_prefix", "uuid", "cdn_bucket_name")
+        process(
+            "table_name", s3_bucket, "raw_prefix", "uuid", "cdn_bucket_name"
+        )
 
 
 @pytest.mark.integration
@@ -550,14 +610,18 @@ def test_process_bad_png(s3_bucket):
     s3.put_object(
         Bucket=s3_bucket, Key="raw_prefix/uuid.json", Body='{"valid": "json"}'
     )
-    s3.put_object(Bucket=s3_bucket, Key="raw_prefix/uuid.png", Body=b"Fake PNG data")
+    s3.put_object(
+        Bucket=s3_bucket, Key="raw_prefix/uuid.png", Body=b"Fake PNG data"
+    )
 
     # 2. Act & Assert: The invalid PNG should raise a ValueError
     with pytest.raises(
         ValueError,
         match="Corrupted or invalid PNG at s3://raw-image-bucket/raw_prefix/uuid.png",
     ):
-        process("table_name", s3_bucket, "raw_prefix", "uuid", "cdn_bucket_name")
+        process(
+            "table_name", s3_bucket, "raw_prefix", "uuid", "cdn_bucket_name"
+        )
 
 
 @pytest.mark.integration
@@ -577,11 +641,16 @@ def test_process_no_cdn_bucket(s3_bucket):
 @pytest.mark.parametrize(
     "s3_buckets",
     [
-        ("raw-bucket", "cdn-bucket"),  # You can specify any 2 bucket names here
+        (
+            "raw-bucket",
+            "cdn-bucket",
+        ),  # You can specify any 2 bucket names here
     ],
     indirect=True,
 )
-def test_process_access_denied_cdn_bucket(s3_buckets, dynamodb_table, monkeypatch):
+def test_process_access_denied_cdn_bucket(
+    s3_buckets, dynamodb_table, monkeypatch
+):
     raw_bucket, cdn_bucket = s3_buckets
     table_name = dynamodb_table
     uuid = "2608fbeb-dd25-4ab8-8034-5795282b6cd6"
@@ -589,10 +658,12 @@ def test_process_access_denied_cdn_bucket(s3_buckets, dynamodb_table, monkeypatc
     s3 = boto3.client("s3", region_name="us-east-1")
     upload_json_and_png_files_for_uuid(s3, raw_bucket, uuid, raw_prefix)
 
-    # 2. Capture the real boto3.client (so we can still create real Moto-based clients)
+    # 2. Capture the real boto3.client (so we can still create real Moto-based
+    # clients)
     real_boto3_client = boto3.client
 
-    # 3. Define a mock that returns an S3 client whose put_object is patched to raise AccessDenied
+    # 3. Define a mock that returns an S3 client whose put_object is patched
+    # to raise AccessDenied
     def mock_boto3_client(service_name, *args, **kwargs):
         client = real_boto3_client(service_name, *args, **kwargs)
         if service_name == "s3":
@@ -605,7 +676,12 @@ def test_process_access_denied_cdn_bucket(s3_buckets, dynamodb_table, monkeypatc
                 # and the key begins with the CDN prefix (e.g., "assets/")
                 if bucket == cdn_bucket and key.startswith("assets/"):
                     raise ClientError(
-                        {"Error": {"Code": "AccessDenied", "Message": "Access Denied"}},
+                        {
+                            "Error": {
+                                "Code": "AccessDenied",
+                                "Message": "Access Denied",
+                            }
+                        },
                         "PutObject",
                     )
                 return original_put_object(*p_args, **p_kwargs)
@@ -613,11 +689,15 @@ def test_process_access_denied_cdn_bucket(s3_buckets, dynamodb_table, monkeypatc
             monkeypatch.setattr(client, "put_object", mock_put_object)
         return client
 
-    # 4. Patch the global "boto3.client" so that process(...) gets our mocked client
+    # 4. Patch the global "boto3.client" so that process(...) gets our mocked
+    # client
     monkeypatch.setattr("boto3.client", mock_boto3_client)
 
-    # 5. Act & Assert: PNG file should trigger AccessDenied, causing a ValueError
-    with pytest.raises(ValueError, match="Access denied to s3://cdn-bucket/assets"):
+    # 5. Act & Assert: PNG file should trigger AccessDenied, causing a
+    # ValueError
+    with pytest.raises(
+        ValueError, match="Access denied to s3://cdn-bucket/assets"
+    ):
         process(
             table_name,
             raw_bucket,

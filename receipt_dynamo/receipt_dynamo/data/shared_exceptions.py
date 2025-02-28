@@ -6,8 +6,6 @@ class DynamoRetryableException(Exception):
     such as a provisioned throughput exceeded error, which could succeed if retried later.
     """
 
-    pass
-
 
 class DynamoCriticalErrorException(Exception):
     """
@@ -17,5 +15,3 @@ class DynamoCriticalErrorException(Exception):
     such as a resource not found or permission denied error, which would not succeed
     if retried without addressing the underlying issue.
     """
-
-    pass

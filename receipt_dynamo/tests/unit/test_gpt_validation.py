@@ -1,7 +1,10 @@
 # test_gpt_validation.py
 import pytest
-from datetime import datetime
-from receipt_dynamo.entities.gpt_validation import GPTValidation, itemToGPTValidation
+
+from receipt_dynamo.entities.gpt_validation import (
+    GPTValidation,
+    itemToGPTValidation,
+)
 
 # --- Fixtures ---
 
@@ -100,7 +103,9 @@ def test_gpt_validation_init_invalid_query():
 @pytest.mark.unit
 def test_gpt_validation_init_invalid_response():
     """Test that GPTValidation raises ValueError for an invalid response."""
-    with pytest.raises(ValueError, match="response must be a non-empty string"):
+    with pytest.raises(
+        ValueError, match="response must be a non-empty string"
+    ):
         GPTValidation(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=7,
@@ -108,7 +113,9 @@ def test_gpt_validation_init_invalid_response():
             response="",  # empty string
             timestamp_added="2021-01-01T00:00:00",
         )
-    with pytest.raises(ValueError, match="response must be a non-empty string"):
+    with pytest.raises(
+        ValueError, match="response must be a non-empty string"
+    ):
         GPTValidation(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=7,
@@ -122,7 +129,8 @@ def test_gpt_validation_init_invalid_response():
 def test_gpt_validation_init_invalid_timestamp():
     """Test that GPTValidation raises ValueError for an invalid timestamp_added."""
     with pytest.raises(
-        ValueError, match="timestamp_added must be a datetime object or a string"
+        ValueError,
+        match="timestamp_added must be a datetime object or a string",
     ):
         GPTValidation(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -237,7 +245,9 @@ def test_item_to_gpt_validation_invalid_format():
         "response": {"S": "Yes, it is the total."},
         "timestamp_added": {"S": "2021-01-01T00:00:00"},
     }
-    with pytest.raises(ValueError, match="Error converting item to GPTValidation"):
+    with pytest.raises(
+        ValueError, match="Error converting item to GPTValidation"
+    ):
         itemToGPTValidation(bad_item)
 
 

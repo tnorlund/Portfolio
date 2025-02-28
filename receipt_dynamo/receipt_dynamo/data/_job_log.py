@@ -1,5 +1,7 @@
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
+
 from botocore.exceptions import ClientError
+
 from receipt_dynamo.entities.job_log import JobLog, itemToJobLog
 
 
@@ -23,7 +25,10 @@ class _JobLog:
         if job_log is None:
             raise ValueError("job_log cannot be None")
         if not isinstance(job_log, JobLog):
-            raise ValueError(f"job_log must be a JobLog instance, got {type(job_log)}")
+            raise ValueError(
+                f"job_log must be a JobLog instance, got {
+                    type(job_log)}"
+            )
 
         try:
             self._client.put_item(
@@ -32,9 +37,14 @@ class _JobLog:
                 ConditionExpression="attribute_not_exists(PK) AND attribute_not_exists(SK)",
             )
         except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
                 raise ValueError(
-                    f"Job log for job {job_log.job_id} with timestamp {job_log.timestamp} already exists"
+                    f"Job log for job {
+                        job_log.job_id} with timestamp {
+                        job_log.timestamp} already exists"
                 )
             raise
 
@@ -69,7 +79,9 @@ class _JobLog:
                 ]
             }
 
-            response = self._client.batch_write_item(RequestItems=request_items)
+            response = self._client.batch_write_item(
+                RequestItems=request_items
+            )
 
             # Handle unprocessed items with exponential backoff
             unprocessed_items = response.get("UnprocessedItems", {})
@@ -78,7 +90,9 @@ class _JobLog:
 
             while unprocessed_items and retry_count < max_retries:
                 retry_count += 1
-                response = self._client.batch_write_item(RequestItems=unprocessed_items)
+                response = self._client.batch_write_item(
+                    RequestItems=unprocessed_items
+                )
                 unprocessed_items = response.get("UnprocessedItems", {})
 
             if unprocessed_items:
@@ -113,7 +127,10 @@ class _JobLog:
 
         response = self._client.get_item(
             TableName=self.table_name,
-            Key={"PK": {"S": f"JOB#{job_id}"}, "SK": {"S": f"LOG#{timestamp}"}},
+            Key={
+                "PK": {"S": f"JOB#{job_id}"},
+                "SK": {"S": f"LOG#{timestamp}"},
+            },
         )
 
         item = response.get("Item")
@@ -189,7 +206,10 @@ class _JobLog:
         if job_log is None:
             raise ValueError("job_log cannot be None")
         if not isinstance(job_log, JobLog):
-            raise ValueError(f"job_log must be a JobLog instance, got {type(job_log)}")
+            raise ValueError(
+                f"job_log must be a JobLog instance, got {
+                    type(job_log)}"
+            )
 
         try:
             self._client.delete_item(
@@ -201,8 +221,13 @@ class _JobLog:
                 ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
             )
         except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
                 raise ValueError(
-                    f"Job log for job {job_log.job_id} with timestamp {job_log.timestamp} not found"
+                    f"Job log for job {
+                        job_log.job_id} with timestamp {
+                        job_log.timestamp} not found"
                 )
             raise

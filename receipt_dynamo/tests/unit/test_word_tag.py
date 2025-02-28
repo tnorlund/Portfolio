@@ -1,5 +1,6 @@
 # test_word_tag.py
 import pytest
+
 from receipt_dynamo.entities.word_tag import WordTag, itemToWordTag
 
 
@@ -62,7 +63,11 @@ def test_word_tag_init_invalid_word_id():
         )
     with pytest.raises(ValueError, match="word_id must be positive"):
         WordTag(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, -3, "example", "2021-01-01T00:00"
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            2,
+            -3,
+            "example",
+            "2021-01-01T00:00",
         )
 
 
@@ -70,9 +75,21 @@ def test_word_tag_init_invalid_word_id():
 def test_word_tag_init_invalid_tag():
     """Test that WordTag raises ValueError if tag is invalid."""
     with pytest.raises(ValueError, match="tag must not be empty"):
-        WordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "", "2021-01-01T00:00:00")
+        WordTag(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            2,
+            3,
+            "",
+            "2021-01-01T00:00:00",
+        )
     with pytest.raises(ValueError, match="tag must be a string"):
-        WordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, 4, "2021-01-01T00:00:00")
+        WordTag(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            2,
+            3,
+            4,
+            "2021-01-01T00:00:00",
+        )
     long_tag = "A" * 41
     with pytest.raises(ValueError, match="tag must not exceed 40 characters"):
         WordTag(
@@ -82,9 +99,15 @@ def test_word_tag_init_invalid_tag():
             long_tag,
             "2021-01-01T00:00:00",
         )
-    with pytest.raises(ValueError, match="tag must not start with an underscore"):
+    with pytest.raises(
+        ValueError, match="tag must not start with an underscore"
+    ):
         WordTag(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "_bad", "2021-01-01T00:00:00"
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            2,
+            3,
+            "_bad",
+            "2021-01-01T00:00:00",
         )
 
 
@@ -92,9 +115,12 @@ def test_word_tag_init_invalid_tag():
 def test_word_tag_init_invalid_timestamp_added():
     """Test that WordTag raises ValueError if timestamp_added is invalid."""
     with pytest.raises(
-        ValueError, match="timestamp_added must be a datetime object or a string"
+        ValueError,
+        match="timestamp_added must be a datetime object or a string",
     ):
-        WordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "example", 1234567890)
+        WordTag(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "example", 1234567890
+        )
 
 
 @pytest.mark.unit

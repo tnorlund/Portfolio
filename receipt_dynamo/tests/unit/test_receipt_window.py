@@ -1,8 +1,13 @@
 # infra/lambda_layer/python/test/unit/test_receipt_window.py
 import pytest
-from receipt_dynamo.entities.receipt_window import ReceiptWindow, itemToReceiptWindow
 
-# Use a valid UUID for testing. (Assuming assert_valid_uuid accepts this format.)
+from receipt_dynamo.entities.receipt_window import (
+    ReceiptWindow,
+    itemToReceiptWindow,
+)
+
+# Use a valid UUID for testing. (Assuming assert_valid_uuid accepts this
+# format.)
 VALID_UUID = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
 
 
@@ -333,10 +338,26 @@ def test_receipt_window_iter(example_receipt_window):
 def test_receipt_window_eq():
     """Test the ReceiptWindow.__eq__() method."""
     r1 = ReceiptWindow(
-        VALID_UUID, 123, "bucket", "key", "TOP_LEFT", 100, 200, (10, 20), [1, 2, 3]
+        VALID_UUID,
+        123,
+        "bucket",
+        "key",
+        "TOP_LEFT",
+        100,
+        200,
+        (10, 20),
+        [1, 2, 3],
     )
     r2 = ReceiptWindow(
-        VALID_UUID, 123, "bucket", "key", "top_left", 100, 200, (10, 20), [1, 2, 3]
+        VALID_UUID,
+        123,
+        "bucket",
+        "key",
+        "top_left",
+        100,
+        200,
+        (10, 20),
+        [1, 2, 3],
     )
     r3 = ReceiptWindow(
         "29984038-5cb5-4ce9-bcf0-856dcfca3125",
@@ -350,10 +371,26 @@ def test_receipt_window_eq():
         [1, 2, 3],
     )
     r4 = ReceiptWindow(
-        VALID_UUID, 321, "bucket", "key", "TOP_LEFT", 100, 200, (10, 20), [1, 2, 3]
+        VALID_UUID,
+        321,
+        "bucket",
+        "key",
+        "TOP_LEFT",
+        100,
+        200,
+        (10, 20),
+        [1, 2, 3],
     )
     r5 = ReceiptWindow(
-        VALID_UUID, 123, "Bucket", "key", "TOP_LEFT", 100, 200, (10, 20), [1, 2, 3]
+        VALID_UUID,
+        123,
+        "Bucket",
+        "key",
+        "TOP_LEFT",
+        100,
+        200,
+        (10, 20),
+        [1, 2, 3],
     )
 
     assert (
@@ -412,7 +449,9 @@ def test_itemToReceiptWindow(
     ), "Should convert item back to an equivalent ReceiptWindow object (no gpt_guess)."
 
     # Missing a required key
-    with pytest.raises(ValueError, match=r"^Invalid item format\nmissing keys: "):
+    with pytest.raises(
+        ValueError, match=r"^Invalid item format\nmissing keys: "
+    ):
         itemToReceiptWindow(
             {
                 "PK": {"S": f"IMAGE#{VALID_UUID}"},
@@ -433,7 +472,9 @@ def test_itemToReceiptWindow(
         "height": {"N": "200"},
         "inner_corner_coordinates": {"L": [{"N": "10"}, {"N": "20"}]},
     }
-    with pytest.raises(ValueError, match="Error converting item to ReceiptWindow:"):
+    with pytest.raises(
+        ValueError, match="Error converting item to ReceiptWindow:"
+    ):
         itemToReceiptWindow(bad_item)
 
 

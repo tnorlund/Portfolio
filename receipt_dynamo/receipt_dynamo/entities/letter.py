@@ -1,12 +1,13 @@
+from math import atan2, cos, degrees, pi, radians, sin
 from typing import Generator, Tuple
+
 from receipt_dynamo.entities.util import (
-    assert_valid_uuid,
+    _format_float,
     assert_valid_bounding_box,
     assert_valid_point,
-    _format_float,
+    assert_valid_uuid,
     shear_point,
 )
-from math import atan2, degrees, pi, radians, sin, cos
 
 
 class Letter:
@@ -157,8 +158,12 @@ class Letter:
                 "M": {
                     "x": {"N": _format_float(self.bounding_box["x"], 20, 22)},
                     "y": {"N": _format_float(self.bounding_box["y"], 20, 22)},
-                    "width": {"N": _format_float(self.bounding_box["width"], 20, 22)},
-                    "height": {"N": _format_float(self.bounding_box["height"], 20, 22)},
+                    "width": {
+                        "N": _format_float(self.bounding_box["width"], 20, 22)
+                    },
+                    "height": {
+                        "N": _format_float(self.bounding_box["height"], 20, 22)
+                    },
                 }
             },
             "top_right": {
@@ -291,7 +296,12 @@ class Letter:
             rotated_y = translated_x * sin(theta) + translated_y * cos(theta)
             return rotated_x + ox, rotated_y + oy
 
-        corners = [self.top_right, self.top_left, self.bottom_right, self.bottom_left]
+        corners = [
+            self.top_right,
+            self.top_left,
+            self.bottom_right,
+            self.bottom_left,
+        ]
         for corner in corners:
             x_new, y_new = rotate_point(
                 corner["x"],
@@ -318,7 +328,11 @@ class Letter:
         self.bounding_box["height"] = max(ys) - min(ys)
 
     def shear(
-        self, shx: float, shy: float, pivot_x: float = 0.0, pivot_y: float = 0.0
+        self,
+        shx: float,
+        shy: float,
+        pivot_x: float = 0.0,
+        pivot_y: float = 0.0,
     ) -> None:
         """Applies a shear transformation to the Letter about a pivot point.
 
@@ -328,7 +342,12 @@ class Letter:
             pivot_x (float, optional): The x-coordinate of the pivot point. Defaults to 0.0.
             pivot_y (float, optional): The y-coordinate of the pivot point. Defaults to 0.0.
         """
-        corners = [self.top_right, self.top_left, self.bottom_right, self.bottom_left]
+        corners = [
+            self.top_right,
+            self.top_left,
+            self.bottom_right,
+            self.bottom_left,
+        ]
         for corner in corners:
             x_new, y_new = shear_point(
                 corner["x"], corner["y"], pivot_x, pivot_y, shx, shy
@@ -363,7 +382,12 @@ class Letter:
             e (float): The coefficient for y in the new y-coordinate.
             f (float): The translation term for the new y-coordinate.
         """
-        corners = [self.top_left, self.top_right, self.bottom_left, self.bottom_right]
+        corners = [
+            self.top_left,
+            self.top_right,
+            self.bottom_left,
+            self.bottom_right,
+        ]
 
         for corner in corners:
             x_old = corner["x"]
@@ -419,7 +443,12 @@ class Letter:
             new_height (int): The height of the new warped image in pixels.
             flip_y (bool, optional): Whether to flip the y-coordinate. Defaults to False.
         """
-        corners = [self.top_left, self.top_right, self.bottom_left, self.bottom_right]
+        corners = [
+            self.top_left,
+            self.top_right,
+            self.bottom_left,
+            self.bottom_right,
+        ]
 
         for corner in corners:
             x_o = corner["x"] * orig_width
@@ -466,19 +495,25 @@ class Letter:
         dst_width: int,
         dst_height: int,
         # We will assume the corners come in as Vision bottom-left coords
-        # and we want them to end as Vision bottom-left coords in the original image.
+        # and we want them to end as Vision bottom-left coords in the original
+        # image.
     ):
         """
         Maps Vision (bottom-left) normalized coords in the 'warped' image
         back to Vision (bottom-left) normalized coords in the 'original' image.
         """
 
-        corners = [self.top_left, self.top_right, self.bottom_left, self.bottom_right]
+        corners = [
+            self.top_left,
+            self.top_right,
+            self.bottom_left,
+            self.bottom_right,
+        ]
         corner_names = ["top_left", "top_right", "bottom_left", "bottom_right"]
 
         for corner, name in zip(corners, corner_names):
             # 1) Flip Y from bottom-left to top-left
-            #    Because the perspective transform code uses top-left orientation
+            # Because the perspective transform code uses top-left orientation
             x_vision_warped = corner["x"]  # 0..1
             y_vision_warped = corner["y"]  # 0..1, bottom=0
             y_top_left_warped = 1.0 - y_vision_warped
@@ -487,15 +522,19 @@ class Letter:
             x_warped_px = x_vision_warped * dst_width
             y_warped_px = y_top_left_warped * dst_height
 
-            # 3) Apply the *inverse* perspective (already inverted) to get original top-left px
+            # 3) Apply the *inverse* perspective (already inverted) to get
+            # original top-left px
             denom = (g * x_warped_px) + (h * y_warped_px) + 1.0
             if abs(denom) < 1e-12:
-                raise ValueError("Inverse warp denominator ~ 0 at corner: " + name)
+                raise ValueError(
+                    "Inverse warp denominator ~ 0 at corner: " + name
+                )
 
             X_old_px = (a * x_warped_px + b * y_warped_px + c) / denom
             Y_old_px = (d * x_warped_px + e * y_warped_px + f) / denom
 
-            # 4) Convert to normalized coordinates in top-left of the *original* image
+            # 4) Convert to normalized coordinates in top-left of the
+            # *original* image
             X_old_norm_tl = X_old_px / src_width
             Y_old_norm_tl = Y_old_px / src_height
 
@@ -529,7 +568,12 @@ class Letter:
             old_w (int): The width of the image before rotation.
             old_h (int): The height of the image before rotation.
         """
-        corners = [self.top_left, self.top_right, self.bottom_right, self.bottom_left]
+        corners = [
+            self.top_left,
+            self.top_right,
+            self.bottom_right,
+            self.bottom_left,
+        ]
         for corner in corners:
             corner["x"] *= old_w
             corner["y"] *= old_h
@@ -692,10 +736,12 @@ def itemToLetter(item: dict) -> Letter:
                 for key, value in item["bounding_box"]["M"].items()
             },
             top_right={
-                key: float(value["N"]) for key, value in item["top_right"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["top_right"]["M"].items()
             },
             top_left={
-                key: float(value["N"]) for key, value in item["top_left"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["top_left"]["M"].items()
             },
             bottom_right={
                 key: float(value["N"])

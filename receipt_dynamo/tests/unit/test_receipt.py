@@ -1,6 +1,7 @@
-import pytest
 from datetime import datetime
-from decimal import Decimal
+
+import pytest
+
 from receipt_dynamo import Receipt, itemToReceipt
 
 
@@ -154,7 +155,8 @@ def test_receipt_init_valid_timestamp():
 def test_receipt_init_invalid_timestamp():
     """Test that constructing a Receipt with an invalid timestamp raises ValueError."""
     with pytest.raises(
-        ValueError, match="timestamp_added must be a datetime object or a string"
+        ValueError,
+        match="timestamp_added must be a datetime object or a string",
     ):
         Receipt(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -308,7 +310,9 @@ def test_receipt_gsi1_key_generation(example_receipt):
     """Test that the GSI1 key is correctly generated."""
     assert example_receipt.gsi1_key() == {
         "GSI1PK": {"S": "IMAGE"},
-        "GSI1SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"},
+        "GSI1SK": {
+            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"
+        },
     }
 
 
@@ -317,7 +321,9 @@ def test_receipt_gsi2_key_generation(example_receipt):
     """Test that the GSI2 key is correctly generated."""
     assert example_receipt.gsi2_key() == {
         "GSI2PK": {"S": "RECEIPT"},
-        "GSI2SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"},
+        "GSI2SK": {
+            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"
+        },
     }
 
 
@@ -337,9 +343,13 @@ def test_receipt_to_item(example_receipt):
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {"S": "RECEIPT#00001"},
         "GSI1PK": {"S": "IMAGE"},
-        "GSI1SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"},
+        "GSI1SK": {
+            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"
+        },
         "GSI2PK": {"S": "RECEIPT"},
-        "GSI2SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"},
+        "GSI2SK": {
+            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"
+        },
         "GSI3PK": {"S": "RECEIPT"},
         "GSI3SK": {"S": "RECEIPT#00001"},
         "TYPE": {"S": "RECEIPT"},
@@ -428,7 +438,7 @@ def test_receipt_eq(example_receipt):
     """Test that Receipt equality works as expected."""
     assert example_receipt == Receipt(**dict(example_receipt))
     assert example_receipt != Receipt(**dict(example_receipt, receipt_id=2))
-    assert example_receipt != None
+    assert example_receipt is not None
 
 
 @pytest.mark.unit

@@ -1,7 +1,8 @@
 # test__receipt_word_tag.py
 
-import pytest
 from typing import Literal
+
+import pytest
 
 from receipt_dynamo import DynamoClient, ReceiptWordTag
 
@@ -24,7 +25,8 @@ def sample_receipt_word_tag():
 
 @pytest.mark.integration
 def test_add_receipt_word_tag(
-    dynamodb_table: Literal["MyMockedTable"], sample_receipt_word_tag: ReceiptWordTag
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt_word_tag: ReceiptWordTag,
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -45,7 +47,8 @@ def test_add_receipt_word_tag(
 
 @pytest.mark.integration
 def test_add_receipt_word_tag_duplicate_raises(
-    dynamodb_table: Literal["MyMockedTable"], sample_receipt_word_tag: ReceiptWordTag
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt_word_tag: ReceiptWordTag,
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -58,7 +61,8 @@ def test_add_receipt_word_tag_duplicate_raises(
 
 @pytest.mark.integration
 def test_update_receipt_word_tag(
-    dynamodb_table: Literal["MyMockedTable"], sample_receipt_word_tag: ReceiptWordTag
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt_word_tag: ReceiptWordTag,
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -81,7 +85,8 @@ def test_update_receipt_word_tag(
 
 @pytest.mark.integration
 def test_delete_receipt_word_tag(
-    dynamodb_table: Literal["MyMockedTable"], sample_receipt_word_tag: ReceiptWordTag
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt_word_tag: ReceiptWordTag,
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -134,7 +139,9 @@ def test_receipt_word_tag_list(dynamodb_table: Literal["MyMockedTable"]):
 
 
 @pytest.mark.integration
-def test_receipt_word_tag_list_from_image(dynamodb_table: Literal["MyMockedTable"]):
+def test_receipt_word_tag_list_from_image(
+    dynamodb_table: Literal["MyMockedTable"],
+):
     # Arrange
     client = DynamoClient(dynamodb_table)
 
@@ -252,7 +259,9 @@ def test_get_receipt_word_tags(
 
 
 @pytest.mark.integration
-def test_receipt_word_tag_get_no_results(dynamodb_table: Literal["MyMockedTable"]):
+def test_receipt_word_tag_get_no_results(
+    dynamodb_table: Literal["MyMockedTable"],
+):
     """
     If tag doesn't exist, we expect an empty list.
     """
@@ -262,7 +271,9 @@ def test_receipt_word_tag_get_no_results(dynamodb_table: Literal["MyMockedTable"
 
 
 @pytest.mark.integration
-def test_receipt_word_tag_get_pagination(dynamodb_table: Literal["MyMockedTable"]):
+def test_receipt_word_tag_get_pagination(
+    dynamodb_table: Literal["MyMockedTable"],
+):
     """
     Test pagination for receipt word tags by inserting ~30 items
     all with the same tag.

@@ -1,23 +1,23 @@
 # infra/lambda_layer/python/test/integration/test__export_and_import.py
 import datetime
 import os
-import pytest
 from shutil import rmtree
+
+import pytest
+
 from receipt_dynamo import (
     DynamoClient,
     Image,
-    Line,
-    Word,
-    WordTag,
     Letter,
+    Line,
     Receipt,
-    ReceiptWindow,
+    ReceiptLetter,
     ReceiptLine,
+    ReceiptWindow,
     ReceiptWord,
     ReceiptWordTag,
-    ReceiptLetter,
-    GPTInitialTagging,
-    GPTValidation,
+    Word,
+    WordTag,
     export_image,
     import_image,
 )

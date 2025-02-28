@@ -1,19 +1,20 @@
 # infra/lambda_layer/python/test/integration/test__geometry.py
+from math import isclose, pi, sqrt
+
 import pytest
-from math import sqrt, pi, isclose, isclose
-import random
+
 from receipt_dynamo.data._geometry import (
-    invert_affine,
-    convex_hull,
-    min_area_rect,
     box_points,
-    compute_receipt_box_from_skewed_extents,
-    find_hull_extents_relative_to_centroid,
     compute_hull_centroid,
-    pad_corners_opposite,
+    compute_receipt_box_from_skewed_extents,
+    convex_hull,
+    find_hull_extents_relative_to_centroid,
     find_perspective_coeffs,
-    solve_8x8_system,
+    invert_affine,
     invert_warp,
+    min_area_rect,
+    pad_corners_opposite,
+    solve_8x8_system,
 )
 
 
@@ -66,7 +67,9 @@ def test_invert_warp_identity():
     identity = [1, 0, 0, 0, 1, 0, 0, 0]
     inv = invert_warp(*identity)  # unpack => (1,0,0,0,1,0,0,0)
     # Should still be the identity warp
-    assert inv == identity, f"Inverse of identity should be identity, got {inv}"
+    assert (
+        inv == identity
+    ), f"Inverse of identity should be identity, got {inv}"
 
 
 @pytest.mark.unit
@@ -82,6 +85,8 @@ def test_invert_warp_det_zero():
     # [g h 1]
     # This is likely degenerate if everything else is 0 or trivial
     # For a quick guaranteed zero det, do this:
+    # i.e. entire matrix is 0 except last element => [g,h,1]? We'll keep g,h=0
+    # => last row => [0,0,1].
     degenerate = [
         0,
         0,
@@ -91,7 +96,7 @@ def test_invert_warp_det_zero():
         0,
         0,
         0,
-    ]  # i.e. entire matrix is 0 except last element => [g,h,1]? We'll keep g,h=0 => last row => [0,0,1].
+    ]
     # So effectively [0,0,0],[0,0,0],[0,0,1] => determinant=0
     with pytest.raises(ValueError, match="Cannot invert perspective matrix"):
         invert_warp(*degenerate)
@@ -204,7 +209,8 @@ def test_find_perspective_coeffs_basic_scaling():
     src_points = [(0, 0), (100, 0), (100, 50), (0, 50)]
     dst_points = [(0, 0), (200, 0), (200, 100), (0, 100)]
     coeffs = find_perspective_coeffs(src_points, dst_points)
-    # Coeffs define x_src = f(x_dst,y_dst), y_src = f(x_dst,y_dst) in projective form.
+    # Coeffs define x_src = f(x_dst,y_dst), y_src = f(x_dst,y_dst) in
+    # projective form.
 
     # Let's check a corner in the "destination space" -> "source space"
     # For instance, (x_dst, y_dst) = (200, 100) => should map to (100, 50).
@@ -390,11 +396,13 @@ def test_box_points():
     )
 
 
-# Additional test for duplicate points in min_area_rect to hit the len(hull) < 3 branch.
+# Additional test for duplicate points in min_area_rect to hit the
+# len(hull) < 3 branch.
 @pytest.mark.unit
 def test_min_area_rect_duplicate_points():
     # When duplicate points are provided, the convex_hull function collapses them
-    # to a single unique point, triggering the degenerate branch in min_area_rect.
+    # to a single unique point, triggering the degenerate branch in
+    # min_area_rect.
     points = [(0, 0), (0, 0)]
     center, size, angle = min_area_rect(points)
     # Expected result is equivalent to the single point case.
@@ -435,7 +443,8 @@ def test_compute_receipt_box_from_skewed_extents_no_bottom():
     All points in deskewed space are in the top half (y < 0),
     so bottom_half would be empty. This forces the fallback bottom_half = pts_deskew[:].
     """
-    # We'll place these hull points below (0,0) so that after deskew they remain y < 0
+    # We'll place these hull points below (0,0) so that after deskew they
+    # remain y < 0
     hull_pts = [(0, -1), (2, -1), (2, -3), (0, -3)]
     # No rotation, center=(0,0).
     result = compute_receipt_box_from_skewed_extents(hull_pts, 0, 0, 0)
@@ -444,7 +453,8 @@ def test_compute_receipt_box_from_skewed_extents_no_bottom():
     # bottom is the maximum y => -1
     # x spans [0, 2].
     # So corners => (0,-3), (2, -3), (2, -1), (0, -1)
-    # The function's return format is [top-left, top-right, bottom-right, bottom-left].
+    # The function's return format is [top-left, top-right, bottom-right,
+    # bottom-left].
     assert result == [[0, -3], [2, -3], [2, -1], [0, -1]]
 
 
@@ -515,7 +525,9 @@ def test_find_hull_extents_relative_to_centroid_single_point():
     in any direction => all directions yield None.
     """
     hull_pts = [(5, 5)]
-    results = find_hull_extents_relative_to_centroid(hull_pts, 5, 5, rotation_deg=0)
+    results = find_hull_extents_relative_to_centroid(
+        hull_pts, 5, 5, rotation_deg=0
+    )
     assert results["left"] is None
     assert results["right"] is None
     assert results["top"] is None
@@ -531,7 +543,9 @@ def test_find_hull_extents_relative_to_centroid_square_no_rotation():
     """
     hull_pts = [(0, 0), (10, 0), (10, 10), (0, 10)]
     cx, cy = 5, 5
-    results = find_hull_extents_relative_to_centroid(hull_pts, cx, cy, rotation_deg=0)
+    results = find_hull_extents_relative_to_centroid(
+        hull_pts, cx, cy, rotation_deg=0
+    )
     assert results["left"] == (0, 5)
     assert results["right"] == (10, 5)
     assert results["top"] == (5, 0)
@@ -546,9 +560,12 @@ def test_find_hull_extents_relative_to_centroid_square_rotation_degrees():
     """
     hull_pts = [(0, 0), (10, 0), (10, 10), (0, 10)]
     cx, cy = 5, 5
-    results = find_hull_extents_relative_to_centroid(hull_pts, cx, cy, rotation_deg=45)
+    results = find_hull_extents_relative_to_centroid(
+        hull_pts, cx, cy, rotation_deg=45
+    )
     # We expect each intersection to be roughly sqrt(50) ~ 7.071 units away
-    # from the center if it's a perfect diagonal. We'll check approximate locations.
+    # from the center if it's a perfect diagonal. We'll check approximate
+    # locations.
     left_pt = results["left"]
     right_pt = results["right"]
     top_pt = results["top"]
@@ -560,7 +577,8 @@ def test_find_hull_extents_relative_to_centroid_square_rotation_degrees():
 
     # For a 45-degree rotation, "left" is direction -u,
     # which should land near the midpoint of the left edge.
-    # We'll just check that we got integer points and they're near the square boundary.
+    # We'll just check that we got integer points and they're near the square
+    # boundary.
     for pt in (left_pt, right_pt, top_pt, bottom_pt):
         # Each coordinate should be in [0..10].
         assert 0 <= pt[0] <= 10

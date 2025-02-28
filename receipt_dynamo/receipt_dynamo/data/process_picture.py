@@ -1,36 +1,36 @@
 # infra/lambda_layer/python/dynamo/data/process_picture.py
-from datetime import datetime, timezone
 import hashlib
-from io import BytesIO
 import math
 import os
+from datetime import datetime, timezone
+from io import BytesIO
 from pathlib import Path
-from typing import Dict, List, Tuple, Any
+from typing import Any, Dict, Tuple
+
 import boto3
 from botocore.exceptions import ClientError
-from PIL import (
-    Image as PIL_Image,
-)
-from receipt_dynamo.data._ocr import apple_vision_ocr
-from receipt_dynamo.entities import (
-    ReceiptLine,
-    ReceiptWord,
-    ReceiptLetter,
-    Image,
-    Receipt,
-    ReceiptWindow,
-)
-from receipt_dynamo.data._corner_process import extract_and_save_corner_windows
+from PIL import Image as PIL_Image
+
 from receipt_dynamo.data._cluster import dbscan_lines
-from receipt_dynamo.data._pulumi import load_env
+from receipt_dynamo.data._corner_process import extract_and_save_corner_windows
 from receipt_dynamo.data._geometry import (
-    convex_hull,
     compute_hull_centroid,
-    find_hull_extents_relative_to_centroid,
     compute_receipt_box_from_skewed_extents,
+    convex_hull,
+    find_hull_extents_relative_to_centroid,
     find_perspective_coeffs,
 )
+from receipt_dynamo.data._ocr import apple_vision_ocr
+from receipt_dynamo.data._pulumi import load_env
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.entities import (
+    Image,
+    Receipt,
+    ReceiptLetter,
+    ReceiptLine,
+    ReceiptWindow,
+    ReceiptWord,
+)
 
 
 def process_picture(
@@ -55,7 +55,8 @@ def process_picture(
     # List the images in the receipt image path
     image_paths = list(receipt_image_path.glob("*.png"))
 
-    # Store the DynamoDB entities in lists to then add to the database at the end.
+    # Store the DynamoDB entities in lists to then add to the database at the
+    # end.
     dynamo_images = []
     dynamo_lines = []
     dynamo_words = []
@@ -222,7 +223,9 @@ def process_picture(
                     top_right=top_right,
                     bottom_left=bottom_left,
                     bottom_right=bottom_right,
-                    sha256=_calculate_sha256_from_bytes(receipt_image.tobytes()),
+                    sha256=_calculate_sha256_from_bytes(
+                        receipt_image.tobytes()
+                    ),
                     cdn_s3_bucket=cdn_bucket_name,
                     cdn_s3_key=f"{cdn_prefix}/{image_id}_RECEIPT_{i:05d}.jpg",
                 )
@@ -235,7 +238,12 @@ def process_picture(
         if receipt_window is None:
             raise ValueError(f"Receipt window not found for receipt {i}")
         # Build each receipt window object
-        for corner_name in ["top_left", "top_right", "bottom_left", "bottom_right"]:
+        for corner_name in [
+            "top_left",
+            "top_right",
+            "bottom_left",
+            "bottom_right",
+        ]:
             window = receipt_window[corner_name]
             # Upload the window image to the raw bucket
             try:
@@ -285,7 +293,9 @@ def process_picture(
                     image_id=image_id,
                     receipt_id=i,
                     cdn_s3_bucket=cdn_bucket_name,
-                    cdn_s3_key=f"{cdn_prefix}/{image_id}_RECEIPT_{i:05d}_RECEIPT_WINDOW_{corner_name.upper()}.jpg",
+                    cdn_s3_key=f"{cdn_prefix}/{image_id}_RECEIPT_{
+                        i:05d}_RECEIPT_WINDOW_{
+                        corner_name.upper()}.jpg",
                     corner_name=corner_name,
                     width=window["width"],
                     height=window["height"],
@@ -297,11 +307,17 @@ def process_picture(
     print()  # End the line after all chunks are processed.
 
     # Add all the entities to the database.
-    _upload_entities_in_chunks(dynamo_client.addImages, dynamo_images, "Images")
+    _upload_entities_in_chunks(
+        dynamo_client.addImages, dynamo_images, "Images"
+    )
     _upload_entities_in_chunks(dynamo_client.addLines, dynamo_lines, "Lines")
     _upload_entities_in_chunks(dynamo_client.addWords, dynamo_words, "Words")
-    _upload_entities_in_chunks(dynamo_client.addLetters, dynamo_letters, "Letters")
-    _upload_entities_in_chunks(dynamo_client.addReceipts, dynamo_receipts, "Receipts")
+    _upload_entities_in_chunks(
+        dynamo_client.addLetters, dynamo_letters, "Letters"
+    )
+    _upload_entities_in_chunks(
+        dynamo_client.addReceipts, dynamo_receipts, "Receipts"
+    )
     _upload_entities_in_chunks(
         dynamo_client.addReceiptLines, dynamo_receipt_lines, "ReceiptLines"
     )
@@ -309,10 +325,14 @@ def process_picture(
         dynamo_client.addReceiptWords, dynamo_receipt_words, "ReceiptWords"
     )
     _upload_entities_in_chunks(
-        dynamo_client.addReceiptLetters, dynamo_receipt_letters, "ReceiptLetters"
+        dynamo_client.addReceiptLetters,
+        dynamo_receipt_letters,
+        "ReceiptLetters",
     )
     _upload_entities_in_chunks(
-        dynamo_client.addReceiptWindows, dynamo_receipt_windows, "ReceiptWindows"
+        dynamo_client.addReceiptWindows,
+        dynamo_receipt_windows,
+        "ReceiptWindows",
     )
 
 
@@ -328,7 +348,9 @@ def _upload_entities_in_chunks(upload_method, entities, entity_name):
     print()  # End the line after all chunks are processed.
 
 
-def _get_ocr_and_windows(image_path: Path) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+def _get_ocr_and_windows(
+    image_path: Path,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """ """
     # Raise an error if the image path does not exist.
     if not image_path.exists():
@@ -374,9 +396,9 @@ def _get_ocr_and_windows(image_path: Path) -> Tuple[Dict[str, Any], Dict[str, An
         cluster_words = [w for w in words if w.line_id in line_ids]
 
         # Get the average angle of the lines.
-        avg_angle_degrees = sum([line.angle_degrees for line in cluster_lines]) / len(
-            cluster_lines
-        )
+        avg_angle_degrees = sum(
+            [line.angle_degrees for line in cluster_lines]
+        ) / len(cluster_lines)
 
         # Convert OCR coords to top-left for geometry
         all_word_corners_image_coordinates = []
@@ -386,13 +408,15 @@ def _get_ocr_and_windows(image_path: Path) -> Tuple[Dict[str, Any], Dict[str, An
                 height=image.height,
                 flip_y=True,  # produce top-left pixel coords
             )
-            corners_int = [(int(x), int(y)) for (x, y) in corners_image_coordinates]
+            corners_int = [
+                (int(x), int(y)) for (x, y) in corners_image_coordinates
+            ]
             all_word_corners_image_coordinates.extend(corners_int)
 
         # Compute hull, centroid, etc. in top-left pixel coords
         hull = convex_hull(all_word_corners_image_coordinates)
         cx, cy = compute_hull_centroid(hull)
-        extents = find_hull_extents_relative_to_centroid(hull, cx, cy)
+        find_hull_extents_relative_to_centroid(hull, cx, cy)
 
         # Compute the perspective coefficients for the cluster.
         receipt_box_corners = compute_receipt_box_from_skewed_extents(
@@ -451,7 +475,11 @@ def _get_ocr_and_windows(image_path: Path) -> Tuple[Dict[str, Any], Dict[str, An
         receipt_lines.extend(
             [
                 ReceiptLine(
-                    **{**dict(line), "image_id": image_id, "receipt_id": cluster_id + 1}
+                    **{
+                        **dict(line),
+                        "image_id": image_id,
+                        "receipt_id": cluster_id + 1,
+                    }
                 )
                 for line in refined_lines
             ]
@@ -459,7 +487,11 @@ def _get_ocr_and_windows(image_path: Path) -> Tuple[Dict[str, Any], Dict[str, An
         receipt_words.extend(
             [
                 ReceiptWord(
-                    **{**dict(word), "image_id": image_id, "receipt_id": cluster_id + 1}
+                    **{
+                        **dict(word),
+                        "image_id": image_id,
+                        "receipt_id": cluster_id + 1,
+                    }
                 )
                 for word in refined_words
             ]

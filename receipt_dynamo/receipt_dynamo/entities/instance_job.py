@@ -1,6 +1,7 @@
-from typing import Any, Dict, Generator, List, Optional, Tuple
 from datetime import datetime
-from receipt_dynamo.entities.util import assert_valid_uuid, _repr_str
+from typing import Any, Dict, Generator, Optional, Tuple
+
+from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
 
 class InstanceJob:
@@ -50,9 +51,17 @@ class InstanceJob:
         elif isinstance(assigned_at, str):
             self.assigned_at = assigned_at
         else:
-            raise ValueError("assigned_at must be a datetime object or a string")
+            raise ValueError(
+                "assigned_at must be a datetime object or a string"
+            )
 
-        valid_statuses = ["assigned", "running", "completed", "failed", "cancelled"]
+        valid_statuses = [
+            "assigned",
+            "running",
+            "completed",
+            "failed",
+            "cancelled",
+        ]
         if not isinstance(status, str) or status.lower() not in valid_statuses:
             raise ValueError(f"status must be one of {valid_statuses}")
         self.status = status.lower()
@@ -81,7 +90,7 @@ class InstanceJob:
             dict: The GSI1 key for the instance-job relationship.
         """
         return {
-            "GSI1PK": {"S": f"JOB"},
+            "GSI1PK": {"S": "JOB"},
             "GSI1SK": {"S": f"JOB#{self.job_id}#INSTANCE#{self.instance_id}"},
         }
 
@@ -120,7 +129,9 @@ class InstanceJob:
             if isinstance(v, dict):
                 result[k] = {"M": self._dict_to_dynamodb_map(v)}
             elif isinstance(v, list):
-                result[k] = {"L": [self._to_dynamodb_value(item) for item in v]}
+                result[k] = {
+                    "L": [self._to_dynamodb_value(item) for item in v]
+                }
             elif isinstance(v, str):
                 result[k] = {"S": v}
             elif isinstance(v, (int, float)):
@@ -223,7 +234,8 @@ class InstanceJob:
                 (
                     tuple(
                         sorted(
-                            (k, str(v)) for k, v in self.resource_utilization.items()
+                            (k, str(v))
+                            for k, v in self.resource_utilization.items()
                         )
                     )
                     if self.resource_utilization
@@ -270,7 +282,10 @@ def itemToInstanceJob(item: dict) -> InstanceJob:
 
         # Parse resource_utilization from DynamoDB map if present
         resource_utilization = None
-        if "resource_utilization" in item and "M" in item["resource_utilization"]:
+        if (
+            "resource_utilization" in item
+            and "M" in item["resource_utilization"]
+        ):
             resource_utilization = _parse_dynamodb_map(
                 item["resource_utilization"]["M"]
             )
