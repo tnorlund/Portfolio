@@ -1,4 +1,3 @@
-# test_gpt_tagging.py
 import pytest
 
 from receipt_dynamo.entities.gpt_initial_tagging import (
@@ -39,10 +38,10 @@ def test_gpt_tagging_init_valid(sample_gpt_tagging):
 
 @pytest.mark.unit
 def test_gpt_tagging_init_invalid_image_id():
-    """Test that GPTInitialTagging raises ValueError for an invalid image_id."""
+    """GPTInitialTagging raises ValueError for an invalid image_id."""
     with pytest.raises(ValueError):
         GPTInitialTagging(
-            image_id=1,  # not a string
+            image_id=1,
             receipt_id=7,
             query="Is this the total amount?",
             response="Yes, it appears to be the total.",
@@ -60,11 +59,11 @@ def test_gpt_tagging_init_invalid_image_id():
 
 @pytest.mark.unit
 def test_gpt_tagging_init_invalid_receipt_id():
-    """Test that GPTInitialTagging raises ValueError for an invalid receipt_id."""
+    """GPTInitialTagging raises ValueError for an invalid receipt_id."""
     with pytest.raises(ValueError, match="receipt_id must be an integer"):
         GPTInitialTagging(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            receipt_id="7",  # wrong type
+            receipt_id="7",
             query="Is this the total amount?",
             response="Yes, it appears to be the total.",
             timestamp_added="2021-01-01T00:00:00",
@@ -72,7 +71,7 @@ def test_gpt_tagging_init_invalid_receipt_id():
     with pytest.raises(ValueError, match="receipt_id must be positive"):
         GPTInitialTagging(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            receipt_id=-1,  # negative
+            receipt_id=-1,
             query="Is this the total amount?",
             response="Yes, it appears to be the total.",
             timestamp_added="2021-01-01T00:00:00",
@@ -94,7 +93,7 @@ def test_gpt_tagging_init_invalid_query():
         GPTInitialTagging(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=7,
-            query=123,  # not a string
+            query=123,
             response="Yes, it appears to be the total.",
             timestamp_added="2021-01-01T00:00:00",
         )
@@ -102,8 +101,11 @@ def test_gpt_tagging_init_invalid_query():
 
 @pytest.mark.unit
 def test_gpt_tagging_init_invalid_response():
-    """Test that GPTInitialTagging raises ValueError for an invalid response."""
-    with pytest.raises(ValueError, match="response must be a non-empty string"):
+    """GPTInitialTagging raises ValueError for an invalid response."""
+    with pytest.raises(
+        ValueError,
+        match="response must be a non-empty string"
+    ):
         GPTInitialTagging(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=7,
@@ -111,21 +113,25 @@ def test_gpt_tagging_init_invalid_response():
             response="",
             timestamp_added="2021-01-01T00:00:00",
         )
-    with pytest.raises(ValueError, match="response must be a non-empty string"):
+    with pytest.raises(
+        ValueError,
+        match="response must be a non-empty string",
+    ):
         GPTInitialTagging(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=7,
             query="Is this the total amount?",
-            response=123,  # not a string
+            response=123,
             timestamp_added="2021-01-01T00:00:00",
         )
 
 
 @pytest.mark.unit
 def test_gpt_tagging_init_invalid_timestamp():
-    """Test that GPTInitialTagging raises ValueError for an invalid timestamp_added."""
+    """GPTInitialTagging raises ValueError for an invalid timestamp_added."""
     with pytest.raises(
-        ValueError, match="timestamp_added must be a datetime object or a string"
+        ValueError,
+        match="timestamp_added must be a datetime object or a string",
     ):
         GPTInitialTagging(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -133,7 +139,7 @@ def test_gpt_tagging_init_invalid_timestamp():
             query="Is this the total amount?",
             response="Yes, it appears to be the total.",
             timestamp_added=1234567890,
-        )  # not a datetime or string
+        )
 
 
 # --- Equality, Iteration, and Representation Tests ---
@@ -190,7 +196,7 @@ def test_gpt_tagging_repr(sample_gpt_tagging):
 
 @pytest.mark.unit
 def test_gpt_tagging_key(sample_gpt_tagging):
-    """Test that the primary key is generated correctly for a one-record-per-receipt design."""
+    """The primary key is generated correctly for a one-record-per-receipt."""
     key = sample_gpt_tagging.key()
     assert key["PK"]["S"] == "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert key["SK"]["S"] == "RECEIPT#00007#QUERY#INITIAL_TAGGING"
@@ -198,7 +204,7 @@ def test_gpt_tagging_key(sample_gpt_tagging):
 
 @pytest.mark.unit
 def test_gpt_tagging_to_item(sample_gpt_tagging):
-    """Test that to_item returns a DynamoDB-ready dictionary (no GSI references)."""
+    """to_item returns a DynamoDB-ready dictionary (no GSI references)."""
     item = sample_gpt_tagging.to_item()
     assert "PK" in item
     assert "SK" in item
@@ -211,7 +217,7 @@ def test_gpt_tagging_to_item(sample_gpt_tagging):
 
 @pytest.mark.unit
 def test_item_to_gpt_tagging(sample_gpt_tagging):
-    """Test that a DynamoDB item converts back to a GPTInitialTagging object."""
+    """a DynamoDB item converts back to a GPTInitialTagging object."""
     item = sample_gpt_tagging.to_item()
     gt_converted = itemToGPTInitialTagging(item)
     assert gt_converted == sample_gpt_tagging
@@ -219,8 +225,8 @@ def test_item_to_gpt_tagging(sample_gpt_tagging):
 
 @pytest.mark.unit
 def test_item_to_gpt_tagging_missing_keys():
-    """Test that itemToGPTInitialTagging raises an error if required keys are missing."""
-    incomplete_item = {  # Missing PK
+    """itemToGPTInitialTagging raises an error if required keys are missing."""
+    incomplete_item = {
         "SK": {"S": "RECEIPT#00007#QUERY#INITIAL_TAGGING"},
         "query": {"S": "Is this the total amount?"},
         "response": {"S": "Yes, it appears to be the total."},
@@ -232,14 +238,17 @@ def test_item_to_gpt_tagging_missing_keys():
 
 @pytest.mark.unit
 def test_item_to_gpt_tagging_invalid_format():
-    """Test that itemToGPTInitialTagging raises an error for an improperly formatted item."""
+    """itemToGPTInitialTagging raises an error with a bad item."""
     bad_item = {
-        "PK": {"S": "IMAGE#bad"},  # e.g. missing or incomplete ID
-        "SK": {"S": "RECEIPT#00007"},  # missing '#QUERY#INITIAL_TAGGING'
+        "PK": {"S": "IMAGE#bad"},
+        "SK": {"S": "RECEIPT#00007"},
         "TYPE": {"S": "GPT_INITIAL_TAGGING"},
         "query": {"S": "Is this the total amount?"},
         "response": {"S": "Yes, it appears to be the total."},
         "timestamp_added": {"S": "2021-01-01T00:00:00"},
     }
-    with pytest.raises(ValueError, match="Error converting item to GPTInitialTagging"):
+    with pytest.raises(
+        ValueError,
+        match="Error converting item to GPTInitialTagging",
+    ):
         itemToGPTInitialTagging(bad_item)
