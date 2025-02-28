@@ -7,7 +7,7 @@ from receipt_dynamo.entities.word_tag import WordTag, itemToWordTag
 @pytest.fixture
 def sample_word_tag():
     # fmt: off
-    return WordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=7, word_id=101, tag="example", timestamp_added="2021-01-01T00:00:00",)
+    return WordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=7, word_id=101, tag="example", timestamp_added="2021-01-01T00:00:00", )
     # fmt: on
 
 
@@ -37,13 +37,13 @@ def test_word_tag_init_invalid_line_id():
             "2",
             3,
             "example",
-            "2021-01-01T00:00:00",)
+            "2021-01-01T00:00:00", )
     with pytest.raises(ValueError, match="line_id must be positive"):
         WordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             -2,
             3,
             "example",
-            "2021-01-01T00:00:00",)
+            "2021-01-01T00:00:00", )
 
 
 @pytest.mark.unit
@@ -54,13 +54,13 @@ def test_word_tag_init_invalid_word_id():
             2,
             "3",
             "example",
-            "2021-01-01T00:00:00",)
+            "2021-01-01T00:00:00", )
     with pytest.raises(ValueError, match="word_id must be positive"):
         WordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             2,
             -3,
             "example",
-            "2021-01-01T00:00",)
+            "2021-01-01T00:00", )
 
 
 @pytest.mark.unit
@@ -71,33 +71,33 @@ def test_word_tag_init_invalid_tag():
             2,
             3,
             "",
-            "2021-01-01T00:00:00",)
+            "2021-01-01T00:00:00", )
     with pytest.raises(ValueError, match="tag must be a string"):
         WordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             2,
             3,
             4,
-            "2021-01-01T00:00:00",)
+            "2021-01-01T00:00:00", )
     long_tag = "A" * 41
     with pytest.raises(ValueError, match="tag must not exceed 40 characters"):
         WordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             2,
             3,
             long_tag,
-            "2021-01-01T00:00:00",)
+            "2021-01-01T00:00:00", )
     with pytest.raises(ValueError, match="tag must not start with an underscore"):
         WordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             2,
             3,
             "_bad",
-            "2021-01-01T00:00:00",)
+            "2021-01-01T00:00:00", )
 
 
 @pytest.mark.unit
 def test_word_tag_init_invalid_timestamp_added():
     """Test that WordTag raises ValueError if timestamp_added is invalid."""
     with pytest.raises(ValueError,
-        match="timestamp_added must be a datetime object or a string",):
+        match="timestamp_added must be a datetime object or a string", ):
         WordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "example", 1234567890)
 
 
@@ -194,7 +194,7 @@ def test_item_to_word_tag():
         "TYPE": {"S": "WORD_TAG"},
         "tag_name": {"S": "example"},
         "timestamp_added": {"S": "2021-01-01T00:00:00"},
-        "validated": {"BOOL": True},}
+        "validated": {"BOOL": True}, }
     wt = itemToWordTag(item)
     assert wt.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert wt.line_id == 7
@@ -210,7 +210,7 @@ def test_item_to_word_tag_missing_keys():
     incomplete_item = {"SK": {"S": "TAG#FOO#LINE#00007#WORD#00101"},
         "GSI1PK": {"S": "TAG#FOO"},
         "GSI1SK": {"S": "IMAGE#00042#LINE#00007#WORD#00101"},
-        "TYPE": {"S": "WORD_TAG"},}
+        "TYPE": {"S": "WORD_TAG"}, }
     with pytest.raises(ValueError, match="^Item is missing required keys: "):
         itemToWordTag(incomplete_item)
 
@@ -224,6 +224,6 @@ def test_item_to_word_tag_invalid_format():
         "GSI1SK": {"S": "IMAGE#00042#WORD#00999"},  # Also incomplete
         "TYPE": {"S": "WORD_TAG"},
         "timestamp_added": {"S": "2021-01-01T00:00:00"},
-        "validated": {"BOOL": True},}
+        "validated": {"BOOL": True}, }
     with pytest.raises(ValueError, match="Error converting item to WordTag"):
         itemToWordTag(bad_format_item)

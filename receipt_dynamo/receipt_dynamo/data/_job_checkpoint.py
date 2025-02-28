@@ -3,7 +3,7 @@ from typing import Optional
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.entities.job_checkpoint import (JobCheckpoint,
-    itemToJobCheckpoint,)
+    itemToJobCheckpoint, )
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
@@ -33,7 +33,7 @@ class _JobCheckpoint:
         try:
             self._client.put_item(TableName=self.table_name,
                 Item=job_checkpoint.to_item(),
-                ConditionExpression="attribute_not_exists(PK) OR attribute_not_exists(SK)",)
+                ConditionExpression="attribute_not_exists(PK) OR attribute_not_exists(SK)", )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
@@ -69,7 +69,7 @@ class _JobCheckpoint:
         try:
             response = self._client.get_item(TableName=self.table_name,
                 Key={"PK": {"S": f"JOB#{job_id}"},
-                    "SK": {"S": f"CHECKPOINT#{timestamp}"},},)
+                    "SK": {"S": f"CHECKPOINT#{timestamp}"}, }, )
 
             if "Item" not in response:
                 raise ValueError(f"No job checkpoint found with job ID {job_id} and timestamp {timestamp}")
@@ -117,17 +117,17 @@ class _JobCheckpoint:
                 if checkpoint.timestamp != timestamp and checkpoint.is_best:
                     self._client.update_item(TableName=self.table_name,
                         Key={"PK": {"S": f"JOB#{job_id}"},
-                            "SK": {"S": f"CHECKPOINT#{checkpoint.timestamp}"},},
+                            "SK": {"S": f"CHECKPOINT#{checkpoint.timestamp}"}, },
                         UpdateExpression="SET is_best = :is_best",
-                        ExpressionAttributeValues={":is_best": {"BOOL": False}},)
+                        ExpressionAttributeValues={":is_best": {"BOOL": False}}, )
 
             # Then set the specified checkpoint to is_best=True
             self._client.update_item(TableName=self.table_name,
                 Key={"PK": {"S": f"JOB#{job_id}"},
-                    "SK": {"S": f"CHECKPOINT#{timestamp}"},},
+                    "SK": {"S": f"CHECKPOINT#{timestamp}"}, },
                 UpdateExpression="SET is_best = :is_best",
                 ExpressionAttributeValues={":is_best": {"BOOL": True}},
-                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",)
+                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)", )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
@@ -144,7 +144,7 @@ class _JobCheckpoint:
     def listJobCheckpoints(self,
         job_id: str,
         limit: int = None,
-        lastEvaluatedKey: dict | None = None,) -> tuple[list[JobCheckpoint], dict | None]:
+        lastEvaluatedKey: dict | None = None, ) -> tuple[list[JobCheckpoint], dict | None]:
         """
         Retrieve checkpoints for a job from the database.
 
@@ -180,9 +180,9 @@ class _JobCheckpoint:
             query_params = {"TableName": self.table_name,
                 "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
                 "ExpressionAttributeValues": {":pk": {"S": f"JOB#{job_id}"},
-                    ":sk": {"S": "CHECKPOINT#"},},
+                    ":sk": {"S": "CHECKPOINT#"}, },
                 # Descending order by default (most recent first)
-                "ScanIndexForward": False,}
+                "ScanIndexForward": False, }
 
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
@@ -246,7 +246,7 @@ class _JobCheckpoint:
                 "FilterExpression": "is_best = :is_best",
                 "ExpressionAttributeValues": {":pk": {"S": f"JOB#{job_id}"},
                     ":sk": {"S": "CHECKPOINT#"},
-                    ":is_best": {"BOOL": True},},}
+                    ":is_best": {"BOOL": True}, }, }
 
             response = self._client.query(**query_params)
 
@@ -289,7 +289,7 @@ class _JobCheckpoint:
         try:
             self._client.delete_item(TableName=self.table_name,
                 Key={"PK": {"S": f"JOB#{job_id}"},
-                    "SK": {"S": f"CHECKPOINT#{timestamp}"},},)
+                    "SK": {"S": f"CHECKPOINT#{timestamp}"}, }, )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
@@ -332,9 +332,9 @@ class _JobCheckpoint:
             query_params = {"TableName": self.table_name,
                 "IndexName": "GSI1",
                 "KeyConditionExpression": "GSI1PK = :pk",
-                "ExpressionAttributeValues": {":pk": {"S": "CHECKPOINT"},},
+                "ExpressionAttributeValues": {":pk": {"S": "CHECKPOINT"}, },
                 # Descending order by default (most recent first)
-                "ScanIndexForward": False,}
+                "ScanIndexForward": False, }
 
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey

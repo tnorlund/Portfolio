@@ -25,7 +25,7 @@ class InstanceJob:
         job_id: str,
         assigned_at: datetime,
         status: str,
-        resource_utilization: Optional[Dict[str, Any]] = None,):
+        resource_utilization: Optional[Dict[str, Any]] = None, ):
         """Initializes a new InstanceJob object for DynamoDB.
 
         Args:
@@ -55,7 +55,7 @@ class InstanceJob:
             "running",
             "completed",
             "failed",
-            "cancelled",]
+            "cancelled", ]
         if not isinstance(status, str) or status.lower() not in valid_statuses:
             raise ValueError(f"status must be one of {valid_statuses}")
         self.status = status.lower()
@@ -71,7 +71,7 @@ class InstanceJob:
             dict: The primary key for the instance-job relationship.
         """
         return {"PK": {"S": f"INSTANCE#{self.instance_id}"},
-            "SK": {"S": f"JOB#{self.job_id}"},}
+            "SK": {"S": f"JOB#{self.job_id}"}, }
 
     def gsi1_key(self) -> dict:
         """Generates the GSI1 key for the instance-job relationship.
@@ -80,7 +80,7 @@ class InstanceJob:
             dict: The GSI1 key for the instance-job relationship.
         """
         return {"GSI1PK": {"S": "JOB"},
-            "GSI1SK": {"S": f"JOB#{self.job_id}#INSTANCE#{self.instance_id}"},}
+            "GSI1SK": {"S": f"JOB#{self.job_id}#INSTANCE#{self.instance_id}"}, }
 
     def to_item(self) -> dict:
         """Converts the InstanceJob object to a DynamoDB item.
@@ -92,7 +92,7 @@ class InstanceJob:
             **self.gsi1_key(),
             "TYPE": {"S": "INSTANCE_JOB"},
             "assigned_at": {"S": self.assigned_at},
-            "status": {"S": self.status},}
+            "status": {"S": self.status}, }
 
         if self.resource_utilization:
             item["resource_utilization"] = {"M": self._dict_to_dynamodb_map(self.resource_utilization)}
@@ -210,7 +210,7 @@ class InstanceJob:
                 (tuple(sorted((k, str(v))
                             for k, v in self.resource_utilization.items()))
                     if self.resource_utilization
-                    else None),))
+                    else None), ))
 
 
 def itemToInstanceJob(item: dict) -> InstanceJob:
@@ -229,7 +229,7 @@ def itemToInstanceJob(item: dict) -> InstanceJob:
         "SK",
         "TYPE",
         "assigned_at",
-        "status",}
+        "status", }
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
@@ -254,7 +254,7 @@ def itemToInstanceJob(item: dict) -> InstanceJob:
             job_id=job_id,
             assigned_at=assigned_at,
             status=status,
-            resource_utilization=resource_utilization,)
+            resource_utilization=resource_utilization, )
     except KeyError as e:
         raise ValueError(f"Error converting item to InstanceJob: {e}")
 

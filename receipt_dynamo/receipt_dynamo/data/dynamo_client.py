@@ -46,7 +46,7 @@ class DynamoClient(_Image,
     _JobLog,
     _JobDependency,
     _Queue,
-    _Instance,):
+    _Instance, ):
     """A class used to represent a DynamoDB client."""
 
     def __init__(self, table_name: str, region: str = "us-east-1"):

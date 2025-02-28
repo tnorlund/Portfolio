@@ -27,7 +27,7 @@ class GPTValidation:
         receipt_id: int,
         query: str,
         response: str,
-        timestamp_added: datetime,):
+        timestamp_added: datetime, ):
         """Initializes a new GPTValidation object.
 
         Args:
@@ -126,7 +126,7 @@ class GPTValidation:
         """
         # Use a fixed-width formatting for the tag as in receipt_word_tag.py.
         return {"PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#QUERY#VALIDATION"},}
+            "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#QUERY#VALIDATION"}, }
 
     def to_item(self) -> dict:
         """Converts the GPTValidation object to a DynamoDB item.
@@ -138,7 +138,7 @@ class GPTValidation:
             "TYPE": {"S": "GPT_VALIDATION"},
             "query": {"S": self.query},
             "response": {"S": self.response},
-            "timestamp_added": {"S": self.timestamp_added},}
+            "timestamp_added": {"S": self.timestamp_added}, }
 
     def __hash__(self) -> int:
         """Returns the hash value of the GPTValidation object.
@@ -150,7 +150,7 @@ class GPTValidation:
                 self.receipt_id,
                 self.query,
                 self.response,
-                self.timestamp_added,))
+                self.timestamp_added, ))
 
 
 def itemToGPTValidation(item: dict) -> GPTValidation:
@@ -182,6 +182,6 @@ def itemToGPTValidation(item: dict) -> GPTValidation:
             receipt_id=receipt_id,
             query=query,
             response=response,
-            timestamp_added=timestamp_added,)
+            timestamp_added=timestamp_added, )
     except (IndexError, ValueError, KeyError) as e:
         raise ValueError(f"Error converting item to GPTValidation: {e}")

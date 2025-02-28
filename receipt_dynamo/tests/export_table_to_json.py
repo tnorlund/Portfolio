@@ -25,7 +25,7 @@ if __name__ == "__main__":
         receipt_word_tags,
         receipt_letters,
         gpt_initial_taggings,
-        gpt_validations,) = dynamo_client.getImageDetails(IMAGE_ID)
+        gpt_validations, ) = dynamo_client.getImageDetails(IMAGE_ID)
     # There should be only one image
     if len(images) != 1:
         raise Exception(f"Expected one image, got {len(images)}")
@@ -35,11 +35,11 @@ if __name__ == "__main__":
 
     # Example: Get the GPT response from S3 (existing code)
     response = s3.list_objects_v2(Bucket=image.raw_s3_bucket,
-        Prefix=f"raw/{image.image_id}",)
+        Prefix=f"raw/{image.image_id}", )
     gpt_objects = [obj for obj in response.get("Contents", []) if "GPT" in obj["Key"]]
     for obj in gpt_objects:
         response = s3.get_object(Bucket=image.raw_s3_bucket,
-            Key=obj["Key"],)
+            Key=obj["Key"], )
         # Uncomment to print GPT responses:
         # print(f"{obj['Key']}")
         # print(response["Body"].read().decode("utf-8"))
@@ -82,7 +82,7 @@ if __name__ == "__main__":
         json.dump({"images": [{**dict(image),
                         "timestamp_added": "2021-01-01T00:00:00+00:00",
                         "raw_s3_bucket": "raw-image-bucket",
-                        "cdn_s3_bucket": "cdn-bucket",}],
+                        "cdn_s3_bucket": "cdn-bucket", }],
                 "lines": [{key: value
                         for key, value in dict(line).items()
                         if key not in ("num_chars", "histogram")}
@@ -96,7 +96,7 @@ if __name__ == "__main__":
                 "receipts": [{**dict(receipt),
                         "timestamp_added": "2021-01-01T00:00:00+00:00",
                         "raw_s3_bucket": "raw-image-bucket",
-                        "cdn_s3_bucket": "cdn-bucket",}
+                        "cdn_s3_bucket": "cdn-bucket", }
                     for receipt in receipts],
                 "receipt_lines": [{key: value
                         for key, value in dict(line).items()
@@ -109,6 +109,6 @@ if __name__ == "__main__":
                 "receipt_word_tags": [dict(word_tag) for word_tag in receipt_word_tags],
                 "receipt_letters": [dict(letter) for letter in receipt_letters],
                 "gpt_initial_taggings": [dict(gpt_query) for gpt_query in gpt_initial_taggings],
-                "gpt_validations": [dict(gpt_validation) for gpt_validation in gpt_validations],},
+                "gpt_validations": [dict(gpt_validation) for gpt_validation in gpt_validations], },
             f,
-            indent=4,)
+            indent=4, )

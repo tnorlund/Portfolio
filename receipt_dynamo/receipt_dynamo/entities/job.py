@@ -36,7 +36,7 @@ class Job:
         priority: str,
         job_config: Dict[str, Any],
         estimated_duration: Optional[int] = None,
-        tags: Optional[Dict[str, str]] = None,):
+        tags: Optional[Dict[str, str]] = None, ):
         """Initializes a new Job object for DynamoDB.
 
         Args:
@@ -81,7 +81,7 @@ class Job:
             "succeeded",
             "failed",
             "cancelled",
-            "interrupted",]
+            "interrupted", ]
         if not isinstance(status, str) or status.lower() not in valid_statuses:
             raise ValueError(f"status must be one of {valid_statuses}")
         self.status = status.lower()
@@ -121,7 +121,7 @@ class Job:
             dict: The GSI1 key for the job.
         """
         return {"GSI1PK": {"S": f"STATUS#{self.status}"},
-            "GSI1SK": {"S": f"CREATED#{self.created_at}"},}
+            "GSI1SK": {"S": f"CREATED#{self.created_at}"}, }
 
     def gsi2_key(self) -> dict:
         """Generates the GSI2 key for the job.
@@ -130,7 +130,7 @@ class Job:
             dict: The GSI2 key for the job.
         """
         return {"GSI2PK": {"S": f"USER#{self.created_by}"},
-            "GSI2SK": {"S": f"CREATED#{self.created_at}"},}
+            "GSI2SK": {"S": f"CREATED#{self.created_at}"}, }
 
     def to_item(self) -> dict:
         """Converts the Job object to a DynamoDB item.
@@ -148,7 +148,7 @@ class Job:
             "created_by": {"S": self.created_by},
             "status": {"S": self.status},
             "priority": {"S": self.priority},
-            "job_config": {"M": self._dict_to_dynamodb_map(self.job_config)},}
+            "job_config": {"M": self._dict_to_dynamodb_map(self.job_config)}, }
 
         if self.estimated_duration is not None:
             item["estimated_duration"] = {"N": str(self.estimated_duration)}
@@ -287,7 +287,7 @@ class Job:
                 tuple(sorted((k, str(v)) for k, v in self.job_config.items())),
                 self.estimated_duration,
                 # Can't hash dictionaries, so convert to tuple of sorted items
-                tuple(sorted(self.tags.items())) if self.tags else None,))
+                tuple(sorted(self.tags.items())) if self.tags else None, ))
 
 
 def itemToJob(item: dict) -> Job:
@@ -311,7 +311,7 @@ def itemToJob(item: dict) -> Job:
         "created_by",
         "status",
         "priority",
-        "job_config",}
+        "job_config", }
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
@@ -351,7 +351,7 @@ def itemToJob(item: dict) -> Job:
             priority=priority,
             job_config=job_config,
             estimated_duration=estimated_duration,
-            tags=tags,)
+            tags=tags, )
     except KeyError as e:
         raise ValueError(f"Error converting item to Job: {e}")
 

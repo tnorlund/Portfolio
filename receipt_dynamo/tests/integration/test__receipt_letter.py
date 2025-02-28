@@ -20,12 +20,12 @@ def sample_receipt_letter():
         bottom_right={"x": 0.17, "y": 0.22},
         angle_degrees=1.5,
         angle_radians=0.0261799,
-        confidence=0.97,)
+        confidence=0.97, )
 
 
 @pytest.mark.integration
 def test_add_receipt_letter(dynamodb_table: Literal["MyMockedTable"],
-    sample_receipt_letter: ReceiptLetter,):
+    sample_receipt_letter: ReceiptLetter, ):
     # Arrange
     client = DynamoClient(dynamodb_table)
 
@@ -37,13 +37,13 @@ def test_add_receipt_letter(dynamodb_table: Literal["MyMockedTable"],
         sample_receipt_letter.image_id,
         sample_receipt_letter.line_id,
         sample_receipt_letter.word_id,
-        sample_receipt_letter.letter_id,)
+        sample_receipt_letter.letter_id, )
     assert retrieved_letter == sample_receipt_letter
 
 
 @pytest.mark.integration
 def test_add_receipt_letter_duplicate_raises(dynamodb_table: Literal["MyMockedTable"],
-    sample_receipt_letter: ReceiptLetter,):
+    sample_receipt_letter: ReceiptLetter, ):
     # Arrange
     client = DynamoClient(dynamodb_table)
     client.addReceiptLetter(sample_receipt_letter)
@@ -55,7 +55,7 @@ def test_add_receipt_letter_duplicate_raises(dynamodb_table: Literal["MyMockedTa
 
 @pytest.mark.integration
 def test_update_receipt_letter(dynamodb_table: Literal["MyMockedTable"],
-    sample_receipt_letter: ReceiptLetter,):
+    sample_receipt_letter: ReceiptLetter, ):
     # Arrange
     client = DynamoClient(dynamodb_table)
     client.addReceiptLetter(sample_receipt_letter)
@@ -69,13 +69,13 @@ def test_update_receipt_letter(dynamodb_table: Literal["MyMockedTable"],
         sample_receipt_letter.image_id,
         sample_receipt_letter.line_id,
         sample_receipt_letter.word_id,
-        sample_receipt_letter.letter_id,)
+        sample_receipt_letter.letter_id, )
     assert retrieved_letter.text == "Z"
 
 
 @pytest.mark.integration
 def test_delete_receipt_letter(dynamodb_table: Literal["MyMockedTable"],
-    sample_receipt_letter: ReceiptLetter,):
+    sample_receipt_letter: ReceiptLetter, ):
     # Arrange
     client = DynamoClient(dynamodb_table)
     client.addReceiptLetter(sample_receipt_letter)
@@ -85,7 +85,7 @@ def test_delete_receipt_letter(dynamodb_table: Literal["MyMockedTable"],
         sample_receipt_letter.image_id,
         sample_receipt_letter.line_id,
         sample_receipt_letter.word_id,
-        sample_receipt_letter.letter_id,)
+        sample_receipt_letter.letter_id, )
 
     # Assert
     with pytest.raises(ValueError, match="not found"):
@@ -93,7 +93,7 @@ def test_delete_receipt_letter(dynamodb_table: Literal["MyMockedTable"],
             sample_receipt_letter.image_id,
             sample_receipt_letter.line_id,
             sample_receipt_letter.word_id,
-            sample_receipt_letter.letter_id,)
+            sample_receipt_letter.letter_id, )
 
 
 @pytest.mark.integration
@@ -113,7 +113,7 @@ def test_receipt_letter_list(dynamodb_table: Literal["MyMockedTable"]):
             bottom_right={"x": 0.01, "y": 0.02},
             angle_degrees=0,
             angle_radians=0,
-            confidence=1.0,)
+            confidence=1.0, )
         for i in range(1, 4)]
     for lt in letters:
         client.addReceiptLetter(lt)
@@ -127,7 +127,7 @@ def test_receipt_letter_list(dynamodb_table: Literal["MyMockedTable"]):
 
 
 @pytest.mark.integration
-def test_receipt_letter_list_from_word(dynamodb_table: Literal["MyMockedTable"],):
+def test_receipt_letter_list_from_word(dynamodb_table: Literal["MyMockedTable"], ):
     # Arrange
     client = DynamoClient(dynamodb_table)
 
@@ -144,7 +144,7 @@ def test_receipt_letter_list_from_word(dynamodb_table: Literal["MyMockedTable"],
             bottom_right={"x": 0.01, "y": 0.01},
             angle_degrees=0,
             angle_radians=0,
-            confidence=1.0,)
+            confidence=1.0, )
         for i in range(1, 4)]
     # A letter in a different word
     different_word_letter = ReceiptLetter(receipt_id=1,
@@ -160,7 +160,7 @@ def test_receipt_letter_list_from_word(dynamodb_table: Literal["MyMockedTable"],
         bottom_right={"x": 0.21, "y": 0.21},
         angle_degrees=5,
         angle_radians=0.0872665,
-        confidence=0.9,)
+        confidence=0.9, )
 
     for lt in letters_same_word + [different_word_letter]:
         client.addReceiptLetter(lt)
@@ -169,7 +169,7 @@ def test_receipt_letter_list_from_word(dynamodb_table: Literal["MyMockedTable"],
     found_letters = client.listReceiptLettersFromWord(receipt_id=1,
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=10,
-        word_id=2,)
+        word_id=2, )
 
     # Assert
     assert len(found_letters) == 3

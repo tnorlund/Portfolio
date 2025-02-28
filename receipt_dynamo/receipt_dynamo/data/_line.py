@@ -32,7 +32,7 @@ class _Line:
         try:
             self._client.put_item(TableName=self.table_name,
                 Item=line.to_item(),
-                ConditionExpression="attribute_not_exists(PK)",)
+                ConditionExpression="attribute_not_exists(PK)", )
         except ClientError:
             raise ValueError(f"Line with ID {line.line_id} already exists")
 
@@ -68,7 +68,7 @@ class _Line:
         try:
             self._client.put_item(TableName=self.table_name,
                 Item=line.to_item(),
-                ConditionExpression="attribute_exists(PK)",)
+                ConditionExpression="attribute_exists(PK)", )
         except ClientError as e:
             if (e.response["Error"]["Code"]
                 == "ConditionalCheckFailedException"):
@@ -86,8 +86,8 @@ class _Line:
         try:
             self._client.delete_item(TableName=self.table_name,
                 Key={"PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"LINE#{line_id:05d}"},},
-                ConditionExpression="attribute_exists(PK)",)
+                    "SK": {"S": f"LINE#{line_id:05d}"}, },
+                ConditionExpression="attribute_exists(PK)", )
         except ClientError:
             raise ValueError(f"Line with ID {line_id} not found")
 
@@ -124,23 +124,25 @@ class _Line:
         try:
             response = self._client.get_item(TableName=self.table_name,
                 Key={"PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"LINE#{line_id:05d}"},},)
+                    "SK": {"S": f"LINE#{line_id:05d}"}, }, )
             return itemToLine(response["Item"])
         except KeyError:
             raise ValueError(f"Line with ID {line_id} not found")
 
     def listLines(self,
         limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,) -> Tuple[list[Line], Optional[Dict]]:
+        last_evaluated_key: Optional[Dict] = None, ) -> Tuple[list[Line], Optional[Dict]]:
         """Lists all lines in the database"""
         lines = []
         try:
-            query_params = {"TableName": self.table_name,
+            query_params = {
+                "TableName": self.table_name,
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
                 "ExpressionAttributeValues": {":val": {"S": "LINE"}},
-                "ScanIndexForward": True,  # Sorts the results in ascending order by PK}
+                "ScanIndexForward": True,  # Sorts the results in ascending order by PK
+            }
             if last_evaluated_key is not None:
                 query_params["ExclusiveStartKey"] = last_evaluated_key
 
@@ -176,7 +178,7 @@ class _Line:
                 KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
                 ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
                 ExpressionAttributeValues={":pk_val": {"S": f"IMAGE#{image_id}"},
-                    ":sk_val": {"S": "LINE#"},},)
+                    ":sk_val": {"S": "LINE#"}, }, )
             lines.extend([itemToLine(item) for item in response["Items"]])
 
             while "LastEvaluatedKey" in response:
@@ -184,8 +186,8 @@ class _Line:
                     KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
                     ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
                     ExpressionAttributeValues={":pk_val": {"S": f"IMAGE#{image_id}"},
-                        ":sk_val": {"S": "LINE#"},},
-                    ExclusiveStartKey=response["LastEvaluatedKey"],)
+                        ":sk_val": {"S": "LINE#"}, },
+                    ExclusiveStartKey=response["LastEvaluatedKey"], )
                 lines.extend([itemToLine(item) for item in response["Items"]])
             return lines
         except ClientError as e:

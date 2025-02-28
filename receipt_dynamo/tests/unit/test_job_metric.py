@@ -14,7 +14,7 @@ def example_job_metric():
         0.15,
         unit="dimensionless",
         step=100,
-        epoch=2,)
+        epoch=2, )
 
 
 @pytest.fixture
@@ -23,7 +23,7 @@ def example_job_metric_minimal():
     return JobMetric("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         "accuracy",
         datetime.fromisoformat("2021-01-01T12:35:45"),
-        87.5,)
+        87.5, )
 
 
 @pytest.mark.unit
@@ -62,7 +62,7 @@ def test_job_metric_init_invalid_id():
         JobMetric("not-a-uuid",  # Invalid: not a valid UUID format
             "loss",
             "2021-01-01T12:30:45",
-            0.15,)
+            0.15, )
 
 
 @pytest.mark.unit
@@ -72,24 +72,24 @@ def test_job_metric_init_invalid_metric_name():
         JobMetric("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "",  # Invalid: empty string
             "2021-01-01T12:30:45",
-            0.15,)
+            0.15, )
 
     with pytest.raises(ValueError, match="metric_name must be a non-empty string"):
         JobMetric("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             123,  # Invalid: not a string
             "2021-01-01T12:30:45",
-            0.15,)
+            0.15, )
 
 
 @pytest.mark.unit
 def test_job_metric_init_invalid_value():
     """Test the JobMetric constructor with invalid value."""
     with pytest.raises(ValueError,
-        match="value must be a number \\(int/float\\) or a dictionary",):
+        match="value must be a number \\(int/float\\) or a dictionary", ):
         JobMetric("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "loss",
             "2021-01-01T12:30:45",
-            "not-a-number",  # Invalid: not convertible to float)
+            "not-a-number")  # Invalid: not convertible to float
 
 
 @pytest.mark.unit
@@ -99,42 +99,39 @@ def test_job_metric_init_invalid_timestamp():
         JobMetric("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "loss",
             123,  # Invalid: not a datetime or string
-            0.15,)
+            0.15, )
 
 
 @pytest.mark.unit
 def test_job_metric_init_invalid_unit():
     """Test the JobMetric constructor with invalid unit."""
-    # Since we're not validating unit type anymore, this test is simplified
     metric = JobMetric("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         "loss",
         "2021-01-01T12:30:45",
         0.15,
-        unit=123,  # Non-string unit)
+        unit=123)  # Non-string unit
     assert metric.unit == 123
 
 
 @pytest.mark.unit
 def test_job_metric_init_invalid_step():
     """Test the JobMetric constructor with invalid step."""
-    # Since we're not validating step value anymore, this test is simplified
     metric = JobMetric("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         "loss",
         "2021-01-01T12:30:45",
         0.15,
-        step=-1,  # Negative step)
+        step=-1)  # Negative step
     assert metric.step == -1
 
 
 @pytest.mark.unit
 def test_job_metric_init_invalid_epoch():
     """Test the JobMetric constructor with invalid epoch."""
-    # Since we're not validating epoch value anymore, this test is simplified
     metric = JobMetric("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         "loss",
         "2021-01-01T12:30:45",
         0.15,
-        epoch=-1,  # Negative epoch)
+        epoch=-1)  # Negative epoch
     assert metric.epoch == -1
 
 
@@ -148,7 +145,7 @@ def test_job_metric_init_invalid_metadata():
 def test_job_metric_key(example_job_metric):
     """Test the JobMetric.key() method."""
     assert example_job_metric.key() == {"PK": {"S": "JOB#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-        "SK": {"S": "METRIC#loss#2021-01-01T12:30:45"},}
+        "SK": {"S": "METRIC#loss#2021-01-01T12:30:45"}, }
 
 
 @pytest.mark.unit
@@ -252,63 +249,63 @@ def test_job_metric_eq():
         0.15,
         unit="dimensionless",
         step=100,
-        epoch=2,)
+        epoch=2, )
     metric2 = JobMetric("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         "loss",
         "2021-01-01T12:30:45",
         0.15,
         unit="dimensionless",
         step=100,
-        epoch=2,)
+        epoch=2, )
     metric3 = JobMetric("4f52804b-2fad-4e00-92c8-b593da3a8ed3",
         "loss",
         "2021-01-01T12:30:45",
         0.15,
         unit="dimensionless",
         step=100,
-        epoch=2,)  # Different job_id
+        epoch=2, )  # Different job_id
     metric4 = JobMetric("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         "accuracy",
         "2021-01-01T12:30:45",
         0.15,
         unit="dimensionless",
         step=100,
-        epoch=2,)  # Different metric_name
+        epoch=2, )  # Different metric_name
     metric5 = JobMetric("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         "loss",
         "2021-01-01T12:30:45",
         0.25,
         unit="dimensionless",
         step=100,
-        epoch=2,)  # Different value
+        epoch=2, )  # Different value
     metric6 = JobMetric("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         "loss",
         "2021-01-01T13:30:45",
         0.15,
         unit="dimensionless",
         step=100,
-        epoch=2,)  # Different timestamp
+        epoch=2, )  # Different timestamp
     metric7 = JobMetric("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         "loss",
         "2021-01-01T12:30:45",
         0.15,
         unit="percent",
         step=100,
-        epoch=2,)  # Different unit
+        epoch=2, )  # Different unit
     metric8 = JobMetric("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         "loss",
         "2021-01-01T12:30:45",
         0.15,
         unit="dimensionless",
         step=150,
-        epoch=2,)  # Different step
+        epoch=2, )  # Different step
     metric9 = JobMetric("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         "loss",
         "2021-01-01T12:30:45",
         0.15,
         unit="dimensionless",
         step=100,
-        epoch=3,)  # Different epoch
+        epoch=3, )  # Different epoch
 
     assert metric1 == metric2, "Should be equal"
     assert metric1 != metric3, "Different job_id"
@@ -339,7 +336,7 @@ def test_itemToJobMetric(example_job_metric, example_job_metric_minimal):
     # Test with missing required keys
     with pytest.raises(ValueError, match="Invalid item format"):
         itemToJobMetric({"PK": {"S": "JOB#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-                "SK": {"S": "METRIC#loss#2021-01-01T12:30:45"},})
+                "SK": {"S": "METRIC#loss#2021-01-01T12:30:45"}, })
 
     # Test with invalid item format
     with pytest.raises(ValueError, match="Error parsing item"):
@@ -349,7 +346,7 @@ def test_itemToJobMetric(example_job_metric, example_job_metric_minimal):
                 "job_id": {"S": "3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
                 "metric_name": {"S": "loss"},
                 "value": {"INVALID_TYPE": "0.15"},  # Invalid type
-                "timestamp": {"S": "2021-01-01T12:30:45"},})
+                "timestamp": {"S": "2021-01-01T12:30:45"}, })
 
 
 @pytest.mark.unit
@@ -359,21 +356,21 @@ def test_different_value_types():
     metric_int = JobMetric("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         "count",
         "2021-01-01T12:30:45",
-        42,)
+        42, )
     assert metric_int.value == 42
 
     # Test with float value
     metric_float = JobMetric("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         "accuracy",
         "2021-01-01T12:30:45",
-        0.95,)
+        0.95, )
     assert metric_float.value == 0.95
 
     # Test with dictionary value
     metric_dict = JobMetric("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         "embeddings",
         "2021-01-01T12:30:45",
-        {"vector": [0.1, 0.2, 0.3]},)
+        {"vector": [0.1, 0.2, 0.3]}, )
     assert metric_dict.value == {"vector": [0.1, 0.2, 0.3]}
 
 
@@ -392,7 +389,7 @@ def test_from_item():
         "unit": {"S": "dimensionless"},
         "step": {"N": "100"},
         "epoch": {"N": "2"},
-        "TYPE": {"S": "JOB_METRIC"},}
+        "TYPE": {"S": "JOB_METRIC"}, }
 
     # First test that we can convert the item to a metric
     try:
@@ -421,7 +418,7 @@ def test_from_item():
         "metric_name": {"S": "accuracy"},
         "timestamp": {"S": "2021-01-01T12:35:45"},
         "value": {"N": "87.5"},
-        "TYPE": {"S": "JOB_METRIC"},}
+        "TYPE": {"S": "JOB_METRIC"}, }
 
     try:
         job_metric = itemToJobMetric(item)

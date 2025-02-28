@@ -26,7 +26,7 @@ class QueueJob:
         job_id: str,
         enqueued_at: datetime or str,
         priority: str = "medium",
-        position: int = 0,):
+        position: int = 0, ):
         """Initializes a new QueueJob object for DynamoDB.
 
         Args:
@@ -70,7 +70,7 @@ class QueueJob:
             dict: The primary key for the queue-job association.
         """
         return {"PK": {"S": f"QUEUE#{self.queue_name}"},
-            "SK": {"S": f"JOB#{self.job_id}"},}
+            "SK": {"S": f"JOB#{self.job_id}"}, }
 
     def gsi1_key(self) -> dict:
         """Generates the GSI1 key for the queue-job association.
@@ -79,7 +79,7 @@ class QueueJob:
             dict: The GSI1 key for the queue-job association.
         """
         return {"GSI1PK": {"S": "JOB"},
-            "GSI1SK": {"S": f"JOB#{self.job_id}#QUEUE#{self.queue_name}"},}
+            "GSI1SK": {"S": f"JOB#{self.job_id}#QUEUE#{self.queue_name}"}, }
 
     def to_item(self) -> dict:
         """Converts the QueueJob object to a DynamoDB item.
@@ -92,7 +92,7 @@ class QueueJob:
             "TYPE": {"S": "QUEUE_JOB"},
             "enqueued_at": {"S": self.enqueued_at},
             "priority": {"S": self.priority},
-            "position": {"N": str(self.position)},}
+            "position": {"N": str(self.position)}, }
         return item
 
     def __repr__(self) -> str:
@@ -148,7 +148,7 @@ class QueueJob:
                 self.job_id,
                 self.enqueued_at,
                 self.priority,
-                self.position,))
+                self.position, ))
 
 
 def itemToQueueJob(item: dict) -> QueueJob:
@@ -185,6 +185,6 @@ def itemToQueueJob(item: dict) -> QueueJob:
             job_id=job_id,
             enqueued_at=enqueued_at,
             priority=priority,
-            position=position,)
+            position=position, )
     except (KeyError, IndexError) as e:
         raise ValueError(f"Error converting item to QueueJob: {e}")

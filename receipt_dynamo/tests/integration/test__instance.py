@@ -6,7 +6,7 @@ import pytest
 
 from receipt_dynamo import DynamoClient, Instance, InstanceJob
 from receipt_dynamo.data.shared_exceptions import (DynamoCriticalErrorException,
-    DynamoRetryableException,)
+    DynamoRetryableException, )
 
 
 @pytest.fixture
@@ -26,7 +26,7 @@ def sample_instance():
         ip_address="192.168.1.1",
         availability_zone="us-east-1a",
         is_spot=True,
-        health_status="healthy",)
+        health_status="healthy", )
 
 
 @pytest.fixture
@@ -36,7 +36,7 @@ def sample_instance_job(sample_instance):
         job_id=str(uuid.uuid4()),
         assigned_at=datetime.now().isoformat(),
         status="running",
-        resource_utilization={"cpu_utilization": 75, "memory_utilization": 60},)
+        resource_utilization={"cpu_utilization": 75, "memory_utilization": 60}, )
 
 
 @pytest.mark.integration
@@ -74,7 +74,7 @@ def test_addInstance_raises_conditional_check_failed(instance_dynamo, sample_ins
 
     # Try to add it again, should fail
     with pytest.raises(ValueError,
-        match=f"Instance {sample_instance.instance_id} already exists",):
+        match=f"Instance {sample_instance.instance_id} already exists", ):
         instance_dynamo.addInstance(sample_instance)
 
 
@@ -84,12 +84,12 @@ def test_addInstance_raises_resource_not_found(instance_dynamo, sample_instance,
     # Mock the put_item method to raise a ResourceNotFoundException
     mock_client = mocker.patch.object(instance_dynamo, "_client")
     mock_client.put_item.side_effect = botocore.exceptions.ClientError({"Error": {"Code": "ResourceNotFoundException",
-                "Message": "Table not found",}},
-        "PutItem",)
+                "Message": "Table not found", }},
+        "PutItem", )
 
     # Verify the correct exception is raised
     with pytest.raises(DynamoCriticalErrorException,
-        match=f"Table {instance_dynamo.table_name} does not exist",):
+        match=f"Table {instance_dynamo.table_name} does not exist", ):
         instance_dynamo.addInstance(sample_instance)
 
 
@@ -100,12 +100,12 @@ def test_addInstance_raises_provisioned_throughput_exceeded(instance_dynamo, sam
     # ProvisionedThroughputExceededException
     mock_client = mocker.patch.object(instance_dynamo, "_client")
     mock_client.put_item.side_effect = botocore.exceptions.ClientError({"Error": {"Code": "ProvisionedThroughputExceededException",
-                "Message": "Throughput exceeded",}},
-        "PutItem",)
+                "Message": "Throughput exceeded", }},
+        "PutItem", )
 
     # Verify the correct exception is raised
     with pytest.raises(DynamoRetryableException,
-        match="Provisioned throughput exceeded, retry later",):
+        match="Provisioned throughput exceeded, retry later", ):
         instance_dynamo.addInstance(sample_instance)
 
 
@@ -115,8 +115,8 @@ def test_addInstance_raises_internal_server_error(instance_dynamo, sample_instan
     # Mock the put_item method to raise an InternalServerError
     mock_client = mocker.patch.object(instance_dynamo, "_client")
     mock_client.put_item.side_effect = botocore.exceptions.ClientError({"Error": {"Code": "InternalServerError",
-                "Message": "Internal server error",}},
-        "PutItem",)
+                "Message": "Internal server error", }},
+        "PutItem", )
 
     # Verify the correct exception is raised
     with pytest.raises(DynamoRetryableException, match="Internal server error, retry later"):
@@ -129,12 +129,12 @@ def test_addInstance_raises_unknown_error(instance_dynamo, sample_instance, mock
     # Mock the put_item method to raise an unknown error
     mock_client = mocker.patch.object(instance_dynamo, "_client")
     mock_client.put_item.side_effect = botocore.exceptions.ClientError({"Error": {"Code": "UnknownError",
-                "Message": "Unknown error",}},
-        "PutItem",)
+                "Message": "Unknown error", }},
+        "PutItem", )
 
     # Verify the correct exception is raised
     with pytest.raises(DynamoCriticalErrorException,
-        match="Failed to add instance: Unknown error",):
+        match="Failed to add instance: Unknown error", ):
         instance_dynamo.addInstance(sample_instance)
 
 
@@ -151,7 +151,7 @@ def test_addInstances_success(instance_dynamo, sample_instance):
             ip_address="192.168.1.2",
             availability_zone="us-east-1b",
             is_spot=False,
-            health_status="unknown",),]
+            health_status="unknown", ), ]
 
     # Add the instances
     instance_dynamo.addInstances(instances)
@@ -182,7 +182,7 @@ def test_addInstances_raises_value_error_instances_not_list(instance_dynamo):
 def test_addInstances_raises_value_error_instances_not_list_of_instances(instance_dynamo, sample_instance):
     """Test that addInstances raises ValueError when instances contains non-Instance items."""
     with pytest.raises(ValueError,
-        match="All elements in instances must be instances of Instance",):
+        match="All elements in instances must be instances of Instance", ):
         instance_dynamo.addInstances([sample_instance, "not an instance"])
 
 
@@ -249,7 +249,7 @@ def test_updateInstance_raises_value_error_instance_none(instance_dynamo):
 
 
 @pytest.mark.integration
-def test_updateInstance_raises_value_error_instance_not_instance(instance_dynamo,):
+def test_updateInstance_raises_value_error_instance_not_instance(instance_dynamo, ):
     """Test that updateInstance raises ValueError when instance is not an Instance."""
     with pytest.raises(ValueError, match="instance must be an instance of Instance"):
         instance_dynamo.updateInstance("not an instance")
@@ -260,7 +260,7 @@ def test_updateInstance_raises_conditional_check_failed(instance_dynamo, sample_
     """Test that updateInstance raises ValueError when instance doesn't exist."""
     # Try to update without adding first
     with pytest.raises(ValueError,
-        match=f"Instance {sample_instance.instance_id} does not exist",):
+        match=f"Instance {sample_instance.instance_id} does not exist", ):
         instance_dynamo.updateInstance(sample_instance)
 
 
@@ -275,7 +275,7 @@ def test_deleteInstance_success(instance_dynamo, sample_instance):
 
     # Verify it was deleted
     with pytest.raises(ValueError,
-        match=f"Instance {sample_instance.instance_id} does not exist",):
+        match=f"Instance {sample_instance.instance_id} does not exist", ):
         instance_dynamo.getInstance(sample_instance.instance_id)
 
 
@@ -287,7 +287,7 @@ def test_deleteInstance_raises_value_error_instance_none(instance_dynamo):
 
 
 @pytest.mark.integration
-def test_deleteInstance_raises_value_error_instance_not_instance(instance_dynamo,):
+def test_deleteInstance_raises_value_error_instance_not_instance(instance_dynamo, ):
     """Test that deleteInstance raises ValueError when instance is not an Instance."""
     with pytest.raises(ValueError, match="instance must be an instance of Instance"):
         instance_dynamo.deleteInstance("not an instance")
@@ -298,7 +298,7 @@ def test_deleteInstance_raises_conditional_check_failed(instance_dynamo, sample_
     """Test that deleteInstance raises ValueError when instance doesn't exist."""
     # Try to delete without adding first
     with pytest.raises(ValueError,
-        match=f"Instance {sample_instance.instance_id} does not exist",):
+        match=f"Instance {sample_instance.instance_id} does not exist", ):
         instance_dynamo.deleteInstance(sample_instance)
 
 
@@ -326,7 +326,7 @@ def test_addInstanceJob_raises_value_error_instance_job_none(instance_dynamo):
 
 
 @pytest.mark.integration
-def test_addInstanceJob_raises_value_error_instance_job_not_instance_job(instance_dynamo,):
+def test_addInstanceJob_raises_value_error_instance_job_not_instance_job(instance_dynamo, ):
     """Test that addInstanceJob raises ValueError when instance_job is not an InstanceJob."""
     with pytest.raises(ValueError, match="instance_job must be an instance of InstanceJob"):
         instance_dynamo.addInstanceJob("not an instance job")
@@ -364,7 +364,7 @@ def test_listInstances_success(instance_dynamo, sample_instance):
         ip_address="192.168.1.2",
         availability_zone="us-east-1b",
         is_spot=False,
-        health_status="unknown",)
+        health_status="unknown", )
     instance_dynamo.addInstance(second_instance)
 
     # List instances
@@ -392,7 +392,7 @@ def test_listInstances_with_limit(instance_dynamo, sample_instance):
         ip_address="192.168.1.2",
         availability_zone="us-east-1b",
         is_spot=False,
-        health_status="unknown",)
+        health_status="unknown", )
     instance_dynamo.addInstance(second_instance)
 
     # List instances with a limit of 1
@@ -424,7 +424,7 @@ def test_listInstancesByStatus_success(instance_dynamo, sample_instance):
         ip_address="192.168.1.2",
         availability_zone="us-east-1b",
         is_spot=False,
-        health_status="unknown",)
+        health_status="unknown", )
     instance_dynamo.addInstance(second_instance)
 
     # List instances by status 'running'
@@ -454,7 +454,7 @@ def test_listInstanceJobs_success(instance_dynamo, sample_instance, sample_insta
         job_id=str(uuid.uuid4()),
         assigned_at=datetime.now().isoformat(),
         status="completed",
-        resource_utilization={"cpu_utilization": 50},)
+        resource_utilization={"cpu_utilization": 50}, )
     instance_dynamo.addInstanceJob(second_instance_job)
 
     # List instance jobs
@@ -483,14 +483,14 @@ def test_listInstancesForJob_success(instance_dynamo, sample_instance, sample_in
         ip_address="192.168.1.2",
         availability_zone="us-east-1b",
         is_spot=False,
-        health_status="unknown",)
+        health_status="unknown", )
     instance_dynamo.addInstance(second_instance)
 
     second_instance_job = InstanceJob(instance_id=second_instance.instance_id,
         job_id=sample_instance_job.job_id,
         assigned_at=datetime.now().isoformat(),
         status="assigned",
-        resource_utilization={},)
+        resource_utilization={}, )
     instance_dynamo.addInstanceJob(second_instance_job)
 
     # List instances for job

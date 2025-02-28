@@ -25,7 +25,7 @@ def sample_job_log():
         log_level="INFO",
         message="Test log message",
         source="test_component",
-        exception=None,)
+        exception=None, )
 
 
 @pytest.fixture
@@ -38,7 +38,7 @@ def multiple_job_logs():
             log_level=level,
             message=f"Test log message {i}",
             source="test_component",
-            exception=None,)
+            exception=None, )
         for i, level in enumerate(["INFO", "WARNING", "ERROR", "INFO", "DEBUG"])]
 
 
@@ -84,8 +84,8 @@ def test_addJobLog_raises_resource_not_found(job_log_dynamo, sample_job_log, moc
     # Mock the put_item method to raise ResourceNotFoundException
     mock_client = mocker.patch.object(job_log_dynamo, "_client")
     mock_client.put_item.side_effect = ClientError({"Error": {"Code": "ResourceNotFoundException",
-                "Message": "The table does not exist",}},
-        "PutItem",)
+                "Message": "The table does not exist", }},
+        "PutItem", )
 
     # Attempt to add the job log
     with pytest.raises(ClientError) as excinfo:
@@ -275,8 +275,8 @@ def test_listJobLogs_with_resource_not_found(job_log_dynamo, mocker):
     # Mock the query method to raise ResourceNotFoundException
     mock_client = mocker.patch.object(job_log_dynamo, "_client")
     mock_client.query.side_effect = ClientError({"Error": {"Code": "ResourceNotFoundException",
-                "Message": "The table does not exist",}},
-        "Query",)
+                "Message": "The table does not exist", }},
+        "Query", )
 
     # Attempt to list the job logs
     job_id = str(uuid.uuid4())

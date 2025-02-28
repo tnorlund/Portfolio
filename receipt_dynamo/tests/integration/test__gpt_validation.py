@@ -16,7 +16,7 @@ def sample_gpt_validation():
         receipt_id=7,
         query="Is this the total amount?",
         response="Yes, it is the total.",
-        timestamp_added=datetime(2021, 1, 1, 0, 0, 0),)
+        timestamp_added=datetime(2021, 1, 1, 0, 0, 0), )
 
 
 def test_add_and_get_gpt_validation(dynamodb_table: Literal["MyMockedTable"], sample_gpt_validation):
@@ -28,7 +28,7 @@ def test_add_and_get_gpt_validation(dynamodb_table: Literal["MyMockedTable"], sa
     client.addGPTValidation(sample_gpt_validation)
     # Retrieve it back using the key parameters
     retrieved = client.getGPTValidation(image_id=sample_gpt_validation.image_id,
-        receipt_id=sample_gpt_validation.receipt_id,)
+        receipt_id=sample_gpt_validation.receipt_id, )
     assert retrieved == sample_gpt_validation
 
 
@@ -45,7 +45,7 @@ def test_update_gpt_validation(dynamodb_table: Literal["MyMockedTable"], sample_
     client.updateGPTValidation(sample_gpt_validation)
     # Retrieve the updated record and verify the change
     updated = client.getGPTValidation(image_id=sample_gpt_validation.image_id,
-        receipt_id=sample_gpt_validation.receipt_id,)
+        receipt_id=sample_gpt_validation.receipt_id, )
     assert updated.response == "Updated response."
 
 
@@ -60,10 +60,10 @@ def test_delete_gpt_validation(dynamodb_table: Literal["MyMockedTable"], sample_
     # Attempting to retrieve it should raise a ValueError
     with pytest.raises(ValueError, match="GPTValidation record not found"):
         client.getGPTValidation(image_id=sample_gpt_validation.image_id,
-            receipt_id=sample_gpt_validation.receipt_id,)
+            receipt_id=sample_gpt_validation.receipt_id, )
 
 
-def test_gpt_validation_batch_add_list(dynamodb_table: Literal["MyMockedTable"],):
+def test_gpt_validation_batch_add_list(dynamodb_table: Literal["MyMockedTable"], ):
     """
     Tests adding multiple GPTValidation records in batch and then listing them.
     """
@@ -75,7 +75,7 @@ def test_gpt_validation_batch_add_list(dynamodb_table: Literal["MyMockedTable"],
             receipt_id=7 + i,
             query=f"Query {i}",
             response=f"Response {i}",
-            timestamp_added=datetime(2021, 1, 1, 0, 0, 0),)
+            timestamp_added=datetime(2021, 1, 1, 0, 0, 0), )
         validations.append(validation)
     # Batch add the records
     client.addGPTValidations(validations)
@@ -93,13 +93,13 @@ def test_gpt_validation_batch_add_list(dynamodb_table: Literal["MyMockedTable"],
     assert queries.issubset(listed_queries)
 
 
-def test_gpt_validation_get_nonexistent(dynamodb_table: Literal["MyMockedTable"],):
+def test_gpt_validation_get_nonexistent(dynamodb_table: Literal["MyMockedTable"], ):
     """
     Tests that attempting to get a non-existent record raises a ValueError.
     """
     with pytest.raises(ValueError, match="GPTValidation record not found"):
         DynamoClient(dynamodb_table).getGPTValidation(image_id="nonexistent-id",
-            receipt_id=1,)
+            receipt_id=1, )
 
 
 def test_update_nonexistent_gpt_validation(dynamodb_table: Literal["MyMockedTable"], sample_gpt_validation):
@@ -134,7 +134,7 @@ def test_listGPTValidations_no_limit(dynamodb_table, sample_gpt_validation):
         receipt_id=8,
         query="What is the tax?",
         response="Tax is $5.00.",
-        timestamp_added=datetime(2021, 1, 2, 0, 0, 0),)
+        timestamp_added=datetime(2021, 1, 2, 0, 0, 0), )
     client.addGPTValidation(validation1)
     client.addGPTValidation(validation2)
 
@@ -143,7 +143,7 @@ def test_listGPTValidations_no_limit(dynamodb_table, sample_gpt_validation):
     # Verify that both records are returned.
     returned_ids = {(v.image_id, v.receipt_id) for v in validations}
     expected_ids = {(validation1.image_id, validation1.receipt_id),
-        (validation2.image_id, validation2.receipt_id),}
+        (validation2.image_id, validation2.receipt_id), }
     assert expected_ids.issubset(returned_ids)
     # With no limit, we expect pagination to complete.
     assert lek is None
@@ -165,7 +165,7 @@ def test_listGPTValidations_with_limit_and_pagination(dynamodb_table):
             receipt_id=10 + i,
             query=f"Query {i}",
             response=f"Response {i}",
-            timestamp_added=datetime(2021, 1, 1, 0, 0, 0),)
+            timestamp_added=datetime(2021, 1, 1, 0, 0, 0), )
         validations_to_add.append(validation)
         client.addGPTValidation(validation)
 

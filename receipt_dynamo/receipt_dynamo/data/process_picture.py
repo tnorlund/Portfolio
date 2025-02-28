@@ -17,7 +17,7 @@ from receipt_dynamo.data._geometry import (compute_hull_centroid,
     compute_receipt_box_from_skewed_extents,
     convex_hull,
     find_hull_extents_relative_to_centroid,
-    find_perspective_coeffs,)
+    find_perspective_coeffs, )
 from receipt_dynamo.data._ocr import apple_vision_ocr
 from receipt_dynamo.data._pulumi import load_env
 from receipt_dynamo.data.dynamo_client import DynamoClient
@@ -26,13 +26,13 @@ from receipt_dynamo.entities import (Image,
     ReceiptLetter,
     ReceiptLine,
     ReceiptWindow,
-    ReceiptWord,)
+    ReceiptWord, )
 
 
 def process_picture(receipt_image_path: Path,
     raw_prefix: str = "raw",
     cdn_prefix: str = "assets",
-    pulumi_env: str = "dev",) -> None:
+    pulumi_env: str = "dev", ) -> None:
     s3 = boto3.client("s3")
     if raw_prefix.endswith("/"):
         raw_prefix = raw_prefix[:-1]
@@ -70,7 +70,7 @@ def process_picture(receipt_image_path: Path,
             refined_lines,
             refined_words,
             refined_letters,
-            windows,) = _get_ocr_and_windows(image_path)
+            windows, ) = _get_ocr_and_windows(image_path)
         image_id = refined_lines[0].image_id
         image = PIL_Image.open(image_path)
         dynamo_lines.extend(refined_lines)
@@ -85,7 +85,7 @@ def process_picture(receipt_image_path: Path,
             s3.put_object(Bucket=raw_bucket_name,
                 Key=f"{raw_prefix}/{image_id}.png",
                 Body=image.tobytes(),
-                ContentType="image/png",)
+                ContentType="image/png", )
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code == "NoSuchBucket":
@@ -103,7 +103,7 @@ def process_picture(receipt_image_path: Path,
             s3.put_object(Bucket=cdn_bucket_name,
                 Key=f"{cdn_prefix}/{image_id}.jpg",
                 Body=jpeg_data,
-                ContentType="image/jpeg",)
+                ContentType="image/jpeg", )
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code == "NoSuchBucket":
@@ -118,7 +118,7 @@ def process_picture(receipt_image_path: Path,
                 s3.put_object(Bucket=raw_bucket_name,
                     Key=f"{raw_prefix}/{image_id}_RECEIPT_{i:05d}.png",
                     Body=receipt_image.tobytes(),
-                    ContentType="image/png",)
+                    ContentType="image/png", )
             except ClientError as e:
                 error_code = e.response["Error"]["Code"]
                 if error_code == "NoSuchBucket":
@@ -137,7 +137,7 @@ def process_picture(receipt_image_path: Path,
                 s3.put_object(Bucket=cdn_bucket_name,
                     Key=f"{cdn_prefix}/{image_id}_RECEIPT_{i:05d}.jpg",
                     Body=jpeg_data,
-                    ContentType="image/jpeg",)
+                    ContentType="image/jpeg", )
             except ClientError as e:
                 error_code = e.response["Error"]["Code"]
                 if error_code == "NoSuchBucket":
@@ -156,7 +156,7 @@ def process_picture(receipt_image_path: Path,
                 raw_s3_key=f"{raw_prefix}/{image_id}.png",
                 cdn_s3_bucket=cdn_bucket_name,
                 cdn_s3_key=f"{cdn_prefix}/{image_id}.jpg",
-                sha256=_calculate_sha256_from_bytes(image.tobytes()),))
+                sha256=_calculate_sha256_from_bytes(image.tobytes()), ))
         # Build each receipt object
         for i, receipt_image in enumerate(receipt_images, start=1):
             # Get the matching receipt box.
@@ -165,13 +165,13 @@ def process_picture(receipt_image_path: Path,
                 raise ValueError(f"Receipt box not found for receipt {i}")
             # Convert coordinates from [x,y] lists to {x:x, y:y} dicts
             top_left = {"x": receipt_box["receipt_box_corners"][0][0],
-                "y": receipt_box["receipt_box_corners"][0][1],}
+                "y": receipt_box["receipt_box_corners"][0][1], }
             top_right = {"x": receipt_box["receipt_box_corners"][1][0],
-                "y": receipt_box["receipt_box_corners"][1][1],}
+                "y": receipt_box["receipt_box_corners"][1][1], }
             bottom_right = {"x": receipt_box["receipt_box_corners"][2][0],
-                "y": receipt_box["receipt_box_corners"][2][1],}
+                "y": receipt_box["receipt_box_corners"][2][1], }
             bottom_left = {"x": receipt_box["receipt_box_corners"][3][0],
-                "y": receipt_box["receipt_box_corners"][3][1],}
+                "y": receipt_box["receipt_box_corners"][3][1], }
             dynamo_receipts.append(Receipt(receipt_id=i,
                     image_id=image_id,
                     width=image.width,
@@ -185,7 +185,7 @@ def process_picture(receipt_image_path: Path,
                     bottom_right=bottom_right,
                     sha256=_calculate_sha256_from_bytes(receipt_image.tobytes()),
                     cdn_s3_bucket=cdn_bucket_name,
-                    cdn_s3_key=f"{cdn_prefix}/{image_id}_RECEIPT_{i:05d}.jpg",))
+                    cdn_s3_key=f"{cdn_prefix}/{image_id}_RECEIPT_{i:05d}.jpg", ))
 
         # Get the matching receipt window.
         receipt_window = next((window for window in windows if window["receipt_id"] == i), None)
@@ -195,14 +195,14 @@ def process_picture(receipt_image_path: Path,
         for corner_name in ["top_left",
             "top_right",
             "bottom_left",
-            "bottom_right",]:
+            "bottom_right", ]:
             window = receipt_window[corner_name]
             # Upload the window image to the raw bucket
             try:
                 s3.put_object(Bucket=raw_bucket_name,
                     Key=f"{raw_prefix}/{image_id}_RECEIPT_{i:05d}_RECEIPT_WINDOW_{corner_name.upper()}.png",
                     Body=window["image"].tobytes(),
-                    ContentType="image/png",)
+                    ContentType="image/png", )
             except ClientError as e:
                 error_code = e.response["Error"]["Code"]
                 if error_code == "NoSuchBucket":
@@ -221,7 +221,7 @@ def process_picture(receipt_image_path: Path,
                 s3.put_object(Bucket=cdn_bucket_name,
                     Key=f"{cdn_prefix}/{image_id}_RECEIPT_{i:05d}_RECEIPT_WINDOW_{corner_name.upper()}.jpg",
                     Body=jpeg_data,
-                    ContentType="image/jpeg",)
+                    ContentType="image/jpeg", )
             except ClientError as e:
                 error_code = e.response["Error"]["Code"]
                 if error_code == "NoSuchBucket":
@@ -240,7 +240,7 @@ def process_picture(receipt_image_path: Path,
                     width=window["width"],
                     height=window["height"],
                     inner_corner_coordinates=window["inner_corner"],
-                    gpt_guess=None,))
+                    gpt_guess=None, ))
         print(".", end="", flush=True)
     print()  # End the line after all chunks are processed.
 
@@ -254,10 +254,10 @@ def process_picture(receipt_image_path: Path,
     _upload_entities_in_chunks(dynamo_client.addReceiptWords, dynamo_receipt_words, "ReceiptWords")
     _upload_entities_in_chunks(dynamo_client.addReceiptLetters,
         dynamo_receipt_letters,
-        "ReceiptLetters",)
+        "ReceiptLetters", )
     _upload_entities_in_chunks(dynamo_client.addReceiptWindows,
         dynamo_receipt_windows,
-        "ReceiptWindows",)
+        "ReceiptWindows", )
 
 
 def _upload_entities_in_chunks(upload_method, entities, entity_name):
@@ -272,7 +272,7 @@ def _upload_entities_in_chunks(upload_method, entities, entity_name):
     print()  # End the line after all chunks are processed.
 
 
-def _get_ocr_and_windows(image_path: Path,) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+def _get_ocr_and_windows(image_path: Path, ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """ """
     # Raise an error if the image path does not exist.
     if not image_path.exists():
@@ -334,7 +334,7 @@ def _get_ocr_and_windows(image_path: Path,) -> Tuple[Dict[str, Any], Dict[str, A
         receipt_box_corners = compute_receipt_box_from_skewed_extents(hull, cx, cy, -avg_angle_degrees)
         receipt_boxes.append({"image_id": image_id,
                 "receipt_id": cluster_id + 1,
-                "receipt_box_corners": receipt_box_corners,})
+                "receipt_box_corners": receipt_box_corners, })
         # Estimate average width/height of receipt box
         top_w = math.dist(receipt_box_corners[0], receipt_box_corners[1])
         bottom_w = math.dist(receipt_box_corners[3], receipt_box_corners[2])
@@ -353,7 +353,7 @@ def _get_ocr_and_windows(image_path: Path,) -> Tuple[Dict[str, Any], Dict[str, A
         dst_corners = [(0, 0),
             (warped_image_width - 1, 0),
             (warped_image_width - 1, warped_image_height - 1),
-            (0, warped_image_height - 1),]
+            (0, warped_image_height - 1), ]
         a_i, b_i, c_i, d_i, e_i, f_i, g_i, h_i = find_perspective_coeffs(src_points=receipt_box_corners, dst_points=dst_corners)
         inverse_coeffs = (a_i, b_i, c_i, d_i, e_i, f_i, g_i, h_i)
 
@@ -361,7 +361,7 @@ def _get_ocr_and_windows(image_path: Path,) -> Tuple[Dict[str, Any], Dict[str, A
         warped_img = image.transform((warped_image_width, warped_image_height),
             PIL_Image.PERSPECTIVE,
             inverse_coeffs,
-            resample=PIL_Image.BICUBIC,)
+            resample=PIL_Image.BICUBIC, )
         receipt_images.append(warped_img)
         warped_img.save(warp_image_path)
         # Perform OCR on the warped image.
@@ -372,15 +372,15 @@ def _get_ocr_and_windows(image_path: Path,) -> Tuple[Dict[str, Any], Dict[str, A
         # Convert the refined OCR results to Receipt-level objects.
         receipt_lines.extend([ReceiptLine(**{**dict(line),
                         "image_id": image_id,
-                        "receipt_id": cluster_id + 1,})
+                        "receipt_id": cluster_id + 1, })
                 for line in refined_lines])
         receipt_words.extend([ReceiptWord(**{**dict(word),
                         "image_id": image_id,
-                        "receipt_id": cluster_id + 1,})
+                        "receipt_id": cluster_id + 1, })
                 for word in refined_words])
         receipt_letters.extend([ReceiptLetter(**{**dict(letter),
                         "image_id": image_id,
-                        "receipt_id": cluster_id + 1,})
+                        "receipt_id": cluster_id + 1, })
                 for letter in refined_letters])
 
         # Warp the refined lines back to the original image.
@@ -389,30 +389,30 @@ def _get_ocr_and_windows(image_path: Path,) -> Tuple[Dict[str, Any], Dict[str, A
                 src_width=warped_image_width,
                 src_height=warped_image_height,
                 dst_width=image.width,
-                dst_height=image.height,)
+                dst_height=image.height, )
             line.image_id = image_id
         for word in refined_words:
             word.warp_transform(*inverse_coeffs,
                 src_width=warped_image_width,
                 src_height=warped_image_height,
                 dst_width=image.width,
-                dst_height=image.height,)
+                dst_height=image.height, )
             word.image_id = image_id
         for letter in refined_letters:
             letter.warp_transform(*inverse_coeffs,
                 src_width=warped_image_width,
                 src_height=warped_image_height,
                 dst_width=image.width,
-                dst_height=image.height,)
+                dst_height=image.height, )
             letter.image_id = image_id
 
         # Crop each region from the original image.
         windows.append({**extract_and_save_corner_windows(image=image,
                     receipt_box_corners=receipt_box_corners,
                     offset_distance=300,
-                    max_dim=512,),
+                    max_dim=512, ),
                 "image_id": image_id,
-                "receipt_id": cluster_id + 1,})
+                "receipt_id": cluster_id + 1, })
 
     return (receipt_images,
         receipt_boxes,
@@ -422,7 +422,7 @@ def _get_ocr_and_windows(image_path: Path,) -> Tuple[Dict[str, Any], Dict[str, A
         refined_lines,
         refined_words,
         refined_letters,
-        windows,)
+        windows, )
 
 
 def _calculate_sha256_from_bytes(data: bytes) -> str:
