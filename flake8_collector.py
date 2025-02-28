@@ -7,15 +7,6 @@ import argparse
 from collections import defaultdict
 import glob
 import sys
-import json
-import time
-import requests
-from typing import Optional, Dict, List, Any, Tuple
-
-# Constants for API
-DEFAULT_MODEL = "gpt-4"
-DEFAULT_TEMPERATURE = 0.2
-API_URL = "https://api.openai.com/v1/chat/completions"
 
 
 def run_flake8(file_path='.', exclude=None, config_file=None):
@@ -142,102 +133,6 @@ def format_errors_for_chatgpt_prompt(file_path, errors, file_content=None):
     return "\n".join(output_lines)
 
 
-def call_chatgpt_api(prompt: str, api_key: str, model: str = DEFAULT_MODEL, 
-                     temperature: float = DEFAULT_TEMPERATURE) -> Optional[str]:
-    """
-    Call the ChatGPT API with the given prompt.
-    
-    Args:
-        prompt (str): The prompt to send to the API
-        api_key (str): The OpenAI API key
-        model (str): The model to use (default: "gpt-4")
-        temperature (float): The temperature to use (default: 0.2)
-        
-    Returns:
-        str: The fixed code, or None if an error occurred
-    """
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {api_key}"
-    }
-    
-    messages = [
-        {"role": "system", "content": "You are a helpful assistant that fixes Flake8 errors in Python code. Return only the fixed code as a Python code block without any additional explanations."},
-        {"role": "user", "content": prompt}
-    ]
-    
-    payload = {
-        "model": model,
-        "messages": messages,
-        "temperature": temperature
-    }
-    
-    try:
-        response = requests.post(API_URL, headers=headers, json=payload)
-        response.raise_for_status()
-        
-        result = response.json()
-        if "choices" in result and len(result["choices"]) > 0:
-            content = result["choices"][0]["message"]["content"]
-            
-            # Extract code from markdown code block
-            code_pattern = r"```(?:python)?\s*([\s\S]*?)\s*```"
-            match = re.search(code_pattern, content)
-            
-            if match:
-                return match.group(1).strip()
-            else:
-                # If no code block found, return the raw content
-                # (in case the model didn't use code blocks)
-                return content.strip()
-        else:
-            print("Error: Unexpected API response format")
-            return None
-    except requests.exceptions.RequestException as e:
-        print(f"API request error: {e}")
-        return None
-    except json.JSONDecodeError:
-        print("Error decoding API response")
-        return None
-    except Exception as e:
-        print(f"Unexpected error calling API: {e}")
-        return None
-
-
-def validate_fixed_code(code: str, file_path: str, exclude=None, config_file=None) -> bool:
-    """
-    Validate the fixed code by running flake8 on it.
-    
-    Args:
-        code (str): The fixed code
-        file_path (str): The path to the original file (for error messages)
-        exclude (list): List of patterns to exclude
-        config_file (str): Path to a Flake8 config file
-        
-    Returns:
-        bool: True if validation passed (no errors), False otherwise
-    """
-    # Create a temporary file
-    temp_file = f"{file_path}.temp"
-    try:
-        with open(temp_file, 'w') as f:
-            f.write(code)
-            
-        # Run flake8 on the temporary file
-        output = run_flake8(temp_file, exclude, config_file)
-        
-        if not output:
-            return True
-        else:
-            print(f"Warning: Fixed code for {file_path} still has Flake8 errors:")
-            print(output)
-            return False
-    finally:
-        # Clean up the temporary file
-        if os.path.exists(temp_file):
-            os.remove(temp_file)
-
-
 def read_file_content(file_path):
     """
     Read the content of a file.
@@ -297,30 +192,7 @@ def main():
     parser.add_argument('-o', '--output_dir', help='Output directory for ChatGPT prompts (default: same directory as this script)')
     parser.add_argument('-s', '--suffix', default='_fix', help='Suffix to add to markdown filenames (default: _fix)')
     
-    # API-related arguments
-    parser.add_argument('--api', action='store_true', help='Use ChatGPT API to automatically fix errors')
-    parser.add_argument('--api-key', help='OpenAI API key (if not set, uses OPENAI_API_KEY environment variable)')
-    parser.add_argument('--model', default=DEFAULT_MODEL, help=f'OpenAI model to use (default: {DEFAULT_MODEL})')
-    parser.add_argument('--temperature', type=float, default=DEFAULT_TEMPERATURE, 
-                      help=f'Temperature for API requests (default: {DEFAULT_TEMPERATURE})')
-    parser.add_argument('--apply', action='store_true', help='Apply the fixes to the original files (requires --api)')
-    parser.add_argument('--fixed-suffix', default='_fixed', help='Suffix for fixed Python files (default: _fixed)')
-    parser.add_argument('--validate', action='store_true', help='Validate the fixed code by running flake8 on it again')
-    
     args = parser.parse_args()
-    
-    # Check if --apply requires --api
-    if args.apply and not args.api:
-        print("Error: --apply requires --api")
-        sys.exit(1)
-    
-    # Get API key if using API
-    api_key = None
-    if args.api:
-        api_key = args.api_key or os.environ.get('OPENAI_API_KEY')
-        if not api_key:
-            print("Error: OpenAI API key is required. Set it with --api-key or OPENAI_API_KEY environment variable.")
-            sys.exit(1)
     
     # Determine files to check
     files_to_check = []
@@ -354,7 +226,6 @@ def main():
     # Process each file individually
     files_with_errors = 0
     total_errors = 0
-    fixed_files = 0
     
     for file_path in files_to_check:
         flake8_output = run_flake8(file_path, args.exclude, args.config)
@@ -381,55 +252,7 @@ def main():
         
         # Create a clean filename based on the Python file path
         file_name = os.path.basename(file_path)
-        base_name, ext = os.path.splitext(file_name)
-        
-        if args.api:
-            print(f"Sending {file_path} to ChatGPT API for fixing ({len(errors)} errors)...")
-            fixed_code = call_chatgpt_api(prompt, api_key, args.model, args.temperature)
-            
-            if fixed_code:
-                # Validate the fixed code if requested
-                if args.validate:
-                    print(f"Validating fixed code for {file_path}...")
-                    valid = validate_fixed_code(fixed_code, file_path, args.exclude, args.config)
-                    if not valid:
-                        print(f"Warning: Fixed code for {file_path} still has Flake8 errors.")
-                
-                # Save the fixed code
-                if args.apply:
-                    # Backup the original file
-                    backup_file = f"{file_path}.bak"
-                    try:
-                        with open(backup_file, 'w') as f:
-                            f.write(file_content)
-                        
-                        # Apply the fix to the original file
-                        with open(file_path, 'w') as f:
-                            f.write(fixed_code)
-                        
-                        print(f"Applied fixes to {file_path} (backup saved as {backup_file})")
-                    except Exception as e:
-                        print(f"Error applying fixes to {file_path}: {e}")
-                else:
-                    # Save to a new file
-                    fixed_file = os.path.join(
-                        os.path.dirname(file_path), 
-                        f"{base_name}{args.fixed_suffix}{ext}"
-                    )
-                    
-                    try:
-                        with open(fixed_file, 'w') as f:
-                            f.write(fixed_code)
-                        
-                        print(f"Saved fixed code to {fixed_file}")
-                    except Exception as e:
-                        print(f"Error saving fixed code to {fixed_file}: {e}")
-                
-                fixed_files += 1
-            else:
-                print(f"Error: Failed to fix {file_path} using the API")
-        
-        # Always save the prompt file
+        base_name, _ = os.path.splitext(file_name)
         output_file = os.path.join(output_dir, f"{base_name}{args.suffix}.md")
         
         # Write the prompt to the output file
@@ -438,24 +261,13 @@ def main():
         
         files_with_errors += 1
         total_errors += len(errors)
-        
-        if not args.api:
-            print(f"Created prompt for {file_path} with {len(errors)} errors -> {output_file}")
+        print(f"Created prompt for {file_path} with {len(errors)} errors -> {output_file}")
     
     if files_with_errors == 0:
         print("No Flake8 errors found in any files!")
     else:
-        print(f"\nSummary:")
-        print(f"- Files with errors: {files_with_errors}")
-        print(f"- Total errors found: {total_errors}")
-        
-        if args.api:
-            print(f"- Files successfully fixed: {fixed_files}")
-        
-        print(f"- All prompts are saved in: {output_dir}")
-        
-        if args.api and args.apply:
-            print("\nNote: Original files have been modified. Backups with .bak extension were created.")
+        print(f"Created prompts for {files_with_errors} files with a total of {total_errors} errors.")
+        print(f"All prompts are saved in: {output_dir}")
 
 
 if __name__ == '__main__':
