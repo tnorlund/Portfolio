@@ -4,7 +4,10 @@ from datetime import datetime
 import uuid
 from receipt_dynamo.entities.instance import Instance, itemToInstance
 from receipt_dynamo.entities.instance_job import InstanceJob, itemToInstanceJob
-from receipt_dynamo.data.shared_exceptions import DynamoRetryableException, DynamoCriticalErrorException
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoRetryableException,
+    DynamoCriticalErrorException,
+)
 from receipt_dynamo.data._job import validate_last_evaluated_key
 
 
@@ -45,7 +48,9 @@ class _Instance:
                 raise DynamoCriticalErrorException(
                     f"Table {self.table_name} does not exist"
                 )
-            elif e.response["Error"]["Code"] == "ProvisionedThroughputExceededException":
+            elif (
+                e.response["Error"]["Code"] == "ProvisionedThroughputExceededException"
+            ):
                 raise DynamoRetryableException(
                     "Provisioned throughput exceeded, retry later"
                 )
@@ -82,7 +87,9 @@ class _Instance:
             items = [instance.to_item() for instance in instances]
 
             # Batch write the items to DynamoDB
-            request_items = {self.table_name: [{"PutRequest": {"Item": item}} for item in items]}
+            request_items = {
+                self.table_name: [{"PutRequest": {"Item": item}} for item in items]
+            }
             response = self._client.batch_write_item(RequestItems=request_items)
 
             # Handle unprocessed items
@@ -154,7 +161,9 @@ class _Instance:
                 raise DynamoCriticalErrorException(
                     f"Table {self.table_name} does not exist"
                 )
-            elif e.response["Error"]["Code"] == "ProvisionedThroughputExceededException":
+            elif (
+                e.response["Error"]["Code"] == "ProvisionedThroughputExceededException"
+            ):
                 raise DynamoRetryableException(
                     "Provisioned throughput exceeded, retry later"
                 )
@@ -199,7 +208,9 @@ class _Instance:
                 raise DynamoCriticalErrorException(
                     f"Table {self.table_name} does not exist"
                 )
-            elif e.response["Error"]["Code"] == "ProvisionedThroughputExceededException":
+            elif (
+                e.response["Error"]["Code"] == "ProvisionedThroughputExceededException"
+            ):
                 raise DynamoRetryableException(
                     "Provisioned throughput exceeded, retry later"
                 )
@@ -252,7 +263,9 @@ class _Instance:
                     f"Failed to get instance: {e.response['Error']['Message']}"
                 )
 
-    def getInstanceWithJobs(self, instance_id: str) -> Tuple[Instance, List[InstanceJob]]:
+    def getInstanceWithJobs(
+        self, instance_id: str
+    ) -> Tuple[Instance, List[InstanceJob]]:
         """Gets an instance and its associated jobs from the DynamoDB table.
 
         Args:
@@ -310,7 +323,9 @@ class _Instance:
                 raise DynamoCriticalErrorException(
                     f"Table {self.table_name} does not exist"
                 )
-            elif e.response["Error"]["Code"] == "ProvisionedThroughputExceededException":
+            elif (
+                e.response["Error"]["Code"] == "ProvisionedThroughputExceededException"
+            ):
                 raise DynamoRetryableException(
                     "Provisioned throughput exceeded, retry later"
                 )
@@ -357,7 +372,9 @@ class _Instance:
                 raise DynamoCriticalErrorException(
                     f"Table {self.table_name} does not exist"
                 )
-            elif e.response["Error"]["Code"] == "ProvisionedThroughputExceededException":
+            elif (
+                e.response["Error"]["Code"] == "ProvisionedThroughputExceededException"
+            ):
                 raise DynamoRetryableException(
                     "Provisioned throughput exceeded, retry later"
                 )
@@ -404,7 +421,9 @@ class _Instance:
                 raise DynamoCriticalErrorException(
                     f"Table {self.table_name} does not exist"
                 )
-            elif e.response["Error"]["Code"] == "ProvisionedThroughputExceededException":
+            elif (
+                e.response["Error"]["Code"] == "ProvisionedThroughputExceededException"
+            ):
                 raise DynamoRetryableException(
                     "Provisioned throughput exceeded, retry later"
                 )
@@ -620,7 +639,9 @@ class _Instance:
 
         try:
             response = self._client.query(**query_params)
-            instance_jobs = [itemToInstanceJob(item) for item in response.get("Items", [])]
+            instance_jobs = [
+                itemToInstanceJob(item) for item in response.get("Items", [])
+            ]
             return instance_jobs, response.get("LastEvaluatedKey")
         except botocore.exceptions.ClientError as e:
             if e.response["Error"]["Code"] == "ResourceNotFoundException":
@@ -678,7 +699,9 @@ class _Instance:
 
         try:
             response = self._client.query(**query_params)
-            instance_jobs = [itemToInstanceJob(item) for item in response.get("Items", [])]
+            instance_jobs = [
+                itemToInstanceJob(item) for item in response.get("Items", [])
+            ]
             return instance_jobs, response.get("LastEvaluatedKey")
         except botocore.exceptions.ClientError as e:
             if e.response["Error"]["Code"] == "ResourceNotFoundException":
@@ -690,4 +713,4 @@ class _Instance:
             else:
                 raise DynamoCriticalErrorException(
                     f"Failed to list instances for job: {e.response['Error']['Message']}"
-                ) 
+                )
