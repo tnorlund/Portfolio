@@ -20,14 +20,12 @@ class InstanceJob:
         resource_utilization (Dict): Resource utilization metrics (CPU, memory, GPU, etc.)
     """
 
-    def __init__(
-        self,
+    def __init__(self,
         instance_id: str,
         job_id: str,
         assigned_at: datetime,
         status: str,
-        resource_utilization: Optional[Dict[str, Any]] = None,
-    ):
+        resource_utilization: Optional[Dict[str, Any]] = None,):
         """Initializes a new InstanceJob object for DynamoDB.
 
         Args:
@@ -51,24 +49,18 @@ class InstanceJob:
         elif isinstance(assigned_at, str):
             self.assigned_at = assigned_at
         else:
-            raise ValueError(
-                "assigned_at must be a datetime object or a string"
-            )
+            raise ValueError("assigned_at must be a datetime object or a string")
 
-        valid_statuses = [
-            "assigned",
+        valid_statuses = ["assigned",
             "running",
             "completed",
             "failed",
-            "cancelled",
-        ]
+            "cancelled",]
         if not isinstance(status, str) or status.lower() not in valid_statuses:
             raise ValueError(f"status must be one of {valid_statuses}")
         self.status = status.lower()
 
-        if resource_utilization is not None and not isinstance(
-            resource_utilization, dict
-        ):
+        if resource_utilization is not None and not isinstance(resource_utilization, dict):
             raise ValueError("resource_utilization must be a dictionary")
         self.resource_utilization = resource_utilization or {}
 
@@ -78,10 +70,8 @@ class InstanceJob:
         Returns:
             dict: The primary key for the instance-job relationship.
         """
-        return {
-            "PK": {"S": f"INSTANCE#{self.instance_id}"},
-            "SK": {"S": f"JOB#{self.job_id}"},
-        }
+        return {"PK": {"S": f"INSTANCE#{self.instance_id}"},
+            "SK": {"S": f"JOB#{self.job_id}"},}
 
     def gsi1_key(self) -> dict:
         """Generates the GSI1 key for the instance-job relationship.
@@ -89,10 +79,8 @@ class InstanceJob:
         Returns:
             dict: The GSI1 key for the instance-job relationship.
         """
-        return {
-            "GSI1PK": {"S": "JOB"},
-            "GSI1SK": {"S": f"JOB#{self.job_id}#INSTANCE#{self.instance_id}"},
-        }
+        return {"GSI1PK": {"S": "JOB"},
+            "GSI1SK": {"S": f"JOB#{self.job_id}#INSTANCE#{self.instance_id}"},}
 
     def to_item(self) -> dict:
         """Converts the InstanceJob object to a DynamoDB item.
@@ -100,18 +88,14 @@ class InstanceJob:
         Returns:
             dict: A dictionary representing the InstanceJob object as a DynamoDB item.
         """
-        item = {
-            **self.key(),
+        item = {**self.key(),
             **self.gsi1_key(),
             "TYPE": {"S": "INSTANCE_JOB"},
             "assigned_at": {"S": self.assigned_at},
-            "status": {"S": self.status},
-        }
+            "status": {"S": self.status},}
 
         if self.resource_utilization:
-            item["resource_utilization"] = {
-                "M": self._dict_to_dynamodb_map(self.resource_utilization)
-            }
+            item["resource_utilization"] = {"M": self._dict_to_dynamodb_map(self.resource_utilization)}
 
         return item
 
@@ -129,9 +113,7 @@ class InstanceJob:
             if isinstance(v, dict):
                 result[k] = {"M": self._dict_to_dynamodb_map(v)}
             elif isinstance(v, list):
-                result[k] = {
-                    "L": [self._to_dynamodb_value(item) for item in v]
-                }
+                result[k] = {"L": [self._to_dynamodb_value(item) for item in v]}
             elif isinstance(v, str):
                 result[k] = {"S": v}
             elif isinstance(v, (int, float)):
@@ -174,15 +156,13 @@ class InstanceJob:
         Returns:
             str: A string representation of the InstanceJob object.
         """
-        return (
-            "InstanceJob("
+        return ("InstanceJob("
             f"instance_id={_repr_str(self.instance_id)}, "
             f"job_id={_repr_str(self.job_id)}, "
             f"assigned_at={_repr_str(self.assigned_at)}, "
             f"status={_repr_str(self.status)}, "
             f"resource_utilization={self.resource_utilization}"
-            ")"
-        )
+            ")")
 
     def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
         """Returns an iterator over the InstanceJob object's attributes.
@@ -210,13 +190,11 @@ class InstanceJob:
         """
         if not isinstance(other, InstanceJob):
             return False
-        return (
-            self.instance_id == other.instance_id
+        return (self.instance_id == other.instance_id
             and self.job_id == other.job_id
             and self.assigned_at == other.assigned_at
             and self.status == other.status
-            and self.resource_utilization == other.resource_utilization
-        )
+            and self.resource_utilization == other.resource_utilization)
 
     def __hash__(self) -> int:
         """Returns the hash value of the InstanceJob object.
@@ -224,25 +202,15 @@ class InstanceJob:
         Returns:
             int: The hash value of the InstanceJob object.
         """
-        return hash(
-            (
-                self.instance_id,
+        return hash((self.instance_id,
                 self.job_id,
                 self.assigned_at,
                 self.status,
                 # Can't hash dictionaries, so convert to tuple of sorted items
-                (
-                    tuple(
-                        sorted(
-                            (k, str(v))
-                            for k, v in self.resource_utilization.items()
-                        )
-                    )
+                (tuple(sorted((k, str(v))
+                            for k, v in self.resource_utilization.items()))
                     if self.resource_utilization
-                    else None
-                ),
-            )
-        )
+                    else None),))
 
 
 def itemToInstanceJob(item: dict) -> InstanceJob:
@@ -257,19 +225,15 @@ def itemToInstanceJob(item: dict) -> InstanceJob:
     Raises:
         ValueError: When the item format is invalid.
     """
-    required_keys = {
-        "PK",
+    required_keys = {"PK",
         "SK",
         "TYPE",
         "assigned_at",
-        "status",
-    }
+        "status",}
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
-        raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
-        )
+        raise ValueError(f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}")
 
     try:
         # Parse instance_id and job_id from the PK and SK
@@ -282,21 +246,15 @@ def itemToInstanceJob(item: dict) -> InstanceJob:
 
         # Parse resource_utilization from DynamoDB map if present
         resource_utilization = None
-        if (
-            "resource_utilization" in item
-            and "M" in item["resource_utilization"]
-        ):
-            resource_utilization = _parse_dynamodb_map(
-                item["resource_utilization"]["M"]
-            )
+        if ("resource_utilization" in item
+            and "M" in item["resource_utilization"]):
+            resource_utilization = _parse_dynamodb_map(item["resource_utilization"]["M"])
 
-        return InstanceJob(
-            instance_id=instance_id,
+        return InstanceJob(instance_id=instance_id,
             job_id=job_id,
             assigned_at=assigned_at,
             status=status,
-            resource_utilization=resource_utilization,
-        )
+            resource_utilization=resource_utilization,)
     except KeyError as e:
         raise ValueError(f"Error converting item to InstanceJob: {e}")
 

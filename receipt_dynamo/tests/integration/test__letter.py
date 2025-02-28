@@ -5,50 +5,42 @@ import pytest
 
 from receipt_dynamo import DynamoClient, Letter
 
-correct_letter_params = {
-    "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+correct_letter_params = {"image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
     "line_id": 1,
     "word_id": 1,
     "letter_id": 1,
     "text": "0",
-    "bounding_box": {
-        "height": 0.022867568333804766,
+    "bounding_box": {"height": 0.022867568333804766,
         "width": 0.08688726243285705,
         "x": 0.4454336178993411,
-        "y": 0.9167082877754368,
-    },
+        "y": 0.9167082877754368,},
     "top_right": {"x": 0.5323208803321982, "y": 0.930772983660083},
     "top_left": {"x": 0.44837726707985254, "y": 0.9395758561092415},
     "bottom_right": {"x": 0.5293772311516867, "y": 0.9167082877754368},
     "bottom_left": {"x": 0.4454336178993411, "y": 0.9255111602245953},
     "angle_degrees": -5.986527,
     "angle_radians": -0.1044846,
-    "confidence": 1,
-}
+    "confidence": 1,}
 
 
 @pytest.fixture
 def example_letter():
-    return Letter(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+    return Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=1,
         word_id=1,
         letter_id=1,
         text="0",
-        bounding_box={
-            "height": 0.022867568333804766,
+        bounding_box={"height": 0.022867568333804766,
             "width": 0.08688726243285705,
             "x": 0.4454336178993411,
-            "y": 0.9167082877754368,
-        },
+            "y": 0.9167082877754368,},
         top_right={"x": 0.5323208803321982, "y": 0.930772983660083},
         top_left={"x": 0.44837726707985254, "y": 0.9395758561092415},
         bottom_right={"x": 0.5293772311516867, "y": 0.9167082877754368},
         bottom_left={"x": 0.4454336178993411, "y": 0.9255111602245953},
         angle_degrees=-5.986527,
         angle_radians=-0.1044846,
-        confidence=1,
-    )
+        confidence=1,)
 
 
 @pytest.mark.integration
@@ -61,10 +53,8 @@ def test_letter_add(dynamodb_table: Literal["MyMockedTable"]):
     client.addLetter(letter)
 
     # Assert
-    response = boto3.client("dynamodb", region_name="us-east-1").get_item(
-        TableName=dynamodb_table,
-        Key=letter.key(),
-    )
+    response = boto3.client("dynamodb", region_name="us-east-1").get_item(TableName=dynamodb_table,
+        Key=letter.key(),)
     assert "Item" in response, f"Item not found. response: {response}"
     assert response["Item"] == letter.to_item()
 
@@ -85,21 +75,15 @@ def test_letter_add_error(dynamodb_table: Literal["MyMockedTable"]):
 def test_letter_add_all(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    letters = [
-        Letter(**correct_letter_params),
-        Letter(**{**correct_letter_params, "letter_id": 2, "text": "1"}),
-    ]
+    letters = [Letter(**correct_letter_params),
+        Letter(**{**correct_letter_params, "letter_id": 2, "text": "1"}),]
 
     # Act
     client.addLetters(letters)
 
     # Assert
-    assert letters[0] == client.getLetter(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 1
-    )
-    assert letters[1] == client.getLetter(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 2
-    )
+    assert letters[0] == client.getLetter("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 1)
+    assert letters[1] == client.getLetter("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 2)
 
 
 @pytest.mark.integration
@@ -133,12 +117,8 @@ def test_letter_delete_error(dynamodb_table: Literal["MyMockedTable"]):
 def test_letter_delete_from_word(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addLetters(
-        [
-            Letter(**correct_letter_params),
-            Letter(**{**correct_letter_params, "letter_id": 2, "text": "1"}),
-        ]
-    )
+    client.addLetters([Letter(**correct_letter_params),
+            Letter(**{**correct_letter_params, "letter_id": 2, "text": "1"}),])
 
     # Act
     client.deleteLettersFromWord(1, 1, 1)
@@ -158,9 +138,7 @@ def test_letter_get(dynamodb_table: Literal["MyMockedTable"]):
 
     # Act
     client.addLetter(letter)
-    response = client.getLetter(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 1
-    )
+    response = client.getLetter("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 1)
 
     # Assert
     assert response == letter
@@ -182,10 +160,8 @@ def test_letter_get_error(dynamodb_table: Literal["MyMockedTable"]):
 def test_letter_list(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    letters = [
-        Letter(**correct_letter_params),
-        Letter(**{**correct_letter_params, "letter_id": 2, "text": "1"}),
-    ]
+    letters = [Letter(**correct_letter_params),
+        Letter(**{**correct_letter_params, "letter_id": 2, "text": "1"}),]
     client.addLetters(letters)
 
     # Act
@@ -209,9 +185,7 @@ def test_letter_list_from_word(dynamodb_table: Literal["MyMockedTable"]):
     client.addLetter(letter2)
 
     # Act
-    letters = client.listLettersFromWord(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1
-    )
+    letters = client.listLettersFromWord("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1)
 
     # Assert
     assert letter1 in letters

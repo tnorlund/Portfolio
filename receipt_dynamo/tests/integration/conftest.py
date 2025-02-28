@@ -5,8 +5,7 @@ import boto3
 import pytest
 from moto import mock_aws
 
-from receipt_dynamo import (
-    Image,
+from receipt_dynamo import (Image,
     Letter,
     Line,
     Receipt,
@@ -15,8 +14,7 @@ from receipt_dynamo import (
     ReceiptWord,
     ReceiptWordTag,
     Word,
-    WordTag,
-)
+    WordTag,)
 
 
 @pytest.fixture
@@ -32,68 +30,38 @@ def dynamodb_table():
         dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
 
         table_name = "MyMockedTable"
-        dynamodb.create_table(
-            TableName=table_name,
-            KeySchema=[
-                {"AttributeName": "PK", "KeyType": "HASH"},
-                {"AttributeName": "SK", "KeyType": "RANGE"},
-            ],
-            AttributeDefinitions=[
-                {"AttributeName": "PK", "AttributeType": "S"},
+        dynamodb.create_table(TableName=table_name,
+            KeySchema=[{"AttributeName": "PK", "KeyType": "HASH"},
+                {"AttributeName": "SK", "KeyType": "RANGE"},],
+            AttributeDefinitions=[{"AttributeName": "PK", "AttributeType": "S"},
                 {"AttributeName": "SK", "AttributeType": "S"},
                 {"AttributeName": "GSI1PK", "AttributeType": "S"},
                 {"AttributeName": "GSI1SK", "AttributeType": "S"},
                 {"AttributeName": "GSI2PK", "AttributeType": "S"},
                 {"AttributeName": "GSI2SK", "AttributeType": "S"},
-                {"AttributeName": "TYPE", "AttributeType": "S"},
-            ],
-            ProvisionedThroughput={
-                "ReadCapacityUnits": 5,
-                "WriteCapacityUnits": 5,
-            },
-            GlobalSecondaryIndexes=[
-                {
-                    "IndexName": "GSI1",
-                    "KeySchema": [
-                        {"AttributeName": "GSI1PK", "KeyType": "HASH"},
-                        {"AttributeName": "GSI1SK", "KeyType": "RANGE"},
-                    ],
+                {"AttributeName": "TYPE", "AttributeType": "S"},],
+            ProvisionedThroughput={"ReadCapacityUnits": 5,
+                "WriteCapacityUnits": 5,},
+            GlobalSecondaryIndexes=[{"IndexName": "GSI1",
+                    "KeySchema": [{"AttributeName": "GSI1PK", "KeyType": "HASH"},
+                        {"AttributeName": "GSI1SK", "KeyType": "RANGE"},],
                     "Projection": {"ProjectionType": "ALL"},
-                    "ProvisionedThroughput": {
-                        "ReadCapacityUnits": 5,
-                        "WriteCapacityUnits": 5,
-                    },
-                },
-                {
-                    "IndexName": "GSI2",
-                    "KeySchema": [
-                        {"AttributeName": "GSI2PK", "KeyType": "HASH"},
-                        {"AttributeName": "GSI2SK", "KeyType": "RANGE"},
-                    ],
+                    "ProvisionedThroughput": {"ReadCapacityUnits": 5,
+                        "WriteCapacityUnits": 5,},},
+                {"IndexName": "GSI2",
+                    "KeySchema": [{"AttributeName": "GSI2PK", "KeyType": "HASH"},
+                        {"AttributeName": "GSI2SK", "KeyType": "RANGE"},],
                     "Projection": {"ProjectionType": "ALL"},
-                    "ProvisionedThroughput": {
-                        "ReadCapacityUnits": 5,
-                        "WriteCapacityUnits": 5,
-                    },
-                },
-                {
-                    "IndexName": "GSITYPE",
-                    "KeySchema": [
-                        {"AttributeName": "TYPE", "KeyType": "HASH"}
-                    ],
+                    "ProvisionedThroughput": {"ReadCapacityUnits": 5,
+                        "WriteCapacityUnits": 5,},},
+                {"IndexName": "GSITYPE",
+                    "KeySchema": [{"AttributeName": "TYPE", "KeyType": "HASH"}],
                     "Projection": {"ProjectionType": "ALL"},
-                    "ProvisionedThroughput": {
-                        "ReadCapacityUnits": 5,
-                        "WriteCapacityUnits": 5,
-                    },
-                },
-            ],
-        )
+                    "ProvisionedThroughput": {"ReadCapacityUnits": 5,
+                        "WriteCapacityUnits": 5,},},],)
 
         # Wait for the table to be created
-        dynamodb.meta.client.get_waiter("table_exists").wait(
-            TableName=table_name
-        )
+        dynamodb.meta.client.get_waiter("table_exists").wait(TableName=table_name)
 
         # Yield the table name so your tests can reference it
         yield table_name
@@ -163,21 +131,12 @@ def expected_results(request):
     word_tags = [WordTag(**wt) for wt in results.get("word_tags", [])]
     letters = [Letter(**letter) for letter in results.get("letters", [])]
     receipts = [Receipt(**rcpt) for rcpt in results.get("receipts", [])]
-    receipt_lines = [
-        ReceiptLine(**rl) for rl in results.get("receipt_lines", [])
-    ]
-    receipt_words = [
-        ReceiptWord(**rw) for rw in results.get("receipt_words", [])
-    ]
-    receipt_word_tags = [
-        ReceiptWordTag(**rwt) for rwt in results.get("receipt_word_tags", [])
-    ]
-    receipt_letters = [
-        ReceiptLetter(**rltr) for rltr in results.get("receipt_letters", [])
-    ]
+    receipt_lines = [ReceiptLine(**rl) for rl in results.get("receipt_lines", [])]
+    receipt_words = [ReceiptWord(**rw) for rw in results.get("receipt_words", [])]
+    receipt_word_tags = [ReceiptWordTag(**rwt) for rwt in results.get("receipt_word_tags", [])]
+    receipt_letters = [ReceiptLetter(**rltr) for rltr in results.get("receipt_letters", [])]
 
-    return (
-        images,
+    return (images,
         lines,
         words,
         word_tags,
@@ -186,5 +145,4 @@ def expected_results(request):
         receipt_lines,
         receipt_words,
         receipt_word_tags,
-        receipt_letters,
-    )
+        receipt_letters,)

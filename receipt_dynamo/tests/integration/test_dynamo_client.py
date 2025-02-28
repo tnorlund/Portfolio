@@ -25,8 +25,6 @@ def test_dynamo_client_init_table_not_found(dynamodb_table):
     Tests that DynamoClient raises a ValueError when the specified table does not exist.
     """
     fake_table = f"NonExistentTable-{uuid.uuid4()}"
-    with pytest.raises(
-        ValueError,
-        match=f"The table '{fake_table}' does not exist in region 'us-east-1'.",
-    ):
+    with pytest.raises(ValueError,
+        match=f"The table '{fake_table}' does not exist in region 'us-east-1'.",):
         DynamoClient(fake_table)

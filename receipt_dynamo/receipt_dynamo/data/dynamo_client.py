@@ -25,8 +25,7 @@ from receipt_dynamo.data._word import _Word
 from receipt_dynamo.data._word_tag import _WordTag
 
 
-class DynamoClient(
-    _Image,
+class DynamoClient(_Image,
     _Line,
     _Word,
     _Letter,
@@ -47,8 +46,7 @@ class DynamoClient(
     _JobLog,
     _JobDependency,
     _Queue,
-    _Instance,
-):
+    _Instance,):
     """A class used to represent a DynamoDB client."""
 
     def __init__(self, table_name: str, region: str = "us-east-1"):
@@ -69,7 +67,4 @@ class DynamoClient(
         try:
             self._client.describe_table(TableName=self.table_name)
         except self._client.exceptions.ResourceNotFoundException:
-            raise ValueError(
-                f"The table '{
-                    self.table_name}' does not exist in region '{region}'."
-            )
+            raise ValueError(f"The table '{self.table_name}' does not exist in region '{region}'.")
