@@ -70,11 +70,11 @@ class GPTInitialTagging:
         if not isinstance(other, GPTInitialTagging):
             return False
         return (
-            self.image_id == other.image_id
-            and self.receipt_id == other.receipt_id
-            and self.query == other.query
-            and self.response == other.response
-            and self.timestamp_added == other.timestamp_added
+            self.image_id == other.image_id and
+            self.receipt_id == other.receipt_id and
+            self.query == other.query and
+            self.response == other.response and
+            self.timestamp_added == other.timestamp_added
         )
 
     def __iter__(self) -> Generator[Tuple[str, str], None, None]:

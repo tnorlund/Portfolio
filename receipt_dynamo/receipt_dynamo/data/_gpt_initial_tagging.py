@@ -60,7 +60,7 @@ class _GPTInitialTagging:
         """
         try:
             for i in range(0, len(taggings), CHUNK_SIZE):
-                chunk = taggings[i : i + CHUNK_SIZE]
+                chunk = taggings[i:i + CHUNK_SIZE]
                 request_items = [
                     {"PutRequest": {"Item": t.to_item()}} for t in chunk
                 ]
@@ -176,7 +176,7 @@ class _GPTInitialTagging:
         """
         try:
             for i in range(0, len(taggings), CHUNK_SIZE):
-                chunk = taggings[i : i + CHUNK_SIZE]
+                chunk = taggings[i:i + CHUNK_SIZE]
                 request_items = [
                     {"DeleteRequest": {"Key": tagging.key()}}
                     for tagging in chunk

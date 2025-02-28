@@ -66,7 +66,7 @@ def validate(table_name: str, image_id: str) -> None:
     for receipt in receipts:
         # Filter data for this receipt
         r_lines = [
-            l for l in receipt_lines if l.receipt_id == receipt.receipt_id
+            line for line in receipt_lines if line.receipt_id == receipt.receipt_id
         ]
         r_words = [
             w for w in receipt_words if w.receipt_id == receipt.receipt_id

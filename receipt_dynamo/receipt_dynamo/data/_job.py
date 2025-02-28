@@ -496,13 +496,10 @@ class _Job:
                 "KeyConditionExpression": "GSI1PK = :status",
                 "ExpressionAttributeValues": {
                     ":status": {"S": f"STATUS#{status.lower()}"},
+                    ":job_type": {"S": "JOB"},
                 },
                 "FilterExpression": "#type = :job_type",
                 "ExpressionAttributeNames": {"#type": "TYPE"},
-                "ExpressionAttributeValues": {
-                    ":status": {"S": f"STATUS#{status.lower()}"},
-                    ":job_type": {"S": "JOB"},
-                },
             }
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
