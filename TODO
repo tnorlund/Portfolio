@@ -220,7 +220,7 @@
     - [x] Add Job Metrics collection and storage
     - [x] Implement Job Checkpoint management
     - [x] Add Job Logs collection for debugging
-    - [ ] Implement Job Dependency tracking
+    - [x] Implement Job Dependency tracking
   - [ ] Implement Queue management in DynamoDB
     - [ ] Create Queue entity for managing job queues
     - [ ] Add Queue Job association for organizing jobs
