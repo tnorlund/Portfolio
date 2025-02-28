@@ -6,33 +6,25 @@ from botocore.exceptions import ClientError
 from receipt_dynamo.entities.gpt_initial_tagging import itemToGPTInitialTagging
 from receipt_dynamo.entities.gpt_validation import itemToGPTValidation
 from receipt_dynamo.entities.receipt import Receipt, itemToReceipt
-from receipt_dynamo.entities.receipt_letter import (
-    ReceiptLetter,
-    itemToReceiptLetter,
-)
+from receipt_dynamo.entities.receipt_letter import (ReceiptLetter,
+    itemToReceiptLetter,)
 from receipt_dynamo.entities.receipt_line import ReceiptLine, itemToReceiptLine
 from receipt_dynamo.entities.receipt_window import itemToReceiptWindow
 from receipt_dynamo.entities.receipt_word import ReceiptWord, itemToReceiptWord
-from receipt_dynamo.entities.receipt_word_tag import (
-    ReceiptWordTag,
-    itemToReceiptWordTag,
-)
+from receipt_dynamo.entities.receipt_word_tag import (ReceiptWordTag,
+    itemToReceiptWordTag,)
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
 def validate_last_evaluated_key(lek: dict) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
-        raise ValueError(
-            f"LastEvaluatedKey must contain keys: {required_keys}"
-        )
+        raise ValueError(f"LastEvaluatedKey must contain keys: {required_keys}")
     # You might also check that each key maps to a dictionary with a DynamoDB
     # type key (e.g., "S")
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
-            raise ValueError(
-                f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'"
-            )
+            raise ValueError(f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'")
 
 
 class _Receipt:
@@ -46,39 +38,25 @@ class _Receipt:
             ValueError: When a receipt with the same ID already exists
         """
         if receipt is None:
-            raise ValueError(
-                "Receipt parameter is required and cannot be None."
-            )
+            raise ValueError("Receipt parameter is required and cannot be None.")
         if not isinstance(receipt, Receipt):
-            raise ValueError(
-                "receipt must be an instance of the Receipt class."
-            )
+            raise ValueError("receipt must be an instance of the Receipt class.")
         try:
-            self._client.put_item(
-                TableName=self.table_name,
+            self._client.put_item(TableName=self.table_name,
                 Item=receipt.to_item(),
-                ConditionExpression="attribute_not_exists(PK)",
-            )
+                ConditionExpression="attribute_not_exists(PK)",)
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"Receipt with ID {
-                        receipt.receipt_id} and Image ID '{
-                        receipt.image_id}' already exists"
-                ) from e
+                raise ValueError(f"Receipt with ID {receipt.receipt_id} and Image ID '{receipt.image_id}' already exists") from e
             elif error_code == "ResourceNotFoundException":
-                raise Exception(
-                    f"Could not add receipt to DynamoDB: {e}"
-                ) from e
+                raise Exception(f"Could not add receipt to DynamoDB: {e}") from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(
-                    f"Could not add receipt to DynamoDB: {e}"
-                ) from e
+                raise Exception(f"Could not add receipt to DynamoDB: {e}") from e
 
     def addReceipts(self, receipts: list[Receipt]):
         """Adds a list of receipts to the database
@@ -90,32 +68,22 @@ class _Receipt:
             ValueError: When a receipt with the same ID already exists
         """
         if receipts is None:
-            raise ValueError(
-                "Receipts parameter is required and cannot be None."
-            )
+            raise ValueError("Receipts parameter is required and cannot be None.")
         if not isinstance(receipts, list):
             raise ValueError("receipts must be a list of Receipt instances.")
         if not all(isinstance(receipt, Receipt) for receipt in receipts):
-            raise ValueError(
-                "All receipts must be instances of the Receipt class."
-            )
+            raise ValueError("All receipts must be instances of the Receipt class.")
         try:
             for i in range(0, len(receipts), 25):
                 chunk = receipts[i : i + 25]
-                request_items = [
-                    {"PutRequest": {"Item": receipt.to_item()}}
-                    for receipt in chunk
-                ]
-                response = self._client.batch_write_item(
-                    RequestItems={self.table_name: request_items}
-                )
+                request_items = [{"PutRequest": {"Item": receipt.to_item()}}
+                    for receipt in chunk]
+                response = self._client.batch_write_item(RequestItems={self.table_name: request_items})
                 # Handle unprocessed items if they exist
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
                     # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
@@ -124,9 +92,7 @@ class _Receipt:
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             elif error_code == "ValidationException":
-                raise Exception(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
+                raise Exception(f"One or more parameters given were invalid: {e}") from e
             elif error_code == "AccessDeniedException":
                 raise Exception(f"Access denied: {e}") from e
             else:
@@ -142,36 +108,24 @@ class _Receipt:
             ValueError: When the receipt does not exist
         """
         if receipt is None:
-            raise ValueError(
-                "Receipt parameter is required and cannot be None."
-            )
+            raise ValueError("Receipt parameter is required and cannot be None.")
         if not isinstance(receipt, Receipt):
-            raise ValueError(
-                "receipt must be an instance of the Receipt class."
-            )
+            raise ValueError("receipt must be an instance of the Receipt class.")
 
         try:
-            self._client.put_item(
-                TableName=self.table_name,
+            self._client.put_item(TableName=self.table_name,
                 Item=receipt.to_item(),
-                ConditionExpression="attribute_exists(PK)",
-            )
+                ConditionExpression="attribute_exists(PK)",)
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"Receipt with ID {
-                        receipt.receipt_id} and Image ID '{
-                        receipt.image_id}' does not exist"
-                )
+                raise ValueError(f"Receipt with ID {receipt.receipt_id} and Image ID '{receipt.image_id}' does not exist")
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             elif error_code == "ValidationException":
-                raise Exception(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
+                raise Exception(f"One or more parameters given were invalid: {e}") from e
             elif error_code == "AccessDeniedException":
                 raise Exception(f"Access denied: {e}") from e
             else:
@@ -199,15 +153,11 @@ class _Receipt:
                 - or any other unexpected errors.
         """
         if receipts is None:
-            raise ValueError(
-                "Receipts parameter is required and cannot be None."
-            )
+            raise ValueError("Receipts parameter is required and cannot be None.")
         if not isinstance(receipts, list):
             raise ValueError("receipts must be a list of Receipt instances.")
         if not all(isinstance(receipt, Receipt) for receipt in receipts):
-            raise ValueError(
-                "All receipts must be instances of the Receipt class."
-            )
+            raise ValueError("All receipts must be instances of the Receipt class.")
 
         # Process receipts in chunks of 25 because transact_write_items
         # supports a maximum of 25 operations.
@@ -215,33 +165,21 @@ class _Receipt:
             chunk = receipts[i : i + 25]
             transact_items = []
             for receipt in chunk:
-                transact_items.append(
-                    {
-                        "Put": {
-                            "TableName": self.table_name,
+                transact_items.append({"Put": {"TableName": self.table_name,
                             "Item": receipt.to_item(),
-                            "ConditionExpression": "attribute_exists(PK)",
-                        }
-                    }
-                )
+                            "ConditionExpression": "attribute_exists(PK)",}})
             try:
                 self._client.transact_write_items(TransactItems=transact_items)
             except ClientError as e:
                 error_code = e.response.get("Error", {}).get("Code", "")
                 if error_code == "ConditionalCheckFailedException":
-                    raise ValueError(
-                        "One or more receipts do not exist"
-                    ) from e
+                    raise ValueError("One or more receipts do not exist") from e
                 elif error_code == "ProvisionedThroughputExceededException":
-                    raise Exception(
-                        f"Provisioned throughput exceeded: {e}"
-                    ) from e
+                    raise Exception(f"Provisioned throughput exceeded: {e}") from e
                 elif error_code == "InternalServerError":
                     raise Exception(f"Internal server error: {e}") from e
                 elif error_code == "ValidationException":
-                    raise Exception(
-                        f"One or more parameters given were invalid: {e}"
-                    ) from e
+                    raise Exception(f"One or more parameters given were invalid: {e}") from e
                 elif error_code == "AccessDeniedException":
                     raise Exception(f"Access denied: {e}") from e
                 else:
@@ -257,35 +195,23 @@ class _Receipt:
             ValueError: When the receipt does not exist
         """
         if receipt is None:
-            raise ValueError(
-                "Receipt parameter is required and cannot be None."
-            )
+            raise ValueError("Receipt parameter is required and cannot be None.")
         if not isinstance(receipt, Receipt):
-            raise ValueError(
-                "receipt must be an instance of the Receipt class."
-            )
+            raise ValueError("receipt must be an instance of the Receipt class.")
         try:
-            self._client.delete_item(
-                TableName=self.table_name,
+            self._client.delete_item(TableName=self.table_name,
                 Key=receipt.key(),
-                ConditionExpression="attribute_exists(PK)",
-            )
+                ConditionExpression="attribute_exists(PK)",)
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"Receipt with ID {
-                        receipt.receipt_id} and Image ID '{
-                        receipt.image_id}' does not exists"
-                )
+                raise ValueError(f"Receipt with ID {receipt.receipt_id} and Image ID '{receipt.image_id}' does not exists")
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             elif error_code == "ValidationException":
-                raise Exception(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
+                raise Exception(f"One or more parameters given were invalid: {e}") from e
             elif error_code == "AccessDeniedException":
                 raise Exception(f"Access denied: {e}") from e
             else:
@@ -308,15 +234,11 @@ class _Receipt:
             ValueError: When a receipt does not exist or if another error occurs.
         """
         if receipts is None:
-            raise ValueError(
-                "Receipts parameter is required and cannot be None."
-            )
+            raise ValueError("Receipts parameter is required and cannot be None.")
         if not isinstance(receipts, list):
             raise ValueError("receipts must be a list of Receipt instances.")
         if not all(isinstance(receipt, Receipt) for receipt in receipts):
-            raise ValueError(
-                "All receipts must be instances of the Receipt class."
-            )
+            raise ValueError("All receipts must be instances of the Receipt class.")
 
         try:
             # Process receipts in chunks of 25 items (the maximum allowed per
@@ -325,15 +247,9 @@ class _Receipt:
                 chunk = receipts[i : i + 25]
                 transact_items = []
                 for receipt in chunk:
-                    transact_items.append(
-                        {
-                            "Delete": {
-                                "TableName": self.table_name,
+                    transact_items.append({"Delete": {"TableName": self.table_name,
                                 "Key": receipt.key(),
-                                "ConditionExpression": "attribute_exists(PK)",
-                            }
-                        }
-                    )
+                                "ConditionExpression": "attribute_exists(PK)",}})
                 # Execute the transaction for this chunk.
                 self._client.transact_write_items(TransactItems=transact_items)
         except ClientError as e:
@@ -345,9 +261,7 @@ class _Receipt:
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             elif error_code == "ValidationException":
-                raise Exception(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
+                raise Exception(f"One or more parameters given were invalid: {e}") from e
             elif error_code == "AccessDeniedException":
                 raise Exception(f"Access denied: {e}") from e
             else:
@@ -387,19 +301,13 @@ class _Receipt:
             raise ValueError("Receipt ID must be a positive integer.")
 
         try:
-            response = self._client.get_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"RECEIPT#{receipt_id:05d}"},
-                },
-            )
+            response = self._client.get_item(TableName=self.table_name,
+                Key={"PK": {"S": f"IMAGE#{image_id}"},
+                    "SK": {"S": f"RECEIPT#{receipt_id:05d}"},},)
             if "Item" in response:
                 return itemToReceipt(response["Item"])
             else:
-                raise ValueError(
-                    f"Receipt with ID {receipt_id} and Image ID '{image_id}' does not exist."
-                )
+                raise ValueError(f"Receipt with ID {receipt_id} and Image ID '{image_id}' does not exist.")
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ProvisionedThroughputExceededException":
@@ -419,8 +327,8 @@ class _Receipt:
         list[ReceiptWord],
         list[ReceiptLetter],
         list[ReceiptWordTag],
-        list[dict],  # GPT validations
-        list[dict],  # GPT initial taggings
+        list[dict],
+        list[dict]
     ]:
         """Get a receipt with its details
 
@@ -439,14 +347,10 @@ class _Receipt:
             - list[dict]: List of GPT initial taggings
         """
         try:
-            response = self._client.query(
-                TableName=self.table_name,
+            response = self._client.query(TableName=self.table_name,
                 KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
-                ExpressionAttributeValues={
-                    ":pk": {"S": f"IMAGE#{image_id}"},
-                    ":sk": {"S": f"RECEIPT#{receipt_id:05d}"},
-                },
-            )
+                ExpressionAttributeValues={":pk": {"S": f"IMAGE#{image_id}"},
+                    ":sk": {"S": f"RECEIPT#{receipt_id:05d}"},},)
             receipt = None
             lines = []
             words = []
@@ -471,21 +375,17 @@ class _Receipt:
                 elif item["TYPE"]["S"] == "GPT_INITIAL_TAGGING":
                     initial_taggings.append(itemToGPTInitialTagging(item))
 
-            return (
-                receipt,
+            return (receipt,
                 lines,
                 words,
                 letters,
                 tags,
                 validations,
-                initial_taggings,
-            )
+                initial_taggings,)
         except ClientError as e:
             raise ValueError(f"Error getting receipt details: {e}")
 
-    def listReceipts(
-        self, limit: int = None, lastEvaluatedKey: dict | None = None
-    ) -> tuple[list[Receipt], dict | None]:
+    def listReceipts(self, limit: int = None, lastEvaluatedKey: dict | None = None) -> tuple[list[Receipt], dict | None]:
         """
         Retrieve receipt records from the database with support for precise pagination.
 
@@ -526,13 +426,11 @@ class _Receipt:
 
         receipts = []
         try:
-            query_params = {
-                "TableName": self.table_name,
+            query_params = {"TableName": self.table_name,
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "RECEIPT"}},
-            }
+                "ExpressionAttributeValues": {":val": {"S": "RECEIPT"}},}
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
 
@@ -544,9 +442,7 @@ class _Receipt:
                     query_params["Limit"] = remaining
 
                 response = self._client.query(**query_params)
-                receipts.extend(
-                    [itemToReceipt(item) for item in response["Items"]]
-                )
+                receipts.extend([itemToReceipt(item) for item in response["Items"]])
 
                 # If we have reached or exceeded the limit, trim the list and
                 # break.
@@ -559,9 +455,7 @@ class _Receipt:
                 # Continue paginating if there's more data; otherwise, we're
                 # done.
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     last_evaluated_key = None
                     break
@@ -570,21 +464,15 @@ class _Receipt:
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(
-                    f"Could not list receipts from the database: {e}"
-                ) from e
+                raise Exception(f"Could not list receipts from the database: {e}") from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "ValidationException":
-                raise Exception(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
+                raise Exception(f"One or more parameters given were invalid: {e}") from e
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(
-                    f"Could not list receipts from the database: {e}"
-                ) from e
+                raise Exception(f"Could not list receipts from the database: {e}") from e
 
     def getReceiptsFromImage(self, image_id: int) -> list[Receipt]:
         """List all receipts from an image using the GSI
@@ -597,62 +485,42 @@ class _Receipt:
         """
         receipts = []
         try:
-            response = self._client.query(
-                TableName=self.table_name,
+            response = self._client.query(TableName=self.table_name,
                 KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
-                ExpressionAttributeValues={
-                    ":pk": {"S": f"IMAGE#{image_id}"},
-                    ":sk": {"S": "RECEIPT#"},
-                },
-            )
-            receipts.extend(
-                [itemToReceipt(item) for item in response["Items"]]
-            )
+                ExpressionAttributeValues={":pk": {"S": f"IMAGE#{image_id}"},
+                    ":sk": {"S": "RECEIPT#"},},)
+            receipts.extend([itemToReceipt(item) for item in response["Items"]])
 
             while "LastEvaluatedKey" in response:
-                response = self._client.query(
-                    TableName=self.table_name,
+                response = self._client.query(TableName=self.table_name,
                     KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
-                    ExpressionAttributeValues={
-                        ":pk": {"S": f"IMAGE#{image_id}"},
-                        ":sk": {"S": "RECEIPT#"},
-                    },
-                )
-                receipts.extend(
-                    [itemToReceipt(item) for item in response["Items"]]
-                )
+                    ExpressionAttributeValues={":pk": {"S": f"IMAGE#{image_id}"},
+                        ":sk": {"S": "RECEIPT#"},},)
+                receipts.extend([itemToReceipt(item) for item in response["Items"]])
             return receipts
         except ClientError as e:
             raise ValueError(f"Error listing receipts from image: {e}")
 
-    def listReceiptWindowDetails(
-        self,
+    def listReceiptWindowDetails(self,
         limit: Optional[int] = None,
-        last_evaluated_key: Optional[dict] = None,
-    ) -> Tuple[Dict[str, Dict], Optional[Dict]]:
+        last_evaluated_key: Optional[dict] = None,) -> Tuple[Dict[str, Dict], Optional[Dict]]:
         """List receipts with their windows from GSI3.
 
         Returns:
             Tuple[Dict[str, Dict], Optional[Dict]]:
-            - A dict of {
-                "<image_id>_<receipt_id>": {
-                    "receipt": Receipt,
-                    "windows": [ReceiptWindow, ...]
-                },
-                ...
-                }
+            - A dict of {"<image_id>_<receipt_id>": {"receipt": Receipt,
+                    "windows": [ReceiptWindow, ...]},
+                ...}
             - A LastEvaluatedKey or None if no more pages.
         """
 
         try:
-            query_params = {
-                "TableName": self.table_name,
+            query_params = {"TableName": self.table_name,
                 "IndexName": "GSI3",
                 "KeyConditionExpression": "#pk = :pk_value",
                 "ExpressionAttributeNames": {"#pk": "GSI3PK"},
                 "ExpressionAttributeValues": {":pk_value": {"S": "RECEIPT"}},
-                "ScanIndexForward": True,
-            }
+                "ScanIndexForward": True,}
             if last_evaluated_key is not None:
                 query_params["ExclusiveStartKey"] = last_evaluated_key
 
@@ -673,12 +541,10 @@ class _Receipt:
                         # If we've hit our limit, build a LEK and return
                         # immediately
                         if limit is not None and receipt_count >= limit:
-                            last_evaluated_key = {
-                                "PK": item["PK"],
+                            last_evaluated_key = {"PK": item["PK"],
                                 "SK": item["SK"],
                                 "GSI3PK": item["GSI3PK"],
-                                "GSI3SK": item["GSI3SK"],
-                            }
+                                "GSI3SK": item["GSI3SK"],}
                             return payload, last_evaluated_key
 
                         # Ensure there's an entry in payload for this key
@@ -708,26 +574,16 @@ class _Receipt:
                     return payload, None
 
                 # Otherwise, continue paginating
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
+                query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
 
         except ClientError as e:
-            raise ValueError(
-                "Could not list receipt windows from the database"
-            ) from e
+            raise ValueError("Could not list receipt windows from the database") from e
 
-    def listReceiptDetails(
-        self,
+    def listReceiptDetails(self,
         limit: Optional[int] = None,
-        last_evaluated_key: Optional[dict] = None,
-    ) -> Tuple[
-        Dict[
-            str,
-            Dict[str, Union[Receipt, List[ReceiptWord], List[ReceiptWordTag]]],
-        ],
-        Optional[Dict],
-    ]:
+        last_evaluated_key: Optional[dict] = None,) -> Tuple[Dict[str,
+            Dict[str, Union[Receipt, List[ReceiptWord], List[ReceiptWordTag]]],],
+        Optional[Dict],]:
         """List receipts with their words and word tags
 
         Args:
@@ -740,14 +596,12 @@ class _Receipt:
                 - Last evaluated key for pagination (None if no more pages)
         """
         try:
-            query_params = {
-                "TableName": self.table_name,
+            query_params = {"TableName": self.table_name,
                 "IndexName": "GSI2",
                 "KeyConditionExpression": "#pk = :pk_value",
                 "ExpressionAttributeNames": {"#pk": "GSI2PK"},
                 "ExpressionAttributeValues": {":pk_value": {"S": "RECEIPT"}},
-                "ScanIndexForward": True,
-            }
+                "ScanIndexForward": True,}
 
             if last_evaluated_key is not None:
                 query_params["ExclusiveStartKey"] = last_evaluated_key
@@ -767,51 +621,37 @@ class _Receipt:
                         # If we've hit our limit, use this receipt's key as the
                         # LEK and stop
                         if limit is not None and receipt_count >= limit:
-                            last_evaluated_key = {
-                                "PK": item["PK"],
+                            last_evaluated_key = {"PK": item["PK"],
                                 "SK": item["SK"],
                                 "GSI2PK": item["GSI2PK"],
-                                "GSI2SK": item["GSI2SK"],
-                            }
+                                "GSI2SK": item["GSI2SK"],}
                             return payload, last_evaluated_key
 
                         receipt = itemToReceipt(item)
-                        current_key = f"{
-                            receipt.image_id}_{
-                            receipt.receipt_id}"
-                        payload[current_key] = {
-                            "receipt": receipt,
+                        current_key = f"{receipt.image_id}_{receipt.receipt_id}"
+                        payload[current_key] = {"receipt": receipt,
                             "words": [],
-                            "word_tags": [],
-                        }
+                            "word_tags": [],}
                         current_receipt = receipt
                         receipt_count += 1
 
                     elif item_type == "RECEIPT_WORD" and current_receipt:
                         word = itemToReceiptWord(item)
-                        if (
-                            word.image_id == current_receipt.image_id
-                            and word.receipt_id == current_receipt.receipt_id
-                        ):
+                        if (word.image_id == current_receipt.image_id
+                            and word.receipt_id == current_receipt.receipt_id):
                             payload[current_key]["words"].append(word)
 
                     elif item_type == "RECEIPT_WORD_TAG" and current_receipt:
                         tag = itemToReceiptWordTag(item)
-                        if (
-                            tag.image_id == current_receipt.image_id
-                            and tag.receipt_id == current_receipt.receipt_id
-                        ):
+                        if (tag.image_id == current_receipt.image_id
+                            and tag.receipt_id == current_receipt.receipt_id):
                             payload[current_key]["word_tags"].append(tag)
 
                 # If no more pages
                 if "LastEvaluatedKey" not in response:
                     return payload, None
 
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
+                query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
 
         except ClientError as e:
-            raise ValueError(
-                "Could not list receipt details from the database"
-            ) from e
+            raise ValueError("Could not list receipt details from the database") from e

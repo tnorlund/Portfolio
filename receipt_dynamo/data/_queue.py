@@ -26,9 +26,7 @@ def validate_last_evaluated_key(lek: dict) -> None:
 
 
 class Queue:
-    def listJobsInQueue(
-        self, queue_name: str, limit: int = None, lastEvaluatedKey: dict = None
-    ) -> tuple[list[QueueJob], dict]:
+    def listJobsInQueue(self, queue_name: str, limit: int = None, lastEvaluatedKey: dict = None) -> tuple[list[QueueJob], dict]:
         """Lists all jobs in a specified queue.
 
         Args:
@@ -57,16 +55,10 @@ class Queue:
             validate_last_evaluated_key(lastEvaluatedKey)
 
         # Set up the query parameters
-        query_params = {
-            "TableName": self.table_name,
+        query_params = {"TableName": self.table_name,
             "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk_prefix)",
-            "ExpressionAttributeValues": {
-                ":pk": {
-                    "S": f"QUEUE#{queue_name}"},
-                ":sk_prefix": {
-                    "S": "JOB#"},
-            },
-        }
+            "ExpressionAttributeValues": {":pk": {"S": f"QUEUE#{queue_name}"},
+                ":sk_prefix": {"S": "JOB#"},},}
 
         # Add the limit if provided
         if limit is not None:

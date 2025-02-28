@@ -2,24 +2,18 @@ from typing import Optional
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.entities.job_checkpoint import (
-    JobCheckpoint,
-    itemToJobCheckpoint,
-)
+from receipt_dynamo.entities.job_checkpoint import (JobCheckpoint,
+    itemToJobCheckpoint,)
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
 def validate_last_evaluated_key(lek: dict) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
-        raise ValueError(
-            f"LastEvaluatedKey must contain keys: {required_keys}"
-        )
+        raise ValueError(f"LastEvaluatedKey must contain keys: {required_keys}")
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
-            raise ValueError(
-                f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'"
-            )
+            raise ValueError(f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'")
 
 
 class _JobCheckpoint:
@@ -33,39 +27,25 @@ class _JobCheckpoint:
             ValueError: When a job checkpoint with the same timestamp already exists
         """
         if job_checkpoint is None:
-            raise ValueError(
-                "JobCheckpoint parameter is required and cannot be None."
-            )
+            raise ValueError("JobCheckpoint parameter is required and cannot be None.")
         if not isinstance(job_checkpoint, JobCheckpoint):
-            raise ValueError(
-                "job_checkpoint must be an instance of the JobCheckpoint class."
-            )
+            raise ValueError("job_checkpoint must be an instance of the JobCheckpoint class.")
         try:
-            self._client.put_item(
-                TableName=self.table_name,
+            self._client.put_item(TableName=self.table_name,
                 Item=job_checkpoint.to_item(),
-                ConditionExpression="attribute_not_exists(PK) OR attribute_not_exists(SK)",
-            )
+                ConditionExpression="attribute_not_exists(PK) OR attribute_not_exists(SK)",)
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"JobCheckpoint with timestamp {
-                        job_checkpoint.timestamp} for job {
-                        job_checkpoint.job_id} already exists"
-                ) from e
+                raise ValueError(f"JobCheckpoint with timestamp {job_checkpoint.timestamp} for job {job_checkpoint.job_id} already exists") from e
             elif error_code == "ResourceNotFoundException":
-                raise Exception(
-                    f"Could not add job checkpoint to DynamoDB: {e}"
-                ) from e
+                raise Exception(f"Could not add job checkpoint to DynamoDB: {e}") from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(
-                    f"Could not add job checkpoint to DynamoDB: {e}"
-                ) from e
+                raise Exception(f"Could not add job checkpoint to DynamoDB: {e}") from e
 
     def getJobCheckpoint(self, job_id: str, timestamp: str) -> JobCheckpoint:
         """Gets a specific job checkpoint by job ID and timestamp
@@ -84,23 +64,15 @@ class _JobCheckpoint:
             raise ValueError("Job ID is required and cannot be None.")
         assert_valid_uuid(job_id)
         if not timestamp or not isinstance(timestamp, str):
-            raise ValueError(
-                "Timestamp is required and must be a non-empty string."
-            )
+            raise ValueError("Timestamp is required and must be a non-empty string.")
 
         try:
-            response = self._client.get_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"JOB#{job_id}"},
-                    "SK": {"S": f"CHECKPOINT#{timestamp}"},
-                },
-            )
+            response = self._client.get_item(TableName=self.table_name,
+                Key={"PK": {"S": f"JOB#{job_id}"},
+                    "SK": {"S": f"CHECKPOINT#{timestamp}"},},)
 
             if "Item" not in response:
-                raise ValueError(
-                    f"No job checkpoint found with job ID {job_id} and timestamp {timestamp}"
-                )
+                raise ValueError(f"No job checkpoint found with job ID {job_id} and timestamp {timestamp}")
 
             return itemToJobCheckpoint(response["Item"])
         except ClientError as e:
@@ -130,59 +102,38 @@ class _JobCheckpoint:
             raise ValueError("Job ID is required and cannot be None.")
         assert_valid_uuid(job_id)
         if not timestamp or not isinstance(timestamp, str):
-            raise ValueError(
-                "Timestamp is required and must be a non-empty string."
-            )
+            raise ValueError("Timestamp is required and must be a non-empty string.")
 
         # First verify the checkpoint exists
         try:
             self.getJobCheckpoint(job_id, timestamp)
         except ValueError:
-            raise ValueError(
-                f"Cannot update best checkpoint: No checkpoint found with job ID {job_id} and timestamp {timestamp}"
-            )
+            raise ValueError(f"Cannot update best checkpoint: No checkpoint found with job ID {job_id} and timestamp {timestamp}")
 
         try:
             # First, set all checkpoints for this job to is_best=False
             checkpoints, _ = self.listJobCheckpoints(job_id)
             for checkpoint in checkpoints:
                 if checkpoint.timestamp != timestamp and checkpoint.is_best:
-                    self._client.update_item(
-                        TableName=self.table_name,
-                        Key={
-                            "PK": {"S": f"JOB#{job_id}"},
-                            "SK": {
-                                "S": f"CHECKPOINT#{
-                                    checkpoint.timestamp}"
-                            },
-                        },
+                    self._client.update_item(TableName=self.table_name,
+                        Key={"PK": {"S": f"JOB#{job_id}"},
+                            "SK": {"S": f"CHECKPOINT#{checkpoint.timestamp}"},},
                         UpdateExpression="SET is_best = :is_best",
-                        ExpressionAttributeValues={
-                            ":is_best": {"BOOL": False}
-                        },
-                    )
+                        ExpressionAttributeValues={":is_best": {"BOOL": False}},)
 
             # Then set the specified checkpoint to is_best=True
-            self._client.update_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"JOB#{job_id}"},
-                    "SK": {"S": f"CHECKPOINT#{timestamp}"},
-                },
+            self._client.update_item(TableName=self.table_name,
+                Key={"PK": {"S": f"JOB#{job_id}"},
+                    "SK": {"S": f"CHECKPOINT#{timestamp}"},},
                 UpdateExpression="SET is_best = :is_best",
                 ExpressionAttributeValues={":is_best": {"BOOL": True}},
-                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
-            )
+                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",)
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"No job checkpoint found with job ID {job_id} and timestamp {timestamp}"
-                ) from e
+                raise ValueError(f"No job checkpoint found with job ID {job_id} and timestamp {timestamp}") from e
             elif error_code == "ResourceNotFoundException":
-                raise Exception(
-                    f"Could not update best checkpoint: {e}"
-                ) from e
+                raise Exception(f"Could not update best checkpoint: {e}") from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "InternalServerError":
@@ -190,12 +141,10 @@ class _JobCheckpoint:
             else:
                 raise Exception(f"Error updating best checkpoint: {e}") from e
 
-    def listJobCheckpoints(
-        self,
+    def listJobCheckpoints(self,
         job_id: str,
         limit: int = None,
-        lastEvaluatedKey: dict | None = None,
-    ) -> tuple[list[JobCheckpoint], dict | None]:
+        lastEvaluatedKey: dict | None = None,) -> tuple[list[JobCheckpoint], dict | None]:
         """
         Retrieve checkpoints for a job from the database.
 
@@ -228,16 +177,12 @@ class _JobCheckpoint:
 
         checkpoints = []
         try:
-            query_params = {
-                "TableName": self.table_name,
+            query_params = {"TableName": self.table_name,
                 "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
-                "ExpressionAttributeValues": {
-                    ":pk": {"S": f"JOB#{job_id}"},
-                    ":sk": {"S": "CHECKPOINT#"},
-                },
+                "ExpressionAttributeValues": {":pk": {"S": f"JOB#{job_id}"},
+                    ":sk": {"S": "CHECKPOINT#"},},
                 # Descending order by default (most recent first)
-                "ScanIndexForward": False,
-            }
+                "ScanIndexForward": False,}
 
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
@@ -258,9 +203,7 @@ class _JobCheckpoint:
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     last_evaluated_key = None
                     break
@@ -269,15 +212,11 @@ class _JobCheckpoint:
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(
-                    f"Could not list job checkpoints from the database: {e}"
-                ) from e
+                raise Exception(f"Could not list job checkpoints from the database: {e}") from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "ValidationException":
-                raise Exception(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
+                raise Exception(f"One or more parameters given were invalid: {e}") from e
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
@@ -302,16 +241,12 @@ class _JobCheckpoint:
         assert_valid_uuid(job_id)
 
         try:
-            query_params = {
-                "TableName": self.table_name,
+            query_params = {"TableName": self.table_name,
                 "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
                 "FilterExpression": "is_best = :is_best",
-                "ExpressionAttributeValues": {
-                    ":pk": {"S": f"JOB#{job_id}"},
+                "ExpressionAttributeValues": {":pk": {"S": f"JOB#{job_id}"},
                     ":sk": {"S": "CHECKPOINT#"},
-                    ":is_best": {"BOOL": True},
-                },
-            }
+                    ":is_best": {"BOOL": True},},}
 
             response = self._client.query(**query_params)
 
@@ -327,9 +262,7 @@ class _JobCheckpoint:
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "ValidationException":
-                raise Exception(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
+                raise Exception(f"One or more parameters given were invalid: {e}") from e
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
@@ -351,18 +284,12 @@ class _JobCheckpoint:
             raise ValueError("Job ID is required and cannot be None.")
         assert_valid_uuid(job_id)
         if not timestamp or not isinstance(timestamp, str):
-            raise ValueError(
-                "Timestamp is required and must be a non-empty string."
-            )
+            raise ValueError("Timestamp is required and must be a non-empty string.")
 
         try:
-            self._client.delete_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"JOB#{job_id}"},
-                    "SK": {"S": f"CHECKPOINT#{timestamp}"},
-                },
-            )
+            self._client.delete_item(TableName=self.table_name,
+                Key={"PK": {"S": f"JOB#{job_id}"},
+                    "SK": {"S": f"CHECKPOINT#{timestamp}"},},)
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
@@ -374,9 +301,7 @@ class _JobCheckpoint:
             else:
                 raise Exception(f"Error deleting job checkpoint: {e}") from e
 
-    def listAllJobCheckpoints(
-        self, limit: int = None, lastEvaluatedKey: dict | None = None
-    ) -> tuple[list[JobCheckpoint], dict | None]:
+    def listAllJobCheckpoints(self, limit: int = None, lastEvaluatedKey: dict | None = None) -> tuple[list[JobCheckpoint], dict | None]:
         """
         Retrieve all checkpoints across all jobs from the database.
 
@@ -404,16 +329,12 @@ class _JobCheckpoint:
 
         checkpoints = []
         try:
-            query_params = {
-                "TableName": self.table_name,
+            query_params = {"TableName": self.table_name,
                 "IndexName": "GSI1",
                 "KeyConditionExpression": "GSI1PK = :pk",
-                "ExpressionAttributeValues": {
-                    ":pk": {"S": "CHECKPOINT"},
-                },
+                "ExpressionAttributeValues": {":pk": {"S": "CHECKPOINT"},},
                 # Descending order by default (most recent first)
-                "ScanIndexForward": False,
-            }
+                "ScanIndexForward": False,}
 
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
@@ -434,9 +355,7 @@ class _JobCheckpoint:
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     last_evaluated_key = None
                     break
@@ -445,18 +364,12 @@ class _JobCheckpoint:
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(
-                    f"Could not list all job checkpoints from the database: {e}"
-                ) from e
+                raise Exception(f"Could not list all job checkpoints from the database: {e}") from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "ValidationException":
-                raise Exception(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
+                raise Exception(f"One or more parameters given were invalid: {e}") from e
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(
-                    f"Error listing all job checkpoints: {e}"
-                ) from e
+                raise Exception(f"Error listing all job checkpoints: {e}") from e

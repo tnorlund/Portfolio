@@ -21,14 +21,12 @@ class JobDependency:
         created_at (str): The timestamp when the dependency was created.
     """
 
-    def __init__(
-        self,
+    def __init__(self,
         dependent_job_id: str,
         dependency_job_id: str,
         type: str,
         created_at: datetime,
-        condition: Optional[str] = None,
-    ):
+        condition: Optional[str] = None,):
         """Initializes a new JobDependency object for DynamoDB.
 
         Args:
@@ -60,9 +58,7 @@ class JobDependency:
         elif isinstance(created_at, str):
             self.created_at = created_at
         else:
-            raise ValueError(
-                "created_at must be a datetime object or a string"
-            )
+            raise ValueError("created_at must be a datetime object or a string")
 
         if condition is not None and not isinstance(condition, str):
             raise ValueError("condition must be a string")
@@ -74,10 +70,8 @@ class JobDependency:
         Returns:
             dict: The primary key for the job dependency.
         """
-        return {
-            "PK": {"S": f"JOB#{self.dependent_job_id}"},
-            "SK": {"S": f"DEPENDS_ON#{self.dependency_job_id}"},
-        }
+        return {"PK": {"S": f"JOB#{self.dependent_job_id}"},
+            "SK": {"S": f"DEPENDS_ON#{self.dependency_job_id}"},}
 
     def gsi1_key(self) -> dict:
         """Generates the GSI1 key for the job dependency.
@@ -85,14 +79,8 @@ class JobDependency:
         Returns:
             dict: The GSI1 key for the job dependency.
         """
-        return {
-            "GSI1PK": {"S": "DEPENDENCY"},
-            "GSI1SK": {
-                "S": f"DEPENDENT#{
-                    self.dependent_job_id}#DEPENDENCY#{
-                    self.dependency_job_id}"
-            },
-        }
+        return {"GSI1PK": {"S": "DEPENDENCY"},
+            "GSI1SK": {"S": f"DEPENDENT#{self.dependent_job_id}#DEPENDENCY#{self.dependency_job_id}"},}
 
     def gsi2_key(self) -> dict:
         """Generates the GSI2 key for the job dependency.
@@ -100,14 +88,8 @@ class JobDependency:
         Returns:
             dict: The GSI2 key for the job dependency.
         """
-        return {
-            "GSI2PK": {"S": "DEPENDENCY"},
-            "GSI2SK": {
-                "S": f"DEPENDED_BY#{
-                    self.dependency_job_id}#DEPENDENT#{
-                    self.dependent_job_id}"
-            },
-        }
+        return {"GSI2PK": {"S": "DEPENDENCY"},
+            "GSI2SK": {"S": f"DEPENDED_BY#{self.dependency_job_id}#DEPENDENT#{self.dependent_job_id}"},}
 
     def to_item(self) -> dict:
         """Converts the JobDependency object to a DynamoDB item.
@@ -115,16 +97,14 @@ class JobDependency:
         Returns:
             dict: A dictionary representing the JobDependency object as a DynamoDB item.
         """
-        item = {
-            **self.key(),
+        item = {**self.key(),
             **self.gsi1_key(),
             **self.gsi2_key(),
             "TYPE": {"S": "JOB_DEPENDENCY"},
             "dependent_job_id": {"S": self.dependent_job_id},
             "dependency_job_id": {"S": self.dependency_job_id},
             "type": {"S": self.type},
-            "created_at": {"S": self.created_at},
-        }
+            "created_at": {"S": self.created_at},}
 
         if self.condition is not None:
             item["condition"] = {"S": self.condition}
@@ -137,15 +117,13 @@ class JobDependency:
         Returns:
             str: A string representation of the JobDependency object.
         """
-        return (
-            "JobDependency("
+        return ("JobDependency("
             f"dependent_job_id={_repr_str(self.dependent_job_id)}, "
             f"dependency_job_id={_repr_str(self.dependency_job_id)}, "
             f"type={_repr_str(self.type)}, "
             f"created_at={_repr_str(self.created_at)}, "
             f"condition={_repr_str(self.condition)}"
-            ")"
-        )
+            ")")
 
     def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
         """Returns an iterator over the JobDependency object's attributes.
@@ -173,13 +151,11 @@ class JobDependency:
         """
         if not isinstance(other, JobDependency):
             return False
-        return (
-            self.dependent_job_id == other.dependent_job_id
+        return (self.dependent_job_id == other.dependent_job_id
             and self.dependency_job_id == other.dependency_job_id
             and self.type == other.type
             and self.created_at == other.created_at
-            and self.condition == other.condition
-        )
+            and self.condition == other.condition)
 
     def __hash__(self) -> int:
         """Returns the hash value of the JobDependency object.
@@ -187,15 +163,11 @@ class JobDependency:
         Returns:
             int: The hash value of the JobDependency object.
         """
-        return hash(
-            (
-                self.dependent_job_id,
+        return hash((self.dependent_job_id,
                 self.dependency_job_id,
                 self.type,
                 self.created_at,
-                self.condition,
-            )
-        )
+                self.condition,))
 
 
 def itemToJobDependency(item: dict) -> JobDependency:
@@ -210,21 +182,17 @@ def itemToJobDependency(item: dict) -> JobDependency:
     Raises:
         ValueError: When the item format is invalid.
     """
-    required_keys = {
-        "PK",
+    required_keys = {"PK",
         "SK",
         "TYPE",
         "dependent_job_id",
         "dependency_job_id",
         "type",
-        "created_at",
-    }
+        "created_at",}
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
-        raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
-        )
+        raise ValueError(f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}")
 
     try:
         # Extract required fields
@@ -236,12 +204,10 @@ def itemToJobDependency(item: dict) -> JobDependency:
         # Extract optional fields
         condition = item.get("condition", {}).get("S")
 
-        return JobDependency(
-            dependent_job_id=dependent_job_id,
+        return JobDependency(dependent_job_id=dependent_job_id,
             dependency_job_id=dependency_job_id,
             type=type,
             created_at=created_at,
-            condition=condition,
-        )
+            condition=condition,)
     except KeyError as e:
         raise ValueError(f"Error converting item to JobDependency: {e}")

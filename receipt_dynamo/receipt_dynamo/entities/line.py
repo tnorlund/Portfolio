@@ -1,15 +1,13 @@
 from math import atan2, cos, degrees, pi, radians, sin, sqrt
 from typing import Generator, Tuple
 
-from receipt_dynamo.entities.util import (
-    _format_float,
+from receipt_dynamo.entities.util import (_format_float,
     _repr_str,
     assert_valid_bounding_box,
     assert_valid_point,
     assert_valid_uuid,
     compute_histogram,
-    shear_point,
-)
+    shear_point,)
 
 
 class Line:
@@ -37,8 +35,7 @@ class Line:
         num_chars (int): The number of characters in the line.
     """
 
-    def __init__(
-        self,
+    def __init__(self,
         image_id: str,
         line_id: int,
         text: str,
@@ -51,8 +48,7 @@ class Line:
         angle_radians: float,
         confidence: float,
         histogram: dict = None,
-        num_chars: int = None,
-    ):
+        num_chars: int = None,):
         """Initializes a new Line object for DynamoDB.
 
         Args:
@@ -115,9 +111,7 @@ class Line:
             raise ValueError("confidence must be a float between 0 and 1")
         self.confidence = confidence
 
-        self.histogram = (
-            compute_histogram(text) if histogram is None else histogram
-        )
+        self.histogram = (compute_histogram(text) if histogram is None else histogram)
         self.num_chars = len(text) if num_chars is None else num_chars
 
     def key(self) -> dict:
@@ -126,10 +120,8 @@ class Line:
         Returns:
             dict: The primary key for the line.
         """
-        return {
-            "PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {"S": f"LINE#{self.line_id:05d}"},
-        }
+        return {"PK": {"S": f"IMAGE#{self.image_id}"},
+            "SK": {"S": f"LINE#{self.line_id:05d}"},}
 
     def gsi1_key(self) -> dict:
         """Generates the GSI1 key for the line.
@@ -137,10 +129,8 @@ class Line:
         Returns:
             dict: The GSI1 key for the line.
         """
-        return {
-            "GSI1PK": {"S": "IMAGE"},
-            "GSI1SK": {"S": f"IMAGE#{self.image_id}#LINE#{self.line_id:05d}"},
-        }
+        return {"GSI1PK": {"S": "IMAGE"},
+            "GSI1SK": {"S": f"IMAGE#{self.image_id}#LINE#{self.line_id:05d}"},}
 
     def to_item(self) -> dict:
         """Converts the Line object to a DynamoDB item.
@@ -148,55 +138,27 @@ class Line:
         Returns:
             dict: A dictionary representing the Line object as a DynamoDB item.
         """
-        return {
-            **self.key(),
+        return {**self.key(),
             **self.gsi1_key(),
             "TYPE": {"S": "LINE"},
             "text": {"S": self.text},
-            "bounding_box": {
-                "M": {
-                    "x": {"N": _format_float(self.bounding_box["x"], 20, 22)},
+            "bounding_box": {"M": {"x": {"N": _format_float(self.bounding_box["x"], 20, 22)},
                     "y": {"N": _format_float(self.bounding_box["y"], 20, 22)},
-                    "width": {
-                        "N": _format_float(self.bounding_box["width"], 20, 22)
-                    },
-                    "height": {
-                        "N": _format_float(self.bounding_box["height"], 20, 22)
-                    },
-                }
-            },
-            "top_right": {
-                "M": {
-                    "x": {"N": _format_float(self.top_right["x"], 20, 22)},
-                    "y": {"N": _format_float(self.top_right["y"], 20, 22)},
-                }
-            },
-            "top_left": {
-                "M": {
-                    "x": {"N": _format_float(self.top_left["x"], 20, 22)},
-                    "y": {"N": _format_float(self.top_left["y"], 20, 22)},
-                }
-            },
-            "bottom_right": {
-                "M": {
-                    "x": {"N": _format_float(self.bottom_right["x"], 20, 22)},
-                    "y": {"N": _format_float(self.bottom_right["y"], 20, 22)},
-                }
-            },
-            "bottom_left": {
-                "M": {
-                    "x": {"N": _format_float(self.bottom_left["x"], 20, 22)},
-                    "y": {"N": _format_float(self.bottom_left["y"], 20, 22)},
-                }
-            },
+                    "width": {"N": _format_float(self.bounding_box["width"], 20, 22)},
+                    "height": {"N": _format_float(self.bounding_box["height"], 20, 22)},}},
+            "top_right": {"M": {"x": {"N": _format_float(self.top_right["x"], 20, 22)},
+                    "y": {"N": _format_float(self.top_right["y"], 20, 22)},}},
+            "top_left": {"M": {"x": {"N": _format_float(self.top_left["x"], 20, 22)},
+                    "y": {"N": _format_float(self.top_left["y"], 20, 22)},}},
+            "bottom_right": {"M": {"x": {"N": _format_float(self.bottom_right["x"], 20, 22)},
+                    "y": {"N": _format_float(self.bottom_right["y"], 20, 22)},}},
+            "bottom_left": {"M": {"x": {"N": _format_float(self.bottom_left["x"], 20, 22)},
+                    "y": {"N": _format_float(self.bottom_left["y"], 20, 22)},}},
             "angle_degrees": {"N": _format_float(self.angle_degrees, 18, 20)},
             "angle_radians": {"N": _format_float(self.angle_radians, 18, 20)},
             "confidence": {"N": _format_float(self.confidence, 2, 2)},
-            "histogram": {
-                "M": {k: {"N": str(v)} for k, v in self.histogram.items()}
-            },
-            "num_chars": {"N": str(self.num_chars)},
-        }
+            "histogram": {"M": {k: {"N": str(v)} for k, v in self.histogram.items()}},
+            "num_chars": {"N": str(self.num_chars)},}
 
     def calculate_diagonal_length(self) -> float:
         """Calculates the length of the diagonal of the line.
@@ -204,10 +166,8 @@ class Line:
         Returns:
             float: The length of the diagonal of the line.
         """
-        return sqrt(
-            (self.top_right["x"] - self.bottom_left["x"]) ** 2
-            + (self.top_right["y"] - self.bottom_left["y"]) ** 2
-        )
+        return sqrt((self.top_right["x"] - self.bottom_left["x"]) ** 2
+            + (self.top_right["y"] - self.bottom_left["y"]) ** 2)
 
     def calculate_centroid(self) -> Tuple[float, float]:
         """Calculates the centroid of the line.
@@ -215,18 +175,14 @@ class Line:
         Returns:
             Tuple[float, float]: The (x, y) coordinates of the centroid.
         """
-        x = (
-            self.top_right["x"]
+        x = (self.top_right["x"]
             + self.top_left["x"]
             + self.bottom_right["x"]
-            + self.bottom_left["x"]
-        ) / 4
-        y = (
-            self.top_right["y"]
+            + self.bottom_left["x"]) / 4
+        y = (self.top_right["y"]
             + self.top_left["y"]
             + self.bottom_right["y"]
-            + self.bottom_left["y"]
-        ) / 4
+            + self.bottom_left["y"]) / 4
         return x, y
 
     def translate(self, x: float, y: float) -> None:
@@ -267,13 +223,11 @@ class Line:
         self.bounding_box["width"] *= sx
         self.bounding_box["height"] *= sy
 
-    def rotate(
-        self,
+    def rotate(self,
         angle: float,
         rotate_origin_x: float,
         rotate_origin_y: float,
-        use_radians: bool = True,
-    ) -> None:
+        use_radians: bool = True,) -> None:
         """Rotates the line by the specified angle about a given origin.
 
         Only rotates if the angle is within the allowed range:
@@ -294,15 +248,11 @@ class Line:
         """
         if use_radians:
             if not (-pi / 2 <= angle <= pi / 2):
-                raise ValueError(
-                    f"Angle {angle} (radians) is outside the allowed range [-π/2, π/2]."
-                )
+                raise ValueError(f"Angle {angle} (radians) is outside the allowed range [-π/2, π/2].")
             angle_radians = angle
         else:
             if not (-90 <= angle <= 90):
-                raise ValueError(
-                    f"Angle {angle} (degrees) is outside the allowed range [-90, 90]."
-                )
+                raise ValueError(f"Angle {angle} (degrees) is outside the allowed range [-90, 90].")
             angle_radians = radians(angle)
 
         def rotate_point(px, py, ox, oy, theta):
@@ -313,19 +263,15 @@ class Line:
             rotated_y = translated_x * sin(theta) + translated_y * cos(theta)
             return rotated_x + ox, rotated_y + oy
 
-        for corner in [
-            self.top_right,
+        for corner in [self.top_right,
             self.top_left,
             self.bottom_right,
-            self.bottom_left,
-        ]:
-            x_new, y_new = rotate_point(
-                corner["x"],
+            self.bottom_left,]:
+            x_new, y_new = rotate_point(corner["x"],
                 corner["y"],
                 rotate_origin_x,
                 rotate_origin_y,
-                angle_radians,
-            )
+                angle_radians,)
             corner["x"] = x_new
             corner["y"] = y_new
 
@@ -336,36 +282,26 @@ class Line:
             self.angle_degrees += angle
             self.angle_radians += radians(angle)
 
-        xs = [
-            pt["x"]
-            for pt in [
-                self.top_right,
+        xs = [pt["x"]
+            for pt in [self.top_right,
                 self.top_left,
                 self.bottom_right,
-                self.bottom_left,
-            ]
-        ]
-        ys = [
-            pt["y"]
-            for pt in [
-                self.top_right,
+                self.bottom_left,]]
+        ys = [pt["y"]
+            for pt in [self.top_right,
                 self.top_left,
                 self.bottom_right,
-                self.bottom_left,
-            ]
-        ]
+                self.bottom_left,]]
         self.bounding_box["x"] = min(xs)
         self.bounding_box["y"] = min(ys)
         self.bounding_box["width"] = max(xs) - min(xs)
         self.bounding_box["height"] = max(ys) - min(ys)
 
-    def shear(
-        self,
+    def shear(self,
         shx: float,
         shy: float,
         pivot_x: float = 0.0,
-        pivot_y: float = 0.0,
-    ) -> None:
+        pivot_y: float = 0.0,) -> None:
         """Applies a shear transformation to the line about a pivot point.
 
         Args:
@@ -374,16 +310,12 @@ class Line:
             pivot_x (float, optional): The x-coordinate of the pivot point. Defaults to 0.0.
             pivot_y (float, optional): The y-coordinate of the pivot point. Defaults to 0.0.
         """
-        corners = [
-            self.top_right,
+        corners = [self.top_right,
             self.top_left,
             self.bottom_right,
-            self.bottom_left,
-        ]
+            self.bottom_left,]
         for corner in corners:
-            x_new, y_new = shear_point(
-                corner["x"], corner["y"], pivot_x, pivot_y, shx, shy
-            )
+            x_new, y_new = shear_point(corner["x"], corner["y"], pivot_x, pivot_y, shx, shy)
             corner["x"] = x_new
             corner["y"] = y_new
 
@@ -406,12 +338,10 @@ class Line:
         Args:
             a, b, c, d, e, f (float): Parameters defining the 2x3 affine transformation.
         """
-        corners = [
-            self.top_left,
+        corners = [self.top_left,
             self.top_right,
             self.bottom_left,
-            self.bottom_right,
-        ]
+            self.bottom_right,]
         for corner in corners:
             x_old = corner["x"]
             y_old = corner["y"]
@@ -431,8 +361,7 @@ class Line:
         self.angle_radians = new_angle_radians
         self.angle_degrees = new_angle_radians * 180.0 / pi
 
-    def warp_affine_normalized_forward(
-        self,
+    def warp_affine_normalized_forward(self,
         a_f,
         b_f,
         c_f,
@@ -443,8 +372,7 @@ class Line:
         orig_height,
         new_width,
         new_height,
-        flip_y=False,
-    ) -> None:
+        flip_y=False,) -> None:
         """Applies a normalized forward affine transformation to the line's corners.
 
         The transformation converts normalized coordinates from the original image to new
@@ -458,12 +386,10 @@ class Line:
             new_height (int): The height of the new warped image in pixels.
             flip_y (bool, optional): Whether to flip the y-coordinate. Defaults to False.
         """
-        corners = [
-            self.top_left,
+        corners = [self.top_left,
             self.top_right,
             self.bottom_left,
-            self.bottom_right,
-        ]
+            self.bottom_right,]
         for corner in corners:
             x_old = corner["x"] * orig_width
             y_old = corner["y"] * orig_height
@@ -490,8 +416,7 @@ class Line:
         self.angle_radians = angle_rad
         self.angle_degrees = degrees(angle_rad)
 
-    def warp_transform(
-        self,
+    def warp_transform(self,
         a: float,
         b: float,
         c: float,
@@ -506,19 +431,16 @@ class Line:
         dst_height: int,
         # We will assume the corners come in as Vision bottom-left coords
         # and we want them to end as Vision bottom-left coords in the original
-        # image.
-    ):
+        # image.):
         """
         Maps Vision (bottom-left) normalized coords in the 'warped' image
         back to Vision (bottom-left) normalized coords in the 'original' image.
         """
 
-        corners = [
-            self.top_left,
+        corners = [self.top_left,
             self.top_right,
             self.bottom_left,
-            self.bottom_right,
-        ]
+            self.bottom_right,]
         corner_names = ["top_left", "top_right", "bottom_left", "bottom_right"]
 
         for corner, name in zip(corners, corner_names):
@@ -536,9 +458,7 @@ class Line:
             # original top-left px
             denom = (g * x_warped_px) + (h * y_warped_px) + 1.0
             if abs(denom) < 1e-12:
-                raise ValueError(
-                    "Inverse warp denominator ~ 0 at corner: " + name
-                )
+                raise ValueError("Inverse warp denominator ~ 0 at corner: " + name)
 
             X_old_px = (a * x_warped_px + b * y_warped_px + c) / denom
             Y_old_px = (d * x_warped_px + e * y_warped_px + f) / denom
@@ -578,12 +498,10 @@ class Line:
             old_w (int): The width of the image before rotation.
             old_h (int): The height of the image before rotation.
         """
-        corners = [
-            self.top_left,
+        corners = [self.top_left,
             self.top_right,
             self.bottom_right,
-            self.bottom_left,
-        ]
+            self.bottom_left,]
         for corner in corners:
             corner["x"] *= old_w
             corner["y"] *= old_h
@@ -616,8 +534,7 @@ class Line:
         Returns:
             str: A string representation of the Line object.
         """
-        return (
-            f"Line("
+        return (f"Line("
             f"image_id={_repr_str(self.image_id)}, "
             f"line_id={self.line_id}, "
             f"text={_repr_str(self.text)}, "
@@ -629,8 +546,7 @@ class Line:
             f"angle_degrees={self.angle_degrees}, "
             f"angle_radians={self.angle_radians}, "
             f"confidence={self.confidence}"
-            f")"
-        )
+            f")")
 
     def __iter__(self) -> Generator[Tuple[str, any], None, None]:
         """Returns an iterator over the Line object's attributes.
@@ -666,8 +582,7 @@ class Line:
         """
         if not isinstance(other, Line):
             return False
-        return (
-            self.image_id == other.image_id
+        return (self.image_id == other.image_id
             and self.line_id == other.line_id
             and self.text == other.text
             and self.bounding_box == other.bounding_box
@@ -677,8 +592,7 @@ class Line:
             and self.bottom_left == other.bottom_left
             and self.angle_degrees == other.angle_degrees
             and self.angle_radians == other.angle_radians
-            and self.confidence == other.confidence
-        )
+            and self.confidence == other.confidence)
 
     def __hash__(self) -> int:
         """Returns the hash value of the Line object.
@@ -686,9 +600,7 @@ class Line:
         Returns:
             int: The hash value of the Line object.
         """
-        return hash(
-            (
-                self.image_id,
+        return hash((self.image_id,
                 self.line_id,
                 self.text,
                 tuple(self.bounding_box.items()),
@@ -698,9 +610,7 @@ class Line:
                 tuple(self.bottom_left.items()),
                 self.angle_degrees,
                 self.angle_radians,
-                self.confidence,
-            )
-        )
+                self.confidence,))
 
 
 def itemToLine(item: dict) -> Line:
@@ -715,8 +625,7 @@ def itemToLine(item: dict) -> Line:
     Raises:
         ValueError: When the item format is invalid.
     """
-    required_keys = {
-        "PK",
+    required_keys = {"PK",
         "SK",
         "text",
         "bounding_box",
@@ -726,39 +635,26 @@ def itemToLine(item: dict) -> Line:
         "bottom_left",
         "angle_degrees",
         "angle_radians",
-        "confidence",
-    }
+        "confidence",}
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - set(item.keys())
         raise ValueError(f"Item is missing required keys: {missing_keys}")
     try:
-        return Line(
-            image_id=item["PK"]["S"][6:],
+        return Line(image_id=item["PK"]["S"][6:],
             line_id=int(item["SK"]["S"][6:]),
             text=item["text"]["S"],
-            bounding_box={
-                key: float(value["N"])
-                for key, value in item["bounding_box"]["M"].items()
-            },
-            top_right={
-                key: float(value["N"])
-                for key, value in item["top_right"]["M"].items()
-            },
-            top_left={
-                key: float(value["N"])
-                for key, value in item["top_left"]["M"].items()
-            },
-            bottom_right={
-                key: float(value["N"])
-                for key, value in item["bottom_right"]["M"].items()
-            },
-            bottom_left={
-                key: float(value["N"])
-                for key, value in item["bottom_left"]["M"].items()
-            },
+            bounding_box={key: float(value["N"])
+                for key, value in item["bounding_box"]["M"].items()},
+            top_right={key: float(value["N"])
+                for key, value in item["top_right"]["M"].items()},
+            top_left={key: float(value["N"])
+                for key, value in item["top_left"]["M"].items()},
+            bottom_right={key: float(value["N"])
+                for key, value in item["bottom_right"]["M"].items()},
+            bottom_left={key: float(value["N"])
+                for key, value in item["bottom_left"]["M"].items()},
             angle_degrees=float(item["angle_degrees"]["N"]),
             angle_radians=float(item["angle_radians"]["N"]),
-            confidence=float(item["confidence"]["N"]),
-        )
+            confidence=float(item["confidence"]["N"]),)
     except KeyError as e:
         raise ValueError(f"Error converting item to Line: {e}")
