@@ -18,6 +18,14 @@ from .entities.receipt_word_tag import ReceiptWordTag, itemToReceiptWordTag
 from .entities.word_tag import WordTag, itemToWordTag
 from .entities.gpt_validation import GPTValidation, itemToGPTValidation
 from .entities.gpt_initial_tagging import GPTInitialTagging, itemToGPTInitialTagging
+from .entities.job import Job, itemToJob
+from .entities.job_status import JobStatus, itemToJobStatus
+from .entities.job_resource import JobResource, itemToJobResource
+from .entities.job_metric import JobMetric, itemToJobMetric
+from .entities.job_checkpoint import JobCheckpoint, itemToJobCheckpoint
+from .entities.job_log import JobLog, itemToJobLog
+from .entities.instance import Instance, itemToInstance
+from .entities.instance_job import InstanceJob, itemToInstanceJob
 
 # Only after entities are imported, import data module classes
 from .data.dynamo_client import DynamoClient
