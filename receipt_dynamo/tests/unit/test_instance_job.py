@@ -47,7 +47,10 @@ def test_instance_job_init_valid(example_instance_job):
 @pytest.mark.unit
 def test_instance_job_init_minimal(example_instance_job_minimal):
     """Test the InstanceJob constructor with minimal parameters."""
-    assert example_instance_job_minimal.instance_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    assert (
+        example_instance_job_minimal.instance_id
+        == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    )
     assert example_instance_job_minimal.job_id == "4f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert example_instance_job_minimal.assigned_at == "2021-01-01T00:00:00"
     assert example_instance_job_minimal.status == "running"
@@ -213,9 +216,7 @@ def test_instance_job_repr(example_instance_job):
 def test_instance_job_iter(example_instance_job):
     """Test the InstanceJob.__iter__() method."""
     instance_job_dict = dict(example_instance_job)
-    assert (
-        instance_job_dict["instance_id"] == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    )
+    assert instance_job_dict["instance_id"] == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert instance_job_dict["job_id"] == "4f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert instance_job_dict["assigned_at"] == "2021-01-01T00:00:00"
     assert instance_job_dict["status"] == "running"
@@ -317,4 +318,4 @@ def test_itemToInstanceJob(example_instance_job, example_instance_job_minimal):
                 "assigned_at": {"S": "2021-01-01T00:00:00"},
                 "status": {"INVALID_TYPE": "running"},  # Invalid type
             }
-        ) 
+        )

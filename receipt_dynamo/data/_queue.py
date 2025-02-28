@@ -10,7 +10,7 @@ def validate_last_evaluated_key(lek: dict) -> None:
     # If None, it's valid (means not provided)
     if lek is None:
         return
-        
+
     if not all(k in lek for k in ["PK", "SK"]):
         raise ValueError("LastEvaluatedKey must contain both PK and SK")
 
@@ -18,8 +18,11 @@ def validate_last_evaluated_key(lek: dict) -> None:
     if not all(isinstance(lek[k], dict) and "S" in lek[k] for k in ["PK", "SK"]):
         raise ValueError("LastEvaluatedKey has invalid format")
 
+
 class Queue:
-    def listJobsInQueue(self, queue_name: str, limit: int = None, lastEvaluatedKey: dict = None) -> tuple[list[QueueJob], dict]:
+    def listJobsInQueue(
+        self, queue_name: str, limit: int = None, lastEvaluatedKey: dict = None
+    ) -> tuple[list[QueueJob], dict]:
         """Lists all jobs in a specified queue.
 
         Args:
@@ -53,8 +56,8 @@ class Queue:
             "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk_prefix)",
             "ExpressionAttributeValues": {
                 ":pk": {"S": f"QUEUE#{queue_name}"},
-                ":sk_prefix": {"S": "JOB#"}
-            }
+                ":sk_prefix": {"S": "JOB#"},
+            },
         }
 
         # Add the limit if provided
@@ -82,4 +85,4 @@ class Queue:
             if e.response["Error"]["Code"] == "ResourceNotFoundException":
                 raise ValueError(f"Table {self.table_name} does not exist")
             # Re-raise other ClientErrors
-            raise 
+            raise
