@@ -13,7 +13,7 @@ def example_queue():
         created_at=datetime(2023, 1, 1, 12, 0, 0),
         max_concurrent_jobs=5,
         priority="high",
-        job_count=3,)
+        job_count=3, )
 
 
 @pytest.fixture
@@ -21,7 +21,7 @@ def example_queue_minimal():
     """Creates a minimal example Queue object for testing."""
     return Queue(queue_name="minimal-queue",
         description="Minimal test queue",
-        created_at="2023-01-01T12:00:00",)
+        created_at="2023-01-01T12:00:00", )
 
 
 @pytest.mark.unit
@@ -44,7 +44,7 @@ def test_queue_init_invalid_queue_name():
     with pytest.raises(ValueError, match="queue_name must be a non-empty string"):
         Queue(queue_name=None,
             description="Test queue",
-            created_at=datetime.now(),)
+            created_at=datetime.now(), )
 
     with pytest.raises(ValueError, match="queue_name must be a non-empty string"):
         Queue(queue_name=123, description="Test queue", created_at=datetime.now())
@@ -59,7 +59,7 @@ def test_queue_init_invalid_description():
     with pytest.raises(ValueError, match="description must be a string"):
         Queue(queue_name="test-queue",
             description=None,
-            created_at=datetime.now(),)
+            created_at=datetime.now(), )
 
 
 @pytest.mark.unit
@@ -79,19 +79,19 @@ def test_queue_init_invalid_max_concurrent_jobs():
         Queue(queue_name="test-queue",
             description="Test queue",
             created_at=datetime.now(),
-            max_concurrent_jobs=0,)
+            max_concurrent_jobs=0, )
 
     with pytest.raises(ValueError, match="max_concurrent_jobs must be a positive integer"):
         Queue(queue_name="test-queue",
             description="Test queue",
             created_at=datetime.now(),
-            max_concurrent_jobs=-1,)
+            max_concurrent_jobs=-1, )
 
     with pytest.raises(ValueError, match="max_concurrent_jobs must be a positive integer"):
         Queue(queue_name="test-queue",
             description="Test queue",
             created_at=datetime.now(),
-            max_concurrent_jobs="5",)
+            max_concurrent_jobs="5", )
 
 
 @pytest.mark.unit
@@ -101,13 +101,13 @@ def test_queue_init_invalid_priority():
         Queue(queue_name="test-queue",
             description="Test queue",
             created_at=datetime.now(),
-            priority="invalid",)
+            priority="invalid", )
 
     with pytest.raises(ValueError, match="priority must be one of"):
         Queue(queue_name="test-queue",
             description="Test queue",
             created_at=datetime.now(),
-            priority=123,)
+            priority=123, )
 
 
 @pytest.mark.unit
@@ -117,13 +117,13 @@ def test_queue_init_invalid_job_count():
         Queue(queue_name="test-queue",
             description="Test queue",
             created_at=datetime.now(),
-            job_count=-1,)
+            job_count=-1, )
 
     with pytest.raises(ValueError, match="job_count must be a non-negative integer"):
         Queue(queue_name="test-queue",
             description="Test queue",
             created_at=datetime.now(),
-            job_count="3",)
+            job_count="3", )
 
 
 @pytest.mark.unit
@@ -205,21 +205,21 @@ def test_queue_eq():
         created_at="2023-01-01T12:00:00",
         max_concurrent_jobs=5,
         priority="high",
-        job_count=3,)
+        job_count=3, )
 
     queue2 = Queue(queue_name="test-queue",
         description="Test queue",
         created_at="2023-01-01T12:00:00",
         max_concurrent_jobs=5,
         priority="high",
-        job_count=3,)
+        job_count=3, )
 
     queue3 = Queue(queue_name="different-queue",
         description="Different queue",
         created_at="2023-01-02T12:00:00",
         max_concurrent_jobs=10,
         priority="medium",
-        job_count=0,)
+        job_count=0, )
 
     assert queue1 == queue2
     assert queue1 != queue3

@@ -17,7 +17,7 @@ def example_receipt_word():
         bottom_left={"x": 1.0, "y": 1.0},
         angle_degrees=1.0,
         angle_radians=5.0,
-        confidence=0.9,)
+        confidence=0.9, )
 
 
 @pytest.fixture
@@ -35,7 +35,7 @@ def example_receipt_word_with_tags():
         angle_degrees=1.0,
         angle_radians=5.0,
         confidence=0.9,
-        tags=["example", "word"],)
+        tags=["example", "word"], )
 
 
 @pytest.mark.unit
@@ -49,7 +49,7 @@ def test_receipt_word_init_valid(example_receipt_word, example_receipt_word_with
     assert example_receipt_word.bounding_box == {"x": 0.1,
         "y": 0.2,
         "width": 0.3,
-        "height": 0.4,}
+        "height": 0.4, }
     assert example_receipt_word.top_right == {"x": 1.0, "y": 2.0}
     assert example_receipt_word.top_left == {"x": 1.0, "y": 3.0}
     assert example_receipt_word.bottom_right == {"x": 4.0, "y": 2.0}
@@ -75,7 +75,7 @@ def test_receipt_word_init_invalid_receipt_id():
             bottom_left={"x": 1.0, "y": 1.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=0.9,)
+            confidence=0.9, )
     with pytest.raises(ValueError, match="^receipt_id must be positive"):
         ReceiptWord(receipt_id=-1,  # Negative
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -89,7 +89,7 @@ def test_receipt_word_init_invalid_receipt_id():
             bottom_left={"x": 1.0, "y": 1.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=0.9,)
+            confidence=0.9, )
 
 
 @pytest.mark.unit
@@ -108,7 +108,7 @@ def test_receipt_word_init_invalid_uuid():
             bottom_left={"x": 1.0, "y": 1.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=0.9,)
+            confidence=0.9, )
     with pytest.raises(ValueError, match="uuid must be a valid UUIDv4"):
         ReceiptWord(receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed",  # Missing last digit
@@ -122,7 +122,7 @@ def test_receipt_word_init_invalid_uuid():
             bottom_left={"x": 1.0, "y": 1.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=0.9,)
+            confidence=0.9, )
 
 
 @pytest.mark.unit
@@ -140,7 +140,7 @@ def test_receipt_word_init_invalid_line_id():
             bottom_left={"x": 1.0, "y": 1.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=0.9,)
+            confidence=0.9, )
     with pytest.raises(ValueError, match="^line_id must be positive"):
         ReceiptWord(receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -154,7 +154,7 @@ def test_receipt_word_init_invalid_line_id():
             bottom_left={"x": 1.0, "y": 1.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=0.9,)
+            confidence=0.9, )
 
 
 @pytest.mark.unit
@@ -172,7 +172,7 @@ def test_receipt_word_init_invalid_id():
             bottom_left={"x": 1.0, "y": 1.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=0.9,)
+            confidence=0.9, )
     with pytest.raises(ValueError, match="^id must be positive"):
         ReceiptWord(receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -186,7 +186,7 @@ def test_receipt_word_init_invalid_id():
             bottom_left={"x": 1.0, "y": 1.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=0.9,)
+            confidence=0.9, )
 
 
 @pytest.mark.unit
@@ -204,7 +204,7 @@ def test_receipt_word_init_invalid_text():
             bottom_left={"x": 1.0, "y": 1.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=0.9,)
+            confidence=0.9, )
 
 
 @pytest.mark.unit
@@ -223,7 +223,7 @@ def test_receipt_word_init_invalid_bounding_box():
             bottom_left={"x": 1.0, "y": 2.0},
             angle_degrees=0.0,
             angle_radians=0.0,
-            confidence=0.9,)
+            confidence=0.9, )
 
 
 @pytest.mark.unit
@@ -242,7 +242,7 @@ def test_receipt_word_corners():
             bottom_left={"x": 1.0, "y": 2.0},
             angle_degrees=0.0,
             angle_radians=0.0,
-            confidence=0.9,)
+            confidence=0.9, )
 
 
 @pytest.mark.unit
@@ -261,7 +261,7 @@ def test_receipt_word_angle_validation():
             bottom_left={"x": 1.0, "y": 2.0},
             angle_degrees="0.0",
             angle_radians=0.0,
-            confidence=0.9,)
+            confidence=0.9, )
     with pytest.raises(ValueError, match="angle_radians must be a float or int"):
         ReceiptWord(receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -275,7 +275,7 @@ def test_receipt_word_angle_validation():
             bottom_left={"x": 1.0, "y": 2.0},
             angle_degrees=0.0,
             angle_radians="0.0",
-            confidence=0.9,)
+            confidence=0.9, )
 
 
 @pytest.mark.unit
@@ -294,7 +294,7 @@ def test_receipt_word_init_invalid_confidence():
             bottom_left={"x": 1.0, "y": 2.0},
             angle_degrees=0.0,
             angle_radians=0.0,
-            confidence="0.9",)
+            confidence="0.9", )
     receipt = ReceiptWord(receipt_id=1,
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=1,
@@ -307,7 +307,7 @@ def test_receipt_word_init_invalid_confidence():
         bottom_left={"x": 1.0, "y": 2.0},
         angle_degrees=0.0,
         angle_radians=0.0,
-        confidence=1,)
+        confidence=1, )
     assert receipt.confidence == 1.0
     with pytest.raises(ValueError, match="confidence must be between 0 and 1"):
         ReceiptWord(receipt_id=1,
@@ -322,7 +322,7 @@ def test_receipt_word_init_invalid_confidence():
             bottom_left={"x": 1.0, "y": 2.0},
             angle_degrees=0.0,
             angle_radians=0.0,
-            confidence=1.1,)
+            confidence=1.1, )
 
 
 @pytest.mark.unit
@@ -342,7 +342,7 @@ def test_receipt_word_init_invalid_tags():
             angle_degrees=0.0,
             angle_radians=0.0,
             confidence=0.9,
-            tags="tag1",  # Not a list)
+            tags="tag1")
 
 
 @pytest.mark.unit
@@ -364,7 +364,7 @@ def test_receipt_word_to_item():
         angle_degrees=45.0,
         angle_radians=0.7853981634,
         confidence=0.95,
-        tags=["tag1", "tag2"],)
+        tags=["tag1", "tag2"], )
     item = word.to_item()
 
     # Check keys
@@ -418,7 +418,7 @@ def test_receipt_word_eq():
         angle_degrees=45.0,
         angle_radians=0.785398,
         confidence=0.99,
-        tags=["example", "word"],)
+        tags=["example", "word"], )
     word2 = ReceiptWord(receipt_id=1,
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=3,
@@ -432,7 +432,7 @@ def test_receipt_word_eq():
         angle_degrees=45.0,
         angle_radians=0.785398,
         confidence=0.99,
-        tags=["example", "word"],)
+        tags=["example", "word"], )
 
     assert word1 == word2
     assert word1 != "Test"
@@ -457,7 +457,7 @@ def test_receipt_word_iter(example_receipt_word_with_tags):
         "confidence",
         "tags",
         "histogram",
-        "num_chars",}
+        "num_chars", }
     assert set(receipt_word_dict.keys()) == expected_keys
     assert receipt_word_dict["receipt_id"] == 1
     assert (receipt_word_dict["image_id"] == "3f52804b-2fad-4e00-92c8-b593da3a8ed3")
@@ -467,7 +467,7 @@ def test_receipt_word_iter(example_receipt_word_with_tags):
     assert receipt_word_dict["bounding_box"] == {"x": 0.1,
         "y": 0.2,
         "width": 0.3,
-        "height": 0.4,}
+        "height": 0.4, }
     assert receipt_word_dict["top_right"] == {"x": 1.0, "y": 2.0}
     assert receipt_word_dict["top_left"] == {"x": 1.0, "y": 3.0}
     assert receipt_word_dict["bottom_right"] == {"x": 4.0, "y": 2.0}
@@ -499,7 +499,7 @@ def test_receipt_word_distance_and_angle(example_receipt_word):
         bottom_left={"x": 10.0, "y": 10.0},
         angle_degrees=1.0,
         angle_radians=5.0,
-        confidence=0.9,)
+        confidence=0.9, )
     assert example_receipt_word.distance_and_angle_from_ReceiptWord(other_receipt_word) == (26.637614382673235, 0.5098332286596837)
 
 
@@ -526,4 +526,4 @@ def test_item_to_receipt_word_round_trip(example_receipt_word_with_tags):
                 "angle_degrees": {"N": "1.0"},
                 "angle_radians": {"N": "5.0"},
                 "confidence": {"N": "0.9"},
-                "tags": {"SS": ["example", "word"]},})
+                "tags": {"SS": ["example", "word"]}, })

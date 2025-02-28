@@ -12,7 +12,7 @@ def example_queue_job():
         job_id="12345678-1234-4678-9234-567812345678",
         enqueued_at=datetime(2023, 1, 1, 12, 0, 0),
         priority="high",
-        position=1,)
+        position=1, )
 
 
 @pytest.fixture
@@ -20,7 +20,7 @@ def example_queue_job_minimal():
     """Creates a minimal example QueueJob object for testing."""
     return QueueJob(queue_name="minimal-queue",
         job_id="12345678-1234-4678-9234-567812345678",
-        enqueued_at="2023-01-01T12:00:00",)
+        enqueued_at="2023-01-01T12:00:00", )
 
 
 @pytest.mark.unit
@@ -39,17 +39,17 @@ def test_queue_job_init_invalid_queue_name():
     with pytest.raises(ValueError, match="queue_name must be a non-empty string"):
         QueueJob(queue_name="",
             job_id="12345678-1234-5678-1234-567812345678",
-            enqueued_at=datetime.now(),)
+            enqueued_at=datetime.now(), )
 
     with pytest.raises(ValueError, match="queue_name must be a non-empty string"):
         QueueJob(queue_name=None,
             job_id="12345678-1234-5678-1234-567812345678",
-            enqueued_at=datetime.now(),)
+            enqueued_at=datetime.now(), )
 
     with pytest.raises(ValueError, match="queue_name must be a non-empty string"):
         QueueJob(queue_name=123,
             job_id="12345678-1234-5678-1234-567812345678",
-            enqueued_at=datetime.now(),)
+            enqueued_at=datetime.now(), )
 
 
 @pytest.mark.unit
@@ -58,7 +58,7 @@ def test_queue_job_init_invalid_job_id():
     with pytest.raises(ValueError, match="uuid must be a valid UUIDv4"):
         QueueJob(queue_name="test-queue",
             job_id="invalid-uuid",
-            enqueued_at=datetime.now(),)
+            enqueued_at=datetime.now(), )
 
     with pytest.raises(ValueError, match="uuid must be a string"):
         QueueJob(queue_name="test-queue", job_id=None, enqueued_at=datetime.now())
@@ -73,12 +73,12 @@ def test_queue_job_init_invalid_enqueued_at():
     with pytest.raises(ValueError, match="enqueued_at must be a datetime object or a string"):
         QueueJob(queue_name="test-queue",
             job_id="12345678-1234-4678-9234-567812345678",
-            enqueued_at=123,)
+            enqueued_at=123, )
 
     with pytest.raises(ValueError, match="enqueued_at must be a datetime object or a string"):
         QueueJob(queue_name="test-queue",
             job_id="12345678-1234-4678-9234-567812345678",
-            enqueued_at=None,)
+            enqueued_at=None, )
 
 
 @pytest.mark.unit
@@ -88,13 +88,13 @@ def test_queue_job_init_invalid_priority():
         QueueJob(queue_name="test-queue",
             job_id="12345678-1234-4678-9234-567812345678",
             enqueued_at=datetime.now(),
-            priority="invalid",)
+            priority="invalid", )
 
     with pytest.raises(ValueError, match="priority must be one of"):
         QueueJob(queue_name="test-queue",
             job_id="12345678-1234-4678-9234-567812345678",
             enqueued_at=datetime.now(),
-            priority=123,)
+            priority=123, )
 
 
 @pytest.mark.unit
@@ -104,13 +104,13 @@ def test_queue_job_init_invalid_position():
         QueueJob(queue_name="test-queue",
             job_id="12345678-1234-4678-9234-567812345678",
             enqueued_at=datetime.now(),
-            position=-1,)
+            position=-1, )
 
     with pytest.raises(ValueError, match="position must be a non-negative integer"):
         QueueJob(queue_name="test-queue",
             job_id="12345678-1234-4678-9234-567812345678",
             enqueued_at=datetime.now(),
-            position="3",)
+            position="3", )
 
 
 @pytest.mark.unit
@@ -185,19 +185,19 @@ def test_queue_job_eq():
         job_id="12345678-1234-4678-9234-567812345678",
         enqueued_at="2023-01-01T12:00:00",
         priority="high",
-        position=1,)
+        position=1, )
 
     queue_job2 = QueueJob(queue_name="test-queue",
         job_id="12345678-1234-4678-9234-567812345678",
         enqueued_at="2023-01-01T12:00:00",
         priority="high",
-        position=1,)
+        position=1, )
 
     queue_job3 = QueueJob(queue_name="different-queue",
         job_id="12345678-1234-4678-9234-567812345678",
         enqueued_at="2023-01-02T12:00:00",
         priority="medium",
-        position=0,)
+        position=0, )
 
     assert queue_job1 == queue_job2
     assert queue_job1 != queue_job3

@@ -34,7 +34,7 @@ class _ReceiptLetter:
         try:
             self._client.put_item(TableName=self.table_name,
                 Item=letter.to_item(),
-                ConditionExpression="attribute_not_exists(PK)",)
+                ConditionExpression="attribute_not_exists(PK)", )
         except ClientError as e:
             if (e.response["Error"]["Code"]
                 == "ConditionalCheckFailedException"):
@@ -61,7 +61,7 @@ class _ReceiptLetter:
         try:
             self._client.put_item(TableName=self.table_name,
                 Item=letter.to_item(),
-                ConditionExpression="attribute_exists(PK)",)
+                ConditionExpression="attribute_exists(PK)", )
         except ClientError as e:
             if (e.response["Error"]["Code"]
                 == "ConditionalCheckFailedException"):
@@ -74,13 +74,13 @@ class _ReceiptLetter:
         image_id: str,
         line_id: int,
         word_id: int,
-        letter_id: int,):
+        letter_id: int, ):
         """Deletes a single ReceiptLetter by IDs."""
         try:
             self._client.delete_item(TableName=self.table_name,
                 Key={"PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"},},
-                ConditionExpression="attribute_exists(PK)",)
+                    "SK": {"S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"}, },
+                ConditionExpression="attribute_exists(PK)", )
         except ClientError as e:
             if (e.response["Error"]["Code"]
                 == "ConditionalCheckFailedException"):
@@ -107,12 +107,12 @@ class _ReceiptLetter:
         image_id: str,
         line_id: int,
         word_id: int,
-        letter_id: int,) -> ReceiptLetter:
+        letter_id: int, ) -> ReceiptLetter:
         """Retrieves a single ReceiptLetter by IDs."""
         try:
             response = self._client.get_item(TableName=self.table_name,
                 Key={"PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"},},)
+                    "SK": {"S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"}, }, )
             return itemToReceiptLetter(response["Item"])
         except KeyError:
             raise ValueError(f"ReceiptLetter with ID {letter_id} not found")
@@ -130,7 +130,7 @@ class _ReceiptLetter:
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "RECEIPT_LETTER"}},}
+                "ExpressionAttributeValues": {":val": {"S": "RECEIPT_LETTER"}}, }
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
             if limit is not None:
@@ -173,7 +173,7 @@ class _ReceiptLetter:
                     ":skPrefix": {"S": (f"RECEIPT#{receipt_id:05d}"
                             f"#LINE#{line_id:05d}"
                             f"#WORD#{word_id:05d}"
-                            f"#LETTER#")},},)
+                            f"#LETTER#")}, }, )
             receipt_letters.extend([itemToReceiptLetter(item) for item in response["Items"]])
 
             while "LastEvaluatedKey" in response:
@@ -183,8 +183,8 @@ class _ReceiptLetter:
                         ":skPrefix": {"S": (f"RECEIPT#{receipt_id:05d}"
                                 f"#LINE#{line_id:05d}"
                                 f"#WORD#{word_id:05d}"
-                                f"#LETTER#")},},
-                    ExclusiveStartKey=response["LastEvaluatedKey"],)
+                                f"#LETTER#")}, },
+                    ExclusiveStartKey=response["LastEvaluatedKey"], )
                 receipt_letters.extend([itemToReceiptLetter(item) for item in response["Items"]])
             return receipt_letters
 

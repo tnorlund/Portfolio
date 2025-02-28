@@ -27,16 +27,16 @@ def invert_affine(a, b, c, d, e, f):
 
 def invert_warp(a, b, c, d, e, f, g, h):
     """
-    Given the 8 perspective coefficients (a,b,c,d,e,f,g,h) for the mapping
+    Given the 8 perspective coefficients (a, b, c, d, e, f, g, h) for the mapping
       x_new = (a*x + b*y + c) / (1 + g*x + h*y)
       y_new = (d*x + e*y + f) / (1 + g*x + h*y)
     returns a new list of 8 coefficients [a2, b2, c2, d2, e2, f2, g2, h2]
-    that perform the inverse mapping (x_new,y_new) -> (x,y).
+    that perform the inverse mapping (x_new, y_new) -> (x, y).
     """
     # Form the 3x3 matrix
     M = [[a, b, c],
         [d, e, f],
-        [g, h, 1],]
+        [g, h, 1], ]
     # Invert it
     M_inv = _invert_3x3(M)
     # Extract the top-left 8 elements
@@ -67,13 +67,13 @@ def _invert_3x3(M):
     # Adjugate / cofactor method
     return [[inverse_determinant * ((M[1][1] * M[2][2] - M[1][2] * M[2][1])),
             inverse_determinant * (-(M[0][1] * M[2][2] - M[0][2] * M[2][1])),
-            inverse_determinant * ((M[0][1] * M[1][2] - M[0][2] * M[1][1])),],
+            inverse_determinant * ((M[0][1] * M[1][2] - M[0][2] * M[1][1])), ],
         [inverse_determinant * (-(M[1][0] * M[2][2] - M[1][2] * M[2][0])),
             inverse_determinant * ((M[0][0] * M[2][2] - M[0][2] * M[2][0])),
-            inverse_determinant * (-(M[0][0] * M[1][2] - M[0][2] * M[1][0])),],
+            inverse_determinant * (-(M[0][0] * M[1][2] - M[0][2] * M[1][0])), ],
         [inverse_determinant * ((M[1][0] * M[2][1] - M[1][1] * M[2][0])),
             inverse_determinant * (-(M[0][0] * M[2][1] - M[0][1] * M[2][0])),
-            inverse_determinant * ((M[0][0] * M[1][1] - M[0][1] * M[1][0])),],]
+            inverse_determinant * ((M[0][0] * M[1][1] - M[0][1] * M[1][0])), ], ]
 
 
 def pad_corners_opposite(corners, pad):
@@ -152,7 +152,7 @@ def solve_8x8_system(A, b):
 
 
 def find_perspective_coeffs(src_points: List[Tuple[float, float]],
-    dst_points: List[Tuple[float, float]],) -> List[float]:
+    dst_points: List[Tuple[float, float]], ) -> List[float]:
     """
     src_points: list of 4 (x, y) source corners
     dst_points: list of 4 (x, y) destination corners
@@ -190,7 +190,7 @@ def compute_receipt_box_from_skewed_extents(hull_pts: List[Tuple[float, float]],
     cx: float,
     cy: float,
     rotation_deg: float,
-    use_radians: bool = False,) -> Optional[List[List[int]]]:
+    use_radians: bool = False, ) -> Optional[List[List[int]]]:
     """
     Compute a perspective-correct quadrilateral ("receipt box") from a set of convex hull points.
 
@@ -351,7 +351,7 @@ def find_hull_extents_relative_to_centroid(hull_pts: List[Tuple[float, float]],
     cx: float,
     cy: float,
     rotation_deg: float = 0.0,
-    use_radians: bool = False,) -> Dict[str, Optional[Tuple[int, int]]]:
+    use_radians: bool = False, ) -> Dict[str, Optional[Tuple[int, int]]]:
     """
     Compute the intersection points between a convex hull and four rays emanating from a centroid,
     in a rotated coordinate system.
@@ -405,7 +405,7 @@ def find_hull_extents_relative_to_centroid(hull_pts: List[Tuple[float, float]],
     directions = {"left": (-u[0], -u[1]),
         "right": u,
         "top": (-v[0], -v[1]),
-        "bottom": v,}
+        "bottom": v, }
 
     results = {}
     for key, direction_vector in directions.items():
@@ -423,7 +423,7 @@ def find_hull_extents_relative_to_centroid(hull_pts: List[Tuple[float, float]],
 def _intersection_point_for_direction(hull_pts: List[Tuple[float, float]],
     cx: float,
     cy: float,
-    direction: Tuple[float, float],) -> Optional[Tuple[float, float]]:
+    direction: Tuple[float, float], ) -> Optional[Tuple[float, float]]:
     """
     Compute the intersection point between a ray and the edges of a convex polygon.
 

@@ -4,7 +4,7 @@ from typing import List
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.entities.receipt_window import (ReceiptWindow,
-    itemToReceiptWindow,)
+    itemToReceiptWindow, )
 
 
 class _ReceiptWindow:
@@ -31,7 +31,7 @@ class _ReceiptWindow:
         try:
             self._client.put_item(TableName=self.table_name,
                 Item=receipt_window.to_item(),
-                ConditionExpression="attribute_not_exists(PK) AND attribute_not_exists(SK)",)
+                ConditionExpression="attribute_not_exists(PK) AND attribute_not_exists(SK)", )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
@@ -133,7 +133,7 @@ class _ReceiptWindow:
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "RECEIPT_WINDOW"}},}
+                "ExpressionAttributeValues": {":val": {"S": "RECEIPT_WINDOW"}}, }
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
             if limit is not None:

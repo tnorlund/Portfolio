@@ -21,7 +21,7 @@ class GPTInitialTagging:
         receipt_id: int,
         query: str,
         response: str,
-        timestamp_added: datetime,):
+        timestamp_added: datetime, ):
         """Initializes a new GPTInitialTagging object.
 
         Args:
@@ -96,7 +96,7 @@ class GPTInitialTagging:
         By design, only ONE record can exist per (image_id, receipt_id).
         """
         return {"PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#QUERY#INITIAL_TAGGING"},}
+            "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#QUERY#INITIAL_TAGGING"}, }
 
     def to_item(self) -> dict:
         """Converts the GPTInitialTagging object to a DynamoDB item."""
@@ -104,7 +104,7 @@ class GPTInitialTagging:
             "TYPE": {"S": "GPT_INITIAL_TAGGING"},
             "query": {"S": self.query},
             "response": {"S": self.response},
-            "timestamp_added": {"S": self.timestamp_added},}
+            "timestamp_added": {"S": self.timestamp_added}, }
 
     def __hash__(self):
         """Generates a hash value for the GPTInitialTagging."""
@@ -112,7 +112,7 @@ class GPTInitialTagging:
                 self.receipt_id,
                 self.query,
                 self.response,
-                self.timestamp_added,))
+                self.timestamp_added, ))
 
 
 def itemToGPTInitialTagging(item: dict) -> GPTInitialTagging:
@@ -147,6 +147,6 @@ def itemToGPTInitialTagging(item: dict) -> GPTInitialTagging:
             receipt_id=receipt_id,
             query=query,
             response=response,
-            timestamp_added=timestamp_added,)
+            timestamp_added=timestamp_added, )
     except (IndexError, ValueError, KeyError) as e:
         raise ValueError(f"Error converting item to GPTInitialTagging: {e}")

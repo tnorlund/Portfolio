@@ -20,7 +20,7 @@ def sample_receipt_word():
         angle_degrees=2.0,
         angle_radians=0.0349066,
         confidence=0.95,
-        tags=["tag1", "tag2"],)
+        tags=["tag1", "tag2"], )
 
 
 @pytest.mark.integration
@@ -35,7 +35,7 @@ def test_add_receipt_word(dynamodb_table: Literal["MyMockedTable"], sample_recei
     retrieved_word = client.getReceiptWord(sample_receipt_word.receipt_id,
         sample_receipt_word.image_id,
         sample_receipt_word.line_id,
-        sample_receipt_word.word_id,)
+        sample_receipt_word.word_id, )
     assert retrieved_word == sample_receipt_word
 
 
@@ -64,7 +64,7 @@ def test_update_receipt_word(dynamodb_table: Literal["MyMockedTable"], sample_re
     retrieved_word = client.getReceiptWord(sample_receipt_word.receipt_id,
         sample_receipt_word.image_id,
         sample_receipt_word.line_id,
-        sample_receipt_word.word_id,)
+        sample_receipt_word.word_id, )
     assert retrieved_word.text == "Updated receipt word"
 
 
@@ -78,14 +78,14 @@ def test_delete_receipt_word(dynamodb_table: Literal["MyMockedTable"], sample_re
     client.deleteReceiptWord(sample_receipt_word.receipt_id,
         sample_receipt_word.image_id,
         sample_receipt_word.line_id,
-        sample_receipt_word.word_id,)
+        sample_receipt_word.word_id, )
 
     # Assert
     with pytest.raises(ValueError, match="not found"):
         client.getReceiptWord(sample_receipt_word.receipt_id,
             sample_receipt_word.image_id,
             sample_receipt_word.line_id,
-            sample_receipt_word.word_id,)
+            sample_receipt_word.word_id, )
 
 
 @pytest.mark.integration
@@ -104,7 +104,7 @@ def test_receipt_word_list(dynamodb_table: Literal["MyMockedTable"]):
             bottom_right={"x": 0.1, "y": 0.02},
             angle_degrees=0,
             angle_radians=0,
-            confidence=1.0,)
+            confidence=1.0, )
         for i in range(1, 4)]
     for w in words:
         client.addReceiptWord(w)
@@ -134,7 +134,7 @@ def test_receipt_word_list_from_line(dynamodb_table: Literal["MyMockedTable"]):
             bottom_right={"x": 0.1, "y": 0.02},
             angle_degrees=0,
             angle_radians=0,
-            confidence=1.0,)
+            confidence=1.0, )
         for i in range(1, 3)]
     # Another word in a different line
     another_word = ReceiptWord(receipt_id=1,
@@ -149,7 +149,7 @@ def test_receipt_word_list_from_line(dynamodb_table: Literal["MyMockedTable"]):
         bottom_right={"x": 0.3, "y": 0.31},
         angle_degrees=10,
         angle_radians=0.17453,
-        confidence=0.9,)
+        confidence=0.9, )
     for w in words_same_line + [another_word]:
         client.addReceiptWord(w)
 

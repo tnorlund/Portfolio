@@ -28,7 +28,7 @@ def normalize(v: Tuple[float, float]) -> Tuple[float, float]:
 def offset_corner_inward(corner: Tuple[float, float],
     adj1: Tuple[float, float],
     adj2: Tuple[float, float],
-    offset_distance: float,) -> Tuple[float, float]:
+    offset_distance: float, ) -> Tuple[float, float]:
     """
     Compute an inwardly offset point for a given corner.
 
@@ -52,7 +52,7 @@ def offset_corner_inward(corner: Tuple[float, float],
     v1 = normalize((adj1[0] - corner[0], adj1[1] - corner[1]))
     v2 = normalize((adj2[0] - corner[0], adj2[1] - corner[1]))
     return (corner[0] + offset_distance * (v1[0] + v2[0]),
-        corner[1] + offset_distance * (v1[1] + v2[1]),)
+        corner[1] + offset_distance * (v1[1] + v2[1]), )
 
 
 def window_rectangle_for_corner(receipt_corner: Tuple[float, float],
@@ -61,7 +61,7 @@ def window_rectangle_for_corner(receipt_corner: Tuple[float, float],
     edge_direction: Tuple[float, float],
     offset_distance: float,
     image_size: Tuple[int, int],
-    corner_position: str,  # "top" or "bottom") -> List[Tuple[float, float]]:
+    corner_position: str,) -> List[Tuple[float, float]]:
     """
     Compute a rectangular window polygon adjacent to a receipt corner.
 
@@ -158,7 +158,7 @@ def window_rectangle_for_corner(receipt_corner: Tuple[float, float],
 
 def crop_polygon_region(image: Image, poly: List[Tuple[float, float]]) -> Image:
     """
-    Given a polygon (a list of (x,y) coordinates), computes its axis-aligned bounding box
+    Given a polygon (a list of (x, y) coordinates), computes its axis-aligned bounding box
     and crops that region from the image.
 
     The bounding box is computed by finding the minimum and maximum x and y values
@@ -178,7 +178,7 @@ def crop_polygon_region(image: Image, poly: List[Tuple[float, float]]) -> Image:
 def extract_and_save_corner_windows(image: Image,
     receipt_box_corners: List[Tuple[float, float]],
     offset_distance: float,
-    max_dim: int,) -> Dict[str, Dict[str, object]]:
+    max_dim: int, ) -> Dict[str, Dict[str, object]]:
     """
     Extract and downscale window regions from each receipt corner.
 
@@ -223,28 +223,28 @@ def extract_and_save_corner_windows(image: Image,
         edge_direction=(c3[0] - c0[0], c3[1] - c0[1]),
         offset_distance=offset_distance,
         image_size=img_size,
-        corner_position="top",)
+        corner_position="top", )
     poly_tr = window_rectangle_for_corner(receipt_corner=c1,
         adj1=c0,
         adj2=c2,
         edge_direction=(c2[0] - c1[0], c2[1] - c1[1]),
         offset_distance=offset_distance,
         image_size=img_size,
-        corner_position="top",)
+        corner_position="top", )
     poly_br = window_rectangle_for_corner(receipt_corner=c2,
         adj1=c1,
         adj2=c3,
         edge_direction=(c2[0] - c1[0], c2[1] - c1[1]),
         offset_distance=offset_distance,
         image_size=img_size,
-        corner_position="bottom",)
+        corner_position="bottom", )
     poly_bl = window_rectangle_for_corner(receipt_corner=c3,
         adj1=c0,
         adj2=c2,
         edge_direction=(c3[0] - c0[0], c3[1] - c0[1]),
         offset_distance=offset_distance,
         image_size=img_size,
-        corner_position="bottom",)
+        corner_position="bottom", )
 
     # Crop each region from the original image.
     cropped_tl = crop_polygon_region(image, poly_tl)
@@ -272,16 +272,16 @@ def extract_and_save_corner_windows(image: Image,
     return {"top_left": {"image": image_tl,
             "width": width_tl,
             "height": height_tl,
-            "inner_corner": poly_tl[0],},
+            "inner_corner": poly_tl[0], },
         "top_right": {"image": image_tr,
             "width": width_tr,
             "height": height_tr,
-            "inner_corner": poly_tr[0],},
+            "inner_corner": poly_tr[0], },
         "bottom_right": {"image": image_br,
             "width": width_br,
             "height": height_br,
-            "inner_corner": poly_br[0],},
+            "inner_corner": poly_br[0], },
         "bottom_left": {"image": image_bl,
             "width": width_bl,
             "height": height_bl,
-            "inner_corner": poly_bl[0],},}
+            "inner_corner": poly_bl[0], }, }

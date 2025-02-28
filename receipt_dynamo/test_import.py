@@ -18,6 +18,7 @@ try:
     print(f"\nSuccessfully imported receipt_dynamo package from: {receipt_dynamo.__file__}")
 
     # Try importing a few key modules
+    from receipt_dynamo import DynamoClient
 
     print("Successfully imported DynamoClient")
 

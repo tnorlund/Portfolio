@@ -5,7 +5,7 @@ from receipt_dynamo.entities.util import (_format_float,
     _repr_str,
     assert_valid_bounding_box,
     assert_valid_point,
-    assert_valid_uuid,)
+    assert_valid_uuid, )
 
 
 class ReceiptLetter:
@@ -48,7 +48,7 @@ class ReceiptLetter:
         bottom_left: dict,
         angle_degrees: float,
         angle_radians: float,
-        confidence: float,):
+        confidence: float, ):
         """
         Initializes a new ReceiptLetter object for DynamoDB.
 
@@ -142,7 +142,7 @@ class ReceiptLetter:
             "SK": {"S": (f"RECEIPT#{self.receipt_id:05d}#"
                     f"LINE#{self.line_id:05d}#"
                     f"WORD#{self.word_id:05d}#"
-                    f"LETTER#{self.letter_id:05d}")},}
+                    f"LETTER#{self.letter_id:05d}")}, }
 
     def to_item(self) -> dict:
         """
@@ -157,18 +157,18 @@ class ReceiptLetter:
             "bounding_box": {"M": {"x": {"N": _format_float(self.bounding_box["x"], 20, 22)},
                     "y": {"N": _format_float(self.bounding_box["y"], 20, 22)},
                     "width": {"N": _format_float(self.bounding_box["width"], 20, 22)},
-                    "height": {"N": _format_float(self.bounding_box["height"], 20, 22)},}},
+                    "height": {"N": _format_float(self.bounding_box["height"], 20, 22)}, }},
             "top_right": {"M": {"x": {"N": _format_float(self.top_right["x"], 20, 22)},
-                    "y": {"N": _format_float(self.top_right["y"], 20, 22)},}},
+                    "y": {"N": _format_float(self.top_right["y"], 20, 22)}, }},
             "top_left": {"M": {"x": {"N": _format_float(self.top_left["x"], 20, 22)},
-                    "y": {"N": _format_float(self.top_left["y"], 20, 22)},}},
+                    "y": {"N": _format_float(self.top_left["y"], 20, 22)}, }},
             "bottom_right": {"M": {"x": {"N": _format_float(self.bottom_right["x"], 20, 22)},
-                    "y": {"N": _format_float(self.bottom_right["y"], 20, 22)},}},
+                    "y": {"N": _format_float(self.bottom_right["y"], 20, 22)}, }},
             "bottom_left": {"M": {"x": {"N": _format_float(self.bottom_left["x"], 20, 22)},
-                    "y": {"N": _format_float(self.bottom_left["y"], 20, 22)},}},
+                    "y": {"N": _format_float(self.bottom_left["y"], 20, 22)}, }},
             "angle_degrees": {"N": _format_float(self.angle_degrees, 18, 20)},
             "angle_radians": {"N": _format_float(self.angle_radians, 18, 20)},
-            "confidence": {"N": _format_float(self.confidence, 2, 2)},}
+            "confidence": {"N": _format_float(self.confidence, 2, 2)}, }
 
     def __eq__(self, other: object) -> bool:
         """
@@ -263,7 +263,7 @@ class ReceiptLetter:
                 tuple(self.bottom_left.items()),
                 self.angle_degrees,
                 self.angle_radians,
-                self.confidence,))
+                self.confidence, ))
 
     def warp_transform(self,
         a: float,
@@ -278,7 +278,7 @@ class ReceiptLetter:
         src_height: int,
         dst_width: int,
         dst_height: int,
-        flip_y: bool = False,):
+        flip_y: bool = False, ):
         """
         Inverse perspective transform from 'new' space back to 'old' space.
 
@@ -305,7 +305,7 @@ class ReceiptLetter:
         corners = [self.top_left,
             self.top_right,
             self.bottom_left,
-            self.bottom_right,]
+            self.bottom_right, ]
 
         for corner in corners:
             # 1) Convert normalized new coords -> pixel coords in the 'new'
@@ -392,7 +392,7 @@ def itemToReceiptLetter(item: dict) -> ReceiptLetter:
         "bottom_left",
         "angle_degrees",
         "angle_radians",
-        "confidence",}
+        "confidence", }
     if not required_keys.issubset(item):
         missing_keys = required_keys - set(item)
         raise ValueError(f"Item is missing required keys: {missing_keys}")
@@ -415,6 +415,6 @@ def itemToReceiptLetter(item: dict) -> ReceiptLetter:
                 for key, value in item["bottom_left"]["M"].items()},
             angle_degrees=float(item["angle_degrees"]["N"]),
             angle_radians=float(item["angle_radians"]["N"]),
-            confidence=float(item["confidence"]["N"]),)
+            confidence=float(item["confidence"]["N"]), )
     except (KeyError, ValueError) as e:
         raise ValueError(f"Error converting item to ReceiptLetter: {e}") from e

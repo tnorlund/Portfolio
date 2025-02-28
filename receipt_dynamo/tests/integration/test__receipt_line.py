@@ -19,7 +19,7 @@ def sample_receipt_line():
         bottom_right={"x": 0.5, "y": 0.25},
         angle_degrees=5.0,
         angle_radians=0.0872665,
-        confidence=0.98,)
+        confidence=0.98, )
 
 
 @pytest.mark.integration
@@ -33,7 +33,7 @@ def test_add_receipt_line(dynamodb_table: Literal["MyMockedTable"], sample_recei
     # Assert
     retrieved_line = client.getReceiptLine(sample_receipt_line.receipt_id,
         sample_receipt_line.image_id,
-        sample_receipt_line.line_id,)
+        sample_receipt_line.line_id, )
     assert retrieved_line == sample_receipt_line
 
 
@@ -64,7 +64,7 @@ def test_update_receipt_line(dynamodb_table: Literal["MyMockedTable"], sample_re
     # Assert
     retrieved_line = client.getReceiptLine(sample_receipt_line.receipt_id,
         sample_receipt_line.image_id,
-        sample_receipt_line.line_id,)
+        sample_receipt_line.line_id, )
     assert retrieved_line.text == updated_text
 
 
@@ -77,13 +77,13 @@ def test_delete_receipt_line(dynamodb_table: Literal["MyMockedTable"], sample_re
     # Act
     client.deleteReceiptLine(sample_receipt_line.receipt_id,
         sample_receipt_line.image_id,
-        sample_receipt_line.line_id,)
+        sample_receipt_line.line_id, )
 
     # Assert
     with pytest.raises(ValueError, match="not found"):
         client.getReceiptLine(sample_receipt_line.receipt_id,
             sample_receipt_line.image_id,
-            sample_receipt_line.line_id,)
+            sample_receipt_line.line_id, )
 
 
 @pytest.mark.integration
@@ -101,7 +101,7 @@ def test_receipt_line_list(dynamodb_table: Literal["MyMockedTable"]):
             bottom_right={"x": 1, "y": 1},
             angle_degrees=0,
             angle_radians=0,
-            confidence=1.0,)
+            confidence=1.0, )
         for i in range(1, 4)]
     for ln in lines:
         client.addReceiptLine(ln)
@@ -117,7 +117,7 @@ def test_receipt_line_list(dynamodb_table: Literal["MyMockedTable"]):
 
 
 @pytest.mark.integration
-def test_receipt_line_list_from_receipt(dynamodb_table: Literal["MyMockedTable"],):
+def test_receipt_line_list_from_receipt(dynamodb_table: Literal["MyMockedTable"], ):
     # Arrange
     client = DynamoClient(dynamodb_table)
     # Lines for receipt_id=1, image_id=1
@@ -132,7 +132,7 @@ def test_receipt_line_list_from_receipt(dynamodb_table: Literal["MyMockedTable"]
             bottom_right={"x": 1, "y": 1},
             angle_degrees=0,
             angle_radians=0,
-            confidence=1.0,)
+            confidence=1.0, )
         for i in range(1, 3)]
     # A line for a different receipt
     another_line = ReceiptLine(receipt_id=2,
@@ -146,7 +146,7 @@ def test_receipt_line_list_from_receipt(dynamodb_table: Literal["MyMockedTable"]
         bottom_right={"x": 0.3, "y": 0.3},
         angle_degrees=10,
         angle_radians=0.17453,
-        confidence=0.99,)
+        confidence=0.99, )
     for ln in lines_same_receipt + [another_line]:
         client.addReceiptLine(ln)
 

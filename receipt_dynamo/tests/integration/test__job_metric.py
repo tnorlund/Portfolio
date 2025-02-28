@@ -29,9 +29,9 @@ def sample_job():
         priority="medium",
         job_config={"type": "training",
             "model": "receipt_model",
-            "batch_size": 32,},
+            "batch_size": 32, },
         estimated_duration=3600,
-        tags={"env": "test", "purpose": "integration-test"},)
+        tags={"env": "test", "purpose": "integration-test"}, )
 
 
 @pytest.fixture
@@ -43,7 +43,7 @@ def sample_job_metric(sample_job):
         0.15,
         unit="dimensionless",
         step=100,
-        epoch=2,)
+        epoch=2, )
 
 
 @pytest.fixture
@@ -55,7 +55,7 @@ def sample_job_metric_2(sample_job):
         0.85,
         unit="percent",
         step=100,
-        epoch=2,)
+        epoch=2, )
 
 
 @pytest.fixture
@@ -68,7 +68,7 @@ def sample_job_metric_later(sample_job, sample_job_metric):
         0.1,
         unit="dimensionless",
         step=200,
-        epoch=3,)
+        epoch=3, )
 
 
 # ---
@@ -121,7 +121,7 @@ def test_addJobMetric_raises_value_error(job_metric_dynamo):
 def test_addJobMetric_raises_value_error_not_instance(job_metric_dynamo):
     """Test that addJobMetric raises ValueError when job_metric is not an instance of JobMetric"""
     with pytest.raises(ValueError,
-        match="job_metric must be an instance of the JobMetric class.",):
+        match="job_metric must be an instance of the JobMetric class.", ):
         job_metric_dynamo.addJobMetric("not a job metric")
 
 
@@ -136,7 +136,7 @@ def test_addJobMetric_raises_conditional_check_failed(job_metric_dynamo, sample_
 
     # Try to add it again
     with pytest.raises(ValueError,
-        match=f"JobMetric with name {sample_job_metric.metric_name} and timestamp {sample_job_metric.timestamp} for job {sample_job_metric.job_id} already exists",):
+        match=f"JobMetric with name {sample_job_metric.metric_name} and timestamp {sample_job_metric.timestamp} for job {sample_job_metric.job_id} already exists", ):
         job_metric_dynamo.addJobMetric(sample_job_metric)
 
 
@@ -146,8 +146,8 @@ def test_addJobMetric_raises_resource_not_found(job_metric_dynamo, sample_job_me
     mock_put = mocker.patch.object(job_metric_dynamo._client,
         "put_item",
         side_effect=ClientError({"Error": {"Code": "ResourceNotFoundException",
-                    "Message": "Table not found",}},
-            "PutItem",),)
+                    "Message": "Table not found", }},
+            "PutItem", ), )
 
     with pytest.raises(Exception, match="Could not add job metric to DynamoDB"):
         job_metric_dynamo.addJobMetric(sample_job_metric)
@@ -171,7 +171,7 @@ def test_getJobMetric_success(job_metric_dynamo, sample_job, sample_job_metric):
     # Get the job metric
     metric = job_metric_dynamo.getJobMetric(sample_job_metric.job_id,
         sample_job_metric.metric_name,
-        sample_job_metric.timestamp,)
+        sample_job_metric.timestamp, )
 
     # Verify
     assert metric.job_id == sample_job_metric.job_id
@@ -194,7 +194,7 @@ def test_getJobMetric_raises_value_error_job_id_none(job_metric_dynamo):
 def test_getJobMetric_raises_value_error_metric_name_none(job_metric_dynamo, sample_job):
     """Test that getJobMetric raises ValueError when metric_name is None"""
     with pytest.raises(ValueError,
-        match="Metric name is required and must be a non-empty string.",):
+        match="Metric name is required and must be a non-empty string.", ):
         job_metric_dynamo.getJobMetric(sample_job.job_id, None, "2021-01-01T12:30:45")
 
 
@@ -202,7 +202,7 @@ def test_getJobMetric_raises_value_error_metric_name_none(job_metric_dynamo, sam
 def test_getJobMetric_raises_value_error_timestamp_none(job_metric_dynamo, sample_job):
     """Test that getJobMetric raises ValueError when timestamp is None"""
     with pytest.raises(ValueError,
-        match="Timestamp is required and must be a non-empty string.",):
+        match="Timestamp is required and must be a non-empty string.", ):
         job_metric_dynamo.getJobMetric(sample_job.job_id, "loss", None)
 
 
@@ -243,7 +243,7 @@ def test_listJobMetrics_with_metric_name(job_metric_dynamo,
     sample_job,
     sample_job_metric,
     sample_job_metric_2,
-    sample_job_metric_later,):
+    sample_job_metric_later, ):
     """Test listing job metrics filtered by metric name"""
     # Add the job first
     job_metric_dynamo.addJob(sample_job)
@@ -394,7 +394,7 @@ def test_getMetricsByName_not_found(job_metric_dynamo, sample_job, sample_job_me
 def test_getMetricsByName_raises_value_error(job_metric_dynamo):
     """Test that getMetricsByName raises ValueError when metric_name is None"""
     with pytest.raises(ValueError,
-        match="Metric name is required and must be a non-empty string.",):
+        match="Metric name is required and must be a non-empty string.", ):
         job_metric_dynamo.getMetricsByName(None)
 
 
@@ -422,7 +422,7 @@ def test_getMetricsByNameAcrossJobs_success(job_metric_dynamo, sample_job, sampl
         "test_user",
         "pending",
         "medium",
-        {},)
+        {}, )
     job_metric_dynamo.addJob(second_job)
 
     # Create a metric for the second job with same name but different value
@@ -434,7 +434,7 @@ def test_getMetricsByNameAcrossJobs_success(job_metric_dynamo, sample_job, sampl
         0.25,  # Different value
         unit="dimensionless",
         step=50,
-        epoch=1,)
+        epoch=1, )
 
     # Add all job metrics
     job_metric_dynamo.addJobMetric(sample_job_metric)  # Original job, loss
@@ -491,7 +491,7 @@ def test_getMetricsByNameAcrossJobs_with_limit(job_metric_dynamo, sample_job, sa
         "test_user",
         "pending",
         "medium",
-        {},)
+        {}, )
     job_metric_dynamo.addJob(second_job)
 
     # Create metrics for both jobs
@@ -503,7 +503,7 @@ def test_getMetricsByNameAcrossJobs_with_limit(job_metric_dynamo, sample_job, sa
         0.25,
         unit="dimensionless",
         step=50,
-        epoch=1,)
+        epoch=1, )
 
     # Add all job metrics
     job_metric_dynamo.addJobMetric(sample_job_metric)
@@ -540,7 +540,7 @@ def test_getMetricsByNameAcrossJobs_not_found(job_metric_dynamo, sample_job, sam
 def test_getMetricsByNameAcrossJobs_raises_value_error(job_metric_dynamo):
     """Test that getMetricsByNameAcrossJobs raises ValueError when metric_name is None"""
     with pytest.raises(ValueError,
-        match="Metric name is required and must be a non-empty string.",):
+        match="Metric name is required and must be a non-empty string.", ):
         job_metric_dynamo.getMetricsByNameAcrossJobs(None)
 
 
@@ -560,7 +560,7 @@ def test_validate_last_evaluated_key_raises_value_error_missing_keys():
 def test_validate_last_evaluated_key_raises_value_error_invalid_format():
     """Test that validate_last_evaluated_key raises ValueError when the format is invalid"""
     with pytest.raises(ValueError,
-        match="LastEvaluatedKey.* must be a dict containing a key 'S'",):
+        match="LastEvaluatedKey.* must be a dict containing a key 'S'", ):
         validate_last_evaluated_key({"PK": {"S": "value"}, "SK": "not a dict"})
 
 
@@ -571,8 +571,8 @@ def test_listJobMetrics_raises_client_error(job_metric_dynamo, sample_job, mocke
     mock_query = mocker.patch.object(job_metric_dynamo._client,
         "query",
         side_effect=ClientError({"Error": {"Code": "ResourceNotFoundException",
-                    "Message": "Table not found",}},
-            "Query",),)
+                    "Message": "Table not found", }},
+            "Query", ), )
 
     # Call the method and verify it raises the expected exception
     with pytest.raises(Exception, match="Could not list job metrics from the database"):
@@ -587,8 +587,8 @@ def test_getMetricsByName_raises_client_error(job_metric_dynamo, mocker):
     mock_query = mocker.patch.object(job_metric_dynamo._client,
         "query",
         side_effect=ClientError({"Error": {"Code": "ResourceNotFoundException",
-                    "Message": "Table not found",}},
-            "Query",),)
+                    "Message": "Table not found", }},
+            "Query", ), )
 
     # Call the method and verify it raises the expected exception
     with pytest.raises(Exception, match="Could not query metrics by name from the database"):

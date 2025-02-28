@@ -5,7 +5,7 @@ from receipt_dynamo.entities.util import (_format_float,
     assert_valid_bounding_box,
     assert_valid_point,
     assert_valid_uuid,
-    shear_point,)
+    shear_point, )
 
 
 class Letter:
@@ -46,7 +46,7 @@ class Letter:
         bottom_left: dict,
         angle_degrees: float,
         angle_radians: float,
-        confidence: float,):
+        confidence: float, ):
         """Initializes a new Letter object for DynamoDB.
 
         Args:
@@ -134,7 +134,7 @@ class Letter:
         return {"PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {"S": f"LINE#{self.line_id:05d}"
                 f"#WORD#{self.word_id:05d}"
-                f"#LETTER#{self.letter_id:05d}"},}
+                f"#LETTER#{self.letter_id:05d}"}, }
 
     def to_item(self) -> dict:
         """Converts the Letter object to a DynamoDB item.
@@ -148,18 +148,18 @@ class Letter:
             "bounding_box": {"M": {"x": {"N": _format_float(self.bounding_box["x"], 20, 22)},
                     "y": {"N": _format_float(self.bounding_box["y"], 20, 22)},
                     "width": {"N": _format_float(self.bounding_box["width"], 20, 22)},
-                    "height": {"N": _format_float(self.bounding_box["height"], 20, 22)},}},
+                    "height": {"N": _format_float(self.bounding_box["height"], 20, 22)}, }},
             "top_right": {"M": {"x": {"N": _format_float(self.top_right["x"], 20, 22)},
-                    "y": {"N": _format_float(self.top_right["y"], 20, 22)},}},
+                    "y": {"N": _format_float(self.top_right["y"], 20, 22)}, }},
             "top_left": {"M": {"x": {"N": _format_float(self.top_left["x"], 20, 22)},
-                    "y": {"N": _format_float(self.top_left["y"], 20, 22)},}},
+                    "y": {"N": _format_float(self.top_left["y"], 20, 22)}, }},
             "bottom_right": {"M": {"x": {"N": _format_float(self.bottom_right["x"], 20, 22)},
-                    "y": {"N": _format_float(self.bottom_right["y"], 20, 22)},}},
+                    "y": {"N": _format_float(self.bottom_right["y"], 20, 22)}, }},
             "bottom_left": {"M": {"x": {"N": _format_float(self.bottom_left["x"], 20, 22)},
-                    "y": {"N": _format_float(self.bottom_left["y"], 20, 22)},}},
+                    "y": {"N": _format_float(self.bottom_left["y"], 20, 22)}, }},
             "angle_degrees": {"N": _format_float(self.angle_degrees, 18, 20)},
             "angle_radians": {"N": _format_float(self.angle_radians, 18, 20)},
-            "confidence": {"N": _format_float(self.confidence, 2, 2)},}
+            "confidence": {"N": _format_float(self.confidence, 2, 2)}, }
 
     def calculate_centroid(self) -> Tuple[float, float]:
         """Calculates the centroid of the Letter.
@@ -219,7 +219,7 @@ class Letter:
         angle: float,
         rotate_origin_x: float,
         rotate_origin_y: float,
-        use_radians: bool = True,) -> None:
+        use_radians: bool = True, ) -> None:
         """Rotates the Letter by the specified angle about a given origin.
 
         Only rotates if the angle is within:
@@ -255,13 +255,13 @@ class Letter:
         corners = [self.top_right,
             self.top_left,
             self.bottom_right,
-            self.bottom_left,]
+            self.bottom_left, ]
         for corner in corners:
             x_new, y_new = rotate_point(corner["x"],
                 corner["y"],
                 rotate_origin_x,
                 rotate_origin_y,
-                angle_radians,)
+                angle_radians, )
             corner["x"] = x_new
             corner["y"] = y_new
 
@@ -283,7 +283,7 @@ class Letter:
         shx: float,
         shy: float,
         pivot_x: float = 0.0,
-        pivot_y: float = 0.0,) -> None:
+        pivot_y: float = 0.0, ) -> None:
         """Applies a shear transformation to the Letter about a pivot point.
 
         Args:
@@ -295,7 +295,7 @@ class Letter:
         corners = [self.top_right,
             self.top_left,
             self.bottom_right,
-            self.bottom_left,]
+            self.bottom_left, ]
         for corner in corners:
             x_new, y_new = shear_point(corner["x"], corner["y"], pivot_x, pivot_y, shx, shy)
             corner["x"] = x_new
@@ -329,7 +329,7 @@ class Letter:
         corners = [self.top_left,
             self.top_right,
             self.bottom_left,
-            self.bottom_right,]
+            self.bottom_right, ]
 
         for corner in corners:
             x_old = corner["x"]
@@ -364,7 +364,7 @@ class Letter:
         orig_height: int,
         new_width: int,
         new_height: int,
-        flip_y: bool = False,) -> None:
+        flip_y: bool = False, ) -> None:
         """Applies a normalized forward affine transformation to the Letter's corners.
 
         The transformation converts normalized coordinates from the original image to new
@@ -386,7 +386,7 @@ class Letter:
         corners = [self.top_left,
             self.top_right,
             self.bottom_left,
-            self.bottom_right,]
+            self.bottom_right, ]
 
         for corner in corners:
             x_o = corner["x"] * orig_width
@@ -440,7 +440,7 @@ class Letter:
         corners = [self.top_left,
             self.top_right,
             self.bottom_left,
-            self.bottom_right,]
+            self.bottom_right, ]
         corner_names = ["top_left", "top_right", "bottom_left", "bottom_right"]
 
         for corner, name in zip(corners, corner_names):
@@ -501,7 +501,7 @@ class Letter:
         corners = [self.top_left,
             self.top_right,
             self.bottom_right,
-            self.bottom_left,]
+            self.bottom_left, ]
         for corner in corners:
             corner["x"] *= old_w
             corner["y"] *= old_h
@@ -612,7 +612,7 @@ class Letter:
                 tuple(self.bottom_left.items()),
                 self.angle_degrees,
                 self.angle_radians,
-                self.confidence,))
+                self.confidence, ))
 
 
 def itemToLetter(item: dict) -> Letter:
@@ -637,7 +637,7 @@ def itemToLetter(item: dict) -> Letter:
         "bottom_left",
         "angle_degrees",
         "angle_radians",
-        "confidence",}
+        "confidence", }
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - set(item.keys())
         raise ValueError(f"Item is missing required keys: {missing_keys}")
@@ -660,6 +660,6 @@ def itemToLetter(item: dict) -> Letter:
                 for key, value in item["bottom_left"]["M"].items()},
             angle_degrees=float(item["angle_degrees"]["N"]),
             angle_radians=float(item["angle_radians"]["N"]),
-            confidence=float(item["confidence"]["N"]),)
+            confidence=float(item["confidence"]["N"]), )
     except (KeyError, ValueError) as e:
         raise ValueError(f"Error converting item to Letter: {e}")

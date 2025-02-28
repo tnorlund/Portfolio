@@ -50,7 +50,7 @@ class ReceiptWordTag:
         flag: Optional[str] = None,
         revised_tag: Optional[str] = None,
         human_validated: Optional[bool] = None,
-        timestamp_human_validated: Optional[Union[str, datetime]] = None,):
+        timestamp_human_validated: Optional[Union[str, datetime]] = None, ):
         """Initializes a new ReceiptWordTag object for DynamoDB.
 
         Args:
@@ -224,7 +224,7 @@ class ReceiptWordTag:
             "SK": {"S": (f"RECEIPT#{self.receipt_id:05d}"
                     f"#LINE#{self.line_id:05d}"
                     f"#WORD#{self.word_id:05d}"
-                    f"#TAG#{spaced_tag_upper}")},}
+                    f"#TAG#{spaced_tag_upper}")}, }
 
     def gsi1_key(self) -> dict:
         """Generates the secondary index key for the ReceiptWordTag.
@@ -240,7 +240,7 @@ class ReceiptWordTag:
             "GSI1SK": {"S": (f"IMAGE#{self.image_id}"
                     f"#RECEIPT#{self.receipt_id:05d}"
                     f"#LINE#{self.line_id:05d}"
-                    f"#WORD#{self.word_id:05d}")},}
+                    f"#WORD#{self.word_id:05d}")}, }
 
     def gsi2_key(self) -> dict:
         """Generates the secondary index key for the ReceiptWordTag.
@@ -257,7 +257,7 @@ class ReceiptWordTag:
                 f"#RECEIPT#{self.receipt_id:05d}"
                 f"#LINE#{self.line_id:05d}"
                 f"#WORD#{self.word_id:05d}"
-                f"#TAG#{spaced_tag_upper}"},}
+                f"#TAG#{spaced_tag_upper}"}, }
 
     def to_item(self) -> dict:
         """Converts the ReceiptWordTag object to a DynamoDB item.
@@ -289,7 +289,7 @@ class ReceiptWordTag:
                 else {"NULL": True}),
             "timestamp_human_validated": ({"S": self.timestamp_human_validated}
                 if self.timestamp_human_validated is not None
-                else {"NULL": True}),}
+                else {"NULL": True}), }
 
     def to_ReceiptWord_key(self) -> dict:
         """Generates the key for the ReceiptWord table associated with this tag.
@@ -300,7 +300,7 @@ class ReceiptWordTag:
         return {"PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {"S": (f"RECEIPT#{self.receipt_id:05d}"
                     f"#LINE#{self.line_id:05d}"
-                    f"#WORD#{self.word_id:05d}")},}
+                    f"#WORD#{self.word_id:05d}")}, }
 
     def __hash__(self) -> int:
         """Returns the hash value of the ReceiptWordTag.
@@ -319,7 +319,7 @@ class ReceiptWordTag:
                 self.flag,
                 self.revised_tag,
                 self.human_validated,
-                self.timestamp_human_validated,))
+                self.timestamp_human_validated, ))
 
 
 def itemToReceiptWordTag(item: dict) -> ReceiptWordTag:
@@ -396,6 +396,6 @@ def itemToReceiptWordTag(item: dict) -> ReceiptWordTag:
             flag=flag,
             revised_tag=revised_tag,
             human_validated=human_validated,
-            timestamp_human_validated=timestamp_human_validated,)
+            timestamp_human_validated=timestamp_human_validated, )
     except (IndexError, ValueError, KeyError) as e:
         raise ValueError(f"Error converting item to ReceiptWordTag: {e}")

@@ -29,7 +29,7 @@ __all__ = [# Entity classes
     "DynamoClient",
     "process",
     "export_image",
-    "import_image",]
+    "import_image", ]
 
 # Entities must be imported first to avoid circular imports
 from receipt_dynamo.entities.image import Image, itemToImage
@@ -37,23 +37,23 @@ from receipt_dynamo.entities.letter import Letter, itemToLetter
 from receipt_dynamo.entities.line import Line, itemToLine
 from receipt_dynamo.entities.receipt import Receipt, itemToReceipt
 from receipt_dynamo.entities.receipt_letter import (ReceiptLetter,
-    itemToReceiptLetter,)
+    itemToReceiptLetter, )
 from receipt_dynamo.entities.receipt_line import ReceiptLine, itemToReceiptLine
 from receipt_dynamo.entities.receipt_word import ReceiptWord, itemToReceiptWord
 from receipt_dynamo.entities.receipt_word_tag import (ReceiptWordTag,
-    itemToReceiptWordTag,)
+    itemToReceiptWordTag, )
 from receipt_dynamo.entities.word import Word, itemToWord
 from receipt_dynamo.entities.word_tag import WordTag, itemToWordTag
 from receipt_dynamo.entities.gpt_validation import (GPTValidation,
-    itemToGPTValidation,)
+    itemToGPTValidation, )
 from receipt_dynamo.entities.gpt_initial_tagging import (GPTInitialTagging,
-    itemToGPTInitialTagging,)
+    itemToGPTInitialTagging, )
 from receipt_dynamo.entities.job import Job, itemToJob
 from receipt_dynamo.entities.job_metric import JobMetric, itemToJobMetric
 from receipt_dynamo.entities.job_resource import JobResource, itemToJobResource
 from receipt_dynamo.entities.job_status import JobStatus, itemToJobStatus
 from receipt_dynamo.entities.receipt_window import (ReceiptWindow,
-    itemToReceiptWindow,)
+    itemToReceiptWindow, )
 from receipt_dynamo.entities.instance import Instance, itemToInstance
 from receipt_dynamo.entities.instance_job import InstanceJob, itemToInstanceJob
 
