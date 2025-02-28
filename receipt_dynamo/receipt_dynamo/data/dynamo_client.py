@@ -17,6 +17,15 @@ from receipt_dynamo.data._receipt_word_tag import _ReceiptWordTag
 from receipt_dynamo.data._gpt_validation import _GPTValidation
 from receipt_dynamo.data._gpt_initial_tagging import _GPTInitialTagging
 from receipt_dynamo.data._receipt_window import _ReceiptWindow
+from receipt_dynamo.data._job import _Job
+from receipt_dynamo.data._job_status import _JobStatus
+from receipt_dynamo.data._job_resource import _JobResource
+from receipt_dynamo.data._job_metric import _JobMetric
+from receipt_dynamo.data._job_checkpoint import _JobCheckpoint
+from receipt_dynamo.data._job_log import _JobLog
+from receipt_dynamo.data._job_dependency import _JobDependency
+from receipt_dynamo.data._queue import _Queue
+from receipt_dynamo.data._instance import _Instance
 
 
 class DynamoClient(
@@ -33,6 +42,15 @@ class DynamoClient(
     _GPTValidation,
     _GPTInitialTagging,
     _ReceiptWindow,
+    _Job,
+    _JobStatus,
+    _JobResource,
+    _JobMetric,
+    _JobCheckpoint,
+    _JobLog,
+    _JobDependency,
+    _Queue,
+    _Instance,
 ):
     """A class used to represent a DynamoDB client."""
 

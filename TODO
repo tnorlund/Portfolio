@@ -212,10 +212,29 @@
   - [x] Build retry mechanism with backoff
 
 - [ ] **Training Job Management**
-  - [ ] Create job definition format (YAML/JSON)
-  - [ ] Implement job status tracking in DynamoDB
+  - [x] Create job definition format (YAML/JSON)
+  - [x] Implement job status tracking in DynamoDB
+    - [x] Create core Job entity with status, priority, job_config
+    - [x] Implement Job Status entity for historical status tracking
+    - [x] Add Job Resource tracking for instance allocation
+    - [x] Add Job Metrics collection and storage
+    - [x] Implement Job Checkpoint management
+    - [x] Add Job Logs collection for debugging
+    - [x] Implement Job Dependency tracking
+  - [x] Implement Queue management in DynamoDB
+    - [x] Create Queue entity for managing job queues
+    - [x] Add Queue Job association for organizing jobs
+  - [x] Implement Instance tracking
+    - [x] Create Instance entity for resource tracking
+    - [x] Add Instance Job association
   - [ ] Build CLI tool for job submission/monitoring
+    - [ ] Create commands for job submission
+    - [ ] Add job status checking and monitoring
+    - [ ] Implement job cancellation and modification
   - [ ] Add support for dependency chains between jobs
+    - [ ] Implement dependency validation
+    - [ ] Add conditional execution based on dependency status
+    - [ ] Create visualization for job dependency graphs
 
 - [ ] **Instance Coordination**
   - [ ] Implement leader election for multi-instance coordination

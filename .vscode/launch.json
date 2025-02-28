@@ -17,7 +17,8 @@
       "args": [
         "receipt_dynamo/tests",
         "--cov=receipt_dynamo/receipt_dynamo",
-        "--cov-config=receipt_dynamo/tests/.coveragerc"
+        "--cov-config=receipt_dynamo/tests/.coveragerc",
+        "--cov-report=xml:receipt_dynamo/tests/coverage.xml"
       ],
       "console": "integratedTerminal",
       "justMyCode": false
@@ -30,7 +31,8 @@
       "args": [
         "receipt_dynamo/tests/unit",
         "--cov=receipt_dynamo/receipt_dynamo",
-        "--cov-config=receipt_dynamo/tests/.coveragerc"
+        "--cov-config=receipt_dynamo/tests/.coveragerc",
+        "--cov-report=xml:receipt_dynamo/tests/coverage.xml"
       ],
       "console": "integratedTerminal",
       "justMyCode": false
@@ -43,7 +45,8 @@
       "args": [
         "receipt_dynamo/tests/integration",
         "--cov=receipt_dynamo/receipt_dynamo",
-        "--cov-config=receipt_dynamo/tests/.coveragerc"
+        "--cov-config=receipt_dynamo/tests/.coveragerc",
+        "--cov-report=xml:receipt_dynamo/tests/coverage.xml"
       ],
       "console": "integratedTerminal",
       "justMyCode": false
