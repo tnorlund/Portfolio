@@ -1,407 +1,659 @@
-# infra/lambda_layer/python/test/unit/test_receipt_window.py
 import pytest
 
-from receipt_dynamo.entities.receipt_window import (ReceiptWindow,
-    itemToReceiptWindow, )
-
-# Use a valid UUID for testing. (Assuming assert_valid_uuid accepts this
-# format.)
-VALID_UUID = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+from receipt_dynamo import ReceiptWord, itemToReceiptWord
 
 
 @pytest.fixture
-def example_receipt_window():
-    """Provides a sample valid ReceiptWindow for testing."""
-    return ReceiptWindow(image_id=VALID_UUID,
-        receipt_id=123,
-        cdn_s3_bucket="my_bucket",
-        cdn_s3_key="my_key",
-        corner_name="TOP_LEFT",  # Will be uppercased by the constructor.
-        width=100,
-        height=200,
-        inner_corner_coordinates=(10, 20),
-        gpt_guess=[1, 2, 3], )
+def example_receipt_word():
+    return ReceiptWord(
+        receipt_id=1,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=3,
+        word_id=4,
+        text="Test",
+        bounding_box={
+            "x": 0.1,
+            "y": 0.2,
+            "width": 0.3,
+            "height": 0.4,
+        },
+        top_right={"x": 1.0, "y": 2.0},
+        top_left={"x": 1.0, "y": 3.0},
+        bottom_right={"x": 4.0, "y": 2.0},
+        bottom_left={"x": 1.0, "y": 1.0},
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=0.9,
+    )
 
 
 @pytest.fixture
-def example_receipt_window_no_gpt_guess():
-    """Provides a ReceiptWindow without gpt_guess."""
-    return ReceiptWindow(image_id=VALID_UUID,
-        receipt_id=123,
-        cdn_s3_bucket="my_bucket",
-        cdn_s3_key="my_key",
-        corner_name="BOTTOM_RIGHT",
-        width=100,
-        height=200,
-        inner_corner_coordinates=(10, 20),
-        gpt_guess=None, )
+def example_receipt_word_with_tags():
+    return ReceiptWord(
+        receipt_id=1,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=3,
+        word_id=4,
+        text="Test",
+        bounding_box={
+            "x": 0.1,
+            "y": 0.2,
+            "width": 0.3,
+            "height": 0.4,
+        },
+        top_right={"x": 1.0, "y": 2.0},
+        top_left={"x": 1.0, "y": 3.0},
+        bottom_right={"x": 4.0, "y": 2.0},
+        bottom_left={"x": 1.0, "y": 1.0},
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=0.9,
+        tags=["example", "word"],
+    )
 
 
 @pytest.mark.unit
-def test_receipt_window_init_valid(example_receipt_window):
-    """Test the ReceiptWindow constructor with valid data."""
-    assert example_receipt_window.image_id == VALID_UUID
-    assert example_receipt_window.receipt_id == 123
-    assert example_receipt_window.cdn_s3_bucket == "my_bucket"
-    assert example_receipt_window.cdn_s3_key == "my_key"
-    # The constructor uppercases corner_name.
-    assert example_receipt_window.corner_name == "TOP_LEFT"
-    assert example_receipt_window.width == 100
-    assert example_receipt_window.height == 200
-    # inner_corner_coordinates should remain as a tuple of ints.
-    assert example_receipt_window.inner_corner_coordinates == (10, 20)
-    assert example_receipt_window.gpt_guess == [1, 2, 3]
+def test_receipt_word_init_valid(
+    example_receipt_word, example_receipt_word_with_tags
+):
+    """Test that a ReceiptWord with valid arguments initializes correctly."""
+    assert example_receipt_word.receipt_id == 1
+    assert (
+        example_receipt_word.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    )
+    assert example_receipt_word.line_id == 3
+    assert example_receipt_word.word_id == 4
+    assert example_receipt_word.text == "Test"
+    assert example_receipt_word.bounding_box == {
+        "x": 0.1,
+        "y": 0.2,
+        "width": 0.3,
+        "height": 0.4,
+    }
+    assert example_receipt_word.top_right == {"x": 1.0, "y": 2.0}
+    assert example_receipt_word.top_left == {"x": 1.0, "y": 3.0}
+    assert example_receipt_word.bottom_right == {"x": 4.0, "y": 2.0}
+    assert example_receipt_word.bottom_left == {"x": 1.0, "y": 1.0}
+    assert example_receipt_word.angle_degrees == 1.0
+    assert example_receipt_word.angle_radians == 5.0
+    assert example_receipt_word.confidence == 0.9
+    assert example_receipt_word_with_tags.tags == ["example", "word"]
 
 
 @pytest.mark.unit
-def test_receipt_window_init_invalid_image_id():
-    """Test invalid image_id values."""
+def test_receipt_word_init_invalid_receipt_id():
+    with pytest.raises(ValueError, match="^receipt_id must be an integer"):
+        ReceiptWord(
+            receipt_id="1",  # Not an integer
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=3,
+            word_id=4,
+            text="Test",
+            bounding_box={
+                "x": 0.1,
+                "y": 0.2,
+                "width": 0.3,
+                "height": 0.4,
+            },
+            top_right={"x": 1.0, "y": 2.0},
+            top_left={"x": 1.0, "y": 3.0},
+            bottom_right={"x": 4.0, "y": 2.0},
+            bottom_left={"x": 1.0, "y": 1.0},
+            angle_degrees=1.0,
+            angle_radians=5.0,
+            confidence=0.9,
+        )
+    with pytest.raises(ValueError, match="^receipt_id must be positive"):
+        ReceiptWord(
+            receipt_id=-1,  # Negative
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=3,
+            word_id=4,
+            text="Test",
+            bounding_box={
+                "x": 0.1,
+                "y": 0.2,
+                "width": 0.3,
+                "height": 0.4,
+            },
+            top_right={"x": 1.0, "y": 2.0},
+            top_left={"x": 1.0, "y": 3.0},
+            bottom_right={"x": 4.0, "y": 2.0},
+            bottom_left={"x": 1.0, "y": 1.0},
+            angle_degrees=1.0,
+            angle_radians=5.0,
+            confidence=0.9,
+        )
+
+
+@pytest.mark.unit
+def test_receipt_word_init_invalid_uuid():
+    """Test that invalid UUIDs raise ValueError."""
     with pytest.raises(ValueError, match="uuid must be a string"):
-        ReceiptWindow(image_id=42,  # not a string
-            receipt_id=123,
-            cdn_s3_bucket="bucket",
-            cdn_s3_key="key",
-            corner_name="TOP_LEFT",
-            width=100,
-            height=200,
-            inner_corner_coordinates=(10, 20), )
-    with pytest.raises(ValueError, match="uuid must be a valid UUID"):
-        ReceiptWindow(image_id="not-a-uuid",
-            receipt_id=123,
-            cdn_s3_bucket="bucket",
-            cdn_s3_key="key",
-            corner_name="TOP_LEFT",
-            width=100,
-            height=200,
-            inner_corner_coordinates=(10, 20), )
+        ReceiptWord(
+            receipt_id=1,
+            image_id=3,  # Not a string
+            line_id=3,
+            word_id=4,
+            text="Test",
+            bounding_box={
+                "x": 0.1,
+                "y": 0.2,
+                "width": 0.3,
+                "height": 0.4,
+            },
+            top_right={"x": 1.0, "y": 2.0},
+            top_left={"x": 1.0, "y": 3.0},
+            bottom_right={"x": 4.0, "y": 2.0},
+            bottom_left={"x": 1.0, "y": 1.0},
+            angle_degrees=1.0,
+            angle_radians=5.0,
+            confidence=0.9,
+        )
+    with pytest.raises(ValueError, match="uuid must be a valid UUIDv4"):
+        ReceiptWord(
+            receipt_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed",
+            line_id=3,
+            word_id=4,
+            text="Test",
+            bounding_box={
+                "x": 0.1,
+                "y": 0.2,
+                "width": 0.3,
+                "height": 0.4,
+            },
+            top_right={"x": 1.0, "y": 2.0},
+            top_left={"x": 1.0, "y": 3.0},
+            bottom_right={"x": 4.0, "y": 2.0},
+            bottom_left={"x": 1.0, "y": 1.0},
+            angle_degrees=1.0,
+            angle_radians=5.0,
+            confidence=0.9,
+        )
 
 
 @pytest.mark.unit
-def test_receipt_window_init_invalid_receipt_id():
-    """Test invalid (non-positive) receipt_id values."""
-    with pytest.raises(ValueError, match="id must be positive"):
-        ReceiptWindow(image_id=VALID_UUID,
-            receipt_id=0,
-            cdn_s3_bucket="bucket",
-            cdn_s3_key="key",
-            corner_name="TOP_LEFT",
-            width=100,
-            height=200,
-            inner_corner_coordinates=(10, 20), )
-    with pytest.raises(ValueError, match="id must be positive"):
-        ReceiptWindow(image_id=VALID_UUID,
-            receipt_id=-5,
-            cdn_s3_bucket="bucket",
-            cdn_s3_key="key",
-            corner_name="TOP_LEFT",
-            width=100,
-            height=200,
-            inner_corner_coordinates=(10, 20), )
+def test_receipt_word_init_invalid_line_id():
+    with pytest.raises(ValueError, match="^line_id must be an integer"):
+        ReceiptWord(
+            receipt_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id="3",  # Not an integer
+            word_id=4,
+            text="Test",
+            bounding_box={
+                "x": 0.1,
+                "y": 0.2,
+                "width": 0.3,
+                "height": 0.4,
+            },
+            top_right={"x": 1.0, "y": 2.0},
+            top_left={"x": 1.0, "y": 3.0},
+            bottom_right={"x": 4.0, "y": 2.0},
+            bottom_left={"x": 1.0, "y": 1.0},
+            angle_degrees=1.0,
+            angle_radians=5.0,
+            confidence=0.9,
+        )
+    with pytest.raises(ValueError, match="^line_id must be positive"):
+        ReceiptWord(
+            receipt_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=-3,  # Negative
+            word_id=4,
+            text="Test",
+            bounding_box={
+                "x": 0.1,
+                "y": 0.2,
+                "width": 0.3,
+                "height": 0.4,
+            },
+            top_right={"x": 1.0, "y": 2.0},
+            top_left={"x": 1.0, "y": 3.0},
+            bottom_right={"x": 4.0, "y": 2.0},
+            bottom_left={"x": 1.0, "y": 1.0},
+            angle_degrees=1.0,
+            angle_radians=5.0,
+            confidence=0.9,
+        )
 
 
 @pytest.mark.unit
-def test_receipt_window_init_invalid_cdn_s3_bucket():
-    """Test that cdn_s3_bucket must be a string if provided."""
-    with pytest.raises(ValueError, match="cdn_s3_bucket must be a string"):
-        ReceiptWindow(image_id=VALID_UUID,
-            receipt_id=123,
-            cdn_s3_bucket=42,  # not a string
-            cdn_s3_key="my_key",
-            corner_name="TOP_LEFT",
-            width=100,
-            height=200,
-            inner_corner_coordinates=(10, 20), )
+def test_receipt_word_init_invalid_id():
+    with pytest.raises(ValueError, match="^id must be an integer"):
+        ReceiptWord(
+            receipt_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=3,
+            word_id="4",  # Not an integer
+            text="Test",
+            bounding_box={
+                "x": 0.1,
+                "y": 0.2,
+                "width": 0.3,
+                "height": 0.4,
+            },
+            top_right={"x": 1.0, "y": 2.0},
+            top_left={"x": 1.0, "y": 3.0},
+            bottom_right={"x": 4.0, "y": 2.0},
+            bottom_left={"x": 1.0, "y": 1.0},
+            angle_degrees=1.0,
+            angle_radians=5.0,
+            confidence=0.9,
+        )
+    with pytest.raises(ValueError, match="^id must be positive"):
+        ReceiptWord(
+            receipt_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=3,
+            word_id=-4,  # Negative
+            text="Test",
+            bounding_box={
+                "x": 0.1,
+                "y": 0.2,
+                "width": 0.3,
+                "height": 0.4,
+            },
+            top_right={"x": 1.0, "y": 2.0},
+            top_left={"x": 1.0, "y": 3.0},
+            bottom_right={"x": 4.0, "y": 2.0},
+            bottom_left={"x": 1.0, "y": 1.0},
+            angle_degrees=1.0,
+            angle_radians=5.0,
+            confidence=0.9,
+        )
 
 
 @pytest.mark.unit
-def test_receipt_window_init_invalid_cdn_s3_key():
-    """Test that cdn_s3_key must be a string if provided."""
-    with pytest.raises(ValueError, match="cdn_s3_key must be a string"):
-        ReceiptWindow(image_id=VALID_UUID,
-            receipt_id=123,
-            cdn_s3_bucket="my_bucket",
-            cdn_s3_key=42,  # not a string
-            corner_name="TOP_LEFT",
-            width=100,
-            height=200,
-            inner_corner_coordinates=(10, 20), )
+def test_receipt_word_init_invalid_text():
+    with pytest.raises(ValueError, match="^text must be a string"):
+        ReceiptWord(
+            receipt_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=3,
+            word_id=4,
+            text=1,  # Not a string
+            bounding_box={
+                "x": 0.1,
+                "y": 0.2,
+                "width": 0.3,
+                "height": 0.4,
+            },
+            top_right={"x": 1.0, "y": 2.0},
+            top_left={"x": 1.0, "y": 3.0},
+            bottom_right={"x": 4.0, "y": 2.0},
+            bottom_left={"x": 1.0, "y": 1.0},
+            angle_degrees=1.0,
+            angle_radians=5.0,
+            confidence=0.9,
+        )
 
 
 @pytest.mark.unit
-def test_receipt_window_init_non_string_corner_name():
-    """Test that corner_name must be a string."""
-    with pytest.raises(ValueError, match="corner_name must be a string"):
-        ReceiptWindow(image_id=VALID_UUID,
-            receipt_id=123,
-            cdn_s3_bucket="bucket",
-            cdn_s3_key="key",
-            corner_name=123,  # non-string
-            width=100,
-            height=200,
-            inner_corner_coordinates=(10, 20), )
+def test_receipt_word_init_invalid_bounding_box():
+    """Test that invalid bounding_box keys or types raise ValueError."""
+    with pytest.raises(
+        ValueError,
+        match="bounding_box must contain the key 'width'",
+    ):
+        ReceiptWord(
+            receipt_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=3,
+            word_id=4,
+            text="Test",
+            bounding_box={"x": 0.1, "y": 0.2, "height": 0.4},  # Missing width
+            top_right={"x": 1.0, "y": 2.0},
+            top_left={"x": 1.0, "y": 2.0},
+            bottom_right={"x": 1.0, "y": 2.0},
+            bottom_left={"x": 1.0, "y": 2.0},
+            angle_degrees=0.0,
+            angle_radians=0.0,
+            confidence=0.9,
+        )
 
 
 @pytest.mark.unit
-def test_receipt_window_init_invalid_corner_name():
-    """Test corner_name must be one of the specified valid values."""
-    with pytest.raises(ValueError, match="corner_name must be one of:"):
-        ReceiptWindow(image_id=VALID_UUID,
-            receipt_id=123,
-            cdn_s3_bucket="bucket",
-            cdn_s3_key="key",
-            corner_name="top_side",  # invalid
-            width=100,
-            height=200,
-            inner_corner_coordinates=(10, 20), )
+def test_receipt_word_corners():
+    """Test that invalid point keys or types raise ValueError."""
+    with pytest.raises(ValueError, match="point must contain the key 'y'"):
+        ReceiptWord(
+            receipt_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=3,
+            word_id=4,
+            text="Test",
+            bounding_box={
+                "x": 0.1,
+                "y": 0.2,
+                "width": 0.3,
+                "height": 0.4,
+            },
+            top_right={"x": 1.0},  # Missing y
+            top_left={"x": 1.0, "y": 2.0},
+            bottom_right={"x": 1.0, "y": 2.0},
+            bottom_left={"x": 1.0, "y": 2.0},
+            angle_degrees=0.0,
+            angle_radians=0.0,
+            confidence=0.9,
+        )
 
 
 @pytest.mark.unit
-def test_receipt_window_init_invalid_width_and_height():
-    """Test that width and height must be positive."""
-    with pytest.raises(ValueError, match="width must be positive"):
-        ReceiptWindow(image_id=VALID_UUID,
-            receipt_id=123,
-            cdn_s3_bucket="bucket",
-            cdn_s3_key="key",
-            corner_name="TOP_LEFT",
-            width=0,
-            height=200,
-            inner_corner_coordinates=(10, 20), )
-    with pytest.raises(ValueError, match="height must be positive"):
-        ReceiptWindow(image_id=VALID_UUID,
-            receipt_id=123,
-            cdn_s3_bucket="bucket",
-            cdn_s3_key="key",
-            corner_name="TOP_LEFT",
-            width=100,
-            height=0,
-            inner_corner_coordinates=(10, 20), )
+def test_receipt_word_angle_validation():
+    """Test that angles outside [0, 360) raise ValueError."""
+    with pytest.raises(
+        ValueError,
+        match="angle_degrees must be a float or int",
+    ):
+        ReceiptWord(
+            receipt_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=1,
+            word_id=1,
+            text="Test",
+            bounding_box={"x": 0.0, "y": 0.0, "width": 1.0, "height": 1.0},
+            top_right={"x": 1.0, "y": 2.0},
+            top_left={"x": 1.0, "y": 2.0},
+            bottom_right={"x": 1.0, "y": 2.0},
+            bottom_left={"x": 1.0, "y": 2.0},
+            angle_degrees="0.0",
+            angle_radians=0.0,
+            confidence=0.9,
+        )
+    with pytest.raises(
+        ValueError,
+        match="angle_radians must be a float or int",
+    ):
+        ReceiptWord(
+            receipt_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=1,
+            word_id=1,
+            text="Test",
+            bounding_box={"x": 0.0, "y": 0.0, "width": 1.0, "height": 1.0},
+            top_right={"x": 1.0, "y": 2.0},
+            top_left={"x": 1.0, "y": 2.0},
+            bottom_right={"x": 1.0, "y": 2.0},
+            bottom_left={"x": 1.0, "y": 2.0},
+            angle_degrees=0.0,
+            angle_radians="0.0",
+            confidence=0.9,
+        )
 
 
 @pytest.mark.unit
-def test_receipt_window_init_valid_inner_corner_coordinates():
-    """Test inner_corner_coordinates can be a tuple or list if provided.
-
-    This was added to support writing the inner_corner_coordinates as a list in a JSON file.
-    """
-
-    rw = ReceiptWindow(image_id=VALID_UUID,
-        receipt_id=123,
-        cdn_s3_bucket="bucket",
-        cdn_s3_key="key",
-        corner_name="TOP_LEFT",
-        width=100,
-        height=200,
-        inner_corner_coordinates=[10, 20], )
-    assert rw.inner_corner_coordinates == (10, 20)
-
-
-def test_receipt_window_init_invalid_inner_corner_coordinates():
-    """Test inner_corner_coordinates must be a tuple or a list if provided."""
-    with pytest.raises(ValueError, match="inner_corner_coordinates must be a tuple or list"):
-        ReceiptWindow(image_id=VALID_UUID,
-            receipt_id=123,
-            cdn_s3_bucket="bucket",
-            cdn_s3_key="key",
-            corner_name="TOP_LEFT",
-            width=100,
-            height=200,
-            inner_corner_coordinates="not-a-tuple-or-list", )
-
-
-@pytest.mark.unit
-def test_receipt_window_key(example_receipt_window):
-    """Test the ReceiptWindow.key() method."""
-    assert example_receipt_window.key() == {"PK": {"S": f"IMAGE#{VALID_UUID}"},
-        "SK": {"S": "RECEIPT#00123#RECEIPT_WINDOW#TOP_LEFT"}, }
-
-
-@pytest.mark.unit
-def test_receipt_window_gsi3_key(example_receipt_window):
-    """Test the ReceiptWindow.gsi3_key() method."""
-    assert example_receipt_window.gsi3_key() == {"GSI3PK": {"S": "RECEIPT"},
-        "GSI3SK": {"S": "RECEIPT#00123#RECEIPT_WINDOW#TOP_LEFT"}, }
-
-
-@pytest.mark.unit
-def test_receipt_window_to_item(example_receipt_window, example_receipt_window_no_gpt_guess):
-    """Test the ReceiptWindow.to_item() method for both a gpt_guess and no gpt_guess."""
-    # Case: with gpt_guess
-    assert example_receipt_window.to_item() == {"PK": {"S": f"IMAGE#{VALID_UUID}"},
-        "SK": {"S": "RECEIPT#00123#RECEIPT_WINDOW#TOP_LEFT"},
-        "GSI3PK": {"S": "RECEIPT"},
-        "GSI3SK": {"S": "RECEIPT#00123#RECEIPT_WINDOW#TOP_LEFT"},
-        "TYPE": {"S": "RECEIPT_WINDOW"},
-        "cdn_s3_bucket": {"S": "my_bucket"},
-        "cdn_s3_key": {"S": "my_key"},
-        "corner_name": {"S": "TOP_LEFT"},
-        "width": {"N": "100"},
-        "height": {"N": "200"},
-        "inner_corner_coordinates": {"L": [{"N": "10"}, {"N": "20"}]},
-        "gpt_guess": {"L": [{"N": "1"}, {"N": "2"}, {"N": "3"}]}, }
-
-    # Case: without gpt_guess
-    assert example_receipt_window_no_gpt_guess.to_item() == {"PK": {"S": f"IMAGE#{VALID_UUID}"},
-        "SK": {"S": "RECEIPT#00123#RECEIPT_WINDOW#BOTTOM_RIGHT"},
-        "GSI3PK": {"S": "RECEIPT"},
-        "GSI3SK": {"S": "RECEIPT#00123#RECEIPT_WINDOW#BOTTOM_RIGHT"},
-        "TYPE": {"S": "RECEIPT_WINDOW"},
-        "cdn_s3_bucket": {"S": "my_bucket"},
-        "cdn_s3_key": {"S": "my_key"},
-        "corner_name": {"S": "BOTTOM_RIGHT"},
-        "width": {"N": "100"},
-        "height": {"N": "200"},
-        "inner_corner_coordinates": {"L": [{"N": "10"}, {"N": "20"}]},
-        "gpt_guess": {"NULL": True}, }
+def test_receipt_word_init_invalid_confidence():
+    """Test that confidence outside (0,1] raises ValueError."""
+    with pytest.raises(ValueError, match="confidence must be a float"):
+        ReceiptWord(
+            receipt_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=1,
+            word_id=1,
+            text="Test",
+            bounding_box={"x": 0.0, "y": 0.0, "width": 1.0, "height": 1.0},
+            top_right={"x": 1.0, "y": 2.0},
+            top_left={"x": 1.0, "y": 2.0},
+            bottom_right={"x": 1.0, "y": 2.0},
+            bottom_left={"x": 1.0, "y": 2.0},
+            angle_degrees=0.0,
+            angle_radians=0.0,
+            confidence="0.9",
+        )
+    receipt = ReceiptWord(
+        receipt_id=1,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=1,
+        word_id=1,
+        text="Test",
+        bounding_box={"x": 0.0, "y": 0.0, "width": 1.0, "height": 1.0},
+        top_right={"x": 1.0, "y": 2.0},
+        top_left={"x": 1.0, "y": 2.0},
+        bottom_right={"x": 1.0, "y": 2.0},
+        bottom_left={"x": 1.0, "y": 2.0},
+        angle_degrees=0.0,
+        angle_radians=0.0,
+        confidence=1,
+    )
+    assert receipt.confidence == 1.0
+    with pytest.raises(ValueError, match="confidence must be between 0 and 1"):
+        ReceiptWord(
+            receipt_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=1,
+            word_id=1,
+            text="Test",
+            bounding_box={"x": 0.0, "y": 0.0, "width": 1.0, "height": 1.0},
+            top_right={"x": 1.0, "y": 2.0},
+            top_left={"x": 1.0, "y": 2.0},
+            bottom_right={"x": 1.0, "y": 2.0},
+            bottom_left={"x": 1.0, "y": 2.0},
+            angle_degrees=0.0,
+            angle_radians=0.0,
+            confidence=1.1,
+        )
 
 
 @pytest.mark.unit
-def test_receipt_window_repr(example_receipt_window):
-    """Test the ReceiptWindow.__repr__() method."""
-    expected = ("ReceiptWindow(image_id=3f52804b-2fad-4e00-92c8-b593da3a8ed3, "
-        "receipt_id=123, "
-        "corner_name=TOP_LEFT, "
-        "width=100, "
-        "height=200, "
-        "gpt_guess=[1, 2, 3])")
-    assert repr(example_receipt_window) == expected
+def test_receipt_word_init_invalid_tags():
+    """Test that tags must be a list of strings."""
+    with pytest.raises(ValueError, match="tags must be a list"):
+        ReceiptWord(
+            receipt_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=1,
+            word_id=1,
+            text="Test",
+            bounding_box={"x": 0.0, "y": 0.0, "width": 1.0, "height": 1.0},
+            top_right={"x": 1.0, "y": 2.0},
+            top_left={"x": 1.0, "y": 2.0},
+            bottom_right={"x": 1.0, "y": 2.0},
+            bottom_left={"x": 1.0, "y": 2.0},
+            angle_degrees=0.0,
+            angle_radians=0.0,
+            confidence=0.9,
+            tags="tag1",
+        )
 
 
 @pytest.mark.unit
-def test_receipt_window_repr_no_gpt_guess(example_receipt_window_no_gpt_guess):
-    """Test __repr__ when gpt_guess is None."""
-    rep = repr(example_receipt_window_no_gpt_guess)
-    assert "gpt_guess=None" in rep
+def test_receipt_word_to_item():
+    """Test that to_item() returns a properly formatted DynamoDB item."""
+    bounding_box = {"x": 0.123456789012, "y": 0.2, "width": 0.3, "height": 0.4}
+    point = {"x": 1.0001, "y": 2.0001}
+
+    word = ReceiptWord(
+        receipt_id=1,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=3,
+        word_id=4,
+        text="TestWord",
+        bounding_box=bounding_box,
+        top_right=point,
+        top_left=point,
+        bottom_right=point,
+        bottom_left=point,
+        angle_degrees=45.0,
+        angle_radians=0.7853981634,
+        confidence=0.95,
+        tags=["tag1", "tag2"],
+    )
+    item = word.to_item()
+    assert item["PK"]["S"] == "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    assert item["SK"]["S"] == "RECEIPT#00001#LINE#00003#WORD#00004"
+    assert item["bounding_box"]["M"]["x"]["N"]
+    assert "SS" in item["tags"]
 
 
 @pytest.mark.unit
-def test_receipt_window_iter(example_receipt_window):
-    """Test the ReceiptWindow.__iter__() method."""
-    assert dict(example_receipt_window) == {"image_id": VALID_UUID,
-        "receipt_id": 123,
-        "cdn_s3_bucket": "my_bucket",
-        "cdn_s3_key": "my_key",
-        "corner_name": "TOP_LEFT",
-        "width": 100,
-        "height": 200,
-        "inner_corner_coordinates": (10, 20),
-        "gpt_guess": [1, 2, 3], }
+def test_repr(example_receipt_word):
+    """Test that the __repr__ method returns a string."""
+    assert isinstance(repr(example_receipt_word), str)
+    assert str(example_receipt_word) == repr(example_receipt_word)
+    # fmt: off
+    assert (
+        repr(example_receipt_word)
+        == "ReceiptWord("
+        "receipt_id=1, "
+        "image_id='3f52804b-2fad-4e00-92c8-b593da3a8ed3', "
+        "line_id=3, "
+        "word_id=4, "
+        "text='Test', "
+        "bounding_box={'x': 0.1, 'y': 0.2, 'width': 0.3, 'height': 0.4}, "
+        "top_right={'x': 1.0, 'y': 2.0}, "
+        "top_left={'x': 1.0, 'y': 3.0}, "
+        "bottom_right={'x': 4.0, 'y': 2.0}, "
+        "bottom_left={'x': 1.0, 'y': 1.0}, "
+        "angle_degrees=1.0, "
+        "angle_radians=5.0, "
+        "confidence=0.9)"
+    )
+    # fmt: on
 
 
 @pytest.mark.unit
-def test_receipt_window_eq():
-    """Test the ReceiptWindow.__eq__() method."""
-    r1 = ReceiptWindow(VALID_UUID,
-        123,
-        "bucket",
-        "key",
-        "TOP_LEFT",
-        100,
-        200,
-        (10, 20),
-        [1, 2, 3], )
-    r2 = ReceiptWindow(VALID_UUID,
-        123,
-        "bucket",
-        "key",
+def test_receipt_word_eq():
+    """Test that two ReceiptWords with the same attributes are equal."""
+    bounding_box = {"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4}
+    point = {"x": 1.0, "y": 2.0}
+    word1 = ReceiptWord(
+        receipt_id=1,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=3,
+        word_id=4,
+        text="Test",
+        bounding_box=bounding_box,
+        top_right=point,
+        top_left=point,
+        bottom_right=point,
+        bottom_left=point,
+        angle_degrees=45.0,
+        angle_radians=0.785398,
+        confidence=0.99,
+        tags=["example", "word"],
+    )
+    word2 = ReceiptWord(
+        receipt_id=1,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=3,
+        word_id=4,
+        text="Test",
+        bounding_box=bounding_box,
+        top_right=point,
+        top_left=point,
+        bottom_right=point,
+        bottom_left=point,
+        angle_degrees=45.0,
+        angle_radians=0.785398,
+        confidence=0.99,
+        tags=["example", "word"],
+    )
+    assert word1 == word2
+    assert word1 != "Test"
+
+
+@pytest.mark.unit
+def test_receipt_word_iter(example_receipt_word_with_tags):
+    """Test that the __iter__ method returns a dictionary."""
+    receipt_word_dict = dict(example_receipt_word_with_tags)
+    expected_keys = {
+        "receipt_id",
+        "image_id",
+        "line_id",
+        "word_id",
+        "text",
+        "bounding_box",
+        "top_right",
         "top_left",
-        100,
-        200,
-        (10, 20),
-        [1, 2, 3], )
-    r3 = ReceiptWindow("29984038-5cb5-4ce9-bcf0-856dcfca3125",
-        123,
-        "bucket",
-        "key",
-        "TOP_LEFT",
-        100,
-        200,
-        (10, 20),
-        [1, 2, 3], )
-    r4 = ReceiptWindow(VALID_UUID,
-        321,
-        "bucket",
-        "key",
-        "TOP_LEFT",
-        100,
-        200,
-        (10, 20),
-        [1, 2, 3], )
-    r5 = ReceiptWindow(VALID_UUID,
-        123,
-        "Bucket",
-        "key",
-        "TOP_LEFT",
-        100,
-        200,
-        (10, 20),
-        [1, 2, 3], )
-
-    assert (r1 == r2), "corner_name is case-insensitive on input, so these should be equal"
-    assert r1 != r3, "Different image_id"
-    assert r1 != r4, "Different receipt_id"
-    assert r1 != r5, "Different cdn_s3_bucket"
-
-    # Compare with a non-ReceiptWindow object.
-    assert r1 != 42, "Should return False (different type)"
+        "bottom_right",
+        "bottom_left",
+        "angle_degrees",
+        "angle_radians",
+        "confidence",
+        "tags",
+        "histogram",
+        "num_chars",
+    }
+    assert set(receipt_word_dict.keys()) == expected_keys
+    assert receipt_word_dict["receipt_id"] == 1
+    assert (
+        receipt_word_dict["image_id"] == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    )
+    assert receipt_word_dict["line_id"] == 3
+    assert receipt_word_dict["word_id"] == 4
+    assert receipt_word_dict["text"] == "Test"
+    assert receipt_word_dict["bounding_box"] == {
+        "x": 0.1,
+        "y": 0.2,
+        "width": 0.3,
+        "height": 0.4,
+    }
+    assert receipt_word_dict["top_right"] == {"x": 1.0, "y": 2.0}
+    assert receipt_word_dict["top_left"] == {"x": 1.0, "y": 3.0}
+    assert receipt_word_dict["bottom_right"] == {"x": 4.0, "y": 2.0}
+    assert receipt_word_dict["bottom_left"] == {"x": 1.0, "y": 1.0}
+    assert receipt_word_dict["angle_degrees"] == 1.0
+    assert receipt_word_dict["angle_radians"] == 5.0
+    assert receipt_word_dict["confidence"] == 0.9
+    assert receipt_word_dict["tags"] == ["example", "word"]
+    assert ReceiptWord(**receipt_word_dict) == example_receipt_word_with_tags
 
 
 @pytest.mark.unit
-def test_receipt_window_hash(example_receipt_window):
-    """Test the ReceiptWindow.__hash__() method."""
-    h = hash(example_receipt_window)
-    hashable_coords = tuple(float(x) for x in example_receipt_window.inner_corner_coordinates)
-
-    expected = hash((example_receipt_window.image_id,
-            example_receipt_window.receipt_id,
-            example_receipt_window.cdn_s3_bucket,
-            example_receipt_window.cdn_s3_key,
-            example_receipt_window.corner_name,
-            hashable_coords,
-            (tuple(example_receipt_window.gpt_guess)
-                if example_receipt_window.gpt_guess
-                else None), ))
-    assert h == expected
+def test_receipt_word_calculate_centroid(example_receipt_word):
+    """Test that the centroid is calculated correctly."""
+    assert example_receipt_word.calculate_centroid() == (1.75, 2.0)
 
 
 @pytest.mark.unit
-def test_itemToReceiptWindow(example_receipt_window, example_receipt_window_no_gpt_guess):
-    """Test the itemToReceiptWindow() function with valid and invalid items."""
-    # Round-trip: to_item() -> itemToReceiptWindow -> compare
-    item_with_guess = example_receipt_window.to_item()
-    new_rw_with_guess = itemToReceiptWindow(item_with_guess)
-    assert (new_rw_with_guess == example_receipt_window), "Should convert item back to an equivalent ReceiptWindow object (with gpt_guess)."
-
-    item_no_guess = example_receipt_window_no_gpt_guess.to_item()
-    new_rw_no_guess = itemToReceiptWindow(item_no_guess)
-    assert (new_rw_no_guess == example_receipt_window_no_gpt_guess), "Should convert item back to an equivalent ReceiptWindow object (no gpt_guess)."
-
-    # Missing a required key
-    with pytest.raises(ValueError, match=r"^Invalid item format\nmissing keys: "):
-        itemToReceiptWindow({"PK": {"S": f"IMAGE#{VALID_UUID}"},
-                "SK": {"S": "RECEIPT#00123#RECEIPT_WINDOW#TOP_LEFT"},
-                })
-
-    # Bad data type in item
-    bad_item = {"PK": {"S": f"IMAGE#{VALID_UUID}"},
-        "SK": {"S": "RECEIPT#00123#RECEIPT_WINDOW#TOP_LEFT"},
-        "TYPE": {"S": "RECEIPT_WINDOW"},
-        "cdn_s3_bucket": {"S": "my_bucket"},
-        "cdn_s3_key": {"S": "my_key"},
-        "corner_name": {"S": "TOP_LEFT"},
-        "width": {"S": "wrong-type"},  # Should be {"N": "..."}
-        "height": {"N": "200"},
-        "inner_corner_coordinates": {"L": [{"N": "10"}, {"N": "20"}]}, }
-    with pytest.raises(ValueError, match="Error converting item to ReceiptWindow:"):
-        itemToReceiptWindow(bad_item)
+def test_receipt_word_distance_and_angle(example_receipt_word):
+    other_receipt_word = ReceiptWord(
+        receipt_id=1,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=3,
+        word_id=5,
+        text="Test",
+        bounding_box={"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4},
+        top_right={"x": 40.0, "y": 20.0},
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 40.0, "y": 10.0},
+        bottom_left={"x": 10.0, "y": 10.0},
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=0.9,
+    )
+    assert example_receipt_word.distance_and_angle_from_ReceiptWord(
+        other_receipt_word
+    ) == (26.637614382673235, 0.5098332286596837)
 
 
 @pytest.mark.unit
-def test_itemToReceiptWindow_missing_gpt_guess_field(example_receipt_window):
-    """Test itemToReceiptWindow when the gpt_guess field is missing."""
-    item = example_receipt_window.to_item()
-    # Remove the gpt_guess field.
-    del item["gpt_guess"]
-    new_rw = itemToReceiptWindow(item)
-    # Since gpt_guess is not present, it should be interpreted as None.
-    assert new_rw.gpt_guess is None
+def test_item_to_receipt_word_round_trip(example_receipt_word_with_tags):
+    """Test that converting an item to ReceiptWord and back is consistent."""
+    assert (
+        itemToReceiptWord(example_receipt_word_with_tags.to_item())
+        == example_receipt_word_with_tags
+    )
+    with pytest.raises(ValueError, match="^Item is missing required keys:"):
+        itemToReceiptWord({})
+    with pytest.raises(
+        ValueError, match="^Error converting item to ReceiptWord"
+    ):
+        itemToReceiptWord(
+            {
+                "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+                "SK": {"S": "RECEIPT#00001#LINE#00003#WORD#00004"},
+                "text": {"S": "Test"},
+                "bounding_box": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}},
+                "top_right": {"M": {"x": {"N": "1.0"}, "y": {"N": "2.0"}}},
+                "top_left": {"M": {"x": {"N": "1.0"}, "y": {"N": "3.0"}}},
+                "bottom_right": {"M": {"x": {"N": "4.0"}, "y": {"N": "2.0"}}},
+                "bottom_left": {"M": {"x": {"N": "1.0"}, "y": {"N": "1.0"}}},
+                "angle_degrees": {"N": "1.0"},
+                "angle_radians": {"N": "5.0"},
+                "confidence": {"N": "0.9"},
+                "tags": {"SS": ["example", "word"]},
+            }
+        )
