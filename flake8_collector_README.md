@@ -1,14 +1,11 @@
 # Flake8 Error Collector
 
-This script scans Python files for Flake8 errors and can either:
-1. Create prompts for ChatGPT to fix the errors manually
-2. Automatically fix errors using the ChatGPT API
+This script scans Python files for Flake8 errors and creates prompts that instruct ChatGPT to return *ONLY* the fixed code. It generates one markdown file per Python file with errors, saving them in the same directory as the script.
 
 ## Requirements
 
 - Python 3.6+
 - Flake8 (`pip install flake8`)
-- Requests (`pip install requests`) - only needed for API functionality
 
 ## Usage
 
@@ -16,7 +13,7 @@ This script scans Python files for Flake8 errors and can either:
 ./flake8_collector.py [options]
 ```
 
-### Basic Options
+### Options
 
 - `-d, --directory`: Directory to scan for Python files (default: current directory)
 - `-e, --exclude`: Patterns to exclude (space-separated)
@@ -25,19 +22,7 @@ This script scans Python files for Flake8 errors and can either:
 - `-o, --output_dir`: Custom output directory for ChatGPT prompts (default: same directory as this script)
 - `-s, --suffix`: Suffix to add to markdown filenames (default: '_fix')
 
-### API-related Options
-
-- `--api`: Use ChatGPT API to automatically fix errors
-- `--api-key`: OpenAI API key (if not set, uses OPENAI_API_KEY environment variable)
-- `--model`: OpenAI model to use (default: "gpt-4")
-- `--temperature`: Temperature for API requests (default: 0.2)
-- `--apply`: Apply the fixes to the original files (requires --api)
-- `--fixed-suffix`: Suffix for fixed Python files (default: '_fixed')
-- `--validate`: Validate the fixed code by running flake8 on it again
-
-## Examples
-
-### Manual Mode (Default)
+### Examples
 
 Scan all Python files in the current directory:
 ```bash
@@ -54,26 +39,24 @@ Specify a custom output directory:
 ./flake8_collector.py -d ./my_project -o my_fixes
 ```
 
-### API Mode (Automatic Fixing)
-
-Fix errors using the API and save to new files:
+Use a different suffix for output files:
 ```bash
-./flake8_collector.py -d ./my_project --api --api-key your_api_key
+./flake8_collector.py -s _flake8_fixes
 ```
 
-Fix errors and validate the fixed code:
+Check only specific files:
 ```bash
-./flake8_collector.py -d ./my_project --api --validate
+./flake8_collector.py -f files_to_check.txt
 ```
 
-Fix errors and apply directly to original files (creates backups):
+Exclude certain patterns:
 ```bash
-./flake8_collector.py -d ./my_project --api --apply
+./flake8_collector.py -e "*/migrations/*" "*/venv/*"
 ```
 
-Use a different model:
+Use a custom Flake8 config file:
 ```bash
-./flake8_collector.py -d ./my_project --api --model gpt-3.5-turbo
+./flake8_collector.py -c ./.flake8
 ```
 
 ## Output Format
@@ -102,9 +85,9 @@ Line 20, Column 1: F401 - 'module' imported but unused
 ## Return ONLY the fixed code below
 ```
 
-## Workflows
+## Workflow with ChatGPT
 
-### Manual Workflow
+The workflow is simplified to focus on getting only the fixed code:
 
 1. Run the script to generate prompts:
    ```bash
@@ -119,22 +102,4 @@ Line 20, Column 1: F401 - 'module' imported but unused
 
 5. Copy the fixed code and replace the original file with it
 
-### Automatic Workflow (using API)
-
-1. Set your OpenAI API key (either as an environment variable or using the --api-key option)
-
-2. Run the script with API mode:
-   ```bash
-   # Save fixed code to new files
-   ./flake8_collector.py -d ./your_project --api
-
-   # Or apply fixes directly to original files (with backups)
-   ./flake8_collector.py -d ./your_project --api --apply
-   ```
-
-3. The script will:
-   - Detect Flake8 errors
-   - Send each file with errors to the ChatGPT API
-   - Save the fixed code to new files or apply it to the original files
-   - Validate the fixes if requested (--validate)
-   - Generate a summary report 
+This workflow allows you to quickly fix all Flake8 issues in your codebase without having to sift through explanations. 
