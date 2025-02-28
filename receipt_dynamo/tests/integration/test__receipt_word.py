@@ -1,6 +1,8 @@
-import pytest
 from typing import Literal
-from receipt_dynamo import ReceiptWord, DynamoClient
+
+import pytest
+
+from receipt_dynamo import DynamoClient, ReceiptWord
 
 
 @pytest.fixture

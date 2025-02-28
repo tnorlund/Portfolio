@@ -1,5 +1,6 @@
-from receipt_dynamo import ReceiptLine, itemToReceiptLine
 from botocore.exceptions import ClientError
+
+from receipt_dynamo import ReceiptLine, itemToReceiptLine
 
 CHUNK_SIZE = 25
 
@@ -37,8 +38,14 @@ class _ReceiptLine:
                 ConditionExpression="attribute_not_exists(PK)",
             )
         except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-                raise ValueError(f"ReceiptLine with ID {line.line_id} already exists")
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
+                raise ValueError(
+                    f"ReceiptLine with ID {
+                        line.line_id} already exists"
+                )
             else:
                 raise
 
@@ -47,16 +54,22 @@ class _ReceiptLine:
         try:
             for i in range(0, len(lines), CHUNK_SIZE):
                 chunk = lines[i : i + CHUNK_SIZE]
-                request_items = [{"PutRequest": {"Item": ln.to_item()}} for ln in chunk]
+                request_items = [
+                    {"PutRequest": {"Item": ln.to_item()}} for ln in chunk
+                ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
-            raise ValueError("Could not add ReceiptLines to the database") from e
+            raise ValueError(
+                "Could not add ReceiptLines to the database"
+            ) from e
 
     def updateReceiptLine(self, line: ReceiptLine):
         """Updates an existing ReceiptLine in DynamoDB."""
@@ -67,8 +80,14 @@ class _ReceiptLine:
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-                raise ValueError(f"ReceiptLine with ID {line.line_id} does not exist")
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
+                raise ValueError(
+                    f"ReceiptLine with ID {
+                        line.line_id} does not exist"
+                )
             else:
                 raise
 
@@ -79,12 +98,17 @@ class _ReceiptLine:
                 TableName=self.table_name,
                 Key={
                     "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"},
+                    "SK": {
+                        "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
+                    },
                 },
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
                 raise ValueError(f"ReceiptLine with ID {line_id} not found")
             else:
                 raise
@@ -94,16 +118,22 @@ class _ReceiptLine:
         try:
             for i in range(0, len(lines), CHUNK_SIZE):
                 chunk = lines[i : i + CHUNK_SIZE]
-                request_items = [{"DeleteRequest": {"Key": ln.key()}} for ln in chunk]
+                request_items = [
+                    {"DeleteRequest": {"Key": ln.key()}} for ln in chunk
+                ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
-            raise ValueError("Could not delete ReceiptLines from the database") from e
+            raise ValueError(
+                "Could not delete ReceiptLines from the database"
+            ) from e
 
     def getReceiptLine(
         self, receipt_id: int, image_id: str, line_id: int
@@ -114,7 +144,11 @@ class _ReceiptLine:
                 TableName=self.table_name,
                 Key={
                     "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"},
+                    "SK": {
+                        "S": f"RECEIPT#{
+                            receipt_id:05d}#LINE#{
+                            line_id:05d}"
+                    },
                 },
             )
             return itemToReceiptLine(response["Item"])
@@ -127,7 +161,9 @@ class _ReceiptLine:
         """Returns all ReceiptLines from the table."""
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None.")
-        if lastEvaluatedKey is not None and not isinstance(lastEvaluatedKey, dict):
+        if lastEvaluatedKey is not None and not isinstance(
+            lastEvaluatedKey, dict
+        ):
             raise ValueError("lastEvaluatedKey must be a dictionary or None.")
         receipt_lines = []
         try:
@@ -150,7 +186,9 @@ class _ReceiptLine:
             if limit is None:
                 # Paginate through all the receipt lines.
                 while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                     response = self._client.query(**query_params)
                     receipt_lines.extend(
                         [itemToReceiptLine(item) for item in response["Items"]]
@@ -213,4 +251,6 @@ class _ReceiptLine:
 
             return receipt_lines
         except ClientError as e:
-            raise ValueError("Could not list ReceiptLines from the database") from e
+            raise ValueError(
+                "Could not list ReceiptLines from the database"
+            ) from e

@@ -1,6 +1,6 @@
 # test__cluster.py
 import pytest
-from math import radians
+
 from receipt_dynamo.data._cluster import dbscan_lines
 from receipt_dynamo.entities import Line
 
@@ -62,8 +62,11 @@ def test_dbscan_lines_clusters():
     # Typically, cluster labels >=0 are real clusters, -1 is noise.
 
     # Let's gather them by label.
-    # cluster_labels might be something like 0 => [line1, line2], 1 => [line3, line4], -1 => [line5].
-    assert len(clusters) == 3, "We expect 2 real clusters plus a noise cluster (-1)."
+    # cluster_labels might be something like 0 => [line1, line2], 1 => [line3,
+    # line4], -1 => [line5].
+    assert (
+        len(clusters) == 3
+    ), "We expect 2 real clusters plus a noise cluster (-1)."
 
     # Ensure we find -1 label for the noise line
     assert -1 in clusters, "Line5 should be labeled as noise."

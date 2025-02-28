@@ -1,5 +1,6 @@
-from typing import Any, Dict, Generator, List, Optional, Tuple
 from datetime import datetime
+from typing import Any, Generator, Tuple
+
 from receipt_dynamo.entities.util import _repr_str
 
 
@@ -56,14 +57,19 @@ class Queue:
         elif isinstance(created_at, str):
             self.created_at = created_at
         else:
-            raise ValueError("created_at must be a datetime object or a string")
+            raise ValueError(
+                "created_at must be a datetime object or a string"
+            )
 
         if not isinstance(max_concurrent_jobs, int) or max_concurrent_jobs < 1:
             raise ValueError("max_concurrent_jobs must be a positive integer")
         self.max_concurrent_jobs = max_concurrent_jobs
 
         valid_priorities = ["low", "medium", "high", "critical"]
-        if not isinstance(priority, str) or priority.lower() not in valid_priorities:
+        if (
+            not isinstance(priority, str)
+            or priority.lower() not in valid_priorities
+        ):
             raise ValueError(f"priority must be one of {valid_priorities}")
         self.priority = priority.lower()
 
@@ -85,7 +91,13 @@ class Queue:
         Returns:
             dict: The GSI1 key for the queue.
         """
-        return {"GSI1PK": {"S": "QUEUE"}, "GSI1SK": {"S": f"QUEUE#{self.queue_name}"}}
+        return {
+            "GSI1PK": {"S": "QUEUE"},
+            "GSI1SK": {
+                "S": f"QUEUE#{
+                    self.queue_name}"
+            },
+        }
 
     def to_item(self) -> dict:
         """Converts the Queue object to a DynamoDB item.

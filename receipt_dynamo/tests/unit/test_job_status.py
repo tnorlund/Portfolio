@@ -1,5 +1,5 @@
-from datetime import datetime
 import pytest
+
 from receipt_dynamo import JobStatus, itemToJobStatus
 
 
@@ -46,7 +46,10 @@ def test_job_status_init_valid(example_job_status):
 @pytest.mark.unit
 def test_job_status_init_minimal(example_job_status_minimal):
     """Test the JobStatus constructor with minimal parameters."""
-    assert example_job_status_minimal.job_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    assert (
+        example_job_status_minimal.job_id
+        == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    )
     assert example_job_status_minimal.status == "pending"
     assert example_job_status_minimal.updated_at == "2021-01-01T00:00:00"
     assert example_job_status_minimal.progress is None
@@ -59,7 +62,8 @@ def test_job_status_init_minimal(example_job_status_minimal):
 def test_job_status_init_invalid_id():
     """Test the JobStatus constructor with invalid job_id."""
     with pytest.raises(ValueError, match="uuid must be a string"):
-        JobStatus(1, "running", "2021-01-01T00:00:00")  # Invalid: should be a string
+        # Invalid: should be a string
+        JobStatus(1, "running", "2021-01-01T00:00:00")
 
     with pytest.raises(ValueError, match="uuid must be a valid UUID"):
         JobStatus(
@@ -103,7 +107,9 @@ def test_job_status_init_invalid_updated_at():
 @pytest.mark.unit
 def test_job_status_init_invalid_progress():
     """Test the JobStatus constructor with invalid progress."""
-    with pytest.raises(ValueError, match="progress must be a number between 0 and 100"):
+    with pytest.raises(
+        ValueError, match="progress must be a number between 0 and 100"
+    ):
         JobStatus(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "running",
@@ -111,7 +117,9 @@ def test_job_status_init_invalid_progress():
             progress=-10,  # Invalid: negative value
         )
 
-    with pytest.raises(ValueError, match="progress must be a number between 0 and 100"):
+    with pytest.raises(
+        ValueError, match="progress must be a number between 0 and 100"
+    ):
         JobStatus(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "running",
@@ -119,7 +127,9 @@ def test_job_status_init_invalid_progress():
             progress=101,  # Invalid: above 100
         )
 
-    with pytest.raises(ValueError, match="progress must be a number between 0 and 100"):
+    with pytest.raises(
+        ValueError, match="progress must be a number between 0 and 100"
+    ):
         JobStatus(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "running",
@@ -277,7 +287,9 @@ def test_itemToJobStatus(example_job_status, example_job_status_minimal):
 
     # Test with missing required keys
     with pytest.raises(ValueError, match="Invalid item format"):
-        itemToJobStatus({"PK": {"S": "JOB#id"}, "SK": {"S": "STATUS#timestamp"}})
+        itemToJobStatus(
+            {"PK": {"S": "JOB#id"}, "SK": {"S": "STATUS#timestamp"}}
+        )
 
     # Test with invalid item format
     with pytest.raises(ValueError, match="Error converting item to JobStatus"):

@@ -1,31 +1,28 @@
-from datetime import datetime
 import boto3
-import os
-import requests
-from requests.models import Response
-import json
-from receipt_dynamo.data._image import _Image
-from receipt_dynamo.data._line import _Line
-from receipt_dynamo.data._word import _Word
-from receipt_dynamo.data._letter import _Letter
-from receipt_dynamo.data._receipt import _Receipt
-from receipt_dynamo.data._receipt_line import _ReceiptLine
-from receipt_dynamo.data._receipt_word import _ReceiptWord
-from receipt_dynamo.data._receipt_letter import _ReceiptLetter
-from receipt_dynamo.data._word_tag import _WordTag
-from receipt_dynamo.data._receipt_word_tag import _ReceiptWordTag
-from receipt_dynamo.data._gpt_validation import _GPTValidation
+
+# Import all the modules needed for multiple inheritance
 from receipt_dynamo.data._gpt_initial_tagging import _GPTInitialTagging
-from receipt_dynamo.data._receipt_window import _ReceiptWindow
-from receipt_dynamo.data._job import _Job
-from receipt_dynamo.data._job_status import _JobStatus
-from receipt_dynamo.data._job_resource import _JobResource
-from receipt_dynamo.data._job_metric import _JobMetric
-from receipt_dynamo.data._job_checkpoint import _JobCheckpoint
-from receipt_dynamo.data._job_log import _JobLog
-from receipt_dynamo.data._job_dependency import _JobDependency
-from receipt_dynamo.data._queue import _Queue
+from receipt_dynamo.data._gpt_validation import _GPTValidation
+from receipt_dynamo.data._image import _Image
 from receipt_dynamo.data._instance import _Instance
+from receipt_dynamo.data._job import _Job
+from receipt_dynamo.data._job_checkpoint import _JobCheckpoint
+from receipt_dynamo.data._job_dependency import _JobDependency
+from receipt_dynamo.data._job_log import _JobLog
+from receipt_dynamo.data._job_metric import _JobMetric
+from receipt_dynamo.data._job_resource import _JobResource
+from receipt_dynamo.data._job_status import _JobStatus
+from receipt_dynamo.data._letter import _Letter
+from receipt_dynamo.data._line import _Line
+from receipt_dynamo.data._queue import _Queue
+from receipt_dynamo.data._receipt import _Receipt
+from receipt_dynamo.data._receipt_letter import _ReceiptLetter
+from receipt_dynamo.data._receipt_line import _ReceiptLine
+from receipt_dynamo.data._receipt_window import _ReceiptWindow
+from receipt_dynamo.data._receipt_word import _ReceiptWord
+from receipt_dynamo.data._receipt_word_tag import _ReceiptWordTag
+from receipt_dynamo.data._word import _Word
+from receipt_dynamo.data._word_tag import _WordTag
 
 
 class DynamoClient(
@@ -73,5 +70,6 @@ class DynamoClient(
             self._client.describe_table(TableName=self.table_name)
         except self._client.exceptions.ResourceNotFoundException:
             raise ValueError(
-                f"The table '{self.table_name}' does not exist in region '{region}'."
+                f"The table '{
+                    self.table_name}' does not exist in region '{region}'."
             )

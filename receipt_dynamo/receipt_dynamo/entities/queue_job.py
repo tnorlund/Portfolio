@@ -1,6 +1,7 @@
-from typing import Any, Dict, Generator, Optional, Tuple
 from datetime import datetime
-from receipt_dynamo.entities.util import assert_valid_uuid, _repr_str
+from typing import Any, Generator, Tuple
+
+from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
 
 class QueueJob:
@@ -52,10 +53,15 @@ class QueueJob:
         elif isinstance(enqueued_at, str):
             self.enqueued_at = enqueued_at
         else:
-            raise ValueError("enqueued_at must be a datetime object or a string")
+            raise ValueError(
+                "enqueued_at must be a datetime object or a string"
+            )
 
         valid_priorities = ["low", "medium", "high", "critical"]
-        if not isinstance(priority, str) or priority.lower() not in valid_priorities:
+        if (
+            not isinstance(priority, str)
+            or priority.lower() not in valid_priorities
+        ):
             raise ValueError(f"priority must be one of {valid_priorities}")
         self.priority = priority.lower()
 

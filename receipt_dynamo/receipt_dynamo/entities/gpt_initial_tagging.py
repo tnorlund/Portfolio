@@ -1,6 +1,7 @@
-from typing import Generator, Tuple
 from datetime import datetime
-from receipt_dynamo.entities.util import assert_valid_uuid, _repr_str
+from typing import Generator, Tuple
+
+from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
 
 class GPTInitialTagging:
@@ -60,7 +61,9 @@ class GPTInitialTagging:
         elif isinstance(timestamp_added, str):
             self.timestamp_added = timestamp_added
         else:
-            raise ValueError("timestamp_added must be a datetime object or a string")
+            raise ValueError(
+                "timestamp_added must be a datetime object or a string"
+            )
 
     def __eq__(self, other: object) -> bool:
         """Checks equality based on image_id, receipt_id, query, response, and timestamp."""
@@ -101,8 +104,14 @@ class GPTInitialTagging:
         By design, only ONE record can exist per (image_id, receipt_id).
         """
         return {
-            "PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#QUERY#INITIAL_TAGGING"},
+            "PK": {
+                "S": f"IMAGE#{
+                    self.image_id}"
+            },
+            "SK": {
+                "S": f"RECEIPT#{
+                    self.receipt_id:05d}#QUERY#INITIAL_TAGGING"
+            },
         }
 
     def to_item(self) -> dict:

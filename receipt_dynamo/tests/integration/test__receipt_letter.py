@@ -1,6 +1,8 @@
-import pytest
 from typing import Literal
-from receipt_dynamo import ReceiptLetter, DynamoClient
+
+import pytest
+
+from receipt_dynamo import DynamoClient, ReceiptLetter
 
 
 @pytest.fixture
@@ -25,7 +27,8 @@ def sample_receipt_letter():
 
 @pytest.mark.integration
 def test_add_receipt_letter(
-    dynamodb_table: Literal["MyMockedTable"], sample_receipt_letter: ReceiptLetter
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt_letter: ReceiptLetter,
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -46,7 +49,8 @@ def test_add_receipt_letter(
 
 @pytest.mark.integration
 def test_add_receipt_letter_duplicate_raises(
-    dynamodb_table: Literal["MyMockedTable"], sample_receipt_letter: ReceiptLetter
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt_letter: ReceiptLetter,
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -59,7 +63,8 @@ def test_add_receipt_letter_duplicate_raises(
 
 @pytest.mark.integration
 def test_update_receipt_letter(
-    dynamodb_table: Literal["MyMockedTable"], sample_receipt_letter: ReceiptLetter
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt_letter: ReceiptLetter,
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -82,7 +87,8 @@ def test_update_receipt_letter(
 
 @pytest.mark.integration
 def test_delete_receipt_letter(
-    dynamodb_table: Literal["MyMockedTable"], sample_receipt_letter: ReceiptLetter
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt_letter: ReceiptLetter,
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -143,7 +149,9 @@ def test_receipt_letter_list(dynamodb_table: Literal["MyMockedTable"]):
 
 
 @pytest.mark.integration
-def test_receipt_letter_list_from_word(dynamodb_table: Literal["MyMockedTable"]):
+def test_receipt_letter_list_from_word(
+    dynamodb_table: Literal["MyMockedTable"],
+):
     # Arrange
     client = DynamoClient(dynamodb_table)
 
