@@ -835,7 +835,8 @@ def test_word_warp_affine():
 def test_word_repr(example_word):
     """Test the Word __repr__ method"""
     # fmt: off
-    assert (repr(example_word)
+    assert (
+        repr(example_word)
         == "Word("
             "word_id=3, "
             "text='test_string', "
@@ -847,7 +848,8 @@ def test_word_repr(example_word):
             "angle_degrees=1.0, "
             "angle_radians=5.0, "
             "confidence=0.9"
-            ")")
+            ")"
+    )
     # fmt: on
 
 
