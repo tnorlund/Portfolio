@@ -7,6 +7,7 @@ The following major components have been completed:
 - Receipt Trainer Package core functionality
 - Package Maintenance and structure refactoring
 - Most of Hyperparameter Optimization and Performance Optimization
+- Job definition format for LayoutLM training
 
 ## 1. Package Improvements
 
