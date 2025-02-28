@@ -1,5 +1,7 @@
-from datetime import datetime, timedelta
+from datetime import datetime
+
 import pytest
+
 from receipt_dynamo import JobMetric, itemToJobMetric
 
 
@@ -43,7 +45,10 @@ def test_job_metric_init_valid(example_job_metric):
 @pytest.mark.unit
 def test_job_metric_init_minimal(example_job_metric_minimal):
     """Test the JobMetric constructor with minimal parameters."""
-    assert example_job_metric_minimal.job_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    assert (
+        example_job_metric_minimal.job_id
+        == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    )
     assert example_job_metric_minimal.metric_name == "accuracy"
     assert example_job_metric_minimal.timestamp == "2021-01-01T12:35:45"
     assert example_job_metric_minimal.value == 87.5
@@ -56,7 +61,8 @@ def test_job_metric_init_minimal(example_job_metric_minimal):
 def test_job_metric_init_invalid_id():
     """Test the JobMetric constructor with invalid job_id."""
     with pytest.raises(ValueError, match="uuid must be a string"):
-        JobMetric(1, "loss", "2021-01-01T12:30:45", 0.15)  # Invalid: should be a string
+        # Invalid: should be a string
+        JobMetric(1, "loss", "2021-01-01T12:30:45", 0.15)
 
     with pytest.raises(ValueError, match="uuid must be a valid UUID"):
         JobMetric(
@@ -70,7 +76,9 @@ def test_job_metric_init_invalid_id():
 @pytest.mark.unit
 def test_job_metric_init_invalid_metric_name():
     """Test the JobMetric constructor with invalid metric_name."""
-    with pytest.raises(ValueError, match="metric_name must be a non-empty string"):
+    with pytest.raises(
+        ValueError, match="metric_name must be a non-empty string"
+    ):
         JobMetric(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "",  # Invalid: empty string
@@ -78,7 +86,9 @@ def test_job_metric_init_invalid_metric_name():
             0.15,
         )
 
-    with pytest.raises(ValueError, match="metric_name must be a non-empty string"):
+    with pytest.raises(
+        ValueError, match="metric_name must be a non-empty string"
+    ):
         JobMetric(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             123,  # Invalid: not a string
@@ -91,7 +101,8 @@ def test_job_metric_init_invalid_metric_name():
 def test_job_metric_init_invalid_value():
     """Test the JobMetric constructor with invalid value."""
     with pytest.raises(
-        ValueError, match="value must be a number \\(int/float\\) or a dictionary"
+        ValueError,
+        match="value must be a number \\(int/float\\) or a dictionary",
     ):
         JobMetric(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -161,7 +172,6 @@ def test_job_metric_init_invalid_epoch():
 def test_job_metric_init_invalid_metadata():
     """Test the JobMetric constructor with invalid metadata."""
     # This test is no longer needed since we don't have metadata
-    pass
 
 
 @pytest.mark.unit
@@ -182,7 +192,11 @@ def test_job_metric_gsi1_key(example_job_metric):
     assert isinstance(gsi1_key, dict)
     assert "GSI1PK" in gsi1_key
     assert "GSI1SK" in gsi1_key
-    assert gsi1_key["GSI1PK"]["S"] == f"METRIC#{example_job_metric.metric_name}"
+    assert (
+        gsi1_key["GSI1PK"]["S"]
+        == f"METRIC#{
+        example_job_metric.metric_name}"
+    )
     assert gsi1_key["GSI1SK"]["S"] == f"{example_job_metric.timestamp}"
 
 
@@ -195,7 +209,11 @@ def test_job_metric_gsi2_key(example_job_metric):
     assert isinstance(gsi2_key, dict)
     assert "GSI2PK" in gsi2_key
     assert "GSI2SK" in gsi2_key
-    assert gsi2_key["GSI2PK"]["S"] == f"METRIC#{example_job_metric.metric_name}"
+    assert (
+        gsi2_key["GSI2PK"]["S"]
+        == f"METRIC#{
+        example_job_metric.metric_name}"
+    )
     assert (
         gsi2_key["GSI2SK"]["S"]
         == f"JOB#{example_job_metric.job_id}#{example_job_metric.timestamp}"
@@ -209,7 +227,9 @@ def test_job_metric_to_item(example_job_metric, example_job_metric_minimal):
     item = example_job_metric.to_item()
     assert item["PK"] == {"S": f"JOB#{example_job_metric.job_id}"}
     assert item["SK"] == {
-        "S": f"METRIC#{example_job_metric.metric_name}#{example_job_metric.timestamp}"
+        "S": f"METRIC#{
+            example_job_metric.metric_name}#{
+            example_job_metric.timestamp}"
     }
     assert "GSI1PK" in item
     assert "GSI1SK" in item
@@ -233,7 +253,9 @@ def test_job_metric_to_item(example_job_metric, example_job_metric_minimal):
     item = example_job_metric_minimal.to_item()
     assert item["PK"] == {"S": f"JOB#{example_job_metric_minimal.job_id}"}
     assert item["SK"] == {
-        "S": f"METRIC#{example_job_metric_minimal.metric_name}#{example_job_metric_minimal.timestamp}"
+        "S": f"METRIC#{
+            example_job_metric_minimal.metric_name}#{
+            example_job_metric_minimal.timestamp}"
     }
     assert "GSI2PK" in item
     assert "GSI2SK" in item
@@ -411,13 +433,19 @@ def test_different_value_types():
     """Test the JobMetric handling of different value types."""
     # Test with integer value
     metric_int = JobMetric(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3", "count", "2021-01-01T12:30:45", 42
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "count",
+        "2021-01-01T12:30:45",
+        42,
     )
     assert metric_int.value == 42
 
     # Test with float value
     metric_float = JobMetric(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3", "accuracy", "2021-01-01T12:30:45", 0.95
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "accuracy",
+        "2021-01-01T12:30:45",
+        0.95,
     )
     assert metric_float.value == 0.95
 

@@ -1,7 +1,9 @@
 # test__gpt_validation.py
-from typing import Literal
-import pytest
 from datetime import datetime
+from typing import Literal
+
+import pytest
+
 from receipt_dynamo import DynamoClient, GPTValidation
 
 
@@ -75,7 +77,9 @@ def test_delete_gpt_validation(
         )
 
 
-def test_gpt_validation_batch_add_list(dynamodb_table: Literal["MyMockedTable"]):
+def test_gpt_validation_batch_add_list(
+    dynamodb_table: Literal["MyMockedTable"],
+):
     """
     Tests adding multiple GPTValidation records in batch and then listing them.
     """
@@ -95,9 +99,12 @@ def test_gpt_validation_batch_add_list(dynamodb_table: Literal["MyMockedTable"])
     client.addGPTValidations(validations)
     # List records via the GSI
     listed, _ = client.listGPTValidations()
-    # Filter on image_id and receipt_id to ensure we are only looking at test records
+    # Filter on image_id and receipt_id to ensure we are only looking at test
+    # records
     filtered = [
-        v for v in listed if v.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+        v
+        for v in listed
+        if v.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     ]
     assert len(filtered) >= 3
     # Verify that the queries for our batch records are present
@@ -106,7 +113,9 @@ def test_gpt_validation_batch_add_list(dynamodb_table: Literal["MyMockedTable"])
     assert queries.issubset(listed_queries)
 
 
-def test_gpt_validation_get_nonexistent(dynamodb_table: Literal["MyMockedTable"]):
+def test_gpt_validation_get_nonexistent(
+    dynamodb_table: Literal["MyMockedTable"],
+):
     """
     Tests that attempting to get a non-existent record raises a ValueError.
     """
@@ -222,6 +231,7 @@ def test_listGPTValidations_empty_table(dynamodb_table):
     # Ensure the table is empty for GPTValidation records by using a unique query value if necessary.
     # (In a shared table, you might need to filter by a test-specific image_id.)
     validations, lek = client.listGPTValidations()
-    # Assuming your test table is isolated, there should be no GPTValidation records.
+    # Assuming your test table is isolated, there should be no GPTValidation
+    # records.
     assert len(validations) == 0
     assert lek is None

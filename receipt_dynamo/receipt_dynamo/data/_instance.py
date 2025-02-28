@@ -1,14 +1,14 @@
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple
+
 import botocore
-from datetime import datetime
-import uuid
+
+from receipt_dynamo.data._job import validate_last_evaluated_key
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoCriticalErrorException,
+    DynamoRetryableException,
+)
 from receipt_dynamo.entities.instance import Instance, itemToInstance
 from receipt_dynamo.entities.instance_job import InstanceJob, itemToInstanceJob
-from receipt_dynamo.data.shared_exceptions import (
-    DynamoRetryableException,
-    DynamoCriticalErrorException,
-)
-from receipt_dynamo.data._job import validate_last_evaluated_key
 
 
 class _Instance:
@@ -42,20 +42,29 @@ class _Instance:
                 ConditionExpression="attribute_not_exists(PK)",
             )
         except botocore.exceptions.ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-                raise ValueError(f"Instance {instance.instance_id} already exists")
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
+                raise ValueError(
+                    f"Instance {
+                        instance.instance_id} already exists"
+                )
             elif e.response["Error"]["Code"] == "ResourceNotFoundException":
                 raise DynamoCriticalErrorException(
                     f"Table {self.table_name} does not exist"
                 )
             elif (
-                e.response["Error"]["Code"] == "ProvisionedThroughputExceededException"
+                e.response["Error"]["Code"]
+                == "ProvisionedThroughputExceededException"
             ):
                 raise DynamoRetryableException(
                     "Provisioned throughput exceeded, retry later"
                 )
             elif e.response["Error"]["Code"] == "InternalServerError":
-                raise DynamoRetryableException("Internal server error, retry later")
+                raise DynamoRetryableException(
+                    "Internal server error, retry later"
+                )
             else:
                 raise DynamoCriticalErrorException(
                     f"Failed to add instance: {e.response['Error']['Message']}"
@@ -77,7 +86,9 @@ class _Instance:
         if not isinstance(instances, list):
             raise ValueError("instances must be a list")
         if not all(isinstance(instance, Instance) for instance in instances):
-            raise ValueError("All elements in instances must be instances of Instance")
+            raise ValueError(
+                "All elements in instances must be instances of Instance"
+            )
 
         if not instances:
             return  # Nothing to do if the list is empty
@@ -88,9 +99,13 @@ class _Instance:
 
             # Batch write the items to DynamoDB
             request_items = {
-                self.table_name: [{"PutRequest": {"Item": item}} for item in items]
+                self.table_name: [
+                    {"PutRequest": {"Item": item}} for item in items
+                ]
             }
-            response = self._client.batch_write_item(RequestItems=request_items)
+            response = self._client.batch_write_item(
+                RequestItems=request_items
+            )
 
             # Handle unprocessed items
             unprocessed_items = response.get("UnprocessedItems", {})
@@ -99,21 +114,32 @@ class _Instance:
 
             while unprocessed_items and retry_count < max_retries:
                 retry_count += 1
-                response = self._client.batch_write_item(RequestItems=unprocessed_items)
+                response = self._client.batch_write_item(
+                    RequestItems=unprocessed_items
+                )
                 unprocessed_items = response.get("UnprocessedItems", {})
 
             if unprocessed_items:
                 raise DynamoRetryableException(
-                    f"Failed to write {len(unprocessed_items.get(self.table_name, []))} items after {max_retries} retries"
+                    f"Failed to write {
+                        len(
+                            unprocessed_items.get(
+                                self.table_name,
+                                []))} items after {max_retries} retries"
                 )
 
         except botocore.exceptions.ClientError as e:
-            if e.response["Error"]["Code"] == "ProvisionedThroughputExceededException":
+            if (
+                e.response["Error"]["Code"]
+                == "ProvisionedThroughputExceededException"
+            ):
                 raise DynamoRetryableException(
                     "Provisioned throughput exceeded, retry later"
                 )
             elif e.response["Error"]["Code"] == "InternalServerError":
-                raise DynamoRetryableException("Internal server error, retry later")
+                raise DynamoRetryableException(
+                    "Internal server error, retry later"
+                )
             elif e.response["Error"]["Code"] == "ValidationException":
                 raise DynamoCriticalErrorException(
                     f"Validation error: {e.response['Error']['Message']}"
@@ -124,7 +150,8 @@ class _Instance:
                 )
             else:
                 raise DynamoCriticalErrorException(
-                    f"Failed to add instances: {e.response['Error']['Message']}"
+                    f"Failed to add instances: {
+                        e.response['Error']['Message']}"
                 )
 
     def updateInstance(self, instance: Instance) -> None:
@@ -155,23 +182,33 @@ class _Instance:
                 ConditionExpression="attribute_exists(PK)",
             )
         except botocore.exceptions.ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-                raise ValueError(f"Instance {instance.instance_id} does not exist")
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
+                raise ValueError(
+                    f"Instance {
+                        instance.instance_id} does not exist"
+                )
             elif e.response["Error"]["Code"] == "ResourceNotFoundException":
                 raise DynamoCriticalErrorException(
                     f"Table {self.table_name} does not exist"
                 )
             elif (
-                e.response["Error"]["Code"] == "ProvisionedThroughputExceededException"
+                e.response["Error"]["Code"]
+                == "ProvisionedThroughputExceededException"
             ):
                 raise DynamoRetryableException(
                     "Provisioned throughput exceeded, retry later"
                 )
             elif e.response["Error"]["Code"] == "InternalServerError":
-                raise DynamoRetryableException("Internal server error, retry later")
+                raise DynamoRetryableException(
+                    "Internal server error, retry later"
+                )
             else:
                 raise DynamoCriticalErrorException(
-                    f"Failed to update instance: {e.response['Error']['Message']}"
+                    f"Failed to update instance: {
+                        e.response['Error']['Message']}"
                 )
 
     def deleteInstance(self, instance: Instance) -> None:
@@ -202,23 +239,33 @@ class _Instance:
                 ConditionExpression="attribute_exists(PK)",
             )
         except botocore.exceptions.ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-                raise ValueError(f"Instance {instance.instance_id} does not exist")
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
+                raise ValueError(
+                    f"Instance {
+                        instance.instance_id} does not exist"
+                )
             elif e.response["Error"]["Code"] == "ResourceNotFoundException":
                 raise DynamoCriticalErrorException(
                     f"Table {self.table_name} does not exist"
                 )
             elif (
-                e.response["Error"]["Code"] == "ProvisionedThroughputExceededException"
+                e.response["Error"]["Code"]
+                == "ProvisionedThroughputExceededException"
             ):
                 raise DynamoRetryableException(
                     "Provisioned throughput exceeded, retry later"
                 )
             elif e.response["Error"]["Code"] == "InternalServerError":
-                raise DynamoRetryableException("Internal server error, retry later")
+                raise DynamoRetryableException(
+                    "Internal server error, retry later"
+                )
             else:
                 raise DynamoCriticalErrorException(
-                    f"Failed to delete instance: {e.response['Error']['Message']}"
+                    f"Failed to delete instance: {
+                        e.response['Error']['Message']}"
                 )
 
     def getInstance(self, instance_id: str) -> Instance:
@@ -242,7 +289,10 @@ class _Instance:
             # Get the instance from DynamoDB
             response = self._client.get_item(
                 TableName=self.table_name,
-                Key={"PK": {"S": f"INSTANCE#{instance_id}"}, "SK": {"S": "INSTANCE"}},
+                Key={
+                    "PK": {"S": f"INSTANCE#{instance_id}"},
+                    "SK": {"S": "INSTANCE"},
+                },
             )
 
             # Check if the instance exists
@@ -257,7 +307,9 @@ class _Instance:
                     f"Table {self.table_name} does not exist"
                 )
             elif e.response["Error"]["Code"] == "InternalServerError":
-                raise DynamoRetryableException("Internal server error, retry later")
+                raise DynamoRetryableException(
+                    "Internal server error, retry later"
+                )
             else:
                 raise DynamoCriticalErrorException(
                     f"Failed to get instance: {e.response['Error']['Message']}"
@@ -283,7 +335,9 @@ class _Instance:
         instance = self.getInstance(instance_id)
 
         # Then, query for its jobs
-        instance_jobs = self.listInstanceJobs(instance_id)[0]  # Ignore lastEvaluatedKey
+        instance_jobs = self.listInstanceJobs(instance_id)[
+            0
+        ]  # Ignore lastEvaluatedKey
 
         return instance, instance_jobs
 
@@ -315,22 +369,30 @@ class _Instance:
                 ConditionExpression="attribute_not_exists(PK) AND attribute_not_exists(SK)",
             )
         except botocore.exceptions.ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
                 raise ValueError(
-                    f"InstanceJob for instance {instance_job.instance_id} and job {instance_job.job_id} already exists"
+                    f"InstanceJob for instance {
+                        instance_job.instance_id} and job {
+                        instance_job.job_id} already exists"
                 )
             elif e.response["Error"]["Code"] == "ResourceNotFoundException":
                 raise DynamoCriticalErrorException(
                     f"Table {self.table_name} does not exist"
                 )
             elif (
-                e.response["Error"]["Code"] == "ProvisionedThroughputExceededException"
+                e.response["Error"]["Code"]
+                == "ProvisionedThroughputExceededException"
             ):
                 raise DynamoRetryableException(
                     "Provisioned throughput exceeded, retry later"
                 )
             elif e.response["Error"]["Code"] == "InternalServerError":
-                raise DynamoRetryableException("Internal server error, retry later")
+                raise DynamoRetryableException(
+                    "Internal server error, retry later"
+                )
             else:
                 raise DynamoCriticalErrorException(
                     f"Failed to add instance-job: {e.response['Error']['Message']}"
@@ -364,22 +426,30 @@ class _Instance:
                 ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
             )
         except botocore.exceptions.ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
                 raise ValueError(
-                    f"InstanceJob for instance {instance_job.instance_id} and job {instance_job.job_id} does not exist"
+                    f"InstanceJob for instance {
+                        instance_job.instance_id} and job {
+                        instance_job.job_id} does not exist"
                 )
             elif e.response["Error"]["Code"] == "ResourceNotFoundException":
                 raise DynamoCriticalErrorException(
                     f"Table {self.table_name} does not exist"
                 )
             elif (
-                e.response["Error"]["Code"] == "ProvisionedThroughputExceededException"
+                e.response["Error"]["Code"]
+                == "ProvisionedThroughputExceededException"
             ):
                 raise DynamoRetryableException(
                     "Provisioned throughput exceeded, retry later"
                 )
             elif e.response["Error"]["Code"] == "InternalServerError":
-                raise DynamoRetryableException("Internal server error, retry later")
+                raise DynamoRetryableException(
+                    "Internal server error, retry later"
+                )
             else:
                 raise DynamoCriticalErrorException(
                     f"Failed to update instance-job: {e.response['Error']['Message']}"
@@ -413,22 +483,30 @@ class _Instance:
                 ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
             )
         except botocore.exceptions.ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
                 raise ValueError(
-                    f"InstanceJob for instance {instance_job.instance_id} and job {instance_job.job_id} does not exist"
+                    f"InstanceJob for instance {
+                        instance_job.instance_id} and job {
+                        instance_job.job_id} does not exist"
                 )
             elif e.response["Error"]["Code"] == "ResourceNotFoundException":
                 raise DynamoCriticalErrorException(
                     f"Table {self.table_name} does not exist"
                 )
             elif (
-                e.response["Error"]["Code"] == "ProvisionedThroughputExceededException"
+                e.response["Error"]["Code"]
+                == "ProvisionedThroughputExceededException"
             ):
                 raise DynamoRetryableException(
                     "Provisioned throughput exceeded, retry later"
                 )
             elif e.response["Error"]["Code"] == "InternalServerError":
-                raise DynamoRetryableException("Internal server error, retry later")
+                raise DynamoRetryableException(
+                    "Internal server error, retry later"
+                )
             else:
                 raise DynamoCriticalErrorException(
                     f"Failed to delete instance-job: {e.response['Error']['Message']}"
@@ -478,7 +556,9 @@ class _Instance:
                     f"Table {self.table_name} does not exist"
                 )
             elif e.response["Error"]["Code"] == "InternalServerError":
-                raise DynamoRetryableException("Internal server error, retry later")
+                raise DynamoRetryableException(
+                    "Internal server error, retry later"
+                )
             else:
                 raise DynamoCriticalErrorException(
                     f"Failed to get instance-job: {e.response['Error']['Message']}"
@@ -523,7 +603,9 @@ class _Instance:
         try:
             instances = []
             response = self._client.query(**query_params)
-            instances = [itemToInstance(item) for item in response.get("Items", [])]
+            instances = [
+                itemToInstance(item) for item in response.get("Items", [])
+            ]
             return instances, response.get("LastEvaluatedKey")
         except botocore.exceptions.ClientError as e:
             if e.response["Error"]["Code"] == "ResourceNotFoundException":
@@ -531,10 +613,13 @@ class _Instance:
                     f"Table {self.table_name} does not exist"
                 )
             elif e.response["Error"]["Code"] == "InternalServerError":
-                raise DynamoRetryableException("Internal server error, retry later")
+                raise DynamoRetryableException(
+                    "Internal server error, retry later"
+                )
             else:
                 raise DynamoCriticalErrorException(
-                    f"Failed to list instances: {e.response['Error']['Message']}"
+                    f"Failed to list instances: {
+                        e.response['Error']['Message']}"
                 )
 
     def listInstancesByStatus(
@@ -582,7 +667,9 @@ class _Instance:
 
         try:
             response = self._client.query(**query_params)
-            instances = [itemToInstance(item) for item in response.get("Items", [])]
+            instances = [
+                itemToInstance(item) for item in response.get("Items", [])
+            ]
             return instances, response.get("LastEvaluatedKey")
         except botocore.exceptions.ClientError as e:
             if e.response["Error"]["Code"] == "ResourceNotFoundException":
@@ -590,14 +677,20 @@ class _Instance:
                     f"Table {self.table_name} does not exist"
                 )
             elif e.response["Error"]["Code"] == "InternalServerError":
-                raise DynamoRetryableException("Internal server error, retry later")
+                raise DynamoRetryableException(
+                    "Internal server error, retry later"
+                )
             else:
                 raise DynamoCriticalErrorException(
-                    f"Failed to list instances by status: {e.response['Error']['Message']}"
+                    f"Failed to list instances by status: {
+                        e.response['Error']['Message']}"
                 )
 
     def listInstanceJobs(
-        self, instance_id: str, limit: int = None, lastEvaluatedKey: dict = None
+        self,
+        instance_id: str,
+        limit: int = None,
+        lastEvaluatedKey: dict = None,
     ) -> Tuple[List[InstanceJob], Optional[Dict]]:
         """Lists jobs associated with an instance in the DynamoDB table.
 
@@ -649,10 +742,13 @@ class _Instance:
                     f"Table {self.table_name} does not exist"
                 )
             elif e.response["Error"]["Code"] == "InternalServerError":
-                raise DynamoRetryableException("Internal server error, retry later")
+                raise DynamoRetryableException(
+                    "Internal server error, retry later"
+                )
             else:
                 raise DynamoCriticalErrorException(
-                    f"Failed to list instance jobs: {e.response['Error']['Message']}"
+                    f"Failed to list instance jobs: {
+                        e.response['Error']['Message']}"
                 )
 
     def listInstancesForJob(
@@ -709,8 +805,11 @@ class _Instance:
                     f"Table {self.table_name} does not exist"
                 )
             elif e.response["Error"]["Code"] == "InternalServerError":
-                raise DynamoRetryableException("Internal server error, retry later")
+                raise DynamoRetryableException(
+                    "Internal server error, retry later"
+                )
             else:
                 raise DynamoCriticalErrorException(
-                    f"Failed to list instances for job: {e.response['Error']['Message']}"
+                    f"Failed to list instances for job: {
+                        e.response['Error']['Message']}"
                 )

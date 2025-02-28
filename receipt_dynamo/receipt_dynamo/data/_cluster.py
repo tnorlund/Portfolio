@@ -1,6 +1,7 @@
 # infra/lambda_layer/python/dynamo/data/_cluster.py
-from typing import Dict, List
 import math
+from typing import Dict, List
+
 from receipt_dynamo.entities import Line
 
 
@@ -62,7 +63,8 @@ def dbscan_lines(
                         visited[current_point] = True
                         new_neighbors = region_query(current_point)
                         if len(new_neighbors) >= min_samples:
-                            # Add new neighbors to the seeds list if not already present.
+                            # Add new neighbors to the seeds list if not
+                            # already present.
                             for neighbor in new_neighbors:
                                 if neighbor not in seeds:
                                     seeds.append(neighbor)

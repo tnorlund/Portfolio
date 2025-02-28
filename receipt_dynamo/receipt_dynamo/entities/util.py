@@ -1,5 +1,5 @@
-from decimal import Decimal, ROUND_HALF_UP
 import re
+from decimal import ROUND_HALF_UP, Decimal
 
 
 def _repr_str(value: str) -> str:
@@ -7,7 +7,8 @@ def _repr_str(value: str) -> str:
     return "None" if value is None else f"'{value}'"
 
 
-# Regex for UUID version 4 (case-insensitive, enforcing the '4' and the [89AB] variant).
+# Regex for UUID version 4 (case-insensitive, enforcing the '4' and the
+# [89AB] variant).
 UUID_V4_REGEX = re.compile(
     r"^[0-9A-Fa-f]{8}-"
     r"[0-9A-Fa-f]{4}-"
@@ -120,7 +121,8 @@ def compute_histogram(text: str) -> dict:
     total_letters = sum(histogram.values())
     if total_letters > 0:
         histogram = {
-            letter: count / total_letters for letter, count in histogram.items()
+            letter: count / total_letters
+            for letter, count in histogram.items()
         }
     return histogram
 
@@ -156,7 +158,8 @@ def assert_valid_point(point):
 def _format_float(
     value: float, decimal_places: int = 10, total_length: int = 20
 ) -> str:
-    # Convert float → string → Decimal to avoid float binary representation issues
+    # Convert float → string → Decimal to avoid float binary representation
+    # issues
     d_value = Decimal(str(value))
 
     # Create a "quantizer" for the desired number of decimal digits

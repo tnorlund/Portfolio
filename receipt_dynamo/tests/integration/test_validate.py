@@ -1,9 +1,10 @@
 import json
 from os.path import dirname, join
+
 import pytest
 
-from receipt_dynamo.data.validate import validate
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.data.validate import validate
 from receipt_dynamo.entities.gpt_initial_tagging import GPTInitialTagging
 from receipt_dynamo.entities.gpt_validation import GPTValidation
 from receipt_dynamo.entities.image import Image
@@ -39,7 +40,9 @@ def test_validate_receipt(dynamodb_table, mocker):
         gpt_responses = json.load(f)
 
     with open(
-        join(base_dir, "JSON", f"{TEST_UUID}_START.json"), "r", encoding="utf-8"
+        join(base_dir, "JSON", f"{TEST_UUID}_START.json"),
+        "r",
+        encoding="utf-8",
     ) as f:
         receipt_data = json.load(f)
 
@@ -53,16 +56,22 @@ def test_validate_receipt(dynamodb_table, mocker):
     word_tags = [WordTag(**tag) for tag in receipt_data.get("word_tags")]
     letters = [Letter(**letter) for letter in receipt_data.get("letters")]
     receipts = [Receipt(**receipt) for receipt in receipt_data.get("receipts")]
-    receipt_lines = [ReceiptLine(**line) for line in receipt_data.get("receipt_lines")]
-    receipt_words = [ReceiptWord(**word) for word in receipt_data.get("receipt_words")]
+    receipt_lines = [
+        ReceiptLine(**line) for line in receipt_data.get("receipt_lines")
+    ]
+    receipt_words = [
+        ReceiptWord(**word) for word in receipt_data.get("receipt_words")
+    ]
     receipt_word_tags = [
         ReceiptWordTag(**tag) for tag in receipt_data.get("receipt_word_tags")
     ]
     receipt_letters = [
-        ReceiptLetter(**letter) for letter in receipt_data.get("receipt_letters")
+        ReceiptLetter(**letter)
+        for letter in receipt_data.get("receipt_letters")
     ]
     gpt_initial_taggings = [
-        GPTInitialTagging(**tag) for tag in receipt_data.get("gpt_initial_taggings")
+        GPTInitialTagging(**tag)
+        for tag in receipt_data.get("gpt_initial_taggings")
     ]
     gpt_validations = [
         GPTValidation(**validation)
@@ -125,7 +134,9 @@ def test_validate_receipt(dynamodb_table, mocker):
     validation = gpt_validations[0]
     assert validation.image_id == TEST_UUID
     assert validation.query.rstrip() == gpt_responses[0]["query"].rstrip()
-    assert validation.response.rstrip() == gpt_responses[0]["response"].rstrip()
+    assert (
+        validation.response.rstrip() == gpt_responses[0]["response"].rstrip()
+    )
 
     # Verify receipt word tags were updated according to GPT response
     for word_data in json.loads(gpt_responses[0]["parsed_response"]):
@@ -161,5 +172,6 @@ def test_validate_receipt(dynamodb_table, mocker):
         if matching_word_tag.flag == "ok":
             assert matching_word_tag.timestamp_validated is not None
         else:
-            # We can allow timestamp_validated to remain None if GPT didn't validate
+            # We can allow timestamp_validated to remain None if GPT didn't
+            # validate
             assert matching_word_tag.timestamp_validated is None or True

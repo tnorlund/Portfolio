@@ -1,6 +1,7 @@
-from typing import Generator, Optional, Tuple, Union
 from datetime import datetime
-from receipt_dynamo.entities.util import assert_valid_uuid, _repr_str
+from typing import Generator, Optional, Tuple, Union
+
+from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
 
 class ReceiptWordTag:
@@ -104,7 +105,9 @@ class ReceiptWordTag:
         elif isinstance(timestamp_added, str):
             self.timestamp_added = timestamp_added
         else:
-            raise ValueError("timestamp_added must be a datetime object or a string")
+            raise ValueError(
+                "timestamp_added must be a datetime object or a string"
+            )
 
         if validated not in (True, False, None):
             raise ValueError("validated must be a boolean or None")
@@ -139,7 +142,9 @@ class ReceiptWordTag:
         self.human_validated = human_validated
 
         if isinstance(timestamp_human_validated, datetime):
-            self.timestamp_human_validated = timestamp_human_validated.isoformat()
+            self.timestamp_human_validated = (
+                timestamp_human_validated.isoformat()
+            )
         elif not isinstance(timestamp_human_validated, (str, type(None))):
             raise ValueError(
                 "timestamp_human_validated must be a datetime object, a string, or None"
@@ -171,7 +176,8 @@ class ReceiptWordTag:
             and self.flag == other.flag
             and self.revised_tag == other.revised_tag
             and self.human_validated == other.human_validated
-            and self.timestamp_human_validated == other.timestamp_human_validated
+            and self.timestamp_human_validated
+            == other.timestamp_human_validated
         )
 
     def __iter__(self) -> Generator[Tuple[str, str], None, None]:
@@ -311,7 +317,9 @@ class ReceiptWordTag:
                 if self.gpt_confidence is not None
                 else {"NULL": True}
             ),
-            "flag": {"S": self.flag} if self.flag is not None else {"NULL": True},
+            "flag": (
+                {"S": self.flag} if self.flag is not None else {"NULL": True}
+            ),
             "revised_tag": (
                 {"S": self.revised_tag}
                 if self.revised_tag is not None
@@ -396,7 +404,9 @@ def itemToReceiptWordTag(item: dict) -> ReceiptWordTag:
         tag = sk_parts[7].lstrip("_").strip()
         timestamp_added = datetime.fromisoformat(item["timestamp_added"]["S"])
         validated = (
-            bool(item["validated"]["BOOL"]) if "BOOL" in item["validated"] else None
+            bool(item["validated"]["BOOL"])
+            if "BOOL" in item["validated"]
+            else None
         )
         if "timestamp_validated" in item:
             timestamp_validated = (
@@ -420,7 +430,9 @@ def itemToReceiptWordTag(item: dict) -> ReceiptWordTag:
             flag = None
         if "revised_tag" in item:
             revised_tag = (
-                item["revised_tag"]["S"] if "S" in item["revised_tag"] else None
+                item["revised_tag"]["S"]
+                if "S" in item["revised_tag"]
+                else None
             )
         else:
             revised_tag = None

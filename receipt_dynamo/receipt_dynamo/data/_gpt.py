@@ -1,11 +1,12 @@
 # infra/lambda_layer/python/dynamo/data/_gpt.py
-from requests.models import Response
-import requests
 import re
-from json import dumps, loads, JSONDecodeError
-from os import getenv, environ
+from json import JSONDecodeError, dumps, loads
+from os import environ, getenv
 
-from receipt_dynamo import Receipt, ReceiptWord, ReceiptWordTag, ReceiptLine
+import requests
+from requests.models import Response
+
+from receipt_dynamo import Receipt, ReceiptLine, ReceiptWord, ReceiptWordTag
 
 
 def gpt_request_tagging_validation(
@@ -37,7 +38,10 @@ def gpt_request_tagging_validation(
     payload = {
         "model": "gpt-3.5-turbo",
         "messages": [
-            {"role": "system", "content": "You extract structured data from text."},
+            {
+                "role": "system",
+                "content": "You extract structured data from text.",
+            },
             {"role": "user", "content": query},
         ],
     }
@@ -72,7 +76,10 @@ def gpt_request_initial_tagging(
     payload = {
         "model": "gpt-3.5-turbo",
         "messages": [
-            {"role": "system", "content": "You extract structured data from text."},
+            {
+                "role": "system",
+                "content": "You extract structured data from text.",
+            },
             {"role": "user", "content": query},
         ],
     }
@@ -121,12 +128,14 @@ def _validate_gpt_response_initial_tagging(response: Response) -> dict:
     # Ensure all keys in the parsed content are strings.
     if not all(isinstance(key, str) for key in content.keys()):
         raise ValueError("The response message content keys are not strings.")
-    # For each field, if its value is non-empty, check that it contains both "l" and "w".
+    # For each field, if its value is non-empty, check that it contains both
+    # "l" and "w".
     for key, value in content.items():
         if value:  # Only check non-empty values.
             if isinstance(value, list):
                 if not all(
-                    isinstance(tag, dict) and "l" in tag and "w" in tag for tag in value
+                    isinstance(tag, dict) and "l" in tag and "w" in tag
+                    for tag in value
                 ):
                     raise ValueError(
                         "The response message content values do not contain 'l' and 'w'."
@@ -176,10 +185,12 @@ def _validate_gpt_response_tagging_validation(response: Response) -> dict:
             # Look for the JSON code block using a regular expression.
             match = re.search(r"```json(.*?)```", content, flags=re.DOTALL)
             if match:
-                # Extract the JSON text between the markers, stripping any extra whitespace.
+                # Extract the JSON text between the markers, stripping any
+                # extra whitespace.
                 json_text = match.group(1).strip()
             else:
-                # Fallback: if the marker is present but the regex didn't match, use the full content.
+                # Fallback: if the marker is present but the regex didn't
+                # match, use the full content.
                 json_text = content
         else:
             # No markers found; assume the entire content is JSON.
@@ -207,7 +218,9 @@ def _validate_gpt_response_tagging_validation(response: Response) -> dict:
                 "flag",
             ]
         ):
-            raise ValueError("The response items do not contain the expected fields.")
+            raise ValueError(
+                "The response items do not contain the expected fields."
+            )
     return content
 
 

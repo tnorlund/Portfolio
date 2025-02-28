@@ -1,5 +1,5 @@
 import pytest
-from decimal import Decimal
+
 from receipt_dynamo import ReceiptWord, itemToReceiptWord
 
 
@@ -43,10 +43,14 @@ def example_receipt_word_with_tags():
 
 
 @pytest.mark.unit
-def test_receipt_word_init_valid(example_receipt_word, example_receipt_word_with_tags):
+def test_receipt_word_init_valid(
+    example_receipt_word, example_receipt_word_with_tags
+):
     """Test that a ReceiptWord with valid arguments initializes correctly."""
     assert example_receipt_word.receipt_id == 1
-    assert example_receipt_word.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    assert (
+        example_receipt_word.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    )
     assert example_receipt_word.line_id == 3
     assert example_receipt_word.word_id == 4
     assert example_receipt_word.text == "Test"
@@ -234,7 +238,9 @@ def test_receipt_word_init_invalid_text():
 @pytest.mark.unit
 def test_receipt_word_init_invalid_bounding_box():
     """Test that invalid bounding_box keys or types raise ValueError."""
-    with pytest.raises(ValueError, match="bounding_box must contain the key 'width'"):
+    with pytest.raises(
+        ValueError, match="bounding_box must contain the key 'width'"
+    ):
         ReceiptWord(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -276,7 +282,9 @@ def test_receipt_word_corners():
 @pytest.mark.unit
 def test_receipt_word_angle_validation():
     """Test that angles outside [0, 360) raise ValueError."""
-    with pytest.raises(ValueError, match="angle_degrees must be a float or int"):
+    with pytest.raises(
+        ValueError, match="angle_degrees must be a float or int"
+    ):
         ReceiptWord(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -292,7 +300,9 @@ def test_receipt_word_angle_validation():
             angle_radians=0.0,
             confidence=0.9,
         )
-    with pytest.raises(ValueError, match="angle_radians must be a float or int"):
+    with pytest.raises(
+        ValueError, match="angle_radians must be a float or int"
+    ):
         ReceiptWord(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -510,7 +520,9 @@ def test_receipt_word_iter(example_receipt_word_with_tags):
     }
     assert set(receipt_word_dict.keys()) == expected_keys
     assert receipt_word_dict["receipt_id"] == 1
-    assert receipt_word_dict["image_id"] == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    assert (
+        receipt_word_dict["image_id"] == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    )
     assert receipt_word_dict["line_id"] == 3
     assert receipt_word_dict["word_id"] == 4
     assert receipt_word_dict["text"] == "Test"
@@ -572,7 +584,9 @@ def test_item_to_receipt_word_round_trip(example_receipt_word_with_tags):
         itemToReceiptWord({})
 
     # Invalid value type
-    with pytest.raises(ValueError, match="^Error converting item to ReceiptWord"):
+    with pytest.raises(
+        ValueError, match="^Error converting item to ReceiptWord"
+    ):
         itemToReceiptWord(
             {
                 "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},

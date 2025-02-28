@@ -1,7 +1,9 @@
 from typing import Literal
-import pytest
+
 import boto3
-from receipt_dynamo import Line, DynamoClient
+import pytest
+
+from receipt_dynamo import DynamoClient, Line
 
 correct_line_params = {
     "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",

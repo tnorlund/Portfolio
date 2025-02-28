@@ -1,11 +1,12 @@
-from typing import Generator, Tuple
 from math import atan2, pi
+from typing import Generator, Tuple
+
 from receipt_dynamo.entities.util import (
+    _format_float,
     _repr_str,
-    assert_valid_uuid,
     assert_valid_bounding_box,
     assert_valid_point,
-    _format_float,
+    assert_valid_uuid,
 )
 
 
@@ -168,8 +169,12 @@ class ReceiptLetter:
                 "M": {
                     "x": {"N": _format_float(self.bounding_box["x"], 20, 22)},
                     "y": {"N": _format_float(self.bounding_box["y"], 20, 22)},
-                    "width": {"N": _format_float(self.bounding_box["width"], 20, 22)},
-                    "height": {"N": _format_float(self.bounding_box["height"], 20, 22)},
+                    "width": {
+                        "N": _format_float(self.bounding_box["width"], 20, 22)
+                    },
+                    "height": {
+                        "N": _format_float(self.bounding_box["height"], 20, 22)
+                    },
                 }
             },
             "top_right": {
@@ -343,10 +348,16 @@ class ReceiptLetter:
         # We invert it by treating (x_new, y_new) as known, and solving
         # for (x_old, y_old).  The code below does that in a 2×2 linear system.
 
-        corners = [self.top_left, self.top_right, self.bottom_left, self.bottom_right]
+        corners = [
+            self.top_left,
+            self.top_right,
+            self.bottom_left,
+            self.bottom_right,
+        ]
 
         for corner in corners:
-            # 1) Convert normalized new coords -> pixel coords in the 'new' (warped) image
+            # 1) Convert normalized new coords -> pixel coords in the 'new'
+            # (warped) image
             x_new_px = corner["x"] * dst_width
             y_new_px = corner["y"] * dst_height
 
@@ -389,7 +400,8 @@ class ReceiptLetter:
             corner["y"] = Y_old_px / src_height
 
             if flip_y:
-                # If the old/original system also had Y=0 at top, do the final flip:
+                # If the old/original system also had Y=0 at top, do the final
+                # flip:
                 corner["y"] = 1.0 - corner["y"]
 
         # 4) Recompute bounding box + angle
@@ -449,10 +461,12 @@ def itemToReceiptLetter(item: dict) -> ReceiptLetter:
                 for key, value in item["bounding_box"]["M"].items()
             },
             top_right={
-                key: float(value["N"]) for key, value in item["top_right"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["top_right"]["M"].items()
             },
             top_left={
-                key: float(value["N"]) for key, value in item["top_left"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["top_left"]["M"].items()
             },
             bottom_right={
                 key: float(value["N"])

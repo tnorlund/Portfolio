@@ -1,6 +1,7 @@
 # infra/lambda_layer/python/dynamo/data/export_image.py
-import os
 import json
+import os
+
 from receipt_dynamo.data.dynamo_client import DynamoClient
 
 
@@ -58,10 +59,16 @@ def export_image(table_name: str, image_id: str, output_dir: str) -> None:
         "receipt_windows": [dict(window) for window in receipt_windows],
         "receipt_lines": [dict(line) for line in receipt_lines],
         "receipt_words": [dict(word) for word in receipt_words],
-        "receipt_word_tags": [dict(word_tag) for word_tag in receipt_word_tags],
+        "receipt_word_tags": [
+            dict(word_tag) for word_tag in receipt_word_tags
+        ],
         "receipt_letters": [dict(letter) for letter in receipt_letters],
-        "gpt_initial_taggings": [dict(gpt_query) for gpt_query in gpt_initial_taggings],
-        "gpt_validations": [dict(gpt_validation) for gpt_validation in gpt_validations],
+        "gpt_initial_taggings": [
+            dict(gpt_query) for gpt_query in gpt_initial_taggings
+        ],
+        "gpt_validations": [
+            dict(gpt_validation) for gpt_validation in gpt_validations
+        ],
     }
 
     with open(os.path.join(output_dir, f"{image_id}.json"), "w") as f:
