@@ -8,4 +8,4 @@ setup(name="receipt-dynamo",
             "pytest-mock",
             "pytest-cov",
             "moto",
-            "freezegun",]},)
+            "freezegun", ]}, )

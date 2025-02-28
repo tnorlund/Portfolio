@@ -8,7 +8,7 @@ from receipt_dynamo import Letter, itemToLetter
 @pytest.fixture
 def example_letter():
     # fmt: off
-    return Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0,}, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90,)
+    return Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, )
     # fmt: on
 
 
@@ -23,7 +23,7 @@ def test_letter_init_valid(example_letter):
     assert example_letter.bounding_box == {"x": 10.0,
         "y": 20.0,
         "width": 5.0,
-        "height": 2.0,}
+        "height": 2.0, }
     assert example_letter.top_right == {"x": 15.0, "y": 20.0}
     assert example_letter.top_left == {"x": 10.0, "y": 20.0}
     assert example_letter.bottom_right == {"x": 15.0, "y": 22.0}
@@ -38,9 +38,9 @@ def test_letter_init_invalid_uuid():
     """Test the Letter constructor with a bad UUID"""
     # fmt: off
     with pytest.raises(ValueError, match="uuid must be a string"):
-        Letter(image_id=123, line_id=1, word_id=2, letter_id=3, text="0", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90,)
+        Letter(image_id=123, line_id=1, word_id=2, letter_id=3, text="0", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, )
     with pytest.raises(ValueError, match="uuid must be a valid UUID"):
-        Letter(image_id="not-a-uuid", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90,)
+        Letter(image_id="not-a-uuid", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, )
     # fmt: on
 
 
@@ -50,12 +50,12 @@ def test_letter_init_invalid_uuid():
         -1,
         None,
         "string",
-        1.5,],)
+        1.5, ], )
 def test_letter_init_invalid_line_id(invalid_int):
     """Test constructor fails when line_id is not a valid positive integer."""
     with pytest.raises(ValueError, match=r"line_id must be"):
         # fmt: off
-        Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=invalid_int, word_id=1, letter_id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5,)
+        Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=invalid_int, word_id=1, letter_id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, )
         # fmt: on
 
 
@@ -65,12 +65,12 @@ def test_letter_init_invalid_line_id(invalid_int):
         -1,
         None,
         "string",
-        1.5,],)
+        1.5, ], )
 def test_letter_init_invalid_word_id(invalid_int):
     """Test constructor fails when word_id is not a valid positive integer."""
     with pytest.raises(ValueError, match=r"word_id must be"):
         # fmt: off
-        Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=invalid_int, letter_id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5,)
+        Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=invalid_int, letter_id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, )
         # fmt: on
 
 
@@ -80,12 +80,12 @@ def test_letter_init_invalid_word_id(invalid_int):
         -1,
         None,
         "string",
-        1.5,],)
+        1.5, ], )
 def test_letter_init_invalid_id(invalid_int):
     """Test constructor fails when id is not a valid positive integer."""
     with pytest.raises(ValueError, match=r"id must be"):
         # fmt: off
-        Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=invalid_int, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5,)
+        Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=invalid_int, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, )
         # fmt: on
 
 
@@ -94,9 +94,9 @@ def test_letter_init_invalid_text():
     """Test constructor fails when text is not a string."""
     # fmt: off
     with pytest.raises(ValueError, match=r"text must be a string"):
-        Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=1, text=123, bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5,)
+        Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=1, text=123, bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, )
     with pytest.raises(ValueError, match=r"text must be exactly one character"):
-        Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=1, text="string-longer-than-1-char", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5,)
+        Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=1, text="string-longer-than-1-char", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, )
 
     # fmt: on
 
@@ -106,12 +106,13 @@ def test_letter_init_invalid_text():
     [{},
         {"x": 1, "width": 3, "height": 4},  # missing "y"
         {"y": 2, "width": 3, "height": 4},  # missing "x"
-        {"x": "str", "y": 2, "width": 3, "height": 4},  # not float/int],)
+        {"x": "str", "y": 2, "width": 3, "height": 4},  # not float/int
+    ], )
 def test_letter_init_invalid_bounding_box(bad_box):
     """Test constructor fails when bounding_box is not valid."""
     with pytest.raises(ValueError):
         # fmt: off
-        Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=1, text="H", bounding_box=bad_box, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5,)
+        Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=1, text="H", bounding_box=bad_box, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, )
         # fmt: on
 
 
@@ -120,12 +121,12 @@ def test_letter_init_invalid_bounding_box(bad_box):
     [{},
         {"x": 1},  # missing "y"
         {"y": 2},  # missing "x"
-        {"x": "str", "y": 2},],)
+        {"x": "str", "y": 2}, ], )
 def test_letter_init_invalid_top_right(bad_point):
     """Test constructor fails when top_right is not valid."""
     with pytest.raises(ValueError):
         # fmt: off
-        Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right=bad_point, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5,)
+        Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right=bad_point, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, )
         # fmt: on
 
 
@@ -134,12 +135,12 @@ def test_letter_init_invalid_top_right(bad_point):
     [{},
         {"x": 1},  # missing "y"
         {"y": 2},  # missing "x"
-        {"x": "str", "y": 2},],)
+        {"x": "str", "y": 2}, ], )
 def test_letter_init_invalid_top_left(bad_point):
     """Test constructor fails when top_left is not valid."""
     with pytest.raises(ValueError):
         # fmt: off
-        Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left=bad_point, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5,)
+        Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left=bad_point, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, )
         # fmt: on
 
 
@@ -148,12 +149,12 @@ def test_letter_init_invalid_top_left(bad_point):
     [{},
         {"x": 1},  # missing "y"
         {"y": 2},  # missing "x"
-        {"x": "str", "y": 2},],)
+        {"x": "str", "y": 2}, ], )
 def test_letter_init_invalid_bottom_right(bad_point):
     """Test constructor fails when bottom_right is not valid."""
     with pytest.raises(ValueError):
         # fmt: off
-        Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right=bad_point, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5,)
+        Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right=bad_point, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, )
         # fmt: on
 
 
@@ -162,12 +163,12 @@ def test_letter_init_invalid_bottom_right(bad_point):
     [{},
         {"x": 1},  # missing "y"
         {"y": 2},  # missing "x"
-        {"x": "str", "y": 2},],)
+        {"x": "str", "y": 2}, ], )
 def test_letter_init_invalid_bottom_left(bad_point):
     """Test constructor fails when bottom_left is not valid."""
     with pytest.raises(ValueError):
         # fmt: off
-        Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left=bad_point, angle_degrees=0.0, angle_radians=0.0, confidence=0.5,)
+        Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left=bad_point, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, )
         # fmt: on
 
 
@@ -177,7 +178,7 @@ def test_letter_init_invalid_confidence(bad_confidence):
     """Test constructor fails when confidence is not within (0, 1]."""
     with pytest.raises(ValueError):
         # fmt: off
-        Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=10.0, angle_radians=0.1, confidence=bad_confidence,)
+        Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=10.0, angle_radians=0.1, confidence=bad_confidence, )
         # fmt: on
 
 
@@ -186,9 +187,9 @@ def test_letter_init_invalid_angles():
     """Test constructor fails when angle_degrees and angle_radians are not valid."""
     # fmt: off
     with pytest.raises(ValueError, match="angle_degrees must be a float or int"):
-        Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees="not-a-number", angle_radians=0.0, confidence=0.5,)
+        Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees="not-a-number", angle_radians=0.0, confidence=0.5, )
     with pytest.raises(ValueError, match="angle_radians must be a float or int"):
-        Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians="not-a-number", confidence=0.5,)
+        Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=1, text="H", bounding_box={"x": 1, "y": 2, "width": 3, "height": 4}, top_right={"x": 2, "y": 2}, top_left={"x": 1, "y": 2}, bottom_right={"x": 2, "y": 3}, bottom_left={"x": 1, "y": 3}, angle_degrees=0.0, angle_radians="not-a-number", confidence=0.5, )
     # fmt: on
 
 
@@ -196,7 +197,7 @@ def test_letter_init_invalid_angles():
 def test_letter_key(example_letter):
     """Test the Letter.key method"""
     assert example_letter.key() == {"PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-        "SK": {"S": "LINE#00001#WORD#00002#LETTER#00003"},}
+        "SK": {"S": "LINE#00001#WORD#00002#LETTER#00003"}, }
 
 
 @pytest.mark.unit
@@ -209,18 +210,18 @@ def test_letter_to_item(example_letter):
         "bounding_box": {"M": {"height": {"N": "2.00000000000000000000"},
                 "width": {"N": "5.00000000000000000000"},
                 "x": {"N": "10.00000000000000000000"},
-                "y": {"N": "20.00000000000000000000"},}},
+                "y": {"N": "20.00000000000000000000"}, }},
         "top_right": {"M": {"x": {"N": "15.00000000000000000000"},
-                "y": {"N": "20.00000000000000000000"},}},
+                "y": {"N": "20.00000000000000000000"}, }},
         "top_left": {"M": {"x": {"N": "10.00000000000000000000"},
-                "y": {"N": "20.00000000000000000000"},}},
+                "y": {"N": "20.00000000000000000000"}, }},
         "bottom_right": {"M": {"x": {"N": "15.00000000000000000000"},
-                "y": {"N": "22.00000000000000000000"},}},
+                "y": {"N": "22.00000000000000000000"}, }},
         "bottom_left": {"M": {"x": {"N": "10.00000000000000000000"},
-                "y": {"N": "22.00000000000000000000"},}},
+                "y": {"N": "22.00000000000000000000"}, }},
         "angle_degrees": {"N": "1.000000000000000000"},
         "angle_radians": {"N": "5.000000000000000000"},
-        "confidence": {"N": "0.90"},}
+        "confidence": {"N": "0.90"}, }
 
 
 @pytest.mark.unit
@@ -246,14 +247,11 @@ def create_test_letter():
         bottom_left={"x": 10.0, "y": 22.0},
         angle_degrees=0.0,
         angle_radians=0.0,
-        confidence=1.0,)
+        confidence=1.0, )
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("dx, dy",
-    [(5, -2),  # Translate right by 5, up by -2
-        (0, 0),  # No translation
-        (-3, 10),  # Translate left by 3, down by 10],)
+@pytest.mark.parametrize("dx, dy", [(5, -2), (0, 0), (-3, 10)])
 def test_letter_translate(dx, dy):
     """
     Test that Letter.translate(dx, dy) shifts the corner points correctly,
@@ -290,7 +288,7 @@ def test_letter_translate(dx, dy):
     expected_bb = {"x": orig_bb["x"] + dx,
         "y": orig_bb["y"] + dy,
         "width": orig_bb["width"],
-        "height": orig_bb["height"],}
+        "height": orig_bb["height"], }
     assert letter.bounding_box == expected_bb
 
     # Verify that angles remain unchanged.
@@ -299,10 +297,7 @@ def test_letter_translate(dx, dy):
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("sx, sy",
-    [(2, 3),  # Scale 2x horizontally, 3x vertically
-        (1, 1),  # No scaling
-        (0.5, 2),  # Scale down horizontally, up vertically],)
+@pytest.mark.parametrize("sx, sy", [(2, 3), (1, 1), (0.5, 2)])
 def test_letter_scale(sx, sy):
     """
     Test that Letter.scale(sx, sy) scales both the corner points and the bounding_box,
@@ -359,7 +354,7 @@ def test_letter_scale(sx, sy):
         # Radians outside valid range => expect ValueError
         (math.pi / 2 + 0.01, True, True),
         (-math.pi / 2 - 0.01, True, True),
-        (math.pi, True, True),],)
+        (math.pi, True, True), ], )
 def test_letter_rotate_limited_range(angle, use_radians, should_raise):
     """
     Test that Letter.rotate(angle, origin_x, origin_y, use_radians) rotates the letter's
@@ -372,7 +367,7 @@ def test_letter_rotate_limited_range(angle, use_radians, should_raise):
     orig_corners = {"top_right": letter.top_right.copy(),
         "top_left": letter.top_left.copy(),
         "bottom_right": letter.bottom_right.copy(),
-        "bottom_left": letter.bottom_left.copy(),}
+        "bottom_left": letter.bottom_left.copy(), }
     orig_angle_degrees = letter.angle_degrees
     orig_angle_radians = letter.angle_radians
 
@@ -394,7 +389,7 @@ def test_letter_rotate_limited_range(angle, use_radians, should_raise):
         def rotate_point(px, py, theta):
             # Since rotation origin is (0,0), no translation is needed.
             return (px * math.cos(theta) - py * math.sin(theta),
-                px * math.sin(theta) + py * math.cos(theta),)
+                px * math.sin(theta) + py * math.cos(theta), )
 
         # Compute expected rotated positions for each corner.
         expected_corners = {}
@@ -408,7 +403,7 @@ def test_letter_rotate_limited_range(angle, use_radians, should_raise):
         expected_bb = {"x": min(xs),
             "y": min(ys),
             "width": max(xs) - min(xs),
-            "height": max(ys) - min(ys),}
+            "height": max(ys) - min(ys), }
 
         # Apply the rotation.
         letter.rotate(angle, 0, 0, use_radians=use_radians)
@@ -437,49 +432,41 @@ def test_letter_rotate_limited_range(angle, use_radians, should_raise):
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("shx, shy, pivot_x, pivot_y, expected_corners",
-    [# Test 1: Horizontal shear only (shx nonzero, shy=0)
-        (0.2,
-            0.0,
-            10.0,
-            20.0,
-            {# (15,20)
-                "top_right": {"x": 15.0 + 0.2 * (20.0 - 20.0), "y": 20.0},
-                # (10,20)
-                "top_left": {"x": 10.0 + 0.2 * (20.0 - 20.0), "y": 20.0},
-                "bottom_right": {"x": 15.0 + 0.2 * (22.0 - 20.0),
-                    "y": 22.0,},  # (15.4,22)
-                "bottom_left": {"x": 10.0 + 0.2 * (22.0 - 20.0),
-                    "y": 22.0,},  # (10.4,22)},),
-        # Test 2: Vertical shear only (shy nonzero, shx=0)
-        (0.0,
-            0.2,
-            10.0,
-            20.0,
-            {# (15,21)
-                "top_right": {"x": 15.0, "y": 20.0 + 0.2 * (15.0 - 10.0)},
-                # (10,20)
-                "top_left": {"x": 10.0, "y": 20.0 + 0.2 * (10.0 - 10.0)},
-                # (15,23)
-                "bottom_right": {"x": 15.0, "y": 22.0 + 0.2 * (15.0 - 10.0)},
-                # (10,22)
-                "bottom_left": {"x": 10.0, "y": 22.0 + 0.2 * (10.0 - 10.0)},},),
-        # Test 3: Combined shear
-        (0.1,
-            0.1,
-            12.0,
-            21.0,
-            {# For each corner, calculate:
-                # new_x = original_x + 0.1*(original_y - 21.0)
-                # new_y = original_y + 0.1*(original_x - 12.0)
-                "top_right": {"x": 15.0 + 0.1 * (20.0 - 21.0),
-                    "y": 20.0 + 0.1 * (15.0 - 12.0),},  # (15 - 0.1, 20 + 0.3) = (14.9, 20.3)
-                "top_left": {"x": 10.0 + 0.1 * (20.0 - 21.0),
-                    "y": 20.0 + 0.1 * (10.0 - 12.0),},  # (10 - 0.1, 20 - 0.2) = (9.9, 19.8)
-                "bottom_right": {"x": 15.0 + 0.1 * (22.0 - 21.0),
-                    "y": 22.0 + 0.1 * (15.0 - 12.0),},  # (15 + 0.1, 22 + 0.3) = (15.1, 22.3)
-                "bottom_left": {"x": 10.0 + 0.1 * (22.0 - 21.0),
-                    "y": 22.0 + 0.1 * (10.0 - 12.0),},  # (10 + 0.1, 22 - 0.2) = (10.1, 21.8)},),],)
+@pytest.mark.parametrize("shx, shy, pivot_x, pivot_y, expected_corners", [
+    # Test 1: Horizontal shear only (shx nonzero, shy=0)
+    (0.2, 0.0, 10.0, 20.0, {
+        # (15, 20)
+        "top_right": {"x": 15.0 + 0.2 * (20.0 - 20.0), "y": 20.0},
+        # (10, 20)
+        "top_left": {"x": 10.0 + 0.2 * (20.0 - 20.0), "y": 20.0},
+        # (15.4, 22)
+        "bottom_right": {"x": 15.0 + 0.2 * (22.0 - 20.0), "y": 22.0},
+        # (10.4, 22)
+        "bottom_left": {"x": 10.0 + 0.2 * (22.0 - 20.0), "y": 22.0}
+    }),
+    # Test 2: Vertical shear only (shy nonzero, shx=0)
+    (0.0, 0.2, 10.0, 20.0, {
+        # (15, 21)
+        "top_right": {"x": 15.0, "y": 20.0 + 0.2 * (15.0 - 10.0)},
+        # (10, 20)
+        "top_left": {"x": 10.0, "y": 20.0 + 0.2 * (10.0 - 10.0)},
+        # (15, 23)
+        "bottom_right": {"x": 15.0, "y": 22.0 + 0.2 * (15.0 - 10.0)},
+        # (10, 22)
+        "bottom_left": {"x": 10.0, "y": 22.0 + 0.2 * (10.0 - 10.0)}
+    }),
+    # Test 3: Combined shear
+    (0.1, 0.1, 12.0, 21.0, {
+        # (14.9, 20.3) = (15 - 0.1, 20 + 0.3)
+        "top_right": {"x": 15.0 + 0.1 * (20.0 - 21.0), "y": 20.0 + 0.1 * (15.0 - 12.0)},
+        # (9.9, 19.8) = (10 - 0.1, 20 - 0.2)
+        "top_left": {"x": 10.0 + 0.1 * (20.0 - 21.0), "y": 20.0 + 0.1 * (10.0 - 12.0)},
+        # (15.1, 22.3) = (15 + 0.1, 22 + 0.3)
+        "bottom_right": {"x": 15.0 + 0.1 * (22.0 - 21.0), "y": 22.0 + 0.1 * (15.0 - 12.0)},
+        # (10.1, 21.8) = (10 + 0.1, 22 - 0.2)
+        "bottom_left": {"x": 10.0 + 0.1 * (22.0 - 21.0), "y": 22.0 + 0.1 * (10.0 - 12.0)}
+    })
+])
 def test_letter_shear(shx, shy, pivot_x, pivot_y, expected_corners):
     """
     Test that the shear(shx, shy, pivot_x, pivot_y) method correctly shears
@@ -494,7 +481,7 @@ def test_letter_shear(shx, shy, pivot_x, pivot_y, expected_corners):
     for corner_name in ["top_right",
         "top_left",
         "bottom_right",
-        "bottom_left",]:
+        "bottom_left", ]:
         for coord in ["x", "y"]:
             expected_value = expected_corners[corner_name][coord]
             actual_value = letter.__dict__[corner_name][coord]
@@ -504,15 +491,15 @@ def test_letter_shear(shx, shy, pivot_x, pivot_y, expected_corners):
     xs = [letter.top_right["x"],
         letter.top_left["x"],
         letter.bottom_right["x"],
-        letter.bottom_left["x"],]
+        letter.bottom_left["x"], ]
     ys = [letter.top_right["y"],
         letter.top_left["y"],
         letter.bottom_right["y"],
-        letter.bottom_left["y"],]
+        letter.bottom_left["y"], ]
     expected_bb = {"x": min(xs),
         "y": min(ys),
         "width": max(xs) - min(xs),
-        "height": max(ys) - min(ys),}
+        "height": max(ys) - min(ys), }
     assert letter.bounding_box["x"] == pytest.approx(expected_bb["x"])
     assert letter.bounding_box["y"] == pytest.approx(expected_bb["y"])
     assert letter.bounding_box["width"] == pytest.approx(expected_bb["width"])
@@ -549,15 +536,15 @@ def test_letter_warp_affine():
     xs = [expected_top_left["x"],
         expected_top_right["x"],
         expected_bottom_left["x"],
-        expected_bottom_right["x"],]
+        expected_bottom_right["x"], ]
     ys = [expected_top_left["y"],
         expected_top_right["y"],
         expected_bottom_left["y"],
-        expected_bottom_right["y"],]
+        expected_bottom_right["y"], ]
     expected_bb = {"x": min(xs),
         "y": min(ys),
         "width": max(xs) - min(xs),
-        "height": max(ys) - min(ys),}
+        "height": max(ys) - min(ys), }
     # Since top_left and top_right have the same y value,
     # dx = expected_top_right["x"] - expected_top_left["x"] = 33 - 23 = 10
     # dy = expected_top_right["y"] - expected_top_left["y"] = 44 - 44 = 0
@@ -647,7 +634,7 @@ def test_letter_warp_affine_normalized_forward(example_letter):
         orig_height,
         new_width,
         new_height,
-        flip_y,)
+        flip_y, )
 
     # Verify that each corner is updated correctly.
     assert example_letter.top_left["x"] == pytest.approx(expected_top_left["x"])
@@ -688,7 +675,7 @@ def test_letter_rotate_90_ccw_in_place(example_letter):
              top_right     → (15.0*100, 20.0*200) = (1500, 4000)
              bottom_right  → (15.0*100, 22.0*200) = (1500, 4400)
              bottom_left   → (10.0*100, 22.0*200) = (1000, 4400)
-      2. Rotate each pixel coordinate 90° counter-clockwise about (0,0):
+      2. Rotate each pixel coordinate 90° counter-clockwise about (0, 0):
              new_x = original y
              new_y = old_w - original x
          This yields:
@@ -786,14 +773,14 @@ def test_letter_iter(example_letter):
         "bounding_box": {"x": 10.0,
             "y": 20.0,
             "width": 5.0,
-            "height": 2.0,},
+            "height": 2.0, },
         "top_right": {"x": 15.0, "y": 20.0},
         "top_left": {"x": 10.0, "y": 20.0},
         "bottom_right": {"x": 15.0, "y": 22.0},
         "bottom_left": {"x": 10.0, "y": 22.0},
         "angle_degrees": 1,
         "angle_radians": 5,
-        "confidence": 0.90,}
+        "confidence": 0.90, }
     assert Letter(**dict(example_letter)) == example_letter
 
 
@@ -801,20 +788,20 @@ def test_letter_iter(example_letter):
 def test_letter_eq():
     """Test the Letter.__eq__ method"""
     # fmt: off
-    l1 = Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0,}, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90,)
-    l2 = Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed4", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0,}, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90,) # different image_id
-    l3 = Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=2, word_id=2, letter_id=3, text="0", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0,}, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90,) # different line_id
-    l4 = Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=3, text="0", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0,}, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90,) # different word_id
-    l5 = Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=4, text="0", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0,}, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90,) # different id
-    l6 = Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=3, text="1", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0,}, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90,) # different text
-    l7 = Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={"x": 11.0, "y": 20.0, "width": 5.0, "height": 2.0,}, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90,) # different bounding_box
-    l8 = Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0,}, top_right={"x": 16.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90,) # different top_right
-    l9 = Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0,}, top_right={"x": 15.0, "y": 21.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90,) # different top_left
-    l10 = Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0,}, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 11.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90,) # different bottom_right
-    l11 = Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0,}, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 16.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90,) # different bottom_left
-    l12 = Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0,}, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=2.0, angle_radians=5.0, confidence=0.90,) # different angle_degrees
-    l13 = Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0,}, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=6.0, confidence=0.90,) # different angle_radians
-    l14 = Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0,}, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.91,) # different confidence
+    l1 = Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, )
+    l2 = Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed4", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different image_id
+    l3 = Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=2, word_id=2, letter_id=3, text="0", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different line_id
+    l4 = Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=1, letter_id=3, text="0", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different word_id
+    l5 = Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=4, text="0", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different id
+    l6 = Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=3, text="1", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different text
+    l7 = Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={"x": 11.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different bounding_box
+    l8 = Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 16.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different top_right
+    l9 = Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 21.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different top_left
+    l10 = Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 11.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different bottom_right
+    l11 = Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 16.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.90, ) # different bottom_left
+    l12 = Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=2.0, angle_radians=5.0, confidence=0.90, ) # different angle_degrees
+    l13 = Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=6.0, confidence=0.90, ) # different angle_radians
+    l14 = Letter(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", line_id=1, word_id=2, letter_id=3, text="0", bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, }, top_right={"x": 15.0, "y": 20.0}, top_left={"x": 10.0, "y": 20.0}, bottom_right={"x": 15.0, "y": 22.0}, bottom_left={"x": 10.0, "y": 22.0}, angle_degrees=1.0, angle_radians=5.0, confidence=0.91, ) # different confidence
     # fmt: on
 
     assert l1 == l1
@@ -862,7 +849,7 @@ def test_letter_hash(example_letter):
         bottom_left={"x": 10.0, "y": 22.0},
         angle_degrees=1.0,
         angle_radians=5.0,
-        confidence=0.90,)
+        confidence=0.90, )
 
     # Add example_letter, duplicate_letter, and different_letter to a set.
     letter_set = {example_letter, duplicate_letter, different_letter}
@@ -887,15 +874,15 @@ def test_item_to_letter(example_letter):
                 "bounding_box": {"M": {"height": {"N": "2.000000000000000000"},
                         "width": {"N": "5.000000000000000000"},
                         "x": {"N": "10.000000000000000000"},
-                        "y": {"N": "20.000000000000000000"},}},
+                        "y": {"N": "20.000000000000000000"}, }},
                 "top_right": {"M": {"x": {"N": "15.000000000000000000"},
-                        "y": {"N": "20.000000000000000000"},}},
+                        "y": {"N": "20.000000000000000000"}, }},
                 "top_left": {"M": {"x": {"N": "10.000000000000000000"},
-                        "y": {"N": "20.000000000000000000"},}},
+                        "y": {"N": "20.000000000000000000"}, }},
                 "bottom_right": {"M": {"x": {"N": "15.000000000000000000"},
-                        "y": {"N": "22.000000000000000000"},}},
+                        "y": {"N": "22.000000000000000000"}, }},
                 "bottom_left": {"M": {"x": {"N": "10.000000000000000000"},
-                        "y": {"N": "22.000000000000000000"},}},
+                        "y": {"N": "22.000000000000000000"}, }},
                 "angle_degrees": {"N": "1.0000000000"},
                 "angle_radians": {"N": "5.0000000000"},
-                "confidence": {"N": "0.90"},})
+                "confidence": {"N": "0.90"}, })

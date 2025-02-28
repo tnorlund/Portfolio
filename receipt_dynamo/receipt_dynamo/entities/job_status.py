@@ -30,7 +30,7 @@ class JobStatus:
         progress: Optional[float] = None,
         message: Optional[str] = None,
         updated_by: Optional[str] = None,
-        instance_id: Optional[str] = None,):
+        instance_id: Optional[str] = None, ):
         """Initializes a new JobStatus object for DynamoDB.
 
         Args:
@@ -53,7 +53,7 @@ class JobStatus:
             "succeeded",
             "failed",
             "cancelled",
-            "interrupted",]
+            "interrupted", ]
         if not isinstance(status, str) or status.lower() not in valid_statuses:
             raise ValueError(f"status must be one of {valid_statuses}")
         self.status = status.lower()
@@ -93,7 +93,7 @@ class JobStatus:
             dict: The primary key for the job status.
         """
         return {"PK": {"S": f"JOB#{self.job_id}"},
-            "SK": {"S": f"STATUS#{self.updated_at}"},}
+            "SK": {"S": f"STATUS#{self.updated_at}"}, }
 
     def gsi1_key(self) -> dict:
         """Generates the GSI1 key for the job status.
@@ -102,7 +102,7 @@ class JobStatus:
             dict: The GSI1 key for the job status.
         """
         return {"GSI1PK": {"S": f"STATUS#{self.status}"},
-            "GSI1SK": {"S": f"UPDATED#{self.updated_at}"},}
+            "GSI1SK": {"S": f"UPDATED#{self.updated_at}"}, }
 
     def to_item(self) -> dict:
         """Converts the JobStatus object to a DynamoDB item.
@@ -114,7 +114,7 @@ class JobStatus:
             **self.gsi1_key(),
             "TYPE": {"S": "JOB_STATUS"},
             "status": {"S": self.status},
-            "updated_at": {"S": self.updated_at},}
+            "updated_at": {"S": self.updated_at}, }
 
         if self.progress is not None:
             item["progress"] = {"N": str(self.progress)}
@@ -194,7 +194,7 @@ class JobStatus:
                 self.progress,
                 self.message,
                 self.updated_by,
-                self.instance_id,))
+                self.instance_id, ))
 
 
 def itemToJobStatus(item: dict) -> JobStatus:
@@ -213,7 +213,7 @@ def itemToJobStatus(item: dict) -> JobStatus:
         "SK",
         "TYPE",
         "status",
-        "updated_at",}
+        "updated_at", }
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
@@ -239,6 +239,6 @@ def itemToJobStatus(item: dict) -> JobStatus:
             progress=progress,
             message=message,
             updated_by=updated_by,
-            instance_id=instance_id,)
+            instance_id=instance_id, )
     except KeyError as e:
         raise ValueError(f"Error converting item to JobStatus: {e}")

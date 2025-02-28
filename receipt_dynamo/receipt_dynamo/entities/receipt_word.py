@@ -5,7 +5,7 @@ from receipt_dynamo.entities.util import (_format_float,
     assert_valid_bounding_box,
     assert_valid_point,
     assert_valid_uuid,
-    compute_histogram,)
+    compute_histogram, )
 
 
 class ReceiptWord:
@@ -52,7 +52,7 @@ class ReceiptWord:
         confidence: float,
         tags: list[str] = None,
         histogram: dict = None,
-        num_chars: int = None,):
+        num_chars: int = None, ):
         """
         Initializes a new ReceiptWord object for DynamoDB.
 
@@ -146,7 +146,7 @@ class ReceiptWord:
         return {"PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {"S": (f"RECEIPT#{self.receipt_id:05d}#"
                     f"LINE#{self.line_id:05d}#"
-                    f"WORD#{self.word_id:05d}")},}
+                    f"WORD#{self.word_id:05d}")}, }
 
     def gsi2_key(self) -> dict:
         """
@@ -159,7 +159,7 @@ class ReceiptWord:
             "GSI2SK": {"S": (f"IMAGE#{self.image_id}#"
                     f"RECEIPT#{self.receipt_id:05d}#"
                     f"LINE#{self.line_id:05d}#"
-                    f"WORD#{self.word_id:05d}")},}
+                    f"WORD#{self.word_id:05d}")}, }
 
     def to_item(self) -> dict:
         """
@@ -175,20 +175,20 @@ class ReceiptWord:
             "bounding_box": {"M": {"x": {"N": _format_float(self.bounding_box["x"], 20, 22)},
                     "y": {"N": _format_float(self.bounding_box["y"], 20, 22)},
                     "width": {"N": _format_float(self.bounding_box["width"], 20, 22)},
-                    "height": {"N": _format_float(self.bounding_box["height"], 20, 22)},}},
+                    "height": {"N": _format_float(self.bounding_box["height"], 20, 22)}, }},
             "top_right": {"M": {"x": {"N": _format_float(self.top_right["x"], 20, 22)},
-                    "y": {"N": _format_float(self.top_right["y"], 20, 22)},}},
+                    "y": {"N": _format_float(self.top_right["y"], 20, 22)}, }},
             "top_left": {"M": {"x": {"N": _format_float(self.top_left["x"], 20, 22)},
-                    "y": {"N": _format_float(self.top_left["y"], 20, 22)},}},
+                    "y": {"N": _format_float(self.top_left["y"], 20, 22)}, }},
             "bottom_right": {"M": {"x": {"N": _format_float(self.bottom_right["x"], 20, 22)},
-                    "y": {"N": _format_float(self.bottom_right["y"], 20, 22)},}},
+                    "y": {"N": _format_float(self.bottom_right["y"], 20, 22)}, }},
             "bottom_left": {"M": {"x": {"N": _format_float(self.bottom_left["x"], 20, 22)},
-                    "y": {"N": _format_float(self.bottom_left["y"], 20, 22)},}},
+                    "y": {"N": _format_float(self.bottom_left["y"], 20, 22)}, }},
             "angle_degrees": {"N": _format_float(self.angle_degrees, 18, 20)},
             "angle_radians": {"N": _format_float(self.angle_radians, 18, 20)},
             "confidence": {"N": _format_float(self.confidence, 2, 2)},
             "histogram": {"M": {k: {"N": str(v)} for k, v in self.histogram.items()}},
-            "num_chars": {"N": str(self.num_chars)},}
+            "num_chars": {"N": str(self.num_chars)}, }
         if self.tags:
             item["tags"] = {"SS": self.tags}
         return item
@@ -206,7 +206,7 @@ class ReceiptWord:
         src_height: int,
         dst_width: int,
         dst_height: int,
-        flip_y: bool = False,):
+        flip_y: bool = False, ):
         """
         Inverse perspective transform from 'new' space back to 'old' space.
 
@@ -233,7 +233,7 @@ class ReceiptWord:
         corners = [self.top_left,
             self.top_right,
             self.bottom_left,
-            self.bottom_right,]
+            self.bottom_right, ]
 
         for corner in corners:
             # 1) Convert normalized new coords -> pixel coords in the 'new'
@@ -424,7 +424,7 @@ class ReceiptWord:
                 self.angle_degrees,
                 self.angle_radians,
                 self.confidence,
-                tuple(self.tags),))
+                tuple(self.tags), ))
 
 
 def itemToReceiptWord(item: dict) -> ReceiptWord:
@@ -450,7 +450,7 @@ def itemToReceiptWord(item: dict) -> ReceiptWord:
         "bottom_left",
         "angle_degrees",
         "angle_radians",
-        "confidence",}
+        "confidence", }
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - set(item.keys())
         raise ValueError(f"Item is missing required keys: {missing_keys}")
@@ -473,6 +473,6 @@ def itemToReceiptWord(item: dict) -> ReceiptWord:
             angle_degrees=float(item["angle_degrees"]["N"]),
             angle_radians=float(item["angle_radians"]["N"]),
             confidence=float(item["confidence"]["N"]),
-            tags=item.get("tags", {}).get("SS", []),)
+            tags=item.get("tags", {}).get("SS", []), )
     except (KeyError, ValueError) as e:
         raise ValueError("Error converting item to ReceiptWord") from e

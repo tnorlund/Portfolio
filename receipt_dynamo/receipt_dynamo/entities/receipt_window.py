@@ -14,7 +14,7 @@ class ReceiptWindow:
         width: int,
         height: int,
         inner_corner_coordinates: Tuple[float, float] | List[float],
-        gpt_guess: list[int] | None = None,):
+        gpt_guess: list[int] | None = None, ):
         assert_valid_uuid(image_id)
         self.image_id = image_id
         if receipt_id <= 0:
@@ -32,7 +32,7 @@ class ReceiptWindow:
         if corner_name not in ["TOP_LEFT",
             "TOP_RIGHT",
             "BOTTOM_RIGHT",
-            "BOTTOM_LEFT",]:
+            "BOTTOM_LEFT", ]:
             raise ValueError("corner_name must be one of: TOP_LEFT, TOP_RIGHT, BOTTOM_RIGHT, BOTTOM_LEFT")
         self.corner_name = corner_name
         if width <= 0:
@@ -49,11 +49,11 @@ class ReceiptWindow:
 
     def key(self) -> dict:
         return {"PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#RECEIPT_WINDOW#{self.corner_name}"},}
+            "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#RECEIPT_WINDOW#{self.corner_name}"}, }
 
     def gsi3_key(self) -> dict:
         return {"GSI3PK": {"S": "RECEIPT"},
-            "GSI3SK": {"S": f"RECEIPT#{self.receipt_id:05d}#RECEIPT_WINDOW#{self.corner_name}"},}
+            "GSI3SK": {"S": f"RECEIPT#{self.receipt_id:05d}#RECEIPT_WINDOW#{self.corner_name}"}, }
 
     def to_item(self) -> dict:
         return {**self.key(),
@@ -68,7 +68,7 @@ class ReceiptWindow:
                     for coord in self.inner_corner_coordinates]},
             "gpt_guess": ({"L": [{"N": str(guess)} for guess in self.gpt_guess]}
                 if self.gpt_guess
-                else {"NULL": True}),}
+                else {"NULL": True}), }
 
     def __repr__(self) -> str:
         return f"ReceiptWindow(image_id={self.image_id}, receipt_id={self.receipt_id}, corner_name={self.corner_name}, width={self.width}, height={self.height}, gpt_guess={self.gpt_guess})"
@@ -104,7 +104,7 @@ class ReceiptWindow:
                 self.cdn_s3_key,
                 self.corner_name,
                 hashable_coords,  # Now hashable while preserving precision
-                (tuple(self.gpt_guess) if self.gpt_guess else None),  # Make gpt_guess hashable too))
+                (tuple(self.gpt_guess) if self.gpt_guess else None)))  # Make gpt_guess hashable too
 
 
 def itemToReceiptWindow(item: dict) -> ReceiptWindow:
@@ -116,7 +116,7 @@ def itemToReceiptWindow(item: dict) -> ReceiptWindow:
         "corner_name",
         "width",
         "height",
-        "inner_corner_coordinates",}
+        "inner_corner_coordinates", }
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
@@ -141,6 +141,6 @@ def itemToReceiptWindow(item: dict) -> ReceiptWindow:
             height=int(item["height"]["N"]),
             inner_corner_coordinates=tuple(float(coord["N"])
                 for coord in item["inner_corner_coordinates"]["L"]),
-            gpt_guess=gpt_guess,)
+            gpt_guess=gpt_guess, )
     except Exception as e:
         raise ValueError(f"Error converting item to ReceiptWindow: {e}")

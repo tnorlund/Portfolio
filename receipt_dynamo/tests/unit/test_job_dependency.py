@@ -3,7 +3,7 @@ from datetime import datetime
 import pytest
 
 from receipt_dynamo.entities.job_dependency import (JobDependency,
-    itemToJobDependency,)
+    itemToJobDependency, )
 
 
 @pytest.fixture
@@ -13,7 +13,8 @@ def example_job_dependency():
         "4f52804b-2fad-4e00-92c8-b593da3a8ed4",  # dependency_job_id
         "COMPLETION",  # type
         "2021-01-01T12:30:45",  # created_at
-        "Specific completion condition",  # condition)
+        "Specific completion condition",  # condition
+    )
 
 
 @pytest.fixture
@@ -22,7 +23,8 @@ def example_job_dependency_minimal():
     return JobDependency("3f52804b-2fad-4e00-92c8-b593da3a8ed3",  # dependent_job_id
         "4f52804b-2fad-4e00-92c8-b593da3a8ed4",  # dependency_job_id
         "SUCCESS",  # type
-        "2021-01-01T12:30:45",  # created_at)
+        "2021-01-01T12:30:45",  # created_at
+    )
 
 
 @pytest.mark.unit
@@ -53,7 +55,7 @@ def test_job_dependency_init_with_datetime():
     job_dependency = JobDependency("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         "4f52804b-2fad-4e00-92c8-b593da3a8ed4",
         "SUCCESS",
-        datetime(2021, 1, 1, 12, 30, 45),)
+        datetime(2021, 1, 1, 12, 30, 45), )
     assert job_dependency.created_at == "2021-01-01T12:30:45"
 
 
@@ -64,13 +66,13 @@ def test_job_dependency_init_invalid_dependent_id():
         JobDependency(1,  # Invalid: should be a string
             "4f52804b-2fad-4e00-92c8-b593da3a8ed4",
             "SUCCESS",
-            "2021-01-01T12:30:45",)
+            "2021-01-01T12:30:45", )
 
     with pytest.raises(ValueError, match="uuid must be a valid UUID"):
         JobDependency("not-a-uuid",  # Invalid: not a valid UUID format
             "4f52804b-2fad-4e00-92c8-b593da3a8ed4",
             "SUCCESS",
-            "2021-01-01T12:30:45",)
+            "2021-01-01T12:30:45", )
 
 
 @pytest.mark.unit
@@ -80,13 +82,13 @@ def test_job_dependency_init_invalid_dependency_id():
         JobDependency("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             1,  # Invalid: should be a string
             "SUCCESS",
-            "2021-01-01T12:30:45",)
+            "2021-01-01T12:30:45", )
 
     with pytest.raises(ValueError, match="uuid must be a valid UUID"):
         JobDependency("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "not-a-uuid",  # Invalid: not a valid UUID format
             "SUCCESS",
-            "2021-01-01T12:30:45",)
+            "2021-01-01T12:30:45", )
 
 
 @pytest.mark.unit
@@ -97,7 +99,7 @@ def test_job_dependency_init_self_dependency():
         JobDependency(same_id,
             same_id,  # Invalid: same as dependent_job_id
             "SUCCESS",
-            "2021-01-01T12:30:45",)
+            "2021-01-01T12:30:45", )
 
 
 @pytest.mark.unit
@@ -107,13 +109,13 @@ def test_job_dependency_init_invalid_type():
         JobDependency("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "4f52804b-2fad-4e00-92c8-b593da3a8ed4",
             "INVALID_TYPE",  # Invalid: not a valid type
-            "2021-01-01T12:30:45",)
+            "2021-01-01T12:30:45", )
 
     with pytest.raises(ValueError, match="type must be one of"):
         JobDependency("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "4f52804b-2fad-4e00-92c8-b593da3a8ed4",
             123,  # Invalid: not a string
-            "2021-01-01T12:30:45",)
+            "2021-01-01T12:30:45", )
 
 
 @pytest.mark.unit
@@ -123,7 +125,8 @@ def test_job_dependency_init_invalid_created_at():
         JobDependency("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "4f52804b-2fad-4e00-92c8-b593da3a8ed4",
             "SUCCESS",
-            123,  # Invalid: not a datetime or string)
+            123,  # Invalid: not a datetime or string
+            )
 
 
 @pytest.mark.unit
@@ -134,28 +137,29 @@ def test_job_dependency_init_invalid_condition():
             "4f52804b-2fad-4e00-92c8-b593da3a8ed4",
             "SUCCESS",
             "2021-01-01T12:30:45",
-            123,  # Invalid: not a string)
+            123,  # Invalid: not a string
+            )
 
 
 @pytest.mark.unit
 def test_job_dependency_key(example_job_dependency):
     """Test the JobDependency.key() method."""
     assert example_job_dependency.key() == {"PK": {"S": "JOB#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-        "SK": {"S": "DEPENDS_ON#4f52804b-2fad-4e00-92c8-b593da3a8ed4"},}
+        "SK": {"S": "DEPENDS_ON#4f52804b-2fad-4e00-92c8-b593da3a8ed4"}, }
 
 
 @pytest.mark.unit
 def test_job_dependency_gsi1_key(example_job_dependency):
     """Test the JobDependency.gsi1_key() method."""
     assert example_job_dependency.gsi1_key() == {"GSI1PK": {"S": "DEPENDENCY"},
-        "GSI1SK": {"S": "DEPENDENT#3f52804b-2fad-4e00-92c8-b593da3a8ed3#DEPENDENCY#4f52804b-2fad-4e00-92c8-b593da3a8ed4"},}
+        "GSI1SK": {"S": "DEPENDENT#3f52804b-2fad-4e00-92c8-b593da3a8ed3#DEPENDENCY#4f52804b-2fad-4e00-92c8-b593da3a8ed4"}, }
 
 
 @pytest.mark.unit
 def test_job_dependency_gsi2_key(example_job_dependency):
     """Test the JobDependency.gsi2_key() method."""
     assert example_job_dependency.gsi2_key() == {"GSI2PK": {"S": "DEPENDENCY"},
-        "GSI2SK": {"S": "DEPENDED_BY#4f52804b-2fad-4e00-92c8-b593da3a8ed4#DEPENDENT#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},}
+        "GSI2SK": {"S": "DEPENDED_BY#4f52804b-2fad-4e00-92c8-b593da3a8ed4#DEPENDENT#3f52804b-2fad-4e00-92c8-b593da3a8ed3"}, }
 
 
 @pytest.mark.unit
@@ -191,7 +195,7 @@ def test_job_dependency_case_insensitive_type():
     job_dependency = JobDependency("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         "4f52804b-2fad-4e00-92c8-b593da3a8ed4",
         "success",  # lowercase
-        "2021-01-01T12:30:45",)
+        "2021-01-01T12:30:45", )
     assert job_dependency.type == "SUCCESS"  # Should be converted to uppercase
 
 
@@ -227,12 +231,12 @@ def test_job_dependency_eq():
         "4f52804b-2fad-4e00-92c8-b593da3a8ed4",
         "SUCCESS",
         "2021-01-01T12:30:45",
-        "condition",)
+        "condition", )
     job_dep2 = JobDependency("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         "4f52804b-2fad-4e00-92c8-b593da3a8ed4",
         "SUCCESS",
         "2021-01-01T12:30:45",
-        "condition",)
+        "condition", )
     assert job_dep1 == job_dep2, "Should be equal"
 
     # Different dependent_job_id
@@ -240,7 +244,7 @@ def test_job_dependency_eq():
         "4f52804b-2fad-4e00-92c8-b593da3a8ed4",
         "SUCCESS",
         "2021-01-01T12:30:45",
-        "condition",)
+        "condition", )
     assert job_dep1 != job_dep3, "Different dependent_job_id"
 
     # Different dependency_job_id
@@ -248,7 +252,7 @@ def test_job_dependency_eq():
         "5f52804b-2fad-4e00-92c8-b593da3a8ed5",
         "SUCCESS",
         "2021-01-01T12:30:45",
-        "condition",)
+        "condition", )
     assert job_dep1 != job_dep4, "Different dependency_job_id"
 
     # Different type
@@ -256,7 +260,7 @@ def test_job_dependency_eq():
         "4f52804b-2fad-4e00-92c8-b593da3a8ed4",
         "ARTIFACT",
         "2021-01-01T12:30:45",
-        "condition",)
+        "condition", )
     assert job_dep1 != job_dep5, "Different type"
 
     # Different created_at
@@ -264,7 +268,7 @@ def test_job_dependency_eq():
         "4f52804b-2fad-4e00-92c8-b593da3a8ed4",
         "SUCCESS",
         "2021-01-02T12:30:45",
-        "condition",)
+        "condition", )
     assert job_dep1 != job_dep6, "Different created_at"
 
     # Different condition
@@ -272,7 +276,7 @@ def test_job_dependency_eq():
         "4f52804b-2fad-4e00-92c8-b593da3a8ed4",
         "SUCCESS",
         "2021-01-01T12:30:45",
-        "different condition",)
+        "different condition", )
     assert job_dep1 != job_dep7, "Different condition"
 
     # Compare with non-JobDependency object
@@ -304,4 +308,4 @@ def test_itemToJobDependency(example_job_dependency, example_job_dependency_mini
                 "dependent_job_id": {"S": "3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
                 "dependency_job_id": {"INVALID_TYPE": "4f52804b-2fad-4e00-92c8-b593da3a8ed4"},  # Invalid type
                 "type": {"S": "SUCCESS"},
-                "created_at": {"S": "2021-01-01T12:30:45"},})
+                "created_at": {"S": "2021-01-01T12:30:45"}, })

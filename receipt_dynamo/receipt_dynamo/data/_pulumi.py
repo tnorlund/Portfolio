@@ -18,10 +18,10 @@ def load_env(env: str = "dev") -> dict:
                 "output",
                 "--stack",
                 f"tnorlund/portfolio/{env}",
-                "--json",],
+                "--json", ],
             check=True,
             capture_output=True,
-            text=True,)
+            text=True, )
         return json.loads(result.stdout)
     except (subprocess.CalledProcessError, json.JSONDecodeError):
         return {}  # Return an empty dictionary on failure

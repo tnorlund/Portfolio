@@ -49,7 +49,7 @@ class WordTag:
         flag: Optional[str] = None,
         revised_tag: Optional[str] = None,
         human_validated: Optional[bool] = None,
-        timestamp_human_validated: Optional[Union[str, datetime]] = None,):
+        timestamp_human_validated: Optional[Union[str, datetime]] = None, ):
         """Initializes a new WordTag object for DynamoDB.
 
         Args:
@@ -174,7 +174,7 @@ class WordTag:
                 self.flag,
                 self.revised_tag,
                 self.human_validated,
-                self.timestamp_human_validated,))
+                self.timestamp_human_validated, ))
 
     def __iter__(self) -> Generator[Tuple[str, str], None, None]:
         """Yields the attributes of the WordTag as key-value pairs.
@@ -228,7 +228,7 @@ class WordTag:
         return {"PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {"S": f"LINE#{self.line_id:05d}"
                 f"#WORD#{self.word_id:05d}"
-                f"#TAG#{spaced_tag_upper}"},}
+                f"#TAG#{spaced_tag_upper}"}, }
 
     def gsi1_key(self) -> dict:
         """Generates the secondary index key for the WordTag.
@@ -241,7 +241,7 @@ class WordTag:
         tag_upper = self.tag
         spaced_tag_upper = f"{tag_upper:_>40}"
         return {"GSI1PK": {"S": f"TAG#{spaced_tag_upper}"},
-            "GSI1SK": {"S": f"IMAGE#{self.image_id}#LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"},}
+            "GSI1SK": {"S": f"IMAGE#{self.image_id}#LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"}, }
 
     def gsi2_key(self) -> dict:
         """Generates the secondary index key for the WordTag.
@@ -254,7 +254,7 @@ class WordTag:
         tag_upper = self.tag
         spaced_tag_upper = f"{tag_upper:_>40}"
         return {"GSI2PK": {"S": f"IMAGE#{self.image_id}"},
-            "GSI2SK": {"S": f"LINE#{self.line_id:05d}#WORD#{self.word_id:05d}#TAG#{spaced_tag_upper}"},}
+            "GSI2SK": {"S": f"LINE#{self.line_id:05d}#WORD#{self.word_id:05d}#TAG#{spaced_tag_upper}"}, }
 
     def to_item(self) -> dict:
         """Converts the WordTag object to a DynamoDB item.
@@ -286,7 +286,7 @@ class WordTag:
                 else {"NULL": True}),
             "timestamp_human_validated": ({"S": self.timestamp_human_validated}
                 if self.timestamp_human_validated is not None
-                else {"NULL": True}),}
+                else {"NULL": True}), }
 
     def to_Word_key(self) -> dict:
         """Generates the key for the Word table associated with this tag.
@@ -296,7 +296,7 @@ class WordTag:
         """
         return {"PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {"S": f"LINE#{self.line_id:05d}"
-                f"#WORD#{self.word_id:05d}"},}
+                f"#WORD#{self.word_id:05d}"}, }
 
 
 def itemToWordTag(item: dict) -> WordTag:
@@ -367,6 +367,6 @@ def itemToWordTag(item: dict) -> WordTag:
             flag=flag,
             revised_tag=revised_tag,
             human_validated=human_validated,
-            timestamp_human_validated=timestamp_human_validated,)
+            timestamp_human_validated=timestamp_human_validated, )
     except (IndexError, ValueError, KeyError) as e:
         raise ValueError(f"Error converting item to WordTag: {e}")

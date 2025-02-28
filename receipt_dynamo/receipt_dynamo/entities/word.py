@@ -8,7 +8,7 @@ from receipt_dynamo.entities.util import (_format_float,
     assert_valid_point,
     assert_valid_uuid,
     compute_histogram,
-    shear_point,)
+    shear_point, )
 
 
 class Word:
@@ -53,7 +53,7 @@ class Word:
         confidence: float,
         tags: list[str] = None,
         histogram: dict = None,
-        num_chars: int = None,):
+        num_chars: int = None, ):
         """Initializes a new Word object for DynamoDB.
 
         Args:
@@ -145,7 +145,7 @@ class Word:
             dict: The primary key for the Word.
         """
         return {"PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {"S": f"LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"},}
+            "SK": {"S": f"LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"}, }
 
     def gsi2_key(self) -> dict:
         """Generates the GSI2 key for the Word.
@@ -154,7 +154,7 @@ class Word:
             dict: The GSI2 key for the Word.
         """
         return {"GSI2PK": {"S": f"IMAGE#{self.image_id}"},
-            "GSI2SK": {"S": f"LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"},}
+            "GSI2SK": {"S": f"LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"}, }
 
     def to_item(self) -> dict:
         """Converts the Word object to a DynamoDB item.
@@ -169,21 +169,21 @@ class Word:
             "bounding_box": {"M": {"x": {"N": _format_float(self.bounding_box["x"], 20, 22)},
                     "y": {"N": _format_float(self.bounding_box["y"], 20, 22)},
                     "width": {"N": _format_float(self.bounding_box["width"], 20, 22)},
-                    "height": {"N": _format_float(self.bounding_box["height"], 20, 22)},}},
+                    "height": {"N": _format_float(self.bounding_box["height"], 20, 22)}, }},
             "top_right": {"M": {"x": {"N": _format_float(self.top_right["x"], 20, 22)},
-                    "y": {"N": _format_float(self.top_right["y"], 20, 22)},}},
+                    "y": {"N": _format_float(self.top_right["y"], 20, 22)}, }},
             "top_left": {"M": {"x": {"N": _format_float(self.top_left["x"], 20, 22)},
-                    "y": {"N": _format_float(self.top_left["y"], 20, 22)},}},
+                    "y": {"N": _format_float(self.top_left["y"], 20, 22)}, }},
             "bottom_right": {"M": {"x": {"N": _format_float(self.bottom_right["x"], 20, 22)},
-                    "y": {"N": _format_float(self.bottom_right["y"], 20, 22)},}},
+                    "y": {"N": _format_float(self.bottom_right["y"], 20, 22)}, }},
             "bottom_left": {"M": {"x": {"N": _format_float(self.bottom_left["x"], 20, 22)},
-                    "y": {"N": _format_float(self.bottom_left["y"], 20, 22)},}},
+                    "y": {"N": _format_float(self.bottom_left["y"], 20, 22)}, }},
             "angle_degrees": {"N": _format_float(self.angle_degrees, 18, 20)},
             "angle_radians": {"N": _format_float(self.angle_radians, 18, 20)},
             "confidence": {"N": _format_float(self.confidence, 2, 2)},
             "histogram": {"M": {k: {"N": _format_float(v, 10, 12)}
                     for k, v in self.histogram.items()}},
-            "num_chars": {"N": str(self.num_chars)},}
+            "num_chars": {"N": str(self.num_chars)}, }
 
         if self.tags:
             item["tags"] = {"SS": self.tags}
@@ -257,7 +257,7 @@ class Word:
     def calculate_corners(self, width: int = None, height: int = None, flip_y: bool = False) -> Tuple[Tuple[float, float],
         Tuple[float, float],
         Tuple[float, float],
-        Tuple[float, float],]:
+        Tuple[float, float], ]:
         """Calculates the top-left, top-right, bottom-left, and bottom-right corners of the Word in image coordinates.
 
         Args:
@@ -299,7 +299,7 @@ class Word:
         return ((top_left_x, top_left_y),
             (top_right_x, top_right_y),
             (bottom_left_x, bottom_left_y),
-            (bottom_right_x, bottom_right_y),)
+            (bottom_right_x, bottom_right_y), )
 
     def translate(self, x: float, y: float) -> None:
         """Translates the Word by the specified x and y offsets.
@@ -343,7 +343,7 @@ class Word:
         angle: float,
         rotate_origin_x: float,
         rotate_origin_y: float,
-        use_radians: bool = True,) -> None:
+        use_radians: bool = True, ) -> None:
         """Rotates the Word by the specified angle about a given origin.
 
         Only rotates if the angle is within:
@@ -380,13 +380,13 @@ class Word:
         corners = [self.top_right,
             self.top_left,
             self.bottom_right,
-            self.bottom_left,]
+            self.bottom_left, ]
         for corner in corners:
             x_new, y_new = rotate_point(corner["x"],
                 corner["y"],
                 rotate_origin_x,
                 rotate_origin_y,
-                angle_radians,)
+                angle_radians, )
             corner["x"] = x_new
             corner["y"] = y_new
 
@@ -408,7 +408,7 @@ class Word:
         shx: float,
         shy: float,
         pivot_x: float = 0.0,
-        pivot_y: float = 0.0,) -> None:
+        pivot_y: float = 0.0, ) -> None:
         """Applies a shear transformation to the Word about a pivot point.
 
         Args:
@@ -420,7 +420,7 @@ class Word:
         corners = [self.top_right,
             self.top_left,
             self.bottom_right,
-            self.bottom_left,]
+            self.bottom_left, ]
         for corner in corners:
             x_new, y_new = shear_point(corner["x"], corner["y"], pivot_x, pivot_y, shx, shy)
             corner["x"] = x_new
@@ -454,7 +454,7 @@ class Word:
         corners = [self.top_left,
             self.top_right,
             self.bottom_left,
-            self.bottom_right,]
+            self.bottom_right, ]
 
         for corner in corners:
             x_old = corner["x"]
@@ -489,7 +489,7 @@ class Word:
         orig_height,
         new_width,
         new_height,
-        flip_y=False,):
+        flip_y=False, ):
         """Applies a normalized forward affine transformation to the Word's corners.
 
         The transformation converts normalized coordinates from the original image to new
@@ -511,7 +511,7 @@ class Word:
         corners = [self.top_left,
             self.top_right,
             self.bottom_left,
-            self.bottom_right,]
+            self.bottom_right, ]
 
         for corner in corners:
             x_o = corner["x"] * orig_width
@@ -555,10 +555,10 @@ class Word:
         src_width: int,
         src_height: int,
         dst_width: int,
-        dst_height: int,
+        dst_height: int):
         # We will assume the corners come in as Vision bottom-left coords
         # and we want them to end as Vision bottom-left coords in the original
-        # image.):
+        # image.
         """
         Maps Vision (bottom-left) normalized coords in the 'warped' image
         back to Vision (bottom-left) normalized coords in the 'original' image.
@@ -567,7 +567,7 @@ class Word:
         corners = [self.top_left,
             self.top_right,
             self.bottom_left,
-            self.bottom_right,]
+            self.bottom_right, ]
         corner_names = ["top_left", "top_right", "bottom_left", "bottom_right"]
 
         for corner, name in zip(corners, corner_names):
@@ -628,7 +628,7 @@ class Word:
         corners = [self.top_left,
             self.top_right,
             self.bottom_right,
-            self.bottom_left,]
+            self.bottom_left, ]
         for corner in corners:
             corner["x"] *= old_w
             corner["y"] *= old_h
@@ -741,7 +741,7 @@ class Word:
                 self.angle_degrees,
                 self.angle_radians,
                 self.confidence,
-                tuple(self.tags),))
+                tuple(self.tags), ))
 
 
 def itemToWord(item: dict) -> Word:
@@ -766,7 +766,7 @@ def itemToWord(item: dict) -> Word:
         "bottom_left",
         "angle_degrees",
         "angle_radians",
-        "confidence",}
+        "confidence", }
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - set(item.keys())
         raise ValueError(f"Item is missing required keys: {missing_keys}")
@@ -789,6 +789,6 @@ def itemToWord(item: dict) -> Word:
             angle_degrees=float(item["angle_degrees"]["N"]),
             angle_radians=float(item["angle_radians"]["N"]),
             confidence=float(item["confidence"]["N"]),
-            tags=item.get("tags", {}).get("SS", []),)
+            tags=item.get("tags", {}).get("SS", []), )
     except (KeyError, ValueError) as e:
         raise ValueError(f"Error converting item to Word: {e}")

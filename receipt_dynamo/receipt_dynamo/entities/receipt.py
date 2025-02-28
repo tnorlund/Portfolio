@@ -4,7 +4,7 @@ from typing import Any, Generator, Tuple
 from receipt_dynamo.entities.util import (_format_float,
     _repr_str,
     assert_valid_point,
-    assert_valid_uuid,)
+    assert_valid_uuid, )
 
 
 class Receipt:
@@ -47,7 +47,7 @@ class Receipt:
         bottom_right: dict,
         sha256: str = None,
         cdn_s3_bucket: str = None,
-        cdn_s3_key: str = None,):
+        cdn_s3_key: str = None, ):
         """Initializes a new Receipt object for DynamoDB.
 
         Args:
@@ -127,7 +127,7 @@ class Receipt:
             dict: The primary key for the receipt.
         """
         return {"PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {"S": f"RECEIPT#{self.receipt_id:05d}"},}
+            "SK": {"S": f"RECEIPT#{self.receipt_id:05d}"}, }
 
     def gsi1_key(self) -> dict:
         """Generates the GSI1 key for the receipt.
@@ -136,7 +136,7 @@ class Receipt:
             dict: The GSI1 key for the receipt.
         """
         return {"GSI1PK": {"S": "IMAGE"},
-            "GSI1SK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"},}
+            "GSI1SK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"}, }
 
     def gsi2_key(self) -> dict:
         """Generates the GSI2 key for the receipt.
@@ -145,7 +145,7 @@ class Receipt:
             dict: The GSI2 key for the receipt.
         """
         return {"GSI2PK": {"S": "RECEIPT"},
-            "GSI2SK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"},}
+            "GSI2SK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"}, }
 
     def gsi3_key(self) -> dict:
         """Generates the GSI3 key for the receipt.
@@ -154,7 +154,7 @@ class Receipt:
             dict: The GSI3 key for the receipt.
         """
         return {"GSI3PK": {"S": "RECEIPT"},
-            "GSI3SK": {"S": f"RECEIPT#{self.receipt_id:05d}"},}
+            "GSI3SK": {"S": f"RECEIPT#{self.receipt_id:05d}"}, }
 
     def to_item(self) -> dict:
         """Converts the Receipt object to a DynamoDB item.
@@ -173,18 +173,18 @@ class Receipt:
             "raw_s3_bucket": {"S": self.raw_s3_bucket},
             "raw_s3_key": {"S": self.raw_s3_key},
             "top_left": {"M": {"x": {"N": _format_float(self.top_left["x"], 18, 20)},
-                    "y": {"N": _format_float(self.top_left["y"], 18, 20)},}},
+                    "y": {"N": _format_float(self.top_left["y"], 18, 20)}, }},
             "top_right": {"M": {"x": {"N": _format_float(self.top_right["x"], 18, 20)},
-                    "y": {"N": _format_float(self.top_right["y"], 18, 20)},}},
+                    "y": {"N": _format_float(self.top_right["y"], 18, 20)}, }},
             "bottom_left": {"M": {"x": {"N": _format_float(self.bottom_left["x"], 18, 20)},
-                    "y": {"N": _format_float(self.bottom_left["y"], 18, 20)},}},
+                    "y": {"N": _format_float(self.bottom_left["y"], 18, 20)}, }},
             "bottom_right": {"M": {"x": {"N": _format_float(self.bottom_right["x"], 18, 20)},
-                    "y": {"N": _format_float(self.bottom_right["y"], 18, 20)},}},
+                    "y": {"N": _format_float(self.bottom_right["y"], 18, 20)}, }},
             "sha256": {"S": self.sha256} if self.sha256 else {"NULL": True},
             "cdn_s3_bucket": ({"S": self.cdn_s3_bucket}
                 if self.cdn_s3_bucket
                 else {"NULL": True}),
-            "cdn_s3_key": ({"S": self.cdn_s3_key} if self.cdn_s3_key else {"NULL": True}),}
+            "cdn_s3_key": ({"S": self.cdn_s3_key} if self.cdn_s3_key else {"NULL": True}), }
 
     def __repr__(self) -> str:
         """Returns a string representation of the Receipt object.
@@ -278,7 +278,7 @@ class Receipt:
                 tuple(self.bottom_left.items()),
                 self.sha256,
                 self.cdn_s3_bucket,
-                self.cdn_s3_key,))
+                self.cdn_s3_key, ))
 
 
 def itemToReceipt(item: dict) -> Receipt:
@@ -303,7 +303,7 @@ def itemToReceipt(item: dict) -> Receipt:
         "top_left",
         "top_right",
         "bottom_left",
-        "bottom_right",}
+        "bottom_right", }
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
@@ -332,6 +332,6 @@ def itemToReceipt(item: dict) -> Receipt:
                 else None),
             cdn_s3_key=(item["cdn_s3_key"]["S"]
                 if "cdn_s3_key" in item and "S" in item["cdn_s3_key"]
-                else None),)
+                else None), )
     except Exception as e:
         raise ValueError(f"Error converting item to Receipt: {e}")

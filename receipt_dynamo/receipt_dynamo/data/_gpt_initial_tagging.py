@@ -4,7 +4,7 @@ from typing import Dict, List, Optional, Tuple
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.entities.gpt_initial_tagging import (GPTInitialTagging,
-    itemToGPTInitialTagging,)
+    itemToGPTInitialTagging, )
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 CHUNK_SIZE = 25
@@ -32,7 +32,7 @@ class _GPTInitialTagging:
         try:
             self._client.put_item(TableName=self.table_name,
                 Item=tagging.to_item(),
-                ConditionExpression="attribute_not_exists(PK)",)
+                ConditionExpression="attribute_not_exists(PK)", )
         except ClientError as e:
             if (e.response["Error"]["Code"]
                 == "ConditionalCheckFailedException"):
@@ -78,10 +78,10 @@ class _GPTInitialTagging:
             ValueError: If the record is not found.
         """
         key = {"PK": {"S": f"IMAGE#{image_id}"},
-            "SK": {"S": f"RECEIPT#{receipt_id:05d}#QUERY#INITIAL_TAGGING"},}
+            "SK": {"S": f"RECEIPT#{receipt_id:05d}#QUERY#INITIAL_TAGGING"}, }
         try:
             response = self._client.get_item(TableName=self.table_name,
-                Key=key,)
+                Key=key, )
             if "Item" not in response:
                 raise ValueError(f"GPTInitialTagging record not found for key: {key}")
             return itemToGPTInitialTagging(response["Item"])
@@ -101,7 +101,7 @@ class _GPTInitialTagging:
         try:
             self._client.put_item(TableName=self.table_name,
                 Item=tagging.to_item(),
-                ConditionExpression="attribute_exists(PK)",)
+                ConditionExpression="attribute_exists(PK)", )
         except ClientError as e:
             if (e.response["Error"]["Code"]
                 == "ConditionalCheckFailedException"):
@@ -122,7 +122,7 @@ class _GPTInitialTagging:
         try:
             self._client.delete_item(TableName=self.table_name,
                 Key=tagging.key(),
-                ConditionExpression="attribute_exists(PK)",)
+                ConditionExpression="attribute_exists(PK)", )
         except ClientError as e:
             if (e.response["Error"]["Code"]
                 == "ConditionalCheckFailedException"):
@@ -155,7 +155,7 @@ class _GPTInitialTagging:
 
     def listGPTInitialTaggings(self,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict] = None,) -> Tuple[List[GPTInitialTagging], Optional[Dict]]:
+        lastEvaluatedKey: Optional[Dict] = None, ) -> Tuple[List[GPTInitialTagging], Optional[Dict]]:
         """
         Lists GPTInitialTagging records from the database via a global secondary index.
         The query uses the GSITYPE index on the "TYPE" attribute where the value is "GPT_INITIAL_TAGGING".
@@ -189,7 +189,7 @@ class _GPTInitialTagging:
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "GPT_INITIAL_TAGGING"}},}
+                "ExpressionAttributeValues": {":val": {"S": "GPT_INITIAL_TAGGING"}}, }
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
             if limit is not None:

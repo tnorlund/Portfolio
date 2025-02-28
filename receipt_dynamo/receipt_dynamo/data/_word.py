@@ -32,7 +32,7 @@ class _Word:
         try:
             self._client.put_item(TableName=self.table_name,
                 Item=word.to_item(),
-                ConditionExpression="attribute_not_exists(PK)",)
+                ConditionExpression="attribute_not_exists(PK)", )
         except ClientError:
             raise ValueError(f"Word with ID {word.word_id} already exists")
 
@@ -75,7 +75,7 @@ class _Word:
                 raise ValueError("Word tags must be unique")
             self._client.put_item(TableName=self.table_name,
                 Item=word.to_item(),
-                ConditionExpression="attribute_exists(PK)",)
+                ConditionExpression="attribute_exists(PK)", )
         except ClientError as e:
             if (e.response["Error"]["Code"]
                 == "ConditionalCheckFailedException"):
@@ -123,7 +123,7 @@ class _Word:
                     raise ValueError("Word tags must be unique")
                 transact_items.append({"Put": {"TableName": self.table_name,
                             "Item": word.to_item(),
-                            "ConditionExpression": "attribute_exists(PK)",}})
+                            "ConditionExpression": "attribute_exists(PK)", }})
             try:
                 self._client.transact_write_items(TransactItems=transact_items)
             except ClientError as e:
@@ -152,8 +152,8 @@ class _Word:
         try:
             self._client.delete_item(TableName=self.table_name,
                 Key={"PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"LINE#{line_id:05d}#WORD#{word_id:05d}"},},
-                ConditionExpression="attribute_exists(PK)",)
+                    "SK": {"S": f"LINE#{line_id:05d}#WORD#{word_id:05d}"}, },
+                ConditionExpression="attribute_exists(PK)", )
         except ClientError:
             raise ValueError(f"Word with ID {word_id} not found")
 
@@ -187,7 +187,7 @@ class _Word:
         try:
             response = self._client.get_item(TableName=self.table_name,
                 Key={"PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"LINE#{line_id:05d}#WORD#{word_id:05d}"},},)
+                    "SK": {"S": f"LINE#{line_id:05d}#WORD#{word_id:05d}"}, }, )
             return itemToWord(response["Item"])
         except KeyError:
             raise ValueError(f"Word with ID {word_id} not found")
@@ -211,8 +211,8 @@ class _Word:
             chunk = keys[i : i + CHUNK_SIZE]
 
             # Prepare parameters for BatchGetItem
-            request = {"RequestItems": {self.table_name: {"Keys": chunk,
-                        # (Optional) "ProjectionExpression": "..." if you only want certain attributes}}}
+            request = {"RequestItems": {self.table_name: {"Keys": chunk}}}
+                        # (Optional) "ProjectionExpression": "..." if you only want certain attributes
 
             # Perform BatchGet
             response = self._client.batch_get_item(**request)
@@ -233,14 +233,14 @@ class _Word:
 
     def listWords(self,
         limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,) -> list[Word]:
+        last_evaluated_key: Optional[Dict] = None, ) -> list[Word]:
         words = []
         try:
             query_params = {"TableName": self.table_name,
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "WORD"}},}
+                "ExpressionAttributeValues": {":val": {"S": "WORD"}}, }
             if last_evaluated_key is not None:
                 query_params["ExclusiveStartKey"] = last_evaluated_key
             if limit is not None:
@@ -265,14 +265,14 @@ class _Word:
             response = self._client.query(TableName=self.table_name,
                 KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
                 ExpressionAttributeValues={":pkVal": {"S": f"IMAGE#{image_id}"},
-                    ":skPrefix": {"S": f"LINE#{line_id:05d}#WORD#"},},)
+                    ":skPrefix": {"S": f"LINE#{line_id:05d}#WORD#"}, }, )
             words.extend([itemToWord(item) for item in response["Items"]])
             while "LastEvaluatedKey" in response:
                 response = self._client.query(TableName=self.table_name,
                     KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
                     ExpressionAttributeValues={":pkVal": {"S": f"IMAGE#{image_id}"},
-                        ":skPrefix": {"S": f"LINE#{line_id:05d}#WORD#"},},
-                    ExclusiveStartKey=response["LastEvaluatedKey"],)
+                        ":skPrefix": {"S": f"LINE#{line_id:05d}#WORD#"}, },
+                    ExclusiveStartKey=response["LastEvaluatedKey"], )
                 words.extend([itemToWord(item) for item in response["Items"]])
             return words
         except ClientError as e:

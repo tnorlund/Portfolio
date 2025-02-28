@@ -31,7 +31,7 @@ class _Letter:
         try:
             self._client.put_item(TableName=self.table_name,
                 Item=letter.to_item(),
-                ConditionExpression="attribute_not_exists(PK)",)
+                ConditionExpression="attribute_not_exists(PK)", )
         except ClientError:
             raise ValueError(f"Letter with ID {letter.letter_id} already exists")
 
@@ -70,7 +70,7 @@ class _Letter:
         try:
             self._client.put_item(TableName=self.table_name,
                 Item=letter.to_item(),
-                ConditionExpression="attribute_exists(PK)",)
+                ConditionExpression="attribute_exists(PK)", )
         except ClientError:
             raise ValueError(f"Letter with ID {letter.letter_id} not found")
 
@@ -78,8 +78,8 @@ class _Letter:
         try:
             self._client.delete_item(TableName=self.table_name,
                 Key={"PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"},},
-                ConditionExpression="attribute_exists(PK)",)
+                    "SK": {"S": f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"}, },
+                ConditionExpression="attribute_exists(PK)", )
         except ClientError:
             raise ValueError(f"Letter with ID {letter_id} not found")
 
@@ -114,14 +114,14 @@ class _Letter:
         try:
             response = self._client.get_item(TableName=self.table_name,
                 Key={"PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"},},)
+                    "SK": {"S": f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"}, }, )
             return itemToLetter(response["Item"])
         except KeyError:
             raise ValueError(f"Letter with ID {letter_id} not found")
 
     def listLetters(self,
         limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,) -> Tuple[list[Letter], Optional[Dict]]:
+        last_evaluated_key: Optional[Dict] = None, ) -> Tuple[list[Letter], Optional[Dict]]:
         """Lists all letters in the database"""
         letters = []
         try:
@@ -130,7 +130,7 @@ class _Letter:
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
                 "ExpressionAttributeValues": {":val": {"S": "LETTER"}},
-                "ScanIndexForward": True,}
+                "ScanIndexForward": True, }
             if last_evaluated_key is not None:
                 query_params["ExclusiveStartKey"] = last_evaluated_key
             if limit is not None:
@@ -156,15 +156,15 @@ class _Letter:
             response = self._client.query(TableName=self.table_name,
                 KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
                 ExpressionAttributeValues={":pkVal": {"S": f"IMAGE#{image_id}"},
-                    ":skPrefix": {"S": f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#"},},)
+                    ":skPrefix": {"S": f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#"}, }, )
             letters.extend([itemToLetter(item) for item in response["Items"]])
 
             while "LastEvaluatedKey" in response:
                 response = self._client.query(TableName=self.table_name,
                     KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
                     ExpressionAttributeValues={":pkVal": {"S": f"IMAGE#{image_id}"},
-                        ":skPrefix": {"S": f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#"},},
-                    ExclusiveStartKey=response["LastEvaluatedKey"],)
+                        ":skPrefix": {"S": f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#"}, },
+                    ExclusiveStartKey=response["LastEvaluatedKey"], )
                 letters.extend([itemToLetter(item) for item in response["Items"]])
 
             return letters

@@ -6,7 +6,7 @@ import pytest
 from receipt_dynamo.entities.job_checkpoint import (JobCheckpoint,
     _parse_dynamodb_map,
     _parse_dynamodb_value,
-    itemToJobCheckpoint,)
+    itemToJobCheckpoint, )
 
 
 @pytest.fixture
@@ -25,8 +25,8 @@ def example_job_checkpoint():
         optimizer_state=True,
         metrics={"loss": 0.1234,
             "accuracy": 0.9876,
-            "detailed": {"val_loss": 0.2345},},
-        is_best=True,)
+            "detailed": {"val_loss": 0.2345}, },
+        is_best=True, )
 
 
 @pytest.fixture
@@ -40,7 +40,7 @@ def example_job_checkpoint_minimal():
         s3_key=f"jobs/{job_id}/checkpoints/model_{timestamp}.pt",
         size_bytes=512000,
         step=500,
-        epoch=2,)
+        epoch=2, )
 
 
 @pytest.mark.unit
@@ -70,23 +70,23 @@ def test_job_checkpoint_init_invalid_id():
             s3_key="jobs/12345/checkpoints/model.pt",
             size_bytes=1024000,
             step=1000,
-            epoch=5,)
+            epoch=5, )
     with pytest.raises(ValueError, match="uuid must be a string"):
-        JobCheckpoint(job_id=None,  # type: ignore
+        JobCheckpoint(job_id=None,  
             timestamp=datetime.now(timezone.utc).isoformat(),
             s3_bucket="my-checkpoint-bucket",
             s3_key="jobs/12345/checkpoints/model.pt",
             size_bytes=1024000,
             step=1000,
-            epoch=5,)
+            epoch=5, )
     with pytest.raises(ValueError, match="uuid must be a string"):
-        JobCheckpoint(job_id=123,  # type: ignore
+        JobCheckpoint(job_id=123,  
             timestamp=datetime.now(timezone.utc).isoformat(),
             s3_bucket="my-checkpoint-bucket",
             s3_key="jobs/12345/checkpoints/model.pt",
             size_bytes=1024000,
             step=1000,
-            epoch=5,)
+            epoch=5, )
 
 
 @pytest.mark.unit
@@ -100,23 +100,23 @@ def test_job_checkpoint_init_invalid_timestamp():
             s3_key="jobs/12345/checkpoints/model.pt",
             size_bytes=1024000,
             step=1000,
-            epoch=5,)
+            epoch=5, )
     with pytest.raises(ValueError, match="timestamp must be a non-empty string"):
         JobCheckpoint(job_id=job_id,
-            timestamp=None,  # type: ignore
+            timestamp=None,  
             s3_bucket="my-checkpoint-bucket",
             s3_key="jobs/12345/checkpoints/model.pt",
             size_bytes=1024000,
             step=1000,
-            epoch=5,)
+            epoch=5, )
     with pytest.raises(ValueError, match="timestamp must be a non-empty string"):
         JobCheckpoint(job_id=job_id,
-            timestamp=123,  # type: ignore
+            timestamp=123,  
             s3_bucket="my-checkpoint-bucket",
             s3_key="jobs/12345/checkpoints/model.pt",
             size_bytes=1024000,
             step=1000,
-            epoch=5,)
+            epoch=5, )
 
 
 @pytest.mark.unit
@@ -131,23 +131,23 @@ def test_job_checkpoint_init_invalid_s3_bucket():
             s3_key="jobs/12345/checkpoints/model.pt",
             size_bytes=1024000,
             step=1000,
-            epoch=5,)
+            epoch=5, )
     with pytest.raises(ValueError, match="s3_bucket must be a non-empty string"):
         JobCheckpoint(job_id=job_id,
             timestamp=timestamp,
-            s3_bucket=None,  # type: ignore
+            s3_bucket=None,  
             s3_key="jobs/12345/checkpoints/model.pt",
             size_bytes=1024000,
             step=1000,
-            epoch=5,)
+            epoch=5, )
     with pytest.raises(ValueError, match="s3_bucket must be a non-empty string"):
         JobCheckpoint(job_id=job_id,
             timestamp=timestamp,
-            s3_bucket=123,  # type: ignore
+            s3_bucket=123,  
             s3_key="jobs/12345/checkpoints/model.pt",
             size_bytes=1024000,
             step=1000,
-            epoch=5,)
+            epoch=5, )
 
 
 @pytest.mark.unit
@@ -162,23 +162,23 @@ def test_job_checkpoint_init_invalid_s3_key():
             s3_key="",
             size_bytes=1024000,
             step=1000,
-            epoch=5,)
+            epoch=5, )
     with pytest.raises(ValueError, match="s3_key must be a non-empty string"):
         JobCheckpoint(job_id=job_id,
             timestamp=timestamp,
             s3_bucket="my-checkpoint-bucket",
-            s3_key=None,  # type: ignore
+            s3_key=None,  
             size_bytes=1024000,
             step=1000,
-            epoch=5,)
+            epoch=5, )
     with pytest.raises(ValueError, match="s3_key must be a non-empty string"):
         JobCheckpoint(job_id=job_id,
             timestamp=timestamp,
             s3_bucket="my-checkpoint-bucket",
-            s3_key=123,  # type: ignore
+            s3_key=123,  
             size_bytes=1024000,
             step=1000,
-            epoch=5,)
+            epoch=5, )
 
 
 @pytest.mark.unit
@@ -193,23 +193,23 @@ def test_job_checkpoint_init_invalid_size_bytes():
             s3_key="jobs/12345/checkpoints/model.pt",
             size_bytes=-1,
             step=1000,
-            epoch=5,)
+            epoch=5, )
     with pytest.raises(ValueError, match="size_bytes must be a non-negative integer"):
         JobCheckpoint(job_id=job_id,
             timestamp=timestamp,
             s3_bucket="my-checkpoint-bucket",
             s3_key="jobs/12345/checkpoints/model.pt",
-            size_bytes=None,  # type: ignore
+            size_bytes=None,  
             step=1000,
-            epoch=5,)
+            epoch=5, )
     with pytest.raises(ValueError, match="size_bytes must be a non-negative integer"):
         JobCheckpoint(job_id=job_id,
             timestamp=timestamp,
             s3_bucket="my-checkpoint-bucket",
             s3_key="jobs/12345/checkpoints/model.pt",
-            size_bytes="1024",  # type: ignore
+            size_bytes="1024",  
             step=1000,
-            epoch=5,)
+            epoch=5, )
 
 
 @pytest.mark.unit
@@ -224,23 +224,23 @@ def test_job_checkpoint_init_invalid_step():
             s3_key="jobs/12345/checkpoints/model.pt",
             size_bytes=1024000,
             step=-1,
-            epoch=5,)
+            epoch=5, )
     with pytest.raises(ValueError, match="step must be a non-negative integer"):
         JobCheckpoint(job_id=job_id,
             timestamp=timestamp,
             s3_bucket="my-checkpoint-bucket",
             s3_key="jobs/12345/checkpoints/model.pt",
             size_bytes=1024000,
-            step=None,  # type: ignore
-            epoch=5,)
+            step=None,  
+            epoch=5, )
     with pytest.raises(ValueError, match="step must be a non-negative integer"):
         JobCheckpoint(job_id=job_id,
             timestamp=timestamp,
             s3_bucket="my-checkpoint-bucket",
             s3_key="jobs/12345/checkpoints/model.pt",
             size_bytes=1024000,
-            step="1000",  # type: ignore
-            epoch=5,)
+            step="1000",  
+            epoch=5, )
 
 
 @pytest.mark.unit
@@ -255,7 +255,7 @@ def test_job_checkpoint_init_invalid_epoch():
             s3_key="jobs/12345/checkpoints/model.pt",
             size_bytes=1024000,
             step=1000,
-            epoch=-1,)
+            epoch=-1, )
     with pytest.raises(ValueError, match="epoch must be a non-negative integer"):
         JobCheckpoint(job_id=job_id,
             timestamp=timestamp,
@@ -263,7 +263,7 @@ def test_job_checkpoint_init_invalid_epoch():
             s3_key="jobs/12345/checkpoints/model.pt",
             size_bytes=1024000,
             step=1000,
-            epoch=None,  # type: ignore)
+            epoch=None,  )
     with pytest.raises(ValueError, match="epoch must be a non-negative integer"):
         JobCheckpoint(job_id=job_id,
             timestamp=timestamp,
@@ -271,7 +271,7 @@ def test_job_checkpoint_init_invalid_epoch():
             s3_key="jobs/12345/checkpoints/model.pt",
             size_bytes=1024000,
             step=1000,
-            epoch="5",  # type: ignore)
+            epoch="5",  )
 
 
 @pytest.mark.unit
@@ -287,7 +287,7 @@ def test_job_checkpoint_init_invalid_model_state():
             size_bytes=1024000,
             step=1000,
             epoch=5,
-            model_state="True",  # type: ignore)
+            model_state="True",  )
     with pytest.raises(ValueError, match="model_state must be a boolean"):
         JobCheckpoint(job_id=job_id,
             timestamp=timestamp,
@@ -296,7 +296,7 @@ def test_job_checkpoint_init_invalid_model_state():
             size_bytes=1024000,
             step=1000,
             epoch=5,
-            model_state=1,  # type: ignore)
+            model_state=1,  )
 
 
 @pytest.mark.unit
@@ -312,7 +312,7 @@ def test_job_checkpoint_init_invalid_optimizer_state():
             size_bytes=1024000,
             step=1000,
             epoch=5,
-            optimizer_state="True",  # type: ignore)
+            optimizer_state="True",  )
     with pytest.raises(ValueError, match="optimizer_state must be a boolean"):
         JobCheckpoint(job_id=job_id,
             timestamp=timestamp,
@@ -321,7 +321,7 @@ def test_job_checkpoint_init_invalid_optimizer_state():
             size_bytes=1024000,
             step=1000,
             epoch=5,
-            optimizer_state=1,  # type: ignore)
+            optimizer_state=1,  )
 
 
 @pytest.mark.unit
@@ -337,7 +337,7 @@ def test_job_checkpoint_init_invalid_metrics():
             size_bytes=1024000,
             step=1000,
             epoch=5,
-            metrics="not a dict",  # type: ignore)
+            metrics="not a dict",  )
     with pytest.raises(ValueError, match="metrics must be a dictionary"):
         JobCheckpoint(job_id=job_id,
             timestamp=timestamp,
@@ -346,7 +346,7 @@ def test_job_checkpoint_init_invalid_metrics():
             size_bytes=1024000,
             step=1000,
             epoch=5,
-            metrics=[1, 2, 3],  # type: ignore)
+            metrics=[1, 2, 3],  )
 
 
 @pytest.mark.unit
@@ -362,7 +362,7 @@ def test_job_checkpoint_init_invalid_is_best():
             size_bytes=1024000,
             step=1000,
             epoch=5,
-            is_best="True",  # type: ignore)
+            is_best="True",)
     with pytest.raises(ValueError, match="is_best must be a boolean"):
         JobCheckpoint(job_id=job_id,
             timestamp=timestamp,
@@ -371,7 +371,7 @@ def test_job_checkpoint_init_invalid_is_best():
             size_bytes=1024000,
             step=1000,
             epoch=5,
-            is_best=1,  # type: ignore)
+            is_best=1,)
 
 
 @pytest.mark.unit
@@ -437,7 +437,7 @@ def test_job_checkpoint_dict_to_dynamodb_map():
         s3_key=f"jobs/{job_id}/checkpoints/model_{timestamp}.pt",
         size_bytes=1024000,
         step=1000,
-        epoch=5,)
+        epoch=5, )
 
     # Test with different types
     test_dict = {"string": "value",
@@ -449,7 +449,7 @@ def test_job_checkpoint_dict_to_dynamodb_map():
         "nested": {"inner": "value",
             "innerNum": 456,
             "innerBool": False,
-            "innerList": [7, 8, 9],},}
+            "innerList": [7, 8, 9], }, }
 
     result = checkpoint._dict_to_dynamodb_map(test_dict)
 
@@ -520,7 +520,7 @@ def test_job_checkpoint_eq():
         step=1000,
         epoch=5,
         metrics={"loss": 0.1234},
-        is_best=True,)
+        is_best=True, )
 
     checkpoint2 = JobCheckpoint(job_id=job_id,
         timestamp=timestamp,
@@ -530,7 +530,7 @@ def test_job_checkpoint_eq():
         step=1000,
         epoch=5,
         metrics={"loss": 0.1234},
-        is_best=True,)
+        is_best=True, )
 
     # Create a different checkpoint
     checkpoint3 = JobCheckpoint(job_id=job_id,
@@ -541,7 +541,7 @@ def test_job_checkpoint_eq():
         step=1000,
         epoch=5,
         metrics={"loss": 0.1234},
-        is_best=True,)
+        is_best=True, )
 
     # Test equality
     assert checkpoint1 == checkpoint2
@@ -563,7 +563,7 @@ def test_parse_dynamodb_map():
         "bool": {"BOOL": True},
         "null": {"NULL": True},
         "map": {"M": {"inner": {"S": "value"}, "innerNum": {"N": "456"}}},
-        "list": {"L": [{"S": "item1"}, {"N": "789"}, {"BOOL": False}]},}
+        "list": {"L": [{"S": "item1"}, {"N": "789"}, {"BOOL": False}]}, }
 
     result = _parse_dynamodb_map(dynamodb_map)
 

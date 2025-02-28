@@ -18,7 +18,7 @@ def sample_word_tag():
         line_id=10,
         word_id=5,
         tag="SampleTag",
-        timestamp_added="2021-01-01T00:00:00",)
+        timestamp_added="2021-01-01T00:00:00", )
 
 
 @pytest.mark.integration
@@ -33,7 +33,7 @@ def test_add_word_tag(dynamodb_table: Literal["MyMockedTable"], sample_word_tag:
     retrieved_tag = client.getWordTag(sample_word_tag.image_id,
         sample_word_tag.line_id,
         sample_word_tag.word_id,
-        sample_word_tag.tag,)
+        sample_word_tag.tag, )
     assert retrieved_tag == sample_word_tag
 
 
@@ -62,7 +62,7 @@ def test_update_word_tag(dynamodb_table: Literal["MyMockedTable"], sample_word_t
     retrieved_tag = client.getWordTag(sample_word_tag.image_id,
         sample_word_tag.line_id,
         sample_word_tag.word_id,
-        sample_word_tag.tag,)
+        sample_word_tag.tag, )
     assert retrieved_tag.tag == "UpdatedTag"
 
 
@@ -76,14 +76,14 @@ def test_delete_word_tag(dynamodb_table: Literal["MyMockedTable"], sample_word_t
     client.deleteWordTag(sample_word_tag.image_id,
         sample_word_tag.line_id,
         sample_word_tag.word_id,
-        sample_word_tag.tag,)
+        sample_word_tag.tag, )
 
     # Assert
     with pytest.raises(ValueError, match="not found"):
         client.getWordTag(sample_word_tag.image_id,
             sample_word_tag.line_id,
             sample_word_tag.word_id,
-            sample_word_tag.tag,)
+            sample_word_tag.tag, )
 
 
 @pytest.mark.integration
@@ -94,7 +94,7 @@ def test_word_tag_list(dynamodb_table: Literal["MyMockedTable"]):
             line_id=1,
             word_id=i,
             tag=f"Tag{i}",
-            timestamp_added="2021-01-01T00:00:00",)
+            timestamp_added="2021-01-01T00:00:00", )
         for i in range(1, 4)]
     for t in tags:
         client.addWordTag(t)
@@ -117,14 +117,14 @@ def test_word_tag_list_from_image(dynamodb_table: Literal["MyMockedTable"]):
             line_id=10,
             word_id=i,
             tag=f"ImageTag{i}",
-            timestamp_added="2021-01-01T00:00:00",)
+            timestamp_added="2021-01-01T00:00:00", )
         for i in range(1, 3)]
     # Another WordTag with a different image_id
     different_image_tag = WordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed4",
         line_id=10,
         word_id=999,
         tag="OtherImage",
-        timestamp_added="2021-01-01T00:00:00",)
+        timestamp_added="2021-01-01T00:00:00", )
 
     for wt in same_image_tags + [different_image_tag]:
         client.addWordTag(wt)
@@ -150,22 +150,22 @@ def sample_word_tags():
             line_id=10,
             word_id=100,
             tag="FOO",
-            timestamp_added="2021-01-01T00:00:00",),
+            timestamp_added="2021-01-01T00:00:00", ),
         WordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id=11,
             word_id=101,
             tag="FOO",
-            timestamp_added="2021-01-01T00:00:00",),
+            timestamp_added="2021-01-01T00:00:00", ),
         WordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed4",
             line_id=20,
             word_id=200,
             tag="BAR",
-            timestamp_added="2021-01-01T00:00:00",),
+            timestamp_added="2021-01-01T00:00:00", ),
         WordTag(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed5",
             line_id=30,
             word_id=300,
             tag="FOO",
-            timestamp_added="2021-01-01T00:00:00",),]
+            timestamp_added="2021-01-01T00:00:00", ), ]
 
 
 @pytest.mark.integration
@@ -183,13 +183,13 @@ def test_get_word_tags(dynamodb_table: Literal["MyMockedTable"], sample_word_tag
     # easily
     foo_expected = {("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 10, 100, "FOO"),
         ("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 11, 101, "FOO"),
-        ("3f52804b-2fad-4e00-92c8-b593da3a8ed5", 30, 300, "FOO"),}
+        ("3f52804b-2fad-4e00-92c8-b593da3a8ed5", 30, 300, "FOO"), }
     foo_returned = {(w.image_id, w.line_id, w.word_id, w.tag) for w in foo_tags}
     assert foo_returned == foo_expected
 
     # Also check that "BAR" is distinct
     bar_tags = client.getWordTags("BAR")
-    bar_expected = {("3f52804b-2fad-4e00-92c8-b593da3a8ed4", 20, 200, "BAR"),}
+    bar_expected = {("3f52804b-2fad-4e00-92c8-b593da3a8ed4", 20, 200, "BAR"), }
     bar_returned = {(w.image_id, w.line_id, w.word_id, w.tag) for w in bar_tags}
     assert bar_returned == bar_expected
 
@@ -220,7 +220,7 @@ def test_word_tag_get_pagination(dynamodb_table: Literal["MyMockedTable"]):
                 line_id=1,
                 word_id=i,
                 tag="PAGE",
-                timestamp_added="2021-01-01T00:00:00",))
+                timestamp_added="2021-01-01T00:00:00", ))
 
     client.addWordTags(big_list)
 
@@ -244,7 +244,7 @@ def test_updateWordTags_success(dynamodb_table, sample_word_tag):
         line_id=11,
         word_id=6,
         tag="AnotherTag",
-        timestamp_added="2021-01-01T00:00:00",)
+        timestamp_added="2021-01-01T00:00:00", )
     client.addWordTags([tag1, tag2])
 
     # Store the original keys before updating
@@ -260,12 +260,12 @@ def test_updateWordTags_success(dynamodb_table, sample_word_tag):
                 line_id=tag1.line_id,
                 word_id=tag1.word_id,
                 tag=sample_word_tag.tag,  # Original tag value
-                timestamp_added=tag1.timestamp_added,),
+                timestamp_added=tag1.timestamp_added, ),
             WordTag(image_id=tag2.image_id,
                 line_id=tag2.line_id,
                 word_id=tag2.word_id,
                 tag="AnotherTag",  # Original tag value
-                timestamp_added=tag2.timestamp_added,),])
+                timestamp_added=tag2.timestamp_added, ), ])
 
     # Then add the updated tags
     client.addWordTags([tag1, tag2])
@@ -307,7 +307,7 @@ def test_updateWordTags_raises_value_error_word_tags_not_list_of_word_tags(dynam
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError,
-        match="All items in the word_tags list must be instances of the WordTag class.",):
+        match="All items in the word_tags list must be instances of the WordTag class.", ):
         client.updateWordTags([sample_word_tag, "not-a-word-tag"])  # type: ignore
 
 
@@ -320,8 +320,8 @@ def test_updateWordTags_raises_clienterror_conditional_check_failed(dynamodb_tab
     mock_transact = mocker.patch.object(client._client,
         "transact_write_items",
         side_effect=ClientError({"Error": {"Code": "ConditionalCheckFailedException",
-                    "Message": "One or more word tags do not exist",}},
-            "TransactWriteItems",),)
+                    "Message": "One or more word tags do not exist", }},
+            "TransactWriteItems", ), )
     with pytest.raises(ValueError, match="One or more word tags do not exist"):
         client.updateWordTags([sample_word_tag])
     mock_transact.assert_called_once()
@@ -336,8 +336,8 @@ def test_updateWordTags_raises_clienterror_provisioned_throughput_exceeded(dynam
     mock_transact = mocker.patch.object(client._client,
         "transact_write_items",
         side_effect=ClientError({"Error": {"Code": "ProvisionedThroughputExceededException",
-                    "Message": "Provisioned throughput exceeded",}},
-            "TransactWriteItems",),)
+                    "Message": "Provisioned throughput exceeded", }},
+            "TransactWriteItems", ), )
     with pytest.raises(Exception, match="Provisioned throughput exceeded"):
         client.updateWordTags([sample_word_tag])
     mock_transact.assert_called_once()
@@ -352,8 +352,8 @@ def test_updateWordTags_raises_clienterror_internal_server_error(dynamodb_table,
     mock_transact = mocker.patch.object(client._client,
         "transact_write_items",
         side_effect=ClientError({"Error": {"Code": "InternalServerError",
-                    "Message": "Internal server error",}},
-            "TransactWriteItems",),)
+                    "Message": "Internal server error", }},
+            "TransactWriteItems", ), )
     with pytest.raises(Exception, match="Internal server error"):
         client.updateWordTags([sample_word_tag])
     mock_transact.assert_called_once()
@@ -368,8 +368,8 @@ def test_updateWordTags_raises_clienterror_validation_exception(dynamodb_table, 
     mock_transact = mocker.patch.object(client._client,
         "transact_write_items",
         side_effect=ClientError({"Error": {"Code": "ValidationException",
-                    "Message": "One or more parameters given were invalid",}},
-            "TransactWriteItems",),)
+                    "Message": "One or more parameters given were invalid", }},
+            "TransactWriteItems", ), )
     with pytest.raises(Exception, match="One or more parameters given were invalid"):
         client.updateWordTags([sample_word_tag])
     mock_transact.assert_called_once()
@@ -384,8 +384,8 @@ def test_updateWordTags_raises_clienterror_access_denied(dynamodb_table, sample_
     mock_transact = mocker.patch.object(client._client,
         "transact_write_items",
         side_effect=ClientError({"Error": {"Code": "AccessDeniedException",
-                    "Message": "Access denied",}},
-            "TransactWriteItems",),)
+                    "Message": "Access denied", }},
+            "TransactWriteItems", ), )
     with pytest.raises(Exception, match="Access denied"):
         client.updateWordTags([sample_word_tag])
     mock_transact.assert_called_once()
@@ -400,8 +400,8 @@ def test_updateWordTags_raises_client_error(dynamodb_table, sample_word_tag, moc
     mock_transact = mocker.patch.object(client._client,
         "transact_write_items",
         side_effect=ClientError({"Error": {"Code": "ResourceNotFoundException",
-                    "Message": "No table found",}},
-            "TransactWriteItems",),)
+                    "Message": "No table found", }},
+            "TransactWriteItems", ), )
     with pytest.raises(ValueError, match="Error updating word tags"):
         client.updateWordTags([sample_word_tag])
     mock_transact.assert_called_once()

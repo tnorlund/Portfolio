@@ -13,7 +13,7 @@ from PIL import ImageOps, UnidentifiedImageError
 
 from receipt_dynamo.data._geometry import (box_points,
     invert_affine,
-    min_area_rect,)
+    min_area_rect, )
 from receipt_dynamo.data._gpt import gpt_request_initial_tagging
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import (GPTInitialTagging,
@@ -24,7 +24,7 @@ from receipt_dynamo.entities import (GPTInitialTagging,
     ReceiptLetter,
     ReceiptLine,
     ReceiptWord,
-    Word,)
+    Word, )
 from receipt_dynamo.entities.receipt_word_tag import ReceiptWordTag
 from receipt_dynamo.entities.word_tag import WordTag
 
@@ -43,7 +43,7 @@ def process(table_name: str,
     cdn_bucket_name: str,
     cdn_prefix: str = "assets/",
     ocr_dict: Dict[str, Any] = None,
-    png_data: bytes = None,) -> None:
+    png_data: bytes = None, ) -> None:
     """
     Processes the OCR results by adding the entities to DynamoDB and uploading
     the original and transformed images to S3.
@@ -79,7 +79,7 @@ def process(table_name: str,
         s3.put_object(Bucket=raw_bucket_name,
             Key=f"{raw_prefix}/{uuid}.json",
             Body=json.dumps(ocr_dict).encode("utf-8"),
-            ContentType="application/json",)
+            ContentType="application/json", )
         ocr_results = ocr_dict
     else:
         # Fetch from S3 as before
@@ -95,7 +95,7 @@ def process(table_name: str,
         s3.put_object(Bucket=raw_bucket_name,
             Key=f"{raw_prefix}/{uuid}.png",
             Body=png_data,
-            ContentType="image/png",)
+            ContentType="image/png", )
         image_bytes = png_data
     else:
         # Read from S3 as before
@@ -122,7 +122,7 @@ def process(table_name: str,
         s3.put_object(Bucket=cdn_bucket_name,
             Key=f"{cdn_prefix}/{uuid}.jpg",  # change file extension to .jpg
             Body=jpeg_data,
-            ContentType="image/jpeg",)
+            ContentType="image/jpeg", )
     except ClientError as e:
         error_code = e.response["Error"]["Code"]
         if error_code == "NoSuchBucket":
@@ -141,7 +141,7 @@ def process(table_name: str,
         raw_s3_key=f"{raw_prefix}/{uuid}.png",
         cdn_s3_bucket=cdn_bucket_name,
         cdn_s3_key=f"{cdn_prefix}/{uuid}.jpg",
-        sha256=calculate_sha256_from_bytes(image_bytes),)
+        sha256=calculate_sha256_from_bytes(image_bytes), )
 
     # Parse the OCR into lines, words, letters
     lines, words, letters = process_ocr_dict(ocr_results, uuid)
@@ -175,7 +175,7 @@ def process(table_name: str,
                 cluster_words,
                 cluster_letters,
                 image,
-                image_obj,)
+                image_obj, )
             buffer = BytesIO()
             r_image.save(buffer, format="PNG")
             buffer.seek(0)
@@ -194,7 +194,7 @@ def process(table_name: str,
             s3.put_object(Bucket=cdn_bucket_name,
                 Key=image_obj.cdn_s3_key.replace(".jpg", f"_RECEIPT_{cluster_id:05d}.jpg"),
                 Body=jpeg_receipt_data,
-                ContentType="image/jpeg",)
+                ContentType="image/jpeg", )
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code == "NoSuchBucket":
@@ -209,7 +209,7 @@ def process(table_name: str,
             s3.put_object(Bucket=raw_bucket_name,
                 Key=f"{raw_prefix}/{uuid}_RECEIPT_{cluster_id:05d}.png",
                 Body=png_data,
-                ContentType="image/png",)
+                ContentType="image/png", )
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code == "NoSuchBucket":
@@ -226,7 +226,7 @@ def process(table_name: str,
             s3.put_object(Bucket=raw_bucket_name,
                 Key=f"{raw_prefix}/{uuid}_RECEIPT_{cluster_id:05d}_GPT.json",
                 Body=json.dumps(gpt_response).encode("utf-8"),
-                ContentType="application/json",)
+                ContentType="application/json", )
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code == "NoSuchBucket":
@@ -240,7 +240,7 @@ def process(table_name: str,
             receipt_id=cluster_id,
             query=query,
             response=response,
-            timestamp_added=datetime.now(timezone.utc),)
+            timestamp_added=datetime.now(timezone.utc), )
 
         # Remove all tags without words
         tags = []
@@ -259,7 +259,7 @@ def process(table_name: str,
                             line_id=tag.line_id,
                             word_id=tag.word_id,
                             tag=tag.tag,
-                            timestamp_added=datetime.now(timezone.utc),))
+                            timestamp_added=datetime.now(timezone.utc), ))
 
         # Deduplicate the ReceiptWordTags
         r_word_tags = deduplicate_receipt_word_tags(r_word_tags)
@@ -272,7 +272,7 @@ def process(table_name: str,
                             line_id=tag.line_id,
                             word_id=tag.word_id,
                             tag=tag.tag,
-                            timestamp_added=datetime.now(timezone.utc),))
+                            timestamp_added=datetime.now(timezone.utc), ))
 
         # Deduplicate the WordTags
         word_tags = deduplicate_word_tags(word_tags)
@@ -339,7 +339,7 @@ def update_words_with_tags(receipt_words: list, tags: list[Tag]) -> None:
 def join_overlapping_clusters(cluster_dict: Dict[int, List[Line]],
     image_width: int,
     image_height: int,
-    iou_threshold: float = 0.01,) -> Dict[int, List[Line]]:
+    iou_threshold: float = 0.01, ) -> Dict[int, List[Line]]:
     """
     Merge clusters whose bounding boxes overlap above the given iou_threshold.
     This returns a new dictionary of cluster_id -> List[Line] with no overlaps.
@@ -362,7 +362,7 @@ def join_overlapping_clusters(cluster_dict: Dict[int, List[Line]],
             for corner in [ln.top_left,
                 ln.top_right,
                 ln.bottom_left,
-                ln.bottom_right,]:
+                ln.bottom_right, ]:
                 x_abs = corner["x"] * image_width
                 # flip Y to absolute coords
                 y_abs = (1.0 - corner["y"]) * image_height
@@ -379,7 +379,7 @@ def join_overlapping_clusters(cluster_dict: Dict[int, List[Line]],
         # Order them top-left, top-right, bottom-right, bottom-left
         box_4_ordered = reorder_box_points(box_4)
 
-        # Store this polygon in a dict (matching what dev.py’s IoU code
+        # Store this polygon in a dict (matching what dev.py's IoU code
         # expects)
         cluster_bboxes[cid] = {"box_points": box_4_ordered}
 
@@ -440,7 +440,7 @@ def join_overlapping_clusters(cluster_dict: Dict[int, List[Line]],
         denominator = cross(r, d)
         if denominator == 0:
             # Lines are parallel; in our use-case this is unlikely since
-            # we’re dealing with rotated rectangles. Return None to be safe.
+            # we're dealing with rotated rectangles. Return None to be safe.
             return None
         t = cross(subtract(cp1, s), d) / denominator
         return (s[0] + t * r[0], s[1] + t * r[1])
@@ -562,7 +562,7 @@ def process_ocr_dict(ocr_data: Dict[str, Any], image_id: str) -> Tuple[List[Line
             bottom_left=line_data["bottom_left"],
             angle_degrees=line_data["angle_degrees"],
             angle_radians=line_data["angle_radians"],
-            confidence=line_data["confidence"],)
+            confidence=line_data["confidence"], )
         lines.append(line_obj)
 
         for word_idx, word_data in enumerate(line_data.get("words", []), start=1):
@@ -577,7 +577,7 @@ def process_ocr_dict(ocr_data: Dict[str, Any], image_id: str) -> Tuple[List[Line
                 bottom_left=word_data["bottom_left"],
                 angle_degrees=word_data["angle_degrees"],
                 angle_radians=word_data["angle_radians"],
-                confidence=word_data["confidence"],)
+                confidence=word_data["confidence"], )
             words.append(word_obj)
 
             for letter_idx, letter_data in enumerate(word_data.get("letters", []), start=1):
@@ -593,13 +593,13 @@ def process_ocr_dict(ocr_data: Dict[str, Any], image_id: str) -> Tuple[List[Line
                     bottom_left=letter_data["bottom_left"],
                     angle_degrees=letter_data["angle_degrees"],
                     angle_radians=letter_data["angle_radians"],
-                    confidence=letter_data["confidence"],)
+                    confidence=letter_data["confidence"], )
                 letters.append(letter_obj)
 
     return lines, words, letters
 
 
-def deduplicate_receipt_word_tags(tags: List[ReceiptWordTag],) -> List[ReceiptWordTag]:
+def deduplicate_receipt_word_tags(tags: List[ReceiptWordTag], ) -> List[ReceiptWordTag]:
     """
     Deduplicate a list of ReceiptWordTag objects by using their identifying attributes.
 
@@ -620,7 +620,7 @@ def deduplicate_receipt_word_tags(tags: List[ReceiptWordTag],) -> List[ReceiptWo
             tag.receipt_id,
             tag.line_id,
             tag.word_id,
-            tag.tag.strip(),  # ensure no leading/trailing spaces)
+            tag.tag.strip())  # ensure no leading/trailing spaces
         if dedup_key not in unique:
             unique[dedup_key] = tag
     return list(unique.values())
@@ -644,7 +644,7 @@ def deduplicate_word_tags(tags: List[WordTag]) -> List[WordTag]:
         dedup_key = (tag.image_id,
             tag.line_id,
             tag.word_id,
-            tag.tag.strip(),  # Normalize the tag by stripping extra whitespace)
+            tag.tag.strip())  # Normalize the tag by stripping extra whitespace
         if dedup_key not in unique:
             unique[dedup_key] = tag
     return list(unique.values())
@@ -694,11 +694,11 @@ def transform_cluster(cluster_id: int,
     cluster_words: List[Word],
     cluster_letters: List[Letter],
     pil_image: PIL_Image.Image,
-    image_obj: Image,):
+    image_obj: Image, ):
     """
     1) Compute min-area-rect
     2) If needed, rotate bounding box by 90° so that final w <= h
-    3) Affine warp that rectangle to (w,h)
+    3) Affine warp that rectangle to (w, h)
     4) Warp the line/word/letter coords so they match the final orientation
     5) Return the receipt record plus the warped image and OCR objects
     """
@@ -710,7 +710,7 @@ def transform_cluster(cluster_id: int,
         for corner in [ln.top_left,
             ln.top_right,
             ln.bottom_left,
-            ln.bottom_right,]:
+            ln.bottom_right, ]:
             x_abs = corner["x"] * image_obj.width
             y_abs = (1 - corner["y"]) * image_obj.height  # flip Y
             points_abs.append((x_abs, y_abs))
@@ -771,11 +771,11 @@ def transform_cluster(cluster_id: int,
     # Invert it to get the forward transform for lines, words, etc.
     a_f, b_f, c_f, d_f, e_f, f_f = invert_affine(a_i, b_i, c_i, d_i, e_i, f_i)
 
-    # 4) Warp the image using the “inverse” (dst->src) matrix
+    # 4) Warp the image using the "inverse" (dst->src) matrix
     affine_img = pil_image.transform((w, h),
         PIL_Image.AFFINE,
         (a_i, b_i, c_i, d_i, e_i, f_i),
-        resample=PIL_Image.BICUBIC,)
+        resample=PIL_Image.BICUBIC, )
 
     # ------------------------------------------------------
     # 5) Create the Receipt record with final size
@@ -789,19 +789,19 @@ def transform_cluster(cluster_id: int,
         raw_s3_bucket=image_obj.raw_s3_bucket,
         raw_s3_key=image_obj.raw_s3_key.replace(".png", f"_RECEIPT_{cluster_id:05d}.png"),
         top_left={"x": box_4_ordered[0][0] / image_obj.width,
-            "y": 1 - box_4_ordered[0][1] / image_obj.height,},
+            "y": 1 - box_4_ordered[0][1] / image_obj.height, },
         top_right={"x": box_4_ordered[1][0] / image_obj.width,
-            "y": 1 - box_4_ordered[1][1] / image_obj.height,},
+            "y": 1 - box_4_ordered[1][1] / image_obj.height, },
         bottom_right={"x": box_4_ordered[2][0] / image_obj.width,
-            "y": 1 - box_4_ordered[2][1] / image_obj.height,},
+            "y": 1 - box_4_ordered[2][1] / image_obj.height, },
         bottom_left={"x": box_4_ordered[3][0] / image_obj.width,
-            "y": 1 - box_4_ordered[3][1] / image_obj.height,},
+            "y": 1 - box_4_ordered[3][1] / image_obj.height, },
         sha256=calculate_sha256_from_bytes(affine_img.tobytes()),
         cdn_s3_bucket=image_obj.cdn_s3_bucket,
-        cdn_s3_key=image_obj.cdn_s3_key.replace(".jpg", f"_RECEIPT_{cluster_id:05d}.jpg"),)
+        cdn_s3_key=image_obj.cdn_s3_key.replace(".jpg", f"_RECEIPT_{cluster_id:05d}.jpg"), )
 
     # ------------------------------------------------------
-    # 6) Warp the line/word/letter coords “forward”
+    # 6) Warp the line/word/letter coords "forward"
     #    so they match the final orientation
     # ------------------------------------------------------
     receipt_lines = []
@@ -817,7 +817,7 @@ def transform_cluster(cluster_id: int,
             orig_height=image_obj.height,
             new_width=w,
             new_height=h,
-            flip_y=True,)
+            flip_y=True, )
         receipt_lines.append(ReceiptLine(**dict(ln_copy), receipt_id=cluster_id))
 
     receipt_words = []
@@ -833,7 +833,7 @@ def transform_cluster(cluster_id: int,
             orig_height=image_obj.height,
             new_width=w,
             new_height=h,
-            flip_y=True,)
+            flip_y=True, )
         receipt_words.append(ReceiptWord(**dict(wd_copy), receipt_id=cluster_id))
 
     receipt_letters = []
@@ -849,7 +849,7 @@ def transform_cluster(cluster_id: int,
             orig_height=image_obj.height,
             new_width=w,
             new_height=h,
-            flip_y=True,)
+            flip_y=True, )
         receipt_letters.append(ReceiptLetter(**dict(lt_copy), receipt_id=cluster_id))
 
     return affine_img, r, receipt_lines, receipt_words, receipt_letters

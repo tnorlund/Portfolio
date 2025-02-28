@@ -34,7 +34,7 @@ class Instance:
         ip_address: str,
         availability_zone: str,
         is_spot: bool,
-        health_status: str,):
+        health_status: str, ):
         """Initializes a new Instance object for DynamoDB.
 
         Args:
@@ -99,7 +99,7 @@ class Instance:
             dict: The primary key for the instance.
         """
         return {"PK": {"S": f"INSTANCE#{self.instance_id}"},
-            "SK": {"S": "INSTANCE"},}
+            "SK": {"S": "INSTANCE"}, }
 
     def gsi1_key(self) -> dict:
         """Generates the GSI1 key for the instance.
@@ -108,7 +108,7 @@ class Instance:
             dict: The GSI1 key for the instance.
         """
         return {"GSI1PK": {"S": f"STATUS#{self.status}"},
-            "GSI1SK": {"S": f"INSTANCE#{self.instance_id}"},}
+            "GSI1SK": {"S": f"INSTANCE#{self.instance_id}"}, }
 
     def to_item(self) -> dict:
         """Converts the Instance object to a DynamoDB item.
@@ -126,7 +126,7 @@ class Instance:
             "ip_address": {"S": self.ip_address},
             "availability_zone": {"S": self.availability_zone},
             "is_spot": {"BOOL": self.is_spot},
-            "health_status": {"S": self.health_status},}
+            "health_status": {"S": self.health_status}, }
         return item
 
     def __repr__(self) -> str:
@@ -201,7 +201,7 @@ class Instance:
                 self.ip_address,
                 self.availability_zone,
                 self.is_spot,
-                self.health_status,))
+                self.health_status, ))
 
 
 def itemToInstance(item: dict) -> Instance:
@@ -226,7 +226,7 @@ def itemToInstance(item: dict) -> Instance:
         "ip_address",
         "availability_zone",
         "is_spot",
-        "health_status",}
+        "health_status", }
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
@@ -254,6 +254,6 @@ def itemToInstance(item: dict) -> Instance:
             ip_address=ip_address,
             availability_zone=availability_zone,
             is_spot=is_spot,
-            health_status=health_status,)
+            health_status=health_status, )
     except KeyError as e:
         raise ValueError(f"Error converting item to Instance: {e}")

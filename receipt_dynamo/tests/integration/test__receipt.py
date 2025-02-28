@@ -12,7 +12,7 @@ from receipt_dynamo import (DynamoClient,
     Receipt,
     ReceiptLetter,
     ReceiptWord,
-    ReceiptWordTag,)
+    ReceiptWordTag, )
 
 # -------------------------------------------------------------------
 #                        FIXTURES
@@ -37,7 +37,7 @@ def sample_receipt():
         top_right={"x": 10, "y": 0},
         bottom_left={"x": 0, "y": 20},
         bottom_right={"x": 10, "y": 20},
-        sha256="sha256",)
+        sha256="sha256", )
 
 
 @pytest.fixture
@@ -54,7 +54,7 @@ def sample_receipt_word():
         bottom_right={"x": 10, "y": 20},
         angle_degrees=0,
         angle_radians=0,
-        confidence=1,)
+        confidence=1, )
 
 
 @pytest.fixture
@@ -64,7 +64,7 @@ def sample_receipt_word_tag():
         line_id=1,
         word_id=1,
         tag="SampleTag",
-        timestamp_added=datetime.now().isoformat(),)
+        timestamp_added=datetime.now().isoformat(), )
 
 
 @pytest.fixture
@@ -82,7 +82,7 @@ def sample_receipt_letter():
         bottom_right={"x": 5, "y": 10},
         angle_degrees=0,
         angle_radians=0,
-        confidence=1,)
+        confidence=1, )
 
 
 @pytest.fixture
@@ -92,7 +92,7 @@ def sample_image():
         height=480,
         timestamp_added=datetime.now().isoformat(),
         raw_s3_bucket="bucket",
-        raw_s3_key="key",)
+        raw_s3_key="key", )
 
 
 # -------------------------------------------------------------------
@@ -142,8 +142,8 @@ def test_addReceipt_raises_conditional_check_failed(dynamodb_table, sample_recei
     mock_put = mocker.patch.object(client._client,
         "put_item",
         side_effect=ClientError({"Error": {"Code": "ConditionalCheckFailedException",
-                    "Message": "Item already exists",}},
-            "PutItem",),)
+                    "Message": "Item already exists", }},
+            "PutItem", ), )
 
     with pytest.raises(ValueError, match="already exists"):
         client.addReceipt(sample_receipt)
@@ -159,8 +159,8 @@ def test_addReceipt_raises_resource_not_found(dynamodb_table, sample_receipt, mo
     mock_put = mocker.patch.object(client._client,
         "put_item",
         side_effect=ClientError({"Error": {"Code": "ResourceNotFoundException",
-                    "Message": "Table not found",}},
-            "PutItem",),)
+                    "Message": "Table not found", }},
+            "PutItem", ), )
 
     with pytest.raises(Exception, match="Table not found"):
         # Note: In _receipt.py we do not specifically catch ResourceNotFoundException in addReceipt,
@@ -179,8 +179,8 @@ def test_addReceipt_raises_provisioned_throughput_exceeded(dynamodb_table, sampl
     mock_put = mocker.patch.object(client._client,
         "put_item",
         side_effect=ClientError({"Error": {"Code": "ProvisionedThroughputExceededException",
-                    "Message": "Provisioned throughput exceeded",}},
-            "PutItem",),)
+                    "Message": "Provisioned throughput exceeded", }},
+            "PutItem", ), )
 
     with pytest.raises(Exception, match="Provisioned throughput exceeded"):
         client.addReceipt(sample_receipt)
@@ -196,8 +196,8 @@ def test_addReceipt_raises_internal_server_error(dynamodb_table, sample_receipt,
     mock_put = mocker.patch.object(client._client,
         "put_item",
         side_effect=ClientError({"Error": {"Code": "InternalServerError",
-                    "Message": "Internal server error",}},
-            "PutItem",),)
+                    "Message": "Internal server error", }},
+            "PutItem", ), )
 
     with pytest.raises(Exception, match="Internal server error"):
         client.addReceipt(sample_receipt)
@@ -212,8 +212,8 @@ def test_addReceipt_raises_unknown_error(dynamodb_table, sample_receipt, mocker)
     mock_put = mocker.patch.object(client._client,
         "put_item",
         side_effect=ClientError({"Error": {"Code": "UnknownError",
-                    "Message": "Something unexpected",}},
-            "PutItem",),)
+                    "Message": "Something unexpected", }},
+            "PutItem", ), )
 
     with pytest.raises(Exception, match="Something unexpected"):
         client.addReceipt(sample_receipt)
@@ -228,7 +228,7 @@ def test_addReceipts_success(dynamodb_table, sample_receipt):
     client = DynamoClient(dynamodb_table)
     receipts = [sample_receipt]
     second_receipt = Receipt(**{**sample_receipt.__dict__,
-            "receipt_id": sample_receipt.receipt_id + 1,})
+            "receipt_id": sample_receipt.receipt_id + 1, })
     receipts.append(second_receipt)
 
     client.addReceipts(receipts)
@@ -266,7 +266,7 @@ def test_addReceipts_raises_value_error_receipts_not_list_of_receipts(dynamodb_t
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError,
-        match="All receipts must be instances of the Receipt class.",):
+        match="All receipts must be instances of the Receipt class.", ):
         client.addReceipts([sample_receipt, "not-a-receipt"])  # type: ignore
 
 
@@ -278,7 +278,7 @@ def test_addReceipts_unprocessed_items_retry(dynamodb_table, sample_receipt, moc
     client = DynamoClient(dynamodb_table)
     receipts = [sample_receipt]
     second_receipt = Receipt(**{**sample_receipt.__dict__,
-            "receipt_id": sample_receipt.receipt_id + 1,})
+            "receipt_id": sample_receipt.receipt_id + 1, })
     receipts.append(second_receipt)
 
     real_batch_write_item = client._client.batch_write_item
@@ -313,8 +313,8 @@ def test_addReceipts_raises_clienterror_provisioned_throughput_exceeded(dynamodb
     mock_batch = mocker.patch.object(client._client,
         "batch_write_item",
         side_effect=ClientError({"Error": {"Code": "ProvisionedThroughputExceededException",
-                    "Message": "Provisioned throughput exceeded",}},
-            "BatchWriteItem",),)
+                    "Message": "Provisioned throughput exceeded", }},
+            "BatchWriteItem", ), )
     with pytest.raises(Exception, match="Provisioned throughput exceeded"):
         client.addReceipts([sample_receipt])
     mock_batch.assert_called_once()
@@ -329,8 +329,8 @@ def test_addReceipts_raises_clienterror_internal_server_error(dynamodb_table, sa
     mock_batch = mocker.patch.object(client._client,
         "batch_write_item",
         side_effect=ClientError({"Error": {"Code": "InternalServerError",
-                    "Message": "Internal server error",}},
-            "BatchWriteItem",),)
+                    "Message": "Internal server error", }},
+            "BatchWriteItem", ), )
     with pytest.raises(Exception, match="Internal server error"):
         client.addReceipts([sample_receipt])
     mock_batch.assert_called_once()
@@ -345,8 +345,8 @@ def test_addReceipts_raises_clienterror_validation_exception(dynamodb_table, sam
     mock_batch = mocker.patch.object(client._client,
         "batch_write_item",
         side_effect=ClientError({"Error": {"Code": "ValidationException",
-                    "Message": "One or more parameters given were invalid",}},
-            "BatchWriteItem",),)
+                    "Message": "One or more parameters given were invalid", }},
+            "BatchWriteItem", ), )
     with pytest.raises(Exception, match="One or more parameters given were invalid"):
         client.addReceipts([sample_receipt])
     mock_batch.assert_called_once()
@@ -361,8 +361,8 @@ def test_addReceipts_raises_clienterror_access_denied(dynamodb_table, sample_rec
     mock_batch = mocker.patch.object(client._client,
         "batch_write_item",
         side_effect=ClientError({"Error": {"Code": "AccessDeniedException",
-                    "Message": "Access denied",}},
-            "BatchWriteItem",),)
+                    "Message": "Access denied", }},
+            "BatchWriteItem", ), )
     with pytest.raises(Exception, match="Access denied"):
         client.addReceipts([sample_receipt])
     mock_batch.assert_called_once()
@@ -378,8 +378,8 @@ def test_addReceipts_raises_clienterror(dynamodb_table, sample_receipt, mocker):
     mock_batch = mocker.patch.object(client._client,
         "batch_write_item",
         side_effect=ClientError({"Error": {"Code": "ResourceNotFoundException",
-                    "Message": "No table found",}},
-            "BatchWriteItem",),)
+                    "Message": "No table found", }},
+            "BatchWriteItem", ), )
     with pytest.raises(Exception, match="Error adding receipts: "):
         client.addReceipts([sample_receipt])
 
@@ -436,8 +436,8 @@ def test_updateReceipt_raises_conditional_check_failed(dynamodb_table, sample_re
     mock_put = mocker.patch.object(client._client,
         "put_item",
         side_effect=ClientError({"Error": {"Code": "ConditionalCheckFailedException",
-                    "Message": "Item does not exist",}},
-            "PutItem",),)
+                    "Message": "Item does not exist", }},
+            "PutItem", ), )
 
     with pytest.raises(ValueError, match="does not exist"):
         client.updateReceipt(sample_receipt)
@@ -453,8 +453,8 @@ def test_updateReceipt_raises_clienterror_provisioned_throughput_exceeded(dynamo
     mock_put = mocker.patch.object(client._client,
         "put_item",
         side_effect=ClientError({"Error": {"Code": "ProvisionedThroughputExceededException",
-                    "Message": "Provisioned throughput exceeded",}},
-            "PutItem",),)
+                    "Message": "Provisioned throughput exceeded", }},
+            "PutItem", ), )
     with pytest.raises(Exception, match="Provisioned throughput exceeded"):
         client.updateReceipt(sample_receipt)
     mock_put.assert_called_once()
@@ -469,8 +469,8 @@ def test_updateReceipt_raises_clienterror_internal_server_error(dynamodb_table, 
     mock_put = mocker.patch.object(client._client,
         "put_item",
         side_effect=ClientError({"Error": {"Code": "InternalServerError",
-                    "Message": "Internal server error",}},
-            "PutItem",),)
+                    "Message": "Internal server error", }},
+            "PutItem", ), )
     with pytest.raises(Exception, match="Internal server error"):
         client.updateReceipt(sample_receipt)
     mock_put.assert_called_once()
@@ -485,8 +485,8 @@ def test_updateReceipt_raises_clienterror_validation_exception(dynamodb_table, s
     mock_put = mocker.patch.object(client._client,
         "put_item",
         side_effect=ClientError({"Error": {"Code": "ValidationException",
-                    "Message": "One or more parameters given were invalid",}},
-            "PutItem",),)
+                    "Message": "One or more parameters given were invalid", }},
+            "PutItem", ), )
     with pytest.raises(Exception, match="One or more parameters given were invalid"):
         client.updateReceipt(sample_receipt)
     mock_put.assert_called_once()
@@ -501,8 +501,8 @@ def test_updateReceipt_raises_clienterror_access_denied(dynamodb_table, sample_r
     mock_put = mocker.patch.object(client._client,
         "put_item",
         side_effect=ClientError({"Error": {"Code": "AccessDeniedException",
-                    "Message": "Access denied",}},
-            "PutItem",),)
+                    "Message": "Access denied", }},
+            "PutItem", ), )
     with pytest.raises(Exception, match="Access denied"):
         client.updateReceipt(sample_receipt)
     mock_put.assert_called_once()
@@ -518,8 +518,8 @@ def test_updateReceipt_raises_clienterror(dynamodb_table, sample_receipt, mocker
     mock_put = mocker.patch.object(client._client,
         "put_item",
         side_effect=ClientError({"Error": {"Code": "ResourceNotFoundException",
-                    "Message": "No table found",}},
-            "PutItem",),)
+                    "Message": "No table found", }},
+            "PutItem", ), )
     with pytest.raises(Exception, match="Error updating receipt: "):
         client.updateReceipt(sample_receipt)
 
@@ -534,7 +534,7 @@ def test_updateReceipts_success(dynamodb_table, sample_receipt):
     client = DynamoClient(dynamodb_table)
     r1 = sample_receipt
     r2 = Receipt(**{**sample_receipt.__dict__,
-            "receipt_id": sample_receipt.receipt_id + 1,})
+            "receipt_id": sample_receipt.receipt_id + 1, })
     client.addReceipts([r1, r2])
 
     # Now update them
@@ -579,7 +579,7 @@ def test_updateReceipts_raises_value_error_receipts_not_list_of_receipts(dynamod
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError,
-        match="All receipts must be instances of the Receipt class.",):
+        match="All receipts must be instances of the Receipt class.", ):
         client.updateReceipts([sample_receipt, "not-a-receipt"])  # type: ignore
 
 
@@ -592,8 +592,8 @@ def test_updateReceipts_raises_clienterror_conditional_check_failed(dynamodb_tab
     mock_batch = mocker.patch.object(client._client,
         "transact_write_items",
         side_effect=ClientError({"Error": {"Code": "ConditionalCheckFailedException",
-                    "Message": "One or more receipts do not exist",}},
-            "TransactWriteItems",),)
+                    "Message": "One or more receipts do not exist", }},
+            "TransactWriteItems", ), )
     with pytest.raises(ValueError, match="One or more receipts do not exist"):
         client.updateReceipts([sample_receipt])
     mock_batch.assert_called_once()
@@ -608,8 +608,8 @@ def test_updateReceipts_raises_clienterror_provisioned_throughput_exceeded(dynam
     mock_batch = mocker.patch.object(client._client,
         "transact_write_items",
         side_effect=ClientError({"Error": {"Code": "ProvisionedThroughputExceededException",
-                    "Message": "Provisioned throughput exceeded",}},
-            "TransactWriteItems",),)
+                    "Message": "Provisioned throughput exceeded", }},
+            "TransactWriteItems", ), )
     with pytest.raises(Exception, match="Provisioned throughput exceeded"):
         client.updateReceipts([sample_receipt])
     mock_batch.assert_called_once()
@@ -624,8 +624,8 @@ def test_updateReceipts_raises_clienterror_internal_server_error(dynamodb_table,
     mock_batch = mocker.patch.object(client._client,
         "transact_write_items",
         side_effect=ClientError({"Error": {"Code": "InternalServerError",
-                    "Message": "Internal server error",}},
-            "TransactWriteItems",),)
+                    "Message": "Internal server error", }},
+            "TransactWriteItems", ), )
     with pytest.raises(Exception, match="Internal server error"):
         client.updateReceipts([sample_receipt])
     mock_batch.assert_called_once()
@@ -640,8 +640,8 @@ def test_updateReceipts_raises_clienterror_validation_exception(dynamodb_table, 
     mock_batch = mocker.patch.object(client._client,
         "transact_write_items",
         side_effect=ClientError({"Error": {"Code": "ValidationException",
-                    "Message": "One or more parameters given were invalid",}},
-            "TransactWriteItems",),)
+                    "Message": "One or more parameters given were invalid", }},
+            "TransactWriteItems", ), )
     with pytest.raises(Exception, match="One or more parameters given were invalid"):
         client.updateReceipts([sample_receipt])
     mock_batch.assert_called_once()
@@ -656,8 +656,8 @@ def test_updateReceipts_raises_clienterror_access_denied(dynamodb_table, sample_
     mock_batch = mocker.patch.object(client._client,
         "transact_write_items",
         side_effect=ClientError({"Error": {"Code": "AccessDeniedException",
-                    "Message": "Access denied",}},
-            "TransactWriteItems",),)
+                    "Message": "Access denied", }},
+            "TransactWriteItems", ), )
     with pytest.raises(Exception, match="Access denied"):
         client.updateReceipts([sample_receipt])
     mock_batch.assert_called_once()
@@ -672,8 +672,8 @@ def test_updateReceipts_raises_client_error(dynamodb_table, sample_receipt, mock
     mock_batch = mocker.patch.object(client._client,
         "transact_write_items",
         side_effect=ClientError({"Error": {"Code": "ResourceNotFoundException",
-                    "Message": "No table found",}},
-            "BatchWriteItem",),)
+                    "Message": "No table found", }},
+            "BatchWriteItem", ), )
 
     with pytest.raises(ValueError, match="Error updating receipts"):
         client.updateReceipts([sample_receipt])
@@ -728,8 +728,8 @@ def test_deleteReceipt_raises_conditional_check_failed(dynamodb_table, sample_re
     mock_delete = mocker.patch.object(client._client,
         "delete_item",
         side_effect=ClientError({"Error": {"Code": "ConditionalCheckFailedException",
-                    "Message": "Item does not exist",}},
-            "DeleteItem",),)
+                    "Message": "Item does not exist", }},
+            "DeleteItem", ), )
 
     with pytest.raises(ValueError, match="does not exist"):
         client.deleteReceipt(sample_receipt)
@@ -745,8 +745,8 @@ def test_deleteReceipt_raises_clienterror_provisioned_throughput_exceeded(dynamo
     mock_delete = mocker.patch.object(client._client,
         "delete_item",
         side_effect=ClientError({"Error": {"Code": "ProvisionedThroughputExceededException",
-                    "Message": "Provisioned throughput exceeded",}},
-            "DeleteItem",),)
+                    "Message": "Provisioned throughput exceeded", }},
+            "DeleteItem", ), )
     with pytest.raises(Exception, match="Provisioned throughput exceeded"):
         client.deleteReceipt(sample_receipt)
     mock_delete.assert_called_once()
@@ -761,8 +761,8 @@ def test_deleteReceipt_raises_clienterror_internal_server_error(dynamodb_table, 
     mock_delete = mocker.patch.object(client._client,
         "delete_item",
         side_effect=ClientError({"Error": {"Code": "InternalServerError",
-                    "Message": "Internal server error",}},
-            "DeleteItem",),)
+                    "Message": "Internal server error", }},
+            "DeleteItem", ), )
     with pytest.raises(Exception, match="Internal server error"):
         client.deleteReceipt(sample_receipt)
     mock_delete.assert_called_once()
@@ -777,8 +777,8 @@ def test_deleteReceipt_raises_clienterror_validation_exception(dynamodb_table, s
     mock_delete = mocker.patch.object(client._client,
         "delete_item",
         side_effect=ClientError({"Error": {"Code": "ValidationException",
-                    "Message": "One or more parameters given were invalid",}},
-            "DeleteItem",),)
+                    "Message": "One or more parameters given were invalid", }},
+            "DeleteItem", ), )
     with pytest.raises(Exception, match="One or more parameters given were invalid"):
         client.deleteReceipt(sample_receipt)
     mock_delete.assert_called_once()
@@ -793,8 +793,8 @@ def test_deleteReceipt_raises_clienterror_access_denied(dynamodb_table, sample_r
     mock_delete = mocker.patch.object(client._client,
         "delete_item",
         side_effect=ClientError({"Error": {"Code": "AccessDeniedException",
-                    "Message": "Access denied",}},
-            "DeleteItem",),)
+                    "Message": "Access denied", }},
+            "DeleteItem", ), )
     with pytest.raises(Exception, match="Access denied"):
         client.deleteReceipt(sample_receipt)
     mock_delete.assert_called_once()
@@ -809,8 +809,8 @@ def test_deleteReceipt_raises_client_error(dynamodb_table, sample_receipt, mocke
     mock_delete = mocker.patch.object(client._client,
         "delete_item",
         side_effect=ClientError({"Error": {"Code": "ResourceNotFoundException",
-                    "Message": "No table found",}},
-            "DeleteItem",),)
+                    "Message": "No table found", }},
+            "DeleteItem", ), )
     with pytest.raises(ValueError, match="Error deleting receipt"):
         client.deleteReceipt(sample_receipt)
     mock_delete.assert_called_once()
@@ -824,7 +824,7 @@ def test_deleteReceipts_success(dynamodb_table, sample_receipt):
     client = DynamoClient(dynamodb_table)
     r1 = sample_receipt
     r2 = Receipt(**{**sample_receipt.__dict__,
-            "receipt_id": sample_receipt.receipt_id + 1,})
+            "receipt_id": sample_receipt.receipt_id + 1, })
     client.addReceipts([r1, r2])
 
     client.deleteReceipts([r1, r2])
@@ -859,7 +859,7 @@ def test_deleteReceipts_raises_value_error_receipts_not_list_of_receipts(dynamod
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError,
-        match="All receipts must be instances of the Receipt class.",):
+        match="All receipts must be instances of the Receipt class.", ):
         client.deleteReceipts([sample_receipt, "not-a-receipt"])  # type: ignore
 
 
@@ -872,8 +872,8 @@ def test_deleteReceipts_raises_clienterror_conditional_check_failed(dynamodb_tab
     mock_delete = mocker.patch.object(client._client,
         "transact_write_items",
         side_effect=ClientError({"Error": {"Code": "ConditionalCheckFailedException",
-                    "Message": "Conditional check failed",}},
-            "transact_write_items",),)
+                    "Message": "Conditional check failed", }},
+            "transact_write_items", ), )
     with pytest.raises(ValueError, match="One or more receipts do not exist"):
         client.deleteReceipts([sample_receipt])
     mock_delete.assert_called_once()
@@ -888,8 +888,8 @@ def test_deleteReceipts_raises_clienterror_provisioned_throughput_exceeded(dynam
     mock_delete = mocker.patch.object(client._client,
         "transact_write_items",
         side_effect=ClientError({"Error": {"Code": "ProvisionedThroughputExceededException",
-                    "Message": "Provisioned throughput exceeded",}},
-            "transact_write_items",),)
+                    "Message": "Provisioned throughput exceeded", }},
+            "transact_write_items", ), )
     with pytest.raises(Exception, match="Provisioned throughput exceeded"):
         client.deleteReceipts([sample_receipt])
     mock_delete.assert_called_once()
@@ -904,8 +904,8 @@ def test_deleteReceipts_raises_clienterror_internal_server_error(dynamodb_table,
     mock_delete = mocker.patch.object(client._client,
         "transact_write_items",
         side_effect=ClientError({"Error": {"Code": "InternalServerError",
-                    "Message": "Internal server error",}},
-            "transact_write_items",),)
+                    "Message": "Internal server error", }},
+            "transact_write_items", ), )
     with pytest.raises(Exception, match="Internal server error"):
         client.deleteReceipts([sample_receipt])
     mock_delete.assert_called_once()
@@ -920,8 +920,8 @@ def test_deleteReceipts_raises_clienterror_validation_exception(dynamodb_table, 
     mock_delete = mocker.patch.object(client._client,
         "transact_write_items",
         side_effect=ClientError({"Error": {"Code": "ValidationException",
-                    "Message": "One or more parameters given were invalid",}},
-            "transact_write_items",),)
+                    "Message": "One or more parameters given were invalid", }},
+            "transact_write_items", ), )
     with pytest.raises(Exception, match="One or more parameters given were invalid"):
         client.deleteReceipts([sample_receipt])
     mock_delete.assert_called_once()
@@ -936,8 +936,8 @@ def test_deleteReceipts_raises_clienterror_access_denied(dynamodb_table, sample_
     mock_delete = mocker.patch.object(client._client,
         "transact_write_items",
         side_effect=ClientError({"Error": {"Code": "AccessDeniedException",
-                    "Message": "Access denied",}},
-            "transact_write_items",),)
+                    "Message": "Access denied", }},
+            "transact_write_items", ), )
     with pytest.raises(Exception, match="Access denied"):
         client.deleteReceipts([sample_receipt])
     mock_delete.assert_called_once()
@@ -953,8 +953,8 @@ def test_deleteReceipts_raises_client_error(dynamodb_table, sample_receipt, mock
     mock_batch = mocker.patch.object(client._client,
         "transact_write_items",
         side_effect=ClientError({"Error": {"Code": "ResourceNotFoundException",
-                    "Message": "No table found",}},
-            "transact_write_items",),)
+                    "Message": "No table found", }},
+            "transact_write_items", ), )
 
     with pytest.raises(ValueError, match="Error deleting receipts"):
         client.deleteReceipts([sample_receipt])
@@ -1047,8 +1047,8 @@ def test_getReceipt_raises_provisioned_throughput_exceeded(dynamodb_table, sampl
     mock_get = mocker.patch.object(client._client,
         "get_item",
         side_effect=ClientError({"Error": {"Code": "ProvisionedThroughputExceededException",
-                    "Message": "Provisioned throughput exceeded",}},
-            "GetItem",),)
+                    "Message": "Provisioned throughput exceeded", }},
+            "GetItem", ), )
     with pytest.raises(Exception, match="Provisioned throughput exceeded"):
         client.getReceipt(sample_receipt.image_id, sample_receipt.receipt_id)
     mock_get.assert_called_once()
@@ -1063,8 +1063,8 @@ def test_getReceipt_raises_validation_exception(dynamodb_table, sample_receipt, 
     mock_get = mocker.patch.object(client._client,
         "get_item",
         side_effect=ClientError({"Error": {"Code": "ValidationException",
-                    "Message": "One or more parameters given were invalid",}},
-            "GetItem",),)
+                    "Message": "One or more parameters given were invalid", }},
+            "GetItem", ), )
     with pytest.raises(Exception, match="Validation error"):
         client.getReceipt(sample_receipt.image_id, sample_receipt.receipt_id)
     mock_get.assert_called_once()
@@ -1079,8 +1079,8 @@ def test_getReceipt_raises_internal_server_error(dynamodb_table, sample_receipt,
     mock_get = mocker.patch.object(client._client,
         "get_item",
         side_effect=ClientError({"Error": {"Code": "InternalServerError",
-                    "Message": "Internal server error",}},
-            "GetItem",),)
+                    "Message": "Internal server error", }},
+            "GetItem", ), )
     with pytest.raises(Exception, match="Internal server error"):
         client.getReceipt(sample_receipt.image_id, sample_receipt.receipt_id)
     mock_get.assert_called_once()
@@ -1095,8 +1095,8 @@ def test_getReceipt_raises_access_denied(dynamodb_table, sample_receipt, mocker)
     mock_get = mocker.patch.object(client._client,
         "get_item",
         side_effect=ClientError({"Error": {"Code": "AccessDeniedException",
-                    "Message": "Access denied",}},
-            "GetItem",),)
+                    "Message": "Access denied", }},
+            "GetItem", ), )
     with pytest.raises(Exception, match="Access denied"):
         client.getReceipt(sample_receipt.image_id, sample_receipt.receipt_id)
     mock_get.assert_called_once()
@@ -1111,8 +1111,8 @@ def test_getReceipt_raises_client_error(dynamodb_table, sample_receipt, mocker):
     mock_get = mocker.patch.object(client._client,
         "get_item",
         side_effect=ClientError({"Error": {"Code": "ResourceNotFoundException",
-                    "Message": "No table found",}},
-            "GetItem",),)
+                    "Message": "No table found", }},
+            "GetItem", ), )
     with pytest.raises(Exception, match="Error getting receipt"):
         client.getReceipt(sample_receipt.image_id, sample_receipt.receipt_id)
     mock_get.assert_called_once()
@@ -1123,7 +1123,7 @@ def test_getReceiptDetails_success(dynamodb_table,
     sample_receipt,
     sample_receipt_word,
     sample_receipt_word_tag,
-    sample_receipt_letter,):
+    sample_receipt_letter, ):
     """
     Tests retrieving a receipt with lines, words, letters, tags, etc.
     (Adjust the below method calls if you have separate add methods for lines, letters, etc.)
@@ -1140,7 +1140,7 @@ def test_getReceiptDetails_success(dynamodb_table,
         letters,
         tags,
         validations,
-        initial_taggings,) = client.getReceiptDetails(sample_receipt.image_id, sample_receipt.receipt_id)
+        initial_taggings, ) = client.getReceiptDetails(sample_receipt.image_id, sample_receipt.receipt_id)
 
     assert r == sample_receipt
     assert len(words) == 1 and words[0] == sample_receipt_word
@@ -1164,7 +1164,7 @@ def test_listReceipts_no_limit(dynamodb_table, sample_receipt):
     client = DynamoClient(dynamodb_table)
     client.addReceipt(sample_receipt)
     r2 = Receipt(**{**sample_receipt.__dict__,
-            "receipt_id": sample_receipt.receipt_id + 1,})
+            "receipt_id": sample_receipt.receipt_id + 1, })
     client.addReceipt(r2)
 
     receipts, lek = client.listReceipts()
@@ -1184,7 +1184,7 @@ def test_listReceipts_with_pagination(dynamodb_table, sample_receipt, mocker):
 
     # Fake responses
     first_page = {"Items": [sample_receipt.to_item()],
-        "LastEvaluatedKey": {"dummy": "key"},}
+        "LastEvaluatedKey": {"dummy": "key"}, }
     second_page = {"Items": [sample_receipt.to_item()]}
 
     mock_query = mocker.patch.object(client._client, "query", side_effect=[first_page, second_page])
@@ -1207,9 +1207,9 @@ def test_listReceipts_with_starting_LEK(dynamodb_table, sample_receipt, mocker):
 
     # First page returns one item plus a LEK indicating more pages.
     first_page = {"Items": [sample_receipt.to_item()],
-        "LastEvaluatedKey": end_lek,}
+        "LastEvaluatedKey": end_lek, }
     # Second page returns no items and no LEK, indicating end of pagination.
-    second_page = {"Items": [],}
+    second_page = {"Items": [], }
 
     # Patch the query method so that it returns first_page on the first call
     # and second_page on the second.
@@ -1249,7 +1249,7 @@ def test_listReceipts_limit_trim(mocker, dynamodb_table, sample_receipt):
     # Create a fake response that returns 4 items (more than the limit)
     fake_items = [sample_receipt.to_item() for _ in range(4)]
     fake_response = {"Items": fake_items,
-        "LastEvaluatedKey": {"PK": {"S": "dummy"}, "SK": {"S": "dummy"}},}
+        "LastEvaluatedKey": {"PK": {"S": "dummy"}, "SK": {"S": "dummy"}}, }
 
     # Patch the query method to return this fake response
     mock_query = mocker.patch.object(client._client, "query", return_value=fake_response)
@@ -1286,9 +1286,9 @@ def test_listReceipts_invalid_limit(dynamodb_table):
         {"PK": {"S": "IMAGE#start"}},
         {"SK": {"S": "DUMMY_START"}},
         {"PK": "not-a-dict",
-            "SK": {"S": "DUMMY_START"},},
+            "SK": {"S": "DUMMY_START"}, },
         {"PK": {"S": "IMAGE#start"},
-            "SK": "not-a-dict",},
+            "SK": "not-a-dict", },
     ],
 )
 def test_listReceipts_invalid_lastEvaluatedKey(dynamodb_table, invalid_lek):
@@ -1309,7 +1309,7 @@ def test_listReceipts_raises_resource_not_found(dynamodb_table, sample_receipt, 
     mock_query = mocker.patch.object(client._client,
         "query",
         side_effect=ClientError({"Error": {"Code": "ResourceNotFoundException"}},
-            "Query",),)
+            "Query", ), )
     with pytest.raises(Exception, match="Could not list receipts from the database"):
         client.listReceipts()
     mock_query.assert_called_once()
@@ -1324,7 +1324,7 @@ def test_listReceipts_raises_throughput(dynamodb_table, sample_receipt, mocker):
     mock_query = mocker.patch.object(client._client,
         "query",
         side_effect=ClientError({"Error": {"Code": "ProvisionedThroughputExceededException"}},
-            "Query",),)
+            "Query", ), )
     with pytest.raises(Exception, match="Provisioned throughput exceeded"):
         client.listReceipts()
     mock_query.assert_called_once()
@@ -1339,7 +1339,7 @@ def test_listReceipts_raises_validation_exception(dynamodb_table, sample_receipt
     mock_query = mocker.patch.object(client._client,
         "query",
         side_effect=ClientError({"Error": {"Code": "ValidationException"}},
-            "Query",),)
+            "Query", ), )
     with pytest.raises(Exception, match="One or more parameters given were invalid"):
         client.listReceipts()
     mock_query.assert_called_once()
@@ -1354,7 +1354,7 @@ def test_listReceipts_raises_internal_server_error(dynamodb_table, sample_receip
     mock_query = mocker.patch.object(client._client,
         "query",
         side_effect=ClientError({"Error": {"Code": "InternalServerError"}},
-            "Query",),)
+            "Query", ), )
     with pytest.raises(Exception, match="Internal server error"):
         client.listReceipts()
     mock_query.assert_called_once()
@@ -1369,7 +1369,7 @@ def test_listReceipts_raises_unknown_error(dynamodb_table, sample_receipt, mocke
     mock_query = mocker.patch.object(client._client,
         "query",
         side_effect=ClientError({"Error": {"Code": "SomethingUnknown"}},
-            "Query",),)
+            "Query", ), )
     with pytest.raises(Exception, match="Could not list receipts from the database"):
         client.listReceipts()
     mock_query.assert_called_once()

@@ -32,7 +32,7 @@ class _JobResource:
         try:
             self._client.put_item(TableName=self.table_name,
                 Item=job_resource.to_item(),
-                ConditionExpression="attribute_not_exists(PK) OR attribute_not_exists(SK)",)
+                ConditionExpression="attribute_not_exists(PK) OR attribute_not_exists(SK)", )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
@@ -68,7 +68,7 @@ class _JobResource:
         try:
             response = self._client.get_item(TableName=self.table_name,
                 Key={"PK": {"S": f"JOB#{job_id}"},
-                    "SK": {"S": f"RESOURCE#{resource_id}"},},)
+                    "SK": {"S": f"RESOURCE#{resource_id}"}, }, )
 
             if "Item" not in response:
                 raise ValueError(f"No job resource found with job ID {job_id} and resource ID {resource_id}")
@@ -89,7 +89,7 @@ class _JobResource:
         job_id: str,
         resource_id: str,
         status: str,
-        released_at: Optional[str] = None,):
+        released_at: Optional[str] = None, ):
         """Updates the status of a job resource
 
         Args:
@@ -127,11 +127,11 @@ class _JobResource:
 
             self._client.update_item(TableName=self.table_name,
                 Key={"PK": {"S": f"JOB#{job_id}"},
-                    "SK": {"S": f"RESOURCE#{resource_id}"},},
+                    "SK": {"S": f"RESOURCE#{resource_id}"}, },
                 UpdateExpression=update_expression,
                 ExpressionAttributeNames=expression_attribute_names,
                 ExpressionAttributeValues=expression_attribute_values,
-                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",)
+                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)", )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
@@ -148,7 +148,7 @@ class _JobResource:
     def listJobResources(self,
         job_id: str,
         limit: int = None,
-        lastEvaluatedKey: dict | None = None,) -> tuple[list[JobResource], dict | None]:
+        lastEvaluatedKey: dict | None = None, ) -> tuple[list[JobResource], dict | None]:
         """
         Retrieve resources for a job from the database.
 
@@ -181,11 +181,13 @@ class _JobResource:
 
         resources = []
         try:
-            query_params = {"TableName": self.table_name,
+            query_params = {
+                "TableName": self.table_name,
                 "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
                 "ExpressionAttributeValues": {":pk": {"S": f"JOB#{job_id}"},
-                    ":sk": {"S": "RESOURCE#"},},
-                "ScanIndexForward": True,  # Ascending order by default}
+                    ":sk": {"S": "RESOURCE#"}, },
+                "ScanIndexForward": True,  # Ascending order by default
+            }
 
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
@@ -228,7 +230,7 @@ class _JobResource:
     def listResourcesByType(self,
         resource_type: str,
         limit: int = None,
-        lastEvaluatedKey: dict | None = None,) -> tuple[list[JobResource], dict | None]:
+        lastEvaluatedKey: dict | None = None, ) -> tuple[list[JobResource], dict | None]:
         """
         Retrieve all resources of a specific type across all jobs.
 
@@ -260,13 +262,15 @@ class _JobResource:
 
         resources = []
         try:
-            query_params = {"TableName": self.table_name,
+            query_params = {
+                "TableName": self.table_name,
                 "IndexName": "GSI1",
                 "KeyConditionExpression": "GSI1PK = :pk",
                 "ExpressionAttributeValues": {":pk": {"S": "RESOURCE"},
-                    ":rt": {"S": resource_type},},
+                    ":rt": {"S": resource_type}, },
                 "FilterExpression": "resource_type = :rt",
-                "ScanIndexForward": True,  # Ascending order by default}
+                "ScanIndexForward": True,  # Ascending order by default
+            }
 
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
@@ -330,7 +334,7 @@ class _JobResource:
                 IndexName="GSI1",
                 KeyConditionExpression="GSI1PK = :pk AND GSI1SK = :sk",
                 ExpressionAttributeValues={":pk": {"S": "RESOURCE"},
-                    ":sk": {"S": f"RESOURCE#{resource_id}"},},)
+                    ":sk": {"S": f"RESOURCE#{resource_id}"}, }, )
 
             resources = []
             for item in response["Items"]:

@@ -38,9 +38,13 @@ def example_job_resource_minimal():
 @pytest.mark.unit
 def test_job_resource_init_valid(example_job_resource):
     """Test the JobResource constructor with valid parameters."""
-    assert (example_job_resource.job_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3")
-    assert (example_job_resource.resource_id
-        == "5e63804c-3abd-4f11-83d9-c694eb3b9de4")
+    assert (
+        example_job_resource.job_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    )
+    assert (
+        example_job_resource.resource_id
+        == "5e63804c-3abd-4f11-83d9-c694eb3b9de4"
+    )
     assert example_job_resource.instance_id == "i-0123456789abcdef0"
     assert example_job_resource.instance_type == "p3.2xlarge"
     assert example_job_resource.resource_type == "gpu"
@@ -48,230 +52,292 @@ def test_job_resource_init_valid(example_job_resource):
     assert example_job_resource.released_at == "2021-01-02T00:00:00"
     assert example_job_resource.status == "allocated"
     assert example_job_resource.gpu_count == 8
-    assert example_job_resource.resource_config == {"memory_mb": 61440,
-        "vcpus": 8,}
+    assert example_job_resource.resource_config == {
+        "memory_mb": 61440,
+        "vcpus": 8,
+    }
 
 
 @pytest.mark.unit
 def test_job_resource_init_invalid_job_id():
     """Test the JobResource constructor with invalid job_id."""
     with pytest.raises(ValueError, match="uuid must be a string"):
-        JobResource(1,  # Invalid: should be a string
+        JobResource(
+            1,  # Invalid: should be a string
             "5e63804c-3abd-4f11-83d9-c694eb3b9de4",
             "i-0123456789abcdef0",
             "p3.2xlarge",
             "gpu",
             "2021-01-01T00:00:00",
-            "allocated",)
+            "allocated",
+        )
 
     with pytest.raises(ValueError, match="uuid must be a valid"):
-        JobResource("not-a-uuid",  # Invalid: not a valid UUID format
+        JobResource(
+            "not-a-uuid",  # Invalid: not a valid UUID format
             "5e63804c-3abd-4f11-83d9-c694eb3b9de4",
             "i-0123456789abcdef0",
             "p3.2xlarge",
             "gpu",
             "2021-01-01T00:00:00",
-            "allocated",)
+            "allocated",
+        )
 
 
 @pytest.mark.unit
 def test_job_resource_init_invalid_resource_id():
     """Test the JobResource constructor with invalid resource_id."""
     with pytest.raises(ValueError, match="uuid must be a string"):
-        JobResource("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        JobResource(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             1,  # Invalid: should be a string
             "i-0123456789abcdef0",
             "p3.2xlarge",
             "gpu",
             "2021-01-01T00:00:00",
-            "allocated",)
+            "allocated",
+        )
 
     with pytest.raises(ValueError, match="uuid must be a valid"):
-        JobResource("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        JobResource(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "not-a-uuid",  # Invalid: not a valid UUID format
             "i-0123456789abcdef0",
             "p3.2xlarge",
             "gpu",
             "2021-01-01T00:00:00",
-            "allocated",)
+            "allocated",
+        )
 
 
 @pytest.mark.unit
 def test_job_resource_init_invalid_instance_id():
     """Test the JobResource constructor with invalid instance_id."""
-    with pytest.raises(ValueError, match="instance_id must be a non-empty string"):
-        JobResource("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+    with pytest.raises(
+        ValueError, match="instance_id must be a non-empty string"
+    ):
+        JobResource(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "5e63804c-3abd-4f11-83d9-c694eb3b9de4",
             "",  # Invalid: empty string
             "p3.2xlarge",
             "gpu",
             "2021-01-01T00:00:00",
-            "allocated",)
+            "allocated",
+        )
 
-    with pytest.raises(ValueError, match="instance_id must be a non-empty string"):
-        JobResource("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+    with pytest.raises(
+        ValueError, match="instance_id must be a non-empty string"
+    ):
+        JobResource(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "5e63804c-3abd-4f11-83d9-c694eb3b9de4",
             123,  # Invalid: not a string
             "p3.2xlarge",
             "gpu",
             "2021-01-01T00:00:00",
-            "allocated",)
+            "allocated",
+        )
 
 
 @pytest.mark.unit
 def test_job_resource_init_invalid_instance_type():
     """Test the JobResource constructor with invalid instance_type."""
-    with pytest.raises(ValueError, match="instance_type must be a non-empty string"):
-        JobResource("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+    with pytest.raises(
+        ValueError, match="instance_type must be a non-empty string"
+    ):
+        JobResource(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "5e63804c-3abd-4f11-83d9-c694eb3b9de4",
             "i-0123456789abcdef0",
             "",  # Invalid: empty string
             "gpu",
             "2021-01-01T00:00:00",
-            "allocated",)
+            "allocated",
+        )
 
-    with pytest.raises(ValueError, match="instance_type must be a non-empty string"):
-        JobResource("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+    with pytest.raises(
+        ValueError, match="instance_type must be a non-empty string"
+    ):
+        JobResource(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "5e63804c-3abd-4f11-83d9-c694eb3b9de4",
             "i-0123456789abcdef0",
             123,  # Invalid: not a string
             "gpu",
             "2021-01-01T00:00:00",
-            "allocated",)
+            "allocated",
+        )
 
 
 @pytest.mark.unit
 def test_job_resource_init_invalid_resource_type():
     """Test the JobResource constructor with invalid resource_type."""
     with pytest.raises(ValueError, match="resource_type must be one of"):
-        JobResource("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        JobResource(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "5e63804c-3abd-4f11-83d9-c694eb3b9de4",
             "i-0123456789abcdef0",
             "p3.2xlarge",
             "invalid_type",  # Invalid: not a valid resource type
             "2021-01-01T00:00:00",
-            "allocated",)
+            "allocated",
+        )
 
     with pytest.raises(ValueError, match="resource_type must be one of"):
-        JobResource("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        JobResource(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "5e63804c-3abd-4f11-83d9-c694eb3b9de4",
             "i-0123456789abcdef0",
             "p3.2xlarge",
             123,  # Invalid: not a string
             "2021-01-01T00:00:00",
-            "allocated",)
+            "allocated",
+        )
 
 
 @pytest.mark.unit
 def test_job_resource_init_invalid_allocated_at():
     """Test the JobResource constructor with invalid allocated_at."""
-    with pytest.raises(ValueError, match="allocated_at must be a datetime object or a string"):
-        JobResource("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+    with pytest.raises(
+        ValueError, match="allocated_at must be a datetime object or a string"
+    ):
+        JobResource(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "5e63804c-3abd-4f11-83d9-c694eb3b9de4",
             "i-0123456789abcdef0",
             "p3.2xlarge",
             "gpu",
             123,  # Invalid: not a datetime or string
-            "allocated",)
+            "allocated",
+        )
 
 
 @pytest.mark.unit
 def test_job_resource_init_invalid_status():
     """Test the JobResource constructor with invalid status."""
     with pytest.raises(ValueError, match="status must be one of"):
-        JobResource("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        JobResource(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "5e63804c-3abd-4f11-83d9-c694eb3b9de4",
             "i-0123456789abcdef0",
             "p3.2xlarge",
             "gpu",
             "2021-01-01T00:00:00",
-            "invalid_status",  # Invalid: not a valid status)
+            "invalid_status",
+        )
 
     with pytest.raises(ValueError, match="status must be one of"):
-        JobResource("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        JobResource(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "5e63804c-3abd-4f11-83d9-c694eb3b9de4",
             "i-0123456789abcdef0",
             "p3.2xlarge",
             "gpu",
             "2021-01-01T00:00:00",
-            123,  # Invalid: not a string)
+            123,
+        )
 
 
 @pytest.mark.unit
 def test_job_resource_init_invalid_gpu_count():
     """Test the JobResource constructor with invalid gpu_count."""
-    with pytest.raises(ValueError, match="gpu_count must be a non-negative integer"):
-        JobResource("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+    with pytest.raises(
+        ValueError, match="gpu_count must be a non-negative integer"
+    ):
+        JobResource(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "5e63804c-3abd-4f11-83d9-c694eb3b9de4",
             "i-0123456789abcdef0",
             "p3.2xlarge",
             "gpu",
             "2021-01-01T00:00:00",
             "allocated",
-            gpu_count=-1,  # Invalid: negative number)
+            gpu_count=-1,
+        )
 
-    with pytest.raises(ValueError, match="gpu_count must be a non-negative integer"):
-        JobResource("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+    with pytest.raises(
+        ValueError, match="gpu_count must be a non-negative integer"
+    ):
+        JobResource(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "5e63804c-3abd-4f11-83d9-c694eb3b9de4",
             "i-0123456789abcdef0",
             "p3.2xlarge",
             "gpu",
             "2021-01-01T00:00:00",
             "allocated",
-            gpu_count="8",  # Invalid: not an integer)
+            gpu_count="8",
+        )
 
 
 @pytest.mark.unit
 def test_job_resource_init_invalid_released_at():
     """Test the JobResource constructor with invalid released_at."""
-    with pytest.raises(ValueError, match="released_at must be a datetime object or a string"):
-        JobResource("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+    with pytest.raises(
+        ValueError, match="released_at must be a datetime object or a string"
+    ):
+        JobResource(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "5e63804c-3abd-4f11-83d9-c694eb3b9de4",
             "i-0123456789abcdef0",
             "p3.2xlarge",
             "gpu",
             "2021-01-01T00:00:00",
             "allocated",
-            released_at=123,  # Invalid: not a datetime or string)
+            released_at=123,
+        )
 
 
 @pytest.mark.unit
 def test_job_resource_init_invalid_resource_config():
     """Test the JobResource constructor with invalid resource_config."""
-    with pytest.raises(ValueError, match="resource_config must be a dictionary"):
-        JobResource("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+    with pytest.raises(
+        ValueError, match="resource_config must be a dictionary"
+    ):
+        JobResource(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "5e63804c-3abd-4f11-83d9-c694eb3b9de4",
             "i-0123456789abcdef0",
             "p3.2xlarge",
             "gpu",
             "2021-01-01T00:00:00",
             "allocated",
-            resource_config="not_a_dict",  # Invalid: not a dictionary)
+            resource_config="not_a_dict",
+        )
 
 
 @pytest.mark.unit
 def test_job_resource_key(example_job_resource):
     """Test the JobResource.key() method."""
-    assert example_job_resource.key() == {"PK": {"S": "JOB#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-        "SK": {"S": "RESOURCE#5e63804c-3abd-4f11-83d9-c694eb3b9de4"},}
+    assert example_job_resource.key() == {
+        "PK": {"S": "JOB#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "SK": {"S": "RESOURCE#5e63804c-3abd-4f11-83d9-c694eb3b9de4"},
+    }
 
 
 @pytest.mark.unit
 def test_job_resource_gsi1_key(example_job_resource):
     """Test the JobResource.gsi1_key() method."""
-    assert example_job_resource.gsi1_key() == {"GSI1PK": {"S": "RESOURCE"},
-        "GSI1SK": {"S": "RESOURCE#5e63804c-3abd-4f11-83d9-c694eb3b9de4"},}
+    assert example_job_resource.gsi1_key() == {
+        "GSI1PK": {"S": "RESOURCE"},
+        "GSI1SK": {"S": "RESOURCE#5e63804c-3abd-4f11-83d9-c694eb3b9de4"},
+    }
 
 
 @pytest.mark.unit
-def test_job_resource_to_item(example_job_resource, example_job_resource_minimal):
+def test_job_resource_to_item(
+    example_job_resource, example_job_resource_minimal
+):
     """Test the JobResource.to_item() method."""
     # Test with full job resource
     item = example_job_resource.to_item()
     assert item["PK"] == {"S": "JOB#3f52804b-2fad-4e00-92c8-b593da3a8ed3"}
     assert item["SK"] == {"S": "RESOURCE#5e63804c-3abd-4f11-83d9-c694eb3b9de4"}
     assert item["GSI1PK"] == {"S": "RESOURCE"}
-    assert item["GSI1SK"] == {"S": "RESOURCE#5e63804c-3abd-4f11-83d9-c694eb3b9de4"}
+    assert item["GSI1SK"] == {
+        "S": "RESOURCE#5e63804c-3abd-4f11-83d9-c694eb3b9de4"
+    }
     assert item["TYPE"] == {"S": "JOB_RESOURCE"}
     assert item["job_id"] == {"S": "3f52804b-2fad-4e00-92c8-b593da3a8ed3"}
     assert item["resource_id"] == {"S": "5e63804c-3abd-4f11-83d9-c694eb3b9de4"}
@@ -313,9 +379,13 @@ def test_job_resource_repr(example_job_resource):
 def test_job_resource_iter(example_job_resource):
     """Test the JobResource.__iter__() method."""
     job_resource_dict = dict(example_job_resource)
-    assert (job_resource_dict["job_id"] == "3f52804b-2fad-4e00-92c8-b593da3a8ed3")
-    assert (job_resource_dict["resource_id"]
-        == "5e63804c-3abd-4f11-83d9-c694eb3b9de4")
+    assert (
+        job_resource_dict["job_id"] == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    )
+    assert (
+        job_resource_dict["resource_id"]
+        == "5e63804c-3abd-4f11-83d9-c694eb3b9de4"
+    )
     assert job_resource_dict["instance_id"] == "i-0123456789abcdef0"
     assert job_resource_dict["instance_type"] == "p3.2xlarge"
     assert job_resource_dict["resource_type"] == "gpu"
@@ -323,8 +393,10 @@ def test_job_resource_iter(example_job_resource):
     assert job_resource_dict["released_at"] == "2021-01-02T00:00:00"
     assert job_resource_dict["status"] == "allocated"
     assert job_resource_dict["gpu_count"] == 8
-    assert job_resource_dict["resource_config"] == {"memory_mb": 61440,
-        "vcpus": 8,}
+    assert job_resource_dict["resource_config"] == {
+        "memory_mb": 61440,
+        "vcpus": 8,
+    }
 
 
 @pytest.mark.unit
@@ -379,8 +451,12 @@ def test_itemToJobResource(example_job_resource, example_job_resource_minimal):
         itemToJobResource({"PK": {"S": "JOB#id"}, "SK": {"S": "RESOURCE#id"}})
 
     # Test with invalid item format
-    with pytest.raises(ValueError, match="Error converting item to JobResource"):
-        itemToJobResource({"PK": {"S": "JOB#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+    with pytest.raises(
+        ValueError, match="Error converting item to JobResource"
+    ):
+        itemToJobResource(
+            {
+                "PK": {"S": "JOB#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
                 "SK": {"S": "RESOURCE#5e63804c-3abd-4f11-83d9-c694eb3b9de4"},
                 "TYPE": {"S": "JOB_RESOURCE"},
                 "job_id": {"S": "3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
@@ -389,24 +465,36 @@ def test_itemToJobResource(example_job_resource, example_job_resource_minimal):
                 "instance_type": {"S": "p3.2xlarge"},
                 "resource_type": {"S": "gpu"},
                 "allocated_at": {"S": "2021-01-01T00:00:00"},
-                "status": {"INVALID_TYPE": "allocated"},  # Invalid type})
+                "status": {"INVALID_TYPE": "allocated"},
+            }
+        )
 
 
 @pytest.mark.unit
 def test_parse_dynamodb_map():
     """Test the _parse_dynamodb_map function."""
     # Create a complex DynamoDB map
-    dynamodb_map = {"string": {"S": "value"},
+    dynamodb_map = {
+        "string": {"S": "value"},
         "number": {"N": "42"},
         "decimal": {"N": "3.14"},
         "boolean": {"BOOL": True},
         "null": {"NULL": True},
-        "nested_map": {"M": {"inner_string": {"S": "inner_value"},
-                "inner_number": {"N": "10"},}},
-        "list": {"L": [{"S": "item1"},
+        "nested_map": {
+            "M": {
+                "inner_string": {"S": "inner_value"},
+                "inner_number": {"N": "10"},
+            }
+        },
+        "list": {
+            "L": [
+                {"S": "item1"},
                 {"N": "2"},
                 {"BOOL": False},
-                {"M": {"key": {"S": "value"}}},]},}
+                {"M": {"key": {"S": "value"}}},
+            ]
+        },
+    }
 
     # Convert to Python values and test
     result = _parse_dynamodb_map(dynamodb_map)
