@@ -22,6 +22,7 @@ from .entities.job import Job, itemToJob
 from .entities.job_status import JobStatus, itemToJobStatus
 from .entities.job_resource import JobResource, itemToJobResource
 from .entities.job_metric import JobMetric, itemToJobMetric
+from .entities.job_checkpoint import JobCheckpoint, itemToJobCheckpoint
 
 # Only after entities are imported, import data module classes
 from .data.dynamo_client import DynamoClient

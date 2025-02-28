@@ -15,4 +15,5 @@ from .job import Job, itemToJob
 from .job_status import JobStatus, itemToJobStatus
 from .job_resource import JobResource, itemToJobResource
 from .job_metric import JobMetric, itemToJobMetric
+from .job_checkpoint import JobCheckpoint, itemToJobCheckpoint
 from .util import assert_valid_uuid
