@@ -69,7 +69,7 @@ class _GPTValidation:
         """
         try:
             for i in range(0, len(validations), CHUNK_SIZE):
-                chunk = validations[i : i + CHUNK_SIZE]
+                chunk = validations[i:i + CHUNK_SIZE]
                 request_items = [
                     {"PutRequest": {"Item": v.to_item()}} for v in chunk
                 ]
@@ -185,7 +185,7 @@ class _GPTValidation:
         """
         try:
             for i in range(0, len(validations), CHUNK_SIZE):
-                chunk = validations[i : i + CHUNK_SIZE]
+                chunk = validations[i:i + CHUNK_SIZE]
                 request_items = [
                     {"DeleteRequest": {"Key": validation.key()}}
                     for validation in chunk

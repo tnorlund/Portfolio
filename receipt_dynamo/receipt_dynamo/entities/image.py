@@ -209,15 +209,15 @@ class Image:
         if not isinstance(other, Image):
             return False
         return (
-            self.image_id == other.image_id
-            and self.width == other.width
-            and self.height == other.height
-            and self.timestamp_added == other.timestamp_added
-            and self.raw_s3_bucket == other.raw_s3_bucket
-            and self.raw_s3_key == other.raw_s3_key
-            and self.sha256 == other.sha256
-            and self.cdn_s3_bucket == other.cdn_s3_bucket
-            and self.cdn_s3_key == other.cdn_s3_key
+            self.image_id == other.image_id and
+            self.width == other.width and
+            self.height == other.height and
+            self.timestamp_added == other.timestamp_added and
+            self.raw_s3_bucket == other.raw_s3_bucket and
+            self.raw_s3_key == other.raw_s3_key and
+            self.sha256 == other.sha256 and
+            self.cdn_s3_bucket == other.cdn_s3_bucket and
+            self.cdn_s3_key == other.cdn_s3_key
         )
 
     def __hash__(self) -> int:

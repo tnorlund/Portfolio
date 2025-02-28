@@ -167,8 +167,8 @@ class _Image:
             )
 
         try:
-            for i in range(0, len(images), 25):
-                chunk = images[i : i + 25]
+            for i in range(0, len(images), CHUNK_SIZE):
+                chunk = images[i:i + CHUNK_SIZE]
                 request_items = [
                     {"PutRequest": {"Item": image.to_item()}}
                     for image in chunk
@@ -312,8 +312,8 @@ class _Image:
                 "All items in the images list must be instances of the Image class."
             )
 
-        for i in range(0, len(images), 25):
-            chunk = images[i : i + 25]
+        for i in range(0, len(images), CHUNK_SIZE):
+            chunk = images[i:i + CHUNK_SIZE]
             transact_items = []
             for image in chunk:
                 transact_items.append(
@@ -529,7 +529,7 @@ class _Image:
         """
         try:
             for i in range(0, len(images), CHUNK_SIZE):
-                chunk = images[i : i + CHUNK_SIZE]
+                chunk = images[i:i + CHUNK_SIZE]
                 request_items = [
                     {"DeleteRequest": {"Key": image.key()}} for image in chunk
                 ]
@@ -665,7 +665,6 @@ class _Image:
             next_key = response.get("LastEvaluatedKey")
 
             leftover_image_id = None
-            leftover_image_key = None
             last_consumed_image_key = None
 
             for item in items:
@@ -687,10 +686,11 @@ class _Image:
                         # This is the (limit+1)-th image => leftover
                         leftover_img = itemToImage(item)
                         leftover_image_id = leftover_img.image_id
-                        leftover_image_key = {
-                            **leftover_img.key(),
-                            **leftover_img.gsi1_key(),
-                        }
+                        # leftover_image_key not used currently but may be needed in future
+                        # leftover_image_key = {
+                        #     **leftover_img.key(),
+                        #     **leftover_img.gsi1_key(),
+                        # }
 
                 # LINE or RECEIPT item
                 elif item_type in ("LINE", "RECEIPT"):
