@@ -1,30 +1,33 @@
+import hashlib
+import json
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from copy import deepcopy
-import hashlib
 from io import BytesIO
-from PIL import Image as PIL_Image, UnidentifiedImageError, ImageOps
-import json
 from typing import Any, Dict, List, Tuple
+
 import boto3
 from botocore.exceptions import ClientError
-from receipt_dynamo.data._gpt import gpt_request_initial_tagging
-from receipt_dynamo.data.dynamo_client import DynamoClient
+from PIL import Image as PIL_Image
+from PIL import ImageOps, UnidentifiedImageError
+
 from receipt_dynamo.data._geometry import (
+    box_points,
     invert_affine,
     min_area_rect,
-    box_points,
 )
+from receipt_dynamo.data._gpt import gpt_request_initial_tagging
+from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import (
+    GPTInitialTagging,
     Image,
-    Line,
-    Word,
     Letter,
+    Line,
     Receipt,
+    ReceiptLetter,
     ReceiptLine,
     ReceiptWord,
-    ReceiptLetter,
-    GPTInitialTagging,
+    Word,
 )
 from receipt_dynamo.entities.receipt_word_tag import ReceiptWordTag
 from receipt_dynamo.entities.word_tag import WordTag
@@ -63,9 +66,13 @@ def process(
         try:
             # We only check for the object if it's not passed in
             if ocr_dict is None:
-                s3.head_object(Bucket=raw_bucket_name, Key=f"{raw_prefix}/{uuid}.json")
+                s3.head_object(
+                    Bucket=raw_bucket_name, Key=f"{raw_prefix}/{uuid}.json"
+                )
             if png_data is None:
-                s3.head_object(Bucket=raw_bucket_name, Key=f"{raw_prefix}/{uuid}.png")
+                s3.head_object(
+                    Bucket=raw_bucket_name, Key=f"{raw_prefix}/{uuid}.png"
+                )
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code == "NoSuchBucket":
@@ -147,7 +154,9 @@ def process(
         if error_code == "NoSuchBucket":
             raise ValueError(f"Bucket {cdn_bucket_name} not found")
         elif error_code == "AccessDenied":
-            raise ValueError(f"Access denied to s3://{cdn_bucket_name}/{cdn_prefix}")
+            raise ValueError(
+                f"Access denied to s3://{cdn_bucket_name}/{cdn_prefix}"
+            )
         else:
             raise
 
@@ -206,7 +215,9 @@ def process(
             buffer.seek(0)
             png_data = buffer.getvalue()
         except Exception as e:
-            raise ValueError(f"Error processing cluster {cluster_id}: {e}") from e
+            raise ValueError(
+                f"Error processing cluster {cluster_id}: {e}"
+            ) from e
 
         # Convert the receipt image to JPEG and upload to the CDN bucket.
         try:
@@ -371,7 +382,8 @@ def update_words_with_tags(receipt_words: list, tags: list[Tag]) -> None:
         if not hasattr(word, "tags") or word.tags is None:
             word.tags = []
 
-    # For each tag, update the matching Word object if the tag is not already present.
+    # For each tag, update the matching Word object if the tag is not already
+    # present.
     for tag in tags:
         for word in receipt_words:
             if word.line_id == tag.line_id and word.word_id == tag.word_id:
@@ -409,7 +421,12 @@ def join_overlapping_clusters(
         # Collect absolute coords for all corners in the cluster
         pts_abs = []
         for ln in lines_in_cluster:
-            for corner in [ln.top_left, ln.top_right, ln.bottom_left, ln.bottom_right]:
+            for corner in [
+                ln.top_left,
+                ln.top_right,
+                ln.bottom_left,
+                ln.bottom_right,
+            ]:
                 x_abs = corner["x"] * image_width
                 # flip Y to absolute coords
                 y_abs = (1.0 - corner["y"]) * image_height
@@ -426,11 +443,13 @@ def join_overlapping_clusters(
         # Order them top-left, top-right, bottom-right, bottom-left
         box_4_ordered = reorder_box_points(box_4)
 
-        # Store this polygon in a dict (matching what dev.py’s IoU code expects)
+        # Store this polygon in a dict (matching what dev.py’s IoU code
+        # expects)
         cluster_bboxes[cid] = {"box_points": box_4_ordered}
 
     # Step 3: Use a Union-Find structure to merge clusters that overlap
-    parent = {cid: cid for cid in valid_cluster_ids}  # each cluster is its own parent
+    # each cluster is its own parent
+    parent = {cid: cid for cid in valid_cluster_ids}
 
     def find(x):
         # Path compression
@@ -461,7 +480,9 @@ def join_overlapping_clusters(
         n = len(polygon)
         for i in range(n):
             j = (i + 1) % n
-            area += polygon[i][0] * polygon[j][1] - polygon[j][0] * polygon[i][1]
+            area += (
+                polygon[i][0] * polygon[j][1] - polygon[j][0] * polygon[i][1]
+            )
         return abs(area) / 2.0
 
     def is_inside(p, cp1, cp2):
@@ -616,7 +637,9 @@ def process_ocr_dict(
         )
         lines.append(line_obj)
 
-        for word_idx, word_data in enumerate(line_data.get("words", []), start=1):
+        for word_idx, word_data in enumerate(
+            line_data.get("words", []), start=1
+        ):
             word_obj = Word(
                 image_id=image_id,
                 line_id=line_idx,
@@ -656,7 +679,9 @@ def process_ocr_dict(
     return lines, words, letters
 
 
-def deduplicate_receipt_word_tags(tags: List[ReceiptWordTag]) -> List[ReceiptWordTag]:
+def deduplicate_receipt_word_tags(
+    tags: List[ReceiptWordTag],
+) -> List[ReceiptWordTag]:
     """
     Deduplicate a list of ReceiptWordTag objects by using their identifying attributes.
 
@@ -671,7 +696,8 @@ def deduplicate_receipt_word_tags(tags: List[ReceiptWordTag]) -> List[ReceiptWor
     """
     unique = {}
     for tag in tags:
-        # Build a unique key; we use the same fields that are used in key() for DynamoDB.
+        # Build a unique key; we use the same fields that are used in key() for
+        # DynamoDB.
         dedup_key = (
             tag.image_id,
             tag.receipt_id,
@@ -766,13 +792,17 @@ def transform_cluster(
     4) Warp the line/word/letter coords so they match the final orientation
     5) Return the receipt record plus the warped image and OCR objects
     """
-    import copy
     from datetime import datetime, timezone
 
     # 1) Collect cluster points in absolute image coordinates
     points_abs = []
     for ln in cluster_lines:
-        for corner in [ln.top_left, ln.top_right, ln.bottom_left, ln.bottom_right]:
+        for corner in [
+            ln.top_left,
+            ln.top_right,
+            ln.bottom_left,
+            ln.bottom_right,
+        ]:
             x_abs = corner["x"] * image_obj.width
             y_abs = (1 - corner["y"]) * image_obj.height  # flip Y
             points_abs.append((x_abs, y_abs))
@@ -898,7 +928,9 @@ def transform_cluster(
             new_height=h,
             flip_y=True,
         )
-        receipt_lines.append(ReceiptLine(**dict(ln_copy), receipt_id=cluster_id))
+        receipt_lines.append(
+            ReceiptLine(**dict(ln_copy), receipt_id=cluster_id)
+        )
 
     receipt_words = []
     for wd in cluster_words:
@@ -916,7 +948,9 @@ def transform_cluster(
             new_height=h,
             flip_y=True,
         )
-        receipt_words.append(ReceiptWord(**dict(wd_copy), receipt_id=cluster_id))
+        receipt_words.append(
+            ReceiptWord(**dict(wd_copy), receipt_id=cluster_id)
+        )
 
     receipt_letters = []
     for lt in cluster_letters:
@@ -934,12 +968,16 @@ def transform_cluster(
             new_height=h,
             flip_y=True,
         )
-        receipt_letters.append(ReceiptLetter(**dict(lt_copy), receipt_id=cluster_id))
+        receipt_letters.append(
+            ReceiptLetter(**dict(lt_copy), receipt_id=cluster_id)
+        )
 
     return affine_img, r, receipt_lines, receipt_words, receipt_letters
 
 
-def reorder_box_points(pts: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
+def reorder_box_points(
+    pts: List[Tuple[float, float]]
+) -> List[Tuple[float, float]]:
     """
     Given four points in any order, return them in a consistent order:
     top-left, top-right, bottom-right, bottom-left.

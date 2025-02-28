@@ -1,15 +1,12 @@
 import json
-from pathlib import Path
-import subprocess
 import platform
+import subprocess
 import tempfile
+from pathlib import Path
 from typing import Any, Dict, List, Tuple
 from uuid import uuid4
-from receipt_dynamo.entities import (
-    Line,
-    Word,
-    Letter,
-)
+
+from receipt_dynamo.entities import Letter, Line, Word
 
 
 def _process_ocr_dict(
@@ -32,7 +29,9 @@ def _process_ocr_dict(
         )
         lines.append(line_obj)
 
-        for word_idx, word_data in enumerate(line_data.get("words", []), start=1):
+        for word_idx, word_data in enumerate(
+            line_data.get("words", []), start=1
+        ):
             word_obj = Word(
                 image_id=image_id,
                 line_id=line_idx,
@@ -85,7 +84,11 @@ def apple_vision_ocr(image_paths: list[str]) -> bool:
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_dir = Path(temp_dir)
         try:
-            swift_args = ["swift", str(swift_script), str(temp_dir)] + image_paths
+            swift_args = [
+                "swift",
+                str(swift_script),
+                str(temp_dir),
+            ] + image_paths
             subprocess.run(
                 swift_args,
                 check=True,

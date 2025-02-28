@@ -1,7 +1,8 @@
-from typing import Any, Dict, Generator, List, Optional, Tuple, Union
-from datetime import datetime
 import json
-from receipt_dynamo.entities.util import assert_valid_uuid, _repr_str
+from datetime import datetime
+from typing import Any, Dict, Generator, Optional, Tuple, Union
+
+from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
 
 class JobMetric:
@@ -138,7 +139,8 @@ class JobMetric:
         elif isinstance(self.value, dict):
             item["value"] = {"M": self._dict_to_dynamodb_map(self.value)}
         else:
-            # This should not happen due to validation in __init__, but just in case
+            # This should not happen due to validation in __init__, but just in
+            # case
             item["value"] = {"S": json.dumps(self.value)}
 
         # Add unit if provided
@@ -169,7 +171,9 @@ class JobMetric:
             if isinstance(v, dict):
                 result[k] = {"M": self._dict_to_dynamodb_map(v)}
             elif isinstance(v, list):
-                result[k] = {"L": [self._to_dynamodb_value(item) for item in v]}
+                result[k] = {
+                    "L": [self._to_dynamodb_value(item) for item in v]
+                }
             elif isinstance(v, str):
                 result[k] = {"S": v}
             elif isinstance(v, (int, float)):
@@ -267,7 +271,9 @@ class JobMetric:
         """
         # Convert value to string if it's a dict since dicts aren't hashable
         value_for_hash = (
-            json.dumps(self.value) if isinstance(self.value, dict) else self.value
+            json.dumps(self.value)
+            if isinstance(self.value, dict)
+            else self.value
         )
 
         return hash(
@@ -301,7 +307,16 @@ def itemToJobMetric(item: dict) -> JobMetric:
         additional_keys = (
             item.keys()
             - required_keys
-            - {"GSI1PK", "GSI1SK", "GSI2PK", "GSI2SK", "unit", "step", "epoch", "TYPE"}
+            - {
+                "GSI1PK",
+                "GSI1SK",
+                "GSI2PK",
+                "GSI2SK",
+                "unit",
+                "step",
+                "epoch",
+                "TYPE",
+            }
         )
         raise ValueError(
             f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"

@@ -1,6 +1,6 @@
 # test_gpt_tagging.py
 import pytest
-from datetime import datetime
+
 from receipt_dynamo.entities.gpt_initial_tagging import (
     GPTInitialTagging,
     itemToGPTInitialTagging,
@@ -103,7 +103,9 @@ def test_gpt_tagging_init_invalid_query():
 @pytest.mark.unit
 def test_gpt_tagging_init_invalid_response():
     """Test that GPTInitialTagging raises ValueError for an invalid response."""
-    with pytest.raises(ValueError, match="response must be a non-empty string"):
+    with pytest.raises(
+        ValueError, match="response must be a non-empty string"
+    ):
         GPTInitialTagging(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=7,
@@ -111,7 +113,9 @@ def test_gpt_tagging_init_invalid_response():
             response="",
             timestamp_added="2021-01-01T00:00:00",
         )
-    with pytest.raises(ValueError, match="response must be a non-empty string"):
+    with pytest.raises(
+        ValueError, match="response must be a non-empty string"
+    ):
         GPTInitialTagging(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=7,
@@ -125,7 +129,8 @@ def test_gpt_tagging_init_invalid_response():
 def test_gpt_tagging_init_invalid_timestamp():
     """Test that GPTInitialTagging raises ValueError for an invalid timestamp_added."""
     with pytest.raises(
-        ValueError, match="timestamp_added must be a datetime object or a string"
+        ValueError,
+        match="timestamp_added must be a datetime object or a string",
     ):
         GPTInitialTagging(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -242,5 +247,7 @@ def test_item_to_gpt_tagging_invalid_format():
         "response": {"S": "Yes, it appears to be the total."},
         "timestamp_added": {"S": "2021-01-01T00:00:00"},
     }
-    with pytest.raises(ValueError, match="Error converting item to GPTInitialTagging"):
+    with pytest.raises(
+        ValueError, match="Error converting item to GPTInitialTagging"
+    ):
         itemToGPTInitialTagging(bad_item)

@@ -1,8 +1,10 @@
 # infra/lambda_layer/python/test/integration/test__receipt_window.py
-import pytest
-import boto3
 from uuid import uuid4
+
+import boto3
+import pytest
 from botocore.exceptions import ClientError
+
 from receipt_dynamo import DynamoClient, ReceiptWindow
 
 
@@ -21,14 +23,18 @@ def example_receipt_window():
 
 
 @pytest.mark.integration
-def test_addReceiptWindow_raises_value_error_for_none_receipt_window(dynamodb_table):
+def test_addReceiptWindow_raises_value_error_for_none_receipt_window(
+    dynamodb_table,
+):
     """
     Checks that addReceiptWindow raises ValueError when the 'receipt_window'
     argument is None.
     """
     client = DynamoClient(dynamodb_table)
 
-    with pytest.raises(ValueError, match="ReceiptWindow parameter is required"):
+    with pytest.raises(
+        ValueError, match="ReceiptWindow parameter is required"
+    ):
         client.addReceiptWindow(None)
 
 
@@ -55,7 +61,8 @@ def test_addReceiptWindow_raises_conditional_check_failed(
     """
     client = DynamoClient(dynamodb_table)
 
-    # Patch the underlying put_item to raise a ClientError with "ConditionalCheckFailedException"
+    # Patch the underlying put_item to raise a ClientError with
+    # "ConditionalCheckFailedException"
     mock_put = mocker.patch.object(
         client._client,
         "put_item",
@@ -86,7 +93,8 @@ def test_addReceiptWindow_raises_resource_not_found(
     """
     client = DynamoClient(dynamodb_table)
 
-    # Patch the underlying put_item to raise a ClientError with "ConditionalCheckFailedException"
+    # Patch the underlying put_item to raise a ClientError with
+    # "ConditionalCheckFailedException"
     mock_put = mocker.patch.object(
         client._client,
         "put_item",
@@ -101,7 +109,9 @@ def test_addReceiptWindow_raises_resource_not_found(
         ),
     )
 
-    with pytest.raises(Exception, match="Could not add receipt window to DynamoDB"):
+    with pytest.raises(
+        Exception, match="Could not add receipt window to DynamoDB"
+    ):
         client.addReceiptWindow(example_receipt_window)
 
     mock_put.assert_called_once()
@@ -211,21 +221,27 @@ def test_addReceiptWindow_success(dynamodb_table, example_receipt_window):
     response = dynamo.get_item(
         TableName=dynamodb_table,
         Key={
-            "PK": {"S": f"IMAGE#{example_receipt_window.image_id}"},
+            "PK": {
+                "S": f"IMAGE#{
+                    example_receipt_window.image_id}"
+            },
             "SK": {
-                "S": f"RECEIPT#{example_receipt_window.receipt_id:05d}#RECEIPT_WINDOW#{example_receipt_window.corner_name}"
+                "S": f"RECEIPT#{
+                    example_receipt_window.receipt_id:05d}#RECEIPT_WINDOW#{
+                    example_receipt_window.corner_name}"
             },
         },
     )
     assert "Item" in response, "The receipt window item should be in DynamoDB"
-    # Optionally compare the full item to what you'd expect from example_receipt_window.to_item()
+    # Optionally compare the full item to what you'd expect from
+    # example_receipt_window.to_item()
     expected = example_receipt_window.to_item()
     assert (
         response["Item"] == expected
     ), "DynamoDB item does not match expected ReceiptWindow data"
 
 
-# ------------------------------- addReceiptWindows Tests -------------------------------
+# ------------------------------- addReceiptWindows Tests ----------------
 
 
 @pytest.mark.integration
@@ -235,7 +251,9 @@ def test_addReceiptWindows_raises_value_error_for_none(dynamodb_table):
     argument is None.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="receipt_windows parameter is required"):
+    with pytest.raises(
+        ValueError, match="receipt_windows parameter is required"
+    ):
         client.addReceiptWindows(None)
 
 
@@ -246,7 +264,9 @@ def test_addReceiptWindows_raises_value_error_for_non_list(dynamodb_table):
     not actually a list.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="receipt_windows must be provided as a list"):
+    with pytest.raises(
+        ValueError, match="receipt_windows must be provided as a list"
+    ):
         client.addReceiptWindows("not-a-list")
 
 
@@ -290,7 +310,9 @@ def test_addReceiptWindows_raises_resource_not_found(
         ),
     )
 
-    with pytest.raises(Exception, match="Could not add receipt windows to DynamoDB"):
+    with pytest.raises(
+        Exception, match="Could not add receipt windows to DynamoDB"
+    ):
         client.addReceiptWindows([example_receipt_window])
 
     mock_batch.assert_called_once()
@@ -350,7 +372,9 @@ def test_addReceiptWindows_raises_validation_exception(
         ),
     )
 
-    with pytest.raises(ValueError, match="One or more parameters given were invalid"):
+    with pytest.raises(
+        ValueError, match="One or more parameters given were invalid"
+    ):
         client.addReceiptWindows([example_receipt_window])
 
     mock_batch.assert_called_once()
@@ -417,7 +441,9 @@ def test_addReceiptWindows_raises_unknown_exception(
 
 
 @pytest.mark.integration
-def test_addReceiptWindows_success_inserts_data(dynamodb_table, example_receipt_window):
+def test_addReceiptWindows_success_inserts_data(
+    dynamodb_table, example_receipt_window
+):
     """
     Checks that addReceiptWindows correctly persists multiple items to DynamoDB.
     """
@@ -452,14 +478,21 @@ def test_addReceiptWindows_success_inserts_data(dynamodb_table, example_receipt_
         response = dynamo.get_item(
             TableName=dynamodb_table,
             Key={
-                "PK": {"S": f"IMAGE#{rw.image_id}"},
+                "PK": {
+                    "S": f"IMAGE#{
+                        rw.image_id}"
+                },
                 "SK": {
-                    "S": f"RECEIPT#{rw.receipt_id:05d}#RECEIPT_WINDOW#{rw.corner_name}"
+                    "S": f"RECEIPT#{
+                        rw.receipt_id:05d}#RECEIPT_WINDOW#{
+                            rw.corner_name}"
                 },
             },
         )
         assert "Item" in response, f"Item {i} should exist in DynamoDB"
-        assert response["Item"] == rw.to_item(), f"Item {i} data mismatch in DynamoDB"
+        assert (
+            response["Item"] == rw.to_item()
+        ), f"Item {i} data mismatch in DynamoDB"
 
 
 @pytest.mark.integration
@@ -492,7 +525,8 @@ def test_addReceiptWindows_unprocessed_items_retry_partial_mock(
     real_batch_write_item = client._client.batch_write_item
 
     # 2) We'll keep track of how many times we've invoked the function
-    #    so the first call can return an unprocessed item, the second can succeed.
+    # so the first call can return an unprocessed item, the second can
+    # succeed.
     call_count = {"value": 0}  # Use a dict or mutable object for closure usage
 
     def custom_side_effect(*args, **kwargs):
@@ -504,7 +538,7 @@ def test_addReceiptWindows_unprocessed_items_retry_partial_mock(
            so the retry logic sees that everything was processed.
         """
         call_count["value"] += 1
-        response = real_batch_write_item(*args, **kwargs)
+        real_batch_write_item(*args, **kwargs)
 
         if call_count["value"] == 1:
             # Pretend that rw2 was unprocessed on the first call
@@ -539,18 +573,28 @@ def test_addReceiptWindows_unprocessed_items_retry_partial_mock(
         response = dynamo.get_item(
             TableName=dynamodb_table,
             Key={
-                "PK": {"S": f"IMAGE#{rw.image_id}"},
+                "PK": {
+                    "S": f"IMAGE#{
+                        rw.image_id}"
+                },
                 "SK": {
-                    "S": f"RECEIPT#{rw.receipt_id:05d}#RECEIPT_WINDOW#{rw.corner_name}"
+                    "S": f"RECEIPT#{
+                        rw.receipt_id:05d}#RECEIPT_WINDOW#{
+                            rw.corner_name}"
                 },
             },
             ConsistentRead=True,
         )
-        assert "Item" in response, f"Receipt window {rw.receipt_id} should exist."
-        assert response["Item"] == rw.to_item(), "Item data mismatch in DynamoDB."
+        assert (
+            "Item" in response
+        ), f"Receipt window {
+            rw.receipt_id} should exist."
+        assert (
+            response["Item"] == rw.to_item()
+        ), "Item data mismatch in DynamoDB."
 
 
-# ------------------------------- deleteReceiptWindows Tests -------------------------------
+# ------------------------------- deleteReceiptWindows Tests -------------
 
 
 @pytest.mark.integration
@@ -568,9 +612,14 @@ def test_deleteReceiptWindows_success(dynamodb_table, example_receipt_window):
     response = dynamo.get_item(
         TableName=dynamodb_table,
         Key={
-            "PK": {"S": f"IMAGE#{example_receipt_window.image_id}"},
+            "PK": {
+                "S": f"IMAGE#{
+                    example_receipt_window.image_id}"
+            },
             "SK": {
-                "S": f"RECEIPT#{example_receipt_window.receipt_id:05d}#RECEIPT_WINDOW#{example_receipt_window.corner_name}"
+                "S": f"RECEIPT#{
+                    example_receipt_window.receipt_id:05d}#RECEIPT_WINDOW#{
+                    example_receipt_window.corner_name}"
             },
         },
     )
@@ -583,9 +632,14 @@ def test_deleteReceiptWindows_success(dynamodb_table, example_receipt_window):
     response = dynamo.get_item(
         TableName=dynamodb_table,
         Key={
-            "PK": {"S": f"IMAGE#{example_receipt_window.image_id}"},
+            "PK": {
+                "S": f"IMAGE#{
+                    example_receipt_window.image_id}"
+            },
             "SK": {
-                "S": f"RECEIPT#{example_receipt_window.receipt_id:05d}#RECEIPT_WINDOW#{example_receipt_window.corner_name}"
+                "S": f"RECEIPT#{
+                    example_receipt_window.receipt_id:05d}#RECEIPT_WINDOW#{
+                    example_receipt_window.corner_name}"
             },
         },
     )
@@ -612,13 +666,18 @@ def test_deleteReceiptWindows_unprocessed_items_retry(
     def custom_side_effect(*args, **kwargs):
         call_count["value"] += 1
         # Call the real method so that deletion actually occurs.
-        response = real_batch_write_item(*args, **kwargs)
+        real_batch_write_item(*args, **kwargs)
         if call_count["value"] == 1:
-            # Simulate that the deletion for this item was not processed on the first call.
+            # Simulate that the deletion for this item was not processed on the
+            # first call.
             return {
                 "UnprocessedItems": {
                     client.table_name: [
-                        {"DeleteRequest": {"Key": example_receipt_window.key()}}
+                        {
+                            "DeleteRequest": {
+                                "Key": example_receipt_window.key()
+                            }
+                        }
                     ]
                 }
             }
@@ -642,9 +701,14 @@ def test_deleteReceiptWindows_unprocessed_items_retry(
     response = dynamo.get_item(
         TableName=dynamodb_table,
         Key={
-            "PK": {"S": f"IMAGE#{example_receipt_window.image_id}"},
+            "PK": {
+                "S": f"IMAGE#{
+                    example_receipt_window.image_id}"
+            },
             "SK": {
-                "S": f"RECEIPT#{example_receipt_window.receipt_id:05d}#RECEIPT_WINDOW#{example_receipt_window.corner_name}"
+                "S": f"RECEIPT#{
+                    example_receipt_window.receipt_id:05d}#RECEIPT_WINDOW#{
+                    example_receipt_window.corner_name}"
             },
         },
     )
@@ -658,7 +722,8 @@ def test_deleteReceiptWindows_raises_value_error_for_none(dynamodb_table):
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(
-        ValueError, match="receipt_windows parameter is required and cannot be None."
+        ValueError,
+        match="receipt_windows parameter is required and cannot be None.",
     ):
         client.deleteReceiptWindows(None)
 
@@ -671,7 +736,9 @@ def test_deleteReceiptWindows_raises_value_error_for_non_list(
     Verifies that deleteReceiptWindows raises a ValueError when the input is not a list.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="receipt_windows must be provided as a list."):
+    with pytest.raises(
+        ValueError, match="receipt_windows must be provided as a list."
+    ):
         client.deleteReceiptWindows("not-a-list")
 
 
@@ -756,11 +823,18 @@ def test_deleteReceiptWindows_raises_validation_exception(
         client._client,
         "batch_write_item",
         side_effect=ClientError(
-            {"Error": {"Code": "ValidationException", "Message": "Invalid parameter"}},
+            {
+                "Error": {
+                    "Code": "ValidationException",
+                    "Message": "Invalid parameter",
+                }
+            },
             "BatchWriteItem",
         ),
     )
-    with pytest.raises(ValueError, match="One or more parameters given were invalid"):
+    with pytest.raises(
+        ValueError, match="One or more parameters given were invalid"
+    ):
         client.deleteReceiptWindows([example_receipt_window])
     mock_batch.assert_called_once()
 
@@ -777,7 +851,12 @@ def test_deleteReceiptWindows_raises_internal_server_error(
         client._client,
         "batch_write_item",
         side_effect=ClientError(
-            {"Error": {"Code": "InternalServerError", "Message": "Internal error"}},
+            {
+                "Error": {
+                    "Code": "InternalServerError",
+                    "Message": "Internal error",
+                }
+            },
             "BatchWriteItem",
         ),
     )
@@ -807,7 +886,7 @@ def test_deleteReceiptWindows_raises_unknown_exception(
     mock_batch.assert_called_once()
 
 
-# ------------------------------- listReceiptWindows Tests -------------------------------
+# ------------------------------- listReceiptWindows Tests ---------------
 
 
 @pytest.mark.integration
@@ -851,15 +930,15 @@ def test_listReceiptWindows_success_paginated(
     assert (
         last_evaluated_key is None
     ), "LastEvaluatedKey should be None after complete pagination"
-    assert mock_query.call_count == 2, "Should have called query twice for pagination"
-
-
-import pytest
-from receipt_dynamo import DynamoClient, ReceiptWindow
+    assert (
+        mock_query.call_count == 2
+    ), "Should have called query twice for pagination"
 
 
 @pytest.mark.integration
-def test_listReceiptWindows_with_LEK(dynamodb_table, example_receipt_window, mocker):
+def test_listReceiptWindows_with_LEK(
+    dynamodb_table, example_receipt_window, mocker
+):
     """
     Tests listReceiptWindows when a starting lastEvaluatedKey is provided.
     The patched query returns a fake response containing a LastEvaluatedKey.
@@ -947,13 +1026,17 @@ def test_listReceiptWindows_raises_resource_not_found(dynamodb_table, mocker):
             "Query",
         ),
     )
-    with pytest.raises(Exception, match="Could not list receipt windows from DynamoDB"):
+    with pytest.raises(
+        Exception, match="Could not list receipt windows from DynamoDB"
+    ):
         client.listReceiptWindows(limit=10)
     mock_query.assert_called_once()
 
 
 @pytest.mark.integration
-def test_listReceiptWindows_raises_provisioned_throughput(dynamodb_table, mocker):
+def test_listReceiptWindows_raises_provisioned_throughput(
+    dynamodb_table, mocker
+):
     """
     Simulates a ProvisionedThroughputExceededException during listing.
     """
@@ -977,7 +1060,9 @@ def test_listReceiptWindows_raises_provisioned_throughput(dynamodb_table, mocker
 
 
 @pytest.mark.integration
-def test_listReceiptWindows_raises_validation_exception(dynamodb_table, mocker):
+def test_listReceiptWindows_raises_validation_exception(
+    dynamodb_table, mocker
+):
     """
     Simulates a ValidationException during listing.
     """
@@ -986,17 +1071,26 @@ def test_listReceiptWindows_raises_validation_exception(dynamodb_table, mocker):
         client._client,
         "query",
         side_effect=ClientError(
-            {"Error": {"Code": "ValidationException", "Message": "Invalid parameter"}},
+            {
+                "Error": {
+                    "Code": "ValidationException",
+                    "Message": "Invalid parameter",
+                }
+            },
             "Query",
         ),
     )
-    with pytest.raises(ValueError, match="One or more parameters given were invalid"):
+    with pytest.raises(
+        ValueError, match="One or more parameters given were invalid"
+    ):
         client.listReceiptWindows(limit=10)
     mock_query.assert_called_once()
 
 
 @pytest.mark.integration
-def test_listReceiptWindows_raises_internal_server_error(dynamodb_table, mocker):
+def test_listReceiptWindows_raises_internal_server_error(
+    dynamodb_table, mocker
+):
     """
     Simulates an InternalServerError during listing.
     """
@@ -1005,7 +1099,12 @@ def test_listReceiptWindows_raises_internal_server_error(dynamodb_table, mocker)
         client._client,
         "query",
         side_effect=ClientError(
-            {"Error": {"Code": "InternalServerError", "Message": "Internal error"}},
+            {
+                "Error": {
+                    "Code": "InternalServerError",
+                    "Message": "Internal error",
+                }
+            },
             "Query",
         ),
     )

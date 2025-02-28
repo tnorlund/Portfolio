@@ -1,6 +1,7 @@
-from typing import Any, Dict, Generator, List, Optional, Tuple
 from datetime import datetime
-from receipt_dynamo.entities.util import assert_valid_uuid, _repr_str
+from typing import Any, Generator, Optional, Tuple
+
+from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
 
 class JobDependency:
@@ -59,7 +60,9 @@ class JobDependency:
         elif isinstance(created_at, str):
             self.created_at = created_at
         else:
-            raise ValueError("created_at must be a datetime object or a string")
+            raise ValueError(
+                "created_at must be a datetime object or a string"
+            )
 
         if condition is not None and not isinstance(condition, str):
             raise ValueError("condition must be a string")
@@ -85,7 +88,9 @@ class JobDependency:
         return {
             "GSI1PK": {"S": "DEPENDENCY"},
             "GSI1SK": {
-                "S": f"DEPENDENT#{self.dependent_job_id}#DEPENDENCY#{self.dependency_job_id}"
+                "S": f"DEPENDENT#{
+                    self.dependent_job_id}#DEPENDENCY#{
+                    self.dependency_job_id}"
             },
         }
 
@@ -98,7 +103,9 @@ class JobDependency:
         return {
             "GSI2PK": {"S": "DEPENDENCY"},
             "GSI2SK": {
-                "S": f"DEPENDED_BY#{self.dependency_job_id}#DEPENDENT#{self.dependent_job_id}"
+                "S": f"DEPENDED_BY#{
+                    self.dependency_job_id}#DEPENDENT#{
+                    self.dependent_job_id}"
             },
         }
 

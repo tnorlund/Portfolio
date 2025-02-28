@@ -1,17 +1,9 @@
 import os
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Tuple
 
-from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.entities import (
-    Receipt,
-    ReceiptLine,
-    ReceiptWord,
-    ReceiptWordTag,
-    WordTag,
-    GPTValidation,
-)
 from receipt_dynamo.data._gpt import gpt_request_tagging_validation
+from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.entities import GPTValidation
 
 
 def validate(table_name: str, image_id: str) -> None:
@@ -73,8 +65,12 @@ def validate(table_name: str, image_id: str) -> None:
     word_tags_to_update = []
     for receipt in receipts:
         # Filter data for this receipt
-        r_lines = [l for l in receipt_lines if l.receipt_id == receipt.receipt_id]
-        r_words = [w for w in receipt_words if w.receipt_id == receipt.receipt_id]
+        r_lines = [
+            l for l in receipt_lines if l.receipt_id == receipt.receipt_id
+        ]
+        r_words = [
+            w for w in receipt_words if w.receipt_id == receipt.receipt_id
+        ]
         r_word_tags = [
             t for t in receipt_word_tags if t.receipt_id == receipt.receipt_id
         ]
@@ -99,7 +95,7 @@ def validate(table_name: str, image_id: str) -> None:
             line_id = word_data["line_id"]
             confidence = word_data["confidence"]
             flag = word_data["flag"]
-            initial_tag = word_data["initial_tag"]
+            word_data["initial_tag"]
             revised_tag = word_data["revised_tag"]
 
             # Find and update the receipt word tag
@@ -155,7 +151,8 @@ def validate(table_name: str, image_id: str) -> None:
             for item in receipt_word_tags_to_update
         ]
         word_keys = [
-            f"{item.word_id}_{item.line_id}_{item.tag}" for item in word_tags_to_update
+            f"{item.word_id}_{item.line_id}_{item.tag}"
+            for item in word_tags_to_update
         ]
         if set(receipt_keys) != set(word_keys):
             Exception("Could not match receipt word tags to word tags")

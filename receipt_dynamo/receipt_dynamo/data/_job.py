@@ -1,14 +1,18 @@
-from typing import Dict, List, Optional, Tuple, Union, Any
+from typing import List, Tuple
+
 from botocore.exceptions import ClientError
+
 from receipt_dynamo.entities.job import Job, itemToJob
-from receipt_dynamo.entities.job_status import JobStatus, itemToJobStatus
+from receipt_dynamo.entities.job_status import JobStatus
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
 def validate_last_evaluated_key(lek: dict) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
-        raise ValueError(f"LastEvaluatedKey must contain keys: {required_keys}")
+        raise ValueError(
+            f"LastEvaluatedKey must contain keys: {required_keys}"
+        )
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
             raise ValueError(
@@ -39,7 +43,10 @@ class _Job:
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(f"Job with ID {job.job_id} already exists") from e
+                raise ValueError(
+                    f"Job with ID {
+                        job.job_id} already exists"
+                ) from e
             elif error_code == "ResourceNotFoundException":
                 raise Exception(f"Could not add job to DynamoDB: {e}") from e
             elif error_code == "ProvisionedThroughputExceededException":
@@ -77,7 +84,9 @@ class _Job:
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
                     # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
@@ -154,7 +163,8 @@ class _Job:
         if not all(isinstance(job, Job) for job in jobs):
             raise ValueError("All jobs must be instances of the Job class.")
 
-        # Process jobs in chunks of 25 because transact_write_items supports a maximum of 25 operations.
+        # Process jobs in chunks of 25 because transact_write_items supports a
+        # maximum of 25 operations.
         for i in range(0, len(jobs), 25):
             chunk = jobs[i : i + 25]
             transact_items = []
@@ -175,7 +185,9 @@ class _Job:
                 if error_code == "ConditionalCheckFailedException":
                     raise ValueError("One or more jobs do not exist") from e
                 elif error_code == "ProvisionedThroughputExceededException":
-                    raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                    raise Exception(
+                        f"Provisioned throughput exceeded: {e}"
+                    ) from e
                 elif error_code == "InternalServerError":
                     raise Exception(f"Internal server error: {e}") from e
                 elif error_code == "ValidationException":
@@ -242,7 +254,8 @@ class _Job:
             raise ValueError("All jobs must be instances of the Job class.")
 
         try:
-            # Process jobs in chunks of 25 items (the maximum allowed per transaction)
+            # Process jobs in chunks of 25 items (the maximum allowed per
+            # transaction)
             for i in range(0, len(jobs), 25):
                 chunk = jobs[i : i + 25]
                 transact_items = []
@@ -380,7 +393,8 @@ class _Job:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
 
             while True:
-                # If a limit is provided, adjust the query's Limit to only fetch what is needed.
+                # If a limit is provided, adjust the query's Limit to only
+                # fetch what is needed.
                 if limit is not None:
                     remaining = limit - len(jobs)
                     query_params["Limit"] = remaining
@@ -388,15 +402,19 @@ class _Job:
                 response = self._client.query(**query_params)
                 jobs.extend([itemToJob(item) for item in response["Items"]])
 
-                # If we have reached or exceeded the limit, trim the list and break.
+                # If we have reached or exceeded the limit, trim the list and
+                # break.
                 if limit is not None and len(jobs) >= limit:
                     jobs = jobs[:limit]  # ensure we return exactly the limit
                     last_evaluated_key = response.get("LastEvaluatedKey", None)
                     break
 
-                # Continue paginating if there's more data; otherwise, we're done.
+                # Continue paginating if there's more data; otherwise, we're
+                # done.
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                 else:
                     last_evaluated_key = None
                     break
@@ -405,7 +423,9 @@ class _Job:
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(f"Could not list jobs from the database: {e}") from e
+                raise Exception(
+                    f"Could not list jobs from the database: {e}"
+                ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "ValidationException":
@@ -415,10 +435,15 @@ class _Job:
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(f"Could not list jobs from the database: {e}") from e
+                raise Exception(
+                    f"Could not list jobs from the database: {e}"
+                ) from e
 
     def listJobsByStatus(
-        self, status: str, limit: int = None, lastEvaluatedKey: dict | None = None
+        self,
+        status: str,
+        limit: int = None,
+        lastEvaluatedKey: dict | None = None,
     ) -> tuple[list[Job], dict | None]:
         """
         Retrieve job records filtered by status from the database.
@@ -456,7 +481,9 @@ class _Job:
             if not isinstance(lastEvaluatedKey, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
             # Validate the LastEvaluatedKey structure specific to GSI1
-            if not all(k in lastEvaluatedKey for k in ["PK", "SK", "GSI1PK", "GSI1SK"]):
+            if not all(
+                k in lastEvaluatedKey for k in ["PK", "SK", "GSI1PK", "GSI1SK"]
+            ):
                 raise ValueError(
                     "LastEvaluatedKey must contain PK, SK, GSI1PK, and GSI1SK keys"
                 )
@@ -481,7 +508,8 @@ class _Job:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
 
             while True:
-                # If a limit is provided, adjust the query's Limit to only fetch what is needed.
+                # If a limit is provided, adjust the query's Limit to only
+                # fetch what is needed.
                 if limit is not None:
                     remaining = limit - len(jobs)
                     query_params["Limit"] = remaining
@@ -489,15 +517,19 @@ class _Job:
                 response = self._client.query(**query_params)
                 jobs.extend([itemToJob(item) for item in response["Items"]])
 
-                # If we have reached or exceeded the limit, trim the list and break.
+                # If we have reached or exceeded the limit, trim the list and
+                # break.
                 if limit is not None and len(jobs) >= limit:
                     jobs = jobs[:limit]  # ensure we return exactly the limit
                     last_evaluated_key = response.get("LastEvaluatedKey", None)
                     break
 
-                # Continue paginating if there's more data; otherwise, we're done.
+                # Continue paginating if there's more data; otherwise, we're
+                # done.
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                 else:
                     last_evaluated_key = None
                     break
@@ -523,7 +555,10 @@ class _Job:
                 ) from e
 
     def listJobsByUser(
-        self, user_id: str, limit: int = None, lastEvaluatedKey: dict | None = None
+        self,
+        user_id: str,
+        limit: int = None,
+        lastEvaluatedKey: dict | None = None,
     ) -> tuple[list[Job], dict | None]:
         """
         Retrieve job records created by a specific user from the database.
@@ -553,7 +588,9 @@ class _Job:
             if not isinstance(lastEvaluatedKey, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
             # Validate the LastEvaluatedKey structure specific to GSI2
-            if not all(k in lastEvaluatedKey for k in ["PK", "SK", "GSI2PK", "GSI2SK"]):
+            if not all(
+                k in lastEvaluatedKey for k in ["PK", "SK", "GSI2PK", "GSI2SK"]
+            ):
                 raise ValueError(
                     "LastEvaluatedKey must contain PK, SK, GSI2PK, and GSI2SK keys"
                 )
@@ -578,7 +615,8 @@ class _Job:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
 
             while True:
-                # If a limit is provided, adjust the query's Limit to only fetch what is needed.
+                # If a limit is provided, adjust the query's Limit to only
+                # fetch what is needed.
                 if limit is not None:
                     remaining = limit - len(jobs)
                     query_params["Limit"] = remaining
@@ -586,15 +624,19 @@ class _Job:
                 response = self._client.query(**query_params)
                 jobs.extend([itemToJob(item) for item in response["Items"]])
 
-                # If we have reached or exceeded the limit, trim the list and break.
+                # If we have reached or exceeded the limit, trim the list and
+                # break.
                 if limit is not None and len(jobs) >= limit:
                     jobs = jobs[:limit]  # ensure we return exactly the limit
                     last_evaluated_key = response.get("LastEvaluatedKey", None)
                     break
 
-                # Continue paginating if there's more data; otherwise, we're done.
+                # Continue paginating if there's more data; otherwise, we're
+                # done.
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                 else:
                     last_evaluated_key = None
                     break

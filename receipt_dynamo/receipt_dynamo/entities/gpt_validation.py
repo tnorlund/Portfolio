@@ -1,6 +1,7 @@
-from typing import Generator, Tuple
 from datetime import datetime
-from receipt_dynamo.entities.util import assert_valid_uuid, _repr_str
+from typing import Generator, Tuple
+
+from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
 
 class GPTValidation:
@@ -70,7 +71,9 @@ class GPTValidation:
         elif isinstance(timestamp_added, str):
             self.timestamp_added = timestamp_added
         else:
-            raise ValueError("timestamp_added must be a datetime object or a string")
+            raise ValueError(
+                "timestamp_added must be a datetime object or a string"
+            )
 
     def __eq__(self, other: object) -> bool:
         """Checks equality between this GPTValidation and another object.

@@ -1,9 +1,7 @@
-from typing import List, Tuple, Dict, Optional
-import boto3
 from botocore.exceptions import ClientError
+
 from receipt_dynamo.entities.queue import Queue, itemToQueue
 from receipt_dynamo.entities.queue_job import QueueJob, itemToQueueJob
-from receipt_dynamo.entities.job import Job
 
 
 def validate_last_evaluated_key(lek: dict) -> None:
@@ -23,7 +21,9 @@ def validate_last_evaluated_key(lek: dict) -> None:
         raise ValueError("LastEvaluatedKey must contain PK and SK")
 
     # Check if the values are in the correct format
-    if not all(isinstance(lek[k], dict) and "S" in lek[k] for k in ["PK", "SK"]):
+    if not all(
+        isinstance(lek[k], dict) and "S" in lek[k] for k in ["PK", "SK"]
+    ):
         raise ValueError(
             "LastEvaluatedKey values must be in DynamoDB format with 'S' attribute"
         )
@@ -52,17 +52,22 @@ class _Queue:
             # Create the DynamoDB item from the Queue object
             item = queue.to_item()
 
-            # Add the item to the DynamoDB table with a condition expression to ensure it doesn't already exist
+            # Add the item to the DynamoDB table with a condition expression to
+            # ensure it doesn't already exist
             self._client.put_item(
                 TableName=self.table_name,
                 Item=item,
                 ConditionExpression="attribute_not_exists(PK)",
             )
         except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
                 raise ValueError(f"Queue {queue.queue_name} already exists")
             else:
-                # Re-raise the original ClientError for other DynamoDB-related issues
+                # Re-raise the original ClientError for other DynamoDB-related
+                # issues
                 raise
 
     def addQueues(self, queues: list[Queue]) -> None:
@@ -88,34 +93,45 @@ class _Queue:
         if not queues:
             return
 
-        # Use the batch_write_item operation to write multiple items efficiently
+        # Use the batch_write_item operation to write multiple items
+        # efficiently
         try:
             # Prepare the batch request
             request_items = {
                 self.table_name: [
-                    {"PutRequest": {"Item": queue.to_item()}} for queue in queues
+                    {"PutRequest": {"Item": queue.to_item()}}
+                    for queue in queues
                 ]
             }
 
             # Execute the batch write and handle unprocessed items
-            response = self._client.batch_write_item(RequestItems=request_items)
+            response = self._client.batch_write_item(
+                RequestItems=request_items
+            )
 
             # Check for unprocessed items and retry them
             unprocessed_items = response.get("UnprocessedItems", {})
 
-            while unprocessed_items and unprocessed_items.get(self.table_name, []):
+            while unprocessed_items and unprocessed_items.get(
+                self.table_name, []
+            ):
                 # Wait a moment before retrying
                 import time
 
                 time.sleep(0.5)
 
                 # Retry the unprocessed items
-                response = self._client.batch_write_item(RequestItems=unprocessed_items)
+                response = self._client.batch_write_item(
+                    RequestItems=unprocessed_items
+                )
                 unprocessed_items = response.get("UnprocessedItems", {})
 
         except ClientError as e:
             # Handle different types of ClientError
-            if e.response["Error"]["Code"] == "ProvisionedThroughputExceededException":
+            if (
+                e.response["Error"]["Code"]
+                == "ProvisionedThroughputExceededException"
+            ):
                 raise ClientError(
                     e.response,
                     "DynamoDB Provisioned Throughput Exceeded: Consider retrying with exponential backoff",
@@ -139,7 +155,9 @@ class _Queue:
                 # Re-raise other types of ClientError
                 raise ClientError(
                     e.response,
-                    f"Error batch writing queues: {e.response['Error']['Code']}: {e.response['Error']['Message']}",
+                    f"Error batch writing queues: {
+                        e.response['Error']['Code']}: {
+                        e.response['Error']['Message']}",
                 )
 
     def updateQueue(self, queue: Queue) -> None:
@@ -162,17 +180,22 @@ class _Queue:
             # Create the DynamoDB item from the Queue object
             item = queue.to_item()
 
-            # Update the item in the DynamoDB table with a condition expression to ensure it already exists
+            # Update the item in the DynamoDB table with a condition expression
+            # to ensure it already exists
             self._client.put_item(
                 TableName=self.table_name,
                 Item=item,
                 ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
             )
         except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
                 raise ValueError(f"Queue {queue.queue_name} does not exist")
             else:
-                # Re-raise the original ClientError for other DynamoDB-related issues
+                # Re-raise the original ClientError for other DynamoDB-related
+                # issues
                 raise
 
     def deleteQueue(self, queue: Queue) -> None:
@@ -192,17 +215,22 @@ class _Queue:
             raise ValueError("queue must be an instance of Queue")
 
         try:
-            # Delete the item from the DynamoDB table with a condition expression to ensure it exists
+            # Delete the item from the DynamoDB table with a condition
+            # expression to ensure it exists
             self._client.delete_item(
                 TableName=self.table_name,
                 Key=queue.key(),
                 ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
             )
         except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
                 raise ValueError(f"Queue {queue.queue_name} does not exist")
             else:
-                # Re-raise the original ClientError for other DynamoDB-related issues
+                # Re-raise the original ClientError for other DynamoDB-related
+                # issues
                 raise
 
     def getQueue(self, queue_name: str) -> Queue:
@@ -237,7 +265,11 @@ class _Queue:
 
         except ClientError as e:
             if e.response["Error"]["Code"] == "ResourceNotFoundException":
-                raise ClientError(e.response, f"Table {self.table_name} not found")
+                raise ClientError(
+                    e.response,
+                    f"Table {
+                        self.table_name} not found",
+                )
             elif e.response["Error"]["Code"] == "InternalServerError":
                 raise ClientError(
                     e.response,
@@ -295,13 +327,17 @@ class _Queue:
             # Handle different types of ClientError
             if e.response["Error"]["Code"] == "ResourceNotFoundException":
                 raise ClientError(
-                    e.response, f"Table {self.table_name} or GSI1 index not found"
+                    e.response,
+                    f"Table {
+                        self.table_name} or GSI1 index not found",
                 )
             else:
                 # Re-raise other types of ClientError
                 raise ClientError(
                     e.response,
-                    f"Error listing queues: {e.response['Error']['Code']}: {e.response['Error']['Message']}",
+                    f"Error listing queues: {
+                        e.response['Error']['Code']}: {
+                        e.response['Error']['Message']}",
                 )
 
     def addJobToQueue(self, queue_job: QueueJob) -> None:
@@ -324,7 +360,8 @@ class _Queue:
             # Create the DynamoDB item from the QueueJob object
             item = queue_job.to_item()
 
-            # Add the item to the DynamoDB table with a condition expression to ensure it doesn't already exist
+            # Add the item to the DynamoDB table with a condition expression to
+            # ensure it doesn't already exist
             self._client.put_item(
                 TableName=self.table_name,
                 Item=item,
@@ -337,12 +374,18 @@ class _Queue:
             self.updateQueue(queue)
 
         except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
                 raise ValueError(
-                    f"Job {queue_job.job_id} is already in queue {queue_job.queue_name}"
+                    f"Job {
+                        queue_job.job_id} is already in queue {
+                        queue_job.queue_name}"
                 )
             else:
-                # Re-raise the original ClientError for other DynamoDB-related issues
+                # Re-raise the original ClientError for other DynamoDB-related
+                # issues
                 raise
 
     def removeJobFromQueue(self, queue_job: QueueJob) -> None:
@@ -362,7 +405,8 @@ class _Queue:
             raise ValueError("queue_job must be an instance of QueueJob")
 
         try:
-            # Delete the item from the DynamoDB table with a condition expression to ensure it exists
+            # Delete the item from the DynamoDB table with a condition
+            # expression to ensure it exists
             self._client.delete_item(
                 TableName=self.table_name,
                 Key=queue_job.key(),
@@ -377,12 +421,18 @@ class _Queue:
             self.updateQueue(queue)
 
         except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
                 raise ValueError(
-                    f"Job {queue_job.job_id} is not in queue {queue_job.queue_name}"
+                    f"Job {
+                        queue_job.job_id} is not in queue {
+                        queue_job.queue_name}"
                 )
             else:
-                # Re-raise the original ClientError for other DynamoDB-related issues
+                # Re-raise the original ClientError for other DynamoDB-related
+                # issues
                 raise
 
     def listJobsInQueue(
@@ -436,7 +486,9 @@ class _Queue:
             response = self._client.query(**query_params)
 
             # Convert the DynamoDB items to QueueJob objects
-            queue_jobs = [itemToQueueJob(item) for item in response.get("Items", [])]
+            queue_jobs = [
+                itemToQueueJob(item) for item in response.get("Items", [])
+            ]
 
             # Return the queue jobs and the LastEvaluatedKey for pagination
             return queue_jobs, response.get("LastEvaluatedKey")
@@ -444,12 +496,18 @@ class _Queue:
         except ClientError as e:
             # Handle different types of ClientError
             if e.response["Error"]["Code"] == "ResourceNotFoundException":
-                raise ClientError(e.response, f"Table {self.table_name} not found")
+                raise ClientError(
+                    e.response,
+                    f"Table {
+                        self.table_name} not found",
+                )
             else:
                 # Re-raise other types of ClientError
                 raise ClientError(
                     e.response,
-                    f"Error listing jobs in queue: {e.response['Error']['Code']}: {e.response['Error']['Message']}",
+                    f"Error listing jobs in queue: {
+                        e.response['Error']['Code']}: {
+                        e.response['Error']['Message']}",
                 )
 
     def findQueuesForJob(
@@ -498,7 +556,9 @@ class _Queue:
             response = self._client.query(**query_params)
 
             # Convert the DynamoDB items to QueueJob objects
-            queue_jobs = [itemToQueueJob(item) for item in response.get("Items", [])]
+            queue_jobs = [
+                itemToQueueJob(item) for item in response.get("Items", [])
+            ]
 
             # Return the queue jobs and the LastEvaluatedKey for pagination
             return queue_jobs, response.get("LastEvaluatedKey")
@@ -507,11 +567,15 @@ class _Queue:
             # Handle different types of ClientError
             if e.response["Error"]["Code"] == "ResourceNotFoundException":
                 raise ClientError(
-                    e.response, f"Table {self.table_name} or GSI1 index not found"
+                    e.response,
+                    f"Table {
+                        self.table_name} or GSI1 index not found",
                 )
             else:
                 # Re-raise other types of ClientError
                 raise ClientError(
                     e.response,
-                    f"Error finding queues for job: {e.response['Error']['Code']}: {e.response['Error']['Message']}",
+                    f"Error finding queues for job: {
+                        e.response['Error']['Code']}: {
+                        e.response['Error']['Message']}",
                 )

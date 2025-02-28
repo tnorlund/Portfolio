@@ -1,7 +1,8 @@
 # infra/lambda_layer/python/dynamo/entities/image.py
-from typing import Any, Generator, Tuple
 from datetime import datetime
-from receipt_dynamo.entities.util import assert_valid_uuid, _repr_str
+from typing import Any, Generator, Tuple
+
+from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
 
 class Image:
@@ -71,7 +72,9 @@ class Image:
         elif isinstance(timestamp_added, str):
             self.timestamp_added = timestamp_added
         else:
-            raise ValueError("timestamp_added must be a datetime object or a string")
+            raise ValueError(
+                "timestamp_added must be a datetime object or a string"
+            )
 
         if raw_s3_bucket and not isinstance(raw_s3_bucket, str):
             raise ValueError("raw_s3_bucket must be a string")
@@ -106,7 +109,13 @@ class Image:
         Returns:
             dict: The GSI1 key for the image.
         """
-        return {"GSI1PK": {"S": "IMAGE"}, "GSI1SK": {"S": f"IMAGE#{self.image_id}"}}
+        return {
+            "GSI1PK": {"S": "IMAGE"},
+            "GSI1SK": {
+                "S": f"IMAGE#{
+                    self.image_id}"
+            },
+        }
 
     def gsi2_key(self) -> dict:
         """Generates the GSI2 key for the image.
@@ -114,7 +123,13 @@ class Image:
         Returns:
             dict: The GSI2 key for the image.
         """
-        return {"GSI2PK": {"S": f"IMAGE#{self.image_id}"}, "GSI2SK": {"S": "IMAGE"}}
+        return {
+            "GSI2PK": {
+                "S": f"IMAGE#{
+                    self.image_id}"
+            },
+            "GSI2SK": {"S": "IMAGE"},
+        }
 
     def to_item(self) -> dict:
         """Converts the Image object to a DynamoDB item.
@@ -134,9 +149,13 @@ class Image:
             "raw_s3_key": {"S": self.raw_s3_key},
             "sha256": {"S": self.sha256} if self.sha256 else {"NULL": True},
             "cdn_s3_bucket": (
-                {"S": self.cdn_s3_bucket} if self.cdn_s3_bucket else {"NULL": True}
+                {"S": self.cdn_s3_bucket}
+                if self.cdn_s3_bucket
+                else {"NULL": True}
             ),
-            "cdn_s3_key": {"S": self.cdn_s3_key} if self.cdn_s3_key else {"NULL": True},
+            "cdn_s3_key": (
+                {"S": self.cdn_s3_key} if self.cdn_s3_key else {"NULL": True}
+            ),
         }
 
     def __repr__(self) -> str:
@@ -258,7 +277,9 @@ def itemToImage(item: dict) -> Image:
             image_id=item["PK"]["S"].split("#")[1],
             width=int(item["width"]["N"]),
             height=int(item["height"]["N"]),
-            timestamp_added=datetime.fromisoformat(item["timestamp_added"]["S"]),
+            timestamp_added=datetime.fromisoformat(
+                item["timestamp_added"]["S"]
+            ),
             raw_s3_bucket=item["raw_s3_bucket"]["S"],
             raw_s3_key=item["raw_s3_key"]["S"],
             sha256=sha256 if sha256 else None,

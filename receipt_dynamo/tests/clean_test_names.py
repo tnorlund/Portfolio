@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-import os
 import ast
+import json
+import os
 import re
 import sys
-import json
-import requests
 from typing import List
+
+import requests
 
 # ─── STEP 1: LISTING ALL TEST FUNCTIONS ─────────────────────────────
 
@@ -20,7 +21,9 @@ def find_test_functions_in_file(file_path: str) -> List[str]:
             source = f.read()
         tree = ast.parse(source)
         for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef) and node.name.startswith("test_"):
+            if isinstance(node, ast.FunctionDef) and node.name.startswith(
+                "test_"
+            ):
                 test_functions.append(node.name)
     except (SyntaxError, UnicodeDecodeError):
         pass
@@ -61,7 +64,10 @@ def call_openai_api(prompt: str) -> dict:
         raise ValueError("Please set the OPENAI_API_KEY environment variable.")
 
     url = "https://api.openai.com/v1/chat/completions"
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}",
+    }
 
     data = {
         "model": "gpt-3.5-turbo",
@@ -84,7 +90,8 @@ def call_openai_api(prompt: str) -> dict:
         mapping = json.loads(content)
     except json.JSONDecodeError as e:
         raise ValueError(
-            "OpenAI API did not return valid JSON. Response content: " + content
+            "OpenAI API did not return valid JSON. Response content: "
+            + content
         ) from e
     return mapping
 
@@ -102,9 +109,12 @@ def rename_test_functions_in_file(file_path: str, mapping: dict):
 
     changed = False
     new_lines = []
-    # Build a regex to match function definitions that start with one of the keys.
+    # Build a regex to match function definitions that start with one of the
+    # keys.
     pattern = re.compile(
-        r"^(\s*)def\s+(" + "|".join(map(re.escape, mapping.keys())) + r")(\s*\(.*)?:"
+        r"^(\s*)def\s+("
+        + "|".join(map(re.escape, mapping.keys()))
+        + r")(\s*\(.*)?:"
     )
 
     for line in lines:

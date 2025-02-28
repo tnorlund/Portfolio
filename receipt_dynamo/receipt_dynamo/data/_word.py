@@ -1,6 +1,8 @@
-from receipt_dynamo import Word, itemToWord
+from typing import Dict, Optional
+
 from botocore.exceptions import ClientError
-from typing import Optional, Dict
+
+from receipt_dynamo import Word, itemToWord
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 # So let's chunk the items in groups of 25
@@ -33,7 +35,7 @@ class _Word:
                 Item=word.to_item(),
                 ConditionExpression="attribute_not_exists(PK)",
             )
-        except ClientError as e:
+        except ClientError:
             raise ValueError(f"Word with ID {word.word_id} already exists")
 
     def addWords(self, words: list[Word]):
@@ -58,9 +60,11 @@ class _Word:
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
                     # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
-        except ClientError as e:
+        except ClientError:
             raise ValueError("Could not add words to the database")
 
     def updateWord(self, word: Word):
@@ -83,7 +87,10 @@ class _Word:
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
                 raise ValueError(f"Word with ID {word.word_id} not found")
             else:
                 raise Exception(f"Error updating word: {e}")
@@ -144,7 +151,9 @@ class _Word:
                 if error_code == "ConditionalCheckFailedException":
                     raise ValueError("One or more words do not exist") from e
                 elif error_code == "ProvisionedThroughputExceededException":
-                    raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                    raise Exception(
+                        f"Provisioned throughput exceeded: {e}"
+                    ) from e
                 elif error_code == "InternalServerError":
                     raise Exception(f"Internal server error: {e}") from e
                 elif error_code == "ValidationException":
@@ -173,7 +182,7 @@ class _Word:
                 },
                 ConditionExpression="attribute_exists(PK)",
             )
-        except ClientError as e:
+        except ClientError:
             raise ValueError(f"Word with ID {word_id} not found")
 
     def deleteWords(self, words: list[Word]):
@@ -191,9 +200,11 @@ class _Word:
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
                     # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
-        except ClientError as e:
+        except ClientError:
             raise ValueError("Could not delete words from the database")
 
     def deleteWordsFromLine(self, image_id: int, line_id: int):
@@ -257,7 +268,9 @@ class _Word:
             # Retry unprocessed keys if any
             unprocessed = response.get("UnprocessedKeys", {})
             while unprocessed.get(self.table_name, {}).get("Keys"):
-                response = self._client.batch_get_item(RequestItems=unprocessed)
+                response = self._client.batch_get_item(
+                    RequestItems=unprocessed
+                )
                 batch_items = response["Responses"].get(self.table_name, [])
                 results.extend(batch_items)
                 unprocessed = response.get("UnprocessedKeys", {})
@@ -265,7 +278,9 @@ class _Word:
         return [itemToWord(result) for result in results]
 
     def listWords(
-        self, limit: Optional[int] = None, last_evaluated_key: Optional[Dict] = None
+        self,
+        limit: Optional[int] = None,
+        last_evaluated_key: Optional[Dict] = None,
     ) -> list[Word]:
         words = []
         try:
@@ -284,9 +299,13 @@ class _Word:
             words.extend([itemToWord(item) for item in response["Items"]])
             if limit is None:
                 while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                     response = self._client.query(**query_params)
-                    words.extend([itemToWord(item) for item in response["Items"]])
+                    words.extend(
+                        [itemToWord(item) for item in response["Items"]]
+                    )
                 last_evaluated_key = None
             else:
                 last_evaluated_key = response.get("LastEvaluatedKey", None)
@@ -302,7 +321,10 @@ class _Word:
                 KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
                 ExpressionAttributeValues={
                     ":pkVal": {"S": f"IMAGE#{image_id}"},
-                    ":skPrefix": {"S": f"LINE#{line_id:05d}#WORD#"},
+                    ":skPrefix": {
+                        "S": f"LINE#{
+                            line_id:05d}#WORD#"
+                    },
                 },
             )
             words.extend([itemToWord(item) for item in response["Items"]])
@@ -312,7 +334,10 @@ class _Word:
                     KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
                     ExpressionAttributeValues={
                         ":pkVal": {"S": f"IMAGE#{image_id}"},
-                        ":skPrefix": {"S": f"LINE#{line_id:05d}#WORD#"},
+                        ":skPrefix": {
+                            "S": f"LINE#{
+                                line_id:05d}#WORD#"
+                        },
                     },
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                 )
