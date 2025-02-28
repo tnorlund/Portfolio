@@ -32,7 +32,7 @@ class _JobMetric:
         try:
             self._client.put_item(TableName=self.table_name,
                 Item=job_metric.to_item(),
-                ConditionExpression="attribute_not_exists(PK) OR attribute_not_exists(SK)",)
+                ConditionExpression="attribute_not_exists(PK) OR attribute_not_exists(SK)", )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
@@ -71,7 +71,7 @@ class _JobMetric:
         try:
             response = self._client.get_item(TableName=self.table_name,
                 Key={"PK": {"S": f"JOB#{job_id}"},
-                    "SK": {"S": f"METRIC#{metric_name}#{timestamp}"},},)
+                    "SK": {"S": f"METRIC#{metric_name}#{timestamp}"}, }, )
 
             if "Item" not in response:
                 raise ValueError(f"No job metric found with job ID {job_id}, metric name {metric_name}, and timestamp {timestamp}")
@@ -92,7 +92,7 @@ class _JobMetric:
         job_id: str,
         metric_name: Optional[str] = None,
         limit: int = None,
-        lastEvaluatedKey: dict | None = None,) -> tuple[list[JobMetric], dict | None]:
+        lastEvaluatedKey: dict | None = None, ) -> tuple[list[JobMetric], dict | None]:
         """
         Retrieve metrics for a job from the database.
 
@@ -126,10 +126,12 @@ class _JobMetric:
 
         metrics = []
         try:
-            query_params = {"TableName": self.table_name,
+            query_params = {
+                "TableName": self.table_name,
                 "KeyConditionExpression": "PK = :pk",
-                "ExpressionAttributeValues": {":pk": {"S": f"JOB#{job_id}"},},
-                "ScanIndexForward": True,  # Ascending order by default}
+                "ExpressionAttributeValues": {":pk": {"S": f"JOB#{job_id}"}, },
+                "ScanIndexForward": True,  # Ascending order by default
+            }
 
             # Add filter for metric name if provided
             if metric_name:
@@ -180,7 +182,7 @@ class _JobMetric:
     def getMetricsByName(self,
         metric_name: str,
         limit: int = None,
-        lastEvaluatedKey: dict | None = None,) -> tuple[list[JobMetric], dict | None]:
+        lastEvaluatedKey: dict | None = None, ) -> tuple[list[JobMetric], dict | None]:
         """
         Retrieve all metrics with a specific name across all jobs.
 
@@ -212,11 +214,13 @@ class _JobMetric:
 
         metrics = []
         try:
-            query_params = {"TableName": self.table_name,
+            query_params = {
+                "TableName": self.table_name,
                 "IndexName": "GSI1",
                 "KeyConditionExpression": "GSI1PK = :pk",
-                "ExpressionAttributeValues": {":pk": {"S": f"METRIC#{metric_name}"},},
-                "ScanIndexForward": True,  # Ascending order by default}
+                "ExpressionAttributeValues": {":pk": {"S": f"METRIC#{metric_name}"}, },
+                "ScanIndexForward": True,  # Ascending order by default
+            }
 
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
@@ -259,7 +263,7 @@ class _JobMetric:
     def getMetricsByNameAcrossJobs(self,
         metric_name: str,
         limit: int = None,
-        lastEvaluatedKey: dict | None = None,) -> tuple[list[JobMetric], dict | None]:
+        lastEvaluatedKey: dict | None = None, ) -> tuple[list[JobMetric], dict | None]:
         """
         Retrieve metrics with a specific name across all jobs, grouped by job.
 
@@ -294,11 +298,13 @@ class _JobMetric:
 
         metrics = []
         try:
-            query_params = {"TableName": self.table_name,
+            query_params = {
+                "TableName": self.table_name,
                 "IndexName": "GSI2",
                 "KeyConditionExpression": "GSI2PK = :pk",
-                "ExpressionAttributeValues": {":pk": {"S": f"METRIC#{metric_name}"},},
-                "ScanIndexForward": True,  # Ascending order by default}
+                "ExpressionAttributeValues": {":pk": {"S": f"METRIC#{metric_name}"}, },
+                "ScanIndexForward": True,  # Ascending order by default
+            }
 
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey

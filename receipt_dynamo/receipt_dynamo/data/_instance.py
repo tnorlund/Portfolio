@@ -4,7 +4,7 @@ import botocore
 
 from receipt_dynamo.data._job import validate_last_evaluated_key
 from receipt_dynamo.data.shared_exceptions import (DynamoCriticalErrorException,
-    DynamoRetryableException,)
+    DynamoRetryableException, )
 from receipt_dynamo.entities.instance import Instance, itemToInstance
 from receipt_dynamo.entities.instance_job import InstanceJob, itemToInstanceJob
 
@@ -36,7 +36,7 @@ class _Instance:
             # to ensure it doesn't already exist
             self._client.put_item(TableName=self.table_name,
                 Item=item,
-                ConditionExpression="attribute_not_exists(PK)",)
+                ConditionExpression="attribute_not_exists(PK)", )
         except botocore.exceptions.ClientError as e:
             if (e.response["Error"]["Code"]
                 == "ConditionalCheckFailedException"):
@@ -131,7 +131,7 @@ class _Instance:
             # to ensure it exists
             self._client.put_item(TableName=self.table_name,
                 Item=item,
-                ConditionExpression="attribute_exists(PK)",)
+                ConditionExpression="attribute_exists(PK)", )
         except botocore.exceptions.ClientError as e:
             if (e.response["Error"]["Code"]
                 == "ConditionalCheckFailedException"):
@@ -167,8 +167,8 @@ class _Instance:
             # to ensure it exists
             self._client.delete_item(TableName=self.table_name,
                 Key={"PK": {"S": f"INSTANCE#{instance.instance_id}"},
-                    "SK": {"S": "INSTANCE"},},
-                ConditionExpression="attribute_exists(PK)",)
+                    "SK": {"S": "INSTANCE"}, },
+                ConditionExpression="attribute_exists(PK)", )
         except botocore.exceptions.ClientError as e:
             if (e.response["Error"]["Code"]
                 == "ConditionalCheckFailedException"):
@@ -204,7 +204,7 @@ class _Instance:
             # Get the instance from DynamoDB
             response = self._client.get_item(TableName=self.table_name,
                 Key={"PK": {"S": f"INSTANCE#{instance_id}"},
-                    "SK": {"S": "INSTANCE"},},)
+                    "SK": {"S": "INSTANCE"}, }, )
 
             # Check if the instance exists
             if "Item" not in response:
@@ -266,7 +266,7 @@ class _Instance:
             # to ensure it doesn't already exist
             self._client.put_item(TableName=self.table_name,
                 Item=item,
-                ConditionExpression="attribute_not_exists(PK) AND attribute_not_exists(SK)",)
+                ConditionExpression="attribute_not_exists(PK) AND attribute_not_exists(SK)", )
         except botocore.exceptions.ClientError as e:
             if (e.response["Error"]["Code"]
                 == "ConditionalCheckFailedException"):
@@ -305,7 +305,7 @@ class _Instance:
             # to ensure it exists
             self._client.put_item(TableName=self.table_name,
                 Item=item,
-                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",)
+                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)", )
         except botocore.exceptions.ClientError as e:
             if (e.response["Error"]["Code"]
                 == "ConditionalCheckFailedException"):
@@ -341,8 +341,8 @@ class _Instance:
             # to ensure it exists
             self._client.delete_item(TableName=self.table_name,
                 Key={"PK": {"S": f"INSTANCE#{instance_job.instance_id}"},
-                    "SK": {"S": f"JOB#{instance_job.job_id}"},},
-                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",)
+                    "SK": {"S": f"JOB#{instance_job.job_id}"}, },
+                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)", )
         except botocore.exceptions.ClientError as e:
             if (e.response["Error"]["Code"]
                 == "ConditionalCheckFailedException"):
@@ -381,7 +381,7 @@ class _Instance:
             # Get the instance-job from DynamoDB
             response = self._client.get_item(TableName=self.table_name,
                 Key={"PK": {"S": f"INSTANCE#{instance_id}"},
-                    "SK": {"S": f"JOB#{job_id}"},},)
+                    "SK": {"S": f"JOB#{job_id}"}, }, )
 
             # Check if the instance-job exists
             if "Item" not in response:
@@ -421,7 +421,7 @@ class _Instance:
             "IndexName": "GSITYPE",
             "KeyConditionExpression": "#t = :val",
             "ExpressionAttributeNames": {"#t": "TYPE"},
-            "ExpressionAttributeValues": {":val": {"S": "INSTANCE"}},}
+            "ExpressionAttributeValues": {":val": {"S": "INSTANCE"}}, }
 
         if limit is not None:
             query_params["Limit"] = limit
@@ -471,7 +471,7 @@ class _Instance:
         query_params = {"TableName": self.table_name,
             "IndexName": "GSI1",
             "KeyConditionExpression": "GSI1PK = :gsi1pk",
-            "ExpressionAttributeValues": {":gsi1pk": {"S": f"STATUS#{status.lower()}"},},}
+            "ExpressionAttributeValues": {":gsi1pk": {"S": f"STATUS#{status.lower()}"}, }, }
 
         if limit is not None:
             query_params["Limit"] = limit
@@ -494,7 +494,7 @@ class _Instance:
     def listInstanceJobs(self,
         instance_id: str,
         limit: int = None,
-        lastEvaluatedKey: dict = None,) -> Tuple[List[InstanceJob], Optional[Dict]]:
+        lastEvaluatedKey: dict = None, ) -> Tuple[List[InstanceJob], Optional[Dict]]:
         """Lists jobs associated with an instance in the DynamoDB table.
 
         Args:
@@ -521,7 +521,7 @@ class _Instance:
         query_params = {"TableName": self.table_name,
             "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk_prefix)",
             "ExpressionAttributeValues": {":pk": {"S": f"INSTANCE#{instance_id}"},
-                ":sk_prefix": {"S": "JOB#"},},}
+                ":sk_prefix": {"S": "JOB#"}, }, }
 
         if limit is not None:
             query_params["Limit"] = limit
@@ -569,7 +569,7 @@ class _Instance:
             "IndexName": "GSI1",
             "KeyConditionExpression": "GSI1PK = :gsi1pk AND begins_with(GSI1SK, :gsi1sk_prefix)",
             "ExpressionAttributeValues": {":gsi1pk": {"S": "JOB"},
-                ":gsi1sk_prefix": {"S": f"JOB#{job_id}#INSTANCE#"},},}
+                ":gsi1sk_prefix": {"S": f"JOB#{job_id}#INSTANCE#"}, }, }
 
         if limit is not None:
             query_params["Limit"] = limit

@@ -44,7 +44,7 @@ class _WordTag:
         try:
             self._client.put_item(TableName=self.table_name,
                 Item=word_tag.to_item(),
-                ConditionExpression="attribute_not_exists(PK)",)
+                ConditionExpression="attribute_not_exists(PK)", )
         except ClientError as e:
             # Check if it's a ConditionalCheckFailed (duplicate item)
             if (e.response["Error"]["Code"]
@@ -90,7 +90,7 @@ class _WordTag:
         """
         try:
             self._client.put_item(TableName=self.table_name,
-                Item=word_tag.to_item(),)
+                Item=word_tag.to_item(), )
         except ClientError as e:
             raise Exception(f"Error updating WordTag: {e}")
 
@@ -113,12 +113,12 @@ class _WordTag:
             line_id,
             word_id,
             tag,
-            timestamp_added="2021-01-01T00:00:00",  # This is a placeholder value)
+            timestamp_added="2021-01-01T00:00:00")  # This is a placeholder value
 
         try:
             self._client.delete_item(TableName=self.table_name,
                 Key=word_tag.key(),
-                ConditionExpression="attribute_exists(PK)",)
+                ConditionExpression="attribute_exists(PK)", )
         except ClientError as e:
             if (e.response["Error"]["Code"]
                 == "ConditionalCheckFailedException"):
@@ -161,7 +161,7 @@ class _WordTag:
         image_id: int,
         line_id: int,
         word_id: int,
-        tag: str,) -> WordTag:
+        tag: str, ) -> WordTag:
         """
         Retrieves a single WordTag from DynamoDB by its primary key.
 
@@ -181,11 +181,11 @@ class _WordTag:
             line_id,
             word_id,
             tag,
-            timestamp_added="2021-01-01T00:00:00",  # This is a placeholder value)
+            timestamp_added="2021-01-01T00:00:00")  # This is a placeholder value
 
         try:
             response = self._client.get_item(TableName=self.table_name,
-                Key=word_tag.key(),)
+                Key=word_tag.key(), )
             return itemToWordTag(response["Item"])
         except KeyError:
             # Means response had no "Item" or missing fields
@@ -204,7 +204,7 @@ class _WordTag:
             response = self._client.query(TableName=self.table_name,
                 IndexName="GSI1",  # Make sure this is the correct GSI name
                 KeyConditionExpression="GSI1PK = :gsi1pk",
-                ExpressionAttributeValues={":gsi1pk": {"S": f"TAG#{tag:_>40}"}},)
+                ExpressionAttributeValues={":gsi1pk": {"S": f"TAG#{tag:_>40}"}}, )
             word_tags.extend([itemToWordTag(item) for item in response["Items"]])
 
             # Paginate if necessary
@@ -213,7 +213,7 @@ class _WordTag:
                     IndexName="GSI1",
                     KeyConditionExpression="GSI1PK = :gsi1pk",
                     ExpressionAttributeValues={":gsi1pk": {"S": f"TAG#{tag:_>40}"}},
-                    ExclusiveStartKey=response["LastEvaluatedKey"],)
+                    ExclusiveStartKey=response["LastEvaluatedKey"], )
                 word_tags.extend([itemToWordTag(item) for item in response["Items"]])
 
             return word_tags
@@ -223,7 +223,7 @@ class _WordTag:
 
     def listWordTags(self,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict] = None,) -> Tuple[List[WordTag], Optional[Dict]]:
+        lastEvaluatedKey: Optional[Dict] = None, ) -> Tuple[List[WordTag], Optional[Dict]]:
         """
         Lists WordTag items from the database via the GSITYPE index (using the "TYPE" attribute).
         Supports optional pagination via a limit and a LastEvaluatedKey.
@@ -246,7 +246,7 @@ class _WordTag:
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "WORD_TAG"}},}
+                "ExpressionAttributeValues": {":val": {"S": "WORD_TAG"}}, }
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
 
@@ -288,7 +288,7 @@ class _WordTag:
                 ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
                 ExpressionAttributeValues={":pk_val": {"S": f"IMAGE#{image_id}"},
                     ":sk_val": {"S": "LINE#"},
-                    ":tag_marker": {"S": "#TAG#"},},)
+                    ":tag_marker": {"S": "#TAG#"}, }, )
             word_tags.extend([itemToWordTag(item) for item in response["Items"]])
 
             # Handle pagination
@@ -299,8 +299,8 @@ class _WordTag:
                     ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
                     ExpressionAttributeValues={":pk_val": {"S": f"IMAGE#{image_id}"},
                         ":sk_val": {"S": "LINE#"},
-                        ":tag_marker": {"S": "#TAG#"},},
-                    ExclusiveStartKey=response["LastEvaluatedKey"],)
+                        ":tag_marker": {"S": "#TAG#"}, },
+                    ExclusiveStartKey=response["LastEvaluatedKey"], )
                 word_tags.extend([itemToWordTag(item) for item in response["Items"]])
             return word_tags
 
@@ -344,7 +344,7 @@ class _WordTag:
             for word_tag in chunk:
                 transact_items.append({"Put": {"TableName": self.table_name,
                             "Item": word_tag.to_item(),
-                            "ConditionExpression": "attribute_exists(PK)",}})
+                            "ConditionExpression": "attribute_exists(PK)", }})
             try:
                 self._client.transact_write_items(TransactItems=transact_items)
             except ClientError as e:

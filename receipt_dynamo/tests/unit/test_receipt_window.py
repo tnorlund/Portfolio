@@ -2,7 +2,7 @@
 import pytest
 
 from receipt_dynamo.entities.receipt_window import (ReceiptWindow,
-    itemToReceiptWindow,)
+    itemToReceiptWindow, )
 
 # Use a valid UUID for testing. (Assuming assert_valid_uuid accepts this
 # format.)
@@ -20,7 +20,7 @@ def example_receipt_window():
         width=100,
         height=200,
         inner_corner_coordinates=(10, 20),
-        gpt_guess=[1, 2, 3],)
+        gpt_guess=[1, 2, 3], )
 
 
 @pytest.fixture
@@ -34,7 +34,7 @@ def example_receipt_window_no_gpt_guess():
         width=100,
         height=200,
         inner_corner_coordinates=(10, 20),
-        gpt_guess=None,)
+        gpt_guess=None, )
 
 
 @pytest.mark.unit
@@ -64,7 +64,7 @@ def test_receipt_window_init_invalid_image_id():
             corner_name="TOP_LEFT",
             width=100,
             height=200,
-            inner_corner_coordinates=(10, 20),)
+            inner_corner_coordinates=(10, 20), )
     with pytest.raises(ValueError, match="uuid must be a valid UUID"):
         ReceiptWindow(image_id="not-a-uuid",
             receipt_id=123,
@@ -73,7 +73,7 @@ def test_receipt_window_init_invalid_image_id():
             corner_name="TOP_LEFT",
             width=100,
             height=200,
-            inner_corner_coordinates=(10, 20),)
+            inner_corner_coordinates=(10, 20), )
 
 
 @pytest.mark.unit
@@ -87,7 +87,7 @@ def test_receipt_window_init_invalid_receipt_id():
             corner_name="TOP_LEFT",
             width=100,
             height=200,
-            inner_corner_coordinates=(10, 20),)
+            inner_corner_coordinates=(10, 20), )
     with pytest.raises(ValueError, match="id must be positive"):
         ReceiptWindow(image_id=VALID_UUID,
             receipt_id=-5,
@@ -96,7 +96,7 @@ def test_receipt_window_init_invalid_receipt_id():
             corner_name="TOP_LEFT",
             width=100,
             height=200,
-            inner_corner_coordinates=(10, 20),)
+            inner_corner_coordinates=(10, 20), )
 
 
 @pytest.mark.unit
@@ -110,7 +110,7 @@ def test_receipt_window_init_invalid_cdn_s3_bucket():
             corner_name="TOP_LEFT",
             width=100,
             height=200,
-            inner_corner_coordinates=(10, 20),)
+            inner_corner_coordinates=(10, 20), )
 
 
 @pytest.mark.unit
@@ -124,7 +124,7 @@ def test_receipt_window_init_invalid_cdn_s3_key():
             corner_name="TOP_LEFT",
             width=100,
             height=200,
-            inner_corner_coordinates=(10, 20),)
+            inner_corner_coordinates=(10, 20), )
 
 
 @pytest.mark.unit
@@ -138,7 +138,7 @@ def test_receipt_window_init_non_string_corner_name():
             corner_name=123,  # non-string
             width=100,
             height=200,
-            inner_corner_coordinates=(10, 20),)
+            inner_corner_coordinates=(10, 20), )
 
 
 @pytest.mark.unit
@@ -152,7 +152,7 @@ def test_receipt_window_init_invalid_corner_name():
             corner_name="top_side",  # invalid
             width=100,
             height=200,
-            inner_corner_coordinates=(10, 20),)
+            inner_corner_coordinates=(10, 20), )
 
 
 @pytest.mark.unit
@@ -166,7 +166,7 @@ def test_receipt_window_init_invalid_width_and_height():
             corner_name="TOP_LEFT",
             width=0,
             height=200,
-            inner_corner_coordinates=(10, 20),)
+            inner_corner_coordinates=(10, 20), )
     with pytest.raises(ValueError, match="height must be positive"):
         ReceiptWindow(image_id=VALID_UUID,
             receipt_id=123,
@@ -175,7 +175,7 @@ def test_receipt_window_init_invalid_width_and_height():
             corner_name="TOP_LEFT",
             width=100,
             height=0,
-            inner_corner_coordinates=(10, 20),)
+            inner_corner_coordinates=(10, 20), )
 
 
 @pytest.mark.unit
@@ -192,7 +192,7 @@ def test_receipt_window_init_valid_inner_corner_coordinates():
         corner_name="TOP_LEFT",
         width=100,
         height=200,
-        inner_corner_coordinates=[10, 20],  # not a tuple)
+        inner_corner_coordinates=[10, 20], )
     assert rw.inner_corner_coordinates == (10, 20)
 
 
@@ -206,21 +206,21 @@ def test_receipt_window_init_invalid_inner_corner_coordinates():
             corner_name="TOP_LEFT",
             width=100,
             height=200,
-            inner_corner_coordinates="not-a-tuple-or-list",)
+            inner_corner_coordinates="not-a-tuple-or-list", )
 
 
 @pytest.mark.unit
 def test_receipt_window_key(example_receipt_window):
     """Test the ReceiptWindow.key() method."""
     assert example_receipt_window.key() == {"PK": {"S": f"IMAGE#{VALID_UUID}"},
-        "SK": {"S": "RECEIPT#00123#RECEIPT_WINDOW#TOP_LEFT"},}
+        "SK": {"S": "RECEIPT#00123#RECEIPT_WINDOW#TOP_LEFT"}, }
 
 
 @pytest.mark.unit
 def test_receipt_window_gsi3_key(example_receipt_window):
     """Test the ReceiptWindow.gsi3_key() method."""
     assert example_receipt_window.gsi3_key() == {"GSI3PK": {"S": "RECEIPT"},
-        "GSI3SK": {"S": "RECEIPT#00123#RECEIPT_WINDOW#TOP_LEFT"},}
+        "GSI3SK": {"S": "RECEIPT#00123#RECEIPT_WINDOW#TOP_LEFT"}, }
 
 
 @pytest.mark.unit
@@ -238,7 +238,7 @@ def test_receipt_window_to_item(example_receipt_window, example_receipt_window_n
         "width": {"N": "100"},
         "height": {"N": "200"},
         "inner_corner_coordinates": {"L": [{"N": "10"}, {"N": "20"}]},
-        "gpt_guess": {"L": [{"N": "1"}, {"N": "2"}, {"N": "3"}]},}
+        "gpt_guess": {"L": [{"N": "1"}, {"N": "2"}, {"N": "3"}]}, }
 
     # Case: without gpt_guess
     assert example_receipt_window_no_gpt_guess.to_item() == {"PK": {"S": f"IMAGE#{VALID_UUID}"},
@@ -252,7 +252,7 @@ def test_receipt_window_to_item(example_receipt_window, example_receipt_window_n
         "width": {"N": "100"},
         "height": {"N": "200"},
         "inner_corner_coordinates": {"L": [{"N": "10"}, {"N": "20"}]},
-        "gpt_guess": {"NULL": True},}
+        "gpt_guess": {"NULL": True}, }
 
 
 @pytest.mark.unit
@@ -285,7 +285,7 @@ def test_receipt_window_iter(example_receipt_window):
         "width": 100,
         "height": 200,
         "inner_corner_coordinates": (10, 20),
-        "gpt_guess": [1, 2, 3],}
+        "gpt_guess": [1, 2, 3], }
 
 
 @pytest.mark.unit
@@ -299,7 +299,7 @@ def test_receipt_window_eq():
         100,
         200,
         (10, 20),
-        [1, 2, 3],)
+        [1, 2, 3], )
     r2 = ReceiptWindow(VALID_UUID,
         123,
         "bucket",
@@ -308,7 +308,7 @@ def test_receipt_window_eq():
         100,
         200,
         (10, 20),
-        [1, 2, 3],)
+        [1, 2, 3], )
     r3 = ReceiptWindow("29984038-5cb5-4ce9-bcf0-856dcfca3125",
         123,
         "bucket",
@@ -317,7 +317,7 @@ def test_receipt_window_eq():
         100,
         200,
         (10, 20),
-        [1, 2, 3],)
+        [1, 2, 3], )
     r4 = ReceiptWindow(VALID_UUID,
         321,
         "bucket",
@@ -326,7 +326,7 @@ def test_receipt_window_eq():
         100,
         200,
         (10, 20),
-        [1, 2, 3],)
+        [1, 2, 3], )
     r5 = ReceiptWindow(VALID_UUID,
         123,
         "Bucket",
@@ -335,7 +335,7 @@ def test_receipt_window_eq():
         100,
         200,
         (10, 20),
-        [1, 2, 3],)
+        [1, 2, 3], )
 
     assert (r1 == r2), "corner_name is case-insensitive on input, so these should be equal"
     assert r1 != r3, "Different image_id"
@@ -360,7 +360,7 @@ def test_receipt_window_hash(example_receipt_window):
             hashable_coords,
             (tuple(example_receipt_window.gpt_guess)
                 if example_receipt_window.gpt_guess
-                else None),))
+                else None), ))
     assert h == expected
 
 
@@ -380,7 +380,7 @@ def test_itemToReceiptWindow(example_receipt_window, example_receipt_window_no_g
     with pytest.raises(ValueError, match=r"^Invalid item format\nmissing keys: "):
         itemToReceiptWindow({"PK": {"S": f"IMAGE#{VALID_UUID}"},
                 "SK": {"S": "RECEIPT#00123#RECEIPT_WINDOW#TOP_LEFT"},
-                # "TYPE" and other required keys are missing...})
+                })
 
     # Bad data type in item
     bad_item = {"PK": {"S": f"IMAGE#{VALID_UUID}"},
@@ -391,7 +391,7 @@ def test_itemToReceiptWindow(example_receipt_window, example_receipt_window_no_g
         "corner_name": {"S": "TOP_LEFT"},
         "width": {"S": "wrong-type"},  # Should be {"N": "..."}
         "height": {"N": "200"},
-        "inner_corner_coordinates": {"L": [{"N": "10"}, {"N": "20"}]},}
+        "inner_corner_coordinates": {"L": [{"N": "10"}, {"N": "20"}]}, }
     with pytest.raises(ValueError, match="Error converting item to ReceiptWindow:"):
         itemToReceiptWindow(bad_item)
 

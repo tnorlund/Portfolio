@@ -33,7 +33,7 @@ class _Job:
         try:
             self._client.put_item(TableName=self.table_name,
                 Item=job.to_item(),
-                ConditionExpression="attribute_not_exists(PK)",)
+                ConditionExpression="attribute_not_exists(PK)", )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
@@ -103,7 +103,7 @@ class _Job:
         try:
             self._client.put_item(TableName=self.table_name,
                 Item=job.to_item(),
-                ConditionExpression="attribute_exists(PK)",)
+                ConditionExpression="attribute_exists(PK)", )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
@@ -150,7 +150,7 @@ class _Job:
             for job in chunk:
                 transact_items.append({"Put": {"TableName": self.table_name,
                             "Item": job.to_item(),
-                            "ConditionExpression": "attribute_exists(PK)",}})
+                            "ConditionExpression": "attribute_exists(PK)", }})
             try:
                 self._client.transact_write_items(TransactItems=transact_items)
             except ClientError as e:
@@ -184,7 +184,7 @@ class _Job:
         try:
             self._client.delete_item(TableName=self.table_name,
                 Key=job.key(),
-                ConditionExpression="attribute_exists(PK)",)
+                ConditionExpression="attribute_exists(PK)", )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
@@ -227,7 +227,7 @@ class _Job:
                 for job in chunk:
                     transact_items.append({"Delete": {"TableName": self.table_name,
                                 "Key": job.key(),
-                                "ConditionExpression": "attribute_exists(PK)",}})
+                                "ConditionExpression": "attribute_exists(PK)", }})
                 # Execute the transaction for this chunk.
                 self._client.transact_write_items(TransactItems=transact_items)
         except ClientError as e:
@@ -268,7 +268,7 @@ class _Job:
         try:
             response = self._client.get_item(TableName=self.table_name,
                 Key={"PK": {"S": f"JOB#{job_id}"},
-                    "SK": {"S": "JOB"},},)
+                    "SK": {"S": "JOB"}, }, )
             if "Item" in response:
                 return itemToJob(response["Item"])
             else:
@@ -337,7 +337,7 @@ class _Job:
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "JOB"}},}
+                "ExpressionAttributeValues": {":val": {"S": "JOB"}}, }
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
 
@@ -383,7 +383,7 @@ class _Job:
     def listJobsByStatus(self,
         status: str,
         limit: int = None,
-        lastEvaluatedKey: dict | None = None,) -> tuple[list[Job], dict | None]:
+        lastEvaluatedKey: dict | None = None, ) -> tuple[list[Job], dict | None]:
         """
         Retrieve job records filtered by status from the database.
 
@@ -406,7 +406,7 @@ class _Job:
             "succeeded",
             "failed",
             "cancelled",
-            "interrupted",]
+            "interrupted", ]
         if not isinstance(status, str) or status.lower() not in valid_statuses:
             raise ValueError(f"status must be one of {valid_statuses}")
 
@@ -427,9 +427,9 @@ class _Job:
                 "IndexName": "GSI1",
                 "KeyConditionExpression": "GSI1PK = :status",
                 "ExpressionAttributeValues": {":status": {"S": f"STATUS#{status.lower()}"},
-                    ":job_type": {"S": "JOB"},},
+                    ":job_type": {"S": "JOB"}, },
                 "FilterExpression": "#type = :job_type",
-                "ExpressionAttributeNames": {"#type": "TYPE"},}
+                "ExpressionAttributeNames": {"#type": "TYPE"}, }
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
 
@@ -475,7 +475,7 @@ class _Job:
     def listJobsByUser(self,
         user_id: str,
         limit: int = None,
-        lastEvaluatedKey: dict | None = None,) -> tuple[list[Job], dict | None]:
+        lastEvaluatedKey: dict | None = None, ) -> tuple[list[Job], dict | None]:
         """
         Retrieve job records created by a specific user from the database.
 
@@ -512,11 +512,11 @@ class _Job:
             query_params = {"TableName": self.table_name,
                 "IndexName": "GSI2",
                 "KeyConditionExpression": "GSI2PK = :user",
-                "ExpressionAttributeValues": {":user": {"S": f"USER#{user_id}"},},
+                "ExpressionAttributeValues": {":user": {"S": f"USER#{user_id}"}, },
                 "FilterExpression": "#type = :job_type",
                 "ExpressionAttributeNames": {"#type": "TYPE"},
                 "ExpressionAttributeValues": {":user": {"S": f"USER#{user_id}"},
-                    ":job_type": {"S": "JOB"},},}
+                    ":job_type": {"S": "JOB"}, }, }
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
 

@@ -35,7 +35,7 @@ class Image:
         raw_s3_key: str,
         sha256: str = None,
         cdn_s3_bucket: str = None,
-        cdn_s3_key: str = None,):
+        cdn_s3_key: str = None, ):
         """Initializes a new Image object for DynamoDB.
 
         Args:
@@ -104,7 +104,7 @@ class Image:
             dict: The GSI1 key for the image.
         """
         return {"GSI1PK": {"S": "IMAGE"},
-            "GSI1SK": {"S": f"IMAGE#{self.image_id}"},}
+            "GSI1SK": {"S": f"IMAGE#{self.image_id}"}, }
 
     def gsi2_key(self) -> dict:
         """Generates the GSI2 key for the image.
@@ -113,7 +113,7 @@ class Image:
             dict: The GSI2 key for the image.
         """
         return {"GSI2PK": {"S": f"IMAGE#{self.image_id}"},
-            "GSI2SK": {"S": "IMAGE"},}
+            "GSI2SK": {"S": "IMAGE"}, }
 
     def to_item(self) -> dict:
         """Converts the Image object to a DynamoDB item.
@@ -134,7 +134,7 @@ class Image:
             "cdn_s3_bucket": ({"S": self.cdn_s3_bucket}
                 if self.cdn_s3_bucket
                 else {"NULL": True}),
-            "cdn_s3_key": ({"S": self.cdn_s3_key} if self.cdn_s3_key else {"NULL": True}),}
+            "cdn_s3_key": ({"S": self.cdn_s3_key} if self.cdn_s3_key else {"NULL": True}), }
 
     def __repr__(self) -> str:
         """Returns a string representation of the Image object.
@@ -208,7 +208,7 @@ class Image:
                 self.raw_s3_key,
                 self.sha256,
                 self.cdn_s3_bucket,
-                self.cdn_s3_key,))
+                self.cdn_s3_key, ))
 
 
 def itemToImage(item: dict) -> Image:
@@ -230,7 +230,7 @@ def itemToImage(item: dict) -> Image:
         "height",
         "timestamp_added",
         "raw_s3_bucket",
-        "raw_s3_key",}
+        "raw_s3_key", }
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
@@ -247,6 +247,6 @@ def itemToImage(item: dict) -> Image:
             raw_s3_key=item["raw_s3_key"]["S"],
             sha256=sha256 if sha256 else None,
             cdn_s3_bucket=cdn_s3_bucket if cdn_s3_bucket else None,
-            cdn_s3_key=cdn_s3_key if cdn_s3_key else None,)
+            cdn_s3_key=cdn_s3_key if cdn_s3_key else None, )
     except KeyError as e:
         raise ValueError(f"Error converting item to Image: {e}")

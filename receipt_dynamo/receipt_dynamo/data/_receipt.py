@@ -7,12 +7,12 @@ from receipt_dynamo.entities.gpt_initial_tagging import itemToGPTInitialTagging
 from receipt_dynamo.entities.gpt_validation import itemToGPTValidation
 from receipt_dynamo.entities.receipt import Receipt, itemToReceipt
 from receipt_dynamo.entities.receipt_letter import (ReceiptLetter,
-    itemToReceiptLetter,)
+    itemToReceiptLetter, )
 from receipt_dynamo.entities.receipt_line import ReceiptLine, itemToReceiptLine
 from receipt_dynamo.entities.receipt_window import itemToReceiptWindow
 from receipt_dynamo.entities.receipt_word import ReceiptWord, itemToReceiptWord
 from receipt_dynamo.entities.receipt_word_tag import (ReceiptWordTag,
-    itemToReceiptWordTag,)
+    itemToReceiptWordTag, )
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
@@ -44,7 +44,7 @@ class _Receipt:
         try:
             self._client.put_item(TableName=self.table_name,
                 Item=receipt.to_item(),
-                ConditionExpression="attribute_not_exists(PK)",)
+                ConditionExpression="attribute_not_exists(PK)", )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
@@ -115,7 +115,7 @@ class _Receipt:
         try:
             self._client.put_item(TableName=self.table_name,
                 Item=receipt.to_item(),
-                ConditionExpression="attribute_exists(PK)",)
+                ConditionExpression="attribute_exists(PK)", )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
@@ -167,7 +167,7 @@ class _Receipt:
             for receipt in chunk:
                 transact_items.append({"Put": {"TableName": self.table_name,
                             "Item": receipt.to_item(),
-                            "ConditionExpression": "attribute_exists(PK)",}})
+                            "ConditionExpression": "attribute_exists(PK)", }})
             try:
                 self._client.transact_write_items(TransactItems=transact_items)
             except ClientError as e:
@@ -201,7 +201,7 @@ class _Receipt:
         try:
             self._client.delete_item(TableName=self.table_name,
                 Key=receipt.key(),
-                ConditionExpression="attribute_exists(PK)",)
+                ConditionExpression="attribute_exists(PK)", )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
@@ -249,7 +249,7 @@ class _Receipt:
                 for receipt in chunk:
                     transact_items.append({"Delete": {"TableName": self.table_name,
                                 "Key": receipt.key(),
-                                "ConditionExpression": "attribute_exists(PK)",}})
+                                "ConditionExpression": "attribute_exists(PK)", }})
                 # Execute the transaction for this chunk.
                 self._client.transact_write_items(TransactItems=transact_items)
         except ClientError as e:
@@ -303,7 +303,7 @@ class _Receipt:
         try:
             response = self._client.get_item(TableName=self.table_name,
                 Key={"PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"RECEIPT#{receipt_id:05d}"},},)
+                    "SK": {"S": f"RECEIPT#{receipt_id:05d}"}, }, )
             if "Item" in response:
                 return itemToReceipt(response["Item"])
             else:
@@ -350,7 +350,7 @@ class _Receipt:
             response = self._client.query(TableName=self.table_name,
                 KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
                 ExpressionAttributeValues={":pk": {"S": f"IMAGE#{image_id}"},
-                    ":sk": {"S": f"RECEIPT#{receipt_id:05d}"},},)
+                    ":sk": {"S": f"RECEIPT#{receipt_id:05d}"}, }, )
             receipt = None
             lines = []
             words = []
@@ -381,7 +381,7 @@ class _Receipt:
                 letters,
                 tags,
                 validations,
-                initial_taggings,)
+                initial_taggings, )
         except ClientError as e:
             raise ValueError(f"Error getting receipt details: {e}")
 
@@ -430,7 +430,7 @@ class _Receipt:
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "RECEIPT"}},}
+                "ExpressionAttributeValues": {":val": {"S": "RECEIPT"}}, }
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
 
@@ -488,14 +488,14 @@ class _Receipt:
             response = self._client.query(TableName=self.table_name,
                 KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
                 ExpressionAttributeValues={":pk": {"S": f"IMAGE#{image_id}"},
-                    ":sk": {"S": "RECEIPT#"},},)
+                    ":sk": {"S": "RECEIPT#"}, }, )
             receipts.extend([itemToReceipt(item) for item in response["Items"]])
 
             while "LastEvaluatedKey" in response:
                 response = self._client.query(TableName=self.table_name,
                     KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
                     ExpressionAttributeValues={":pk": {"S": f"IMAGE#{image_id}"},
-                        ":sk": {"S": "RECEIPT#"},},)
+                        ":sk": {"S": "RECEIPT#"}, }, )
                 receipts.extend([itemToReceipt(item) for item in response["Items"]])
             return receipts
         except ClientError as e:
@@ -503,7 +503,7 @@ class _Receipt:
 
     def listReceiptWindowDetails(self,
         limit: Optional[int] = None,
-        last_evaluated_key: Optional[dict] = None,) -> Tuple[Dict[str, Dict], Optional[Dict]]:
+        last_evaluated_key: Optional[dict] = None, ) -> Tuple[Dict[str, Dict], Optional[Dict]]:
         """List receipts with their windows from GSI3.
 
         Returns:
@@ -520,7 +520,7 @@ class _Receipt:
                 "KeyConditionExpression": "#pk = :pk_value",
                 "ExpressionAttributeNames": {"#pk": "GSI3PK"},
                 "ExpressionAttributeValues": {":pk_value": {"S": "RECEIPT"}},
-                "ScanIndexForward": True,}
+                "ScanIndexForward": True, }
             if last_evaluated_key is not None:
                 query_params["ExclusiveStartKey"] = last_evaluated_key
 
@@ -544,7 +544,7 @@ class _Receipt:
                             last_evaluated_key = {"PK": item["PK"],
                                 "SK": item["SK"],
                                 "GSI3PK": item["GSI3PK"],
-                                "GSI3SK": item["GSI3SK"],}
+                                "GSI3SK": item["GSI3SK"], }
                             return payload, last_evaluated_key
 
                         # Ensure there's an entry in payload for this key
@@ -581,9 +581,9 @@ class _Receipt:
 
     def listReceiptDetails(self,
         limit: Optional[int] = None,
-        last_evaluated_key: Optional[dict] = None,) -> Tuple[Dict[str,
-            Dict[str, Union[Receipt, List[ReceiptWord], List[ReceiptWordTag]]],],
-        Optional[Dict],]:
+        last_evaluated_key: Optional[dict] = None, ) -> Tuple[Dict[str,
+            Dict[str, Union[Receipt, List[ReceiptWord], List[ReceiptWordTag]]], ],
+        Optional[Dict], ]:
         """List receipts with their words and word tags
 
         Args:
@@ -601,7 +601,7 @@ class _Receipt:
                 "KeyConditionExpression": "#pk = :pk_value",
                 "ExpressionAttributeNames": {"#pk": "GSI2PK"},
                 "ExpressionAttributeValues": {":pk_value": {"S": "RECEIPT"}},
-                "ScanIndexForward": True,}
+                "ScanIndexForward": True, }
 
             if last_evaluated_key is not None:
                 query_params["ExclusiveStartKey"] = last_evaluated_key
@@ -624,14 +624,14 @@ class _Receipt:
                             last_evaluated_key = {"PK": item["PK"],
                                 "SK": item["SK"],
                                 "GSI2PK": item["GSI2PK"],
-                                "GSI2SK": item["GSI2SK"],}
+                                "GSI2SK": item["GSI2SK"], }
                             return payload, last_evaluated_key
 
                         receipt = itemToReceipt(item)
                         current_key = f"{receipt.image_id}_{receipt.receipt_id}"
                         payload[current_key] = {"receipt": receipt,
                             "words": [],
-                            "word_tags": [],}
+                            "word_tags": [], }
                         current_receipt = receipt
                         receipt_count += 1
 

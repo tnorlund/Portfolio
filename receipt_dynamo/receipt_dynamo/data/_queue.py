@@ -52,7 +52,7 @@ class _Queue:
             # ensure it doesn't already exist
             self._client.put_item(TableName=self.table_name,
                 Item=item,
-                ConditionExpression="attribute_not_exists(PK)",)
+                ConditionExpression="attribute_not_exists(PK)", )
         except ClientError as e:
             if (e.response["Error"]["Code"]
                 == "ConditionalCheckFailedException"):
@@ -113,20 +113,20 @@ class _Queue:
             if (e.response["Error"]["Code"]
                 == "ProvisionedThroughputExceededException"):
                 raise ClientError(e.response,
-                    "DynamoDB Provisioned Throughput Exceeded: Consider retrying with exponential backoff",)
+                    "DynamoDB Provisioned Throughput Exceeded: Consider retrying with exponential backoff", )
             elif e.response["Error"]["Code"] == "InternalServerError":
                 raise ClientError(e.response,
-                    "DynamoDB Internal Server Error: Consider retrying the operation",)
+                    "DynamoDB Internal Server Error: Consider retrying the operation", )
             elif e.response["Error"]["Code"] == "ValidationException":
                 raise ClientError(e.response,
-                    "DynamoDB Validation Exception: Check the format of your request",)
+                    "DynamoDB Validation Exception: Check the format of your request", )
             elif e.response["Error"]["Code"] == "AccessDeniedException":
                 raise ClientError(e.response,
-                    "Access Denied: Ensure your IAM policy has the dynamodb:BatchWriteItem permission",)
+                    "Access Denied: Ensure your IAM policy has the dynamodb:BatchWriteItem permission", )
             else:
                 # Re-raise other types of ClientError
                 raise ClientError(e.response,
-                    f"Error batch writing queues: {e.response['Error']['Code']}: {e.response['Error']['Message']}",)
+                    f"Error batch writing queues: {e.response['Error']['Code']}: {e.response['Error']['Message']}", )
 
     def updateQueue(self, queue: Queue) -> None:
         """Updates a queue in the DynamoDB table.
@@ -152,7 +152,7 @@ class _Queue:
             # to ensure it already exists
             self._client.put_item(TableName=self.table_name,
                 Item=item,
-                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",)
+                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)", )
         except ClientError as e:
             if (e.response["Error"]["Code"]
                 == "ConditionalCheckFailedException"):
@@ -183,7 +183,7 @@ class _Queue:
             # expression to ensure it exists
             self._client.delete_item(TableName=self.table_name,
                 Key=queue.key(),
-                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",)
+                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)", )
         except ClientError as e:
             if (e.response["Error"]["Code"]
                 == "ConditionalCheckFailedException"):
@@ -212,7 +212,7 @@ class _Queue:
         try:
             # Get the item from the DynamoDB table
             response = self._client.get_item(TableName=self.table_name,
-                Key={"PK": {"S": f"QUEUE#{queue_name}"}, "SK": {"S": "QUEUE"}},)
+                Key={"PK": {"S": f"QUEUE#{queue_name}"}, "SK": {"S": "QUEUE"}}, )
 
             # Check if the item exists
             if "Item" not in response:
@@ -224,10 +224,10 @@ class _Queue:
         except ClientError as e:
             if e.response["Error"]["Code"] == "ResourceNotFoundException":
                 raise ClientError(e.response,
-                    f"Table {self.table_name} not found",)
+                    f"Table {self.table_name} not found", )
             elif e.response["Error"]["Code"] == "InternalServerError":
                 raise ClientError(e.response,
-                    "DynamoDB Internal Server Error: Consider retrying the operation",)
+                    "DynamoDB Internal Server Error: Consider retrying the operation", )
             else:
                 # Re-raise other types of ClientError
                 raise
@@ -253,7 +253,7 @@ class _Queue:
         query_params = {"TableName": self.table_name,
             "IndexName": "GSI1",
             "KeyConditionExpression": "GSI1PK = :queue_type",
-            "ExpressionAttributeValues": {":queue_type": {"S": "QUEUE"}},}
+            "ExpressionAttributeValues": {":queue_type": {"S": "QUEUE"}}, }
 
         # Add optional parameters if provided
         if limit is not None:
@@ -276,11 +276,11 @@ class _Queue:
             # Handle different types of ClientError
             if e.response["Error"]["Code"] == "ResourceNotFoundException":
                 raise ClientError(e.response,
-                    f"Table {self.table_name} or GSI1 index not found",)
+                    f"Table {self.table_name} or GSI1 index not found", )
             else:
                 # Re-raise other types of ClientError
                 raise ClientError(e.response,
-                    f"Error listing queues: {e.response['Error']['Code']}: {e.response['Error']['Message']}",)
+                    f"Error listing queues: {e.response['Error']['Code']}: {e.response['Error']['Message']}", )
 
     def addJobToQueue(self, queue_job: QueueJob) -> None:
         """Adds a job to a queue in the DynamoDB table.
@@ -306,7 +306,7 @@ class _Queue:
             # ensure it doesn't already exist
             self._client.put_item(TableName=self.table_name,
                 Item=item,
-                ConditionExpression="attribute_not_exists(PK) OR attribute_not_exists(SK)",)
+                ConditionExpression="attribute_not_exists(PK) OR attribute_not_exists(SK)", )
 
             # Update the job count for the queue
             queue = self.getQueue(queue_job.queue_name)
@@ -343,7 +343,7 @@ class _Queue:
             # expression to ensure it exists
             self._client.delete_item(TableName=self.table_name,
                 Key=queue_job.key(),
-                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",)
+                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)", )
 
             # Update the job count for the queue
             queue = self.getQueue(queue_job.queue_name)
@@ -390,7 +390,7 @@ class _Queue:
         query_params = {"TableName": self.table_name,
             "KeyConditionExpression": "PK = :pk AND begins_with(SK, :job_prefix)",
             "ExpressionAttributeValues": {":pk": {"S": f"QUEUE#{queue_name}"},
-                ":job_prefix": {"S": "JOB#"},},}
+                ":job_prefix": {"S": "JOB#"}, }, }
 
         # Add optional parameters if provided
         if limit is not None:
@@ -413,11 +413,11 @@ class _Queue:
             # Handle different types of ClientError
             if e.response["Error"]["Code"] == "ResourceNotFoundException":
                 raise ClientError(e.response,
-                    f"Table {self.table_name} not found",)
+                    f"Table {self.table_name} not found", )
             else:
                 # Re-raise other types of ClientError
                 raise ClientError(e.response,
-                    f"Error listing jobs in queue: {e.response['Error']['Code']}: {e.response['Error']['Message']}",)
+                    f"Error listing jobs in queue: {e.response['Error']['Code']}: {e.response['Error']['Message']}", )
 
     def findQueuesForJob(self, job_id: str, limit: int = None, lastEvaluatedKey: dict = None) -> tuple[list[QueueJob], dict]:
         """Finds all queues that contain a specific job.
@@ -445,7 +445,7 @@ class _Queue:
             "IndexName": "GSI1",
             "KeyConditionExpression": "GSI1PK = :job_type AND begins_with(GSI1SK, :job_prefix)",
             "ExpressionAttributeValues": {":job_type": {"S": "JOB"},
-                ":job_prefix": {"S": f"JOB#{job_id}#QUEUE#"},},}
+                ":job_prefix": {"S": f"JOB#{job_id}#QUEUE#"}, }, }
 
         # Add optional parameters if provided
         if limit is not None:
@@ -468,8 +468,8 @@ class _Queue:
             # Handle different types of ClientError
             if e.response["Error"]["Code"] == "ResourceNotFoundException":
                 raise ClientError(e.response,
-                    f"Table {self.table_name} or GSI1 index not found",)
+                    f"Table {self.table_name} or GSI1 index not found", )
             else:
                 # Re-raise other types of ClientError
                 raise ClientError(e.response,
-                    f"Error finding queues for job: {e.response['Error']['Code']}: {e.response['Error']['Message']}",)
+                    f"Error finding queues for job: {e.response['Error']['Code']}: {e.response['Error']['Message']}", )

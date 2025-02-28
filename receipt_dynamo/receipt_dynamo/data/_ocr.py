@@ -22,7 +22,7 @@ def _process_ocr_dict(ocr_data: Dict[str, Any], image_id: str) -> Tuple[List[Lin
             bottom_left=line_data["bottom_left"],
             angle_degrees=line_data["angle_degrees"],
             angle_radians=line_data["angle_radians"],
-            confidence=line_data["confidence"],)
+            confidence=line_data["confidence"], )
         lines.append(line_obj)
 
         for word_idx, word_data in enumerate(line_data.get("words", []), start=1):
@@ -37,7 +37,7 @@ def _process_ocr_dict(ocr_data: Dict[str, Any], image_id: str) -> Tuple[List[Lin
                 bottom_left=word_data["bottom_left"],
                 angle_degrees=word_data["angle_degrees"],
                 angle_radians=word_data["angle_radians"],
-                confidence=word_data["confidence"],)
+                confidence=word_data["confidence"], )
             words.append(word_obj)
 
             for letter_idx, letter_data in enumerate(word_data.get("letters", []), start=1):
@@ -53,7 +53,7 @@ def _process_ocr_dict(ocr_data: Dict[str, Any], image_id: str) -> Tuple[List[Lin
                     bottom_left=letter_data["bottom_left"],
                     angle_degrees=letter_data["angle_degrees"],
                     angle_radians=letter_data["angle_radians"],
-                    confidence=letter_data["confidence"],)
+                    confidence=letter_data["confidence"], )
                 letters.append(letter_obj)
 
     return lines, words, letters
@@ -74,11 +74,11 @@ def apple_vision_ocr(image_paths: list[str]) -> bool:
         try:
             swift_args = ["swift",
                 str(swift_script),
-                str(temp_dir),] + image_paths
+                str(temp_dir), ] + image_paths
             subprocess.run(swift_args,
                 check=True,
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,)
+                stderr=subprocess.DEVNULL, )
         except subprocess.CalledProcessError as e:
             print(f"Error running Swift script: {e}")
             return False

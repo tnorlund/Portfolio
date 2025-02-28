@@ -63,13 +63,13 @@ def call_openai_api(prompt: str) -> dict:
 
     url = "https://api.openai.com/v1/chat/completions"
     headers = {"Content-Type": "application/json",
-        "Authorization": f"Bearer {api_key}",}
+        "Authorization": f"Bearer {api_key}", }
 
     data = {"model": "gpt-3.5-turbo",
         "messages": [{"role": "system",
-                "content": "You are a helpful assistant that returns JSON output.",},
-            {"role": "user", "content": prompt},],
-        "temperature": 0,}
+                "content": "You are a helpful assistant that returns JSON output.", },
+            {"role": "user", "content": prompt}, ],
+        "temperature": 0, }
 
     response = requests.post(url, headers=headers, json=data)
     response.raise_for_status()

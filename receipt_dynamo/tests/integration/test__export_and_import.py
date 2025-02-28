@@ -18,7 +18,7 @@ from receipt_dynamo import (DynamoClient,
     Word,
     WordTag,
     export_image,
-    import_image,)
+    import_image, )
 
 
 @pytest.fixture
@@ -46,17 +46,17 @@ def test_export_and_import_image(dynamodb_table, export_dir):
     # Arrange
     client = DynamoClient(dynamodb_table)
     # fmt: off
-    image = Image(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", width=100, height=100, timestamp_added=datetime.datetime.now(datetime.timezone.utc), raw_s3_bucket="test_bucket", raw_s3_key="test_key", sha256="test_sha256", cdn_s3_bucket="test_cdn_bucket", cdn_s3_key="test_cdn_key",)
-    lines = [Line(image_id=image.image_id, line_id=1, text="Hello, world!", bounding_box={"x": 0, "y": 0, "width": 100, "height": 100,}, top_right={"x": 100, "y": 0,}, top_left={"x": 0, "y": 0,}, bottom_right={"x": 100, "y": 100,}, bottom_left={"x": 0, "y": 100,}, angle_degrees=0, angle_radians=0, confidence=1,)]
-    words = [Word(image_id=image.image_id, line_id=lines[0].line_id, word_id=1, text="Hello", bounding_box={"x": 0, "y": 0, "width": 100, "height": 100,}, top_right={"x": 100, "y": 0,}, top_left={"x": 0, "y": 0,}, bottom_right={"x": 100, "y": 100,}, bottom_left={"x": 0, "y": 100,}, angle_degrees=0, angle_radians=0, confidence=1,)]
-    word_tags = [WordTag(image_id=image.image_id, line_id=lines[0].line_id, word_id=words[0].word_id, tag="test_tag", timestamp_added=datetime.datetime.now(datetime.timezone.utc),)]
-    letters = [Letter(image_id=image.image_id, line_id=lines[0].line_id, word_id=words[0].word_id, letter_id=1, text="H", bounding_box={"x": 0, "y": 0, "width": 100, "height": 100,}, top_right={"x": 100, "y": 0,}, top_left={"x": 0, "y": 0,}, bottom_right={"x": 100, "y": 100,}, bottom_left={"x": 0, "y": 100,}, angle_degrees=0, angle_radians=0, confidence=1,)]
-    receipts = [Receipt(image_id=image.image_id, receipt_id=1, width=100, height=100, timestamp_added=datetime.datetime.now(datetime.timezone.utc), raw_s3_bucket="test_bucket", raw_s3_key="test_key", top_left={"x": 0, "y": 0,}, top_right={"x": 100, "y": 0,}, bottom_left={"x": 0, "y": 100,}, bottom_right={"x": 100, "y": 100,},)]
-    receipt_windows = [ReceiptWindow(image_id=image.image_id, receipt_id=receipts[0].receipt_id, cdn_s3_bucket="test_cdn_bucket", cdn_s3_key="test_cdn_key", corner_name="TOP_LEFT", width=100, height=100, inner_corner_coordinates=(0, 0),)]
-    receipt_lines = [ReceiptLine(receipt_id=receipts[0].receipt_id, image_id=image.image_id, line_id=1, text="Hello, world!", bounding_box={"x": 0, "y": 0, "width": 100, "height": 100,}, top_right={"x": 100, "y": 0,}, top_left={"x": 0, "y": 0,}, bottom_right={"x": 100, "y": 100,}, bottom_left={"x": 0, "y": 100,}, angle_degrees=0, angle_radians=0, confidence=1,)]
-    receipt_words = [ReceiptWord(image_id=image.image_id, receipt_id=receipts[0].receipt_id, line_id=receipt_lines[0].line_id, word_id=words[0].word_id, text="Hello", bounding_box={"x": 0, "y": 0, "width": 100, "height": 100,}, top_right={"x": 100, "y": 0,}, top_left={"x": 0, "y": 0,}, bottom_right={"x": 100, "y": 100,}, bottom_left={"x": 0, "y": 100,}, angle_degrees=0, angle_radians=0, confidence=1,)]
-    receipt_word_tags = [ReceiptWordTag(image_id=image.image_id, receipt_id=receipts[0].receipt_id, line_id=receipt_lines[0].line_id, word_id=receipt_words[0].word_id, tag="test_tag", timestamp_added=datetime.datetime.now(datetime.timezone.utc),)]
-    receipt_letters = [ReceiptLetter(image_id=image.image_id, receipt_id=receipts[0].receipt_id, line_id=receipt_lines[0].line_id, word_id=receipt_words[0].word_id, letter_id=letters[0].letter_id, text="H", bounding_box={"x": 0, "y": 0, "width": 100, "height": 100,}, top_right={"x": 100, "y": 0,}, top_left={"x": 0, "y": 0,}, bottom_right={"x": 100, "y": 100,}, bottom_left={"x": 0, "y": 100,}, angle_degrees=0, angle_radians=0, confidence=1,)]
+    image = Image(image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3", width=100, height=100, timestamp_added=datetime.datetime.now(datetime.timezone.utc), raw_s3_bucket="test_bucket", raw_s3_key="test_key", sha256="test_sha256", cdn_s3_bucket="test_cdn_bucket", cdn_s3_key="test_cdn_key", )
+    lines = [Line(image_id=image.image_id, line_id=1, text="Hello, world!", bounding_box={"x": 0, "y": 0, "width": 100, "height": 100, }, top_right={"x": 100, "y": 0, }, top_left={"x": 0, "y": 0, }, bottom_right={"x": 100, "y": 100, }, bottom_left={"x": 0, "y": 100, }, angle_degrees=0, angle_radians=0, confidence=1, )]
+    words = [Word(image_id=image.image_id, line_id=lines[0].line_id, word_id=1, text="Hello", bounding_box={"x": 0, "y": 0, "width": 100, "height": 100, }, top_right={"x": 100, "y": 0, }, top_left={"x": 0, "y": 0, }, bottom_right={"x": 100, "y": 100, }, bottom_left={"x": 0, "y": 100, }, angle_degrees=0, angle_radians=0, confidence=1, )]
+    word_tags = [WordTag(image_id=image.image_id, line_id=lines[0].line_id, word_id=words[0].word_id, tag="test_tag", timestamp_added=datetime.datetime.now(datetime.timezone.utc), )]
+    letters = [Letter(image_id=image.image_id, line_id=lines[0].line_id, word_id=words[0].word_id, letter_id=1, text="H", bounding_box={"x": 0, "y": 0, "width": 100, "height": 100, }, top_right={"x": 100, "y": 0, }, top_left={"x": 0, "y": 0, }, bottom_right={"x": 100, "y": 100, }, bottom_left={"x": 0, "y": 100, }, angle_degrees=0, angle_radians=0, confidence=1, )]
+    receipts = [Receipt(image_id=image.image_id, receipt_id=1, width=100, height=100, timestamp_added=datetime.datetime.now(datetime.timezone.utc), raw_s3_bucket="test_bucket", raw_s3_key="test_key", top_left={"x": 0, "y": 0, }, top_right={"x": 100, "y": 0, }, bottom_left={"x": 0, "y": 100, }, bottom_right={"x": 100, "y": 100, }, )]
+    receipt_windows = [ReceiptWindow(image_id=image.image_id, receipt_id=receipts[0].receipt_id, cdn_s3_bucket="test_cdn_bucket", cdn_s3_key="test_cdn_key", corner_name="TOP_LEFT", width=100, height=100, inner_corner_coordinates=(0, 0), )]
+    receipt_lines = [ReceiptLine(receipt_id=receipts[0].receipt_id, image_id=image.image_id, line_id=1, text="Hello, world!", bounding_box={"x": 0, "y": 0, "width": 100, "height": 100, }, top_right={"x": 100, "y": 0, }, top_left={"x": 0, "y": 0, }, bottom_right={"x": 100, "y": 100, }, bottom_left={"x": 0, "y": 100, }, angle_degrees=0, angle_radians=0, confidence=1, )]
+    receipt_words = [ReceiptWord(image_id=image.image_id, receipt_id=receipts[0].receipt_id, line_id=receipt_lines[0].line_id, word_id=words[0].word_id, text="Hello", bounding_box={"x": 0, "y": 0, "width": 100, "height": 100, }, top_right={"x": 100, "y": 0, }, top_left={"x": 0, "y": 0, }, bottom_right={"x": 100, "y": 100, }, bottom_left={"x": 0, "y": 100, }, angle_degrees=0, angle_radians=0, confidence=1, )]
+    receipt_word_tags = [ReceiptWordTag(image_id=image.image_id, receipt_id=receipts[0].receipt_id, line_id=receipt_lines[0].line_id, word_id=receipt_words[0].word_id, tag="test_tag", timestamp_added=datetime.datetime.now(datetime.timezone.utc), )]
+    receipt_letters = [ReceiptLetter(image_id=image.image_id, receipt_id=receipts[0].receipt_id, line_id=receipt_lines[0].line_id, word_id=receipt_words[0].word_id, letter_id=letters[0].letter_id, text="H", bounding_box={"x": 0, "y": 0, "width": 100, "height": 100, }, top_right={"x": 100, "y": 0, }, top_left={"x": 0, "y": 0, }, bottom_right={"x": 100, "y": 100, }, bottom_left={"x": 0, "y": 100, }, angle_degrees=0, angle_radians=0, confidence=1, )]
     # fmt: on
 
     client.addImage(image)

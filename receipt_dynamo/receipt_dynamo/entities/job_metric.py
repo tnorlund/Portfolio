@@ -29,7 +29,7 @@ class JobMetric:
         value: Union[float, Dict[str, Any]],
         unit: Optional[str] = None,
         step: Optional[int] = None,
-        epoch: Optional[int] = None,):
+        epoch: Optional[int] = None, ):
         """Initializes a new JobMetric object for DynamoDB.
 
         Args:
@@ -84,7 +84,7 @@ class JobMetric:
             dict: The primary key for the job metric.
         """
         return {"PK": {"S": f"JOB#{self.job_id}"},
-            "SK": {"S": f"METRIC#{self.metric_name}#{self.timestamp}"},}
+            "SK": {"S": f"METRIC#{self.metric_name}#{self.timestamp}"}, }
 
     def gsi1_key(self) -> dict:
         """
@@ -94,7 +94,7 @@ class JobMetric:
             dict: The GSI key mapping.
         """
         return {"GSI1PK": {"S": f"METRIC#{self.metric_name}"},
-            "GSI1SK": {"S": f"{self.timestamp}"},}
+            "GSI1SK": {"S": f"{self.timestamp}"}, }
 
     def gsi2_key(self) -> dict:
         """
@@ -105,7 +105,7 @@ class JobMetric:
             dict: The GSI2 key mapping.
         """
         return {"GSI2PK": {"S": f"METRIC#{self.metric_name}"},
-            "GSI2SK": {"S": f"JOB#{self.job_id}#{self.timestamp}"},}
+            "GSI2SK": {"S": f"JOB#{self.job_id}#{self.timestamp}"}, }
 
     def to_item(self) -> dict:
         """Converts the JobMetric object to a DynamoDB item.
@@ -119,7 +119,7 @@ class JobMetric:
             "TYPE": {"S": "JOB_METRIC"},
             "job_id": {"S": self.job_id},
             "metric_name": {"S": self.metric_name},
-            "timestamp": {"S": self.timestamp},}
+            "timestamp": {"S": self.timestamp}, }
 
         # Handle value based on type
         if isinstance(self.value, (int, float)):
@@ -262,7 +262,7 @@ class JobMetric:
                 value_for_hash,
                 self.unit,
                 self.step,
-                self.epoch,))
+                self.epoch, ))
 
 
 def itemToJobMetric(item: dict) -> JobMetric:
@@ -289,7 +289,7 @@ def itemToJobMetric(item: dict) -> JobMetric:
                 "unit",
                 "step",
                 "epoch",
-                "TYPE",})
+                "TYPE", })
         raise ValueError(f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}")
 
     try:
@@ -331,7 +331,7 @@ def itemToJobMetric(item: dict) -> JobMetric:
             value=value,
             unit=unit,
             step=step,
-            epoch=epoch,)
+            epoch=epoch, )
     except (KeyError, ValueError) as e:
         raise ValueError(f"Error parsing item: {str(e)}")
 

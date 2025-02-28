@@ -28,7 +28,7 @@ class JobLog:
         log_level: str,
         message: str,
         source: Optional[str] = None,
-        exception: Optional[str] = None,):
+        exception: Optional[str] = None, ):
         """Initializes a new JobLog object for DynamoDB.
 
         Args:
@@ -77,7 +77,7 @@ class JobLog:
             dict: The primary key for the job log.
         """
         return {"PK": {"S": f"JOB#{self.job_id}"},
-            "SK": {"S": f"LOG#{self.timestamp}"},}
+            "SK": {"S": f"LOG#{self.timestamp}"}, }
 
     def gsi1_key(self) -> dict:
         """Generates the GSI1 key for the job log.
@@ -86,7 +86,7 @@ class JobLog:
             dict: The GSI1 key for the job log.
         """
         return {"GSI1PK": {"S": "LOG"},
-            "GSI1SK": {"S": f"JOB#{self.job_id}#{self.timestamp}"},}
+            "GSI1SK": {"S": f"JOB#{self.job_id}#{self.timestamp}"}, }
 
     def to_item(self) -> dict:
         """Converts the JobLog object to a DynamoDB item.
@@ -98,7 +98,7 @@ class JobLog:
             **self.gsi1_key(),
             "TYPE": {"S": "JOB_LOG"},
             "log_level": {"S": self.log_level},
-            "message": {"S": self.message},}
+            "message": {"S": self.message}, }
 
         if self.source is not None:
             item["source"] = {"S": self.source}
@@ -168,7 +168,7 @@ class JobLog:
                 self.log_level,
                 self.message,
                 self.source,
-                self.exception,))
+                self.exception, ))
 
 
 def itemToJobLog(item: dict) -> JobLog:
@@ -187,7 +187,7 @@ def itemToJobLog(item: dict) -> JobLog:
         "SK",
         "TYPE",
         "log_level",
-        "message",}
+        "message", }
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
@@ -213,6 +213,6 @@ def itemToJobLog(item: dict) -> JobLog:
             log_level=log_level,
             message=message,
             source=source,
-            exception=exception,)
+            exception=exception, )
     except KeyError as e:
         raise ValueError(f"Error converting item to JobLog: {e}")

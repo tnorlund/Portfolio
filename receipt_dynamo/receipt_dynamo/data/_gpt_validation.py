@@ -45,7 +45,7 @@ class _GPTValidation:
         try:
             self._client.put_item(TableName=self.table_name,
                 Item=validation.to_item(),
-                ConditionExpression="attribute_not_exists(PK)",)
+                ConditionExpression="attribute_not_exists(PK)", )
         except ClientError as e:
             if (e.response["Error"]["Code"]
                 == "ConditionalCheckFailedException"):
@@ -91,10 +91,10 @@ class _GPTValidation:
             ValueError: If the record is not found.
         """
         key = {"PK": {"S": f"IMAGE#{image_id}"},
-            "SK": {"S": f"RECEIPT#{receipt_id:05d}#QUERY#VALIDATION"},}
+            "SK": {"S": f"RECEIPT#{receipt_id:05d}#QUERY#VALIDATION"}, }
         try:
             response = self._client.get_item(TableName=self.table_name,
-                Key=key,)
+                Key=key, )
             if "Item" not in response:
                 raise ValueError(f"GPTValidation record not found for key: {key}")
             return itemToGPTValidation(response["Item"])
@@ -114,7 +114,7 @@ class _GPTValidation:
         try:
             self._client.put_item(TableName=self.table_name,
                 Item=validation.to_item(),
-                ConditionExpression="attribute_exists(PK)",)
+                ConditionExpression="attribute_exists(PK)", )
         except ClientError as e:
             if (e.response["Error"]["Code"]
                 == "ConditionalCheckFailedException"):
@@ -135,7 +135,7 @@ class _GPTValidation:
         try:
             self._client.delete_item(TableName=self.table_name,
                 Key=validation.key(),
-                ConditionExpression="attribute_exists(PK)",)
+                ConditionExpression="attribute_exists(PK)", )
         except ClientError as e:
             if (e.response["Error"]["Code"]
                 == "ConditionalCheckFailedException"):
@@ -168,7 +168,7 @@ class _GPTValidation:
 
     def listGPTValidations(self,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict] = None,) -> Tuple[List[GPTValidation], Optional[Dict]]:
+        lastEvaluatedKey: Optional[Dict] = None, ) -> Tuple[List[GPTValidation], Optional[Dict]]:
         """
         Lists GPTValidation records from the database via a global secondary index.
         The query uses the GSITYPE index on the "TYPE" attribute where the value is "GPT_VALIDATION".
@@ -202,7 +202,7 @@ class _GPTValidation:
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "GPT_VALIDATION"}},}
+                "ExpressionAttributeValues": {":val": {"S": "GPT_VALIDATION"}}, }
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
             if limit is not None:

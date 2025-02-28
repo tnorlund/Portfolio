@@ -29,9 +29,9 @@ def sample_job():
         priority="medium",
         job_config={"type": "training",
             "model": "receipt_model",
-            "batch_size": 32,},
+            "batch_size": 32, },
         estimated_duration=3600,
-        tags={"env": "test", "purpose": "integration-test"},)
+        tags={"env": "test", "purpose": "integration-test"}, )
 
 
 @pytest.fixture
@@ -42,7 +42,7 @@ def sample_job_status(sample_job):
         progress=50.0,
         message="Processing data",
         updated_by="test_system",
-        instance_id="i-12345678",)
+        instance_id="i-12345678", )
 
 
 # ---
@@ -93,8 +93,8 @@ def test_addJob_raises_resource_not_found(job_dynamo, sample_job, mocker):
     mock_put = mocker.patch.object(job_dynamo._client,
         "put_item",
         side_effect=ClientError({"Error": {"Code": "ResourceNotFoundException",
-                    "Message": "Table not found",}},
-            "PutItem",),)
+                    "Message": "Table not found", }},
+            "PutItem", ), )
 
     with pytest.raises(Exception, match="Table not found"):
         # Note: In _job.py we do not specifically catch ResourceNotFoundException in addJob,
@@ -112,8 +112,8 @@ def test_addJob_raises_provisioned_throughput_exceeded(job_dynamo, sample_job, m
     mock_put = mocker.patch.object(job_dynamo._client,
         "put_item",
         side_effect=ClientError({"Error": {"Code": "ProvisionedThroughputExceededException",
-                    "Message": "Provisioned throughput exceeded",}},
-            "PutItem",),)
+                    "Message": "Provisioned throughput exceeded", }},
+            "PutItem", ), )
 
     with pytest.raises(Exception, match="Provisioned throughput exceeded"):
         job_dynamo.addJob(sample_job)
@@ -128,8 +128,8 @@ def test_addJob_raises_internal_server_error(job_dynamo, sample_job, mocker):
     mock_put = mocker.patch.object(job_dynamo._client,
         "put_item",
         side_effect=ClientError({"Error": {"Code": "InternalServerError",
-                    "Message": "Internal server error",}},
-            "PutItem",),)
+                    "Message": "Internal server error", }},
+            "PutItem", ), )
 
     with pytest.raises(Exception, match="Internal server error"):
         job_dynamo.addJob(sample_job)
@@ -144,8 +144,8 @@ def test_addJob_raises_unknown_error(job_dynamo, sample_job, mocker):
     mock_put = mocker.patch.object(job_dynamo._client,
         "put_item",
         side_effect=ClientError({"Error": {"Code": "UnknownError",
-                    "Message": "Something unexpected",}},
-            "PutItem",),)
+                    "Message": "Something unexpected", }},
+            "PutItem", ), )
 
     with pytest.raises(Exception, match="Something unexpected"):
         job_dynamo.addJob(sample_job)
@@ -169,7 +169,7 @@ def test_addJobs_success(job_dynamo, sample_job):
         priority="high",
         job_config={"type": "inference", "model": "receipt_model"},
         estimated_duration=1800,
-        tags={"env": "test", "purpose": "integration-test"},)
+        tags={"env": "test", "purpose": "integration-test"}, )
     jobs = [sample_job, job2]
     job_dynamo.addJobs(jobs)
 
@@ -212,8 +212,8 @@ def test_addJobs_raises_clienterror_provisioned_throughput_exceeded(job_dynamo, 
     mock_put = mocker.patch.object(job_dynamo._client,
         "batch_write_item",
         side_effect=ClientError({"Error": {"Code": "ProvisionedThroughputExceededException",
-                    "Message": "Provisioned throughput exceeded",}},
-            "BatchWriteItem",),)
+                    "Message": "Provisioned throughput exceeded", }},
+            "BatchWriteItem", ), )
 
     with pytest.raises(Exception, match="Provisioned throughput exceeded"):
         job_dynamo.addJobs([sample_job])
@@ -228,8 +228,8 @@ def test_addJobs_raises_clienterror_internal_server_error(job_dynamo, sample_job
     mock_put = mocker.patch.object(job_dynamo._client,
         "batch_write_item",
         side_effect=ClientError({"Error": {"Code": "InternalServerError",
-                    "Message": "Internal server error",}},
-            "BatchWriteItem",),)
+                    "Message": "Internal server error", }},
+            "BatchWriteItem", ), )
 
     with pytest.raises(Exception, match="Internal server error"):
         job_dynamo.addJobs([sample_job])
@@ -244,8 +244,8 @@ def test_addJobs_raises_clienterror_validation_exception(job_dynamo, sample_job,
     mock_put = mocker.patch.object(job_dynamo._client,
         "batch_write_item",
         side_effect=ClientError({"Error": {"Code": "ValidationException",
-                    "Message": "One or more parameters given were invalid",}},
-            "BatchWriteItem",),)
+                    "Message": "One or more parameters given were invalid", }},
+            "BatchWriteItem", ), )
 
     with pytest.raises(Exception, match="One or more parameters given were invalid"):
         job_dynamo.addJobs([sample_job])
@@ -260,8 +260,8 @@ def test_addJobs_raises_clienterror_access_denied(job_dynamo, sample_job, mocker
     mock_put = mocker.patch.object(job_dynamo._client,
         "batch_write_item",
         side_effect=ClientError({"Error": {"Code": "AccessDeniedException",
-                    "Message": "Access denied",}},
-            "BatchWriteItem",),)
+                    "Message": "Access denied", }},
+            "BatchWriteItem", ), )
 
     with pytest.raises(Exception, match="Access denied"):
         job_dynamo.addJobs([sample_job])
@@ -276,8 +276,8 @@ def test_addJobs_raises_clienterror(job_dynamo, sample_job, mocker):
     mock_put = mocker.patch.object(job_dynamo._client,
         "batch_write_item",
         side_effect=ClientError({"Error": {"Code": "UnknownError",
-                    "Message": "Something unexpected",}},
-            "BatchWriteItem",),)
+                    "Message": "Something unexpected", }},
+            "BatchWriteItem", ), )
 
     with pytest.raises(Exception, match="Something unexpected"):
         job_dynamo.addJobs([sample_job])
@@ -321,7 +321,7 @@ def test_addJobs_unprocessed_items_retry(job_dynamo, sample_job, mocker):
         priority=sample_job.priority,
         job_config=sample_job.job_config,
         estimated_duration=sample_job.estimated_duration,
-        tags=sample_job.tags,)
+        tags=sample_job.tags, )
     jobs.append(second_job)
 
     real_batch_write_item = job_dynamo._client.batch_write_item
@@ -472,7 +472,7 @@ def test_addJobStatus_raises_value_error_status_none(job_dynamo):
 def test_addJobStatus_raises_value_error_status_not_instance(job_dynamo):
     """Test that addJobStatus raises ValueError when status is not an instance of JobStatus"""
     with pytest.raises(ValueError,
-        match="job_status must be an instance of the JobStatus class.",):
+        match="job_status must be an instance of the JobStatus class.", ):
         job_dynamo.addJobStatus("not a job status")
 
 
@@ -492,7 +492,7 @@ def test_getJobWithStatus_success(job_dynamo, sample_job, sample_job_status):
         progress=100.0,
         message="Job completed successfully",
         updated_by="test_system",
-        instance_id="i-12345678",)
+        instance_id="i-12345678", )
     job_dynamo.addJobStatus(new_status)
 
     # Get the job with status updates
@@ -516,7 +516,7 @@ def test_getLatestJobStatus_raises_value_error_no_status(job_dynamo, sample_job)
 
     # Try to get the latest status - should raise ValueError
     with pytest.raises(ValueError,
-        match=f"No status updates found for job with ID {sample_job.job_id}",):
+        match=f"No status updates found for job with ID {sample_job.job_id}", ):
         job_dynamo.getLatestJobStatus(sample_job.job_id)
 
 
@@ -592,7 +592,7 @@ def test_validate_last_evaluated_key_raises_value_error_missing_keys():
 def test_validate_last_evaluated_key_raises_value_error_invalid_format():
     """Test that validate_last_evaluated_key raises ValueError when the format is invalid"""
     with pytest.raises(ValueError,
-        match="LastEvaluatedKey.* must be a dict containing a key 'S'",):
+        match="LastEvaluatedKey.* must be a dict containing a key 'S'", ):
         validate_last_evaluated_key({"PK": {"S": "value"}, "SK": "not a dict"})
 
 
@@ -601,7 +601,7 @@ def test_listJobs_raises_client_error_unknown(job_dynamo, mocker):
     """Test that listJobs raises an exception when an unknown ClientError occurs"""
     # Mock the client to raise a ClientError
     mocked_response = {"Error": {"Code": "UnknownError",
-            "Message": "An unknown error occurred",}}
+            "Message": "An unknown error occurred", }}
     mocked_error = ClientError(mocked_response, "Query")
     mocker.patch.object(job_dynamo._client, "query", side_effect=mocked_error)
 
@@ -615,7 +615,7 @@ def test_listJobs_raises_client_error_resource_not_found(job_dynamo, mocker):
     """Test that listJobs raises an exception when ResourceNotFoundException occurs"""
     # Mock the client to raise a ResourceNotFoundException
     mocked_response = {"Error": {"Code": "ResourceNotFoundException",
-            "Message": "Table not found",}}
+            "Message": "Table not found", }}
     mocked_error = ClientError(mocked_response, "Query")
     mocker.patch.object(job_dynamo._client, "query", side_effect=mocked_error)
 
@@ -629,7 +629,7 @@ def test_listJobStatuses_raises_client_error_resource_not_found(job_dynamo, mock
     """Test that listJobStatuses raises an exception when ResourceNotFoundException occurs"""
     # Mock the client to raise a ResourceNotFoundException
     mocked_response = {"Error": {"Code": "ResourceNotFoundException",
-            "Message": "Table not found",}}
+            "Message": "Table not found", }}
     mocked_error = ClientError(mocked_response, "Query")
     mocker.patch.object(job_dynamo._client, "query", side_effect=mocked_error)
 
@@ -643,7 +643,7 @@ def test_listJobStatuses_raises_client_error_internal_server_error(job_dynamo, m
     """Test that listJobStatuses raises an exception when InternalServerError occurs"""
     # Mock the client to raise an InternalServerError
     mocked_response = {"Error": {"Code": "InternalServerError",
-            "Message": "Internal server error",}}
+            "Message": "Internal server error", }}
     mocked_error = ClientError(mocked_response, "Query")
     mocker.patch.object(job_dynamo._client, "query", side_effect=mocked_error)
 
@@ -670,7 +670,7 @@ def test_listJobsByStatus_raises_client_error_unknown(job_dynamo, mocker):
     """Test that listJobsByStatus raises an exception when an unknown ClientError occurs"""
     # Mock the client to raise a ClientError
     mocked_response = {"Error": {"Code": "UnknownError",
-            "Message": "An unknown error occurred",}}
+            "Message": "An unknown error occurred", }}
     mocked_error = ClientError(mocked_response, "Query")
     mocker.patch.object(job_dynamo._client, "query", side_effect=mocked_error)
 
@@ -684,7 +684,7 @@ def test_listJobsByUser_raises_client_error_unknown(job_dynamo, mocker):
     """Test that listJobsByUser raises an exception when an unknown ClientError occurs"""
     # Mock the client to raise a ClientError
     mocked_response = {"Error": {"Code": "UnknownError",
-            "Message": "An unknown error occurred",}}
+            "Message": "An unknown error occurred", }}
     mocked_error = ClientError(mocked_response, "Query")
     mocker.patch.object(job_dynamo._client, "query", side_effect=mocked_error)
 
@@ -698,7 +698,7 @@ def test_getJob_raises_client_error_resource_not_found(job_dynamo, mocker):
     """Test that getJob raises an exception when ResourceNotFoundException occurs"""
     # Mock the client to raise a ResourceNotFoundException
     mocked_response = {"Error": {"Code": "ResourceNotFoundException",
-            "Message": "Table not found",}}
+            "Message": "Table not found", }}
     mocked_error = ClientError(mocked_response, "GetItem")
     mocker.patch.object(job_dynamo._client, "get_item", side_effect=mocked_error)
 
@@ -712,7 +712,7 @@ def test_getJob_raises_client_error_internal_server_error(job_dynamo, mocker):
     """Test that getJob raises an exception when InternalServerError occurs"""
     # Mock the client to raise an InternalServerError
     mocked_response = {"Error": {"Code": "InternalServerError",
-            "Message": "Internal server error",}}
+            "Message": "Internal server error", }}
     mocked_error = ClientError(mocked_response, "GetItem")
     mocker.patch.object(job_dynamo._client, "get_item", side_effect=mocked_error)
 
@@ -726,7 +726,7 @@ def test_getLatestJobStatus_raises_client_error_resource_not_found(job_dynamo, m
     """Test that getLatestJobStatus raises an exception when ResourceNotFoundException occurs"""
     # Mock the client to raise a ResourceNotFoundException
     mocked_response = {"Error": {"Code": "ResourceNotFoundException",
-            "Message": "Table not found",}}
+            "Message": "Table not found", }}
     mocked_error = ClientError(mocked_response, "Query")
     mocker.patch.object(job_dynamo._client, "query", side_effect=mocked_error)
 

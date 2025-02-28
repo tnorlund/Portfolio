@@ -28,7 +28,7 @@ class Queue:
         created_at: datetime or str,
         max_concurrent_jobs: int = 1,
         priority: str = "medium",
-        job_count: int = 0,):
+        job_count: int = 0, ):
         """Initializes a new Queue object for DynamoDB.
 
         Args:
@@ -86,7 +86,7 @@ class Queue:
             dict: The GSI1 key for the queue.
         """
         return {"GSI1PK": {"S": "QUEUE"},
-            "GSI1SK": {"S": f"QUEUE#{self.queue_name}"},}
+            "GSI1SK": {"S": f"QUEUE#{self.queue_name}"}, }
 
     def to_item(self) -> dict:
         """Converts the Queue object to a DynamoDB item.
@@ -101,7 +101,7 @@ class Queue:
             "created_at": {"S": self.created_at},
             "max_concurrent_jobs": {"N": str(self.max_concurrent_jobs)},
             "priority": {"S": self.priority},
-            "job_count": {"N": str(self.job_count)},}
+            "job_count": {"N": str(self.job_count)}, }
         return item
 
     def __repr__(self) -> str:
@@ -161,7 +161,7 @@ class Queue:
                 self.created_at,
                 self.max_concurrent_jobs,
                 self.priority,
-                self.job_count,))
+                self.job_count, ))
 
 
 def itemToQueue(item: dict) -> Queue:
@@ -183,7 +183,7 @@ def itemToQueue(item: dict) -> Queue:
         "created_at",
         "max_concurrent_jobs",
         "priority",
-        "job_count",}
+        "job_count", }
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
@@ -205,6 +205,6 @@ def itemToQueue(item: dict) -> Queue:
             created_at=created_at,
             max_concurrent_jobs=max_concurrent_jobs,
             priority=priority,
-            job_count=job_count,)
+            job_count=job_count, )
     except (KeyError, IndexError) as e:
         raise ValueError(f"Error converting item to Queue: {e}")

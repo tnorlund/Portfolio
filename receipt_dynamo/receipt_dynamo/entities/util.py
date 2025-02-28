@@ -109,7 +109,7 @@ def compute_histogram(text: str) -> dict:
         "{",
         "}",
         "|",
-        "~",]
+        "~", ]
     histogram = {letter: 0 for letter in known_letters}
     for letter in text:
         if letter in known_letters:

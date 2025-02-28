@@ -36,7 +36,7 @@ class JobCheckpoint:
         model_state: bool = True,
         optimizer_state: bool = True,
         metrics: Optional[Dict[str, Any]] = None,
-        is_best: bool = False,):
+        is_best: bool = False, ):
         """Initializes a new JobCheckpoint object for DynamoDB.
 
         Args:
@@ -105,7 +105,7 @@ class JobCheckpoint:
             dict: The primary key for the job checkpoint.
         """
         return {"PK": {"S": f"JOB#{self.job_id}"},
-            "SK": {"S": f"CHECKPOINT#{self.timestamp}"},}
+            "SK": {"S": f"CHECKPOINT#{self.timestamp}"}, }
 
     def gsi1_key(self) -> dict:
         """Generates the GSI1 key for the job checkpoint.
@@ -114,7 +114,7 @@ class JobCheckpoint:
             dict: The GSI1 key for the job checkpoint.
         """
         return {"GSI1PK": {"S": "CHECKPOINT"},
-            "GSI1SK": {"S": f"JOB#{self.job_id}#{self.timestamp}"},}
+            "GSI1SK": {"S": f"JOB#{self.job_id}#{self.timestamp}"}, }
 
     def to_item(self) -> dict:
         """Converts the JobCheckpoint object to a DynamoDB item.
@@ -134,7 +134,7 @@ class JobCheckpoint:
             "epoch": {"N": str(self.epoch)},
             "model_state": {"BOOL": self.model_state},
             "optimizer_state": {"BOOL": self.optimizer_state},
-            "is_best": {"BOOL": self.is_best},}
+            "is_best": {"BOOL": self.is_best}, }
 
         if self.metrics:
             item["metrics"] = {"M": self._dict_to_dynamodb_map(self.metrics)}
@@ -269,7 +269,7 @@ class JobCheckpoint:
                 self.model_state,
                 self.optimizer_state,
                 # Can't hash dict, so we don't include metrics
-                self.is_best,))
+                self.is_best, ))
 
 
 def _parse_dynamodb_map(m: Dict) -> Dict:
@@ -361,6 +361,6 @@ def itemToJobCheckpoint(item: dict) -> JobCheckpoint:
             model_state=item["model_state"]["BOOL"],
             optimizer_state=item["optimizer_state"]["BOOL"],
             metrics=metrics,
-            is_best=item["is_best"]["BOOL"],)
+            is_best=item["is_best"]["BOOL"], )
     except (KeyError, ValueError) as e:
         raise ValueError(f"Error converting item to JobCheckpoint: {e}") from e
