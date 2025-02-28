@@ -211,7 +211,9 @@ def test_instance_init_invalid_ip_address():
 @pytest.mark.unit
 def test_instance_init_invalid_availability_zone():
     """Test the Instance constructor with invalid availability_zone."""
-    with pytest.raises(ValueError, match="availability_zone must be a non-empty string"):
+    with pytest.raises(
+        ValueError, match="availability_zone must be a non-empty string"
+    ):
         Instance(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "p3.2xlarge",
@@ -224,7 +226,9 @@ def test_instance_init_invalid_availability_zone():
             "healthy",
         )
 
-    with pytest.raises(ValueError, match="availability_zone must be a non-empty string"):
+    with pytest.raises(
+        ValueError, match="availability_zone must be a non-empty string"
+    ):
         Instance(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "p3.2xlarge",
@@ -436,4 +440,4 @@ def test_itemToInstance(example_instance):
                 "is_spot": {"INVALID_TYPE": True},  # Invalid type
                 "health_status": {"S": "healthy"},
             }
-        ) 
+        )

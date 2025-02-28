@@ -84,7 +84,9 @@ class JobDependency:
         """
         return {
             "GSI1PK": {"S": "DEPENDENCY"},
-            "GSI1SK": {"S": f"DEPENDENT#{self.dependent_job_id}#DEPENDENCY#{self.dependency_job_id}"},
+            "GSI1SK": {
+                "S": f"DEPENDENT#{self.dependent_job_id}#DEPENDENCY#{self.dependency_job_id}"
+            },
         }
 
     def gsi2_key(self) -> dict:
@@ -95,7 +97,9 @@ class JobDependency:
         """
         return {
             "GSI2PK": {"S": "DEPENDENCY"},
-            "GSI2SK": {"S": f"DEPENDED_BY#{self.dependency_job_id}#DEPENDENT#{self.dependent_job_id}"},
+            "GSI2SK": {
+                "S": f"DEPENDED_BY#{self.dependency_job_id}#DEPENDENT#{self.dependent_job_id}"
+            },
         }
 
     def to_item(self) -> dict:
@@ -233,4 +237,4 @@ def itemToJobDependency(item: dict) -> JobDependency:
             condition=condition,
         )
     except KeyError as e:
-        raise ValueError(f"Error converting item to JobDependency: {e}") 
+        raise ValueError(f"Error converting item to JobDependency: {e}")

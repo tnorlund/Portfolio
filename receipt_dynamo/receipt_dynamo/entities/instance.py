@@ -88,7 +88,10 @@ class Instance:
         self.is_spot = is_spot
 
         valid_health_statuses = ["healthy", "unhealthy", "unknown"]
-        if not isinstance(health_status, str) or health_status.lower() not in valid_health_statuses:
+        if (
+            not isinstance(health_status, str)
+            or health_status.lower() not in valid_health_statuses
+        ):
             raise ValueError(f"health_status must be one of {valid_health_statuses}")
         self.health_status = health_status.lower()
 
@@ -273,4 +276,4 @@ def itemToInstance(item: dict) -> Instance:
             health_status=health_status,
         )
     except KeyError as e:
-        raise ValueError(f"Error converting item to Instance: {e}") 
+        raise ValueError(f"Error converting item to Instance: {e}")
