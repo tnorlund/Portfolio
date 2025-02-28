@@ -19,7 +19,7 @@ class GPTValidation:
         tag (str): The tag applied to the word.
         query (str): The ChatGPT query prompt used for validation.
         response (str): The ChatGPT response received.
-        timestamp_added (str): The ISO formatted timestamp when the validation was performed.
+        timestamp_added (str): The ISO formatted timestamp when the validation occurred.
     """
 
     def __init__(
@@ -88,11 +88,11 @@ class GPTValidation:
         if not isinstance(other, GPTValidation):
             return False
         return (
-            self.image_id == other.image_id
-            and self.receipt_id == other.receipt_id
-            and self.query == other.query
-            and self.response == other.response
-            and self.timestamp_added == other.timestamp_added
+            self.image_id == other.image_id and
+            self.receipt_id == other.receipt_id and
+            self.query == other.query and
+            self.response == other.response and
+            self.timestamp_added == other.timestamp_added
         )
 
     def __iter__(self) -> Generator[Tuple[str, str], None, None]:
