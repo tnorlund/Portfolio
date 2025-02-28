@@ -10,14 +10,10 @@ from receipt_dynamo.entities.util import assert_valid_uuid
 def validate_last_evaluated_key(lek: dict) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
-        raise ValueError(
-            f"LastEvaluatedKey must contain keys: {required_keys}"
-        )
+        raise ValueError(f"LastEvaluatedKey must contain keys: {required_keys}")
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
-            raise ValueError(
-                f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'"
-            )
+            raise ValueError(f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'")
 
 
 class _Job:
@@ -35,18 +31,13 @@ class _Job:
         if not isinstance(job, Job):
             raise ValueError("job must be an instance of the Job class.")
         try:
-            self._client.put_item(
-                TableName=self.table_name,
+            self._client.put_item(TableName=self.table_name,
                 Item=job.to_item(),
-                ConditionExpression="attribute_not_exists(PK)",
-            )
+                ConditionExpression="attribute_not_exists(PK)",)
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"Job with ID {
-                        job.job_id} already exists"
-                ) from e
+                raise ValueError(f"Job with ID {job.job_id} already exists") from e
             elif error_code == "ResourceNotFoundException":
                 raise Exception(f"Could not add job to DynamoDB: {e}") from e
             elif error_code == "ProvisionedThroughputExceededException":
@@ -74,19 +65,13 @@ class _Job:
         try:
             for i in range(0, len(jobs), 25):
                 chunk = jobs[i : i + 25]
-                request_items = [
-                    {"PutRequest": {"Item": job.to_item()}} for job in chunk
-                ]
-                response = self._client.batch_write_item(
-                    RequestItems={self.table_name: request_items}
-                )
+                request_items = [{"PutRequest": {"Item": job.to_item()}} for job in chunk]
+                response = self._client.batch_write_item(RequestItems={self.table_name: request_items})
                 # Handle unprocessed items if they exist
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
                     # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
@@ -95,9 +80,7 @@ class _Job:
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             elif error_code == "ValidationException":
-                raise Exception(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
+                raise Exception(f"One or more parameters given were invalid: {e}") from e
             elif error_code == "AccessDeniedException":
                 raise Exception(f"Access denied: {e}") from e
             else:
@@ -118,11 +101,9 @@ class _Job:
             raise ValueError("job must be an instance of the Job class.")
 
         try:
-            self._client.put_item(
-                TableName=self.table_name,
+            self._client.put_item(TableName=self.table_name,
                 Item=job.to_item(),
-                ConditionExpression="attribute_exists(PK)",
-            )
+                ConditionExpression="attribute_exists(PK)",)
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
@@ -132,9 +113,7 @@ class _Job:
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             elif error_code == "ValidationException":
-                raise Exception(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
+                raise Exception(f"One or more parameters given were invalid: {e}") from e
             elif error_code == "AccessDeniedException":
                 raise Exception(f"Access denied: {e}") from e
             else:
@@ -169,15 +148,9 @@ class _Job:
             chunk = jobs[i : i + 25]
             transact_items = []
             for job in chunk:
-                transact_items.append(
-                    {
-                        "Put": {
-                            "TableName": self.table_name,
+                transact_items.append({"Put": {"TableName": self.table_name,
                             "Item": job.to_item(),
-                            "ConditionExpression": "attribute_exists(PK)",
-                        }
-                    }
-                )
+                            "ConditionExpression": "attribute_exists(PK)",}})
             try:
                 self._client.transact_write_items(TransactItems=transact_items)
             except ClientError as e:
@@ -185,15 +158,11 @@ class _Job:
                 if error_code == "ConditionalCheckFailedException":
                     raise ValueError("One or more jobs do not exist") from e
                 elif error_code == "ProvisionedThroughputExceededException":
-                    raise Exception(
-                        f"Provisioned throughput exceeded: {e}"
-                    ) from e
+                    raise Exception(f"Provisioned throughput exceeded: {e}") from e
                 elif error_code == "InternalServerError":
                     raise Exception(f"Internal server error: {e}") from e
                 elif error_code == "ValidationException":
-                    raise Exception(
-                        f"One or more parameters given were invalid: {e}"
-                    ) from e
+                    raise Exception(f"One or more parameters given were invalid: {e}") from e
                 elif error_code == "AccessDeniedException":
                     raise Exception(f"Access denied: {e}") from e
                 else:
@@ -213,11 +182,9 @@ class _Job:
         if not isinstance(job, Job):
             raise ValueError("job must be an instance of the Job class.")
         try:
-            self._client.delete_item(
-                TableName=self.table_name,
+            self._client.delete_item(TableName=self.table_name,
                 Key=job.key(),
-                ConditionExpression="attribute_exists(PK)",
-            )
+                ConditionExpression="attribute_exists(PK)",)
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
@@ -227,9 +194,7 @@ class _Job:
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             elif error_code == "ValidationException":
-                raise Exception(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
+                raise Exception(f"One or more parameters given were invalid: {e}") from e
             elif error_code == "AccessDeniedException":
                 raise Exception(f"Access denied: {e}") from e
             else:
@@ -260,15 +225,9 @@ class _Job:
                 chunk = jobs[i : i + 25]
                 transact_items = []
                 for job in chunk:
-                    transact_items.append(
-                        {
-                            "Delete": {
-                                "TableName": self.table_name,
+                    transact_items.append({"Delete": {"TableName": self.table_name,
                                 "Key": job.key(),
-                                "ConditionExpression": "attribute_exists(PK)",
-                            }
-                        }
-                    )
+                                "ConditionExpression": "attribute_exists(PK)",}})
                 # Execute the transaction for this chunk.
                 self._client.transact_write_items(TransactItems=transact_items)
         except ClientError as e:
@@ -280,9 +239,7 @@ class _Job:
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             elif error_code == "ValidationException":
-                raise Exception(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
+                raise Exception(f"One or more parameters given were invalid: {e}") from e
             elif error_code == "AccessDeniedException":
                 raise Exception(f"Access denied: {e}") from e
             else:
@@ -309,13 +266,9 @@ class _Job:
         assert_valid_uuid(job_id)
 
         try:
-            response = self._client.get_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"JOB#{job_id}"},
-                    "SK": {"S": "JOB"},
-                },
-            )
+            response = self._client.get_item(TableName=self.table_name,
+                Key={"PK": {"S": f"JOB#{job_id}"},
+                    "SK": {"S": "JOB"},},)
             if "Item" in response:
                 return itemToJob(response["Item"])
             else:
@@ -352,9 +305,7 @@ class _Job:
 
         return job, statuses
 
-    def listJobs(
-        self, limit: int = None, lastEvaluatedKey: dict | None = None
-    ) -> tuple[list[Job], dict | None]:
+    def listJobs(self, limit: int = None, lastEvaluatedKey: dict | None = None) -> tuple[list[Job], dict | None]:
         """
         Retrieve job records from the database with support for pagination.
 
@@ -382,13 +333,11 @@ class _Job:
 
         jobs = []
         try:
-            query_params = {
-                "TableName": self.table_name,
+            query_params = {"TableName": self.table_name,
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "JOB"}},
-            }
+                "ExpressionAttributeValues": {":val": {"S": "JOB"}},}
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
 
@@ -412,9 +361,7 @@ class _Job:
                 # Continue paginating if there's more data; otherwise, we're
                 # done.
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     last_evaluated_key = None
                     break
@@ -423,28 +370,20 @@ class _Job:
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(
-                    f"Could not list jobs from the database: {e}"
-                ) from e
+                raise Exception(f"Could not list jobs from the database: {e}") from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "ValidationException":
-                raise Exception(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
+                raise Exception(f"One or more parameters given were invalid: {e}") from e
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(
-                    f"Could not list jobs from the database: {e}"
-                ) from e
+                raise Exception(f"Could not list jobs from the database: {e}") from e
 
-    def listJobsByStatus(
-        self,
+    def listJobsByStatus(self,
         status: str,
         limit: int = None,
-        lastEvaluatedKey: dict | None = None,
-    ) -> tuple[list[Job], dict | None]:
+        lastEvaluatedKey: dict | None = None,) -> tuple[list[Job], dict | None]:
         """
         Retrieve job records filtered by status from the database.
 
@@ -462,14 +401,12 @@ class _Job:
             ValueError: If parameters are invalid.
             Exception: If the underlying database query fails.
         """
-        valid_statuses = [
-            "pending",
+        valid_statuses = ["pending",
             "running",
             "succeeded",
             "failed",
             "cancelled",
-            "interrupted",
-        ]
+            "interrupted",]
         if not isinstance(status, str) or status.lower() not in valid_statuses:
             raise ValueError(f"status must be one of {valid_statuses}")
 
@@ -481,26 +418,18 @@ class _Job:
             if not isinstance(lastEvaluatedKey, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
             # Validate the LastEvaluatedKey structure specific to GSI1
-            if not all(
-                k in lastEvaluatedKey for k in ["PK", "SK", "GSI1PK", "GSI1SK"]
-            ):
-                raise ValueError(
-                    "LastEvaluatedKey must contain PK, SK, GSI1PK, and GSI1SK keys"
-                )
+            if not all(k in lastEvaluatedKey for k in ["PK", "SK", "GSI1PK", "GSI1SK"]):
+                raise ValueError("LastEvaluatedKey must contain PK, SK, GSI1PK, and GSI1SK keys")
 
         jobs = []
         try:
-            query_params = {
-                "TableName": self.table_name,
+            query_params = {"TableName": self.table_name,
                 "IndexName": "GSI1",
                 "KeyConditionExpression": "GSI1PK = :status",
-                "ExpressionAttributeValues": {
-                    ":status": {"S": f"STATUS#{status.lower()}"},
-                    ":job_type": {"S": "JOB"},
-                },
+                "ExpressionAttributeValues": {":status": {"S": f"STATUS#{status.lower()}"},
+                    ":job_type": {"S": "JOB"},},
                 "FilterExpression": "#type = :job_type",
-                "ExpressionAttributeNames": {"#type": "TYPE"},
-            }
+                "ExpressionAttributeNames": {"#type": "TYPE"},}
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
 
@@ -524,9 +453,7 @@ class _Job:
                 # Continue paginating if there's more data; otherwise, we're
                 # done.
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     last_evaluated_key = None
                     break
@@ -535,28 +462,20 @@ class _Job:
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(
-                    f"Could not list jobs by status from the database: {e}"
-                ) from e
+                raise Exception(f"Could not list jobs by status from the database: {e}") from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "ValidationException":
-                raise Exception(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
+                raise Exception(f"One or more parameters given were invalid: {e}") from e
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(
-                    f"Could not list jobs by status from the database: {e}"
-                ) from e
+                raise Exception(f"Could not list jobs by status from the database: {e}") from e
 
-    def listJobsByUser(
-        self,
+    def listJobsByUser(self,
         user_id: str,
         limit: int = None,
-        lastEvaluatedKey: dict | None = None,
-    ) -> tuple[list[Job], dict | None]:
+        lastEvaluatedKey: dict | None = None,) -> tuple[list[Job], dict | None]:
         """
         Retrieve job records created by a specific user from the database.
 
@@ -585,29 +504,19 @@ class _Job:
             if not isinstance(lastEvaluatedKey, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
             # Validate the LastEvaluatedKey structure specific to GSI2
-            if not all(
-                k in lastEvaluatedKey for k in ["PK", "SK", "GSI2PK", "GSI2SK"]
-            ):
-                raise ValueError(
-                    "LastEvaluatedKey must contain PK, SK, GSI2PK, and GSI2SK keys"
-                )
+            if not all(k in lastEvaluatedKey for k in ["PK", "SK", "GSI2PK", "GSI2SK"]):
+                raise ValueError("LastEvaluatedKey must contain PK, SK, GSI2PK, and GSI2SK keys")
 
         jobs = []
         try:
-            query_params = {
-                "TableName": self.table_name,
+            query_params = {"TableName": self.table_name,
                 "IndexName": "GSI2",
                 "KeyConditionExpression": "GSI2PK = :user",
-                "ExpressionAttributeValues": {
-                    ":user": {"S": f"USER#{user_id}"},
-                },
+                "ExpressionAttributeValues": {":user": {"S": f"USER#{user_id}"},},
                 "FilterExpression": "#type = :job_type",
                 "ExpressionAttributeNames": {"#type": "TYPE"},
-                "ExpressionAttributeValues": {
-                    ":user": {"S": f"USER#{user_id}"},
-                    ":job_type": {"S": "JOB"},
-                },
-            }
+                "ExpressionAttributeValues": {":user": {"S": f"USER#{user_id}"},
+                    ":job_type": {"S": "JOB"},},}
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
 
@@ -631,9 +540,7 @@ class _Job:
                 # Continue paginating if there's more data; otherwise, we're
                 # done.
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     last_evaluated_key = None
                     break
@@ -642,18 +549,12 @@ class _Job:
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(
-                    f"Could not list jobs by user from the database: {e}"
-                ) from e
+                raise Exception(f"Could not list jobs by user from the database: {e}") from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "ValidationException":
-                raise Exception(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
+                raise Exception(f"One or more parameters given were invalid: {e}") from e
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(
-                    f"Could not list jobs by user from the database: {e}"
-                ) from e
+                raise Exception(f"Could not list jobs by user from the database: {e}") from e

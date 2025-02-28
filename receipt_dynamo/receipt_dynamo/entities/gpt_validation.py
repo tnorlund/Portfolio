@@ -22,14 +22,12 @@ class GPTValidation:
         timestamp_added (str): The ISO formatted timestamp when the validation occurred.
     """
 
-    def __init__(
-        self,
+    def __init__(self,
         image_id: str,
         receipt_id: int,
         query: str,
         response: str,
-        timestamp_added: datetime,
-    ):
+        timestamp_added: datetime,):
         """Initializes a new GPTValidation object.
 
         Args:
@@ -71,9 +69,7 @@ class GPTValidation:
         elif isinstance(timestamp_added, str):
             self.timestamp_added = timestamp_added
         else:
-            raise ValueError(
-                "timestamp_added must be a datetime object or a string"
-            )
+            raise ValueError("timestamp_added must be a datetime object or a string")
 
     def __eq__(self, other: object) -> bool:
         """Checks equality between this GPTValidation and another object.
@@ -87,13 +83,11 @@ class GPTValidation:
         """
         if not isinstance(other, GPTValidation):
             return False
-        return (
-            self.image_id == other.image_id and
+        return (self.image_id == other.image_id and
             self.receipt_id == other.receipt_id and
             self.query == other.query and
             self.response == other.response and
-            self.timestamp_added == other.timestamp_added
-        )
+            self.timestamp_added == other.timestamp_added)
 
     def __iter__(self) -> Generator[Tuple[str, str], None, None]:
         """Yields the attributes of the GPTValidation as key-value pairs.
@@ -113,15 +107,13 @@ class GPTValidation:
         Returns:
             str: A developer-friendly string representation of the GPTValidation.
         """
-        return (
-            "GPTValidation("
+        return ("GPTValidation("
             f"image_id={_repr_str(self.image_id)}, "
             f"receipt_id={self.receipt_id}, "
             f"query={_repr_str(self.query)}, "
             f"response={_repr_str(self.response)}, "
             f"timestamp_added={_repr_str(self.timestamp_added)}"
-            ")"
-        )
+            ")")
 
     def key(self) -> dict:
         """Generates the primary key for the GPTValidation.
@@ -133,10 +125,8 @@ class GPTValidation:
             dict: A dictionary containing the primary key for the GPTValidation.
         """
         # Use a fixed-width formatting for the tag as in receipt_word_tag.py.
-        return {
-            "PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#QUERY#VALIDATION"},
-        }
+        return {"PK": {"S": f"IMAGE#{self.image_id}"},
+            "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#QUERY#VALIDATION"},}
 
     def to_item(self) -> dict:
         """Converts the GPTValidation object to a DynamoDB item.
@@ -144,13 +134,11 @@ class GPTValidation:
         Returns:
             dict: A dictionary representing the GPTValidation as a DynamoDB item.
         """
-        return {
-            **self.key(),
+        return {**self.key(),
             "TYPE": {"S": "GPT_VALIDATION"},
             "query": {"S": self.query},
             "response": {"S": self.response},
-            "timestamp_added": {"S": self.timestamp_added},
-        }
+            "timestamp_added": {"S": self.timestamp_added},}
 
     def __hash__(self) -> int:
         """Returns the hash value of the GPTValidation object.
@@ -158,15 +146,11 @@ class GPTValidation:
         Returns:
             int: The hash value of the GPTValidation object.
         """
-        return hash(
-            (
-                self.image_id,
+        return hash((self.image_id,
                 self.receipt_id,
                 self.query,
                 self.response,
-                self.timestamp_added,
-            )
-        )
+                self.timestamp_added,))
 
 
 def itemToGPTValidation(item: dict) -> GPTValidation:
@@ -194,12 +178,10 @@ def itemToGPTValidation(item: dict) -> GPTValidation:
         query = item["query"]["S"]
         response = item["response"]["S"]
         timestamp_added = datetime.fromisoformat(item["timestamp_added"]["S"])
-        return GPTValidation(
-            image_id=image_id,
+        return GPTValidation(image_id=image_id,
             receipt_id=receipt_id,
             query=query,
             response=response,
-            timestamp_added=timestamp_added,
-        )
+            timestamp_added=timestamp_added,)
     except (IndexError, ValueError, KeyError) as e:
         raise ValueError(f"Error converting item to GPTValidation: {e}")

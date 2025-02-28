@@ -21,9 +21,7 @@ def find_test_functions_in_file(file_path: str) -> List[str]:
             source = f.read()
         tree = ast.parse(source)
         for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef) and node.name.startswith(
-                "test_"
-            ):
+            if isinstance(node, ast.FunctionDef) and node.name.startswith("test_"):
                 test_functions.append(node.name)
     except (SyntaxError, UnicodeDecodeError):
         pass
@@ -64,22 +62,14 @@ def call_openai_api(prompt: str) -> dict:
         raise ValueError("Please set the OPENAI_API_KEY environment variable.")
 
     url = "https://api.openai.com/v1/chat/completions"
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {api_key}",
-    }
+    headers = {"Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}",}
 
-    data = {
-        "model": "gpt-3.5-turbo",
-        "messages": [
-            {
-                "role": "system",
-                "content": "You are a helpful assistant that returns JSON output.",
-            },
-            {"role": "user", "content": prompt},
-        ],
-        "temperature": 0,
-    }
+    data = {"model": "gpt-3.5-turbo",
+        "messages": [{"role": "system",
+                "content": "You are a helpful assistant that returns JSON output.",},
+            {"role": "user", "content": prompt},],
+        "temperature": 0,}
 
     response = requests.post(url, headers=headers, json=data)
     response.raise_for_status()
@@ -89,10 +79,8 @@ def call_openai_api(prompt: str) -> dict:
     try:
         mapping = json.loads(content)
     except json.JSONDecodeError as e:
-        raise ValueError(
-            "OpenAI API did not return valid JSON. Response content: "
-            + content
-        ) from e
+        raise ValueError("OpenAI API did not return valid JSON. Response content: "
+            + content) from e
     return mapping
 
 
@@ -111,11 +99,9 @@ def rename_test_functions_in_file(file_path: str, mapping: dict):
     new_lines = []
     # Build a regex to match function definitions that start with one of the
     # keys.
-    pattern = re.compile(
-        r"^(\s*)def\s+("
+    pattern = re.compile(r"^(\s*)def\s+("
         + "|".join(map(re.escape, mapping.keys()))
-        + r")(\s*\(.*)?:"
-    )
+        + r")(\s*\(.*)?:")
 
     for line in lines:
         match = pattern.match(line)
@@ -171,13 +157,11 @@ def main():
     print(test_functions_str)
 
     # 2. Build a prompt to ask OpenAI for a renaming mapping.
-    prompt = (
-        "I am providing you with a list of test function definitions from a codebase. "
+    prompt = ("I am providing you with a list of test function definitions from a codebase. "
         "Please output a JSON mapping where each key is a file path (relative to the project root) and each value is a dictionary mapping "
         "old test function names to new test function names. The new test function names should follow a consistent naming scheme. "
         'The JSON format should be like: {"unit/test_filename.py": {"old_name": "new_name", ...}, ...}.\n'
-        "Here is the list:\n" + test_functions_str
-    )
+        "Here is the list:\n" + test_functions_str)
 
     try:
         rename_mapping = call_openai_api(prompt)

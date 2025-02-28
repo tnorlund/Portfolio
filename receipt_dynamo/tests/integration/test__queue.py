@@ -19,48 +19,40 @@ def queue_dynamo(dynamodb_table):
 @pytest.fixture
 def sample_queue():
     created_at = datetime.now()
-    return Queue(
-        queue_name="test-queue",
+    return Queue(queue_name="test-queue",
         description="This is a test queue",
         created_at=created_at,
         max_concurrent_jobs=5,
         priority="high",
-        job_count=0,
-    )
+        job_count=0,)
 
 
 @pytest.fixture
 def sample_job():
     job_id = "12345678-1234-4678-9234-567812345678"
     created_at = datetime.now()
-    return Job(
-        job_id=job_id,
+    return Job(job_id=job_id,
         name="Test Job",
         description="This is a test job",
         created_at=created_at,
         created_by="test_user",
         status="pending",
         priority="medium",
-        job_config={
-            "type": "training",
+        job_config={"type": "training",
             "model": "receipt_model",
-            "batch_size": 32,
-        },
+            "batch_size": 32,},
         estimated_duration=3600,
-        tags={"env": "test", "purpose": "integration-test"},
-    )
+        tags={"env": "test", "purpose": "integration-test"},)
 
 
 @pytest.fixture
 def sample_queue_job(sample_queue, sample_job):
     enqueued_at = datetime.now()
-    return QueueJob(
-        queue_name=sample_queue.queue_name,
+    return QueueJob(queue_name=sample_queue.queue_name,
         job_id=sample_job.job_id,
         enqueued_at=enqueued_at,
         priority="high",
-        position=1,
-    )
+        position=1,)
 
 
 @pytest.mark.integration
@@ -99,28 +91,18 @@ def test_addQueue_raises_conditional_check_failed(queue_dynamo, sample_queue):
     queue_dynamo.addQueue(sample_queue)
 
     # Try to add it again
-    with pytest.raises(
-        ValueError, match=f"Queue {sample_queue.queue_name} already exists"
-    ):
+    with pytest.raises(ValueError, match=f"Queue {sample_queue.queue_name} already exists"):
         queue_dynamo.addQueue(sample_queue)
 
 
 @pytest.mark.integration
-def test_addQueue_raises_resource_not_found(
-    queue_dynamo, sample_queue, monkeypatch
-):
+def test_addQueue_raises_resource_not_found(queue_dynamo, sample_queue, monkeypatch):
     """Test that trying to add a queue to a non-existent table raises a ClientError."""
 
     def mock_put_item(*args, **kwargs):
-        raise ClientError(
-            {
-                "Error": {
-                    "Code": "ResourceNotFoundException",
-                    "Message": "Table does not exist",
-                }
-            },
-            "PutItem",
-        )
+        raise ClientError({"Error": {"Code": "ResourceNotFoundException",
+                    "Message": "Table does not exist",}},
+            "PutItem",)
 
     # Patch the put_item method to raise ResourceNotFoundException
     monkeypatch.setattr(queue_dynamo._client, "put_item", mock_put_item)
@@ -133,17 +115,13 @@ def test_addQueue_raises_resource_not_found(
 def test_addQueues_success(queue_dynamo):
     """Test that adding multiple queues is successful."""
     # Create multiple queues
-    queues = [
-        Queue(
-            queue_name=f"test-queue-{i}",
+    queues = [Queue(queue_name=f"test-queue-{i}",
             description=f"Test queue {i}",
             created_at=datetime.now(),
             max_concurrent_jobs=5,
             priority="medium",
-            job_count=0,
-        )
-        for i in range(3)
-    ]
+            job_count=0,)
+        for i in range(3)]
 
     queue_dynamo.addQueues(queues)
 
@@ -165,14 +143,10 @@ def test_addQueues_empty_list(queue_dynamo):
 def test_addQueues_handles_unprocessed_items(queue_dynamo, monkeypatch):
     """Test that addQueues handles unprocessed items correctly."""
     # Create multiple queues
-    queues = [
-        Queue(
-            queue_name=f"test-queue-{i}",
+    queues = [Queue(queue_name=f"test-queue-{i}",
             description=f"Test queue {i}",
-            created_at=datetime.now().isoformat(),
-        )
-        for i in range(3)
-    ]
+            created_at=datetime.now().isoformat(),)
+        for i in range(3)]
 
     # Patch the get_item method to return successfully for all queues
     original_get_item = queue_dynamo._client.get_item
@@ -200,18 +174,12 @@ def test_addQueues_handles_unprocessed_items(queue_dynamo, monkeypatch):
         if call_count == 0:
             call_count += 1
             # Return unprocessed items for the first queue
-            unprocessed_item = {
-                queue_dynamo.table_name: [
-                    {"PutRequest": {"Item": queues[0].to_item()}}
-                ]
-            }
+            unprocessed_item = {queue_dynamo.table_name: [{"PutRequest": {"Item": queues[0].to_item()}}]}
             return {"UnprocessedItems": unprocessed_item}
         # On subsequent calls, use the original method
         return original_batch_write(*args, **kwargs)
 
-    monkeypatch.setattr(
-        queue_dynamo._client, "batch_write_item", mock_batch_write
-    )
+    monkeypatch.setattr(queue_dynamo._client, "batch_write_item", mock_batch_write)
 
     # This should handle the unprocessed items
     queue_dynamo.addQueues(queues)
@@ -262,9 +230,7 @@ def test_updateQueue_raises_queue_not_found(queue_dynamo, sample_queue):
     """Test that trying to update a non-existent queue raises a ValueError."""
     # Don't add the queue first
 
-    with pytest.raises(
-        ValueError, match=f"Queue {sample_queue.queue_name} does not exist"
-    ):
+    with pytest.raises(ValueError, match=f"Queue {sample_queue.queue_name} does not exist"):
         queue_dynamo.updateQueue(sample_queue)
 
 
@@ -278,9 +244,7 @@ def test_deleteQueue_success(queue_dynamo, sample_queue):
     queue_dynamo.deleteQueue(sample_queue)
 
     # Verify the queue was deleted
-    with pytest.raises(
-        ValueError, match=f"Queue {sample_queue.queue_name} not found"
-    ):
+    with pytest.raises(ValueError, match=f"Queue {sample_queue.queue_name} not found"):
         queue_dynamo.getQueue(sample_queue.queue_name)
 
 
@@ -303,9 +267,7 @@ def test_deleteQueue_raises_queue_not_found(queue_dynamo, sample_queue):
     """Test that trying to delete a non-existent queue raises a ValueError."""
     # Don't add the queue first
 
-    with pytest.raises(
-        ValueError, match=f"Queue {sample_queue.queue_name} does not exist"
-    ):
+    with pytest.raises(ValueError, match=f"Queue {sample_queue.queue_name} does not exist"):
         queue_dynamo.deleteQueue(sample_queue)
 
 
@@ -351,16 +313,12 @@ def test_getQueue_queue_not_found(queue_dynamo):
 def test_listQueues_success(queue_dynamo):
     """Test that listing queues is successful."""
     # Add multiple queues
-    queues = [
-        Queue(
-            queue_name=f"test-queue-{i}",
+    queues = [Queue(queue_name=f"test-queue-{i}",
             description=f"Test queue {i}",
             created_at=datetime.now(),
             max_concurrent_jobs=5,
-            priority="medium",
-        )
-        for i in range(5)
-    ]
+            priority="medium",)
+        for i in range(5)]
 
     for queue in queues:
         queue_dynamo.addQueue(queue)
@@ -381,14 +339,10 @@ def test_listQueues_success(queue_dynamo):
 def test_listQueues_with_limit(queue_dynamo):
     """Test that listing queues with a limit is successful."""
     # Add multiple queues
-    queues = [
-        Queue(
-            queue_name=f"test-queue-{i}",
+    queues = [Queue(queue_name=f"test-queue-{i}",
             description=f"Test queue {i}",
-            created_at=datetime.now(),
-        )
-        for i in range(5)
-    ]
+            created_at=datetime.now(),)
+        for i in range(5)]
 
     for queue in queues:
         queue_dynamo.addQueue(queue)
@@ -408,14 +362,10 @@ def test_listQueues_with_limit(queue_dynamo):
 def test_listQueues_with_pagination(queue_dynamo):
     """Test that listing queues with pagination is successful."""
     # Add multiple queues
-    queues = [
-        Queue(
-            queue_name=f"test-queue-{i}",
+    queues = [Queue(queue_name=f"test-queue-{i}",
             description=f"Test queue {i}",
-            created_at=datetime.now(),
-        )
-        for i in range(5)
-    ]
+            created_at=datetime.now(),)
+        for i in range(5)]
 
     for queue in queues:
         queue_dynamo.addQueue(queue)
@@ -425,14 +375,10 @@ def test_listQueues_with_pagination(queue_dynamo):
 
     # If there's a last_evaluated_key, get the next page
     if last_evaluated_key:
-        result_queues2, _ = queue_dynamo.listQueues(
-            limit=2, lastEvaluatedKey=last_evaluated_key
-        )
+        result_queues2, _ = queue_dynamo.listQueues(limit=2, lastEvaluatedKey=last_evaluated_key)
 
         # Verify the second page has different queues
-        assert set(q.queue_name for q in result_queues1).isdisjoint(
-            set(q.queue_name for q in result_queues2)
-        )
+        assert set(q.queue_name for q in result_queues1).isdisjoint(set(q.queue_name for q in result_queues2))
 
 
 @pytest.mark.integration
@@ -443,9 +389,7 @@ def test_listQueues_with_invalid_last_evaluated_key(queue_dynamo):
 
 
 @pytest.mark.integration
-def test_addJobToQueue_success(
-    queue_dynamo, sample_queue, sample_job, sample_queue_job
-):
+def test_addJobToQueue_success(queue_dynamo, sample_queue, sample_job, sample_queue_job):
     """Test that adding a job to a queue is successful."""
     # Add the queue first
     queue_dynamo.addQueue(sample_queue)
@@ -483,16 +427,12 @@ def test_addJobToQueue_queue_not_found(queue_dynamo, sample_queue_job):
     """Test that trying to add a job to a non-existent queue raises a ValueError."""
     # Don't add the queue first
 
-    with pytest.raises(
-        ValueError, match=f"Queue {sample_queue_job.queue_name} not found"
-    ):
+    with pytest.raises(ValueError, match=f"Queue {sample_queue_job.queue_name} not found"):
         queue_dynamo.addJobToQueue(sample_queue_job)
 
 
 @pytest.mark.integration
-def test_removeJobFromQueue_success(
-    queue_dynamo, sample_queue, sample_queue_job
-):
+def test_removeJobFromQueue_success(queue_dynamo, sample_queue, sample_queue_job):
     """Test that removing a job from a queue is successful."""
     # Add the queue first
     queue_dynamo.addQueue(sample_queue)
@@ -531,27 +471,21 @@ def test_removeJobFromQueue_queue_not_found(queue_dynamo, sample_queue_job):
     """Test that trying to remove a job from a non-existent queue raises a ValueError."""
     # Don't add the queue first
 
-    with pytest.raises(
-        ValueError,
-        match=f"Job {sample_queue_job.job_id} is not in queue {sample_queue_job.queue_name}",
-    ):
+    with pytest.raises(ValueError,
+        match=f"Job {sample_queue_job.job_id} is not in queue {sample_queue_job.queue_name}",):
         queue_dynamo.removeJobFromQueue(sample_queue_job)
 
 
 @pytest.mark.integration
-def test_removeJobFromQueue_job_not_in_queue(
-    queue_dynamo, sample_queue, sample_queue_job
-):
+def test_removeJobFromQueue_job_not_in_queue(queue_dynamo, sample_queue, sample_queue_job):
     """Test that trying to remove a job that isn't in the queue raises a ValueError."""
     # Add the queue first
     queue_dynamo.addQueue(sample_queue)
 
     # Don't add the job to the queue
 
-    with pytest.raises(
-        ValueError,
-        match=f"Job {sample_queue_job.job_id} is not in queue {sample_queue_job.queue_name}",
-    ):
+    with pytest.raises(ValueError,
+        match=f"Job {sample_queue_job.job_id} is not in queue {sample_queue_job.queue_name}",):
         queue_dynamo.removeJobFromQueue(sample_queue_job)
 
 
@@ -565,19 +499,15 @@ def test_listJobsInQueue_success(queue_dynamo, sample_queue, sample_job):
     for i in range(3):
         # Ensure valid UUIDv4 format
         job_id = f"12345678-1234-4678-9{i}34-567812345678"
-        queue_job = QueueJob(
-            queue_name=sample_queue.queue_name,
+        queue_job = QueueJob(queue_name=sample_queue.queue_name,
             job_id=job_id,
             enqueued_at=datetime.now(),
             priority="medium",
-            position=i,
-        )
+            position=i,)
         queue_dynamo.addJobToQueue(queue_job)
 
     # List the jobs in the queue
-    result_jobs, last_evaluated_key = queue_dynamo.listJobsInQueue(
-        sample_queue.queue_name
-    )
+    result_jobs, last_evaluated_key = queue_dynamo.listJobsInQueue(sample_queue.queue_name)
 
     # Verify the jobs were listed
     assert len(result_jobs) == 3
@@ -597,19 +527,15 @@ def test_listJobsInQueue_with_limit(queue_dynamo, sample_queue, sample_job):
     for i in range(5):
         # Ensure valid UUIDv4 format
         job_id = f"12345678-1234-4678-9{i}34-567812345678"
-        queue_job = QueueJob(
-            queue_name=sample_queue.queue_name,
+        queue_job = QueueJob(queue_name=sample_queue.queue_name,
             job_id=job_id,
             enqueued_at=datetime.now(),
             priority="medium",
-            position=i,
-        )
+            position=i,)
         queue_dynamo.addJobToQueue(queue_job)
 
     # List the jobs with a limit
-    result_jobs, last_evaluated_key = queue_dynamo.listJobsInQueue(
-        sample_queue.queue_name, limit=2
-    )
+    result_jobs, last_evaluated_key = queue_dynamo.listJobsInQueue(sample_queue.queue_name, limit=2)
 
     # Verify the jobs were limited
     assert len(result_jobs) == 2
@@ -652,33 +578,25 @@ def test_listJobsInQueue_queue_not_found(queue_dynamo, monkeypatch):
 def test_findQueuesForJob_success(queue_dynamo, sample_job):
     """Test that finding queues for a job is successful."""
     # Create multiple queues
-    queues = [
-        Queue(
-            queue_name=f"test-queue-{i}",
+    queues = [Queue(queue_name=f"test-queue-{i}",
             description=f"Test queue {i}",
-            created_at=datetime.now(),
-        )
-        for i in range(3)
-    ]
+            created_at=datetime.now(),)
+        for i in range(3)]
 
     for queue in queues:
         queue_dynamo.addQueue(queue)
 
     # Add the job to all queues
     for queue in queues:
-        queue_job = QueueJob(
-            queue_name=queue.queue_name,
+        queue_job = QueueJob(queue_name=queue.queue_name,
             job_id=sample_job.job_id,
             enqueued_at=datetime.now(),
             priority="medium",
-            position=0,
-        )
+            position=0,)
         queue_dynamo.addJobToQueue(queue_job)
 
     # Find queues for the job
-    result_queue_jobs, last_evaluated_key = queue_dynamo.findQueuesForJob(
-        sample_job.job_id
-    )
+    result_queue_jobs, last_evaluated_key = queue_dynamo.findQueuesForJob(sample_job.job_id)
 
     # Verify the queues were found
     assert len(result_queue_jobs) == 3
@@ -693,33 +611,25 @@ def test_findQueuesForJob_success(queue_dynamo, sample_job):
 def test_findQueuesForJob_with_limit(queue_dynamo, sample_job):
     """Test that finding queues for a job with a limit is successful."""
     # Create multiple queues
-    queues = [
-        Queue(
-            queue_name=f"test-queue-{i}",
+    queues = [Queue(queue_name=f"test-queue-{i}",
             description=f"Test queue {i}",
-            created_at=datetime.now(),
-        )
-        for i in range(5)
-    ]
+            created_at=datetime.now(),)
+        for i in range(5)]
 
     for queue in queues:
         queue_dynamo.addQueue(queue)
 
     # Add the job to all queues
     for queue in queues:
-        queue_job = QueueJob(
-            queue_name=queue.queue_name,
+        queue_job = QueueJob(queue_name=queue.queue_name,
             job_id=sample_job.job_id,
             enqueued_at=datetime.now(),
             priority="medium",
-            position=0,
-        )
+            position=0,)
         queue_dynamo.addJobToQueue(queue_job)
 
     # Find queues with a limit
-    result_queue_jobs, last_evaluated_key = queue_dynamo.findQueuesForJob(
-        sample_job.job_id, limit=2
-    )
+    result_queue_jobs, last_evaluated_key = queue_dynamo.findQueuesForJob(sample_job.job_id, limit=2)
 
     # Verify the results were limited
     assert len(result_queue_jobs) == 2
@@ -747,9 +657,7 @@ def test_findQueuesForJob_with_no_queues(queue_dynamo, sample_job):
     """Test that finding queues for a job with no queues returns an empty list."""
     # Don't add the job to any queues
 
-    result_queue_jobs, last_evaluated_key = queue_dynamo.findQueuesForJob(
-        sample_job.job_id
-    )
+    result_queue_jobs, last_evaluated_key = queue_dynamo.findQueuesForJob(sample_job.job_id)
 
     # Verify no queues were found
     assert len(result_queue_jobs) == 0
@@ -776,27 +684,19 @@ def test_validate_last_evaluated_key_invalid_none():
 @pytest.mark.integration
 def test_validate_last_evaluated_key_invalid_missing_key():
     """Test that lastEvaluatedKey with missing key raises ValueError."""
-    invalid_lek = {
-        "PK": {"S": "QUEUE#test-queue"}
-        # Missing SK
-    }
+    invalid_lek = {"PK": {"S": "QUEUE#test-queue"}
+        # Missing SK}
 
-    with pytest.raises(
-        ValueError, match="LastEvaluatedKey must contain PK and SK"
-    ):
+    with pytest.raises(ValueError, match="LastEvaluatedKey must contain PK and SK"):
         validate_last_evaluated_key(invalid_lek)
 
 
 @pytest.mark.integration
 def test_validate_last_evaluated_key_invalid_format():
     """Test that lastEvaluatedKey with invalid format raises ValueError."""
-    invalid_lek = {
-        "PK": "QUEUE#test-queue",  # Not in DynamoDB format
-        "SK": {"S": "QUEUE"},
-    }
+    invalid_lek = {"PK": "QUEUE#test-queue",  # Not in DynamoDB format
+        "SK": {"S": "QUEUE"},}
 
-    with pytest.raises(
-        ValueError,
-        match="LastEvaluatedKey values must be in DynamoDB format with 'S' attribute",
-    ):
+    with pytest.raises(ValueError,
+        match="LastEvaluatedKey values must be in DynamoDB format with 'S' attribute",):
         validate_last_evaluated_key(invalid_lek)

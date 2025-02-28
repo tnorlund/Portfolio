@@ -6,9 +6,9 @@ def invert_affine(a, b, c, d, e, f):
     """
     Inverts the 2x3 affine transform:
 
-        [ a  b  c ]
-        [ d  e  f ]
-        [ 0  0  1 ]
+        [a  b  c]
+        [d  e  f]
+        [0  0  1]
 
     Returns the 6-tuple (a_inv, b_inv, c_inv, d_inv, e_inv, f_inv)
     for the inverse transform, provided the determinant is not zero.
@@ -34,11 +34,9 @@ def invert_warp(a, b, c, d, e, f, g, h):
     that perform the inverse mapping (x_new,y_new) -> (x,y).
     """
     # Form the 3x3 matrix
-    M = [
-        [a, b, c],
+    M = [[a, b, c],
         [d, e, f],
-        [g, h, 1],
-    ]
+        [g, h, 1],]
     # Invert it
     M_inv = _invert_3x3(M)
     # Extract the top-left 8 elements
@@ -59,33 +57,23 @@ def invert_warp(a, b, c, d, e, f, g, h):
 
 def _invert_3x3(M):
     """Inverts a 3x3 matrix M using standard formula (or your own method)."""
-    determinant = (
-        M[0][0] * (M[1][1] * M[2][2] - M[1][2] * M[2][1])
+    determinant = (M[0][0] * (M[1][1] * M[2][2] - M[1][2] * M[2][1])
         - M[0][1] * (M[1][0] * M[2][2] - M[1][2] * M[2][0])
-        + M[0][2] * (M[1][0] * M[2][1] - M[1][1] * M[2][0])
-    )
+        + M[0][2] * (M[1][0] * M[2][1] - M[1][1] * M[2][0]))
     if abs(determinant) < 1e-12:
         raise ValueError("Cannot invert perspective matrix (det=0).")
 
     inverse_determinant = 1.0 / determinant
     # Adjugate / cofactor method
-    return [
-        [
-            inverse_determinant * ((M[1][1] * M[2][2] - M[1][2] * M[2][1])),
+    return [[inverse_determinant * ((M[1][1] * M[2][2] - M[1][2] * M[2][1])),
             inverse_determinant * (-(M[0][1] * M[2][2] - M[0][2] * M[2][1])),
-            inverse_determinant * ((M[0][1] * M[1][2] - M[0][2] * M[1][1])),
-        ],
-        [
-            inverse_determinant * (-(M[1][0] * M[2][2] - M[1][2] * M[2][0])),
+            inverse_determinant * ((M[0][1] * M[1][2] - M[0][2] * M[1][1])),],
+        [inverse_determinant * (-(M[1][0] * M[2][2] - M[1][2] * M[2][0])),
             inverse_determinant * ((M[0][0] * M[2][2] - M[0][2] * M[2][0])),
-            inverse_determinant * (-(M[0][0] * M[1][2] - M[0][2] * M[1][0])),
-        ],
-        [
-            inverse_determinant * ((M[1][0] * M[2][1] - M[1][1] * M[2][0])),
+            inverse_determinant * (-(M[0][0] * M[1][2] - M[0][2] * M[1][0])),],
+        [inverse_determinant * ((M[1][0] * M[2][1] - M[1][1] * M[2][0])),
             inverse_determinant * (-(M[0][0] * M[2][1] - M[0][1] * M[2][0])),
-            inverse_determinant * ((M[0][0] * M[1][1] - M[0][1] * M[1][0])),
-        ],
-    ]
+            inverse_determinant * ((M[0][0] * M[1][1] - M[0][1] * M[1][0])),],]
 
 
 def pad_corners_opposite(corners, pad):
@@ -143,9 +131,7 @@ def solve_8x8_system(A, b):
         # 3) Normalize pivot row (so A[i][i] = 1)
         pivot_val = A[i][i]
         if abs(pivot_val) < 1e-12:
-            raise ValueError(
-                "Matrix is singular or poorly conditioned for pivoting."
-            )
+            raise ValueError("Matrix is singular or poorly conditioned for pivoting.")
         inv_pivot = 1.0 / pivot_val
         A[i] = [val * inv_pivot for val in A[i]]
         b[i] = b[i] * inv_pivot
@@ -165,10 +151,8 @@ def solve_8x8_system(A, b):
     return b
 
 
-def find_perspective_coeffs(
-    src_points: List[Tuple[float, float]],
-    dst_points: List[Tuple[float, float]],
-) -> List[float]:
+def find_perspective_coeffs(src_points: List[Tuple[float, float]],
+    dst_points: List[Tuple[float, float]],) -> List[float]:
     """
     src_points: list of 4 (x, y) source corners
     dst_points: list of 4 (x, y) destination corners
@@ -202,13 +186,11 @@ def find_perspective_coeffs(
     return solution
 
 
-def compute_receipt_box_from_skewed_extents(
-    hull_pts: List[Tuple[float, float]],
+def compute_receipt_box_from_skewed_extents(hull_pts: List[Tuple[float, float]],
     cx: float,
     cy: float,
     rotation_deg: float,
-    use_radians: bool = False,
-) -> Optional[List[List[int]]]:
+    use_radians: bool = False,) -> Optional[List[List[int]]]:
     """
     Compute a perspective-correct quadrilateral ("receipt box") from a set of convex hull points.
 
@@ -248,8 +230,8 @@ def compute_receipt_box_from_skewed_extents(
     #    typically do: deskew_pts = pts * R(+theta)).
     # ---------------------------------------------------
     # Deskew rotation matrix (2x2). We'll apply it manually:
-    #   [ cosθ   sinθ ]
-    #   [-sinθ   cosθ ]
+    #   [cosθ   sinθ]
+    #   [-sinθ   cosθ]
     #
     # This is effectively rotating by +theta because we want
     # to remove (subtract) rotation_deg from the points.
@@ -323,25 +305,17 @@ def compute_receipt_box_from_skewed_extents(
         x_int = x1 + t * (x2 - x1)
         return (x_int, desired_y)
 
-    left_top_point = interpolate_vertex(
-        left_top_vertex, left_bottom_vertex, top_y
-    )
-    left_bottom_point = interpolate_vertex(
-        left_top_vertex, left_bottom_vertex, bottom_y
-    )
-    right_top_point = interpolate_vertex(
-        right_top_vertex, right_bottom_vertex, top_y
-    )
-    right_bottom_point = interpolate_vertex(
-        right_top_vertex, right_bottom_vertex, bottom_y
-    )
+    left_top_point = interpolate_vertex(left_top_vertex, left_bottom_vertex, top_y)
+    left_bottom_point = interpolate_vertex(left_top_vertex, left_bottom_vertex, bottom_y)
+    right_top_point = interpolate_vertex(right_top_vertex, right_bottom_vertex, top_y)
+    right_bottom_point = interpolate_vertex(right_top_vertex, right_bottom_vertex, bottom_y)
 
     # Quadrilateral in the deskewed space
     deskewed_corners = [
-        left_top_point,  # top-left
-        right_top_point,  # top-right
-        right_bottom_point,  # bottom-right
-        left_bottom_point,  # bottom-left
+        left_top_point,
+        right_top_point,
+        right_bottom_point,
+        left_bottom_point,
     ]
 
     # ---------------------------------------------------
@@ -373,13 +347,11 @@ def compute_receipt_box_from_skewed_extents(
     return result
 
 
-def find_hull_extents_relative_to_centroid(
-    hull_pts: List[Tuple[float, float]],
+def find_hull_extents_relative_to_centroid(hull_pts: List[Tuple[float, float]],
     cx: float,
     cy: float,
     rotation_deg: float = 0.0,
-    use_radians: bool = False,
-) -> Dict[str, Optional[Tuple[int, int]]]:
+    use_radians: bool = False,) -> Dict[str, Optional[Tuple[int, int]]]:
     """
     Compute the intersection points between a convex hull and four rays emanating from a centroid,
     in a rotated coordinate system.
@@ -430,18 +402,14 @@ def find_hull_extents_relative_to_centroid(
     # "right" = +u
     # "top" = -v
     # "bottom" = +v
-    directions = {
-        "left": (-u[0], -u[1]),
+    directions = {"left": (-u[0], -u[1]),
         "right": u,
         "top": (-v[0], -v[1]),
-        "bottom": v,
-    }
+        "bottom": v,}
 
     results = {}
     for key, direction_vector in directions.items():
-        pt = _intersection_point_for_direction(
-            hull_pts, cx, cy, direction_vector
-        )
+        pt = _intersection_point_for_direction(hull_pts, cx, cy, direction_vector)
         if pt is not None:
             x_int = int(round(pt[0]))
             y_int = int(round(pt[1]))
@@ -452,12 +420,10 @@ def find_hull_extents_relative_to_centroid(
     return results
 
 
-def _intersection_point_for_direction(
-    hull_pts: List[Tuple[float, float]],
+def _intersection_point_for_direction(hull_pts: List[Tuple[float, float]],
     cx: float,
     cy: float,
-    direction: Tuple[float, float],
-) -> Optional[Tuple[float, float]]:
+    direction: Tuple[float, float],) -> Optional[Tuple[float, float]]:
     """
     Compute the intersection point between a ray and the edges of a convex polygon.
 
@@ -525,9 +491,7 @@ def _intersection_point_for_direction(
     return best_point
 
 
-def compute_hull_centroid(
-    hull_vertices: List[Tuple[float, float]]
-) -> Tuple[float, float]:
+def compute_hull_centroid(hull_vertices: List[Tuple[float, float]]) -> Tuple[float, float]:
     """
     Compute the centroid (geometric center) of a polygon defined by its convex hull vertices.
 
@@ -588,7 +552,7 @@ def compute_hull_centroid(
         # should be > 0.
         area = area_sum / 2.0
 
-        # Centroid is (1/(6A)) * sum( (x_i + x_{i+1}) * cross, (y_i + y_{i+1}) * cross )
+        # Centroid is (1/(6A)) * sum((x_i + x_{i+1}) * cross, (y_i + y_{i+1}) * cross)
         # (make sure area != 0 for safety)
         if abs(area) < 1e-14:
             # Very thin or degenerate polygon, gracefully handle
@@ -604,9 +568,7 @@ def compute_hull_centroid(
         return (cx, cy)
 
 
-def convex_hull(
-    points: List[Tuple[float, float]]
-) -> List[Tuple[float, float]]:
+def convex_hull(points: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
     """
     Compute the convex hull of a set of 2D points (in CCW order) using the
     monotone chain algorithm.
@@ -617,36 +579,26 @@ def convex_hull(
 
     lower = []
     for p in points:
-        while (
-            len(lower) >= 2
-            and (
-                (lower[-1][0] - lower[-2][0]) * (p[1] - lower[-2][1])
-                - (lower[-1][1] - lower[-2][1]) * (p[0] - lower[-2][0])
-            )
-            <= 0
-        ):
+        while (len(lower) >= 2
+            and ((lower[-1][0] - lower[-2][0]) * (p[1] - lower[-2][1])
+                - (lower[-1][1] - lower[-2][1]) * (p[0] - lower[-2][0]))
+            <= 0):
             lower.pop()
         lower.append(p)
 
     upper = []
     for p in reversed(points):
-        while (
-            len(upper) >= 2
-            and (
-                (upper[-1][0] - upper[-2][0]) * (p[1] - upper[-2][1])
-                - (upper[-1][1] - upper[-2][1]) * (p[0] - upper[-2][0])
-            )
-            <= 0
-        ):
+        while (len(upper) >= 2
+            and ((upper[-1][0] - upper[-2][0]) * (p[1] - upper[-2][1])
+                - (upper[-1][1] - upper[-2][1]) * (p[0] - upper[-2][0]))
+            <= 0):
             upper.pop()
         upper.append(p)
 
     return lower[:-1] + upper[:-1]
 
 
-def min_area_rect(
-    points: List[Tuple[float, float]]
-) -> Tuple[Tuple[float, float], Tuple[float, float], float]:
+def min_area_rect(points: List[Tuple[float, float]]) -> Tuple[Tuple[float, float], Tuple[float, float], float]:
     """
     Compute the minimum-area bounding rectangle of a set of 2D points.
     Returns a tuple of:
@@ -710,9 +662,7 @@ def min_area_rect(
     return best_rect
 
 
-def box_points(
-    center: Tuple[float, float], size: Tuple[float, float], angle_deg: float
-) -> List[Tuple[float, float]]:
+def box_points(center: Tuple[float, float], size: Tuple[float, float], angle_deg: float) -> List[Tuple[float, float]]:
     """
     Given a rectangle defined by center, size, and rotation angle (in degrees),
     compute its 4 corner coordinates (in order).
