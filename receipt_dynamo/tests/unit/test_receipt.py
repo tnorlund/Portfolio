@@ -42,7 +42,7 @@ def test_receipt_init_valid(example_receipt):
 
 @pytest.mark.unit
 def test_receipt_init_invalid_image_id():
-    """Test that constructing a Receipt with invalid image_id raises ValueError."""
+    """Receipt with invalid image_id raises ValueError."""
     with pytest.raises(ValueError, match="uuid must be a string"):
         Receipt(
             image_id=1,
@@ -97,7 +97,7 @@ def test_receipt_init_invalid_id():
 
 @pytest.mark.unit
 def test_receipt_init_invalid_dimensions():
-    """Test that constructing a Receipt with invalid width/height raises ValueError."""
+    """Receipt with invalid width/height raises ValueError."""
     # Invalid width
     with pytest.raises(ValueError):
         Receipt(
@@ -153,7 +153,7 @@ def test_receipt_init_valid_timestamp():
 
 @pytest.mark.unit
 def test_receipt_init_invalid_timestamp():
-    """Test that constructing a Receipt with an invalid timestamp raises ValueError."""
+    """Constructing a Receipt with an invalid timestamp raises ValueError."""
     with pytest.raises(
         ValueError,
         match="timestamp_added must be a datetime object or a string",
@@ -176,7 +176,7 @@ def test_receipt_init_invalid_timestamp():
 
 @pytest.mark.unit
 def test_receipt_init_invalid_s3_bucket():
-    """Test that constructing a Receipt with an invalid S3 bucket raises ValueError."""
+    """Receipt with invalid S3 bucket raises ValueError."""
     with pytest.raises(ValueError, match="raw_s3_bucket must be a string"):
         Receipt(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -196,7 +196,7 @@ def test_receipt_init_invalid_s3_bucket():
 
 @pytest.mark.unit
 def test_receipt_init_invalid_s3_key():
-    """Test that constructing a Receipt with an invalid S3 key raises ValueError."""
+    """Receipt with invalid S3 key raises ValueError."""
     with pytest.raises(ValueError, match="raw_s3_key must be a string"):
         Receipt(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -216,7 +216,7 @@ def test_receipt_init_invalid_s3_key():
 
 @pytest.mark.unit
 def test_receipt_init_invalid_point_types():
-    """Test that constructing a Receipt with invalid point data raises ValueError."""
+    """Receipt with invalid point data raises ValueError."""
     with pytest.raises(ValueError):
         Receipt(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -236,7 +236,7 @@ def test_receipt_init_invalid_point_types():
 
 @pytest.mark.unit
 def test_receipt_init_invalid_sha256():
-    """Test that constructing a Receipt with an invalid SHA256 raises ValueError."""
+    """Receipt with invalid SHA256 raises ValueError."""
     with pytest.raises(ValueError, match="sha256 must be a string"):
         Receipt(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -256,7 +256,7 @@ def test_receipt_init_invalid_sha256():
 
 @pytest.mark.unit
 def test_receipt_init_invalid_cdn_bucket():
-    """Test that constructing a Receipt with an invalid CDN bucket raises ValueError."""
+    """Receipt with invalid CDN bucket raises ValueError."""
     with pytest.raises(ValueError, match="cdn_s3_bucket must be a string"):
         Receipt(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -277,7 +277,7 @@ def test_receipt_init_invalid_cdn_bucket():
 
 @pytest.mark.unit
 def test_receipt_init_invalid_cdn_key():
-    """Test that constructing a Receipt with an invalid CDN key raises ValueError."""
+    """Receipt with invalid CDN key raises ValueError."""
     with pytest.raises(ValueError, match="cdn_s3_key must be a string"):
         Receipt(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -449,7 +449,7 @@ def test_item_to_receipt_valid_input(example_receipt):
 
 @pytest.mark.unit
 def test_item_to_receipt_missing_keys():
-    """Test that itemToReceipt raises ValueError when required keys are missing."""
+    """itemToReceipt raises ValueError when required keys are missing."""
     incomplete_item = {
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {"S": "RECEIPT#00001"},
@@ -460,7 +460,7 @@ def test_item_to_receipt_missing_keys():
 
 @pytest.mark.unit
 def test_item_to_receipt_invalid_format():
-    """Test that itemToReceipt raises ValueError when keys are incorrectly formatted."""
+    """itemToReceipt raises ValueError when keys are incorrectly formatted."""
     invalid_item = {
         "PK": {"S": "IMAGE#00001"},
         "SK": {"S": "RECEIPT#00001"},
