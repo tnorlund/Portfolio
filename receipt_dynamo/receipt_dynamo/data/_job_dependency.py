@@ -282,4 +282,4 @@ class _JobDependency:
                         }
                     },
                     "BatchWriteItem",
-                ) 
+                )

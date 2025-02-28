@@ -57,7 +57,9 @@ class InstanceJob:
             raise ValueError(f"status must be one of {valid_statuses}")
         self.status = status.lower()
 
-        if resource_utilization is not None and not isinstance(resource_utilization, dict):
+        if resource_utilization is not None and not isinstance(
+            resource_utilization, dict
+        ):
             raise ValueError("resource_utilization must be a dictionary")
         self.resource_utilization = resource_utilization or {}
 
@@ -218,9 +220,15 @@ class InstanceJob:
                 self.assigned_at,
                 self.status,
                 # Can't hash dictionaries, so convert to tuple of sorted items
-                tuple(sorted((k, str(v)) for k, v in self.resource_utilization.items()))
-                if self.resource_utilization
-                else None,
+                (
+                    tuple(
+                        sorted(
+                            (k, str(v)) for k, v in self.resource_utilization.items()
+                        )
+                    )
+                    if self.resource_utilization
+                    else None
+                ),
             )
         )
 
@@ -263,7 +271,9 @@ def itemToInstanceJob(item: dict) -> InstanceJob:
         # Parse resource_utilization from DynamoDB map if present
         resource_utilization = None
         if "resource_utilization" in item and "M" in item["resource_utilization"]:
-            resource_utilization = _parse_dynamodb_map(item["resource_utilization"]["M"])
+            resource_utilization = _parse_dynamodb_map(
+                item["resource_utilization"]["M"]
+            )
 
         return InstanceJob(
             instance_id=instance_id,
@@ -336,4 +346,4 @@ def _parse_dynamodb_value(dynamodb_value: Dict) -> Any:
         return None
     else:
         # Default fallback
-        return str(dynamodb_value) 
+        return str(dynamodb_value)
