@@ -27,18 +27,32 @@ def example_job_dependency_minimal():
 
 
 @pytest.mark.unit
-def test_job_dependency_init_valid(example_job_dependency, example_job_dependency_minimal):
+def test_job_dependency_init_valid(
+    example_job_dependency, example_job_dependency_minimal
+):
     """Test the JobDependency constructor with valid parameters."""
     # Test full job dependency
-    assert example_job_dependency.dependent_job_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    assert example_job_dependency.dependency_job_id == "4f52804b-2fad-4e00-92c8-b593da3a8ed4"
+    assert (
+        example_job_dependency.dependent_job_id
+        == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    )
+    assert (
+        example_job_dependency.dependency_job_id
+        == "4f52804b-2fad-4e00-92c8-b593da3a8ed4"
+    )
     assert example_job_dependency.type == "COMPLETION"
     assert example_job_dependency.created_at == "2021-01-01T12:30:45"
     assert example_job_dependency.condition == "Specific completion condition"
 
     # Test minimal job dependency
-    assert example_job_dependency_minimal.dependent_job_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    assert example_job_dependency_minimal.dependency_job_id == "4f52804b-2fad-4e00-92c8-b593da3a8ed4"
+    assert (
+        example_job_dependency_minimal.dependent_job_id
+        == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    )
+    assert (
+        example_job_dependency_minimal.dependency_job_id
+        == "4f52804b-2fad-4e00-92c8-b593da3a8ed4"
+    )
     assert example_job_dependency_minimal.type == "SUCCESS"
     assert example_job_dependency_minimal.created_at == "2021-01-01T12:30:45"
     assert example_job_dependency_minimal.condition is None
@@ -170,7 +184,9 @@ def test_job_dependency_gsi1_key(example_job_dependency):
     """Test the JobDependency.gsi1_key() method."""
     assert example_job_dependency.gsi1_key() == {
         "GSI1PK": {"S": "DEPENDENCY"},
-        "GSI1SK": {"S": "DEPENDENT#3f52804b-2fad-4e00-92c8-b593da3a8ed3#DEPENDENCY#4f52804b-2fad-4e00-92c8-b593da3a8ed4"},
+        "GSI1SK": {
+            "S": "DEPENDENT#3f52804b-2fad-4e00-92c8-b593da3a8ed3#DEPENDENCY#4f52804b-2fad-4e00-92c8-b593da3a8ed4"
+        },
     }
 
 
@@ -179,7 +195,9 @@ def test_job_dependency_gsi2_key(example_job_dependency):
     """Test the JobDependency.gsi2_key() method."""
     assert example_job_dependency.gsi2_key() == {
         "GSI2PK": {"S": "DEPENDENCY"},
-        "GSI2SK": {"S": "DEPENDED_BY#4f52804b-2fad-4e00-92c8-b593da3a8ed4#DEPENDENT#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "GSI2SK": {
+            "S": "DEPENDED_BY#4f52804b-2fad-4e00-92c8-b593da3a8ed4#DEPENDENT#3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+        },
     }
 
 
@@ -191,9 +209,13 @@ def test_job_dependency_to_item(example_job_dependency, example_job_dependency_m
     assert item["PK"] == {"S": "JOB#3f52804b-2fad-4e00-92c8-b593da3a8ed3"}
     assert item["SK"] == {"S": "DEPENDS_ON#4f52804b-2fad-4e00-92c8-b593da3a8ed4"}
     assert item["GSI1PK"] == {"S": "DEPENDENCY"}
-    assert item["GSI1SK"] == {"S": "DEPENDENT#3f52804b-2fad-4e00-92c8-b593da3a8ed3#DEPENDENCY#4f52804b-2fad-4e00-92c8-b593da3a8ed4"}
+    assert item["GSI1SK"] == {
+        "S": "DEPENDENT#3f52804b-2fad-4e00-92c8-b593da3a8ed3#DEPENDENCY#4f52804b-2fad-4e00-92c8-b593da3a8ed4"
+    }
     assert item["GSI2PK"] == {"S": "DEPENDENCY"}
-    assert item["GSI2SK"] == {"S": "DEPENDED_BY#4f52804b-2fad-4e00-92c8-b593da3a8ed4#DEPENDENT#3f52804b-2fad-4e00-92c8-b593da3a8ed3"}
+    assert item["GSI2SK"] == {
+        "S": "DEPENDED_BY#4f52804b-2fad-4e00-92c8-b593da3a8ed4#DEPENDENT#3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    }
     assert item["TYPE"] == {"S": "JOB_DEPENDENCY"}
     assert item["dependent_job_id"] == {"S": "3f52804b-2fad-4e00-92c8-b593da3a8ed3"}
     assert item["dependency_job_id"] == {"S": "4f52804b-2fad-4e00-92c8-b593da3a8ed4"}
@@ -237,8 +259,14 @@ def test_job_dependency_repr(example_job_dependency):
 def test_job_dependency_iter(example_job_dependency):
     """Test the JobDependency.__iter__() method."""
     job_dependency_dict = dict(example_job_dependency)
-    assert job_dependency_dict["dependent_job_id"] == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    assert job_dependency_dict["dependency_job_id"] == "4f52804b-2fad-4e00-92c8-b593da3a8ed4"
+    assert (
+        job_dependency_dict["dependent_job_id"]
+        == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    )
+    assert (
+        job_dependency_dict["dependency_job_id"]
+        == "4f52804b-2fad-4e00-92c8-b593da3a8ed4"
+    )
     assert job_dependency_dict["type"] == "COMPLETION"
     assert job_dependency_dict["created_at"] == "2021-01-01T12:30:45"
     assert job_dependency_dict["condition"] == "Specific completion condition"
@@ -333,19 +361,22 @@ def test_itemToJobDependency(example_job_dependency, example_job_dependency_mini
 
     # Test with missing required keys
     with pytest.raises(ValueError, match="Invalid item format"):
-        itemToJobDependency({
-            "PK": {"S": "JOB#id"},
-            "SK": {"S": "DEPENDS_ON#dependency_id"}
-        })
+        itemToJobDependency(
+            {"PK": {"S": "JOB#id"}, "SK": {"S": "DEPENDS_ON#dependency_id"}}
+        )
 
     # Test with invalid item format
     with pytest.raises(ValueError, match="Error converting item to JobDependency"):
-        itemToJobDependency({
-            "PK": {"S": "JOB#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-            "SK": {"S": "DEPENDS_ON#4f52804b-2fad-4e00-92c8-b593da3a8ed4"},
-            "TYPE": {"S": "JOB_DEPENDENCY"},
-            "dependent_job_id": {"S": "3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-            "dependency_job_id": {"INVALID_TYPE": "4f52804b-2fad-4e00-92c8-b593da3a8ed4"},  # Invalid type
-            "type": {"S": "SUCCESS"},
-            "created_at": {"S": "2021-01-01T12:30:45"},
-        }) 
+        itemToJobDependency(
+            {
+                "PK": {"S": "JOB#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+                "SK": {"S": "DEPENDS_ON#4f52804b-2fad-4e00-92c8-b593da3a8ed4"},
+                "TYPE": {"S": "JOB_DEPENDENCY"},
+                "dependent_job_id": {"S": "3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+                "dependency_job_id": {
+                    "INVALID_TYPE": "4f52804b-2fad-4e00-92c8-b593da3a8ed4"
+                },  # Invalid type
+                "type": {"S": "SUCCESS"},
+                "created_at": {"S": "2021-01-01T12:30:45"},
+            }
+        )

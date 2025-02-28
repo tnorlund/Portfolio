@@ -9,7 +9,7 @@ class QueueJob:
 
     This class encapsulates the relationship between a queue and a job, including
     attributes such as enqueued timestamp, priority, and position in the queue.
-    It is designed to support operations such as generating DynamoDB keys and 
+    It is designed to support operations such as generating DynamoDB keys and
     converting queue-job associations to DynamoDB-compatible items.
 
     Attributes:
@@ -26,7 +26,7 @@ class QueueJob:
         job_id: str,
         enqueued_at: datetime or str,
         priority: str = "medium",
-        position: int = 0
+        position: int = 0,
     ):
         """Initializes a new QueueJob object for DynamoDB.
 
@@ -69,7 +69,10 @@ class QueueJob:
         Returns:
             dict: The primary key for the queue-job association.
         """
-        return {"PK": {"S": f"QUEUE#{self.queue_name}"}, "SK": {"S": f"JOB#{self.job_id}"}}
+        return {
+            "PK": {"S": f"QUEUE#{self.queue_name}"},
+            "SK": {"S": f"JOB#{self.job_id}"},
+        }
 
     def gsi1_key(self) -> dict:
         """Generates the GSI1 key for the queue-job association.
@@ -79,7 +82,7 @@ class QueueJob:
         """
         return {
             "GSI1PK": {"S": "JOB"},
-            "GSI1SK": {"S": f"JOB#{self.job_id}#QUEUE#{self.queue_name}"}
+            "GSI1SK": {"S": f"JOB#{self.job_id}#QUEUE#{self.queue_name}"},
         }
 
     def to_item(self) -> dict:
@@ -94,7 +97,7 @@ class QueueJob:
             "TYPE": {"S": "QUEUE_JOB"},
             "enqueued_at": {"S": self.enqueued_at},
             "priority": {"S": self.priority},
-            "position": {"N": str(self.position)}
+            "position": {"N": str(self.position)},
         }
         return item
 
@@ -157,7 +160,7 @@ class QueueJob:
                 self.job_id,
                 self.enqueued_at,
                 self.priority,
-                self.position
+                self.position,
             )
         )
 
@@ -174,14 +177,7 @@ def itemToQueueJob(item: dict) -> QueueJob:
     Raises:
         ValueError: When the item format is invalid.
     """
-    required_keys = {
-        "PK",
-        "SK",
-        "TYPE",
-        "enqueued_at",
-        "priority",
-        "position"
-    }
+    required_keys = {"PK", "SK", "TYPE", "enqueued_at", "priority", "position"}
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
@@ -192,7 +188,7 @@ def itemToQueueJob(item: dict) -> QueueJob:
     try:
         # Parse queue_name from the PK
         queue_name = item["PK"]["S"].split("#")[1]
-        
+
         # Parse job_id from the SK
         job_id = item["SK"]["S"].split("#")[1]
 
@@ -206,7 +202,7 @@ def itemToQueueJob(item: dict) -> QueueJob:
             job_id=job_id,
             enqueued_at=enqueued_at,
             priority=priority,
-            position=position
+            position=position,
         )
     except (KeyError, IndexError) as e:
-        raise ValueError(f"Error converting item to QueueJob: {e}") 
+        raise ValueError(f"Error converting item to QueueJob: {e}")
