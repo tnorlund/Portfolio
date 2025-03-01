@@ -226,4 +226,152 @@ class LayoutLMJobDefinition(BaseModel):
     
     def to_job_config(self) -> Dict:
         """Convert the job definition to a format compatible with the Job class."""
-        return json.loads(self.json()) 
+        return json.loads(self.json())
+
+
+class JobDefinition:
+    """
+    Represents a job definition loaded from a YAML/JSON file.
+    
+    This class encapsulates the configuration for a training job,
+    including model parameters, training settings, and dependencies.
+    """
+    
+    def __init__(self, config_dict):
+        """
+        Initialize a JobDefinition from a configuration dictionary.
+        
+        Args:
+            config_dict: Dictionary containing job configuration
+        """
+        self.config_dict = config_dict
+        
+        # Required fields
+        self.name = config_dict.get('name')
+        self.description = config_dict.get('description', '')
+        self.config = config_dict.get('config', {})
+        
+        # Optional metadata
+        self.priority = config_dict.get('priority', 'medium').lower()
+        self.estimated_duration = config_dict.get('estimated_duration')
+        self.tags = config_dict.get('tags', {})
+        
+        # Dependencies - new field
+        self.dependencies = self._parse_dependencies(config_dict.get('dependencies', []))
+        
+        # Validate required fields
+        if not self.name:
+            raise ValueError("Job definition must include a name")
+        
+        if not self.config:
+            raise ValueError("Job definition must include a config section")
+            
+        # Validate priority
+        valid_priorities = ["low", "medium", "high", "critical"]
+        if self.priority not in valid_priorities:
+            raise ValueError(f"Priority must be one of: {', '.join(valid_priorities)}")
+    
+    def _parse_dependencies(self, dependencies_list):
+        """
+        Parse job dependencies from the configuration.
+        
+        Args:
+            dependencies_list: List of dependency configurations
+            
+        Returns:
+            List of parsed dependency dictionaries
+        """
+        parsed_dependencies = []
+        
+        for dep in dependencies_list:
+            if not isinstance(dep, dict):
+                raise ValueError(f"Each dependency must be a dictionary, got {type(dep)}")
+                
+            job_id = dep.get('job_id')
+            if not job_id:
+                raise ValueError("Each dependency must include a job_id")
+                
+            dependency_type = dep.get('type', 'COMPLETION').upper()
+            valid_types = ["COMPLETION", "SUCCESS", "FAILURE", "ARTIFACT"]
+            if dependency_type not in valid_types:
+                raise ValueError(f"Dependency type must be one of: {', '.join(valid_types)}")
+                
+            condition = dep.get('condition')
+            if dependency_type == 'ARTIFACT' and not condition:
+                raise ValueError("ARTIFACT dependency type requires a condition")
+                
+            parsed_dependencies.append({
+                'job_id': job_id,
+                'type': dependency_type,
+                'condition': condition,
+                'description': dep.get('description', '')
+            })
+            
+        return parsed_dependencies
+    
+    def to_dict(self):
+        """
+        Convert the job definition to a dictionary.
+        
+        Returns:
+            Dictionary representation of the job definition
+        """
+        return {
+            'name': self.name,
+            'description': self.description,
+            'priority': self.priority,
+            'estimated_duration': self.estimated_duration,
+            'tags': self.tags,
+            'dependencies': self.dependencies,
+            'config': self.config
+        }
+    
+    def create_dependencies(self, job_id, job_service):
+        """
+        Create job dependencies in DynamoDB.
+        
+        Args:
+            job_id: ID of the job being created
+            job_service: JobService instance
+            
+        Returns:
+            List of created dependency objects
+        """
+        from receipt_trainer.jobs.validator import validate_job_dependency
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        created_dependencies = []
+        
+        for dep in self.dependencies:
+            dependency_job_id = dep['job_id']
+            dependency_type = dep['type']
+            condition = dep['condition']
+            
+            # Validate the dependency
+            is_valid, error = validate_job_dependency(
+                dependent_job_id=job_id,
+                dependency_job_id=dependency_job_id,
+                dependency_type=dependency_type,
+                condition=condition,
+                job_service=job_service
+            )
+            
+            if not is_valid:
+                logger.warning(f"Skipping invalid dependency: {error}")
+                continue
+                
+            try:
+                # Create the dependency
+                dependency = job_service.add_job_dependency(
+                    job_id=job_id,
+                    depends_on_job_id=dependency_job_id,
+                    dependency_type=dependency_type,
+                    condition=condition
+                )
+                created_dependencies.append(dependency)
+                logger.info(f"Created dependency: {job_id} depends on {dependency_job_id} (type: {dependency_type})")
+            except Exception as e:
+                logger.error(f"Error creating dependency: {str(e)}")
+                
+        return created_dependencies 

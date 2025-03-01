@@ -380,7 +380,91 @@ class JobService:
         Returns:
             A list of JobDependency objects representing jobs that depend on this job
         """
-        return self.dynamo_client.listJobDependenciesByDependsOn(job_id)
+        return self.dynamo_client.listDependents(job_id)
+
+    def check_dependencies_satisfied(self, job_id: str) -> Tuple[bool, List[Dict]]:
+        """
+        Check if all dependencies for a job are satisfied.
+        
+        Args:
+            job_id: The ID of the job to check dependencies for
+            
+        Returns:
+            A tuple containing:
+            - boolean indicating if all dependencies are satisfied
+            - list of unsatisfied dependencies with details
+        """
+        # Get all dependencies for this job
+        dependencies = self.get_job_dependencies(job_id)
+        
+        if not dependencies:
+            # No dependencies means all are satisfied
+            return True, []
+            
+        unsatisfied = []
+        all_satisfied = True
+        
+        for dependency in dependencies:
+            is_satisfied = False
+            dependency_details = {
+                "dependency_job_id": dependency.dependency_job_id,
+                "type": dependency.type,
+                "condition": dependency.condition
+            }
+            
+            try:
+                # Get the dependency job status
+                dependency_job = self.get_job(dependency.dependency_job_id)
+                dependency_details["current_status"] = dependency_job.status
+                
+                # Check if the dependency is satisfied based on type
+                if dependency.type == "COMPLETION":
+                    # Job completed with any status
+                    is_satisfied = dependency_job.status in ["succeeded", "failed", "cancelled"]
+                elif dependency.type == "SUCCESS":
+                    # Job completed successfully
+                    is_satisfied = dependency_job.status == "succeeded"
+                elif dependency.type == "FAILURE":
+                    # Job failed
+                    is_satisfied = dependency_job.status == "failed"
+                elif dependency.type == "ARTIFACT":
+                    # Special condition for artifact dependency
+                    if dependency.condition and hasattr(dependency_job, "job_config"):
+                        # Check if the artifact exists based on condition
+                        # This would need to be implemented based on your artifact storage system
+                        is_satisfied = self._check_artifact_exists(
+                            dependency_job, dependency.condition
+                        )
+                    else:
+                        is_satisfied = False
+                        
+            except ValueError:
+                # Dependency job not found
+                dependency_details["error"] = "Job not found"
+                
+            dependency_details["is_satisfied"] = is_satisfied
+            
+            if not is_satisfied:
+                all_satisfied = False
+                unsatisfied.append(dependency_details)
+                
+        return all_satisfied, unsatisfied
+        
+    def _check_artifact_exists(self, job: Job, artifact_condition: str) -> bool:
+        """
+        Check if an artifact exists for a job based on a condition.
+        
+        Args:
+            job: The job that should have produced the artifact
+            artifact_condition: The condition specifying the artifact
+            
+        Returns:
+            True if the artifact exists, False otherwise
+        """
+        # This is a placeholder implementation
+        # You would need to implement this based on your artifact storage system
+        # For example, checking in S3 for a specific file
+        return False
 
     # Job checkpoint operations
     def add_job_checkpoint(

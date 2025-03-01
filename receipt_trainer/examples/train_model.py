@@ -306,9 +306,12 @@ def main():
     # Validate environment variables
     validate_environment()
 
-    # Generate a unique job ID
-    job_id = str(uuid.uuid4())
-    print(f"Generated job ID: {job_id}")
+    # Initialize wandb first
+    wandb.init(
+        project="receipt-ocr",
+        name=args.run_name if args.run_name else None,
+        resume="allow",
+    )
 
     # Create training config with default values
     training_config = TrainingConfig()
@@ -337,16 +340,15 @@ def main():
 
     # Create trainer with explicit DynamoDB table name
     trainer = ReceiptTrainer(
+        wandb_project="receipt-ocr",
         model_name=args.model_name,
         training_config=training_config,
         data_config=data_config,
         dynamo_table=args.dynamo_table,  # Use the table name from arguments
-        job_id=job_id,  # Pass the job ID
     )
 
-    # Create metrics callback with job service
-    job_service = trainer.job_service
-    metrics_callback = MetricsCallback(job_service=job_service, job_id=job_id)
+    # Create metrics callback
+    metrics_callback = MetricsCallback()
 
     try:
         # Initialize DynamoDB client explicitly
@@ -373,26 +375,16 @@ def main():
         trainer.train(
             enable_checkpointing=True,
             enable_early_stopping=True,
+            log_to_wandb=True,
             resume_training=True if args.resume_from_checkpoint else False,
             callbacks=[metrics_callback],
         )
     except Exception as e:
         print(f"Training failed with error: {str(e)}")
         traceback.print_exc()
-        
-        # Log the error to DynamoDB
-        if job_service:
-            job_service.add_job_status(
-                job_id,
-                "FAILED",
-                f"Training failed: {str(e)}"
-            )
-            
-            job_service.add_job_log(
-                job_id,
-                "ERROR",
-                f"Training failed with error: {str(e)}\n{traceback.format_exc()}"
-            )
+    finally:
+        # Finish the W&B run
+        wandb.finish()
 
 
 if __name__ == "__main__":

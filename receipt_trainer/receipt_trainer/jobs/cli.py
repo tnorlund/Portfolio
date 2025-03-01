@@ -146,6 +146,9 @@ def create_parser() -> argparse.ArgumentParser:
     job_details_parser.add_argument("--table", help="DynamoDB table name for jobs", default="Jobs")
     job_details_parser.add_argument("--region", help="AWS region")
     
+    # Add dependency commands
+    add_dependency_commands(subparsers)
+    
     return parser
 
 
@@ -810,6 +813,336 @@ def handle_job_details(args: argparse.Namespace) -> None:
         print(f"Error retrieving job details: {str(e)}")
         logger.error(f"Error in handle_job_details: {str(e)}")
 
+
+def add_dependency_commands(subparsers):
+    """Add dependency-related commands to the CLI."""
+    
+    # Command to add a dependency
+    add_dep_parser = subparsers.add_parser(
+        "add-dependency",
+        help="Add a dependency between jobs"
+    )
+    add_dep_parser.add_argument(
+        "job_id",
+        help="ID of the job that depends on another"
+    )
+    add_dep_parser.add_argument(
+        "dependency_job_id",
+        help="ID of the job that is depended on"
+    )
+    add_dep_parser.add_argument(
+        "--type",
+        choices=["COMPLETION", "SUCCESS", "FAILURE", "ARTIFACT"],
+        default="COMPLETION",
+        help="Type of dependency"
+    )
+    add_dep_parser.add_argument(
+        "--condition",
+        help="Condition for the dependency (required for ARTIFACT type)"
+    )
+    add_dep_parser.add_argument(
+        "--table-name",
+        default=None,
+        help="DynamoDB table name"
+    )
+    add_dep_parser.add_argument(
+        "--region",
+        default="us-east-1",
+        help="AWS region"
+    )
+    add_dep_parser.set_defaults(func=_add_dependency)
+    
+    # Command to list dependencies for a job
+    list_deps_parser = subparsers.add_parser(
+        "list-dependencies",
+        help="List dependencies for a job"
+    )
+    list_deps_parser.add_argument(
+        "job_id",
+        help="ID of the job to list dependencies for"
+    )
+    list_deps_parser.add_argument(
+        "--table-name",
+        default=None,
+        help="DynamoDB table name"
+    )
+    list_deps_parser.add_argument(
+        "--region",
+        default="us-east-1",
+        help="AWS region"
+    )
+    list_deps_parser.set_defaults(func=_list_dependencies)
+    
+    # Command to validate dependencies for a job
+    validate_deps_parser = subparsers.add_parser(
+        "validate-dependencies",
+        help="Validate dependencies for a job"
+    )
+    validate_deps_parser.add_argument(
+        "job_id",
+        help="ID of the job to validate dependencies for"
+    )
+    validate_deps_parser.add_argument(
+        "--table-name",
+        default=None,
+        help="DynamoDB table name"
+    )
+    validate_deps_parser.add_argument(
+        "--region",
+        default="us-east-1",
+        help="AWS region"
+    )
+    validate_deps_parser.set_defaults(func=_validate_dependencies)
+    
+    # Command to visualize dependencies
+    vis_deps_parser = subparsers.add_parser(
+        "visualize-dependencies",
+        help="Visualize dependencies for a job"
+    )
+    vis_deps_parser.add_argument(
+        "job_id",
+        help="ID of the job to visualize dependencies for"
+    )
+    vis_deps_parser.add_argument(
+        "--output",
+        default=None,
+        help="Path to output file (e.g., dependencies.png, dependencies.svg)"
+    )
+    vis_deps_parser.add_argument(
+        "--depth",
+        type=int,
+        default=3,
+        help="Maximum depth of dependencies to visualize"
+    )
+    vis_deps_parser.add_argument(
+        "--table-name",
+        default=None,
+        help="DynamoDB table name"
+    )
+    vis_deps_parser.add_argument(
+        "--region",
+        default="us-east-1",
+        help="AWS region"
+    )
+    vis_deps_parser.set_defaults(func=_visualize_dependencies)
+
+def _get_dynamo_table_name(args):
+    """Get DynamoDB table name from args or environment."""
+    if args.table_name:
+        return args.table_name
+        
+    try:
+        import os
+        return os.environ.get("DYNAMODB_TABLE")
+    except:
+        return None
+
+def _get_job_service(args):
+    """Initialize JobService from args."""
+    from receipt_dynamo.services.job_service import JobService
+    
+    table_name = _get_dynamo_table_name(args)
+    if not table_name:
+        raise ValueError("DynamoDB table name not provided and not found in environment")
+        
+    return JobService(table_name=table_name, region=args.region)
+
+def _add_dependency(args):
+    """Add a dependency between jobs."""
+    try:
+        from receipt_dynamo.entities.job_dependency import JobDependency
+        from datetime import datetime
+        
+        # Get job service
+        job_service = _get_job_service(args)
+        
+        # Validate dependency
+        from receipt_trainer.jobs.validator import validate_job_dependency
+        is_valid, error = validate_job_dependency(
+            dependent_job_id=args.job_id,
+            dependency_job_id=args.dependency_job_id,
+            dependency_type=args.type,
+            condition=args.condition,
+            job_service=job_service
+        )
+        
+        if not is_valid:
+            print(f"Invalid dependency: {error}")
+            return
+        
+        # Create dependency
+        job_dependency = JobDependency(
+            dependent_job_id=args.job_id,
+            dependency_job_id=args.dependency_job_id,
+            type=args.type.upper(),
+            created_at=datetime.now(),
+            condition=args.condition
+        )
+        
+        # Add to DynamoDB
+        job_service.add_job_dependency(
+            job_id=args.job_id,
+            depends_on_job_id=args.dependency_job_id,
+            dependency_type=args.type.upper(),
+            condition=args.condition
+        )
+        
+        print(f"Added dependency: {args.job_id} depends on {args.dependency_job_id} (type: {args.type})")
+        
+    except Exception as e:
+        print(f"Error adding dependency: {str(e)}")
+        
+def _list_dependencies(args):
+    """List dependencies for a job."""
+    try:
+        # Get job service
+        job_service = _get_job_service(args)
+        
+        # Get dependencies
+        dependencies = job_service.get_job_dependencies(args.job_id)
+        
+        if not dependencies:
+            print(f"No dependencies found for job {args.job_id}")
+            return
+        
+        print(f"Dependencies for job {args.job_id}:")
+        for i, dep in enumerate(dependencies, 1):
+            condition_str = f", condition: {dep.condition}" if dep.condition else ""
+            print(f"  {i}. Depends on: {dep.dependency_job_id} (type: {dep.type}{condition_str})")
+        
+        # Get job status
+        try:
+            job = job_service.get_job(args.job_id)
+            print(f"\nJob status: {job.status}")
+        except:
+            pass
+        
+        # Check if all dependencies are satisfied
+        try:
+            is_satisfied, unsatisfied = job_service.check_dependencies_satisfied(args.job_id)
+            print(f"\nAll dependencies satisfied: {is_satisfied}")
+            
+            if not is_satisfied:
+                print("\nUnsatisfied dependencies:")
+                for dep in unsatisfied:
+                    print(f"  - {dep['dependency_job_id']} (current status: {dep.get('current_status', 'unknown')})")
+        except Exception as e:
+            print(f"\nError checking dependency satisfaction: {str(e)}")
+            
+    except Exception as e:
+        print(f"Error listing dependencies: {str(e)}")
+
+def _validate_dependencies(args):
+    """Validate dependencies for a job."""
+    try:
+        # Get job service
+        job_service = _get_job_service(args)
+        
+        # Validate dependencies
+        from receipt_trainer.jobs.validator import validate_dependencies_for_job
+        is_valid, issues = validate_dependencies_for_job(args.job_id, job_service)
+        
+        if is_valid:
+            print(f"All dependencies for job {args.job_id} are valid")
+        else:
+            print(f"Found {len(issues)} issues with dependencies for job {args.job_id}:")
+            for i, issue in enumerate(issues, 1):
+                print(f"  {i}. {issue['type']}: {issue['message']}")
+                
+    except Exception as e:
+        print(f"Error validating dependencies: {str(e)}")
+
+def _visualize_dependencies(args):
+    """Visualize dependencies for a job."""
+    try:
+        # Check if graphviz is installed
+        try:
+            import graphviz
+        except ImportError:
+            print("Error: graphviz package is required for visualization")
+            print("Install with: pip install graphviz")
+            print("Note: You also need to install the Graphviz software (https://graphviz.org/download/)")
+            return
+            
+        # Get job service
+        job_service = _get_job_service(args)
+        
+        # Create a directed graph
+        dot = graphviz.Digraph(comment=f'Dependencies for job {args.job_id}')
+        
+        # Keep track of processed jobs to avoid duplicates
+        processed_jobs = set()
+        
+        # Process job and its dependencies recursively
+        def process_job(job_id, depth=0):
+            if depth > args.depth or job_id in processed_jobs:
+                return
+                
+            processed_jobs.add(job_id)
+            
+            try:
+                # Get job details
+                job = job_service.get_job(job_id)
+                
+                # Add node with job status
+                status_color = {
+                    "pending": "gray",
+                    "running": "blue",
+                    "succeeded": "green",
+                    "failed": "red",
+                    "cancelled": "orange"
+                }.get(job.status, "black")
+                
+                dot.node(job_id, f"{job.name}\n({job.status})", color=status_color, style="filled", fillcolor=f"{status_color}20")
+                
+                # Get dependencies
+                dependencies = job_service.get_job_dependencies(job_id)
+                
+                # Add edges for dependencies
+                for dep in dependencies:
+                    dep_type = dep.type.lower()
+                    edge_color = {
+                        "completion": "gray",
+                        "success": "green",
+                        "failure": "red",
+                        "artifact": "blue"
+                    }.get(dep_type, "black")
+                    
+                    label = dep_type
+                    if dep.condition:
+                        label += f"\n{dep.condition}"
+                        
+                    dot.edge(job_id, dep.dependency_job_id, label=label, color=edge_color)
+                    
+                    # Process dependency recursively
+                    process_job(dep.dependency_job_id, depth + 1)
+            except Exception as e:
+                print(f"Warning: Error processing job {job_id}: {str(e)}")
+                dot.node(job_id, f"{job_id}\n(error)", color="red", style="filled", fillcolor="#ffdddd")
+        
+        # Start processing from the root job
+        process_job(args.job_id)
+        
+        # Check if we have any nodes
+        if not processed_jobs:
+            print(f"No dependencies found for job {args.job_id}")
+            return
+            
+        # Render the graph
+        output_path = args.output
+        if output_path:
+            # Render to file
+            dot.render(output_path, view=True)
+            print(f"Dependency graph saved to {output_path}")
+        else:
+            # Print dot source
+            print("\nGraphviz DOT representation:")
+            print(dot.source)
+            print("\nTo visualize this graph, save it to a file with a .dot extension")
+            print("and use Graphviz tools (dot, neato, etc.) to render it.")
+            
+    except Exception as e:
+        print(f"Error visualizing dependencies: {str(e)}")
 
 def main() -> None:
     """Main entry point for the CLI."""

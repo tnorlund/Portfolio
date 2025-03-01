@@ -94,10 +94,10 @@ The following major components have been completed:
   - [x] Create commands for job submission
   - [x] Add job status checking and monitoring
   - [x] Implement job cancellation and modification
-- [ ] Add support for dependency chains between jobs
-  - [ ] Implement dependency validation
-  - [ ] Add conditional execution based on dependency status
-  - [ ] Create visualization for job dependency graphs
+- [x] Add support for dependency chains between jobs
+  - [x] Implement dependency validation
+  - [x] Add conditional execution based on dependency status
+  - [x] Create visualization for job dependency graphs
 
 ## 10. Instance Coordination
 
