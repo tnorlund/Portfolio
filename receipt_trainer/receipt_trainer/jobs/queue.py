@@ -327,68 +327,135 @@ class JobQueue:
         """
         Process jobs from the queue continuously.
         
-        Args:
-            handler: Function to process a job, should return True if successful
-            interval_seconds: Time to wait between polling for new jobs
-        """
-        self._stop_processing.clear()
+        This method will continuously poll the queue for jobs and process them
+        using the provided handler function. It will continue until stop_processing()
+        is called or an unhandled exception occurs.
         
-        self.logger.info("Starting job processing loop")
+        Args:
+            handler: Function that processes a job and returns True if successful
+            interval_seconds: Seconds to wait between polling if no jobs are available
+        """
+        self.logger.info(f"Starting job processor for queue {self.config.queue_url}")
         
         while not self._stop_processing.is_set():
             try:
                 # Receive jobs from the queue
-                job_tuples = self.receive_jobs()
+                jobs = self.receive_jobs(max_messages=self.config.max_batch_size)
                 
-                for job, receipt_handle in job_tuples:
-                    self.logger.info(f"Processing job {job.name} ({job.job_id})")
-                    
+                if not jobs:
+                    # No jobs available, wait before polling again
+                    time.sleep(interval_seconds)
+                    continue
+                
+                self.logger.debug(f"Received {len(jobs)} jobs from queue")
+                
+                for job, receipt_handle in jobs:
                     try:
-                        # Mark the job as started
-                        job.mark_started()
+                        # Check job dependencies if the job service is available
+                        job_service = self._get_job_service()
+                        if job_service:
+                            dependencies_satisfied, unsatisfied = job_service.check_dependencies_satisfied(job.job_id)
+                            
+                            if not dependencies_satisfied:
+                                self.logger.info(f"Job {job.job_id} has unsatisfied dependencies. Returning to queue with delay.")
+                                # Return the job to the queue with delay
+                                self.delete_job(receipt_handle)
+                                
+                                # Calculate delay based on unsatisfied dependencies
+                                # Use a base delay plus additional time depending on the dependency type
+                                base_delay = self.config.base_retry_seconds
+                                
+                                # Add the job back to the queue with a delay
+                                self.retry_job(job, delay_seconds=base_delay)
+                                
+                                # Log the details of unsatisfied dependencies
+                                self.logger.debug(f"Unsatisfied dependencies for job {job.job_id}: {unsatisfied}")
+                                continue
                         
                         # Process the job
+                        self.logger.info(f"Processing job {job.job_id}: {job.name}")
+                        
+                        # Extend visibility timeout for long-running jobs
+                        heartbeat_thread = None
+                        if self.config.visibility_timeout_seconds > 0:
+                            # Start a background thread to extend visibility timeout periodically
+                            heartbeat_interval = max(30, self.config.visibility_timeout_seconds // 2)
+                            heartbeat_thread = threading.Thread(
+                                target=self._visibility_timeout_heartbeat,
+                                args=(receipt_handle, heartbeat_interval),
+                                daemon=True
+                            )
+                            heartbeat_thread.start()
+                        
+                        # Process the job with the handler
                         success = handler(job)
                         
-                        # Mark the job as completed
-                        job.mark_completed(success=success)
+                        # Stop the heartbeat thread if it was started
+                        if heartbeat_thread:
+                            self._stop_heartbeat = True
+                            heartbeat_thread.join(timeout=10)
                         
+                        # Handle the job based on the success status
                         if success:
-                            self.logger.info(f"Job {job.job_id} completed successfully")
-                            # Delete the message from the queue
+                            self.logger.info(f"Job {job.job_id} processed successfully")
+                            # Delete the job from the queue
                             self.delete_job(receipt_handle)
                         else:
-                            self.logger.warning(f"Job {job.job_id} failed")
-                            
-                            # Delete the message from the queue
-                            self.delete_job(receipt_handle)
-                            
-                            # Retry if needed
-                            if job.can_retry():
+                            self.logger.warning(f"Job {job.job_id} processing failed")
+                            # Handle retry if configured
+                            if job.retry_count < self.config.max_retries:
+                                self.logger.info(f"Retrying job {job.job_id} ({job.retry_count + 1}/{self.config.max_retries})")
+                                self.delete_job(receipt_handle)
+                                job.retry_count += 1
                                 self.retry_job(job)
-                                
-                    except Exception as e:
-                        self.logger.error(f"Error processing job {job.job_id}: {e}", exc_info=True)
-                        
-                        # Mark the job as failed
-                        job.mark_completed(success=False, error_message=str(e))
-                        
-                        # Delete the message from the queue
-                        self.delete_job(receipt_handle)
-                        
-                        # Retry if needed
-                        if job.can_retry():
-                            self.retry_job(job)
-                
-                # Wait for a bit before polling again if no messages were received
-                if not job_tuples:
-                    time.sleep(interval_seconds)
+                            else:
+                                self.logger.warning(f"Job {job.job_id} exceeded max retries, sending to DLQ")
+                                self.delete_job(receipt_handle)
+                                # Send to DLQ if configured
+                                if self.config.dlq_url:
+                                    self._send_to_dlq(job)
                     
+                    except Exception as e:
+                        self.logger.error(f"Error processing job {job.job_id}: {str(e)}")
+                        # Handle the exception gracefully to continue processing other jobs
+                        # Depending on the error, might want to retry the job
+                        self.delete_job(receipt_handle)
+                        if job.retry_count < self.config.max_retries:
+                            job.retry_count += 1
+                            self.retry_job(job)
+            
             except Exception as e:
-                self.logger.error(f"Error in job processing loop: {e}", exc_info=True)
+                self.logger.error(f"Error in job processor: {str(e)}")
+                # Sleep to avoid tight error loop
                 time.sleep(interval_seconds)
         
-        self.logger.info("Job processing loop stopped")
+        self.logger.info("Job processor stopped")
+        
+    def _get_job_service(self):
+        """
+        Get the job service for dependency management.
+        
+        Returns:
+            JobService or None if it cannot be initialized
+        """
+        try:
+            # Import here to avoid circular imports
+            from receipt_dynamo.services.job_service import JobService
+            
+            # Get table name from environment or config
+            # This would need to be adapted to your specific configuration
+            import os
+            table_name = os.environ.get("DYNAMODB_TABLE")
+            
+            if table_name:
+                return JobService(table_name=table_name)
+            return None
+        except ImportError:
+            self.logger.warning("Could not import JobService, dependency checking disabled")
+            return None
+        except Exception as e:
+            self.logger.warning(f"Failed to initialize JobService: {str(e)}")
+            return None
     
     def start_processing(self, handler: Callable[[Job], bool], interval_seconds: float = 5.0) -> threading.Thread:
         """
@@ -448,4 +515,5 @@ class JobQueue:
             ClientError: If there is an error getting queue attributes
         """
         attributes = self.get_queue_attributes()
+        return int(attributes.get('ApproximateNumberOfMessages', 0)) 
         return int(attributes.get('ApproximateNumberOfMessages', 0)) 
