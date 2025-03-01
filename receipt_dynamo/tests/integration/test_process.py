@@ -25,7 +25,9 @@ from receipt_dynamo import (
 
 def get_raw_bytes_receipt(uuid: str, receipt_id: int):
     """Checks the PNG directory for the receipt image and returns the bytes"""
-    base_dir = os.path.dirname(__file__)  # directory containing test__process.py
+    base_dir = os.path.dirname(
+        __file__
+    )  # directory containing test__process.py
     receipt_path = os.path.join(
         base_dir, "PNG", f"{uuid}_RECEIPT_{str(receipt_id).zfill(5)}.png"
     )
@@ -41,8 +43,8 @@ def upload_json_and_png_files_for_uuid(
 ) -> None:
     """
     Reads the .json and .png files for a given UUID from local directories
-    (integration/JSON, integration/PNG) and uploads them to the specified S3 bucket
-    under the given prefix.
+    (integration/JSON, integration/PNG) and uploads them to the specified S3
+    bucket under the given prefix.
 
     This is necessary for the start of the test because the upload script lands
     both these files in the raw bucket.
@@ -51,7 +53,8 @@ def upload_json_and_png_files_for_uuid(
         s3_client (boto3.client): A boto3 S3 client.
         bucket_name (str): The name of the S3 bucket to upload into.
         uuid (str): The unique identifier for the files.
-        raw_prefix (str, optional): Prefix path in the bucket for the files. Defaults to "raw_prefix".
+        raw_prefix (str, optional): Prefix path in the bucket for the files.
+                                    Defaults to "raw_prefix".
     """
 
     # Get absolute paths to the JSON and PNG files in integration/JSON and
@@ -95,7 +98,9 @@ def expected_results(
     list[ReceiptLetter],
 ]:
     """Get the expected results for the given UUID in the JSON directory"""
-    base_dir = os.path.dirname(__file__)  # directory containing test__process.py
+    base_dir = os.path.dirname(
+        __file__
+    )  # directory containing test__process.py
     json_path = os.path.join(base_dir, "JSON", f"{uuid}_RESULTS.json")
     with open(json_path, "r", encoding="utf-8") as json_file:
         results = json.load(json_file)
@@ -108,7 +113,10 @@ def expected_results(
             [Receipt(**receipt) for receipt in results["receipts"]],
             [ReceiptLine(**line) for line in results["receipt_lines"]],
             [ReceiptWord(**word) for word in results["receipt_words"]],
-            [ReceiptWordTag(**word_tag) for word_tag in results["receipt_word_tags"]],
+            [
+                ReceiptWordTag(**word_tag)
+                for word_tag in results["receipt_word_tags"]
+            ],
             [ReceiptLetter(**letter) for letter in results["receipt_letters"]],
         )
 
@@ -117,8 +125,10 @@ def compare_with_precision(a: Any, b: Any, precision: int) -> bool:
     """
     Recursively compare two values.
 
-    - If both values are numbers, compare them after rounding to the given precision.
-    - If both are dictionaries, compare all keys and their corresponding values recursively.
+    - If both values are numbers, compare them after rounding to the given
+      precision.
+    - If both are dictionaries, compare all keys and their corresponding
+      values recursively.
     - If both are lists, compare each element in order.
     - Otherwise, compare using equality.
     """
@@ -165,8 +175,8 @@ def compare_entity_lists(
                    numeric values in the dictionaries and angles.
 
     Returns:
-        True if the two lists match (with the given precision for numeric fields);
-        False otherwise.
+        True if the two lists match (with the given precision for numeric
+        fields); False otherwise.
     """
     # First check: lists must be the same length.
     if len(entities1) != len(entities2):
@@ -189,19 +199,29 @@ def compare_entity_lists(
                 return False
 
         # Compare complex attributes with precision.
-        if not compare_with_precision(l1.bounding_box, l2.bounding_box, precision):
+        if not compare_with_precision(
+            l1.bounding_box, l2.bounding_box, precision
+        ):
             return False
         if not compare_with_precision(l1.top_left, l2.top_left, precision):
             return False
         if not compare_with_precision(l1.top_right, l2.top_right, precision):
             return False
-        if not compare_with_precision(l1.bottom_left, l2.bottom_left, precision):
+        if not compare_with_precision(
+            l1.bottom_left, l2.bottom_left, precision
+        ):
             return False
-        if not compare_with_precision(l1.bottom_right, l2.bottom_right, precision):
+        if not compare_with_precision(
+            l1.bottom_right, l2.bottom_right, precision
+        ):
             return False
-        if not compare_with_precision(l1.angle_degrees, l2.angle_degrees, precision):
+        if not compare_with_precision(
+            l1.angle_degrees, l2.angle_degrees, precision
+        ):
             return False
-        if not compare_with_precision(l1.angle_radians, l2.angle_radians, precision):
+        if not compare_with_precision(
+            l1.angle_radians, l2.angle_radians, precision
+        ):
             return False
         if not compare_with_precision(l1.confidence, l2.confidence, precision):
             return False
@@ -249,7 +269,9 @@ def test_process(
         Key="raw/02aa1d34-5c10-42b4-a463-c49b86214dd7.png",
     )
     raw_png_bytes = raw_response["Body"].read()
-    assert cdn_png_bytes == raw_png_bytes, "CDN copy of PNG does not match original!"
+    assert (
+        cdn_png_bytes == raw_png_bytes
+    ), "CDN copy of PNG does not match original!"
     assert cdn_response["ContentType"] == "image/png"
     assert raw_response["ContentType"] == "image/png"
 
@@ -304,7 +326,10 @@ def test_process(
     assert compare_entity_lists(
         expected_receipt_words, DynamoClient(table_name).listReceiptWords()
     )
-    assert expected_receipt_word_tags == DynamoClient(table_name).listReceiptWordTags()
+    assert (
+        expected_receipt_word_tags
+        == DynamoClient(table_name).listReceiptWordTags()
+    )
     assert compare_entity_lists(
         expected_receipt_letters, DynamoClient(table_name).listReceiptLetters()
     )
@@ -378,15 +403,23 @@ def test_process_upload(s3_buckets, dynamodb_table):
     # --------------------------------------------------------------------
     # 4) Assertions:
     #    - The raw bucket should now contain the JSON and PNG we just provided.
-    #    - The CDN bucket should also contain the original PNG and any receipts.
-    #    - DynamoDB should have the expected data (lines, words, receipts, etc.)
+    #    - The CDN bucket should also contain the original PNG and any
+    #      receipts.
+    #    - DynamoDB should have the expected data (lines, words, receipts,
+    #      etc.)
     # --------------------------------------------------------------------
     # (a) Check the raw bucket
-    raw_json_resp = s3.get_object(Bucket=raw_bucket, Key=f"{raw_prefix}/{uuid}.json")
+    raw_json_resp = s3.get_object(
+        Bucket=raw_bucket, Key=f"{raw_prefix}/{uuid}.json"
+    )
     raw_json_body = raw_json_resp["Body"].read().decode("utf-8")
-    assert json.loads(raw_json_body) == ocr_dict, "Raw JSON in S3 does not match input!"
+    assert (
+        json.loads(raw_json_body) == ocr_dict
+    ), "Raw JSON in S3 does not match input!"
 
-    raw_png_resp = s3.get_object(Bucket=raw_bucket, Key=f"{raw_prefix}/{uuid}.png")
+    raw_png_resp = s3.get_object(
+        Bucket=raw_bucket, Key=f"{raw_prefix}/{uuid}.png"
+    )
     raw_png_bytes = raw_png_resp["Body"].read()
     assert raw_png_bytes == png_data, "Raw PNG in S3 does not match input!"
 
@@ -444,22 +477,6 @@ def test_process_upload(s3_buckets, dynamodb_table):
         expected_receipt_letters, dynamo_client.listReceiptLetters()
     )
     assert expected_receipts == dynamo_client.listReceipts()
-    # if expected_receipts != DynamoClient(table_name).listReceipts():
-    #     # Download the receipt image from the CDN to the FAIL directory
-    #     base_dir = os.path.dirname(__file__)
-    #     fail_dir = os.path.join(base_dir, "FAIL")
-    #     os.makedirs(fail_dir, exist_ok=True)
-    #     receipt_path = os.path.join(fail_dir, f"{uuid}_RECEIPT_00001.png")
-    #     print(f"Receipt transform doesn't match. Placing receipt in {receipt_path}")
-    #     with open(receipt_path, "wb") as receipt_file:
-    #         receipt_file.write(cdn_receipt_bytes)
-    # else:
-    #     # Delete the failure from the fail directory
-    #     base_dir = os.path.dirname(__file__)
-    #     fail_dir = os.path.join(base_dir, "FAIL")
-    #     receipt_path = os.path.join(fail_dir, f"{uuid}_RECEIPT_00001.png")
-    #     if os.path.exists(receipt_path):
-    #         os.remove(receipt_path)
 
 
 @pytest.mark.integration
@@ -562,11 +579,15 @@ def test_process_bad_json(s3_bucket):
         Key="raw_prefix/uuid.json",
         Body="Not valid JSON content",
     )
-    s3.put_object(Bucket=s3_bucket, Key="raw_prefix/uuid.png", Body=b"Fake PNG data")
+    s3.put_object(
+        Bucket=s3_bucket, Key="raw_prefix/uuid.png", Body=b"Fake PNG data"
+    )
 
     # 2. Act & Assert: The invalid JSON should raise a ValueError
     with pytest.raises(ValueError, match="Error decoding OCR results: "):
-        process("table_name", s3_bucket, "raw_prefix", "uuid", "cdn_bucket_name")
+        process(
+            "table_name", s3_bucket, "raw_prefix", "uuid", "cdn_bucket_name"
+        )
 
 
 @pytest.mark.integration
@@ -577,14 +598,19 @@ def test_process_bad_png(s3_bucket):
     s3.put_object(
         Bucket=s3_bucket, Key="raw_prefix/uuid.json", Body='{"valid": "json"}'
     )
-    s3.put_object(Bucket=s3_bucket, Key="raw_prefix/uuid.png", Body=b"Fake PNG data")
+    s3.put_object(
+        Bucket=s3_bucket, Key="raw_prefix/uuid.png", Body=b"Fake PNG data"
+    )
 
     # 2. Act & Assert: The invalid PNG should raise a ValueError
     with pytest.raises(
         ValueError,
-        match="Corrupted or invalid PNG at s3://raw-image-bucket/raw_prefix/uuid.png",
+        match="Corrupted or invalid PNG at "
+        "s3://raw-image-bucket/raw_prefix/uuid.png",
     ):
-        process("table_name", s3_bucket, "raw_prefix", "uuid", "cdn_bucket_name")
+        process(
+            "table_name", s3_bucket, "raw_prefix", "uuid", "cdn_bucket_name"
+        )
 
 
 @pytest.mark.integration
@@ -611,7 +637,9 @@ def test_process_no_cdn_bucket(s3_bucket):
     ],  # You can specify any 2 bucket names here
     indirect=True,
 )
-def test_process_access_denied_cdn_bucket(s3_buckets, dynamodb_table, monkeypatch):
+def test_process_access_denied_cdn_bucket(
+    s3_buckets, dynamodb_table, monkeypatch
+):
     raw_bucket, cdn_bucket = s3_buckets
     table_name = dynamodb_table
     uuid = "2608fbeb-dd25-4ab8-8034-5795282b6cd6"
@@ -656,7 +684,9 @@ def test_process_access_denied_cdn_bucket(s3_buckets, dynamodb_table, monkeypatc
 
     # 5. Act & Assert: PNG file should trigger AccessDenied, causing a
     # ValueError
-    with pytest.raises(ValueError, match="Access denied to s3://cdn-bucket/assets"):
+    with pytest.raises(
+        ValueError, match="Access denied to s3://cdn-bucket/assets"
+    ):
         process(
             table_name,
             raw_bucket,
