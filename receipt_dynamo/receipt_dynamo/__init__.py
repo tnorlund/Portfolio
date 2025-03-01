@@ -49,6 +49,10 @@ __all__ = [  # Entity classes
     "process",
     "export_image",
     "import_image",
+    # Service layer
+    "JobService",
+    "QueueService", 
+    "InstanceService",
 ]
 
 # Entities must be imported first to avoid circular imports
@@ -92,5 +96,10 @@ from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data.process import process
 from receipt_dynamo.data.export_image import export_image
 from receipt_dynamo.data.import_image import import_image
+
+# Service layer imports
+from receipt_dynamo.services.job_service import JobService
+from receipt_dynamo.services.queue_service import QueueService
+from receipt_dynamo.services.instance_service import InstanceService
 
 # For backward compatibility:
