@@ -303,6 +303,11 @@ def test_letter_init_invalid_top_left(bad_point):
             bounding_box={"x": 1, "y": 2, "width": 3, "height": 4},
             top_right={"x": 2, "y": 2},
             top_left=bad_point,
+            bottom_right={"x": 2, "y": 3},
+            bottom_left={"x": 1, "y": 3},
+            angle_degrees=0.0,
+            angle_radians=0.0,
+            confidence=0.5,
         )
 
 
