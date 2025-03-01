@@ -27,8 +27,8 @@ from transformers import (
     AutoTokenizer,
     TrainerCallback,
 )
-import wandb
 from receipt_dynamo import DynamoClient
+from receipt_dynamo.services.job_service import JobService
 import random
 import seaborn as sns
 from collections import defaultdict
@@ -44,6 +44,8 @@ import time
 import glob
 from receipt_trainer.utils.aws import get_dynamo_table
 import traceback
+import uuid
+from datetime import datetime
 
 # Set tokenizer parallelism to false to avoid deadlocks
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -59,36 +61,46 @@ from receipt_trainer.constants import REQUIRED_ENV_VARS
 from receipt_trainer.version import __version__
 
 
-class MetricsCallback(TrainerCallback):
-    """Custom callback to log confusion matrix and evaluation metrics during training."""
+class DynamoMetricsCallback(TrainerCallback):
+    """Custom callback to log metrics to DynamoDB during training."""
 
-    def __init__(self):
-        """Initialize the callback."""
+    def __init__(self, job_service, job_id):
+        """Initialize the callback.
+        
+        Args:
+            job_service: JobService instance for logging metrics
+            job_id: ID of the training job
+        """
         super().__init__()
         self.trainer = None
         self.step = 0
-        # Store the existing W&B run
-        self.wandb_run = wandb.run
-        if not self.wandb_run:
-            raise ValueError(
-                "No active W&B run found. Make sure W&B is initialized before creating the callback."
-            )
+        self.job_service = job_service
+        self.job_id = job_id
+        print(f"DynamoMetricsCallback initialized for job: {job_id}")
 
     def setup(self, trainer):
         """Set up the callback with a trainer instance."""
         self.trainer = trainer
-        print(f"MetricsCallback setup complete with trainer: {trainer}")
+        print(f"DynamoMetricsCallback setup complete with trainer: {trainer}")
 
     def on_train_begin(self, args, state, control, **kwargs):
         """Called when training begins."""
         if "trainer" in kwargs:
             self.trainer = kwargs["trainer"]
-        print("Training started - MetricsCallback initialized")
+        print("Training started - DynamoMetricsCallback initialized")
+        
+        # Log training start
+        self.job_service.add_job_status(
+            self.job_id, 
+            "TRAINING", 
+            "Training started"
+        )
+        
         if not self.trainer:
             print("Warning: Trainer not available in on_train_begin")
 
     def on_evaluate(self, args, state, control, metrics=None, **kwargs):
-        """Log confusion matrix and metrics after each evaluation."""
+        """Log metrics after each evaluation."""
         print("\nStarting evaluation logging...")
 
         if not metrics:
@@ -145,7 +157,7 @@ class MetricsCallback(TrainerCallback):
             # Create metrics dictionary with step information
             self.step = state.global_step if state else 0
 
-            # Log metrics individually to ensure they show up in W&B
+            # Prepare metrics dictionary
             metric_dict = {
                 "train/global_step": self.step,
                 "eval/accuracy": float(accuracy),
@@ -153,7 +165,7 @@ class MetricsCallback(TrainerCallback):
                 "eval/loss": float(metrics.get("eval_loss", 0.0)),
             }
 
-            # Log per-label metrics
+            # Add per-label metrics
             for i, label in enumerate(label_names):
                 if label != "O":  # Skip the "Outside" label
                     metric_dict.update(
@@ -165,49 +177,36 @@ class MetricsCallback(TrainerCallback):
                         }
                     )
 
-            print("\nLogging metrics to W&B:")
+            print("\nLogging metrics to DynamoDB:")
             for key, value in metric_dict.items():
                 print(f"{key}: {value}")
-            # Use the existing W&B run
-            self.wandb_run.log(metric_dict, step=self.step)
+                # Log each metric to DynamoDB
+                self.job_service.add_job_metric(
+                    job_id=self.job_id,
+                    metric_name=key,
+                    metric_value=value,
+                    step=self.step,
+                    metadata={"type": "evaluation"}
+                )
 
             # Create confusion matrix
             cm = confusion_matrix(true_flat, pred_flat, labels=labels)
-
-            # Log confusion matrix - using table format instead of plotting
-            self.wandb_run.log(
-                {
-                    "eval/confusion_matrix": wandb.plot.confusion_matrix(
-                        probs=None,
-                        y_true=true_flat,
-                        preds=pred_flat,
-                        class_names=label_names,
-                    )
-                },
+            
+            # Log confusion matrix as a metric
+            # Convert the confusion matrix to a serializable format
+            cm_data = {
+                "matrix": cm.tolist(),
+                "labels": label_names,
+            }
+            
+            # Store confusion matrix as a complex metric
+            self.job_service.add_job_metric(
+                job_id=self.job_id,
+                metric_name="eval/confusion_matrix",
+                metric_value=cm_data,
                 step=self.step,
+                metadata={"type": "confusion_matrix"}
             )
-
-            # DISABLED: Create and log performance plot (to avoid matplotlib crashes)
-            # plt.figure(figsize=(12, 6))
-            # x = np.arange(len(label_names))
-            # width = 0.25
-            #
-            # plt.bar(x - width, precision, width, label='Precision')
-            # plt.bar(x, recall, width, label='Recall')
-            # plt.bar(x + width, f1, width, label='F1')
-            #
-            # plt.xlabel('Labels')
-            # plt.ylabel('Score')
-            # plt.title('Performance by Label')
-            # plt.xticks(x, label_names, rotation=45, ha='right')
-            # plt.legend()
-            # plt.tight_layout()
-            #
-            # self.wandb_run.log({
-            #     "eval/performance_plot": wandb.Image(plt)
-            # }, step=self.step)
-            #
-            # plt.close('all')
 
             # Print per-label performance
             print("\nPer-label Performance:")
@@ -222,6 +221,13 @@ class MetricsCallback(TrainerCallback):
             print("Full error details:")
             traceback.print_exc()
             # Don't raise the exception to avoid interrupting training
+            
+            # Log the error to DynamoDB
+            self.job_service.add_job_log(
+                job_id=self.job_id,
+                log_level="ERROR",
+                message=f"Error during evaluation: {str(e)}\n{traceback.format_exc()}"
+            )
 
 
 class ReceiptTrainer:
@@ -229,7 +235,6 @@ class ReceiptTrainer:
 
     def __init__(
         self,
-        wandb_project: str,
         model_name: str,
         training_config: Optional[TrainingConfig] = None,
         data_config: Optional[DataConfig] = None,
@@ -238,7 +243,6 @@ class ReceiptTrainer:
         """Initialize the trainer.
 
         Args:
-            wandb_project: Name of the W&B project.
             model_name: Name/path of the pre-trained model.
             training_config: Training configuration.
             data_config: Data loading configuration.
@@ -247,13 +251,13 @@ class ReceiptTrainer:
         self.logger = logging.getLogger(__name__)
         self._validate_env_vars()
 
-        self.wandb_project = wandb_project
         self.model_name = model_name
         self.training_config = training_config or TrainingConfig()
         self.data_config = data_config or DataConfig()
 
-        # Do NOT initialize a WandB run here.
-        self.wandb_run = None
+        # Initialize job tracking
+        self.job_id = str(uuid.uuid4())
+        self.job_service = None
 
         # Initialize other components as None.
         self.tokenizer = None
@@ -288,7 +292,11 @@ class ReceiptTrainer:
             self.logger.info(f"Using DynamoDB table: {self.dynamo_table}")
             # Initialize DynamoDB client immediately to fail fast if there are issues.
             self.dynamo_client = DynamoClient(self.dynamo_table)
-            self.logger.info("Successfully initialized DynamoDB client")
+            
+            # Initialize JobService for metrics tracking
+            self.job_service = JobService(self.dynamo_table)
+            
+            self.logger.info("Successfully initialized DynamoDB client and JobService")
         except Exception as e:
             self.logger.error(f"Failed to initialize DynamoDB: {e}")
             raise ValueError(
@@ -296,7 +304,53 @@ class ReceiptTrainer:
                 f"is properly configured and accessible. Error: {str(e)}"
             )
 
+        # Create a new training job record
+        try:
+            self.create_training_job()
+        except Exception as e:
+            self.logger.error(f"Failed to create training job record: {e}")
+            
         self.logger.info("ReceiptTrainer initialized")
+    
+    def create_training_job(self):
+        """Create a new training job record in DynamoDB."""
+        if not self.job_service:
+            self.logger.warning("JobService not initialized, skipping job creation")
+            return
+            
+        job_config = {
+            "model_name": self.model_name,
+            "training_config": {k: str(v) for k, v in vars(self.training_config).items()},
+            "data_config": {k: str(v) for k, v in vars(self.data_config).items()},
+            "device": str(self.device),
+            "version": __version__
+        }
+        
+        self.job_service.create_job(
+            job_id=self.job_id,
+            name=f"LayoutLM Training Job - {self.model_name}",
+            description=f"Training LayoutLM model for receipt OCR",
+            created_by="receipt_trainer",
+            status="INITIALIZED",
+            priority="HIGH",
+            job_config=job_config,
+        )
+        
+        self.logger.info(f"Created training job with ID: {self.job_id}")
+        
+        # Log initialization status
+        self.job_service.add_job_status(
+            self.job_id,
+            "INITIALIZED",
+            "Training job initialized"
+        )
+        
+        # Log initial message
+        self.job_service.add_job_log(
+            self.job_id,
+            "INFO",
+            f"Initialized training for model {self.model_name} on device {self.device}"
+        )
 
     def _validate_env_vars(self):
         """Validate that all required environment variables are set."""
@@ -339,9 +393,21 @@ class ReceiptTrainer:
                 except Exception as e:
                     self.logger.error(f"Failed to upload checkpoint to S3: {e}")
 
-            # Clean up W&B
-            if self.wandb_run:
-                self.wandb_run.finish()
+            # Log the interruption to DynamoDB
+            if self.job_service:
+                try:
+                    self.job_service.add_job_status(
+                        self.job_id,
+                        "INTERRUPTED",
+                        "Spot instance interruption detected"
+                    )
+                    self.job_service.add_job_log(
+                        self.job_id,
+                        "WARNING",
+                        "Training interrupted due to spot instance termination"
+                    )
+                except Exception as e:
+                    self.logger.error(f"Failed to log interruption to DynamoDB: {e}")
 
         signal.signal(signal.SIGTERM, handle_sigterm)
         self.logger.info("Spot interruption handler configured")
@@ -379,6 +445,29 @@ class ReceiptTrainer:
 
         self.last_checkpoint = checkpoint_dir
         self.logger.info(f"Checkpoint saved to {checkpoint_dir}")
+        
+        # Log checkpoint to DynamoDB
+        if self.job_service:
+            try:
+                checkpoint_metadata = {
+                    "path": checkpoint_dir,
+                    "global_step": self.global_step if hasattr(self, "global_step") else None,
+                    "epoch": self.current_epoch if hasattr(self, "current_epoch") else None,
+                }
+                
+                self.job_service.add_job_checkpoint(
+                    self.job_id,
+                    checkpoint_name=f"checkpoint_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                    metadata=checkpoint_metadata
+                )
+                
+                self.job_service.add_job_log(
+                    self.job_id,
+                    "INFO",
+                    f"Checkpoint saved to {checkpoint_dir}"
+                )
+            except Exception as e:
+                self.logger.error(f"Failed to log checkpoint to DynamoDB: {e}")
 
     def _upload_checkpoint_to_s3(self, checkpoint_dir: str):
         """Upload checkpoint to S3.
@@ -395,13 +484,16 @@ class ReceiptTrainer:
         if not bucket_name:
             raise ValueError("CHECKPOINT_BUCKET environment variable not set")
 
+        # Create a checkpoint ID using job ID
+        checkpoint_id = f"{self.job_id}/{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            
         # Upload all files in checkpoint directory
         for root, _, files in os.walk(checkpoint_dir):
             for file in files:
                 local_path = os.path.join(root, file)
                 s3_path = os.path.join(
                     "checkpoints",
-                    self.wandb_run.id if self.wandb_run else "latest",
+                    checkpoint_id,
                     file,
                 )
 
@@ -410,14 +502,39 @@ class ReceiptTrainer:
                 except ClientError as e:
                     self.logger.error(f"Failed to upload {file} to S3: {e}")
                     raise
+        
+        # Log S3 upload to DynamoDB
+        if self.job_service:
+            try:
+                s3_path = f"s3://{bucket_name}/checkpoints/{checkpoint_id}"
+                
+                # Record S3 location in job resources
+                self.job_service.add_job_resource(
+                    self.job_id,
+                    resource_type="CHECKPOINT_S3",
+                    resource_id=s3_path,
+                    metadata={
+                        "bucket": bucket_name,
+                        "prefix": f"checkpoints/{checkpoint_id}",
+                        "upload_time": datetime.now().isoformat()
+                    }
+                )
+                
+                self.job_service.add_job_log(
+                    self.job_id,
+                    "INFO",
+                    f"Checkpoint uploaded to {s3_path}"
+                )
+            except Exception as e:
+                self.logger.error(f"Failed to log S3 upload to DynamoDB: {e}")
 
     def _download_checkpoint_from_s3(
-        self, run_id: Optional[str] = None
+        self, job_id: Optional[str] = None
     ) -> Optional[str]:
         """Download checkpoint from S3.
 
         Args:
-            run_id: W&B run ID to download checkpoint for. If None, gets latest.
+            job_id: Job ID to download checkpoint for. If None, uses current job_id.
 
         Returns:
             Path to downloaded checkpoint directory, or None if not found
@@ -430,13 +547,65 @@ class ReceiptTrainer:
 
         if not bucket_name:
             raise ValueError("CHECKPOINT_BUCKET environment variable not set")
+            
+        # Use provided job_id or current job_id
+        target_job_id = job_id or self.job_id
 
         # Create temporary directory for checkpoint
         checkpoint_dir = tempfile.mkdtemp()
-
+        
         try:
-            # List objects in checkpoint directory
-            prefix = f"checkpoints/{run_id if run_id else 'latest'}/"
+            # If we have JobService and a job_id, try to find checkpoint from resources
+            if self.job_service and target_job_id:
+                try:
+                    # Find checkpoint resources for this job
+                    checkpoints = []
+                    
+                    # Get job resources of checkpoint type
+                    resources = self.job_service.get_job_resources(target_job_id)
+                    for resource in resources:
+                        if resource.resource_type == "CHECKPOINT_S3":
+                            checkpoints.append(resource)
+                    
+                    # Sort by timestamp in metadata if available
+                    checkpoints.sort(
+                        key=lambda r: r.metadata.get("upload_time", ""),
+                        reverse=True  # Most recent first
+                    )
+                    
+                    # Use the most recent checkpoint
+                    if checkpoints:
+                        most_recent = checkpoints[0]
+                        prefix = most_recent.metadata.get("prefix", f"checkpoints/{target_job_id}")
+                        
+                        self.logger.info(f"Found checkpoint in job resources: {prefix}")
+                        
+                        # List objects with this prefix
+                        response = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
+                        
+                        if "Contents" in response:
+                            # Download all checkpoint files
+                            for obj in response["Contents"]:
+                                local_path = os.path.join(checkpoint_dir, os.path.basename(obj["Key"]))
+                                s3.download_file(bucket_name, obj["Key"], local_path)
+                            
+                            self.logger.info(f"Downloaded checkpoint from {prefix} to {checkpoint_dir}")
+                            
+                            # Log the download
+                            self.job_service.add_job_log(
+                                self.job_id,
+                                "INFO",
+                                f"Downloaded checkpoint from {prefix}"
+                            )
+                            
+                            return checkpoint_dir
+                            
+                except Exception as e:
+                    self.logger.warning(f"Failed to get checkpoint from job resources: {e}")
+                    # Continue with legacy approach
+            
+            # Legacy approach: list objects in checkpoint directory
+            prefix = f"checkpoints/{target_job_id}/"
             response = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
 
             if "Contents" not in response:
@@ -453,11 +622,11 @@ class ReceiptTrainer:
             self.logger.error(f"Failed to download checkpoint from S3: {e}")
             return None
 
-    def resume_training(self, run_id: Optional[str] = None):
+    def resume_training(self, job_id: Optional[str] = None):
         """Resume training from the latest checkpoint.
 
         Args:
-            run_id: Optional W&B run ID to resume from
+            job_id: Optional job ID to resume from
         """
         checkpoint_dir = None
 
@@ -471,16 +640,34 @@ class ReceiptTrainer:
                 checkpoint_dir = checkpoints[-1]  # Use the latest checkpoint
                 self.logger.info(f"Found local checkpoint: {checkpoint_dir}")
                 self.last_checkpoint = checkpoint_dir
+                
+                # Log resuming from local checkpoint
+                if self.job_service:
+                    self.job_service.add_job_log(
+                        self.job_id,
+                        "INFO",
+                        f"Resuming from local checkpoint: {checkpoint_dir}"
+                    )
+                    
                 return checkpoint_dir
 
         # If no local checkpoint, try S3
         if not checkpoint_dir:
-            checkpoint_dir = self._download_checkpoint_from_s3(run_id)
+            checkpoint_dir = self._download_checkpoint_from_s3(job_id)
 
         if not checkpoint_dir:
             self.logger.warning(
                 "No checkpoints found locally or in S3, starting fresh training"
             )
+            
+            # Log starting fresh training
+            if self.job_service:
+                self.job_service.add_job_log(
+                    self.job_id,
+                    "INFO",
+                    "No checkpoints found, starting fresh training"
+                )
+                
             return
 
         # Load model and tokenizer from checkpoint
@@ -514,20 +701,37 @@ class ReceiptTrainer:
             self.logger.info(
                 f"Resumed training from checkpoint at step {self.global_step}"
             )
+            
+            # Log resuming training
+            if self.job_service:
+                self.job_service.add_job_status(
+                    self.job_id,
+                    "RESUMED",
+                    f"Resumed training from checkpoint at step {self.global_step}"
+                )
 
         except Exception as e:
             self.logger.error(f"Failed to load checkpoint: {e}")
             self.logger.warning("Starting fresh training")
+            
+            # Log failure to load checkpoint
+            if self.job_service:
+                self.job_service.add_job_log(
+                    self.job_id,
+                    "ERROR",
+                    f"Failed to load checkpoint: {e}"
+                )
+                
             return None
 
     def _initialize_wandb_early(self):
         """Initialize W&B at the start to ensure single process."""
-        # This is now a no-op since W&B is initialized in __init__
+        # This is now a no-op since we no longer use W&B
         pass
 
     def initialize_wandb(self):
         """Initialize Weights & Biases for experiment tracking."""
-        # This is now a no-op since W&B is initialized in __init__
+        # This is now a no-op since we no longer use W&B
         pass
 
     def initialize_model(self):
@@ -1191,7 +1395,7 @@ class ReceiptTrainer:
         return trainer
 
     def _log_training_results(self, train_result):
-        """Log training results to W&B and print summary."""
+        """Log training results to DynamoDB and print summary."""
         # Run detailed evaluation on both splits
         eval_output_dir = os.path.join(self.output_dir, "eval")
         os.makedirs(eval_output_dir, exist_ok=True)
@@ -1208,62 +1412,39 @@ class ReceiptTrainer:
             "train/total_loss": train_result.training_loss,
         }
 
-        if self.wandb_run:
-            # Log basic metrics
-            self.wandb_run.log(metrics)
-
-            # DISABLED: Create and log custom visualizations (to avoid matplotlib crashes)
-            # for split in ["train", "validation"]:
-            #     # Create per-label performance plot
-            #     plt.figure(figsize=(12, 6))
-            #     labels = []
-            #     f1_scores = []
-            #     precisions = []
-            #     recalls = []
-            #
-            #     for label in self.label_list:
-            #         if label != "O":  # Skip the Outside label
-            #             labels.append(label)
-            #             f1_scores.append(metrics[f"{split}/{label}/f1-score"])
-            #             precisions.append(metrics[f"{split}/{label}/precision"])
-            #             recalls.append(metrics[f"{split}/{label}/recall"])
-            #
-            #     x = np.arange(len(labels))
-            #     width = 0.25
-            #
-            #     plt.bar(x - width, precisions, width, label="Precision")
-            #     plt.bar(x, recalls, width, label="Recall")
-            #     plt.bar(x + width, f1_scores, width, label="F1")
-            #
-            #     plt.xlabel("Labels")
-            #     plt.ylabel("Score")
-            #     plt.title(f"{split.capitalize()} Performance by Label")
-            #     plt.xticks(x, labels, rotation=45, ha="right")
-            #     plt.legend()
-            #     plt.tight_layout()
-            #
-            #     # Log to W&B
-            #     self.wandb_run.log(
-            #         {
-            #             f"{split}/label_performance": wandb.Image(plt),
-            #             f"{split}/confusion_matrix": wandb.Image(
-            #                 os.path.join(
-            #                     eval_output_dir, f"confusion_matrix_{split}.png"
-            #                 )
-            #             ),
-            #         }
-            #     )
-            #     plt.close()
-
-            # Log learning curves
-            self.wandb_run.log(
-                {
-                    "learning_curves": {
-                        "train_loss": metrics["train/total_loss"],
-                        "val_loss": metrics["validation/macro_avg/f1-score"],
-                        "step": train_result.global_step,
-                    }
-                }
+        # Log all metrics to DynamoDB
+        if self.job_service:
+            for metric_name, metric_value in metrics.items():
+                try:
+                    self.job_service.add_job_metric(
+                        job_id=self.job_id,
+                        metric_name=metric_name,
+                        metric_value=float(metric_value) if isinstance(metric_value, (int, float)) else metric_value,
+                        step=train_result.global_step,
+                        metadata={"type": "training_result"}
+                    )
+                except Exception as e:
+                    self.logger.warning(f"Failed to log metric {metric_name} to DynamoDB: {e}")
+            
+            # Log training completion
+            self.job_service.add_job_status(
+                self.job_id,
+                "COMPLETED",
+                f"Training completed after {train_result.global_step} steps"
+            )
+            
+            # Log summary message
+            summary_msg = (
+                f"Training completed with:\n"
+                f"- Train macro F1: {train_metrics['train/macro_avg/f1-score']:.4f}\n"
+                f"- Validation macro F1: {val_metrics['validation/macro_avg/f1-score']:.4f}\n"
+                f"- Total steps: {train_result.global_step}\n"
+                f"- Final loss: {train_result.training_loss:.4f}"
+            )
+            self.job_service.add_job_log(
+                self.job_id,
+                "INFO",
+                summary_msg
             )
 
         # Print summary
@@ -1371,37 +1552,24 @@ class ReceiptTrainer:
             labels = sorted(list(set(true_flat)))
             cm = confusion_matrix(true_flat, pred_flat, labels=labels)
 
-            if self.wandb_run:
-                # Log confusion matrix using wandb's built-in confusion matrix plot
-                self.wandb_run.log(
-                    {
-                        f"{split}/confusion_matrix": wandb.plot.confusion_matrix(
-                            probs=None,
-                            y_true=true_flat,
-                            preds=pred_flat,
-                            class_names=labels,
-                        )
-                    }
-                )
-
-            # Also save a local version with matplotlib
-            # plt.figure(figsize=(12, 10))
-            # sns.heatmap(
-            #     cm,
-            #     annot=True,
-            #     fmt="d",
-            #     cmap="Blues",
-            #     xticklabels=labels,
-            #     yticklabels=labels,
-            # )
-            # plt.title(f"Confusion Matrix - {split.capitalize()} Split")
-            # plt.xlabel("Predicted")
-            # plt.ylabel("True")
-            #
-            # # Save plot locally if output directory is specified
-            # if output_dir:
-            #     plt.savefig(os.path.join(output_dir, f"confusion_matrix_{split}.png"))
-            #     plt.close()
+            # Log confusion matrix to DynamoDB
+            if self.job_service:
+                # Convert confusion matrix to serializable format
+                cm_data = {
+                    "matrix": cm.tolist(),
+                    "labels": labels
+                }
+                
+                try:
+                    # Log confusion matrix
+                    self.job_service.add_job_metric(
+                        job_id=self.job_id,
+                        metric_name=f"{split}/confusion_matrix",
+                        metric_value=cm_data,
+                        metadata={"type": "evaluation"}
+                    )
+                except Exception as e:
+                    self.logger.warning(f"Failed to log confusion matrix to DynamoDB: {e}")
 
             # Add per-document analysis
             doc_metrics = self._compute_document_metrics(
@@ -1409,10 +1577,39 @@ class ReceiptTrainer:
             )
             metrics.update(doc_metrics)
 
-        # Log metrics to W&B
-        if self.wandb_run:
-            # Log metrics
-            self.wandb_run.log(metrics)
+        # Log metrics to DynamoDB
+        if self.job_service:
+            for metric_name, metric_value in metrics.items():
+                if isinstance(metric_value, (int, float)):
+                    try:
+                        self.job_service.add_job_metric(
+                            job_id=self.job_id,
+                            metric_name=metric_name,
+                            metric_value=float(metric_value),
+                            metadata={"type": "evaluation", "split": split}
+                        )
+                    except Exception as e:
+                        self.logger.warning(f"Failed to log metric {metric_name} to DynamoDB: {e}")
+
+            # Add evaluation status
+            self.job_service.add_job_status(
+                self.job_id,
+                "EVALUATING",
+                f"Evaluation on {split} split completed"
+            )
+            
+            # Log summary message
+            summary_msg = (
+                f"Evaluation results for {split} split:\n"
+                f"- Accuracy: {metrics.get(f'{split}/accuracy', 0):.4f}\n"
+                f"- Macro F1: {metrics.get(f'{split}/macro_avg/f1-score', 0):.4f}\n"
+                f"- Weighted F1: {metrics.get(f'{split}/weighted_avg/f1-score', 0):.4f}"
+            )
+            self.job_service.add_job_log(
+                self.job_id,
+                "INFO",
+                summary_msg
+            )
 
         # Print summary
         self.logger.info("\nEvaluation Results:")
@@ -1518,221 +1715,107 @@ class ReceiptTrainer:
         self.logger.info("Using CPU")
         return torch.device("cpu")
 
-    def _generate_hyperparameter_report(self, sweep_id: str) -> Dict[str, Any]:
+    def _generate_hyperparameter_report(self, sweep_job_id: str) -> Dict[str, Any]:
         """Generate a comprehensive report of hyperparameter performance.
 
         Args:
-            sweep_id: The W&B sweep ID to analyze
+            sweep_job_id: The job ID of the sweep to analyze
 
         Returns:
             Dictionary containing report data
         """
         self.logger.info("Generating hyperparameter report...")
 
-        # Get sweep data from W&B
-        api = wandb.Api()
-        sweep = api.sweep(f"{self.wandb_project}/{sweep_id}")
-        runs = sweep.runs
-
-        # Collect data for analysis
-        run_data = []
-        for run in runs:
-            if run.state == "finished":
-                run_data.append(
-                    {
-                        "run_id": run.id,
-                        "metrics": {
-                            "validation/macro_avg/f1-score": run.summary.get(
-                                "validation/macro_avg/f1-score", 0
-                            ),
-                            "validation/weighted_avg/f1-score": run.summary.get(
-                                "validation/weighted_avg/f1-score", 0
-                            ),
-                            "train/total_loss": run.summary.get("train/total_loss", 0),
-                        },
-                        "params": run.config,
-                    }
-                )
+        # Get sweep data from DynamoDB
+        if not self.job_service:
+            raise ValueError("JobService not initialized")
+            
+        # Find all trial jobs that are part of this sweep
+        trial_jobs = []
+        try:
+            # Get all jobs with a dependency on the sweep job
+            dependencies = self.job_service.get_dependent_jobs(sweep_job_id)
+            for dependency in dependencies:
+                # Get the full job with its metrics
+                dependent_job_id = dependency.job_id
+                trial_job, _ = self.job_service.get_job_with_status(dependent_job_id)
+                trial_metrics = self.job_service.get_job_metrics(dependent_job_id)
+                
+                # Find the best validation metric
+                best_f1 = 0.0
+                for metric in trial_metrics:
+                    if metric.metric_name == "validation/macro_avg/f1-score":
+                        if isinstance(metric.value, (int, float)) and float(metric.value) > best_f1:
+                            best_f1 = float(metric.value)
+                
+                # Get hyperparameters from job config
+                config = trial_job.job_config.get("training_config", {})
+                
+                trial_jobs.append({
+                    "job_id": dependent_job_id,
+                    "metrics": {
+                        "validation/macro_avg/f1-score": best_f1,
+                    },
+                    "params": config,
+                })
+        except Exception as e:
+            self.logger.error(f"Failed to get trial jobs: {e}")
+            raise
 
         # Generate report data
         report = {
-            "sweep_id": sweep_id,
-            "total_runs": len(runs),
-            "completed_runs": len(run_data),
-            "best_run": None,
+            "sweep_job_id": sweep_job_id,
+            "total_trials": len(trial_jobs),
+            "completed_trials": len([j for j in trial_jobs if j["metrics"]["validation/macro_avg/f1-score"] > 0]),
+            "best_trial": None,
             "param_importance": {},
-            "param_correlations": {},
             "best_configs": [],
         }
 
-        if run_data:
-            # Find best run
-            best_run = max(
-                run_data, key=lambda x: x["metrics"]["validation/macro_avg/f1-score"]
+        if trial_jobs:
+            # Find best trial
+            best_trial = max(
+                trial_jobs, key=lambda x: x["metrics"]["validation/macro_avg/f1-score"]
             )
-            report["best_run"] = {
-                "run_id": best_run["run_id"],
-                "metrics": best_run["metrics"],
-                "params": best_run["params"],
+            report["best_trial"] = {
+                "job_id": best_trial["job_id"],
+                "metrics": best_trial["metrics"],
+                "params": best_trial["params"],
             }
 
-            # Calculate parameter importance (using validation F1 score)
-            param_values = {}
-            param_scores = {}
-            for run in run_data:
-                for param, value in run["params"].items():
-                    if param not in param_values:
-                        param_values[param] = []
-                        param_scores[param] = []
-                    param_values[param].append(value)
-                    param_scores[param].append(
-                        run["metrics"]["validation/macro_avg/f1-score"]
-                    )
-
-            # Calculate correlation between parameters and performance
-            for param in param_values:
-                if (
-                    len(set(param_values[param])) > 1
-                ):  # Only calculate if parameter varied
-                    correlation = np.corrcoef(param_values[param], param_scores[param])[
-                        0, 1
-                    ]
-                    report["param_correlations"][param] = float(correlation)
-
-                    # Calculate importance score (absolute correlation)
-                    report["param_importance"][param] = float(abs(correlation))
-
             # Get top 3 best configurations
-            sorted_runs = sorted(
-                run_data,
+            sorted_trials = sorted(
+                trial_jobs,
                 key=lambda x: x["metrics"]["validation/macro_avg/f1-score"],
                 reverse=True,
             )
             report["best_configs"] = [
                 {
-                    "run_id": run["run_id"],
-                    "metrics": run["metrics"],
-                    "params": run["params"],
+                    "job_id": trial["job_id"],
+                    "metrics": trial["metrics"],
+                    "params": trial["params"],
                 }
-                for run in sorted_runs[:3]
+                for trial in sorted_trials[:3]
             ]
+            
+            # Log report to DynamoDB
+            try:
+                self.job_service.add_job_metric(
+                    job_id=sweep_job_id,
+                    metric_name="hyperparameter_sweep/report",
+                    metric_value=report,
+                    metadata={"type": "sweep_report"}
+                )
+                
+                self.job_service.add_job_log(
+                    sweep_job_id,
+                    "INFO",
+                    f"Generated hyperparameter sweep report. Best validation F1: {best_trial['metrics']['validation/macro_avg/f1-score']:.4f}"
+                )
+            except Exception as e:
+                self.logger.error(f"Failed to log hyperparameter report: {e}")
 
         return report
-
-    def run_hyperparameter_sweep(
-        self,
-        sweep_config: Dict[str, Any],
-        num_trials: int = 20,
-        early_stopping_min_trials: int = 5,
-        early_stopping_grace_trials: int = 3,
-        parallel_workers: int = 1,
-        gpu_ids: Optional[List[int]] = None,
-    ) -> str:
-        """Run hyperparameter sweep using W&B.
-
-        Args:
-            sweep_config: W&B sweep configuration dictionary
-            num_trials: Total number of trials to run
-            early_stopping_min_trials: Minimum number of trials before early stopping
-            early_stopping_grace_trials: Number of trials to wait for improvement
-            parallel_workers: Number of parallel workers to use
-            gpu_ids: List of GPU IDs to use for parallel workers
-
-        Returns:
-            ID of the best run from the sweep
-        """
-        self.logger.info("Starting hyperparameter sweep...")
-        self.logger.info(f"Sweep config: {sweep_config}")
-
-        def train_one_config():
-            try:
-                run = wandb.init(mode="online", project=self.wandb_project)
-                self.wandb_run = run  # attach active run for logging
-                unique_output_dir = os.path.join(
-                    self.data_config.cache_dir, "checkpoints", f"trial_{run.id}"
-                )
-                self.configure_training(output_dir=unique_output_dir)
-                config = wandb.config
-                for key, value in config.items():
-                    if hasattr(self.training_config, key):
-                        setattr(self.training_config, key, value)
-
-                # Instantiate the rich MetricsCallback from train_model.py.
-                metrics_callback = MetricsCallback()
-                # Create the trainer with the callback attached.
-                trainer_instance = self._create_trainer(
-                    enable_early_stopping=True, callbacks=[metrics_callback]
-                )
-                # Manually call setup so that the callback has a reference to the trainer.
-                metrics_callback.setup(trainer_instance)
-                return trainer_instance.train(resume_from_checkpoint=None)
-            except Exception as e:
-                self.logger.error(f"Error in training run: {e}")
-                import traceback
-
-                traceback.print_exc()
-                return None
-
-        try:
-            # Create sweep with retries
-            max_retries = 3
-            retry_delay = 5
-            sweep_id = None
-
-            for attempt in range(max_retries):
-                try:
-                    sweep_id = wandb.sweep(sweep_config, project=self.wandb_project)
-                    self.logger.info(f"Created sweep with ID: {sweep_id}")
-                    break
-                except Exception as e:
-                    if attempt < max_retries - 1:
-                        self.logger.warning(
-                            f"Failed to create sweep (attempt {attempt + 1}): {e}. Retrying..."
-                        )
-                        time.sleep(retry_delay)
-                        retry_delay *= 2
-                    else:
-                        raise
-
-            if not sweep_id:
-                raise RuntimeError("Failed to create sweep after all retries")
-
-            # Run the sweep with error handling
-            try:
-                wandb.agent(
-                    sweep_id,
-                    function=train_one_config,
-                    count=num_trials // parallel_workers,
-                )
-            except KeyboardInterrupt:
-                self.logger.info("Sweep interrupted by user")
-                raise
-            except Exception as e:
-                self.logger.error(f"Error during sweep: {e}")
-                raise
-
-            # Get best run with retries
-            for attempt in range(max_retries):
-                try:
-                    api = wandb.Api()
-                    sweep = api.sweep(f"{self.wandb_project}/{sweep_id}")
-                    best_run = sweep.best_run()
-                    self.logger.info(f"Best run: {best_run.id}")
-                    return best_run.id
-                except Exception as e:
-                    if attempt < max_retries - 1:
-                        self.logger.warning(
-                            f"Failed to get best run (attempt {attempt + 1}): {e}. Retrying..."
-                        )
-                        time.sleep(retry_delay)
-                        retry_delay *= 2
-                    else:
-                        self.logger.error("Failed to get best run after all retries")
-                        return None
-
-        except Exception as e:
-            self.logger.error(f"Error during hyperparameter sweep: {e}")
-            raise
 
     def save_model(self, output_path: str):
         """Save the trained model and tokenizer.
@@ -1745,155 +1828,3 @@ class ReceiptTrainer:
         """
         if not self.model or not self.tokenizer:
             raise ValueError("Model and tokenizer must be initialized before saving")
-
-        self.logger.info(f"Saving model to {output_path}")
-
-        try:
-            # Create output directory if it doesn't exist
-            os.makedirs(output_path, exist_ok=True)
-
-            # Save model
-            self.model.save_pretrained(output_path)
-
-            # Save tokenizer
-            self.tokenizer.save_pretrained(output_path)
-
-            # Save label mappings
-            if hasattr(self, "label_list"):
-                label_config = {
-                    "label_list": self.label_list,
-                    "label2id": self.label2id,
-                    "id2label": self.id2label,
-                    "num_labels": self.num_labels,
-                }
-                with open(os.path.join(output_path, "label_config.json"), "w") as f:
-                    json.dump(label_config, f)
-
-            # Validate saved model
-            try:
-                AutoModel.from_pretrained(output_path)
-                AutoTokenizer.from_pretrained(output_path)
-            except Exception as e:
-                raise ValueError(f"Model validation failed: {str(e)}")
-
-            self.logger.info("Model saved successfully")
-
-        except ValueError as ve:
-            raise ve
-        except Exception as e:
-            raise Exception(f"Failed to save model: {str(e)}")
-
-    def train(
-        self,
-        enable_checkpointing: bool = True,
-        enable_early_stopping: bool = True,
-        log_to_wandb: bool = True,
-        resume_training: bool = True,
-        callbacks: Optional[List[TrainerCallback]] = None,
-    ):
-        """Train the model.
-
-        Args:
-            enable_checkpointing: Whether to save model checkpoints
-            enable_early_stopping: Whether to enable early stopping
-            log_to_wandb: Whether to log metrics to W&B
-            resume_training: Whether to attempt to resume from checkpoint
-            callbacks: Optional list of TrainerCallback objects
-        """
-        self.logger.info("Starting training...")
-
-        if not self.model or not self.training_args:
-            raise ValueError("Training must be configured before starting training")
-
-        # Check if we're in the main process
-        is_main_process = (
-            not self.training_config.distributed_training
-            or self.training_config.local_rank in [-1, 0]
-        )
-
-        # Set up spot interruption handling only in main thread
-        if threading.current_thread() is threading.main_thread():
-            self._setup_spot_interruption_handler()
-
-        # Try to resume training if requested
-        if resume_training:
-            self.resume_training()
-
-        try:
-            # Create trainer and start training
-            trainer = self._create_trainer(enable_early_stopping, callbacks)
-
-            train_result = trainer.train(
-                resume_from_checkpoint=(
-                    self.last_checkpoint if enable_checkpointing else None
-                )
-            )
-
-            # Save final model if not interrupted and this is the main process
-            if not self.is_interrupted and enable_checkpointing and is_main_process:
-                trainer.save_model(self.output_dir)
-                self.logger.info(f"Final model saved to {self.output_dir}")
-
-            # Log metrics from main process only
-            if is_main_process and log_to_wandb and self.wandb_run:
-                try:
-                    self._log_training_results(train_result)
-                except Exception as e:
-                    self.logger.warning(f"Failed to log results to W&B: {e}")
-
-            # Clean up distributed training
-            if self.training_config.distributed_training:
-                torch.distributed.destroy_process_group()
-
-            return train_result
-
-        except Exception as e:
-            self.logger.error(f"Training failed: {str(e)}")
-            raise
-
-        finally:
-            # Cleanup
-            if self.wandb_run and is_main_process:
-                try:
-                    self.wandb_run.finish()
-                    # Ensure we don't have any lingering W&B runs
-                    if wandb.run is not None and wandb.run != self.wandb_run:
-                        wandb.finish()
-                except Exception as e:
-                    self.logger.warning(f"Failed to finish W&B run cleanly: {e}")
-            torch.cuda.empty_cache()
-
-    def get_logs(self, max_entries=100):
-        """Get recent log entries from the trainer.
-
-        Args:
-            max_entries: Maximum number of log entries to return
-
-        Returns:
-            List of recent log entries
-        """
-        # Create a memory handler to capture logs
-        import io
-        import logging
-
-        log_stream = io.StringIO()
-        handler = logging.StreamHandler(log_stream)
-        handler.setFormatter(
-            logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-        )
-
-        # Get logs from the current logger
-        self.logger.addHandler(handler)
-
-        # Force a log entry to ensure handler is working
-        self.logger.info("Retrieving logs...")
-
-        # Get the log content and split into lines
-        handler.flush()
-        logs = log_stream.getvalue().splitlines()
-
-        # Clean up
-        self.logger.removeHandler(handler)
-
-        # Return the most recent logs
-        return logs[-max_entries:] if max_entries < len(logs) else logs

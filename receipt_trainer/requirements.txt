@@ -2,7 +2,10 @@
 torch>=2.0.0
 transformers>=4.30.0
 datasets>=2.12.0
-wandb>=0.15.0
+# wandb>=0.15.0 - Removed as we now use receipt_dynamo for metrics and job tracking
+
+# Receipt Dynamo for metrics and job tracking
+-e ../receipt_dynamo  # Install from local path
 
 # Data processing and ML
 numpy>=1.24.0
