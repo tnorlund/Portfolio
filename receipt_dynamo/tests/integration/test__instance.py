@@ -5,8 +5,10 @@ import botocore
 import pytest
 
 from receipt_dynamo import DynamoClient, Instance, InstanceJob
-from receipt_dynamo.data.shared_exceptions import (DynamoCriticalErrorException,
-    DynamoRetryableException, )
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoCriticalErrorException,
+    DynamoRetryableException,
+)
 
 
 @pytest.fixture
@@ -18,7 +20,8 @@ def instance_dynamo(dynamodb_table):
 @pytest.fixture
 def sample_instance():
     """Returns a sample Instance for testing."""
-    return Instance(instance_id=str(uuid.uuid4()),
+    return Instance(
+        instance_id=str(uuid.uuid4()),
         instance_type="p3.2xlarge",
         gpu_count=4,
         status="running",
@@ -26,17 +29,20 @@ def sample_instance():
         ip_address="192.168.1.1",
         availability_zone="us-east-1a",
         is_spot=True,
-        health_status="healthy", )
+        health_status="healthy",
+    )
 
 
 @pytest.fixture
 def sample_instance_job(sample_instance):
     """Returns a sample InstanceJob for testing."""
-    return InstanceJob(instance_id=sample_instance.instance_id,
+    return InstanceJob(
+        instance_id=sample_instance.instance_id,
         job_id=str(uuid.uuid4()),
         assigned_at=datetime.now().isoformat(),
         status="running",
-        resource_utilization={"cpu_utilization": 75, "memory_utilization": 60}, )
+        resource_utilization={"cpu_utilization": 75, "memory_utilization": 60},
+    )
 
 
 @pytest.mark.integration
@@ -46,7 +52,9 @@ def test_addInstance_success(instance_dynamo, sample_instance):
     instance_dynamo.addInstance(sample_instance)
 
     # Verify it was added
-    retrieved_instance = instance_dynamo.getInstance(sample_instance.instance_id)
+    retrieved_instance = instance_dynamo.getInstance(
+        sample_instance.instance_id
+    )
     assert retrieved_instance.instance_id == sample_instance.instance_id
     assert retrieved_instance.instance_type == sample_instance.instance_type
     assert retrieved_instance.status == sample_instance.status
@@ -61,80 +69,140 @@ def test_addInstance_raises_value_error(instance_dynamo):
 
 @pytest.mark.integration
 def test_addInstance_raises_value_error_instance_not_instance(instance_dynamo):
-    """Test that addInstance raises ValueError when instance is not an Instance."""
-    with pytest.raises(ValueError, match="instance must be an instance of Instance"):
+    """
+    Test that addInstance raises ValueError when instance is not an Instance.
+    """
+    with pytest.raises(
+        ValueError, match="instance must be an instance of Instance"
+    ):
         instance_dynamo.addInstance("not an instance")
 
 
 @pytest.mark.integration
-def test_addInstance_raises_conditional_check_failed(instance_dynamo, sample_instance):
+def test_addInstance_raises_conditional_check_failed(
+    instance_dynamo, sample_instance
+):
     """Test that addInstance raises ValueError when instance already exists."""
     # Add the instance once
     instance_dynamo.addInstance(sample_instance)
 
     # Try to add it again, should fail
-    with pytest.raises(ValueError,
-        match=f"Instance {sample_instance.instance_id} already exists", ):
+    with pytest.raises(
+        ValueError,
+        match=f"Instance {sample_instance.instance_id} already exists",
+    ):
         instance_dynamo.addInstance(sample_instance)
 
 
 @pytest.mark.integration
-def test_addInstance_raises_resource_not_found(instance_dynamo, sample_instance, mocker):
-    """Test that addInstance raises DynamoCriticalErrorException when the table doesn't exist."""
+def test_addInstance_raises_resource_not_found(
+    instance_dynamo, sample_instance, mocker
+):
+    """
+    Test that addInstance raises DynamoCriticalErrorException when the table
+    doesn't exist.
+    """
     # Mock the put_item method to raise a ResourceNotFoundException
     mock_client = mocker.patch.object(instance_dynamo, "_client")
-    mock_client.put_item.side_effect = botocore.exceptions.ClientError({"Error": {"Code": "ResourceNotFoundException",
-                "Message": "Table not found", }},
-        "PutItem", )
+    mock_client.put_item.side_effect = botocore.exceptions.ClientError(
+        {
+            "Error": {
+                "Code": "ResourceNotFoundException",
+                "Message": "Table not found",
+            }
+        },
+        "PutItem",
+    )
 
     # Verify the correct exception is raised
-    with pytest.raises(DynamoCriticalErrorException,
-        match=f"Table {instance_dynamo.table_name} does not exist", ):
+    with pytest.raises(
+        DynamoCriticalErrorException,
+        match=f"Table {instance_dynamo.table_name} does not exist",
+    ):
         instance_dynamo.addInstance(sample_instance)
 
 
 @pytest.mark.integration
-def test_addInstance_raises_provisioned_throughput_exceeded(instance_dynamo, sample_instance, mocker):
-    """Test that addInstance raises DynamoRetryableException when throughput is exceeded."""
+def test_addInstance_raises_provisioned_throughput_exceeded(
+    instance_dynamo, sample_instance, mocker
+):
+    """
+    Test that addInstance raises DynamoRetryableException when throughput is
+    exceeded.
+    """
     # Mock the put_item method to raise a
     # ProvisionedThroughputExceededException
     mock_client = mocker.patch.object(instance_dynamo, "_client")
-    mock_client.put_item.side_effect = botocore.exceptions.ClientError({"Error": {"Code": "ProvisionedThroughputExceededException",
-                "Message": "Throughput exceeded", }},
-        "PutItem", )
+    mock_client.put_item.side_effect = botocore.exceptions.ClientError(
+        {
+            "Error": {
+                "Code": "ProvisionedThroughputExceededException",
+                "Message": "Throughput exceeded",
+            }
+        },
+        "PutItem",
+    )
 
     # Verify the correct exception is raised
-    with pytest.raises(DynamoRetryableException,
-        match="Provisioned throughput exceeded, retry later", ):
+    with pytest.raises(
+        DynamoRetryableException,
+        match="Provisioned throughput exceeded, retry later",
+    ):
         instance_dynamo.addInstance(sample_instance)
 
 
 @pytest.mark.integration
-def test_addInstance_raises_internal_server_error(instance_dynamo, sample_instance, mocker):
-    """Test that addInstance raises DynamoRetryableException when there's an internal server error."""
+def test_addInstance_raises_internal_server_error(
+    instance_dynamo, sample_instance, mocker
+):
+    """
+    Test that addInstance raises DynamoRetryableException when there's an
+    internal server error.
+    """
     # Mock the put_item method to raise an InternalServerError
     mock_client = mocker.patch.object(instance_dynamo, "_client")
-    mock_client.put_item.side_effect = botocore.exceptions.ClientError({"Error": {"Code": "InternalServerError",
-                "Message": "Internal server error", }},
-        "PutItem", )
+    mock_client.put_item.side_effect = botocore.exceptions.ClientError(
+        {
+            "Error": {
+                "Code": "InternalServerError",
+                "Message": "Internal server error",
+            }
+        },
+        "PutItem",
+    )
 
     # Verify the correct exception is raised
-    with pytest.raises(DynamoRetryableException, match="Internal server error, retry later"):
+    with pytest.raises(
+        DynamoRetryableException, match="Internal server error, retry later"
+    ):
         instance_dynamo.addInstance(sample_instance)
 
 
 @pytest.mark.integration
-def test_addInstance_raises_unknown_error(instance_dynamo, sample_instance, mocker):
-    """Test that addInstance raises DynamoCriticalErrorException for unknown errors."""
+def test_addInstance_raises_unknown_error(
+    instance_dynamo, sample_instance, mocker
+):
+    """
+    Test that addInstance raises DynamoCriticalErrorException for unknown
+    errors.
+    """
     # Mock the put_item method to raise an unknown error
     mock_client = mocker.patch.object(instance_dynamo, "_client")
-    mock_client.put_item.side_effect = botocore.exceptions.ClientError({"Error": {"Code": "UnknownError",
-                "Message": "Unknown error", }},
-        "PutItem", )
+    mock_client.put_item.side_effect = botocore.exceptions.ClientError(
+        {
+            "Error": {
+                "Code": "UnknownError",
+                "Message": "Unknown error",
+            }
+        },
+        "PutItem",
+    )
 
     # Verify the correct exception is raised
-    with pytest.raises(DynamoCriticalErrorException,
-        match="Failed to add instance: Unknown error", ):
+    with pytest.raises(
+        DynamoCriticalErrorException,
+        match="Failed to add instance: Unknown error",
+    ):
         instance_dynamo.addInstance(sample_instance)
 
 
@@ -142,8 +210,10 @@ def test_addInstance_raises_unknown_error(instance_dynamo, sample_instance, mock
 def test_addInstances_success(instance_dynamo, sample_instance):
     """Test adding multiple instances successfully."""
     # Create multiple instances
-    instances = [sample_instance,
-        Instance(instance_id=str(uuid.uuid4()),
+    instances = [
+        sample_instance,
+        Instance(
+            instance_id=str(uuid.uuid4()),
             instance_type="g4dn.xlarge",
             gpu_count=1,
             status="pending",
@@ -151,7 +221,9 @@ def test_addInstances_success(instance_dynamo, sample_instance):
             ip_address="192.168.1.2",
             availability_zone="us-east-1b",
             is_spot=False,
-            health_status="unknown", ), ]
+            health_status="unknown",
+        ),
+    ]
 
     # Add the instances
     instance_dynamo.addInstances(instances)
@@ -173,16 +245,25 @@ def test_addInstances_raises_value_error_instances_none(instance_dynamo):
 
 @pytest.mark.integration
 def test_addInstances_raises_value_error_instances_not_list(instance_dynamo):
-    """Test that addInstances raises ValueError when instances is not a list."""
+    """
+    Test that addInstances raises ValueError when instances is not a list.
+    """
     with pytest.raises(ValueError, match="instances must be a list"):
         instance_dynamo.addInstances("not a list")
 
 
 @pytest.mark.integration
-def test_addInstances_raises_value_error_instances_not_list_of_instances(instance_dynamo, sample_instance):
-    """Test that addInstances raises ValueError when instances contains non-Instance items."""
-    with pytest.raises(ValueError,
-        match="All elements in instances must be instances of Instance", ):
+def test_addInstances_raises_value_error_instances_not_list_of_instances(
+    instance_dynamo, sample_instance
+):
+    """
+    Test that addInstances raises ValueError when instances contains
+    non-Instance items.
+    """
+    with pytest.raises(
+        ValueError,
+        match="All elements in instances must be instances of Instance",
+    ):
         instance_dynamo.addInstances([sample_instance, "not an instance"])
 
 
@@ -193,7 +274,9 @@ def test_getInstance_success(instance_dynamo, sample_instance):
     instance_dynamo.addInstance(sample_instance)
 
     # Get the instance
-    retrieved_instance = instance_dynamo.getInstance(sample_instance.instance_id)
+    retrieved_instance = instance_dynamo.getInstance(
+        sample_instance.instance_id
+    )
 
     # Verify the retrieved instance matches the original
     assert retrieved_instance.instance_id == sample_instance.instance_id
@@ -202,8 +285,10 @@ def test_getInstance_success(instance_dynamo, sample_instance):
     assert retrieved_instance.status == sample_instance.status
     assert retrieved_instance.launched_at == sample_instance.launched_at
     assert retrieved_instance.ip_address == sample_instance.ip_address
-    assert (retrieved_instance.availability_zone
-        == sample_instance.availability_zone)
+    assert (
+        retrieved_instance.availability_zone
+        == sample_instance.availability_zone
+    )
     assert retrieved_instance.is_spot == sample_instance.is_spot
     assert retrieved_instance.health_status == sample_instance.health_status
 
@@ -211,13 +296,17 @@ def test_getInstance_success(instance_dynamo, sample_instance):
 @pytest.mark.integration
 def test_getInstance_raises_value_error_instance_id_none(instance_dynamo):
     """Test that getInstance raises ValueError when instance_id is None."""
-    with pytest.raises(ValueError, match="instance_id cannot be None or empty"):
+    with pytest.raises(
+        ValueError, match="instance_id cannot be None or empty"
+    ):
         instance_dynamo.getInstance(None)
 
 
 @pytest.mark.integration
 def test_getInstance_raises_value_error_instance_not_found(instance_dynamo):
-    """Test that getInstance raises ValueError when the instance doesn't exist."""
+    """
+    Test that getInstance raises ValueError when the instance doesn't exist.
+    """
     with pytest.raises(ValueError, match="Instance .* does not exist"):
         instance_dynamo.getInstance(str(uuid.uuid4()))
 
@@ -236,7 +325,9 @@ def test_updateInstance_success(instance_dynamo, sample_instance):
     instance_dynamo.updateInstance(sample_instance)
 
     # Verify the update was successful
-    retrieved_instance = instance_dynamo.getInstance(sample_instance.instance_id)
+    retrieved_instance = instance_dynamo.getInstance(
+        sample_instance.instance_id
+    )
     assert retrieved_instance.status == "stopped"
     assert retrieved_instance.health_status == "unhealthy"
 
@@ -249,18 +340,31 @@ def test_updateInstance_raises_value_error_instance_none(instance_dynamo):
 
 
 @pytest.mark.integration
-def test_updateInstance_raises_value_error_instance_not_instance(instance_dynamo, ):
-    """Test that updateInstance raises ValueError when instance is not an Instance."""
-    with pytest.raises(ValueError, match="instance must be an instance of Instance"):
+def test_updateInstance_raises_value_error_instance_not_instance(
+    instance_dynamo,
+):
+    """
+    Test that updateInstance raises ValueError when instance is not an
+    Instance.
+    """
+    with pytest.raises(
+        ValueError, match="instance must be an instance of Instance"
+    ):
         instance_dynamo.updateInstance("not an instance")
 
 
 @pytest.mark.integration
-def test_updateInstance_raises_conditional_check_failed(instance_dynamo, sample_instance):
-    """Test that updateInstance raises ValueError when instance doesn't exist."""
+def test_updateInstance_raises_conditional_check_failed(
+    instance_dynamo, sample_instance
+):
+    """
+    Test that updateInstance raises ValueError when instance doesn't exist.
+    """
     # Try to update without adding first
-    with pytest.raises(ValueError,
-        match=f"Instance {sample_instance.instance_id} does not exist", ):
+    with pytest.raises(
+        ValueError,
+        match=f"Instance {sample_instance.instance_id} does not exist",
+    ):
         instance_dynamo.updateInstance(sample_instance)
 
 
@@ -274,8 +378,10 @@ def test_deleteInstance_success(instance_dynamo, sample_instance):
     instance_dynamo.deleteInstance(sample_instance)
 
     # Verify it was deleted
-    with pytest.raises(ValueError,
-        match=f"Instance {sample_instance.instance_id} does not exist", ):
+    with pytest.raises(
+        ValueError,
+        match=f"Instance {sample_instance.instance_id} does not exist",
+    ):
         instance_dynamo.getInstance(sample_instance.instance_id)
 
 
@@ -287,23 +393,38 @@ def test_deleteInstance_raises_value_error_instance_none(instance_dynamo):
 
 
 @pytest.mark.integration
-def test_deleteInstance_raises_value_error_instance_not_instance(instance_dynamo, ):
-    """Test that deleteInstance raises ValueError when instance is not an Instance."""
-    with pytest.raises(ValueError, match="instance must be an instance of Instance"):
+def test_deleteInstance_raises_value_error_instance_not_instance(
+    instance_dynamo,
+):
+    """
+    Test that deleteInstance raises ValueError when instance is not an
+    Instance.
+    """
+    with pytest.raises(
+        ValueError, match="instance must be an instance of Instance"
+    ):
         instance_dynamo.deleteInstance("not an instance")
 
 
 @pytest.mark.integration
-def test_deleteInstance_raises_conditional_check_failed(instance_dynamo, sample_instance):
-    """Test that deleteInstance raises ValueError when instance doesn't exist."""
+def test_deleteInstance_raises_conditional_check_failed(
+    instance_dynamo, sample_instance
+):
+    """
+    Test that deleteInstance raises ValueError when instance doesn't exist.
+    """
     # Try to delete without adding first
-    with pytest.raises(ValueError,
-        match=f"Instance {sample_instance.instance_id} does not exist", ):
+    with pytest.raises(
+        ValueError,
+        match=f"Instance {sample_instance.instance_id} does not exist",
+    ):
         instance_dynamo.deleteInstance(sample_instance)
 
 
 @pytest.mark.integration
-def test_addInstanceJob_success(instance_dynamo, sample_instance, sample_instance_job):
+def test_addInstanceJob_success(
+    instance_dynamo, sample_instance, sample_instance_job
+):
     """Test adding an instance-job association successfully."""
     # Add the instance first
     instance_dynamo.addInstance(sample_instance)
@@ -312,8 +433,12 @@ def test_addInstanceJob_success(instance_dynamo, sample_instance, sample_instanc
     instance_dynamo.addInstanceJob(sample_instance_job)
 
     # Verify it was added
-    retrieved_instance_job = instance_dynamo.getInstanceJob(sample_instance_job.instance_id, sample_instance_job.job_id)
-    assert (retrieved_instance_job.instance_id == sample_instance_job.instance_id)
+    retrieved_instance_job = instance_dynamo.getInstanceJob(
+        sample_instance_job.instance_id, sample_instance_job.job_id
+    )
+    assert (
+        retrieved_instance_job.instance_id == sample_instance_job.instance_id
+    )
     assert retrieved_instance_job.job_id == sample_instance_job.job_id
     assert retrieved_instance_job.status == sample_instance_job.status
 
@@ -326,21 +451,32 @@ def test_addInstanceJob_raises_value_error_instance_job_none(instance_dynamo):
 
 
 @pytest.mark.integration
-def test_addInstanceJob_raises_value_error_instance_job_not_instance_job(instance_dynamo, ):
-    """Test that addInstanceJob raises ValueError when instance_job is not an InstanceJob."""
-    with pytest.raises(ValueError, match="instance_job must be an instance of InstanceJob"):
+def test_addInstanceJob_raises_value_error_instance_job_not_instance_job(
+    instance_dynamo,
+):
+    """
+    Test that addInstanceJob raises ValueError when instance_job is not an
+    InstanceJob.
+    """
+    with pytest.raises(
+        ValueError, match="instance_job must be an instance of InstanceJob"
+    ):
         instance_dynamo.addInstanceJob("not an instance job")
 
 
 @pytest.mark.integration
-def test_getInstanceWithJobs_success(instance_dynamo, sample_instance, sample_instance_job):
+def test_getInstanceWithJobs_success(
+    instance_dynamo, sample_instance, sample_instance_job
+):
     """Test getting an instance with its jobs successfully."""
     # Add the instance and instance-job
     instance_dynamo.addInstance(sample_instance)
     instance_dynamo.addInstanceJob(sample_instance_job)
 
     # Get the instance with jobs
-    instance, instance_jobs = instance_dynamo.getInstanceWithJobs(sample_instance.instance_id)
+    instance, instance_jobs = instance_dynamo.getInstanceWithJobs(
+        sample_instance.instance_id
+    )
 
     # Verify the retrieved data
     assert instance.instance_id == sample_instance.instance_id
@@ -356,7 +492,8 @@ def test_listInstances_success(instance_dynamo, sample_instance):
     instance_dynamo.addInstance(sample_instance)
 
     # Add another instance
-    second_instance = Instance(instance_id=str(uuid.uuid4()),
+    second_instance = Instance(
+        instance_id=str(uuid.uuid4()),
         instance_type="g4dn.xlarge",
         gpu_count=1,
         status="pending",
@@ -364,7 +501,8 @@ def test_listInstances_success(instance_dynamo, sample_instance):
         ip_address="192.168.1.2",
         availability_zone="us-east-1b",
         is_spot=False,
-        health_status="unknown", )
+        health_status="unknown",
+    )
     instance_dynamo.addInstance(second_instance)
 
     # List instances
@@ -384,7 +522,8 @@ def test_listInstances_with_limit(instance_dynamo, sample_instance):
     instance_dynamo.addInstance(sample_instance)
 
     # Add another instance
-    second_instance = Instance(instance_id=str(uuid.uuid4()),
+    second_instance = Instance(
+        instance_id=str(uuid.uuid4()),
         instance_type="g4dn.xlarge",
         gpu_count=1,
         status="pending",
@@ -392,7 +531,8 @@ def test_listInstances_with_limit(instance_dynamo, sample_instance):
         ip_address="192.168.1.2",
         availability_zone="us-east-1b",
         is_spot=False,
-        health_status="unknown", )
+        health_status="unknown",
+    )
     instance_dynamo.addInstance(second_instance)
 
     # List instances with a limit of 1
@@ -405,7 +545,9 @@ def test_listInstances_with_limit(instance_dynamo, sample_instance):
 
     # List the next page
     if last_evaluated_key:
-        more_instances, _ = instance_dynamo.listInstances(limit=1, lastEvaluatedKey=last_evaluated_key)
+        more_instances, _ = instance_dynamo.listInstances(
+            limit=1, lastEvaluatedKey=last_evaluated_key
+        )
         assert len(more_instances) == 1
 
 
@@ -416,7 +558,8 @@ def test_listInstancesByStatus_success(instance_dynamo, sample_instance):
     instance_dynamo.addInstance(sample_instance)
 
     # Add another instance with a different status
-    second_instance = Instance(instance_id=str(uuid.uuid4()),
+    second_instance = Instance(
+        instance_id=str(uuid.uuid4()),
         instance_type="g4dn.xlarge",
         gpu_count=1,
         status="pending",
@@ -424,41 +567,56 @@ def test_listInstancesByStatus_success(instance_dynamo, sample_instance):
         ip_address="192.168.1.2",
         availability_zone="us-east-1b",
         is_spot=False,
-        health_status="unknown", )
+        health_status="unknown",
+    )
     instance_dynamo.addInstance(second_instance)
 
     # List instances by status 'running'
     running_instances, _ = instance_dynamo.listInstancesByStatus("running")
 
     # Verify the result
-    assert (len(running_instances) >= 1)  # Could be more if other tests added running instances
-    assert sample_instance.instance_id in [instance.instance_id for instance in running_instances]
+    assert (
+        len(running_instances) >= 1
+    )  # Could be more if other tests added running instances
+    assert sample_instance.instance_id in [
+        instance.instance_id for instance in running_instances
+    ]
 
     # List instances by status 'pending'
     pending_instances, _ = instance_dynamo.listInstancesByStatus("pending")
 
     # Verify the result
-    assert (len(pending_instances) >= 1)  # Could be more if other tests added pending instances
-    assert second_instance.instance_id in [instance.instance_id for instance in pending_instances]
+    assert (
+        len(pending_instances) >= 1
+    )  # Could be more if other tests added pending instances
+    assert second_instance.instance_id in [
+        instance.instance_id for instance in pending_instances
+    ]
 
 
 @pytest.mark.integration
-def test_listInstanceJobs_success(instance_dynamo, sample_instance, sample_instance_job):
+def test_listInstanceJobs_success(
+    instance_dynamo, sample_instance, sample_instance_job
+):
     """Test listing jobs associated with an instance successfully."""
     # Add the instance and instance-job
     instance_dynamo.addInstance(sample_instance)
     instance_dynamo.addInstanceJob(sample_instance_job)
 
     # Add another instance-job for the same instance
-    second_instance_job = InstanceJob(instance_id=sample_instance.instance_id,
+    second_instance_job = InstanceJob(
+        instance_id=sample_instance.instance_id,
         job_id=str(uuid.uuid4()),
         assigned_at=datetime.now().isoformat(),
         status="completed",
-        resource_utilization={"cpu_utilization": 50}, )
+        resource_utilization={"cpu_utilization": 50},
+    )
     instance_dynamo.addInstanceJob(second_instance_job)
 
     # List instance jobs
-    instance_jobs, _ = instance_dynamo.listInstanceJobs(sample_instance.instance_id)
+    instance_jobs, _ = instance_dynamo.listInstanceJobs(
+        sample_instance.instance_id
+    )
 
     # Verify the result
     assert len(instance_jobs) == 2
@@ -468,14 +626,17 @@ def test_listInstanceJobs_success(instance_dynamo, sample_instance, sample_insta
 
 
 @pytest.mark.integration
-def test_listInstancesForJob_success(instance_dynamo, sample_instance, sample_instance_job):
+def test_listInstancesForJob_success(
+    instance_dynamo, sample_instance, sample_instance_job
+):
     """Test listing instances associated with a job successfully."""
     # Add the instance and instance-job
     instance_dynamo.addInstance(sample_instance)
     instance_dynamo.addInstanceJob(sample_instance_job)
 
     # Add another instance with the same job
-    second_instance = Instance(instance_id=str(uuid.uuid4()),
+    second_instance = Instance(
+        instance_id=str(uuid.uuid4()),
         instance_type="g4dn.xlarge",
         gpu_count=1,
         status="pending",
@@ -483,18 +644,23 @@ def test_listInstancesForJob_success(instance_dynamo, sample_instance, sample_in
         ip_address="192.168.1.2",
         availability_zone="us-east-1b",
         is_spot=False,
-        health_status="unknown", )
+        health_status="unknown",
+    )
     instance_dynamo.addInstance(second_instance)
 
-    second_instance_job = InstanceJob(instance_id=second_instance.instance_id,
+    second_instance_job = InstanceJob(
+        instance_id=second_instance.instance_id,
         job_id=sample_instance_job.job_id,
         assigned_at=datetime.now().isoformat(),
         status="assigned",
-        resource_utilization={}, )
+        resource_utilization={},
+    )
     instance_dynamo.addInstanceJob(second_instance_job)
 
     # List instances for job
-    instance_jobs, _ = instance_dynamo.listInstancesForJob(sample_instance_job.job_id)
+    instance_jobs, _ = instance_dynamo.listInstancesForJob(
+        sample_instance_job.job_id
+    )
 
     # Verify the result
     assert len(instance_jobs) == 2
