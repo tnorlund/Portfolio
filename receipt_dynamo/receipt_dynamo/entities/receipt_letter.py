@@ -1,11 +1,13 @@
 from math import atan2, pi
 from typing import Generator, Tuple
 
-from receipt_dynamo.entities.util import (_format_float,
+from receipt_dynamo.entities.util import (
+    _format_float,
     _repr_str,
     assert_valid_bounding_box,
     assert_valid_point,
-    assert_valid_uuid, )
+    assert_valid_uuid,
+)
 
 
 class ReceiptLetter:
@@ -34,7 +36,8 @@ class ReceiptLetter:
         confidence (float): The confidence level of the receipt letter (between 0 and 1).
     """
 
-    def __init__(self,
+    def __init__(
+        self,
         receipt_id: int,
         image_id: str,
         line_id: int,
@@ -48,7 +51,8 @@ class ReceiptLetter:
         bottom_left: dict,
         angle_degrees: float,
         angle_radians: float,
-        confidence: float, ):
+        confidence: float,
+    ):
         """
         Initializes a new ReceiptLetter object for DynamoDB.
 
@@ -138,11 +142,17 @@ class ReceiptLetter:
         Returns:
             dict: The primary key for the receipt letter.
         """
-        return {"PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {"S": (f"RECEIPT#{self.receipt_id:05d}#"
+        return {
+            "PK": {"S": f"IMAGE#{self.image_id}"},
+            "SK": {
+                "S": (
+                    f"RECEIPT#{self.receipt_id:05d}#"
                     f"LINE#{self.line_id:05d}#"
                     f"WORD#{self.word_id:05d}#"
-                    f"LETTER#{self.letter_id:05d}")}, }
+                    f"LETTER#{self.letter_id:05d}"
+                )
+            },
+        }
 
     def to_item(self) -> dict:
         """
@@ -151,24 +161,50 @@ class ReceiptLetter:
         Returns:
             dict: A dictionary representing the ReceiptLetter object as a DynamoDB item.
         """
-        return {**self.key(),
+        return {
+            **self.key(),
             "TYPE": {"S": "RECEIPT_LETTER"},
             "text": {"S": self.text},
-            "bounding_box": {"M": {"x": {"N": _format_float(self.bounding_box["x"], 20, 22)},
+            "bounding_box": {
+                "M": {
+                    "x": {"N": _format_float(self.bounding_box["x"], 20, 22)},
                     "y": {"N": _format_float(self.bounding_box["y"], 20, 22)},
-                    "width": {"N": _format_float(self.bounding_box["width"], 20, 22)},
-                    "height": {"N": _format_float(self.bounding_box["height"], 20, 22)}, }},
-            "top_right": {"M": {"x": {"N": _format_float(self.top_right["x"], 20, 22)},
-                    "y": {"N": _format_float(self.top_right["y"], 20, 22)}, }},
-            "top_left": {"M": {"x": {"N": _format_float(self.top_left["x"], 20, 22)},
-                    "y": {"N": _format_float(self.top_left["y"], 20, 22)}, }},
-            "bottom_right": {"M": {"x": {"N": _format_float(self.bottom_right["x"], 20, 22)},
-                    "y": {"N": _format_float(self.bottom_right["y"], 20, 22)}, }},
-            "bottom_left": {"M": {"x": {"N": _format_float(self.bottom_left["x"], 20, 22)},
-                    "y": {"N": _format_float(self.bottom_left["y"], 20, 22)}, }},
+                    "width": {
+                        "N": _format_float(self.bounding_box["width"], 20, 22)
+                    },
+                    "height": {
+                        "N": _format_float(self.bounding_box["height"], 20, 22)
+                    },
+                }
+            },
+            "top_right": {
+                "M": {
+                    "x": {"N": _format_float(self.top_right["x"], 20, 22)},
+                    "y": {"N": _format_float(self.top_right["y"], 20, 22)},
+                }
+            },
+            "top_left": {
+                "M": {
+                    "x": {"N": _format_float(self.top_left["x"], 20, 22)},
+                    "y": {"N": _format_float(self.top_left["y"], 20, 22)},
+                }
+            },
+            "bottom_right": {
+                "M": {
+                    "x": {"N": _format_float(self.bottom_right["x"], 20, 22)},
+                    "y": {"N": _format_float(self.bottom_right["y"], 20, 22)},
+                }
+            },
+            "bottom_left": {
+                "M": {
+                    "x": {"N": _format_float(self.bottom_left["x"], 20, 22)},
+                    "y": {"N": _format_float(self.bottom_left["y"], 20, 22)},
+                }
+            },
             "angle_degrees": {"N": _format_float(self.angle_degrees, 18, 20)},
             "angle_radians": {"N": _format_float(self.angle_radians, 18, 20)},
-            "confidence": {"N": _format_float(self.confidence, 2, 2)}, }
+            "confidence": {"N": _format_float(self.confidence, 2, 2)},
+        }
 
     def __eq__(self, other: object) -> bool:
         """
@@ -182,7 +218,8 @@ class ReceiptLetter:
         """
         if not isinstance(other, ReceiptLetter):
             return False
-        return (self.receipt_id == other.receipt_id
+        return (
+            self.receipt_id == other.receipt_id
             and self.image_id == other.image_id
             and self.line_id == other.line_id
             and self.word_id == other.word_id
@@ -195,7 +232,8 @@ class ReceiptLetter:
             and self.bottom_left == other.bottom_left
             and self.angle_degrees == other.angle_degrees
             and self.angle_radians == other.angle_radians
-            and self.confidence == other.confidence)
+            and self.confidence == other.confidence
+        )
 
     def __iter__(self) -> Generator[Tuple[str, any], None, None]:
         """
@@ -226,7 +264,8 @@ class ReceiptLetter:
         Returns:
             str: A string representation of the ReceiptLetter object.
         """
-        return (f"ReceiptLetter("
+        return (
+            f"ReceiptLetter("
             f"receipt_id={self.receipt_id}, "
             f"image_id={_repr_str(self.image_id)}, "
             f"line_id={self.line_id}, "
@@ -241,7 +280,8 @@ class ReceiptLetter:
             f"angle_degrees={self.angle_degrees}, "
             f"angle_radians={self.angle_radians}, "
             f"confidence={self.confidence}"
-            f")")
+            f")"
+        )
 
     def __hash__(self) -> int:
         """
@@ -250,7 +290,9 @@ class ReceiptLetter:
         Returns:
             int: The hash value for the ReceiptLetter object.
         """
-        return hash((self.receipt_id,
+        return hash(
+            (
+                self.receipt_id,
                 self.image_id,
                 self.line_id,
                 self.word_id,
@@ -263,9 +305,12 @@ class ReceiptLetter:
                 tuple(self.bottom_left.items()),
                 self.angle_degrees,
                 self.angle_radians,
-                self.confidence, ))
+                self.confidence,
+            )
+        )
 
-    def warp_transform(self,
+    def warp_transform(
+        self,
         a: float,
         b: float,
         c: float,
@@ -278,7 +323,8 @@ class ReceiptLetter:
         src_height: int,
         dst_width: int,
         dst_height: int,
-        flip_y: bool = False, ):
+        flip_y: bool = False,
+    ):
         """
         Inverse perspective transform from 'new' space back to 'old' space.
 
@@ -302,10 +348,12 @@ class ReceiptLetter:
         # We invert it by treating (x_new, y_new) as known, and solving
         # for (x_old, y_old).  The code below does that in a 2×2 linear system.
 
-        corners = [self.top_left,
+        corners = [
+            self.top_left,
             self.top_right,
             self.bottom_left,
-            self.bottom_right, ]
+            self.bottom_right,
+        ]
 
         for corner in corners:
             # 1) Convert normalized new coords -> pixel coords in the 'new'
@@ -340,7 +388,9 @@ class ReceiptLetter:
             if abs(det) < 1e-12:
                 # Degenerate or singular.  You can raise an exception or skip.
                 # For robust code, handle it gracefully:
-                raise ValueError("Inverse perspective transform is singular for this corner.")
+                raise ValueError(
+                    "Inverse perspective transform is singular for this corner."
+                )
 
             X_old_px = (B1 * A22 - B2 * A12) / det
             Y_old_px = (A11 * B2 - A21 * B1) / det
@@ -382,7 +432,8 @@ def itemToReceiptLetter(item: dict) -> ReceiptLetter:
     Raises:
         ValueError: When the item format is invalid or required keys are missing.
     """
-    required_keys = {"PK",
+    required_keys = {
+        "PK",
         "SK",
         "text",
         "bounding_box",
@@ -392,29 +443,42 @@ def itemToReceiptLetter(item: dict) -> ReceiptLetter:
         "bottom_left",
         "angle_degrees",
         "angle_radians",
-        "confidence", }
+        "confidence",
+    }
     if not required_keys.issubset(item):
         missing_keys = required_keys - set(item)
         raise ValueError(f"Item is missing required keys: {missing_keys}")
     try:
-        return ReceiptLetter(receipt_id=int(item["SK"]["S"].split("#")[1]),
+        return ReceiptLetter(
+            receipt_id=int(item["SK"]["S"].split("#")[1]),
             image_id=item["PK"]["S"].split("#")[1],
             line_id=int(item["SK"]["S"].split("#")[3]),
             word_id=int(item["SK"]["S"].split("#")[5]),
             letter_id=int(item["SK"]["S"].split("#")[7]),
             text=item["text"]["S"],
-            bounding_box={key: float(value["N"])
-                for key, value in item["bounding_box"]["M"].items()},
-            top_right={key: float(value["N"])
-                for key, value in item["top_right"]["M"].items()},
-            top_left={key: float(value["N"])
-                for key, value in item["top_left"]["M"].items()},
-            bottom_right={key: float(value["N"])
-                for key, value in item["bottom_right"]["M"].items()},
-            bottom_left={key: float(value["N"])
-                for key, value in item["bottom_left"]["M"].items()},
+            bounding_box={
+                key: float(value["N"])
+                for key, value in item["bounding_box"]["M"].items()
+            },
+            top_right={
+                key: float(value["N"])
+                for key, value in item["top_right"]["M"].items()
+            },
+            top_left={
+                key: float(value["N"])
+                for key, value in item["top_left"]["M"].items()
+            },
+            bottom_right={
+                key: float(value["N"])
+                for key, value in item["bottom_right"]["M"].items()
+            },
+            bottom_left={
+                key: float(value["N"])
+                for key, value in item["bottom_left"]["M"].items()
+            },
             angle_degrees=float(item["angle_degrees"]["N"]),
             angle_radians=float(item["angle_radians"]["N"]),
-            confidence=float(item["confidence"]["N"]), )
+            confidence=float(item["confidence"]["N"]),
+        )
     except (KeyError, ValueError) as e:
         raise ValueError(f"Error converting item to ReceiptLetter: {e}") from e

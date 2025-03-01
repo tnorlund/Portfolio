@@ -581,16 +581,15 @@ def test_item_to_receipt_word_round_trip(example_receipt_word_with_tags):
     with pytest.raises(ValueError, match="^Item is missing required keys:"):
         itemToReceiptWord({})
     with pytest.raises(
-        ValueError, match="^Error converting item to ReceiptWord",
+        ValueError,
+        match="^Error converting item to ReceiptWord",
     ):
         itemToReceiptWord(
             {
                 "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
                 "SK": {"S": "RECEIPT#00001#LINE#00003#WORD#00004"},
                 "text": {"S": "Test"},
-                "bounding_box": {
-                    "M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}
-                },
+                "bounding_box": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}},
                 "top_right": {"M": {"x": {"N": "1.0"}, "y": {"N": "2.0"}}},
                 "top_left": {"M": {"x": {"N": "1.0"}, "y": {"N": "3.0"}}},
                 "bottom_right": {"M": {"x": {"N": "4.0"}, "y": {"N": "2.0"}}},

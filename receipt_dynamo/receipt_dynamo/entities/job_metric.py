@@ -22,14 +22,16 @@ class JobMetric:
         epoch (Optional[int]): The training epoch at which the metric was recorded.
     """
 
-    def __init__(self,
+    def __init__(
+        self,
         job_id: str,
         metric_name: str,
         timestamp: Union[datetime, str],
         value: Union[float, Dict[str, Any]],
         unit: Optional[str] = None,
         step: Optional[int] = None,
-        epoch: Optional[int] = None, ):
+        epoch: Optional[int] = None,
+    ):
         """Initializes a new JobMetric object for DynamoDB.
 
         Args:
@@ -65,7 +67,9 @@ class JobMetric:
             except (ValueError, TypeError):
                 # If not convertible to float and not a dict, we raise an error
                 if not isinstance(value, dict):
-                    raise ValueError("value must be a number (int/float) or a dictionary")
+                    raise ValueError(
+                        "value must be a number (int/float) or a dictionary"
+                    )
         self.value = value
 
         # Unit validation
@@ -83,8 +87,10 @@ class JobMetric:
         Returns:
             dict: The primary key for the job metric.
         """
-        return {"PK": {"S": f"JOB#{self.job_id}"},
-            "SK": {"S": f"METRIC#{self.metric_name}#{self.timestamp}"}, }
+        return {
+            "PK": {"S": f"JOB#{self.job_id}"},
+            "SK": {"S": f"METRIC#{self.metric_name}#{self.timestamp}"},
+        }
 
     def gsi1_key(self) -> dict:
         """
@@ -93,8 +99,10 @@ class JobMetric:
         Returns:
             dict: The GSI key mapping.
         """
-        return {"GSI1PK": {"S": f"METRIC#{self.metric_name}"},
-            "GSI1SK": {"S": f"{self.timestamp}"}, }
+        return {
+            "GSI1PK": {"S": f"METRIC#{self.metric_name}"},
+            "GSI1SK": {"S": f"{self.timestamp}"},
+        }
 
     def gsi2_key(self) -> dict:
         """
@@ -104,8 +112,10 @@ class JobMetric:
         Returns:
             dict: The GSI2 key mapping.
         """
-        return {"GSI2PK": {"S": f"METRIC#{self.metric_name}"},
-            "GSI2SK": {"S": f"JOB#{self.job_id}#{self.timestamp}"}, }
+        return {
+            "GSI2PK": {"S": f"METRIC#{self.metric_name}"},
+            "GSI2SK": {"S": f"JOB#{self.job_id}#{self.timestamp}"},
+        }
 
     def to_item(self) -> dict:
         """Converts the JobMetric object to a DynamoDB item.
@@ -113,13 +123,15 @@ class JobMetric:
         Returns:
             dict: A dictionary representing the JobMetric object as a DynamoDB item.
         """
-        item = {**self.key(),
+        item = {
+            **self.key(),
             **self.gsi1_key(),
             **self.gsi2_key(),
             "TYPE": {"S": "JOB_METRIC"},
             "job_id": {"S": self.job_id},
             "metric_name": {"S": self.metric_name},
-            "timestamp": {"S": self.timestamp}, }
+            "timestamp": {"S": self.timestamp},
+        }
 
         # Handle value based on type
         if isinstance(self.value, (int, float)):
@@ -159,7 +171,9 @@ class JobMetric:
             if isinstance(v, dict):
                 result[k] = {"M": self._dict_to_dynamodb_map(v)}
             elif isinstance(v, list):
-                result[k] = {"L": [self._to_dynamodb_value(item) for item in v]}
+                result[k] = {
+                    "L": [self._to_dynamodb_value(item) for item in v]
+                }
             elif isinstance(v, str):
                 result[k] = {"S": v}
             elif isinstance(v, (int, float)):
@@ -202,7 +216,8 @@ class JobMetric:
         Returns:
             str: A string representation of the JobMetric object.
         """
-        return ("JobMetric("
+        return (
+            "JobMetric("
             f"job_id={_repr_str(self.job_id)}, "
             f"metric_name={_repr_str(self.metric_name)}, "
             f"timestamp={_repr_str(self.timestamp)}, "
@@ -210,7 +225,8 @@ class JobMetric:
             f"unit={_repr_str(self.unit)}, "
             f"step={self.step}, "
             f"epoch={self.epoch}"
-            ")")
+            ")"
+        )
 
     def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
         """Returns an iterator over the JobMetric object's attributes.
@@ -237,13 +253,15 @@ class JobMetric:
         """
         if not isinstance(other, JobMetric):
             return False
-        return (self.job_id == other.job_id
+        return (
+            self.job_id == other.job_id
             and self.metric_name == other.metric_name
             and self.timestamp == other.timestamp
             and self.value == other.value
             and self.unit == other.unit
             and self.step == other.step
-            and self.epoch == other.epoch)
+            and self.epoch == other.epoch
+        )
 
     def __hash__(self) -> int:
         """Returns the hash value of the JobMetric object.
@@ -252,17 +270,23 @@ class JobMetric:
             int: The hash value of the JobMetric object.
         """
         # Convert value to string if it's a dict since dicts aren't hashable
-        value_for_hash = (json.dumps(self.value)
+        value_for_hash = (
+            json.dumps(self.value)
             if isinstance(self.value, dict)
-            else self.value)
+            else self.value
+        )
 
-        return hash((self.job_id,
+        return hash(
+            (
+                self.job_id,
                 self.metric_name,
                 self.timestamp,
                 value_for_hash,
                 self.unit,
                 self.step,
-                self.epoch, ))
+                self.epoch,
+            )
+        )
 
 
 def itemToJobMetric(item: dict) -> JobMetric:
@@ -280,17 +304,23 @@ def itemToJobMetric(item: dict) -> JobMetric:
     required_keys = {"PK", "SK", "job_id", "metric_name", "timestamp", "value"}
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - item.keys()
-        additional_keys = (item.keys()
+        additional_keys = (
+            item.keys()
             - required_keys
-            - {"GSI1PK",
+            - {
+                "GSI1PK",
                 "GSI1SK",
                 "GSI2PK",
                 "GSI2SK",
                 "unit",
                 "step",
                 "epoch",
-                "TYPE", })
-        raise ValueError(f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}")
+                "TYPE",
+            }
+        )
+        raise ValueError(
+            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
+        )
 
     try:
         job_id = item["job_id"]["S"]
@@ -325,13 +355,15 @@ def itemToJobMetric(item: dict) -> JobMetric:
         if "epoch" in item and "N" in item["epoch"]:
             epoch = int(item["epoch"]["N"])
 
-        return JobMetric(job_id=job_id,
+        return JobMetric(
+            job_id=job_id,
             metric_name=metric_name,
             timestamp=timestamp,
             value=value,
             unit=unit,
             step=step,
-            epoch=epoch, )
+            epoch=epoch,
+        )
     except (KeyError, ValueError) as e:
         raise ValueError(f"Error parsing item: {str(e)}")
 
