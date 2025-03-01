@@ -33,11 +33,12 @@ class WordTag:
     timestamp_validated: Optional[str]
     gpt_confidence: Optional[int]
     flag: Optional[str]
-    revised_tag: Optional[str]
+    revised_tag: Optional[str]ß
     human_validated: Optional[bool]
     timestamp_human_validated: Optional[str]
 
-    def __init__(self,
+    def __init__(
+        self,
         image_id: str,
         line_id: int,
         word_id: int,
@@ -49,7 +50,8 @@ class WordTag:
         flag: Optional[str] = None,
         revised_tag: Optional[str] = None,
         human_validated: Optional[bool] = None,
-        timestamp_human_validated: Optional[Union[str, datetime]] = None, ):
+        timestamp_human_validated: Optional[Union[str, datetime]] = None,
+    ):
         """Initializes a new WordTag object for DynamoDB.
 
         Args:
@@ -95,7 +97,9 @@ class WordTag:
         elif isinstance(timestamp_added, str):
             self.timestamp_added = timestamp_added
         else:
-            raise ValueError("timestamp_added must be a datetime object or a string")
+            raise ValueError(
+                "timestamp_added must be a datetime object or a string"
+            )
 
         if validated not in (True, False, None):
             raise ValueError("validated must be a boolean or None")
@@ -104,7 +108,9 @@ class WordTag:
         if isinstance(timestamp_validated, datetime):
             self.timestamp_validated = timestamp_validated.isoformat()
         elif not isinstance(timestamp_validated, (str, type(None))):
-            raise ValueError("timestamp_validated must be a datetime object, a string, or None")
+            raise ValueError(
+                "timestamp_validated must be a datetime object, a string, or None"
+            )
         else:
             self.timestamp_validated = timestamp_validated
 
@@ -125,9 +131,13 @@ class WordTag:
         self.human_validated = human_validated
 
         if isinstance(timestamp_human_validated, datetime):
-            self.timestamp_human_validated = (timestamp_human_validated.isoformat())
+            self.timestamp_human_validated = (
+                timestamp_human_validated.isoformat()
+            )
         elif not isinstance(timestamp_human_validated, (str, type(None))):
-            raise ValueError("timestamp_human_validated must be a datetime object, a string, or None")
+            raise ValueError(
+                "timestamp_human_validated must be a datetime object, a string, or None"
+            )
         else:
             self.timestamp_human_validated = timestamp_human_validated
 
@@ -143,7 +153,8 @@ class WordTag:
         """
         if not isinstance(other, WordTag):
             return False
-        return (self.image_id == other.image_id
+        return (
+            self.image_id == other.image_id
             and self.line_id == other.line_id
             and self.word_id == other.word_id
             and self.tag == other.tag
@@ -155,7 +166,8 @@ class WordTag:
             and self.revised_tag == other.revised_tag
             and self.human_validated == other.human_validated
             and self.timestamp_human_validated
-            == other.timestamp_human_validated)
+            == other.timestamp_human_validated
+        )
 
     def __hash__(self) -> int:
         """Generates a hash value for the WordTag.
@@ -163,7 +175,9 @@ class WordTag:
         Returns:
             int: The hash value for the WordTag.
         """
-        return hash((self.image_id,
+        return hash(
+            (
+                self.image_id,
                 self.line_id,
                 self.word_id,
                 self.tag,
@@ -174,7 +188,9 @@ class WordTag:
                 self.flag,
                 self.revised_tag,
                 self.human_validated,
-                self.timestamp_human_validated, ))
+                self.timestamp_human_validated,
+            )
+        )
 
     def __iter__(self) -> Generator[Tuple[str, str], None, None]:
         """Yields the attributes of the WordTag as key-value pairs.
@@ -201,7 +217,8 @@ class WordTag:
         Returns:
             str: A string representation of the WordTag.
         """
-        return (f"WordTag(image_id='{self.image_id}', "
+        return (
+            f"WordTag(image_id='{self.image_id}', "
             f"line_id={self.line_id}, "
             f"word_id={self.word_id}, "
             f"tag={_repr_str(self.tag)}, "
@@ -213,7 +230,8 @@ class WordTag:
             f"revised_tag={_repr_str(self.revised_tag)}, "
             f"human_validated={self.human_validated}, "
             f"timestamp_human_validated={_repr_str(self.timestamp_human_validated)}"
-            ")")
+            ")"
+        )
 
     def key(self) -> dict:
         """Generates the primary key for the WordTag.
@@ -225,10 +243,14 @@ class WordTag:
         """
         tag_upper = self.tag
         spaced_tag_upper = f"{tag_upper:_>40}"
-        return {"PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {"S": f"LINE#{self.line_id:05d}"
+        return {
+            "PK": {"S": f"IMAGE#{self.image_id}"},
+            "SK": {
+                "S": f"LINE#{self.line_id:05d}"
                 f"#WORD#{self.word_id:05d}"
-                f"#TAG#{spaced_tag_upper}"}, }
+                f"#TAG#{spaced_tag_upper}"
+            },
+        }
 
     def gsi1_key(self) -> dict:
         """Generates the secondary index key for the WordTag.
@@ -240,8 +262,12 @@ class WordTag:
         """
         tag_upper = self.tag
         spaced_tag_upper = f"{tag_upper:_>40}"
-        return {"GSI1PK": {"S": f"TAG#{spaced_tag_upper}"},
-            "GSI1SK": {"S": f"IMAGE#{self.image_id}#LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"}, }
+        return {
+            "GSI1PK": {"S": f"TAG#{spaced_tag_upper}"},
+            "GSI1SK": {
+                "S": f"IMAGE#{self.image_id}#LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"
+            },
+        }
 
     def gsi2_key(self) -> dict:
         """Generates the secondary index key for the WordTag.
@@ -253,8 +279,12 @@ class WordTag:
         """
         tag_upper = self.tag
         spaced_tag_upper = f"{tag_upper:_>40}"
-        return {"GSI2PK": {"S": f"IMAGE#{self.image_id}"},
-            "GSI2SK": {"S": f"LINE#{self.line_id:05d}#WORD#{self.word_id:05d}#TAG#{spaced_tag_upper}"}, }
+        return {
+            "GSI2PK": {"S": f"IMAGE#{self.image_id}"},
+            "GSI2SK": {
+                "S": f"LINE#{self.line_id:05d}#WORD#{self.word_id:05d}#TAG#{spaced_tag_upper}"
+            },
+        }
 
     def to_item(self) -> dict:
         """Converts the WordTag object to a DynamoDB item.
@@ -262,31 +292,47 @@ class WordTag:
         Returns:
             dict: A dictionary representing the WordTag as a DynamoDB item.
         """
-        return {**self.key(),
+        return {
+            **self.key(),
             **self.gsi1_key(),
             **self.gsi2_key(),
             "TYPE": {"S": "WORD_TAG"},
             "tag_name": {"S": self.tag},
             "timestamp_added": {"S": self.timestamp_added},
-            "validated": ({"BOOL": self.validated}
+            "validated": (
+                {"BOOL": self.validated}
                 if self.validated is not None
-                else {"NULL": True}),
-            "timestamp_validated": ({"S": self.timestamp_validated}
+                else {"NULL": True}
+            ),
+            "timestamp_validated": (
+                {"S": self.timestamp_validated}
                 if self.timestamp_validated is not None
-                else {"NULL": True}),
-            "gpt_confidence": ({"N": str(self.gpt_confidence)}
+                else {"NULL": True}
+            ),
+            "gpt_confidence": (
+                {"N": str(self.gpt_confidence)}
                 if self.gpt_confidence is not None
-                else {"NULL": True}),
-            "flag": ({"S": self.flag} if self.flag is not None else {"NULL": True}),
-            "revised_tag": ({"S": self.revised_tag}
+                else {"NULL": True}
+            ),
+            "flag": (
+                {"S": self.flag} if self.flag is not None else {"NULL": True}
+            ),
+            "revised_tag": (
+                {"S": self.revised_tag}
                 if self.revised_tag is not None
-                else {"NULL": True}),
-            "human_validated": ({"BOOL": self.human_validated}
+                else {"NULL": True}
+            ),
+            "human_validated": (
+                {"BOOL": self.human_validated}
                 if self.human_validated is not None
-                else {"NULL": True}),
-            "timestamp_human_validated": ({"S": self.timestamp_human_validated}
+                else {"NULL": True}
+            ),
+            "timestamp_human_validated": (
+                {"S": self.timestamp_human_validated}
                 if self.timestamp_human_validated is not None
-                else {"NULL": True}), }
+                else {"NULL": True}
+            ),
+        }
 
     def to_Word_key(self) -> dict:
         """Generates the key for the Word table associated with this tag.
@@ -294,9 +340,12 @@ class WordTag:
         Returns:
             dict: A dictionary representing the key for the Word in DynamoDB.
         """
-        return {"PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {"S": f"LINE#{self.line_id:05d}"
-                f"#WORD#{self.word_id:05d}"}, }
+        return {
+            "PK": {"S": f"IMAGE#{self.image_id}"},
+            "SK": {
+                "S": f"LINE#{self.line_id:05d}" f"#WORD#{self.word_id:05d}"
+            },
+        }
 
 
 def itemToWordTag(item: dict) -> WordTag:
@@ -318,19 +367,25 @@ def itemToWordTag(item: dict) -> WordTag:
     try:
         pk_parts = item["PK"]["S"].split("#")
         sk_parts = item["SK"]["S"].split("#")
-        validated = (bool(item["validated"]["BOOL"])
+        validated = (
+            bool(item["validated"]["BOOL"])
             if "BOOL" in item["validated"]
-            else None)
+            else None
+        )
         if "timestamp_validated" in item:
-            timestamp_validated = (datetime.fromisoformat(item["timestamp_validated"]["S"])
+            timestamp_validated = (
+                datetime.fromisoformat(item["timestamp_validated"]["S"])
                 if "S" in item["timestamp_validated"]
-                else None)
+                else None
+            )
         else:
             timestamp_validated = None
         if "gpt_confidence" in item:
-            gpt_confidence = (int(item["gpt_confidence"]["N"])
+            gpt_confidence = (
+                int(item["gpt_confidence"]["N"])
                 if "N" in item["gpt_confidence"]
-                else None)
+                else None
+            )
         else:
             gpt_confidence = None
         if "flag" in item:
@@ -338,35 +393,45 @@ def itemToWordTag(item: dict) -> WordTag:
         else:
             flag = None
         if "revised_tag" in item:
-            revised_tag = (item["revised_tag"]["S"]
+            revised_tag = (
+                item["revised_tag"]["S"]
                 if "S" in item["revised_tag"]
-                else None)
+                else None
+            )
         else:
             revised_tag = None
         if "human_validated" in item:
-            human_validated = (bool(item["human_validated"]["BOOL"])
+            human_validated = (
+                bool(item["human_validated"]["BOOL"])
                 if "BOOL" in item["human_validated"]
-                else None)
+                else None
+            )
         else:
             human_validated = None
         if "timestamp_human_validated" in item:
-            timestamp_human_validated = (item["timestamp_human_validated"]["S"]
+            timestamp_human_validated = (
+                item["timestamp_human_validated"]["S"]
                 if "S" in item["timestamp_human_validated"]
-                else None)
+                else None
+            )
         else:
             timestamp_human_validated = None
         tag = sk_parts[-1].lstrip("_").strip()
-        return WordTag(image_id=pk_parts[1],
+        return WordTag(
+            image_id=pk_parts[1],
             line_id=int(sk_parts[1]),
             word_id=int(sk_parts[3]),
             tag=tag,
-            timestamp_added=datetime.fromisoformat(item["timestamp_added"]["S"]),
+            timestamp_added=datetime.fromisoformat(
+                item["timestamp_added"]["S"]
+            ),
             validated=validated,
             timestamp_validated=timestamp_validated,
             gpt_confidence=gpt_confidence,
             flag=flag,
             revised_tag=revised_tag,
             human_validated=human_validated,
-            timestamp_human_validated=timestamp_human_validated, )
+            timestamp_human_validated=timestamp_human_validated,
+        )
     except (IndexError, ValueError, KeyError) as e:
         raise ValueError(f"Error converting item to WordTag: {e}")
