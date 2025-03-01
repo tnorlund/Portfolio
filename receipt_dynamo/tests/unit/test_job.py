@@ -7,8 +7,8 @@ from receipt_dynamo.entities.job import _parse_dynamodb_map
 @pytest.fixture
 def example_job():
     """Provides a sample Job for testing."""
-    # fmt: off
-    return Job("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 
+    return Job(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         "Training Job",
         "Example training job description",
         "2021-01-01T00:00:00",
@@ -17,23 +17,23 @@ def example_job():
         "medium",
         {"model": "layoutlm", "batch_size": 32, "epochs": 10},
         estimated_duration=3600,
-        tags={"project": "receipts", "environment": "dev"})
-    # fmt: on
+        tags={"project": "receipts", "environment": "dev"},
+    )
 
 
 @pytest.fixture
 def example_job_minimal():
     """Provides a minimal sample Job for testing."""
-    # fmt: off
-    return Job("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 
+    return Job(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         "Training Job",
         "Example training job description",
         "2021-01-01T00:00:00",
         "user123",
         "pending",
         "medium",
-        {"model": "layoutlm"})
-    # fmt: on
+        {"model": "layoutlm"},
+    )
 
 
 @pytest.mark.unit
@@ -148,7 +148,9 @@ def test_job_init_invalid_created_at():
 @pytest.mark.unit
 def test_job_init_invalid_created_by():
     """Test the Job constructor with invalid created_by."""
-    with pytest.raises(ValueError, match="created_by must be a non-empty string"):
+    with pytest.raises(
+        ValueError, match="created_by must be a non-empty string"
+    ):
         Job(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "Training Job",
@@ -160,7 +162,9 @@ def test_job_init_invalid_created_by():
             {"model": "layoutlm"},
         )
 
-    with pytest.raises(ValueError, match="created_by must be a non-empty string"):
+    with pytest.raises(
+        ValueError, match="created_by must be a non-empty string"
+    ):
         Job(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "Training Job",
@@ -413,20 +417,151 @@ def test_job_iter(example_job):
 @pytest.mark.unit
 def test_job_eq():
     """Test the Job.__eq__() method."""
-    # fmt: off
-    job1 = Job("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "Training Job", "Example training job description", "2021-01-01T00:00:00", "user123", "pending", "medium", {"model": "layoutlm", "batch_size": 32, "epochs": 10}, 3600, {"project": "receipts", "environment": "dev"})
-    job2 = Job("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "Training Job", "Example training job description", "2021-01-01T00:00:00", "user123", "pending", "medium", {"model": "layoutlm", "batch_size": 32, "epochs": 10}, 3600, {"project": "receipts", "environment": "dev"})
-    job3 = Job("4f52804b-2fad-4e00-92c8-b593da3a8ed3", "Training Job", "Example training job description", "2021-01-01T00:00:00", "user123", "pending", "medium", {"model": "layoutlm", "batch_size": 32, "epochs": 10}, 3600, {"project": "receipts", "environment": "dev"})  # Different job_id
-    job4 = Job("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "Different Job", "Example training job description", "2021-01-01T00:00:00", "user123", "pending", "medium", {"model": "layoutlm", "batch_size": 32, "epochs": 10}, 3600, {"project": "receipts", "environment": "dev"})  # Different name
-    job5 = Job("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "Training Job", "Different description", "2021-01-01T00:00:00", "user123", "pending", "medium", {"model": "layoutlm", "batch_size": 32, "epochs": 10}, 3600, {"project": "receipts", "environment": "dev"})  # Different description
-    job6 = Job("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "Training Job", "Example training job description", "2021-01-02T00:00:00", "user123", "pending", "medium", {"model": "layoutlm", "batch_size": 32, "epochs": 10}, 3600, {"project": "receipts", "environment": "dev"})  # Different created_at
-    job7 = Job("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "Training Job", "Example training job description", "2021-01-01T00:00:00", "different_user", "pending", "medium", {"model": "layoutlm", "batch_size": 32, "epochs": 10}, 3600, {"project": "receipts", "environment": "dev"})  # Different created_by
-    job8 = Job("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "Training Job", "Example training job description", "2021-01-01T00:00:00", "user123", "running", "medium", {"model": "layoutlm", "batch_size": 32, "epochs": 10}, 3600, {"project": "receipts", "environment": "dev"})  # Different status
-    job9 = Job("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "Training Job", "Example training job description", "2021-01-01T00:00:00", "user123", "pending", "high", {"model": "layoutlm", "batch_size": 32, "epochs": 10}, 3600, {"project": "receipts", "environment": "dev"})  # Different priority
-    job10 = Job("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "Training Job", "Example training job description", "2021-01-01T00:00:00", "user123", "pending", "medium", {"model": "different", "batch_size": 32, "epochs": 10}, 3600, {"project": "receipts", "environment": "dev"})  # Different job_config
-    job11 = Job("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "Training Job", "Example training job description", "2021-01-01T00:00:00", "user123", "pending", "medium", {"model": "layoutlm", "batch_size": 32, "epochs": 10}, 7200, {"project": "receipts", "environment": "dev"})  # Different estimated_duration
-    job12 = Job("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "Training Job", "Example training job description", "2021-01-01T00:00:00", "user123", "pending", "medium", {"model": "layoutlm", "batch_size": 32, "epochs": 10}, 3600, {"project": "different", "environment": "dev"})  # Different tags
-    # fmt: on
+
+    job1 = Job(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "Training Job",
+        "Example training job description",
+        "2021-01-01T00:00:00",
+        "user123",
+        "pending",
+        "medium",
+        {"model": "layoutlm", "batch_size": 32, "epochs": 10},
+        3600,
+        {"project": "receipts", "environment": "dev"},
+    )
+    job2 = Job(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "Training Job",
+        "Example training job description",
+        "2021-01-01T00:00:00",
+        "user123",
+        "pending",
+        "medium",
+        {"model": "layoutlm", "batch_size": 32, "epochs": 10},
+        3600,
+        {"project": "receipts", "environment": "dev"},
+    )
+    job3 = Job(
+        "4f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "Training Job",
+        "Example training job description",
+        "2021-01-01T00:00:00",
+        "user123",
+        "pending",
+        "medium",
+        {"model": "layoutlm", "batch_size": 32, "epochs": 10},
+        3600,
+        {"project": "receipts", "environment": "dev"},
+    )  # Different job_id
+    job4 = Job(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "Different Job",
+        "Example training job description",
+        "2021-01-01T00:00:00",
+        "user123",
+        "pending",
+        "medium",
+        {"model": "layoutlm", "batch_size": 32, "epochs": 10},
+        3600,
+        {"project": "receipts", "environment": "dev"},
+    )  # Different name
+    job5 = Job(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "Training Job",
+        "Different description",
+        "2021-01-01T00:00:00",
+        "user123",
+        "pending",
+        "medium",
+        {"model": "layoutlm", "batch_size": 32, "epochs": 10},
+        3600,
+        {"project": "receipts", "environment": "dev"},
+    )  # Different description
+    job6 = Job(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "Training Job",
+        "Example training job description",
+        "2021-01-02T00:00:00",
+        "user123",
+        "pending",
+        "medium",
+        {"model": "layoutlm", "batch_size": 32, "epochs": 10},
+        3600,
+        {"project": "receipts", "environment": "dev"},
+    )  # Different created_at
+    job7 = Job(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "Training Job",
+        "Example training job description",
+        "2021-01-01T00:00:00",
+        "different_user",
+        "pending",
+        "medium",
+        {"model": "layoutlm", "batch_size": 32, "epochs": 10},
+        3600,
+        {"project": "receipts", "environment": "dev"},
+    )  # Different created_by
+    job8 = Job(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "Training Job",
+        "Example training job description",
+        "2021-01-01T00:00:00",
+        "user123",
+        "running",
+        "medium",
+        {"model": "layoutlm", "batch_size": 32, "epochs": 10},
+        3600,
+        {"project": "receipts", "environment": "dev"},
+    )  # Different status
+    job9 = Job(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "Training Job",
+        "Example training job description",
+        "2021-01-01T00:00:00",
+        "user123",
+        "pending",
+        "high",
+        {"model": "layoutlm", "batch_size": 32, "epochs": 10},
+        3600,
+        {"project": "receipts", "environment": "dev"},
+    )  # Different priority
+    job10 = Job(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "Training Job",
+        "Example training job description",
+        "2021-01-01T00:00:00",
+        "user123",
+        "pending",
+        "medium",
+        {"model": "different", "batch_size": 32, "epochs": 10},
+        3600,
+        {"project": "receipts", "environment": "dev"},
+    )  # Different job_config
+    job11 = Job(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "Training Job",
+        "Example training job description",
+        "2021-01-01T00:00:00",
+        "user123",
+        "pending",
+        "medium",
+        {"model": "layoutlm", "batch_size": 32, "epochs": 10},
+        7200,
+        {"project": "receipts", "environment": "dev"},
+    )  # Different estimated_duration
+    job12 = Job(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "Training Job",
+        "Example training job description",
+        "2021-01-01T00:00:00",
+        "user123",
+        "pending",
+        "medium",
+        {"model": "layoutlm", "batch_size": 32, "epochs": 10},
+        3600,
+        {"project": "different", "environment": "dev"},
+    )  # Different tags
 
     assert job1 == job2, "Should be equal"
     assert job1 != job3, "Different job_id"
@@ -504,18 +639,6 @@ def test_parse_dynamodb_map():
             ]
         },
     }
-
-    # Use the job's _parse_dynamodb_map by creating a temporary job
-    temp_job = Job(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        "Test Job",
-        "Test description",
-        "2021-01-01T00:00:00",
-        "user123",
-        "pending",
-        "medium",
-        {},
-    )
 
     # Convert to Python values and test
     result = _parse_dynamodb_map(dynamodb_map)
