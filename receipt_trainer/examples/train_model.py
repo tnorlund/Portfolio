@@ -13,24 +13,31 @@ from sklearn.metrics import (
 )
 import seaborn as sns
 import matplotlib.pyplot as plt
-import wandb
 import argparse
 import traceback
+import uuid
+import tempfile
 
 
 class MetricsCallback(TrainerCallback):
     """Custom callback to log confusion matrix and evaluation metrics during training."""
 
-    def __init__(self):
-        """Initialize the callback."""
+    def __init__(self, job_service=None, job_id=None):
+        """Initialize the callback.
+        
+        Args:
+            job_service: The JobService instance for logging metrics
+            job_id: The ID of the current job
+        """
         super().__init__()
         self.trainer = None
         self.step = 0
-        # Store the existing W&B run
-        self.wandb_run = wandb.run
-        if not self.wandb_run:
+        self.job_service = job_service
+        self.job_id = job_id
+        
+        if not self.job_service or not self.job_id:
             raise ValueError(
-                "No active W&B run found. Make sure W&B is initialized before creating the callback."
+                "JobService and job_id must be provided for metrics logging."
             )
 
     def setup(self, trainer):
@@ -45,6 +52,14 @@ class MetricsCallback(TrainerCallback):
         print("Training started - MetricsCallback initialized")
         if not self.trainer:
             print("Warning: Trainer not available in on_train_begin")
+            
+        # Log training start
+        if self.job_service and self.job_id:
+            self.job_service.add_job_log(
+                self.job_id,
+                "INFO",
+                "Training started with MetricsCallback"
+            )
 
     def on_evaluate(self, args, state, control, metrics=None, **kwargs):
         """Log confusion matrix and metrics after each evaluation."""
@@ -104,7 +119,7 @@ class MetricsCallback(TrainerCallback):
             # Create metrics dictionary with step information
             self.step = state.global_step if state else 0
 
-            # Log metrics individually to ensure they show up in W&B
+            # Create metrics dictionary
             metric_dict = {
                 "train/global_step": self.step,
                 "eval/accuracy": float(accuracy),
@@ -124,28 +139,21 @@ class MetricsCallback(TrainerCallback):
                         }
                     )
 
-            print("\nLogging metrics to W&B:")
+            print("\nLogging metrics to DynamoDB:")
             for key, value in metric_dict.items():
                 print(f"{key}: {value}")
-
-            # Use the existing W&B run
-            self.wandb_run.log(metric_dict, step=self.step)
+                
+                # Log each metric to DynamoDB
+                if self.job_service and self.job_id:
+                    self.job_service.add_job_metric(
+                        job_id=self.job_id,
+                        metric_name=key,
+                        metric_value=value,
+                        metadata={"step": self.step}
+                    )
 
             # Create confusion matrix
             cm = confusion_matrix(true_flat, pred_flat, labels=labels)
-
-            # Log confusion matrix
-            self.wandb_run.log(
-                {
-                    "eval/confusion_matrix": wandb.plot.confusion_matrix(
-                        probs=None,
-                        y_true=true_flat,
-                        preds=pred_flat,
-                        class_names=label_names,
-                    )
-                },
-                step=self.step,
-            )
 
             # Create and log performance plot
             plt.figure(figsize=(12, 6))
@@ -163,9 +171,30 @@ class MetricsCallback(TrainerCallback):
             plt.legend()
             plt.tight_layout()
 
-            self.wandb_run.log(
-                {"eval/performance_plot": wandb.Image(plt)}, step=self.step
-            )
+            # Save the plot to a temporary file
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_file:
+                plt_path = tmp_file.name
+                plt.savefig(plt_path)
+                
+                # Log the plot path to DynamoDB
+                if self.job_service and self.job_id:
+                    self.job_service.add_job_log(
+                        self.job_id,
+                        "INFO",
+                        f"Performance plot saved to {plt_path}"
+                    )
+                    
+                    # Add as a resource
+                    self.job_service.add_job_resource(
+                        job_id=self.job_id,
+                        resource_type="PLOT",
+                        resource_id=f"performance_plot_{self.step}",
+                        metadata={
+                            "path": plt_path,
+                            "type": "performance_plot",
+                            "step": self.step
+                        }
+                    )
 
             plt.close("all")
 
@@ -191,12 +220,12 @@ def validate_environment():
         ValueError: If any required environment variable is missing or empty.
     """
     required_vars = {
-        "WANDB_API_KEY": "API key for Weights & Biases",
         "HF_TOKEN": "Hugging Face token for accessing models",
         "AWS_ACCESS_KEY_ID": "AWS access key for DynamoDB and S3",
         "AWS_SECRET_ACCESS_KEY": "AWS secret key for DynamoDB and S3",
         "AWS_DEFAULT_REGION": "AWS region for services",
         "CHECKPOINT_BUCKET": "S3 bucket for checkpoints",
+        "DYNAMO_TABLE": "DynamoDB table for metrics and job tracking",
     }
 
     missing_vars = []

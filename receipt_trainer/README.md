@@ -7,7 +7,7 @@ A Python package for training LayoutLM models on receipt data, with support for 
 - Load and process receipt data from DynamoDB
 - Integrate with SROIE dataset
 - Train LayoutLM models for receipt information extraction
-- Track experiments with Weights & Biases
+- Track metrics and experiments with DynamoDB
 - Handle AWS infrastructure with Pulumi
 
 ## Installation
@@ -27,12 +27,12 @@ from receipt_trainer import ReceiptTrainer
 
 # Initialize trainer
 trainer = ReceiptTrainer(
-    wandb_project="receipt-training",
     model_name="microsoft/layoutlm-base-uncased",
     data_config=DataConfig(
         use_sroie=True,
         env="prod"
-    )
+    ),
+    dynamo_table="receipts-metrics-table"
 )
 
 # Load data

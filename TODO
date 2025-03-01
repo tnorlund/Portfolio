@@ -90,14 +90,14 @@ The following major components have been completed:
 - [x] Implement job status tracking in DynamoDB
 - [x] Implement Queue management in DynamoDB
 - [x] Implement Instance tracking
-- [ ] Build CLI tool for job submission/monitoring
-  - [ ] Create commands for job submission
-  - [ ] Add job status checking and monitoring
-  - [ ] Implement job cancellation and modification
-- [ ] Add support for dependency chains between jobs
-  - [ ] Implement dependency validation
-  - [ ] Add conditional execution based on dependency status
-  - [ ] Create visualization for job dependency graphs
+- [x] Build CLI tool for job submission/monitoring
+  - [x] Create commands for job submission
+  - [x] Add job status checking and monitoring
+  - [x] Implement job cancellation and modification
+- [x] Add support for dependency chains between jobs
+  - [x] Implement dependency validation
+  - [x] Add conditional execution based on dependency status
+  - [x] Create visualization for job dependency graphs
 
 ## 10. Instance Coordination
 
@@ -126,7 +126,7 @@ The following major components have been completed:
 
 ## 13. Experiment Tracking
 
-- [ ] Extend W&B integration for distributed experiments
+- [x] Replace W&B with receipt_dynamo for metrics and job tracking
 - [ ] Create central dashboard for all training runs
 - [ ] Add resource utilization tracking per experiment
 - [ ] Implement cross-experiment comparison tools

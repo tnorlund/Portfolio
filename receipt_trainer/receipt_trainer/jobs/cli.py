@@ -9,13 +9,27 @@ import sys
 import uuid
 import time
 import os
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 from tabulate import tabulate
 import yaml
+from datetime import datetime
 
-from .job import Job, JobStatus, JobPriority
-from .queue import JobQueue, JobQueueConfig, JobRetryStrategy
+# Import service layer from receipt_dynamo
+from receipt_dynamo import JobService, QueueService, InstanceService
+from receipt_dynamo.entities.job import Job
+from receipt_dynamo.entities.job_status import JobStatus
+from receipt_dynamo.entities.instance import Instance
+
+# Local imports
+from .job import JobPriority
 from .job_definition import LayoutLMJobDefinition
+from .config import (
+    DYNAMODB_TABLE,
+    DEFAULT_REGION,
+    JOB_STATUS_PENDING,
+    JOB_STATUS_CANCELLED,
+    JOB_PRIORITY_MEDIUM,
+)
 from .aws import (
     create_queue_with_dlq,
     get_queue_url,
@@ -96,7 +110,7 @@ def create_parser() -> argparse.ArgumentParser:
     # Monitor job command
     monitor_parser = subparsers.add_parser("monitor-job", help="Monitor a job's status in real-time")
     monitor_parser.add_argument("job_id", help="ID of the job")
-    monitor_parser.add_argument("--refresh", type=int, default=5, help="Refresh interval in seconds")
+    monitor_parser.add_argument("--interval", type=int, default=5, help="Refresh interval in seconds")
     monitor_parser.add_argument("--table", help="DynamoDB table name for job status", default="JobStatus")
     monitor_parser.add_argument("--region", help="AWS region")
     
@@ -132,60 +146,94 @@ def create_parser() -> argparse.ArgumentParser:
     job_details_parser.add_argument("--table", help="DynamoDB table name for jobs", default="Jobs")
     job_details_parser.add_argument("--region", help="AWS region")
     
+    # Add dependency commands
+    add_dependency_commands(subparsers)
+    
     return parser
 
 
 def handle_create_queue(args: argparse.Namespace) -> None:
-    """Handle the create-queue command."""
+    """Handle the create-queue command using the service layer."""
+    region = args.region if hasattr(args, 'region') and args.region else DEFAULT_REGION
+    
+    # Create queue service
+    queue_service = QueueService(region=region)
+    
     tags = {}
     if args.tags:
         try:
             tags = json.loads(args.tags)
         except json.JSONDecodeError:
+            print("Invalid JSON format for tags")
             logger.error("Invalid JSON format for tags")
             return
     
-    queue_url, dlq_url = create_queue_with_dlq(
-        queue_name=args.queue_name,
-        fifo=args.fifo,
-        max_receives=args.max_receives,
-        tags=tags,
-        region_name=args.region,
-    )
-    
-    if queue_url and dlq_url:
-        print(f"Queue URL: {queue_url}")
-        print(f"DLQ URL: {dlq_url}")
-    else:
-        print("Failed to create queue")
+    try:
+        queue_url, dlq_url = queue_service.create_queue_with_dlq(
+            queue_name=args.queue_name,
+            fifo=args.fifo,
+            max_receives=args.max_receives,
+            tags=tags
+        )
+        
+        if queue_url and dlq_url:
+            print(f"Queue URL: {queue_url}")
+            print(f"DLQ URL: {dlq_url}")
+        else:
+            print("Failed to create queue")
+    except Exception as e:
+        print(f"Error creating queue: {str(e)}")
+        logger.error(f"Error in handle_create_queue: {str(e)}")
 
 
 def handle_delete_queue(args: argparse.Namespace) -> None:
-    """Handle the delete-queue command."""
-    success = delete_queue(args.queue_url, args.region)
-    if success:
-        print(f"Queue {args.queue_url} deleted successfully")
-    else:
-        print(f"Failed to delete queue {args.queue_url}")
+    """Handle the delete-queue command using the service layer."""
+    region = args.region if hasattr(args, 'region') and args.region else DEFAULT_REGION
+    
+    # Create queue service
+    queue_service = QueueService(region=region)
+    
+    try:
+        success = queue_service.delete_queue(args.queue_url)
+        if success:
+            print(f"Queue {args.queue_url} deleted successfully")
+        else:
+            print(f"Failed to delete queue {args.queue_url}")
+    except Exception as e:
+        print(f"Error deleting queue: {str(e)}")
+        logger.error(f"Error in handle_delete_queue: {str(e)}")
 
 
 def handle_purge_queue(args: argparse.Namespace) -> None:
-    """Handle the purge-queue command."""
-    success = purge_queue(args.queue_url, args.region)
-    if success:
-        print(f"Queue {args.queue_url} purged successfully")
-    else:
-        print(f"Failed to purge queue {args.queue_url}")
+    """Handle the purge-queue command using the service layer."""
+    region = args.region if hasattr(args, 'region') and args.region else DEFAULT_REGION
+    
+    # Create queue service
+    queue_service = QueueService(region=region)
+    
+    try:
+        success = queue_service.purge_queue(args.queue_url)
+        if success:
+            print(f"Queue {args.queue_url} purged successfully")
+        else:
+            print(f"Failed to purge queue {args.queue_url}")
+    except Exception as e:
+        print(f"Error purging queue: {str(e)}")
+        logger.error(f"Error in handle_purge_queue: {str(e)}")
 
 
 def handle_submit_job(args: argparse.Namespace) -> None:
-    """Handle the submit-job command."""
+    """Handle the submit-job command using the service layer."""
+    region = args.region if hasattr(args, 'region') and args.region else DEFAULT_REGION
+    
+    # Parse job config
     try:
         config = json.loads(args.config)
     except json.JSONDecodeError:
         logger.error("Invalid JSON format for config")
         return
     
+    # Parse tags
     tags = {}
     if args.tags:
         try:
@@ -194,38 +242,86 @@ def handle_submit_job(args: argparse.Namespace) -> None:
             logger.error("Invalid JSON format for tags")
             return
     
-    # Create job
-    job = Job(
-        name=args.name,
-        type=args.type,
-        config=config,
-        job_id=str(uuid.uuid4()),
-        priority=JobPriority[args.priority],
-        tags=tags,
-    )
+    # Generate job ID
+    job_id = str(uuid.uuid4())
     
-    # Create queue config
-    queue_config = JobQueueConfig(
-        queue_url=args.queue_url,
-        aws_region=args.region,
-    )
+    # Create job service
+    job_service = JobService(table_name=DYNAMODB_TABLE, region=region)
     
-    # Create queue
-    queue = JobQueue(queue_config)
-    
-    # Submit job
-    job_id = queue.submit_job(job)
-    
-    if job_id:
+    try:
+        # Create the job
+        job = job_service.create_job(
+            job_id=job_id,
+            name=args.name,
+            description=f"Job of type {args.type}",
+            created_by=args.user if hasattr(args, 'user') else "cli-user",
+            status=JOB_STATUS_PENDING,
+            priority=args.priority.lower() if hasattr(args, 'priority') else JOB_PRIORITY_MEDIUM,
+            job_config=config,
+            tags=tags,
+        )
+        
+        # Add initial status
+        job_service.add_job_status(
+            job_id=job_id,
+            status=JOB_STATUS_PENDING,
+            message="Job created",
+        )
+        
         print(f"Job submitted successfully with ID: {job_id}")
-    else:
-        print("Failed to submit job")
+        
+    except Exception as e:
+        logger.error(f"Error submitting job: {str(e)}")
+        print(f"Failed to submit job: {str(e)}")
+        return
+    
+    # If a queue URL was provided, also add the job to the queue
+    if hasattr(args, 'queue_url') and args.queue_url:
+        try:
+            # Create queue service
+            queue_service = QueueService(table_name=DYNAMODB_TABLE, region=region)
+            
+            # Extract queue ID from URL (assuming it's the last part of the URL)
+            queue_url_parts = args.queue_url.split('/')
+            queue_id = queue_url_parts[-1]
+            
+            # Add job to queue
+            priority = 0
+            if hasattr(args, 'priority'):
+                if args.priority.upper() == "LOW":
+                    priority = 0
+                elif args.priority.upper() == "MEDIUM":
+                    priority = 10
+                elif args.priority.upper() == "HIGH":
+                    priority = 20
+                elif args.priority.upper() == "CRITICAL":
+                    priority = 30
+            
+            queue_job = queue_service.add_job_to_queue(
+                queue_id=queue_id,
+                job_id=job_id,
+                priority=priority,
+                metadata={"source": "cli"}
+            )
+            
+            print(f"Job added to queue {queue_id}")
+            
+        except Exception as e:
+            logger.error(f"Error adding job to queue: {str(e)}")
+            print(f"Warning: Job created but could not be added to queue: {str(e)}")
 
 
 def handle_submit_job_file(args: argparse.Namespace) -> None:
-    """Handle the submit-job-file command."""
+    """Handle the submit-job-file command using the service layer."""
+    region = args.region if hasattr(args, 'region') and args.region else DEFAULT_REGION
+    
+    # Create services
+    job_service = JobService(table_name=DYNAMODB_TABLE, region=region)
+    queue_service = QueueService(region=region)
+    
     # Check if file exists
     if not os.path.exists(args.job_file):
+        print(f"Job definition file {args.job_file} not found")
         logger.error(f"Job definition file {args.job_file} not found")
         return
     
@@ -236,6 +332,7 @@ def handle_submit_job_file(args: argparse.Namespace) -> None:
         elif args.job_file.lower().endswith('.json'):
             job_definition = LayoutLMJobDefinition.from_json(args.job_file)
         else:
+            print("Unsupported file format. Use YAML or JSON files.")
             logger.error("Unsupported file format. Use YAML or JSON files.")
             return
         
@@ -243,147 +340,180 @@ def handle_submit_job_file(args: argparse.Namespace) -> None:
         job_config = job_definition.to_job_config()
         
         # Create job
-        job = Job(
+        job_id = job_service.create_job(
             name=job_definition.name,
-            type="layoutlm_training",
+            job_type="layoutlm_training",
             config=job_config,
-            job_id=str(uuid.uuid4()),
-            priority=JobPriority[args.priority] if args.priority else JobPriority.MEDIUM,
-            tags={"name": job_definition.name} if job_definition.tags else {},
+            priority=args.priority.upper() if args.priority else "MEDIUM",
+            tags=job_definition.tags if job_definition.tags else {},
+            description=job_definition.description,
+            created_by="CLI"
         )
-        
-        # Create queue config
-        queue_config = JobQueueConfig(
-            queue_url=args.queue_url,
-            aws_region=args.region,
-        )
-        
-        # Create queue
-        queue = JobQueue(queue_config)
-        
-        # Submit job
-        job_id = queue.submit_job(job)
         
         if job_id:
-            print(f"Job '{job_definition.name}' submitted successfully with ID: {job_id}")
-            print(f"Job description: {job_definition.description}")
+            print(f"Job '{job_definition.name}' created successfully with ID: {job_id}")
+            
+            # Add job to queue if queue_url is provided
+            if args.queue_url:
+                try:
+                    # Extract queue ID from URL (assuming it's the last part of the URL)
+                    queue_url_parts = args.queue_url.split('/')
+                    queue_id = queue_url_parts[-1]
+                    
+                    # Map priority string to numeric value
+                    priority_value = 0
+                    if args.priority:
+                        if args.priority.upper() == "LOW":
+                            priority_value = 0
+                        elif args.priority.upper() == "MEDIUM":
+                            priority_value = 10
+                        elif args.priority.upper() == "HIGH":
+                            priority_value = 20
+                        elif args.priority.upper() == "CRITICAL":
+                            priority_value = 30
+                    
+                    # Add job to queue
+                    queue_service.add_job_to_queue(
+                        queue_url=args.queue_url,
+                        job_id=job_id,
+                        priority=priority_value,
+                        metadata={"source": "cli"}
+                    )
+                    
+                    print(f"Job added to queue {queue_id}")
+                except Exception as e:
+                    print(f"Warning: Job created but could not be added to queue: {str(e)}")
+                    logger.error(f"Error adding job to queue: {str(e)}")
         else:
-            print("Failed to submit job")
+            print("Failed to create job")
             
     except Exception as e:
-        logger.error(f"Error submitting job: {str(e)}")
+        print(f"Error submitting job: {str(e)}")
+        logger.error(f"Error in handle_submit_job_file: {str(e)}")
 
 
 def handle_list_jobs(args: argparse.Namespace) -> None:
-    """Handle the list-jobs command."""
-    # Create queue config
-    queue_config = JobQueueConfig(
-        queue_url=args.queue_url,
-        aws_region=args.region,
-    )
+    """Handle the list-jobs command using the service layer."""
+    region = args.region if hasattr(args, 'region') and args.region else DEFAULT_REGION
     
-    # Create queue
-    queue = JobQueue(queue_config)
+    # Create job service
+    job_service = JobService(table_name=DYNAMODB_TABLE, region=region)
     
-    # Receive jobs (but don't process them)
-    job_tuples = queue.receive_jobs(max_messages=args.count)
+    # List jobs
+    limit = args.count if hasattr(args, 'count') else 20
     
-    if not job_tuples:
-        print("No jobs found in the queue")
+    if hasattr(args, 'status') and args.status:
+        jobs, last_key = job_service.list_jobs_by_status(args.status, limit)
+    elif hasattr(args, 'user') and args.user:
+        jobs, last_key = job_service.list_jobs_by_user(args.user, limit)
+    else:
+        jobs, last_key = job_service.list_jobs(limit)
+    
+    if not jobs:
+        print("No jobs found")
         return
     
-    # Print job details
-    print(f"Found {len(job_tuples)} jobs:")
-    for i, (job, receipt_handle) in enumerate(job_tuples, 1):
-        print(f"\nJob {i}:")
-        print(f"  ID: {job.job_id}")
-        print(f"  Name: {job.name}")
-        print(f"  Type: {job.type}")
-        print(f"  Priority: {job.priority.name}")
-        print(f"  Status: {job.status.name}")
-        print(f"  Attempt: {job.attempt_count}")
-        if job.created_at:
-            print(f"  Created: {job.created_at}")
-        if job.tags:
-            print(f"  Tags: {job.tags}")
+    # Prepare table data
+    table_data = []
+    for job in jobs:
+        # Get the latest status
+        job_statuses = job_service.get_job_status_history(job.job_id)
+        latest_status = job_statuses[0].status if job_statuses else job.status
+        
+        # Add to table data
+        table_data.append([
+            job.job_id,
+            job.name,
+            job.description[:30] + "..." if len(job.description) > 30 else job.description,
+            latest_status,
+            job.priority,
+            job.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+            job.created_by,
+        ])
     
-    # Keep the messages visible to others by not deleting them
-    # In a real scenario, you might want to increase the visibility timeout
-    # and then let them become visible again
+    # Print table
+    headers = ["Job ID", "Name", "Description", "Status", "Priority", "Created At", "Created By"]
+    print(tabulate(table_data, headers=headers, tablefmt="grid"))
+    
+    # If there are more results, indicate it
+    if last_key:
+        print("\nMore results available. Use pagination to view more.")
 
 
 def handle_queue_attributes(args: argparse.Namespace) -> None:
-    """Handle the queue-attributes command."""
-    # Create queue config
-    queue_config = JobQueueConfig(
-        queue_url=args.queue_url,
-        aws_region=args.region,
-    )
+    """Handle the queue-attributes command using the service layer."""
+    region = args.region if hasattr(args, 'region') and args.region else DEFAULT_REGION
     
-    # Create queue
-    queue = JobQueue(queue_config)
+    # Create queue service
+    queue_service = QueueService(region=region)
     
-    # Get queue attributes
-    attributes = queue.get_queue_attributes()
-    
-    if attributes:
-        print("Queue Attributes:")
-        for key, value in attributes.items():
-            print(f"  {key}: {value}")
-    else:
-        print("Failed to get queue attributes")
+    try:
+        # Get queue attributes
+        attributes = queue_service.get_queue_attributes(args.queue_url)
+        
+        if attributes:
+            print("Queue Attributes:")
+            for key, value in attributes.items():
+                print(f"  {key}: {value}")
+        else:
+            print("Failed to get queue attributes")
+    except Exception as e:
+        print(f"Error getting queue attributes: {str(e)}")
+        logger.error(f"Error in handle_queue_attributes: {str(e)}")
 
 
 def handle_job_status(args: argparse.Namespace) -> None:
-    """Handle the job-status command."""
-    # Note: This is a stub implementation. In a real implementation,
-    # you would query DynamoDB to get the job status
+    """Handle the job-status command using the service layer."""
+    region = args.region if hasattr(args, 'region') and args.region else DEFAULT_REGION
+    
+    # Create job service
+    job_service = JobService(table_name=DYNAMODB_TABLE, region=region)
+    
     try:
-        # Import the necessary modules
-        from receipt_dynamo.entities.job_status import JobStatus as DynamoJobStatus
-        import boto3
-        from boto3.dynamodb.conditions import Key
+        # Get job statuses
+        statuses = job_service.get_job_status_history(args.job_id)
         
-        # Create DynamoDB client
-        dynamodb = boto3.resource('dynamodb', region_name=args.region)
-        table = dynamodb.Table(args.table)
-        
-        # Query for the latest status of the job
-        response = table.query(
-            KeyConditionExpression=Key('PK').eq(f"JOB#{args.job_id}"),
-            ScanIndexForward=False,  # Sort descending by SK to get the latest status first
-            Limit=1
-        )
-        
-        if response['Items']:
-            status_item = response['Items'][0]
-            print(f"Job ID: {args.job_id}")
-            print(f"Status: {status_item.get('status', 'unknown')}")
-            print(f"Updated At: {status_item.get('updated_at', 'unknown')}")
-            print(f"Progress: {status_item.get('progress', 'N/A')}%") if 'progress' in status_item else print("Progress: N/A")
-            print(f"Message: {status_item.get('message', 'N/A')}")
-            print(f"Instance: {status_item.get('instance_id', 'N/A')}")
-        else:
-            print(f"No status found for job {args.job_id}")
+        if statuses:
+            # Sort by timestamp descending to get most recent first
+            statuses.sort(key=lambda s: s.timestamp, reverse=True)
+            latest_status = statuses[0]
             
-    except ImportError:
-        print("receipt_dynamo package not installed or configured properly")
+            print(f"Job ID: {args.job_id}")
+            print(f"Current Status: {latest_status.status}")
+            print(f"Last Updated: {latest_status.timestamp.strftime('%Y-%m-%d %H:%M:%S')}")
+            print(f"Status Message: {latest_status.message}")
+            
+            if len(statuses) > 1:
+                print("\nStatus History:")
+                for status in statuses[1:]:  # Skip the first one as we already displayed it
+                    print(f"  {status.timestamp.strftime('%Y-%m-%d %H:%M:%S')} - {status.status}: {status.message}")
+        else:
+            # If no status history, try to get the job itself
+            try:
+                job = job_service.get_job(args.job_id)
+                print(f"Job ID: {args.job_id}")
+                print(f"Job exists but has no status history.")
+                print(f"Status from job record: {job.status}")
+            except Exception:
+                print(f"No status history found for job {args.job_id}")
+                print(f"Job may not exist or has not been updated with status information.")
+    
     except Exception as e:
-        logger.error(f"Error getting job status: {str(e)}")
+        print(f"Error retrieving job status: {str(e)}")
+        logger.error(f"Error in handle_job_status: {str(e)}")
 
 
 def handle_monitor_job(args: argparse.Namespace) -> None:
-    """Handle the monitor-job command."""
+    """Handle the monitor-job command using the service layer."""
+    region = args.region if hasattr(args, 'region') and args.region else DEFAULT_REGION
+    
+    # Create job service
+    job_service = JobService(table_name=DYNAMODB_TABLE, region=region)
+    
+    # How often to refresh the status (in seconds)
+    refresh_interval = args.interval if hasattr(args, 'interval') else 5
+    
     try:
-        # Import the necessary modules
-        from receipt_dynamo.entities.job_status import JobStatus as DynamoJobStatus
-        import boto3
-        from boto3.dynamodb.conditions import Key
-        
-        # Create DynamoDB client
-        dynamodb = boto3.resource('dynamodb', region_name=args.region)
-        table = dynamodb.Table(args.table)
-        
         print(f"Monitoring job {args.job_id}. Press Ctrl+C to stop...")
         
         try:
@@ -391,325 +521,628 @@ def handle_monitor_job(args: argparse.Namespace) -> None:
                 # Clear the screen (works on most terminals)
                 os.system('cls' if os.name == 'nt' else 'clear')
                 
-                # Query for the latest status of the job
-                response = table.query(
-                    KeyConditionExpression=Key('PK').eq(f"JOB#{args.job_id}"),
-                    ScanIndexForward=False,
-                    Limit=1
-                )
+                # Get job with status
+                job = job_service.get_job_with_status(args.job_id)
                 
-                if response['Items']:
-                    status_item = response['Items'][0]
-                    status = status_item.get('status', 'unknown')
+                if job:
+                    print(f"Job ID: {job.job_id}")
+                    print(f"Name: {job.name}")
+                    print(f"Type: {job.job_type}")
+                    print(f"Status: {job.status}")
+                    print(f"Created: {job.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
                     
-                    print(f"=== Job {args.job_id} ===")
-                    print(f"Status: {status}")
-                    print(f"Updated At: {status_item.get('updated_at', 'unknown')}")
-                    if 'progress' in status_item:
-                        progress = float(status_item['progress'])
-                        bar_length = 40
-                        filled_length = int(bar_length * progress / 100)
-                        bar = '█' * filled_length + '-' * (bar_length - filled_length)
-                        print(f"Progress: [{bar}] {progress:.1f}%")
-                    else:
-                        print("Progress: N/A")
-                    print(f"Message: {status_item.get('message', 'N/A')}")
-                    print(f"Instance: {status_item.get('instance_id', 'N/A')}")
+                    # Get status history
+                    statuses = job_service.get_job_status_history(args.job_id)
+                    if statuses:
+                        statuses.sort(key=lambda s: s.timestamp, reverse=True)
+                        latest_status = statuses[0]
+                        
+                        print(f"Latest Status Update: {latest_status.timestamp.strftime('%Y-%m-%d %H:%M:%S')}")
+                        print(f"Status Message: {latest_status.message}")
+                        if hasattr(latest_status, 'progress') and latest_status.progress is not None:
+                            print(f"Progress: {latest_status.progress}%")
+                        if hasattr(latest_status, 'instance_id') and latest_status.instance_id:
+                            print(f"Processing Instance: {latest_status.instance_id}")
+                        
+                        # Show recent history
+                        if len(statuses) > 1:
+                            print("\nRecent Status History:")
+                            for status in statuses[1:6]:  # Show up to 5 previous statuses
+                                print(f"  {status.timestamp.strftime('%Y-%m-%d %H:%M:%S')} - {status.status}: {status.message}")
                     
-                    # If job is in a terminal state, break the loop
-                    if status in ['succeeded', 'failed', 'cancelled']:
-                        print(f"\nJob has {status}. Monitoring stopped.")
+                    # Check if job is in a terminal state
+                    if job.status in ["completed", "failed", "cancelled", "error"]:
+                        print(f"\nJob has reached terminal state: {job.status}")
+                        print("Monitoring will end in 10 seconds...")
+                        time.sleep(10)
                         break
                 else:
-                    print(f"No status found for job {args.job_id}")
+                    print(f"No information found for job {args.job_id}")
                 
-                print(f"\nRefreshing in {args.refresh} seconds... (Ctrl+C to stop)")
-                time.sleep(args.refresh)
+                # Wait before refreshing
+                time.sleep(refresh_interval)
                 
         except KeyboardInterrupt:
-            print("\nMonitoring stopped by user.")
+            print("\nMonitoring stopped by user")
             
-    except ImportError:
-        print("receipt_dynamo package not installed or configured properly")
     except Exception as e:
-        logger.error(f"Error monitoring job: {str(e)}")
+        print(f"Error monitoring job: {str(e)}")
+        logger.error(f"Error in handle_monitor_job: {str(e)}")
 
 
 def handle_cancel_job(args: argparse.Namespace) -> None:
-    """Handle the cancel-job command."""
+    """Handle the cancel-job command using the service layer."""
+    region = args.region if hasattr(args, 'region') and args.region else DEFAULT_REGION
+    
+    # Create job service
+    job_service = JobService(table_name=DYNAMODB_TABLE, region=region)
+    
     try:
-        # Import the necessary modules
-        from receipt_dynamo.entities.job_status import JobStatus as DynamoJobStatus
-        import boto3
-        from datetime import datetime
-        
-        # Create DynamoDB client
-        dynamodb = boto3.resource('dynamodb', region_name=args.region)
-        table = dynamodb.Table(args.table)
-        
-        # Create a new job status item for cancellation
-        job_status = DynamoJobStatus(
-            job_id=args.job_id,
-            status="cancelled",
-            updated_at=datetime.now(),
-            progress=None,
+        # Cancel the job
+        job_service.cancel_job(
+            job_id=args.job_id, 
             message="Job cancelled by user via CLI",
-            updated_by="CLI",
-            instance_id=None
+            updated_by="CLI"
         )
-        
-        # Put the item in DynamoDB
-        table.put_item(Item=job_status.to_item())
         
         print(f"Job {args.job_id} has been marked for cancellation")
         print("Note: The job will be cancelled when the processing instance receives the cancellation signal")
         
-    except ImportError:
-        print("receipt_dynamo package not installed or configured properly")
     except Exception as e:
-        logger.error(f"Error cancelling job: {str(e)}")
+        print(f"Error cancelling job: {str(e)}")
+        logger.error(f"Error in handle_cancel_job: {str(e)}")
 
 
 def handle_job_logs(args: argparse.Namespace) -> None:
-    """Handle the job-logs command."""
+    """Handle the job-logs command using the service layer."""
+    region = args.region if hasattr(args, 'region') and args.region else DEFAULT_REGION
+    
+    # Create job service
+    job_service = JobService(table_name=DYNAMODB_TABLE, region=region)
+    
     try:
-        # Import the necessary modules
-        import boto3
-        from boto3.dynamodb.conditions import Key
+        # Get logs for the job
+        logs = job_service.get_job_logs(args.job_id, limit=args.limit)
         
-        # Create DynamoDB client
-        dynamodb = boto3.resource('dynamodb', region_name=args.region)
-        table = dynamodb.Table(args.table)
-        
-        # Query for logs of the job
-        response = table.query(
-            KeyConditionExpression=Key('PK').eq(f"JOB#{args.job_id}"),
-            ScanIndexForward=True,  # Sort ascending to get logs in chronological order
-            Limit=args.limit
-        )
-        
-        if response['Items']:
+        if logs:
             print(f"Logs for job {args.job_id} (showing up to {args.limit} entries):")
             print("-" * 80)
             
-            for log in response['Items']:
-                timestamp = log.get('timestamp', 'unknown')
-                level = log.get('level', 'INFO')
-                message = log.get('message', 'No message')
-                source = log.get('source', 'unknown')
+            for log in logs:
+                timestamp = log.timestamp.strftime('%Y-%m-%d %H:%M:%S') if hasattr(log, 'timestamp') else 'unknown'
+                level = log.level if hasattr(log, 'level') else 'INFO'
+                message = log.message if hasattr(log, 'message') else 'No message'
+                source = log.source if hasattr(log, 'source') else 'unknown'
                 
                 print(f"[{timestamp}] [{level}] [{source}]: {message}")
                 
-            if len(response['Items']) == args.limit:
+            if len(logs) == args.limit:
                 print(f"\nShowing first {args.limit} logs. Use --limit to see more.")
         else:
             print(f"No logs found for job {args.job_id}")
             
     except Exception as e:
-        logger.error(f"Error retrieving job logs: {str(e)}")
+        print(f"Error retrieving job logs: {str(e)}")
+        logger.error(f"Error in handle_job_logs: {str(e)}")
 
 
 def handle_list_instances(args: argparse.Namespace) -> None:
-    """Handle the list-instances command."""
+    """Handle the list-instances command using the service layer."""
+    region = args.region if hasattr(args, 'region') and args.region else DEFAULT_REGION
+    
+    # Create instance service
+    instance_service = InstanceService(table_name=DYNAMODB_TABLE, region=region)
+    
     try:
-        # Import the necessary modules
-        import boto3
-        from boto3.dynamodb.conditions import Key
+        # Get all instances
+        instances = instance_service.list_instances()
         
-        # Create DynamoDB client
-        dynamodb = boto3.resource('dynamodb', region_name=args.region)
-        table = dynamodb.Table(args.table)
-        
-        # Scan for active instances
-        response = table.scan()
-        
-        if response['Items']:
-            instances = response['Items']
+        if instances:
             headers = ["Instance ID", "Instance Type", "Status", "Last Heartbeat", "Current Job", "Uptime (hrs)"]
             rows = []
             
             for instance in instances:
-                instance_id = instance.get('instance_id', 'unknown')
-                instance_type = instance.get('instance_type', 'unknown')
-                status = instance.get('status', 'unknown')
-                last_heartbeat = instance.get('last_heartbeat', 'unknown')
-                current_job = instance.get('current_job_id', 'None')
-                
                 # Calculate uptime if start_time is available
                 uptime = "N/A"
-                if 'start_time' in instance:
+                if hasattr(instance, 'start_time') and instance.start_time:
                     try:
-                        start_time = datetime.fromisoformat(instance['start_time'])
                         now = datetime.now()
-                        uptime_seconds = (now - start_time).total_seconds()
+                        uptime_seconds = (now - instance.start_time).total_seconds()
                         uptime = f"{uptime_seconds / 3600:.1f}"
                     except:
                         pass
                 
-                rows.append([instance_id, instance_type, status, last_heartbeat, current_job, uptime])
+                last_heartbeat = instance.last_heartbeat.strftime('%Y-%m-%d %H:%M:%S') if hasattr(instance, 'last_heartbeat') and instance.last_heartbeat else "N/A"
+                current_job = instance.current_job_id if hasattr(instance, 'current_job_id') and instance.current_job_id else "None"
+                
+                rows.append([
+                    instance.instance_id, 
+                    instance.instance_type, 
+                    instance.status, 
+                    last_heartbeat, 
+                    current_job, 
+                    uptime
+                ])
             
             print(tabulate(rows, headers=headers, tablefmt="grid"))
             print(f"\nTotal instances: {len(instances)}")
         else:
-            print("No active training instances found")
+            print("No instances found")
             
     except Exception as e:
-        logger.error(f"Error listing instances: {str(e)}")
+        print(f"Error listing instances: {str(e)}")
+        logger.error(f"Error in handle_list_instances: {str(e)}")
 
 
 def handle_list_all_jobs(args: argparse.Namespace) -> None:
-    """Handle the list-all-jobs command."""
+    """Handle the list-all-jobs command using the service layer."""
+    region = args.region if hasattr(args, 'region') and args.region else DEFAULT_REGION
+    
+    # Create job service
+    job_service = JobService(table_name=DYNAMODB_TABLE, region=region)
+    
     try:
-        # Import the necessary modules
-        import boto3
-        from boto3.dynamodb.conditions import Key
-        
-        # Create DynamoDB client
-        dynamodb = boto3.resource('dynamodb', region_name=args.region)
-        table = dynamodb.Table(args.table)
-        
+        # Get jobs based on status filter if provided
         if args.status:
-            # Query the GSI1 index for jobs with the specified status
-            response = table.query(
-                IndexName="GSI1",
-                KeyConditionExpression=Key('GSI1PK').eq(f"STATUS#{args.status}"),
-                Limit=args.limit
-            )
+            jobs = job_service.list_jobs_by_status(args.status, limit=args.limit)
         else:
-            # Scan for all jobs
-            response = table.scan(Limit=args.limit)
+            jobs = job_service.list_jobs(limit=args.limit)
         
-        if response['Items']:
-            jobs = response['Items']
-            headers = ["Job ID", "Name", "Type", "Status", "Created At", "Duration"]
+        if jobs:
+            headers = ["Job ID", "Name", "Type", "Status", "Created At", "Duration", "Creator"]
             rows = []
             
             for job in jobs:
-                job_id = job.get('job_id', 'unknown')
-                name = job.get('name', 'unknown')
-                job_type = job.get('type', 'unknown')
-                status = job.get('status', 'unknown')
-                created_at = job.get('created_at', 'unknown')
-                
-                # Calculate duration if start_time and completed_at are available
+                # Calculate duration if completed
                 duration = "N/A"
-                if 'started_at' in job:
-                    if 'completed_at' in job:
-                        try:
-                            started = float(job['started_at'])
-                            completed = float(job['completed_at'])
-                            duration_seconds = completed - started
-                            if duration_seconds < 60:
-                                duration = f"{duration_seconds:.1f}s"
-                            elif duration_seconds < 3600:
-                                duration = f"{duration_seconds / 60:.1f}m"
-                            else:
-                                duration = f"{duration_seconds / 3600:.1f}h"
-                        except:
-                            pass
-                    else:
-                        duration = "Running"
+                if hasattr(job, 'completed_at') and job.completed_at and hasattr(job, 'created_at') and job.created_at:
+                    try:
+                        duration_seconds = (job.completed_at - job.created_at).total_seconds()
+                        # Format duration as hours:minutes:seconds
+                        hours, remainder = divmod(duration_seconds, 3600)
+                        minutes, seconds = divmod(remainder, 60)
+                        duration = f"{int(hours):02d}:{int(minutes):02d}:{int(seconds):02d}"
+                    except:
+                        pass
                 
-                rows.append([job_id, name, job_type, status, created_at, duration])
+                created_at = job.created_at.strftime('%Y-%m-%d %H:%M:%S') if hasattr(job, 'created_at') and job.created_at else "N/A"
+                creator = job.created_by if hasattr(job, 'created_by') and job.created_by else "N/A"
+                
+                rows.append([
+                    job.job_id, 
+                    job.name, 
+                    job.job_type, 
+                    job.status, 
+                    created_at, 
+                    duration,
+                    creator
+                ])
             
             print(tabulate(rows, headers=headers, tablefmt="grid"))
-            print(f"\nShowing {len(jobs)} jobs" + (f" with status '{args.status}'" if args.status else ""))
+            print(f"\nTotal jobs: {len(jobs)}")
             
             if len(jobs) == args.limit:
-                print(f"Results limited to {args.limit} jobs. Use --limit to show more.")
+                print(f"Showing first {args.limit} jobs. Use --limit to see more.")
         else:
-            print("No jobs found" + (f" with status '{args.status}'" if args.status else ""))
+            print("No jobs found")
             
     except Exception as e:
-        logger.error(f"Error listing jobs: {str(e)}")
+        print(f"Error listing jobs: {str(e)}")
+        logger.error(f"Error in handle_list_all_jobs: {str(e)}")
 
 
 def handle_job_details(args: argparse.Namespace) -> None:
-    """Handle the job-details command."""
+    """Handle the job-details command using the service layer."""
+    region = args.region if hasattr(args, 'region') and args.region else DEFAULT_REGION
+    
+    # Create job service
+    job_service = JobService(table_name=DYNAMODB_TABLE, region=region)
+    
     try:
-        # Import the necessary modules
-        import boto3
-        from boto3.dynamodb.conditions import Key
-        import json
+        # Get job and its status history
+        job, statuses = job_service.get_job_with_status(args.job_id)
         
-        # Create DynamoDB client
-        dynamodb = boto3.resource('dynamodb', region_name=args.region)
-        table = dynamodb.Table(args.table)
+        print(f"===== Job Details: {args.job_id} =====")
+        print(f"Name: {job.name}")
+        print(f"Description: {job.description}")
+        print(f"Status: {job.status}")
+        print(f"Priority: {job.priority}")
+        print(f"Created At: {job.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"Created By: {job.created_by}")
         
-        # Get the job item
-        response = table.get_item(
-            Key={
-                'PK': f"JOB#{args.job_id}",
-                'SK': f"JOB#{args.job_id}"
-            }
+        if job.tags:
+            print("\nTags:")
+            for key, value in job.tags.items():
+                print(f"  {key}: {value}")
+        
+        # Print status history
+        if statuses:
+            print("\nStatus History:")
+            for status in sorted(statuses, key=lambda s: s.timestamp, reverse=True):
+                print(f"  {status.timestamp.strftime('%Y-%m-%d %H:%M:%S')} - {status.status}: {status.message}")
+        
+        # Print configuration summary
+        print("\nConfiguration:")
+        config_str = json.dumps(job.job_config, indent=2)
+        if len(config_str) > 500:
+            print(f"{config_str[:500]}...\n(truncated)")
+        else:
+            print(config_str)
+        
+        # Get job logs
+        try:
+            logs = job_service.get_job_logs(args.job_id)
+            if logs:
+                print("\nLogs:")
+                for log in sorted(logs, key=lambda l: l.timestamp, reverse=True)[:10]:
+                    print(f"  {log.timestamp.strftime('%Y-%m-%d %H:%M:%S')} [{log.log_level}] {log.message}")
+                if len(logs) > 10:
+                    print(f"  ... and {len(logs) - 10} more logs")
+        except Exception as e:
+            logger.warning(f"Could not fetch logs: {str(e)}")
+        
+        # Get metrics
+        try:
+            metrics = job_service.get_job_metrics(args.job_id)
+            if metrics:
+                print("\nMetrics:")
+                metrics_table = []
+                for metric in sorted(metrics, key=lambda m: m.timestamp, reverse=True)[:10]:
+                    metrics_table.append([
+                        metric.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+                        metric.metric_name,
+                        metric.metric_value,
+                    ])
+                print(tabulate(metrics_table, headers=["Timestamp", "Metric", "Value"], tablefmt="simple"))
+                if len(metrics) > 10:
+                    print(f"  ... and {len(metrics) - 10} more metrics")
+        except Exception as e:
+            logger.warning(f"Could not fetch metrics: {str(e)}")
+        
+        # Get checkpoints
+        try:
+            checkpoints = job_service.get_job_checkpoints(args.job_id)
+            if checkpoints:
+                print("\nCheckpoints:")
+                for checkpoint in sorted(checkpoints, key=lambda c: c.created_at, reverse=True):
+                    print(f"  {checkpoint.created_at.strftime('%Y-%m-%d %H:%M:%S')} - {checkpoint.checkpoint_name}")
+        except Exception as e:
+            logger.warning(f"Could not fetch checkpoints: {str(e)}")
+        
+    except Exception as e:
+        print(f"Error retrieving job details: {str(e)}")
+        logger.error(f"Error in handle_job_details: {str(e)}")
+
+
+def add_dependency_commands(subparsers):
+    """Add dependency-related commands to the CLI."""
+    
+    # Command to add a dependency
+    add_dep_parser = subparsers.add_parser(
+        "add-dependency",
+        help="Add a dependency between jobs"
+    )
+    add_dep_parser.add_argument(
+        "job_id",
+        help="ID of the job that depends on another"
+    )
+    add_dep_parser.add_argument(
+        "dependency_job_id",
+        help="ID of the job that is depended on"
+    )
+    add_dep_parser.add_argument(
+        "--type",
+        choices=["COMPLETION", "SUCCESS", "FAILURE", "ARTIFACT"],
+        default="COMPLETION",
+        help="Type of dependency"
+    )
+    add_dep_parser.add_argument(
+        "--condition",
+        help="Condition for the dependency (required for ARTIFACT type)"
+    )
+    add_dep_parser.add_argument(
+        "--table-name",
+        default=None,
+        help="DynamoDB table name"
+    )
+    add_dep_parser.add_argument(
+        "--region",
+        default="us-east-1",
+        help="AWS region"
+    )
+    add_dep_parser.set_defaults(func=_add_dependency)
+    
+    # Command to list dependencies for a job
+    list_deps_parser = subparsers.add_parser(
+        "list-dependencies",
+        help="List dependencies for a job"
+    )
+    list_deps_parser.add_argument(
+        "job_id",
+        help="ID of the job to list dependencies for"
+    )
+    list_deps_parser.add_argument(
+        "--table-name",
+        default=None,
+        help="DynamoDB table name"
+    )
+    list_deps_parser.add_argument(
+        "--region",
+        default="us-east-1",
+        help="AWS region"
+    )
+    list_deps_parser.set_defaults(func=_list_dependencies)
+    
+    # Command to validate dependencies for a job
+    validate_deps_parser = subparsers.add_parser(
+        "validate-dependencies",
+        help="Validate dependencies for a job"
+    )
+    validate_deps_parser.add_argument(
+        "job_id",
+        help="ID of the job to validate dependencies for"
+    )
+    validate_deps_parser.add_argument(
+        "--table-name",
+        default=None,
+        help="DynamoDB table name"
+    )
+    validate_deps_parser.add_argument(
+        "--region",
+        default="us-east-1",
+        help="AWS region"
+    )
+    validate_deps_parser.set_defaults(func=_validate_dependencies)
+    
+    # Command to visualize dependencies
+    vis_deps_parser = subparsers.add_parser(
+        "visualize-dependencies",
+        help="Visualize dependencies for a job"
+    )
+    vis_deps_parser.add_argument(
+        "job_id",
+        help="ID of the job to visualize dependencies for"
+    )
+    vis_deps_parser.add_argument(
+        "--output",
+        default=None,
+        help="Path to output file (e.g., dependencies.png, dependencies.svg)"
+    )
+    vis_deps_parser.add_argument(
+        "--depth",
+        type=int,
+        default=3,
+        help="Maximum depth of dependencies to visualize"
+    )
+    vis_deps_parser.add_argument(
+        "--table-name",
+        default=None,
+        help="DynamoDB table name"
+    )
+    vis_deps_parser.add_argument(
+        "--region",
+        default="us-east-1",
+        help="AWS region"
+    )
+    vis_deps_parser.set_defaults(func=_visualize_dependencies)
+
+def _get_dynamo_table_name(args):
+    """Get DynamoDB table name from args or environment."""
+    if args.table_name:
+        return args.table_name
+        
+    try:
+        import os
+        return os.environ.get("DYNAMODB_TABLE")
+    except:
+        return None
+
+def _get_job_service(args):
+    """Initialize JobService from args."""
+    from receipt_dynamo.services.job_service import JobService
+    
+    table_name = _get_dynamo_table_name(args)
+    if not table_name:
+        raise ValueError("DynamoDB table name not provided and not found in environment")
+        
+    return JobService(table_name=table_name, region=args.region)
+
+def _add_dependency(args):
+    """Add a dependency between jobs."""
+    try:
+        from receipt_dynamo.entities.job_dependency import JobDependency
+        from datetime import datetime
+        
+        # Get job service
+        job_service = _get_job_service(args)
+        
+        # Validate dependency
+        from receipt_trainer.jobs.validator import validate_job_dependency
+        is_valid, error = validate_job_dependency(
+            dependent_job_id=args.job_id,
+            dependency_job_id=args.dependency_job_id,
+            dependency_type=args.type,
+            condition=args.condition,
+            job_service=job_service
         )
         
-        if 'Item' in response:
-            job = response['Item']
+        if not is_valid:
+            print(f"Invalid dependency: {error}")
+            return
+        
+        # Create dependency
+        job_dependency = JobDependency(
+            dependent_job_id=args.job_id,
+            dependency_job_id=args.dependency_job_id,
+            type=args.type.upper(),
+            created_at=datetime.now(),
+            condition=args.condition
+        )
+        
+        # Add to DynamoDB
+        job_service.add_job_dependency(
+            job_id=args.job_id,
+            depends_on_job_id=args.dependency_job_id,
+            dependency_type=args.type.upper(),
+            condition=args.condition
+        )
+        
+        print(f"Added dependency: {args.job_id} depends on {args.dependency_job_id} (type: {args.type})")
+        
+    except Exception as e:
+        print(f"Error adding dependency: {str(e)}")
+        
+def _list_dependencies(args):
+    """List dependencies for a job."""
+    try:
+        # Get job service
+        job_service = _get_job_service(args)
+        
+        # Get dependencies
+        dependencies = job_service.get_job_dependencies(args.job_id)
+        
+        if not dependencies:
+            print(f"No dependencies found for job {args.job_id}")
+            return
+        
+        print(f"Dependencies for job {args.job_id}:")
+        for i, dep in enumerate(dependencies, 1):
+            condition_str = f", condition: {dep.condition}" if dep.condition else ""
+            print(f"  {i}. Depends on: {dep.dependency_job_id} (type: {dep.type}{condition_str})")
+        
+        # Get job status
+        try:
+            job = job_service.get_job(args.job_id)
+            print(f"\nJob status: {job.status}")
+        except:
+            pass
+        
+        # Check if all dependencies are satisfied
+        try:
+            is_satisfied, unsatisfied = job_service.check_dependencies_satisfied(args.job_id)
+            print(f"\nAll dependencies satisfied: {is_satisfied}")
             
-            print(f"===== Job Details: {args.job_id} =====")
-            print(f"Name: {job.get('name', 'N/A')}")
-            print(f"Type: {job.get('type', 'N/A')}")
-            print(f"Status: {job.get('status', 'N/A')}")
-            print(f"Priority: {job.get('priority', 'N/A')}")
-            print(f"Created At: {job.get('created_at', 'N/A')}")
-            
-            if 'started_at' in job:
-                print(f"Started At: {job.get('started_at', 'N/A')}")
-            
-            if 'completed_at' in job:
-                print(f"Completed At: {job.get('completed_at', 'N/A')}")
-            
-            print(f"Attempt Count: {job.get('attempt_count', 'N/A')}")
-            
-            if 'error_message' in job:
-                print(f"Error Message: {job.get('error_message', 'N/A')}")
-            
-            if 'tags' in job:
-                print("\nTags:")
-                for key, value in job['tags'].items():
-                    print(f"  {key}: {value}")
-            
-            if 'dependencies' in job and job['dependencies']:
-                print("\nDependencies:")
-                for dep in job['dependencies']:
-                    print(f"  {dep}")
-            
-            if 'config' in job:
-                print("\nConfiguration Summary:")
-                try:
-                    if isinstance(job['config'], str):
-                        config = json.loads(job['config'])
-                    else:
-                        config = job['config']
-                    
-                    # Print a summary of the most important config values
-                    if 'model' in config:
-                        print(f"  Model: {config['model'].get('type', 'N/A')} {config['model'].get('version', 'N/A')}")
-                        print(f"  Pretrained Model: {config['model'].get('pretrained_model_name', 'N/A')}")
-                    
-                    if 'training' in config:
-                        print(f"  Epochs: {config['training'].get('epochs', 'N/A')}")
-                        print(f"  Batch Size: {config['training'].get('batch_size', 'N/A')}")
-                        print(f"  Learning Rate: {config['training'].get('learning_rate', 'N/A')}")
-                    
-                    if 'resources' in config:
-                        print(f"  Instance Type: {config['resources'].get('instance_type', 'N/A')}")
-                        print(f"  GPU Count: {config['resources'].get('min_gpu_count', 'N/A')}")
-                        print(f"  Spot Instance: {config['resources'].get('spot_instance', 'N/A')}")
-                    
-                    # Option to dump the full config
-                    print("\nUse '--full-config' to see the complete configuration (not implemented yet)")
-                    
-                except Exception as e:
-                    print(f"  Error parsing config: {str(e)}")
-            
-        else:
-            print(f"No job found with ID {args.job_id}")
+            if not is_satisfied:
+                print("\nUnsatisfied dependencies:")
+                for dep in unsatisfied:
+                    print(f"  - {dep['dependency_job_id']} (current status: {dep.get('current_status', 'unknown')})")
+        except Exception as e:
+            print(f"\nError checking dependency satisfaction: {str(e)}")
             
     except Exception as e:
-        logger.error(f"Error retrieving job details: {str(e)}")
+        print(f"Error listing dependencies: {str(e)}")
 
+def _validate_dependencies(args):
+    """Validate dependencies for a job."""
+    try:
+        # Get job service
+        job_service = _get_job_service(args)
+        
+        # Validate dependencies
+        from receipt_trainer.jobs.validator import validate_dependencies_for_job
+        is_valid, issues = validate_dependencies_for_job(args.job_id, job_service)
+        
+        if is_valid:
+            print(f"All dependencies for job {args.job_id} are valid")
+        else:
+            print(f"Found {len(issues)} issues with dependencies for job {args.job_id}:")
+            for i, issue in enumerate(issues, 1):
+                print(f"  {i}. {issue['type']}: {issue['message']}")
+                
+    except Exception as e:
+        print(f"Error validating dependencies: {str(e)}")
+
+def _visualize_dependencies(args):
+    """Visualize dependencies for a job."""
+    try:
+        # Check if graphviz is installed
+        try:
+            import graphviz
+        except ImportError:
+            print("Error: graphviz package is required for visualization")
+            print("Install with: pip install graphviz")
+            print("Note: You also need to install the Graphviz software (https://graphviz.org/download/)")
+            return
+            
+        # Get job service
+        job_service = _get_job_service(args)
+        
+        # Create a directed graph
+        dot = graphviz.Digraph(comment=f'Dependencies for job {args.job_id}')
+        
+        # Keep track of processed jobs to avoid duplicates
+        processed_jobs = set()
+        
+        # Process job and its dependencies recursively
+        def process_job(job_id, depth=0):
+            if depth > args.depth or job_id in processed_jobs:
+                return
+                
+            processed_jobs.add(job_id)
+            
+            try:
+                # Get job details
+                job = job_service.get_job(job_id)
+                
+                # Add node with job status
+                status_color = {
+                    "pending": "gray",
+                    "running": "blue",
+                    "succeeded": "green",
+                    "failed": "red",
+                    "cancelled": "orange"
+                }.get(job.status, "black")
+                
+                dot.node(job_id, f"{job.name}\n({job.status})", color=status_color, style="filled", fillcolor=f"{status_color}20")
+                
+                # Get dependencies
+                dependencies = job_service.get_job_dependencies(job_id)
+                
+                # Add edges for dependencies
+                for dep in dependencies:
+                    dep_type = dep.type.lower()
+                    edge_color = {
+                        "completion": "gray",
+                        "success": "green",
+                        "failure": "red",
+                        "artifact": "blue"
+                    }.get(dep_type, "black")
+                    
+                    label = dep_type
+                    if dep.condition:
+                        label += f"\n{dep.condition}"
+                        
+                    dot.edge(job_id, dep.dependency_job_id, label=label, color=edge_color)
+                    
+                    # Process dependency recursively
+                    process_job(dep.dependency_job_id, depth + 1)
+            except Exception as e:
+                print(f"Warning: Error processing job {job_id}: {str(e)}")
+                dot.node(job_id, f"{job_id}\n(error)", color="red", style="filled", fillcolor="#ffdddd")
+        
+        # Start processing from the root job
+        process_job(args.job_id)
+        
+        # Check if we have any nodes
+        if not processed_jobs:
+            print(f"No dependencies found for job {args.job_id}")
+            return
+            
+        # Render the graph
+        output_path = args.output
+        if output_path:
+            # Render to file
+            dot.render(output_path, view=True)
+            print(f"Dependency graph saved to {output_path}")
+        else:
+            # Print dot source
+            print("\nGraphviz DOT representation:")
+            print(dot.source)
+            print("\nTo visualize this graph, save it to a file with a .dot extension")
+            print("and use Graphviz tools (dot, neato, etc.) to render it.")
+            
+    except Exception as e:
+        print(f"Error visualizing dependencies: {str(e)}")
 
 def main() -> None:
     """Main entry point for the CLI."""
