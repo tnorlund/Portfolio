@@ -19,7 +19,8 @@ def dynamodb_table() -> str:
 @pytest.mark.end_to_end
 def test_dynamo_client_init_success(dynamodb_table: str):
     """
-    Tests that DynamoClient initializes successfully when provided an existing table.
+    Tests that DynamoClient initializes successfully when provided an existing
+    table.
     """
     DynamoClient(dynamodb_table)
 
