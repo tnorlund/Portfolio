@@ -6,25 +6,25 @@ from receipt_dynamo import JobStatus, itemToJobStatus
 @pytest.fixture
 def example_job_status():
     """Provides a sample JobStatus for testing."""
-    # fmt: off
-    return JobStatus("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+    return JobStatus(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         "running",
         "2021-01-01T00:00:00",
         progress=75.5,
         message="Training in progress",
         updated_by="user123",
-        instance_id="i-abc123def456")
-    # fmt: on
+        instance_id="i-abc123def456",
+    )
 
 
 @pytest.fixture
 def example_job_status_minimal():
     """Provides a minimal sample JobStatus for testing."""
-    # fmt: off
-    return JobStatus("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+    return JobStatus(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         "pending",
-        "2021-01-01T00:00:00")
-    # fmt: on
+        "2021-01-01T00:00:00",
+    )
 
 
 @pytest.mark.unit
@@ -243,17 +243,88 @@ def test_job_status_iter(example_job_status):
 @pytest.mark.unit
 def test_job_status_eq():
     """Test the JobStatus.__eq__() method."""
-    # fmt: off
-    js1 = JobStatus("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "running", "2021-01-01T00:00:00", 75.5, "Training in progress", "user123", "i-abc123def456")
-    js2 = JobStatus("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "running", "2021-01-01T00:00:00", 75.5, "Training in progress", "user123", "i-abc123def456")
-    js3 = JobStatus("4f52804b-2fad-4e00-92c8-b593da3a8ed3", "running", "2021-01-01T00:00:00", 75.5, "Training in progress", "user123", "i-abc123def456")  # Different job_id
-    js4 = JobStatus("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "pending", "2021-01-01T00:00:00", 75.5, "Training in progress", "user123", "i-abc123def456")  # Different status
-    js5 = JobStatus("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "running", "2021-01-02T00:00:00", 75.5, "Training in progress", "user123", "i-abc123def456")  # Different updated_at
-    js6 = JobStatus("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "running", "2021-01-01T00:00:00", 50.0, "Training in progress", "user123", "i-abc123def456")  # Different progress
-    js7 = JobStatus("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "running", "2021-01-01T00:00:00", 75.5, "Different message", "user123", "i-abc123def456")  # Different message
-    js8 = JobStatus("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "running", "2021-01-01T00:00:00", 75.5, "Training in progress", "different_user", "i-abc123def456")  # Different updated_by
-    js9 = JobStatus("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "running", "2021-01-01T00:00:00", 75.5, "Training in progress", "user123", "i-different")  # Different instance_id
-    # fmt: on
+
+    js1 = JobStatus(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "running",
+        "2021-01-01T00:00:00",
+        75.5,
+        "Training in progress",
+        "user123",
+        "i-abc123def456",
+    )
+    js2 = JobStatus(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "running",
+        "2021-01-01T00:00:00",
+        75.5,
+        "Training in progress",
+        "user123",
+        "i-abc123def456",
+    )
+    js3 = JobStatus(
+        "4f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "running",
+        "2021-01-01T00:00:00",
+        75.5,
+        "Training in progress",
+        "user123",
+        "i-abc123def456",
+    )  # Different job_id
+    js4 = JobStatus(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "pending",
+        "2021-01-01T00:00:00",
+        75.5,
+        "Training in progress",
+        "user123",
+        "i-abc123def456",
+    )  # Different status
+    js5 = JobStatus(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "running",
+        "2021-01-02T00:00:00",
+        75.5,
+        "Training in progress",
+        "user123",
+        "i-abc123def456",
+    )  # Different updated_at
+    js6 = JobStatus(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "running",
+        "2021-01-01T00:00:00",
+        50.0,
+        "Training in progress",
+        "user123",
+        "i-abc123def456",
+    )  # Different progress
+    js7 = JobStatus(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "running",
+        "2021-01-01T00:00:00",
+        75.5,
+        "Different message",
+        "user123",
+        "i-abc123def456",
+    )  # Different message
+    js8 = JobStatus(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "running",
+        "2021-01-01T00:00:00",
+        75.5,
+        "Training in progress",
+        "different_user",
+        "i-abc123def456",
+    )  # Different updated_by
+    js9 = JobStatus(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "running",
+        "2021-01-01T00:00:00",
+        75.5,
+        "Training in progress",
+        "user123",
+        "i-different",
+    )  # Different instance_id
 
     assert js1 == js2, "Should be equal"
     assert js1 != js3, "Different job_id"
