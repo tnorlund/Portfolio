@@ -14,25 +14,30 @@ def test_dbscan_lines_clusters():
       3. Asserts that lines are clustered as expected.
     """
 
-    # We'll define a small helper to create a Line with a given centroid (cx, cy).
-    # The corners are placed so that the centroid is roughly at (cx, cy).
+    # We'll define a small helper to create a Line with a given centroid
+    # (cx, cy). The corners are placed so that the centroid is roughly at
+    # (cx, cy).
     def make_line(line_id, cx, cy):
         # For simplicity, define corners as a small square around (cx, cy).
         half_size = 1.0
-        return Line(image_id="29984038-5cb5-4ce9-bcf0-856dcfca3125",
+        return Line(
+            image_id="29984038-5cb5-4ce9-bcf0-856dcfca3125",
             line_id=line_id,
             text=f"Line {line_id}",
-            bounding_box={"x": cx - half_size,
+            bounding_box={
+                "x": cx - half_size,
                 "y": cy - half_size,
                 "width": 2,
-                "height": 2, },
+                "height": 2,
+            },
             top_right={"x": cx + half_size, "y": cy + half_size},
             top_left={"x": cx - half_size, "y": cy + half_size},
             bottom_right={"x": cx + half_size, "y": cy - half_size},
             bottom_left={"x": cx - half_size, "y": cy - half_size},
             angle_degrees=0.0,
             angle_radians=0.0,
-            confidence=1.0, )
+            confidence=1.0,
+        )
 
     # Create lines in two obvious clusters + 1 noise line
     # Cluster A around (10, 10)
@@ -49,7 +54,8 @@ def test_dbscan_lines_clusters():
     lines = [line1, line2, line3, line4, line5]
 
     # We'll cluster with eps=3, min_samples=2
-    # => lines within distance 3 of each other with at least 2 neighbors => same cluster
+    # => lines within distance 3 of each other with at least 2 neighbors
+    # => same cluster
     eps = 3.0
     min_samples = 2
 
@@ -60,7 +66,9 @@ def test_dbscan_lines_clusters():
     # Let's gather them by label.
     # cluster_labels might be something like 0 => [line1, line2], 1 => [line3,
     # line4], -1 => [line5].
-    assert (len(clusters) == 3), "We expect 2 real clusters plus a noise cluster (-1)."
+    assert (
+        len(clusters) == 3
+    ), "We expect 2 real clusters plus a noise cluster (-1)."
 
     # Ensure we find -1 label for the noise line
     assert -1 in clusters, "Line5 should be labeled as noise."
@@ -91,10 +99,14 @@ def test_dbscan_lines_clusters():
             label_for_line4 = lbl
 
     # Lines 1 and 2 share the same cluster label:
-    assert (label_for_line2 == label_for_line1), "Line1 and Line2 must be in the same cluster."
+    assert (
+        label_for_line2 == label_for_line1
+    ), "Line1 and Line2 must be in the same cluster."
 
     # Lines 3 and 4 share the same cluster label:
-    assert (label_for_line4 == label_for_line3), "Line3 and Line4 must be in the same cluster."
+    assert (
+        label_for_line4 == label_for_line3
+    ), "Line3 and Line4 must be in the same cluster."
     # Actually simpler approach: just check membership
     cluster_a = clusters[label_for_line1]
     cluster_b = clusters[label_for_line3]
@@ -108,5 +120,9 @@ def test_dbscan_lines_clusters():
     expected_b = {line3, line4}
 
     # Just ensure we got exactly those pairs
-    assert (set_a == expected_a or set_b == expected_a), "One cluster should be lines 1 & 2"
-    assert (set_a == expected_b or set_b == expected_b), "Another cluster should be lines 3 & 4"
+    assert (
+        set_a == expected_a or set_b == expected_a
+    ), "One cluster should be lines 1 & 2"
+    assert (
+        set_a == expected_b or set_b == expected_b
+    ), "Another cluster should be lines 3 & 4"

@@ -5,20 +5,24 @@ import pytest
 
 from receipt_dynamo import DynamoClient, Line
 
-correct_line_params = {"image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+correct_line_params = {
+    "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
     "line_id": 1,
     "text": "test_string",
-    "bounding_box": {"x": 0.4454263367632384,
+    "bounding_box": {
+        "x": 0.4454263367632384,
         "height": 0.022867568134581906,
         "width": 0.08690182470506236,
-        "y": 0.9167082878750482, },
+        "y": 0.9167082878750482,
+    },
     "top_right": {"y": 0.9307722198001792, "x": 0.5323281614683008},
     "top_left": {"y": 0.9395758560096301, "x": 0.44837726658954413},
     "bottom_right": {"x": 0.529377231641995, "y": 0.9167082878750482},
     "bottom_left": {"x": 0.4454263367632384, "y": 0.9255119240844992},
     "angle_degrees": -5.986527,
     "angle_radians": -0.10448461,
-    "confidence": 1, }
+    "confidence": 1,
+}
 
 
 @pytest.mark.integration
@@ -31,8 +35,10 @@ def test_line_add(dynamodb_table: Literal["MyMockedTable"]):
     client.addLine(line)
 
     # Assert
-    response = boto3.client("dynamodb", region_name="us-east-1").get_item(TableName=dynamodb_table,
-        Key=line.key(), )
+    response = boto3.client("dynamodb", region_name="us-east-1").get_item(
+        TableName=dynamodb_table,
+        Key=line.key(),
+    )
     assert "Item" in response, f"Item not found. response: {response}"
     assert response["Item"] == line.to_item()
 
@@ -63,13 +69,17 @@ def test_line_add_all(dynamodb_table: Literal["MyMockedTable"]):
     client.addLines([line_1, line_2])
 
     # Assert
-    response = boto3.client("dynamodb", region_name="us-east-1").get_item(TableName=dynamodb_table,
-        Key=line_1.key(), )
+    response = boto3.client("dynamodb", region_name="us-east-1").get_item(
+        TableName=dynamodb_table,
+        Key=line_1.key(),
+    )
     assert "Item" in response, f"Item not found. response: {response}"
     assert response["Item"] == line_1.to_item()
 
-    response = boto3.client("dynamodb", region_name="us-east-1").get_item(TableName=dynamodb_table,
-        Key=line_2.key(), )
+    response = boto3.client("dynamodb", region_name="us-east-1").get_item(
+        TableName=dynamodb_table,
+        Key=line_2.key(),
+    )
     assert "Item" in response, f"Item not found. response: {response}"
     assert response["Item"] == line_2.to_item()
 
