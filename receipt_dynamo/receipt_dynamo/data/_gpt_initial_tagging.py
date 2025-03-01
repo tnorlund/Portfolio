@@ -3,8 +3,10 @@ from typing import Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.entities.gpt_initial_tagging import (GPTInitialTagging,
-    itemToGPTInitialTagging, )
+from receipt_dynamo.entities.gpt_initial_tagging import (
+    GPTInitialTagging,
+    itemToGPTInitialTagging,
+)
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 CHUNK_SIZE = 25
@@ -30,13 +32,19 @@ class _GPTInitialTagging:
             ValueError: If a record with the same key already exists.
         """
         try:
-            self._client.put_item(TableName=self.table_name,
+            self._client.put_item(
+                TableName=self.table_name,
                 Item=tagging.to_item(),
-                ConditionExpression="attribute_not_exists(PK)", )
+                ConditionExpression="attribute_not_exists(PK)",
+            )
         except ClientError as e:
-            if (e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"):
-                raise ValueError(f"GPTInitialTagging already exists: {tagging}")
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
+                raise ValueError(
+                    f"GPTInitialTagging already exists: {tagging}"
+                )
             else:
                 raise Exception(f"Error adding GPTInitialTagging: {e}")
 
@@ -52,18 +60,26 @@ class _GPTInitialTagging:
         """
         try:
             for i in range(0, len(taggings), CHUNK_SIZE):
-                chunk = taggings[i:i + CHUNK_SIZE]
-                request_items = [{"PutRequest": {"Item": t.to_item()}} for t in chunk]
-                response = self._client.batch_write_item(RequestItems={self.table_name: request_items})
+                chunk = taggings[i : i + CHUNK_SIZE]
+                request_items = [
+                    {"PutRequest": {"Item": t.to_item()}} for t in chunk
+                ]
+                response = self._client.batch_write_item(
+                    RequestItems={self.table_name: request_items}
+                )
                 # Handle any unprocessed items by retrying.
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             raise ValueError(f"Error adding GPTInitialTaggings: {e}")
 
-    def getGPTInitialTagging(self, image_id: str, receipt_id: int) -> GPTInitialTagging:
+    def getGPTInitialTagging(
+        self, image_id: str, receipt_id: int
+    ) -> GPTInitialTagging:
         """
         Retrieves a GPTInitialTagging record from the database by its composite key.
 
@@ -77,13 +93,19 @@ class _GPTInitialTagging:
         Raises:
             ValueError: If the record is not found.
         """
-        key = {"PK": {"S": f"IMAGE#{image_id}"},
-            "SK": {"S": f"RECEIPT#{receipt_id:05d}#QUERY#INITIAL_TAGGING"}, }
+        key = {
+            "PK": {"S": f"IMAGE#{image_id}"},
+            "SK": {"S": f"RECEIPT#{receipt_id:05d}#QUERY#INITIAL_TAGGING"},
+        }
         try:
-            response = self._client.get_item(TableName=self.table_name,
-                Key=key, )
+            response = self._client.get_item(
+                TableName=self.table_name,
+                Key=key,
+            )
             if "Item" not in response:
-                raise ValueError(f"GPTInitialTagging record not found for key: {key}")
+                raise ValueError(
+                    f"GPTInitialTagging record not found for key: {key}"
+                )
             return itemToGPTInitialTagging(response["Item"])
         except ClientError as e:
             raise Exception(f"Error retrieving GPTInitialTagging: {e}")
@@ -99,13 +121,19 @@ class _GPTInitialTagging:
             ValueError: If the record does not exist.
         """
         try:
-            self._client.put_item(TableName=self.table_name,
+            self._client.put_item(
+                TableName=self.table_name,
                 Item=tagging.to_item(),
-                ConditionExpression="attribute_exists(PK)", )
+                ConditionExpression="attribute_exists(PK)",
+            )
         except ClientError as e:
-            if (e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"):
-                raise ValueError(f"GPTInitialTagging record not found: {tagging}")
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
+                raise ValueError(
+                    f"GPTInitialTagging record not found: {tagging}"
+                )
             else:
                 raise Exception(f"Error updating GPTInitialTagging: {e}")
 
@@ -120,13 +148,19 @@ class _GPTInitialTagging:
             ValueError: If the record does not exist.
         """
         try:
-            self._client.delete_item(TableName=self.table_name,
+            self._client.delete_item(
+                TableName=self.table_name,
                 Key=tagging.key(),
-                ConditionExpression="attribute_exists(PK)", )
+                ConditionExpression="attribute_exists(PK)",
+            )
         except ClientError as e:
-            if (e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"):
-                raise ValueError(f"GPTInitialTagging record not found: {tagging}")
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
+                raise ValueError(
+                    f"GPTInitialTagging record not found: {tagging}"
+                )
             else:
                 raise Exception(f"Error deleting GPTInitialTagging: {e}")
 
@@ -142,20 +176,28 @@ class _GPTInitialTagging:
         """
         try:
             for i in range(0, len(taggings), CHUNK_SIZE):
-                chunk = taggings[i:i + CHUNK_SIZE]
-                request_items = [{"DeleteRequest": {"Key": tagging.key()}}
-                    for tagging in chunk]
-                response = self._client.batch_write_item(RequestItems={self.table_name: request_items})
+                chunk = taggings[i : i + CHUNK_SIZE]
+                request_items = [
+                    {"DeleteRequest": {"Key": tagging.key()}}
+                    for tagging in chunk
+                ]
+                response = self._client.batch_write_item(
+                    RequestItems={self.table_name: request_items}
+                )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             raise ValueError(f"Error deleting GPTInitialTaggings: {e}")
 
-    def listGPTInitialTaggings(self,
+    def listGPTInitialTaggings(
+        self,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict] = None, ) -> Tuple[List[GPTInitialTagging], Optional[Dict]]:
+        lastEvaluatedKey: Optional[Dict] = None,
+    ) -> Tuple[List[GPTInitialTagging], Optional[Dict]]:
         """
         Lists GPTInitialTagging records from the database via a global secondary index.
         The query uses the GSITYPE index on the "TYPE" attribute where the value is "GPT_INITIAL_TAGGING".
@@ -185,26 +227,40 @@ class _GPTInitialTagging:
         """
         taggings = []
         try:
-            query_params = {"TableName": self.table_name,
+            query_params = {
+                "TableName": self.table_name,
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "GPT_INITIAL_TAGGING"}}, }
+                "ExpressionAttributeValues": {
+                    ":val": {"S": "GPT_INITIAL_TAGGING"}
+                },
+            }
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
             if limit is not None:
                 query_params["Limit"] = limit
 
             response = self._client.query(**query_params)
-            taggings.extend([itemToGPTInitialTagging(item) for item in response["Items"]])
+            taggings.extend(
+                [itemToGPTInitialTagging(item) for item in response["Items"]]
+            )
             if limit is None:
                 # Paginate until no more items are available.
-                while ("LastEvaluatedKey" in response
-                    and response["LastEvaluatedKey"]):
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                while (
+                    "LastEvaluatedKey" in response
+                    and response["LastEvaluatedKey"]
+                ):
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                     response = self._client.query(**query_params)
-                    taggings.extend([itemToGPTInitialTagging(item)
-                            for item in response["Items"]])
+                    taggings.extend(
+                        [
+                            itemToGPTInitialTagging(item)
+                            for item in response["Items"]
+                        ]
+                    )
                 lek = None
             else:
                 lek = response.get("LastEvaluatedKey", None)

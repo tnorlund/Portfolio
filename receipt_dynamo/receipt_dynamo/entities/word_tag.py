@@ -33,7 +33,7 @@ class WordTag:
     timestamp_validated: Optional[str]
     gpt_confidence: Optional[int]
     flag: Optional[str]
-    revised_tag: Optional[str]ß
+    revised_tag: Optional[str]
     human_validated: Optional[bool]
     timestamp_human_validated: Optional[str]
 

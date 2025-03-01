@@ -43,12 +43,16 @@ class _GPTValidation:
             ValueError: If a record with the same key already exists.
         """
         try:
-            self._client.put_item(TableName=self.table_name,
+            self._client.put_item(
+                TableName=self.table_name,
                 Item=validation.to_item(),
-                ConditionExpression="attribute_not_exists(PK)", )
+                ConditionExpression="attribute_not_exists(PK)",
+            )
         except ClientError as e:
-            if (e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"):
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
                 raise ValueError(f"GPTValidation already exists: {validation}")
             else:
                 raise Exception(f"Error adding GPTValidation: {e}")
@@ -65,18 +69,26 @@ class _GPTValidation:
         """
         try:
             for i in range(0, len(validations), CHUNK_SIZE):
-                chunk = validations[i:i + CHUNK_SIZE]
-                request_items = [{"PutRequest": {"Item": v.to_item()}} for v in chunk]
-                response = self._client.batch_write_item(RequestItems={self.table_name: request_items})
+                chunk = validations[i : i + CHUNK_SIZE]
+                request_items = [
+                    {"PutRequest": {"Item": v.to_item()}} for v in chunk
+                ]
+                response = self._client.batch_write_item(
+                    RequestItems={self.table_name: request_items}
+                )
                 # Handle any unprocessed items by retrying.
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             raise ValueError(f"Error adding GPTValidations: {e}")
 
-    def getGPTValidation(self, image_id: str, receipt_id: int) -> GPTValidation:
+    def getGPTValidation(
+        self, image_id: str, receipt_id: int
+    ) -> GPTValidation:
         """
         Retrieves a GPTValidation record from the database by its composite key.
 
@@ -90,13 +102,19 @@ class _GPTValidation:
         Raises:
             ValueError: If the record is not found.
         """
-        key = {"PK": {"S": f"IMAGE#{image_id}"},
-            "SK": {"S": f"RECEIPT#{receipt_id:05d}#QUERY#VALIDATION"}, }
+        key = {
+            "PK": {"S": f"IMAGE#{image_id}"},
+            "SK": {"S": f"RECEIPT#{receipt_id:05d}#QUERY#VALIDATION"},
+        }
         try:
-            response = self._client.get_item(TableName=self.table_name,
-                Key=key, )
+            response = self._client.get_item(
+                TableName=self.table_name,
+                Key=key,
+            )
             if "Item" not in response:
-                raise ValueError(f"GPTValidation record not found for key: {key}")
+                raise ValueError(
+                    f"GPTValidation record not found for key: {key}"
+                )
             return itemToGPTValidation(response["Item"])
         except ClientError as e:
             raise Exception(f"Error retrieving GPTValidation: {e}")
@@ -112,13 +130,19 @@ class _GPTValidation:
             ValueError: If the record does not exist.
         """
         try:
-            self._client.put_item(TableName=self.table_name,
+            self._client.put_item(
+                TableName=self.table_name,
                 Item=validation.to_item(),
-                ConditionExpression="attribute_exists(PK)", )
+                ConditionExpression="attribute_exists(PK)",
+            )
         except ClientError as e:
-            if (e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"):
-                raise ValueError(f"GPTValidation record not found: {validation}")
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
+                raise ValueError(
+                    f"GPTValidation record not found: {validation}"
+                )
             else:
                 raise Exception(f"Error updating GPTValidation: {e}")
 
@@ -133,13 +157,19 @@ class _GPTValidation:
             ValueError: If the record does not exist.
         """
         try:
-            self._client.delete_item(TableName=self.table_name,
+            self._client.delete_item(
+                TableName=self.table_name,
                 Key=validation.key(),
-                ConditionExpression="attribute_exists(PK)", )
+                ConditionExpression="attribute_exists(PK)",
+            )
         except ClientError as e:
-            if (e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"):
-                raise ValueError(f"GPTValidation record not found: {validation}")
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
+                raise ValueError(
+                    f"GPTValidation record not found: {validation}"
+                )
             else:
                 raise Exception(f"Error deleting GPTValidation: {e}")
 
@@ -155,20 +185,28 @@ class _GPTValidation:
         """
         try:
             for i in range(0, len(validations), CHUNK_SIZE):
-                chunk = validations[i:i + CHUNK_SIZE]
-                request_items = [{"DeleteRequest": {"Key": validation.key()}}
-                    for validation in chunk]
-                response = self._client.batch_write_item(RequestItems={self.table_name: request_items})
+                chunk = validations[i : i + CHUNK_SIZE]
+                request_items = [
+                    {"DeleteRequest": {"Key": validation.key()}}
+                    for validation in chunk
+                ]
+                response = self._client.batch_write_item(
+                    RequestItems={self.table_name: request_items}
+                )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             raise ValueError(f"Error deleting GPTValidations: {e}")
 
-    def listGPTValidations(self,
+    def listGPTValidations(
+        self,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict] = None, ) -> Tuple[List[GPTValidation], Optional[Dict]]:
+        lastEvaluatedKey: Optional[Dict] = None,
+    ) -> Tuple[List[GPTValidation], Optional[Dict]]:
         """
         Lists GPTValidation records from the database via a global secondary index.
         The query uses the GSITYPE index on the "TYPE" attribute where the value is "GPT_VALIDATION".
@@ -198,27 +236,39 @@ class _GPTValidation:
         """
         validations = []
         try:
-            query_params = {"TableName": self.table_name,
+            query_params = {
+                "TableName": self.table_name,
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "GPT_VALIDATION"}}, }
+                "ExpressionAttributeValues": {":val": {"S": "GPT_VALIDATION"}},
+            }
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
             if limit is not None:
                 query_params["Limit"] = limit
 
             response = self._client.query(**query_params)
-            validations.extend([itemToGPTValidation(item) for item in response["Items"]])
+            validations.extend(
+                [itemToGPTValidation(item) for item in response["Items"]]
+            )
             if limit is None:
                 # If no limit is provided, continue paginating until all items
                 # are retrieved.
-                while ("LastEvaluatedKey" in response
-                    and response["LastEvaluatedKey"]):
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                while (
+                    "LastEvaluatedKey" in response
+                    and response["LastEvaluatedKey"]
+                ):
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                     response = self._client.query(**query_params)
-                    validations.extend([itemToGPTValidation(item)
-                            for item in response["Items"]])
+                    validations.extend(
+                        [
+                            itemToGPTValidation(item)
+                            for item in response["Items"]
+                        ]
+                    )
                 lek = None
             else:
                 lek = response.get("LastEvaluatedKey", None)
