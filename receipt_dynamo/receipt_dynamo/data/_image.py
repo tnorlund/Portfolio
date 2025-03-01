@@ -3,7 +3,8 @@ from typing import Dict, List, Optional, Tuple, Union
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo import (GPTInitialTagging,
+from receipt_dynamo import (
+    GPTInitialTagging,
     GPTValidation,
     Image,
     Letter,
@@ -26,7 +27,8 @@ from receipt_dynamo import (GPTInitialTagging,
     itemToReceiptWord,
     itemToReceiptWordTag,
     itemToWord,
-    itemToWordTag, )
+    itemToWordTag,
+)
 from receipt_dynamo.entities import assert_valid_uuid
 from receipt_dynamo.entities.receipt_window import itemToReceiptWindow
 
@@ -113,13 +115,17 @@ class _Image:
         # Attempt to put the image item into DynamoDB with a condition that prevents
         # overwriting an existing image.
         try:
-            self._client.put_item(TableName=self.table_name,
+            self._client.put_item(
+                TableName=self.table_name,
                 Item=image.to_item(),
-                ConditionExpression="attribute_not_exists(PK)", )
+                ConditionExpression="attribute_not_exists(PK)",
+            )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(f"Image with ID {image.image_id} already exists") from e
+                raise ValueError(
+                    f"Image with ID {image.image_id} already exists"
+                ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "InternalServerError":
@@ -150,22 +156,32 @@ class _Image:
             For any other errors encountered during the batch write operation.
         """
         if images is None:
-            raise ValueError("Images parameter is required and cannot be None.")
+            raise ValueError(
+                "Images parameter is required and cannot be None."
+            )
         if not isinstance(images, list):
             raise ValueError("Images must be provided as a list.")
         if not all(isinstance(img, Image) for img in images):
-            raise ValueError("All items in the images list must be instances of the Image class.")
+            raise ValueError(
+                "All items in the images list must be instances of the Image class."
+            )
 
         try:
             for i in range(0, len(images), CHUNK_SIZE):
-                chunk = images[i:i + CHUNK_SIZE]
-                request_items = [{"PutRequest": {"Item": image.to_item()}}
-                    for image in chunk]
-                response = self._client.batch_write_item(RequestItems={self.table_name: request_items})
+                chunk = images[i : i + CHUNK_SIZE]
+                request_items = [
+                    {"PutRequest": {"Item": image.to_item()}}
+                    for image in chunk
+                ]
+                response = self._client.batch_write_item(
+                    RequestItems={self.table_name: request_items}
+                )
                 # Handle unprocessed items if they exist
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             raise ValueError(f"Error adding images: {e}") from e
@@ -199,15 +215,19 @@ class _Image:
 
         # Attempt to retrieve the image item from DynamoDB.
         try:
-            response = self._client.get_item(TableName=self.table_name,
-                Key={"PK": {"S": f"IMAGE#{image_id}"}, "SK": {"S": "IMAGE"}}, )
+            response = self._client.get_item(
+                TableName=self.table_name,
+                Key={"PK": {"S": f"IMAGE#{image_id}"}, "SK": {"S": "IMAGE"}},
+            )
             if "Item" not in response or not response["Item"]:
                 raise ValueError(f"Image with ID {image_id} not found")
             return itemToImage(response["Item"])
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(f"Table {self.table_name} not found: {e}") from e
+                raise Exception(
+                    f"Table {self.table_name} not found: {e}"
+                ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "InternalServerError":
@@ -243,13 +263,17 @@ class _Image:
             raise ValueError("image must be an instance of the Image class.")
 
         try:
-            self._client.put_item(TableName=self.table_name,
+            self._client.put_item(
+                TableName=self.table_name,
                 Item=image.to_item(),
-                ConditionExpression="attribute_exists(PK)", )
+                ConditionExpression="attribute_exists(PK)",
+            )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(f"Image with ID {image.image_id} not found") from e
+                raise ValueError(
+                    f"Image with ID {image.image_id} not found"
+                ) from e
             else:
                 raise Exception(f"Error updating image: {e}") from e
 
@@ -278,19 +302,29 @@ class _Image:
             - or any other unexpected errors.
         """
         if images is None:
-            raise ValueError("Images parameter is required and cannot be None.")
+            raise ValueError(
+                "Images parameter is required and cannot be None."
+            )
         if not isinstance(images, list):
             raise ValueError("Images must be provided as a list.")
         if not all(isinstance(img, Image) for img in images):
-            raise ValueError("All items in the images list must be instances of the Image class.")
+            raise ValueError(
+                "All items in the images list must be instances of the Image class."
+            )
 
         for i in range(0, len(images), CHUNK_SIZE):
-            chunk = images[i:i + CHUNK_SIZE]
+            chunk = images[i : i + CHUNK_SIZE]
             transact_items = []
             for image in chunk:
-                transact_items.append({"Put": {"TableName": self.table_name,
+                transact_items.append(
+                    {
+                        "Put": {
+                            "TableName": self.table_name,
                             "Item": image.to_item(),
-                            "ConditionExpression": "attribute_exists(PK)", }})
+                            "ConditionExpression": "attribute_exists(PK)",
+                        }
+                    }
+                )
             try:
                 self._client.transact_write_items(TransactItems=transact_items)
             except ClientError as e:
@@ -298,17 +332,22 @@ class _Image:
                 if error_code == "ConditionalCheckFailedException":
                     raise ValueError("One or more images do not exist") from e
                 elif error_code == "ProvisionedThroughputExceededException":
-                    raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                    raise Exception(
+                        f"Provisioned throughput exceeded: {e}"
+                    ) from e
                 elif error_code == "InternalServerError":
                     raise Exception(f"Internal server error: {e}") from e
                 elif error_code == "ValidationException":
-                    raise Exception(f"One or more parameters given were invalid: {e}") from e
+                    raise Exception(
+                        f"One or more parameters given were invalid: {e}"
+                    ) from e
                 elif error_code == "AccessDeniedException":
                     raise Exception(f"Access denied: {e}") from e
                 else:
                     raise ValueError(f"Error updating images: {e}") from e
 
-    def getImageDetails(self, image_id: str) -> tuple[list[Image],
+    def getImageDetails(self, image_id: str) -> tuple[
+        list[Image],
         list[Line],
         list[Word],
         list[WordTag],
@@ -319,7 +358,8 @@ class _Image:
         list[ReceiptWordTag],
         list[ReceiptLetter],
         list[GPTInitialTagging],
-        list[GPTValidation], ]:
+        list[GPTValidation],
+    ]:
         """
         Retrieves detailed information about an Image from the database,
         including its lines, words, letters, and any associated receipts.
@@ -364,21 +404,31 @@ class _Image:
         gpt_initial_taggings = []
         gpt_validations = []
         try:
-            response = self._client.query(TableName=self.table_name,
+            response = self._client.query(
+                TableName=self.table_name,
                 KeyConditionExpression="#pk = :pk_value",
                 ExpressionAttributeNames={"#pk": "PK"},
-                ExpressionAttributeValues={":pk_value": {"S": f"IMAGE#{image_id}"}},
-                ScanIndexForward=True, )
+                ExpressionAttributeValues={
+                    ":pk_value": {"S": f"IMAGE#{image_id}"}
+                },
+                ScanIndexForward=True,
+            )
             items = response["Items"]
 
             # Keep querying if there's a LastEvaluatedKey
-            while ("LastEvaluatedKey" in response and response["LastEvaluatedKey"]):
-                response = self._client.query(TableName=self.table_name,
+            while (
+                "LastEvaluatedKey" in response and response["LastEvaluatedKey"]
+            ):
+                response = self._client.query(
+                    TableName=self.table_name,
                     KeyConditionExpression="#pk = :pk_value",
                     ExpressionAttributeNames={"#pk": "PK"},
-                    ExpressionAttributeValues={":pk_value": {"S": f"IMAGE#{image_id}"}, },
+                    ExpressionAttributeValues={
+                        ":pk_value": {"S": f"IMAGE#{image_id}"},
+                    },
                     ExclusiveStartKey=response["LastEvaluatedKey"],
-                    ScanIndexForward=True, )
+                    ScanIndexForward=True,
+                )
                 items += response["Items"]
 
             for item in items:
@@ -409,7 +459,8 @@ class _Image:
                 elif item["TYPE"]["S"] == "GPT_VALIDATION":
                     gpt_validations.append(itemToGPTValidation(item))
 
-            return (images,
+            return (
+                images,
                 lines,
                 words,
                 word_tags,
@@ -421,7 +472,8 @@ class _Image:
                 receipt_word_tags,
                 receipt_letters,
                 gpt_initial_taggings,
-                gpt_validations, )
+                gpt_validations,
+            )
 
         except Exception as e:
             raise Exception(f"Error getting image details: {e}")
@@ -445,12 +497,16 @@ class _Image:
             If another error occurs during the delete operation.
         """
         try:
-            self._client.delete_item(TableName=self.table_name,
+            self._client.delete_item(
+                TableName=self.table_name,
                 Key={"PK": {"S": f"IMAGE#{image_id}"}, "SK": {"S": "IMAGE"}},
-                ConditionExpression="attribute_exists(PK)", )
+                ConditionExpression="attribute_exists(PK)",
+            )
         except ClientError as e:
-            if (e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"):
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
                 raise ValueError(f"Image with ID {image_id} not found")
             else:
                 raise Exception(f"Error deleting image: {e}")
@@ -473,20 +529,32 @@ class _Image:
         """
         try:
             for i in range(0, len(images), CHUNK_SIZE):
-                chunk = images[i:i + CHUNK_SIZE]
-                request_items = [{"DeleteRequest": {"Key": image.key()}} for image in chunk]
-                response = self._client.batch_write_item(RequestItems={self.table_name: request_items})
+                chunk = images[i : i + CHUNK_SIZE]
+                request_items = [
+                    {"DeleteRequest": {"Key": image.key()}} for image in chunk
+                ]
+                response = self._client.batch_write_item(
+                    RequestItems={self.table_name: request_items}
+                )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
-            raise ValueError("Could not delete images from the database") from e
+            raise ValueError(
+                "Could not delete images from the database"
+            ) from e
 
-    def listImageDetails(self,
+    def listImageDetails(
+        self,
         limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None, ) -> Tuple[Dict[int, Dict[str, Union[Image, List[Receipt], List[Line]]]],
-        Optional[Dict], ]:
+        last_evaluated_key: Optional[Dict] = None,
+    ) -> Tuple[
+        Dict[int, Dict[str, Union[Image, List[Receipt], List[Line]]]],
+        Optional[Dict],
+    ]:
         """
         Lists images and their basic associated details (lines, receipts) using a
         global secondary index where GSI1PK = 'IMAGE'. Supports optional pagination.
@@ -515,28 +583,34 @@ class _Image:
             response = None
             while True:
                 if response is None:
-                    response = self._client.query(TableName=self.table_name,
+                    response = self._client.query(
+                        TableName=self.table_name,
                         IndexName="GSI1",
                         KeyConditionExpression="#pk = :pk_val",
                         ExpressionAttributeNames={"#pk": "GSI1PK"},
                         ExpressionAttributeValues={":pk_val": {"S": "IMAGE"}},
-                        ScanIndexForward=True, )
+                        ScanIndexForward=True,
+                    )
                 else:
                     if not response.get("LastEvaluatedKey"):
                         break
-                    response = self._client.query(TableName=self.table_name,
+                    response = self._client.query(
+                        TableName=self.table_name,
                         IndexName="GSI1",
                         KeyConditionExpression="#pk = :pk_val",
                         ExpressionAttributeNames={"#pk": "GSI1PK"},
                         ExpressionAttributeValues={":pk_val": {"S": "IMAGE"}},
                         ExclusiveStartKey=response["LastEvaluatedKey"],
-                        ScanIndexForward=True, )
+                        ScanIndexForward=True,
+                    )
 
                 all_items.extend(response["Items"])
                 if not response.get("LastEvaluatedKey"):
                     break
 
-            payload: Dict[int, Dict[str, Union[Image, List[Receipt], List[Line]]]] = {}
+            payload: Dict[
+                int, Dict[str, Union[Image, List[Receipt], List[Line]]]
+            ] = {}
             for item in all_items:
                 sk = item["SK"]["S"]
                 item_type = item["TYPE"]["S"]
@@ -546,16 +620,22 @@ class _Image:
                 elif sk.startswith("RECEIPT") and item_type == "RECEIPT":
                     receipt = itemToReceipt(item)
                     if receipt.image_id in payload:
-                        payload[receipt.image_id].setdefault("receipts", []).append(receipt)
+                        payload[receipt.image_id].setdefault(
+                            "receipts", []
+                        ).append(receipt)
                 elif sk.startswith("LINE") and item_type == "LINE":
                     line = itemToLine(item)
                     if line.image_id in payload:
-                        payload[line.image_id].setdefault("lines", []).append(line)
+                        payload[line.image_id].setdefault("lines", []).append(
+                            line
+                        )
 
             return payload, None
 
         # CASE 2: Paginated => Return exactly 'limit' images (if available)
-        payload: Dict[int, Dict[str, Union[Image, List[Receipt], List[Line]]]] = {}
+        payload: Dict[
+            int, Dict[str, Union[Image, List[Receipt], List[Line]]]
+        ] = {}
         included_image_ids = set()
         images_found = 0
         lek_to_return = None
@@ -563,12 +643,14 @@ class _Image:
         next_key = last_evaluated_key
 
         while True:
-            query_params = {"TableName": self.table_name,
+            query_params = {
+                "TableName": self.table_name,
                 "IndexName": "GSI1",
                 "KeyConditionExpression": "#pk = :pk_val",
                 "ExpressionAttributeNames": {"#pk": "GSI1PK"},
                 "ExpressionAttributeValues": {":pk_val": {"S": "IMAGE"}},
-                "ScanIndexForward": True, }
+                "ScanIndexForward": True,
+            }
             # We ask for limit+1 so we can detect a leftover image
             if limit is not None:
                 query_params["Limit"] = limit + 1
@@ -594,8 +676,10 @@ class _Image:
                         payload[img.image_id] = {"image": img}
                         included_image_ids.add(img.image_id)
                         images_found += 1
-                        last_consumed_image_key = {**img.key(),
-                            **img.gsi1_key(), }
+                        last_consumed_image_key = {
+                            **img.key(),
+                            **img.gsi1_key(),
+                        }
                     else:
                         # This is the (limit+1)-th image => leftover
                         leftover_img = itemToImage(item)
@@ -603,7 +687,7 @@ class _Image:
                         # leftover_image_key not used currently but may be needed in future
                         # leftover_image_key = {#     **leftover_img.key(),
                         #     **leftover_img.gsi1_key(),
-                        #}
+                        # }
 
                 # LINE or RECEIPT item
                 elif item_type in ("LINE", "RECEIPT"):
@@ -612,22 +696,30 @@ class _Image:
                         if item_type == "LINE":
                             ln = itemToLine(item)
                             if ln.image_id in included_image_ids:
-                                payload[ln.image_id].setdefault("lines", []).append(ln)
+                                payload[ln.image_id].setdefault(
+                                    "lines", []
+                                ).append(ln)
                         else:
                             rcpt = itemToReceipt(item)
                             if rcpt.image_id in included_image_ids:
-                                payload[rcpt.image_id].setdefault("receipts", []).append(rcpt)
+                                payload[rcpt.image_id].setdefault(
+                                    "receipts", []
+                                ).append(rcpt)
                     else:
                         # No leftover identified yet, so attach to included
                         # images if relevant
                         if item_type == "LINE":
                             ln = itemToLine(item)
                             if ln.image_id in included_image_ids:
-                                payload[ln.image_id].setdefault("lines", []).append(ln)
+                                payload[ln.image_id].setdefault(
+                                    "lines", []
+                                ).append(ln)
                         else:
                             rcpt = itemToReceipt(item)
                             if rcpt.image_id in included_image_ids:
-                                payload[rcpt.image_id].setdefault("receipts", []).append(rcpt)
+                                payload[rcpt.image_id].setdefault(
+                                    "receipts", []
+                                ).append(rcpt)
 
             if leftover_image_id is not None:
                 # We found the leftover (limit+1)-th image, so we're done for
@@ -650,10 +742,12 @@ class _Image:
 
         return payload, lek_to_return
 
-    def listImagesWordsTags(self,
+    def listImagesWordsTags(
+        self,
         image_id: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict] = None, ) -> Tuple[List[Image], List[WordTag], Optional[Dict]]:
+        lastEvaluatedKey: Optional[Dict] = None,
+    ) -> Tuple[List[Image], List[WordTag], Optional[Dict]]:
         """
         Lists images and their associated words and tags from the database.
 
@@ -687,10 +781,14 @@ class _Image:
         words = []
         word_tags = []
         try:
-            query_params = {"TableName": self.table_name,
+            query_params = {
+                "TableName": self.table_name,
                 "IndexName": "GSI2",
                 "KeyConditionExpression": "GSI2PK = :val",
-                "ExpressionAttributeValues": {":val": {"S": f"IMAGE#{image_id}"}}, }
+                "ExpressionAttributeValues": {
+                    ":val": {"S": f"IMAGE#{image_id}"}
+                },
+            }
 
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
@@ -711,11 +809,15 @@ class _Image:
             return image, words, word_tags, last_evaluated_key
 
         except ClientError as e:
-            raise ValueError(f"Could not list images and words and tags from the database: {e}")
+            raise ValueError(
+                f"Could not list images and words and tags from the database: {e}"
+            )
 
-    def listImages(self,
+    def listImages(
+        self,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict] = None, ) -> Tuple[List[Image], Optional[Dict]]:
+        lastEvaluatedKey: Optional[Dict] = None,
+    ) -> Tuple[List[Image], Optional[Dict]]:
         """
         Lists images from the database via a global secondary index
         (named "GSITYPE" in this implementation) on the "TYPE" attribute.
@@ -745,11 +847,13 @@ class _Image:
         """
         images = []
         try:
-            query_params = {"TableName": self.table_name,
+            query_params = {
+                "TableName": self.table_name,
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "IMAGE"}}, }
+                "ExpressionAttributeValues": {":val": {"S": "IMAGE"}},
+            }
 
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
@@ -763,11 +867,17 @@ class _Image:
             if limit is None:
                 # If no limit is provided, paginate until all items are
                 # retrieved
-                while ("LastEvaluatedKey" in response
-                    and response["LastEvaluatedKey"]):
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                while (
+                    "LastEvaluatedKey" in response
+                    and response["LastEvaluatedKey"]
+                ):
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                     response = self._client.query(**query_params)
-                    images.extend([itemToImage(item) for item in response["Items"]])
+                    images.extend(
+                        [itemToImage(item) for item in response["Items"]]
+                    )
                 last_evaluated_key = None
             else:
                 # If a limit is provided, capture the LastEvaluatedKey (if any)

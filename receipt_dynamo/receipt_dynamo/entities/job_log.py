@@ -22,13 +22,15 @@ class JobLog:
         exception (str, optional): Exception details if applicable.
     """
 
-    def __init__(self,
+    def __init__(
+        self,
         job_id: str,
         timestamp: datetime,
         log_level: str,
         message: str,
         source: Optional[str] = None,
-        exception: Optional[str] = None, ):
+        exception: Optional[str] = None,
+    ):
         """Initializes a new JobLog object for DynamoDB.
 
         Args:
@@ -53,8 +55,10 @@ class JobLog:
             raise ValueError("timestamp must be a datetime object or a string")
 
         valid_log_levels = ["INFO", "WARNING", "ERROR", "DEBUG", "CRITICAL"]
-        if (not isinstance(log_level, str)
-            or log_level.upper() not in valid_log_levels):
+        if (
+            not isinstance(log_level, str)
+            or log_level.upper() not in valid_log_levels
+        ):
             raise ValueError(f"log_level must be one of {valid_log_levels}")
         self.log_level = log_level.upper()
 
@@ -76,8 +80,10 @@ class JobLog:
         Returns:
             dict: The primary key for the job log.
         """
-        return {"PK": {"S": f"JOB#{self.job_id}"},
-            "SK": {"S": f"LOG#{self.timestamp}"}, }
+        return {
+            "PK": {"S": f"JOB#{self.job_id}"},
+            "SK": {"S": f"LOG#{self.timestamp}"},
+        }
 
     def gsi1_key(self) -> dict:
         """Generates the GSI1 key for the job log.
@@ -85,8 +91,10 @@ class JobLog:
         Returns:
             dict: The GSI1 key for the job log.
         """
-        return {"GSI1PK": {"S": "LOG"},
-            "GSI1SK": {"S": f"JOB#{self.job_id}#{self.timestamp}"}, }
+        return {
+            "GSI1PK": {"S": "LOG"},
+            "GSI1SK": {"S": f"JOB#{self.job_id}#{self.timestamp}"},
+        }
 
     def to_item(self) -> dict:
         """Converts the JobLog object to a DynamoDB item.
@@ -94,11 +102,13 @@ class JobLog:
         Returns:
             dict: A dictionary representing the JobLog object as a DynamoDB item.
         """
-        item = {**self.key(),
+        item = {
+            **self.key(),
             **self.gsi1_key(),
             "TYPE": {"S": "JOB_LOG"},
             "log_level": {"S": self.log_level},
-            "message": {"S": self.message}, }
+            "message": {"S": self.message},
+        }
 
         if self.source is not None:
             item["source"] = {"S": self.source}
@@ -114,14 +124,16 @@ class JobLog:
         Returns:
             str: A string representation of the JobLog object.
         """
-        return ("JobLog("
+        return (
+            "JobLog("
             f"job_id={_repr_str(self.job_id)}, "
             f"timestamp={_repr_str(self.timestamp)}, "
             f"log_level={_repr_str(self.log_level)}, "
             f"message={_repr_str(self.message)}, "
             f"source={_repr_str(self.source)}, "
             f"exception={_repr_str(self.exception)}"
-            ")")
+            ")"
+        )
 
     def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
         """Returns an iterator over the JobLog object's attributes.
@@ -150,12 +162,14 @@ class JobLog:
         """
         if not isinstance(other, JobLog):
             return False
-        return (self.job_id == other.job_id
+        return (
+            self.job_id == other.job_id
             and self.timestamp == other.timestamp
             and self.log_level == other.log_level
             and self.message == other.message
             and self.source == other.source
-            and self.exception == other.exception)
+            and self.exception == other.exception
+        )
 
     def __hash__(self) -> int:
         """Returns the hash value of the JobLog object.
@@ -163,12 +177,16 @@ class JobLog:
         Returns:
             int: The hash value of the JobLog object.
         """
-        return hash((self.job_id,
+        return hash(
+            (
+                self.job_id,
                 self.timestamp,
                 self.log_level,
                 self.message,
                 self.source,
-                self.exception, ))
+                self.exception,
+            )
+        )
 
 
 def itemToJobLog(item: dict) -> JobLog:
@@ -183,15 +201,19 @@ def itemToJobLog(item: dict) -> JobLog:
     Raises:
         ValueError: When the item format is invalid.
     """
-    required_keys = {"PK",
+    required_keys = {
+        "PK",
         "SK",
         "TYPE",
         "log_level",
-        "message", }
+        "message",
+    }
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
-        raise ValueError(f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}")
+        raise ValueError(
+            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
+        )
 
     try:
         # Parse job_id from the PK
@@ -208,11 +230,13 @@ def itemToJobLog(item: dict) -> JobLog:
         source = item.get("source", {}).get("S")
         exception = item.get("exception", {}).get("S")
 
-        return JobLog(job_id=job_id,
+        return JobLog(
+            job_id=job_id,
             timestamp=timestamp,
             log_level=log_level,
             message=message,
             source=source,
-            exception=exception, )
+            exception=exception,
+        )
     except KeyError as e:
         raise ValueError(f"Error converting item to JobLog: {e}")

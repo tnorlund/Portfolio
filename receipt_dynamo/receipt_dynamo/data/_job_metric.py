@@ -9,10 +9,14 @@ from receipt_dynamo.entities.util import assert_valid_uuid
 def validate_last_evaluated_key(lek: dict) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
-        raise ValueError(f"LastEvaluatedKey must contain keys: {required_keys}")
+        raise ValueError(
+            f"LastEvaluatedKey must contain keys: {required_keys}"
+        )
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
-            raise ValueError(f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'")
+            raise ValueError(
+                f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'"
+            )
 
 
 class _JobMetric:
@@ -26,27 +30,41 @@ class _JobMetric:
             ValueError: When a job metric with the same timestamp and name already exists
         """
         if job_metric is None:
-            raise ValueError("JobMetric parameter is required and cannot be None.")
+            raise ValueError(
+                "JobMetric parameter is required and cannot be None."
+            )
         if not isinstance(job_metric, JobMetric):
-            raise ValueError("job_metric must be an instance of the JobMetric class.")
+            raise ValueError(
+                "job_metric must be an instance of the JobMetric class."
+            )
         try:
-            self._client.put_item(TableName=self.table_name,
+            self._client.put_item(
+                TableName=self.table_name,
                 Item=job_metric.to_item(),
-                ConditionExpression="attribute_not_exists(PK) OR attribute_not_exists(SK)", )
+                ConditionExpression="attribute_not_exists(PK) OR attribute_not_exists(SK)",
+            )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(f"JobMetric with name {job_metric.metric_name} and timestamp {job_metric.timestamp} for job {job_metric.job_id} already exists") from e
+                raise ValueError(
+                    f"JobMetric with name {job_metric.metric_name} and timestamp {job_metric.timestamp} for job {job_metric.job_id} already exists"
+                ) from e
             elif error_code == "ResourceNotFoundException":
-                raise Exception(f"Could not add job metric to DynamoDB: {e}") from e
+                raise Exception(
+                    f"Could not add job metric to DynamoDB: {e}"
+                ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(f"Could not add job metric to DynamoDB: {e}") from e
+                raise Exception(
+                    f"Could not add job metric to DynamoDB: {e}"
+                ) from e
 
-    def getJobMetric(self, job_id: str, metric_name: str, timestamp: str) -> JobMetric:
+    def getJobMetric(
+        self, job_id: str, metric_name: str, timestamp: str
+    ) -> JobMetric:
         """Gets a specific job metric by job ID, metric name, and timestamp
 
         Args:
@@ -64,17 +82,27 @@ class _JobMetric:
             raise ValueError("Job ID is required and cannot be None.")
         assert_valid_uuid(job_id)
         if not metric_name or not isinstance(metric_name, str):
-            raise ValueError("Metric name is required and must be a non-empty string.")
+            raise ValueError(
+                "Metric name is required and must be a non-empty string."
+            )
         if not timestamp or not isinstance(timestamp, str):
-            raise ValueError("Timestamp is required and must be a non-empty string.")
+            raise ValueError(
+                "Timestamp is required and must be a non-empty string."
+            )
 
         try:
-            response = self._client.get_item(TableName=self.table_name,
-                Key={"PK": {"S": f"JOB#{job_id}"},
-                    "SK": {"S": f"METRIC#{metric_name}#{timestamp}"}, }, )
+            response = self._client.get_item(
+                TableName=self.table_name,
+                Key={
+                    "PK": {"S": f"JOB#{job_id}"},
+                    "SK": {"S": f"METRIC#{metric_name}#{timestamp}"},
+                },
+            )
 
             if "Item" not in response:
-                raise ValueError(f"No job metric found with job ID {job_id}, metric name {metric_name}, and timestamp {timestamp}")
+                raise ValueError(
+                    f"No job metric found with job ID {job_id}, metric name {metric_name}, and timestamp {timestamp}"
+                )
 
             return itemToJobMetric(response["Item"])
         except ClientError as e:
@@ -88,11 +116,13 @@ class _JobMetric:
             else:
                 raise Exception(f"Error getting job metric: {e}") from e
 
-    def listJobMetrics(self,
+    def listJobMetrics(
+        self,
         job_id: str,
         metric_name: Optional[str] = None,
         limit: int = None,
-        lastEvaluatedKey: dict | None = None, ) -> tuple[list[JobMetric], dict | None]:
+        lastEvaluatedKey: dict | None = None,
+    ) -> tuple[list[JobMetric], dict | None]:
         """
         Retrieve metrics for a job from the database.
 
@@ -129,17 +159,27 @@ class _JobMetric:
             query_params = {
                 "TableName": self.table_name,
                 "KeyConditionExpression": "PK = :pk",
-                "ExpressionAttributeValues": {":pk": {"S": f"JOB#{job_id}"}, },
+                "ExpressionAttributeValues": {
+                    ":pk": {"S": f"JOB#{job_id}"},
+                },
                 "ScanIndexForward": True,  # Ascending order by default
             }
 
             # Add filter for metric name if provided
             if metric_name:
-                query_params["KeyConditionExpression"] += " AND begins_with(SK, :sk)"
-                query_params["ExpressionAttributeValues"][":sk"] = {"S": f"METRIC#{metric_name}#"}
+                query_params[
+                    "KeyConditionExpression"
+                ] += " AND begins_with(SK, :sk)"
+                query_params["ExpressionAttributeValues"][":sk"] = {
+                    "S": f"METRIC#{metric_name}#"
+                }
             else:
-                query_params["KeyConditionExpression"] += " AND begins_with(SK, :sk)"
-                query_params["ExpressionAttributeValues"][":sk"] = {"S": "METRIC#"}
+                query_params[
+                    "KeyConditionExpression"
+                ] += " AND begins_with(SK, :sk)"
+                query_params["ExpressionAttributeValues"][":sk"] = {
+                    "S": "METRIC#"
+                }
 
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
@@ -160,7 +200,9 @@ class _JobMetric:
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                 else:
                     last_evaluated_key = None
                     break
@@ -169,20 +211,28 @@ class _JobMetric:
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(f"Could not list job metrics from the database: {e}") from e
+                raise Exception(
+                    f"Could not list job metrics from the database: {e}"
+                ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "ValidationException":
-                raise Exception(f"One or more parameters given were invalid: {e}") from e
+                raise Exception(
+                    f"One or more parameters given were invalid: {e}"
+                ) from e
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(f"Could not list job metrics from the database: {e}") from e
+                raise Exception(
+                    f"Could not list job metrics from the database: {e}"
+                ) from e
 
-    def getMetricsByName(self,
+    def getMetricsByName(
+        self,
         metric_name: str,
         limit: int = None,
-        lastEvaluatedKey: dict | None = None, ) -> tuple[list[JobMetric], dict | None]:
+        lastEvaluatedKey: dict | None = None,
+    ) -> tuple[list[JobMetric], dict | None]:
         """
         Retrieve all metrics with a specific name across all jobs.
 
@@ -201,7 +251,9 @@ class _JobMetric:
             Exception: If the underlying database query fails.
         """
         if not metric_name or not isinstance(metric_name, str):
-            raise ValueError("Metric name is required and must be a non-empty string.")
+            raise ValueError(
+                "Metric name is required and must be a non-empty string."
+            )
 
         if limit is not None and not isinstance(limit, int):
             raise ValueError("Limit must be an integer")
@@ -218,7 +270,9 @@ class _JobMetric:
                 "TableName": self.table_name,
                 "IndexName": "GSI1",
                 "KeyConditionExpression": "GSI1PK = :pk",
-                "ExpressionAttributeValues": {":pk": {"S": f"METRIC#{metric_name}"}, },
+                "ExpressionAttributeValues": {
+                    ":pk": {"S": f"METRIC#{metric_name}"},
+                },
                 "ScanIndexForward": True,  # Ascending order by default
             }
 
@@ -241,7 +295,9 @@ class _JobMetric:
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                 else:
                     last_evaluated_key = None
                     break
@@ -250,20 +306,28 @@ class _JobMetric:
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(f"Could not query metrics by name from the database: {e}") from e
+                raise Exception(
+                    f"Could not query metrics by name from the database: {e}"
+                ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "ValidationException":
-                raise Exception(f"One or more parameters given were invalid: {e}") from e
+                raise Exception(
+                    f"One or more parameters given were invalid: {e}"
+                ) from e
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(f"Could not query metrics by name from the database: {e}") from e
+                raise Exception(
+                    f"Could not query metrics by name from the database: {e}"
+                ) from e
 
-    def getMetricsByNameAcrossJobs(self,
+    def getMetricsByNameAcrossJobs(
+        self,
         metric_name: str,
         limit: int = None,
-        lastEvaluatedKey: dict | None = None, ) -> tuple[list[JobMetric], dict | None]:
+        lastEvaluatedKey: dict | None = None,
+    ) -> tuple[list[JobMetric], dict | None]:
         """
         Retrieve metrics with a specific name across all jobs, grouped by job.
 
@@ -285,7 +349,9 @@ class _JobMetric:
             Exception: If the underlying database query fails.
         """
         if not metric_name or not isinstance(metric_name, str):
-            raise ValueError("Metric name is required and must be a non-empty string.")
+            raise ValueError(
+                "Metric name is required and must be a non-empty string."
+            )
 
         if limit is not None and not isinstance(limit, int):
             raise ValueError("Limit must be an integer")
@@ -302,7 +368,9 @@ class _JobMetric:
                 "TableName": self.table_name,
                 "IndexName": "GSI2",
                 "KeyConditionExpression": "GSI2PK = :pk",
-                "ExpressionAttributeValues": {":pk": {"S": f"METRIC#{metric_name}"}, },
+                "ExpressionAttributeValues": {
+                    ":pk": {"S": f"METRIC#{metric_name}"},
+                },
                 "ScanIndexForward": True,  # Ascending order by default
             }
 
@@ -325,7 +393,9 @@ class _JobMetric:
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                 else:
                     last_evaluated_key = None
                     break
@@ -334,12 +404,18 @@ class _JobMetric:
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(f"Could not query metrics by name across jobs from the database: {e}") from e
+                raise Exception(
+                    f"Could not query metrics by name across jobs from the database: {e}"
+                ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "ValidationException":
-                raise Exception(f"One or more parameters given were invalid: {e}") from e
+                raise Exception(
+                    f"One or more parameters given were invalid: {e}"
+                ) from e
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(f"Could not query metrics by name across jobs from the database: {e}") from e
+                raise Exception(
+                    f"Could not query metrics by name across jobs from the database: {e}"
+                ) from e

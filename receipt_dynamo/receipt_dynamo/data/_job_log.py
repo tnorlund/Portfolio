@@ -25,16 +25,24 @@ class _JobLog:
         if job_log is None:
             raise ValueError("job_log cannot be None")
         if not isinstance(job_log, JobLog):
-            raise ValueError(f"job_log must be a JobLog instance, got {type(job_log)}")
+            raise ValueError(
+                f"job_log must be a JobLog instance, got {type(job_log)}"
+            )
 
         try:
-            self._client.put_item(TableName=self.table_name,
+            self._client.put_item(
+                TableName=self.table_name,
                 Item=job_log.to_item(),
-                ConditionExpression="attribute_not_exists(PK) AND attribute_not_exists(SK)", )
+                ConditionExpression="attribute_not_exists(PK) AND attribute_not_exists(SK)",
+            )
         except ClientError as e:
-            if (e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"):
-                raise ValueError(f"Job log for job {job_log.job_id} with timestamp {job_log.timestamp} already exists")
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
+                raise ValueError(
+                    f"Job log for job {job_log.job_id} with timestamp {job_log.timestamp} already exists"
+                )
             raise
 
     def addJobLogs(self, job_logs: List[JobLog]):
@@ -62,9 +70,15 @@ class _JobLog:
         for i in range(0, len(job_logs), batch_size):
             batch = job_logs[i : i + batch_size]
 
-            request_items = {self.table_name: [{"PutRequest": {"Item": log.to_item()}} for log in batch]}
+            request_items = {
+                self.table_name: [
+                    {"PutRequest": {"Item": log.to_item()}} for log in batch
+                ]
+            }
 
-            response = self._client.batch_write_item(RequestItems=request_items)
+            response = self._client.batch_write_item(
+                RequestItems=request_items
+            )
 
             # Handle unprocessed items with exponential backoff
             unprocessed_items = response.get("UnprocessedItems", {})
@@ -73,13 +87,21 @@ class _JobLog:
 
             while unprocessed_items and retry_count < max_retries:
                 retry_count += 1
-                response = self._client.batch_write_item(RequestItems=unprocessed_items)
+                response = self._client.batch_write_item(
+                    RequestItems=unprocessed_items
+                )
                 unprocessed_items = response.get("UnprocessedItems", {})
 
             if unprocessed_items:
-                raise ClientError({"Error": {"Code": "ProvisionedThroughputExceededException",
-                            "Message": f"Could not process all items after {max_retries} retries", }},
-                    "BatchWriteItem", )
+                raise ClientError(
+                    {
+                        "Error": {
+                            "Code": "ProvisionedThroughputExceededException",
+                            "Message": f"Could not process all items after {max_retries} retries",
+                        }
+                    },
+                    "BatchWriteItem",
+                )
 
     def getJobLog(self, job_id: str, timestamp: str) -> JobLog:
         """Gets a job log entry from the DynamoDB table.
@@ -100,20 +122,28 @@ class _JobLog:
         if timestamp is None:
             raise ValueError("timestamp cannot be None")
 
-        response = self._client.get_item(TableName=self.table_name,
-            Key={"PK": {"S": f"JOB#{job_id}"},
-                "SK": {"S": f"LOG#{timestamp}"}, }, )
+        response = self._client.get_item(
+            TableName=self.table_name,
+            Key={
+                "PK": {"S": f"JOB#{job_id}"},
+                "SK": {"S": f"LOG#{timestamp}"},
+            },
+        )
 
         item = response.get("Item")
         if not item:
-            raise ValueError(f"Job log with job_id {job_id} and timestamp {timestamp} not found")
+            raise ValueError(
+                f"Job log with job_id {job_id} and timestamp {timestamp} not found"
+            )
 
         return itemToJobLog(item)
 
-    def listJobLogs(self,
+    def listJobLogs(
+        self,
         job_id: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict] = None, ) -> Tuple[List[JobLog], Optional[Dict]]:
+        lastEvaluatedKey: Optional[Dict] = None,
+    ) -> Tuple[List[JobLog], Optional[Dict]]:
         """Lists all log entries for a specific job.
 
         Args:
@@ -133,13 +163,17 @@ class _JobLog:
 
         # Prepare KeyConditionExpression
         key_condition_expression = "PK = :pk AND begins_with(SK, :sk_prefix)"
-        expression_attribute_values = {":pk": {"S": f"JOB#{job_id}"},
-            ":sk_prefix": {"S": "LOG#"}, }
+        expression_attribute_values = {
+            ":pk": {"S": f"JOB#{job_id}"},
+            ":sk_prefix": {"S": "LOG#"},
+        }
 
         # Prepare query parameters
-        query_params = {"TableName": self.table_name,
+        query_params = {
+            "TableName": self.table_name,
             "KeyConditionExpression": key_condition_expression,
-            "ExpressionAttributeValues": expression_attribute_values, }
+            "ExpressionAttributeValues": expression_attribute_values,
+        }
 
         if limit is not None:
             query_params["Limit"] = limit
@@ -169,15 +203,25 @@ class _JobLog:
         if job_log is None:
             raise ValueError("job_log cannot be None")
         if not isinstance(job_log, JobLog):
-            raise ValueError(f"job_log must be a JobLog instance, got {type(job_log)}")
+            raise ValueError(
+                f"job_log must be a JobLog instance, got {type(job_log)}"
+            )
 
         try:
-            self._client.delete_item(TableName=self.table_name,
-                Key={"PK": {"S": f"JOB#{job_log.job_id}"},
-                    "SK": {"S": f"LOG#{job_log.timestamp}"}, },
-                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)", )
+            self._client.delete_item(
+                TableName=self.table_name,
+                Key={
+                    "PK": {"S": f"JOB#{job_log.job_id}"},
+                    "SK": {"S": f"LOG#{job_log.timestamp}"},
+                },
+                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
+            )
         except ClientError as e:
-            if (e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"):
-                raise ValueError(f"Job log for job {job_log.job_id} with timestamp {job_log.timestamp} not found")
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
+                raise ValueError(
+                    f"Job log for job {job_log.job_id} with timestamp {job_log.timestamp} not found"
+                )
             raise

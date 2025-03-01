@@ -30,9 +30,11 @@ class _Line:
             ValueError: When a line with the same ID already
         """
         try:
-            self._client.put_item(TableName=self.table_name,
+            self._client.put_item(
+                TableName=self.table_name,
                 Item=line.to_item(),
-                ConditionExpression="attribute_not_exists(PK)", )
+                ConditionExpression="attribute_not_exists(PK)",
+            )
         except ClientError:
             raise ValueError(f"Line with ID {line.line_id} already exists")
 
@@ -48,13 +50,19 @@ class _Line:
         try:
             for i in range(0, len(lines), CHUNK_SIZE):
                 chunk = lines[i : i + CHUNK_SIZE]
-                request_items = [{"PutRequest": {"Item": line.to_item()}} for line in chunk]
-                response = self._client.batch_write_item(RequestItems={self.table_name: request_items})
+                request_items = [
+                    {"PutRequest": {"Item": line.to_item()}} for line in chunk
+                ]
+                response = self._client.batch_write_item(
+                    RequestItems={self.table_name: request_items}
+                )
                 # Handle unprocessed items if they exist
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
                     # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError:
             raise ValueError("Could not add lines to the database")
@@ -66,12 +74,16 @@ class _Line:
             line (Line): The line to update in the database
         """
         try:
-            self._client.put_item(TableName=self.table_name,
+            self._client.put_item(
+                TableName=self.table_name,
                 Item=line.to_item(),
-                ConditionExpression="attribute_exists(PK)", )
+                ConditionExpression="attribute_exists(PK)",
+            )
         except ClientError as e:
-            if (e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"):
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
                 raise ValueError(f"Line with ID {line.line_id} not found")
             else:
                 raise Exception(f"Error updating line: {e}")
@@ -84,10 +96,14 @@ class _Line:
             line_id (int): The ID of the line to delete
         """
         try:
-            self._client.delete_item(TableName=self.table_name,
-                Key={"PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"LINE#{line_id:05d}"}, },
-                ConditionExpression="attribute_exists(PK)", )
+            self._client.delete_item(
+                TableName=self.table_name,
+                Key={
+                    "PK": {"S": f"IMAGE#{image_id}"},
+                    "SK": {"S": f"LINE#{line_id:05d}"},
+                },
+                ConditionExpression="attribute_exists(PK)",
+            )
         except ClientError:
             raise ValueError(f"Line with ID {line_id} not found")
 
@@ -100,13 +116,19 @@ class _Line:
         try:
             for i in range(0, len(lines), CHUNK_SIZE):
                 chunk = lines[i : i + CHUNK_SIZE]
-                request_items = [{"DeleteRequest": {"Key": line.key()}} for line in chunk]
-                response = self._client.batch_write_item(RequestItems={self.table_name: request_items})
+                request_items = [
+                    {"DeleteRequest": {"Key": line.key()}} for line in chunk
+                ]
+                response = self._client.batch_write_item(
+                    RequestItems={self.table_name: request_items}
+                )
                 # Handle unprocessed items if they exist
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
                     # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError:
             raise ValueError("Could not delete lines from the database")
@@ -122,16 +144,22 @@ class _Line:
 
     def getLine(self, image_id: int, line_id: int) -> Line:
         try:
-            response = self._client.get_item(TableName=self.table_name,
-                Key={"PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"LINE#{line_id:05d}"}, }, )
+            response = self._client.get_item(
+                TableName=self.table_name,
+                Key={
+                    "PK": {"S": f"IMAGE#{image_id}"},
+                    "SK": {"S": f"LINE#{line_id:05d}"},
+                },
+            )
             return itemToLine(response["Item"])
         except KeyError:
             raise ValueError(f"Line with ID {line_id} not found")
 
-    def listLines(self,
+    def listLines(
+        self,
         limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None, ) -> Tuple[list[Line], Optional[Dict]]:
+        last_evaluated_key: Optional[Dict] = None,
+    ) -> Tuple[list[Line], Optional[Dict]]:
         """Lists all lines in the database"""
         lines = []
         try:
@@ -155,11 +183,17 @@ class _Line:
             if limit is None:
                 # If no limit is provided, paginate until all items are
                 # retrieved
-                while ("LastEvaluatedKey" in response
-                    and response["LastEvaluatedKey"]):
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                while (
+                    "LastEvaluatedKey" in response
+                    and response["LastEvaluatedKey"]
+                ):
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                     response = self._client.query(**query_params)
-                    lines.extend([itemToLine(item) for item in response["Items"]])
+                    lines.extend(
+                        [itemToLine(item) for item in response["Items"]]
+                    )
                 last_evaluated_key = None
             else:
                 # If a limit is provided, capture the LastEvaluatedKey (if any)
@@ -174,20 +208,28 @@ class _Line:
         """Lists all lines from an image"""
         lines = []
         try:
-            response = self._client.query(TableName=self.table_name,
+            response = self._client.query(
+                TableName=self.table_name,
                 KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
                 ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
-                ExpressionAttributeValues={":pk_val": {"S": f"IMAGE#{image_id}"},
-                    ":sk_val": {"S": "LINE#"}, }, )
+                ExpressionAttributeValues={
+                    ":pk_val": {"S": f"IMAGE#{image_id}"},
+                    ":sk_val": {"S": "LINE#"},
+                },
+            )
             lines.extend([itemToLine(item) for item in response["Items"]])
 
             while "LastEvaluatedKey" in response:
-                response = self._client.query(TableName=self.table_name,
+                response = self._client.query(
+                    TableName=self.table_name,
                     KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
                     ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
-                    ExpressionAttributeValues={":pk_val": {"S": f"IMAGE#{image_id}"},
-                        ":sk_val": {"S": "LINE#"}, },
-                    ExclusiveStartKey=response["LastEvaluatedKey"], )
+                    ExpressionAttributeValues={
+                        ":pk_val": {"S": f"IMAGE#{image_id}"},
+                        ":sk_val": {"S": "LINE#"},
+                    },
+                    ExclusiveStartKey=response["LastEvaluatedKey"],
+                )
                 lines.extend([itemToLine(item) for item in response["Items"]])
             return lines
         except ClientError as e:

@@ -292,8 +292,7 @@ def test_receipt_word_tag_key(example_receipt_word_tag):
     item_key = example_receipt_word_tag.key()
     assert item_key["PK"]["S"] == "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert (
-        item_key["SK"]["S"]
-        == "RECEIPT#00045#LINE#00006#WORD#00789#TAG#"
+        item_key["SK"]["S"] == "RECEIPT#00045#LINE#00006#WORD#00789#TAG#"
         "____________________________________food"
     )
 
@@ -311,7 +310,7 @@ def test_receipt_word_tag_gsi1_key(example_receipt_word_tag):
     assert (
         gsi_key["GSI1SK"]["S"]
         == "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00045#"
-           "LINE#00006#WORD#00789"
+        "LINE#00006#WORD#00789"
     )
 
 
@@ -326,8 +325,7 @@ def test_receipt_word_tag_gsi2_key(example_receipt_word_tag):
     gsi_key = example_receipt_word_tag.gsi2_key()
     assert gsi_key["GSI2PK"]["S"] == "RECEIPT"
     assert (
-        gsi_key["GSI2SK"]["S"]
-        == "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#"
+        gsi_key["GSI2SK"]["S"] == "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#"
         "RECEIPT#00045#"
         "LINE#00006#"
         "WORD#00789#"
@@ -372,7 +370,7 @@ def test_item_to_receipt_word_tag():
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {
             "S": "RECEIPT#00005#LINE#00002#WORD#00099#TAG#"
-                 "____________________________________food"
+            "____________________________________food"
         },
         "GSI1PK": {"S": "TAG#____________________________________food"},
         "GSI1SK": {
