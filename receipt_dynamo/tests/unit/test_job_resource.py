@@ -7,8 +7,8 @@ from receipt_dynamo.entities.job_resource import _parse_dynamodb_map
 @pytest.fixture
 def example_job_resource():
     """Provides a sample JobResource for testing."""
-    # fmt: off
-    return JobResource("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+    return JobResource(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         "5e63804c-3abd-4f11-83d9-c694eb3b9de4",
         "i-0123456789abcdef0",
         "p3.2xlarge",
@@ -17,22 +17,22 @@ def example_job_resource():
         "allocated",
         gpu_count=8,
         released_at="2021-01-02T00:00:00",
-        resource_config={"memory_mb": 61440, "vcpus": 8})
-    # fmt: on
+        resource_config={"memory_mb": 61440, "vcpus": 8},
+    )
 
 
 @pytest.fixture
 def example_job_resource_minimal():
     """Provides a minimal sample JobResource for testing."""
-    # fmt: off
-    return JobResource("3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+    return JobResource(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         "5e63804c-3abd-4f11-83d9-c694eb3b9de4",
         "i-0123456789abcdef0",
         "t2.micro",
         "cpu",
         "2021-01-01T00:00:00",
-        "allocated")
-    # fmt: on
+        "allocated",
+    )
 
 
 @pytest.mark.unit
@@ -402,20 +402,151 @@ def test_job_resource_iter(example_job_resource):
 @pytest.mark.unit
 def test_job_resource_eq():
     """Test the JobResource.__eq__() method."""
-    # fmt: off
-    resource1 = JobResource("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "5e63804c-3abd-4f11-83d9-c694eb3b9de4", "i-0123456789abcdef0", "p3.2xlarge", "gpu", "2021-01-01T00:00:00", "allocated", 8, "2021-01-02T00:00:00", {"memory_mb": 61440, "vcpus": 8})
-    resource2 = JobResource("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "5e63804c-3abd-4f11-83d9-c694eb3b9de4", "i-0123456789abcdef0", "p3.2xlarge", "gpu", "2021-01-01T00:00:00", "allocated", 8, "2021-01-02T00:00:00", {"memory_mb": 61440, "vcpus": 8})
-    resource3 = JobResource("4f52804b-2fad-4e00-92c8-b593da3a8ed3", "5e63804c-3abd-4f11-83d9-c694eb3b9de4", "i-0123456789abcdef0", "p3.2xlarge", "gpu", "2021-01-01T00:00:00", "allocated", 8, "2021-01-02T00:00:00", {"memory_mb": 61440, "vcpus": 8})  # Different job_id
-    resource4 = JobResource("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "6e63804c-3abd-4f11-93d9-c694eb3b9de4", "i-0123456789abcdef0", "p3.2xlarge", "gpu", "2021-01-01T00:00:00", "allocated", 8, "2021-01-02T00:00:00", {"memory_mb": 61440, "vcpus": 8})  # Different resource_id, also fixed UUID format
-    resource5 = JobResource("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "5e63804c-3abd-4f11-83d9-c694eb3b9de4", "i-98765432100fedcba", "p3.2xlarge", "gpu", "2021-01-01T00:00:00", "allocated", 8, "2021-01-02T00:00:00", {"memory_mb": 61440, "vcpus": 8})  # Different instance_id
-    resource6 = JobResource("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "5e63804c-3abd-4f11-83d9-c694eb3b9de4", "i-0123456789abcdef0", "c5.2xlarge", "gpu", "2021-01-01T00:00:00", "allocated", 8, "2021-01-02T00:00:00", {"memory_mb": 61440, "vcpus": 8})  # Different instance_type
-    resource7 = JobResource("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "5e63804c-3abd-4f11-83d9-c694eb3b9de4", "i-0123456789abcdef0", "p3.2xlarge", "cpu", "2021-01-01T00:00:00", "allocated", 8, "2021-01-02T00:00:00", {"memory_mb": 61440, "vcpus": 8})  # Different resource_type
-    resource8 = JobResource("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "5e63804c-3abd-4f11-83d9-c694eb3b9de4", "i-0123456789abcdef0", "p3.2xlarge", "gpu", "2021-01-02T00:00:00", "allocated", 8, "2021-01-02T00:00:00", {"memory_mb": 61440, "vcpus": 8})  # Different allocated_at
-    resource9 = JobResource("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "5e63804c-3abd-4f11-83d9-c694eb3b9de4", "i-0123456789abcdef0", "p3.2xlarge", "gpu", "2021-01-01T00:00:00", "released", 8, "2021-01-02T00:00:00", {"memory_mb": 61440, "vcpus": 8})  # Different status
-    resource10 = JobResource("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "5e63804c-3abd-4f11-83d9-c694eb3b9de4", "i-0123456789abcdef0", "p3.2xlarge", "gpu", "2021-01-01T00:00:00", "allocated", 4, "2021-01-02T00:00:00", {"memory_mb": 61440, "vcpus": 8})  # Different gpu_count
-    resource11 = JobResource("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "5e63804c-3abd-4f11-83d9-c694eb3b9de4", "i-0123456789abcdef0", "p3.2xlarge", "gpu", "2021-01-01T00:00:00", "allocated", 8, "2021-01-03T00:00:00", {"memory_mb": 61440, "vcpus": 8})  # Different released_at
-    resource12 = JobResource("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "5e63804c-3abd-4f11-83d9-c694eb3b9de4", "i-0123456789abcdef0", "p3.2xlarge", "gpu", "2021-01-01T00:00:00", "allocated", 8, "2021-01-02T00:00:00", {"memory_mb": 32768, "vcpus": 4})  # Different resource_config
-    # fmt: on
+
+    resource1 = JobResource(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "5e63804c-3abd-4f11-83d9-c694eb3b9de4",
+        "i-0123456789abcdef0",
+        "p3.2xlarge",
+        "gpu",
+        "2021-01-01T00:00:00",
+        "allocated",
+        8,
+        "2021-01-02T00:00:00",
+        {"memory_mb": 61440, "vcpus": 8},
+    )
+    resource2 = JobResource(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "5e63804c-3abd-4f11-83d9-c694eb3b9de4",
+        "i-0123456789abcdef0",
+        "p3.2xlarge",
+        "gpu",
+        "2021-01-01T00:00:00",
+        "allocated",
+        8,
+        "2021-01-02T00:00:00",
+        {"memory_mb": 61440, "vcpus": 8},
+    )
+    resource3 = JobResource(
+        "4f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "5e63804c-3abd-4f11-83d9-c694eb3b9de4",
+        "i-0123456789abcdef0",
+        "p3.2xlarge",
+        "gpu",
+        "2021-01-01T00:00:00",
+        "allocated",
+        8,
+        "2021-01-02T00:00:00",
+        {"memory_mb": 61440, "vcpus": 8},
+    )  # Different job_id
+    resource4 = JobResource(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "6e63804c-3abd-4f11-93d9-c694eb3b9de4",
+        "i-0123456789abcdef0",
+        "p3.2xlarge",
+        "gpu",
+        "2021-01-01T00:00:00",
+        "allocated",
+        8,
+        "2021-01-02T00:00:00",
+        {"memory_mb": 61440, "vcpus": 8},
+    )  # Different resource_id, also fixed UUID format
+    resource5 = JobResource(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "5e63804c-3abd-4f11-83d9-c694eb3b9de4",
+        "i-98765432100fedcba",
+        "p3.2xlarge",
+        "gpu",
+        "2021-01-01T00:00:00",
+        "allocated",
+        8,
+        "2021-01-02T00:00:00",
+        {"memory_mb": 61440, "vcpus": 8},
+    )  # Different instance_id
+    resource6 = JobResource(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "5e63804c-3abd-4f11-83d9-c694eb3b9de4",
+        "i-0123456789abcdef0",
+        "c5.2xlarge",
+        "gpu",
+        "2021-01-01T00:00:00",
+        "allocated",
+        8,
+        "2021-01-02T00:00:00",
+        {"memory_mb": 61440, "vcpus": 8},
+    )  # Different instance_type
+    resource7 = JobResource(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "5e63804c-3abd-4f11-83d9-c694eb3b9de4",
+        "i-0123456789abcdef0",
+        "p3.2xlarge",
+        "cpu",
+        "2021-01-01T00:00:00",
+        "allocated",
+        8,
+        "2021-01-02T00:00:00",
+        {"memory_mb": 61440, "vcpus": 8},
+    )  # Different resource_type
+    resource8 = JobResource(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "5e63804c-3abd-4f11-83d9-c694eb3b9de4",
+        "i-0123456789abcdef0",
+        "p3.2xlarge",
+        "gpu",
+        "2021-01-02T00:00:00",
+        "allocated",
+        8,
+        "2021-01-02T00:00:00",
+        {"memory_mb": 61440, "vcpus": 8},
+    )  # Different allocated_at
+    resource9 = JobResource(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "5e63804c-3abd-4f11-83d9-c694eb3b9de4",
+        "i-0123456789abcdef0",
+        "p3.2xlarge",
+        "gpu",
+        "2021-01-01T00:00:00",
+        "released",
+        8,
+        "2021-01-02T00:00:00",
+        {"memory_mb": 61440, "vcpus": 8},
+    )  # Different status
+    resource10 = JobResource(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "5e63804c-3abd-4f11-83d9-c694eb3b9de4",
+        "i-0123456789abcdef0",
+        "p3.2xlarge",
+        "gpu",
+        "2021-01-01T00:00:00",
+        "allocated",
+        4,
+        "2021-01-02T00:00:00",
+        {"memory_mb": 61440, "vcpus": 8},
+    )  # Different gpu_count
+    resource11 = JobResource(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "5e63804c-3abd-4f11-83d9-c694eb3b9de4",
+        "i-0123456789abcdef0",
+        "p3.2xlarge",
+        "gpu",
+        "2021-01-01T00:00:00",
+        "allocated",
+        8,
+        "2021-01-03T00:00:00",
+        {"memory_mb": 61440, "vcpus": 8},
+    )  # Different released_at
+    resource12 = JobResource(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "5e63804c-3abd-4f11-83d9-c694eb3b9de4",
+        "i-0123456789abcdef0",
+        "p3.2xlarge",
+        "gpu",
+        "2021-01-01T00:00:00",
+        "allocated",
+        8,
+        "2021-01-02T00:00:00",
+        {"memory_mb": 32768, "vcpus": 4},
+    )  # Different resource_config
 
     assert resource1 == resource2, "Should be equal"
     assert resource1 != resource3, "Different job_id"
