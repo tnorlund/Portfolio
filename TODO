@@ -1,140 +1,45 @@
-# TODO
+# TODO: OCR Cleanup & Bounding Box Mapping Pipeline
 
-## Completed Tasks
-The following major components have been completed:
-- Infrastructure Setup with Pulumi
-- Wrapper Class Implementation
-- Receipt Trainer Package core functionality
-- Package Maintenance and structure refactoring
-- Most of Hyperparameter Optimization and Performance Optimization
-- Job definition format for LayoutLM training
+## 1. Re-run OCR on Cropped Receipts
+- [ ] **Prepare Cropped Receipt Images**
+  - [ ] Confirm you have the corners (coordinates) for each cropped receipt.
+  - [ ] List or index all cropped images to process.
+- [ ] **Execute OCR on Cropped Images**
+  - [ ] Run the OCR process on each cropped receipt.
+  - [ ] Save the new OCR outputs with their bounding box coordinates.
 
-## 1. Package Improvements
+## 2. Map Original Bounding Boxes to Cleaned OCR Boxes
+- [ ] **Load Original OCR Labels**
+  - [ ] Retrieve original bounding box labels (from first pass) for each receipt.
+- [ ] **Design a Mapping Algorithm**
+  - [ ] Develop or select an algorithm to match original bounding boxes with the new cleaned ones.
+    - Consider using techniques such as Intersection over Union (IoU) or nearest neighbor matching.
+    - Handle cases where there isn’t a one-to-one match (e.g., when a box is split or merged).
+- [ ] **Implement Mapping Logic**
+  - [ ] For each original bounding box, find the best matching cleaned OCR box (or boxes) based on overlap, proximity, or confidence.
+  - [ ] Optionally, flag cases where the match is ambiguous or below a defined threshold.
+- [ ] **Validate the Mapped Bounding Boxes**
+  - [ ] Visually or programmatically check that the mapping between original and cleaned bounding boxes is accurate.
+  - [ ] Refine the matching criteria as necessary.
 
-- [ ] Add more examples in the examples directory
-- [ ] Improve test coverage for all modules
-- [ ] Create comprehensive API documentation
-- [ ] Add installation and setup guides
-- [ ] Implement CI/CD pipeline for the package
-- [ ] Publish package to PyPI for easier installation
+## 3. Update Data in DynamoDB
+- [ ] **Plan Database Update**
+  - [ ] Decide if the new OCR boxes with mapped original labels should update existing records or be stored as new entries.
+- [ ] **Implement Update Scripts**
+  - [ ] Write/update scripts to:
+    - Adjust new OCR bounding boxes using the mapping.
+    - Retain and link original human labels.
+  - [ ] Ensure that updates maintain associations between receipts, lines, and words.
+- [ ] **Test Database Changes**
+  - [ ] Verify that the mapped labels are correctly reflected in DynamoDB.
+  - [ ] Check for consistency and accuracy across all item types.
 
-## 2. Documentation
-
-- [x] Add docstrings and type hints
-- [x] Create README with usage examples
-- [x] Add API documentation
-- [x] Create training guide
-- [ ] Add architecture diagrams
-- [ ] Document performance benchmarks
-- [ ] Create troubleshooting guide
-
-## 3. Error Handling & Monitoring
-
-- [x] Add comprehensive error messages
-- [ ] Implement training monitoring
-- [ ] Add system resource monitoring
-- [ ] Implement automatic error recovery
-- [ ] Add error reporting dashboard
-- [ ] Create alert system for training issues
-
-## 4. Future Model Improvements
-
-- [ ] Experiment with different LayoutLM variants
-- [ ] Add support for custom model architectures
-- [ ] Implement model ensembling
-- [ ] Add model pruning capabilities
-- [ ] Support for model quantization
-- [ ] Add model interpretability tools
-
-## 5. Data Pipeline Enhancements
-
-- [ ] Add support for additional datasets
-- [ ] Implement online data augmentation
-- [ ] Add data quality metrics
-- [ ] Create data versioning system
-- [ ] Add support for custom data formats
-- [ ] Implement data cleaning pipeline
-
-## 6. Deployment
-
-- [ ] Create model serving pipeline
-- [ ] Add model compression for inference
-- [ ] Implement A/B testing framework
-- [ ] Add monitoring for deployed models
-- [ ] Create deployment automation tools
-- [ ] Add rollback capabilities
-
-## 7. CI/CD
-
-- [x] Set up GitHub Actions for automated deployment
-- [x] Configure stack-specific resources and environments (dev/prod)
-- [x] Implement secure key pair management for EC2 instances
-- [x] Add code quality checks (Black, Flake8)
-- [x] Optimize CI/CD workflow with caching
-- [x] Improve test coverage configuration
-- [ ] Create release automation
-- [ ] Implement security scanning
-
-## 8. Observability
-
-- [ ] Add detailed logging system
-- [ ] Create performance dashboards
-- [ ] Implement metrics collection
-- [ ] Add tracing capabilities
-- [ ] Create alerting system
-- [ ] Add debugging tools 
-
-## 9. Training Job Management
-
-- [x] Create job definition format (YAML/JSON)
-- [x] Implement job status tracking in DynamoDB
-- [x] Implement Queue management in DynamoDB
-- [x] Implement Instance tracking
-- [x] Build CLI tool for job submission/monitoring
-  - [x] Create commands for job submission
-  - [x] Add job status checking and monitoring
-  - [x] Implement job cancellation and modification
-- [x] Add support for dependency chains between jobs
-  - [x] Implement dependency validation
-  - [x] Add conditional execution based on dependency status
-  - [x] Create visualization for job dependency graphs
-
-## 10. Instance Coordination
-
-- [ ] Implement leader election for multi-instance coordination
-- [ ] Create shared state management system
-- [ ] Add heartbeat mechanism for instance health monitoring
-- [ ] Implement graceful handover on spot termination
-
-## 11. Launch Automation
-
-- [ ] Create standardized EC2 user-data script
-- [ ] Set up auto-pull from GitHub/CodeCommit on instance launch
-- [ ] Implement environment configuration from parameters store
-- [ ] Build instance bootstrapping with conda/pip dependencies
-- [ ] Add startup health checks and reporting
-- [ ] Create self-diagnostics for GPU availability and performance
-
-## 12. Containerization
-
-- [ ] Create Docker image with all dependencies pre-installed
-- [ ] Set up GPU support in container with NVIDIA Container Toolkit
-- [ ] Implement volume mounting for checkpoints and data
-- [ ] Build container registry integration (ECR)
-- [ ] Create versioning system for container images
-- [ ] Add container health monitoring
-
-## 13. Experiment Tracking
-
-- [x] Replace W&B with receipt_dynamo for metrics and job tracking
-- [ ] Create central dashboard for all training runs
-- [ ] Add resource utilization tracking per experiment
-- [ ] Implement cross-experiment comparison tools
-
-## 14. Cost Optimization
-
-- [ ] Set up budget alerts and guardrails
-- [ ] Implement instance type selection based on workload
-- [ ] Add automatic shutdown of idle instances
-- [ ] Create cost attribution per experiment/team
-- [ ] Build reporting tools for cost analysis 
+## 4. Testing and Final Validation
+- [ ] **Subset Testing**
+  - [ ] Run the pipeline on a small batch of receipts.
+  - [ ] Validate that original labels map correctly to the cleaned OCR results.
+- [ ] **Iterate and Refine**
+  - [ ] Adjust mapping criteria if necessary.
+  - [ ] Log any issues and fix them iteratively.
+- [ ] **Final Review**
+  - [ ] Perform a final check on the overall process before scaling to all receipts.
