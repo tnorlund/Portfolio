@@ -4,11 +4,13 @@ import math
 import pytest
 from PIL import Image
 
-from receipt_dynamo.data._corner_process import (crop_polygon_region,
+from receipt_dynamo.data._corner_process import (
+    crop_polygon_region,
     extract_and_save_corner_windows,
     normalize,
     offset_corner_inward,
-    window_rectangle_for_corner, )
+    window_rectangle_for_corner,
+)
 
 
 @pytest.mark.integration
@@ -22,7 +24,9 @@ def test_normalize():
     expected_mag = 1.0
     # Magnitude should be ~1
     mag = math.hypot(result[0], result[1])
-    assert (abs(mag - expected_mag) < 1e-8), f"Expected unit vector, got magnitude {mag}"
+    assert (
+        abs(mag - expected_mag) < 1e-8
+    ), f"Expected unit vector, got magnitude {mag}"
     # Direction check
     # (3,4) normalized => (0.6, 0.8)
     assert abs(result[0] - 0.6) < 1e-8, "X part incorrect"
@@ -32,15 +36,18 @@ def test_normalize():
     tiny = (1e-12, -1e-12)
     result2 = normalize(tiny)
     # Because magnitude ~ 1.4142e-12 < 1e-8 => we expect (0, 0)
-    assert result2 == (0.0,
-        0.0, ), f"Expected (0,0) for near-zero vector, got {result2}"
+    assert result2 == (
+        0.0,
+        0.0,
+    ), f"Expected (0,0) for near-zero vector, got {result2}"
 
 
 @pytest.mark.integration
 def test_offset_corner_inward():
     """
     Tests offset_corner_inward by giving a corner with two adjacent corners
-    and verifying the result is inward by 'offset_distance' along sum of directions.
+    and verifying the result is inward by 'offset_distance' along sum of
+    directions.
     """
     # Suppose we have a corner at (10,10), and two adjacent corners at (0,10)
     # and (10,0).
@@ -67,64 +74,89 @@ def test_window_rectangle_for_corner():
     an image size, a corner, and verifying the polygon extends to edges.
     We'll do TWO sub-scenarios:
       1) corner_position="top" (already tested)
-      2) corner_position="bottom" (to ensure coverage of the bottom-flip branch).
+      2) corner_position="bottom" (to ensure coverage of the bottom-flip
+         branch).
     """
     # ---------------- Scenario 1: Top corner ----------------
     img_w, img_h = 100, 50
     corner_top = (10.0, 0.0)
     adj1_top = (0.0, 0.0)
     adj2_top = (10.0, 10.0)
-    edge_dir_top = (adj2_top[0] - corner_top[0],
-        adj2_top[1] - corner_top[1], )  # => (0, 10)
+    edge_dir_top = (
+        adj2_top[0] - corner_top[0],
+        adj2_top[1] - corner_top[1],
+    )  # => (0, 10)
     offset_dist = 5.0
 
-    poly_top = window_rectangle_for_corner(receipt_corner=corner_top,
+    poly_top = window_rectangle_for_corner(
+        receipt_corner=corner_top,
         adj1=adj1_top,
         adj2=adj2_top,
         edge_direction=edge_dir_top,
         offset_distance=offset_dist,
         image_size=(img_w, img_h),
-        corner_position="top", )
+        corner_position="top",
+    )
     xs_top = [p[0] for p in poly_top]
     ys_top = [p[1] for p in poly_top]
-    assert (len(poly_top) == 4), "Should return 4 corner points for 'top' scenario."
+    assert (
+        len(poly_top) == 4
+    ), "Should return 4 corner points for 'top' scenario."
     # Since corner_position="top", we expect some point near y=0
-    assert (min(ys_top) >= -1e-6), f"Polygon extends above top edge? min y={min(ys_top)}"
+    assert (
+        min(ys_top) >= -1e-6
+    ), f"Polygon extends above top edge? min y={min(ys_top)}"
     # No point should exceed y=img_h
-    assert (max(ys_top) <= img_h + 1e-6), f"Polygon extends below bottom edge? max y={max(ys_top)}"
+    assert (
+        max(ys_top) <= img_h + 1e-6
+    ), f"Polygon extends below bottom edge? max y={max(ys_top)}"
     # Similarly check x-bounds
-    assert (min(xs_top) >= -1e-6 and max(xs_top) <= img_w + 1e-6), "Polygon out of bounds in x for 'top' scenario."
+    assert (
+        min(xs_top) >= -1e-6 and max(xs_top) <= img_w + 1e-6
+    ), "Polygon out of bounds in x for 'top' scenario."
 
     # ---------------- Scenario 2: Bottom corner ----------------
-    # We'll pick a corner near the bottom of the image. We want edge_direction to have negative y,
-    # so that the code triggers: "elif corner_position == 'bottom' and r[1] <
-    # 0: r = (-r[0], -r[1])".
+    # We'll pick a corner near the bottom of the image. We want edge_direction
+    # to have negative y, so that the code triggers: "elif corner_position ==
+    # 'bottom' and r[1] < 0: r = (-r[0], -r[1])".
     corner_bottom = (10.0, 49.0)
     # Adjacents that make 'edge_direction' negative in y
     # e.g. adj2 below the corner => (10, 40)
     adj1_bottom = (0.0, 49.0)
     adj2_bottom = (10.0, 40.0)  # lower than corner => negative y
-    edge_dir_bottom = (adj2_bottom[0] - corner_bottom[0],
-        adj2_bottom[1] - corner_bottom[1], )
+    edge_dir_bottom = (
+        adj2_bottom[0] - corner_bottom[0],
+        adj2_bottom[1] - corner_bottom[1],
+    )
     # => (0, -9)
 
-    poly_bottom = window_rectangle_for_corner(receipt_corner=corner_bottom,
+    poly_bottom = window_rectangle_for_corner(
+        receipt_corner=corner_bottom,
         adj1=adj1_bottom,
         adj2=adj2_bottom,
         edge_direction=edge_dir_bottom,
         offset_distance=offset_dist,
         image_size=(img_w, img_h),
-        corner_position="bottom", )
+        corner_position="bottom",
+    )
     xs_bot = [p[0] for p in poly_bottom]
     ys_bot = [p[1] for p in poly_bottom]
-    assert (len(poly_bottom) == 4), "Should return 4 corner points for 'bottom' scenario."
+    assert (
+        len(poly_bottom) == 4
+    ), "Should return 4 corner points for 'bottom' scenario."
     # For corner_position="bottom", we expect points near y=img_h (i.e. 50)
     # but definitely not going beyond. Let's allow slight float tolerance.
-    assert (max(ys_bot) <= img_h + 1e-6), f"Polygon extends below bottom edge? max y={max(ys_bot)}"
+    assert (
+        max(ys_bot) <= img_h + 1e-6
+    ), f"Polygon extends below bottom edge? max y={max(ys_bot)}"
     # And it shouldn't go above y=0 by a large margin
-    assert (min(ys_bot) >= -1e-6), f"Polygon extends above top edge? min y={min(ys_bot)}"
+    assert (
+        min(ys_bot) >= -1e-6
+    ), f"Polygon extends above top edge? min y={min(ys_bot)}"
     # Check x-bounds
-    assert (min(xs_bot) >= -1e-6 and max(xs_bot) <= img_w + 1e-6), "Polygon out of bounds in x for 'bottom' scenario."
+    assert (
+        min(xs_bot) >= -1e-6 and max(xs_bot) <= img_w + 1e-6
+    ), "Polygon out of bounds in x for 'bottom' scenario."
 
 
 @pytest.mark.integration
@@ -173,10 +205,12 @@ def test_extract_and_save_corner_windows():
     max_dim = 50
 
     # 3) Call extract_and_save_corner_windows
-    windows = extract_and_save_corner_windows(image=test_img,
+    windows = extract_and_save_corner_windows(
+        image=test_img,
         receipt_box_corners=receipt_corners,
         offset_distance=offset_distance,
-        max_dim=max_dim, )
+        max_dim=max_dim,
+    )
 
     # 4) Check structure => keys = top_left, top_right, bottom_right,
     # bottom_left
@@ -193,12 +227,15 @@ def test_extract_and_save_corner_windows():
         # Check that largest dimension <= max_dim
         w = corner_data["width"]
         h = corner_data["height"]
-        assert (w <= max_dim and h <= max_dim), f"{k} window not downscaled properly"
+        assert (
+            w <= max_dim and h <= max_dim
+        ), f"{k} window not downscaled properly"
 
         # inner_corner must be within image bounds
         ix, iy = corner_data["inner_corner"]
         assert 0 <= ix < img_w, f"Inner corner {ix} not in [0,{img_w})"
         assert 0 <= iy < img_h, f"Inner corner {iy} not in [0,{img_h})"
 
-    # Optionally, you can also check if windows['top_left']['image'] is not empty, etc.
+    # Optionally, you can also check if windows['top_left']['image'] is
+    # not empty, etc.
     # This test ensures your corner-window extraction logic runs end-to-end.

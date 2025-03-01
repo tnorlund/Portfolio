@@ -3,7 +3,8 @@ from math import isclose, pi, sqrt
 
 import pytest
 
-from receipt_dynamo.data._geometry import (box_points,
+from receipt_dynamo.data._geometry import (
+    box_points,
     compute_hull_centroid,
     compute_receipt_box_from_skewed_extents,
     convex_hull,
@@ -13,7 +14,8 @@ from receipt_dynamo.data._geometry import (box_points,
     invert_warp,
     min_area_rect,
     pad_corners_opposite,
-    solve_8x8_system, )
+    solve_8x8_system,
+)
 
 
 def multiply_perspective(m1, m2):
@@ -24,42 +26,56 @@ def multiply_perspective(m1, m2):
        [a b c]
        [d e f]
        [g h 1]
-    Returns the 8-coefficient result of m1*m2 as a list [a2, b2, c2, d2, e2, f2, g2, h2].
+    Returns the 8-coefficient result of m1*m2 as a list [
+        a2, b2, c2, d2, e2, f2, g2, h2
+    ].
     """
     # Convert to 3x3
-    M1 = [[m1[0], m1[1], m1[2]],
+    M1 = [
+        [m1[0], m1[1], m1[2]],
         [m1[3], m1[4], m1[5]],
-        [m1[6], m1[7], 1.0], ]
-    M2 = [[m2[0], m2[1], m2[2]],
+        [m1[6], m1[7], 1.0],
+    ]
+    M2 = [
+        [m2[0], m2[1], m2[2]],
         [m2[3], m2[4], m2[5]],
-        [m2[6], m2[7], 1.0], ]
+        [m2[6], m2[7], 1.0],
+    ]
     # Multiply
     M = [[0.0] * 3 for _ in range(3)]
     for r in range(3):
         for c in range(3):
             M[r][c] = sum(M1[r][k] * M2[k][c] for k in range(3))
     # Convert back to 8-list
-    return [M[0][0],
+    return [
+        M[0][0],
         M[0][1],
         M[0][2],
         M[1][0],
         M[1][1],
         M[1][2],
         M[2][0],
-        M[2][1], ]
+        M[2][1],
+    ]
 
 
 @pytest.mark.unit
 def test_invert_warp_identity():
     """
     Inverting the identity warp => identity again.
-    Identity warp => x' = x, y' = y, so [a, b, c, d, e, f, g, h] = [1, 0, 0, 0, 1, 0, 0, 0].
+    Identity warp => x' = x, y' = y, so [
+        a, b, c, d, e, f, g, h
+    ] = [
+        1, 0, 0, 0, 1, 0, 0, 0
+    ].
     """
     # Identity perspective warp
     identity = [1, 0, 0, 0, 1, 0, 0, 0]
     inv = invert_warp(*identity)  # unpack => (1, 0, 0, 0, 1, 0, 0, 0)
     # Should still be the identity warp
-    assert (inv == identity), f"Inverse of identity should be identity, got {inv}"
+    assert (
+        inv == identity
+    ), f"Inverse of identity should be identity, got {inv}"
 
 
 @pytest.mark.unit
@@ -77,14 +93,16 @@ def test_invert_warp_det_zero():
     # For a quick guaranteed zero det, do this:
     # i.e. entire matrix is 0 except last element => [g,h,1]? We'll keep g,h=0
     # => last row => [0,0,1].
-    degenerate = [0,
+    degenerate = [
         0,
         0,
         0,
         0,
         0,
         0,
-        0, ]
+        0,
+        0,
+    ]
     # So effectively [0,0,0],[0,0,0],[0,0,1] => determinant=0
     with pytest.raises(ValueError, match="Cannot invert perspective matrix"):
         invert_warp(*degenerate)
@@ -93,30 +111,34 @@ def test_invert_warp_det_zero():
 @pytest.mark.unit
 def test_invert_warp_known_good_matrices():
     """
-    Tests invert_warp on a few well-chosen matrices that are definitely invertible
-    and not too ill-conditioned.
+    Tests invert_warp on a few well-chosen matrices that are definitely
+    invertible and not too ill-conditioned.
     """
-    known_transforms = [# identity
+    known_transforms = [  # identity
         [1, 0, 0, 0, 1, 0, 0, 0],
         # mild shear/perspective
         [1, 0.2, 3, 0.1, 1, -2, 0.001, 0.002],
         # moderate but invertible
         [0.8, -0.3, 1.5, 0.2, 1.2, -1.0, -0.1, 0.1],
         # another stable example
-        [0.9, -0.2, 0.3, 0.4, 1.1, 2.0, 0.05, -0.02], ]
+        [0.9, -0.2, 0.3, 0.4, 1.1, 2.0, 0.05, -0.02],
+    ]
     for mat in known_transforms:
         inv = invert_warp(*mat)
         prod = multiply_perspective(mat, inv)
         identity = [1, 0, 0, 0, 1, 0, 0, 0]
         for i in range(8):
-            assert isclose(prod[i], identity[i], abs_tol=0.5), f"Matrix {mat}: product index {i} => {prod[i]} vs {identity[i]}"
+            assert isclose(
+                prod[i], identity[i], abs_tol=0.5
+            ), f"Matrix {mat}: product index {i} => {prod[i]} vs {identity[i]}"
 
 
 @pytest.mark.unit
 def test_pad_corners_opposite_square_positive():
     """
     Test a simple square. corners = (0, 0), (10, 0), (10, 10), (0, 10).
-    pad=10 => each corner moves ~7.07 px outward along the diagonal away from its opposite corner.
+    pad=10 => each corner moves ~7.07 px outward along the diagonal away from
+    its opposite corner.
     """
     square = [(0, 0), (10, 0), (10, 10), (0, 10)]
     padded = pad_corners_opposite(square, 10.0)
@@ -187,8 +209,9 @@ def test_pad_corners_opposite_identical_corners():
 @pytest.mark.unit
 def test_find_perspective_coeffs_basic_scaling():
     """
-    Basic test: src is 100x50 rectangle, dst is 200x100 rectangle => 2x scaling.
-    We'll verify that the midpoint also transforms correctly under the derived matrix.
+    Basic test: src is 100x50 rectangle, dst is 200x100 rectangle => 2x
+    scaling. We'll verify that the midpoint also transforms correctly under
+    the derived matrix.
     """
     src_points = [(0, 0), (100, 0), (100, 50), (0, 50)]
     dst_points = [(0, 0), (200, 0), (200, 100), (0, 100)]
@@ -222,9 +245,9 @@ def test_find_perspective_coeffs_basic_scaling():
 def test_find_perspective_coeffs_singular():
     """
     If src_points == dst_points, effectively no transformation is needed,
-    but also if we pass something truly degenerate, we might get a ValueError or an
-    invalid matrix. This checks we can handle a 'same points' scenario (should produce
-    an identity-like transform).
+    but also if we pass something truly degenerate, we might get a ValueError
+    or an invalid matrix. This checks we can handle a 'same points' scenario
+    (should produce an identity-like transform).
     """
     src_points = [(0, 0), (1, 0), (1, 1), (0, 1)]
     dst_points = [(0, 0), (1, 0), (1, 1), (0, 1)]  # identical
@@ -350,34 +373,42 @@ def test_box_points():
     # Test unit square at origin
     points = box_points((0, 0), (2, 2), 0)
     expected = [(-1, -1), (1, -1), (1, 1), (-1, 1)]
-    assert all(abs(p[0] - e[0]) < 1e-10 and abs(p[1] - e[1]) < 1e-10
-        for p, e in zip(points, expected))
+    assert all(
+        abs(p[0] - e[0]) < 1e-10 and abs(p[1] - e[1]) < 1e-10
+        for p, e in zip(points, expected)
+    )
 
     # Test rectangle with translation
     points = box_points((1, 1), (2, 1), 0)
     expected = [(0, 0.5), (2, 0.5), (2, 1.5), (0, 1.5)]
-    assert all(abs(p[0] - e[0]) < 1e-10 and abs(p[1] - e[1]) < 1e-10
-        for p, e in zip(points, expected))
+    assert all(
+        abs(p[0] - e[0]) < 1e-10 and abs(p[1] - e[1]) < 1e-10
+        for p, e in zip(points, expected)
+    )
 
     # Test 90-degree rotation
     points = box_points((0, 0), (2, 1), 90)
     expected = [(0.5, -1), (0.5, 1), (-0.5, 1), (-0.5, -1)]
-    assert all(abs(p[0] - e[0]) < 1e-10 and abs(p[1] - e[1]) < 1e-10
-        for p, e in zip(points, expected))
+    assert all(
+        abs(p[0] - e[0]) < 1e-10 and abs(p[1] - e[1]) < 1e-10
+        for p, e in zip(points, expected)
+    )
 
     # Test 45-degree rotation
     points = box_points((0, 0), (sqrt(2), sqrt(2)), 45)
     expected = [(0, -1), (1, 0), (0, 1), (-1, 0)]
-    assert all(abs(p[0] - e[0]) < 1e-10 and abs(p[1] - e[1]) < 1e-10
-        for p, e in zip(points, expected))
+    assert all(
+        abs(p[0] - e[0]) < 1e-10 and abs(p[1] - e[1]) < 1e-10
+        for p, e in zip(points, expected)
+    )
 
 
 # Additional test for duplicate points in min_area_rect to hit the
 # len(hull) < 3 branch.
 @pytest.mark.unit
 def test_min_area_rect_duplicate_points():
-    # When duplicate points are provided, the convex_hull function collapses them
-    # to a single unique point, triggering the degenerate branch in
+    # When duplicate points are provided, the convex_hull function collapses
+    # them to a single unique point, triggering the degenerate branch in
     # min_area_rect.
     points = [(0, 0), (0, 0)]
     center, size, angle = min_area_rect(points)
@@ -398,7 +429,8 @@ def test_compute_receipt_box_from_skewed_extents_empty():
 def test_compute_receipt_box_from_skewed_extents_no_top():
     """
     All points in deskewed space end up in the bottom half (y >= 0),
-    so top_half would be empty. This forces the fallback top_half = pts_deskew[:].
+    so top_half would be empty. This forces the fallback
+    top_half = pts_deskew[:].
     """
     hull_pts = [(0, 0), (2, 0), (2, 2), (0, 2)]  # a simple square
     # We'll use rotation_deg=0 for simplicity, so deskew doesn't move them.
@@ -406,7 +438,9 @@ def test_compute_receipt_box_from_skewed_extents_no_top():
     # All points have y >= 0 => top_half would be empty
     result = compute_receipt_box_from_skewed_extents(hull_pts, 0, 0, 0)
     # Should basically return the bounding box of the square in integer coords.
-    # The function returns corners: [top-left, top-right, bottom-right, bottom-left].
+    # The function returns corners: [
+    #   top-left, top-right, bottom-right, bottom-left
+    # ].
     # But since we have no rotation, top=lowest y => that's actually y=0,
     # bottom=highest y => y=2
     # So corners should be (0,0), (2,0), (2,2), (0,2).
@@ -417,7 +451,8 @@ def test_compute_receipt_box_from_skewed_extents_no_top():
 def test_compute_receipt_box_from_skewed_extents_no_bottom():
     """
     All points in deskewed space are in the top half (y < 0),
-    so bottom_half would be empty. This forces the fallback bottom_half = pts_deskew[:].
+    so bottom_half would be empty. This forces the fallback
+    bottom_half = pts_deskew[:].
     """
     # We'll place these hull points below (0,0) so that after deskew they
     # remain y < 0
@@ -446,9 +481,9 @@ def test_compute_receipt_box_from_skewed_extents_degrees():
     # Then the final result is rotated back. The net effect for this rectangle
     # might shift corners. We'll just check for correct integer corners.
     result = compute_receipt_box_from_skewed_extents(hull_pts, 0, 0, 90)
-    # We expect the bounding "receipt box" to still form the same bounding rectangle,
-    # but oriented differently. After a 90-degree rotation around (0,0),
-    # the bounding corners should become something like:
+    # We expect the bounding "receipt box" to still form the same bounding
+    # rectangle, but oriented differently. After a 90-degree rotation around
+    # (0,0), the bounding corners should become something like:
     #   top-left => (-1, 0)
     #   top-right => (-1, 2)
     #   bottom-right => (0, 2)
@@ -456,16 +491,15 @@ def test_compute_receipt_box_from_skewed_extents_degrees():
     #
     # (One can do the geometry by hand or verify the final 4 points.)
     #
-    # Because the function does "deskew" by +theta then "rotate back" by -theta,
-    # the resulting bounding box in original coords will be the same as the original
-    # aligned rectangle but possibly the corners might be at different positions
-    # depending on how the function interprets top/bottom.
+    # Because the function does "deskew" by +theta then "rotate back" by
+    # -theta, the resulting bounding box in original coords will be the same as
+    # the original aligned rectangle but possibly the corners might be at
+    # different positions depending on how the function interprets top/bottom.
     #
-    # Let's just check we get a 4-corner integer box that encloses the original.
-    # One way is to check the bounding box of the result if exact corners are unclear.
-    #
-    # Here, let's just check the shape. It's often easiest to ensure the bounding box
-    # encloses (0,0),(2,0),(2,1),(0,1).
+    # Let's just check we get a 4-corner integer box that encloses the
+    # original. One way is to check the bounding box of the result if exact
+    # corners are unclear. Here, let's just check the shape. It's often
+    # easiest to ensure the bounding box encloses (0,0),(2,0),(2,1),(0,1).
     xs = [pt[0] for pt in result]
     ys = [pt[1] for pt in result]
     assert len(result) == 4
@@ -482,9 +516,11 @@ def test_compute_receipt_box_from_skewed_extents_radians():
     hull_pts = [(1, 0), (3, 0), (3, 1), (1, 1)]
     # Center is (1,0), rotation = pi/2, so deskew is a +90 deg about (1,0).
     # Then rotate back. We expect an integer bounding box in the end.
-    result = compute_receipt_box_from_skewed_extents(hull_pts, 1, 0, pi / 2, use_radians=True)
-    # Just check we got 4 corners and that bounding box is wide enough to include
-    # original rectangle from x=1..3, y=0..1.
+    result = compute_receipt_box_from_skewed_extents(
+        hull_pts, 1, 0, pi / 2, use_radians=True
+    )
+    # Just check we got 4 corners and that bounding box is wide enough to
+    # include original rectangle from x=1..3, y=0..1.
     xs = [pt[0] for pt in result]
     ys = [pt[1] for pt in result]
     assert len(result) == 4
@@ -499,7 +535,9 @@ def test_find_hull_extents_relative_to_centroid_single_point():
     in any direction => all directions yield None.
     """
     hull_pts = [(5, 5)]
-    results = find_hull_extents_relative_to_centroid(hull_pts, 5, 5, rotation_deg=0)
+    results = find_hull_extents_relative_to_centroid(
+        hull_pts, 5, 5, rotation_deg=0
+    )
     assert results["left"] is None
     assert results["right"] is None
     assert results["top"] is None
@@ -515,7 +553,9 @@ def test_find_hull_extents_relative_to_centroid_square_no_rotation():
     """
     hull_pts = [(0, 0), (10, 0), (10, 10), (0, 10)]
     cx, cy = 5, 5
-    results = find_hull_extents_relative_to_centroid(hull_pts, cx, cy, rotation_deg=0)
+    results = find_hull_extents_relative_to_centroid(
+        hull_pts, cx, cy, rotation_deg=0
+    )
     assert results["left"] == (0, 5)
     assert results["right"] == (10, 5)
     assert results["top"] == (5, 0)
@@ -525,12 +565,14 @@ def test_find_hull_extents_relative_to_centroid_square_no_rotation():
 @pytest.mark.unit
 def test_find_hull_extents_relative_to_centroid_square_rotation_degrees():
     """
-    Same square, but rotated by 45 degrees. We'll just check approximate intersection
-    points. The centroid is still (5, 5).
+    Same square, but rotated by 45 degrees. We'll just check approximate
+    intersection points. The centroid is still (5, 5).
     """
     hull_pts = [(0, 0), (10, 0), (10, 10), (0, 10)]
     cx, cy = 5, 5
-    results = find_hull_extents_relative_to_centroid(hull_pts, cx, cy, rotation_deg=45)
+    results = find_hull_extents_relative_to_centroid(
+        hull_pts, cx, cy, rotation_deg=45
+    )
     # We expect each intersection to be roughly sqrt(50) ~ 7.071 units away
     # from the center if it's a perfect diagonal. We'll check approximate
     # locations.
@@ -560,7 +602,9 @@ def test_find_hull_extents_relative_to_centroid_square_rotation_radians():
     """
     hull_pts = [(0, 0), (10, 0), (10, 10), (0, 10)]
     cx, cy = 5, 5
-    results = find_hull_extents_relative_to_centroid(hull_pts, cx, cy, rotation_deg=pi / 4, use_radians=True)
+    results = find_hull_extents_relative_to_centroid(
+        hull_pts, cx, cy, rotation_deg=pi / 4, use_radians=True
+    )
     # Similar checks as above:
     left_pt = results["left"]
     right_pt = results["right"]
@@ -575,9 +619,12 @@ def test_find_hull_extents_relative_to_centroid_square_rotation_radians():
 @pytest.mark.unit
 def test_find_hull_extents_relative_to_centroid_line():
     """
-    For a hull defined by a single horizontal edge from (0, 0) to (10, 0) with centroid at (5, 0):
-      - Horizontal rays ('left' and 'right') are collinear with the edge and yield no intersection (None).
-      - Vertical rays ('top' and 'bottom') intersect at the centroid, yielding (5, 0).
+    For a hull defined by a single horizontal edge from (0, 0) to (10, 0) with
+    centroid at (5, 0):
+      - Horizontal rays ('left' and 'right') are collinear with the edge and
+        yield no intersection (None).
+      - Vertical rays ('top' and 'bottom') intersect at the centroid,
+        yielding (5, 0).
     """
     hull_pts = [(0, 0), (10, 0)]
     cx, cy = 5, 0
@@ -615,7 +662,8 @@ def test_compute_hull_centroid_two_points():
 @pytest.mark.unit
 def test_compute_hull_centroid_polygon():
     """
-    Non-degenerate polygon. We'll take a square with corners (0,0),(4,0),(4,4),(0,4).
+    Non-degenerate polygon. We'll take a square with corners
+    (0,0),(4,0),(4,4),(0,4).
     The centroid should be (2, 2).
     """
     pts = [(0, 0), (4, 0), (4, 4), (0, 4)]
@@ -638,11 +686,12 @@ def test_compute_hull_centroid_degenerate_polygon():
 
 
 @pytest.mark.unit
-def test_compute_hull_centroid_degenerate_polygon():
+def test_compute_hull_centroid_degenerate_thin_polygon():
     """
     For an extremely thin polygon (almost zero area), the area-based centroid
     calculation falls back to averaging the hull points.
-    Here, we use a nearly degenerate rectangle where the computed area is below 1e-14.
+    Here, we use a nearly degenerate rectangle where the computed area is
+    below 1e-14.
     The expected centroid is the average of the hull vertices.
     """
     pts = [(0, 0), (4, 0), (4, 1e-15), (0, 1e-15)]
