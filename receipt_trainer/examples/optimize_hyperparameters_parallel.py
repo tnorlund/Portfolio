@@ -10,12 +10,12 @@ def main():
     # Set environment variables (in production, use a .env file or environment)
     os.environ.update(
         {
-            "WANDB_API_KEY": "your-wandb-key",
             "HF_TOKEN": "your-hf-token",
             "AWS_ACCESS_KEY_ID": "your-aws-key",
             "AWS_SECRET_ACCESS_KEY": "your-aws-secret",
             "AWS_DEFAULT_REGION": "us-west-2",
             "CHECKPOINT_BUCKET": "your-checkpoint-bucket",
+            "DYNAMO_TABLE": "your-dynamo-metrics-table",
         }
     )
 
@@ -43,12 +43,13 @@ def main():
         augment=True,
     )
 
-    # Initialize trainer
+    # Initialize trainer with DynamoDB table
+    dynamo_table = os.getenv("DYNAMO_TABLE")
     trainer = ReceiptTrainer(
-        wandb_project="receipt-training-parallel-sweep",
         model_name="microsoft/layoutlm-base-uncased",
         training_config=training_config,
         data_config=data_config,
+        dynamo_table=dynamo_table,
     )
 
     # Custom sweep configuration (optional)
@@ -79,9 +80,8 @@ def main():
             f"Loaded dataset with {len(dataset['train'])} training and {len(dataset['validation'])} validation examples"
         )
 
-        # Initialize model and W&B
+        # Initialize model
         trainer.initialize_model()
-        trainer.initialize_wandb()
 
         # Run parallel hyperparameter sweep
         total_trials = num_gpus * training_config.parallel_sweep_per_worker_trials

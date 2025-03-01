@@ -5,7 +5,6 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 import time
-import wandb
 from receipt_trainer import ReceiptTrainer, TrainingConfig, DataConfig
 from transformers import TrainerCallback
 
@@ -13,28 +12,34 @@ from transformers import TrainerCallback
 env_path = Path(__file__).parent.parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
-# Disable wandb telemetry to help avoid BrokenPipe errors
-os.environ["WANDB_DISABLE_TELEMETRY"] = "true"
-
 
 class PerStepLoggingCallback(TrainerCallback):
-    """Logs training metrics and evaluation metrics to W&B at every step."""
+    """Logs training metrics and evaluation metrics to DynamoDB at every step."""
 
-    def __init__(self, wandb_run=None):
+    def __init__(self, job_service=None, job_id=None):
         super().__init__()
-        self.wandb_run = wandb_run
+        self.job_service = job_service
+        self.job_id = job_id
 
     def on_step_end(self, args, state, control, logs=None, **kwargs):
-        if logs and state.is_world_process_zero:
-            wandb.log(
-                {f"train/{k}": v for k, v in logs.items()}, step=state.global_step
-            )
+        if logs and state.is_world_process_zero and self.job_service and self.job_id:
+            for k, v in logs.items():
+                self.job_service.add_job_metric(
+                    job_id=self.job_id,
+                    metric_name=f"train/{k}",
+                    metric_value=v,
+                    metadata={"step": state.global_step}
+                )
 
     def on_evaluate(self, args, state, control, metrics=None, **kwargs):
-        if metrics and state.is_world_process_zero:
-            wandb.log(
-                {f"eval/{k}": v for k, v in metrics.items()}, step=state.global_step
-            )
+        if metrics and state.is_world_process_zero and self.job_service and self.job_id:
+            for k, v in metrics.items():
+                self.job_service.add_job_metric(
+                    job_id=self.job_id,
+                    metric_name=f"eval/{k}",
+                    metric_value=v,
+                    metadata={"step": state.global_step}
+                )
 
 
 def validate_environment():
@@ -45,12 +50,12 @@ def validate_environment():
             message listing which specific variables are not set.
     """
     required_vars = {
-        "WANDB_API_KEY": "API key for Weights & Biases",
         "HF_TOKEN": "Hugging Face token for accessing models",
         "AWS_ACCESS_KEY_ID": "AWS access key for DynamoDB and S3",
         "AWS_SECRET_ACCESS_KEY": "AWS secret key for DynamoDB and S3",
         "AWS_DEFAULT_REGION": "AWS region for services",
         "CHECKPOINT_BUCKET": "S3 bucket for checkpoints",
+        "DYNAMO_TABLE": "DynamoDB table for metrics and job tracking",
     }
 
     missing_vars = [var for var, desc in required_vars.items() if not os.getenv(var)]
@@ -74,20 +79,20 @@ def main():
         num_epochs=10,
         evaluation_steps=10,
         save_steps=10,
-        logging_steps=1,  # <--- ADD THIS
+        logging_steps=1,
     )
     data_config = DataConfig(
         use_sroie=True, balance_ratio=0.7, augment=True, env="prod"
     )
 
     try:
-        # Initialize the trainer.
-        # IMPORTANT: Make sure your ReceiptTrainer.__init__() does NOT call wandb.init()
+        # Initialize the trainer with DynamoDB table
+        dynamo_table = os.getenv("DYNAMO_TABLE")
         trainer = ReceiptTrainer(
-            wandb_project="receipt-training-sweep",
             model_name="microsoft/layoutlm-base-uncased",
             training_config=training_config,
             data_config=data_config,
+            dynamo_table=dynamo_table,
         )
 
         # Load data and initialize model once before starting the sweep.
@@ -100,10 +105,10 @@ def main():
         print("Initializing model...")
         trainer.initialize_model()
 
-        # Define your sweep configuration (remove unsupported keys if needed)
+        # Define your sweep configuration
         sweep_config = {
             "method": "bayes",
-            "metric": {"name": "eval/f1", "goal": "maximize"},
+            "metric": {"name": "validation/macro_avg/f1-score", "goal": "maximize"},
             "parameters": {
                 "learning_rate": {
                     "distribution": "log_uniform_values",
@@ -142,12 +147,6 @@ def main():
     except Exception as e:
         print(f"Error during hyperparameter optimization: {e}")
         raise
-
-    finally:
-        try:
-            wandb.finish()
-        except Exception:
-            pass
 
 
 if __name__ == "__main__":
