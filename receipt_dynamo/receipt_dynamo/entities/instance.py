@@ -25,7 +25,8 @@ class Instance:
         health_status (str): The health status of the instance (healthy, unhealthy).
     """
 
-    def __init__(self,
+    def __init__(
+        self,
         instance_id: str,
         instance_type: str,
         gpu_count: int,
@@ -34,7 +35,8 @@ class Instance:
         ip_address: str,
         availability_zone: str,
         is_spot: bool,
-        health_status: str, ):
+        health_status: str,
+    ):
         """Initializes a new Instance object for DynamoDB.
 
         Args:
@@ -72,7 +74,9 @@ class Instance:
         elif isinstance(launched_at, str):
             self.launched_at = launched_at
         else:
-            raise ValueError("launched_at must be a datetime object or a string")
+            raise ValueError(
+                "launched_at must be a datetime object or a string"
+            )
 
         if not isinstance(ip_address, str):
             raise ValueError("ip_address must be a string")
@@ -87,9 +91,13 @@ class Instance:
         self.is_spot = is_spot
 
         valid_health_statuses = ["healthy", "unhealthy", "unknown"]
-        if (not isinstance(health_status, str)
-            or health_status.lower() not in valid_health_statuses):
-            raise ValueError(f"health_status must be one of {valid_health_statuses}")
+        if (
+            not isinstance(health_status, str)
+            or health_status.lower() not in valid_health_statuses
+        ):
+            raise ValueError(
+                f"health_status must be one of {valid_health_statuses}"
+            )
         self.health_status = health_status.lower()
 
     def key(self) -> dict:
@@ -98,8 +106,10 @@ class Instance:
         Returns:
             dict: The primary key for the instance.
         """
-        return {"PK": {"S": f"INSTANCE#{self.instance_id}"},
-            "SK": {"S": "INSTANCE"}, }
+        return {
+            "PK": {"S": f"INSTANCE#{self.instance_id}"},
+            "SK": {"S": "INSTANCE"},
+        }
 
     def gsi1_key(self) -> dict:
         """Generates the GSI1 key for the instance.
@@ -107,8 +117,10 @@ class Instance:
         Returns:
             dict: The GSI1 key for the instance.
         """
-        return {"GSI1PK": {"S": f"STATUS#{self.status}"},
-            "GSI1SK": {"S": f"INSTANCE#{self.instance_id}"}, }
+        return {
+            "GSI1PK": {"S": f"STATUS#{self.status}"},
+            "GSI1SK": {"S": f"INSTANCE#{self.instance_id}"},
+        }
 
     def to_item(self) -> dict:
         """Converts the Instance object to a DynamoDB item.
@@ -116,7 +128,8 @@ class Instance:
         Returns:
             dict: A dictionary representing the Instance object as a DynamoDB item.
         """
-        item = {**self.key(),
+        item = {
+            **self.key(),
             **self.gsi1_key(),
             "TYPE": {"S": "INSTANCE"},
             "instance_type": {"S": self.instance_type},
@@ -126,7 +139,8 @@ class Instance:
             "ip_address": {"S": self.ip_address},
             "availability_zone": {"S": self.availability_zone},
             "is_spot": {"BOOL": self.is_spot},
-            "health_status": {"S": self.health_status}, }
+            "health_status": {"S": self.health_status},
+        }
         return item
 
     def __repr__(self) -> str:
@@ -135,7 +149,8 @@ class Instance:
         Returns:
             str: A string representation of the Instance object.
         """
-        return ("Instance("
+        return (
+            "Instance("
             f"instance_id={_repr_str(self.instance_id)}, "
             f"instance_type={_repr_str(self.instance_type)}, "
             f"gpu_count={self.gpu_count}, "
@@ -145,7 +160,8 @@ class Instance:
             f"availability_zone={_repr_str(self.availability_zone)}, "
             f"is_spot={self.is_spot}, "
             f"health_status={_repr_str(self.health_status)}"
-            ")")
+            ")"
+        )
 
     def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
         """Returns an iterator over the Instance object's attributes.
@@ -177,7 +193,8 @@ class Instance:
         """
         if not isinstance(other, Instance):
             return False
-        return (self.instance_id == other.instance_id
+        return (
+            self.instance_id == other.instance_id
             and self.instance_type == other.instance_type
             and self.gpu_count == other.gpu_count
             and self.status == other.status
@@ -185,7 +202,8 @@ class Instance:
             and self.ip_address == other.ip_address
             and self.availability_zone == other.availability_zone
             and self.is_spot == other.is_spot
-            and self.health_status == other.health_status)
+            and self.health_status == other.health_status
+        )
 
     def __hash__(self) -> int:
         """Returns the hash value of the Instance object.
@@ -193,7 +211,9 @@ class Instance:
         Returns:
             int: The hash value of the Instance object.
         """
-        return hash((self.instance_id,
+        return hash(
+            (
+                self.instance_id,
                 self.instance_type,
                 self.gpu_count,
                 self.status,
@@ -201,7 +221,9 @@ class Instance:
                 self.ip_address,
                 self.availability_zone,
                 self.is_spot,
-                self.health_status, ))
+                self.health_status,
+            )
+        )
 
 
 def itemToInstance(item: dict) -> Instance:
@@ -216,7 +238,8 @@ def itemToInstance(item: dict) -> Instance:
     Raises:
         ValueError: When the item format is invalid.
     """
-    required_keys = {"PK",
+    required_keys = {
+        "PK",
         "SK",
         "TYPE",
         "instance_type",
@@ -226,11 +249,14 @@ def itemToInstance(item: dict) -> Instance:
         "ip_address",
         "availability_zone",
         "is_spot",
-        "health_status", }
+        "health_status",
+    }
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
-        raise ValueError(f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}")
+        raise ValueError(
+            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
+        )
 
     try:
         # Parse instance_id from the PK
@@ -246,7 +272,8 @@ def itemToInstance(item: dict) -> Instance:
         is_spot = item["is_spot"]["BOOL"]
         health_status = item["health_status"]["S"]
 
-        return Instance(instance_id=instance_id,
+        return Instance(
+            instance_id=instance_id,
             instance_type=instance_type,
             gpu_count=gpu_count,
             status=status,
@@ -254,6 +281,7 @@ def itemToInstance(item: dict) -> Instance:
             ip_address=ip_address,
             availability_zone=availability_zone,
             is_spot=is_spot,
-            health_status=health_status, )
+            health_status=health_status,
+        )
     except KeyError as e:
         raise ValueError(f"Error converting item to Instance: {e}")

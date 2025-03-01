@@ -415,9 +415,10 @@ def test_receipt_line_iter(example_receipt_line):
 
 @pytest.mark.unit
 def test_item_to_receipt_line(example_receipt_line):
-    assert itemToReceiptLine(
-        example_receipt_line.to_item()
-    ) == example_receipt_line
+    assert (
+        itemToReceiptLine(example_receipt_line.to_item())
+        == example_receipt_line
+    )
 
     # Missing keys
     with pytest.raises(

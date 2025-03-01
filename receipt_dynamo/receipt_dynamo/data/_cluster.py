@@ -5,7 +5,9 @@ from typing import Dict, List
 from receipt_dynamo.entities import Line
 
 
-def dbscan_lines(lines: List[Line], eps: float = 10.0, min_samples: int = 2) -> Dict[int, List[Line]]:
+def dbscan_lines(
+    lines: List[Line], eps: float = 10.0, min_samples: int = 2
+) -> Dict[int, List[Line]]:
     """
     Clusters a list of Line objects using a custom DBSCAN implementation
     based on the centroids of each Line.
@@ -28,7 +30,9 @@ def dbscan_lines(lines: List[Line], eps: float = 10.0, min_samples: int = 2) -> 
 
     # Initialize bookkeeping lists:
     visited = [False] * n  # Tracks if a point has been visited.
-    cluster_labels = [None] * n  # None = not assigned; -1 = noise; other integers = cluster ID.
+    cluster_labels = [
+        None
+    ] * n  # None = not assigned; -1 = noise; other integers = cluster ID.
     current_cluster = 0
 
     def region_query(idx: int) -> List[int]:
@@ -65,8 +69,10 @@ def dbscan_lines(lines: List[Line], eps: float = 10.0, min_samples: int = 2) -> 
                                 if neighbor not in seeds:
                                     seeds.append(neighbor)
                     # Assign to the cluster if not already assigned.
-                    if (cluster_labels[current_point] is None
-                        or cluster_labels[current_point] == -1):
+                    if (
+                        cluster_labels[current_point] is None
+                        or cluster_labels[current_point] == -1
+                    ):
                         cluster_labels[current_point] = current_cluster
                 current_cluster += 1
 

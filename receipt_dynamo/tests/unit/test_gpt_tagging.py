@@ -103,8 +103,7 @@ def test_gpt_tagging_init_invalid_query():
 def test_gpt_tagging_init_invalid_response():
     """GPTInitialTagging raises ValueError for an invalid response."""
     with pytest.raises(
-        ValueError,
-        match="response must be a non-empty string"
+        ValueError, match="response must be a non-empty string"
     ):
         GPTInitialTagging(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",

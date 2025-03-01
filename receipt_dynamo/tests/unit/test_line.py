@@ -11,7 +11,12 @@ def example_line():
         "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         1,
         "Test",
-        {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, },
+        {
+            "x": 10.0,
+            "y": 20.0,
+            "width": 5.0,
+            "height": 2.0,
+        },
         {"x": 15.0, "y": 20.0},
         {"x": 10.0, "y": 20.0},
         {"x": 15.0, "y": 22.0},
@@ -71,7 +76,12 @@ def test_line_init_invalid_uuid():
             1,
             1,
             "Test",
-            {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, },
+            {
+                "x": 10.0,
+                "y": 20.0,
+                "width": 5.0,
+                "height": 2.0,
+            },
             {"x": 15.0, "y": 20.0},
             {"x": 10.0, "y": 20.0},
             {"x": 15.0, "y": 22.0},
@@ -85,7 +95,12 @@ def test_line_init_invalid_uuid():
             "not-a-uuid",
             1,
             "Test",
-            {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, },
+            {
+                "x": 10.0,
+                "y": 20.0,
+                "width": 5.0,
+                "height": 2.0,
+            },
             {"x": 15.0, "y": 20.0},
             {"x": 10.0, "y": 20.0},
             {"x": 15.0, "y": 22.0},
@@ -103,7 +118,12 @@ def test_line_init_invalid_id():
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "not-an-int",
             "Test",
-            {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, },
+            {
+                "x": 10.0,
+                "y": 20.0,
+                "width": 5.0,
+                "height": 2.0,
+            },
             {"x": 15.0, "y": 20.0},
             {"x": 10.0, "y": 20.0},
             {"x": 15.0, "y": 22.0},
@@ -117,7 +137,12 @@ def test_line_init_invalid_id():
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             -1,
             "Test",
-            {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, },
+            {
+                "x": 10.0,
+                "y": 20.0,
+                "width": 5.0,
+                "height": 2.0,
+            },
             {"x": 15.0, "y": 20.0},
             {"x": 10.0, "y": 20.0},
             {"x": 15.0, "y": 22.0},
@@ -135,7 +160,12 @@ def test_line_init_invalid_text():
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             1,
             1,
-            {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, },
+            {
+                "x": 10.0,
+                "y": 20.0,
+                "width": 5.0,
+                "height": 2.0,
+            },
             {"x": 15.0, "y": 20.0},
             {"x": 10.0, "y": 20.0},
             {"x": 15.0, "y": 22.0},
@@ -149,7 +179,8 @@ def test_line_init_invalid_text():
 @pytest.mark.unit
 def test_line_init_invalid_bounding_box():
     with pytest.raises(
-        ValueError, match="bounding_box must be a dictionary",
+        ValueError,
+        match="bounding_box must be a dictionary",
     ):
         Line(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -165,7 +196,8 @@ def test_line_init_invalid_bounding_box():
             0.90,
         )
     with pytest.raises(
-        ValueError, match="bounding_box must contain the key 'height'",
+        ValueError,
+        match="bounding_box must contain the key 'height'",
     ):
         Line(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
