@@ -40,12 +40,14 @@ class JobQueue:
     
     def _create_dlq(self):
         """Create a Dead Letter Queue for failed jobs."""
-        dlq_name = f"{self.name_prefix}-job-dlq-{self.env}"
+        dlq_name = f"{self.name_prefix}-job-dlq-{self.env}.fifo"
         
         dlq = aws.sqs.Queue(
             dlq_name,
             name=dlq_name,
             message_retention_seconds=1209600,  # 14 days
+            fifo_queue=True,  # This queue must also be FIFO since main queue is FIFO
+            content_based_deduplication=True,  # Enable content-based deduplication
             tags=self.tags
         )
         
@@ -53,7 +55,7 @@ class JobQueue:
     
     def _create_main_queue(self):
         """Create the main job queue with priority support."""
-        queue_name = f"{self.name_prefix}-job-queue-{self.env}"
+        queue_name = f"{self.name_prefix}-job-queue-{self.env}.fifo"
         
         # Get the DLQ ARN for redrive policy
         dlq_arn = self.dead_letter_queue.arn
