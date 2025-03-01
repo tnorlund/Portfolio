@@ -29,7 +29,7 @@ def example_queue_job_minimal():
 
 @pytest.mark.unit
 def test_queue_job_init_valid(example_queue_job):
-    """Tests that the QueueJob constructor works with valid parameters."""
+    """QueueJob constructor works with valid parameters."""
     assert example_queue_job.queue_name == "test-queue"
     assert example_queue_job.job_id == "12345678-1234-4678-9234-567812345678"
     assert example_queue_job.enqueued_at == "2023-01-01T12:00:00"
@@ -39,7 +39,7 @@ def test_queue_job_init_valid(example_queue_job):
 
 @pytest.mark.unit
 def test_queue_job_init_invalid_queue_name():
-    """Tests that the QueueJob constructor raises a ValueError with an invalid queue_name."""
+    """QueueJob constructor raises a ValueError with invalid queue_name."""
     with pytest.raises(
         ValueError, match="queue_name must be a non-empty string"
     ):
@@ -70,7 +70,7 @@ def test_queue_job_init_invalid_queue_name():
 
 @pytest.mark.unit
 def test_queue_job_init_invalid_job_id():
-    """Tests that the QueueJob constructor raises a ValueError with an invalid job_id."""
+    """QueueJob constructor raises a ValueError with invalid job_id."""
     with pytest.raises(ValueError, match="uuid must be a valid UUIDv4"):
         QueueJob(
             queue_name="test-queue",
@@ -91,7 +91,7 @@ def test_queue_job_init_invalid_job_id():
 
 @pytest.mark.unit
 def test_queue_job_init_invalid_enqueued_at():
-    """Tests that the QueueJob constructor raises a ValueError with an invalid enqueued_at."""
+    """QueueJob constructor raises a ValueError with invalid enqueued_at."""
     with pytest.raises(
         ValueError, match="enqueued_at must be a datetime object or a string"
     ):
@@ -113,7 +113,7 @@ def test_queue_job_init_invalid_enqueued_at():
 
 @pytest.mark.unit
 def test_queue_job_init_invalid_priority():
-    """Tests that the QueueJob constructor raises a ValueError with an invalid priority."""
+    """QueueJob constructor raises a ValueError with invalid priority."""
     with pytest.raises(ValueError, match="priority must be one of"):
         QueueJob(
             queue_name="test-queue",
@@ -133,7 +133,7 @@ def test_queue_job_init_invalid_priority():
 
 @pytest.mark.unit
 def test_queue_job_init_invalid_position():
-    """Tests that the QueueJob constructor raises a ValueError with an invalid position."""
+    """QueueJob constructor raises a ValueError with invalid position."""
     with pytest.raises(
         ValueError, match="position must be a non-negative integer"
     ):
@@ -157,7 +157,7 @@ def test_queue_job_init_invalid_position():
 
 @pytest.mark.unit
 def test_queue_job_key(example_queue_job):
-    """Tests that the QueueJob.key() method returns the correct primary key."""
+    """QueueJob.key() method returns the correct primary key."""
     key = example_queue_job.key()
     assert key["PK"] == {"S": "QUEUE#test-queue"}
     assert key["SK"] == {"S": "JOB#12345678-1234-4678-9234-567812345678"}
@@ -165,7 +165,7 @@ def test_queue_job_key(example_queue_job):
 
 @pytest.mark.unit
 def test_queue_job_gsi1_key(example_queue_job):
-    """Tests that the QueueJob.gsi1_key() method returns the correct GSI1 key."""
+    """QueueJob.gsi1_key() method returns the correct GSI1 key."""
     gsi1_key = example_queue_job.gsi1_key()
     assert gsi1_key["GSI1PK"] == {"S": "JOB"}
     assert gsi1_key["GSI1SK"] == {
@@ -175,7 +175,7 @@ def test_queue_job_gsi1_key(example_queue_job):
 
 @pytest.mark.unit
 def test_queue_job_to_item(example_queue_job, example_queue_job_minimal):
-    """Tests that the QueueJob.to_item() method returns the correct DynamoDB item."""
+    """QueueJob.to_item() method returns the correct DynamoDB item."""
     # Test full queue job
     item = example_queue_job.to_item()
     assert item["PK"] == {"S": "QUEUE#test-queue"}
@@ -205,7 +205,7 @@ def test_queue_job_to_item(example_queue_job, example_queue_job_minimal):
 
 @pytest.mark.unit
 def test_queue_job_repr(example_queue_job):
-    """Tests that the QueueJob.__repr__() method returns the correct string representation."""
+    """QueueJob.__repr__() method returns the correct string representation."""
     repr_str = repr(example_queue_job)
     assert "QueueJob(" in repr_str
     assert "queue_name='test-queue'" in repr_str
@@ -217,7 +217,7 @@ def test_queue_job_repr(example_queue_job):
 
 @pytest.mark.unit
 def test_queue_job_iter(example_queue_job):
-    """Tests that the QueueJob.__iter__() method yields all attributes."""
+    """QueueJob.__iter__() method yields all attributes."""
     queue_job_dict = dict(example_queue_job)
     assert queue_job_dict["queue_name"] == "test-queue"
     assert queue_job_dict["job_id"] == "12345678-1234-4678-9234-567812345678"
@@ -228,7 +228,7 @@ def test_queue_job_iter(example_queue_job):
 
 @pytest.mark.unit
 def test_queue_job_eq():
-    """Tests that the QueueJob.__eq__() method correctly compares QueueJob objects."""
+    """QueueJob.__eq__() method compares QueueJob objects."""
     queue_job1 = QueueJob(
         queue_name="test-queue",
         job_id="12345678-1234-4678-9234-567812345678",
@@ -260,7 +260,9 @@ def test_queue_job_eq():
 
 @pytest.mark.unit
 def test_itemToQueueJob(example_queue_job, example_queue_job_minimal):
-    """Tests that the itemToQueueJob function correctly converts a DynamoDB item to a QueueJob object."""
+    """
+    itemToQueueJob function converts a DynamoDB item to a QueueJob object
+    """
     # Test full queue job
     item = example_queue_job.to_item()
     queue_job = itemToQueueJob(item)
