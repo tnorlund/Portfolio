@@ -103,7 +103,9 @@ def test_gpt_validation_init_invalid_query():
 @pytest.mark.unit
 def test_gpt_validation_init_invalid_response():
     """Test that GPTValidation raises ValueError for an invalid response."""
-    with pytest.raises(ValueError, match="response must be a non-empty string"):
+    with pytest.raises(
+        ValueError, match="response must be a non-empty string"
+    ):
         GPTValidation(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=7,
@@ -111,7 +113,9 @@ def test_gpt_validation_init_invalid_response():
             response="",  # empty string
             timestamp_added="2021-01-01T00:00:00",
         )
-    with pytest.raises(ValueError, match="response must be a non-empty string"):
+    with pytest.raises(
+        ValueError, match="response must be a non-empty string"
+    ):
         GPTValidation(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=7,
@@ -123,9 +127,10 @@ def test_gpt_validation_init_invalid_response():
 
 @pytest.mark.unit
 def test_gpt_validation_init_invalid_timestamp():
-    """Test that GPTValidation raises ValueError for an invalid timestamp_added."""
+    """GPTValidation raises ValueError for an invalid timestamp_added."""
     with pytest.raises(
-        ValueError, match="timestamp_added must be a datetime object or a string"
+        ValueError,
+        match="timestamp_added must be a datetime object or a string",
     ):
         GPTValidation(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -218,7 +223,7 @@ def test_item_to_gpt_validation(sample_gpt_validation):
 
 @pytest.mark.unit
 def test_item_to_gpt_validation_missing_keys():
-    """Test that itemToGPTValidation raises an error if required keys are missing."""
+    """itemToGPTValidation raises an error if required keys are missing."""
     incomplete_item = {
         "SK": {"S": "RECEIPT#00007#QUERY#VALIDATION"},
         "query": {"S": "Is this the total amount?"},
@@ -231,7 +236,7 @@ def test_item_to_gpt_validation_missing_keys():
 
 @pytest.mark.unit
 def test_item_to_gpt_validation_invalid_format():
-    """Test that itemToGPTValidation raises an error for an improperly formatted item."""
+    """itemToGPTValidation raises an error for an improperly formatted item."""
     bad_item = {
         "PK": {"S": "IMAGE#bad"},  # Improperly formatted
         "SK": {"S": "RECEIPT#00007"},  # Missing query validation suffix
@@ -240,7 +245,9 @@ def test_item_to_gpt_validation_invalid_format():
         "response": {"S": "Yes, it is the total."},
         "timestamp_added": {"S": "2021-01-01T00:00:00"},
     }
-    with pytest.raises(ValueError, match="Error converting item to GPTValidation"):
+    with pytest.raises(
+        ValueError, match="Error converting item to GPTValidation"
+    ):
         itemToGPTValidation(bad_item)
 
 
