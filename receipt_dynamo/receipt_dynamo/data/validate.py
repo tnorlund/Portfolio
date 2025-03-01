@@ -40,7 +40,8 @@ def validate(table_name: str, image_id: str) -> None:
     dynamo_client = DynamoClient(table_name)
 
     # Get all relevant data from DynamoDB
-    (_,
+    (
+        _,
         _,
         _,
         word_tags,
@@ -52,7 +53,8 @@ def validate(table_name: str, image_id: str) -> None:
         receipt_word_tags,
         _,
         _,
-        _, ) = dynamo_client.getImageDetails(image_id)
+        _,
+    ) = dynamo_client.getImageDetails(image_id)
 
     if not receipts:
         raise ValueError(f"No receipts found for image {image_id}")
@@ -63,19 +65,31 @@ def validate(table_name: str, image_id: str) -> None:
     word_tags_to_update = []
     for receipt in receipts:
         # Filter data for this receipt
-        r_lines = [line for line in receipt_lines if line.receipt_id == receipt.receipt_id]
-        r_words = [w for w in receipt_words if w.receipt_id == receipt.receipt_id]
-        r_word_tags = [t for t in receipt_word_tags if t.receipt_id == receipt.receipt_id]
+        r_lines = [
+            line
+            for line in receipt_lines
+            if line.receipt_id == receipt.receipt_id
+        ]
+        r_words = [
+            w for w in receipt_words if w.receipt_id == receipt.receipt_id
+        ]
+        r_word_tags = [
+            t for t in receipt_word_tags if t.receipt_id == receipt.receipt_id
+        ]
 
         # Request GPT validation
-        content, query, response_text = gpt_request_tagging_validation(receipt, r_lines, r_words, r_word_tags)
+        content, query, response_text = gpt_request_tagging_validation(
+            receipt, r_lines, r_words, r_word_tags
+        )
 
         # Create GPT validation record
-        gpt_validation = GPTValidation(image_id=image_id,
+        gpt_validation = GPTValidation(
+            image_id=image_id,
             receipt_id=receipt.receipt_id,
             query=query,
             response=response_text,
-            timestamp_added=datetime.now(timezone.utc).isoformat(), )
+            timestamp_added=datetime.now(timezone.utc).isoformat(),
+        )
         gpt_validations_to_add.append(gpt_validation)
 
         for word_data in content:
@@ -88,12 +102,13 @@ def validate(table_name: str, image_id: str) -> None:
 
             # Find and update the receipt word tag
             matching_receipt_word_tag = next(
-                (tag
+                (
+                    tag
                     for tag in r_word_tags
                     if tag.word_id == word_id and tag.line_id == line_id
                     # and tag.tag == initial_tag
                 ),
-                None
+                None,
             )
             # Skip this tag when it does not exist
             if not matching_receipt_word_tag:
@@ -103,7 +118,9 @@ def validate(table_name: str, image_id: str) -> None:
                 matching_receipt_word_tag.validated = True
             else:
                 matching_receipt_word_tag.validated = False
-            matching_receipt_word_tag.timestamp_validated = datetime.now(timezone.utc).isoformat()
+            matching_receipt_word_tag.timestamp_validated = datetime.now(
+                timezone.utc
+            ).isoformat()
             matching_receipt_word_tag.gpt_confidence = confidence
             matching_receipt_word_tag.flag = flag
             matching_receipt_word_tag.revised_tag = revised_tag
@@ -111,12 +128,13 @@ def validate(table_name: str, image_id: str) -> None:
 
             # Find the matching word tag
             matching_word_tag = next(
-                (tag
+                (
+                    tag
                     for tag in word_tags
                     if tag.word_id == word_id and tag.line_id == line_id
                     # and tag.tag == initial_tag
                 ),
-                None
+                None,
             )
             if not matching_word_tag:
                 continue
@@ -125,7 +143,9 @@ def validate(table_name: str, image_id: str) -> None:
                 matching_word_tag.validated = True
             else:
                 matching_word_tag.validated = False
-            matching_word_tag.timestamp_validated = datetime.now(timezone.utc).isoformat()
+            matching_word_tag.timestamp_validated = datetime.now(
+                timezone.utc
+            ).isoformat()
             matching_word_tag.gpt_confidence = confidence
             matching_word_tag.flag = flag
             matching_word_tag.revised_tag = revised_tag
@@ -136,16 +156,20 @@ def validate(table_name: str, image_id: str) -> None:
         word_tags_to_update = list(set(word_tags_to_update))
 
         # Check that all word tags and receipt word tags match
-        receipt_keys = [f"{item.word_id}_{item.line_id}_{item.tag}"
-            for item in receipt_word_tags_to_update]
-        word_keys = [f"{item.word_id}_{item.line_id}_{item.tag}"
-            for item in word_tags_to_update]
+        receipt_keys = [
+            f"{item.word_id}_{item.line_id}_{item.tag}"
+            for item in receipt_word_tags_to_update
+        ]
+        word_keys = [
+            f"{item.word_id}_{item.line_id}_{item.tag}"
+            for item in word_tags_to_update
+        ]
         if set(receipt_keys) != set(word_keys):
             raise Exception("Could not match receipt word tags to word tags")
 
     # Batch update DynamoDB
     dynamo_client.addGPTValidations(gpt_validations_to_add)
-    
+
     # Update existing tags rather than add new ones
     for tag in receipt_word_tags_to_update:
         dynamo_client.updateReceiptWordTag(tag)

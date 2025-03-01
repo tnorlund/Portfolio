@@ -3,7 +3,8 @@ import json
 import os
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.entities import (GPTInitialTagging,
+from receipt_dynamo.entities import (
+    GPTInitialTagging,
     GPTValidation,
     Image,
     Letter,
@@ -15,7 +16,8 @@ from receipt_dynamo.entities import (GPTInitialTagging,
     ReceiptWord,
     ReceiptWordTag,
     Word,
-    WordTag, )
+    WordTag,
+)
 
 
 def import_image(table_name: str, json_path: str) -> None:
@@ -47,19 +49,35 @@ def import_image(table_name: str, json_path: str) -> None:
         data = json.load(f)
 
     # Convert dictionaries back to entity objects
-    entities = {"images": [Image(**item) for item in data["images"]],
+    entities = {
+        "images": [Image(**item) for item in data["images"]],
         "lines": [Line(**item) for item in data["lines"]],
         "words": [Word(**item) for item in data["words"]],
         "word_tags": [WordTag(**item) for item in data["word_tags"]],
         "letters": [Letter(**item) for item in data["letters"]],
         "receipts": [Receipt(**item) for item in data["receipts"]],
-        "receipt_windows": [ReceiptWindow(**item) for item in data["receipt_windows"]],
-        "receipt_lines": [ReceiptLine(**item) for item in data["receipt_lines"]],
-        "receipt_words": [ReceiptWord(**item) for item in data["receipt_words"]],
-        "receipt_word_tags": [ReceiptWordTag(**item) for item in data["receipt_word_tags"]],
-        "receipt_letters": [ReceiptLetter(**item) for item in data["receipt_letters"]],
-        "gpt_initial_taggings": [GPTInitialTagging(**item) for item in data["gpt_initial_taggings"]],
-        "gpt_validations": [GPTValidation(**item) for item in data["gpt_validations"]], }
+        "receipt_windows": [
+            ReceiptWindow(**item) for item in data["receipt_windows"]
+        ],
+        "receipt_lines": [
+            ReceiptLine(**item) for item in data["receipt_lines"]
+        ],
+        "receipt_words": [
+            ReceiptWord(**item) for item in data["receipt_words"]
+        ],
+        "receipt_word_tags": [
+            ReceiptWordTag(**item) for item in data["receipt_word_tags"]
+        ],
+        "receipt_letters": [
+            ReceiptLetter(**item) for item in data["receipt_letters"]
+        ],
+        "gpt_initial_taggings": [
+            GPTInitialTagging(**item) for item in data["gpt_initial_taggings"]
+        ],
+        "gpt_validations": [
+            GPTValidation(**item) for item in data["gpt_validations"]
+        ],
+    }
 
     # Import data in batches using existing DynamoClient methods
     if entities["images"]:

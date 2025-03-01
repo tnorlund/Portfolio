@@ -33,8 +33,10 @@ def example_receipt_letter():
 @pytest.mark.unit
 def test_receipt_letter_init_valid(example_receipt_letter):
     assert example_receipt_letter.receipt_id == 1
-    assert (example_receipt_letter.image_id ==
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3")
+    assert (
+        example_receipt_letter.image_id
+        == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    )
     assert example_receipt_letter.line_id == 3
     assert example_receipt_letter.word_id == 4
     assert example_receipt_letter.letter_id == 5
@@ -369,7 +371,8 @@ def test_receipt_letter_init_invalid_bounding_box():
             confidence=0.98,
         )
     with pytest.raises(
-        ValueError, match="^bounding_box must contain the key ",
+        ValueError,
+        match="^bounding_box must contain the key ",
     ):
         ReceiptLetter(
             receipt_id=1,
@@ -779,8 +782,10 @@ def test_iter(example_receipt_letter):
     }
     assert set(receipt_letter_dict.keys()) == expected_keys
     assert receipt_letter_dict["receipt_id"] == 1
-    assert (receipt_letter_dict["image_id"] ==
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3")
+    assert (
+        receipt_letter_dict["image_id"]
+        == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    )
     assert receipt_letter_dict["line_id"] == 3
     assert receipt_letter_dict["word_id"] == 4
     assert receipt_letter_dict["letter_id"] == 5
@@ -827,9 +832,10 @@ def test_repr(example_receipt_letter):
 @pytest.mark.unit
 def test_item_to_word(example_receipt_letter):
     """Test that itemToReceiptLetter() works as expected"""
-    assert itemToReceiptLetter(
-        example_receipt_letter.to_item()
-    ) == example_receipt_letter
+    assert (
+        itemToReceiptLetter(example_receipt_letter.to_item())
+        == example_receipt_letter
+    )
     # Missing Keys
     with pytest.raises(
         ValueError,

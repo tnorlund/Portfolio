@@ -16,12 +16,14 @@ class GPTInitialTagging:
       - timestamp_added
     """
 
-    def __init__(self,
+    def __init__(
+        self,
         image_id: str,
         receipt_id: int,
         query: str,
         response: str,
-        timestamp_added: datetime, ):
+        timestamp_added: datetime,
+    ):
         """Initializes a new GPTInitialTagging object.
 
         Args:
@@ -59,17 +61,21 @@ class GPTInitialTagging:
         elif isinstance(timestamp_added, str):
             self.timestamp_added = timestamp_added
         else:
-            raise ValueError("timestamp_added must be a datetime object or a string")
+            raise ValueError(
+                "timestamp_added must be a datetime object or a string"
+            )
 
     def __eq__(self, other: object) -> bool:
         """Checks equality based on image_id, receipt_id, query, response, and timestamp."""
         if not isinstance(other, GPTInitialTagging):
             return False
-        return (self.image_id == other.image_id and
-            self.receipt_id == other.receipt_id and
-            self.query == other.query and
-            self.response == other.response and
-            self.timestamp_added == other.timestamp_added)
+        return (
+            self.image_id == other.image_id
+            and self.receipt_id == other.receipt_id
+            and self.query == other.query
+            and self.response == other.response
+            and self.timestamp_added == other.timestamp_added
+        )
 
     def __iter__(self) -> Generator[Tuple[str, str], None, None]:
         """Yields the attributes as key-value pairs."""
@@ -81,13 +87,15 @@ class GPTInitialTagging:
 
     def __repr__(self) -> str:
         """Returns a developer-friendly string representation of the GPTInitialTagging."""
-        return ("GPTInitialTagging("
+        return (
+            "GPTInitialTagging("
             f"image_id={_repr_str(self.image_id)}, "
             f"receipt_id={self.receipt_id}, "
             f"query={_repr_str(self.query)}, "
             f"response={_repr_str(self.response)}, "
             f"timestamp_added={_repr_str(self.timestamp_added)}"
-            ")")
+            ")"
+        )
 
     def key(self) -> dict:
         """
@@ -95,24 +103,34 @@ class GPTInitialTagging:
 
         By design, only ONE record can exist per (image_id, receipt_id).
         """
-        return {"PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#QUERY#INITIAL_TAGGING"}, }
+        return {
+            "PK": {"S": f"IMAGE#{self.image_id}"},
+            "SK": {
+                "S": f"RECEIPT#{self.receipt_id:05d}#QUERY#INITIAL_TAGGING"
+            },
+        }
 
     def to_item(self) -> dict:
         """Converts the GPTInitialTagging object to a DynamoDB item."""
-        return {**self.key(),
+        return {
+            **self.key(),
             "TYPE": {"S": "GPT_INITIAL_TAGGING"},
             "query": {"S": self.query},
             "response": {"S": self.response},
-            "timestamp_added": {"S": self.timestamp_added}, }
+            "timestamp_added": {"S": self.timestamp_added},
+        }
 
     def __hash__(self):
         """Generates a hash value for the GPTInitialTagging."""
-        return hash((self.image_id,
+        return hash(
+            (
+                self.image_id,
                 self.receipt_id,
                 self.query,
                 self.response,
-                self.timestamp_added, ))
+                self.timestamp_added,
+            )
+        )
 
 
 def itemToGPTInitialTagging(item: dict) -> GPTInitialTagging:
@@ -134,7 +152,9 @@ def itemToGPTInitialTagging(item: dict) -> GPTInitialTagging:
 
     try:
         pk_parts = item["PK"]["S"].split("#")  # e.g. IMAGE#<image_id>
-        sk_parts = item["SK"]["S"].split("#")  # e.g. RECEIPT#<receipt_id>#QUERY#INITIAL_TAGGING
+        sk_parts = item["SK"]["S"].split(
+            "#"
+        )  # e.g. RECEIPT#<receipt_id>#QUERY#INITIAL_TAGGING
 
         image_id = pk_parts[1]
         receipt_id = int(sk_parts[1])
@@ -143,10 +163,12 @@ def itemToGPTInitialTagging(item: dict) -> GPTInitialTagging:
         response = item["response"]["S"]
         timestamp_added = datetime.fromisoformat(item["timestamp_added"]["S"])
 
-        return GPTInitialTagging(image_id=image_id,
+        return GPTInitialTagging(
+            image_id=image_id,
             receipt_id=receipt_id,
             query=query,
             response=response,
-            timestamp_added=timestamp_added, )
+            timestamp_added=timestamp_added,
+        )
     except (IndexError, ValueError, KeyError) as e:
         raise ValueError(f"Error converting item to GPTInitialTagging: {e}")
