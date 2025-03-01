@@ -90,10 +90,10 @@ The following major components have been completed:
 - [x] Implement job status tracking in DynamoDB
 - [x] Implement Queue management in DynamoDB
 - [x] Implement Instance tracking
-- [ ] Build CLI tool for job submission/monitoring
-  - [ ] Create commands for job submission
-  - [ ] Add job status checking and monitoring
-  - [ ] Implement job cancellation and modification
+- [x] Build CLI tool for job submission/monitoring
+  - [x] Create commands for job submission
+  - [x] Add job status checking and monitoring
+  - [x] Implement job cancellation and modification
 - [ ] Add support for dependency chains between jobs
   - [ ] Implement dependency validation
   - [ ] Add conditional execution based on dependency status
