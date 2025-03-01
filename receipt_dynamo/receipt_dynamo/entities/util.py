@@ -3,21 +3,27 @@ from decimal import ROUND_HALF_UP, Decimal
 
 
 def _repr_str(value: str) -> str:
-    """Return a string wrapped in single quotes, or the literal 'None' if value is None."""
+    """
+    Return a string wrapped in single quotes, or the literal 'None' if value
+    is None.
+    """
     return "None" if value is None else f"'{value}'"
 
 
 # Regex for UUID version 4 (case-insensitive, enforcing the '4' and the
 # [89AB] variant).
-UUID_V4_REGEX = re.compile(r"^[0-9A-Fa-f]{8}-"
+UUID_V4_REGEX = re.compile(
+    r"^[0-9A-Fa-f]{8}-"
     r"[0-9A-Fa-f]{4}-"
     r"4[0-9A-Fa-f]{3}-"
     r"[89ABab][0-9A-Fa-f]{3}-"
-    r"[0-9A-Fa-f]{12}$")
+    r"[0-9A-Fa-f]{12}$"
+)
 
 
 def compute_histogram(text: str) -> dict:
-    known_letters = [" ",
+    known_letters = [
+        " ",
         "!",
         '"',
         "#",
@@ -109,15 +115,18 @@ def compute_histogram(text: str) -> dict:
         "{",
         "}",
         "|",
-        "~", ]
+        "~",
+    ]
     histogram = {letter: 0 for letter in known_letters}
     for letter in text:
         if letter in known_letters:
             histogram[letter] += 1
     total_letters = sum(histogram.values())
     if total_letters > 0:
-        histogram = {letter: count / total_letters
-            for letter, count in histogram.items()}
+        histogram = {
+            letter: count / total_letters
+            for letter, count in histogram.items()
+        }
     return histogram
 
 
@@ -149,7 +158,9 @@ def assert_valid_point(point):
     return point
 
 
-def _format_float(value: float, decimal_places: int = 10, total_length: int = 20) -> str:
+def _format_float(
+    value: float, decimal_places: int = 10, total_length: int = 20
+) -> str:
     # Convert float → string → Decimal to avoid float binary representation
     # issues
     d_value = Decimal(str(value))
