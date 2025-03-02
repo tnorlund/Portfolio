@@ -1,45 +1,72 @@
-# TODO: OCR Cleanup & Bounding Box Mapping Pipeline
+# OCR Cleanup & Bounding Box Mapping Pipeline
 
-## 1. Re-run OCR on Cropped Receipts
-- [ ] **Prepare Cropped Receipt Images**
-  - [ ] Confirm you have the corners (coordinates) for each cropped receipt.
-  - [ ] List or index all cropped images to process.
-- [ ] **Execute OCR on Cropped Images**
-  - [ ] Run the OCR process on each cropped receipt.
-  - [ ] Save the new OCR outputs with their bounding box coordinates.
+## 1. Re-run OCR on Cropped Receipts ✅
+- [x] **Prepare Cropped Receipt Images**
+  - [x] Confirm you have the corners (coordinates) for each cropped receipt.
+  - [x] List or index all cropped images to process.
+- [x] **Execute OCR on Cropped Images**
+  - [x] Run the OCR process on each cropped receipt.
+  - [x] Save the new OCR outputs with their bounding box coordinates.
+  - [x] Implemented in `refine_receipt_ocr` which downloads receipt images from S3 and processes them with Apple Vision OCR.
 
-## 2. Map Original Bounding Boxes to Cleaned OCR Boxes
-- [ ] **Load Original OCR Labels**
-  - [ ] Retrieve original bounding box labels (from first pass) for each receipt.
-- [ ] **Design a Mapping Algorithm**
-  - [ ] Develop or select an algorithm to match original bounding boxes with the new cleaned ones.
-    - Consider using techniques such as Intersection over Union (IoU) or nearest neighbor matching.
-    - Handle cases where there isn’t a one-to-one match (e.g., when a box is split or merged).
-- [ ] **Implement Mapping Logic**
-  - [ ] For each original bounding box, find the best matching cleaned OCR box (or boxes) based on overlap, proximity, or confidence.
-  - [ ] Optionally, flag cases where the match is ambiguous or below a defined threshold.
-- [ ] **Validate the Mapped Bounding Boxes**
-  - [ ] Visually or programmatically check that the mapping between original and cleaned bounding boxes is accurate.
-  - [ ] Refine the matching criteria as necessary.
+## 2. Map Original Bounding Boxes to Cleaned OCR Boxes ✅
+- [x] **Load Original OCR Labels**
+  - [x] Retrieve original bounding box labels (from first pass) for each receipt.
+  - [x] Implemented in `refine_receipt_ocr` which retrieves old receipt details using `client.getReceiptDetails`.
+- [x] **Design a Mapping Algorithm**
+  - [x] Developed an algorithm to match original bounding boxes with the new cleaned ones.
+    - [x] Using a combination of spatial matching and text similarity.
+    - [x] Handling one-to-one mapping with priority for human-validated tags.
+- [x] **Implement Mapping Logic**
+  - [x] For each original bounding box, find the best matching cleaned OCR box using multiple criteria:
+    - [x] Centroid proximity
+    - [x] Text matching (exact and partial)
+    - [x] Quadrilateral intersection
+    - [x] Vertical/horizontal alignment
+  - [x] Implemented in `process_ocr_results` function in the `process_tags_for_transfer` helper.
+- [x] **Validate the Mapped Bounding Boxes**
+  - [x] Debug output shows mapping success rates and reasons for matching.
+  - [x] Transfer rates for both human-validated and non-validated tags are reported.
 
-## 3. Update Data in DynamoDB
-- [ ] **Plan Database Update**
-  - [ ] Decide if the new OCR boxes with mapped original labels should update existing records or be stored as new entries.
-- [ ] **Implement Update Scripts**
-  - [ ] Write/update scripts to:
-    - Adjust new OCR bounding boxes using the mapping.
-    - Retain and link original human labels.
-  - [ ] Ensure that updates maintain associations between receipts, lines, and words.
-- [ ] **Test Database Changes**
-  - [ ] Verify that the mapped labels are correctly reflected in DynamoDB.
-  - [ ] Check for consistency and accuracy across all item types.
+## 3. Update Data in DynamoDB ✅
+- [x] **Plan Database Update**
+  - [x] Decided on a delete-and-recreate approach that preserves tag associations.
+  - [x] Implemented entity tracking for deletion and creation.
+- [x] **Implement Update Scripts**
+  - [x] Implemented `commit_ocr_changes` function that:
+    - [x] Deletes old entities (tags, letters, words, lines) in reverse hierarchy order
+    - [x] Creates new entities in proper hierarchy order (lines, words, letters, tags)
+    - [x] Uses batch operations for efficiency (reducing hundreds of operations to ~8)
+    - [x] Preserves human-validated tags with their metadata
+  - [x] Ensures updates maintain associations between receipts, lines, words, and letters.
+- [x] **Test Database Changes**
+  - [x] Added debug output to verify entity counts and relationships.
+  - [x] Implemented dry-run mode to validate before committing changes.
 
 ## 4. Testing and Final Validation
-- [ ] **Subset Testing**
-  - [ ] Run the pipeline on a small batch of receipts.
-  - [ ] Validate that original labels map correctly to the cleaned OCR results.
-- [ ] **Iterate and Refine**
-  - [ ] Adjust mapping criteria if necessary.
-  - [ ] Log any issues and fix them iteratively.
-- [ ] **Final Review**
-  - [ ] Perform a final check on the overall process before scaling to all receipts.
+- [x] **Subset Testing**
+  - [x] Created example script (`refine_receipt_ocr_example.py`) to test on individual receipts.
+  - [x] Successfully ran dry-run tests on sample receipts.
+- [ ] **Scale to Production**
+  - [ ] Run the process on all receipts in batches.
+  - [ ] Monitor tag transfer rates and validate results.
+  - [ ] Create a periodic job to refresh OCR results if needed.
+- [ ] **Performance Monitoring**
+  - [ ] Track execution times for large-scale processing.
+  - [ ] Optimize any bottlenecks in the pipeline.
+  - [ ] Consider adding CloudWatch metrics for monitoring.
+- [ ] **Final Documentation**
+  - [ ] Document the entire pipeline for future reference.
+  - [ ] Create visualization tools to show before/after comparisons.
+  - [ ] Train team members on the new OCR refinement process.
+
+## 5. Future Enhancements (Optional)
+- [ ] **Confidence Scoring**
+  - [ ] Add confidence scores to tag transfers to help identify potentially problematic matches.
+  - [ ] Implement threshold-based flagging for manual review.
+- [ ] **Manual Override UI**
+  - [ ] Develop a simple UI for manually reviewing and correcting problematic tag transfers.
+  - [ ] Add capability to mark/flag specific receipts for review.
+- [ ] **OCR Quality Metrics**
+  - [ ] Implement metrics to measure and compare OCR quality between versions.
+  - [ ] Track improvement statistics over time.
