@@ -715,7 +715,7 @@ def process_all_receipts(env=None, limit=10, debug=False, commit_changes=False):
     """
     # Initialize environment if not provided
     if env is None:
-        env = load_env("prod")
+        env = load_env("dev")
     
     # Create client from environment
     client = DynamoClient(env["dynamodb_table_name"])
