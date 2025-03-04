@@ -1,7 +1,7 @@
 from botocore.exceptions import ClientError
 
 from receipt_dynamo import ReceiptLetter, itemToReceiptLetter
-from receipt_dynamo.entities.utils import assert_valid_uuid
+from receipt_dynamo.entities.util import assert_valid_uuid
 
 
 class _ReceiptLetter:
@@ -230,10 +230,12 @@ class _ReceiptLetter:
                 self._client.transact_write_items(TransactItems=transact_items)
             except ClientError as e:
                 error_code = e.response.get("Error", {}).get("Code", "")
-                if error_code == "ConditionalCheckFailedException":
-                    raise ValueError(
-                        f"One or more ReceiptLetters do not exist"
-                    ) from e
+                if error_code == "TransactionCanceledException":
+                    # Check if cancellation was due to conditional check failure
+                    if "ConditionalCheckFailed" in str(e):
+                        raise ValueError(
+                            "One or more ReceiptLetters do not exist"
+                        ) from e
                 elif error_code == "ProvisionedThroughputExceededException":
                     raise Exception(
                         f"Provisioned throughput exceeded: {e}"
@@ -320,6 +322,10 @@ class _ReceiptLetter:
         if not isinstance(letters, list):
             raise ValueError(
                 "letters must be a list of ReceiptLetter instances."
+            )
+        if not all(isinstance(lt, ReceiptLetter) for lt in letters):
+            raise ValueError(
+                "All letters must be instances of the ReceiptLetter class."
             )
         try:
             for i in range(0, len(letters), 25):
