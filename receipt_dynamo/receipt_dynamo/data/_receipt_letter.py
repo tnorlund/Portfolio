@@ -447,7 +447,7 @@ class _ReceiptLetter:
 
     def listReceiptLetters(
         self, limit: int = None, lastEvaluatedKey: dict | None = None
-    ) -> list[ReceiptLetter]:
+    ) -> tuple[list[ReceiptLetter], dict | None]:
         """Returns all ReceiptLetters from the table."""
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None.")
@@ -513,6 +513,30 @@ class _ReceiptLetter:
         self, receipt_id: int, image_id: str, line_id: int, word_id: int
     ) -> list[ReceiptLetter]:
         """Returns all ReceiptLetters for a given word."""
+        if receipt_id is None:
+            raise ValueError(
+                "receipt_id parameter is required and cannot be None."
+            )
+        if not isinstance(receipt_id, int):
+            raise ValueError("receipt_id must be an integer.")
+        if image_id is None:
+            raise ValueError(
+                "image_id parameter is required and cannot be None."
+            )
+        assert_valid_uuid(image_id)
+        if line_id is None:
+            raise ValueError(
+                "line_id parameter is required and cannot be None."
+            )
+        if not isinstance(line_id, int):
+            raise ValueError("line_id must be an integer.")
+        if word_id is None:
+            raise ValueError(
+                "word_id parameter is required and cannot be None."
+            )
+        if not isinstance(word_id, int):
+            raise ValueError("word_id must be an integer.")
+
         receipt_letters = []
         try:
             response = self._client.query(
@@ -557,6 +581,14 @@ class _ReceiptLetter:
             return receipt_letters
 
         except ClientError as e:
-            raise ValueError(
-                "Could not list ReceiptLetters from the database"
-            ) from e
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ProvisionedThroughputExceededException":
+                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+            elif error_code == "ValidationException":
+                raise Exception(f"One or more parameters given were invalid: {e}") from e
+            elif error_code == "InternalServerError":
+                raise Exception(f"Internal server error: {e}") from e
+            elif error_code == "AccessDeniedException":
+                raise Exception(f"Access denied: {e}") from e
+            else:
+                raise Exception(f"Could not list ReceiptLetters from the database: {e}") from e

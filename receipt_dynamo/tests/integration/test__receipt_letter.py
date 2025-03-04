@@ -280,7 +280,9 @@ def test_addReceiptLetters_raises_value_error_letters_none(
     Tests that addReceiptLetters raises ValueError when the letters are None.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="letters parameter is required and cannot be None."):
+    with pytest.raises(
+        ValueError, match="letters parameter is required and cannot be None."
+    ):
         client.addReceiptLetters(None)  # type: ignore
 
 
@@ -292,7 +294,9 @@ def test_addReceiptLetters_raises_value_error_letters_not_list(
     Tests that addReceiptLetters raises ValueError when the letters are not a list.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="letters must be a list of ReceiptLetter instances."):
+    with pytest.raises(
+        ValueError, match="letters must be a list of ReceiptLetter instances."
+    ):
         client.addReceiptLetters("not-a-list")  # type: ignore
 
 
@@ -304,13 +308,17 @@ def test_addReceiptLetters_raises_value_error_letters_not_list_of_receipt_letter
     Tests that addReceiptLetters raises ValueError when the letters are not a list of ReceiptLetter instances.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="All letters must be instances of the ReceiptLetter class."):
+    with pytest.raises(
+        ValueError,
+        match="All letters must be instances of the ReceiptLetter class.",
+    ):
         client.addReceiptLetters(["not-a-receipt-letter"])  # type: ignore
 
 
 # -------------------------------------------------------------------
 #                        updateReceiptLetter
 # -------------------------------------------------------------------
+
 
 @pytest.mark.integration
 def test_update_receipt_letter(
@@ -337,8 +345,9 @@ def test_update_receipt_letter(
 
 
 # -------------------------------------------------------------------
-#                        updateReceiptLetters   
+#                        updateReceiptLetters
 # -------------------------------------------------------------------
+
 
 @pytest.mark.integration
 def test_update_receipt_letters(
@@ -388,6 +397,7 @@ def test_update_receipt_letters(
         )
         assert retrieved_letter.text == "Z"
 
+
 @pytest.mark.integration
 def test_update_receipt_letters_raises_value_error_letters_none(
     dynamodb_table, sample_receipt_letter, mocker
@@ -396,8 +406,11 @@ def test_update_receipt_letters_raises_value_error_letters_none(
     Tests that updateReceiptLetters raises ValueError when the letters are None.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="letters parameter is required and cannot be None."):
+    with pytest.raises(
+        ValueError, match="letters parameter is required and cannot be None."
+    ):
         client.updateReceiptLetters(None)  # type: ignore
+
 
 @pytest.mark.integration
 def test_update_receipt_letters_raises_value_error_letters_not_list(
@@ -407,8 +420,11 @@ def test_update_receipt_letters_raises_value_error_letters_not_list(
     Tests that updateReceiptLetters raises ValueError when the letters are not a list.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="letters must be a list of ReceiptLetter instances."):
+    with pytest.raises(
+        ValueError, match="letters must be a list of ReceiptLetter instances."
+    ):
         client.updateReceiptLetters("not-a-list")  # type: ignore
+
 
 @pytest.mark.integration
 def test_update_receipt_letters_raises_value_error_letters_not_list_of_receipt_letters(
@@ -418,8 +434,12 @@ def test_update_receipt_letters_raises_value_error_letters_not_list_of_receipt_l
     Tests that updateReceiptLetters raises ValueError when the letters are not a list of ReceiptLetter instances.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="All letters must be instances of the ReceiptLetter class."):
+    with pytest.raises(
+        ValueError,
+        match="All letters must be instances of the ReceiptLetter class.",
+    ):
         client.updateReceiptLetters(["not-a-receipt-letter"])  # type: ignore
+
 
 @pytest.mark.integration
 def test_update_receipt_letters_raises_value_error_letter_not_found(
@@ -429,12 +449,116 @@ def test_update_receipt_letters_raises_value_error_letter_not_found(
     Tests that updateReceiptLetters raises ValueError when a letter doesn't exist.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="One or more ReceiptLetters do not exist"):
-        client.updateReceiptLetters([sample_receipt_letter])  # Letter not added first
+    with pytest.raises(
+        ValueError, match="One or more ReceiptLetters do not exist"
+    ):
+        client.updateReceiptLetters(
+            [sample_receipt_letter]
+        )  # Letter not added first
+
+
+@pytest.mark.integration
+def test_update_receipt_letters_raises_provisioned_throughput_exceeded(
+    dynamodb_table, sample_receipt_letter, mocker
+):
+    """Test handling of ProvisionedThroughputExceededException in updateReceiptLetters."""
+    client = DynamoClient(dynamodb_table)
+    mock_client = mocker.patch.object(
+        client._client,
+        "transact_write_items",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": "ProvisionedThroughputExceededException",
+                    "Message": "Throughput exceeded",
+                }
+            },
+            "TransactWriteItems",
+        ),
+    )
+    with pytest.raises(Exception, match="Provisioned throughput exceeded"):
+        client.updateReceiptLetters([sample_receipt_letter])
+    mock_client.assert_called_once()
+
+
+@pytest.mark.integration
+def test_update_receipt_letters_raises_internal_server_error(
+    dynamodb_table, sample_receipt_letter, mocker
+):
+    """Test handling of InternalServerError in updateReceiptLetters."""
+    client = DynamoClient(dynamodb_table)
+    mock_client = mocker.patch.object(
+        client._client,
+        "transact_write_items",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": "InternalServerError",
+                    "Message": "Internal error",
+                }
+            },
+            "TransactWriteItems",
+        ),
+    )
+    with pytest.raises(Exception, match="Internal server error"):
+        client.updateReceiptLetters([sample_receipt_letter])
+    mock_client.assert_called_once()
+
+
+@pytest.mark.integration
+def test_update_receipt_letters_raises_validation_error(
+    dynamodb_table, sample_receipt_letter, mocker
+):
+    """Test handling of ValidationException in updateReceiptLetters."""
+    client = DynamoClient(dynamodb_table)
+    mock_client = mocker.patch.object(
+        client._client,
+        "transact_write_items",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": "ValidationException",
+                    "Message": "Invalid parameters",
+                }
+            },
+            "TransactWriteItems",
+        ),
+    )
+    with pytest.raises(
+        Exception, match="One or more parameters given were invalid"
+    ):
+        client.updateReceiptLetters([sample_receipt_letter])
+    mock_client.assert_called_once()
+
+
+@pytest.mark.integration
+def test_update_receipt_letters_raises_access_denied(
+    dynamodb_table, sample_receipt_letter, mocker
+):
+    """Test handling of AccessDeniedException in updateReceiptLetters."""
+    client = DynamoClient(dynamodb_table)
+    mock_client = mocker.patch.object(
+        client._client,
+        "transact_write_items",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": "AccessDeniedException",
+                    "Message": "Access denied",
+                }
+            },
+            "TransactWriteItems",
+        ),
+    )
+    with pytest.raises(Exception, match="Access denied"):
+        client.updateReceiptLetters([sample_receipt_letter])
+    mock_client.assert_called_once()
+
 
 # -------------------------------------------------------------------
 #                        deleteReceiptLetter
 # -------------------------------------------------------------------
+
 
 @pytest.mark.integration
 def test_delete_receipt_letter(
@@ -446,9 +570,7 @@ def test_delete_receipt_letter(
     client.addReceiptLetter(sample_receipt_letter)
 
     # Act
-    client.deleteReceiptLetter(
-        sample_receipt_letter
-    )
+    client.deleteReceiptLetter(sample_receipt_letter)
 
     # Assert
     with pytest.raises(ValueError, match="not found"):
@@ -460,9 +582,11 @@ def test_delete_receipt_letter(
             sample_receipt_letter.letter_id,
         )
 
+
 # -------------------------------------------------------------------
 #                        deleteReceiptLetters
 # -------------------------------------------------------------------
+
 
 @pytest.mark.integration
 def test_delete_receipt_letters(
@@ -508,6 +632,7 @@ def test_delete_receipt_letters(
                 lt.letter_id,
             )
 
+
 @pytest.mark.integration
 def test_delete_receipt_letters_raises_value_error_letters_none(
     dynamodb_table, sample_receipt_letter, mocker
@@ -516,8 +641,11 @@ def test_delete_receipt_letters_raises_value_error_letters_none(
     Tests that deleteReceiptLetters raises ValueError when the letters are None.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="letters parameter is required and cannot be None."):
+    with pytest.raises(
+        ValueError, match="letters parameter is required and cannot be None."
+    ):
         client.deleteReceiptLetters(None)  # type: ignore
+
 
 @pytest.mark.integration
 def test_delete_receipt_letters_raises_value_error_letters_not_list(
@@ -527,8 +655,11 @@ def test_delete_receipt_letters_raises_value_error_letters_not_list(
     Tests that deleteReceiptLetters raises ValueError when the letters are not a list.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="letters must be a list of ReceiptLetter instances."):
+    with pytest.raises(
+        ValueError, match="letters must be a list of ReceiptLetter instances."
+    ):
         client.deleteReceiptLetters("not-a-list")  # type: ignore
+
 
 @pytest.mark.integration
 def test_delete_receipt_letters_raises_value_error_letters_not_list_of_receipt_letters(
@@ -538,12 +669,146 @@ def test_delete_receipt_letters_raises_value_error_letters_not_list_of_receipt_l
     Tests that deleteReceiptLetters raises ValueError when the letters are not a list of ReceiptLetter instances.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="All letters must be instances of the ReceiptLetter class."):
+    with pytest.raises(
+        ValueError,
+        match="All letters must be instances of the ReceiptLetter class.",
+    ):
         client.deleteReceiptLetters(["not-a-receipt-letter"])  # type: ignore
+
+
+@pytest.mark.integration
+def test_delete_receipt_letters_raises_provisioned_throughput_exceeded(
+    dynamodb_table, sample_receipt_letter, mocker
+):
+    """Test handling of ProvisionedThroughputExceededException in deleteReceiptLetters."""
+    client = DynamoClient(dynamodb_table)
+    mock_client = mocker.patch.object(
+        client._client,
+        "batch_write_item",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": "ProvisionedThroughputExceededException",
+                    "Message": "Throughput exceeded",
+                }
+            },
+            "BatchWriteItem",
+        ),
+    )
+    with pytest.raises(Exception, match="Provisioned throughput exceeded"):
+        client.deleteReceiptLetters([sample_receipt_letter])
+    mock_client.assert_called_once()
+
+
+@pytest.mark.integration
+def test_delete_receipt_letters_raises_internal_server_error(
+    dynamodb_table, sample_receipt_letter, mocker
+):
+    """Test handling of InternalServerError in deleteReceiptLetters."""
+    client = DynamoClient(dynamodb_table)
+    mock_client = mocker.patch.object(
+        client._client,
+        "batch_write_item",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": "InternalServerError",
+                    "Message": "Internal error",
+                }
+            },
+            "BatchWriteItem",
+        ),
+    )
+    with pytest.raises(Exception, match="Internal server error"):
+        client.deleteReceiptLetters([sample_receipt_letter])
+    mock_client.assert_called_once()
+
+
+@pytest.mark.integration
+def test_delete_receipt_letters_raises_validation_error(
+    dynamodb_table, sample_receipt_letter, mocker
+):
+    """Test handling of ValidationException in deleteReceiptLetters."""
+    client = DynamoClient(dynamodb_table)
+    mock_client = mocker.patch.object(
+        client._client,
+        "batch_write_item",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": "ValidationException",
+                    "Message": "Invalid parameters",
+                }
+            },
+            "BatchWriteItem",
+        ),
+    )
+    with pytest.raises(
+        ValueError, match="One or more parameters given were invalid"
+    ):
+        client.deleteReceiptLetters([sample_receipt_letter])
+    mock_client.assert_called_once()
+
+
+@pytest.mark.integration
+def test_delete_receipt_letters_raises_access_denied(
+    dynamodb_table, sample_receipt_letter, mocker
+):
+    """Test handling of AccessDeniedException in deleteReceiptLetters."""
+    client = DynamoClient(dynamodb_table)
+    mock_client = mocker.patch.object(
+        client._client,
+        "batch_write_item",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": "AccessDeniedException",
+                    "Message": "Access denied",
+                }
+            },
+            "BatchWriteItem",
+        ),
+    )
+    with pytest.raises(Exception, match="Access denied"):
+        client.deleteReceiptLetters([sample_receipt_letter])
+    mock_client.assert_called_once()
+
+
+@pytest.mark.integration
+def test_delete_receipt_letters_with_unprocessed_items(
+    dynamodb_table, sample_receipt_letter, mocker
+):
+    """Test handling of unprocessed items in deleteReceiptLetters."""
+    client = DynamoClient(dynamodb_table)
+
+    # Mock first call to return unprocessed items
+    first_response = {
+        "UnprocessedItems": {
+            dynamodb_table: [
+                {"DeleteRequest": {"Key": sample_receipt_letter.key()}}
+            ]
+        }
+    }
+    # Mock second call to return success
+    second_response = {"UnprocessedItems": {}}
+
+    mock_client = mocker.patch.object(
+        client._client,
+        "batch_write_item",
+        side_effect=[first_response, second_response],
+    )
+
+    # Should complete successfully after retrying unprocessed items
+    client.deleteReceiptLetters([sample_receipt_letter])
+
+    # Verify both calls were made
+    assert mock_client.call_count == 2
+
 
 # -------------------------------------------------------------------
 #                        getReceiptLetter
 # -------------------------------------------------------------------
+
 
 @pytest.mark.integration
 def test_get_receipt_letter(
@@ -566,6 +831,7 @@ def test_get_receipt_letter(
     # Assert
     assert retrieved_letter == sample_receipt_letter
 
+
 @pytest.mark.integration
 def test_get_receipt_letter_not_found(
     dynamodb_table: Literal["MyMockedTable"],
@@ -584,6 +850,7 @@ def test_get_receipt_letter_not_found(
             sample_receipt_letter.letter_id,
         )
 
+
 @pytest.mark.integration
 def test_get_receipt_letter_invalid_receipt_id(
     dynamodb_table: Literal["MyMockedTable"],
@@ -598,6 +865,7 @@ def test_get_receipt_letter_invalid_receipt_id(
             sample_receipt_letter.word_id,
             sample_receipt_letter.letter_id,
         )
+
 
 @pytest.mark.integration
 def test_get_receipt_letter_invalid_image_id(
@@ -614,6 +882,7 @@ def test_get_receipt_letter_invalid_image_id(
             sample_receipt_letter.letter_id,
         )
 
+
 @pytest.mark.integration
 def test_get_receipt_letter_invalid_line_id(
     dynamodb_table: Literal["MyMockedTable"],
@@ -628,6 +897,7 @@ def test_get_receipt_letter_invalid_line_id(
             sample_receipt_letter.word_id,
             sample_receipt_letter.letter_id,
         )
+
 
 @pytest.mark.integration
 def test_get_receipt_letter_invalid_word_id(
@@ -644,6 +914,7 @@ def test_get_receipt_letter_invalid_word_id(
             sample_receipt_letter.letter_id,
         )
 
+
 @pytest.mark.integration
 def test_get_receipt_letter_invalid_letter_id(
     dynamodb_table: Literal["MyMockedTable"],
@@ -659,9 +930,11 @@ def test_get_receipt_letter_invalid_letter_id(
             "invalid",  # type: ignore
         )
 
+
 # -------------------------------------------------------------------
 #                        listReceiptLetters
 # -------------------------------------------------------------------
+
 
 @pytest.mark.integration
 def test_receipt_letter_list(dynamodb_table: Literal["MyMockedTable"]):
@@ -696,8 +969,11 @@ def test_receipt_letter_list(dynamodb_table: Literal["MyMockedTable"]):
     for lt in letters:
         assert lt in returned_letters
 
+
 @pytest.mark.integration
-def test_receipt_letter_list_with_limit(dynamodb_table: Literal["MyMockedTable"]):
+def test_receipt_letter_list_with_limit(
+    dynamodb_table: Literal["MyMockedTable"],
+):
     # Arrange
     client = DynamoClient(dynamodb_table)
     letters = [
@@ -727,7 +1003,9 @@ def test_receipt_letter_list_with_limit(dynamodb_table: Literal["MyMockedTable"]
 
     # Assert
     assert len(returned_letters) == 2
-    assert last_key is not None  # Should have a last evaluated key for pagination
+    assert (
+        last_key is not None
+    )  # Should have a last evaluated key for pagination
     for lt in returned_letters:
         assert lt in letters
 
@@ -746,23 +1024,141 @@ def test_receipt_letter_list_with_limit(dynamodb_table: Literal["MyMockedTable"]
         set(lt.letter_id for lt in returned_letters)
     )
 
+
 @pytest.mark.integration
-def test_receipt_letter_list_invalid_limit(dynamodb_table: Literal["MyMockedTable"]):
+def test_receipt_letter_list_invalid_limit(
+    dynamodb_table: Literal["MyMockedTable"],
+):
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match="limit must be an integer or None"):
         client.listReceiptLetters(limit="invalid")  # type: ignore
 
+
 @pytest.mark.integration
 def test_receipt_letter_list_invalid_last_evaluated_key(
-    dynamodb_table: Literal["MyMockedTable"]
+    dynamodb_table: Literal["MyMockedTable"],
 ):
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="lastEvaluatedKey must be a dictionary or None"):
+    with pytest.raises(
+        ValueError, match="lastEvaluatedKey must be a dictionary or None"
+    ):
         client.listReceiptLetters(lastEvaluatedKey="invalid")  # type: ignore
+
+
+@pytest.mark.integration
+def test_receipt_letter_list_raises_provisioned_throughput_exceeded(
+    dynamodb_table, mocker
+):
+    """Test handling of ProvisionedThroughputExceededException in listReceiptLetters."""
+    client = DynamoClient(dynamodb_table)
+    mock_client = mocker.patch.object(
+        client._client,
+        "query",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": "ProvisionedThroughputExceededException",
+                    "Message": "Throughput exceeded",
+                }
+            },
+            "Query",
+        ),
+    )
+    with pytest.raises(Exception, match="Provisioned throughput exceeded"):
+        client.listReceiptLetters()
+    mock_client.assert_called_once()
+
+
+@pytest.mark.integration
+def test_receipt_letter_list_raises_internal_server_error(
+    dynamodb_table, mocker
+):
+    """Test handling of InternalServerError in listReceiptLetters."""
+    client = DynamoClient(dynamodb_table)
+    mock_client = mocker.patch.object(
+        client._client,
+        "query",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": "InternalServerError",
+                    "Message": "Internal error",
+                }
+            },
+            "Query",
+        ),
+    )
+    with pytest.raises(Exception, match="Internal server error"):
+        client.listReceiptLetters()
+    mock_client.assert_called_once()
+
+
+@pytest.mark.integration
+def test_receipt_letter_list_raises_validation_error(dynamodb_table, mocker):
+    """Test handling of ValidationException in listReceiptLetters."""
+    client = DynamoClient(dynamodb_table)
+    mock_client = mocker.patch.object(
+        client._client,
+        "query",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": "ValidationException",
+                    "Message": "Invalid parameters",
+                }
+            },
+            "Query",
+        ),
+    )
+    with pytest.raises(
+        ValueError, match="One or more parameters given were invalid"
+    ):
+        client.listReceiptLetters()
+    mock_client.assert_called_once()
+
+
+@pytest.mark.integration
+def test_receipt_letter_list_with_pagination(
+    dynamodb_table: Literal["MyMockedTable"],
+):
+    """Test pagination in listReceiptLetters with more than 25 items."""
+    # Arrange
+    client = DynamoClient(dynamodb_table)
+    letters = [
+        ReceiptLetter(
+            receipt_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=10,
+            word_id=5,
+            letter_id=i,
+            text=str(i),
+            bounding_box={"x": 0.0, "y": 0.0, "width": 0.01, "height": 0.02},
+            top_left={"x": 0.0, "y": 0.0},
+            top_right={"x": 0.01, "y": 0.0},
+            bottom_left={"x": 0.0, "y": 0.02},
+            bottom_right={"x": 0.01, "y": 0.02},
+            angle_degrees=0,
+            angle_radians=0,
+            confidence=1.0,
+        )
+        for i in range(1, 10)  # Create 10 letters to force pagination
+    ]
+    for lt in letters:
+        client.addReceiptLetter(lt)
+
+    # Act
+    returned_letters, _ = client.listReceiptLetters()
+
+    # Assert
+    assert len(returned_letters) == 9
+    for lt in letters:
+        assert lt in returned_letters
+
 
 # -------------------------------------------------------------------
 #                        listReceiptLettersFromWord
 # -------------------------------------------------------------------
+
 
 @pytest.mark.integration
 def test_receipt_letter_list_from_word(
@@ -824,3 +1220,131 @@ def test_receipt_letter_list_from_word(
     for lt in letters_same_word:
         assert lt in found_letters
     assert different_word_letter not in found_letters
+
+
+@pytest.mark.integration
+def test_receipt_letter_list_from_word_returns_empty_list_when_not_found(
+    dynamodb_table: Literal["MyMockedTable"],
+):
+    """Test that listReceiptLettersFromWord returns empty list when no letters exist."""
+    client = DynamoClient(dynamodb_table)
+    found_letters = client.listReceiptLettersFromWord(
+        receipt_id=999,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=999,
+        word_id=999,
+    )
+    assert isinstance(found_letters, list)
+    assert len(found_letters) == 0
+
+
+@pytest.mark.integration
+def test_receipt_letter_list_from_word_raises_client_error(
+    dynamodb_table: Literal["MyMockedTable"], mocker
+):
+    """Test that listReceiptLettersFromWord raises Exception on DynamoDB internal server error."""
+    client = DynamoClient(dynamodb_table)
+    
+    # Mock the query method to raise an InternalServerError
+    mock_client = mocker.patch.object(client._client, "query")
+    mock_client.side_effect = ClientError(
+        {
+            "Error": {
+                "Code": "InternalServerError",
+                "Message": "Internal error",
+            }
+        },
+        "Query",
+    )
+    
+    with pytest.raises(Exception, match="Internal server error: An error occurred \\(InternalServerError\\) when calling the Query operation: Internal error"):
+        client.listReceiptLettersFromWord(
+            receipt_id=999,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=999,
+            word_id=999,
+        )
+
+
+@pytest.mark.integration
+def test_receipt_letter_list_from_word_raises_provisioned_throughput_exceeded(
+    dynamodb_table: Literal["MyMockedTable"], mocker
+):
+    """Test that listReceiptLettersFromWord raises Exception on throughput exceeded."""
+    client = DynamoClient(dynamodb_table)
+    
+    # Mock the query method to raise a ProvisionedThroughputExceededException
+    mock_client = mocker.patch.object(client._client, "query")
+    mock_client.side_effect = ClientError(
+        {
+            "Error": {
+                "Code": "ProvisionedThroughputExceededException",
+                "Message": "Throughput exceeded",
+            }
+        },
+        "Query",
+    )
+    
+    with pytest.raises(Exception, match="Provisioned throughput exceeded: An error occurred \\(ProvisionedThroughputExceededException\\) when calling the Query operation: Throughput exceeded"):
+        client.listReceiptLettersFromWord(
+            receipt_id=999,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=999,
+            word_id=999,
+        )
+
+
+@pytest.mark.integration
+def test_receipt_letter_list_from_word_raises_validation_error(
+    dynamodb_table: Literal["MyMockedTable"], mocker
+):
+    """Test that listReceiptLettersFromWord raises Exception on validation error."""
+    client = DynamoClient(dynamodb_table)
+    
+    # Mock the query method to raise a ValidationException
+    mock_client = mocker.patch.object(client._client, "query")
+    mock_client.side_effect = ClientError(
+        {
+            "Error": {
+                "Code": "ValidationException",
+                "Message": "Invalid parameters",
+            }
+        },
+        "Query",
+    )
+    
+    with pytest.raises(Exception, match="One or more parameters given were invalid: An error occurred \\(ValidationException\\) when calling the Query operation: Invalid parameters"):
+        client.listReceiptLettersFromWord(
+            receipt_id=999,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=999,
+            word_id=999,
+        )
+
+
+@pytest.mark.integration
+def test_receipt_letter_list_from_word_raises_access_denied(
+    dynamodb_table: Literal["MyMockedTable"], mocker
+):
+    """Test that listReceiptLettersFromWord raises Exception on access denied."""
+    client = DynamoClient(dynamodb_table)
+    
+    # Mock the query method to raise an AccessDeniedException
+    mock_client = mocker.patch.object(client._client, "query")
+    mock_client.side_effect = ClientError(
+        {
+            "Error": {
+                "Code": "AccessDeniedException",
+                "Message": "Access denied",
+            }
+        },
+        "Query",
+    )
+    
+    with pytest.raises(Exception, match="Access denied: An error occurred \\(AccessDeniedException\\) when calling the Query operation: Access denied"):
+        client.listReceiptLettersFromWord(
+            receipt_id=999,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=999,
+            word_id=999,
+        )
