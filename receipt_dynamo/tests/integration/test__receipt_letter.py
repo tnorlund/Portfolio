@@ -879,82 +879,102 @@ def test_deleteReceiptLetter_success(
 
 
 @pytest.mark.integration
-def test_deleteReceiptLetter_raises_value_error_receipt_letter_none(
-    dynamodb_table, sample_receipt_letter, mocker
+@pytest.mark.parametrize(
+    "invalid_input,expected_error",
+    [
+        (None, "letter parameter is required and cannot be None"),
+        (
+            "not-a-receipt-letter",
+            "letter must be an instance of the ReceiptLetter class",
+        ),
+    ],
+)
+def test_deleteReceiptLetter_invalid_parameters(
+    dynamodb_table,
+    sample_receipt_letter,
+    mocker,
+    invalid_input,
+    expected_error,
 ):
-    """Test handling of ValueError in deleteReceiptLetter."""
-    client = DynamoClient(dynamodb_table)
-    with pytest.raises(
-        ValueError, match="letter parameter is required and cannot be None."
-    ):
-        client.deleteReceiptLetter(None)
+    """Test deleteReceiptLetter with invalid input parameters.
 
+    Args:
+        dynamodb_table: Mock DynamoDB table fixture
+        sample_receipt_letter: Sample ReceiptLetter fixture
+        mocker: pytest mocker fixture
+        invalid_input: The invalid input to test
+        expected_error: Expected error message
 
-@pytest.mark.integration
-def test_deleteReceiptLetter_raises_value_error_receipt_letter_not_instance(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test handling of ValueError in deleteReceiptLetter."""
-    client = DynamoClient(dynamodb_table)
-    with pytest.raises(
-        ValueError,
-        match="letter must be an instance of the ReceiptLetter class.",
-    ):
-        client.deleteReceiptLetter("not a ReceiptLetter")
-
-
-@pytest.mark.integration
-def test_deleteReceiptLetter_raises_conditional_check_failed(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test handling of ConditionalCheckFailedException in
-    deleteReceiptLetter.
-
-    Verifies that the method raises a ValueError when DynamoDB returns a
-    ConditionalCheckFailedException.
+    This test verifies that deleteReceiptLetter properly validates its input parameters
+    and raises appropriate ValueError exceptions for invalid inputs.
     """
-    client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="ReceiptLetter with ID"):
-        client.deleteReceiptLetter(sample_receipt_letter)
+    # Arrange
+    dynamo_client = DynamoClient(dynamodb_table)
+
+    # Act & Assert
+    with pytest.raises(ValueError, match=expected_error):
+        dynamo_client.deleteReceiptLetter(invalid_input)
 
 
 @pytest.mark.integration
-def test_deleteReceiptLetter_raises_resource_not_found(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test handling of ResourceNotFoundException in deleteReceiptLetter."""
-    client = DynamoClient(dynamodb_table)
-    mock_delete = mocker.patch.object(
-        client._client,
-        "delete_item",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": "ResourceNotFoundException",
-                    "Message": "Table not found",
-                }
-            },
-            "DeleteItem",
+@pytest.mark.parametrize(
+    "error_code,error_message,expected_error",
+    [
+        (
+            "ConditionalCheckFailedException",
+            "Item does not exist",
+            "ReceiptLetter with ID",
         ),
-    )
-
-    with pytest.raises(
-        Exception, match="Could not delete ReceiptLetter from the database"
-    ):
-        client.deleteReceiptLetter(sample_receipt_letter)
-    mock_delete.assert_called_once()
-
-
-@pytest.mark.integration
-def test_deleteReceiptLetter_raises_provisioned_throughput_exceeded(
-    dynamodb_table, sample_receipt_letter, mocker
+        (
+            "ResourceNotFoundException",
+            "Table not found",
+            "Could not delete ReceiptLetter from the database",
+        ),
+        (
+            "ProvisionedThroughputExceededException",
+            "Provisioned throughput exceeded",
+            "Provisioned throughput exceeded",
+        ),
+        (
+            "InternalServerError",
+            "Internal server error",
+            "Internal server error",
+        ),
+        (
+            "ValidationException",
+            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
+        ),
+        ("AccessDeniedException", "Access denied", "Access denied"),
+        (
+            "UnknownError",
+            "Unknown error occurred",
+            "Could not delete ReceiptLetter from the database",
+        ),
+    ],
+)
+def test_deleteReceiptLetter_client_errors(
+    dynamodb_table,
+    sample_receipt_letter,
+    mocker,
+    error_code,
+    error_message,
+    expected_error,
 ):
-    """Test handling of ProvisionedThroughputExceededException in
-    deleteReceiptLetter.
+    """Test deleteReceiptLetter handling of various DynamoDB client errors.
 
-    Verifies that the method raises an Exception when DynamoDB returns a
-    ProvisionedThroughputExceededException.
+    Args:
+        dynamodb_table: Mock DynamoDB table fixture
+        sample_receipt_letter: Sample ReceiptLetter fixture
+        mocker: pytest mocker fixture
+        error_code: The DynamoDB error code to simulate
+        error_message: The error message from DynamoDB
+        expected_error: Expected error message in the raised exception
+
+    This test verifies that deleteReceiptLetter properly handles various DynamoDB
+    client errors and raises appropriate exceptions with the expected error messages.
     """
+    # Arrange
     client = DynamoClient(dynamodb_table)
     mock_delete = mocker.patch.object(
         client._client,
@@ -962,116 +982,18 @@ def test_deleteReceiptLetter_raises_provisioned_throughput_exceeded(
         side_effect=ClientError(
             {
                 "Error": {
-                    "Code": "ProvisionedThroughputExceededException",
-                    "Message": "Provisioned throughput exceeded",
+                    "Code": error_code,
+                    "Message": error_message,
                 }
             },
             "DeleteItem",
         ),
     )
-    with pytest.raises(Exception, match="Provisioned throughput exceeded"):
+
+    # Act & Assert
+    with pytest.raises(Exception, match=expected_error):
         client.deleteReceiptLetter(sample_receipt_letter)
     mock_delete.assert_called_once()
-
-
-@pytest.mark.integration
-def test_deleteReceiptLetter_raises_internal_server_error(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test handling of InternalServerError in deleteReceiptLetter."""
-    client = DynamoClient(dynamodb_table)
-    mock_delete = mocker.patch.object(
-        client._client,
-        "delete_item",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": "InternalServerError",
-                    "Message": "Internal server error",
-                }
-            },
-            "DeleteItem",
-        ),
-    )
-    with pytest.raises(Exception, match="Internal server error"):
-        client.deleteReceiptLetter(sample_receipt_letter)
-    mock_delete.assert_called_once()
-
-
-@pytest.mark.integration
-def test_deleteReceiptLetter_raises_validation_error(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test deleteReceiptLetter raises ValidationException."""
-    # Arrange
-    client = DynamoClient(dynamodb_table)
-    mock_client = mocker.patch.object(client, "_client")
-    mock_client.delete_item.side_effect = ClientError(
-        {
-            "Error": {
-                "Code": "ValidationException",
-                "Message": "One or more parameters were invalid",
-            }
-        },
-        "DeleteItem",
-    )
-
-    # Act & Assert
-    with pytest.raises(
-        Exception, match="One or more parameters given were invalid"
-    ):
-        client.deleteReceiptLetter(sample_receipt_letter)
-    mock_client.delete_item.assert_called_once()
-
-
-@pytest.mark.integration
-def test_deleteReceiptLetter_raises_access_denied(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test deleteReceiptLetter raises AccessDeniedException."""
-    # Arrange
-    client = DynamoClient(dynamodb_table)
-    mock_client = mocker.patch.object(client, "_client")
-    mock_client.delete_item.side_effect = ClientError(
-        {
-            "Error": {
-                "Code": "AccessDeniedException",
-                "Message": "Access denied",
-            }
-        },
-        "DeleteItem",
-    )
-
-    # Act & Assert
-    with pytest.raises(Exception, match="Access denied"):
-        client.deleteReceiptLetter(sample_receipt_letter)
-    mock_client.delete_item.assert_called_once()
-
-
-@pytest.mark.integration
-def test_deleteReceiptLetter_raises_unknown_error(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test deleteReceiptLetter raises unknown error."""
-    # Arrange
-    client = DynamoClient(dynamodb_table)
-    mock_client = mocker.patch.object(client, "_client")
-    mock_client.delete_item.side_effect = ClientError(
-        {
-            "Error": {
-                "Code": "UnknownError",
-                "Message": "Unknown error occurred",
-            }
-        },
-        "DeleteItem",
-    )
-
-    # Act & Assert
-    with pytest.raises(
-        Exception, match="Could not delete ReceiptLetter from the database"
-    ):
-        client.deleteReceiptLetter(sample_receipt_letter)
-    mock_client.delete_item.assert_called_once()
 
 
 # -------------------------------------------------------------------
