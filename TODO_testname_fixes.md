@@ -14,6 +14,7 @@
 - test_addReceiptLetters_with_large_batch
 - test_addReceiptLetters_with_unprocessed_items_retries
 - test_addReceiptLetters_invalid_parameters
+- test_addReceiptLetters_raises_resource_not_found_with_invalid_table
 - test_addReceiptLetters_client_errors
 
 ### Update Receipt Letter Tests
@@ -46,21 +47,20 @@
 - test_getReceiptLetter_client_errors
 
 ### List Receipt Letters Tests
+#### Basic Operations
 - test_listReceiptLetters_success
 - test_listReceiptLetters_with_limit
-- test_listReceiptLetters_invalid_limit
-- test_listReceiptLetters_invalid_last_evaluated_key
-- test_listReceiptLetters_raises_resource_not_found_exception
-- test_listReceiptLetters_raises_validation_error
-- test_listReceiptLetters_raises_internal_server_error
-- test_listReceiptLetters_raises_provisioned_throughput_exceeded
 - test_listReceiptLetters_with_pagination
-- test_listReceiptLetters_pagination_resource_not_found
-- test_listReceiptLetters_pagination_unexpected_error
-- test_listReceiptLetters_pagination_resource_not_found_second_query
 - test_listReceiptLetters_multiple_pages
-- test_listReceiptLetters_raises_internal_server_error_first_query
-- test_listReceiptLetters_raises_validation_error_first_query
+
+#### Parameter Validation
+- test_listReceiptLetters_invalid_parameters
+
+#### Error Handling
+- test_listReceiptLetters_client_errors
+
+#### Pagination Error Handling
+- test_listReceiptLetters_pagination_errors
 
 ### List Receipt Letters From Word Tests
 - test_listReceiptLettersFromWord_success

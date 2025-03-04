@@ -1,7 +1,7 @@
-from typing import Literal
+from typing import Literal, Any, Type, Optional, List, Dict
 
 import pytest
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, ParamValidationError
 from receipt_dynamo import DynamoClient, ReceiptLetter
 
 # -------------------------------------------------------------------
@@ -1508,127 +1508,6 @@ def test_listReceiptLetters_with_limit(
 
 
 @pytest.mark.integration
-def test_listReceiptLetters_invalid_limit(
-    dynamodb_table: Literal["MyMockedTable"],
-):
-    client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="limit must be an integer or None"):
-        client.listReceiptLetters(limit="invalid")  # type: ignore
-
-
-@pytest.mark.integration
-def test_listReceiptLetters_invalid_last_evaluated_key(
-    dynamodb_table: Literal["MyMockedTable"],
-):
-    client = DynamoClient(dynamodb_table)
-    with pytest.raises(
-        ValueError, match="lastEvaluatedKey must be a dictionary or None"
-    ):
-        client.listReceiptLetters(lastEvaluatedKey="invalid")  # type: ignore
-
-
-@pytest.mark.integration
-def test_listReceiptLetters_raises_resource_not_found_exception(
-    dynamodb_table, mocker
-):
-    """Test handling of ResourceNotFoundException in listReceiptLetters."""
-    client = DynamoClient(dynamodb_table)
-    mock_client = mocker.patch.object(
-        client._client,
-        "query",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": "ResourceNotFoundException",
-                    "Message": "Resource not found",
-                }
-            },
-            "Query",
-        ),
-    )
-    with pytest.raises(Exception, match="Resource not found"):
-        client.listReceiptLetters()
-    mock_client.assert_called_once()
-
-
-@pytest.mark.integration
-def test_listReceiptLetters_raises_validation_error(dynamodb_table, mocker):
-    """Test handling of ValidationException in listReceiptLetters."""
-    client = DynamoClient(dynamodb_table)
-    mock_client = mocker.patch.object(
-        client._client,
-        "query",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": "ValidationException",
-                    "Message": "Invalid parameters",
-                }
-            },
-            "Query",
-        ),
-    )
-    with pytest.raises(
-        ValueError, match="One or more parameters given were invalid"
-    ):
-        client.listReceiptLetters()
-    mock_client.assert_called_once()
-
-
-@pytest.mark.integration
-def test_listReceiptLetters_raises_internal_server_error(
-    dynamodb_table, mocker
-):
-    """Test handling of InternalServerError in listReceiptLetters."""
-    client = DynamoClient(dynamodb_table)
-    mock_client = mocker.patch.object(
-        client._client,
-        "query",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": "InternalServerError",
-                    "Message": "Internal server error",
-                }
-            },
-            "Query",
-        ),
-    )
-    with pytest.raises(Exception, match="Internal server error"):
-        client.listReceiptLetters()
-    mock_client.assert_called_once()
-
-
-@pytest.mark.integration
-def test_listReceiptLetters_raises_provisioned_throughput_exceeded(
-    dynamodb_table, mocker
-):
-    """Test handling of ProvisionedThroughputExceededException in
-    listReceiptLetters.
-
-    Verifies that the method raises an Exception when DynamoDB returns a
-    ProvisionedThroughputExceededException.
-    """
-    client = DynamoClient(dynamodb_table)
-    mock_client = mocker.patch.object(
-        client._client,
-        "query",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": "ProvisionedThroughputExceededException",
-                    "Message": "Throughput exceeded",
-                }
-            },
-            "Query",
-        ),
-    )
-    with pytest.raises(Exception, match="Provisioned throughput exceeded"):
-        client.listReceiptLetters()
-    mock_client.assert_called_once()
-
-
-@pytest.mark.integration
 def test_listReceiptLetters_with_pagination(
     dynamodb_table: Literal["MyMockedTable"],
 ):
@@ -1664,6 +1543,347 @@ def test_listReceiptLetters_with_pagination(
     assert len(returned_letters) == 9
     for lt in letters:
         assert lt in returned_letters
+
+
+@pytest.mark.integration
+def test_listReceiptLetters_multiple_pages(dynamodb_table, mocker):
+    """Test successful pagination through multiple pages in
+    listReceiptLetters."""
+    client = DynamoClient(dynamodb_table)
+    mock_client = mocker.Mock()
+
+    # Set up mock to return two pages of results
+    mock_client.query.side_effect = [
+        {
+            "Items": [
+                {
+                    "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+                    "SK": {
+                        "S": "RECEIPT#00001#LINE#00001#WORD#00001#LETTER#00001"
+                    },
+                    "TYPE": {"S": "RECEIPT_LETTER"},
+                    "text": {"S": "A"},
+                    "bounding_box": {
+                        "M": {
+                            "x": {"N": "0.1"},
+                            "y": {"N": "0.2"},
+                            "width": {"N": "0.05"},
+                            "height": {"N": "0.05"},
+                        }
+                    },
+                    "top_right": {
+                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.25"}}
+                    },
+                    "top_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.25"}}},
+                    "bottom_right": {
+                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.2"}}
+                    },
+                    "bottom_left": {
+                        "M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}
+                    },
+                    "angle_degrees": {"N": "0.0"},
+                    "angle_radians": {"N": "0.0"},
+                    "confidence": {"N": "0.98"},
+                }
+            ],
+            "LastEvaluatedKey": {"key": "value"},
+        },
+        {
+            "Items": [
+                {
+                    "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+                    "SK": {
+                        "S": "RECEIPT#00001#LINE#00001#WORD#00001#LETTER#00002"
+                    },
+                    "TYPE": {"S": "RECEIPT_LETTER"},
+                    "text": {"S": "B"},
+                    "bounding_box": {
+                        "M": {
+                            "x": {"N": "0.2"},
+                            "y": {"N": "0.2"},
+                            "width": {"N": "0.05"},
+                            "height": {"N": "0.05"},
+                        }
+                    },
+                    "top_right": {
+                        "M": {"x": {"N": "0.25"}, "y": {"N": "0.25"}}
+                    },
+                    "top_left": {"M": {"x": {"N": "0.2"}, "y": {"N": "0.25"}}},
+                    "bottom_right": {
+                        "M": {"x": {"N": "0.25"}, "y": {"N": "0.2"}}
+                    },
+                    "bottom_left": {
+                        "M": {"x": {"N": "0.2"}, "y": {"N": "0.2"}}
+                    },
+                    "angle_degrees": {"N": "0.0"},
+                    "angle_radians": {"N": "0.0"},
+                    "confidence": {"N": "0.98"},
+                }
+            ]
+        },
+    ]
+    client._client = mock_client
+
+    # Call listReceiptLetters with no limit to force pagination
+    letters, last_key = client.listReceiptLetters()
+
+    # Verify we got both pages of results
+    assert len(letters) == 2
+    assert letters[0].text == "A"
+    assert letters[1].text == "B"
+    assert last_key is None
+
+    # Verify both queries were made
+    assert mock_client.query.call_count == 2
+    first_call = mock_client.query.call_args_list[0]
+    second_call = mock_client.query.call_args_list[1]
+
+    # Verify first call parameters
+    assert first_call.kwargs["TableName"] == dynamodb_table
+    assert first_call.kwargs["IndexName"] == "GSITYPE"
+
+    # Verify second call parameters
+    assert second_call.kwargs["TableName"] == dynamodb_table
+    assert second_call.kwargs["IndexName"] == "GSITYPE"
+    assert second_call.kwargs["ExclusiveStartKey"] == {"key": "value"}
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "param_name,invalid_value,expected_error,expected_exception",
+    [
+        ("limit", "invalid", "limit must be an integer or None", ValueError),
+        (
+            "lastEvaluatedKey",
+            "invalid",
+            "lastEvaluatedKey must be a dictionary or None",
+            ValueError,
+        ),
+        ("limit", -1, "Parameter validation failed", ParamValidationError),
+        ("limit", 0, "Parameter validation failed", ParamValidationError),
+        ("limit", 1.5, "limit must be an integer or None", ValueError),
+        (
+            "lastEvaluatedKey",
+            [],
+            "lastEvaluatedKey must be a dictionary or None",
+            ValueError,
+        ),
+        (
+            "lastEvaluatedKey",
+            123,
+            "lastEvaluatedKey must be a dictionary or None",
+            ValueError,
+        ),
+    ],
+)
+def test_listReceiptLetters_invalid_parameters(
+    dynamodb_table: Literal["MyMockedTable"],
+    param_name: str,
+    invalid_value: Any,
+    expected_error: str,
+    expected_exception: Type[Exception],
+):
+    """Test that listReceiptLetters raises appropriate errors for invalid parameters:
+    - When limit is not an integer or None
+    - When limit is negative or zero (AWS SDK validation)
+    - When lastEvaluatedKey is not a dictionary or None
+    """
+    client = DynamoClient(dynamodb_table)
+    with pytest.raises(expected_exception, match=expected_error):
+        if param_name == "limit":
+            client.listReceiptLetters(limit=invalid_value)  # type: ignore
+        else:
+            client.listReceiptLetters(lastEvaluatedKey=invalid_value)  # type: ignore
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "error_code,error_message,expected_error,cancellation_reasons",
+    [
+        (
+            "ResourceNotFoundException",
+            "Table not found",
+            "Could not list receipt letters from DynamoDB",
+            None,
+        ),
+        (
+            "ValidationException",
+            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
+            None,
+        ),
+        (
+            "InternalServerError",
+            "Internal server error",
+            "Internal server error",
+            None,
+        ),
+        (
+            "ProvisionedThroughputExceededException",
+            "Throughput exceeded",
+            "Provisioned throughput exceeded",
+            None,
+        ),
+        (
+            "AccessDeniedException",
+            "Access denied",
+            "Access denied",
+            None,
+        ),
+        (
+            "UnknownError",
+            "Unknown error occurred",
+            "Error listing receipt letters",
+            None,
+        ),
+    ],
+)
+def test_listReceiptLetters_client_errors(
+    dynamodb_table: Literal["MyMockedTable"],
+    mocker,
+    error_code: str,
+    error_message: str,
+    expected_error: str,
+    cancellation_reasons: Optional[List[Dict[str, str]]],
+):
+    """Test that listReceiptLetters handles various DynamoDB client errors appropriately:
+    - ResourceNotFoundException
+    - ValidationException
+    - InternalServerError
+    - ProvisionedThroughputExceededException
+    - AccessDeniedException
+    - UnknownError
+    """
+    client = DynamoClient(dynamodb_table)
+    mock_client = mocker.patch.object(
+        client._client,
+        "query",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": error_code,
+                    "Message": error_message,
+                }
+            },
+            "Query",
+        ),
+    )
+    with pytest.raises(Exception, match=expected_error):
+        client.listReceiptLetters()
+    mock_client.assert_called_once()
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "error_code,error_message,expected_error,query_number",
+    [
+        (
+            "ResourceNotFoundException",
+            "Resource not found",
+            "Could not list receipt letters from DynamoDB",
+            1,  # First query fails
+        ),
+        (
+            "ResourceNotFoundException",
+            "Table not found during pagination",
+            "Could not list receipt letters from DynamoDB",
+            2,  # Second query fails
+        ),
+        (
+            "UnknownError",
+            "An unexpected error occurred",
+            "Error listing receipt letters",
+            2,  # Second query fails with unknown error
+        ),
+    ],
+)
+def test_listReceiptLetters_pagination_errors(
+    dynamodb_table: Literal["MyMockedTable"],
+    mocker,
+    error_code: str,
+    error_message: str,
+    expected_error: str,
+    query_number: int,
+):
+    """Test handling of various errors during pagination in listReceiptLetters.
+    Tests both first query failures and subsequent query failures.
+    """
+    client = DynamoClient(dynamodb_table)
+    mock_client = mocker.Mock()
+
+    # Successful first query response
+    success_response = {
+        "Items": [
+            {
+                "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+                "SK": {
+                    "S": "RECEIPT#00001#LINE#00001#WORD#00001#LETTER#00001"
+                },
+                "TYPE": {"S": "RECEIPT_LETTER"},
+                "text": {"S": "A"},
+                "bounding_box": {
+                    "M": {
+                        "x": {"N": "0.1"},
+                        "y": {"N": "0.2"},
+                        "width": {"N": "0.05"},
+                        "height": {"N": "0.05"},
+                    }
+                },
+                "top_right": {"M": {"x": {"N": "0.15"}, "y": {"N": "0.25"}}},
+                "top_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.25"}}},
+                "bottom_right": {"M": {"x": {"N": "0.15"}, "y": {"N": "0.2"}}},
+                "bottom_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}},
+                "angle_degrees": {"N": "0.0"},
+                "angle_radians": {"N": "0.0"},
+                "confidence": {"N": "0.98"},
+            }
+        ],
+        "LastEvaluatedKey": {"key": "value"},
+    }
+
+    # Set up mock responses based on which query should fail
+    if query_number == 1:
+        mock_client.query.side_effect = ClientError(
+            {
+                "Error": {
+                    "Code": error_code,
+                    "Message": error_message,
+                }
+            },
+            "Query",
+        )
+    else:
+        mock_client.query.side_effect = [
+            success_response,
+            ClientError(
+                {
+                    "Error": {
+                        "Code": error_code,
+                        "Message": error_message,
+                    }
+                },
+                "Query",
+            ),
+        ]
+
+    client._client = mock_client
+
+    with pytest.raises(Exception, match=expected_error):
+        client.listReceiptLetters()
+
+    # Verify the correct number of calls were made
+    assert mock_client.query.call_count == query_number
+
+    # Verify call parameters
+    calls = mock_client.query.call_args_list
+    for call in calls:
+        assert call.kwargs["TableName"] == dynamodb_table
+        assert call.kwargs["IndexName"] == "GSITYPE"
+
+    # If it's a second query failure, verify the ExclusiveStartKey
+    if query_number == 2:
+        second_call = calls[1]
+        assert second_call.kwargs["ExclusiveStartKey"] == {"key": "value"}
 
 
 # -------------------------------------------------------------------
@@ -2215,158 +2435,6 @@ def test_listReceiptLettersFromWord_raises_unknown_error(
 
 
 @pytest.mark.integration
-def test_listReceiptLetters_pagination_resource_not_found(
-    dynamodb_table, mocker
-):
-    """Test handling of ResourceNotFoundException during pagination in
-    listReceiptLetters.
-
-    Verifies that we get a partial result before the exception occurs.
-    """
-    client = DynamoClient(dynamodb_table)
-    mock_client = mocker.Mock()
-    mock_client.query.side_effect = [
-        {
-            "Items": [
-                {
-                    "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-                    "SK": {
-                        "S": "RECEIPT#00001#LINE#00001#WORD#00001#LETTER#00001"
-                    },
-                    "TYPE": {"S": "RECEIPT_LETTER"},
-                    "text": {"S": "A"},
-                    "bounding_box": {
-                        "M": {
-                            "x": {"N": "0.1"},
-                            "y": {"N": "0.2"},
-                            "width": {"N": "0.05"},
-                            "height": {"N": "0.05"},
-                        }
-                    },
-                    "top_right": {
-                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.25"}}
-                    },
-                    "top_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.25"}}},
-                    "bottom_right": {
-                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.2"}}
-                    },
-                    "bottom_left": {
-                        "M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}
-                    },
-                    "angle_degrees": {"N": "0.0"},
-                    "angle_radians": {"N": "0.0"},
-                    "confidence": {"N": "0.98"},
-                }
-            ],
-            "LastEvaluatedKey": {"key": "value"},
-        },
-        ClientError(
-            {
-                "Error": {
-                    "Code": "ResourceNotFoundException",
-                    "Message": "Table does not exist or is not active",
-                }
-            },
-            "Query",
-        ),
-    ]
-    client._client = mock_client
-
-    with pytest.raises(
-        Exception,
-        match="Could not list receipt letters from DynamoDB: An error "
-        "occurred",
-    ):
-        client.listReceiptLetters()
-
-    assert mock_client.query.call_count == 2
-    # Verify first call parameters
-    first_call = mock_client.query.call_args_list[0]
-    assert first_call.kwargs["TableName"] == dynamodb_table
-    assert first_call.kwargs["IndexName"] == "GSITYPE"
-    # Verify second call parameters
-    second_call = mock_client.query.call_args_list[1]
-    assert second_call.kwargs["TableName"] == dynamodb_table
-    assert second_call.kwargs["IndexName"] == "GSITYPE"
-    assert second_call.kwargs["ExclusiveStartKey"] == {"key": "value"}
-
-
-@pytest.mark.integration
-def test_listReceiptLetters_pagination_unexpected_error(
-    dynamodb_table, mocker
-):
-    """Test handling of unexpected error during pagination in
-    listReceiptLetters.
-
-    Verifies that we get a partial result before the exception occurs.
-    """
-    client = DynamoClient(dynamodb_table)
-    mock_client = mocker.Mock()
-    mock_client.query.side_effect = [
-        {
-            "Items": [
-                {
-                    "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-                    "SK": {
-                        "S": "RECEIPT#00001#LINE#00001#WORD#00001#LETTER#00001"
-                    },
-                    "TYPE": {"S": "RECEIPT_LETTER"},
-                    "text": {"S": "A"},
-                    "bounding_box": {
-                        "M": {
-                            "x": {"N": "0.1"},
-                            "y": {"N": "0.2"},
-                            "width": {"N": "0.05"},
-                            "height": {"N": "0.05"},
-                        }
-                    },
-                    "top_right": {
-                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.25"}}
-                    },
-                    "top_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.25"}}},
-                    "bottom_right": {
-                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.2"}}
-                    },
-                    "bottom_left": {
-                        "M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}
-                    },
-                    "angle_degrees": {"N": "0.0"},
-                    "angle_radians": {"N": "0.0"},
-                    "confidence": {"N": "0.98"},
-                }
-            ],
-            "LastEvaluatedKey": {"key": "value"},
-        },
-        ClientError(
-            {
-                "Error": {
-                    "Code": "UnknownError",
-                    "Message": "An unexpected error occurred",
-                }
-            },
-            "Query",
-        ),
-    ]
-    client._client = mock_client
-
-    with pytest.raises(
-        Exception, match="Error listing receipt letters: An error occurred"
-    ):
-        client.listReceiptLetters()
-
-    assert mock_client.query.call_count == 2
-    # Verify first call parameters
-    first_call = mock_client.query.call_args_list[0]
-    assert first_call.kwargs["TableName"] == dynamodb_table
-    assert first_call.kwargs["IndexName"] == "GSITYPE"
-    # Verify second call parameters
-    second_call = mock_client.query.call_args_list[1]
-    assert second_call.kwargs["TableName"] == dynamodb_table
-    assert second_call.kwargs["IndexName"] == "GSITYPE"
-    assert second_call.kwargs["ExclusiveStartKey"] == {"key": "value"}
-
-
-@pytest.mark.integration
 def test_listReceiptLettersFromWord_validation_error(
     dynamodb_table, sample_receipt_letter, mocker
 ):
@@ -2841,179 +2909,6 @@ def test_listReceiptLettersFromWord_second_query_internal_server_error(
             line_id=sample_receipt_letter.line_id,
             word_id=sample_receipt_letter.word_id,
         )
-
-
-@pytest.mark.integration
-def test_listReceiptLetters_pagination_resource_not_found_second_query(
-    dynamodb_table, mocker
-):
-    """Test handling of ResourceNotFoundException during pagination in
-    listReceiptLetters.
-
-    Verifies that we get a partial result before the exception occurs.
-    """
-    client = DynamoClient(dynamodb_table)
-    mock_client = mocker.Mock()
-
-    # First query succeeds and returns a page with LastEvaluatedKey
-    first_response = {
-        "Items": [
-            {
-                "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-                "SK": {
-                    "S": "RECEIPT#00001#LINE#00001#WORD#00001#LETTER#00001"
-                },
-                "TYPE": {"S": "RECEIPT_LETTER"},
-                "text": {"S": "A"},
-                "bounding_box": {
-                    "M": {
-                        "x": {"N": "0.1"},
-                        "y": {"N": "0.2"},
-                        "width": {"N": "0.05"},
-                        "height": {"N": "0.05"},
-                    }
-                },
-                "top_right": {"M": {"x": {"N": "0.15"}, "y": {"N": "0.25"}}},
-                "top_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.25"}}},
-                "bottom_right": {"M": {"x": {"N": "0.15"}, "y": {"N": "0.2"}}},
-                "bottom_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}},
-                "angle_degrees": {"N": "0.0"},
-                "angle_radians": {"N": "0.0"},
-                "confidence": {"N": "0.98"},
-            }
-        ],
-        "LastEvaluatedKey": {"key": "value"},
-    }
-
-    # Second query fails with ResourceNotFoundException
-    mock_client.query.side_effect = [
-        first_response,
-        ClientError(
-            {
-                "Error": {
-                    "Code": "ResourceNotFoundException",
-                    "Message": "Table not found during pagination",
-                }
-            },
-            "Query",
-        ),
-    ]
-    client._client = mock_client
-
-    with pytest.raises(
-        Exception, match="Could not list receipt letters from DynamoDB"
-    ):
-        letters, last_key = client.listReceiptLetters()
-
-    # Verify the second query was made with the correct parameters
-    assert mock_client.query.call_count == 2
-    second_call = mock_client.query.call_args_list[1]
-    assert second_call.kwargs["TableName"] == dynamodb_table
-    assert second_call.kwargs["IndexName"] == "GSITYPE"
-    assert second_call.kwargs["ExclusiveStartKey"] == {"key": "value"}
-
-
-@pytest.mark.integration
-def test_listReceiptLetters_multiple_pages(dynamodb_table, mocker):
-    """Test successful pagination through multiple pages in
-    listReceiptLetters."""
-    client = DynamoClient(dynamodb_table)
-    mock_client = mocker.Mock()
-
-    # Set up mock to return two pages of results
-    mock_client.query.side_effect = [
-        {
-            "Items": [
-                {
-                    "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-                    "SK": {
-                        "S": "RECEIPT#00001#LINE#00001#WORD#00001#LETTER#00001"
-                    },
-                    "TYPE": {"S": "RECEIPT_LETTER"},
-                    "text": {"S": "A"},
-                    "bounding_box": {
-                        "M": {
-                            "x": {"N": "0.1"},
-                            "y": {"N": "0.2"},
-                            "width": {"N": "0.05"},
-                            "height": {"N": "0.05"},
-                        }
-                    },
-                    "top_right": {
-                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.25"}}
-                    },
-                    "top_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.25"}}},
-                    "bottom_right": {
-                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.2"}}
-                    },
-                    "bottom_left": {
-                        "M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}
-                    },
-                    "angle_degrees": {"N": "0.0"},
-                    "angle_radians": {"N": "0.0"},
-                    "confidence": {"N": "0.98"},
-                }
-            ],
-            "LastEvaluatedKey": {"key": "value"},
-        },
-        {
-            "Items": [
-                {
-                    "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-                    "SK": {
-                        "S": "RECEIPT#00001#LINE#00001#WORD#00001#LETTER#00002"
-                    },
-                    "TYPE": {"S": "RECEIPT_LETTER"},
-                    "text": {"S": "B"},
-                    "bounding_box": {
-                        "M": {
-                            "x": {"N": "0.2"},
-                            "y": {"N": "0.2"},
-                            "width": {"N": "0.05"},
-                            "height": {"N": "0.05"},
-                        }
-                    },
-                    "top_right": {
-                        "M": {"x": {"N": "0.25"}, "y": {"N": "0.25"}}
-                    },
-                    "top_left": {"M": {"x": {"N": "0.2"}, "y": {"N": "0.25"}}},
-                    "bottom_right": {
-                        "M": {"x": {"N": "0.25"}, "y": {"N": "0.2"}}
-                    },
-                    "bottom_left": {
-                        "M": {"x": {"N": "0.2"}, "y": {"N": "0.2"}}
-                    },
-                    "angle_degrees": {"N": "0.0"},
-                    "angle_radians": {"N": "0.0"},
-                    "confidence": {"N": "0.98"},
-                }
-            ]
-        },
-    ]
-    client._client = mock_client
-
-    # Call listReceiptLetters with no limit to force pagination
-    letters, last_key = client.listReceiptLetters()
-
-    # Verify we got both pages of results
-    assert len(letters) == 2
-    assert letters[0].text == "A"
-    assert letters[1].text == "B"
-    assert last_key is None
-
-    # Verify both queries were made
-    assert mock_client.query.call_count == 2
-    first_call = mock_client.query.call_args_list[0]
-    second_call = mock_client.query.call_args_list[1]
-
-    # Verify first call parameters
-    assert first_call.kwargs["TableName"] == dynamodb_table
-    assert first_call.kwargs["IndexName"] == "GSITYPE"
-
-    # Verify second call parameters
-    assert second_call.kwargs["TableName"] == dynamodb_table
-    assert second_call.kwargs["IndexName"] == "GSITYPE"
-    assert second_call.kwargs["ExclusiveStartKey"] == {"key": "value"}
 
 
 @pytest.mark.integration
