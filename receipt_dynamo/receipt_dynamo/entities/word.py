@@ -742,6 +742,25 @@ class Word:
         self.angle_degrees += 90
         self.angle_radians += pi / 2
 
+    def is_point_in_bounding_box(self, x: float, y: float) -> bool:
+        """Determines if a point (x,y) is inside the bounding box of the line.
+
+        Args:
+            x (float): The x-coordinate of the point.
+            y (float): The y-coordinate of the point.
+
+        Returns:
+            bool: True if the point is inside the bounding box, False otherwise.
+        """
+        return (
+            self.bounding_box["x"]
+            <= x
+            <= self.bounding_box["x"] + self.bounding_box["width"]
+            and self.bounding_box["y"]
+            <= y
+            <= self.bounding_box["y"] + self.bounding_box["height"]
+        )
+
     def __repr__(self):
         """Returns a string representation of the Word object.
 
