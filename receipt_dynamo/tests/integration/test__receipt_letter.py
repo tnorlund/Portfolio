@@ -378,7 +378,7 @@ def test_addReceiptLetters_raises_value_error_letters_not_list(
 
 
 @pytest.mark.integration
-def test_addReceiptLetters_raises_value_error_letters_not_list_of_receipt_letters(
+def test_addReceiptLetters_error_invalid_letter_types(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """Test ValueError when letters are not ReceiptLetter instances.
@@ -1039,7 +1039,7 @@ def test_update_receipt_letters_raises_value_error_letters_not_list(
 
 
 @pytest.mark.integration
-def test_update_receipt_letters_raises_value_error_letters_not_list_of_receipt_letters(
+def test_updateReceiptLetters_error_invalid_letter_types(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """
@@ -1543,7 +1543,7 @@ def test_deleteReceiptLetters_raises_value_error_letters_not_list(
 
 
 @pytest.mark.integration
-def test_deleteReceiptLetters_raises_value_error_letters_not_list_of_receipt_letters(
+def test_deleteReceiptLetters_error_invalid_letter_types(
     dynamodb_table, mocker
 ):
     """Test handling of ValueError in deleteReceiptLetters.
