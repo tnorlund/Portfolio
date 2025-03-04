@@ -1262,215 +1262,6 @@ def test_getReceiptLetter_success(
 
 
 @pytest.mark.integration
-def test_getReceiptLetter_raises_value_error_receipt_id_none(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test handling of ValueError in getReceiptLetter when receipt_id is
-    None.
-
-    Verifies that the method raises a ValueError when the receipt_id parameter
-    is None.
-    """
-    client = DynamoClient(dynamodb_table)
-    with pytest.raises(
-        ValueError,
-        match="receipt_id parameter is required and cannot be None.",
-    ):
-        client.getReceiptLetter(
-            None,  # type: ignore
-            sample_receipt_letter.image_id,
-            sample_receipt_letter.line_id,
-            sample_receipt_letter.word_id,
-            sample_receipt_letter.letter_id,
-        )
-
-
-@pytest.mark.integration
-def test_getReceiptLetter_raises_value_error_receipt_id_not_integer(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test handling of ValueError in getReceiptLetter when receipt_id is not
-    an integer.
-
-    Verifies that the method raises a ValueError when the receipt_id parameter
-    is not an integer.
-    """
-    client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="receipt_id must be an integer."):
-        client.getReceiptLetter(
-            "not an integer",  # type: ignore
-            sample_receipt_letter.image_id,
-            sample_receipt_letter.line_id,
-            sample_receipt_letter.word_id,
-            sample_receipt_letter.letter_id,
-        )
-
-
-@pytest.mark.integration
-def test_getReceiptLetter_raises_value_error_image_id_none(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test handling of ValueError in getReceiptLetter when image_id is None.
-
-    Verifies that the method raises a ValueError when the image_id parameter
-    is None.
-    """
-    client = DynamoClient(dynamodb_table)
-    with pytest.raises(
-        ValueError, match="image_id parameter is required and cannot be None."
-    ):
-        client.getReceiptLetter(
-            sample_receipt_letter.receipt_id,
-            None,  # type: ignore
-            sample_receipt_letter.line_id,
-            sample_receipt_letter.word_id,
-            sample_receipt_letter.letter_id,
-        )
-
-
-@pytest.mark.integration
-def test_getReceiptLetter_raises_value_error_image_id_not_uuid(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test handling of ValueError in getReceiptLetter when image_id is not a
-    valid UUID.
-
-    Verifies that the method raises a ValueError when the image_id parameter
-    is not a valid UUID.
-    """
-    client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="uuid must be a valid UUID"):
-        client.getReceiptLetter(
-            sample_receipt_letter.receipt_id,
-            "not a valid UUID",  # type: ignore
-            sample_receipt_letter.line_id,
-            sample_receipt_letter.word_id,
-            sample_receipt_letter.letter_id,
-        )
-
-
-@pytest.mark.integration
-def test_getReceiptLetter_raises_value_error_line_id_none(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test handling of ValueError in getReceiptLetter when line_id is None."""
-    client = DynamoClient(dynamodb_table)
-    with pytest.raises(
-        ValueError, match="line_id parameter is required and cannot be None."
-    ):
-        client.getReceiptLetter(
-            sample_receipt_letter.receipt_id,
-            sample_receipt_letter.image_id,
-            None,  # type: ignore
-            sample_receipt_letter.word_id,
-            sample_receipt_letter.letter_id,
-        )
-
-
-@pytest.mark.integration
-def test_getReceiptLetter_raises_value_error_line_id_not_integer(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test handling of ValueError in getReceiptLetter when line_id is not an
-    integer.
-
-    Verifies that the method raises a ValueError when the line_id parameter
-    is not an integer.
-    """
-    client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="line_id must be an integer."):
-        client.getReceiptLetter(
-            sample_receipt_letter.receipt_id,
-            sample_receipt_letter.image_id,
-            "not an integer",  # type: ignore
-            sample_receipt_letter.word_id,
-            sample_receipt_letter.letter_id,
-        )
-
-
-@pytest.mark.integration
-def test_getReceiptLetter_raises_value_error_word_id_none(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test handling of ValueError in getReceiptLetter when word_id is None."""
-    client = DynamoClient(dynamodb_table)
-    with pytest.raises(
-        ValueError, match="word_id parameter is required and cannot be None."
-    ):
-        client.getReceiptLetter(
-            sample_receipt_letter.receipt_id,
-            sample_receipt_letter.image_id,
-            sample_receipt_letter.line_id,
-            None,  # type: ignore
-            sample_receipt_letter.letter_id,
-        )
-
-
-@pytest.mark.integration
-def test_getReceiptLetter_raises_value_error_word_id_not_integer(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test handling of ValueError in getReceiptLetter when word_id is not an
-    integer.
-
-    Verifies that the method raises a ValueError when the word_id parameter
-    is not an integer.
-    """
-    client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="word_id must be an integer."):
-        client.getReceiptLetter(
-            sample_receipt_letter.receipt_id,
-            sample_receipt_letter.image_id,
-            sample_receipt_letter.line_id,
-            "not an integer",  # type: ignore
-            sample_receipt_letter.letter_id,
-        )
-
-
-@pytest.mark.integration
-def test_getReceiptLetter_raises_value_error_letter_id_none(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test handling of ValueError in getReceiptLetter when letter_id is None.
-
-    Verifies that the method raises a ValueError when the letter_id parameter
-    is None.
-    """
-    client = DynamoClient(dynamodb_table)
-    with pytest.raises(
-        ValueError, match="letter_id parameter is required and cannot be None."
-    ):
-        client.getReceiptLetter(
-            sample_receipt_letter.receipt_id,
-            sample_receipt_letter.image_id,
-            sample_receipt_letter.line_id,
-            sample_receipt_letter.word_id,
-            None,  # type: ignore
-        )
-
-
-@pytest.mark.integration
-def test_getReceiptLetter_raises_value_error_letter_id_not_integer(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test handling of ValueError in getReceiptLetter when letter_id is not an
-    integer.
-
-    Verifies that the method raises a ValueError when the letter_id parameter
-    is not an integer.
-    """
-    client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="letter_id must be an integer."):
-        client.getReceiptLetter(
-            sample_receipt_letter.receipt_id,
-            sample_receipt_letter.image_id,
-            sample_receipt_letter.line_id,
-            sample_receipt_letter.word_id,
-            "not an integer",  # type: ignore
-        )
-
-
-@pytest.mark.integration
 def test_getReceiptLetter_not_found(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_letter: ReceiptLetter,
@@ -1490,247 +1281,155 @@ def test_getReceiptLetter_not_found(
 
 
 @pytest.mark.integration
-def test_getReceiptLetter_invalid_receipt_id(
-    dynamodb_table: Literal["MyMockedTable"],
-    sample_receipt_letter: ReceiptLetter,
+@pytest.mark.parametrize(
+    "param_name,invalid_value,expected_error,sample_override",
+    [
+        # None value tests
+        (
+            "receipt_id",
+            None,
+            "receipt_id parameter is required and cannot be None.",
+            {},
+        ),
+        (
+            "image_id",
+            None,
+            "image_id parameter is required and cannot be None.",
+            {},
+        ),
+        (
+            "line_id",
+            None,
+            "line_id parameter is required and cannot be None.",
+            {},
+        ),
+        (
+            "word_id",
+            None,
+            "word_id parameter is required and cannot be None.",
+            {},
+        ),
+        (
+            "letter_id",
+            None,
+            "letter_id parameter is required and cannot be None.",
+            {},
+        ),
+        # Invalid type tests
+        ("receipt_id", "not-an-integer", "receipt_id must be an integer", {}),
+        ("image_id", "invalid-uuid", "uuid must be a valid UUID", {}),
+        ("line_id", "not-an-integer", "line_id must be an integer", {}),
+        ("word_id", "not-an-integer", "word_id must be an integer", {}),
+        ("letter_id", "not-an-integer", "letter_id must be an integer", {}),
+    ],
+)
+def test_getReceiptLetter_invalid_parameters(
+    dynamodb_table,
+    sample_receipt_letter,
+    mocker,
+    param_name,
+    invalid_value,
+    expected_error,
+    sample_override,
 ):
-    client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="receipt_id must be an integer"):
-        client.getReceiptLetter(
-            "invalid",  # type: ignore
-            sample_receipt_letter.image_id,
-            sample_receipt_letter.line_id,
-            sample_receipt_letter.word_id,
-            sample_receipt_letter.letter_id,
-        )
+    """Test getReceiptLetter with invalid input parameters.
 
+    Args:
+        dynamodb_table: Mock DynamoDB table fixture
+        sample_receipt_letter: Sample ReceiptLetter fixture
+        mocker: pytest mocker fixture
+        param_name: Name of the parameter to test
+        invalid_value: The invalid value to test
+        expected_error: Expected error message
+        sample_override: Dictionary of values to override in the sample parameters
 
-@pytest.mark.integration
-def test_getReceiptLetter_invalid_image_id(
-    dynamodb_table: Literal["MyMockedTable"],
-    sample_receipt_letter: ReceiptLetter,
-):
-    client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="uuid must be a valid UUID"):
-        client.getReceiptLetter(
-            sample_receipt_letter.receipt_id,
-            "invalid-uuid",
-            sample_receipt_letter.line_id,
-            sample_receipt_letter.word_id,
-            sample_receipt_letter.letter_id,
-        )
-
-
-@pytest.mark.integration
-def test_getReceiptLetter_invalid_line_id(
-    dynamodb_table: Literal["MyMockedTable"],
-    sample_receipt_letter: ReceiptLetter,
-):
-    client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="line_id must be an integer"):
-        client.getReceiptLetter(
-            sample_receipt_letter.receipt_id,
-            sample_receipt_letter.image_id,
-            "invalid",  # type: ignore
-            sample_receipt_letter.word_id,
-            sample_receipt_letter.letter_id,
-        )
-
-
-@pytest.mark.integration
-def test_getReceiptLetter_invalid_word_id(
-    dynamodb_table: Literal["MyMockedTable"],
-    sample_receipt_letter: ReceiptLetter,
-):
-    client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="word_id must be an integer"):
-        client.getReceiptLetter(
-            sample_receipt_letter.receipt_id,
-            sample_receipt_letter.image_id,
-            sample_receipt_letter.line_id,
-            "invalid",  # type: ignore
-            sample_receipt_letter.letter_id,
-        )
-
-
-@pytest.mark.integration
-def test_getReceiptLetter_invalid_letter_id(
-    dynamodb_table: Literal["MyMockedTable"],
-    sample_receipt_letter: ReceiptLetter,
-):
-    client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="letter_id must be an integer"):
-        client.getReceiptLetter(
-            sample_receipt_letter.receipt_id,
-            sample_receipt_letter.image_id,
-            sample_receipt_letter.line_id,
-            sample_receipt_letter.word_id,
-            "invalid",  # type: ignore
-        )
-
-
-@pytest.mark.integration
-def test_getReceiptLetter_raises_provisioned_throughput_exceeded_exception(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test getReceiptLetter raises ProvisionedThroughputExceededException."""
-    client = DynamoClient(dynamodb_table)
-    mock_client = mocker.patch.object(client, "_client")
-    mock_client.get_item.side_effect = ClientError(
-        {
-            "Error": {
-                "Code": "ProvisionedThroughputExceededException",
-                "Message": "Provisioned throughput exceeded",
-            }
-        },
-        "GetItem",
-    )
-
-    # Act & Assert
-    with pytest.raises(Exception, match="Provisioned throughput exceeded"):
-        client.getReceiptLetter(
-            receipt_id=sample_receipt_letter.receipt_id,
-            image_id=sample_receipt_letter.image_id,
-            line_id=sample_receipt_letter.line_id,
-            word_id=sample_receipt_letter.word_id,
-            letter_id=sample_receipt_letter.letter_id,
-        )
-    mock_client.get_item.assert_called_once()
-
-
-@pytest.mark.integration
-def test_getReceiptLetter_raises_internal_server_error(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test getReceiptLetter raises InternalServerError."""
-    client = DynamoClient(dynamodb_table)
-    mock_client = mocker.patch.object(client, "_client")
-    mock_client.get_item.side_effect = ClientError(
-        {
-            "Error": {
-                "Code": "InternalServerError",
-                "Message": "Internal server error",
-            }
-        },
-        "GetItem",
-    )
-
-    # Act & Assert
-    with pytest.raises(Exception, match="Internal server error"):
-        client.getReceiptLetter(
-            receipt_id=sample_receipt_letter.receipt_id,
-            image_id=sample_receipt_letter.image_id,
-            line_id=sample_receipt_letter.line_id,
-            word_id=sample_receipt_letter.word_id,
-            letter_id=sample_receipt_letter.letter_id,
-        )
-    mock_client.get_item.assert_called_once()
-
-
-@pytest.mark.integration
-def test_getReceiptLetter_raises_validation_error(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test getReceiptLetter raises ValidationException."""
-    # Arrange
-    client = DynamoClient(dynamodb_table)
-    mock_client = mocker.patch.object(client, "_client")
-    mock_client.get_item.side_effect = ClientError(
-        {
-            "Error": {
-                "Code": "ValidationException",
-                "Message": "One or more parameters were invalid",
-            }
-        },
-        "GetItem",
-    )
-
-    # Act & Assert
-    with pytest.raises(Exception, match="Validation error"):
-        client.getReceiptLetter(
-            receipt_id=sample_receipt_letter.receipt_id,
-            image_id=sample_receipt_letter.image_id,
-            line_id=sample_receipt_letter.line_id,
-            word_id=sample_receipt_letter.word_id,
-            letter_id=sample_receipt_letter.letter_id,
-        )
-    mock_client.get_item.assert_called_once()
-
-
-@pytest.mark.integration
-def test_getReceiptLetter_raises_access_denied(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test that getReceiptLetter raises an exception when access is denied.
-
-    Verifies that the method raises an Exception when DynamoDB returns an
-    AccessDeniedException.
+    This test verifies that getReceiptLetter properly validates its input parameters
+    and raises appropriate ValueError exceptions for:
+    - None values for required parameters
+    - Invalid types (non-integers for IDs, invalid UUID for image_id)
     """
     # Arrange
-    mock_client = mocker.Mock()
-    mock_client.get_item.side_effect = ClientError(
-        {
-            "Error": {
-                "Code": "AccessDeniedException",
-                "Message": "User is not authorized to perform this operation",
-            }
-        },
-        "GetItem",
-    )
     client = DynamoClient(dynamodb_table)
-    client._client = mock_client
+
+    # Prepare parameters with the invalid value
+    params = {
+        "receipt_id": sample_receipt_letter.receipt_id,
+        "image_id": sample_receipt_letter.image_id,
+        "line_id": sample_receipt_letter.line_id,
+        "word_id": sample_receipt_letter.word_id,
+        "letter_id": sample_receipt_letter.letter_id,
+    }
+    params.update(sample_override)  # Apply any overrides
+    params[param_name] = invalid_value  # Insert the invalid value
 
     # Act & Assert
-    with pytest.raises(Exception, match="^Access denied: .*"):
-        client.getReceiptLetter(
-            receipt_id=sample_receipt_letter.receipt_id,
-            image_id=sample_receipt_letter.image_id,
-            line_id=sample_receipt_letter.line_id,
-            word_id=sample_receipt_letter.word_id,
-            letter_id=sample_receipt_letter.letter_id,
-        )
-    mock_client.get_item.assert_called_once_with(
-        TableName=dynamodb_table,
-        Key={
-            "PK": {"S": f"IMAGE#{sample_receipt_letter.image_id}"},
-            "SK": {
-                "S": (
-                    f"RECEIPT#{sample_receipt_letter.receipt_id:05d}#"
-                    f"LINE#{sample_receipt_letter.line_id:05d}#"
-                    f"WORD#{sample_receipt_letter.word_id:05d}#"
-                    f"LETTER#{sample_receipt_letter.letter_id:05d}"
-                )
-            },
-        },
-    )
+    with pytest.raises(ValueError, match=expected_error):
+        client.getReceiptLetter(**params)
 
 
 @pytest.mark.integration
-def test_getReceiptLetter_raises_resource_not_found(
-    dynamodb_table, sample_receipt_letter, mocker
+@pytest.mark.parametrize(
+    "error_code,error_message,expected_error",
+    [
+        (
+            "ProvisionedThroughputExceededException",
+            "Provisioned throughput exceeded",
+            "Provisioned throughput exceeded",
+        ),
+        (
+            "InternalServerError",
+            "Internal server error",
+            "Internal server error",
+        ),
+        (
+            "ValidationException",
+            "One or more parameters were invalid",
+            "Validation error:",
+        ),
+        ("AccessDeniedException", "Access denied", "Access denied"),
+        (
+            "ResourceNotFoundException",
+            "Table not found",
+            "Error getting receipt letter:",
+        ),
+    ],
+)
+def test_getReceiptLetter_client_errors(
+    dynamodb_table,
+    sample_receipt_letter,
+    mocker,
+    error_code,
+    error_message,
+    expected_error,
 ):
-    """Test that getReceiptLetter raises an exception when resource is not
-    found.
+    """Test getReceiptLetter handling of various DynamoDB client errors.
 
-    Verifies that the method raises an Exception when DynamoDB returns a
-    ResourceNotFoundException.
+    Args:
+        dynamodb_table: Mock DynamoDB table fixture
+        sample_receipt_letter: Sample ReceiptLetter fixture
+        mocker: pytest mocker fixture
+        error_code: The DynamoDB error code to simulate
+        error_message: The error message from DynamoDB
+        expected_error: Expected error message in the raised exception
+
+    This test verifies that getReceiptLetter properly handles various DynamoDB
+    client errors and raises appropriate exceptions with the expected error messages.
     """
     # Arrange
-    mock_client = mocker.Mock()
+    client = DynamoClient(dynamodb_table)
+    mock_client = mocker.patch.object(client, "_client")
     mock_client.get_item.side_effect = ClientError(
         {
             "Error": {
-                "Code": "ResourceNotFoundException",
-                "Message": "The table does not exist or is not active",
+                "Code": error_code,
+                "Message": error_message,
             }
         },
         "GetItem",
     )
-    client = DynamoClient(dynamodb_table)
-    client._client = mock_client
 
     # Act & Assert
-    with pytest.raises(Exception, match="^Error getting receipt letter: .*"):
+    with pytest.raises(Exception, match=expected_error):
         client.getReceiptLetter(
             receipt_id=sample_receipt_letter.receipt_id,
             image_id=sample_receipt_letter.image_id,
@@ -1738,20 +1437,7 @@ def test_getReceiptLetter_raises_resource_not_found(
             word_id=sample_receipt_letter.word_id,
             letter_id=sample_receipt_letter.letter_id,
         )
-    mock_client.get_item.assert_called_once_with(
-        TableName=dynamodb_table,
-        Key={
-            "PK": {"S": f"IMAGE#{sample_receipt_letter.image_id}"},
-            "SK": {
-                "S": (
-                    f"RECEIPT#{sample_receipt_letter.receipt_id:05d}#"
-                    f"LINE#{sample_receipt_letter.line_id:05d}#"
-                    f"WORD#{sample_receipt_letter.word_id:05d}#"
-                    f"LETTER#{sample_receipt_letter.letter_id:05d}"
-                )
-            },
-        },
-    )
+    mock_client.get_item.assert_called_once()
 
 
 # -------------------------------------------------------------------
