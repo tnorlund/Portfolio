@@ -31,6 +31,14 @@ class _ReceiptLetter:
 
     def addReceiptLetter(self, letter: ReceiptLetter):
         """Adds a single ReceiptLetter to DynamoDB."""
+        if letter is None:
+            raise ValueError(
+                "letter parameter is required and cannot be None."
+            )
+        if not isinstance(letter, ReceiptLetter):
+            raise ValueError(
+                "letter must be an instance of the ReceiptLetter class."
+            )
         try:
             self._client.put_item(
                 TableName=self.table_name,
@@ -38,18 +46,38 @@ class _ReceiptLetter:
                 ConditionExpression="attribute_not_exists(PK)",
             )
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
                     f"ReceiptLetter with ID {letter.letter_id} already exists"
-                )
+                ) from e
+            elif error_code == "ResourceNotFoundException":
+                raise Exception(
+                    f"Could not add receipt letter to DynamoDB: {e}"
+                ) from e
+            elif error_code == "ProvisionedThroughputExceededException":
+                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+            elif error_code == "InternalServerError":
+                raise Exception(f"Internal server error: {e}") from e
             else:
-                raise
+                raise Exception(
+                    f"Could not add receipt letter to DynamoDB: {e}"
+                ) from e
 
     def addReceiptLetters(self, letters: list[ReceiptLetter]):
         """Adds multiple ReceiptLetters to DynamoDB in batches."""
+        if letters is None:
+            raise ValueError(
+                "letters parameter is required and cannot be None."
+            )
+        if not isinstance(letters, list):
+            raise ValueError(
+                "letters must be a list of ReceiptLetter instances."
+            )
+        if not all(isinstance(lt, ReceiptLetter) for lt in letters):
+            raise ValueError(
+                "All letters must be instances of the ReceiptLetter class."
+            )
         try:
             for i in range(0, len(letters), CHUNK_SIZE):
                 chunk = letters[i : i + CHUNK_SIZE]
@@ -66,9 +94,23 @@ class _ReceiptLetter:
                     )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
-            raise ValueError(
-                "Could not add ReceiptLetters to the database"
-            ) from e
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ConditionalCheckFailedException":
+                raise ValueError(
+                    f"ReceiptLetter with ID {letter.letter_id} already exists"
+                ) from e
+            elif error_code == "ResourceNotFoundException":
+                raise Exception(
+                    f"Could not add ReceiptLetters to the database: {e}"
+                ) from e
+            elif error_code == "ProvisionedThroughputExceededException":
+                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+            elif error_code == "InternalServerError":
+                raise Exception(f"Internal server error: {e}") from e
+            else:
+                raise Exception(
+                    f"Could not add ReceiptLetters to the database: {e}"
+                ) from e
 
     def updateReceiptLetter(self, letter: ReceiptLetter):
         """Updates an existing ReceiptLetter in DynamoDB."""

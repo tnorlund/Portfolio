@@ -14,6 +14,7 @@ maintaining tag information.
 from receipt_dynamo.data._pulumi import load_env
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data._ocr import apple_vision_ocr
+from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptLetter
 import boto3
 import tempfile
 from pathlib import Path
@@ -109,49 +110,102 @@ def refine_receipt_ocr(
         print(f"Using DynamoDB table: {env['dynamodb_table_name']}")
 
     # Get the old receipt details
-    (
-        old_receipt,
-        old_receipt_lines,
-        old_receipt_words,
-        old_receipt_letters,
-        old_receipt_word_tags,
-        old_gpt_validations,
-        old_gpt_initial_taggings,
-    ) = client.getReceiptDetails(image_id, receipt_id)
+    try:
+        (
+            old_receipt,
+            old_receipt_lines,
+            old_receipt_words,
+            old_receipt_letters,
+            old_receipt_word_tags,
+            old_gpt_validations,
+            old_gpt_initial_taggings,
+        ) = client.getReceiptDetails(image_id, receipt_id)
+    except Exception as e:
+        if debug:
+            print(f"Error getting receipt details: {e}")
+        return {"success": False, "error": f"Failed to get receipt details: {str(e)}"}
+
+    if debug:
+        print("\nOld receipt details:")
+        print(f"Lines: {len(old_receipt_lines)}")
+        print(f"Words: {len(old_receipt_words)}")
+        print(f"Letters: {len(old_receipt_letters)}")
+        print(f"Word tags: {len(old_receipt_word_tags)}")
 
     # Use a temporary directory to download the raw receipt image
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_dir = Path(temp_dir)
-        # Download the raw receipt image
-        s3_client.download_file(
-            Bucket=old_receipt.raw_s3_bucket,
-            Key=old_receipt.raw_s3_key,
-            Filename=temp_dir / f"{image_id}_{receipt_id}.png",
-        )
+        image_path = temp_dir / f"{image_id}_{receipt_id}.png"
+        
+        try:
+            # Download the raw receipt image
+            if debug:
+                print(f"\nDownloading image from s3://{old_receipt.raw_s3_bucket}/{old_receipt.raw_s3_key}")
+            s3_client.download_file(
+                Bucket=old_receipt.raw_s3_bucket,
+                Key=old_receipt.raw_s3_key,
+                Filename=str(image_path)
+            )
+        except Exception as e:
+            if debug:
+                print(f"Error downloading image: {e}")
+            return {"success": False, "error": f"Failed to download image: {str(e)}"}
+
+        # Verify the image exists and is readable
+        if not image_path.exists():
+            error_msg = f"Downloaded image not found at {image_path}"
+            if debug:
+                print(error_msg)
+            return {"success": False, "error": error_msg}
 
         # Run the OCR on the receipt image
-        ocr_result = apple_vision_ocr(
-            [str(temp_dir / f"{image_id}_{receipt_id}.png")]
-        )
-        if not ocr_result:
+        if debug:
+            print("\nRunning OCR on image...")
+        
+        try:
+            ocr_result = apple_vision_ocr([str(image_path)])
+            if not ocr_result:
+                error_msg = f"OCR process failed to produce results for {image_id}_{receipt_id}.png"
+                if debug:
+                    print(error_msg)
+                return {"success": False, "error": error_msg}
+        except Exception as e:
             if debug:
-                print(f"Error running OCR on {image_id}_{receipt_id}.png")
-            return {"success": False, "error": "OCR process failed"}
+                print(f"Error during OCR process: {e}")
+                import traceback
+                traceback.print_exc()
+            return {
+                "success": False,
+                "error": f"OCR process failed with error: {str(e)}"
+            }
 
         # Get the results for this specific image
         first_image_id = next(iter(ocr_result.keys()))
-        new_receipt_lines, new_receipt_words, new_receipt_letters = ocr_result[
-            first_image_id
-        ]
+        new_receipt_lines, new_receipt_words, new_receipt_letters = ocr_result[first_image_id]
 
         if debug:
-            # Print counts of old and new OCR results for comparison
-            print(
-                f"Old OCR results: {len(old_receipt_lines)} lines, {len(old_receipt_words)} words, {len(old_receipt_word_tags)} word tags"
-            )
-            print(
-                f"New OCR results: {len(new_receipt_lines)} lines, {len(new_receipt_words)} words"
-            )
+            print("\nOCR Results:")
+            print(f"Lines detected: {len(new_receipt_lines)}")
+            print(f"Words detected: {len(new_receipt_words)}")
+            print(f"Letters detected: {len(new_receipt_letters)}")
+
+        # Validate OCR results
+        if not new_receipt_lines or not new_receipt_words or not new_receipt_letters:
+            error_msg = "OCR process produced empty results"
+            if debug:
+                print(f"\nError: {error_msg}")
+                print(f"Lines: {len(new_receipt_lines)}")
+                print(f"Words: {len(new_receipt_words)}")
+                print(f"Letters: {len(new_receipt_letters)}")
+            return {
+                "success": False,
+                "error": error_msg,
+                "ocr_result": {
+                    "lines": new_receipt_lines,
+                    "words": new_receipt_words,
+                    "letters": new_receipt_letters
+                }
+            }
 
         try:
             # Process the OCR results using the delete-and-recreate approach
@@ -179,7 +233,6 @@ def refine_receipt_ocr(
             if debug:
                 print(f"Error during processing: {e}")
                 import traceback
-
                 traceback.print_exc()
             return {"success": False, "error": str(e)}
 
@@ -213,95 +266,145 @@ def commit_ocr_changes(client, results, debug=False):
         entities_to_delete = results["entities_to_delete"]
         entities_to_create = results["entities_to_create"]
 
+        # Validate that we have all necessary entities to create
+        if not all(entities_to_create[entity_type] for entity_type in ["lines", "words", "letters"]):
+            raise ValueError("Missing required entities to create. Cannot proceed with partial data.")
+
         # STEP 1: Delete old entities in reverse hierarchy order (tags -> letters -> words -> lines)
-        # Use batch operations to reduce the number of transactions
+        try:
+            # Delete tags (must be first due to foreign key constraints)
+            if entities_to_delete["tags"]:
+                if debug:
+                    print(
+                        f"Deleting {len(entities_to_delete['tags'])} tags in batch..."
+                    )
+                client.deleteReceiptWordTags(entities_to_delete["tags"])
+                commit_results["deleted"]["tags"] = len(entities_to_delete["tags"])
 
-        # Delete tags (must be first due to foreign key constraints)
-        if entities_to_delete["tags"]:
-            if debug:
-                print(
-                    f"Deleting {len(entities_to_delete['tags'])} tags in batch..."
+            # Delete letters
+            if entities_to_delete["letters"]:
+                if debug:
+                    print(
+                        f"Deleting {len(entities_to_delete['letters'])} letters in batch..."
+                    )
+                client.deleteReceiptLetters(entities_to_delete["letters"])
+                commit_results["deleted"]["letters"] = len(
+                    entities_to_delete["letters"]
                 )
-            client.deleteReceiptWordTags(entities_to_delete["tags"])
-            commit_results["deleted"]["tags"] = len(entities_to_delete["tags"])
 
-        # Delete letters
-        if entities_to_delete["letters"]:
-            if debug:
-                print(
-                    f"Deleting {len(entities_to_delete['letters'])} letters in batch..."
+            # Delete words
+            if entities_to_delete["words"]:
+                if debug:
+                    print(
+                        f"Deleting {len(entities_to_delete['words'])} words in batch..."
+                    )
+                client.deleteReceiptWords(entities_to_delete["words"])
+                commit_results["deleted"]["words"] = len(
+                    entities_to_delete["words"]
                 )
-            client.deleteReceiptLetters(entities_to_delete["letters"])
-            commit_results["deleted"]["letters"] = len(
-                entities_to_delete["letters"]
-            )
 
-        # Delete words
-        if entities_to_delete["words"]:
-            if debug:
-                print(
-                    f"Deleting {len(entities_to_delete['words'])} words in batch..."
+            # Delete lines
+            if entities_to_delete["lines"]:
+                if debug:
+                    print(
+                        f"Deleting {len(entities_to_delete['lines'])} lines in batch..."
+                    )
+                client.deleteReceiptLines(entities_to_delete["lines"])
+                commit_results["deleted"]["lines"] = len(
+                    entities_to_delete["lines"]
                 )
-            client.deleteReceiptWords(entities_to_delete["words"])
-            commit_results["deleted"]["words"] = len(
-                entities_to_delete["words"]
-            )
 
-        # Delete lines
-        if entities_to_delete["lines"]:
+        except Exception as delete_error:
             if debug:
-                print(
-                    f"Deleting {len(entities_to_delete['lines'])} lines in batch..."
-                )
-            client.deleteReceiptLines(entities_to_delete["lines"])
-            commit_results["deleted"]["lines"] = len(
-                entities_to_delete["lines"]
-            )
+                print(f"Error during entity deletion: {delete_error}")
+                import traceback
+                traceback.print_exc()
+            raise delete_error
 
         # STEP 2: Create new entities in hierarchical order (lines -> words -> letters -> tags)
-        # Use batch operations to reduce the number of transactions
+        try:
+            # First, verify all entities have required fields
+            for line in entities_to_create["lines"]:
+                if not all(hasattr(line, attr) for attr in ["image_id", "line_id", "receipt_id"]):
+                    raise ValueError(f"Line missing required attributes: {vars(line)}")
 
-        # Create lines
-        if entities_to_create["lines"]:
-            if debug:
-                print(
-                    f"Creating {len(entities_to_create['lines'])} lines in batch..."
-                )
-            client.addReceiptLines(entities_to_create["lines"])
-            commit_results["created"]["lines"] = len(
-                entities_to_create["lines"]
-            )
+            for word in entities_to_create["words"]:
+                if not all(hasattr(word, attr) for attr in ["image_id", "line_id", "word_id", "receipt_id"]):
+                    raise ValueError(f"Word missing required attributes: {vars(word)}")
 
-        # Create words
-        if entities_to_create["words"]:
-            if debug:
-                print(
-                    f"Creating {len(entities_to_create['words'])} words in batch..."
-                )
-            client.addReceiptWords(entities_to_create["words"])
-            commit_results["created"]["words"] = len(
-                entities_to_create["words"]
-            )
+            for letter in entities_to_create["letters"]:
+                if not all(hasattr(letter, attr) for attr in ["image_id", "line_id", "word_id", "letter_id", "receipt_id"]):
+                    raise ValueError(f"Letter missing required attributes: {vars(letter)}")
 
-        # Create letters
-        if entities_to_create["letters"]:
-            if debug:
-                print(
-                    f"Creating {len(entities_to_create['letters'])} letters in batch..."
+            # Create lines
+            if entities_to_create["lines"]:
+                if debug:
+                    print(
+                        f"Creating {len(entities_to_create['lines'])} lines in batch..."
+                    )
+                client.addReceiptLines(entities_to_create["lines"])
+                commit_results["created"]["lines"] = len(
+                    entities_to_create["lines"]
                 )
-            client.addReceiptLetters(entities_to_create["letters"])
-            commit_results["created"]["letters"] = len(
-                entities_to_create["letters"]
-            )
 
-        # Create tags
-        if entities_to_create["tags"]:
-            if debug:
-                print(
-                    f"Creating {len(entities_to_create['tags'])} tags in batch..."
+            # Create words
+            if entities_to_create["words"]:
+                if debug:
+                    print(
+                        f"Creating {len(entities_to_create['words'])} words in batch..."
+                    )
+                client.addReceiptWords(entities_to_create["words"])
+                commit_results["created"]["words"] = len(
+                    entities_to_create["words"]
                 )
-            client.addReceiptWordTags(entities_to_create["tags"])
-            commit_results["created"]["tags"] = len(entities_to_create["tags"])
+
+            # Create letters
+            if entities_to_create["letters"]:
+                if debug:
+                    print(
+                        f"Creating {len(entities_to_create['letters'])} letters in batch..."
+                    )
+                client.addReceiptLetters(entities_to_create["letters"])
+                commit_results["created"]["letters"] = len(
+                    entities_to_create["letters"]
+                )
+
+            # Create tags only after all other entities are created
+            if entities_to_create["tags"]:
+                if debug:
+                    print(
+                        f"Creating {len(entities_to_create['tags'])} tags in batch..."
+                    )
+                client.addReceiptWordTags(entities_to_create["tags"])
+                commit_results["created"]["tags"] = len(entities_to_create["tags"])
+
+        except Exception as creation_error:
+            if debug:
+                print(f"Error during entity creation: {creation_error}")
+                import traceback
+                traceback.print_exc()
+            
+            # If creation fails, we need to rollback any created entities
+            try:
+                if commit_results["created"]["tags"] > 0:
+                    client.deleteReceiptWordTags(entities_to_create["tags"])
+                if commit_results["created"]["letters"] > 0:
+                    client.deleteReceiptLetters(entities_to_create["letters"])
+                if commit_results["created"]["words"] > 0:
+                    client.deleteReceiptWords(entities_to_create["words"])
+                if commit_results["created"]["lines"] > 0:
+                    client.deleteReceiptLines(entities_to_create["lines"])
+                
+                if debug:
+                    print("Successfully rolled back partial changes")
+            except Exception as rollback_error:
+                if debug:
+                    print(f"Error during rollback: {rollback_error}")
+                    traceback.print_exc()
+                print("WARNING: Database may be in an inconsistent state")
+            
+            # Re-raise the original creation error
+            raise creation_error
 
         if debug:
             print("\n--- Database Commit Summary ---")
@@ -326,7 +429,6 @@ def commit_ocr_changes(client, results, debug=False):
         if debug:
             print(f"Error committing OCR changes to database: {e}")
             import traceback
-
             traceback.print_exc()
         commit_results["success"] = False
         commit_results["error"] = str(e)
@@ -347,34 +449,38 @@ def process_ocr_results(
 ):
     """
     Process OCR results using a delete-and-recreate approach.
-
-    Args:
-        image_id (str): The image ID
-        receipt_id (int): The receipt ID
-        old_receipt_lines (list): Old OCR line entities
-        old_receipt_words (list): Old OCR word entities
-        old_receipt_letters (list): Old OCR letter entities
-        old_receipt_word_tags (list): Old tags associated with words
-        new_receipt_lines (list): New OCR line entities
-        new_receipt_words (list): New OCR word entities
-        new_receipt_letters (list): New OCR letter entities
-        debug (bool, optional): Whether to print debug information
-
-    Returns:
-        dict: Results of the processing
     """
-    # Set the receipt_id and image_id on all new entities
-    for word in new_receipt_words:
-        word.receipt_id = receipt_id
-        word.image_id = image_id
-
-    for line in new_receipt_lines:
-        line.receipt_id = receipt_id
-        line.image_id = image_id
-
-    for letter in new_receipt_letters:
-        letter.receipt_id = receipt_id
-        letter.image_id = image_id
+    # Convert the OCR results to Receipt-level objects
+    new_receipt_lines = [
+        ReceiptLine(
+            **{
+                **dict(line),
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+            }
+        )
+        for line in new_receipt_lines
+    ]
+    new_receipt_words = [
+        ReceiptWord(
+            **{
+                **dict(word),
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+            }
+        )
+        for word in new_receipt_words
+    ]
+    new_receipt_letters = [
+        ReceiptLetter(
+            **{
+                **dict(letter),
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+            }
+        )
+        for letter in new_receipt_letters
+    ]
 
     # Create lists for entities to delete and create
     entities_to_delete = {
@@ -384,115 +490,7 @@ def process_ocr_results(
         "letters": old_receipt_letters,
     }
 
-    # STEP 1: Sort new lines and words by position for proper reading order
-    # Sort lines top to bottom, then left to right
-    sorted_new_lines = sorted(
-        new_receipt_lines,
-        key=lambda line: (line.bounding_box["y"], line.bounding_box["x"]),
-    )
-
-    # Assign new line_ids in sequential order
-    for line_id, line in enumerate(sorted_new_lines):
-        line.line_id = line_id
-
-    # STEP 2: Group words by their closest line
-    words_by_line = {}
-    for word in new_receipt_words:
-        # Find the closest line for this word
-        min_distance = float("inf")
-        closest_line = None
-        word_cx, word_cy = word.calculate_centroid()
-
-        for line in sorted_new_lines:
-            line_cx, line_cy = line.calculate_centroid()
-            # More weight on vertical distance for line association
-            distance = (
-                (word_cx - line_cx) ** 2 + 4 * (word_cy - line_cy) ** 2
-            ) ** 0.5
-            if distance < min_distance:
-                min_distance = distance
-                closest_line = line
-
-        if closest_line:
-            if closest_line.line_id not in words_by_line:
-                words_by_line[closest_line.line_id] = []
-            words_by_line[closest_line.line_id].append(word)
-
-    # STEP 3: Sort words within each line left to right and assign word_ids
-    all_sorted_words = []
-    for line_id, words in sorted(words_by_line.items()):
-        sorted_words = sorted(words, key=lambda word: word.bounding_box["x"])
-        for word_id, word in enumerate(sorted_words):
-            word.line_id = line_id
-            word.word_id = word_id
-            all_sorted_words.append(word)
-
-    # STEP 4: Assign each letter to its proper parent word
-    all_sorted_letters = []
-    letter_groups = {}
-
-    # Group letters by OCR-provided line_id and word_id
-    for letter in new_receipt_letters:
-        # We need to preserve the OCR assignment of letters to words
-        # Find the parent word by checking all words
-        parent_word = None
-        letter_line_id = getattr(letter, "original_line_id", letter.line_id)
-        letter_word_id = getattr(letter, "original_word_id", letter.word_id)
-
-        # Find corresponding word with the same OCR-assigned IDs
-        for word in all_sorted_words:
-            # The OCR assigns letter -> word relationship
-            # We need to find which new word (with new IDs) contains this letter
-            if hasattr(word, "original_line_id") and hasattr(
-                word, "original_word_id"
-            ):
-                # If the word has original IDs, use those
-                if (
-                    word.original_line_id == letter_line_id
-                    and word.original_word_id == letter_word_id
-                ):
-                    parent_word = word
-                    break
-            else:
-                # Try to match by checking if letter is within word bounds
-                letter_cx, letter_cy = letter.calculate_centroid()
-                corners = {
-                    "top_left": (word.top_left["x"], word.top_left["y"]),
-                    "top_right": (word.top_right["x"], word.top_right["y"]),
-                    "bottom_right": (
-                        word.bottom_right["x"],
-                        word.bottom_right["y"],
-                    ),
-                    "bottom_left": (
-                        word.bottom_left["x"],
-                        word.bottom_left["y"],
-                    ),
-                }
-
-                if is_point_in_quadrilateral(letter_cx, letter_cy, corners):
-                    parent_word = word
-                    break
-
-        # If we found a parent word, update letter IDs and add to collection
-        if parent_word:
-            letter.line_id = parent_word.line_id
-            letter.word_id = parent_word.word_id
-
-            # Add to our collection for sorting
-            key = (parent_word.line_id, parent_word.word_id)
-            if key not in letter_groups:
-                letter_groups[key] = []
-            letter_groups[key].append(letter)
-
-    # Assign letter_ids in proper sequence
-    for key, letters in sorted(letter_groups.items()):
-        # Sort letters left to right
-        sorted_letters = sorted(letters, key=lambda l: l.bounding_box["x"])
-        for letter_id, letter in enumerate(sorted_letters):
-            letter.letter_id = letter_id
-            all_sorted_letters.append(letter)
-
-    # STEP 5: Map tags using spatial matching
+    # STEP 1: Map tags using spatial matching
     # Create a dictionary of old tags
     old_tag_dict = {}
     for tag in old_receipt_word_tags:
@@ -503,7 +501,7 @@ def process_ocr_results(
         print(f"\n--- Tag Debugging ---")
         print(f"Number of old tags in dictionary: {len(old_tag_dict)}")
         print(f"Number of old words: {len(old_receipt_words)}")
-        print(f"Number of new words: {len(all_sorted_words)}")
+        print(f"Number of new words: {len(new_receipt_words)}")
 
     # Separate tags into human-validated and non-validated
     validated_tag_keys = []
@@ -560,7 +558,7 @@ def process_ocr_results(
 
             old_cx, old_cy = old_word.calculate_centroid()
 
-            for new_word in all_sorted_words:
+            for new_word in new_receipt_words:
                 # Skip if this word already has a tag
                 new_word_key = (
                     new_word.image_id,
@@ -724,9 +722,9 @@ def process_ocr_results(
             "tags": len(entities_to_delete["tags"]),
         },
         "new_data": {
-            "lines": len(sorted_new_lines),
-            "words": len(all_sorted_words),
-            "letters": len(all_sorted_letters),
+            "lines": len(new_receipt_lines),
+            "words": len(new_receipt_words),
+            "letters": len(new_receipt_letters),
             "tags": len(new_tags),
         },
         "tag_transfer": {
@@ -742,9 +740,9 @@ def process_ocr_results(
         },
         "entities_to_delete": entities_to_delete,
         "entities_to_create": {
-            "lines": sorted_new_lines,
-            "words": all_sorted_words,
-            "letters": all_sorted_letters,
+            "lines": new_receipt_lines,
+            "words": new_receipt_words,
+            "letters": new_receipt_letters,
             "tags": new_tags,
         },
     }
@@ -812,9 +810,9 @@ def process_ocr_results(
         print(f"Words to delete: {len(entities_to_delete['words'])}")
         print(f"Letters to delete: {len(entities_to_delete['letters'])}")
         print(f"Tags to delete: {len(entities_to_delete['tags'])}")
-        print(f"New lines to create: {len(sorted_new_lines)}")
-        print(f"New words to create: {len(all_sorted_words)}")
-        print(f"New letters to create: {len(all_sorted_letters)}")
+        print(f"New lines to create: {len(new_receipt_lines)}")
+        print(f"New words to create: {len(new_receipt_words)}")
+        print(f"New letters to create: {len(new_receipt_letters)}")
         print(f"New tags to create: {len(new_tags)}")
 
         # Calculate tag transfer rate
@@ -826,14 +824,13 @@ def process_ocr_results(
 
 
 def process_all_receipts(
-    env=None, limit=10, debug=False, commit_changes=False
+    env=None, debug=False, commit_changes=False
 ):
     """
     Process multiple receipts to refine their OCR results.
 
     Args:
         env (dict, optional): Environment configuration from load_env(). If None, will use "prod".
-        limit (int, optional): Maximum number of receipts to process
         debug (bool, optional): Whether to print debug information
         commit_changes (bool, optional): Whether to commit the changes to the database
 
@@ -843,12 +840,16 @@ def process_all_receipts(
     # Initialize environment if not provided
     if env is None:
         env = load_env("dev")
+    else:
+        env = load_env(env)
+    if env is None:
+        raise ValueError("Environment not found")
 
     # Create client from environment
     client = DynamoClient(env["dynamodb_table_name"])
 
     # Get receipts
-    receipts_details, last_evaluated_key = client.listReceiptDetails(limit)
+    receipts_details, last_evaluated_key = client.listReceiptDetails()
 
     results = {"processed": 0, "succeeded": 0, "failed": 0, "details": {}}
 
