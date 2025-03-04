@@ -55,7 +55,9 @@ class _ReceiptLine:
         if not isinstance(lines, list):
             raise ValueError("lines must be a list of ReceiptLine instances.")
         if not all(isinstance(ln, ReceiptLine) for ln in lines):
-            raise ValueError("All lines must be instances of the ReceiptLine class.")
+            raise ValueError(
+                "All lines must be instances of the ReceiptLine class."
+            )
         try:
             for i in range(0, len(lines), CHUNK_SIZE):
                 chunk = lines[i : i + CHUNK_SIZE]
