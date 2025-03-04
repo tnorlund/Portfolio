@@ -63,25 +63,30 @@
 - test_listReceiptLetters_pagination_errors
 
 ### List Receipt Letters From Word Tests
+#### Basic Operations
 - test_listReceiptLettersFromWord_success
-- test_listReceiptLettersFromWord_receipt_id_is_none
-- test_listReceiptLettersFromWord_receipt_id_is_not_int
-- test_listReceiptLettersFromWord_image_id_is_none
-- test_listReceiptLettersFromWord_image_id_is_not_valid_uuid
-- test_listReceiptLettersFromWord_line_id_is_none
-- test_listReceiptLettersFromWord_line_id_is_not_int
-- test_listReceiptLettersFromWord_word_id_is_none
-- test_listReceiptLettersFromWord_word_id_is_not_int
 - test_listReceiptLettersFromWord_returns_empty_list_when_not_found
-- test_listReceiptLettersFromWord_raises_client_error
-- test_listReceiptLettersFromWord_raises_provisioned_throughput_exceeded
-- test_listReceiptLettersFromWord_raises_validation_error
 - test_listReceiptLettersFromWord_with_pagination
-- test_listReceiptLettersFromWord_validation_error
-- test_listReceiptLettersFromWord_internal_server_error
-- test_listReceiptLettersFromWord_pagination_access_denied
-- test_listReceiptLettersFromWord_pagination_validation
-- test_listReceiptLettersFromWord_pagination_internal_server_error
-- test_listReceiptLettersFromWord_pagination_throughput_exceeded
-- test_listReceiptLettersFromWord_second_query_validation_error
-- test_listReceiptLettersFromWord_second_query_internal_server_error
+
+#### Parameter Validation
+- test_listReceiptLettersFromWord_invalid_parameters
+  - None value tests for required parameters (receipt_id, image_id, line_id, word_id)
+  - Invalid type tests (non-integer IDs, invalid UUID)
+
+#### Error Handling
+- test_listReceiptLettersFromWord_client_errors
+  - ResourceNotFoundException
+  - ProvisionedThroughputExceededException
+  - ValidationException
+  - InternalServerError
+  - AccessDeniedException
+  - UnknownError
+
+#### Pagination Error Handling
+- test_listReceiptLettersFromWord_pagination_errors
+  - ResourceNotFoundException during pagination
+  - ProvisionedThroughputExceededException during pagination
+  - ValidationException during pagination
+  - InternalServerError during pagination
+  - AccessDeniedException during pagination
+  - UnknownError during pagination

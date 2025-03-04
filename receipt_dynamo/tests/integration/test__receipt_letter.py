@@ -1954,170 +1954,83 @@ def test_listReceiptLettersFromWord_success(
 
 
 @pytest.mark.integration
-def test_listReceiptLettersFromWord_receipt_id_is_none(
+@pytest.mark.parametrize(
+    "param_name,invalid_value,expected_error",
+    [
+        # None value tests
+        (
+            "receipt_id",
+            None,
+            "receipt_id parameter is required and cannot be None.",
+        ),
+        (
+            "image_id",
+            None,
+            "image_id parameter is required and cannot be None.",
+        ),
+        (
+            "line_id",
+            None,
+            "line_id parameter is required and cannot be None.",
+        ),
+        (
+            "word_id",
+            None,
+            "word_id parameter is required and cannot be None.",
+        ),
+        # Invalid type tests
+        (
+            "receipt_id",
+            "not_an_integer",
+            "receipt_id must be an integer.",
+        ),
+        (
+            "image_id",
+            "not_a_valid_uuid",
+            "uuid must be a valid UUID.",
+        ),
+        (
+            "line_id",
+            "not_an_integer",
+            "line_id must be an integer.",
+        ),
+        (
+            "word_id",
+            "not_an_integer",
+            "word_id must be an integer.",
+        ),
+    ],
+)
+def test_listReceiptLettersFromWord_invalid_parameters(
     dynamodb_table: Literal["MyMockedTable"],
+    param_name: str,
+    invalid_value: Any,
+    expected_error: str,
 ):
-    """Test that listReceiptLettersFromWord raises ValueError when receipt_id
-    is None.
-
-    Verifies that the method raises a ValueError when the receipt_id parameter
-    is None.
+    """Test that listReceiptLettersFromWord validates its parameters correctly.
+    
+    Tests the following validation cases:
+    - Required parameters cannot be None
+    - receipt_id must be an integer
+    - image_id must be a valid UUID
+    - line_id must be an integer
+    - word_id must be an integer
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(
-        ValueError,
-        match="receipt_id parameter is required and cannot be None.",
-    ):
-        client.listReceiptLettersFromWord(
-            receipt_id=None,
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=10,
-            word_id=2,
-        )
-
-
-@pytest.mark.integration
-def test_listReceiptLettersFromWord_receipt_id_is_not_int(
-    dynamodb_table: Literal["MyMockedTable"],
-):
-    """Test that listReceiptLettersFromWord raises ValueError when receipt_id
-    is not an integer.
-
-    Verifies that the method raises a ValueError when the receipt_id parameter
-    is not an integer.
-    """
-    client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="receipt_id must be an integer."):
-        client.listReceiptLettersFromWord(
-            receipt_id="not_an_integer",
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=10,
-            word_id=2,
-        )
-
-
-@pytest.mark.integration
-def test_listReceiptLettersFromWord_image_id_is_none(
-    dynamodb_table: Literal["MyMockedTable"],
-):
-    """Test that listReceiptLettersFromWord raises ValueError when image_id
-    is None.
-
-    Verifies that the method raises a ValueError when the image_id parameter
-    is None.
-    """
-    client = DynamoClient(dynamodb_table)
-    with pytest.raises(
-        ValueError, match="image_id parameter is required and cannot be None."
-    ):
-        client.listReceiptLettersFromWord(
-            receipt_id=1,
-            image_id=None,
-            line_id=10,
-            word_id=2,
-        )
-
-
-@pytest.mark.integration
-def test_listReceiptLettersFromWord_image_id_is_not_valid_uuid(
-    dynamodb_table: Literal["MyMockedTable"],
-):
-    """
-    Test that listReceiptLettersFromWord raises ValueError when image_id is
-    not a valid UUID.
-    """
-    client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="uuid must be a valid UUID."):
-        client.listReceiptLettersFromWord(
-            receipt_id=1,
-            image_id="not_a_valid_uuid",
-            line_id=10,
-            word_id=2,
-        )
-
-
-@pytest.mark.integration
-def test_listReceiptLettersFromWord_line_id_is_none(
-    dynamodb_table: Literal["MyMockedTable"],
-):
-    """Test that listReceiptLettersFromWord raises ValueError when line_id
-    is None.
-
-    Verifies that the method raises a ValueError when the line_id parameter
-    is None.
-    """
-    client = DynamoClient(dynamodb_table)
-    with pytest.raises(
-        ValueError, match="line_id parameter is required and cannot be None."
-    ):
-        client.listReceiptLettersFromWord(
-            receipt_id=1,
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=None,
-            word_id=2,
-        )
-
-
-@pytest.mark.integration
-def test_listReceiptLettersFromWord_line_id_is_not_int(
-    dynamodb_table: Literal["MyMockedTable"],
-):
-    """Test that listReceiptLettersFromWord raises ValueError when line_id
-    is not an integer.
-
-    Verifies that the method raises a ValueError when the line_id parameter
-    is not an integer.
-    """
-    client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="line_id must be an integer."):
-        client.listReceiptLettersFromWord(
-            receipt_id=1,
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id="not_an_integer",
-            word_id=2,
-        )
-
-
-@pytest.mark.integration
-def test_listReceiptLettersFromWord_word_id_is_none(
-    dynamodb_table: Literal["MyMockedTable"],
-):
-    """Test that listReceiptLettersFromWord raises ValueError when word_id
-    is None.
-
-    Verifies that the method raises a ValueError when the word_id parameter
-    is None.
-    """
-    client = DynamoClient(dynamodb_table)
-    with pytest.raises(
-        ValueError, match="word_id parameter is required and cannot be None."
-    ):
-        client.listReceiptLettersFromWord(
-            receipt_id=1,
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=10,
-            word_id=None,
-        )
-
-
-@pytest.mark.integration
-def test_listReceiptLettersFromWord_word_id_is_not_int(
-    dynamodb_table: Literal["MyMockedTable"],
-):
-    """Test that listReceiptLettersFromWord raises ValueError when word_id
-    is not an integer.
-
-    Verifies that the method raises a ValueError when the word_id parameter
-    is not an integer.
-    """
-    client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="word_id must be an integer."):
-        client.listReceiptLettersFromWord(
-            receipt_id=1,
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=10,
-            word_id="not_an_integer",
-        )
+    
+    # Prepare valid base parameters
+    params = {
+        "receipt_id": 1,
+        "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "line_id": 10,
+        "word_id": 5,
+    }
+    
+    # Override the parameter being tested with invalid value
+    params[param_name] = invalid_value
+    
+    with pytest.raises(ValueError, match=expected_error):
+        client.listReceiptLettersFromWord(**params)
 
 
 @pytest.mark.integration
@@ -2139,115 +2052,6 @@ def test_listReceiptLettersFromWord_returns_empty_list_when_not_found(
     )
     assert isinstance(found_letters, list)
     assert len(found_letters) == 0
-
-
-@pytest.mark.integration
-def test_listReceiptLettersFromWord_raises_client_error(
-    dynamodb_table: Literal["MyMockedTable"], mocker
-):
-    """Test that listReceiptLettersFromWord raises Exception.
-
-    Verifies that the method raises an Exception when DynamoDB returns an
-    internal server error.
-    """
-    client = DynamoClient(dynamodb_table)
-
-    # Mock the query method to raise an InternalServerError
-    mock_client = mocker.patch.object(client._client, "query")
-    mock_client.side_effect = ClientError(
-        {
-            "Error": {
-                "Code": "InternalServerError",
-                "Message": "Internal error",
-            }
-        },
-        "Query",
-    )
-
-    with pytest.raises(
-        Exception,
-        match=(
-            "Internal server error: An error occurred "
-            "\\(InternalServerError\\) when calling the Query operation: "
-            "Internal error"
-        ),
-    ):
-        client.listReceiptLettersFromWord(
-            receipt_id=999,
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=999,
-            word_id=999,
-        )
-
-
-@pytest.mark.integration
-def test_listReceiptLettersFromWord_raises_provisioned_throughput_exceeded(
-    dynamodb_table: Literal["MyMockedTable"], mocker
-):
-    """Test that listReceiptLettersFromWord raises Exception on throughput
-    exceeded."""
-    client = DynamoClient(dynamodb_table)
-
-    # Mock the query method to raise a ProvisionedThroughputExceededException
-    mock_client = mocker.patch.object(client._client, "query")
-    mock_client.side_effect = ClientError(
-        {
-            "Error": {
-                "Code": "ProvisionedThroughputExceededException",
-                "Message": "Throughput exceeded",
-            }
-        },
-        "Query",
-    )
-
-    with pytest.raises(
-        Exception,
-        match=(
-            "Provisioned throughput exceeded: An error occurred "
-            "\\(ProvisionedThroughputExceededException\\) when calling "
-            "the Query operation: Throughput exceeded"
-        ),
-    ):
-        client.listReceiptLettersFromWord(
-            receipt_id=999,
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=999,
-            word_id=999,
-        )
-
-
-@pytest.mark.integration
-def test_listReceiptLettersFromWord_raises_validation_error(
-    dynamodb_table: Literal["MyMockedTable"], mocker
-):
-    """Test that listReceiptLettersFromWord raises Exception on validation
-    error.
-
-    Verifies that the method raises an Exception when DynamoDB returns a
-    ValidationException.
-    """
-    client = DynamoClient(dynamodb_table)
-
-    # Mock the query method to raise a ValidationException
-    mock_client = mocker.patch.object(client._client, "query")
-    mock_client.side_effect = ClientError(
-        {
-            "Error": {
-                "Code": "ValidationException",
-                "Message": "Invalid parameters",
-            }
-        },
-        "Query",
-    )
-
-    error_msg = "One or more parameters given were invalid:"
-    with pytest.raises(Exception, match=error_msg):
-        client.listReceiptLettersFromWord(
-            receipt_id=999,
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=999,
-            word_id=999,
-        )
 
 
 @pytest.mark.integration
@@ -2282,682 +2086,226 @@ def test_listReceiptLettersFromWord_with_pagination(
     # Mock pagination behavior
     first_response = {
         "Items": [letter.to_item() for letter in letters[:3]],
-        "LastEvaluatedKey": {"PK": {"S": "some-key"}},
+        "LastEvaluatedKey": {"key": "value"},
     }
     second_response = {
         "Items": [letter.to_item() for letter in letters[3:]],
     }
+    mock_client = mocker.Mock()
+    mock_client.query.side_effect = [first_response, second_response]
+    client._client = mock_client
 
-    mocker.patch.object(
-        client._client, "query", side_effect=[first_response, second_response]
-    )
-
-    result = client.listReceiptLettersFromWord(
+    # Act
+    found_letters = client.listReceiptLettersFromWord(
         receipt_id=1,
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=10,
         word_id=5,
     )
 
-    # Verify all letters were retrieved
-    assert len(result) == 5
+    # Assert
+    assert len(found_letters) == len(letters)
     for letter in letters:
-        assert letter in result
+        assert letter in found_letters
+    assert mock_client.query.call_count == 2
 
 
 @pytest.mark.integration
-def test_listReceiptLettersFromWord_raises_provisioned_throughput_exceeded(
-    dynamodb_table: Literal["MyMockedTable"], mocker
+@pytest.mark.parametrize(
+    "error_code,error_message,expected_error",
+    [
+        (
+            "ResourceNotFoundException",
+            "Table not found",
+            "Could not list ReceiptLetters from the database",
+        ),
+        (
+            "ProvisionedThroughputExceededException",
+            "Throughput exceeded",
+            "Provisioned throughput exceeded",
+        ),
+        (
+            "ValidationException",
+            "Invalid parameters",
+            "One or more parameters given were invalid",
+        ),
+        (
+            "InternalServerError",
+            "Internal server error",
+            "Internal server error",
+        ),
+        (
+            "AccessDeniedException",
+            "Access denied",
+            "Access denied",
+        ),
+        (
+            "UnknownError",
+            "Unknown error occurred",
+            "Could not list ReceiptLetters from the database",
+        ),
+    ],
+)
+def test_listReceiptLettersFromWord_client_errors(
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt_letter: ReceiptLetter,
+    mocker,
+    error_code: str,
+    error_message: str,
+    expected_error: str,
 ):
-    """Test handling of ProvisionedThroughputExceededException in
-    listReceiptLettersFromWord.
-
-    Verifies that the method raises an Exception when DynamoDB returns a
-    ProvisionedThroughputExceededException.
+    """Test that listReceiptLettersFromWord handles various DynamoDB client errors appropriately:
+    - ResourceNotFoundException
+    - ProvisionedThroughputExceededException
+    - ValidationException
+    - InternalServerError
+    - AccessDeniedException
+    - UnknownError
     """
     client = DynamoClient(dynamodb_table)
-    mock_query = mocker.patch.object(
-        client._client,
-        "query",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": "ProvisionedThroughputExceededException",
-                    "Message": "Throughput exceeded",
-                }
-            },
-            "Query",
-        ),
-    )
-
-    with pytest.raises(Exception, match="Provisioned throughput exceeded"):
-        client.listReceiptLettersFromWord(
-            receipt_id=1,
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=10,
-            word_id=5,
-        )
-    mock_query.assert_called_once()
-
-
-@pytest.mark.integration
-def test_listReceiptLettersFromWord_raises_validation_error(
-    dynamodb_table: Literal["MyMockedTable"], mocker
-):
-    """Test handling of ValidationException in listReceiptLettersFromWord."""
-    client = DynamoClient(dynamodb_table)
-    mock_query = mocker.patch.object(
-        client._client,
-        "query",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": "ValidationException",
-                    "Message": "Invalid parameters",
-                }
-            },
-            "Query",
-        ),
-    )
-
-    with pytest.raises(
-        Exception, match="One or more parameters given were invalid"
-    ):
-        client.listReceiptLettersFromWord(
-            receipt_id=1,
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=10,
-            word_id=5,
-        )
-    mock_query.assert_called_once()
-
-
-@pytest.mark.integration
-def test_listReceiptLettersFromWord_raises_internal_server_error(
-    dynamodb_table: Literal["MyMockedTable"], mocker
-):
-    """Test handling of InternalServerError in listReceiptLettersFromWord."""
-    client = DynamoClient(dynamodb_table)
-    mock_query = mocker.patch.object(
-        client._client,
-        "query",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": "InternalServerError",
-                    "Message": "Internal server error",
-                }
-            },
-            "Query",
-        ),
-    )
-
-    with pytest.raises(Exception, match="Internal server error"):
-        client.listReceiptLettersFromWord(
-            receipt_id=1,
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=10,
-            word_id=5,
-        )
-    mock_query.assert_called_once()
-
-
-@pytest.mark.integration
-def test_listReceiptLettersFromWord_raises_unknown_error(
-    dynamodb_table: Literal["MyMockedTable"], mocker
-):
-    """Test handling of unknown error in listReceiptLettersFromWord."""
-    client = DynamoClient(dynamodb_table)
-    mock_query = mocker.patch.object(
-        client._client,
-        "query",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": "UnknownError",
-                    "Message": "Unknown error",
-                }
-            },
-            "Query",
-        ),
-    )
-
-    with pytest.raises(
-        Exception, match="Could not list ReceiptLetters from the database"
-    ):
-        client.listReceiptLettersFromWord(
-            receipt_id=1,
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=10,
-            word_id=5,
-        )
-    mock_query.assert_called_once()
-
-
-@pytest.mark.integration
-def test_listReceiptLettersFromWord_validation_error(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test ValidationException in first query of
-    listReceiptLettersFromWord."""
-    client = DynamoClient(dynamodb_table)
-    mock_client = mocker.Mock()
-    mock_client.query.side_effect = ClientError(
-        {
-            "Error": {
-                "Code": "ValidationException",
-                "Message": "Invalid query parameters",
-            }
-        },
-        "Query",
-    )
-    client._client = mock_client
-
-    with pytest.raises(
-        Exception, match="One or more parameters given were invalid"
-    ):
-        client.listReceiptLettersFromWord(
-            receipt_id=sample_receipt_letter.receipt_id,
-            image_id=sample_receipt_letter.image_id,
-            line_id=sample_receipt_letter.line_id,
-            word_id=sample_receipt_letter.word_id,
-        )
-
-    mock_client.query.assert_called_once_with(
-        TableName=dynamodb_table,
-        KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
-        ExpressionAttributeValues={
-            ":pkVal": {"S": f"IMAGE#{sample_receipt_letter.image_id}"},
-            ":skPrefix": {
-                "S": (
-                    f"RECEIPT#{sample_receipt_letter.receipt_id:05d}"
-                    f"#LINE#{sample_receipt_letter.line_id:05d}"
-                    f"#WORD#{sample_receipt_letter.word_id:05d}"
-                    f"#LETTER#"
-                )
-            },
-        },
-    )
-
-
-@pytest.mark.integration
-def test_listReceiptLettersFromWord_internal_server_error(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test InternalServerError in first query of
-    listReceiptLettersFromWord."""
-    client = DynamoClient(dynamodb_table)
-    mock_client = mocker.Mock()
-    mock_client.query.side_effect = ClientError(
-        {
-            "Error": {
-                "Code": "InternalServerError",
-                "Message": "Internal server error occurred",
-            }
-        },
-        "Query",
-    )
-    client._client = mock_client
-
-    with pytest.raises(Exception, match="Internal server error"):
-        client.listReceiptLettersFromWord(
-            receipt_id=sample_receipt_letter.receipt_id,
-            image_id=sample_receipt_letter.image_id,
-            line_id=sample_receipt_letter.line_id,
-            word_id=sample_receipt_letter.word_id,
-        )
-
-
-@pytest.mark.integration
-def test_listReceiptLettersFromWord_pagination_access_denied(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test AccessDeniedException during pagination."""
-    client = DynamoClient(dynamodb_table)
-    mock_client = mocker.Mock()
-    mock_client.query.side_effect = [
-        {
-            "Items": [
-                {
-                    "PK": {"S": f"IMAGE#{sample_receipt_letter.image_id}"},
-                    "SK": {
-                        "S": f"RECEIPT#{sample_receipt_letter.receipt_id:05d}#"
-                        f"LINE#{sample_receipt_letter.line_id:05d}#"
-                        f"WORD#{sample_receipt_letter.word_id:05d}#"
-                        f"LETTER#00001"
-                    },
-                    "TYPE": {"S": "RECEIPT_LETTER"},
-                    "text": {"S": "A"},
-                    "bounding_box": {
-                        "M": {
-                            "x": {"N": "0.1"},
-                            "y": {"N": "0.2"},
-                            "width": {"N": "0.05"},
-                            "height": {"N": "0.05"},
-                        }
-                    },
-                    "top_right": {
-                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.25"}}
-                    },
-                    "top_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.25"}}},
-                    "bottom_right": {
-                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.2"}}
-                    },
-                    "bottom_left": {
-                        "M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}
-                    },
-                    "angle_degrees": {"N": "0.0"},
-                    "angle_radians": {"N": "0.0"},
-                    "confidence": {"N": "0.98"},
-                }
-            ],
-            "LastEvaluatedKey": {"key": "value"},
-        },
-        ClientError(
-            {
-                "Error": {
-                    "Code": "AccessDeniedException",
-                    "Message": "User is not authorized to perform this "
-                    "operation",
-                }
-            },
-            "Query",
-        ),
-    ]
-    client._client = mock_client
-
-    with pytest.raises(Exception, match="Access denied"):
-        client.listReceiptLettersFromWord(
-            receipt_id=sample_receipt_letter.receipt_id,
-            image_id=sample_receipt_letter.image_id,
-            line_id=sample_receipt_letter.line_id,
-            word_id=sample_receipt_letter.word_id,
-        )
-
-
-@pytest.mark.integration
-def test_listReceiptLettersFromWord_pagination_validation(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test ValidationException during pagination."""
-    client = DynamoClient(dynamodb_table)
-    mock_client = mocker.Mock()
-    mock_client.query.side_effect = [
-        {
-            "Items": [
-                {
-                    "PK": {"S": f"IMAGE#{sample_receipt_letter.image_id}"},
-                    "SK": {
-                        "S": f"RECEIPT#{sample_receipt_letter.receipt_id:05d}#"
-                        f"LINE#{sample_receipt_letter.line_id:05d}#"
-                        f"WORD#{sample_receipt_letter.word_id:05d}#"
-                        f"LETTER#00001"
-                    },
-                    "TYPE": {"S": "RECEIPT_LETTER"},
-                    "text": {"S": "A"},
-                    "bounding_box": {
-                        "M": {
-                            "x": {"N": "0.1"},
-                            "y": {"N": "0.2"},
-                            "width": {"N": "0.05"},
-                            "height": {"N": "0.05"},
-                        }
-                    },
-                    "top_right": {
-                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.25"}}
-                    },
-                    "top_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.25"}}},
-                    "bottom_right": {
-                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.2"}}
-                    },
-                    "bottom_left": {
-                        "M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}
-                    },
-                    "angle_degrees": {"N": "0.0"},
-                    "angle_radians": {"N": "0.0"},
-                    "confidence": {"N": "0.98"},
-                }
-            ],
-            "LastEvaluatedKey": {"key": "value"},
-        },
-        ClientError(
-            {
-                "Error": {
-                    "Code": "ValidationException",
-                    "Message": "Invalid parameter in pagination request",
-                }
-            },
-            "Query",
-        ),
-    ]
-    client._client = mock_client
-
-    with pytest.raises(
-        Exception, match="One or more parameters given were invalid"
-    ):
-        client.listReceiptLettersFromWord(
-            receipt_id=sample_receipt_letter.receipt_id,
-            image_id=sample_receipt_letter.image_id,
-            line_id=sample_receipt_letter.line_id,
-            word_id=sample_receipt_letter.word_id,
-        )
-
-
-@pytest.mark.integration
-def test_listReceiptLettersFromWord_pagination_internal_server_error(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test InternalServerError during pagination."""
-    client = DynamoClient(dynamodb_table)
-    mock_client = mocker.Mock()
-    mock_client.query.side_effect = [
-        {
-            "Items": [
-                {
-                    "PK": {"S": f"IMAGE#{sample_receipt_letter.image_id}"},
-                    "SK": {
-                        "S": f"RECEIPT#{sample_receipt_letter.receipt_id:05d}#"
-                        f"LINE#{sample_receipt_letter.line_id:05d}#"
-                        f"WORD#{sample_receipt_letter.word_id:05d}#"
-                        f"LETTER#00001"
-                    },
-                    "TYPE": {"S": "RECEIPT_LETTER"},
-                    "text": {"S": "A"},
-                    "bounding_box": {
-                        "M": {
-                            "x": {"N": "0.1"},
-                            "y": {"N": "0.2"},
-                            "width": {"N": "0.05"},
-                            "height": {"N": "0.05"},
-                        }
-                    },
-                    "top_right": {
-                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.25"}}
-                    },
-                    "top_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.25"}}},
-                    "bottom_right": {
-                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.2"}}
-                    },
-                    "bottom_left": {
-                        "M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}
-                    },
-                    "angle_degrees": {"N": "0.0"},
-                    "angle_radians": {"N": "0.0"},
-                    "confidence": {"N": "0.98"},
-                }
-            ],
-            "LastEvaluatedKey": {"key": "value"},
-        },
-        ClientError(
-            {
-                "Error": {
-                    "Code": "InternalServerError",
-                    "Message": "Internal server error during pagination",
-                }
-            },
-            "Query",
-        ),
-    ]
-    client._client = mock_client
-
-    with pytest.raises(Exception, match="Internal server error"):
-        client.listReceiptLettersFromWord(
-            receipt_id=sample_receipt_letter.receipt_id,
-            image_id=sample_receipt_letter.image_id,
-            line_id=sample_receipt_letter.line_id,
-            word_id=sample_receipt_letter.word_id,
-        )
-
-
-@pytest.mark.integration
-def test_listReceiptLettersFromWord_pagination_throughput_exceeded(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test ProvisionedThroughputExceededException during pagination."""
-    client = DynamoClient(dynamodb_table)
-    mock_client = mocker.Mock()
-    mock_client.query.side_effect = [
-        {
-            "Items": [
-                {
-                    "PK": {"S": f"IMAGE#{sample_receipt_letter.image_id}"},
-                    "SK": {
-                        "S": f"RECEIPT#{sample_receipt_letter.receipt_id:05d}#"
-                        f"LINE#{sample_receipt_letter.line_id:05d}#"
-                        f"WORD#{sample_receipt_letter.word_id:05d}#"
-                        f"LETTER#00001"
-                    },
-                    "TYPE": {"S": "RECEIPT_LETTER"},
-                    "text": {"S": "A"},
-                    "bounding_box": {
-                        "M": {
-                            "x": {"N": "0.1"},
-                            "y": {"N": "0.2"},
-                            "width": {"N": "0.05"},
-                            "height": {"N": "0.05"},
-                        }
-                    },
-                    "top_right": {
-                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.25"}}
-                    },
-                    "top_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.25"}}},
-                    "bottom_right": {
-                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.2"}}
-                    },
-                    "bottom_left": {
-                        "M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}
-                    },
-                    "angle_degrees": {"N": "0.0"},
-                    "angle_radians": {"N": "0.0"},
-                    "confidence": {"N": "0.98"},
-                }
-            ],
-            "LastEvaluatedKey": {"key": "value"},
-        },
-        ClientError(
-            {
-                "Error": {
-                    "Code": "ProvisionedThroughputExceededException",
-                    "Message": "Throughput exceeded during pagination",
-                }
-            },
-            "Query",
-        ),
-    ]
-    client._client = mock_client
-
-    with pytest.raises(Exception, match="Provisioned throughput exceeded"):
-        client.listReceiptLettersFromWord(
-            receipt_id=sample_receipt_letter.receipt_id,
-            image_id=sample_receipt_letter.image_id,
-            line_id=sample_receipt_letter.line_id,
-            word_id=sample_receipt_letter.word_id,
-        )
-
-
-@pytest.mark.integration
-def test_listReceiptLettersFromWord_second_query_validation_error(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test ValidationException in second query of
-    listReceiptLettersFromWord."""
-    client = DynamoClient(dynamodb_table)
-    mock_client = mocker.Mock()
-    mock_client.query.side_effect = [
-        {
-            "Items": [
-                {
-                    "PK": {"S": f"IMAGE#{sample_receipt_letter.image_id}"},
-                    "SK": {
-                        "S": f"RECEIPT#{sample_receipt_letter.receipt_id:05d}#"
-                        f"LINE#{sample_receipt_letter.line_id:05d}#"
-                        f"WORD#{sample_receipt_letter.word_id:05d}#"
-                        f"LETTER#00001"
-                    },
-                    "TYPE": {"S": "RECEIPT_LETTER"},
-                    "text": {"S": "A"},
-                    "bounding_box": {
-                        "M": {
-                            "x": {"N": "0.1"},
-                            "y": {"N": "0.2"},
-                            "width": {"N": "0.05"},
-                            "height": {"N": "0.05"},
-                        }
-                    },
-                    "top_right": {
-                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.25"}}
-                    },
-                    "top_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.25"}}},
-                    "bottom_right": {
-                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.2"}}
-                    },
-                    "bottom_left": {
-                        "M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}
-                    },
-                    "angle_degrees": {"N": "0.0"},
-                    "angle_radians": {"N": "0.0"},
-                    "confidence": {"N": "0.98"},
-                }
-            ],
-            "LastEvaluatedKey": {"key": "value"},
-        },
-        ClientError(
-            {
-                "Error": {
-                    "Code": "ValidationException",
-                    "Message": "Invalid parameter in second query",
-                }
-            },
-            "Query",
-        ),
-    ]
-    client._client = mock_client
-
-    with pytest.raises(
-        Exception, match="One or more parameters given were invalid"
-    ):
-        client.listReceiptLettersFromWord(
-            receipt_id=sample_receipt_letter.receipt_id,
-            image_id=sample_receipt_letter.image_id,
-            line_id=sample_receipt_letter.line_id,
-            word_id=sample_receipt_letter.word_id,
-        )
-
-
-@pytest.mark.integration
-def test_listReceiptLettersFromWord_second_query_internal_server_error(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test InternalServerError in second query of
-    listReceiptLettersFromWord."""
-    client = DynamoClient(dynamodb_table)
-    mock_client = mocker.Mock()
-    mock_client.query.side_effect = [
-        {
-            "Items": [
-                {
-                    "PK": {"S": f"IMAGE#{sample_receipt_letter.image_id}"},
-                    "SK": {
-                        "S": f"RECEIPT#{sample_receipt_letter.receipt_id:05d}#"
-                        f"LINE#{sample_receipt_letter.line_id:05d}#"
-                        f"WORD#{sample_receipt_letter.word_id:05d}#"
-                        f"LETTER#00001"
-                    },
-                    "TYPE": {"S": "RECEIPT_LETTER"},
-                    "text": {"S": "A"},
-                    "bounding_box": {
-                        "M": {
-                            "x": {"N": "0.1"},
-                            "y": {"N": "0.2"},
-                            "width": {"N": "0.05"},
-                            "height": {"N": "0.05"},
-                        }
-                    },
-                    "top_right": {
-                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.25"}}
-                    },
-                    "top_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.25"}}},
-                    "bottom_right": {
-                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.2"}}
-                    },
-                    "bottom_left": {
-                        "M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}
-                    },
-                    "angle_degrees": {"N": "0.0"},
-                    "angle_radians": {"N": "0.0"},
-                    "confidence": {"N": "0.98"},
-                }
-            ],
-            "LastEvaluatedKey": {"key": "value"},
-        },
-        ClientError(
-            {
-                "Error": {
-                    "Code": "InternalServerError",
-                    "Message": "Internal server error in second query",
-                }
-            },
-            "Query",
-        ),
-    ]
-    client._client = mock_client
-
-    with pytest.raises(Exception, match="Internal server error"):
-        client.listReceiptLettersFromWord(
-            receipt_id=sample_receipt_letter.receipt_id,
-            image_id=sample_receipt_letter.image_id,
-            line_id=sample_receipt_letter.line_id,
-            word_id=sample_receipt_letter.word_id,
-        )
-
-
-@pytest.mark.integration
-def test_listReceiptLetters_raises_internal_server_error_first_query(
-    dynamodb_table, mocker
-):
-    """Test handling of InternalServerError in listReceiptLetters first
-    query."""
-    client = DynamoClient(dynamodb_table)
     mock_client = mocker.patch.object(
         client._client,
         "query",
         side_effect=ClientError(
             {
                 "Error": {
-                    "Code": "InternalServerError",
-                    "Message": "Internal server error",
+                    "Code": error_code,
+                    "Message": error_message,
                 }
             },
             "Query",
         ),
     )
-    with pytest.raises(Exception, match="Internal server error"):
-        client.listReceiptLetters()
+
+    with pytest.raises(Exception, match=expected_error):
+        client.listReceiptLettersFromWord(
+            receipt_id=sample_receipt_letter.receipt_id,
+            image_id=sample_receipt_letter.image_id,
+            line_id=sample_receipt_letter.line_id,
+            word_id=sample_receipt_letter.word_id,
+        )
     mock_client.assert_called_once()
 
 
 @pytest.mark.integration
-def test_listReceiptLetters_raises_validation_error_first_query(
-    dynamodb_table, mocker
+@pytest.mark.parametrize(
+    "error_code,error_message,expected_error,query_number",
+    [
+        (
+            "ResourceNotFoundException",
+            "Table not found during pagination",
+            "Could not list ReceiptLetters from the database",
+            2,  # Second query fails
+        ),
+        (
+            "ProvisionedThroughputExceededException",
+            "Throughput exceeded during pagination",
+            "Provisioned throughput exceeded",
+            2,  # Second query fails
+        ),
+        (
+            "ValidationException",
+            "Invalid parameters in pagination",
+            "One or more parameters given were invalid",
+            2,  # Second query fails
+        ),
+        (
+            "InternalServerError",
+            "Internal server error during pagination",
+            "Internal server error",
+            2,  # Second query fails
+        ),
+        (
+            "AccessDeniedException",
+            "Access denied during pagination",
+            "Access denied",
+            2,  # Second query fails
+        ),
+        (
+            "UnknownError",
+            "Unknown error during pagination",
+            "Could not list ReceiptLetters from the database",
+            2,  # Second query fails
+        ),
+    ],
+)
+def test_listReceiptLettersFromWord_pagination_errors(
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt_letter: ReceiptLetter,
+    mocker,
+    error_code: str,
+    error_message: str,
+    expected_error: str,
+    query_number: int,
 ):
-    """Test handling of ValidationException in listReceiptLetters first
-    query."""
+    """Test that listReceiptLettersFromWord handles various DynamoDB client errors during pagination:
+    - ResourceNotFoundException
+    - ProvisionedThroughputExceededException
+    - ValidationException
+    - InternalServerError
+    - AccessDeniedException
+    - UnknownError
+
+    The test simulates errors occurring in the second query during pagination.
+    """
     client = DynamoClient(dynamodb_table)
-    mock_client = mocker.patch.object(
-        client._client,
-        "query",
-        side_effect=ClientError(
+    mock_client = mocker.Mock()
+    
+    # First query succeeds with a LastEvaluatedKey
+    first_response = {
+        "Items": [
+            {
+                "PK": {"S": f"IMAGE#{sample_receipt_letter.image_id}"},
+                "SK": {
+                    "S": f"RECEIPT#{sample_receipt_letter.receipt_id:05d}#"
+                    f"LINE#{sample_receipt_letter.line_id:05d}#"
+                    f"WORD#{sample_receipt_letter.word_id:05d}#"
+                    f"LETTER#00001"
+                },
+                "TYPE": {"S": "RECEIPT_LETTER"},
+                "text": {"S": "A"},
+                "bounding_box": {
+                    "M": {
+                        "x": {"N": "0.1"},
+                        "y": {"N": "0.2"},
+                        "width": {"N": "0.05"},
+                        "height": {"N": "0.05"},
+                    }
+                },
+                "top_right": {"M": {"x": {"N": "0.15"}, "y": {"N": "0.25"}}},
+                "top_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.25"}}},
+                "bottom_right": {"M": {"x": {"N": "0.15"}, "y": {"N": "0.2"}}},
+                "bottom_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}},
+                "angle_degrees": {"N": "0.0"},
+                "angle_radians": {"N": "0.0"},
+                "confidence": {"N": "0.98"},
+            }
+        ],
+        "LastEvaluatedKey": {"key": "value"},
+    }
+    
+    # Second query fails with the specified error
+    mock_client.query.side_effect = [
+        first_response,
+        ClientError(
             {
                 "Error": {
-                    "Code": "ValidationException",
-                    "Message": "Invalid parameters",
+                    "Code": error_code,
+                    "Message": error_message,
                 }
             },
             "Query",
         ),
-    )
-    with pytest.raises(
-        ValueError, match="One or more parameters given were invalid"
-    ):
-        client.listReceiptLetters()
-    mock_client.assert_called_once()
+    ]
+    client._client = mock_client
+
+    with pytest.raises(Exception, match=expected_error):
+        client.listReceiptLettersFromWord(
+            receipt_id=sample_receipt_letter.receipt_id,
+            image_id=sample_receipt_letter.image_id,
+            line_id=sample_receipt_letter.line_id,
+            word_id=sample_receipt_letter.word_id,
+        )
+    
+    # Verify that both queries were attempted
+    assert mock_client.query.call_count == query_number
