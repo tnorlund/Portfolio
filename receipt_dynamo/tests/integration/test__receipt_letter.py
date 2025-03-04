@@ -279,48 +279,25 @@ def test_addReceiptLetters_success(
 
 
 @pytest.mark.integration
-def test_addReceiptLetters_raises_value_error_letters_none(
-    dynamodb_table, sample_receipt_letter, mocker
+@pytest.mark.parametrize(
+    "invalid_input,expected_error",
+    [
+        (None, "letters parameter is required and cannot be None."),
+        ("not-a-list", "letters must be a list of ReceiptLetter instances."),
+        (["not-a-receipt-letter"], "All letters must be instances of the ReceiptLetter class."),
+    ],
+)
+def test_addReceiptLetters_invalid_parameters(
+    dynamodb_table, sample_receipt_letter, mocker, invalid_input, expected_error
 ):
-    """
-    Tests that addReceiptLetters raises ValueError when the letters are None.
+    """Tests that addReceiptLetters raises ValueError for invalid parameters:
+    - When letters is None
+    - When letters is not a list
+    - When letters contains non-ReceiptLetter instances
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(
-        ValueError, match="letters parameter is required and cannot be None."
-    ):
-        client.addReceiptLetters(None)  # type: ignore
-
-
-@pytest.mark.integration
-def test_addReceiptLetters_raises_value_error_letters_not_list(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Tests that addReceiptLetters raises ValueError when the letters are not
-    a list.
-    """
-    client = DynamoClient(dynamodb_table)
-    with pytest.raises(
-        ValueError, match="letters must be a list of ReceiptLetter instances."
-    ):
-        client.addReceiptLetters("not-a-list")  # type: ignore
-
-
-@pytest.mark.integration
-def test_addReceiptLetters_error_invalid_letter_types(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test ValueError when letters are not ReceiptLetter instances.
-
-    Verifies that addReceiptLetters raises ValueError when the provided list
-    contains items that are not instances of ReceiptLetter.
-    """
-    client = DynamoClient(dynamodb_table)
-    with pytest.raises(
-        ValueError,
-        match="All letters must be instances of the ReceiptLetter class.",
-    ):
-        client.addReceiptLetters(["not-a-receipt-letter"])  # type: ignore
+    with pytest.raises(ValueError, match=expected_error):
+        client.addReceiptLetters(invalid_input)  # type: ignore
 
 
 @pytest.mark.integration
