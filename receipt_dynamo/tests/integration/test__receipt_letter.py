@@ -385,33 +385,6 @@ def test_addReceiptLetters_invalid_parameters(
 
 
 @pytest.mark.integration
-def test_addReceiptLetters_raises_resource_not_found_with_invalid_table(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test handling of ResourceNotFoundException with invalid table name."""
-    client = DynamoClient(dynamodb_table)
-    mock_batch = mocker.patch.object(
-        client._client,
-        "batch_write_item",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": "ResourceNotFoundException",
-                    "Message": "Table not found",
-                }
-            },
-            "BatchWriteItem",
-        ),
-    )
-
-    with pytest.raises(
-        Exception, match="Could not add ReceiptLetters to the database"
-    ):
-        client.addReceiptLetters([sample_receipt_letter])
-    mock_batch.assert_called_once()
-
-
-@pytest.mark.integration
 @pytest.mark.parametrize(
     "error_code,error_message,expected_error_message",
     [

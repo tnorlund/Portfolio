@@ -1,0 +1,87 @@
+## Complete Test Function List
+
+### Add Receipt Letter Tests
+- test_addReceiptLetter_success
+- test_addReceiptLetter_duplicate_raises
+- test_addReceiptLetter_invalid_parameters
+- test_addReceiptLetter_client_errors
+- test_addReceiptLetter_raises_resource_not_found_with_invalid_table
+- test_addReceiptLetter_raises_validation_error
+- test_addReceiptLetter_raises_access_denied
+
+### Add Receipt Letters Tests
+- test_addReceiptLetters_success
+- test_addReceiptLetters_with_large_batch
+- test_addReceiptLetters_with_unprocessed_items_retries
+- test_addReceiptLetters_invalid_parameters
+- test_addReceiptLetters_client_errors
+
+### Update Receipt Letter Tests
+- test_updateReceiptLetter_success
+- test_updateReceiptLetter_invalid_parameters
+- test_updateReceiptLetter_client_errors
+
+### Update Receipt Letters Tests
+- test_updateReceiptLetters_success
+- test_updateReceiptLetters_with_large_batch
+- test_updateReceiptLetters_invalid_inputs
+- test_updateReceiptLetters_client_errors
+
+### Delete Receipt Letter Tests
+- test_deleteReceiptLetter_success
+- test_deleteReceiptLetter_invalid_parameters
+- test_deleteReceiptLetter_client_errors
+
+### Delete Receipt Letters Tests
+- test_deleteReceiptLetters_success
+- test_deleteReceiptLetters_with_large_batch
+- test_deleteReceiptLetters_with_unprocessed_items
+- test_deleteReceiptLetters_invalid_parameters
+- test_deleteReceiptLetters_client_errors
+
+### Get Receipt Letter Tests
+- test_getReceiptLetter_success
+- test_getReceiptLetter_not_found
+- test_getReceiptLetter_invalid_parameters
+- test_getReceiptLetter_client_errors
+
+### List Receipt Letters Tests
+- test_listReceiptLetters_success
+- test_listReceiptLetters_with_limit
+- test_listReceiptLetters_invalid_limit
+- test_listReceiptLetters_invalid_last_evaluated_key
+- test_listReceiptLetters_raises_resource_not_found_exception
+- test_listReceiptLetters_raises_validation_error
+- test_listReceiptLetters_raises_internal_server_error
+- test_listReceiptLetters_raises_provisioned_throughput_exceeded
+- test_listReceiptLetters_with_pagination
+- test_listReceiptLetters_pagination_resource_not_found
+- test_listReceiptLetters_pagination_unexpected_error
+- test_listReceiptLetters_pagination_resource_not_found_second_query
+- test_listReceiptLetters_multiple_pages
+- test_listReceiptLetters_raises_internal_server_error_first_query
+- test_listReceiptLetters_raises_validation_error_first_query
+
+### List Receipt Letters From Word Tests
+- test_listReceiptLettersFromWord_success
+- test_listReceiptLettersFromWord_receipt_id_is_none
+- test_listReceiptLettersFromWord_receipt_id_is_not_int
+- test_listReceiptLettersFromWord_image_id_is_none
+- test_listReceiptLettersFromWord_image_id_is_not_valid_uuid
+- test_listReceiptLettersFromWord_line_id_is_none
+- test_listReceiptLettersFromWord_line_id_is_not_int
+- test_listReceiptLettersFromWord_word_id_is_none
+- test_listReceiptLettersFromWord_word_id_is_not_int
+- test_listReceiptLettersFromWord_returns_empty_list_when_not_found
+- test_listReceiptLettersFromWord_raises_client_error
+- test_listReceiptLettersFromWord_raises_provisioned_throughput_exceeded
+- test_listReceiptLettersFromWord_raises_validation_error
+- test_listReceiptLettersFromWord_with_pagination
+- test_listReceiptLettersFromWord_validation_error
+- test_listReceiptLettersFromWord_internal_server_error
+- test_listReceiptLettersFromWord_pagination_access_denied
+- test_listReceiptLettersFromWord_pagination_validation
+- test_listReceiptLettersFromWord_pagination_internal_server_error
+- test_listReceiptLettersFromWord_pagination_throughput_exceeded
+- test_listReceiptLettersFromWord_second_query_validation_error
+- test_listReceiptLettersFromWord_second_query_internal_server_error
