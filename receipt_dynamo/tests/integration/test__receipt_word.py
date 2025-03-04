@@ -1,8 +1,12 @@
 from typing import Literal
 
 import pytest
-
+from botocore.exceptions import ClientError, ParamValidationError
 from receipt_dynamo import DynamoClient, ReceiptWord
+
+# -------------------------------------------------------------------
+#                        FIXTURES
+# -------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -25,8 +29,13 @@ def sample_receipt_word():
     )
 
 
+# -------------------------------------------------------------------
+#                        addReceiptWord
+# -------------------------------------------------------------------
+
+
 @pytest.mark.integration
-def test_add_receipt_word(
+def test_addReceiptWord_success(
     dynamodb_table: Literal["MyMockedTable"], sample_receipt_word: ReceiptWord
 ):
     # Arrange
@@ -59,6 +68,108 @@ def test_add_receipt_word_duplicate_raises(
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize(
+    "invalid_input,expected_error",
+    [
+        (None, "word parameter is required and cannot be None."),
+        (
+            "not-a-receipt-word",
+            "word must be an instance of the ReceiptWord class.",
+        ),
+    ],
+)
+def test_addReceiptWord_invalid_parameters(
+    dynamodb_table,
+    sample_receipt_word,
+    invalid_input,
+    expected_error,
+):
+    """
+    Tests that addReceiptWord raises ValueError for invalid parameters:
+    - When receipt word is None
+    - When receipt word is not an instance of ReceiptWord
+    """
+    client = DynamoClient(dynamodb_table)
+    with pytest.raises(ValueError, match=expected_error):
+        client.addReceiptWord(invalid_input)  # type: ignore
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "error_code,error_message,expected_exception",
+    [
+        (
+            "ConditionalCheckFailedException",
+            "Item already exists",
+            "already exists",
+        ),
+        (
+            "ResourceNotFoundException",
+            "Table not found",
+            "Could not add receipt word to DynamoDB",
+        ),
+        (
+            "ProvisionedThroughputExceededException",
+            "Provisioned throughput exceeded",
+            "Provisioned throughput exceeded",
+        ),
+        (
+            "InternalServerError",
+            "Internal server error",
+            "Internal server error",
+        ),
+        (
+            "ValidationException",
+            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
+        ),
+        ("AccessDeniedException", "Access denied", "Access denied"),
+        (
+            "UnknownError",
+            "Unknown error",
+            "Could not add receipt word to DynamoDB",
+        ),
+    ],
+)
+def test_addReceiptWord_client_errors(
+    dynamodb_table,
+    sample_receipt_word,
+    mocker,
+    error_code,
+    error_message,
+    expected_exception,
+):
+    """
+    Tests that addReceiptWord handles various client errors appropriately:
+    - ConditionalCheckFailedException when item already exists
+    - ResourceNotFoundException when table not found
+    - ProvisionedThroughputExceededException when throughput exceeded
+    - InternalServerError for server-side errors
+    - ValidationException for invalid parameters
+    - AccessDeniedException for access denied errors
+    """
+    client = DynamoClient(dynamodb_table)
+    mock_put = mocker.patch.object(
+        client._client,
+        "put_item",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": error_code,
+                    "Message": error_message,
+                }
+            },
+            "PutItem",
+        ),
+    )
+    with pytest.raises(Exception, match=expected_exception):
+        client.addReceiptWord(sample_receipt_word)
+    mock_put.assert_called_once()
+
+
+# -------------------------------------------------------------------
+#                        updateReceiptWord
+# -------------------------------------------------------------------
 def test_update_receipt_word(
     dynamodb_table: Literal["MyMockedTable"], sample_receipt_word: ReceiptWord
 ):

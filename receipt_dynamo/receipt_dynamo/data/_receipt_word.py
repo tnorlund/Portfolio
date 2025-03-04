@@ -34,6 +34,10 @@ class _ReceiptWord:
 
     def addReceiptWord(self, word: ReceiptWord):
         """Adds a single ReceiptWord to DynamoDB."""
+        if word is None:
+            raise ValueError("word parameter is required and cannot be None.")
+        if not isinstance(word, ReceiptWord):
+            raise ValueError("word must be an instance of the ReceiptWord class.")
         try:
             self._client.put_item(
                 TableName=self.table_name,
@@ -41,18 +45,29 @@ class _ReceiptWord:
                 ConditionExpression="attribute_not_exists(PK)",
             )
         except ClientError as e:
-            # Check if it's a condition failure (duplicate key)
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
+            error_code = e.response["Error"]["Code"]
+            if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
                     f"ReceiptWord with ID {word.word_id} already exists"
                 )
+            elif error_code == "ResourceNotFoundException":
+                raise Exception(
+                    f"Could not add receipt word to DynamoDB: {e}"
+                ) from e
+            elif error_code == "ProvisionedThroughputExceededException":
+                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+            elif error_code == "InternalServerError":
+                raise Exception(f"Internal server error: {e}") from e
+            elif error_code == "ValidationException":
+                raise Exception(
+                    f"One or more parameters given were invalid: {e}"
+                ) from e
+            elif error_code == "AccessDeniedException":
+                raise Exception(f"Access denied: {e}") from e
             else:
                 raise Exception(
-                    f"Could not add ReceiptWord to the database: {e}"
-                )
+                    f"Could not add ReceiptWord to DynamoDB: {e}"
+                ) from e
 
     def addReceiptWords(self, words: list[ReceiptWord]):
         """Adds multiple ReceiptWords to DynamoDB in batches of CHUNK_SIZE."""
