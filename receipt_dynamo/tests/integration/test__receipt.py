@@ -132,6 +132,20 @@ def test_addReceipt_success(
 
 
 @pytest.mark.integration
+def test_addReceipt_duplicate_raises(
+    dynamodb_table: Literal["MyMockedTable"], sample_receipt
+):
+    """
+    Tests that addReceipt raises ValueError when the receipt already exists.
+    """
+    client = DynamoClient(dynamodb_table)
+    client.addReceipt(sample_receipt)
+
+    with pytest.raises(ValueError, match="already exists"):
+        client.addReceipt(sample_receipt)
+
+
+@pytest.mark.integration
 def test_addReceipt_raises_value_error(dynamodb_table, sample_receipt, mocker):
     """
     Tests that addReceipt raises ValueError when the receipt is None.

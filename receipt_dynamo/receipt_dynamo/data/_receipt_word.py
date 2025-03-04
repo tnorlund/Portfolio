@@ -56,6 +56,12 @@ class _ReceiptWord:
 
     def addReceiptWords(self, words: list[ReceiptWord]):
         """Adds multiple ReceiptWords to DynamoDB in batches of CHUNK_SIZE."""
+        if words is None:
+            raise ValueError("words parameter is required and cannot be None.")
+        if not isinstance(words, list):
+            raise ValueError("words must be a list of ReceiptWord instances.")
+        if not all(isinstance(w, ReceiptWord) for w in words):
+            raise ValueError("All words must be instances of the ReceiptWord class.")
         try:
             for i in range(0, len(words), CHUNK_SIZE):
                 chunk = words[i : i + CHUNK_SIZE]
