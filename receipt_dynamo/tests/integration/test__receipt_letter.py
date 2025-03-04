@@ -412,128 +412,65 @@ def test_addReceiptLetters_raises_resource_not_found_with_invalid_table(
 
 
 @pytest.mark.integration
-def test_addReceiptLetters_raises_provisioned_throughput_exceeded(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test handling of ProvisionedThroughputExceededException in
-    addReceiptLetters."""
-    client = DynamoClient(dynamodb_table)
-    mock_batch = mocker.patch.object(
-        client._client,
-        "batch_write_item",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": "ProvisionedThroughputExceededException",
-                    "Message": "Throughput exceeded",
-                }
-            },
-            "BatchWriteItem",
+@pytest.mark.parametrize(
+    "error_code,error_message,expected_error_message",
+    [
+        (
+            "ResourceNotFoundException",
+            "Table not found",
+            "Could not add ReceiptLetters to the database",
         ),
-    )
-
-    with pytest.raises(Exception, match="Provisioned throughput exceeded"):
-        client.addReceiptLetters([sample_receipt_letter])
-    mock_batch.assert_called_once()
-
-
-@pytest.mark.integration
-def test_addReceiptLetters_raises_internal_server_error(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test handling of InternalServerError in addReceiptLetters."""
-    client = DynamoClient(dynamodb_table)
-    mock_batch = mocker.patch.object(
-        client._client,
-        "batch_write_item",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": "InternalServerError",
-                    "Message": "Internal server error",
-                }
-            },
-            "BatchWriteItem",
+        (
+            "ProvisionedThroughputExceededException",
+            "Throughput exceeded",
+            "Provisioned throughput exceeded",
         ),
-    )
-
-    with pytest.raises(Exception, match="Internal server error"):
-        client.addReceiptLetters([sample_receipt_letter])
-    mock_batch.assert_called_once()
-
-
-@pytest.mark.integration
-def test_addReceiptLetters_raises_validation_error(
-    dynamodb_table, sample_receipt_letter, mocker
+        (
+            "InternalServerError",
+            "Internal server error",
+            "Internal server error",
+        ),
+        (
+            "ValidationException",
+            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
+        ),
+        (
+            "AccessDeniedException",
+            "Access denied",
+            "Access denied",
+        ),
+        (
+            "UnknownError",
+            "Unknown error occurred",
+            "Could not add ReceiptLetters to the database",
+        ),
+    ],
+)
+def test_addReceiptLetters_client_errors(
+    dynamodb_table,
+    sample_receipt_letter,
+    mocker,
+    error_code,
+    error_message,
+    expected_error_message,
 ):
-    """Test addReceiptLetters raises ValidationException."""
+    """Test addReceiptLetters handles various DynamoDB client errors appropriately."""
     # Arrange
     client = DynamoClient(dynamodb_table)
     mock_client = mocker.patch.object(client, "_client")
     mock_client.batch_write_item.side_effect = ClientError(
         {
             "Error": {
-                "Code": "ValidationException",
-                "Message": "One or more parameters were invalid",
+                "Code": error_code,
+                "Message": error_message,
             }
         },
         "BatchWriteItem",
     )
 
     # Act & Assert
-    with pytest.raises(
-        Exception, match="One or more parameters given were invalid"
-    ):
-        client.addReceiptLetters([sample_receipt_letter])
-    mock_client.batch_write_item.assert_called_once()
-
-
-@pytest.mark.integration
-def test_addReceiptLetters_raises_access_denied(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test addReceiptLetters raises AccessDeniedException."""
-    # Arrange
-    client = DynamoClient(dynamodb_table)
-    mock_client = mocker.patch.object(client, "_client")
-    mock_client.batch_write_item.side_effect = ClientError(
-        {
-            "Error": {
-                "Code": "AccessDeniedException",
-                "Message": "Access denied",
-            }
-        },
-        "BatchWriteItem",
-    )
-
-    # Act & Assert
-    with pytest.raises(Exception, match="Access denied"):
-        client.addReceiptLetters([sample_receipt_letter])
-    mock_client.batch_write_item.assert_called_once()
-
-
-@pytest.mark.integration
-def test_addReceiptLetters_raises_unknown_error(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test addReceiptLetters raises unknown error."""
-    # Arrange
-    client = DynamoClient(dynamodb_table)
-    mock_client = mocker.patch.object(client, "_client")
-    mock_client.batch_write_item.side_effect = ClientError(
-        {
-            "Error": {
-                "Code": "UnknownError",
-                "Message": "Unknown error occurred",
-            }
-        },
-        "BatchWriteItem",
-    )
-
-    # Act & Assert
-    with pytest.raises(
-        Exception, match="Could not add ReceiptLetters to the database"
-    ):
+    with pytest.raises(Exception, match=expected_error_message):
         client.addReceiptLetters([sample_receipt_letter])
     mock_client.batch_write_item.assert_called_once()
 
