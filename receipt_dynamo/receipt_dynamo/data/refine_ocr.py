@@ -123,7 +123,10 @@ def refine_receipt_ocr(
     except Exception as e:
         if debug:
             print(f"Error getting receipt details: {e}")
-        return {"success": False, "error": f"Failed to get receipt details: {str(e)}"}
+        return {
+            "success": False,
+            "error": f"Failed to get receipt details: {str(e)}",
+        }
 
     if debug:
         print("\nOld receipt details:")
@@ -136,20 +139,25 @@ def refine_receipt_ocr(
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_dir = Path(temp_dir)
         image_path = temp_dir / f"{image_id}_{receipt_id}.png"
-        
+
         try:
             # Download the raw receipt image
             if debug:
-                print(f"\nDownloading image from s3://{old_receipt.raw_s3_bucket}/{old_receipt.raw_s3_key}")
+                print(
+                    f"\nDownloading image from s3://{old_receipt.raw_s3_bucket}/{old_receipt.raw_s3_key}"
+                )
             s3_client.download_file(
                 Bucket=old_receipt.raw_s3_bucket,
                 Key=old_receipt.raw_s3_key,
-                Filename=str(image_path)
+                Filename=str(image_path),
             )
         except Exception as e:
             if debug:
                 print(f"Error downloading image: {e}")
-            return {"success": False, "error": f"Failed to download image: {str(e)}"}
+            return {
+                "success": False,
+                "error": f"Failed to download image: {str(e)}",
+            }
 
         # Verify the image exists and is readable
         if not image_path.exists():
@@ -161,7 +169,7 @@ def refine_receipt_ocr(
         # Run the OCR on the receipt image
         if debug:
             print("\nRunning OCR on image...")
-        
+
         try:
             ocr_result = apple_vision_ocr([str(image_path)])
             if not ocr_result:
@@ -173,15 +181,18 @@ def refine_receipt_ocr(
             if debug:
                 print(f"Error during OCR process: {e}")
                 import traceback
+
                 traceback.print_exc()
             return {
                 "success": False,
-                "error": f"OCR process failed with error: {str(e)}"
+                "error": f"OCR process failed with error: {str(e)}",
             }
 
         # Get the results for this specific image
         first_image_id = next(iter(ocr_result.keys()))
-        new_receipt_lines, new_receipt_words, new_receipt_letters = ocr_result[first_image_id]
+        new_receipt_lines, new_receipt_words, new_receipt_letters = ocr_result[
+            first_image_id
+        ]
 
         if debug:
             print("\nOCR Results:")
@@ -190,7 +201,11 @@ def refine_receipt_ocr(
             print(f"Letters detected: {len(new_receipt_letters)}")
 
         # Validate OCR results
-        if not new_receipt_lines or not new_receipt_words or not new_receipt_letters:
+        if (
+            not new_receipt_lines
+            or not new_receipt_words
+            or not new_receipt_letters
+        ):
             error_msg = "OCR process produced empty results"
             if debug:
                 print(f"\nError: {error_msg}")
@@ -203,8 +218,8 @@ def refine_receipt_ocr(
                 "ocr_result": {
                     "lines": new_receipt_lines,
                     "words": new_receipt_words,
-                    "letters": new_receipt_letters
-                }
+                    "letters": new_receipt_letters,
+                },
             }
 
         try:
@@ -233,6 +248,7 @@ def refine_receipt_ocr(
             if debug:
                 print(f"Error during processing: {e}")
                 import traceback
+
                 traceback.print_exc()
             return {"success": False, "error": str(e)}
 
@@ -267,8 +283,13 @@ def commit_ocr_changes(client, results, debug=False):
         entities_to_create = results["entities_to_create"]
 
         # Validate that we have all necessary entities to create
-        if not all(entities_to_create[entity_type] for entity_type in ["lines", "words", "letters"]):
-            raise ValueError("Missing required entities to create. Cannot proceed with partial data.")
+        if not all(
+            entities_to_create[entity_type]
+            for entity_type in ["lines", "words", "letters"]
+        ):
+            raise ValueError(
+                "Missing required entities to create. Cannot proceed with partial data."
+            )
 
         # STEP 1: Delete old entities in reverse hierarchy order (tags -> letters -> words -> lines)
         try:
@@ -279,7 +300,9 @@ def commit_ocr_changes(client, results, debug=False):
                         f"Deleting {len(entities_to_delete['tags'])} tags in batch..."
                     )
                 client.deleteReceiptWordTags(entities_to_delete["tags"])
-                commit_results["deleted"]["tags"] = len(entities_to_delete["tags"])
+                commit_results["deleted"]["tags"] = len(
+                    entities_to_delete["tags"]
+                )
 
             # Delete letters
             if entities_to_delete["letters"]:
@@ -318,6 +341,7 @@ def commit_ocr_changes(client, results, debug=False):
             if debug:
                 print(f"Error during entity deletion: {delete_error}")
                 import traceback
+
                 traceback.print_exc()
             raise delete_error
 
@@ -325,16 +349,42 @@ def commit_ocr_changes(client, results, debug=False):
         try:
             # First, verify all entities have required fields
             for line in entities_to_create["lines"]:
-                if not all(hasattr(line, attr) for attr in ["image_id", "line_id", "receipt_id"]):
-                    raise ValueError(f"Line missing required attributes: {vars(line)}")
+                if not all(
+                    hasattr(line, attr)
+                    for attr in ["image_id", "line_id", "receipt_id"]
+                ):
+                    raise ValueError(
+                        f"Line missing required attributes: {vars(line)}"
+                    )
 
             for word in entities_to_create["words"]:
-                if not all(hasattr(word, attr) for attr in ["image_id", "line_id", "word_id", "receipt_id"]):
-                    raise ValueError(f"Word missing required attributes: {vars(word)}")
+                if not all(
+                    hasattr(word, attr)
+                    for attr in [
+                        "image_id",
+                        "line_id",
+                        "word_id",
+                        "receipt_id",
+                    ]
+                ):
+                    raise ValueError(
+                        f"Word missing required attributes: {vars(word)}"
+                    )
 
             for letter in entities_to_create["letters"]:
-                if not all(hasattr(letter, attr) for attr in ["image_id", "line_id", "word_id", "letter_id", "receipt_id"]):
-                    raise ValueError(f"Letter missing required attributes: {vars(letter)}")
+                if not all(
+                    hasattr(letter, attr)
+                    for attr in [
+                        "image_id",
+                        "line_id",
+                        "word_id",
+                        "letter_id",
+                        "receipt_id",
+                    ]
+                ):
+                    raise ValueError(
+                        f"Letter missing required attributes: {vars(letter)}"
+                    )
 
             # Create lines
             if entities_to_create["lines"]:
@@ -376,14 +426,17 @@ def commit_ocr_changes(client, results, debug=False):
                         f"Creating {len(entities_to_create['tags'])} tags in batch..."
                     )
                 client.addReceiptWordTags(entities_to_create["tags"])
-                commit_results["created"]["tags"] = len(entities_to_create["tags"])
+                commit_results["created"]["tags"] = len(
+                    entities_to_create["tags"]
+                )
 
         except Exception as creation_error:
             if debug:
                 print(f"Error during entity creation: {creation_error}")
                 import traceback
+
                 traceback.print_exc()
-            
+
             # If creation fails, we need to rollback any created entities
             try:
                 if commit_results["created"]["tags"] > 0:
@@ -394,7 +447,7 @@ def commit_ocr_changes(client, results, debug=False):
                     client.deleteReceiptWords(entities_to_create["words"])
                 if commit_results["created"]["lines"] > 0:
                     client.deleteReceiptLines(entities_to_create["lines"])
-                
+
                 if debug:
                     print("Successfully rolled back partial changes")
             except Exception as rollback_error:
@@ -402,7 +455,7 @@ def commit_ocr_changes(client, results, debug=False):
                     print(f"Error during rollback: {rollback_error}")
                     traceback.print_exc()
                 print("WARNING: Database may be in an inconsistent state")
-            
+
             # Re-raise the original creation error
             raise creation_error
 
@@ -429,6 +482,7 @@ def commit_ocr_changes(client, results, debug=False):
         if debug:
             print(f"Error committing OCR changes to database: {e}")
             import traceback
+
             traceback.print_exc()
         commit_results["success"] = False
         commit_results["error"] = str(e)
@@ -823,9 +877,7 @@ def process_ocr_results(
     return result
 
 
-def process_all_receipts(
-    env=None, debug=False, commit_changes=False
-):
+def process_all_receipts(env=None, debug=False, commit_changes=False):
     """
     Process multiple receipts to refine their OCR results.
 
