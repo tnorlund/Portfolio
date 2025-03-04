@@ -71,126 +71,84 @@ def test_addReceiptLetter_duplicate_raises(
 
 
 @pytest.mark.integration
-def test_addReceiptLetter_raises_value_error_receipt_letter_none(
-    dynamodb_table, sample_receipt_letter, mocker
+@pytest.mark.parametrize(
+    "invalid_input,expected_error",
+    [
+        (None, "letter parameter is required and cannot be None."),
+        ("not-a-receipt-letter", "letter must be an instance of the ReceiptLetter class."),
+    ],
+)
+def test_addReceiptLetter_invalid_parameters(
+    dynamodb_table, sample_receipt_letter, mocker, invalid_input, expected_error
 ):
     """
-    Tests that addReceiptLetter raises ValueError when the receipt letter is
-    None.
+    Tests that addReceiptLetter raises ValueError for invalid parameters:
+    - When receipt letter is None
+    - When receipt letter is not an instance of ReceiptLetter
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(
-        ValueError, match="letter parameter is required and cannot be None."
-    ):
-        client.addReceiptLetter(None)  # type: ignore
+    with pytest.raises(ValueError, match=expected_error):
+        client.addReceiptLetter(invalid_input)  # type: ignore
 
 
 @pytest.mark.integration
-def test_addReceiptLetter_raises_value_error_receipt_letter_not_instance(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test ValueError when receipt_letter has wrong type.
-
-    Verifies that addReceiptLetter raises ValueError when the provided
-    receipt_letter is not an instance of ReceiptLetter.
-    """
-    client = DynamoClient(dynamodb_table)
-    with pytest.raises(
-        ValueError,
-        match="letter must be an instance of the ReceiptLetter class.",
-    ):
-        client.addReceiptLetter("not-a-receipt-letter")  # type: ignore
-
-
-@pytest.mark.integration
-def test_addReceiptLetter_raises_conditional_check_failed(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """
-    Simulate a receipt letter already existing, causing a
-    ConditionalCheckFailedException.
-    """
-    client = DynamoClient(dynamodb_table)
-    client.addReceiptLetter(sample_receipt_letter)
-    mock_put = mocker.patch.object(
-        client._client,
-        "put_item",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": "ConditionalCheckFailedException",
-                    "Message": "Item already exists",
-                }
-            },
-            "PutItem",
+@pytest.mark.parametrize(
+    "error_code,error_message,expected_exception",
+    [
+        (
+            "ConditionalCheckFailedException",
+            "Item already exists",
+            "already exists"
         ),
-    )
-
-    with pytest.raises(ValueError, match="already exists"):
-        client.addReceiptLetter(sample_receipt_letter)
-    mock_put.assert_called_once()
-
-
-@pytest.mark.integration
-def test_addReceiptLetter_raises_resource_not_found(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """
-    Simulate a ResourceNotFoundException when adding a receipt letter.
-    """
-    client = DynamoClient(dynamodb_table)
-    mock_put = mocker.patch.object(
-        client._client,
-        "put_item",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": "ResourceNotFoundException",
-                    "Message": "Table not found",
-                }
-            },
-            "PutItem",
+        (
+            "ResourceNotFoundException",
+            "Table not found",
+            "Could not add receipt letter to DynamoDB"
         ),
-    )
-
-    with pytest.raises(
-        Exception, match="Could not add receipt letter to DynamoDB"
-    ):
-        client.addReceiptLetter(sample_receipt_letter)
-    mock_put.assert_called_once()
-
-
-@pytest.mark.integration
-def test_addReceiptLetter_raises_provisioned_throughput_exceeded(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test handling of ProvisionedThroughputExceededException in
-    addReceiptLetter."""
-    client = DynamoClient(dynamodb_table)
-    mock_put = mocker.patch.object(
-        client._client,
-        "put_item",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": "ProvisionedThroughputExceededException",
-                    "Message": "Provisioned throughput exceeded",
-                }
-            },
-            "PutItem",
+        (
+            "ProvisionedThroughputExceededException",
+            "Provisioned throughput exceeded",
+            "Provisioned throughput exceeded"
         ),
-    )
-    with pytest.raises(Exception, match="Provisioned throughput exceeded"):
-        client.addReceiptLetter(sample_receipt_letter)
-    mock_put.assert_called_once()
-
-
-@pytest.mark.integration
-def test_addReceiptLetter_raises_internal_server_error(
-    dynamodb_table, sample_receipt_letter, mocker
+        (
+            "InternalServerError",
+            "Internal server error",
+            "Internal server error"
+        ),
+        (
+            "UnknownError",
+            "Unknown error",
+            "Could not add receipt letter to DynamoDB"
+        ),
+        (
+            "ValidationException",
+            "One or more parameters were invalid",
+            "One or more parameters given were invalid"
+        ),
+        (
+            "AccessDeniedException",
+            "Access denied",
+            "Access denied"
+        ),
+    ],
+)
+def test_addReceiptLetter_client_errors(
+    dynamodb_table,
+    sample_receipt_letter,
+    mocker,
+    error_code,
+    error_message,
+    expected_exception,
 ):
     """
-    Simulate an InternalServerError when adding a receipt letter.
+    Tests that addReceiptLetter handles various client errors appropriately:
+    - ConditionalCheckFailedException when item already exists
+    - ResourceNotFoundException when table not found
+    - ProvisionedThroughputExceededException when throughput exceeded
+    - InternalServerError for server-side errors
+    - UnknownError for unexpected errors
+    - ValidationException for invalid parameters
+    - AccessDeniedException for access denied errors
     """
     client = DynamoClient(dynamodb_table)
     mock_put = mocker.patch.object(
@@ -199,44 +157,15 @@ def test_addReceiptLetter_raises_internal_server_error(
         side_effect=ClientError(
             {
                 "Error": {
-                    "Code": "InternalServerError",
-                    "Message": "Internal server error",
+                    "Code": error_code,
+                    "Message": error_message,
                 }
             },
             "PutItem",
         ),
     )
 
-    with pytest.raises(Exception, match="Internal server error"):
-        client.addReceiptLetter(sample_receipt_letter)
-    mock_put.assert_called_once()
-
-
-@pytest.mark.integration
-def test_addReceiptLetter_raises_unknown_error(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """
-    Simulate an unknown error when adding a receipt letter.
-    """
-    client = DynamoClient(dynamodb_table)
-    mock_put = mocker.patch.object(
-        client._client,
-        "put_item",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": "UnknownError",
-                    "Message": "Unknown error",
-                }
-            },
-            "PutItem",
-        ),
-    )
-
-    with pytest.raises(
-        Exception, match="Could not add receipt letter to DynamoDB"
-    ):
+    with pytest.raises(Exception, match=expected_exception):
         client.addReceiptLetter(sample_receipt_letter)
     mock_put.assert_called_once()
 
