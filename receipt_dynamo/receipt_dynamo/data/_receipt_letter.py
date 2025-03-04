@@ -2,8 +2,6 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo import ReceiptLetter, itemToReceiptLetter
 
-CHUNK_SIZE = 25
-
 
 class _ReceiptLetter:
     """
@@ -59,6 +57,12 @@ class _ReceiptLetter:
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
+            elif error_code == "ValidationException":
+                raise Exception(
+                    f"One or more parameters given were invalid: {e}"
+                ) from e
+            elif error_code == "AccessDeniedException":
+                raise Exception(f"Access denied: {e}") from e
             else:
                 raise Exception(
                     f"Could not add receipt letter to DynamoDB: {e}"
@@ -79,8 +83,8 @@ class _ReceiptLetter:
                 "All letters must be instances of the ReceiptLetter class."
             )
         try:
-            for i in range(0, len(letters), CHUNK_SIZE):
-                chunk = letters[i : i + CHUNK_SIZE]
+            for i in range(0, len(letters), 25):
+                chunk = letters[i : i + 25]
                 request_items = [
                     {"PutRequest": {"Item": lt.to_item()}} for lt in chunk
                 ]
@@ -95,25 +99,32 @@ class _ReceiptLetter:
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"ReceiptLetter with ID {letter.letter_id} already exists"
-                ) from e
-            elif error_code == "ResourceNotFoundException":
-                raise Exception(
-                    f"Could not add ReceiptLetters to the database: {e}"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
+            if error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
+            elif error_code == "ValidationException":
+                raise Exception(
+                    f"One or more parameters given were invalid: {e}"
+                ) from e
+            elif error_code == "AccessDeniedException":
+                raise Exception(f"Access denied: {e}") from e
             else:
                 raise Exception(
                     f"Could not add ReceiptLetters to the database: {e}"
                 ) from e
 
+
     def updateReceiptLetter(self, letter: ReceiptLetter):
-        """Updates an existing ReceiptLetter in DynamoDB."""
+        """Updates an existing ReceiptLetter in the database."""
+        if letter is None:
+            raise ValueError(
+                "letter parameter is required and cannot be None."
+            )
+        if not isinstance(letter, ReceiptLetter):
+            raise ValueError(
+                "letter must be an instance of the ReceiptLetter class."
+            )
         try:
             self._client.put_item(
                 TableName=self.table_name,
@@ -121,15 +132,74 @@ class _ReceiptLetter:
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
                     f"ReceiptLetter with ID {letter.letter_id} does not exist"
-                )
+                ) from e
+            elif error_code == "ProvisionedThroughputExceededException":
+                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+            elif error_code == "InternalServerError":
+                raise Exception(f"Internal server error: {e}") from e
+            elif error_code == "ValidationException":
+                raise Exception(
+                    f"One or more parameters given were invalid: {e}"
+                ) from e
+            elif error_code == "AccessDeniedException":
+                raise Exception(f"Access denied: {e}") from e
             else:
-                raise
+                raise Exception(
+                    f"Could not update ReceiptLetter in the database: {e}"
+                ) from e
+
+    def updateReceiptLetters(self, letters: list[ReceiptLetter]):
+        """Updates multiple ReceiptLetters in the database."""
+        if letters is None:
+            raise ValueError(
+                "letters parameter is required and cannot be None."
+            )
+        if not isinstance(letters, list):
+            raise ValueError(
+                "letters must be a list of ReceiptLetter instances."
+            )
+        if not all(isinstance(lt, ReceiptLetter) for lt in letters):
+            raise ValueError(
+                "All letters must be instances of the ReceiptLetter class."
+            )
+        for i in range(0, len(letters), 25):
+            chunk = letters[i : i + 25]
+            transact_items = [
+                {
+                    "Put": {
+                        "TableName": self.table_name,
+                        "Item": lt.to_item(),
+                        "ConditionExpression": "attribute_exists(PK)",
+                    }
+                }
+                for lt in chunk
+            ]
+            try:
+                self._client.transact_write_items(TransactItems=transact_items)
+            except ClientError as e:
+                error_code = e.response.get("Error", {}).get("Code", "")
+                if error_code == "ConditionalCheckFailedException":
+                    raise ValueError(
+                        f"One or more ReceiptLetters do not exist"
+                    ) from e
+                elif error_code == "ProvisionedThroughputExceededException":
+                    raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                elif error_code == "InternalServerError":
+                    raise Exception(f"Internal server error: {e}") from e
+                elif error_code == "ValidationException":
+                    raise Exception(
+                        f"One or more parameters given were invalid: {e}"
+                    ) from e
+                elif error_code == "AccessDeniedException":
+                    raise Exception(f"Access denied: {e}") from e
+                else:
+                    raise Exception(
+                        f"Could not update ReceiptLetters in the database: {e}"
+                    ) from e
 
     def deleteReceiptLetter(
         self,
@@ -165,8 +235,8 @@ class _ReceiptLetter:
     def deleteReceiptLetters(self, letters: list[ReceiptLetter]):
         """Deletes multiple ReceiptLetters in batch."""
         try:
-            for i in range(0, len(letters), CHUNK_SIZE):
-                chunk = letters[i : i + CHUNK_SIZE]
+            for i in range(0, len(letters), 25):
+                chunk = letters[i : i + 25]
                 request_items = [
                     {"DeleteRequest": {"Key": lt.key()}} for lt in chunk
                 ]

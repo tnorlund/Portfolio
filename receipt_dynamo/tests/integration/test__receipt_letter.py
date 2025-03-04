@@ -241,6 +241,77 @@ def test_addReceiptLetter_raises_unknown_error(
     mock_put.assert_called_once()
 
 
+# -------------------------------------------------------------------
+#                        addReceiptLetters
+# -------------------------------------------------------------------
+
+
+@pytest.mark.integration
+def test_addReceiptLetters_success(
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt_letter: ReceiptLetter,
+):
+    """
+    Tests that addReceiptLetters adds multiple receipt letters successfully.
+    """
+    # Arrange
+    client = DynamoClient(dynamodb_table)
+    letters = [sample_receipt_letter]
+
+    # Act
+    client.addReceiptLetters(letters)
+
+    # Assert
+    retrieved_letter = client.getReceiptLetter(
+        sample_receipt_letter.receipt_id,
+        sample_receipt_letter.image_id,
+        sample_receipt_letter.line_id,
+        sample_receipt_letter.word_id,
+        sample_receipt_letter.letter_id,
+    )
+    assert retrieved_letter == sample_receipt_letter
+
+
+@pytest.mark.integration
+def test_addReceiptLetters_raises_value_error_letters_none(
+    dynamodb_table, sample_receipt_letter, mocker
+):
+    """
+    Tests that addReceiptLetters raises ValueError when the letters are None.
+    """
+    client = DynamoClient(dynamodb_table)
+    with pytest.raises(ValueError, match="letters parameter is required and cannot be None."):
+        client.addReceiptLetters(None)  # type: ignore
+
+
+@pytest.mark.integration
+def test_addReceiptLetters_raises_value_error_letters_not_list(
+    dynamodb_table, sample_receipt_letter, mocker
+):
+    """
+    Tests that addReceiptLetters raises ValueError when the letters are not a list.
+    """
+    client = DynamoClient(dynamodb_table)
+    with pytest.raises(ValueError, match="letters must be a list of ReceiptLetter instances."):
+        client.addReceiptLetters("not-a-list")  # type: ignore
+
+
+@pytest.mark.integration
+def test_addReceiptLetters_raises_value_error_letters_not_list_of_receipt_letters(
+    dynamodb_table, sample_receipt_letter, mocker
+):
+    """
+    Tests that addReceiptLetters raises ValueError when the letters are not a list of ReceiptLetter instances.
+    """
+    client = DynamoClient(dynamodb_table)
+    with pytest.raises(ValueError, match="letters must be a list of ReceiptLetter instances."):
+        client.addReceiptLetters(["not-a-receipt-letter"])  # type: ignore
+
+
+# -------------------------------------------------------------------
+#                        updateReceiptLetter
+# -------------------------------------------------------------------
+
 @pytest.mark.integration
 def test_update_receipt_letter(
     dynamodb_table: Literal["MyMockedTable"],
@@ -264,6 +335,33 @@ def test_update_receipt_letter(
     )
     assert retrieved_letter.text == "Z"
 
+
+# -------------------------------------------------------------------
+#                        updateReceiptLetters   
+# -------------------------------------------------------------------
+
+@pytest.mark.integration
+def test_update_receipt_letters(
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt_letter: ReceiptLetter,
+):
+    pass
+
+
+@pytest.mark.integration
+def test_update_receipt_letters_raises_value_error_letters_none(
+    dynamodb_table, sample_receipt_letter, mocker
+):
+    """
+    Tests that updateReceiptLetters raises ValueError when the letters are None.
+    """
+    client = DynamoClient(dynamodb_table)
+    with pytest.raises(ValueError, match="letters parameter is required and cannot be None."):
+        client.updateReceiptLetters(None)  # type: ignore
+
+# -------------------------------------------------------------------
+#                        deleteReceiptLetter
+# -------------------------------------------------------------------
 
 @pytest.mark.integration
 def test_delete_receipt_letter(
@@ -292,6 +390,39 @@ def test_delete_receipt_letter(
             sample_receipt_letter.word_id,
             sample_receipt_letter.letter_id,
         )
+
+# -------------------------------------------------------------------
+#                        deleteReceiptLetters
+# -------------------------------------------------------------------
+
+@pytest.mark.integration
+def test_delete_receipt_letters(
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt_letter: ReceiptLetter,
+):
+    pass
+
+
+@pytest.mark.integration
+def test_delete_receipt_letters_raises_value_error_letters_none(
+    dynamodb_table, sample_receipt_letter, mocker
+):
+    pass
+
+# -------------------------------------------------------------------
+#                        getReceiptLetter
+# -------------------------------------------------------------------
+
+@pytest.mark.integration
+def test_get_receipt_letter(
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt_letter: ReceiptLetter,
+):
+    pass
+
+# -------------------------------------------------------------------
+#                        listReceiptLetters
+# -------------------------------------------------------------------
 
 
 @pytest.mark.integration
@@ -327,6 +458,10 @@ def test_receipt_letter_list(dynamodb_table: Literal["MyMockedTable"]):
     for lt in letters:
         assert lt in returned_letters
 
+
+# -------------------------------------------------------------------
+#                        listReceiptLettersFromWord
+# -------------------------------------------------------------------
 
 @pytest.mark.integration
 def test_receipt_letter_list_from_word(
