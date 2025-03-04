@@ -1999,6 +1999,7 @@ def test_get_receipt_letter_invalid_letter_id(
             "invalid",  # type: ignore
         )
 
+
 @pytest.mark.integration
 def test_getReceiptLetter_raises_provisioned_throughput_exceeded_exception(
     dynamodb_table, sample_receipt_letter, mocker
@@ -2027,6 +2028,7 @@ def test_getReceiptLetter_raises_provisioned_throughput_exceeded_exception(
         )
     mock_client.get_item.assert_called_once()
 
+
 @pytest.mark.integration
 def test_getReceiptLetter_raises_internal_server_error(
     dynamodb_table, sample_receipt_letter, mocker
@@ -2054,6 +2056,7 @@ def test_getReceiptLetter_raises_internal_server_error(
             letter_id=sample_receipt_letter.letter_id,
         )
     mock_client.get_item.assert_called_once()
+
 
 @pytest.mark.integration
 def test_getReceiptLetter_raises_validation_error(
@@ -2127,6 +2130,7 @@ def test_getReceiptLetter_raises_access_denied(
             },
         },
     )
+
 
 @pytest.mark.integration
 def test_getReceiptLetter_raises_resource_not_found(
@@ -2311,9 +2315,7 @@ def test_receipt_letter_list_raises_resource_not_found_exception(
 
 
 @pytest.mark.integration
-def test_receipt_letter_list_raises_validation_error(
-    dynamodb_table, mocker
-):
+def test_receipt_letter_list_raises_validation_error(dynamodb_table, mocker):
     """Test handling of ValidationException in listReceiptLetters."""
     client = DynamoClient(dynamodb_table)
     mock_client = mocker.patch.object(
@@ -2334,7 +2336,8 @@ def test_receipt_letter_list_raises_validation_error(
     ):
         client.listReceiptLetters()
     mock_client.assert_called_once()
-    
+
+
 @pytest.mark.integration
 def test_receipt_letter_list_raises_internal_server_error(
     dynamodb_table, mocker
@@ -2357,7 +2360,8 @@ def test_receipt_letter_list_raises_internal_server_error(
     with pytest.raises(Exception, match="Internal server error"):
         client.listReceiptLetters()
     mock_client.assert_called_once()
-    
+
+
 @pytest.mark.integration
 def test_receipt_letter_list_raises_provisioned_throughput_exceeded(
     dynamodb_table, mocker
@@ -2541,13 +2545,17 @@ def test_listReceiptLettersFromWord_receipt_id_is_none(
 ):
     """Test that listReceiptLettersFromWord raises ValueError when receipt_id is None."""
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="receipt_id parameter is required and cannot be None."):
+    with pytest.raises(
+        ValueError,
+        match="receipt_id parameter is required and cannot be None.",
+    ):
         client.listReceiptLettersFromWord(
             receipt_id=None,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id=10,
             word_id=2,
         )
+
 
 @pytest.mark.integration
 def test_listReceiptLettersFromWord_receipt_id_is_not_int(
@@ -2563,19 +2571,23 @@ def test_listReceiptLettersFromWord_receipt_id_is_not_int(
             word_id=2,
         )
 
+
 @pytest.mark.integration
 def test_listReceiptLettersFromWord_image_id_is_none(
     dynamodb_table: Literal["MyMockedTable"],
 ):
     """Test that listReceiptLettersFromWord raises ValueError when image_id is None."""
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="image_id parameter is required and cannot be None."):
+    with pytest.raises(
+        ValueError, match="image_id parameter is required and cannot be None."
+    ):
         client.listReceiptLettersFromWord(
             receipt_id=1,
             image_id=None,
             line_id=10,
             word_id=2,
         )
+
 
 @pytest.mark.integration
 def test_listReceiptLettersFromWord_image_id_is_not_valid_uuid(
@@ -2591,19 +2603,23 @@ def test_listReceiptLettersFromWord_image_id_is_not_valid_uuid(
             word_id=2,
         )
 
+
 @pytest.mark.integration
 def test_listReceiptLettersFromWord_line_id_is_none(
     dynamodb_table: Literal["MyMockedTable"],
 ):
     """Test that listReceiptLettersFromWord raises ValueError when line_id is None."""
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="line_id parameter is required and cannot be None."):
+    with pytest.raises(
+        ValueError, match="line_id parameter is required and cannot be None."
+    ):
         client.listReceiptLettersFromWord(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id=None,
             word_id=2,
         )
+
 
 @pytest.mark.integration
 def test_listReceiptLettersFromWord_line_id_is_not_int(
@@ -2619,19 +2635,23 @@ def test_listReceiptLettersFromWord_line_id_is_not_int(
             word_id=2,
         )
 
+
 @pytest.mark.integration
 def test_listReceiptLettersFromWord_word_id_is_none(
     dynamodb_table: Literal["MyMockedTable"],
 ):
     """Test that listReceiptLettersFromWord raises ValueError when word_id is None."""
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="word_id parameter is required and cannot be None."):
+    with pytest.raises(
+        ValueError, match="word_id parameter is required and cannot be None."
+    ):
         client.listReceiptLettersFromWord(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id=10,
             word_id=None,
         )
+
 
 @pytest.mark.integration
 def test_listReceiptLettersFromWord_word_id_is_not_int(
@@ -2646,6 +2666,7 @@ def test_listReceiptLettersFromWord_word_id_is_not_int(
             line_id=10,
             word_id="not_an_integer",
         )
+
 
 @pytest.mark.integration
 def test_listReceiptLettersFromWord_returns_empty_list_when_not_found(
@@ -2965,6 +2986,7 @@ def test_list_receipt_letters_from_word_raises_unknown_error(
         )
     mock_query.assert_called_once()
 
+
 @pytest.mark.integration
 def test_receipt_letter_list_pagination_resource_not_found(
     dynamodb_table, mocker
@@ -2974,44 +2996,54 @@ def test_receipt_letter_list_pagination_resource_not_found(
     mock_client = mocker.Mock()
     mock_client.query.side_effect = [
         {
-            "Items": [{
-                "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-                "SK": {"S": "RECEIPT#00001#LINE#00001#WORD#00001#LETTER#00001"},
-                "TYPE": {"S": "RECEIPT_LETTER"},
-                "text": {"S": "A"},
-                "bounding_box": {
-                    "M": {
-                        "x": {"N": "0.1"},
-                        "y": {"N": "0.2"},
-                        "width": {"N": "0.05"},
-                        "height": {"N": "0.05"}
-                    }
-                },
-                "top_right": {"M": {"x": {"N": "0.15"}, "y": {"N": "0.25"}}},
-                "top_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.25"}}},
-                "bottom_right": {"M": {"x": {"N": "0.15"}, "y": {"N": "0.2"}}},
-                "bottom_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}},
-                "angle_degrees": {"N": "0.0"},
-                "angle_radians": {"N": "0.0"},
-                "confidence": {"N": "0.98"}
-            }],
-            "LastEvaluatedKey": {"key": "value"}
+            "Items": [
+                {
+                    "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+                    "SK": {
+                        "S": "RECEIPT#00001#LINE#00001#WORD#00001#LETTER#00001"
+                    },
+                    "TYPE": {"S": "RECEIPT_LETTER"},
+                    "text": {"S": "A"},
+                    "bounding_box": {
+                        "M": {
+                            "x": {"N": "0.1"},
+                            "y": {"N": "0.2"},
+                            "width": {"N": "0.05"},
+                            "height": {"N": "0.05"},
+                        }
+                    },
+                    "top_right": {
+                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.25"}}
+                    },
+                    "top_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.25"}}},
+                    "bottom_right": {
+                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.2"}}
+                    },
+                    "bottom_left": {
+                        "M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}
+                    },
+                    "angle_degrees": {"N": "0.0"},
+                    "angle_radians": {"N": "0.0"},
+                    "confidence": {"N": "0.98"},
+                }
+            ],
+            "LastEvaluatedKey": {"key": "value"},
         },
         ClientError(
             {
                 "Error": {
                     "Code": "ResourceNotFoundException",
-                    "Message": "Table does not exist or is not active"
+                    "Message": "Table does not exist or is not active",
                 }
             },
-            "Query"
-        )
+            "Query",
+        ),
     ]
     client._client = mock_client
 
     with pytest.raises(
-        Exception, 
-        match="Could not list receipt letters from DynamoDB: An error occurred"
+        Exception,
+        match="Could not list receipt letters from DynamoDB: An error occurred",
     ):
         client.listReceiptLetters()
 
@@ -3025,6 +3057,7 @@ def test_receipt_letter_list_pagination_resource_not_found(
     assert second_call.kwargs["TableName"] == dynamodb_table
     assert second_call.kwargs["IndexName"] == "GSITYPE"
     assert second_call.kwargs["ExclusiveStartKey"] == {"key": "value"}
+
 
 @pytest.mark.integration
 def test_receipt_letter_list_pagination_unexpected_error(
@@ -3035,44 +3068,53 @@ def test_receipt_letter_list_pagination_unexpected_error(
     mock_client = mocker.Mock()
     mock_client.query.side_effect = [
         {
-            "Items": [{
-                "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-                "SK": {"S": "RECEIPT#00001#LINE#00001#WORD#00001#LETTER#00001"},
-                "TYPE": {"S": "RECEIPT_LETTER"},
-                "text": {"S": "A"},
-                "bounding_box": {
-                    "M": {
-                        "x": {"N": "0.1"},
-                        "y": {"N": "0.2"},
-                        "width": {"N": "0.05"},
-                        "height": {"N": "0.05"}
-                    }
-                },
-                "top_right": {"M": {"x": {"N": "0.15"}, "y": {"N": "0.25"}}},
-                "top_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.25"}}},
-                "bottom_right": {"M": {"x": {"N": "0.15"}, "y": {"N": "0.2"}}},
-                "bottom_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}},
-                "angle_degrees": {"N": "0.0"},
-                "angle_radians": {"N": "0.0"},
-                "confidence": {"N": "0.98"}
-            }],
-            "LastEvaluatedKey": {"key": "value"}
+            "Items": [
+                {
+                    "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+                    "SK": {
+                        "S": "RECEIPT#00001#LINE#00001#WORD#00001#LETTER#00001"
+                    },
+                    "TYPE": {"S": "RECEIPT_LETTER"},
+                    "text": {"S": "A"},
+                    "bounding_box": {
+                        "M": {
+                            "x": {"N": "0.1"},
+                            "y": {"N": "0.2"},
+                            "width": {"N": "0.05"},
+                            "height": {"N": "0.05"},
+                        }
+                    },
+                    "top_right": {
+                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.25"}}
+                    },
+                    "top_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.25"}}},
+                    "bottom_right": {
+                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.2"}}
+                    },
+                    "bottom_left": {
+                        "M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}
+                    },
+                    "angle_degrees": {"N": "0.0"},
+                    "angle_radians": {"N": "0.0"},
+                    "confidence": {"N": "0.98"},
+                }
+            ],
+            "LastEvaluatedKey": {"key": "value"},
         },
         ClientError(
             {
                 "Error": {
                     "Code": "UnknownError",
-                    "Message": "An unexpected error occurred"
+                    "Message": "An unexpected error occurred",
                 }
             },
-            "Query"
-        )
+            "Query",
+        ),
     ]
     client._client = mock_client
 
     with pytest.raises(
-        Exception, 
-        match="Error listing receipt letters: An error occurred"
+        Exception, match="Error listing receipt letters: An error occurred"
     ):
         client.listReceiptLetters()
 
@@ -3086,6 +3128,7 @@ def test_receipt_letter_list_pagination_unexpected_error(
     assert second_call.kwargs["TableName"] == dynamodb_table
     assert second_call.kwargs["IndexName"] == "GSITYPE"
     assert second_call.kwargs["ExclusiveStartKey"] == {"key": "value"}
+
 
 @pytest.mark.integration
 def test_list_receipt_letters_from_word_validation_error(
@@ -3098,21 +3141,23 @@ def test_list_receipt_letters_from_word_validation_error(
         {
             "Error": {
                 "Code": "ValidationException",
-                "Message": "Invalid query parameters"
+                "Message": "Invalid query parameters",
             }
         },
-        "Query"
+        "Query",
     )
     client._client = mock_client
 
-    with pytest.raises(Exception, match="One or more parameters given were invalid"):
+    with pytest.raises(
+        Exception, match="One or more parameters given were invalid"
+    ):
         client.listReceiptLettersFromWord(
             receipt_id=sample_receipt_letter.receipt_id,
             image_id=sample_receipt_letter.image_id,
             line_id=sample_receipt_letter.line_id,
-            word_id=sample_receipt_letter.word_id
+            word_id=sample_receipt_letter.word_id,
         )
-    
+
     mock_client.query.assert_called_once_with(
         TableName=dynamodb_table,
         KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
@@ -3129,6 +3174,7 @@ def test_list_receipt_letters_from_word_validation_error(
         },
     )
 
+
 @pytest.mark.integration
 def test_list_receipt_letters_from_word_internal_server_error(
     dynamodb_table, sample_receipt_letter, mocker
@@ -3140,10 +3186,10 @@ def test_list_receipt_letters_from_word_internal_server_error(
         {
             "Error": {
                 "Code": "InternalServerError",
-                "Message": "Internal server error occurred"
+                "Message": "Internal server error occurred",
             }
         },
-        "Query"
+        "Query",
     )
     client._client = mock_client
 
@@ -3152,8 +3198,9 @@ def test_list_receipt_letters_from_word_internal_server_error(
             receipt_id=sample_receipt_letter.receipt_id,
             image_id=sample_receipt_letter.image_id,
             line_id=sample_receipt_letter.line_id,
-            word_id=sample_receipt_letter.word_id
+            word_id=sample_receipt_letter.word_id,
         )
+
 
 @pytest.mark.integration
 def test_list_receipt_letters_from_word_pagination_access_denied(
@@ -3164,38 +3211,48 @@ def test_list_receipt_letters_from_word_pagination_access_denied(
     mock_client = mocker.Mock()
     mock_client.query.side_effect = [
         {
-            "Items": [{
-                "PK": {"S": f"IMAGE#{sample_receipt_letter.image_id}"},
-                "SK": {"S": f"RECEIPT#{sample_receipt_letter.receipt_id:05d}#LINE#{sample_receipt_letter.line_id:05d}#WORD#{sample_receipt_letter.word_id:05d}#LETTER#00001"},
-                "TYPE": {"S": "RECEIPT_LETTER"},
-                "text": {"S": "A"},
-                "bounding_box": {
-                    "M": {
-                        "x": {"N": "0.1"},
-                        "y": {"N": "0.2"},
-                        "width": {"N": "0.05"},
-                        "height": {"N": "0.05"}
-                    }
-                },
-                "top_right": {"M": {"x": {"N": "0.15"}, "y": {"N": "0.25"}}},
-                "top_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.25"}}},
-                "bottom_right": {"M": {"x": {"N": "0.15"}, "y": {"N": "0.2"}}},
-                "bottom_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}},
-                "angle_degrees": {"N": "0.0"},
-                "angle_radians": {"N": "0.0"},
-                "confidence": {"N": "0.98"}
-            }],
-            "LastEvaluatedKey": {"key": "value"}
+            "Items": [
+                {
+                    "PK": {"S": f"IMAGE#{sample_receipt_letter.image_id}"},
+                    "SK": {
+                        "S": f"RECEIPT#{sample_receipt_letter.receipt_id:05d}#LINE#{sample_receipt_letter.line_id:05d}#WORD#{sample_receipt_letter.word_id:05d}#LETTER#00001"
+                    },
+                    "TYPE": {"S": "RECEIPT_LETTER"},
+                    "text": {"S": "A"},
+                    "bounding_box": {
+                        "M": {
+                            "x": {"N": "0.1"},
+                            "y": {"N": "0.2"},
+                            "width": {"N": "0.05"},
+                            "height": {"N": "0.05"},
+                        }
+                    },
+                    "top_right": {
+                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.25"}}
+                    },
+                    "top_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.25"}}},
+                    "bottom_right": {
+                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.2"}}
+                    },
+                    "bottom_left": {
+                        "M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}
+                    },
+                    "angle_degrees": {"N": "0.0"},
+                    "angle_radians": {"N": "0.0"},
+                    "confidence": {"N": "0.98"},
+                }
+            ],
+            "LastEvaluatedKey": {"key": "value"},
         },
         ClientError(
             {
                 "Error": {
                     "Code": "AccessDeniedException",
-                    "Message": "User is not authorized to perform this operation"
+                    "Message": "User is not authorized to perform this operation",
                 }
             },
-            "Query"
-        )
+            "Query",
+        ),
     ]
     client._client = mock_client
 
@@ -3204,8 +3261,9 @@ def test_list_receipt_letters_from_word_pagination_access_denied(
             receipt_id=sample_receipt_letter.receipt_id,
             image_id=sample_receipt_letter.image_id,
             line_id=sample_receipt_letter.line_id,
-            word_id=sample_receipt_letter.word_id
+            word_id=sample_receipt_letter.word_id,
         )
+
 
 @pytest.mark.integration
 def test_list_receipt_letters_from_word_pagination_validation(
@@ -3216,48 +3274,61 @@ def test_list_receipt_letters_from_word_pagination_validation(
     mock_client = mocker.Mock()
     mock_client.query.side_effect = [
         {
-            "Items": [{
-                "PK": {"S": f"IMAGE#{sample_receipt_letter.image_id}"},
-                "SK": {"S": f"RECEIPT#{sample_receipt_letter.receipt_id:05d}#LINE#{sample_receipt_letter.line_id:05d}#WORD#{sample_receipt_letter.word_id:05d}#LETTER#00001"},
-                "TYPE": {"S": "RECEIPT_LETTER"},
-                "text": {"S": "A"},
-                "bounding_box": {
-                    "M": {
-                        "x": {"N": "0.1"},
-                        "y": {"N": "0.2"},
-                        "width": {"N": "0.05"},
-                        "height": {"N": "0.05"}
-                    }
-                },
-                "top_right": {"M": {"x": {"N": "0.15"}, "y": {"N": "0.25"}}},
-                "top_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.25"}}},
-                "bottom_right": {"M": {"x": {"N": "0.15"}, "y": {"N": "0.2"}}},
-                "bottom_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}},
-                "angle_degrees": {"N": "0.0"},
-                "angle_radians": {"N": "0.0"},
-                "confidence": {"N": "0.98"}
-            }],
-            "LastEvaluatedKey": {"key": "value"}
+            "Items": [
+                {
+                    "PK": {"S": f"IMAGE#{sample_receipt_letter.image_id}"},
+                    "SK": {
+                        "S": f"RECEIPT#{sample_receipt_letter.receipt_id:05d}#LINE#{sample_receipt_letter.line_id:05d}#WORD#{sample_receipt_letter.word_id:05d}#LETTER#00001"
+                    },
+                    "TYPE": {"S": "RECEIPT_LETTER"},
+                    "text": {"S": "A"},
+                    "bounding_box": {
+                        "M": {
+                            "x": {"N": "0.1"},
+                            "y": {"N": "0.2"},
+                            "width": {"N": "0.05"},
+                            "height": {"N": "0.05"},
+                        }
+                    },
+                    "top_right": {
+                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.25"}}
+                    },
+                    "top_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.25"}}},
+                    "bottom_right": {
+                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.2"}}
+                    },
+                    "bottom_left": {
+                        "M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}
+                    },
+                    "angle_degrees": {"N": "0.0"},
+                    "angle_radians": {"N": "0.0"},
+                    "confidence": {"N": "0.98"},
+                }
+            ],
+            "LastEvaluatedKey": {"key": "value"},
         },
         ClientError(
             {
                 "Error": {
                     "Code": "ValidationException",
-                    "Message": "Invalid parameter in pagination request"
+                    "Message": "Invalid parameter in pagination request",
                 }
             },
-            "Query"
-        )
+            "Query",
+        ),
     ]
     client._client = mock_client
 
-    with pytest.raises(Exception, match="One or more parameters given were invalid"):
+    with pytest.raises(
+        Exception, match="One or more parameters given were invalid"
+    ):
         client.listReceiptLettersFromWord(
             receipt_id=sample_receipt_letter.receipt_id,
             image_id=sample_receipt_letter.image_id,
             line_id=sample_receipt_letter.line_id,
-            word_id=sample_receipt_letter.word_id
+            word_id=sample_receipt_letter.word_id,
         )
+
 
 @pytest.mark.integration
 def test_list_receipt_letters_from_word_pagination_internal_server_error(
@@ -3268,38 +3339,48 @@ def test_list_receipt_letters_from_word_pagination_internal_server_error(
     mock_client = mocker.Mock()
     mock_client.query.side_effect = [
         {
-            "Items": [{
-                "PK": {"S": f"IMAGE#{sample_receipt_letter.image_id}"},
-                "SK": {"S": f"RECEIPT#{sample_receipt_letter.receipt_id:05d}#LINE#{sample_receipt_letter.line_id:05d}#WORD#{sample_receipt_letter.word_id:05d}#LETTER#00001"},
-                "TYPE": {"S": "RECEIPT_LETTER"},
-                "text": {"S": "A"},
-                "bounding_box": {
-                    "M": {
-                        "x": {"N": "0.1"},
-                        "y": {"N": "0.2"},
-                        "width": {"N": "0.05"},
-                        "height": {"N": "0.05"}
-                    }
-                },
-                "top_right": {"M": {"x": {"N": "0.15"}, "y": {"N": "0.25"}}},
-                "top_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.25"}}},
-                "bottom_right": {"M": {"x": {"N": "0.15"}, "y": {"N": "0.2"}}},
-                "bottom_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}},
-                "angle_degrees": {"N": "0.0"},
-                "angle_radians": {"N": "0.0"},
-                "confidence": {"N": "0.98"}
-            }],
-            "LastEvaluatedKey": {"key": "value"}
+            "Items": [
+                {
+                    "PK": {"S": f"IMAGE#{sample_receipt_letter.image_id}"},
+                    "SK": {
+                        "S": f"RECEIPT#{sample_receipt_letter.receipt_id:05d}#LINE#{sample_receipt_letter.line_id:05d}#WORD#{sample_receipt_letter.word_id:05d}#LETTER#00001"
+                    },
+                    "TYPE": {"S": "RECEIPT_LETTER"},
+                    "text": {"S": "A"},
+                    "bounding_box": {
+                        "M": {
+                            "x": {"N": "0.1"},
+                            "y": {"N": "0.2"},
+                            "width": {"N": "0.05"},
+                            "height": {"N": "0.05"},
+                        }
+                    },
+                    "top_right": {
+                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.25"}}
+                    },
+                    "top_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.25"}}},
+                    "bottom_right": {
+                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.2"}}
+                    },
+                    "bottom_left": {
+                        "M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}
+                    },
+                    "angle_degrees": {"N": "0.0"},
+                    "angle_radians": {"N": "0.0"},
+                    "confidence": {"N": "0.98"},
+                }
+            ],
+            "LastEvaluatedKey": {"key": "value"},
         },
         ClientError(
             {
                 "Error": {
                     "Code": "InternalServerError",
-                    "Message": "Internal server error during pagination"
+                    "Message": "Internal server error during pagination",
                 }
             },
-            "Query"
-        )
+            "Query",
+        ),
     ]
     client._client = mock_client
 
@@ -3308,8 +3389,9 @@ def test_list_receipt_letters_from_word_pagination_internal_server_error(
             receipt_id=sample_receipt_letter.receipt_id,
             image_id=sample_receipt_letter.image_id,
             line_id=sample_receipt_letter.line_id,
-            word_id=sample_receipt_letter.word_id
+            word_id=sample_receipt_letter.word_id,
         )
+
 
 @pytest.mark.integration
 def test_list_receipt_letters_from_word_pagination_throughput_exceeded(
@@ -3320,38 +3402,48 @@ def test_list_receipt_letters_from_word_pagination_throughput_exceeded(
     mock_client = mocker.Mock()
     mock_client.query.side_effect = [
         {
-            "Items": [{
-                "PK": {"S": f"IMAGE#{sample_receipt_letter.image_id}"},
-                "SK": {"S": f"RECEIPT#{sample_receipt_letter.receipt_id:05d}#LINE#{sample_receipt_letter.line_id:05d}#WORD#{sample_receipt_letter.word_id:05d}#LETTER#00001"},
-                "TYPE": {"S": "RECEIPT_LETTER"},
-                "text": {"S": "A"},
-                "bounding_box": {
-                    "M": {
-                        "x": {"N": "0.1"},
-                        "y": {"N": "0.2"},
-                        "width": {"N": "0.05"},
-                        "height": {"N": "0.05"}
-                    }
-                },
-                "top_right": {"M": {"x": {"N": "0.15"}, "y": {"N": "0.25"}}},
-                "top_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.25"}}},
-                "bottom_right": {"M": {"x": {"N": "0.15"}, "y": {"N": "0.2"}}},
-                "bottom_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}},
-                "angle_degrees": {"N": "0.0"},
-                "angle_radians": {"N": "0.0"},
-                "confidence": {"N": "0.98"}
-            }],
-            "LastEvaluatedKey": {"key": "value"}
+            "Items": [
+                {
+                    "PK": {"S": f"IMAGE#{sample_receipt_letter.image_id}"},
+                    "SK": {
+                        "S": f"RECEIPT#{sample_receipt_letter.receipt_id:05d}#LINE#{sample_receipt_letter.line_id:05d}#WORD#{sample_receipt_letter.word_id:05d}#LETTER#00001"
+                    },
+                    "TYPE": {"S": "RECEIPT_LETTER"},
+                    "text": {"S": "A"},
+                    "bounding_box": {
+                        "M": {
+                            "x": {"N": "0.1"},
+                            "y": {"N": "0.2"},
+                            "width": {"N": "0.05"},
+                            "height": {"N": "0.05"},
+                        }
+                    },
+                    "top_right": {
+                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.25"}}
+                    },
+                    "top_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.25"}}},
+                    "bottom_right": {
+                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.2"}}
+                    },
+                    "bottom_left": {
+                        "M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}
+                    },
+                    "angle_degrees": {"N": "0.0"},
+                    "angle_radians": {"N": "0.0"},
+                    "confidence": {"N": "0.98"},
+                }
+            ],
+            "LastEvaluatedKey": {"key": "value"},
         },
         ClientError(
             {
                 "Error": {
                     "Code": "ProvisionedThroughputExceededException",
-                    "Message": "Throughput exceeded during pagination"
+                    "Message": "Throughput exceeded during pagination",
                 }
             },
-            "Query"
-        )
+            "Query",
+        ),
     ]
     client._client = mock_client
 
@@ -3360,8 +3452,9 @@ def test_list_receipt_letters_from_word_pagination_throughput_exceeded(
             receipt_id=sample_receipt_letter.receipt_id,
             image_id=sample_receipt_letter.image_id,
             line_id=sample_receipt_letter.line_id,
-            word_id=sample_receipt_letter.word_id
+            word_id=sample_receipt_letter.word_id,
         )
+
 
 @pytest.mark.integration
 def test_list_receipt_letters_from_word_second_query_validation_error(
@@ -3372,48 +3465,61 @@ def test_list_receipt_letters_from_word_second_query_validation_error(
     mock_client = mocker.Mock()
     mock_client.query.side_effect = [
         {
-            "Items": [{
-                "PK": {"S": f"IMAGE#{sample_receipt_letter.image_id}"},
-                "SK": {"S": f"RECEIPT#{sample_receipt_letter.receipt_id:05d}#LINE#{sample_receipt_letter.line_id:05d}#WORD#{sample_receipt_letter.word_id:05d}#LETTER#00001"},
-                "TYPE": {"S": "RECEIPT_LETTER"},
-                "text": {"S": "A"},
-                "bounding_box": {
-                    "M": {
-                        "x": {"N": "0.1"},
-                        "y": {"N": "0.2"},
-                        "width": {"N": "0.05"},
-                        "height": {"N": "0.05"}
-                    }
-                },
-                "top_right": {"M": {"x": {"N": "0.15"}, "y": {"N": "0.25"}}},
-                "top_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.25"}}},
-                "bottom_right": {"M": {"x": {"N": "0.15"}, "y": {"N": "0.2"}}},
-                "bottom_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}},
-                "angle_degrees": {"N": "0.0"},
-                "angle_radians": {"N": "0.0"},
-                "confidence": {"N": "0.98"}
-            }],
-            "LastEvaluatedKey": {"key": "value"}
+            "Items": [
+                {
+                    "PK": {"S": f"IMAGE#{sample_receipt_letter.image_id}"},
+                    "SK": {
+                        "S": f"RECEIPT#{sample_receipt_letter.receipt_id:05d}#LINE#{sample_receipt_letter.line_id:05d}#WORD#{sample_receipt_letter.word_id:05d}#LETTER#00001"
+                    },
+                    "TYPE": {"S": "RECEIPT_LETTER"},
+                    "text": {"S": "A"},
+                    "bounding_box": {
+                        "M": {
+                            "x": {"N": "0.1"},
+                            "y": {"N": "0.2"},
+                            "width": {"N": "0.05"},
+                            "height": {"N": "0.05"},
+                        }
+                    },
+                    "top_right": {
+                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.25"}}
+                    },
+                    "top_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.25"}}},
+                    "bottom_right": {
+                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.2"}}
+                    },
+                    "bottom_left": {
+                        "M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}
+                    },
+                    "angle_degrees": {"N": "0.0"},
+                    "angle_radians": {"N": "0.0"},
+                    "confidence": {"N": "0.98"},
+                }
+            ],
+            "LastEvaluatedKey": {"key": "value"},
         },
         ClientError(
             {
                 "Error": {
                     "Code": "ValidationException",
-                    "Message": "Invalid parameter in second query"
+                    "Message": "Invalid parameter in second query",
                 }
             },
-            "Query"
-        )
+            "Query",
+        ),
     ]
     client._client = mock_client
 
-    with pytest.raises(Exception, match="One or more parameters given were invalid"):
+    with pytest.raises(
+        Exception, match="One or more parameters given were invalid"
+    ):
         client.listReceiptLettersFromWord(
             receipt_id=sample_receipt_letter.receipt_id,
             image_id=sample_receipt_letter.image_id,
             line_id=sample_receipt_letter.line_id,
-            word_id=sample_receipt_letter.word_id
+            word_id=sample_receipt_letter.word_id,
         )
+
 
 @pytest.mark.integration
 def test_list_receipt_letters_from_word_second_query_internal_server_error(
@@ -3424,38 +3530,48 @@ def test_list_receipt_letters_from_word_second_query_internal_server_error(
     mock_client = mocker.Mock()
     mock_client.query.side_effect = [
         {
-            "Items": [{
-                "PK": {"S": f"IMAGE#{sample_receipt_letter.image_id}"},
-                "SK": {"S": f"RECEIPT#{sample_receipt_letter.receipt_id:05d}#LINE#{sample_receipt_letter.line_id:05d}#WORD#{sample_receipt_letter.word_id:05d}#LETTER#00001"},
-                "TYPE": {"S": "RECEIPT_LETTER"},
-                "text": {"S": "A"},
-                "bounding_box": {
-                    "M": {
-                        "x": {"N": "0.1"},
-                        "y": {"N": "0.2"},
-                        "width": {"N": "0.05"},
-                        "height": {"N": "0.05"}
-                    }
-                },
-                "top_right": {"M": {"x": {"N": "0.15"}, "y": {"N": "0.25"}}},
-                "top_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.25"}}},
-                "bottom_right": {"M": {"x": {"N": "0.15"}, "y": {"N": "0.2"}}},
-                "bottom_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}},
-                "angle_degrees": {"N": "0.0"},
-                "angle_radians": {"N": "0.0"},
-                "confidence": {"N": "0.98"}
-            }],
-            "LastEvaluatedKey": {"key": "value"}
+            "Items": [
+                {
+                    "PK": {"S": f"IMAGE#{sample_receipt_letter.image_id}"},
+                    "SK": {
+                        "S": f"RECEIPT#{sample_receipt_letter.receipt_id:05d}#LINE#{sample_receipt_letter.line_id:05d}#WORD#{sample_receipt_letter.word_id:05d}#LETTER#00001"
+                    },
+                    "TYPE": {"S": "RECEIPT_LETTER"},
+                    "text": {"S": "A"},
+                    "bounding_box": {
+                        "M": {
+                            "x": {"N": "0.1"},
+                            "y": {"N": "0.2"},
+                            "width": {"N": "0.05"},
+                            "height": {"N": "0.05"},
+                        }
+                    },
+                    "top_right": {
+                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.25"}}
+                    },
+                    "top_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.25"}}},
+                    "bottom_right": {
+                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.2"}}
+                    },
+                    "bottom_left": {
+                        "M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}
+                    },
+                    "angle_degrees": {"N": "0.0"},
+                    "angle_radians": {"N": "0.0"},
+                    "confidence": {"N": "0.98"},
+                }
+            ],
+            "LastEvaluatedKey": {"key": "value"},
         },
         ClientError(
             {
                 "Error": {
                     "Code": "InternalServerError",
-                    "Message": "Internal server error in second query"
+                    "Message": "Internal server error in second query",
                 }
             },
-            "Query"
-        )
+            "Query",
+        ),
     ]
     client._client = mock_client
 
@@ -3464,8 +3580,9 @@ def test_list_receipt_letters_from_word_second_query_internal_server_error(
             receipt_id=sample_receipt_letter.receipt_id,
             image_id=sample_receipt_letter.image_id,
             line_id=sample_receipt_letter.line_id,
-            word_id=sample_receipt_letter.word_id
+            word_id=sample_receipt_letter.word_id,
         )
+
 
 @pytest.mark.integration
 def test_receipt_letter_list_pagination_resource_not_found_second_query(
@@ -3475,33 +3592,37 @@ def test_receipt_letter_list_pagination_resource_not_found_second_query(
     Verifies that we get a partial result before the exception occurs."""
     client = DynamoClient(dynamodb_table)
     mock_client = mocker.Mock()
-    
+
     # First query succeeds and returns a page with LastEvaluatedKey
     first_response = {
-        "Items": [{
-            "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-            "SK": {"S": "RECEIPT#00001#LINE#00001#WORD#00001#LETTER#00001"},
-            "TYPE": {"S": "RECEIPT_LETTER"},
-            "text": {"S": "A"},
-            "bounding_box": {
-                "M": {
-                    "x": {"N": "0.1"},
-                    "y": {"N": "0.2"},
-                    "width": {"N": "0.05"},
-                    "height": {"N": "0.05"}
-                }
-            },
-            "top_right": {"M": {"x": {"N": "0.15"}, "y": {"N": "0.25"}}},
-            "top_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.25"}}},
-            "bottom_right": {"M": {"x": {"N": "0.15"}, "y": {"N": "0.2"}}},
-            "bottom_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}},
-            "angle_degrees": {"N": "0.0"},
-            "angle_radians": {"N": "0.0"},
-            "confidence": {"N": "0.98"}
-        }],
-        "LastEvaluatedKey": {"key": "value"}
+        "Items": [
+            {
+                "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+                "SK": {
+                    "S": "RECEIPT#00001#LINE#00001#WORD#00001#LETTER#00001"
+                },
+                "TYPE": {"S": "RECEIPT_LETTER"},
+                "text": {"S": "A"},
+                "bounding_box": {
+                    "M": {
+                        "x": {"N": "0.1"},
+                        "y": {"N": "0.2"},
+                        "width": {"N": "0.05"},
+                        "height": {"N": "0.05"},
+                    }
+                },
+                "top_right": {"M": {"x": {"N": "0.15"}, "y": {"N": "0.25"}}},
+                "top_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.25"}}},
+                "bottom_right": {"M": {"x": {"N": "0.15"}, "y": {"N": "0.2"}}},
+                "bottom_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}},
+                "angle_degrees": {"N": "0.0"},
+                "angle_radians": {"N": "0.0"},
+                "confidence": {"N": "0.98"},
+            }
+        ],
+        "LastEvaluatedKey": {"key": "value"},
     }
-    
+
     # Second query fails with ResourceNotFoundException
     mock_client.query.side_effect = [
         first_response,
@@ -3509,15 +3630,17 @@ def test_receipt_letter_list_pagination_resource_not_found_second_query(
             {
                 "Error": {
                     "Code": "ResourceNotFoundException",
-                    "Message": "Table not found during pagination"
+                    "Message": "Table not found during pagination",
                 }
             },
-            "Query"
-        )
+            "Query",
+        ),
     ]
     client._client = mock_client
 
-    with pytest.raises(Exception, match="Could not list receipt letters from DynamoDB"):
+    with pytest.raises(
+        Exception, match="Could not list receipt letters from DynamoDB"
+    ):
         letters, last_key = client.listReceiptLetters()
 
     # Verify the second query was made with the correct parameters
@@ -3526,6 +3649,7 @@ def test_receipt_letter_list_pagination_resource_not_found_second_query(
     assert second_call.kwargs["TableName"] == dynamodb_table
     assert second_call.kwargs["IndexName"] == "GSITYPE"
     assert second_call.kwargs["ExclusiveStartKey"] == {"key": "value"}
+
 
 @pytest.mark.integration
 def test_receipt_letter_list_multiple_pages(dynamodb_table, mocker):
@@ -3536,52 +3660,72 @@ def test_receipt_letter_list_multiple_pages(dynamodb_table, mocker):
     # Set up mock to return two pages of results
     mock_client.query.side_effect = [
         {
-            "Items": [{
-                "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-                "SK": {"S": "RECEIPT#00001#LINE#00001#WORD#00001#LETTER#00001"},
-                "TYPE": {"S": "RECEIPT_LETTER"},
-                "text": {"S": "A"},
-                "bounding_box": {
-                    "M": {
-                        "x": {"N": "0.1"},
-                        "y": {"N": "0.2"},
-                        "width": {"N": "0.05"},
-                        "height": {"N": "0.05"}
-                    }
-                },
-                "top_right": {"M": {"x": {"N": "0.15"}, "y": {"N": "0.25"}}},
-                "top_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.25"}}},
-                "bottom_right": {"M": {"x": {"N": "0.15"}, "y": {"N": "0.2"}}},
-                "bottom_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}},
-                "angle_degrees": {"N": "0.0"},
-                "angle_radians": {"N": "0.0"},
-                "confidence": {"N": "0.98"}
-            }],
-            "LastEvaluatedKey": {"key": "value"}
+            "Items": [
+                {
+                    "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+                    "SK": {
+                        "S": "RECEIPT#00001#LINE#00001#WORD#00001#LETTER#00001"
+                    },
+                    "TYPE": {"S": "RECEIPT_LETTER"},
+                    "text": {"S": "A"},
+                    "bounding_box": {
+                        "M": {
+                            "x": {"N": "0.1"},
+                            "y": {"N": "0.2"},
+                            "width": {"N": "0.05"},
+                            "height": {"N": "0.05"},
+                        }
+                    },
+                    "top_right": {
+                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.25"}}
+                    },
+                    "top_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.25"}}},
+                    "bottom_right": {
+                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.2"}}
+                    },
+                    "bottom_left": {
+                        "M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}
+                    },
+                    "angle_degrees": {"N": "0.0"},
+                    "angle_radians": {"N": "0.0"},
+                    "confidence": {"N": "0.98"},
+                }
+            ],
+            "LastEvaluatedKey": {"key": "value"},
         },
         {
-            "Items": [{
-                "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-                "SK": {"S": "RECEIPT#00001#LINE#00001#WORD#00001#LETTER#00002"},
-                "TYPE": {"S": "RECEIPT_LETTER"},
-                "text": {"S": "B"},
-                "bounding_box": {
-                    "M": {
-                        "x": {"N": "0.2"},
-                        "y": {"N": "0.2"},
-                        "width": {"N": "0.05"},
-                        "height": {"N": "0.05"}
-                    }
-                },
-                "top_right": {"M": {"x": {"N": "0.25"}, "y": {"N": "0.25"}}},
-                "top_left": {"M": {"x": {"N": "0.2"}, "y": {"N": "0.25"}}},
-                "bottom_right": {"M": {"x": {"N": "0.25"}, "y": {"N": "0.2"}}},
-                "bottom_left": {"M": {"x": {"N": "0.2"}, "y": {"N": "0.2"}}},
-                "angle_degrees": {"N": "0.0"},
-                "angle_radians": {"N": "0.0"},
-                "confidence": {"N": "0.98"}
-            }]
-        }
+            "Items": [
+                {
+                    "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+                    "SK": {
+                        "S": "RECEIPT#00001#LINE#00001#WORD#00001#LETTER#00002"
+                    },
+                    "TYPE": {"S": "RECEIPT_LETTER"},
+                    "text": {"S": "B"},
+                    "bounding_box": {
+                        "M": {
+                            "x": {"N": "0.2"},
+                            "y": {"N": "0.2"},
+                            "width": {"N": "0.05"},
+                            "height": {"N": "0.05"},
+                        }
+                    },
+                    "top_right": {
+                        "M": {"x": {"N": "0.25"}, "y": {"N": "0.25"}}
+                    },
+                    "top_left": {"M": {"x": {"N": "0.2"}, "y": {"N": "0.25"}}},
+                    "bottom_right": {
+                        "M": {"x": {"N": "0.25"}, "y": {"N": "0.2"}}
+                    },
+                    "bottom_left": {
+                        "M": {"x": {"N": "0.2"}, "y": {"N": "0.2"}}
+                    },
+                    "angle_degrees": {"N": "0.0"},
+                    "angle_radians": {"N": "0.0"},
+                    "confidence": {"N": "0.98"},
+                }
+            ]
+        },
     ]
     client._client = mock_client
 
@@ -3598,11 +3742,11 @@ def test_receipt_letter_list_multiple_pages(dynamodb_table, mocker):
     assert mock_client.query.call_count == 2
     first_call = mock_client.query.call_args_list[0]
     second_call = mock_client.query.call_args_list[1]
-    
+
     # Verify first call parameters
     assert first_call.kwargs["TableName"] == dynamodb_table
     assert first_call.kwargs["IndexName"] == "GSITYPE"
-    
+
     # Verify second call parameters
     assert second_call.kwargs["TableName"] == dynamodb_table
     assert second_call.kwargs["IndexName"] == "GSITYPE"
