@@ -51,7 +51,7 @@ __all__ = [  # Entity classes
     "import_image",
     # Service layer
     "JobService",
-    "QueueService", 
+    "QueueService",
     "InstanceService",
 ]
 

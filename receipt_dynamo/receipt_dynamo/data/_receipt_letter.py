@@ -23,22 +23,22 @@ class _ReceiptLetter:
     deleteReceiptLetters(letters: list[ReceiptLetter])
         Deletes multiple ReceiptLetters in batch.
     getReceiptLetter(
-        receipt_id: int, 
-        image_id: str, 
-        line_id: int, 
-        word_id: int, 
+        receipt_id: int,
+        image_id: str,
+        line_id: int,
+        word_id: int,
         letter_id: int
     ) -> ReceiptLetter:
         Retrieves a single ReceiptLetter by IDs.
     listReceiptLetters(
-        limit: int = None, 
+        limit: int = None,
         lastEvaluatedKey: dict | None = None
     ) -> tuple[list[ReceiptLetter], dict | None]:
         Returns ReceiptLetters and the last evaluated key.
     listReceiptLettersFromWord(
-        receipt_id: int, 
-        image_id: str, 
-        line_id: int, 
+        receipt_id: int,
+        image_id: str,
+        line_id: int,
         word_id: int
     ) -> list[ReceiptLetter]:
         Returns all ReceiptLetters for a given word.
@@ -585,10 +585,14 @@ class _ReceiptLetter:
             if error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "ValidationException":
-                raise Exception(f"One or more parameters given were invalid: {e}") from e
+                raise Exception(
+                    f"One or more parameters given were invalid: {e}"
+                ) from e
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             elif error_code == "AccessDeniedException":
                 raise Exception(f"Access denied: {e}") from e
             else:
-                raise Exception(f"Could not list ReceiptLetters from the database: {e}") from e
+                raise Exception(
+                    f"Could not list ReceiptLetters from the database: {e}"
+                ) from e
