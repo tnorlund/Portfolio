@@ -89,9 +89,10 @@ def test_addReceiptLetter_raises_value_error_receipt_letter_none(
 def test_addReceiptLetter_raises_value_error_receipt_letter_not_instance(
     dynamodb_table, sample_receipt_letter, mocker
 ):
-    """
-    Tests that addReceiptLetter raises ValueError when the receipt letter is
-    not an instance of ReceiptLetter.
+    """Test ValueError when receipt_letter has wrong type.
+
+    Verifies that addReceiptLetter raises ValueError when the provided
+    receipt_letter is not an instance of ReceiptLetter.
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(
@@ -380,9 +381,10 @@ def test_addReceiptLetters_raises_value_error_letters_not_list(
 def test_addReceiptLetters_raises_value_error_letters_not_list_of_receipt_letters(
     dynamodb_table, sample_receipt_letter, mocker
 ):
-    """
-    Tests that addReceiptLetters raises ValueError when the letters are not a
-    list of ReceiptLetter instances.
+    """Test ValueError when letters are not ReceiptLetter instances.
+
+    Verifies that addReceiptLetters raises ValueError when the provided list
+    contains items that are not instances of ReceiptLetter.
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(
@@ -689,7 +691,12 @@ def test_update_receipt_letter_raises_conditional_check_failed(
 def test_update_receipt_letter_raises_provisioned_throughput_exceeded(
     dynamodb_table, sample_receipt_letter, mocker
 ):
-    """Test handling of ProvisionedThroughputExceededException in updateReceiptLetter."""
+    """Test handling of ProvisionedThroughputExceededException in
+    updateReceiptLetter.
+
+    Verifies that the method raises an Exception when DynamoDB returns a
+    ProvisionedThroughputExceededException.
+    """
     client = DynamoClient(dynamodb_table)
     mock_put = mocker.patch.object(
         client._client,
@@ -979,7 +986,8 @@ def test_update_receipt_letters_raises_transaction_canceled(
             {
                 "Error": {
                     "Code": "TransactionCanceledException",
-                    "Message": "Transaction canceled due to ConditionalCheckFailed",
+                    "Message": "Transaction canceled due to "
+                    "ConditionalCheckFailed",
                     "CancellationReasons": [
                         {"Code": "ConditionalCheckFailed"}
                     ],
@@ -1001,7 +1009,11 @@ def test_update_receipt_letters_raises_value_error_letters_none(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """
-    Tests that updateReceiptLetters raises ValueError when the letters are None.
+    Tests that updateReceiptLetters raises ValueError when the letters are
+    None.
+
+    Verifies that the method raises a ValueError when the letters parameter
+    is None.
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(
@@ -1014,8 +1026,10 @@ def test_update_receipt_letters_raises_value_error_letters_none(
 def test_update_receipt_letters_raises_value_error_letters_not_list(
     dynamodb_table, sample_receipt_letter, mocker
 ):
-    """
-    Tests that updateReceiptLetters raises ValueError when the letters are not a list.
+    """Test ValueError when letters parameter is not a list.
+
+    Verifies that updateReceiptLetters raises ValueError when the letters
+    parameter has an invalid type.
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(
@@ -1044,8 +1058,10 @@ def test_update_receipt_letters_raises_value_error_letters_not_list_of_receipt_l
 def test_update_receipt_letters_raises_value_error_letter_not_found(
     dynamodb_table, sample_receipt_letter, mocker
 ):
-    """
-    Tests that updateReceiptLetters raises ValueError when a letter doesn't exist.
+    """Test ValueError when letter is not found.
+
+    Verifies that updateReceiptLetters raises ValueError when attempting to
+    update a non-existent letter.
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(
@@ -1085,7 +1101,12 @@ def test_update_receipt_letters_raises_internal_server_error(
 def test_update_receipt_letters_raises_provisioned_throughput_exceeded(
     dynamodb_table, sample_receipt_letter, mocker
 ):
-    """Test handling of ProvisionedThroughputExceededException in updateReceiptLetters."""
+    """Test handling of ProvisionedThroughputExceededException in
+    updateReceiptLetters.
+
+    Verifies that the method raises an Exception when DynamoDB returns a
+    ProvisionedThroughputExceededException.
+    """
     client = DynamoClient(dynamodb_table)
     mock_transact = mocker.patch.object(
         client._client,
@@ -1238,7 +1259,12 @@ def test_deleteReceiptLetter_raises_value_error_receipt_letter_not_instance(
 def test_deleteReceiptLetter_raises_conditional_check_failed(
     dynamodb_table, sample_receipt_letter, mocker
 ):
-    """Test handling of ConditionalCheckFailedException in deleteReceiptLetter."""
+    """Test handling of ConditionalCheckFailedException in
+    deleteReceiptLetter.
+
+    Verifies that the method raises a ValueError when DynamoDB returns a
+    ConditionalCheckFailedException.
+    """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match="ReceiptLetter with ID"):
         client.deleteReceiptLetter(sample_receipt_letter)
@@ -1275,7 +1301,12 @@ def test_deleteReceiptLetter_raises_resource_not_found(
 def test_deleteReceiptLetter_raises_provisioned_throughput_exceeded(
     dynamodb_table, sample_receipt_letter, mocker
 ):
-    """Test handling of ProvisionedThroughputExceededException in deleteReceiptLetter."""
+    """Test handling of ProvisionedThroughputExceededException in
+    deleteReceiptLetter.
+
+    Verifies that the method raises an Exception when DynamoDB returns a
+    ProvisionedThroughputExceededException.
+    """
     client = DynamoClient(dynamodb_table)
     mock_delete = mocker.patch.object(
         client._client,
@@ -1515,7 +1546,11 @@ def test_deleteReceiptLetters_raises_value_error_letters_not_list(
 def test_deleteReceiptLetters_raises_value_error_letters_not_list_of_receipt_letters(
     dynamodb_table, mocker
 ):
-    """Test handling of ValueError in deleteReceiptLetters."""
+    """Test handling of ValueError in deleteReceiptLetters.
+
+    Verifies that the method raises a ValueError when the letters parameter
+    is not a list of ReceiptLetter instances.
+    """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(
         ValueError,
@@ -1586,7 +1621,12 @@ def test_deleteReceiptLetters_with_unprocessed_items(
 def test_deleteReceiptLetters_raises_provisioned_throughput_exceeded(
     dynamodb_table, sample_receipt_letter, mocker
 ):
-    """Test handling of ProvisionedThroughputExceededException in deleteReceiptLetters."""
+    """Test handling of ProvisionedThroughputExceededException in
+    deleteReceiptLetters.
+
+    Verifies that the method raises an Exception when DynamoDB returns a
+    ProvisionedThroughputExceededException.
+    """
     client = DynamoClient(dynamodb_table)
     mock_batch = mocker.patch.object(
         client._client,
@@ -1737,7 +1777,12 @@ def test_get_receipt_letter_success(
 def test_get_receipt_letter_raises_value_error_receipt_id_none(
     dynamodb_table, sample_receipt_letter, mocker
 ):
-    """Test handling of ValueError in getReceiptLetter when receipt_id is None."""
+    """Test handling of ValueError in getReceiptLetter when receipt_id is
+    None.
+
+    Verifies that the method raises a ValueError when the receipt_id parameter
+    is None.
+    """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(
         ValueError,
@@ -1756,7 +1801,12 @@ def test_get_receipt_letter_raises_value_error_receipt_id_none(
 def test_get_receipt_letter_raises_value_error_receipt_id_not_integer(
     dynamodb_table, sample_receipt_letter, mocker
 ):
-    """Test handling of ValueError in getReceiptLetter when receipt_id is not an integer."""
+    """Test handling of ValueError in getReceiptLetter when receipt_id is not
+    an integer.
+
+    Verifies that the method raises a ValueError when the receipt_id parameter
+    is not an integer.
+    """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match="receipt_id must be an integer."):
         client.getReceiptLetter(
@@ -1772,7 +1822,11 @@ def test_get_receipt_letter_raises_value_error_receipt_id_not_integer(
 def test_get_receipt_letter_raises_value_error_image_id_none(
     dynamodb_table, sample_receipt_letter, mocker
 ):
-    """Test handling of ValueError in getReceiptLetter when image_id is None."""
+    """Test handling of ValueError in getReceiptLetter when image_id is None.
+
+    Verifies that the method raises a ValueError when the image_id parameter
+    is None.
+    """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(
         ValueError, match="image_id parameter is required and cannot be None."
@@ -1790,7 +1844,12 @@ def test_get_receipt_letter_raises_value_error_image_id_none(
 def test_get_receipt_letter_raises_value_error_image_id_not_uuid(
     dynamodb_table, sample_receipt_letter, mocker
 ):
-    """Test handling of ValueError in getReceiptLetter when image_id is not a valid UUID."""
+    """Test handling of ValueError in getReceiptLetter when image_id is not a
+    valid UUID.
+
+    Verifies that the method raises a ValueError when the image_id parameter
+    is not a valid UUID.
+    """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match="uuid must be a valid UUID"):
         client.getReceiptLetter(
@@ -1824,7 +1883,12 @@ def test_get_receipt_letter_raises_value_error_line_id_none(
 def test_get_receipt_letter_raises_value_error_line_id_not_integer(
     dynamodb_table, sample_receipt_letter, mocker
 ):
-    """Test handling of ValueError in getReceiptLetter when line_id is not an integer."""
+    """Test handling of ValueError in getReceiptLetter when line_id is not an
+    integer.
+
+    Verifies that the method raises a ValueError when the line_id parameter
+    is not an integer.
+    """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match="line_id must be an integer."):
         client.getReceiptLetter(
@@ -1858,7 +1922,12 @@ def test_get_receipt_letter_raises_value_error_word_id_none(
 def test_get_receipt_letter_raises_value_error_word_id_not_integer(
     dynamodb_table, sample_receipt_letter, mocker
 ):
-    """Test handling of ValueError in getReceiptLetter when word_id is not an integer."""
+    """Test handling of ValueError in getReceiptLetter when word_id is not an
+    integer.
+
+    Verifies that the method raises a ValueError when the word_id parameter
+    is not an integer.
+    """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match="word_id must be an integer."):
         client.getReceiptLetter(
@@ -1874,7 +1943,11 @@ def test_get_receipt_letter_raises_value_error_word_id_not_integer(
 def test_get_receipt_letter_raises_value_error_letter_id_none(
     dynamodb_table, sample_receipt_letter, mocker
 ):
-    """Test handling of ValueError in getReceiptLetter when letter_id is None."""
+    """Test handling of ValueError in getReceiptLetter when letter_id is None.
+
+    Verifies that the method raises a ValueError when the letter_id parameter
+    is None.
+    """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(
         ValueError, match="letter_id parameter is required and cannot be None."
@@ -1892,7 +1965,12 @@ def test_get_receipt_letter_raises_value_error_letter_id_none(
 def test_get_receipt_letter_raises_value_error_letter_id_not_integer(
     dynamodb_table, sample_receipt_letter, mocker
 ):
-    """Test handling of ValueError in getReceiptLetter when letter_id is not an integer."""
+    """Test handling of ValueError in getReceiptLetter when letter_id is not an
+    integer.
+
+    Verifies that the method raises a ValueError when the letter_id parameter
+    is not an integer.
+    """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match="letter_id must be an integer."):
         client.getReceiptLetter(
@@ -2095,7 +2173,11 @@ def test_getReceiptLetter_raises_validation_error(
 def test_getReceiptLetter_raises_access_denied(
     dynamodb_table, sample_receipt_letter, mocker
 ):
-    """Test that getReceiptLetter raises an exception when access is denied (line 438)"""
+    """Test that getReceiptLetter raises an exception when access is denied.
+
+    Verifies that the method raises an Exception when DynamoDB returns an
+    AccessDeniedException.
+    """
     # Arrange
     mock_client = mocker.Mock()
     mock_client.get_item.side_effect = ClientError(
@@ -2139,7 +2221,12 @@ def test_getReceiptLetter_raises_access_denied(
 def test_getReceiptLetter_raises_resource_not_found(
     dynamodb_table, sample_receipt_letter, mocker
 ):
-    """Test that getReceiptLetter raises an exception when resource is not found (line 442)"""
+    """Test that getReceiptLetter raises an exception when resource is not
+    found.
+
+    Verifies that the method raises an Exception when DynamoDB returns a
+    ResourceNotFoundException.
+    """
     # Arrange
     mock_client = mocker.Mock()
     mock_client.get_item.side_effect = ClientError(
@@ -2369,7 +2456,12 @@ def test_receipt_letter_list_raises_internal_server_error(
 def test_receipt_letter_list_raises_provisioned_throughput_exceeded(
     dynamodb_table, mocker
 ):
-    """Test handling of ProvisionedThroughputExceededException in listReceiptLetters."""
+    """Test handling of ProvisionedThroughputExceededException in
+    listReceiptLetters.
+
+    Verifies that the method raises an Exception when DynamoDB returns a
+    ProvisionedThroughputExceededException.
+    """
     client = DynamoClient(dynamodb_table)
     mock_client = mocker.patch.object(
         client._client,
@@ -2498,7 +2590,12 @@ def test_listReceiptLettersFromWord_success(
 def test_listReceiptLettersFromWord_receipt_id_is_none(
     dynamodb_table: Literal["MyMockedTable"],
 ):
-    """Test that listReceiptLettersFromWord raises ValueError when receipt_id is None."""
+    """Test that listReceiptLettersFromWord raises ValueError when receipt_id
+    is None.
+
+    Verifies that the method raises a ValueError when the receipt_id parameter
+    is None.
+    """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(
         ValueError,
@@ -2516,7 +2613,12 @@ def test_listReceiptLettersFromWord_receipt_id_is_none(
 def test_listReceiptLettersFromWord_receipt_id_is_not_int(
     dynamodb_table: Literal["MyMockedTable"],
 ):
-    """Test that listReceiptLettersFromWord raises ValueError when receipt_id is not an integer."""
+    """Test that listReceiptLettersFromWord raises ValueError when receipt_id
+    is not an integer.
+
+    Verifies that the method raises a ValueError when the receipt_id parameter
+    is not an integer.
+    """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match="receipt_id must be an integer."):
         client.listReceiptLettersFromWord(
@@ -2531,7 +2633,12 @@ def test_listReceiptLettersFromWord_receipt_id_is_not_int(
 def test_listReceiptLettersFromWord_image_id_is_none(
     dynamodb_table: Literal["MyMockedTable"],
 ):
-    """Test that listReceiptLettersFromWord raises ValueError when image_id is None."""
+    """Test that listReceiptLettersFromWord raises ValueError when image_id
+    is None.
+
+    Verifies that the method raises a ValueError when the image_id parameter
+    is None.
+    """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(
         ValueError, match="image_id parameter is required and cannot be None."
@@ -2566,7 +2673,12 @@ def test_listReceiptLettersFromWord_image_id_is_not_valid_uuid(
 def test_listReceiptLettersFromWord_line_id_is_none(
     dynamodb_table: Literal["MyMockedTable"],
 ):
-    """Test that listReceiptLettersFromWord raises ValueError when line_id is None."""
+    """Test that listReceiptLettersFromWord raises ValueError when line_id
+    is None.
+
+    Verifies that the method raises a ValueError when the line_id parameter
+    is None.
+    """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(
         ValueError, match="line_id parameter is required and cannot be None."
@@ -2583,7 +2695,12 @@ def test_listReceiptLettersFromWord_line_id_is_none(
 def test_listReceiptLettersFromWord_line_id_is_not_int(
     dynamodb_table: Literal["MyMockedTable"],
 ):
-    """Test that listReceiptLettersFromWord raises ValueError when line_id is not an integer."""
+    """Test that listReceiptLettersFromWord raises ValueError when line_id
+    is not an integer.
+
+    Verifies that the method raises a ValueError when the line_id parameter
+    is not an integer.
+    """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match="line_id must be an integer."):
         client.listReceiptLettersFromWord(
@@ -2598,7 +2715,12 @@ def test_listReceiptLettersFromWord_line_id_is_not_int(
 def test_listReceiptLettersFromWord_word_id_is_none(
     dynamodb_table: Literal["MyMockedTable"],
 ):
-    """Test that listReceiptLettersFromWord raises ValueError when word_id is None."""
+    """Test that listReceiptLettersFromWord raises ValueError when word_id
+    is None.
+
+    Verifies that the method raises a ValueError when the word_id parameter
+    is None.
+    """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(
         ValueError, match="word_id parameter is required and cannot be None."
@@ -2615,7 +2737,12 @@ def test_listReceiptLettersFromWord_word_id_is_none(
 def test_listReceiptLettersFromWord_word_id_is_not_int(
     dynamodb_table: Literal["MyMockedTable"],
 ):
-    """Test that listReceiptLettersFromWord raises ValueError when word_id is not an integer."""
+    """Test that listReceiptLettersFromWord raises ValueError when word_id
+    is not an integer.
+
+    Verifies that the method raises a ValueError when the word_id parameter
+    is not an integer.
+    """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match="word_id must be an integer."):
         client.listReceiptLettersFromWord(
@@ -2630,7 +2757,12 @@ def test_listReceiptLettersFromWord_word_id_is_not_int(
 def test_listReceiptLettersFromWord_returns_empty_list_when_not_found(
     dynamodb_table: Literal["MyMockedTable"],
 ):
-    """Test that listReceiptLettersFromWord returns empty list when no letters exist."""
+    """Test that listReceiptLettersFromWord returns empty list when no letters
+    exist.
+
+    Verifies that the method returns an empty list when no letters are found
+    for the given parameters.
+    """
     client = DynamoClient(dynamodb_table)
     found_letters = client.listReceiptLettersFromWord(
         receipt_id=999,
@@ -2646,7 +2778,11 @@ def test_listReceiptLettersFromWord_returns_empty_list_when_not_found(
 def test_listReceiptLettersFromWord_raises_client_error(
     dynamodb_table: Literal["MyMockedTable"], mocker
 ):
-    """Test that listReceiptLettersFromWord raises Exception on DynamoDB internal server error."""
+    """Test that listReceiptLettersFromWord raises Exception.
+
+    Verifies that the method raises an Exception when DynamoDB returns an
+    internal server error.
+    """
     client = DynamoClient(dynamodb_table)
 
     # Mock the query method to raise an InternalServerError
@@ -2663,7 +2799,11 @@ def test_listReceiptLettersFromWord_raises_client_error(
 
     with pytest.raises(
         Exception,
-        match="Internal server error: An error occurred \\(InternalServerError\\) when calling the Query operation: Internal error",
+        match=(
+            "Internal server error: An error occurred "
+            "\\(InternalServerError\\) when calling the Query operation: "
+            "Internal error"
+        ),
     ):
         client.listReceiptLettersFromWord(
             receipt_id=999,
@@ -2713,7 +2853,12 @@ def test_listReceiptLettersFromWord_raises_provisioned_throughput_exceeded(
 def test_listReceiptLettersFromWord_raises_validation_error(
     dynamodb_table: Literal["MyMockedTable"], mocker
 ):
-    """Test that listReceiptLettersFromWord raises Exception on validation error."""
+    """Test that listReceiptLettersFromWord raises Exception on validation
+    error.
+
+    Verifies that the method raises an Exception when DynamoDB returns a
+    ValidationException.
+    """
     client = DynamoClient(dynamodb_table)
 
     # Mock the query method to raise a ValidationException
@@ -2797,7 +2942,12 @@ def test_list_receipt_letters_from_word_with_pagination(
 def test_list_receipt_letters_from_word_raises_provisioned_throughput_exceeded(
     dynamodb_table: Literal["MyMockedTable"], mocker
 ):
-    """Test handling of ProvisionedThroughputExceededException in listReceiptLettersFromWord."""
+    """Test handling of ProvisionedThroughputExceededException in
+    listReceiptLettersFromWord.
+
+    Verifies that the method raises an Exception when DynamoDB returns a
+    ProvisionedThroughputExceededException.
+    """
     client = DynamoClient(dynamodb_table)
     mock_query = mocker.patch.object(
         client._client,
@@ -2921,7 +3071,11 @@ def test_list_receipt_letters_from_word_raises_unknown_error(
 def test_receipt_letter_list_pagination_resource_not_found(
     dynamodb_table, mocker
 ):
-    """Test handling of ResourceNotFoundException during pagination in listReceiptLetters."""
+    """Test handling of ResourceNotFoundException during pagination in
+    listReceiptLetters.
+
+    Verifies that we get a partial result before the exception occurs.
+    """
     client = DynamoClient(dynamodb_table)
     mock_client = mocker.Mock()
     mock_client.query.side_effect = [
@@ -2973,7 +3127,8 @@ def test_receipt_letter_list_pagination_resource_not_found(
 
     with pytest.raises(
         Exception,
-        match="Could not list receipt letters from DynamoDB: An error occurred",
+        match="Could not list receipt letters from DynamoDB: An error "
+        "occurred",
     ):
         client.listReceiptLetters()
 
@@ -2993,7 +3148,11 @@ def test_receipt_letter_list_pagination_resource_not_found(
 def test_receipt_letter_list_pagination_unexpected_error(
     dynamodb_table, mocker
 ):
-    """Test handling of unexpected error during pagination in listReceiptLetters."""
+    """Test handling of unexpected error during pagination in
+    listReceiptLetters.
+
+    Verifies that we get a partial result before the exception occurs.
+    """
     client = DynamoClient(dynamodb_table)
     mock_client = mocker.Mock()
     mock_client.query.side_effect = [
@@ -3064,7 +3223,8 @@ def test_receipt_letter_list_pagination_unexpected_error(
 def test_list_receipt_letters_from_word_validation_error(
     dynamodb_table, sample_receipt_letter, mocker
 ):
-    """Test ValidationException in first query of listReceiptLettersFromWord (line 510)"""
+    """Test ValidationException in first query of
+    listReceiptLettersFromWord."""
     client = DynamoClient(dynamodb_table)
     mock_client = mocker.Mock()
     mock_client.query.side_effect = ClientError(
@@ -3109,7 +3269,8 @@ def test_list_receipt_letters_from_word_validation_error(
 def test_list_receipt_letters_from_word_internal_server_error(
     dynamodb_table, sample_receipt_letter, mocker
 ):
-    """Test InternalServerError in first query of listReceiptLettersFromWord (line 517)"""
+    """Test InternalServerError in first query of
+    listReceiptLettersFromWord."""
     client = DynamoClient(dynamodb_table)
     mock_client = mocker.Mock()
     mock_client.query.side_effect = ClientError(
@@ -3136,7 +3297,7 @@ def test_list_receipt_letters_from_word_internal_server_error(
 def test_list_receipt_letters_from_word_pagination_access_denied(
     dynamodb_table, sample_receipt_letter, mocker
 ):
-    """Test AccessDeniedException during pagination (line 521)"""
+    """Test AccessDeniedException during pagination."""
     client = DynamoClient(dynamodb_table)
     mock_client = mocker.Mock()
     mock_client.query.side_effect = [
@@ -3145,7 +3306,10 @@ def test_list_receipt_letters_from_word_pagination_access_denied(
                 {
                     "PK": {"S": f"IMAGE#{sample_receipt_letter.image_id}"},
                     "SK": {
-                        "S": f"RECEIPT#{sample_receipt_letter.receipt_id:05d}#LINE#{sample_receipt_letter.line_id:05d}#WORD#{sample_receipt_letter.word_id:05d}#LETTER#00001"
+                        "S": f"RECEIPT#{sample_receipt_letter.receipt_id:05d}#"
+                        f"LINE#{sample_receipt_letter.line_id:05d}#"
+                        f"WORD#{sample_receipt_letter.word_id:05d}#"
+                        f"LETTER#00001"
                     },
                     "TYPE": {"S": "RECEIPT_LETTER"},
                     "text": {"S": "A"},
@@ -3178,7 +3342,8 @@ def test_list_receipt_letters_from_word_pagination_access_denied(
             {
                 "Error": {
                     "Code": "AccessDeniedException",
-                    "Message": "User is not authorized to perform this operation",
+                    "Message": "User is not authorized to perform this "
+                    "operation",
                 }
             },
             "Query",
@@ -3199,7 +3364,7 @@ def test_list_receipt_letters_from_word_pagination_access_denied(
 def test_list_receipt_letters_from_word_pagination_validation(
     dynamodb_table, sample_receipt_letter, mocker
 ):
-    """Test ValidationException during pagination (line 523)"""
+    """Test ValidationException during pagination."""
     client = DynamoClient(dynamodb_table)
     mock_client = mocker.Mock()
     mock_client.query.side_effect = [
@@ -3208,7 +3373,10 @@ def test_list_receipt_letters_from_word_pagination_validation(
                 {
                     "PK": {"S": f"IMAGE#{sample_receipt_letter.image_id}"},
                     "SK": {
-                        "S": f"RECEIPT#{sample_receipt_letter.receipt_id:05d}#LINE#{sample_receipt_letter.line_id:05d}#WORD#{sample_receipt_letter.word_id:05d}#LETTER#00001"
+                        "S": f"RECEIPT#{sample_receipt_letter.receipt_id:05d}#"
+                        f"LINE#{sample_receipt_letter.line_id:05d}#"
+                        f"WORD#{sample_receipt_letter.word_id:05d}#"
+                        f"LETTER#00001"
                     },
                     "TYPE": {"S": "RECEIPT_LETTER"},
                     "text": {"S": "A"},
@@ -3264,7 +3432,7 @@ def test_list_receipt_letters_from_word_pagination_validation(
 def test_list_receipt_letters_from_word_pagination_internal_server_error(
     dynamodb_table, sample_receipt_letter, mocker
 ):
-    """Test InternalServerError during pagination (line 528)"""
+    """Test InternalServerError during pagination."""
     client = DynamoClient(dynamodb_table)
     mock_client = mocker.Mock()
     mock_client.query.side_effect = [
@@ -3273,7 +3441,10 @@ def test_list_receipt_letters_from_word_pagination_internal_server_error(
                 {
                     "PK": {"S": f"IMAGE#{sample_receipt_letter.image_id}"},
                     "SK": {
-                        "S": f"RECEIPT#{sample_receipt_letter.receipt_id:05d}#LINE#{sample_receipt_letter.line_id:05d}#WORD#{sample_receipt_letter.word_id:05d}#LETTER#00001"
+                        "S": f"RECEIPT#{sample_receipt_letter.receipt_id:05d}#"
+                        f"LINE#{sample_receipt_letter.line_id:05d}#"
+                        f"WORD#{sample_receipt_letter.word_id:05d}#"
+                        f"LETTER#00001"
                     },
                     "TYPE": {"S": "RECEIPT_LETTER"},
                     "text": {"S": "A"},
@@ -3327,7 +3498,7 @@ def test_list_receipt_letters_from_word_pagination_internal_server_error(
 def test_list_receipt_letters_from_word_pagination_throughput_exceeded(
     dynamodb_table, sample_receipt_letter, mocker
 ):
-    """Test ProvisionedThroughputExceededException during pagination (line 532)"""
+    """Test ProvisionedThroughputExceededException during pagination."""
     client = DynamoClient(dynamodb_table)
     mock_client = mocker.Mock()
     mock_client.query.side_effect = [
@@ -3336,7 +3507,10 @@ def test_list_receipt_letters_from_word_pagination_throughput_exceeded(
                 {
                     "PK": {"S": f"IMAGE#{sample_receipt_letter.image_id}"},
                     "SK": {
-                        "S": f"RECEIPT#{sample_receipt_letter.receipt_id:05d}#LINE#{sample_receipt_letter.line_id:05d}#WORD#{sample_receipt_letter.word_id:05d}#LETTER#00001"
+                        "S": f"RECEIPT#{sample_receipt_letter.receipt_id:05d}#"
+                        f"LINE#{sample_receipt_letter.line_id:05d}#"
+                        f"WORD#{sample_receipt_letter.word_id:05d}#"
+                        f"LETTER#00001"
                     },
                     "TYPE": {"S": "RECEIPT_LETTER"},
                     "text": {"S": "A"},
@@ -3390,7 +3564,8 @@ def test_list_receipt_letters_from_word_pagination_throughput_exceeded(
 def test_list_receipt_letters_from_word_second_query_validation_error(
     dynamodb_table, sample_receipt_letter, mocker
 ):
-    """Test ValidationException in second query of listReceiptLettersFromWord (line 534)"""
+    """Test ValidationException in second query of
+    listReceiptLettersFromWord."""
     client = DynamoClient(dynamodb_table)
     mock_client = mocker.Mock()
     mock_client.query.side_effect = [
@@ -3399,7 +3574,10 @@ def test_list_receipt_letters_from_word_second_query_validation_error(
                 {
                     "PK": {"S": f"IMAGE#{sample_receipt_letter.image_id}"},
                     "SK": {
-                        "S": f"RECEIPT#{sample_receipt_letter.receipt_id:05d}#LINE#{sample_receipt_letter.line_id:05d}#WORD#{sample_receipt_letter.word_id:05d}#LETTER#00001"
+                        "S": f"RECEIPT#{sample_receipt_letter.receipt_id:05d}#"
+                        f"LINE#{sample_receipt_letter.line_id:05d}#"
+                        f"WORD#{sample_receipt_letter.word_id:05d}#"
+                        f"LETTER#00001"
                     },
                     "TYPE": {"S": "RECEIPT_LETTER"},
                     "text": {"S": "A"},
@@ -3455,7 +3633,8 @@ def test_list_receipt_letters_from_word_second_query_validation_error(
 def test_list_receipt_letters_from_word_second_query_internal_server_error(
     dynamodb_table, sample_receipt_letter, mocker
 ):
-    """Test InternalServerError in second query of listReceiptLettersFromWord (line 538)"""
+    """Test InternalServerError in second query of
+    listReceiptLettersFromWord."""
     client = DynamoClient(dynamodb_table)
     mock_client = mocker.Mock()
     mock_client.query.side_effect = [
@@ -3464,7 +3643,10 @@ def test_list_receipt_letters_from_word_second_query_internal_server_error(
                 {
                     "PK": {"S": f"IMAGE#{sample_receipt_letter.image_id}"},
                     "SK": {
-                        "S": f"RECEIPT#{sample_receipt_letter.receipt_id:05d}#LINE#{sample_receipt_letter.line_id:05d}#WORD#{sample_receipt_letter.word_id:05d}#LETTER#00001"
+                        "S": f"RECEIPT#{sample_receipt_letter.receipt_id:05d}#"
+                        f"LINE#{sample_receipt_letter.line_id:05d}#"
+                        f"WORD#{sample_receipt_letter.word_id:05d}#"
+                        f"LETTER#00001"
                     },
                     "TYPE": {"S": "RECEIPT_LETTER"},
                     "text": {"S": "A"},
@@ -3518,8 +3700,11 @@ def test_list_receipt_letters_from_word_second_query_internal_server_error(
 def test_receipt_letter_list_pagination_resource_not_found_second_query(
     dynamodb_table, mocker
 ):
-    """Test handling of ResourceNotFoundException during pagination in listReceiptLetters (line 484).
-    Verifies that we get a partial result before the exception occurs."""
+    """Test handling of ResourceNotFoundException during pagination in
+    listReceiptLetters.
+
+    Verifies that we get a partial result before the exception occurs.
+    """
     client = DynamoClient(dynamodb_table)
     mock_client = mocker.Mock()
 
@@ -3583,7 +3768,8 @@ def test_receipt_letter_list_pagination_resource_not_found_second_query(
 
 @pytest.mark.integration
 def test_receipt_letter_list_multiple_pages(dynamodb_table, mocker):
-    """Test successful pagination through multiple pages in listReceiptLetters to hit line 484."""
+    """Test successful pagination through multiple pages in
+    listReceiptLetters."""
     client = DynamoClient(dynamodb_table)
     mock_client = mocker.Mock()
 
@@ -3687,7 +3873,8 @@ def test_receipt_letter_list_multiple_pages(dynamodb_table, mocker):
 def test_receipt_letter_list_raises_internal_server_error_first_query(
     dynamodb_table, mocker
 ):
-    """Test handling of InternalServerError in listReceiptLetters first query."""
+    """Test handling of InternalServerError in listReceiptLetters first
+    query."""
     client = DynamoClient(dynamodb_table)
     mock_client = mocker.patch.object(
         client._client,
@@ -3711,7 +3898,8 @@ def test_receipt_letter_list_raises_internal_server_error_first_query(
 def test_receipt_letter_list_raises_validation_error_first_query(
     dynamodb_table, mocker
 ):
-    """Test handling of ValidationException in listReceiptLetters first query."""
+    """Test handling of ValidationException in listReceiptLetters first
+    query."""
     client = DynamoClient(dynamodb_table)
     mock_client = mocker.patch.object(
         client._client,
