@@ -428,7 +428,8 @@ def test_addReceiptLetters_client_errors(
     error_message,
     expected_error_message,
 ):
-    """Test addReceiptLetters handles various DynamoDB client errors appropriately."""
+    """Test addReceiptLetters handles various DynamoDB client errors
+    appropriately."""
     # Arrange
     client = DynamoClient(dynamodb_table)
     mock_client = mocker.patch.object(client, "_client")
@@ -495,7 +496,8 @@ def test_updateReceiptLetter_invalid_parameters(
     invalid_input,
     expected_error,
 ):
-    """Test handling of ValueError in updateReceiptLetter with invalid parameters."""
+    """Test handling of ValueError in updateReceiptLetter with invalid
+    parameters."""
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
         client.updateReceiptLetter(invalid_input)
@@ -786,10 +788,11 @@ def test_updateReceiptLetters_client_errors(
         error_code: The DynamoDB error code to simulate
         error_message: The error message from DynamoDB
         expected_error: Expected error message in the raised exception
-        cancellation_reasons: Optional cancellation reasons for TransactionCanceledException
+        cancellation_reasons: Optional cancellation reasons for
+            TransactionCanceledException
 
-    This test verifies that updateReceiptLetters properly handles various DynamoDB
-    client errors including:
+    This test verifies that updateReceiptLetters properly handles various
+    DynamoDB client errors including:
     - ResourceNotFoundException
     - TransactionCanceledException
     - InternalServerError
@@ -878,8 +881,9 @@ def test_deleteReceiptLetter_invalid_parameters(
         invalid_input: The invalid input to test
         expected_error: Expected error message
 
-    This test verifies that deleteReceiptLetter properly validates its input parameters
-    and raises appropriate ValueError exceptions for invalid inputs.
+    This test verifies that deleteReceiptLetter properly validates its input
+    parameters and raises appropriate ValueError exceptions for invalid
+    inputs.
     """
     # Arrange
     dynamo_client = DynamoClient(dynamodb_table)
@@ -944,8 +948,9 @@ def test_deleteReceiptLetter_client_errors(
         error_message: The error message from DynamoDB
         expected_error: Expected error message in the raised exception
 
-    This test verifies that deleteReceiptLetter properly handles various DynamoDB
-    client errors and raises appropriate exceptions with the expected error messages.
+    This test verifies that deleteReceiptLetter properly handles various
+    DynamoDB client errors and raises appropriate exceptions with the expected
+    error messages.
     """
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -1118,8 +1123,9 @@ def test_deleteReceiptLetters_invalid_parameters(
         invalid_input: The invalid input to test
         expected_error: Expected error message
 
-    This test verifies that deleteReceiptLetters properly validates its input parameters
-    and raises appropriate ValueError exceptions for invalid inputs:
+    This test verifies that deleteReceiptLetters properly validates its input
+    parameters and raises appropriate ValueError exceptions for invalid
+    inputs:
     - None input
     - Non-list input
     - List with non-ReceiptLetter elements
@@ -1182,8 +1188,9 @@ def test_deleteReceiptLetters_client_errors(
         error_message: The error message from DynamoDB
         expected_error: Expected error message in the raised exception
 
-    This test verifies that deleteReceiptLetters properly handles various DynamoDB
-    client errors and raises appropriate exceptions with the expected error messages.
+    This test verifies that deleteReceiptLetters properly handles various
+    DynamoDB client errors and raises appropriate exceptions with the expected
+    error messages.
     """
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -1314,10 +1321,11 @@ def test_getReceiptLetter_invalid_parameters(
         param_name: Name of the parameter to test
         invalid_value: The invalid value to test
         expected_error: Expected error message
-        sample_override: Dictionary of values to override in the sample parameters
+        sample_override: Dictionary of values to override in the sample
+            parameters
 
-    This test verifies that getReceiptLetter properly validates its input parameters
-    and raises appropriate ValueError exceptions for:
+    This test verifies that getReceiptLetter properly validates its input
+    parameters and raises appropriate ValueError exceptions for:
     - None values for required parameters
     - Invalid types (non-integers for IDs, invalid UUID for image_id)
     """
@@ -1386,7 +1394,8 @@ def test_getReceiptLetter_client_errors(
         expected_error: Expected error message in the raised exception
 
     This test verifies that getReceiptLetter properly handles various DynamoDB
-    client errors and raises appropriate exceptions with the expected error messages.
+    client errors and raises appropriate exceptions with the expected error
+    messages.
     """
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -1683,7 +1692,8 @@ def test_listReceiptLetters_invalid_parameters(
     expected_error: str,
     expected_exception: Type[Exception],
 ):
-    """Test that listReceiptLetters raises appropriate errors for invalid parameters:
+    """Test that listReceiptLetters raises appropriate errors for invalid
+    parameters:
     - When limit is not an integer or None
     - When limit is negative or zero (AWS SDK validation)
     - When lastEvaluatedKey is not a dictionary or None
@@ -1693,7 +1703,9 @@ def test_listReceiptLetters_invalid_parameters(
         if param_name == "limit":
             client.listReceiptLetters(limit=invalid_value)  # type: ignore
         else:
-            client.listReceiptLetters(lastEvaluatedKey=invalid_value)  # type: ignore
+            client.listReceiptLetters(
+                lastEvaluatedKey=invalid_value,  # type: ignore
+            )
 
 
 @pytest.mark.integration
@@ -1746,7 +1758,8 @@ def test_listReceiptLetters_client_errors(
     expected_error: str,
     cancellation_reasons: Optional[List[Dict[str, str]]],
 ):
-    """Test that listReceiptLetters handles various DynamoDB client errors appropriately:
+    """Test that listReceiptLetters handles various DynamoDB client errors
+    appropriately:
     - ResourceNotFoundException
     - ValidationException
     - InternalServerError
@@ -2008,7 +2021,7 @@ def test_listReceiptLettersFromWord_invalid_parameters(
     expected_error: str,
 ):
     """Test that listReceiptLettersFromWord validates its parameters correctly.
-    
+
     Tests the following validation cases:
     - Required parameters cannot be None
     - receipt_id must be an integer
@@ -2017,7 +2030,7 @@ def test_listReceiptLettersFromWord_invalid_parameters(
     - word_id must be an integer
     """
     client = DynamoClient(dynamodb_table)
-    
+
     # Prepare valid base parameters
     params = {
         "receipt_id": 1,
@@ -2025,10 +2038,10 @@ def test_listReceiptLettersFromWord_invalid_parameters(
         "line_id": 10,
         "word_id": 5,
     }
-    
+
     # Override the parameter being tested with invalid value
     params[param_name] = invalid_value
-    
+
     with pytest.raises(ValueError, match=expected_error):
         client.listReceiptLettersFromWord(**params)
 
@@ -2154,7 +2167,8 @@ def test_listReceiptLettersFromWord_client_errors(
     error_message: str,
     expected_error: str,
 ):
-    """Test that listReceiptLettersFromWord handles various DynamoDB client errors appropriately:
+    """Test that listReceiptLettersFromWord handles various DynamoDB client
+    errors appropriately:
     - ResourceNotFoundException
     - ProvisionedThroughputExceededException
     - ValidationException
@@ -2238,7 +2252,8 @@ def test_listReceiptLettersFromWord_pagination_errors(
     expected_error: str,
     query_number: int,
 ):
-    """Test that listReceiptLettersFromWord handles various DynamoDB client errors during pagination:
+    """Test that listReceiptLettersFromWord handles various DynamoDB client
+    errors during pagination:
     - ResourceNotFoundException
     - ProvisionedThroughputExceededException
     - ValidationException
@@ -2250,7 +2265,7 @@ def test_listReceiptLettersFromWord_pagination_errors(
     """
     client = DynamoClient(dynamodb_table)
     mock_client = mocker.Mock()
-    
+
     # First query succeeds with a LastEvaluatedKey
     first_response = {
         "Items": [
@@ -2283,7 +2298,7 @@ def test_listReceiptLettersFromWord_pagination_errors(
         ],
         "LastEvaluatedKey": {"key": "value"},
     }
-    
+
     # Second query fails with the specified error
     mock_client.query.side_effect = [
         first_response,
@@ -2306,6 +2321,6 @@ def test_listReceiptLettersFromWord_pagination_errors(
             line_id=sample_receipt_letter.line_id,
             word_id=sample_receipt_letter.word_id,
         )
-    
+
     # Verify that both queries were attempted
     assert mock_client.query.call_count == query_number
