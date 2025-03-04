@@ -295,6 +295,45 @@ class ReceiptLine:
             )
         )
 
+    def calculate_centroid(self) -> Tuple[float, float]:
+        """Calculates the centroid of the line.
+
+        Returns:
+            Tuple[float, float]: The (x, y) coordinates of the centroid.
+        """
+        x = (
+            self.top_right["x"]
+            + self.top_left["x"]
+            + self.bottom_right["x"]
+            + self.bottom_left["x"]
+        ) / 4
+        y = (
+            self.top_right["y"]
+            + self.top_left["y"]
+            + self.bottom_right["y"]
+            + self.bottom_left["y"]
+        ) / 4
+        return x, y
+
+    def is_point_in_bounding_box(self, x: float, y: float) -> bool:
+        """Determines if a point (x,y) is inside the bounding box of the line.
+
+        Args:
+            x (float): The x-coordinate of the point.
+            y (float): The y-coordinate of the point.
+
+        Returns:
+            bool: True if the point is inside the bounding box, False otherwise.
+        """
+        return (
+            self.bounding_box["x"]
+            <= x
+            <= self.bounding_box["x"] + self.bounding_box["width"]
+            and self.bounding_box["y"]
+            <= y
+            <= self.bounding_box["y"] + self.bounding_box["height"]
+        )
+
     def warp_transform(
         self,
         a: float,

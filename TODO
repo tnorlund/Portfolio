@@ -1,140 +1,72 @@
-# TODO
+# OCR Cleanup & Bounding Box Mapping Pipeline
 
-## Completed Tasks
-The following major components have been completed:
-- Infrastructure Setup with Pulumi
-- Wrapper Class Implementation
-- Receipt Trainer Package core functionality
-- Package Maintenance and structure refactoring
-- Most of Hyperparameter Optimization and Performance Optimization
-- Job definition format for LayoutLM training
+## 1. Re-run OCR on Cropped Receipts ✅
+- [x] **Prepare Cropped Receipt Images**
+  - [x] Confirm you have the corners (coordinates) for each cropped receipt.
+  - [x] List or index all cropped images to process.
+- [x] **Execute OCR on Cropped Images**
+  - [x] Run the OCR process on each cropped receipt.
+  - [x] Save the new OCR outputs with their bounding box coordinates.
+  - [x] Implemented in `refine_receipt_ocr` which downloads receipt images from S3 and processes them with Apple Vision OCR.
 
-## 1. Package Improvements
+## 2. Map Original Bounding Boxes to Cleaned OCR Boxes ✅
+- [x] **Load Original OCR Labels**
+  - [x] Retrieve original bounding box labels (from first pass) for each receipt.
+  - [x] Implemented in `refine_receipt_ocr` which retrieves old receipt details using `client.getReceiptDetails`.
+- [x] **Design a Mapping Algorithm**
+  - [x] Developed an algorithm to match original bounding boxes with the new cleaned ones.
+    - [x] Using a combination of spatial matching and text similarity.
+    - [x] Handling one-to-one mapping with priority for human-validated tags.
+- [x] **Implement Mapping Logic**
+  - [x] For each original bounding box, find the best matching cleaned OCR box using multiple criteria:
+    - [x] Centroid proximity
+    - [x] Text matching (exact and partial)
+    - [x] Quadrilateral intersection
+    - [x] Vertical/horizontal alignment
+  - [x] Implemented in `process_ocr_results` function in the `process_tags_for_transfer` helper.
+- [x] **Validate the Mapped Bounding Boxes**
+  - [x] Debug output shows mapping success rates and reasons for matching.
+  - [x] Transfer rates for both human-validated and non-validated tags are reported.
 
-- [ ] Add more examples in the examples directory
-- [ ] Improve test coverage for all modules
-- [ ] Create comprehensive API documentation
-- [ ] Add installation and setup guides
-- [ ] Implement CI/CD pipeline for the package
-- [ ] Publish package to PyPI for easier installation
+## 3. Update Data in DynamoDB ✅
+- [x] **Plan Database Update**
+  - [x] Decided on a delete-and-recreate approach that preserves tag associations.
+  - [x] Implemented entity tracking for deletion and creation.
+- [x] **Implement Update Scripts**
+  - [x] Implemented `commit_ocr_changes` function that:
+    - [x] Deletes old entities (tags, letters, words, lines) in reverse hierarchy order
+    - [x] Creates new entities in proper hierarchy order (lines, words, letters, tags)
+    - [x] Uses batch operations for efficiency (reducing hundreds of operations to ~8)
+    - [x] Preserves human-validated tags with their metadata
+  - [x] Ensures updates maintain associations between receipts, lines, words, and letters.
+- [x] **Test Database Changes**
+  - [x] Added debug output to verify entity counts and relationships.
+  - [x] Implemented dry-run mode to validate before committing changes.
 
-## 2. Documentation
+## 4. Testing and Final Validation
+- [x] **Subset Testing**
+  - [x] Created example script (`refine_receipt_ocr_example.py`) to test on individual receipts.
+  - [x] Successfully ran dry-run tests on sample receipts.
+- [ ] **Scale to Production**
+  - [ ] Run the process on all receipts in batches.
+  - [ ] Monitor tag transfer rates and validate results.
+  - [ ] Create a periodic job to refresh OCR results if needed.
+- [ ] **Performance Monitoring**
+  - [ ] Track execution times for large-scale processing.
+  - [ ] Optimize any bottlenecks in the pipeline.
+  - [ ] Consider adding CloudWatch metrics for monitoring.
+- [ ] **Final Documentation**
+  - [ ] Document the entire pipeline for future reference.
+  - [ ] Create visualization tools to show before/after comparisons.
+  - [ ] Train team members on the new OCR refinement process.
 
-- [x] Add docstrings and type hints
-- [x] Create README with usage examples
-- [x] Add API documentation
-- [x] Create training guide
-- [ ] Add architecture diagrams
-- [ ] Document performance benchmarks
-- [ ] Create troubleshooting guide
-
-## 3. Error Handling & Monitoring
-
-- [x] Add comprehensive error messages
-- [ ] Implement training monitoring
-- [ ] Add system resource monitoring
-- [ ] Implement automatic error recovery
-- [ ] Add error reporting dashboard
-- [ ] Create alert system for training issues
-
-## 4. Future Model Improvements
-
-- [ ] Experiment with different LayoutLM variants
-- [ ] Add support for custom model architectures
-- [ ] Implement model ensembling
-- [ ] Add model pruning capabilities
-- [ ] Support for model quantization
-- [ ] Add model interpretability tools
-
-## 5. Data Pipeline Enhancements
-
-- [ ] Add support for additional datasets
-- [ ] Implement online data augmentation
-- [ ] Add data quality metrics
-- [ ] Create data versioning system
-- [ ] Add support for custom data formats
-- [ ] Implement data cleaning pipeline
-
-## 6. Deployment
-
-- [ ] Create model serving pipeline
-- [ ] Add model compression for inference
-- [ ] Implement A/B testing framework
-- [ ] Add monitoring for deployed models
-- [ ] Create deployment automation tools
-- [ ] Add rollback capabilities
-
-## 7. CI/CD
-
-- [x] Set up GitHub Actions for automated deployment
-- [x] Configure stack-specific resources and environments (dev/prod)
-- [x] Implement secure key pair management for EC2 instances
-- [x] Add code quality checks (Black, Flake8)
-- [x] Optimize CI/CD workflow with caching
-- [x] Improve test coverage configuration
-- [ ] Create release automation
-- [ ] Implement security scanning
-
-## 8. Observability
-
-- [ ] Add detailed logging system
-- [ ] Create performance dashboards
-- [ ] Implement metrics collection
-- [ ] Add tracing capabilities
-- [ ] Create alerting system
-- [ ] Add debugging tools 
-
-## 9. Training Job Management
-
-- [x] Create job definition format (YAML/JSON)
-- [x] Implement job status tracking in DynamoDB
-- [x] Implement Queue management in DynamoDB
-- [x] Implement Instance tracking
-- [x] Build CLI tool for job submission/monitoring
-  - [x] Create commands for job submission
-  - [x] Add job status checking and monitoring
-  - [x] Implement job cancellation and modification
-- [x] Add support for dependency chains between jobs
-  - [x] Implement dependency validation
-  - [x] Add conditional execution based on dependency status
-  - [x] Create visualization for job dependency graphs
-
-## 10. Instance Coordination
-
-- [ ] Implement leader election for multi-instance coordination
-- [ ] Create shared state management system
-- [ ] Add heartbeat mechanism for instance health monitoring
-- [ ] Implement graceful handover on spot termination
-
-## 11. Launch Automation
-
-- [ ] Create standardized EC2 user-data script
-- [ ] Set up auto-pull from GitHub/CodeCommit on instance launch
-- [ ] Implement environment configuration from parameters store
-- [ ] Build instance bootstrapping with conda/pip dependencies
-- [ ] Add startup health checks and reporting
-- [ ] Create self-diagnostics for GPU availability and performance
-
-## 12. Containerization
-
-- [ ] Create Docker image with all dependencies pre-installed
-- [ ] Set up GPU support in container with NVIDIA Container Toolkit
-- [ ] Implement volume mounting for checkpoints and data
-- [ ] Build container registry integration (ECR)
-- [ ] Create versioning system for container images
-- [ ] Add container health monitoring
-
-## 13. Experiment Tracking
-
-- [x] Replace W&B with receipt_dynamo for metrics and job tracking
-- [ ] Create central dashboard for all training runs
-- [ ] Add resource utilization tracking per experiment
-- [ ] Implement cross-experiment comparison tools
-
-## 14. Cost Optimization
-
-- [ ] Set up budget alerts and guardrails
-- [ ] Implement instance type selection based on workload
-- [ ] Add automatic shutdown of idle instances
-- [ ] Create cost attribution per experiment/team
-- [ ] Build reporting tools for cost analysis 
+## 5. Future Enhancements (Optional)
+- [ ] **Confidence Scoring**
+  - [ ] Add confidence scores to tag transfers to help identify potentially problematic matches.
+  - [ ] Implement threshold-based flagging for manual review.
+- [ ] **Manual Override UI**
+  - [ ] Develop a simple UI for manually reviewing and correcting problematic tag transfers.
+  - [ ] Add capability to mark/flag specific receipts for review.
+- [ ] **OCR Quality Metrics**
+  - [ ] Implement metrics to measure and compare OCR quality between versions.
+  - [ ] Track improvement statistics over time.
