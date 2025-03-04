@@ -628,7 +628,7 @@ def test_addReceiptLetters_raises_unknown_error(
 
 
 @pytest.mark.integration
-def test_update_receipt_letter_success(
+def test_updateReceiptLetter_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_letter: ReceiptLetter,
 ):
@@ -652,7 +652,7 @@ def test_update_receipt_letter_success(
 
 
 @pytest.mark.integration
-def test_update_receipt_letter_raises_value_error_receipt_letter_none(
+def test_updateReceiptLetter_raises_value_error_receipt_letter_none(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """Test handling of ValueError in updateReceiptLetter."""
@@ -664,7 +664,7 @@ def test_update_receipt_letter_raises_value_error_receipt_letter_none(
 
 
 @pytest.mark.integration
-def test_update_receipt_letter_raises_value_error_receipt_letter_not_instance(
+def test_updateReceiptLetter_raises_value_error_receipt_letter_not_instance(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """Test handling of ValueError in updateReceiptLetter."""
@@ -677,7 +677,7 @@ def test_update_receipt_letter_raises_value_error_receipt_letter_not_instance(
 
 
 @pytest.mark.integration
-def test_update_receipt_letter_raises_conditional_check_failed(
+def test_updateReceiptLetter_raises_conditional_check_failed(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """Test handling of ConditionalCheckFailedException in
@@ -688,7 +688,7 @@ def test_update_receipt_letter_raises_conditional_check_failed(
 
 
 @pytest.mark.integration
-def test_update_receipt_letter_raises_provisioned_throughput_exceeded(
+def test_updateReceiptLetter_raises_provisioned_throughput_exceeded(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """Test handling of ProvisionedThroughputExceededException in
@@ -717,7 +717,7 @@ def test_update_receipt_letter_raises_provisioned_throughput_exceeded(
 
 
 @pytest.mark.integration
-def test_update_receipt_letter_raises_internal_server_error(
+def test_updateReceiptLetter_raises_internal_server_error(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """Test handling of InternalServerError in updateReceiptLetter."""
@@ -741,7 +741,7 @@ def test_update_receipt_letter_raises_internal_server_error(
 
 
 @pytest.mark.integration
-def test_update_receipt_letter_raises_resource_not_found(
+def test_updateReceiptLetter_raises_resource_not_found(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """Test handling of ResourceNotFoundException in updateReceiptLetter."""
@@ -849,7 +849,7 @@ def test_updateReceiptLetter_raises_unknown_error(
 
 
 @pytest.mark.integration
-def test_update_receipt_letters(
+def test_updateReceiptLetters_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_letter: ReceiptLetter,
 ):
@@ -898,7 +898,7 @@ def test_update_receipt_letters(
 
 
 @pytest.mark.integration
-def test_update_receipt_letters_with_large_batch(
+def test_updateReceiptLetters_with_large_batch(
     dynamodb_table, sample_receipt_letter
 ):
     """Test that updateReceiptLetters handles batches larger than 25 items."""
@@ -946,7 +946,7 @@ def test_update_receipt_letters_with_large_batch(
 
 
 @pytest.mark.integration
-def test_update_receipt_letters_raises_resource_not_found(
+def test_updateReceiptLetters_raises_resource_not_found(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """Test handling of ResourceNotFoundException in updateReceiptLetters."""
@@ -973,7 +973,7 @@ def test_update_receipt_letters_raises_resource_not_found(
 
 
 @pytest.mark.integration
-def test_update_receipt_letters_raises_transaction_canceled(
+def test_updateReceiptLetters_raises_transaction_canceled(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """Test handling of TransactionCanceledException in
@@ -1005,7 +1005,7 @@ def test_update_receipt_letters_raises_transaction_canceled(
 
 
 @pytest.mark.integration
-def test_update_receipt_letters_raises_value_error_letters_none(
+def test_updateReceiptLetters_raises_value_error_letters_none(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """
@@ -1023,7 +1023,7 @@ def test_update_receipt_letters_raises_value_error_letters_none(
 
 
 @pytest.mark.integration
-def test_update_receipt_letters_raises_value_error_letters_not_list(
+def test_updateReceiptLetters_raises_value_error_letters_not_list(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """Test ValueError when letters parameter is not a list.
@@ -1055,7 +1055,7 @@ def test_updateReceiptLetters_error_invalid_letter_types(
 
 
 @pytest.mark.integration
-def test_update_receipt_letters_raises_value_error_letter_not_found(
+def test_updateReceiptLetters_raises_value_error_letter_not_found(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """Test ValueError when letter is not found.
@@ -1073,7 +1073,7 @@ def test_update_receipt_letters_raises_value_error_letter_not_found(
 
 
 @pytest.mark.integration
-def test_update_receipt_letters_raises_internal_server_error(
+def test_updateReceiptLetters_raises_internal_server_error(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """Test handling of InternalServerError in updateReceiptLetters."""
@@ -1098,7 +1098,7 @@ def test_update_receipt_letters_raises_internal_server_error(
 
 
 @pytest.mark.integration
-def test_update_receipt_letters_raises_provisioned_throughput_exceeded(
+def test_updateReceiptLetters_raises_provisioned_throughput_exceeded(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """Test handling of ProvisionedThroughputExceededException in
@@ -1752,7 +1752,7 @@ def test_deleteReceiptLetters_raises_unknown_error(
 
 
 @pytest.mark.integration
-def test_get_receipt_letter_success(
+def test_getReceiptLetter_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_letter: ReceiptLetter,
 ):
@@ -1774,7 +1774,7 @@ def test_get_receipt_letter_success(
 
 
 @pytest.mark.integration
-def test_get_receipt_letter_raises_value_error_receipt_id_none(
+def test_getReceiptLetter_raises_value_error_receipt_id_none(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """Test handling of ValueError in getReceiptLetter when receipt_id is
@@ -1798,7 +1798,7 @@ def test_get_receipt_letter_raises_value_error_receipt_id_none(
 
 
 @pytest.mark.integration
-def test_get_receipt_letter_raises_value_error_receipt_id_not_integer(
+def test_getReceiptLetter_raises_value_error_receipt_id_not_integer(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """Test handling of ValueError in getReceiptLetter when receipt_id is not
@@ -1819,7 +1819,7 @@ def test_get_receipt_letter_raises_value_error_receipt_id_not_integer(
 
 
 @pytest.mark.integration
-def test_get_receipt_letter_raises_value_error_image_id_none(
+def test_getReceiptLetter_raises_value_error_image_id_none(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """Test handling of ValueError in getReceiptLetter when image_id is None.
@@ -1841,7 +1841,7 @@ def test_get_receipt_letter_raises_value_error_image_id_none(
 
 
 @pytest.mark.integration
-def test_get_receipt_letter_raises_value_error_image_id_not_uuid(
+def test_getReceiptLetter_raises_value_error_image_id_not_uuid(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """Test handling of ValueError in getReceiptLetter when image_id is not a
@@ -1862,7 +1862,7 @@ def test_get_receipt_letter_raises_value_error_image_id_not_uuid(
 
 
 @pytest.mark.integration
-def test_get_receipt_letter_raises_value_error_line_id_none(
+def test_getReceiptLetter_raises_value_error_line_id_none(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """Test handling of ValueError in getReceiptLetter when line_id is None."""
@@ -1880,7 +1880,7 @@ def test_get_receipt_letter_raises_value_error_line_id_none(
 
 
 @pytest.mark.integration
-def test_get_receipt_letter_raises_value_error_line_id_not_integer(
+def test_getReceiptLetter_raises_value_error_line_id_not_integer(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """Test handling of ValueError in getReceiptLetter when line_id is not an
@@ -1901,7 +1901,7 @@ def test_get_receipt_letter_raises_value_error_line_id_not_integer(
 
 
 @pytest.mark.integration
-def test_get_receipt_letter_raises_value_error_word_id_none(
+def test_getReceiptLetter_raises_value_error_word_id_none(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """Test handling of ValueError in getReceiptLetter when word_id is None."""
@@ -1919,7 +1919,7 @@ def test_get_receipt_letter_raises_value_error_word_id_none(
 
 
 @pytest.mark.integration
-def test_get_receipt_letter_raises_value_error_word_id_not_integer(
+def test_getReceiptLetter_raises_value_error_word_id_not_integer(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """Test handling of ValueError in getReceiptLetter when word_id is not an
@@ -1940,7 +1940,7 @@ def test_get_receipt_letter_raises_value_error_word_id_not_integer(
 
 
 @pytest.mark.integration
-def test_get_receipt_letter_raises_value_error_letter_id_none(
+def test_getReceiptLetter_raises_value_error_letter_id_none(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """Test handling of ValueError in getReceiptLetter when letter_id is None.
@@ -1962,7 +1962,7 @@ def test_get_receipt_letter_raises_value_error_letter_id_none(
 
 
 @pytest.mark.integration
-def test_get_receipt_letter_raises_value_error_letter_id_not_integer(
+def test_getReceiptLetter_raises_value_error_letter_id_not_integer(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """Test handling of ValueError in getReceiptLetter when letter_id is not an
@@ -1983,7 +1983,7 @@ def test_get_receipt_letter_raises_value_error_letter_id_not_integer(
 
 
 @pytest.mark.integration
-def test_get_receipt_letter_not_found(
+def test_getReceiptLetter_not_found(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_letter: ReceiptLetter,
 ):
@@ -2002,7 +2002,7 @@ def test_get_receipt_letter_not_found(
 
 
 @pytest.mark.integration
-def test_get_receipt_letter_invalid_receipt_id(
+def test_getReceiptLetter_invalid_receipt_id(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_letter: ReceiptLetter,
 ):
@@ -2018,7 +2018,7 @@ def test_get_receipt_letter_invalid_receipt_id(
 
 
 @pytest.mark.integration
-def test_get_receipt_letter_invalid_image_id(
+def test_getReceiptLetter_invalid_image_id(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_letter: ReceiptLetter,
 ):
@@ -2034,7 +2034,7 @@ def test_get_receipt_letter_invalid_image_id(
 
 
 @pytest.mark.integration
-def test_get_receipt_letter_invalid_line_id(
+def test_getReceiptLetter_invalid_line_id(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_letter: ReceiptLetter,
 ):
@@ -2050,7 +2050,7 @@ def test_get_receipt_letter_invalid_line_id(
 
 
 @pytest.mark.integration
-def test_get_receipt_letter_invalid_word_id(
+def test_getReceiptLetter_invalid_word_id(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_letter: ReceiptLetter,
 ):
@@ -2066,7 +2066,7 @@ def test_get_receipt_letter_invalid_word_id(
 
 
 @pytest.mark.integration
-def test_get_receipt_letter_invalid_letter_id(
+def test_getReceiptLetter_invalid_letter_id(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_letter: ReceiptLetter,
 ):
@@ -2272,7 +2272,7 @@ def test_getReceiptLetter_raises_resource_not_found(
 
 
 @pytest.mark.integration
-def test_receipt_letter_list(dynamodb_table: Literal["MyMockedTable"]):
+def test_listReceiptLetters(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
     letters = [
@@ -2306,7 +2306,7 @@ def test_receipt_letter_list(dynamodb_table: Literal["MyMockedTable"]):
 
 
 @pytest.mark.integration
-def test_receipt_letter_list_with_limit(
+def test_listReceiptLetters_with_limit(
     dynamodb_table: Literal["MyMockedTable"],
 ):
     # Arrange
@@ -2361,7 +2361,7 @@ def test_receipt_letter_list_with_limit(
 
 
 @pytest.mark.integration
-def test_receipt_letter_list_invalid_limit(
+def test_listReceiptLetters_invalid_limit(
     dynamodb_table: Literal["MyMockedTable"],
 ):
     client = DynamoClient(dynamodb_table)
@@ -2370,7 +2370,7 @@ def test_receipt_letter_list_invalid_limit(
 
 
 @pytest.mark.integration
-def test_receipt_letter_list_invalid_last_evaluated_key(
+def test_listReceiptLetters_invalid_last_evaluated_key(
     dynamodb_table: Literal["MyMockedTable"],
 ):
     client = DynamoClient(dynamodb_table)
@@ -2381,7 +2381,7 @@ def test_receipt_letter_list_invalid_last_evaluated_key(
 
 
 @pytest.mark.integration
-def test_receipt_letter_list_raises_resource_not_found_exception(
+def test_listReceiptLetters_raises_resource_not_found_exception(
     dynamodb_table, mocker
 ):
     """Test handling of ResourceNotFoundException in listReceiptLetters."""
@@ -2405,7 +2405,7 @@ def test_receipt_letter_list_raises_resource_not_found_exception(
 
 
 @pytest.mark.integration
-def test_receipt_letter_list_raises_validation_error(dynamodb_table, mocker):
+def test_listReceiptLetters_raises_validation_error(dynamodb_table, mocker):
     """Test handling of ValidationException in listReceiptLetters."""
     client = DynamoClient(dynamodb_table)
     mock_client = mocker.patch.object(
@@ -2429,7 +2429,7 @@ def test_receipt_letter_list_raises_validation_error(dynamodb_table, mocker):
 
 
 @pytest.mark.integration
-def test_receipt_letter_list_raises_internal_server_error(
+def test_listReceiptLetters_raises_internal_server_error(
     dynamodb_table, mocker
 ):
     """Test handling of InternalServerError in listReceiptLetters."""
@@ -2453,7 +2453,7 @@ def test_receipt_letter_list_raises_internal_server_error(
 
 
 @pytest.mark.integration
-def test_receipt_letter_list_raises_provisioned_throughput_exceeded(
+def test_listReceiptLetters_raises_provisioned_throughput_exceeded(
     dynamodb_table, mocker
 ):
     """Test handling of ProvisionedThroughputExceededException in
@@ -2482,7 +2482,7 @@ def test_receipt_letter_list_raises_provisioned_throughput_exceeded(
 
 
 @pytest.mark.integration
-def test_receipt_letter_list_with_pagination(
+def test_listReceiptLetters_with_pagination(
     dynamodb_table: Literal["MyMockedTable"],
 ):
     """Test pagination in listReceiptLetters with more than 25 items."""
@@ -2884,7 +2884,7 @@ def test_listReceiptLettersFromWord_raises_validation_error(
 
 
 @pytest.mark.integration
-def test_list_receipt_letters_from_word_with_pagination(
+def test_listReceiptLettersFromWord_with_pagination(
     dynamodb_table: Literal["MyMockedTable"], mocker
 ):
     """Test listReceiptLettersFromWord with pagination."""
@@ -2939,7 +2939,7 @@ def test_list_receipt_letters_from_word_with_pagination(
 
 
 @pytest.mark.integration
-def test_list_receipt_letters_from_word_raises_provisioned_throughput_exceeded(
+def test_listReceiptLettersFromWord_raises_provisioned_throughput_exceeded(
     dynamodb_table: Literal["MyMockedTable"], mocker
 ):
     """Test handling of ProvisionedThroughputExceededException in
@@ -2974,7 +2974,7 @@ def test_list_receipt_letters_from_word_raises_provisioned_throughput_exceeded(
 
 
 @pytest.mark.integration
-def test_list_receipt_letters_from_word_raises_validation_error(
+def test_listReceiptLettersFromWord_raises_validation_error(
     dynamodb_table: Literal["MyMockedTable"], mocker
 ):
     """Test handling of ValidationException in listReceiptLettersFromWord."""
@@ -3006,7 +3006,7 @@ def test_list_receipt_letters_from_word_raises_validation_error(
 
 
 @pytest.mark.integration
-def test_list_receipt_letters_from_word_raises_internal_server_error(
+def test_listReceiptLettersFromWord_raises_internal_server_error(
     dynamodb_table: Literal["MyMockedTable"], mocker
 ):
     """Test handling of InternalServerError in listReceiptLettersFromWord."""
@@ -3036,7 +3036,7 @@ def test_list_receipt_letters_from_word_raises_internal_server_error(
 
 
 @pytest.mark.integration
-def test_list_receipt_letters_from_word_raises_unknown_error(
+def test_listReceiptLettersFromWord_raises_unknown_error(
     dynamodb_table: Literal["MyMockedTable"], mocker
 ):
     """Test handling of unknown error in listReceiptLettersFromWord."""
@@ -3068,7 +3068,7 @@ def test_list_receipt_letters_from_word_raises_unknown_error(
 
 
 @pytest.mark.integration
-def test_receipt_letter_list_pagination_resource_not_found(
+def test_listReceiptLetters_pagination_resource_not_found(
     dynamodb_table, mocker
 ):
     """Test handling of ResourceNotFoundException during pagination in
@@ -3145,7 +3145,7 @@ def test_receipt_letter_list_pagination_resource_not_found(
 
 
 @pytest.mark.integration
-def test_receipt_letter_list_pagination_unexpected_error(
+def test_listReceiptLetters_pagination_unexpected_error(
     dynamodb_table, mocker
 ):
     """Test handling of unexpected error during pagination in
@@ -3220,7 +3220,7 @@ def test_receipt_letter_list_pagination_unexpected_error(
 
 
 @pytest.mark.integration
-def test_list_receipt_letters_from_word_validation_error(
+def test_listReceiptLettersFromWord_validation_error(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """Test ValidationException in first query of
@@ -3266,7 +3266,7 @@ def test_list_receipt_letters_from_word_validation_error(
 
 
 @pytest.mark.integration
-def test_list_receipt_letters_from_word_internal_server_error(
+def test_listReceiptLettersFromWord_internal_server_error(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """Test InternalServerError in first query of
@@ -3294,7 +3294,7 @@ def test_list_receipt_letters_from_word_internal_server_error(
 
 
 @pytest.mark.integration
-def test_list_receipt_letters_from_word_pagination_access_denied(
+def test_listReceiptLettersFromWord_pagination_access_denied(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """Test AccessDeniedException during pagination."""
@@ -3361,7 +3361,7 @@ def test_list_receipt_letters_from_word_pagination_access_denied(
 
 
 @pytest.mark.integration
-def test_list_receipt_letters_from_word_pagination_validation(
+def test_listReceiptLettersFromWord_pagination_validation(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """Test ValidationException during pagination."""
@@ -3429,7 +3429,7 @@ def test_list_receipt_letters_from_word_pagination_validation(
 
 
 @pytest.mark.integration
-def test_list_receipt_letters_from_word_pagination_internal_server_error(
+def test_listReceiptLettersFromWord_pagination_internal_server_error(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """Test InternalServerError during pagination."""
@@ -3495,7 +3495,7 @@ def test_list_receipt_letters_from_word_pagination_internal_server_error(
 
 
 @pytest.mark.integration
-def test_list_receipt_letters_from_word_pagination_throughput_exceeded(
+def test_listReceiptLettersFromWord_pagination_throughput_exceeded(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """Test ProvisionedThroughputExceededException during pagination."""
@@ -3561,7 +3561,7 @@ def test_list_receipt_letters_from_word_pagination_throughput_exceeded(
 
 
 @pytest.mark.integration
-def test_list_receipt_letters_from_word_second_query_validation_error(
+def test_listReceiptLettersFromWord_second_query_validation_error(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """Test ValidationException in second query of
@@ -3630,7 +3630,7 @@ def test_list_receipt_letters_from_word_second_query_validation_error(
 
 
 @pytest.mark.integration
-def test_list_receipt_letters_from_word_second_query_internal_server_error(
+def test_listReceiptLettersFromWord_second_query_internal_server_error(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """Test InternalServerError in second query of
@@ -3697,7 +3697,7 @@ def test_list_receipt_letters_from_word_second_query_internal_server_error(
 
 
 @pytest.mark.integration
-def test_receipt_letter_list_pagination_resource_not_found_second_query(
+def test_listReceiptLetters_pagination_resource_not_found_second_query(
     dynamodb_table, mocker
 ):
     """Test handling of ResourceNotFoundException during pagination in
@@ -3767,7 +3767,7 @@ def test_receipt_letter_list_pagination_resource_not_found_second_query(
 
 
 @pytest.mark.integration
-def test_receipt_letter_list_multiple_pages(dynamodb_table, mocker):
+def test_listReceiptLetters_multiple_pages(dynamodb_table, mocker):
     """Test successful pagination through multiple pages in
     listReceiptLetters."""
     client = DynamoClient(dynamodb_table)
@@ -3870,7 +3870,7 @@ def test_receipt_letter_list_multiple_pages(dynamodb_table, mocker):
 
 
 @pytest.mark.integration
-def test_receipt_letter_list_raises_internal_server_error_first_query(
+def test_listReceiptLetters_raises_internal_server_error_first_query(
     dynamodb_table, mocker
 ):
     """Test handling of InternalServerError in listReceiptLetters first
@@ -3895,7 +3895,7 @@ def test_receipt_letter_list_raises_internal_server_error_first_query(
 
 
 @pytest.mark.integration
-def test_receipt_letter_list_raises_validation_error_first_query(
+def test_listReceiptLetters_raises_validation_error_first_query(
     dynamodb_table, mocker
 ):
     """Test handling of ValidationException in listReceiptLetters first
