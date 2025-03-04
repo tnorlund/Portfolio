@@ -2272,7 +2272,7 @@ def test_getReceiptLetter_raises_resource_not_found(
 
 
 @pytest.mark.integration
-def test_listReceiptLetters(dynamodb_table: Literal["MyMockedTable"]):
+def test_listReceiptLetters_success(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
     letters = [
