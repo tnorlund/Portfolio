@@ -505,51 +505,79 @@ def test_updateReceiptLetter_success(
 
 
 @pytest.mark.integration
-def test_updateReceiptLetter_raises_value_error_receipt_letter_none(
-    dynamodb_table, sample_receipt_letter, mocker
+@pytest.mark.parametrize(
+    "invalid_input,expected_error",
+    [
+        (None, "letter parameter is required and cannot be None."),
+        (
+            "not a ReceiptLetter",
+            "letter must be an instance of the ReceiptLetter class.",
+        ),
+    ],
+)
+def test_updateReceiptLetter_invalid_parameters(
+    dynamodb_table,
+    sample_receipt_letter,
+    mocker,
+    invalid_input,
+    expected_error,
 ):
-    """Test handling of ValueError in updateReceiptLetter."""
+    """Test handling of ValueError in updateReceiptLetter with invalid parameters."""
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(
-        ValueError, match="letter parameter is required and cannot be None."
-    ):
-        client.updateReceiptLetter(None)
+    with pytest.raises(ValueError, match=expected_error):
+        client.updateReceiptLetter(invalid_input)
 
 
 @pytest.mark.integration
-def test_updateReceiptLetter_raises_value_error_receipt_letter_not_instance(
-    dynamodb_table, sample_receipt_letter, mocker
+@pytest.mark.parametrize(
+    "error_code,error_message,expected_error",
+    [
+        (
+            "ConditionalCheckFailedException",
+            "Item does not exist",
+            "ReceiptLetter with ID",
+        ),
+        (
+            "ProvisionedThroughputExceededException",
+            "Provisioned throughput exceeded",
+            "Provisioned throughput exceeded",
+        ),
+        (
+            "InternalServerError",
+            "Internal server error",
+            "Internal server error",
+        ),
+        (
+            "ResourceNotFoundException",
+            "Table not found",
+            "Could not update ReceiptLetter in the database",
+        ),
+        (
+            "ValidationException",
+            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
+        ),
+        (
+            "AccessDeniedException",
+            "Access denied",
+            "Access denied",
+        ),
+        (
+            "UnknownError",
+            "Unknown error occurred",
+            "Could not update ReceiptLetter in the database",
+        ),
+    ],
+)
+def test_updateReceiptLetter_client_errors(
+    dynamodb_table,
+    sample_receipt_letter,
+    mocker,
+    error_code,
+    error_message,
+    expected_error,
 ):
-    """Test handling of ValueError in updateReceiptLetter."""
-    client = DynamoClient(dynamodb_table)
-    with pytest.raises(
-        ValueError,
-        match="letter must be an instance of the ReceiptLetter class.",
-    ):
-        client.updateReceiptLetter("not a ReceiptLetter")
-
-
-@pytest.mark.integration
-def test_updateReceiptLetter_raises_conditional_check_failed(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test handling of ConditionalCheckFailedException in
-    updateReceiptLetter."""
-    client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="ReceiptLetter with ID"):
-        client.updateReceiptLetter(sample_receipt_letter)
-
-
-@pytest.mark.integration
-def test_updateReceiptLetter_raises_provisioned_throughput_exceeded(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test handling of ProvisionedThroughputExceededException in
-    updateReceiptLetter.
-
-    Verifies that the method raises an Exception when DynamoDB returns a
-    ProvisionedThroughputExceededException.
-    """
+    """Test handling of various client errors in updateReceiptLetter."""
     client = DynamoClient(dynamodb_table)
     mock_put = mocker.patch.object(
         client._client,
@@ -557,56 +585,8 @@ def test_updateReceiptLetter_raises_provisioned_throughput_exceeded(
         side_effect=ClientError(
             {
                 "Error": {
-                    "Code": "ProvisionedThroughputExceededException",
-                    "Message": "Provisioned throughput exceeded",
-                }
-            },
-            "PutItem",
-        ),
-    )
-    with pytest.raises(Exception, match="Provisioned throughput exceeded"):
-        client.updateReceiptLetter(sample_receipt_letter)
-    mock_put.assert_called_once()
-
-
-@pytest.mark.integration
-def test_updateReceiptLetter_raises_internal_server_error(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test handling of InternalServerError in updateReceiptLetter."""
-    client = DynamoClient(dynamodb_table)
-    mock_put = mocker.patch.object(
-        client._client,
-        "put_item",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": "InternalServerError",
-                    "Message": "Internal server error",
-                }
-            },
-            "PutItem",
-        ),
-    )
-    with pytest.raises(Exception, match="Internal server error"):
-        client.updateReceiptLetter(sample_receipt_letter)
-    mock_put.assert_called_once()
-
-
-@pytest.mark.integration
-def test_updateReceiptLetter_raises_resource_not_found(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test handling of ResourceNotFoundException in updateReceiptLetter."""
-    client = DynamoClient(dynamodb_table)
-    mock_put = mocker.patch.object(
-        client._client,
-        "put_item",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": "ResourceNotFoundException",
-                    "Message": "Table not found",
+                    "Code": error_code,
+                    "Message": error_message,
                 }
             },
             "PutItem",
@@ -614,86 +594,15 @@ def test_updateReceiptLetter_raises_resource_not_found(
     )
 
     with pytest.raises(
-        Exception, match="Could not update ReceiptLetter in the database"
+        (
+            Exception
+            if error_code != "ConditionalCheckFailedException"
+            else ValueError
+        ),
+        match=expected_error,
     ):
         client.updateReceiptLetter(sample_receipt_letter)
     mock_put.assert_called_once()
-
-
-@pytest.mark.integration
-def test_updateReceiptLetter_raises_validation_error(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test updateReceiptLetter raises ValidationException."""
-    # Arrange
-    client = DynamoClient(dynamodb_table)
-    mock_client = mocker.patch.object(client, "_client")
-    mock_client.put_item.side_effect = ClientError(
-        {
-            "Error": {
-                "Code": "ValidationException",
-                "Message": "One or more parameters were invalid",
-            }
-        },
-        "PutItem",
-    )
-
-    # Act & Assert
-    with pytest.raises(
-        Exception, match="One or more parameters given were invalid"
-    ):
-        client.updateReceiptLetter(sample_receipt_letter)
-    mock_client.put_item.assert_called_once()
-
-
-@pytest.mark.integration
-def test_updateReceiptLetter_raises_access_denied(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test updateReceiptLetter raises AccessDeniedException."""
-    # Arrange
-    client = DynamoClient(dynamodb_table)
-    mock_client = mocker.patch.object(client, "_client")
-    mock_client.put_item.side_effect = ClientError(
-        {
-            "Error": {
-                "Code": "AccessDeniedException",
-                "Message": "Access denied",
-            }
-        },
-        "PutItem",
-    )
-
-    # Act & Assert
-    with pytest.raises(Exception, match="Access denied"):
-        client.updateReceiptLetter(sample_receipt_letter)
-    mock_client.put_item.assert_called_once()
-
-
-@pytest.mark.integration
-def test_updateReceiptLetter_raises_unknown_error(
-    dynamodb_table, sample_receipt_letter, mocker
-):
-    """Test updateReceiptLetter raises unknown error."""
-    # Arrange
-    client = DynamoClient(dynamodb_table)
-    mock_client = mocker.patch.object(client, "_client")
-    mock_client.put_item.side_effect = ClientError(
-        {
-            "Error": {
-                "Code": "UnknownError",
-                "Message": "Unknown error occurred",
-            }
-        },
-        "PutItem",
-    )
-
-    # Act & Assert
-    with pytest.raises(
-        Exception, match="Could not update ReceiptLetter in the database"
-    ):
-        client.updateReceiptLetter(sample_receipt_letter)
-    mock_client.put_item.assert_called_once()
 
 
 # -------------------------------------------------------------------
