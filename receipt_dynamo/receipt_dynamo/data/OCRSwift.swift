@@ -78,6 +78,10 @@ struct Line: Codable {
     }
 }
 
+struct OCRResult: Codable {
+    let lines: [Line]
+}
+
 // MARK: - Helpers
 
 func log(_ message: String) {
@@ -92,9 +96,8 @@ func cgImage(from nsImage: NSImage) -> CGImage? {
     return bitmap.cgImage
 }
 
-func normalizedRect(from rectObs: VNRectangleObservation) -> NormalizedRect {
-    let bb = rectObs.boundingBox
-    return NormalizedRect(x: bb.origin.x, y: bb.origin.y, width: bb.size.width, height: bb.size.height)
+func normalizedRect(from boundingBox: CGRect) -> NormalizedRect {
+    NormalizedRect(x: boundingBox.origin.x, y: boundingBox.origin.y, width: boundingBox.size.width, height: boundingBox.size.height)
 }
 
 func codablePoint(from cgPoint: CGPoint) -> Point {
@@ -108,33 +111,33 @@ func angles(for rectObs: VNRectangleObservation) -> (degrees: Float, radians: Fl
     let deg = rad * 180.0 / .pi
     return (Float(deg), Float(rad))
 }
-
 func extractStructuredData(from text: String) -> ExtractedData? {
     let types: NSTextCheckingResult.CheckingType = [.date, .phoneNumber, .address, .link]
-    let detector = try? NSDataDetector(types: types.rawValue)
-    var extractedValue: ExtractedData? = nil
-    
-    detector?.matches(in: text, options: [], range: NSRange(location: 0, length: text.utf16.count)).forEach { match in
+    guard let detector = try? NSDataDetector(types: types.rawValue) else { return nil }
+
+    if let match = detector.firstMatch(in: text, options: [], range: NSRange(location: 0, length: text.utf16.count)) {
         if let date = match.date {
             let formatter = DateFormatter()
             formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-            extractedValue = ExtractedData(type: "date", value: formatter.string(from: date))
+            return ExtractedData(type: "date", value: formatter.string(from: date))
         } else if let phoneNumber = match.phoneNumber {
-            extractedValue = ExtractedData(type: "phone_number", value: phoneNumber)
+            return ExtractedData(type: "phone_number", value: phoneNumber)
         } else if let addressComponents = match.addressComponents {
-            extractedValue = ExtractedData(type: "address", value: addressComponents.map { "\($0.key): \($0.value)" }.joined(separator: ", "))
+            let formattedAddress = addressComponents.map { "\($0.key): \($0.value)" }.joined(separator: ", ")
+            return ExtractedData(type: "address", value: formattedAddress)
         } else if let url = match.url {
-            extractedValue = ExtractedData(type: "url", value: url.absoluteString)
+            return ExtractedData(type: "url", value: url.absoluteString)
         }
     }
-    return extractedValue
+    return nil
 }
+
+
 
 func performOCRSync(from imageURL: URL) throws -> [Line] {
     log("Loading image from \(imageURL.path)")
     guard let nsImage = NSImage(contentsOf: imageURL),
           let cgImg = cgImage(from: nsImage) else {
-        log("❌ Error: Unable to load image at \(imageURL.path)")
         throw NSError(domain: "OCRScript", code: -1, userInfo: [
             NSLocalizedDescriptionKey: "Unable to load image at \(imageURL.path)"
         ])
@@ -146,81 +149,90 @@ func performOCRSync(from imageURL: URL) throws -> [Line] {
     request.recognitionLevel = .accurate
     request.usesLanguageCorrection = true
 
-    do {
-        try requestHandler.perform([request])
-    } catch {
-        log("❌ OCR failed: \(error.localizedDescription)")
-        throw error
-    }
+    try requestHandler.perform([request])
 
     guard let observations = request.results, !observations.isEmpty else {
-        log("⚠️ Warning: No text recognized.")
+        log("⚠️ No text recognized.")
         return []
     }
 
     log("Processing recognized text")
-    let lines: [Line] = observations.compactMap { (obs: VNRecognizedTextObservation) -> Line? in
-        guard let candidate = obs.topCandidates(1).first else {
-            log("⚠️ Skipping observation with no text candidates.")
-            return nil
+    var lines: [Line] = []
+
+    for obs in observations {
+        guard let candidate = obs.topCandidates(1).first else { continue }
+
+        var words: [Word] = []
+        let lineText = candidate.string
+        var currentIndex = lineText.startIndex
+
+        for wordText in lineText.split(separator: " ") {
+            guard let range = lineText.range(of: wordText, range: currentIndex..<lineText.endIndex),
+                  let wordBox = try? candidate.boundingBox(for: range) else {
+                log("⚠️ Skipping word due to missing bounding box: \(wordText)")
+                continue
+            }
+
+            let letters: [Letter] = wordText.enumerated().compactMap { (i, char) in
+                let charStart = lineText.index(range.lowerBound, offsetBy: i)
+                let charEnd = lineText.index(after: charStart)
+                guard let letterBox = try? candidate.boundingBox(for: charStart..<charEnd) else {
+                    return nil
+                }
+                return Letter(
+                    text: String(char),
+                    boundingBox: normalizedRect(from: letterBox.boundingBox),
+                    topLeft: codablePoint(from: letterBox.topLeft),
+                    topRight: codablePoint(from: letterBox.topRight),
+                    bottomLeft: codablePoint(from: letterBox.bottomLeft),
+                    bottomRight: codablePoint(from: letterBox.bottomRight),
+                    angleDegrees: 0,
+                    angleRadians: 0,
+                    confidence: candidate.confidence
+                )
+            }
+
+            words.append(Word(
+                text: String(wordText),
+                boundingBox: normalizedRect(from: wordBox.boundingBox),
+                topLeft: codablePoint(from: wordBox.topLeft),
+                topRight: codablePoint(from: wordBox.topRight),
+                bottomLeft: codablePoint(from: wordBox.bottomLeft),
+                bottomRight: codablePoint(from: wordBox.bottomRight),
+                angleDegrees: 0,
+                angleRadians: 0,
+                confidence: candidate.confidence,
+                letters: letters,
+                extractedData: extractStructuredData(from: String(wordText))
+            ))
+
+            currentIndex = range.upperBound
         }
 
-        log("✅ Recognized text: \(candidate.string)")
-        return Line(
+        lines.append(Line(
             text: candidate.string,
-            boundingBox: normalizedRect(from: obs),
+            boundingBox: normalizedRect(from: obs.boundingBox),
             topLeft: codablePoint(from: obs.topLeft),
             topRight: codablePoint(from: obs.topRight),
             bottomLeft: codablePoint(from: obs.bottomLeft),
             bottomRight: codablePoint(from: obs.bottomRight),
-            angleDegrees: angles(for: obs).degrees,
-            angleRadians: angles(for: obs).radians,
+            angleDegrees: 0,
+            angleRadians: 0,
             confidence: candidate.confidence,
-            words: candidate.string.split(separator: " ").map { word in
-                let wordText = String(word)
-                return Word(
-                    text: wordText,
-                    boundingBox: normalizedRect(from: obs),
-                    topLeft: codablePoint(from: obs.topLeft),
-                    topRight: codablePoint(from: obs.topRight),
-                    bottomLeft: codablePoint(from: obs.bottomLeft),
-                    bottomRight: codablePoint(from: obs.bottomRight),
-                    angleDegrees: angles(for: obs).degrees,
-                    angleRadians: angles(for: obs).radians,
-                    confidence: candidate.confidence,
-                    letters: wordText.map { char in
-                        Letter(
-                            text: String(char),
-                            boundingBox: normalizedRect(from: obs),
-                            topLeft: codablePoint(from: obs.topLeft),
-                            topRight: codablePoint(from: obs.topRight),
-                            bottomLeft: codablePoint(from: obs.bottomLeft),
-                            bottomRight: codablePoint(from: obs.bottomRight),
-                            angleDegrees: angles(for: obs).degrees,
-                            angleRadians: angles(for: obs).radians,
-                            confidence: candidate.confidence
-                        )
-                    },
-                    extractedData: extractStructuredData(from: wordText)
-                )
-            }
-        )
+            words: words
+        ))
     }
+
     log("✅ OCR processing complete. Found \(lines.count) lines.")
     return lines
 }
 
 
-
 // MARK: - Main Execution
-
-struct OCRResult: Codable {
-    let lines: [Line]
-}
 
 let args = CommandLine.arguments
 guard args.count >= 3 else {
-    print("Usage: \(args[0]) <output_directory> <image_path1> <image_path2> ... <image_pathN>")
+    print("Usage: \(args[0]) <outputDirectory> <imagePath1> <imagePath2> ...")
     exit(EXIT_FAILURE)
 }
 
@@ -237,7 +249,7 @@ if !fileManager.fileExists(atPath: outputDirectory, isDirectory: &isDir) {
         exit(EXIT_FAILURE)
     }
 } else if !isDir.boolValue {
-    print("❌ The path \(outputDirectory) exists but is not a directory.")
+    print("❌ Path \(outputDirectory) exists but isn't a directory.")
     exit(EXIT_FAILURE)
 }
 
@@ -248,12 +260,11 @@ for imagePath in imagePaths {
 
     do {
         let lines = try performOCRSync(from: imageURL)
-
-        let ocrResult = OCRResult(lines: lines)  // Wrap the result in OCRResult struct
+        let ocrResult = OCRResult(lines: lines)
         let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
         encoder.outputFormatting = .prettyPrinted
         let jsonData = try encoder.encode(ocrResult)
-
         try jsonData.write(to: outJsonURL)
 
         print("✅ OCR completed for \(imagePath).")

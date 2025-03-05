@@ -815,6 +815,7 @@ class Word:
         yield "angle_degrees", self.angle_degrees
         yield "angle_radians", self.angle_radians
         yield "confidence", self.confidence
+        yield "extracted_data", self.extracted_data
         yield "tags", self.tags
         yield "histogram", self.histogram
         yield "num_chars", self.num_chars
@@ -844,6 +845,7 @@ class Word:
             and self.angle_radians == other.angle_radians
             and self.confidence == other.confidence
             and self.tags == other.tags
+            and self.extracted_data == other.extracted_data
         )
 
     def __hash__(self) -> int:
