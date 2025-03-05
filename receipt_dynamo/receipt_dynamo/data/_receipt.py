@@ -716,3 +716,79 @@ class _Receipt:
             raise ValueError(
                 "Could not list receipt details from the database"
             ) from e
+
+    def listReceiptAndWords(self, image_id: str, receipt_id: int) -> tuple[Receipt, list[ReceiptWord]]:
+        """List a receipt and its words using GSI3
+
+        Args:
+            image_id (str): The ID of the image to list receipts from
+            receipt_id (int): The ID of the receipt to list words from
+
+        Returns:
+            tuple[Receipt, list[ReceiptWord]]: A tuple containing:
+                - The receipt object
+                - List of receipt words sorted by line_id and word_id
+
+        Raises:
+            ValueError: When input parameters are invalid or if the receipt doesn't exist
+            Exception: For underlying DynamoDB errors
+        """
+        if image_id is None:
+            raise ValueError("Image ID is required")
+        if receipt_id is None:
+            raise ValueError("Receipt ID is required")
+        assert_valid_uuid(image_id)
+        if not isinstance(receipt_id, int):
+            raise ValueError("Receipt ID must be an integer")
+        if receipt_id < 0:
+            raise ValueError("Receipt ID must be positive")
+
+        try:
+            # Use GSI3 to get both receipt and words in a single query
+            response = self._client.query(
+                TableName=self.table_name,
+                IndexName="GSI3",
+                KeyConditionExpression="GSI3PK = :pk AND begins_with(GSI3SK, :sk)",
+                ExpressionAttributeValues={
+                    ":pk": {"S": f"IMAGE#{image_id}"},
+                    ":sk": {"S": f"RECEIPT#{receipt_id:05d}"},
+                },
+            )
+
+            receipt = None
+            words = []
+
+            # Process items
+            for item in response.get("Items", []):
+                item_type = item.get("TYPE", {}).get("S")
+                if item_type == "RECEIPT":
+                    receipt = itemToReceipt(item)
+                elif item_type == "RECEIPT_WORD":
+                    try:
+                        word = itemToReceiptWord(item)
+                        words.append(word)
+                    except ValueError as e:
+                        print(f"Error processing word item: {e}")
+                        continue
+
+            if not receipt:
+                raise ValueError(f"Receipt with ID {receipt_id} and Image ID '{image_id}' does not exist")
+
+            # Sort words by line_id and word_id
+            words.sort(key=lambda w: (w.line_id, w.word_id))
+            
+            return receipt, words
+
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ResourceNotFoundException":
+                raise ValueError(f"Receipt not found: {e}") from e
+            elif error_code == "ProvisionedThroughputExceededException":
+                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+            elif error_code == "InternalServerError":
+                raise Exception(f"Internal server error: {e}") from e
+            elif error_code == "ValidationException":
+                raise Exception(f"Validation exception: {e}") from e
+            else:
+                raise Exception(f"Error listing receipt and words: {e}") from e
+
