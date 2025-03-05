@@ -45,6 +45,7 @@ def _process_ocr_dict(
                 angle_degrees=word_data["angle_degrees"],
                 angle_radians=word_data["angle_radians"],
                 confidence=word_data["confidence"],
+                extracted_data=word_data.get("extracted_data", None),
             )
             words.append(word_obj)
 
