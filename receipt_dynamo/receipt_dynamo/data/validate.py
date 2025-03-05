@@ -41,19 +41,18 @@ def validate(table_name: str, image_id: str) -> None:
 
     # Get all relevant data from DynamoDB
     (
-        _,
-        _,
-        _,
+        images,
+        lines,
+        words,
         word_tags,
-        _,
+        letters,
         receipts,
-        _,
         receipt_lines,
         receipt_words,
         receipt_word_tags,
-        _,
-        _,
-        _,
+        receipt_letters,
+        gpt_initial_taggings,
+        gpt_validations,
     ) = dynamo_client.getImageDetails(image_id)
 
     if not receipts:

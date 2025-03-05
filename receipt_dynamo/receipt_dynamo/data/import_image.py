@@ -12,7 +12,6 @@ from receipt_dynamo.entities import (
     Receipt,
     ReceiptLetter,
     ReceiptLine,
-    ReceiptWindow,
     ReceiptWord,
     ReceiptWordTag,
     Word,
@@ -56,9 +55,6 @@ def import_image(table_name: str, json_path: str) -> None:
         "word_tags": [WordTag(**item) for item in data["word_tags"]],
         "letters": [Letter(**item) for item in data["letters"]],
         "receipts": [Receipt(**item) for item in data["receipts"]],
-        "receipt_windows": [
-            ReceiptWindow(**item) for item in data["receipt_windows"]
-        ],
         "receipt_lines": [
             ReceiptLine(**item) for item in data["receipt_lines"]
         ],
@@ -97,9 +93,6 @@ def import_image(table_name: str, json_path: str) -> None:
 
     if entities["receipts"]:
         dynamo_client.addReceipts(entities["receipts"])
-
-    if entities["receipt_windows"]:
-        dynamo_client.addReceiptWindows(entities["receipt_windows"])
 
     if entities["receipt_lines"]:
         dynamo_client.addReceiptLines(entities["receipt_lines"])

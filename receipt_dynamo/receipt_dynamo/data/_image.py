@@ -30,7 +30,6 @@ from receipt_dynamo import (
     itemToWordTag,
 )
 from receipt_dynamo.entities import assert_valid_uuid
-from receipt_dynamo.entities.receipt_window import itemToReceiptWindow
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 # So we chunk the items in groups of 25 for bulk operations.
@@ -396,7 +395,6 @@ class _Image:
         word_tags = []
         letters = []
         receipts = []
-        receipt_windows = []
         receipt_lines = []
         receipt_words = []
         receipt_word_tags = []
@@ -444,8 +442,6 @@ class _Image:
                     letters.append(itemToLetter(item))
                 elif item["TYPE"]["S"] == "RECEIPT":
                     receipts.append(itemToReceipt(item))
-                elif item["TYPE"]["S"] == "RECEIPT_WINDOW":
-                    receipt_windows.append(itemToReceiptWindow(item))
                 elif item["TYPE"]["S"] == "RECEIPT_LINE":
                     receipt_lines.append(itemToReceiptLine(item))
                 elif item["TYPE"]["S"] == "RECEIPT_WORD":
@@ -466,7 +462,6 @@ class _Image:
                 word_tags,
                 letters,
                 receipts,
-                receipt_windows,
                 receipt_lines,
                 receipt_words,
                 receipt_word_tags,

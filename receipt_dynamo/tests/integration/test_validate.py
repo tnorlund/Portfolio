@@ -109,18 +109,17 @@ def test_validate_receipt(dynamodb_table, mocker):
 
     # Get the updated data from DynamoDB
     (
-        _,
-        _,
-        _,
-        updated_word_tags,
-        _,
-        _,
-        _,
-        _,
-        _,
-        updated_receipt_word_tags,
-        _,
-        _,
+        images,
+        lines,
+        words,
+        word_tags,
+        letters,
+        receipts,
+        receipt_lines,
+        receipt_words,
+        receipt_word_tags,
+        receipt_letters,
+        gpt_initial_taggings,
         gpt_validations,
     ) = dynamo_client.getImageDetails(TEST_UUID)
 
@@ -138,7 +137,7 @@ def test_validate_receipt(dynamodb_table, mocker):
         matching_tag = next(
             (
                 tag
-                for tag in updated_receipt_word_tags
+                for tag in receipt_word_tags
                 if tag.word_id == word_data["word_id"]
                 and tag.line_id == word_data["line_id"]
                 and tag.tag == word_data["initial_tag"]
@@ -160,11 +159,11 @@ def test_validate_receipt(dynamodb_table, mocker):
         assert matching_tag.flag == word_data["flag"]
 
     # Verify word tags were updated with validation timestamps
-    for receipt_tag in updated_receipt_word_tags:
+    for receipt_tag in receipt_word_tags:
         matching_word_tag = next(
             (
                 tag
-                for tag in updated_word_tags
+                for tag in word_tags
                 if tag.word_id == receipt_tag.word_id
                 and tag.line_id == receipt_tag.line_id
                 and tag.tag == receipt_tag.tag

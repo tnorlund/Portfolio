@@ -300,7 +300,6 @@ def test_image_get_details(dynamodb_table, example_image):
         word_tags,
         letters,
         receipts,
-        receipt_windows,
         receipt_lines,
         receipt_words,
         receipt_word_tags,

@@ -184,6 +184,24 @@ class ReceiptWord:
                 )
             },
         }
+    
+    def gsi3_key(self) -> dict:
+        """
+        Generates the secondary index key for the receipt word.
+
+        Returns:
+            dict: The secondary index key for the receipt word.
+        """
+        return {
+            "GSI3PK": {"S": f"IMAGE#{self.image_id}"},
+            "GSI3SK": {
+                "S": (
+                    f"RECEIPT#{self.receipt_id:05d}#"
+                    f"LINE#{self.line_id:05d}#"
+                    f"WORD#{self.word_id:05d}"
+                )
+            },
+        }
 
     def to_item(self) -> dict:
         """
@@ -195,6 +213,7 @@ class ReceiptWord:
         item = {
             **self.key(),
             **self.gsi2_key(),
+            **self.gsi3_key(),
             "TYPE": {"S": "RECEIPT_WORD"},
             "text": {"S": self.text},
             "bounding_box": {

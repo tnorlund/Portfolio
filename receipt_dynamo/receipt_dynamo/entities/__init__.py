@@ -32,10 +32,6 @@ from receipt_dynamo.entities.receipt_line import (
     ReceiptLine,
     itemToReceiptLine,
 )  # noqa: F401
-from receipt_dynamo.entities.receipt_window import (
-    ReceiptWindow,
-    itemToReceiptWindow,
-)  # noqa: F401
 from receipt_dynamo.entities.receipt_word import (
     ReceiptWord,
     itemToReceiptWord,

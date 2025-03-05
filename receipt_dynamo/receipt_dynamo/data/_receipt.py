@@ -11,7 +11,6 @@ from receipt_dynamo.entities.receipt_letter import (
     itemToReceiptLetter,
 )
 from receipt_dynamo.entities.receipt_line import ReceiptLine, itemToReceiptLine
-from receipt_dynamo.entities.receipt_window import itemToReceiptWindow
 from receipt_dynamo.entities.receipt_word import ReceiptWord, itemToReceiptWord
 from receipt_dynamo.entities.receipt_word_tag import (
     ReceiptWordTag,
@@ -618,94 +617,6 @@ class _Receipt:
             return receipts
         except ClientError as e:
             raise ValueError(f"Error listing receipts from image: {e}")
-
-    def listReceiptWindowDetails(
-        self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[dict] = None,
-    ) -> Tuple[Dict[str, Dict], Optional[Dict]]:
-        """List receipts with their windows from GSI3.
-
-        Returns:
-            Tuple[Dict[str, Dict], Optional[Dict]]:
-            - A dict of {"<image_id>_<receipt_id>": {"receipt": Receipt,
-                    "windows": [ReceiptWindow, ...]},
-                ...}
-            - A LastEvaluatedKey or None if no more pages.
-        """
-
-        try:
-            query_params = {
-                "TableName": self.table_name,
-                "IndexName": "GSI3",
-                "KeyConditionExpression": "#pk = :pk_value",
-                "ExpressionAttributeNames": {"#pk": "GSI3PK"},
-                "ExpressionAttributeValues": {":pk_value": {"S": "RECEIPT"}},
-                "ScanIndexForward": True,
-            }
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
-
-            payload = {}
-            receipt_count = 0
-
-            while True:
-                response = self._client.query(**query_params)
-
-                for item in response["Items"]:
-                    item_type = item["TYPE"]["S"]
-
-                    if item_type == "RECEIPT":
-                        # Convert to our Receipt object
-                        receipt = itemToReceipt(item)
-                        key = f"{receipt.image_id}_{receipt.receipt_id}"
-
-                        # If we've hit our limit, build a LEK and return
-                        # immediately
-                        if limit is not None and receipt_count >= limit:
-                            last_evaluated_key = {
-                                "PK": item["PK"],
-                                "SK": item["SK"],
-                                "GSI3PK": item["GSI3PK"],
-                                "GSI3SK": item["GSI3SK"],
-                            }
-                            return payload, last_evaluated_key
-
-                        # Ensure there's an entry in payload for this key
-                        if key not in payload:
-                            payload[key] = {"receipt": receipt, "windows": []}
-                        else:
-                            # If an entry already exists, we just set the receipt
-                            # (in case we encountered windows first)
-                            payload[key]["receipt"] = receipt
-
-                        receipt_count += 1
-
-                    elif item_type == "RECEIPT_WINDOW":
-                        # Convert to our ReceiptWindow object
-                        window = itemToReceiptWindow(item)
-                        key = f"{window.image_id}_{window.receipt_id}"
-
-                        # If no entry yet for this receipt, create it with a placeholder
-                        # receipt = None, windows = []
-                        if key not in payload:
-                            payload[key] = {"receipt": None, "windows": []}
-
-                        payload[key]["windows"].append(window)
-
-                # If there are no more pages, we return what we have
-                if "LastEvaluatedKey" not in response:
-                    return payload, None
-
-                # Otherwise, continue paginating
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-
-        except ClientError as e:
-            raise ValueError(
-                "Could not list receipt windows from the database"
-            ) from e
 
     def listReceiptDetails(
         self,

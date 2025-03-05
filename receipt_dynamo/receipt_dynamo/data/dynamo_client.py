@@ -18,7 +18,6 @@ from receipt_dynamo.data._queue import _Queue
 from receipt_dynamo.data._receipt import _Receipt
 from receipt_dynamo.data._receipt_letter import _ReceiptLetter
 from receipt_dynamo.data._receipt_line import _ReceiptLine
-from receipt_dynamo.data._receipt_window import _ReceiptWindow
 from receipt_dynamo.data._receipt_word import _ReceiptWord
 from receipt_dynamo.data._receipt_word_tag import _ReceiptWordTag
 from receipt_dynamo.data._word import _Word
@@ -38,7 +37,6 @@ class DynamoClient(
     _ReceiptWordTag,
     _GPTValidation,
     _GPTInitialTagging,
-    _ReceiptWindow,
     _Job,
     _JobStatus,
     _JobResource,
