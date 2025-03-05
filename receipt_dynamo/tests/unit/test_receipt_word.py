@@ -553,6 +553,7 @@ def test_receipt_word_iter(example_receipt_word_with_tags):
         "tags",
         "histogram",
         "num_chars",
+        "extracted_data",
     }
     assert set(receipt_word_dict.keys()) == expected_keys
     assert receipt_word_dict["receipt_id"] == 1

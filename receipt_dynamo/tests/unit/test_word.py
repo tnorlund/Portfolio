@@ -1047,6 +1047,7 @@ def test_word_iter(example_word, example_word_with_tags):
         "histogram",
         "num_chars",
         "tags",
+        "extracted_data",
     }
     assert set(word_dict.keys()) == expected_keys
     assert word_dict["image_id"] == ("3f52804b-2fad-4e00-92c8-b593da3a8ed3")
