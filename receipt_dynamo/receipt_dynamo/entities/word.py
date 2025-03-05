@@ -55,6 +55,7 @@ class Word:
         angle_degrees: float,
         angle_radians: float,
         confidence: float,
+        extracted_data: str = None,
         tags: list[str] = None,
         histogram: dict = None,
         num_chars: int = None,
@@ -74,8 +75,8 @@ class Word:
             angle_degrees (float): The angle of the word in degrees.
             angle_radians (float): The angle of the word in radians.
             confidence (float): The confidence of the word (0 < confidence <= 1).
+            extracted_data (str, optional): The extracted data of the word provided by Apple's NL API.
             tags (list[str], optional): The tags of the word. Defaults to None.
-
         Raises:
             ValueError: If any parameter is of an invalid type or has an invalid value.
         """
@@ -128,6 +129,10 @@ class Word:
         if confidence <= 0.0 or confidence > 1.0:
             raise ValueError("confidence must be between 0 and 1")
         self.confidence = confidence
+
+        if extracted_data is not None and not isinstance(extracted_data, str):
+            raise ValueError("extracted_data must be a string")
+        self.extracted_data = extracted_data
 
         if tags is not None and not isinstance(tags, list):
             raise ValueError("tags must be a list")
@@ -217,6 +222,11 @@ class Word:
             "angle_degrees": {"N": _format_float(self.angle_degrees, 18, 20)},
             "angle_radians": {"N": _format_float(self.angle_radians, 18, 20)},
             "confidence": {"N": _format_float(self.confidence, 2, 2)},
+            "extracted_data": (
+                {"S": self.extracted_data}
+                if self.extracted_data
+                else {"NULL": True}
+            ),
             "histogram": {
                 "M": {
                     k: {"N": _format_float(v, 10, 12)}
@@ -852,6 +862,7 @@ class Word:
                 self.angle_radians,
                 self.confidence,
                 tuple(self.tags),
+                self.extracted_data,
             )
         )
 
@@ -916,6 +927,11 @@ def itemToWord(item: dict) -> Word:
             angle_radians=float(item["angle_radians"]["N"]),
             confidence=float(item["confidence"]["N"]),
             tags=item.get("tags", {}).get("SS", []),
+            extracted_data=(
+                None 
+                if "NULL" in item.get("extracted_data", {})
+                else item.get("extracted_data", {}).get("S")
+            ),
         )
     except (KeyError, ValueError) as e:
         raise ValueError(f"Error converting item to Word: {e}")

@@ -33,6 +33,7 @@ class ReceiptWord:
         angle_degrees (float): The angle of the receipt word in degrees.
         angle_radians (float): The angle of the receipt word in radians.
         confidence (float): The confidence level of the receipt word (between 0 and 1).
+        extracted_data (str): The extracted data of the receipt word provided by Apple's NL API.
         tags (list[str]): Optional tags associated with the receipt word.
         histogram (dict): A histogram representing character frequencies in the text.
         num_chars (int): The number of characters in the receipt word.
@@ -53,6 +54,7 @@ class ReceiptWord:
         angle_degrees: float,
         angle_radians: float,
         confidence: float,
+        extracted_data: str = None,
         tags: list[str] = None,
         histogram: dict = None,
         num_chars: int = None,
@@ -132,6 +134,10 @@ class ReceiptWord:
         if confidence <= 0.0 or confidence > 1.0:
             raise ValueError("confidence must be between 0 and 1")
         self.confidence = confidence
+
+        if extracted_data is not None and not isinstance(extracted_data, str):
+            raise ValueError("extracted_data must be a string")
+        self.extracted_data = extracted_data
 
         if tags is not None and not isinstance(tags, list):
             raise ValueError("tags must be a list")
@@ -230,6 +236,11 @@ class ReceiptWord:
             "angle_degrees": {"N": _format_float(self.angle_degrees, 18, 20)},
             "angle_radians": {"N": _format_float(self.angle_radians, 18, 20)},
             "confidence": {"N": _format_float(self.confidence, 2, 2)},
+            "extracted_data": (
+                {"S": self.extracted_data}
+                if self.extracted_data
+                else {"NULL": True}
+            ),
             "histogram": {
                 "M": {k: {"N": str(v)} for k, v in self.histogram.items()}
             },
@@ -489,6 +500,7 @@ class ReceiptWord:
                 self.angle_radians,
                 self.confidence,
                 tuple(self.tags),
+                self.extracted_data,
             )
         )
 
@@ -592,6 +604,7 @@ def itemToReceiptWord(item: dict) -> ReceiptWord:
             angle_radians=float(item["angle_radians"]["N"]),
             confidence=float(item["confidence"]["N"]),
             tags=item.get("tags", {}).get("SS", []),
+            extracted_data=item.get("extracted_data", {}).get("S", None),
         )
     except (KeyError, ValueError) as e:
         raise ValueError("Error converting item to ReceiptWord") from e

@@ -378,6 +378,44 @@ def test_receipt_word_init_invalid_confidence():
 
 
 @pytest.mark.unit
+def test_receipt_word_init_invalid_extracted_data():
+    with pytest.raises(ValueError, match="extracted_data must be a string"):
+        ReceiptWord(
+            receipt_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=1,
+            word_id=1,
+            text="Test",
+            bounding_box={"x": 0.0, "y": 0.0, "width": 1.0, "height": 1.0},
+            top_right={"x": 1.0, "y": 2.0},
+            top_left={"x": 1.0, "y": 2.0},
+            bottom_right={"x": 1.0, "y": 2.0},
+            bottom_left={"x": 1.0, "y": 2.0},
+            angle_degrees=0.0,
+            angle_radians=0.0,
+            confidence=0.9,
+            extracted_data=1,
+        )
+    receipt = ReceiptWord(
+        receipt_id=1,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=1,
+        word_id=1,
+        text="Test",
+        bounding_box={"x": 0.0, "y": 0.0, "width": 1.0, "height": 1.0},
+        top_right={"x": 1.0, "y": 2.0},
+        top_left={"x": 1.0, "y": 2.0},
+        bottom_right={"x": 1.0, "y": 2.0},
+        bottom_left={"x": 1.0, "y": 2.0},
+        angle_degrees=0.0,
+        angle_radians=0.0,
+        confidence=0.9,
+        extracted_data="Test",
+    )
+    assert receipt.extracted_data == "Test"
+
+
+@pytest.mark.unit
 def test_receipt_word_init_invalid_tags():
     """Test that tags must be a list of strings."""
     with pytest.raises(ValueError, match="tags must be a list"):
