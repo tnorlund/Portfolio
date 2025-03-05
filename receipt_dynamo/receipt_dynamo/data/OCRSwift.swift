@@ -75,6 +75,35 @@ struct Line: Codable {
 
 // MARK: - Helpers
 
+func log(_ message: String) {
+    print("[LOG] \(message)")
+}
+
+func cgImage(from nsImage: NSImage) -> CGImage? {
+    guard let imageData = nsImage.tiffRepresentation,
+          let bitmap = NSBitmapImageRep(data: imageData) else {
+        return nil
+    }
+    return bitmap.cgImage
+}
+
+func normalizedRect(from rectObs: VNRectangleObservation) -> NormalizedRect {
+    let bb = rectObs.boundingBox
+    return NormalizedRect(x: bb.origin.x, y: bb.origin.y, width: bb.size.width, height: bb.size.height)
+}
+
+func codablePoint(from cgPoint: CGPoint) -> Point {
+    return Point(x: cgPoint.x, y: cgPoint.y)
+}
+
+func angles(for rectObs: VNRectangleObservation) -> (degrees: Float, radians: Float) {
+    let dx = rectObs.topRight.x - rectObs.topLeft.x
+    let dy = rectObs.topRight.y - rectObs.topLeft.y
+    let rad = atan2(dy, dx)
+    let deg = rad * 180.0 / .pi
+    return (Float(deg), Float(rad))
+}
+
 func extractStructuredData(from text: String) -> String? {
     let types: NSTextCheckingResult.CheckingType = [.date, .phoneNumber, .address, .link]
     let detector = try? NSDataDetector(types: types.rawValue)
@@ -97,59 +126,41 @@ func extractStructuredData(from text: String) -> String? {
 }
 
 func performOCRSync(from imageURL: URL) throws -> [Line] {
+    log("Loading image from \(imageURL.path)")
     guard let nsImage = NSImage(contentsOf: imageURL),
           let cgImg = cgImage(from: nsImage) else {
+        log("❌ Error: Unable to load image at \(imageURL.path)")
         throw NSError(domain: "OCRScript", code: -1, userInfo: [
             NSLocalizedDescriptionKey: "Unable to load image at \(imageURL.path)"
         ])
     }
 
+    log("Performing OCR on image")
     let requestHandler = VNImageRequestHandler(cgImage: cgImg, options: [:])
     let request = VNRecognizeTextRequest()
     request.recognitionLevel = .accurate
     request.usesLanguageCorrection = true
 
-    try requestHandler.perform([request])
-
-    guard let observations = request.results, !observations.isEmpty else {
-        throw NSError(domain: "OCRScript", code: -2, userInfo: [
-            NSLocalizedDescriptionKey: "No text recognized."
-        ])
+    do {
+        try requestHandler.perform([request])
+    } catch {
+        log("❌ OCR failed: \(error.localizedDescription)")
+        throw error
     }
 
-    return observations.compactMap { obs in
-        guard let candidate = obs.topCandidates(1).first else { return nil }
-        
-        let words = candidate.string.split(separator: " ").map { word -> Word in
-            let wordText = String(word)
-            let wordRect = normalizedRect(from: obs)
-            return Word(
-                text: wordText,
-                boundingBox: wordRect,
-                topLeft: codablePoint(from: obs.topLeft),
-                topRight: codablePoint(from: obs.topRight),
-                bottomLeft: codablePoint(from: obs.bottomLeft),
-                bottomRight: codablePoint(from: obs.bottomRight),
-                angleDegrees: angles(for: obs).degrees,
-                angleRadians: angles(for: obs).radians,
-                confidence: candidate.confidence,
-                letters: wordText.map { char in
-                    Letter(
-                        text: String(char),
-                        boundingBox: wordRect,
-                        topLeft: codablePoint(from: obs.topLeft),
-                        topRight: codablePoint(from: obs.topRight),
-                        bottomLeft: codablePoint(from: obs.bottomLeft),
-                        bottomRight: codablePoint(from: obs.bottomRight),
-                        angleDegrees: angles(for: obs).degrees,
-                        angleRadians: angles(for: obs).radians,
-                        confidence: candidate.confidence
-                    )
-                },
-                extractedData: extractStructuredData(from: wordText)
-            )
+    guard let observations = request.results, !observations.isEmpty else {
+        log("⚠️ Warning: No text recognized.")
+        return []
+    }
+
+    log("Processing recognized text")
+    let lines: [Line] = observations.compactMap { (obs: VNRecognizedTextObservation) -> Line? in
+        guard let candidate = obs.topCandidates(1).first else {
+            log("⚠️ Skipping observation with no text candidates.")
+            return nil
         }
-        
+
+        log("✅ Recognized text: \(candidate.string)")
         return Line(
             text: candidate.string,
             boundingBox: normalizedRect(from: obs),
@@ -160,67 +171,36 @@ func performOCRSync(from imageURL: URL) throws -> [Line] {
             angleDegrees: angles(for: obs).degrees,
             angleRadians: angles(for: obs).radians,
             confidence: candidate.confidence,
-            words: words
+            words: candidate.string.split(separator: " ").map { word in
+                let wordText = String(word)
+                return Word(
+                    text: wordText,
+                    boundingBox: normalizedRect(from: obs),
+                    topLeft: codablePoint(from: obs.topLeft),
+                    topRight: codablePoint(from: obs.topRight),
+                    bottomLeft: codablePoint(from: obs.bottomLeft),
+                    bottomRight: codablePoint(from: obs.bottomRight),
+                    angleDegrees: angles(for: obs).degrees,
+                    angleRadians: angles(for: obs).radians,
+                    confidence: candidate.confidence,
+                    letters: wordText.map { char in
+                        Letter(
+                            text: String(char),
+                            boundingBox: normalizedRect(from: obs),
+                            topLeft: codablePoint(from: obs.topLeft),
+                            topRight: codablePoint(from: obs.topRight),
+                            bottomLeft: codablePoint(from: obs.bottomLeft),
+                            bottomRight: codablePoint(from: obs.bottomRight),
+                            angleDegrees: angles(for: obs).degrees,
+                            angleRadians: angles(for: obs).radians,
+                            confidence: candidate.confidence
+                        )
+                    },
+                    extractedData: extractStructuredData(from: wordText)
+                )
+            }
         )
     }
+    log("✅ OCR processing complete. Found \(lines.count) lines.")
+    return lines
 }
-
-
-// MARK: - Main
-
-// Example usage: 
-//   swift OCRSwift.swift <outputDirectory> <img1.png> <img2.png> ... <imgN.png>
-// No run loop needed—this script will exit on its own once done.
-
-let args = CommandLine.arguments
-guard args.count >= 3 else {
-    print("Usage: \(args[0]) <outputDirectory> <imagePath1> <imagePath2> ... <imagePathN>")
-    exit(EXIT_FAILURE)
-}
-
-let outputDirectory = args[1]
-let imagePaths = Array(args.dropFirst(2))
-
-// Make sure outputDirectory exists (create if needed)
-let fileManager = FileManager.default
-var isDir: ObjCBool = false
-if !fileManager.fileExists(atPath: outputDirectory, isDirectory: &isDir) {
-    do {
-        try fileManager.createDirectory(atPath: outputDirectory, withIntermediateDirectories: true)
-    } catch {
-        print("❌ Failed to create output directory: \(error.localizedDescription)")
-        exit(EXIT_FAILURE)
-    }
-} else if !isDir.boolValue {
-    print("❌ The path \(outputDirectory) exists but is not a directory.")
-    exit(EXIT_FAILURE)
-}
-
-// Process each image synchronously
-for imagePath in imagePaths {
-    let imageURL = URL(fileURLWithPath: imagePath)
-    // e.g. "myreceipt.png" => "myreceipt.json"
-    let baseName = imageURL.deletingPathExtension().lastPathComponent
-    let outJsonURL = URL(fileURLWithPath: "\(outputDirectory)/\(baseName).json")
-
-    do {
-        let lines = try performOCRSync(from: imageURL)
-
-        // Build the final JSON object
-        let ocrResult = OCRResult(lines: lines)
-        let encoder = JSONEncoder()
-        encoder.keyEncodingStrategy = .convertToSnakeCase
-        encoder.outputFormatting = .prettyPrinted
-        let jsonData = try encoder.encode(ocrResult)
-
-        // Write JSON to file
-        try jsonData.write(to: outJsonURL)
-
-        print("✅ OCR completed for \(imagePath).")
-        print("   → Wrote JSON to: \(outJsonURL.path)")
-    } catch {
-        print("❌ OCR failed for \(imagePath): \(error.localizedDescription)")
-    }
-}
-
-// The script naturally ends here, so `subprocess.run(...)` will return in Python.
