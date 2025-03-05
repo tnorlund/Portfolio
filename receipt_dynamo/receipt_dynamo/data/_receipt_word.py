@@ -51,23 +51,17 @@ class _ReceiptWord:
                     f"ReceiptWord with ID {word.word_id} already exists"
                 )
             elif error_code == "ResourceNotFoundException":
-                raise Exception(
-                    f"Could not add receipt word to DynamoDB: {e}"
-                ) from e
+                raise Exception("Could not add ReceiptWords to DynamoDB: ")
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise Exception("Provisioned throughput exceeded")
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise Exception("Internal server error")
             elif error_code == "ValidationException":
-                raise Exception(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
+                raise Exception("One or more parameters given were invalid")
             elif error_code == "AccessDeniedException":
-                raise Exception(f"Access denied: {e}") from e
+                raise Exception("Access denied")
             else:
-                raise Exception(
-                    f"Could not add ReceiptWord to DynamoDB: {e}"
-                ) from e
+                raise Exception("Could not add ReceiptWords to DynamoDB: ")
 
     def addReceiptWords(self, words: list[ReceiptWord]):
         """Adds multiple ReceiptWords to DynamoDB in batches of CHUNK_SIZE."""
@@ -95,9 +89,21 @@ class _ReceiptWord:
                     )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
-            raise ValueError(
-                f"Could not add ReceiptWords to the database: {e}"
-            )
+            error_code = e.response["Error"]["Code"]
+            if error_code == "ConditionalCheckFailedException":
+                raise ValueError("already exists")
+            elif error_code == "ResourceNotFoundException":
+                raise Exception("Could not add receipt word to DynamoDB")
+            elif error_code == "ProvisionedThroughputExceededException":
+                raise Exception("Provisioned throughput exceeded")
+            elif error_code == "InternalServerError":
+                raise Exception("Internal server error")
+            elif error_code == "ValidationException":
+                raise Exception("One or more parameters given were invalid")
+            elif error_code == "AccessDeniedException":
+                raise Exception("Access denied")
+            else:
+                raise Exception("Could not add receipt word to DynamoDB")
 
     def updateReceiptWord(self, word: ReceiptWord):
         """Updates an existing ReceiptWord in DynamoDB."""
