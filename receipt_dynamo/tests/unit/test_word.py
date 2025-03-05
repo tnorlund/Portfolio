@@ -8,18 +8,18 @@ from receipt_dynamo import Word, itemToWord
 def example_word():
     # fmt: off
     return Word(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        2,
-        3,
-        "test_string",
-        {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, },
-        {"x": 15.0, "y": 20.0},
-        {"x": 10.0, "y": 20.0},
-        {"x": 15.0, "y": 22.0},
-        {"x": 10.0, "y": 22.0},
-        1.0,
-        5.0,
-        0.90
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=2,
+        word_id=3,
+        text="test_string",
+        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, },
+        top_right={"x": 15.0, "y": 20.0},
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 15.0, "y": 22.0},
+        bottom_left={"x": 10.0, "y": 22.0},
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=0.90
     )
     # fmt: on
 
@@ -28,19 +28,19 @@ def example_word():
 def example_word_with_tags():
     # fmt: off
     return Word(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        2,
-        3,
-        "test_string",
-        {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, },
-        {"x": 15.0, "y": 20.0},
-        {"x": 10.0, "y": 20.0},
-        {"x": 15.0, "y": 22.0},
-        {"x": 10.0, "y": 22.0},
-        1.0,
-        5.0,
-        0.90,
-        ["tag1", "tag2"]
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=2,
+        word_id=3,
+        text="test_string",
+        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, },
+        top_right={"x": 15.0, "y": 20.0},
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 15.0, "y": 22.0},
+        bottom_left={"x": 10.0, "y": 22.0},
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=0.90,
+        tags=["tag1", "tag2"]
     )
     # fmt: on
 
@@ -353,7 +353,6 @@ def test_word_init_invalid_angle():
 @pytest.mark.unit
 def test_word_init_invalid_confidence():
     """Test that Word raises a ValueError if the confidence is not a float"""
-    # fmt: off
     with pytest.raises(ValueError, match="confidence must be a float"):
         Word(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -367,7 +366,7 @@ def test_word_init_invalid_confidence():
             {"x": 10.0, "y": 22.0},
             1.0,
             5.0,
-            "bad"
+            "bad",
         )
     word = Word(
         "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -381,7 +380,7 @@ def test_word_init_invalid_confidence():
         {"x": 10.0, "y": 22.0},
         1.0,
         5.0,
-        1
+        1,
     )
     assert word.confidence == 1.0
     with pytest.raises(ValueError, match="confidence must be between 0 and 1"):
@@ -397,32 +396,65 @@ def test_word_init_invalid_confidence():
             {"x": 10.0, "y": 22.0},
             1.0,
             5.0,
-            1.1
+            1.1,
         )
-    # fmt: on
 
+
+@pytest.mark.unit
+def test_word_init_invalid_extracted_data():
+    """Test that Word raises a ValueError if the extracted_data is not a dict"""
+    with pytest.raises(ValueError, match="extracted_data must be a dict"):
+        Word(
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=2,
+            word_id=3,
+            text="test_string",
+            bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+            top_right={"x": 15.0, "y": 20.0},
+            top_left={"x": 10.0, "y": 20.0},
+            bottom_right={"x": 15.0, "y": 22.0},
+            bottom_left={"x": 10.0, "y": 22.0},
+            angle_degrees=1.0,
+            angle_radians=5.0,
+            confidence=0.90,
+            extracted_data=1,
+        )
+    word = Word(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=2,
+        word_id=3,
+        text="test_string",
+        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+        top_right={"x": 15.0, "y": 20.0},
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 15.0, "y": 22.0},
+        bottom_left={"x": 10.0, "y": 22.0},
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=0.90,
+        extracted_data={"type": "test_type", "value": "test_value"},
+    )
+    assert word.extracted_data == {"type": "test_type", "value": "test_value"}
 
 @pytest.mark.unit
 def test_init_bad_tags():
     """Test that Word raises a ValueError if the tags is not a list"""
-    # fmt: off
     with pytest.raises(ValueError, match="tags must be a list"):
         Word(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            2,
-            3,
-            "test_string",
-            {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-            {"x": 15.0, "y": 20.0},
-            {"x": 10.0, "y": 20.0},
-            {"x": 15.0, "y": 22.0},
-            {"x": 10.0, "y": 22.0},
-            1.0,
-            5.0,
-            0.90,
-            "bad"
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=2,
+            word_id=3,
+            text="test_string",
+            bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+            top_right={"x": 15.0, "y": 20.0},
+            top_left={"x": 10.0, "y": 20.0},
+            bottom_right={"x": 15.0, "y": 22.0},
+            bottom_left={"x": 10.0, "y": 22.0},
+            angle_degrees=1.0,
+            angle_radians=5.0,
+            confidence=0.90,
+            tags="bad",
         )
-    # fmt: on
 
 
 @pytest.mark.unit
@@ -1015,6 +1047,7 @@ def test_word_iter(example_word, example_word_with_tags):
         "histogram",
         "num_chars",
         "tags",
+        "extracted_data",
     }
     assert set(word_dict.keys()) == expected_keys
     assert word_dict["image_id"] == ("3f52804b-2fad-4e00-92c8-b593da3a8ed3")
@@ -1042,233 +1075,236 @@ def test_word_iter(example_word, example_word_with_tags):
 @pytest.mark.unit
 def test_word_eq():
     """Test the Word __eq__ method"""
-    # fmt: off
     w1 = Word(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        2,
-        3,
-        "test_string",
-        {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        {"x": 15.0, "y": 20.0},
-        {"x": 10.0, "y": 20.0},
-        {"x": 15.0, "y": 22.0},
-        {"x": 10.0, "y": 22.0},
-        1.0,
-        5.0,
-        0.90,
-        ["tag1", "tag2"]
-    )  # noqa: E501
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=2,
+        word_id=3,
+        text="test_string",
+        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+        top_right={"x": 15.0, "y": 20.0},
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 15.0, "y": 22.0},
+        bottom_left={"x": 10.0, "y": 22.0},
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=0.90,
+        tags=["tag1", "tag2"],
+    )
     w2 = Word(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        2,
-        3,
-        "test_string",
-        {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        {"x": 15.0, "y": 20.0},
-        {"x": 10.0, "y": 20.0},
-        {"x": 15.0, "y": 22.0},
-        {"x": 10.0, "y": 22.0},
-        1.0,
-        5.0,
-        0.90,
-        ["tag1", "tag2"]
-    )  # noqa: E501
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=2,
+        word_id=3,
+        text="test_string",
+        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+        top_right={"x": 15.0, "y": 20.0},
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 15.0, "y": 22.0},
+        bottom_left={"x": 10.0, "y": 22.0},
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=0.90,
+        tags=["tag1", "tag2"],
+    )
     w3 = Word(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed4",
-        2,
-        3,
-        "test_string",
-        {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        {"x": 15.0, "y": 20.0},
-        {"x": 10.0, "y": 20.0},
-        {"x": 15.0, "y": 22.0},
-        {"x": 10.0, "y": 22.0},
-        1.0,
-        5.0,
-        0.90,
-        ["tag1", "tag2"]
-    )  # Different Image ID # noqa: E501
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed4",
+        line_id=2,
+        word_id=3,
+        text="test_string",
+        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+        top_right={"x": 15.0, "y": 20.0},
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 15.0, "y": 22.0},
+        bottom_left={"x": 10.0, "y": 22.0},
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=0.90,
+        tags=["tag1", "tag2"],
+    )
     w4 = Word(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        3,
-        3,
-        "test_string",
-        {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        {"x": 15.0, "y": 20.0},
-        {"x": 10.0, "y": 20.0},
-        {"x": 15.0, "y": 22.0},
-        {"x": 10.0, "y": 22.0},
-        1.0,
-        5.0,
-        0.90,
-        ["tag1", "tag2"]
-    )  # Different Line ID # noqa: E501
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=3,
+        word_id=3,
+        text="test_string",
+        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+        top_right={"x": 15.0, "y": 20.0},
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 15.0, "y": 22.0},
+        bottom_left={"x": 10.0, "y": 22.0},
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=0.90,
+        tags=["tag1", "tag2"],
+    )
     w5 = Word(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        2,
-        4,
-        "test_string",
-        {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        {"x": 15.0, "y": 20.0},
-        {"x": 10.0, "y": 20.0},
-        {"x": 15.0, "y": 22.0},
-        {"x": 10.0, "y": 22.0},
-        1.0,
-        5.0,
-        0.90,
-        ["tag1", "tag2"]
-    )  # Different Word ID # noqa: E501
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=2,
+        word_id=4,  # Different Word ID
+        text="test_string",
+        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+        top_right={"x": 15.0, "y": 20.0},
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 15.0, "y": 22.0},
+        bottom_left={"x": 10.0, "y": 22.0},
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=0.90,
+        tags=["tag1", "tag2"],
+    )
     w6 = Word(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        2,
-        3,
-        "Test_string",
-        {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        {"x": 15.0, "y": 20.0},
-        {"x": 10.0, "y": 20.0},
-        {"x": 15.0, "y": 22.0},
-        {"x": 10.0, "y": 22.0},
-        1.0,
-        5.0,
-        0.90,
-        ["tag1", "tag2"]
-    )  # Different Text # noqa: E501
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=2,
+        word_id=3,
+        text="Test_string",  # Different Text
+        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+        top_right={"x": 15.0, "y": 20.0},
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 15.0, "y": 22.0},
+        bottom_left={"x": 10.0, "y": 22.0},
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=0.90,
+        tags=["tag1", "tag2"],
+    )
     w7 = Word(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        2,
-        3,
-        "test_string",
-        {"x": 20.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        {"x": 15.0, "y": 20.0},
-        {"x": 10.0, "y": 20.0},
-        {"x": 15.0, "y": 22.0},
-        {"x": 10.0, "y": 22.0},
-        1.0,
-        5.0,
-        0.90,
-        ["tag1", "tag2"]
-    )  # Different Bounding Box # noqa: E501
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=2,
+        word_id=3,
+        text="test_string",
+        bounding_box={
+            "x": 20.0,
+            "y": 20.0,
+            "width": 5.0,
+            "height": 2.0,
+        },  # Different Bounding Box
+        top_right={"x": 15.0, "y": 20.0},
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 15.0, "y": 22.0},
+        bottom_left={"x": 10.0, "y": 22.0},
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=0.90,
+        tags=["tag1", "tag2"],
+    )
     w8 = Word(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        2,
-        3,
-        "test_string",
-        {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        {"x": 20.0, "y": 20.0},
-        {"x": 10.0, "y": 20.0},
-        {"x": 15.0, "y": 22.0},
-        {"x": 10.0, "y": 22.0},
-        1.0,
-        5.0,
-        0.90,
-        ["tag1", "tag2"]
-    )  # Different Top Right # noqa: E501
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=2,
+        word_id=3,
+        text="test_string",
+        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+        top_right={"x": 20.0, "y": 20.0},  # Different Top Right
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 15.0, "y": 22.0},
+        bottom_left={"x": 10.0, "y": 22.0},
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=0.90,
+        tags=["tag1", "tag2"],
+    )
     w9 = Word(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        2,
-        3,
-        "test_string",
-        {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        {"x": 15.0, "y": 20.0},
-        {"x": 20.0, "y": 20.0},
-        {"x": 15.0, "y": 22.0},
-        {"x": 10.0, "y": 22.0},
-        1.0,
-        5.0,
-        0.90,
-        ["tag1", "tag2"]
-    )  # Different Top Left # noqa: E501
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=2,
+        word_id=3,
+        text="test_string",
+        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+        top_right={"x": 15.0, "y": 20.0},
+        top_left={"x": 20.0, "y": 20.0},  # Different Top Left
+        bottom_right={"x": 15.0, "y": 22.0},
+        bottom_left={"x": 10.0, "y": 22.0},
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=0.90,
+        tags=["tag1", "tag2"],
+    )
     w10 = Word(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        2,
-        3,
-        "test_string",
-        {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        {"x": 15.0, "y": 20.0},
-        {"x": 10.0, "y": 20.0},
-        {"x": 20.0, "y": 22.0},
-        {"x": 10.0, "y": 22.0},
-        1.0,
-        5.0,
-        0.90,
-        ["tag1", "tag2"]
-    )  # Different Bottom Right # noqa: E501
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=2,
+        word_id=3,
+        text="test_string",
+        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+        top_right={"x": 15.0, "y": 20.0},
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 20.0, "y": 22.0},  # Different Bottom Right
+        bottom_left={"x": 10.0, "y": 22.0},
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=0.90,
+        tags=["tag1", "tag2"],
+    )
     w11 = Word(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        2,
-        3,
-        "test_string",
-        {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        {"x": 15.0, "y": 20.0},
-        {"x": 10.0, "y": 20.0},
-        {"x": 15.0, "y": 22.0},
-        {"x": 20.0, "y": 22.0},
-        1.0,
-        5.0,
-        0.90,
-        ["tag1", "tag2"]
-    )  # Different Bottom Left # noqa: E501
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=2,
+        word_id=3,
+        text="test_string",
+        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+        top_right={"x": 15.0, "y": 20.0},
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 15.0, "y": 22.0},
+        bottom_left={"x": 20.0, "y": 22.0},  # Different Bottom Left
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=0.90,
+        tags=["tag1", "tag2"],
+    )
     w12 = Word(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        2,
-        3,
-        "test_string",
-        {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        {"x": 15.0, "y": 20.0},
-        {"x": 10.0, "y": 20.0},
-        {"x": 15.0, "y": 22.0},
-        {"x": 10.0, "y": 22.0},
-        2.0,
-        5.0,
-        0.90,
-        ["tag1", "tag2"]
-    )  # Different Angle Degrees # noqa: E501
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=2,
+        word_id=3,
+        text="test_string",
+        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+        top_right={"x": 15.0, "y": 20.0},
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 15.0, "y": 22.0},
+        bottom_left={"x": 10.0, "y": 22.0},
+        angle_degrees=2.0,  # Different Angle Degrees
+        angle_radians=5.0,
+        confidence=0.90,
+        tags=["tag1", "tag2"],
+    )
     w13 = Word(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        2,
-        3,
-        "test_string",
-        {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        {"x": 15.0, "y": 20.0},
-        {"x": 10.0, "y": 20.0},
-        {"x": 15.0, "y": 22.0},
-        {"x": 10.0, "y": 22.0},
-        1.0,
-        6.0,
-        0.90,
-        ["tag1", "tag2"]
-    )  # Different Angle Radians # noqa: E501
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=2,
+        word_id=3,
+        text="test_string",
+        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+        top_right={"x": 15.0, "y": 20.0},
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 15.0, "y": 22.0},
+        bottom_left={"x": 10.0, "y": 22.0},
+        angle_degrees=1.0,
+        angle_radians=6.0,  # Different Angle Radians
+        confidence=0.90,
+        tags=["tag1", "tag2"],
+    )
     w14 = Word(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        2,
-        3,
-        "test_string",
-        {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        {"x": 15.0, "y": 20.0},
-        {"x": 10.0, "y": 20.0},
-        {"x": 15.0, "y": 22.0},
-        {"x": 10.0, "y": 22.0},
-        1.0,
-        5.0,
-        0.91,
-        ["tag1", "tag2"]
-    )  # Different Confidence # noqa: E501
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=2,
+        word_id=3,
+        text="test_string",
+        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+        top_right={"x": 15.0, "y": 20.0},
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 15.0, "y": 22.0},
+        bottom_left={"x": 10.0, "y": 22.0},
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=0.91,  # Different Confidence
+        tags=["tag1", "tag2"],
+    )
     w15 = Word(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        2,
-        3,
-        "test_string",
-        {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        {"x": 15.0, "y": 20.0},
-        {"x": 10.0, "y": 20.0},
-        {"x": 15.0, "y": 22.0},
-        {"x": 10.0, "y": 22.0},
-        1.0,
-        5.0,
-        0.90,
-        ["tag1"]
-    )  # Different Tags # noqa: E501
-    # fmt: on
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=2,
+        word_id=3,
+        text="test_string",
+        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+        top_right={"x": 15.0, "y": 20.0},
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 15.0, "y": 22.0},
+        bottom_left={"x": 10.0, "y": 22.0},
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=0.90,
+        tags=["tag1"],  # Different Tags
+    )
 
     assert w1 == w2
     assert w1 != w3

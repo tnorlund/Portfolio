@@ -1,12 +1,17 @@
 #!/usr/bin/env swift
 
 import Foundation
-import Vision
 import AppKit
+import Vision
+
+// MARK: - Logging
+func log(_ message: String) {
+    print(message)
+}
 
 // MARK: - Data Models
 
-struct Point: Codable {
+struct CodablePoint: Codable {
     let x: CGFloat
     let y: CGFloat
 }
@@ -18,286 +23,300 @@ struct NormalizedRect: Codable {
     let height: CGFloat
 }
 
+struct ExtractedData: Codable {
+    let type: String  // e.g., "address", "phone", "date", "url"
+    let value: String
+}
+
 struct Letter: Codable {
     let text: String
     let boundingBox: NormalizedRect
-    let topLeft: Point
-    let topRight: Point
-    let bottomLeft: Point
-    let bottomRight: Point
-    let angleDegrees: Float
-    let angleRadians: Float
-    let confidence: Float
+    let topLeft: CodablePoint
+    let topRight: CodablePoint
+    let bottomLeft: CodablePoint
+    let bottomRight: CodablePoint
+    let angleDegrees: CGFloat
+    let angleRadians: CGFloat
+    let confidence: VNConfidence
 }
 
 struct Word: Codable {
     let text: String
     let boundingBox: NormalizedRect
-    let topLeft: Point
-    let topRight: Point
-    let bottomLeft: Point
-    let bottomRight: Point
-    let angleDegrees: Float
-    let angleRadians: Float
-    let confidence: Float
+    let topLeft: CodablePoint
+    let topRight: CodablePoint
+    let bottomLeft: CodablePoint
+    let bottomRight: CodablePoint
+    let angleDegrees: CGFloat
+    let angleRadians: CGFloat
+    let confidence: VNConfidence
     let letters: [Letter]
+    var extractedData: ExtractedData? // New property for structured data
 }
 
 struct Line: Codable {
     let text: String
     let boundingBox: NormalizedRect
-    let topLeft: Point
-    let topRight: Point
-    let bottomLeft: Point
-    let bottomRight: Point
-    let angleDegrees: Float
-    let angleRadians: Float
-    let confidence: Float
-    let words: [Word]
+    let topLeft: CodablePoint
+    let topRight: CodablePoint
+    let bottomLeft: CodablePoint
+    let bottomRight: CodablePoint
+    let angleDegrees: CGFloat
+    let angleRadians: CGFloat
+    let confidence: VNConfidence
+    var words: [Word]
 }
 
-struct OCRResult: Codable {
+/// This struct holds the OCR and extraction result for a single image.
+struct ImageResult: Codable {
+    let imagePath: String
     let lines: [Line]
-}
-
-// MARK: - Helpers
-
-/// Converts an `NSImage` to a `CGImage`.
-func cgImage(from nsImage: NSImage) -> CGImage? {
-    guard 
-        let imageData = nsImage.tiffRepresentation,
-        let bitmap = NSBitmapImageRep(data: imageData) 
-    else {
-        return nil
+    
+    private enum CodingKeys: String, CodingKey {
+        case lines
     }
-    return bitmap.cgImage
+    
+    // Use a custom initializer for decoding that ignores imagePath.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.lines = try container.decode([Line].self, forKey: .lines)
+        self.imagePath = "" // Set to an empty string or a default value.
+    }
+    
+    // Use the default initializer for creating an instance.
+    init(imagePath: String, lines: [Line]) {
+        self.imagePath = imagePath
+        self.lines = lines
+    }
+    
+    // Custom encoding: only encode the "lines" property.
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(lines, forKey: .lines)
+    }
 }
 
-/// Computes the angle in degrees and radians for the top edge of a `VNRectangleObservation`.
-func angles(for rectObs: VNRectangleObservation) -> (degrees: Float, radians: Float) {
-    let dx = rectObs.topRight.x - rectObs.topLeft.x
-    let dy = rectObs.topRight.y - rectObs.topLeft.y
-    let rad = atan2(dy, dx)
-    let deg = rad * 180.0 / .pi
-    return (Float(deg), Float(rad))
+// Used for mapping a word to its range in the aggregated text.
+struct WordMapping {
+    var lineIndex: Int
+    var wordIndex: Int
+    var range: NSRange
 }
 
-/// Converts the bounding box of a `VNRectangleObservation` into a `NormalizedRect`.
-func normalizedRect(from rectObs: VNRectangleObservation) -> NormalizedRect {
-    let bb = rectObs.boundingBox
-    return NormalizedRect(x: bb.origin.x,
-                          y: bb.origin.y,
-                          width: bb.size.width,
-                          height: bb.size.height)
+// MARK: - Helper Functions
+
+func codablePoint(from point: CGPoint) -> CodablePoint {
+    return CodablePoint(x: point.x, y: point.y)
 }
 
-/// Converts a `CGPoint` to our `Point` struct.
-func codablePoint(from cgPoint: CGPoint) -> Point {
-    Point(x: cgPoint.x, y: cgPoint.y)
+func normalizedRect(from rect: CGRect) -> NormalizedRect {
+    return NormalizedRect(x: rect.origin.x,
+                          y: rect.origin.y,
+                          width: rect.size.width,
+                          height: rect.size.height)
 }
 
-/// Returns a `VNRectangleObservation` for a substring range within a recognized text candidate.
-func rectangleObservation(
-    in recognizedText: VNRecognizedText,
-    range: Range<String.Index>
-) -> VNRectangleObservation? {
-    // boundingBox(for:) can throw, so we wrap with try?
-    return try? recognizedText.boundingBox(for: range)
+/// A simple placeholder for angle calculations.
+func angles(for rect: CGRect) -> (degrees: CGFloat, radians: CGFloat) {
+    return (0.0, 0.0)
 }
 
-// MARK: - Synchronous OCR Engine
+// MARK: - OCR Processing
 
-/// Performs OCR in a **synchronous** fashion (no completion handler).
-/// Throws an error if Vision fails or can't load the image.
 func performOCRSync(from imageURL: URL) throws -> [Line] {
-    // 1) Load the image
-    guard 
-        let nsImage = NSImage(contentsOf: imageURL),
-        let cgImg = cgImage(from: nsImage) 
-    else {
-        throw NSError(domain: "OCRScript", code: -1, userInfo: [
-            NSLocalizedDescriptionKey: "Unable to load image at \(imageURL.path)"
-        ])
+    log("Loading image from \(imageURL.path)")
+    
+    // Load the image as NSImage.
+    guard let nsImage = NSImage(contentsOf: imageURL) else {
+        log("❌ Could not load image")
+        return []
     }
-
-    // 2) Create Vision request + request handler
-    let requestHandler = VNImageRequestHandler(cgImage: cgImg, options: [:])
+    guard let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+        log("❌ Could not get CGImage")
+        return []
+    }
+    
+    // Set up the Vision request.
+    let requestHandler = VNImageRequestHandler(cgImage: cgImage, options: [:])
     let request = VNRecognizeTextRequest()
-
+    request.recognitionLanguages = ["en_US"]
     request.recognitionLevel = .accurate
     request.usesLanguageCorrection = true
-
-    // 3) Perform request synchronously (blocking)
     try requestHandler.perform([request])
 
-    // 4) Process results or handle "no text recognized"
-    guard 
-        let observations = request.results,
-        !observations.isEmpty  
-    else {
-        throw NSError(domain: "OCRScript", code: -2, userInfo: [
-            NSLocalizedDescriptionKey: "No text recognized."
-        ])
+    guard let observations = request.results else {
+        log("❌ No text observations found.")
+        return []
     }
-
-    // 5) Convert results into `[Line]` array
-    var lines = [Line]()
+    
+    var lines: [Line] = []
+    
     for obs in observations {
         guard let candidate = obs.topCandidates(1).first else { continue }
-
         let lineText = candidate.string
-        let lineConfidence = candidate.confidence
-        let (lineDegrees, lineRadians) = angles(for: obs)
-        let lineBoundingBox = normalizedRect(from: obs)
-
-        let lineTopLeft     = codablePoint(from: obs.topLeft)
-        let lineTopRight    = codablePoint(from: obs.topRight)
-        let lineBottomLeft  = codablePoint(from: obs.bottomLeft)
-        let lineBottomRight = codablePoint(from: obs.bottomRight)
-
-        // Split line by whitespace to get words
-        let wordsArray = lineText.components(separatedBy: .whitespacesAndNewlines)
-        var runningIndex = lineText.startIndex
-        var wordModels = [Word]()
-
-        for w in wordsArray where !w.isEmpty {
-            guard 
-                let range = lineText.range(of: w, range: runningIndex..<lineText.endIndex)
-            else {
-                continue
-            }
-            let wordRectObs = rectangleObservation(in: candidate, range: range)
-            let (wordDegrees, wordRadians) = wordRectObs.map(angles(for:)) ?? (0, 0)
-            let wordBox = wordRectObs.map(normalizedRect) 
-                ?? NormalizedRect(x: 0, y: 0, width: 0, height: 0)
-
-            let wordTopLeft     = wordRectObs.map { codablePoint(from: $0.topLeft) }     ?? Point(x: 0, y: 0)
-            let wordTopRight    = wordRectObs.map { codablePoint(from: $0.topRight) }    ?? Point(x: 0, y: 0)
-            let wordBottomLeft  = wordRectObs.map { codablePoint(from: $0.bottomLeft) }  ?? Point(x: 0, y: 0)
-            let wordBottomRight = wordRectObs.map { codablePoint(from: $0.bottomRight) } ?? Point(x: 0, y: 0)
-
-            // Build letters
-            var letterModels = [Letter]()
-            for i in w.indices {
-                let globalLetterStart = lineText.index(range.lowerBound, 
-                                                       offsetBy: i.utf16Offset(in: w))
-                let globalLetterRange = globalLetterStart..<lineText.index(globalLetterStart, offsetBy: 1)
-
-                let letterRectObs = rectangleObservation(in: candidate, range: globalLetterRange)
-                let (letterDegrees, letterRadians) = letterRectObs.map(angles(for:)) ?? (0, 0)
-                let letterBox = letterRectObs.map(normalizedRect) 
-                    ?? NormalizedRect(x: 0, y: 0, width: 0, height: 0)
-
-                let letterTopLeft     = letterRectObs.map { codablePoint(from: $0.topLeft) }     ?? Point(x: 0, y: 0)
-                let letterTopRight    = letterRectObs.map { codablePoint(from: $0.topRight) }    ?? Point(x: 0, y: 0)
-                let letterBottomLeft  = letterRectObs.map { codablePoint(from: $0.bottomLeft) }  ?? Point(x: 0, y: 0)
-                let letterBottomRight = letterRectObs.map { codablePoint(from: $0.bottomRight) } ?? Point(x: 0, y: 0)
-
-                let letterModel = Letter(
-                    text: String(w[i]),
-                    boundingBox: letterBox,
-                    topLeft: letterTopLeft,
-                    topRight: letterTopRight,
-                    bottomLeft: letterBottomLeft,
-                    bottomRight: letterBottomRight,
-                    angleDegrees: letterDegrees,
-                    angleRadians: letterRadians,
-                    confidence: lineConfidence // Vision only provides line-level confidence
-                )
-                letterModels.append(letterModel)
-            }
-
-            let wordModel = Word(
-                text: w,
-                boundingBox: wordBox,
-                topLeft: wordTopLeft,
-                topRight: wordTopRight,
-                bottomLeft: wordBottomLeft,
-                bottomRight: wordBottomRight,
-                angleDegrees: wordDegrees,
-                angleRadians: wordRadians,
-                confidence: lineConfidence,
-                letters: letterModels
+        
+        // Split the line by whitespace.
+        let wordStrings = lineText.split(separator: " ").map { String($0) }
+        var words: [Word] = []
+        for wordStr in wordStrings {
+            // For simplicity, use the observation's bounding box for every word.
+            let word = Word(
+                text: wordStr,
+                boundingBox: normalizedRect(from: obs.boundingBox),
+                topLeft: codablePoint(from: obs.topLeft),
+                topRight: codablePoint(from: obs.topRight),
+                bottomLeft: codablePoint(from: obs.bottomLeft),
+                bottomRight: codablePoint(from: obs.bottomRight),
+                angleDegrees: 0.0,
+                angleRadians: 0.0,
+                confidence: candidate.confidence,
+                letters: wordStr.map { ch in
+                    Letter(
+                        text: String(ch),
+                        boundingBox: normalizedRect(from: obs.boundingBox),
+                        topLeft: codablePoint(from: obs.topLeft),
+                        topRight: codablePoint(from: obs.topRight),
+                        bottomLeft: codablePoint(from: obs.bottomLeft),
+                        bottomRight: codablePoint(from: obs.bottomRight),
+                        angleDegrees: 0.0,
+                        angleRadians: 0.0,
+                        confidence: candidate.confidence
+                    )
+                },
+                extractedData: nil
             )
-            wordModels.append(wordModel)
-
-            // Advance the running index past this word
-            runningIndex = range.upperBound
+            words.append(word)
         }
-
-        let lineModel = Line(
+        
+        let line = Line(
             text: lineText,
-            boundingBox: lineBoundingBox,
-            topLeft: lineTopLeft,
-            topRight: lineTopRight,
-            bottomLeft: lineBottomLeft,
-            bottomRight: lineBottomRight,
-            angleDegrees: lineDegrees,
-            angleRadians: lineRadians,
-            confidence: lineConfidence,
-            words: wordModels
+            boundingBox: normalizedRect(from: obs.boundingBox),
+            topLeft: codablePoint(from: obs.topLeft),
+            topRight: codablePoint(from: obs.topRight),
+            bottomLeft: codablePoint(from: obs.bottomLeft),
+            bottomRight: codablePoint(from: obs.bottomRight),
+            angleDegrees: 0.0,
+            angleRadians: 0.0,
+            confidence: candidate.confidence,
+            words: words
         )
-        lines.append(lineModel)
+        lines.append(line)
     }
-
+    
+    log("✅ OCR processing complete. Found \(lines.count) lines.")
     return lines
 }
 
-// MARK: - Main
+// MARK: - Natural Language Extraction
 
-// Example usage: 
-//   swift OCRSwift.swift <outputDirectory> <img1.png> <img2.png> ... <imgN.png>
-// No run loop needed—this script will exit on its own once done.
-
-let args = CommandLine.arguments
-guard args.count >= 3 else {
-    print("Usage: \(args[0]) <outputDirectory> <imagePath1> <imagePath2> ... <imagePathN>")
-    exit(EXIT_FAILURE)
-}
-
-let outputDirectory = args[1]
-let imagePaths = Array(args.dropFirst(2))
-
-// Make sure outputDirectory exists (create if needed)
-let fileManager = FileManager.default
-var isDir: ObjCBool = false
-if !fileManager.fileExists(atPath: outputDirectory, isDirectory: &isDir) {
-    do {
-        try fileManager.createDirectory(atPath: outputDirectory, withIntermediateDirectories: true)
-    } catch {
-        print("❌ Failed to create output directory: \(error.localizedDescription)")
-        exit(EXIT_FAILURE)
+func performNLExtraction(on aggregatedText: String, mutableLines: inout [Line], wordMappings: [WordMapping]) {
+    let types: NSTextCheckingResult.CheckingType = [.date, .phoneNumber, .address, .link]
+    guard let detector = try? NSDataDetector(types: types.rawValue) else {
+        log("❌ Could not create NSDataDetector")
+        return
     }
-} else if !isDir.boolValue {
-    print("❌ The path \(outputDirectory) exists but is not a directory.")
-    exit(EXIT_FAILURE)
-}
-
-// Process each image synchronously
-for imagePath in imagePaths {
-    let imageURL = URL(fileURLWithPath: imagePath)
-    // e.g. "myreceipt.png" => "myreceipt.json"
-    let baseName = imageURL.deletingPathExtension().lastPathComponent
-    let outJsonURL = URL(fileURLWithPath: "\(outputDirectory)/\(baseName).json")
-
-    do {
-        let lines = try performOCRSync(from: imageURL)
-
-        // Build the final JSON object
-        let ocrResult = OCRResult(lines: lines)
-        let encoder = JSONEncoder()
-        encoder.keyEncodingStrategy = .convertToSnakeCase
-        encoder.outputFormatting = .prettyPrinted
-        let jsonData = try encoder.encode(ocrResult)
-
-        // Write JSON to file
-        try jsonData.write(to: outJsonURL)
-
-        print("✅ OCR completed for \(imagePath).")
-        print("   → Wrote JSON to: \(outJsonURL.path)")
-    } catch {
-        print("❌ OCR failed for \(imagePath): \(error.localizedDescription)")
+    
+    let nsAggregatedText = aggregatedText as NSString
+    let matches = detector.matches(in: aggregatedText, options: [], range: NSRange(location: 0, length: nsAggregatedText.length))
+    
+    for match in matches {
+        var extracted: ExtractedData?
+        switch match.resultType {
+        case .address:
+            if let range = Range(match.range, in: aggregatedText) {
+                let address = String(aggregatedText[range])
+                extracted = ExtractedData(type: "address", value: address)
+            }
+        case .phoneNumber:
+            if let phone = match.phoneNumber {
+                extracted = ExtractedData(type: "phone", value: phone)
+            }
+        case .date:
+            if let date = match.date {
+                extracted = ExtractedData(type: "date", value: "\(date)")
+            }
+        case .link:
+            if let url = match.url {
+                extracted = ExtractedData(type: "url", value: url.absoluteString)
+            }
+        default:
+            break
+        }
+        guard let extractedData = extracted else { continue }
+        
+        // Map the extracted data back to words whose ranges overlap with the match's range.
+        for mapping in wordMappings {
+            let intersection = NSIntersectionRange(match.range, mapping.range)
+            if intersection.length > 0 {
+                // Only assign if there's no extracted data already (or use your own rule to override)
+                if mutableLines[mapping.lineIndex].words[mapping.wordIndex].extractedData == nil {
+                    mutableLines[mapping.lineIndex].words[mapping.wordIndex].extractedData = extractedData
+                }
+            }
+        }
     }
 }
 
-// The script naturally ends here, so `subprocess.run(...)` will return in Python.
+// MARK: - Main Execution
+
+// Expect at least three arguments: the script name, output directory, and at least one image path.
+if CommandLine.arguments.count > 2 {
+    // First argument is the directory where JSON files will be dumped.
+    let outputDirectoryPath = CommandLine.arguments[1]
+    let outputDirURL = URL(fileURLWithPath: outputDirectoryPath, isDirectory: true)
+    
+    // Ensure the output directory exists.
+    try? FileManager.default.createDirectory(at: outputDirURL, withIntermediateDirectories: true, attributes: nil)
+    
+    // Process each image (starting from argument index 2).
+    for i in 2..<CommandLine.arguments.count {
+        let imagePath = CommandLine.arguments[i]
+        let imageURL = URL(fileURLWithPath: imagePath)
+        
+        do {
+            // Perform OCR for the image.
+            let ocrLines = try performOCRSync(from: imageURL)
+            var mutableLines = ocrLines  // Create a mutable copy.
+            
+            // Build aggregated text and record the global ranges of each word.
+            var aggregatedText = ""
+            var wordMappings: [WordMapping] = []
+            var currentLocation = 0
+            
+            for (lineIndex, line) in mutableLines.enumerated() {
+                for (wordIndex, word) in line.words.enumerated() {
+                    let nsWord = word.text as NSString
+                    let wordRange = NSRange(location: currentLocation, length: nsWord.length)
+                    wordMappings.append(WordMapping(lineIndex: lineIndex, wordIndex: wordIndex, range: wordRange))
+                    aggregatedText.append(word.text)
+                    aggregatedText.append(" ") // Use a space as a separator.
+                    currentLocation += nsWord.length + 1  // Account for the space.
+                }
+            }
+            
+            // Run natural language extraction on the aggregated text.
+            performNLExtraction(on: aggregatedText, mutableLines: &mutableLines, wordMappings: wordMappings)
+            
+            // Prepare the result for this image.
+            let result = ImageResult(imagePath: imagePath, lines: mutableLines)
+            
+            // Encode the result to JSON.
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted]
+            encoder.keyEncodingStrategy = .convertToSnakeCase
+            let jsonData = try encoder.encode(result)
+            
+            // Derive an output file name from the image's name.
+            let imageFileName = imageURL.deletingPathExtension().lastPathComponent
+            let outputFileName = imageFileName + ".json"
+            let outputFileURL = outputDirURL.appendingPathComponent(outputFileName)
+            
+            try jsonData.write(to: outputFileURL)
+            print("Results for \(imagePath) written to \(outputFileURL.path)")
+        } catch {
+            log("Error processing image at \(imagePath): \(error)")
+        }
+    }
+} else {
+    print("Usage: \(CommandLine.arguments[0]) /path/to/output_directory /path/to/image1.png /path/to/image2.png ...")
+}
