@@ -34,9 +34,7 @@ def test_image():
     sys.platform != "darwin", reason="Apple Vision OCR only works on macOS"
 )
 @pytest.mark.end_to_end
-def test_apple_vision_ocr(dynamodb_table: str, 
-# test_image: str
-):
+def test_apple_vision_ocr(dynamodb_table: str, test_image: str):
     """Test that apple_vision_ocr returns a list of lines, words, and letters
 
     This test downloads the first receipt from the S3 bucket and passes the
