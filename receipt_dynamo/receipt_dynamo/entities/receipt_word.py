@@ -33,6 +33,7 @@ class ReceiptWord:
         angle_degrees (float): The angle of the receipt word in degrees.
         angle_radians (float): The angle of the receipt word in radians.
         confidence (float): The confidence level of the receipt word (between 0 and 1).
+        extracted_data (dict): The extracted data of the receipt word provided by Apple's NL API.
         tags (list[str]): Optional tags associated with the receipt word.
         histogram (dict): A histogram representing character frequencies in the text.
         num_chars (int): The number of characters in the receipt word.
@@ -53,6 +54,7 @@ class ReceiptWord:
         angle_degrees: float,
         angle_radians: float,
         confidence: float,
+        extracted_data: dict = None,
         tags: list[str] = None,
         histogram: dict = None,
         num_chars: int = None,
@@ -132,6 +134,10 @@ class ReceiptWord:
         if confidence <= 0.0 or confidence > 1.0:
             raise ValueError("confidence must be between 0 and 1")
         self.confidence = confidence
+
+        if extracted_data is not None and not isinstance(extracted_data, dict):
+            raise ValueError("extracted_data must be a dict")
+        self.extracted_data = extracted_data
 
         if tags is not None and not isinstance(tags, list):
             raise ValueError("tags must be a list")
@@ -230,6 +236,14 @@ class ReceiptWord:
             "angle_degrees": {"N": _format_float(self.angle_degrees, 18, 20)},
             "angle_radians": {"N": _format_float(self.angle_radians, 18, 20)},
             "confidence": {"N": _format_float(self.confidence, 2, 2)},
+            "extracted_data": (
+                {"M": {
+                    "type": {"S": self.extracted_data["type"]},
+                    "value": {"S": self.extracted_data["value"]},
+                }}
+                if self.extracted_data
+                else {"NULL": True}
+            ),
             "histogram": {
                 "M": {k: {"N": str(v)} for k, v in self.histogram.items()}
             },
@@ -292,7 +306,7 @@ class ReceiptWord:
             y_new_px = corner["y"] * dst_height
 
             if flip_y:
-                # If the new system’s Y=0 was at the top, then from the perspective
+                # If the new system's Y=0 was at the top, then from the perspective
                 # of a typical "bottom=0" system, we flip:
                 y_new_px = dst_height - y_new_px
 
@@ -401,6 +415,7 @@ class ReceiptWord:
             and self.angle_radians == other.angle_radians
             and self.tags == other.tags
             and self.confidence == other.confidence
+            and self.extracted_data == other.extracted_data
         )
 
     def __iter__(self) -> Generator[Tuple[str, any], None, None]:
@@ -423,6 +438,7 @@ class ReceiptWord:
         yield "angle_degrees", self.angle_degrees
         yield "angle_radians", self.angle_radians
         yield "tags", self.tags
+        yield "extracted_data", self.extracted_data
         yield "confidence", self.confidence
         yield "histogram", self.histogram
         yield "num_chars", self.num_chars
@@ -489,6 +505,7 @@ class ReceiptWord:
                 self.angle_radians,
                 self.confidence,
                 tuple(self.tags),
+                self.extracted_data,
             )
         )
 
@@ -530,6 +547,38 @@ class ReceiptWord:
             <= y
             <= self.bounding_box["y"] + self.bounding_box["height"]
         )
+
+    def diff(self, other: 'ReceiptWord') -> dict:
+        """
+        Compare this ReceiptWord with another and return their differences.
+
+        Args:
+            other (ReceiptWord): The other ReceiptWord to compare with.
+
+        Returns:
+            dict: A dictionary containing the differences between the two ReceiptWord objects.
+        """
+        differences = {}
+        for attr, value in sorted(self.__dict__.items()):
+            other_value = getattr(other, attr)
+            if other_value != value:
+                if isinstance(value, dict) and isinstance(other_value, dict):
+                    diff = {}
+                    all_keys = set(value.keys()) | set(other_value.keys())
+                    for k in all_keys:
+                        if value.get(k) != other_value.get(k):
+                            diff[k] = {
+                                'self': value.get(k),
+                                'other': other_value.get(k)
+                            }
+                    if diff:
+                        differences[attr] = dict(sorted(diff.items()))
+                else:
+                    differences[attr] = {
+                        'self': value,
+                        'other': other_value
+                    }
+        return differences
 
 
 def itemToReceiptWord(item: dict) -> ReceiptWord:
@@ -592,6 +641,14 @@ def itemToReceiptWord(item: dict) -> ReceiptWord:
             angle_radians=float(item["angle_radians"]["N"]),
             confidence=float(item["confidence"]["N"]),
             tags=item.get("tags", {}).get("SS", []),
+            extracted_data=(
+                None
+                if "NULL" in item.get("extracted_data", {})
+                else {
+                    "type": item.get("extracted_data", {}).get("M", {}).get("type", {}).get("S"),
+                    "value": item.get("extracted_data", {}).get("M", {}).get("value", {}).get("S")
+                }
+            ),
         )
     except (KeyError, ValueError) as e:
         raise ValueError("Error converting item to ReceiptWord") from e

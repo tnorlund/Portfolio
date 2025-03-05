@@ -34,6 +34,10 @@ class _ReceiptWord:
 
     def addReceiptWord(self, word: ReceiptWord):
         """Adds a single ReceiptWord to DynamoDB."""
+        if word is None:
+            raise ValueError("word parameter is required and cannot be None.")
+        if not isinstance(word, ReceiptWord):
+            raise ValueError("word must be an instance of the ReceiptWord class.")
         try:
             self._client.put_item(
                 TableName=self.table_name,
@@ -41,18 +45,23 @@ class _ReceiptWord:
                 ConditionExpression="attribute_not_exists(PK)",
             )
         except ClientError as e:
-            # Check if it's a condition failure (duplicate key)
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
+            error_code = e.response["Error"]["Code"]
+            if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
                     f"ReceiptWord with ID {word.word_id} already exists"
                 )
+            elif error_code == "ResourceNotFoundException":
+                raise Exception("Could not add ReceiptWords to DynamoDB: ")
+            elif error_code == "ProvisionedThroughputExceededException":
+                raise Exception("Provisioned throughput exceeded")
+            elif error_code == "InternalServerError":
+                raise Exception("Internal server error")
+            elif error_code == "ValidationException":
+                raise Exception("One or more parameters given were invalid")
+            elif error_code == "AccessDeniedException":
+                raise Exception("Access denied")
             else:
-                raise Exception(
-                    f"Could not add ReceiptWord to the database: {e}"
-                )
+                raise Exception("Could not add ReceiptWords to DynamoDB: ")
 
     def addReceiptWords(self, words: list[ReceiptWord]):
         """Adds multiple ReceiptWords to DynamoDB in batches of CHUNK_SIZE."""
@@ -80,9 +89,21 @@ class _ReceiptWord:
                     )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
-            raise ValueError(
-                f"Could not add ReceiptWords to the database: {e}"
-            )
+            error_code = e.response["Error"]["Code"]
+            if error_code == "ConditionalCheckFailedException":
+                raise ValueError("already exists")
+            elif error_code == "ResourceNotFoundException":
+                raise Exception("Could not add receipt word to DynamoDB")
+            elif error_code == "ProvisionedThroughputExceededException":
+                raise Exception("Provisioned throughput exceeded")
+            elif error_code == "InternalServerError":
+                raise Exception("Internal server error")
+            elif error_code == "ValidationException":
+                raise Exception("One or more parameters given were invalid")
+            elif error_code == "AccessDeniedException":
+                raise Exception("Access denied")
+            else:
+                raise Exception("Could not add receipt word to DynamoDB")
 
     def updateReceiptWord(self, word: ReceiptWord):
         """Updates an existing ReceiptWord in DynamoDB."""
@@ -107,25 +128,42 @@ class _ReceiptWord:
 
     def updateReceiptWords(self, words: list[ReceiptWord]):
         """Updates multiple existing ReceiptWords in DynamoDB."""
-        try:
-            for i in range(0, len(words), CHUNK_SIZE):
-                chunk = words[i : i + CHUNK_SIZE]
-                request_items = [
-                    {"PutRequest": {"Item": w.to_item()}} for w in chunk
-                ]
-                response = self._client.batch_write_item(
-                    RequestItems={self.table_name: request_items}
-                )
-                unprocessed = response.get("UnprocessedItems", {})
-                while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
+        if words is None:
+            raise ValueError("words parameter is required and cannot be None.")
+        if not isinstance(words, list):
+            raise ValueError("words must be a list of ReceiptWord instances.")
+        if not all(isinstance(w, ReceiptWord) for w in words):
+            raise ValueError("All words must be instances of the ReceiptWord class.")
+        for i in range(0, len(words), 25):
+            chunk = words[i : i + 25]
+            transact_items = [
+                {
+                    "Put": {
+                        "TableName": self.table_name,
+                        "Item": w.to_item(),
+                        "ConditionExpression": "attribute_exists(PK)",
+                    }
+                }
+                for w in chunk
+            ]
+            try:
+                self._client.transact_write_items(TransactItems=transact_items)
+            except ClientError as e:
+                error_code = e.response["Error"]["Code"]
+                if error_code == "ConditionalCheckFailedException":
+                    raise ValueError("One or more ReceiptWords do not exist")
+                elif error_code == "ProvisionedThroughputExceededException":
+                    raise Exception("Provisioned throughput exceeded")
+                elif error_code == "InternalServerError":
+                    raise Exception("Internal server error")
+                elif error_code == "ValidationException":
+                    raise Exception("One or more parameters given were invalid")
+                elif error_code == "AccessDeniedException":
+                    raise Exception("Access denied")
+                else:
+                    raise ValueError(
+                        f"Could not update ReceiptWords in the database: {e}"
                     )
-                    unprocessed = response.get("UnprocessedItems", {})
-        except ClientError as e:
-            raise ValueError(
-                f"Could not update ReceiptWords in the database: {e}"
-            )
 
     def deleteReceiptWord(
         self, receipt_id: int, image_id: str, line_id: int, word_id: int
