@@ -379,7 +379,7 @@ def test_receipt_word_init_invalid_confidence():
 
 @pytest.mark.unit
 def test_receipt_word_init_invalid_extracted_data():
-    with pytest.raises(ValueError, match="extracted_data must be a string"):
+    with pytest.raises(ValueError, match="extracted_data must be a dict"):
         ReceiptWord(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -410,9 +410,9 @@ def test_receipt_word_init_invalid_extracted_data():
         angle_degrees=0.0,
         angle_radians=0.0,
         confidence=0.9,
-        extracted_data="Test",
+        extracted_data={"type": "test_type", "value": "test_value"},
     )
-    assert receipt.extracted_data == "Test"
+    assert receipt.extracted_data == {"type": "test_type", "value": "test_value"}
 
 
 @pytest.mark.unit

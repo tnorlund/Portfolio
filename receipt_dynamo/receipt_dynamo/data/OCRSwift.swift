@@ -38,6 +38,11 @@ struct Letter: Codable {
     }
 }
 
+struct ExtractedData: Codable {
+    let type: String
+    let value: String
+}
+
 struct Word: Codable {
     let text: String
     let boundingBox: NormalizedRect
@@ -49,7 +54,7 @@ struct Word: Codable {
     let angleRadians: Float
     let confidence: Float
     let letters: [Letter]
-    let extractedData: String?
+    let extractedData: ExtractedData?
 
     enum CodingKeys: String, CodingKey {
         case text, boundingBox = "bounding_box", topLeft = "top_left", topRight = "top_right", bottomLeft = "bottom_left", bottomRight = "bottom_right", angleDegrees = "angle_degrees", angleRadians = "angle_radians", confidence, letters, extractedData = "extracted_data"
@@ -104,22 +109,22 @@ func angles(for rectObs: VNRectangleObservation) -> (degrees: Float, radians: Fl
     return (Float(deg), Float(rad))
 }
 
-func extractStructuredData(from text: String) -> String? {
+func extractStructuredData(from text: String) -> ExtractedData? {
     let types: NSTextCheckingResult.CheckingType = [.date, .phoneNumber, .address, .link]
     let detector = try? NSDataDetector(types: types.rawValue)
-    var extractedValue: String? = nil
+    var extractedValue: ExtractedData? = nil
     
     detector?.matches(in: text, options: [], range: NSRange(location: 0, length: text.utf16.count)).forEach { match in
         if let date = match.date {
             let formatter = DateFormatter()
             formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-            extractedValue = formatter.string(from: date)
+            extractedValue = ExtractedData(type: "date", value: formatter.string(from: date))
         } else if let phoneNumber = match.phoneNumber {
-            extractedValue = phoneNumber
+            extractedValue = ExtractedData(type: "phone_number", value: phoneNumber)
         } else if let addressComponents = match.addressComponents {
-            extractedValue = addressComponents.map { "\($0.key): \($0.value)" }.joined(separator: ", ")
+            extractedValue = ExtractedData(type: "address", value: addressComponents.map { "\($0.key): \($0.value)" }.joined(separator: ", "))
         } else if let url = match.url {
-            extractedValue = url.absoluteString
+            extractedValue = ExtractedData(type: "url", value: url.absoluteString)
         }
     }
     return extractedValue
@@ -203,4 +208,57 @@ func performOCRSync(from imageURL: URL) throws -> [Line] {
     }
     log("✅ OCR processing complete. Found \(lines.count) lines.")
     return lines
+}
+
+
+
+// MARK: - Main Execution
+
+struct OCRResult: Codable {
+    let lines: [Line]
+}
+
+let args = CommandLine.arguments
+guard args.count >= 3 else {
+    print("Usage: \(args[0]) <output_directory> <image_path1> <image_path2> ... <image_pathN>")
+    exit(EXIT_FAILURE)
+}
+
+let outputDirectory = args[1]
+let imagePaths = Array(args.dropFirst(2))
+
+let fileManager = FileManager.default
+var isDir: ObjCBool = false
+if !fileManager.fileExists(atPath: outputDirectory, isDirectory: &isDir) {
+    do {
+        try fileManager.createDirectory(atPath: outputDirectory, withIntermediateDirectories: true)
+    } catch {
+        print("❌ Failed to create output directory: \(error.localizedDescription)")
+        exit(EXIT_FAILURE)
+    }
+} else if !isDir.boolValue {
+    print("❌ The path \(outputDirectory) exists but is not a directory.")
+    exit(EXIT_FAILURE)
+}
+
+for imagePath in imagePaths {
+    let imageURL = URL(fileURLWithPath: imagePath)
+    let baseName = imageURL.deletingPathExtension().lastPathComponent
+    let outJsonURL = URL(fileURLWithPath: "\(outputDirectory)/\(baseName).json")
+
+    do {
+        let lines = try performOCRSync(from: imageURL)
+
+        let ocrResult = OCRResult(lines: lines)  // Wrap the result in OCRResult struct
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .prettyPrinted
+        let jsonData = try encoder.encode(ocrResult)
+
+        try jsonData.write(to: outJsonURL)
+
+        print("✅ OCR completed for \(imagePath).")
+        print("   → Wrote JSON to: \(outJsonURL.path)")
+    } catch {
+        print("❌ OCR failed for \(imagePath): \(error.localizedDescription)")
+    }
 }

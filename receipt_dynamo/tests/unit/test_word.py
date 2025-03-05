@@ -402,8 +402,8 @@ def test_word_init_invalid_confidence():
 
 @pytest.mark.unit
 def test_word_init_invalid_extracted_data():
-    """Test that Word raises a ValueError if the extracted_data is not a string"""
-    with pytest.raises(ValueError, match="extracted_data must be a string"):
+    """Test that Word raises a ValueError if the extracted_data is not a dict"""
+    with pytest.raises(ValueError, match="extracted_data must be a dict"):
         Word(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id=2,
@@ -432,9 +432,9 @@ def test_word_init_invalid_extracted_data():
         angle_degrees=1.0,
         angle_radians=5.0,
         confidence=0.90,
-        extracted_data="test_string",
+        extracted_data={"type": "test_type", "value": "test_value"},
     )
-    assert word.extracted_data == "test_string"
+    assert word.extracted_data == {"type": "test_type", "value": "test_value"}
 
 @pytest.mark.unit
 def test_init_bad_tags():
