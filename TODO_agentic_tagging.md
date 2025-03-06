@@ -264,228 +264,77 @@
      - Verify section ordering
      - Validate field positions
 
-### 🎨 Prompt Engineering
+### 🎯 Word-Level Label Validation Strategy
+- [ ] Multi-Stage Validation Pipeline:
+  1. Syntactic Validation:
+     - [ ] Format checkers for each label type:
+       * Date/time format validation
+       * Phone number pattern matching
+       * Price/amount format verification
+       * Address structure validation
+     - [ ] Language-specific pattern matching
+     - [ ] Character set validation
 
-1. Structure Recognition Prompt Template:
-   ```json
-   {
-     "system_context": "You are analyzing receipt structure. Use the provided business context to identify receipt sections.",
-     
-     "input_data": {
-       "receipt_text": {
-         "lines": [
-           {
-             "line_id": "integer",
-             "text": "string",
-             "words": [
-               {
-                 "word_id": "integer",
-                 "text": "string",
-                 "bounding_box": {
-                   "x": "float",
-                   "y": "float",
-                   "width": "float",
-                   "height": "float"
-                 }
-               }
-             ]
-           }
-         ]
-       },
-       "business_context": {
-         "name": "string (from Places API)",
-         "type": ["string array (from Places API types)"],
-         "address": "string (from Places API)",
-         "operating_hours": "string (from Places API)"
-       }
-     },
+  2. Semantic Validation:
+     - [ ] Cross-field consistency:
+       * Subtotal + tax = total
+       * Item prices sum to subtotal
+       * Date/time within business hours
+     - [ ] Business context alignment:
+       * Business name matches Places API
+       * Address components match
+       * Phone format matches region
+     - [ ] Section-specific rules:
+       * Header fields appear only in business_info
+       * Payment fields in payment section
+       * Items properly grouped in items section
 
-     "task": {
-       "objective": "Identify the following sections in the receipt",
-       "required_sections": [
-         {
-           "name": "header",
-           "expected_content": ["business name", "address", "phone", "date/time"]
-         },
-         {
-           "name": "items",
-           "expected_content": ["item descriptions", "quantities", "prices"]
-         },
-         {
-           "name": "totals",
-           "expected_content": ["subtotal", "tax", "total"]
-         },
-         {
-           "name": "footer",
-           "expected_content": ["payment method", "transaction id", "thank you message"]
-         }
-       ]
-     },
+  3. Statistical Validation:
+     - [ ] Confidence score thresholds:
+       * 0.95+ for critical fields (totals, dates)
+       * 0.90+ for business identity fields
+       * 0.85+ for standard fields
+       * Below 0.85 triggers review
+     - [ ] Historical pattern matching:
+       * Compare against known good examples
+       * Check label distribution
+       * Validate spatial patterns
 
-     "output_format": {
-       "sections": {
-         "header": {
-           "start_line": "integer",
-           "end_line": "integer",
-           "confidence": "float",
-           "detected_fields": ["string array of found fields"]
-         },
-         "items": {
-           "start_line": "integer",
-           "end_line": "integer",
-           "confidence": "float",
-           "item_count": "integer"
-         },
-         "totals": {
-           "start_line": "integer",
-           "end_line": "integer",
-           "confidence": "float",
-           "detected_fields": ["string array of found fields"]
-         },
-         "footer": {
-           "start_line": "integer",
-           "end_line": "integer",
-           "confidence": "float",
-           "detected_fields": ["string array of found fields"]
-         }
-       },
-       "overall_confidence": "float"
-     }
-   }
-   ```
+  4. Human-in-the-Loop Validation:
+     - [ ] Review Interface:
+       * Show confidence scores
+       * Highlight uncertain labels
+       * Display validation failures
+       * Allow quick corrections
+     - [ ] Feedback Collection:
+       * Track common errors
+       * Record correction patterns
+       * Build validation rules from corrections
 
-2. Field Labeling Prompt Template:
-   ```json
-   {
-     "system_context": "You are labeling individual words in a receipt. Use the section boundaries and business context for accurate labeling.",
-     
-     "input_data": {
-       "receipt_text": {
-         "lines": [
-           {
-             "line_id": "integer",
-             "text": "string",
-             "section": "string (header/items/totals/footer)",
-             "words": [
-               {
-                 "word_id": "integer",
-                 "text": "string",
-                 "bounding_box": {
-                   "x": "float",
-                   "y": "float",
-                   "width": "float",
-                   "height": "float"
-                 }
-               }
-             ]
-           }
-         ]
-       },
-       "section_boundaries": {
-         // Output from Structure Recognition Prompt
-       },
-       "business_context": {
-         // Same as Structure Recognition Prompt
-       }
-     },
+  5. Automated Testing:
+     - [ ] Unit tests for each validator
+     - [ ] Integration tests for validation chain
+     - [ ] Performance benchmarks
+     - [ ] Error rate tracking
 
-     "task": {
-       "objective": "Label individual words with their semantic roles",
-       "label_types": {
-         "item_description": {
-           "description": "Product or service name",
-           "example": "Large Coffee"
-         },
-         "quantity": {
-           "description": "Number of items",
-           "example": "2"
-         },
-         "price": {
-           "description": "Individual or total price",
-           "example": "3.99"
-         },
-         "subtotal": {
-           "description": "Pre-tax total",
-           "example": "Subtotal: 15.98"
-         },
-         "tax": {
-           "description": "Tax amount or rate",
-           "example": "Tax: 1.28"
-         },
-         "total": {
-           "description": "Final total amount",
-           "example": "Total: 17.26"
-         },
-         "payment_method": {
-           "description": "Form of payment",
-           "example": "VISA"
-         },
-         "transaction_id": {
-           "description": "Unique transaction identifier",
-           "example": "Ref#: 123456"
-         },
-         "date_time": {
-           "description": "Transaction date and time",
-           "example": "2024-01-20 14:30"
-         }
-       }
-     },
+- [ ] Validation Result Management:
+  1. Error Classification:
+     - Critical (blocks processing)
+     - Warning (needs review)
+     - Info (statistical anomaly)
+     - Success (passes all checks)
 
-     "output_format": {
-       "labels": [
-         {
-           "line_id": "integer",
-           "word_id": "integer",
-           "label": "string (from label_types)",
-           "confidence": "float",
-           "group_id": "string (for multi-word entities)",
-           "validation": {
-             "pattern_match": "boolean",
-             "context_appropriate": "boolean",
-             "section_appropriate": "boolean"
-           }
-         }
-       ],
-       "metadata": {
-         "total_labeled_words": "integer",
-         "average_confidence": "float",
-         "requires_review": "boolean",
-         "review_reasons": ["string array"]
-       }
-     }
-   }
-   ```
+  2. Result Storage:
+     - Store validation history
+     - Track error patterns
+     - Monitor confidence trends
+     - Record human corrections
 
-3. Prompt Chain Integration:
-   ```json
-   {
-     "pipeline": {
-       "1_structure_recognition": {
-         "input": "receipt_text + business_context",
-         "output": "section_boundaries",
-         "validation": {
-           "required_sections": "boolean",
-           "logical_ordering": "boolean",
-           "confidence_threshold": 0.8
-         }
-       },
-       "2_field_labeling": {
-         "input": "receipt_text + section_boundaries + business_context",
-         "output": "word_labels",
-         "validation": {
-           "required_fields": "boolean",
-           "label_consistency": "boolean",
-           "confidence_threshold": 0.9
-         }
-       }
-     },
-     "error_handling": {
-       "low_confidence": "flag for review",
-       "missing_sections": "retry with adjusted thresholds",
-       "inconsistent_labels": "apply business rules"
-     }
-   }
-   ```
+  3. Continuous Improvement:
+     - Update validation rules
+     - Refine confidence thresholds
+     - Add new pattern checks
+     - Optimize review process
 
 ### 🔄 Continuous Improvement
 - [ ] Implement Feedback Loop:
@@ -501,6 +350,87 @@
   - [ ] Add cross-validation with multiple APIs
 - [ ] Test automation loop on data subsets
 - [ ] Monitor and optimize API usage
+
+## 📦 Batch Processing Optimization
+- [ ] Implement Batch Processing Pipeline:
+  1. Receipt Grouping Strategy:
+     - [ ] Group by business type:
+       * Similar layouts (e.g., all restaurant receipts)
+       * Common field patterns
+       * Shared validation rules
+     - [ ] Group by complexity:
+       * Simple receipts (standard format)
+       * Complex receipts (multiple sections)
+       * Edge cases (special handling)
+     - [ ] Size optimization:
+       * 10-20 receipts per batch for structure analysis
+       * 50-100 receipts per batch for field labeling
+       * Adjust based on token limits
+
+  2. Batch Context Sharing:
+     - [ ] Share business context:
+       * Reuse Places API data for same business
+       * Cache common patterns
+       * Share validation rules
+     - [ ] Share section templates:
+       * Common layouts
+       * Standard field positions
+       * Typical content patterns
+
+  3. Cost Optimization:
+     - [ ] Token Usage:
+       * Compress common patterns
+       * Remove redundant context
+       * Share business metadata
+     - [ ] API Calls:
+       * Bulk Places API requests
+       * Cached validation rules
+       * Shared pattern matching
+     - [ ] Estimated savings:
+       * 60-70% reduction in API calls
+       * 40-50% reduction in tokens
+       * 30-40% faster processing
+
+  4. Batch Validation:
+     - [ ] Group-level validation:
+       * Cross-receipt pattern matching
+       * Consistency checks across batch
+       * Shared confidence thresholds
+     - [ ] Batch error handling:
+       * Aggregate similar errors
+       * Bulk correction options
+       * Pattern-based fixes
+
+  5. Performance Monitoring:
+     - [ ] Batch metrics:
+       * Processing time per batch
+       * Cost per receipt
+       * Error rates by group
+     - [ ] Optimization feedback:
+       * Ideal batch sizes
+       * Grouping effectiveness
+       * Cost reduction tracking
+
+- [ ] Implementation Steps:
+  1. Preprocessing:
+     - Sort receipts by business type
+     - Calculate complexity scores
+     - Determine optimal batch sizes
+
+  2. Processing:
+     - Structure analysis in small batches
+     - Field labeling in larger batches
+     - Parallel processing where possible
+
+  3. Post-processing:
+     - Aggregate validation results
+     - Generate batch reports
+     - Update pattern libraries
+
+  4. Monitoring:
+     - Track cost savings
+     - Measure accuracy impact
+     - Optimize batch parameters
 
 ## 📈 Evaluation & Optimization
 - [ ] Conduct Detailed Error Analysis:

@@ -499,88 +499,166 @@ class BatchPlacesProcessor:
     def _validate_with_address_and_phone(
         self, address: str, phone: str, receipt: Dict
     ) -> ValidationResult:
-        """Validate a place using both address and phone number.
-        
-        Strategy:
-        1. Search by address first (more specific)
-        2. If found, validate phone number matches
-        3. If no match, try searching by phone
-        4. If found by phone, validate address matches
-        
-        Args:
-            address: Address string from receipt
-            phone: Phone number from receipt
-            receipt: Full receipt data for additional context
-            
-        Returns:
-            ValidationResult with match details and confidence score
-        """
+        """Validate a place using both address and phone number."""
         # Clean phone number to just digits for comparison
         clean_phone = ''.join(filter(str.isdigit, phone))
         
         # Strategy 1: Search by address first
-        logger.debug(f"Searching by address: {address}")  # Changed from info to debug
+        logger.debug(f"Searching by address: {address}")
         address_result = self.places_api.search_by_address(
             address,
             receipt.get("words", [])
         )
         
         if address_result:
-            # Get phone from result and clean it
-            api_phone = ''.join(filter(
-                str.isdigit, 
-                address_result.get("formatted_phone_number", "")
-            ))
+            # Get and validate business name
+            api_name = address_result.get("name", "")
+            if not api_name:
+                logger.debug("Found match by address but no business name in API data")
+                return ValidationResult(
+                    confidence=ConfidenceLevel.MEDIUM,
+                    matched_fields={"address"},
+                    place_details=address_result,
+                    validation_score=0.7,
+                    requires_manual_review=True
+                )
+            
+            # Get and validate phone number
+            api_phone = address_result.get("formatted_phone_number", "")
+            if not api_phone:
+                logger.debug("Found match by address but no phone number in API data")
+                return ValidationResult(
+                    confidence=ConfidenceLevel.MEDIUM,
+                    matched_fields={"address", "name"},
+                    place_details=address_result,
+                    validation_score=0.7,
+                    requires_manual_review=True
+                )
+            
+            # Clean and compare phone numbers
+            api_phone_clean = ''.join(filter(str.isdigit, api_phone))
             
             # Check if phones match
-            if api_phone and clean_phone in api_phone or api_phone in clean_phone:
-                logger.debug("Found match by address with matching phone")  # Changed from info to debug
+            if api_phone_clean and clean_phone in api_phone_clean or api_phone_clean in clean_phone:
+                logger.debug("Found match by address with matching phone")
                 return ValidationResult(
                     confidence=ConfidenceLevel.HIGH,
-                    matched_fields={"address", "phone"},
+                    matched_fields={"address", "phone", "name"},
                     place_details=address_result,
-                    validation_score=1.0,  # Perfect match
+                    validation_score=1.0,
                     requires_manual_review=False
                 )
         
         # Strategy 2: Try searching by phone
-        logger.debug(f"Searching by phone: {phone}")  # Changed from info to debug
+        logger.debug(f"Searching by phone: {phone}")
         phone_result = self.places_api.search_by_phone(phone)
         
         if phone_result:
-            # Get address from result
-            api_address = phone_result.get("formatted_address", "").lower()
-            receipt_address = address.lower()
+            # Get and validate business name
+            api_name = phone_result.get("name", "")
+            if not api_name:
+                logger.debug("Found match by phone but no business name in API data")
+                return ValidationResult(
+                    confidence=ConfidenceLevel.MEDIUM,
+                    matched_fields={"phone"},
+                    place_details=phone_result,
+                    validation_score=0.7,
+                    requires_manual_review=True
+                )
+            
+            # Get and validate address
+            api_address = phone_result.get("formatted_address", "")
+            if not api_address:
+                logger.debug("Found match by phone but no address in API data")
+                return ValidationResult(
+                    confidence=ConfidenceLevel.MEDIUM,
+                    matched_fields={"phone", "name"},
+                    place_details=phone_result,
+                    validation_score=0.7,
+                    requires_manual_review=True
+                )
+            
+            # Compare addresses with better normalization
+            def normalize_address(addr):
+                # Convert to lowercase
+                addr = addr.lower()
+                # Replace common abbreviations
+                addr = addr.replace('blva', 'blvd').replace('blv', 'blvd')
+                addr = addr.replace('st.', 'street').replace('st', 'street')
+                addr = addr.replace('ave.', 'avenue').replace('ave', 'avenue')
+                addr = addr.replace('rd.', 'road').replace('rd', 'road')
+                # Remove punctuation and extra spaces
+                addr = re.sub(r'[^\w\s]', ' ', addr)
+                addr = ' '.join(addr.split())
+                return addr
+            
+            api_address_norm = normalize_address(api_address)
+            receipt_address_norm = normalize_address(address)
             
             # Check if addresses have significant overlap
-            address_words = set(receipt_address.split())
-            api_address_words = set(api_address.split())
+            address_words = set(receipt_address_norm.split())
+            api_address_words = set(api_address_norm.split())
             matching_words = address_words.intersection(api_address_words)
             
             # Calculate address similarity score
             similarity_score = len(matching_words) / max(len(address_words), len(api_address_words))
             
             if similarity_score >= 0.5:  # At least 50% of words match
-                logger.debug("Found match by phone with similar address")  # Changed from info to debug
+                logger.debug("Found match by phone with similar address")
                 return ValidationResult(
                     confidence=ConfidenceLevel.HIGH,
-                    matched_fields={"address", "phone"},
+                    matched_fields={"address", "phone", "name"},
                     place_details=phone_result,
-                    validation_score=0.8 + (similarity_score * 0.2),  # Score between 0.9-1.0
+                    validation_score=0.8 + (similarity_score * 0.2),
                     requires_manual_review=False
                 )
             else:
-                logger.debug("Found by phone but addresses don't match well")  # Changed from info to debug
+                logger.debug("Found by phone but addresses don't match well")
                 return ValidationResult(
                     confidence=ConfidenceLevel.MEDIUM,
-                    matched_fields={"phone"},
+                    matched_fields={"phone", "name"},
                     place_details=phone_result,
-                    validation_score=0.6,  # Lower score due to address mismatch
+                    validation_score=0.6,
                     requires_manual_review=True
                 )
         
-        logger.debug("No conclusive match found by address or phone")  # Changed from info to debug
+        logger.debug("No conclusive match found by address or phone")
         return None  # No match found
+
+    def _validate_business_name(
+        self, receipt_name: str, api_name: str
+    ) -> tuple[bool, str, float]:
+        """Validate business name from receipt against Places API name.
+        
+        Args:
+            receipt_name (str): Business name from receipt
+            api_name (str): Business name from Places API
+            
+        Returns:
+            tuple[bool, str, float]: (is_valid, message, confidence_score)
+        """
+        # Check if API name looks like an address
+        def is_address_like(text):
+            # Common address patterns
+            address_patterns = [
+                r'\d+\s+[a-z\s]+(?:street|st|avenue|ave|road|rd|boulevard|blvd|lane|ln|drive|dr|way|court|ct|circle|cir)',
+                r'\d+\s+[a-z\s]+(?:unit|suite|apt)\s+[a-z0-9]+',
+                r'[a-z\s]+,\s*[a-z]{2}\s+\d{5}(?:-\d{4})?'
+            ]
+            return any(re.search(pattern, text.lower()) for pattern in address_patterns)
+        
+        # If API name looks like an address, it's likely a mismatch
+        if is_address_like(api_name):
+            return False, f"Business name appears to be an address: Receipt '{receipt_name}' vs API '{api_name}'", 0.5
+        
+        # Compare names
+        receipt_name = receipt_name.lower()
+        api_name = api_name.lower()
+        
+        if receipt_name in api_name or api_name in receipt_name:
+            return True, "", 1.0
+        else:
+            return False, f"Business name mismatch: Receipt '{receipt_name}' vs API '{api_name}'", 0.7
 
     def _try_fallback_strategies(
         self, receipt: Dict, available_data: Dict[str, List]
