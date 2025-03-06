@@ -15,7 +15,19 @@ import re
 logger = logging.getLogger(__name__)
 
 class PlacesAPI:
-    """A client for interacting with the Google Places API."""
+    """A client for interacting with the Google Places API.
+    
+    Attributes:
+        api_key (str): The API key for the Places API.
+
+    Methods:
+        search_by_phone(phone_number: str) -> Optional[Dict]:
+            Search for a place using a phone number.
+        autocomplete_address(input_text: str) -> Optional[Dict]:
+            Get address predictions using the Places Autocomplete API.
+        search_by_address(address: str, receipt_words: list = None) -> Optional[Dict]:
+            Search for a place using an address.
+    """
     
     BASE_URL = "https://maps.googleapis.com/maps/api/place"
     
