@@ -1,106 +1,152 @@
 # Receipt Label
 
-A Python package for labeling and validating receipt data using the Google Places API. This package provides functionality to enrich receipt data with business information, validate matches, and handle various data quality scenarios.
+A Python package for labeling and validating receipt data using various processing strategies including GPT and pattern matching.
 
 ## Features
 
-- Batch processing of receipts through the Google Places API
-- Intelligent validation strategies based on available data (address, phone, URL, date)
-- Confidence scoring and manual review flags
-- Robust error handling and logging
-- Comprehensive test coverage
+- **Receipt Structure Analysis**: Identify sections and layout of receipts
+- **Field Labeling**: Label individual words and fields in receipts
+- **Data Validation**: Validate receipt data against external sources
+- **Places API Integration**: Enrich receipt data with business information
+- **Flexible Processing**: Support for both GPT and pattern-based processing
+- **Comprehensive Validation**: Validate business names, addresses, phone numbers, dates, and amounts
 
 ## Installation
 
 ```bash
-pip install receipt-label
+pip install receipt_label
+```
+
+For development installation:
+
+```bash
+git clone https://github.com/yourusername/receipt_label.git
+cd receipt_label
+pip install -e ".[dev]"
 ```
 
 ## Usage
 
+### Basic Usage
+
 ```python
-from receipt_label import BatchPlacesProcessor
+from receipt_label import ReceiptLabeler, Receipt, ReceiptWord
 
-# Initialize the processor with your Google Places API key
-processor = BatchPlacesProcessor(api_key="your_api_key")
+# Initialize the labeler
+labeler = ReceiptLabeler(
+    places_api_key="your_google_places_api_key",
+    dynamodb_table_name="your_dynamodb_table",
+    gpt_api_key="your_gpt_api_key"  # Optional
+)
 
-# Process a batch of receipts
-receipts = [
-    {
-        "receipt_id": "receipt_1",
-        "words": [
-            {
-                "text": "WALMART",
-                "extracted_data": {
-                    "type": "name",
-                    "value": "WALMART"
-                }
-            },
-            {
-                "text": "123 Main St",
-                "extracted_data": {
-                    "type": "address",
-                    "value": "123 Main St"
-                }
-            },
-            {
-                "text": "(555) 123-4567",
-                "extracted_data": {
-                    "type": "phone",
-                    "value": "(555) 123-4567"
-                }
-            }
-        ]
-    }
-]
+# Create a receipt object
+receipt = Receipt(
+    receipt_id="123",
+    image_id="456",
+    words=[
+        ReceiptWord(
+            text="Example",
+            line_id=0,
+            word_id=0,
+            confidence=1.0
+        ),
+        # ... more words
+    ]
+)
 
-# Process the receipts
-enriched_receipts = processor.process_receipt_batch(receipts)
+# Label the receipt
+result = await labeler.label_receipt(
+    receipt=receipt,
+    receipt_words=receipt.words,
+    receipt_lines=[{"text": "Example line", "words": [...]}]
+)
 
-# Access the results
-for receipt in enriched_receipts:
-    print(f"Receipt ID: {receipt['receipt_id']}")
-    print(f"Confidence Level: {receipt['confidence_level']}")
-    print(f"Validation Score: {receipt['validation_score']}")
-    print(f"Requires Manual Review: {receipt['requires_manual_review']}")
-    print(f"Places API Match: {receipt['places_api_match']}")
-    print("---")
+# Access results
+print(f"Structure confidence: {result.structure_analysis['overall_confidence']}")
+print(f"Field confidence: {result.field_analysis['metadata']['average_confidence']}")
+print(f"Validation results: {result.validation_results}")
 ```
 
-## Validation Strategies
+### Advanced Usage
 
-The package implements different validation strategies based on the available data:
+#### Custom Processors
 
-1. High Priority (3+ data points):
-   - Address + Phone + Name validation
-   - Fallback strategies for partial matches
+```python
+from receipt_label import StructureProcessor, FieldProcessor
 
-2. Medium Priority (2 data points):
-   - Address + Phone
-   - Address + URL
-   - Phone + Date
-   - Address + Date
+# Use custom processors
+structure_processor = StructureProcessor()
+field_processor = FieldProcessor()
 
-3. Low Priority (1 data point):
-   - Basic validation with manual review required
+# Configure processors
+structure_processor.section_patterns = {
+    "custom_section": {
+        "keywords": ["custom", "keywords"],
+        "position": "top",
+        "max_lines": 5,
+    }
+}
 
-4. No Data:
-   - Marked for manual review
+field_processor.field_patterns = {
+    "custom_field": {
+        "patterns": [r"custom\s+pattern"],
+        "position": "top",
+        "max_lines": 5,
+        "confidence": 0.9,
+    }
+}
+```
+
+#### Validation
+
+```python
+from receipt_label import ReceiptValidator
+from receipt_label.utils import validate_business_name, validate_address
+
+# Validate specific fields
+is_valid, message, confidence = validate_business_name(
+    receipt_name="Example Store",
+    api_name="Example Store Inc"
+)
+
+# Validate address
+is_valid, message, confidence = validate_address(
+    receipt_address="123 Main St",
+    api_address="123 Main Street"
+)
+
+# Use the validator class
+validator = ReceiptValidator()
+validation_results = validator.validate_receipt_data(
+    field_analysis=result.field_analysis,
+    places_api_data=result.places_api_data,
+    receipt_words=receipt.words,
+    batch_processor=labeler.places_processor
+)
+```
+
+## Package Structure
+
+```
+receipt_label/
+├── core/              # Core functionality
+│   ├── labeler.py     # Main labeling logic
+│   └── validator.py   # Validation logic
+├── data/              # Data handling
+│   └── places_api.py  # Places API integration
+├── models/            # Data models
+│   └── receipt.py     # Receipt data models
+├── processors/        # Processing strategies
+│   ├── gpt.py        # GPT-based processing
+│   ├── structure.py  # Structure analysis
+│   └── field.py      # Field labeling
+└── utils/            # Utility functions
+    ├── address.py    # Address handling
+    ├── date.py      # Date handling
+    └── validation.py # Validation utilities
+```
 
 ## Development
-
-### Setup
-
-1. Clone the repository
-2. Create a virtual environment:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-3. Install development dependencies:
-   ```bash
-   pip install -e ".[dev]"
-   ```
 
 ### Running Tests
 
@@ -110,18 +156,26 @@ pytest
 
 ### Code Style
 
-The package uses:
-- Black for code formatting
-- isort for import sorting
-- mypy for type checking
-
-Run the formatters:
 ```bash
+# Format code
 black .
 isort .
+
+# Type checking
 mypy .
+
+# Linting
+flake8
 ```
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
 
 ## License
 
-MIT License - see LICENSE file for details. 
+This project is licensed under the MIT License - see the LICENSE file for details. 
