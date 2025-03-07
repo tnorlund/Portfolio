@@ -207,8 +207,8 @@ class PlacesAPI:
         Returns:
             Optional[Dict]: The place details if found, None otherwise
         """
-        # Remove any non-numeric characters from phone number
-        clean_phone = ''.join(filter(str.isdigit, phone_number))
+        # Normalize phone number - keep only digits and basic formatting
+        clean_phone = "".join(c for c in phone_number if c.isdigit() or c in "()+-")
         logger.info(f"Searching by phone: {clean_phone}")
         
         # Check cache first
@@ -217,11 +217,21 @@ class PlacesAPI:
             logger.info(f"Found cached result for phone: {clean_phone}")
             return cached_result
         
+        # Validate phone number format
+        digits_only = ''.join(filter(str.isdigit, clean_phone))
+        if len(digits_only) < 10 or len(digits_only) > 15:
+            logger.info(f"Invalid phone number format (length {len(digits_only)}): {clean_phone}")
+            # Cache the invalid result to prevent repeated API calls
+            self._cache_place("PHONE", clean_phone, "INVALID", {"status": "INVALID", "message": "Invalid phone number format"})
+            return None
+            
         logger.info(f"No cache hit for phone: {clean_phone}, making API call")
         url = f"{self.BASE_URL}/findplacefromtext/json"
         
+        # For API call, strip all non-numeric characters
+        api_phone = ''.join(filter(str.isdigit, clean_phone))
         params = {
-            "input": clean_phone,
+            "input": api_phone,
             "inputtype": "phonenumber",
             "fields": "formatted_address,name,place_id,types,business_status",
             "key": self.api_key
@@ -243,6 +253,10 @@ class PlacesAPI:
                     self._cache_place("PHONE", clean_phone, place_id, place_details)
                 
                 return place_details
+            else:
+                logger.info(f"No results found for phone: {clean_phone} (status: {data['status']})")
+                # Cache the no-results case to prevent repeated API calls
+                self._cache_place("PHONE", clean_phone, "NO_RESULTS", {"status": "NO_RESULTS", "message": "No results found"})
             return None
             
         except requests.exceptions.RequestException as e:

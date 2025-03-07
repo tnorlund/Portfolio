@@ -304,8 +304,10 @@ def itemToPlacesCache(item: Dict[str, Dict[str, Any]]) -> "PlacesCache":
                     # Fallback for old format
                     search_value = padded_value.lstrip("_").replace("_", " ")
             elif search_type == "PHONE":
-                # Just strip padding for phone numbers since we don't replace anything
+                # For phone numbers, strip padding and normalize
                 search_value = padded_value.lstrip("_")
+                # Keep only digits and basic formatting
+                search_value = "".join(c for c in search_value if c.isdigit() or c in "()+-")
             elif search_type == "URL":
                 # For URLs, strip padding and keep underscores (they're part of the URL)
                 search_value = padded_value.lstrip("_")
