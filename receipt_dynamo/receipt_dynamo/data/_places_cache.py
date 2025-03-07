@@ -1,7 +1,7 @@
 from typing import Dict, List, Optional, Tuple
 from botocore.exceptions import ClientError
 from receipt_dynamo.entities.places_cache import PlacesCache, itemToPlacesCache
-from datetime import datetime
+from datetime import datetime, timezone
 
 # DynamoDB batch_write_item can handle up to 25 items per call
 CHUNK_SIZE = 25
@@ -245,39 +245,62 @@ class _PlacesCache:
         lastEvaluatedKey: Optional[Dict] = None,
     ) -> Tuple[List[PlacesCache], Optional[Dict]]:
         """
-        Lists PlacesCache items from the database using a scan operation.
+        Lists PlacesCache items from the database using GSI2 (LAST_USED index).
         Supports optional pagination via a limit and a LastEvaluatedKey.
 
         Args:
             limit (Optional[int]): Maximum number of items to return.
-            lastEvaluatedKey (Optional[Dict]): Key to continue from a previous scan.
+            lastEvaluatedKey (Optional[Dict]): Key to continue from a previous query.
 
         Returns:
             Tuple[List[PlacesCache], Optional[Dict]]: List of items and last evaluated key.
         """
+        if limit is not None and not isinstance(limit, int):
+            raise ValueError("limit must be an integer or None.")
+        if lastEvaluatedKey is not None and not isinstance(lastEvaluatedKey, dict):
+            raise ValueError("lastEvaluatedKey must be a dictionary or None.")
+
+        places_caches = []
         try:
-            scan_params = {
+            query_params = {
                 "TableName": self.table_name,
-                "FilterExpression": "begins_with(#pk, :pk_prefix)",
-                "ExpressionAttributeNames": {
-                    "#pk": "PK"
-                },
-                "ExpressionAttributeValues": {
-                    ":pk_prefix": {"S": "PLACES#"}
-                },
+                "IndexName": "GSITYPE",
+                "KeyConditionExpression": "#t = :val",
+                "ExpressionAttributeNames": {"#t": "TYPE"},
+                "ExpressionAttributeValues": {":val": {"S": "PLACES_CACHE"}},
             }
             if lastEvaluatedKey is not None:
-                scan_params["ExclusiveStartKey"] = lastEvaluatedKey
+                query_params["ExclusiveStartKey"] = lastEvaluatedKey
             if limit is not None:
-                scan_params["Limit"] = limit
+                query_params["Limit"] = limit
 
-            response = self._client.scan(**scan_params)
-            items = [itemToPlacesCache(item) for item in response["Items"]]
-            last_evaluated_key = response.get("LastEvaluatedKey")
+            response = self._client.query(**query_params)
+            places_caches.extend([itemToPlacesCache(item) for item in response["Items"]])
 
-            return items, last_evaluated_key
+            if limit is None:
+                # Paginate through all the places caches
+                while "LastEvaluatedKey" in response:
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    response = self._client.query(**query_params)
+                    places_caches.extend([itemToPlacesCache(item) for item in response["Items"]])
+                last_evaluated_key = None
+            else:
+                last_evaluated_key = response.get("LastEvaluatedKey", None)
+
+            return places_caches, last_evaluated_key
+
         except ClientError as e:
-            raise ValueError(f"Could not list PlacesCache items: {e}")
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ResourceNotFoundException":
+                raise Exception(f"Could not list places caches from DynamoDB: {e}") from e
+            elif error_code == "ProvisionedThroughputExceededException":
+                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+            elif error_code == "ValidationException":
+                raise ValueError(f"One or more parameters given were invalid: {e}") from e
+            elif error_code == "InternalServerError":
+                raise Exception(f"Internal server error: {e}") from e
+            else:
+                raise Exception(f"Error listing places caches: {e}") from e
 
     def invalidateOldCacheItems(self, days_old: int):
         """
@@ -286,9 +309,9 @@ class _PlacesCache:
         Args:
             days_old (int): Number of days after which items should be considered old.
         """
-        from datetime import datetime, timedelta
+        from datetime import datetime, timedelta, timezone
 
-        cutoff_date = (datetime.now() - timedelta(days=days_old)).isoformat()
+        cutoff_date = (datetime.now(timezone.utc) - timedelta(days=days_old)).isoformat()
 
         try:
             # Query using GSI2 (LAST_USED index)

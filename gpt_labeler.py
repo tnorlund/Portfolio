@@ -218,7 +218,7 @@ def main():
     api_key = os.getenv("GOOGLE_PLACES_API_KEY")  # This will now read from the .env file
     if not api_key:
         raise ValueError("GOOGLE_PLACES_API_KEY not found in .env file")
-    batch_processor = BatchPlacesProcessor(api_key)
+    batch_processor = BatchPlacesProcessor(api_key, env["dynamodb_table_name"])
 
     # Create output directory
     output_dir = Path("analysis_results")
@@ -245,7 +245,7 @@ def main():
     }
 
     # Get sample receipts
-    print("Getting receipts...")
+    logger.info("Getting receipts...")
     # This is the 20th receipt
     last_evaluated_key = {
         "PK": {"S": "IMAGE#1d5ab3e0-7d81-4de4-b23d-1f490f85d89c"},
@@ -253,14 +253,15 @@ def main():
         "TYPE": {"S": "RECEIPT"},
     }
     receipts, last_evaluated_key = client.listReceipts(
-        limit=20, lastEvaluatedKey=last_evaluated_key
-    )  # Analyze 20 receipts
-    print(f"Last evaluated key: {last_evaluated_key}")
+        limit=20, 
+        # lastEvaluatedKey=last_evaluated_key
+    )  # Analyze 20 receipt
+    logger.info(f"Last evaluated key: {last_evaluated_key}")
     stats["total_receipts"] = len(receipts)
 
     # Process each receipt
     for receipt_num, receipt in enumerate(receipts, 1):
-        print(
+        logger.info(
             f"\nProcessing receipt {receipt_num}/{len(receipts)} [image_id: {receipt.image_id}, receipt_id: {receipt.receipt_id}]..."
         )
 
@@ -292,27 +293,27 @@ def main():
             }
 
             # Get Places API data
-            print("\nCalling Places API...")
+            logger.info("\nCalling Places API...")
             try:
                 enriched_receipt = batch_processor.process_receipt_batch([receipt_dict])[0]
                 if enriched_receipt.get("places_api_match"):
-                    print(f"Found match: {enriched_receipt['places_api_match'].get('name', 'Unknown')} at {enriched_receipt['places_api_match'].get('formatted_address', 'Unknown address')}")
+                    logger.info(f"Found match: {enriched_receipt['places_api_match'].get('name', 'Unknown')} at {enriched_receipt['places_api_match'].get('formatted_address', 'Unknown address')}")
                 else:
-                    print("No Places API match found")
+                    logger.info("No Places API match found")
             except Exception as e:
-                print(f"Error calling Places API: {str(e)}")
-                print(f"Receipt data: address={receipt_dict.get('address', 'None')}, phone={receipt_dict.get('phone', 'None')}")
+                logger.error(f"Error calling Places API: {str(e)}")
+                logger.error(f"Receipt data: address={receipt_dict.get('address', 'None')}, phone={receipt_dict.get('phone', 'None')}")
                 raise
 
             if "places_api_match" not in enriched_receipt or enriched_receipt["places_api_match"] is None:
-                print(
+                logger.warning(
                     f"No Places API match found for receipt [image_id: {receipt.image_id}]"
                 )
                 stats["errors"].append(f"No Places API match: {receipt.image_id}")
                 continue
 
             # Step 1: Structure Analysis
-            print("Analyzing structure with GPT...")
+            logger.info("Analyzing structure with GPT...")
             try:
                 structure_analysis, structure_query, structure_response = (
                     gpt_request_structure_analysis(
@@ -323,7 +324,7 @@ def main():
                     )
                 )
             except Exception as e:
-                print(f"Error in structure analysis: {str(e)}")
+                logger.error(f"Error in structure analysis: {str(e)}")
                 raise
 
             # Update structure statistics
@@ -356,7 +357,7 @@ def main():
                     )
 
             # Step 2: Field Labeling (Word-Level Tagging)
-            print("Performing word-level tagging...")
+            logger.info("Performing word-level tagging...")
             try:
                 field_analysis, field_query, field_response = (
                     gpt_request_field_labeling(
@@ -368,7 +369,7 @@ def main():
                     )
                 )
             except Exception as e:
-                print(f"Error in field labeling: {str(e)}")
+                logger.error(f"Error in field labeling: {str(e)}")
                 raise
 
             # Update word label statistics
@@ -406,7 +407,7 @@ def main():
                     batch_processor
                 )
             except Exception as e:
-                print(f"Error in validation: {str(e)}")
+                logger.error(f"Error in validation: {str(e)}")
                 raise
 
             # Update validation statistics
@@ -450,38 +451,38 @@ def main():
             with open(output_file, "w") as f:
                 json.dump(result, f, indent=2)
 
-            print(f"\nAnalysis saved to {output_file}")
-            print(
+            logger.info(f"\nAnalysis saved to {output_file}")
+            logger.info(
                 f"Structure confidence: {structure_analysis['overall_confidence']:.2f}"
             )
-            print(
+            logger.info(
                 f"Word labeling confidence: {field_analysis['metadata']['average_confidence']:.2f}"
             )
 
-            print("\nDiscovered sections:")
+            logger.info("\nDiscovered sections:")
             for section in structure_analysis["discovered_sections"]:
-                print(f"\n{section['name'].upper()}:")
-                print(f"Confidence: {section['confidence']:.2f}")
-                print(f"Line count: {len(section['line_ids'])}")
-                print(
+                logger.info(f"\n{section['name'].upper()}:")
+                logger.info(f"Confidence: {section['confidence']:.2f}")
+                logger.info(f"Line count: {len(section['line_ids'])}")
+                logger.info(
                     f"Spatial pattern: {section['spatial_patterns'][0] if section['spatial_patterns'] else 'None'}"
                 )
-                print(
+                logger.info(
                     f"Content pattern: {section['content_patterns'][0] if section['content_patterns'] else 'None'}"
                 )
 
-            print("\nWord-level tags:")
+            logger.info("\nWord-level tags:")
             current_line = None
             for label in field_analysis["labels"]:
                 if label["line_id"] != current_line:
                     current_line = label["line_id"]
-                    print(f"\nLine {current_line}:")
+                    logger.info(f"\nLine {current_line}:")
                 word = next(
                     w
                     for w in receipt_words
                     if w.line_id == label["line_id"] and w.word_id == label["word_id"]
                 )
-                print(
+                logger.info(
                     f"  '{word.text}' -> {label['label']} (conf: {label['confidence']:.2f})"
                 )
 
@@ -496,13 +497,13 @@ def main():
                 "error_message": str(e),
                 "traceback": traceback.format_exc(),
             }
-            print(f"\nError processing receipt:")
-            print(f"Receipt ID: {receipt.receipt_id}")
-            print(f"Image ID: {receipt.image_id}")
-            print(f"Error Type: {type(e).__name__}")
-            print(f"Error Message: {str(e)}")
-            print("Traceback:")
-            print(traceback.format_exc())
+            logger.error(f"\nError processing receipt:")
+            logger.error(f"Receipt ID: {receipt.receipt_id}")
+            logger.error(f"Image ID: {receipt.image_id}")
+            logger.error(f"Error Type: {type(e).__name__}")
+            logger.error(f"Error Message: {str(e)}")
+            logger.error("Traceback:")
+            logger.error(traceback.format_exc())
             stats["errors"].append(error_context)
             continue
 
@@ -527,71 +528,71 @@ def main():
         json.dump(stats, f, indent=2)
 
     # Print summary
-    print("\n" + "=" * 50)
-    print("ANALYSIS SUMMARY")
-    print("=" * 50)
-    print(f"Total receipts processed: {stats['total_receipts']}")
-    print(f"Successful analyses: {stats['successful_analysis']}")
-    print(f"Average structure confidence: {stats['avg_confidence']:.2f}")
-    print(f"\nWord-Level Tagging:")
-    print(f"Total words processed: {stats['word_label_stats']['total_words']}")
-    print(f"Words labeled: {stats['word_label_stats']['labeled_words']}")
-    print(
+    logger.info("\n" + "=" * 50)
+    logger.info("ANALYSIS SUMMARY")
+    logger.info("=" * 50)
+    logger.info(f"Total receipts processed: {stats['total_receipts']}")
+    logger.info(f"Successful analyses: {stats['successful_analysis']}")
+    logger.info(f"Average structure confidence: {stats['avg_confidence']:.2f}")
+    logger.info(f"\nWord-Level Tagging:")
+    logger.info(f"Total words processed: {stats['word_label_stats']['total_words']}")
+    logger.info(f"Words labeled: {stats['word_label_stats']['labeled_words']}")
+    logger.info(
         f"Average label confidence: {stats['word_label_stats']['avg_label_confidence']:.2f}"
     )
 
-    print("\nMost common sections:")
+    logger.info("\nMost common sections:")
     sorted_sections = sorted(
         stats["section_types"].items(), key=lambda x: x[1]["count"], reverse=True
     )
     for section_name, section_stats in sorted_sections:
-        print(f"\n{section_name}:")
-        print(f"  Count: {section_stats['count']}")
-        print(f"  Avg confidence: {section_stats['avg_confidence']:.2f}")
+        logger.info(f"\n{section_name}:")
+        logger.info(f"  Count: {section_stats['count']}")
+        logger.info(f"  Avg confidence: {section_stats['avg_confidence']:.2f}")
         if section_stats["spatial_patterns"]:
             top_spatial = max(
                 section_stats["spatial_patterns"].items(), key=lambda x: x[1]
             )
-            print(
+            logger.info(
                 f"  Top spatial pattern: {top_spatial[0]} ({top_spatial[1]} occurrences)"
             )
         if section_stats["content_patterns"]:
             top_content = max(
                 section_stats["content_patterns"].items(), key=lambda x: x[1]
             )
-            print(
+            logger.info(
                 f"  Top content pattern: {top_content[0]} ({top_content[1]} occurrences)"
             )
 
-    print("\nMost common word labels:")
+    logger.info("\nMost common word labels:")
     sorted_labels = sorted(
         stats["word_label_stats"]["label_distribution"].items(),
         key=lambda x: x[1]["count"],
         reverse=True,
     )
     for label_type, label_stats in sorted_labels:
-        print(f"\n{label_type}:")
-        print(f"  Count: {label_stats['count']}")
-        print(f"  Avg confidence: {label_stats['avg_confidence']:.2f}")
+        logger.info(f"\n{label_type}:")
+        logger.info(f"  Count: {label_stats['count']}")
+        logger.info(f"  Avg confidence: {label_stats['avg_confidence']:.2f}")
 
     if stats["errors"]:
-        print("\nErrors encountered:")
+        logger.error("\nErrors encountered:")
         for error in stats["errors"]:
-            print(f"- Receipt {error['receipt_id']}: {error['error_message']}")
+            logger.error(f"- Receipt {error['receipt_id']}: {error['error_message']}")
 
     # Add validation summary to output
-    print("\nValidation Summary:")
-    print(
+    logger.info("\nValidation Summary:")
+    logger.info(
         f"Total valid receipts: {stats['validation_results']['total_valid']}/{stats['total_receipts']}"
     )
     if stats["validation_results"]["validation_errors"]:
-        print("\nValidation Errors:")
+        logger.error("\nValidation Errors:")
         for error in stats["validation_results"]["validation_errors"]:
-            print(f"- Receipt {error['receipt_id']}: {error['message']}")
+            logger.error(f"- Receipt {error['receipt_id']}: {error['message']}")
     if stats["validation_results"]["validation_warnings"]:
-        print("\nValidation Warnings:")
+        logger.warning("\nValidation Warnings:")
         for warning in stats["validation_results"]["validation_warnings"]:
-            print(f"- Receipt {warning['receipt_id']}: {warning['message']}")
+            logger.warning(f"- Receipt {warning['receipt_id']}: {warning['message']}")
 
 
 if __name__ == "__main__":

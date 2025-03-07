@@ -10,6 +10,10 @@ from enum import Enum
 import logging
 import requests
 import re
+from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.entities.places_cache import PlacesCache
+from datetime import datetime, timezone
+import traceback
 
 # Configure module logger
 logger = logging.getLogger(__name__)
@@ -31,18 +35,193 @@ class PlacesAPI:
     
     BASE_URL = "https://maps.googleapis.com/maps/api/place"
     
-    def __init__(self, api_key: str):
-        """Initialize the Places API client."""
+    def __init__(self, api_key: str, dynamo_table_name: str):
+        """Initialize the Places API client.
+        
+        Args:
+            api_key (str): Your Google Places API key
+            dynamo_table_name (str): Name of the DynamoDB table for caching
+        """
         self.api_key = api_key
-        logger.debug(f"Initializing Places API with key: {api_key[:6]}...")
-    
+        self.dynamo_client = DynamoClient(dynamo_table_name)
+        logger.debug(f"Initializing Places API with key: {api_key[:6]}...")  # Only show first 6 chars for security
+        
+    def _get_cached_place(self, search_type: str, search_value: str) -> Optional[Dict]:
+        """Get a place from cache if it exists.
+        
+        Args:
+            search_type (str): Type of search (ADDRESS, PHONE, URL)
+            search_value (str): The search value
+            
+        Returns:
+            Optional[Dict]: Cached place details if found, None otherwise
+        """
+        try:
+            # Skip cache for area searches
+            if search_type == "ADDRESS":
+                if self._is_area_search(search_value):
+                    logger.info(f"SKIPPING CACHE (area search): {search_type} - {search_value}")
+                    return None
+                    
+                # Skip cache for route-level results
+                try:
+                    cached_item = self.dynamo_client.getPlacesCache(search_type, search_value)
+                    if cached_item and cached_item.places_response.get("types") == ["route"]:
+                        logger.info(f"SKIPPING CACHE (route-level result): {search_type} - {search_value}")
+                        return None
+                except Exception:
+                    pass  # Continue with normal cache lookup if error
+
+            # Try to get from cache
+            try:
+                cached_item = self.dynamo_client.getPlacesCache(search_type, search_value)
+                if cached_item:
+                    logger.info(f"🔍 CACHE HIT: {search_type} - {search_value}")
+                    logger.info(f"   Last updated: {cached_item.last_updated}")
+                    logger.info(f"   Query count: {cached_item.query_count}")
+                    # Increment query count
+                    try:
+                        self.dynamo_client.incrementQueryCount(cached_item)
+                        logger.info(f"   Incremented query count to: {cached_item.query_count + 1}")
+                    except Exception as e:
+                        logger.error(f"Error incrementing query count: {e}")
+                        logger.error(f"Stack trace: {traceback.format_exc()}")
+                    return cached_item.places_response
+                logger.info(f"❌ CACHE MISS: {search_type} - {search_value}")
+                return None
+            except Exception as e:
+                logger.error(f"Error accessing DynamoDB cache: {e}")
+                logger.error(f"Stack trace: {traceback.format_exc()}")
+                return None
+            
+        except Exception as e:
+            logger.error(f"Error in _get_cached_place: {e}")
+            logger.error(f"Stack trace: {traceback.format_exc()}")
+            return None
+
+    def _is_area_search(self, search_value: str) -> bool:
+        """Check if a search value represents an area search rather than a specific address.
+        
+        Args:
+            search_value (str): The search value to check
+            
+        Returns:
+            bool: True if this appears to be an area search, False if it's a specific address
+        """
+        # Common patterns that indicate an area search
+        area_patterns = [
+            r'^[A-Za-z\s]+,\s*[A-Za-z\s]+,\s*[A-Z]{2}(?:\s+USA)?$',  # City, State, Country format
+            r'^[A-Za-z\s]+,\s*[A-Z]{2}$',  # City, State format
+            r'^[A-Za-z\s]+$',  # Just a city or area name
+            r'^[A-Za-z\s]+\s+[A-Z]{2}$',  # City State format
+        ]
+        
+        return any(re.match(pattern, search_value.strip()) for pattern in area_patterns)
+
+    def _cache_place(self, search_type: str, search_value: str, place_id: str, places_response: Dict) -> None:
+        """Cache a place response.
+        
+        Args:
+            search_type (str): Type of search (ADDRESS, PHONE, URL)
+            search_value (str): The search value
+            place_id (str): The Google Places place_id
+            places_response (Dict): The Places API response
+        """
+        try:
+            # Skip caching if this is an area search
+            if search_type == "ADDRESS":
+                if self._is_area_search(search_value):
+                    logger.info(f"SKIPPED CACHE (area search): {search_type} - {search_value}")
+                    return
+                    
+                # Skip caching if the result is just a route/street
+                if places_response.get("types") == ["route"]:
+                    logger.info(f"SKIPPED CACHE (route-level result): {search_type} - {search_value}")
+                    return
+                    
+                # Skip caching if the result is too general (no street number)
+                formatted_address = places_response.get("formatted_address", "")
+                if not re.match(r'\d+', formatted_address):
+                    logger.info(f"SKIPPED CACHE (no street number): {search_type} - {search_value}")
+                    return
+                
+                # Skip caching if this is a duplicate of an existing entry
+                try:
+                    existing_item = self.dynamo_client.getPlacesCache(search_type, search_value)
+                    if existing_item and existing_item.place_id == place_id:
+                        logger.info(f"SKIPPED CACHE (duplicate entry): {search_type} - {search_value}")
+                        return
+                except Exception:
+                    pass  # Continue with caching if error checking for duplicates
+                
+                # Skip caching if the business name looks like an address
+                business_name = places_response.get("name", "")
+                if re.match(r'\d+\s+[a-z\s]+(?:street|st|avenue|ave|road|rd|boulevard|blvd|lane|ln|drive|dr|way|court|ct|circle|cir)', business_name.lower()):
+                    logger.info(f"SKIPPED CACHE (business name is address-like): {search_type} - {search_value}")
+                    return
+                
+                # Skip caching if no business types are present
+                types = places_response.get("types", [])
+                if not any(t in types for t in ["store", "restaurant", "food", "grocery_or_supermarket", "shopping_mall", "point_of_interest"]):
+                    logger.info(f"SKIPPED CACHE (no business types): {search_type} - {search_value}")
+                    return
+                
+                # Skip caching if business status is not OPERATIONAL
+                if places_response.get("business_status") != "OPERATIONAL":
+                    logger.info(f"SKIPPED CACHE (business not operational): {search_type} - {search_value}")
+                    return
+                
+            logger.info(f"CACHING: {search_type} - {search_value}")
+            
+            # Create cache item - normalized_value and value_hash will be set automatically
+            # by _pad_search_value when the key is generated
+            cache_item = PlacesCache(
+                search_type=search_type,
+                search_value=search_value,
+                place_id=place_id,
+                places_response=places_response,
+                last_updated=datetime.now(timezone.utc).isoformat(),
+                query_count=0
+            )
+            
+            try:
+                self.dynamo_client.addPlacesCache(cache_item)
+                logger.info(f"SUCCESS: Cached {search_type} - {search_value}")
+                if search_type == "ADDRESS":
+                    logger.info(f"   Normalized: {cache_item.normalized_value}")
+                    logger.info(f"   Hash: {cache_item.value_hash}")
+            except Exception as e:
+                logger.error(f"Error adding to DynamoDB cache: {e}")
+                logger.error(f"Stack trace: {traceback.format_exc()}")
+        except Exception as e:
+            logger.error(f"Error in _cache_place: {e}")
+            logger.error(f"Stack trace: {traceback.format_exc()}")
+            logger.error(f"Failed to cache {search_type}: {search_value}")
+
     def search_by_phone(self, phone_number: str) -> Optional[Dict]:
-        """Search for a place using a phone number."""
-        phone_number = ''.join(filter(str.isdigit, phone_number))
+        """Search for a place using a phone number.
+        
+        Args:
+            phone_number (str): The phone number to search for
+            
+        Returns:
+            Optional[Dict]: The place details if found, None otherwise
+        """
+        # Remove any non-numeric characters from phone number
+        clean_phone = ''.join(filter(str.isdigit, phone_number))
+        logger.info(f"Searching by phone: {clean_phone}")
+        
+        # Check cache first
+        cached_result = self._get_cached_place("PHONE", clean_phone)
+        if cached_result:
+            logger.info(f"Found cached result for phone: {clean_phone}")
+            return cached_result
+        
+        logger.info(f"No cache hit for phone: {clean_phone}, making API call")
         url = f"{self.BASE_URL}/findplacefromtext/json"
         
         params = {
-            "input": phone_number,
+            "input": clean_phone,
             "inputtype": "phonenumber",
             "fields": "formatted_address,name,place_id,types,business_status",
             "key": self.api_key
@@ -54,21 +233,36 @@ class PlacesAPI:
             data = response.json()
             
             if data["status"] == "OK" and data["candidates"]:
+                # Get more details using the place_id
                 place_id = data["candidates"][0]["place_id"]
-                return self.get_place_details(place_id)
+                place_details = self.get_place_details(place_id)
+                
+                # Cache the result
+                if place_details:
+                    logger.info(f"Caching new result for phone: {clean_phone}")
+                    self._cache_place("PHONE", clean_phone, place_id, place_details)
+                
+                return place_details
             return None
             
         except requests.exceptions.RequestException as e:
             logger.error(f"Error searching by phone: {e}")
             return None
-    
+            
     def autocomplete_address(self, input_text: str) -> Optional[Dict]:
-        """Get address predictions using the Places Autocomplete API."""
+        """Get address predictions using the Places Autocomplete API.
+        
+        Args:
+            input_text (str): The partial address text
+            
+        Returns:
+            Optional[Dict]: Address predictions if found, None otherwise
+        """
         url = f"{self.BASE_URL}/autocomplete/json"
         
         params = {
             "input": input_text,
-            "types": "address",
+            "types": "address",  # Focus on address predictions
             "key": self.api_key
         }
         
@@ -78,7 +272,9 @@ class PlacesAPI:
             data = response.json()
             
             if data["status"] == "OK" and data["predictions"]:
-                return data["predictions"][0]
+                # Return the first (most relevant) prediction
+                prediction = data["predictions"][0]
+                return prediction
             return None
             
         except requests.exceptions.RequestException as e:
@@ -86,54 +282,128 @@ class PlacesAPI:
             return None
 
     def search_by_address(self, address: str, receipt_words: list = None) -> Optional[Dict]:
-        """Search for a place using an address."""
-        # Try to get a complete address suggestion
-        match = re.match(r'\d+[^,]*', address)
-        if match:
-            street_address = match.group(0).strip()
-            completion = self.autocomplete_address(street_address)
-            if completion:
-                address = completion['description']
+        """Search for a place using an address.
         
-        url = f"{self.BASE_URL}/findplacefromtext/json"
-        params = {
-            "input": address,
-            "inputtype": "textquery",
-            "fields": "formatted_address,name,place_id,types,geometry",
-            "key": self.api_key
-        }
-        
+        Args:
+            address (str): The address to search for
+            receipt_words (list, optional): List of words from the receipt to help identify the business
+            
+        Returns:
+            Optional[Dict]: The place details if found, None otherwise
+        """
         try:
+            # First try to get a complete address suggestion
+            # Extract the street address part (assuming it starts with numbers)
+            street_address = None
+            match = re.match(r'\d+[^,]*', address)
+            if match:
+                street_address = match.group(0).strip()
+                logger.debug(f"Trying autocomplete with street address: {street_address}")
+                completion = self.autocomplete_address(street_address)
+                if completion:
+                    address = completion['description']
+                    logger.debug(f"Using completed address: {address}")
+            
+            # Check cache first
+            cached_result = self._get_cached_place("ADDRESS", address)
+            if cached_result:
+                logger.debug(f"Found cached result for address: {address}")
+                return cached_result
+            
+            url = f"{self.BASE_URL}/findplacefromtext/json"
+            
+            # Include geometry to get location coordinates
+            params = {
+                "input": address,
+                "inputtype": "textquery",
+                "fields": "formatted_address,name,place_id,types,geometry",
+                "key": self.api_key
+            }
+            
+            # If we have receipt words, try to find business name and include it in search
+            if receipt_words:
+                # Look for business name in first few lines
+                business_name = None
+                for word in receipt_words[:10]:  # Check first 10 words
+                    if word and isinstance(word, dict):  # Add null check for word
+                        # Look for business name in text field (all caps, no numbers)
+                        text = word.get("text", "")
+                        if text.isupper() and not any(c.isdigit() for c in text):
+                            business_name = text
+                            break
+                
+                if business_name:
+                    # Add business name to search query
+                    params["input"] = f"{business_name} {address}"
+                    logger.debug(f"Using business name in search: {business_name}")
+            
+            logger.debug(f"Making Places API request to: {url}")
+            logger.debug(f"With params: {params}")
             response = requests.get(url, params=params)
+            logger.debug(f"Response status code: {response.status_code}")
             response.raise_for_status()
             data = response.json()
             
-            if data["status"] == "OK" and data["candidates"]:
+            if data.get("status") == "OK" and data.get("candidates"):
                 place = data["candidates"][0]
                 
-                # If we only got a subpremise, try searching nearby
-                if place["types"] == ["subpremise"] and "geometry" in place:
+                # Skip if this is just a route-level result
+                if place.get("types") == ["route"]:
+                    logger.info(f"Skipping route-level result for address: {address}")
+                    return None
+                
+                # If we only got a subpremise (address) result, try searching nearby
+                if place.get("types") == ["subpremise"] and place.get("geometry"):
+                    logger.debug("Only found address location, searching for businesses nearby...")
                     lat = place["geometry"]["location"]["lat"]
                     lng = place["geometry"]["location"]["lng"]
+                    
+                    # Search nearby with receipt words to help identify the business
                     nearby_result = self.search_nearby(lat, lng, radius=100, receipt_words=receipt_words)
                     if nearby_result:
+                        # Cache the nearby result
+                        self._cache_place("ADDRESS", address, nearby_result["place_id"], nearby_result)
                         return nearby_result
                 
-                return self.get_place_details(place["place_id"])
+                # Get full details for the place
+                place_details = self.get_place_details(place["place_id"])
+                if place_details:
+                    # Cache the result
+                    self._cache_place("ADDRESS", address, place["place_id"], place_details)
+                return place_details
             return None
             
         except requests.exceptions.RequestException as e:
             logger.error(f"Error searching by address: {e}")
             return None
+        except Exception as e:
+            logger.error(f"Unexpected error in search_by_address: {e}")
+            logger.error(f"Stack trace: {traceback.format_exc()}")
+            return None
     
     def search_nearby(self, lat: float, lng: float, keyword: str = None, radius: int = 100, receipt_words: list = None) -> Optional[Dict]:
         """Search for places near a specific location."""
+        # Create a more specific cache key that includes business type and radius
+        cache_key = f"{lat},{lng}:{radius}"
+        if keyword:
+            cache_key = f"{cache_key}:{keyword}"
+        if receipt_words:
+            # Include first few words from receipt to make cache key more specific
+            receipt_key = "_".join(receipt_words[:3])
+            cache_key = f"{cache_key}:{receipt_key}"
+        
+        # Check cache first
+        cached_result = self._get_cached_place("ADDRESS", cache_key)
+        if cached_result:
+            logger.debug(f"Found cached result for location: {cache_key}")
+            return cached_result
+        
         url = f"{self.BASE_URL}/nearbysearch/json"
         
         params = {
             "location": f"{lat},{lng}",
             "radius": radius,
-            "type": "grocery_or_supermarket",
+            "type": "grocery_or_supermarket",  # Focus on grocery stores
             "key": self.api_key
         }
         
@@ -141,25 +411,52 @@ class PlacesAPI:
             params["keyword"] = keyword
         
         try:
+            logger.debug(f"Searching nearby locations: {url}")
+            logger.debug(f"With params: {params}")
             response = requests.get(url, params=params)
             response.raise_for_status()
             data = response.json()
+            logger.debug(f"Nearby search response: {data}")
             
             if data["status"] == "OK" and data["results"]:
+                # If we have receipt words, try to find the best matching business
                 if receipt_words:
+                    logger.debug("Comparing nearby businesses with receipt text...")
                     best_match = None
                     highest_score = 0
                     
                     for place in data["results"]:
+                        # Skip route-level results
+                        if place.get("types") == ["route"]:
+                            continue
+                            
                         score = self._compare_with_receipt(place["name"], receipt_words)
+                        logger.debug(f"Business: {place['name']}, Match score: {score}")
                         if score > highest_score:
                             highest_score = score
                             best_match = place
                     
                     if best_match:
-                        return self.get_place_details(best_match["place_id"])
+                        logger.debug(f"Best matching business: {best_match['name']} (score: {highest_score})")
+                        place_details = self.get_place_details(best_match["place_id"])
+                        if place_details:
+                            # Cache the result
+                            self._cache_place("ADDRESS", cache_key, best_match["place_id"], place_details)
+                        return place_details
                 
-                return self.get_place_details(data["results"][0]["place_id"])
+                # If no receipt words or no match found, return the first non-route result
+                for place in data["results"]:
+                    if place.get("types") != ["route"]:
+                        place_details = self.get_place_details(place["place_id"])
+                        if place_details:
+                            # Cache the result
+                            self._cache_place("ADDRESS", cache_key, place["place_id"], place_details)
+                        return place_details
+                
+                # If all results were routes, return None
+                logger.debug("All nearby results were routes, skipping")
+                return None
+                
             return None
             
         except requests.exceptions.RequestException as e:
@@ -167,27 +464,49 @@ class PlacesAPI:
             return None
 
     def _compare_with_receipt(self, business_name: str, receipt_words: list) -> float:
-        """Compare a business name with words from the receipt to find matches."""
-        business_words = set(business_name.lower().split())
-        receipt_words = [word['text'].lower() for word in receipt_words]
+        """Compare a business name with words from the receipt to find matches.
         
+        Args:
+            business_name (str): Name of the business to compare
+            receipt_words (list): List of words from the receipt, in order from top to bottom
+            
+        Returns:
+            float: Score between 0 and 1 indicating how well the business name matches
+        """
+        # Convert everything to lowercase for comparison
+        business_words = set(business_name.lower().split())
+        receipt_words = [word.lower() for word in receipt_words]
+        
+        # Calculate weighted matches based on word position
         total_score = 0
         max_possible_score = 0
         
         for business_word in business_words:
-            max_possible_score += 1
+            max_possible_score += 1  # Each word can contribute max of 1 to the score
+            
+            # Check each receipt word for a match
             for i, receipt_word in enumerate(receipt_words):
                 if business_word == receipt_word:
+                    # Words in first 10 positions get higher weight
                     position_weight = 1.0 if i < 10 else 0.5
                     total_score += position_weight
-                    break
+                    break  # Only count first occurrence of the word
         
+        # Return normalized score
         return total_score / max_possible_score if max_possible_score > 0 else 0
 
     def get_place_details(self, place_id: str) -> Optional[Dict]:
-        """Get detailed information about a place using its place_id."""
+        """Get detailed information about a place using its place_id.
+        
+        Args:
+            place_id (str): The Google Places ID
+            
+        Returns:
+            Optional[Dict]: Detailed place information if found, None otherwise
+        """
         url = f"{self.BASE_URL}/details/json"
         
+        # Enhanced fields to get more business information
         fields = [
             "name", "formatted_address", "formatted_phone_number",
             "international_phone_number", "website", "rating",
@@ -236,13 +555,14 @@ class ValidationResult:
 class BatchPlacesProcessor:
     """Handles batch processing of receipts through Places API with validation and fallback strategies."""
 
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, dynamo_table_name: str):
         """Initialize the batch processor.
 
         Args:
             api_key (str): Google Places API key
+            dynamo_table_name (str): Name of the DynamoDB table for caching
         """
-        self.places_api = PlacesAPI(api_key)
+        self.places_api = PlacesAPI(api_key, dynamo_table_name)
         self.logger = logging.getLogger(__name__)
 
     def process_receipt_batch(self, receipts_data: List[Dict]) -> List[Dict]:
@@ -464,7 +784,7 @@ class BatchPlacesProcessor:
         self, receipt: Dict, available_data: Dict[str, List]
     ) -> ValidationResult:
         """Process receipt with 1 data point."""
-        logger.debug(
+        self.logger.debug(
             f"Processing low priority receipt {receipt.get('receipt_id')} with "
             f"data types: {[k for k, v in available_data.items() if v]}"
         )
@@ -478,7 +798,7 @@ class BatchPlacesProcessor:
 
     def _process_no_data_receipt(self, receipt: Dict) -> ValidationResult:
         """Handle receipt with no extractable data."""
-        logger.debug(
+        self.logger.debug(
             f"Processing receipt {receipt.get('receipt_id')} with no extractable data"
         )
         return ValidationResult(
@@ -497,7 +817,7 @@ class BatchPlacesProcessor:
         clean_phone = ''.join(filter(str.isdigit, phone))
         
         # Strategy 1: Search by address first
-        logger.debug(f"Searching by address: {address}")
+        self.logger.debug(f"Searching by address: {address}")
         address_result = self.places_api.search_by_address(
             address,
             receipt.get("words", [])
@@ -507,7 +827,7 @@ class BatchPlacesProcessor:
             # Get and validate business name
             api_name = address_result.get("name", "")
             if not api_name:
-                logger.debug("Found match by address but no business name in API data")
+                self.logger.debug("Found match by address but no business name in API data")
                 return ValidationResult(
                     confidence=ConfidenceLevel.MEDIUM,
                     matched_fields={"address"},
@@ -519,7 +839,7 @@ class BatchPlacesProcessor:
             # Get and validate phone number
             api_phone = address_result.get("formatted_phone_number", "")
             if not api_phone:
-                logger.debug("Found match by address but no phone number in API data")
+                self.logger.debug("Found match by address but no phone number in API data")
                 return ValidationResult(
                     confidence=ConfidenceLevel.MEDIUM,
                     matched_fields={"address", "name"},
@@ -533,7 +853,7 @@ class BatchPlacesProcessor:
             
             # Check if phones match
             if api_phone_clean and clean_phone in api_phone_clean or api_phone_clean in clean_phone:
-                logger.debug("Found match by address with matching phone")
+                self.logger.debug("Found match by address with matching phone")
                 return ValidationResult(
                     confidence=ConfidenceLevel.HIGH,
                     matched_fields={"address", "phone", "name"},
@@ -543,14 +863,14 @@ class BatchPlacesProcessor:
                 )
         
         # Strategy 2: Try searching by phone
-        logger.debug(f"Searching by phone: {phone}")
+        self.logger.debug(f"Searching by phone: {phone}")
         phone_result = self.places_api.search_by_phone(phone)
         
         if phone_result:
             # Get and validate business name
             api_name = phone_result.get("name", "")
             if not api_name:
-                logger.debug("Found match by phone but no business name in API data")
+                self.logger.debug("Found match by phone but no business name in API data")
                 return ValidationResult(
                     confidence=ConfidenceLevel.MEDIUM,
                     matched_fields={"phone"},
@@ -562,7 +882,7 @@ class BatchPlacesProcessor:
             # Get and validate address
             api_address = phone_result.get("formatted_address", "")
             if not api_address:
-                logger.debug("Found match by phone but no address in API data")
+                self.logger.debug("Found match by phone but no address in API data")
                 return ValidationResult(
                     confidence=ConfidenceLevel.MEDIUM,
                     matched_fields={"phone", "name"},
@@ -597,7 +917,7 @@ class BatchPlacesProcessor:
             similarity_score = len(matching_words) / max(len(address_words), len(api_address_words))
             
             if similarity_score >= 0.5:  # At least 50% of words match
-                logger.debug("Found match by phone with similar address")
+                self.logger.debug("Found match by phone with similar address")
                 return ValidationResult(
                     confidence=ConfidenceLevel.HIGH,
                     matched_fields={"address", "phone", "name"},
@@ -606,7 +926,7 @@ class BatchPlacesProcessor:
                     requires_manual_review=False
                 )
             else:
-                logger.debug("Found by phone but addresses don't match well")
+                self.logger.debug("Found by phone but addresses don't match well")
                 return ValidationResult(
                     confidence=ConfidenceLevel.MEDIUM,
                     matched_fields={"phone", "name"},
@@ -615,7 +935,7 @@ class BatchPlacesProcessor:
                     requires_manual_review=True
                 )
         
-        logger.debug("No conclusive match found by address or phone")
+        self.logger.debug("No conclusive match found by address or phone")
         return None  # No match found
 
     def _validate_business_name(
@@ -657,7 +977,7 @@ class BatchPlacesProcessor:
         self, receipt: Dict, available_data: Dict[str, List]
     ) -> ValidationResult:
         """Try alternative strategies when primary validation fails."""
-        logger.debug(
+        self.logger.debug(
             f"Using fallback strategy for receipt {receipt.get('receipt_id')} with "
             f"data types: {[k for k, v in available_data.items() if v]}"
         )
