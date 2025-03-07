@@ -57,6 +57,38 @@
   - [ ] Promotional content handling
   - [ ] Label distribution tracking
 
+### Caching Google Places API
+- [ ] Develop access patterns for DynamoDB look up
+  - The Google Places response is unique per receipt in the image.
+  - The look up should be based on what extracted data is found in the OCR results: (address, phone, URL)
+- [ ] Implement DynamoDB Schema
+  - [ ] Define table structure with PK: `IMAGE#<image_id>` and SK: `RECEIPT#<receipt_id>#PLACES#<search_type>#<search_value>`
+  - [ ] Add GSI1 for place_id lookups: `PLACE_ID#<place_id>` | `IMAGE#<image_id>#RECEIPT#<receipt_id>`
+  - [ ] Store all Places API response fields as attributes
+  - [ ] Add metadata fields: last_updated, query_count, confidence_score
+- [ ] Create PlacesAPICache Class
+  - [ ] Implement get_places_response method for cache lookups
+  - [ ] Implement save_places_response method for cache storage
+  - [ ] Add cache invalidation logic based on last_updated
+  - [ ] Add error handling and logging
+- [ ] Modify PlacesAPI Class
+  - [ ] Add cache parameter to constructor
+  - [ ] Update search methods to check cache first:
+    - [ ] search_by_phone
+    - [ ] search_by_address
+    - [ ] search_nearby
+    - [ ] get_place_details
+  - [ ] Add cache storage after successful API calls
+- [ ] Update BatchPlacesProcessor
+  - [ ] Integrate cache with process_receipt_batch
+  - [ ] Add cache statistics tracking
+  - [ ] Implement cache-based fallback strategies
+- [ ] Add Cache Monitoring
+  - [ ] Track cache hit/miss rates
+  - [ ] Monitor cache size and growth
+  - [ ] Add cache performance metrics
+  - [ ] Implement cache cleanup strategy
+
 ### LayoutLM Dataset
 - [ ] Data Preparation:
   - [ ] IOB format conversion

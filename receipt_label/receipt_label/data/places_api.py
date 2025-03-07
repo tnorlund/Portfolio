@@ -271,14 +271,16 @@ class BatchPlacesProcessor:
                 self.logger.error(
                     f"Error processing receipt {receipt.get('receipt_id')}: {str(e)}"
                 )
-                # Add the original receipt with error flag
-                enriched_receipts.append(
-                    {
-                        **receipt,
-                        "processing_error": str(e),
-                        "requires_manual_review": True,
-                    }
-                )
+                # Add the original receipt with error flag and empty places_api_match
+                enriched_receipts.append({
+                    **receipt,
+                    "processing_error": str(e),
+                    "requires_manual_review": True,
+                    "places_api_match": None,  # Add empty places_api_match
+                    "confidence_level": ConfidenceLevel.NONE.value,
+                    "validation_score": 0.0,
+                    "matched_fields": []
+                })
 
         return enriched_receipts
 
@@ -291,14 +293,19 @@ class BatchPlacesProcessor:
         Returns:
             Dictionary of available data types and their values
         """
-        available_data = {"address": [], "phone": [], "url": [], "date": []}
+        available_data = {
+            "address": [], 
+            "phone": [], 
+            "url": [], 
+            "date": []
+        }
 
         # Extract data from receipt words
         for word in receipt.get("words", []):
             if word.get("extracted_data"):
                 data_type = word["extracted_data"].get("type")
                 data_value = word["extracted_data"].get("value")
-                if data_type and data_value:
+                if data_type and data_value and data_type in available_data:
                     available_data[data_type].append(data_value)
 
         return available_data
@@ -378,21 +385,7 @@ class BatchPlacesProcessor:
     def _process_medium_priority_receipt(
         self, receipt: Dict, available_data: Dict[str, List]
     ) -> ValidationResult:
-        """Process receipt with 2 data points.
-        
-        Strategy:
-        1. Try address + phone (highest confidence combination)
-        2. Try address + url (can validate business website)
-        3. Try phone + date (phone is more reliable than date)
-        4. Try address + date (lowest confidence combination)
-        
-        Args:
-            receipt: Receipt dictionary
-            available_data: Dictionary of available data by type
-            
-        Returns:
-            ValidationResult with match details and confidence score
-        """
+        """Process receipt with 2 data points."""
         # Get available data types
         has_data = {
             data_type: bool(values) 
@@ -471,7 +464,7 @@ class BatchPlacesProcessor:
         self, receipt: Dict, available_data: Dict[str, List]
     ) -> ValidationResult:
         """Process receipt with 1 data point."""
-        logger.debug(  # Changed from warning to debug
+        logger.debug(
             f"Processing low priority receipt {receipt.get('receipt_id')} with "
             f"data types: {[k for k, v in available_data.items() if v]}"
         )
@@ -485,7 +478,7 @@ class BatchPlacesProcessor:
 
     def _process_no_data_receipt(self, receipt: Dict) -> ValidationResult:
         """Handle receipt with no extractable data."""
-        logger.debug(  # Changed from warning to debug
+        logger.debug(
             f"Processing receipt {receipt.get('receipt_id')} with no extractable data"
         )
         return ValidationResult(
@@ -664,7 +657,7 @@ class BatchPlacesProcessor:
         self, receipt: Dict, available_data: Dict[str, List]
     ) -> ValidationResult:
         """Try alternative strategies when primary validation fails."""
-        logger.debug(  # Changed from warning to debug
+        logger.debug(
             f"Using fallback strategy for receipt {receipt.get('receipt_id')} with "
             f"data types: {[k for k, v in available_data.items() if v]}"
         )
@@ -674,4 +667,4 @@ class BatchPlacesProcessor:
             place_details={},
             validation_score=0.0,
             requires_manual_review=True
-        )
+        ) 
