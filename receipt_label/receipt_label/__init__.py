@@ -23,4 +23,4 @@ __all__ = [
     "StructureProcessor",
     "FieldProcessor",
     "BatchPlacesProcessor",
-] 
+]

@@ -5,8 +5,9 @@ from receipt_label.data.places_api import (
     PlacesAPI,
     BatchPlacesProcessor,
     ConfidenceLevel,
-    ValidationResult
+    ValidationResult,
 )
+
 
 @pytest.fixture
 def sample_receipt():
@@ -19,20 +20,15 @@ def sample_receipt():
             },
             {
                 "text": "123 Main St",
-                "extracted_data": {
-                    "type": "address",
-                    "value": "123 Main St"
-                }
+                "extracted_data": {"type": "address", "value": "123 Main St"},
             },
             {
                 "text": "(555) 123-4567",
-                "extracted_data": {
-                    "type": "phone",
-                    "value": "(555) 123-4567"
-                }
-            }
-        ]
+                "extracted_data": {"type": "phone", "value": "(555) 123-4567"},
+            },
+        ],
     }
+
 
 @pytest.fixture
 def sample_places_response():
@@ -43,8 +39,9 @@ def sample_places_response():
         "formatted_phone_number": "(555) 123-4567",
         "website": "https://www.walmart.com",
         "rating": 3.5,
-        "types": ["grocery_or_supermarket", "store"]
+        "types": ["grocery_or_supermarket", "store"],
     }
+
 
 def test_places_api_initialization():
     """Test Places API client initialization."""
@@ -53,31 +50,36 @@ def test_places_api_initialization():
     assert api.api_key == api_key
     assert api.BASE_URL == "https://maps.googleapis.com/maps/api/place"
 
+
 def test_batch_processor_initialization(mocker):
     """Test BatchPlacesProcessor initialization."""
     api_key = "test_api_key"
-    mock_places_api = mocker.patch('receipt_label.data.places_api.PlacesAPI')
+    mock_places_api = mocker.patch("receipt_label.data.places_api.PlacesAPI")
     processor = BatchPlacesProcessor(api_key)
     mock_places_api.assert_called_once_with(api_key)
 
+
 def test_classify_receipt_data(sample_receipt, mocker):
     """Test receipt data classification."""
-    mocker.patch('receipt_label.data.places_api.PlacesAPI')
+    mocker.patch("receipt_label.data.places_api.PlacesAPI")
     processor = BatchPlacesProcessor("test_api_key")
     available_data = processor._classify_receipt_data(sample_receipt)
-    
+
     assert available_data["address"] == ["123 Main St"]
     assert available_data["phone"] == ["(555) 123-4567"]
     assert available_data["url"] == []
     assert available_data["date"] == []
     assert "name" not in available_data  # Verify name is not in available_data
 
+
 def test_process_high_priority_receipt(mocker, sample_receipt, sample_places_response):
     """Test processing of high priority receipt."""
     mock_places_api = mocker.Mock()
     mock_places_api.search_by_address.return_value = sample_places_response
-    mocker.patch('receipt_label.data.places_api.PlacesAPI', return_value=mock_places_api)
-    
+    mocker.patch(
+        "receipt_label.data.places_api.PlacesAPI", return_value=mock_places_api
+    )
+
     processor = BatchPlacesProcessor("test_api_key")
     result = processor._process_high_priority_receipt(
         sample_receipt,
@@ -85,10 +87,10 @@ def test_process_high_priority_receipt(mocker, sample_receipt, sample_places_res
             "address": ["123 Main St"],
             "phone": ["(555) 123-4567"],
             "url": [],
-            "date": []
-        }
+            "date": [],
+        },
     )
-    
+
     assert isinstance(result, ValidationResult)
     assert result.confidence == ConfidenceLevel.HIGH
     assert result.place_details == sample_places_response
@@ -96,12 +98,17 @@ def test_process_high_priority_receipt(mocker, sample_receipt, sample_places_res
     assert not result.requires_manual_review
     mock_places_api.search_by_address.assert_called_once()
 
-def test_process_medium_priority_receipt(mocker, sample_receipt, sample_places_response):
+
+def test_process_medium_priority_receipt(
+    mocker, sample_receipt, sample_places_response
+):
     """Test processing of medium priority receipt."""
     mock_places_api = mocker.Mock()
     mock_places_api.search_by_address.return_value = sample_places_response
-    mocker.patch('receipt_label.data.places_api.PlacesAPI', return_value=mock_places_api)
-    
+    mocker.patch(
+        "receipt_label.data.places_api.PlacesAPI", return_value=mock_places_api
+    )
+
     processor = BatchPlacesProcessor("test_api_key")
     result = processor._process_medium_priority_receipt(
         sample_receipt,
@@ -109,10 +116,10 @@ def test_process_medium_priority_receipt(mocker, sample_receipt, sample_places_r
             "address": ["123 Main St"],
             "phone": [],
             "url": ["https://www.walmart.com"],
-            "date": []
-        }
+            "date": [],
+        },
     )
-    
+
     assert isinstance(result, ValidationResult)
     assert result.confidence == ConfidenceLevel.MEDIUM
     assert result.place_details == sample_places_response
@@ -120,43 +127,40 @@ def test_process_medium_priority_receipt(mocker, sample_receipt, sample_places_r
     assert not result.requires_manual_review
     mock_places_api.search_by_address.assert_called_once()
 
+
 def test_process_low_priority_receipt(mocker, sample_receipt):
     """Test processing of low priority receipt."""
-    mocker.patch('receipt_label.data.places_api.PlacesAPI')
+    mocker.patch("receipt_label.data.places_api.PlacesAPI")
     processor = BatchPlacesProcessor("test_api_key")
     result = processor._process_low_priority_receipt(
-        sample_receipt,
-        {
-            "address": ["123 Main St"],
-            "phone": [],
-            "url": [],
-            "date": []
-        }
+        sample_receipt, {"address": ["123 Main St"], "phone": [], "url": [], "date": []}
     )
-    
+
     assert isinstance(result, ValidationResult)
     assert result.confidence == ConfidenceLevel.LOW
     assert result.place_details == {}
     assert result.validation_score == 0.0
     assert result.requires_manual_review
 
+
 def test_process_no_data_receipt(mocker, sample_receipt):
     """Test processing of receipt with no data."""
-    mocker.patch('receipt_label.data.places_api.PlacesAPI')
+    mocker.patch("receipt_label.data.places_api.PlacesAPI")
     processor = BatchPlacesProcessor("test_api_key")
     result = processor._process_no_data_receipt(sample_receipt)
-    
+
     assert isinstance(result, ValidationResult)
     assert result.confidence == ConfidenceLevel.NONE
     assert result.place_details == {}
     assert result.validation_score == 0.0
     assert result.requires_manual_review
 
+
 def test_validate_business_name(mocker):
     """Test business name validation."""
-    mocker.patch('receipt_label.data.places_api.PlacesAPI')
+    mocker.patch("receipt_label.data.places_api.PlacesAPI")
     processor = BatchPlacesProcessor("test_api_key")
-    
+
     # Test exact match
     is_valid, message, score = processor._validate_business_name(
         "Walmart", "Walmart Supercenter"
@@ -164,7 +168,7 @@ def test_validate_business_name(mocker):
     assert is_valid
     assert message == ""
     assert score == 1.0
-    
+
     # Test partial match
     is_valid, message, score = processor._validate_business_name(
         "Walmart", "Super Walmart"
@@ -172,7 +176,7 @@ def test_validate_business_name(mocker):
     assert is_valid
     assert message == ""
     assert score == 1.0
-    
+
     # Test address-like name
     is_valid, message, score = processor._validate_business_name(
         "Walmart", "123 Main Street"
@@ -180,24 +184,25 @@ def test_validate_business_name(mocker):
     assert not is_valid
     assert "address" in message
     assert score == 0.5
-    
+
     # Test no match
-    is_valid, message, score = processor._validate_business_name(
-        "Walmart", "Target"
-    )
+    is_valid, message, score = processor._validate_business_name("Walmart", "Target")
     assert not is_valid
     assert "mismatch" in message
     assert score == 0.7
+
 
 def test_process_receipt_batch(mocker, sample_receipt, sample_places_response):
     """Test batch processing of receipts."""
     mock_places_api = mocker.Mock()
     mock_places_api.search_by_address.return_value = sample_places_response
-    mocker.patch('receipt_label.data.places_api.PlacesAPI', return_value=mock_places_api)
-    
+    mocker.patch(
+        "receipt_label.data.places_api.PlacesAPI", return_value=mock_places_api
+    )
+
     processor = BatchPlacesProcessor("test_api_key")
     results = processor.process_receipt_batch([sample_receipt])
-    
+
     assert len(results) == 1
     result = results[0]
     assert result["receipt_id"] == "test_receipt_1"
@@ -207,34 +212,38 @@ def test_process_receipt_batch(mocker, sample_receipt, sample_places_response):
     assert not result["requires_manual_review"]
     mock_places_api.search_by_address.assert_called_once()
 
+
 def test_places_api_search_by_phone(mocker):
     """Test Places API phone search functionality."""
     mock_response = mocker.Mock()
     mock_response.json.return_value = {
         "status": "OK",
-        "candidates": [{"place_id": "test_place_id"}]
+        "candidates": [{"place_id": "test_place_id"}],
     }
     mock_response.raise_for_status.return_value = None
-    
-    mocker.patch('requests.get', return_value=mock_response)
-    
+
+    mocker.patch("requests.get", return_value=mock_response)
+
     api = PlacesAPI("test_api_key")
     api.get_place_details = mocker.Mock(return_value={"name": "Test Place"})
-    
+
     result = api.search_by_phone("(555) 123-4567")
-    
+
     assert result == {"name": "Test Place"}
     api.get_place_details.assert_called_once_with("test_place_id")
+
 
 def test_process_receipt_batch_error(mocker, sample_receipt):
     """Test batch processing of receipts with error handling."""
     mock_places_api = mocker.Mock()
     mock_places_api.search_by_address.side_effect = Exception("Test error")
-    mocker.patch('receipt_label.data.places_api.PlacesAPI', return_value=mock_places_api)
-    
+    mocker.patch(
+        "receipt_label.data.places_api.PlacesAPI", return_value=mock_places_api
+    )
+
     processor = BatchPlacesProcessor("test_api_key")
     results = processor.process_receipt_batch([sample_receipt])
-    
+
     assert len(results) == 1
     result = results[0]
     assert result["receipt_id"] == "test_receipt_1"
@@ -244,4 +253,4 @@ def test_process_receipt_batch_error(mocker, sample_receipt):
     assert result["requires_manual_review"]
     assert "processing_error" in result
     assert result["matched_fields"] == []
-    mock_places_api.search_by_address.assert_called_once() 
+    mock_places_api.search_by_address.assert_called_once()

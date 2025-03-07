@@ -31,7 +31,6 @@ __all__ = [
     "parse_address",
     "format_address",
     "compare_addresses",
-    
     # Date utilities
     "parse_datetime",
     "extract_datetime",
@@ -40,7 +39,6 @@ __all__ = [
     "is_valid_time",
     "get_date_range",
     "get_time_difference",
-    
     # Validation utilities
     "validate_business_name",
     "validate_phone_number",
@@ -49,4 +47,4 @@ __all__ = [
     "validate_amounts",
     "validate_receipt_data",
     "validate_receipt_format",
-] 
+]

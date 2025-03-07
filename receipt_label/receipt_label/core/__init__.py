@@ -3,4 +3,4 @@
 from .labeler import ReceiptLabeler, LabelingResult
 from .validator import ReceiptValidator
 
-__all__ = ["ReceiptLabeler", "LabelingResult", "ReceiptValidator"] 
+__all__ = ["ReceiptLabeler", "LabelingResult", "ReceiptValidator"]

@@ -5,7 +5,8 @@ import requests
 from requests.models import Response
 from typing import Dict, List, Optional, Tuple
 
-from ..models.receipt import Receipt, ReceiptWord
+from ..models.receipt import Receipt
+
 
 def gpt_request_structure_analysis(
     receipt: Receipt,
@@ -41,13 +42,19 @@ def gpt_request_structure_analysis(
         "Content-Type": "application/json",
         "Authorization": f"Bearer {getenv('OPENAI_API_KEY')}",
     }
-    query = _llm_prompt_structure_analysis(receipt, receipt_lines, receipt_words, places_api_data)
+    query = _llm_prompt_structure_analysis(
+        receipt, receipt_lines, receipt_words, places_api_data
+    )
     payload = {
         "model": "gpt-3.5-turbo",
         "messages": [
             {
                 "role": "system",
-                "content": "You analyze receipt structure to identify natural sections based on spatial and content patterns, using business context from Google Places API.",
+                "content": (
+                    "You analyze receipt structure to identify natural sections based on "
+                    "spatial and content patterns, using business context from Google "
+                    "Places API."
+                ),
             },
             {"role": "user", "content": query},
         ],
@@ -60,6 +67,7 @@ def gpt_request_structure_analysis(
         query,
         response.text,
     )
+
 
 def gpt_request_field_labeling(
     receipt: Receipt,
@@ -93,9 +101,15 @@ def gpt_request_field_labeling(
 
     for section in section_boundaries["discovered_sections"]:
         # Get words for this section
-        section_lines = [l for l in receipt_lines if l.line_id in section["line_ids"]]
-        section_words = [w for w in receipt_words if w["line_id"] in section["line_ids"]]
-        
+        section_lines = [
+            line for line in receipt_lines 
+            if line.line_id in section["line_ids"]
+        ]
+        section_words = [
+            word for word in receipt_words 
+            if word["line_id"] in section["line_ids"]
+        ]
+
         if not section_words:
             continue
 
@@ -104,52 +118,62 @@ def gpt_request_field_labeling(
             section_lines=section_lines,
             section_words=section_words,
             section_info=section,
-            places_api_data=places_api_data
+            places_api_data=places_api_data,
         )
         queries.append(query)
-        
+
         payload = {
             "model": "gpt-3.5-turbo",
             "messages": [
                 {
                     "role": "system",
-                    "content": f"You label words in the {section['name']} section of receipts, using business context for accuracy.",
+                    "content": (
+                        f"You label words in the {section['name']} section of receipts, "
+                        "using business context for accuracy."
+                    ),
                 },
                 {"role": "user", "content": query},
             ],
             "temperature": 0.3,
         }
-        
+
         try:
             # Increased timeout to 60 seconds and added retries
             for attempt in range(3):  # Try up to 3 times
                 try:
-                    response = requests.post(url, headers=headers, json=payload, timeout=60)
+                    response = requests.post(
+                        url, headers=headers, json=payload, timeout=60
+                    )
                     response.raise_for_status()
                     break  # If successful, break the retry loop
                 except requests.Timeout:
                     if attempt == 2:  # Last attempt
                         raise  # Re-raise the timeout error
-                    print(f"Timeout processing section {section['name']}, attempt {attempt + 1}/3")
+                    print(
+                        f"Timeout processing section {section['name']}, "
+                        f"attempt {attempt + 1}/3"
+                    )
                     continue  # Try again
                 except requests.RequestException as e:
                     if attempt == 2:  # Last attempt
                         raise  # Re-raise the error
-                    print(f"Error processing section {section['name']}, attempt {attempt + 1}/3: {str(e)}")
+                    print(
+                        f"Error processing section {section['name']}, "
+                        f"attempt {attempt + 1}/3: {str(e)}"
+                    )
                     continue  # Try again
-            
+
             responses.append(response.text)
-            
+
             # Validate and process section results
             section_result = _validate_gpt_response_field_labeling(response)
-            
+
             # Map the text labels back to word IDs
             mapped_labels = _map_labels_to_word_ids(
-                section_result["labeled_words"],
-                section_words
+                section_result["labeled_words"], section_words
             )
             all_labels.extend(mapped_labels)
-            
+
             if section_result["metadata"]["requires_review"]:
                 requires_review = True
                 review_reasons.extend(section_result["metadata"]["review_reasons"])
@@ -165,17 +189,20 @@ def gpt_request_field_labeling(
         "labels": all_labels,
         "metadata": {
             "total_labeled_words": len(all_labels),
-            "average_confidence": sum(l["confidence"] for l in all_labels) / len(all_labels),
+            "average_confidence": (
+                sum(label["confidence"] for label in all_labels) / len(all_labels)
+            ),
             "requires_review": requires_review,
-            "review_reasons": list(set(review_reasons))  # Remove duplicates
-        }
+            "review_reasons": list(set(review_reasons)),  # Remove duplicates
+        },
     }
 
     return (
         final_result,
         "\n---\n".join(queries),  # Join all queries for reference
-        "\n---\n".join(responses)  # Join all responses for reference
+        "\n---\n".join(responses),  # Join all responses for reference
     )
+
 
 def _llm_prompt_structure_analysis(
     receipt: Receipt,
@@ -187,8 +214,8 @@ def _llm_prompt_structure_analysis(
     # Format receipt content
     formatted_lines = []
     for line in receipt_lines:
-        line_words = [w for w in receipt_words if w["line_id"] == line.line_id]
-        line_text = " ".join(w["text"] for w in line_words)
+        line_words = [word for word in receipt_words if word["line_id"] == line.line_id]
+        line_text = " ".join(word["text"] for word in line_words)
         formatted_lines.append(f"Line {line.line_id}: {line_text}")
 
     # Format business context
@@ -197,15 +224,13 @@ def _llm_prompt_structure_analysis(
         "address": places_api_data.get("formatted_address", "Unknown"),
         "phone": places_api_data.get("formatted_phone_number", "Unknown"),
         "website": places_api_data.get("website", "Unknown"),
-        "types": places_api_data.get("types", [])
+        "types": places_api_data.get("types", []),
     }
 
     return (
         f"Analyze the structure of this receipt.\n\n"
         f"Business Context:\n{dumps(business_context, indent=2)}\n\n"
-        f"Receipt Content:\n"
-        + "\n".join(formatted_lines)
-        + "\n\nINSTRUCTIONS:\n"
+        f"Receipt Content:\n" + "\n".join(formatted_lines) + "\n\nINSTRUCTIONS:\n"
         "1. Identify natural sections in the receipt based on spatial and content patterns\n"
         "2. Consider business context when identifying sections\n"
         "3. Look for patterns like:\n"
@@ -234,6 +259,7 @@ def _llm_prompt_structure_analysis(
         "Return ONLY the JSON object. No other text."
     )
 
+
 def _llm_prompt_field_labeling_section(
     receipt: Receipt,
     section_lines: List[Dict],
@@ -245,8 +271,8 @@ def _llm_prompt_field_labeling_section(
     # Format section content
     formatted_lines = []
     for line in section_lines:
-        line_words = [w for w in section_words if w["line_id"] == line.line_id]
-        line_text = " ".join(w["text"] for w in line_words)
+        line_words = [word for word in section_words if word["line_id"] == line.line_id]
+        line_text = " ".join(word["text"] for word in line_words)
         formatted_lines.append(f"Line {line.line_id}: {line_text}")
 
     # Format business context
@@ -255,7 +281,7 @@ def _llm_prompt_field_labeling_section(
         "address": places_api_data.get("formatted_address", "Unknown"),
         "phone": places_api_data.get("formatted_phone_number", "Unknown"),
         "website": places_api_data.get("website", "Unknown"),
-        "types": places_api_data.get("types", [])
+        "types": places_api_data.get("types", []),
     }
 
     # Define label types and their descriptions
@@ -280,7 +306,7 @@ def _llm_prompt_field_labeling_section(
         "discount": "Discount amount",
         "coupon": "Coupon code or amount",
         "loyalty_id": "Loyalty program identifier",
-        "membership_id": "Membership identifier"
+        "membership_id": "Membership identifier",
     }
 
     # Default examples for any section type
@@ -289,7 +315,7 @@ def _llm_prompt_field_labeling_section(
         '{"text": "5700 Lindero Canyon Rd", "label": "address_line", "confidence": 0.95}',
         '{"text": "12/17/2024", "label": "date", "confidence": 0.95}',
         '{"text": "17:19", "label": "time", "confidence": 0.95}',
-        '{"text": "TOTAL", "label": "total", "confidence": 0.95}'
+        '{"text": "TOTAL", "label": "total", "confidence": 0.95}',
     ]
 
     # Select examples based on section type
@@ -297,23 +323,23 @@ def _llm_prompt_field_labeling_section(
         examples = [
             '{"text": "COSTCO WHOLESALE", "label": "business_name", "confidence": 0.95}',
             '{"text": "5700 Lindero Canyon Rd", "label": "address_line", "confidence": 0.95}',
-            '{"text": "#117", "label": "store_id", "confidence": 0.90}'
+            '{"text": "#117", "label": "store_id", "confidence": 0.90}',
         ]
     elif "payment" in section_info["name"].lower():
         examples = [
             '{"text": "TOTAL", "label": "total", "confidence": 0.95}',
             '{"text": "$63.27", "label": "amount", "confidence": 0.95}',
-            '{"text": "APPROVED", "label": "payment_status", "confidence": 0.90}'
+            '{"text": "APPROVED", "label": "payment_status", "confidence": 0.90}',
         ]
     elif "transaction" in section_info["name"].lower():
         examples = [
             '{"text": "12/17/2024", "label": "date", "confidence": 0.95}',
             '{"text": "17:19", "label": "time", "confidence": 0.95}',
-            '{"text": "Tran ID#: 12345", "label": "transaction_id", "confidence": 0.90}'
+            '{"text": "Tran ID#: 12345", "label": "transaction_id", "confidence": 0.90}',
         ]
     else:
         examples = default_examples
-    
+
     return (
         f"Label words in the {section_info['name'].upper()} section of this receipt.\n\n"
         f"Business Context:\n{dumps(business_context, indent=2)}\n\n"
@@ -346,55 +372,64 @@ def _llm_prompt_field_labeling_section(
         "Return ONLY the JSON object. No other text."
     )
 
+
 def _validate_gpt_response_structure_analysis(response: Response) -> Dict:
     """Validate the structure analysis response from the OpenAI API."""
     response.raise_for_status()
     data = response.json()
-    
+
     if "choices" not in data or not data["choices"]:
         raise ValueError("The response does not contain any choices.")
-    
+
     first_choice = data["choices"][0]
     if "message" not in first_choice:
         raise ValueError("The response does not contain a message.")
-    
+
     message = first_choice["message"]
     if "content" not in message:
         raise ValueError("The response message does not contain content.")
-    
+
     content = message["content"]
     if not content:
         raise ValueError("The response message content is empty.")
-    
+
     try:
         # Handle potential JSON code blocks
         if "```json" in content:
             match = re.search(r"```json(.*?)```", content, flags=re.DOTALL)
             content = match.group(1) if match else content
-        
+
         # Parse the JSON content
         parsed = loads(content.strip())
-        
+
         # Validate structure
         if not isinstance(parsed, dict):
             raise ValueError("The response must be a dictionary.")
-        
+
         required_keys = ["discovered_sections", "overall_confidence"]
         if not all(key in parsed for key in required_keys):
             raise ValueError(f"Missing required keys: {required_keys}")
-        
+
         # Validate discovered_sections array
         if not isinstance(parsed["discovered_sections"], list):
             raise ValueError("'discovered_sections' must be a list.")
-        
+
         for section in parsed["discovered_sections"]:
             if not isinstance(section, dict):
                 raise ValueError("Each section must be a dictionary.")
-            
-            required_section_keys = ["name", "line_ids", "spatial_patterns", "content_patterns", "confidence"]
+
+            required_section_keys = [
+                "name",
+                "line_ids",
+                "spatial_patterns",
+                "content_patterns",
+                "confidence",
+            ]
             if not all(key in section for key in required_section_keys):
-                raise ValueError(f"Section missing required keys: {required_section_keys}")
-            
+                raise ValueError(
+                    f"Section missing required keys: {required_section_keys}"
+                )
+
             if not isinstance(section["name"], str):
                 raise ValueError("'name' must be a string.")
             if not isinstance(section["line_ids"], list):
@@ -407,69 +442,74 @@ def _validate_gpt_response_structure_analysis(response: Response) -> Dict:
                 raise ValueError("'confidence' must be a number.")
             if not (0 <= section["confidence"] <= 1):
                 raise ValueError("'confidence' must be between 0 and 1.")
-        
+
         # Validate overall_confidence
         if not isinstance(parsed["overall_confidence"], (int, float)):
             raise ValueError("'overall_confidence' must be a number.")
         if not (0 <= parsed["overall_confidence"] <= 1):
             raise ValueError("'overall_confidence' must be between 0 and 1.")
-        
+
         return parsed
-        
+
     except JSONDecodeError as e:
-        raise ValueError(f"Invalid JSON in response: {e}\nResponse text: {response.text}")
+        raise ValueError(
+            f"Invalid JSON in response: {e}\nResponse text: {response.text}"
+        )
     except Exception as e:
-        raise ValueError(f"Error validating response: {e}\nResponse text: {response.text}")
+        raise ValueError(
+            f"Error validating response: {e}\nResponse text: {response.text}"
+        )
+
 
 def _validate_gpt_response_field_labeling(response: Response) -> Dict:
     """Validate the field labeling response from the OpenAI API."""
     response.raise_for_status()
     data = response.json()
-    
+
     if "choices" not in data or not data["choices"]:
         raise ValueError("The response does not contain any choices.")
-    
+
     first_choice = data["choices"][0]
     if "message" not in first_choice:
         raise ValueError("The response does not contain a message.")
-    
+
     message = first_choice["message"]
     if "content" not in message:
         raise ValueError("The response message does not contain content.")
-    
+
     content = message["content"]
     if not content:
         raise ValueError("The response message content is empty.")
-    
+
     try:
         # Handle potential JSON code blocks
         if "```json" in content:
             match = re.search(r"```json(.*?)```", content, flags=re.DOTALL)
             content = match.group(1) if match else content
-        
+
         # Parse the JSON content
         parsed = loads(content.strip())
-        
+
         # Validate structure
         if not isinstance(parsed, dict):
             raise ValueError("The response must be a dictionary.")
-        
+
         required_keys = ["labeled_words", "metadata"]
         if not all(key in parsed for key in required_keys):
             raise ValueError(f"Missing required keys: {required_keys}")
-        
+
         # Validate labeled_words array
         if not isinstance(parsed["labeled_words"], list):
             raise ValueError("'labeled_words' must be a list.")
-        
+
         for label in parsed["labeled_words"]:
             if not isinstance(label, dict):
                 raise ValueError("Each label must be a dictionary.")
-            
+
             required_label_keys = ["text", "label", "confidence"]
             if not all(key in label for key in required_label_keys):
                 raise ValueError(f"Label missing required keys: {required_label_keys}")
-            
+
             if not isinstance(label["text"], str):
                 raise ValueError("'text' must be a string.")
             if not isinstance(label["label"], str):
@@ -478,28 +518,34 @@ def _validate_gpt_response_field_labeling(response: Response) -> Dict:
                 raise ValueError("'confidence' must be a number.")
             if not (0 <= label["confidence"] <= 1):
                 raise ValueError("'confidence' must be between 0 and 1.")
-        
+
         # Validate metadata
         metadata = parsed["metadata"]
         required_metadata_keys = ["requires_review", "review_reasons"]
         if not all(key in metadata for key in required_metadata_keys):
-            raise ValueError(f"Metadata missing required keys: {required_metadata_keys}")
-        
+            raise ValueError(
+                f"Metadata missing required keys: {required_metadata_keys}"
+            )
+
         if not isinstance(metadata["requires_review"], bool):
             raise ValueError("'requires_review' must be a boolean.")
         if not isinstance(metadata["review_reasons"], list):
             raise ValueError("'review_reasons' must be a list.")
-        
+
         return parsed
-        
+
     except JSONDecodeError as e:
-        raise ValueError(f"Invalid JSON in response: {e}\nResponse text: {response.text}")
+        raise ValueError(
+            f"Invalid JSON in response: {e}\nResponse text: {response.text}"
+        )
     except Exception as e:
-        raise ValueError(f"Error validating response: {e}\nResponse text: {response.text}")
+        raise ValueError(
+            f"Error validating response: {e}\nResponse text: {response.text}"
+        )
+
 
 def _map_labels_to_word_ids(
-    labeled_words: List[Dict],
-    section_words: List[Dict]
+    labeled_words: List[Dict], section_words: List[Dict]
 ) -> List[Dict]:
     """Map text labels back to word IDs."""
     mapped_labels = []
@@ -507,13 +553,13 @@ def _map_labels_to_word_ids(
         # Find matching word(s) in section
         matching_words = []
         label_text = label["text"].strip()
-        
+
         # Try exact match first
         for word in section_words:
             if word["text"].strip() == label_text:
                 matching_words.append(word)
                 break
-        
+
         # If no exact match, try partial matches
         if not matching_words:
             words = label_text.split()
@@ -526,7 +572,7 @@ def _map_labels_to_word_ids(
                     ):
                         matching_words.extend(section_words[i:i + len(words)])
                         break
-        
+
         if matching_words:
             # Create a label for each matching word
             for word in matching_words:
@@ -534,7 +580,7 @@ def _map_labels_to_word_ids(
                     "line_id": word["line_id"],
                     "word_id": word["word_id"],
                     "label": label["label"],
-                    "confidence": label["confidence"]
+                    "confidence": label["confidence"],
                 })
-    
-    return mapped_labels 
+
+    return mapped_labels

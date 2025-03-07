@@ -40,4 +40,4 @@ setup(
         "Programming Language :: Python :: 3.10",
         "Topic :: Software Development :: Libraries :: Python Modules",
     ],
-) 
+)

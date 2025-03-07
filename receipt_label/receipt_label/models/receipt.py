@@ -3,9 +3,11 @@ from typing import Dict, List, Optional
 from datetime import datetime
 from receipt_dynamo.entities.receipt_word import ReceiptWord as DynamoReceiptWord
 
+
 @dataclass
 class ReceiptWord:
     """Represents a single word in a receipt."""
+
     text: str
     line_id: int
     word_id: int
@@ -17,12 +19,12 @@ class ReceiptWord:
     font_style: Optional[str] = None
 
     @classmethod
-    def from_dynamo(cls, word: DynamoReceiptWord) -> 'ReceiptWord':
+    def from_dynamo(cls, word: DynamoReceiptWord) -> "ReceiptWord":
         """Convert a DynamoDB ReceiptWord to a ReceiptWord for labeling.
-        
+
         Args:
             word: DynamoDB ReceiptWord instance
-            
+
         Returns:
             ReceiptWord instance for labeling
         """
@@ -34,18 +36,24 @@ class ReceiptWord:
             extracted_data=word.extracted_data,
             bounding_box=word.bounding_box,
             # Extract font information from extracted_data if available
-            font_size=word.extracted_data.get("font_size") if word.extracted_data else None,
-            font_weight=word.extracted_data.get("font_weight") if word.extracted_data else None,
-            font_style=word.extracted_data.get("font_style") if word.extracted_data else None,
+            font_size=(
+                word.extracted_data.get("font_size") if word.extracted_data else None
+            ),
+            font_weight=(
+                word.extracted_data.get("font_weight") if word.extracted_data else None
+            ),
+            font_style=(
+                word.extracted_data.get("font_style") if word.extracted_data else None
+            ),
         )
 
     def to_dynamo(self, receipt_id: int, image_id: str) -> DynamoReceiptWord:
         """Convert this ReceiptWord back to a DynamoDB ReceiptWord.
-        
+
         Args:
             receipt_id: The receipt ID
             image_id: The image ID
-            
+
         Returns:
             DynamoDB ReceiptWord instance
         """
@@ -75,9 +83,11 @@ class ReceiptWord:
             extracted_data=extracted_data,
         )
 
+
 @dataclass
 class ReceiptSection:
     """Represents a section in a receipt."""
+
     name: str
     confidence: float
     line_ids: List[int]
@@ -87,9 +97,11 @@ class ReceiptSection:
     end_line: Optional[int] = None
     metadata: Optional[Dict] = None
 
+
 @dataclass
 class Receipt:
     """Represents a complete receipt."""
+
     receipt_id: str
     image_id: str
     words: List[ReceiptWord]
@@ -97,16 +109,18 @@ class Receipt:
     metadata: Optional[Dict] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-    
+
     @classmethod
-    def from_dynamo(cls, receipt_id: str, image_id: str, words: List[DynamoReceiptWord]) -> 'Receipt':
+    def from_dynamo(
+        cls, receipt_id: str, image_id: str, words: List[DynamoReceiptWord]
+    ) -> "Receipt":
         """Create a Receipt instance from DynamoDB data.
-        
+
         Args:
             receipt_id: The receipt ID
             image_id: The image ID
             words: List of DynamoDB ReceiptWord instances
-            
+
         Returns:
             Receipt instance for labeling
         """
@@ -116,13 +130,13 @@ class Receipt:
             words=[ReceiptWord.from_dynamo(word) for word in words],
             metadata=None,
             created_at=None,
-            updated_at=None
+            updated_at=None,
         )
-    
+
     def get_words_by_line(self, line_id: int) -> List[ReceiptWord]:
         """Get all words in a specific line."""
         return [word for word in self.words if word.line_id == line_id]
-    
+
     def get_section_by_name(self, name: str) -> Optional[ReceiptSection]:
         """Get a section by its name."""
         if not self.sections:
@@ -131,21 +145,19 @@ class Receipt:
             if section.name == name:
                 return section
         return None
-    
+
     def get_section_words(self, section: ReceiptSection) -> List[ReceiptWord]:
         """Get all words in a specific section."""
-        return [
-            word for word in self.words
-            if word.line_id in section.line_ids
-        ]
-    
+        return [word for word in self.words if word.line_id in section.line_ids]
+
     def get_field_words(self, field_name: str) -> List[ReceiptWord]:
         """Get all words associated with a specific field."""
         return [
-            word for word in self.words
+            word
+            for word in self.words
             if word.extracted_data and word.extracted_data.get("field") == field_name
         ]
-    
+
     def to_dict(self) -> Dict:
         """Convert receipt to dictionary format."""
         return {
@@ -182,22 +194,27 @@ class Receipt:
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
-    
+
     @classmethod
-    def from_dict(cls, data: Dict) -> 'Receipt':
+    def from_dict(cls, data: Dict) -> "Receipt":
         """Create a Receipt instance from a dictionary."""
         return cls(
             receipt_id=data["receipt_id"],
             image_id=data["image_id"],
-            words=[
-                ReceiptWord(**word_data)
-                for word_data in data["words"]
-            ],
+            words=[ReceiptWord(**word_data) for word_data in data["words"]],
             sections=[
                 ReceiptSection(**section_data)
                 for section_data in data.get("sections", [])
             ],
             metadata=data.get("metadata"),
-            created_at=datetime.fromisoformat(data["created_at"]) if data.get("created_at") else None,
-            updated_at=datetime.fromisoformat(data["updated_at"]) if data.get("updated_at") else None,
-        ) 
+            created_at=(
+                datetime.fromisoformat(data["created_at"])
+                if data.get("created_at")
+                else None
+            ),
+            updated_at=(
+                datetime.fromisoformat(data["updated_at"])
+                if data.get("updated_at")
+                else None
+            ),
+        )

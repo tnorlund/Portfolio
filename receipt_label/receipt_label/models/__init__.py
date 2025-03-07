@@ -2,4 +2,4 @@
 
 from .receipt import Receipt, ReceiptWord, ReceiptSection
 
-__all__ = ["Receipt", "ReceiptWord", "ReceiptSection"] 
+__all__ = ["Receipt", "ReceiptWord", "ReceiptSection"]
