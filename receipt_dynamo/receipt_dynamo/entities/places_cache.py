@@ -1,6 +1,7 @@
 import json
 from datetime import datetime
 from typing import Dict, Any, Literal
+from receipt_dynamo.entities.util import normalize_address
 
 SEARCH_TYPES = Literal["ADDRESS", "PHONE", "URL"]
 
@@ -95,7 +96,9 @@ class PlacesCache:
         value = value.strip()
         
         if self.search_type == "ADDRESS":
-            # Replace spaces with underscores before padding
+            # Normalize the address first
+            value = normalize_address(value)
+            # Replace spaces with underscores
             value = value.replace(" ", "_")
             return f"{value:_>{self._MAX_ADDRESS_LENGTH}}"
         elif self.search_type == "PHONE":

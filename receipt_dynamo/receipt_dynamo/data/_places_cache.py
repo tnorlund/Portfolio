@@ -1,6 +1,7 @@
 from typing import Dict, List, Optional, Tuple
 from botocore.exceptions import ClientError
 from receipt_dynamo.entities.places_cache import PlacesCache, itemToPlacesCache
+from datetime import datetime
 
 # DynamoDB batch_write_item can handle up to 25 items per call
 CHUNK_SIZE = 25
@@ -97,6 +98,49 @@ class _PlacesCache:
                 ) from e
             else:
                 raise Exception(f"Error updating PlacesCache: {e}")
+
+    def incrementQueryCount(self, item: PlacesCache) -> PlacesCache:
+        """
+        Increments the query count for a PlacesCache item and updates its last_updated timestamp.
+        If the item doesn't exist, it will be created with a query count of 1.
+
+        Args:
+            item (PlacesCache): The PlacesCache object to update.
+
+        Returns:
+            PlacesCache: The updated PlacesCache object.
+
+        Raises:
+            Exception: If there's an error updating the item.
+        """
+        if item is None:
+            raise ValueError("item parameter is required and cannot be None.")
+        if not isinstance(item, PlacesCache):
+            raise ValueError(
+                "item must be an instance of the PlacesCache class."
+            )
+
+        try:
+            # Update the item's attributes
+            response = self._client.update_item(
+                TableName=self.table_name,
+                Key=item.key(),
+                UpdateExpression="SET query_count = if_not_exists(query_count, :zero) + :inc, last_updated = :now",
+                ExpressionAttributeValues={
+                    ":inc": {"N": "1"},
+                    ":zero": {"N": "0"},
+                    ":now": {"S": datetime.now().isoformat()}
+                },
+                ReturnValues="ALL_NEW"
+            )
+            
+            # Convert the response back to a PlacesCache object
+            if "Attributes" in response:
+                return itemToPlacesCache(response["Attributes"])
+            return item
+            
+        except ClientError as e:
+            raise Exception(f"Error incrementing query count: {e}")
 
     def deletePlacesCache(self, item: PlacesCache):
         """

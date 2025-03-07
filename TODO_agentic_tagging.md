@@ -14,6 +14,12 @@
 - [x] Phone number validation and normalization
 - [x] Address validation with fuzzy matching
 - [x] Date/time format validation
+  - [x] Standard formats: YYYY-MM-DD, MM/DD/YYYY
+  - [x] Time formats: HH:MM AM/PM, HH:MM:SS
+  - [x] Receipt-specific formats:
+    - [x] MM/DD/YYYY HH:MM AM/PM (e.g., 04/30/2024 08:29 PM)
+    - [x] MM/DD/YYYY HH:MM:SS AM/PM
+    - [x] Future dates for expiration/validity
 - [x] Cross-field consistency checks
 
 ### GPT Integration
@@ -58,36 +64,47 @@
   - [ ] Label distribution tracking
 
 ### Caching Google Places API
-- [ ] Develop access patterns for DynamoDB look up
-  - The Google Places response is unique per receipt in the image.
-  - The look up should be based on what extracted data is found in the OCR results: (address, phone, URL)
-- [ ] Implement DynamoDB Schema
-  - [ ] Define table structure with PK: `IMAGE#<image_id>` and SK: `RECEIPT#<receipt_id>#PLACES#<search_type>#<search_value>`
-  - [ ] Add GSI1 for place_id lookups: `PLACE_ID#<place_id>` | `IMAGE#<image_id>#RECEIPT#<receipt_id>`
-  - [ ] Store all Places API response fields as attributes
-  - [ ] Add metadata fields: last_updated, query_count, confidence_score
-- [ ] Create PlacesAPICache Class
-  - [ ] Implement get_places_response method for cache lookups
-  - [ ] Implement save_places_response method for cache storage
-  - [ ] Add cache invalidation logic based on last_updated
-  - [ ] Add error handling and logging
-- [ ] Modify PlacesAPI Class
-  - [ ] Add cache parameter to constructor
-  - [ ] Update search methods to check cache first:
-    - [ ] search_by_phone
-    - [ ] search_by_address
-    - [ ] search_nearby
-    - [ ] get_place_details
-  - [ ] Add cache storage after successful API calls
-- [ ] Update BatchPlacesProcessor
-  - [ ] Integrate cache with process_receipt_batch
-  - [ ] Add cache statistics tracking
-  - [ ] Implement cache-based fallback strategies
-- [ ] Add Cache Monitoring
-  - [ ] Track cache hit/miss rates
-  - [ ] Monitor cache size and growth
-  - [ ] Add cache performance metrics
-  - [ ] Implement cache cleanup strategy
+- [x] Develop access patterns for DynamoDB look up
+  - [x] Primary lookup by search type (ADDRESS, PHONE, URL) and search value
+  - [x] Secondary lookup by place_id for reuse across search types
+  - [x] Skip caching for non-business entities (routes, street addresses)
+  - [x] Track query counts and last_updated timestamps
+
+- [x] Implement DynamoDB Schema
+  - [x] Define table structure with PK: `PLACES#<search_type>` and SK: `VALUE#<search_value>`
+  - [x] Add GSI1 for place_id lookups: `PLACE_ID#<place_id>` | `PLACE_ID#<place_id>`
+  - [x] Store all Places API response fields as attributes
+  - [x] Add metadata fields: last_updated, query_count
+
+- [x] Create PlacesCache Class
+  - [x] Implement getPlacesCache method for primary lookups
+  - [x] Implement getPlacesCacheByPlaceId for secondary lookups
+  - [x] Implement incrementQueryCount for usage tracking
+  - [x] Add cache invalidation logic based on last_updated
+
+- [x] Modify PlacesAPI Class
+  - [x] Add cache parameter to constructor
+  - [x] Update search methods to check cache first:
+    - [x] search_by_phone
+    - [x] search_by_address
+    - [x] search_nearby
+    - [x] get_place_details
+  - [x] Add intelligent cache storage:
+    - [x] Skip caching for routes and non-business entities
+    - [x] Handle missing place_ids gracefully
+    - [x] Store full place details for reuse
+
+- [x] Add Cache Monitoring
+  - [x] Track cache hit/miss rates through logging
+  - [x] Monitor query counts per cached item
+  - [x] Add cache performance metrics
+  - [x] Implement 30-day cache cleanup strategy
+
+### Next Steps for Caching
+- [ ] Add region-based search optimization
+- [ ] Implement batch cache updates
+- [ ] Add cache warming for frequently accessed items
+- [ ] Develop cache analytics dashboard
 
 ### LayoutLM Dataset
 - [ ] Data Preparation:
