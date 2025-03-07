@@ -14,6 +14,7 @@ from receipt_dynamo.data._job_resource import _JobResource
 from receipt_dynamo.data._job_status import _JobStatus
 from receipt_dynamo.data._letter import _Letter
 from receipt_dynamo.data._line import _Line
+from receipt_dynamo.data._places_cache import _PlacesCache
 from receipt_dynamo.data._queue import _Queue
 from receipt_dynamo.data._receipt import _Receipt
 from receipt_dynamo.data._receipt_letter import _ReceiptLetter
@@ -46,6 +47,7 @@ class DynamoClient(
     _JobDependency,
     _Queue,
     _Instance,
+    _PlacesCache,
 ):
     """A class used to represent a DynamoDB client."""
 
