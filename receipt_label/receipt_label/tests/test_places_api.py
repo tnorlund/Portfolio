@@ -43,6 +43,7 @@ def sample_places_response():
     }
 
 
+@pytest.mark.integration
 def test_places_api_initialization(dynamodb_table):
     """Test Places API client initialization."""
     api_key = "test_api_key"
@@ -50,6 +51,7 @@ def test_places_api_initialization(dynamodb_table):
     assert api is not None
 
 
+@pytest.mark.integration
 def test_batch_processor_initialization(mocker, dynamodb_table):
     """Test BatchPlacesProcessor initialization."""
     api_key = "test_api_key"
@@ -58,6 +60,7 @@ def test_batch_processor_initialization(mocker, dynamodb_table):
     assert processor is not None
 
 
+@pytest.mark.integration
 def test_classify_receipt_data(sample_receipt, mocker, dynamodb_table):
     """Test receipt data classification."""
     mocker.patch("receipt_label.data.places_api.PlacesAPI")
@@ -71,6 +74,7 @@ def test_classify_receipt_data(sample_receipt, mocker, dynamodb_table):
     assert "name" not in available_data  # Verify name is not in available_data
 
 
+@pytest.mark.integration
 def test_process_high_priority_receipt(mocker, sample_receipt, sample_places_response, dynamodb_table):
     """Test processing of high priority receipt."""
     mock_places_api = mocker.Mock()
@@ -97,6 +101,7 @@ def test_process_high_priority_receipt(mocker, sample_receipt, sample_places_res
     mock_places_api.search_by_address.assert_called_once()
 
 
+@pytest.mark.integration
 def test_process_medium_priority_receipt(mocker, sample_receipt, sample_places_response, dynamodb_table):
     """Test processing of medium priority receipt."""
     mock_places_api = mocker.Mock()
@@ -123,6 +128,7 @@ def test_process_medium_priority_receipt(mocker, sample_receipt, sample_places_r
     mock_places_api.search_by_address.assert_called_once()
 
 
+@pytest.mark.integration
 def test_process_low_priority_receipt(mocker, sample_receipt, dynamodb_table):
     """Test processing of low priority receipt."""
     mocker.patch("receipt_label.data.places_api.PlacesAPI")
@@ -138,6 +144,7 @@ def test_process_low_priority_receipt(mocker, sample_receipt, dynamodb_table):
     assert result.requires_manual_review
 
 
+@pytest.mark.integration
 def test_process_no_data_receipt(mocker, sample_receipt, dynamodb_table):
     """Test processing of receipt with no data."""
     mocker.patch("receipt_label.data.places_api.PlacesAPI")
@@ -151,6 +158,7 @@ def test_process_no_data_receipt(mocker, sample_receipt, dynamodb_table):
     assert result.requires_manual_review
 
 
+@pytest.mark.integration
 def test_validate_business_name(mocker, dynamodb_table):
     """Test business name validation."""
     mocker.patch("receipt_label.data.places_api.PlacesAPI")
@@ -187,6 +195,7 @@ def test_validate_business_name(mocker, dynamodb_table):
     assert score == 0.7
 
 
+@pytest.mark.integration
 def test_process_receipt_batch(mocker, sample_receipt, sample_places_response, dynamodb_table):
     """Test batch processing of receipts."""
     mock_places_api = mocker.Mock()
@@ -207,6 +216,7 @@ def test_process_receipt_batch(mocker, sample_receipt, sample_places_response, d
     mock_places_api.search_by_address.assert_called_once()
 
 
+@pytest.mark.integration
 def test_places_api_search_by_phone(mocker, dynamodb_table):
     """Test Places API phone search functionality."""
     mock_response = mocker.Mock()
@@ -226,6 +236,7 @@ def test_places_api_search_by_phone(mocker, dynamodb_table):
     api.get_place_details.assert_called_once_with("test_place_id")
 
 
+@pytest.mark.integration
 def test_process_receipt_batch_error(mocker, sample_receipt, dynamodb_table):
     """Test batch processing of receipts with error handling."""
     mock_places_api = mocker.Mock()

@@ -18,6 +18,8 @@ class ReceiptWord:
     font_size: Optional[float] = None
     font_weight: Optional[str] = None
     font_style: Optional[str] = None
+    angle_degrees: Optional[float] = None
+    angle_radians: Optional[float] = None
 
     @classmethod
     def from_dynamo(cls, word: DynamoReceiptWord) -> "ReceiptWord":
@@ -96,6 +98,8 @@ class ReceiptLine:
     top_left: Dict
     bottom_right: Dict
     bottom_left: Dict
+    angle_degrees: float
+    angle_radians: float
 
     @classmethod
     def from_dynamo(cls, line: DynamoReceiptLine) -> "ReceiptLine":
@@ -116,6 +120,8 @@ class ReceiptLine:
             top_left=line.top_left,
             bottom_right=line.bottom_right,
             bottom_left=line.bottom_left,
+            angle_degrees=line.angle_degrees,
+            angle_radians=line.angle_radians
         )
 
     def to_dynamo(self, receipt_id: int, image_id: str) -> DynamoReceiptLine:
@@ -139,6 +145,8 @@ class ReceiptLine:
             bottom_right=self.bottom_right,
             bottom_left=self.bottom_left,
             confidence=self.confidence,
+            angle_degrees=self.angle_degrees,
+            angle_radians=self.angle_radians
         )
 
 
@@ -259,6 +267,8 @@ class Receipt:
                     "top_left": line.top_left,
                     "bottom_right": line.bottom_right,
                     "bottom_left": line.bottom_left,
+                    "angle_degrees": line.angle_degrees,
+                    "angle_radians": line.angle_radians
                 }
                 for line in self.lines
             ],

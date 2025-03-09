@@ -39,7 +39,9 @@ def sample_receipt_lines():
             top_right={"x": 100, "y": 0},
             top_left={"x": 0, "y": 0},
             bottom_right={"x": 100, "y": 20},
-            bottom_left={"x": 0, "y": 20}
+            bottom_left={"x": 0, "y": 20},
+            angle_degrees=0.0,
+            angle_radians=0.0
         ),
         ReceiptLine(
             line_id="2",
@@ -49,7 +51,9 @@ def sample_receipt_lines():
             top_right={"x": 100, "y": 30},
             top_left={"x": 0, "y": 30},
             bottom_right={"x": 100, "y": 50},
-            bottom_left={"x": 0, "y": 50}
+            bottom_left={"x": 0, "y": 50},
+            angle_degrees=0.0,
+            angle_radians=0.0
         ),
         ReceiptLine(
             line_id="3",
@@ -59,7 +63,9 @@ def sample_receipt_lines():
             top_right={"x": 100, "y": 60},
             top_left={"x": 0, "y": 60},
             bottom_right={"x": 100, "y": 80},
-            bottom_left={"x": 0, "y": 80}
+            bottom_left={"x": 0, "y": 80},
+            angle_degrees=0.0,
+            angle_radians=0.0
         ),
         ReceiptLine(
             line_id="4",
@@ -69,7 +75,9 @@ def sample_receipt_lines():
             top_right={"x": 100, "y": 90},
             top_left={"x": 0, "y": 90},
             bottom_right={"x": 100, "y": 110},
-            bottom_left={"x": 0, "y": 110}
+            bottom_left={"x": 0, "y": 110},
+            angle_degrees=0.0,
+            angle_radians=0.0
         ),
         ReceiptLine(
             line_id="5",
@@ -79,7 +87,9 @@ def sample_receipt_lines():
             top_right={"x": 100, "y": 120},
             top_left={"x": 0, "y": 120},
             bottom_right={"x": 100, "y": 140},
-            bottom_left={"x": 0, "y": 140}
+            bottom_left={"x": 0, "y": 140},
+            angle_degrees=0.0,
+            angle_radians=0.0
         )
     ]
 
@@ -91,21 +101,27 @@ def sample_receipt_words():
             text="Item",
             confidence=0.9,
             line_id="1",
-            bounding_box={"x": 0, "y": 0, "width": 30, "height": 20}
+            bounding_box={"x": 0, "y": 0, "width": 30, "height": 20},
+            angle_degrees=0.0,
+            angle_radians=0.0
         ),
         ReceiptWord(
             word_id="2",
             text="1",
             confidence=0.9,
             line_id="1",
-            bounding_box={"x": 35, "y": 0, "width": 10, "height": 20}
+            bounding_box={"x": 35, "y": 0, "width": 10, "height": 20},
+            angle_degrees=0.0,
+            angle_radians=0.0
         ),
         ReceiptWord(
             word_id="3",
             text="$10.99",
             confidence=0.9,
             line_id="1",
-            bounding_box={"x": 50, "y": 0, "width": 40, "height": 20}
+            bounding_box={"x": 50, "y": 0, "width": 40, "height": 20},
+            angle_degrees=0.0,
+            angle_radians=0.0
         ),
         # Line 2
         ReceiptWord(
@@ -113,35 +129,45 @@ def sample_receipt_words():
             text="Item",
             confidence=0.9,
             line_id="2",
-            bounding_box={"x": 0, "y": 30, "width": 30, "height": 20}
+            bounding_box={"x": 0, "y": 30, "width": 30, "height": 20},
+            angle_degrees=0.0,
+            angle_radians=0.0
         ),
         ReceiptWord(
             word_id="5",
             text="2",
             confidence=0.9,
             line_id="2",
-            bounding_box={"x": 35, "y": 30, "width": 10, "height": 20}
+            bounding_box={"x": 35, "y": 30, "width": 10, "height": 20},
+            angle_degrees=0.0,
+            angle_radians=0.0
         ),
         ReceiptWord(
             word_id="6",
             text="2",
             confidence=0.9,
             line_id="2",
-            bounding_box={"x": 50, "y": 30, "width": 10, "height": 20}
+            bounding_box={"x": 50, "y": 30, "width": 10, "height": 20},
+            angle_degrees=0.0,
+            angle_radians=0.0
         ),
         ReceiptWord(
             word_id="7",
             text="@",
             confidence=0.9,
             line_id="2",
-            bounding_box={"x": 65, "y": 30, "width": 10, "height": 20}
+            bounding_box={"x": 65, "y": 30, "width": 10, "height": 20},
+            angle_degrees=0.0,
+            angle_radians=0.0
         ),
         ReceiptWord(
             word_id="8",
             text="$5.99",
             confidence=0.9,
             line_id="2",
-            bounding_box={"x": 80, "y": 30, "width": 40, "height": 20}
+            bounding_box={"x": 80, "y": 30, "width": 40, "height": 20},
+            angle_degrees=0.0,
+            angle_radians=0.0
         ),
         # Subtotal line
         ReceiptWord(
@@ -149,14 +175,18 @@ def sample_receipt_words():
             text="Subtotal",
             confidence=0.9,
             line_id="3",
-            bounding_box={"x": 0, "y": 60, "width": 60, "height": 20}
+            bounding_box={"x": 0, "y": 60, "width": 60, "height": 20},
+            angle_degrees=0.0,
+            angle_radians=0.0
         ),
         ReceiptWord(
             word_id="10",
             text="$23.97",
             confidence=0.9,
             line_id="3",
-            bounding_box={"x": 70, "y": 60, "width": 40, "height": 20}
+            bounding_box={"x": 70, "y": 60, "width": 40, "height": 20},
+            angle_degrees=0.0,
+            angle_radians=0.0
         ),
         # Tax line
         ReceiptWord(
@@ -164,14 +194,18 @@ def sample_receipt_words():
             text="Tax",
             confidence=0.9,
             line_id="4",
-            bounding_box={"x": 0, "y": 90, "width": 30, "height": 20}
+            bounding_box={"x": 0, "y": 90, "width": 30, "height": 20},
+            angle_degrees=0.0,
+            angle_radians=0.0
         ),
         ReceiptWord(
             word_id="12",
             text="$2.00",
             confidence=0.9,
             line_id="4",
-            bounding_box={"x": 40, "y": 90, "width": 40, "height": 20}
+            bounding_box={"x": 40, "y": 90, "width": 40, "height": 20},
+            angle_degrees=0.0,
+            angle_radians=0.0
         ),
         # Total line
         ReceiptWord(
@@ -179,17 +213,22 @@ def sample_receipt_words():
             text="Total",
             confidence=0.9,
             line_id="5",
-            bounding_box={"x": 0, "y": 120, "width": 40, "height": 20}
+            bounding_box={"x": 0, "y": 120, "width": 40, "height": 20},
+            angle_degrees=0.0,
+            angle_radians=0.0
         ),
         ReceiptWord(
             word_id="14",
             text="$25.97",
             confidence=0.9,
             line_id="5",
-            bounding_box={"x": 50, "y": 120, "width": 40, "height": 20}
+            bounding_box={"x": 50, "y": 120, "width": 40, "height": 20},
+            angle_degrees=0.0,
+            angle_radians=0.0
         )
     ]
 
+@pytest.mark.unit
 def test_fast_pattern_matcher(sample_receipt, sample_receipt_lines, sample_receipt_words):
     matcher = FastPatternMatcher()
     result = matcher.process(sample_receipt, sample_receipt_lines, sample_receipt_words)
@@ -207,6 +246,7 @@ def test_fast_pattern_matcher(sample_receipt, sample_receipt_lines, sample_recei
     assert result.line_items[3].price.extended_price == Decimal("2.00")   # Tax
     assert result.line_items[4].price.extended_price == Decimal("25.97")  # Total
 
+@pytest.mark.unit
 def test_progressive_validator(sample_receipt, sample_receipt_lines, sample_receipt_words):
     validator = ProgressiveValidator()
     
@@ -254,6 +294,7 @@ def test_progressive_validator(sample_receipt, sample_receipt_lines, sample_rece
     assert validation_result["status"] == "invalid"
     assert len(validation_result["errors"]) > 0
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_progressive_receipt_processor(sample_receipt, sample_receipt_lines, sample_receipt_words, mocker):
     """Test the progressive receipt processor with mocked dependencies."""
@@ -328,6 +369,7 @@ async def test_progressive_receipt_processor(sample_receipt, sample_receipt_line
         sample_receipt_words
     )
 
+@pytest.mark.unit
 def test_currency_match():
     match = CurrencyMatch(
         amount=Decimal("10.99"),
