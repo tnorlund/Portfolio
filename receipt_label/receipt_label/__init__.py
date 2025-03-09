@@ -6,19 +6,16 @@ from .core.labeler import ReceiptLabeler, LabelingResult
 from .core.validator import ReceiptValidator
 from .models.receipt import Receipt, ReceiptWord, ReceiptSection, ReceiptLine
 from .models.line_item import LineItem, LineItemAnalysis, Price, Quantity
-from .processors.gpt import GPTProcessor
-from .processors.structure import StructureProcessor
-from .processors.field import FieldProcessor
+from .processors.receipt_analyzer import ReceiptAnalyzer
 from .data.places_api import BatchPlacesProcessor
-from .processors.progressive_processor import ProgressiveReceiptProcessor
+from .processors.line_item_processor import LineItemProcessor
 import logging
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 
 # Set module-specific log levels
-logging.getLogger('receipt_label.receipt_label.processors.gpt').setLevel(logging.WARNING)
-logging.getLogger('receipt_label.receipt_label.processors.line_item').setLevel(logging.WARNING)
+logging.getLogger('receipt_label.receipt_label.processors.receipt_analyzer').setLevel(logging.WARNING)
 logging.getLogger('receipt_label.receipt_label.core.validator').setLevel(logging.WARNING)
 logging.getLogger('botocore').setLevel(logging.WARNING)
 logging.getLogger('urllib3').setLevel(logging.WARNING)
@@ -40,9 +37,7 @@ __all__ = [
     "LineItemAnalysis",
     "Price",
     "Quantity",
-    "GPTProcessor",
-    "StructureProcessor",
-    "FieldProcessor",
+    "ReceiptAnalyzer",
     "BatchPlacesProcessor",
-    "ProgressiveReceiptProcessor",
+    "LineItemProcessor",
 ]

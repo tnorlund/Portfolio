@@ -1,14 +1,14 @@
 # Receipt Label
 
-A Python package for labeling and validating receipt data using various processing strategies including GPT and pattern matching.
+A Python package for labeling and validating receipt data using GPT and progressive processing strategies.
 
 ## Features
 
-- **Receipt Structure Analysis**: Identify sections and layout of receipts
-- **Field Labeling**: Label individual words and fields in receipts
+- **Receipt Structure Analysis**: Identify sections and layout of receipts using GPT
+- **Field Labeling**: Label individual words and fields in receipts using GPT
+- **Progressive Line Item Processing**: Advanced line item extraction with confidence scoring
 - **Data Validation**: Validate receipt data against external sources
 - **Places API Integration**: Enrich receipt data with business information
-- **Flexible Processing**: Support for both GPT and pattern-based processing
 - **Comprehensive Validation**: Validate business names, addresses, phone numbers, dates, and amounts
 
 ## Installation
@@ -30,13 +30,13 @@ pip install -e ".[dev]"
 ### Basic Usage
 
 ```python
-from receipt_label import ReceiptLabeler, Receipt, ReceiptWord
+from receipt_label import ReceiptLabeler, Receipt, ReceiptWord, ReceiptLine
 
 # Initialize the labeler
 labeler = ReceiptLabeler(
     places_api_key="your_google_places_api_key",
     dynamodb_table_name="your_dynamodb_table",
-    gpt_api_key="your_gpt_api_key"  # Optional
+    gpt_api_key="your_gpt_api_key"
 )
 
 # Create a receipt object
@@ -54,66 +54,34 @@ receipt = Receipt(
     ]
 )
 
+# Create receipt lines
+receipt_lines = [
+    ReceiptLine(
+        text="Example line",
+        line_id=0,
+        bounding_box={"x": 0, "y": 0, "width": 100, "height": 20}
+    )
+]
+
 # Label the receipt
 result = await labeler.label_receipt(
     receipt=receipt,
     receipt_words=receipt.words,
-    receipt_lines=[{"text": "Example line", "words": [...]}]
+    receipt_lines=receipt_lines
 )
 
 # Access results
 print(f"Structure confidence: {result.structure_analysis['overall_confidence']}")
 print(f"Field confidence: {result.field_analysis['metadata']['average_confidence']}")
+print(f"Line items found: {result.line_item_analysis['total_found']}")
 print(f"Validation results: {result.validation_results}")
 ```
 
-### Advanced Usage
-
-#### Custom Processors
-
-```python
-from receipt_label import StructureProcessor, FieldProcessor
-
-# Use custom processors
-structure_processor = StructureProcessor()
-field_processor = FieldProcessor()
-
-# Configure processors
-structure_processor.section_patterns = {
-    "custom_section": {
-        "keywords": ["custom", "keywords"],
-        "position": "top",
-        "max_lines": 5,
-    }
-}
-
-field_processor.field_patterns = {
-    "custom_field": {
-        "patterns": [r"custom\s+pattern"],
-        "position": "top",
-        "max_lines": 5,
-        "confidence": 0.9,
-    }
-}
-```
-
-#### Validation
+### Validation
 
 ```python
 from receipt_label import ReceiptValidator
 from receipt_label.utils import validate_business_name, validate_address
-
-# Validate specific fields
-is_valid, message, confidence = validate_business_name(
-    receipt_name="Example Store",
-    api_name="Example Store Inc"
-)
-
-# Validate address
-is_valid, message, confidence = validate_address(
-    receipt_address="123 Main St",
-    api_address="123 Main Street"
-)
 
 # Use the validator class
 validator = ReceiptValidator()
@@ -121,6 +89,7 @@ validation_results = validator.validate_receipt_data(
     field_analysis=result.field_analysis,
     places_api_data=result.places_api_data,
     receipt_words=receipt.words,
+    line_item_analysis=result.line_item_analysis,
     batch_processor=labeler.places_processor
 )
 ```
@@ -138,8 +107,6 @@ The Google Places API is used to validate and enrich business information from r
 - **Geocoding**: Converts addresses to coordinates for spatial analysis
 - **Place Details**: Fetches rich metadata about businesses including ratings, website URLs, and business categories
 
-The API is called automatically during the receipt validation process, comparing extracted receipt data against Places API results to ensure accuracy.
-
 ### ChatGPT API Integration
 
 The ChatGPT API provides advanced natural language processing capabilities for receipt analysis:
@@ -150,13 +117,9 @@ The ChatGPT API provides advanced natural language processing capabilities for r
 - **Ambiguity Resolution**: Helps resolve unclear or non-standard receipt formats
 - **Multi-language Support**: Processes receipts in various languages and formats
 
-The GPT processor can be used as a standalone strategy or in combination with traditional pattern matching for enhanced accuracy.
-
 ### Access Patterns
 
 #### Google Places API
-
-The package uses the Google Places API for business validation and enrichment. Here are the supported access patterns:
 
 ```python
 # 1. Direct API key initialization
@@ -174,25 +137,9 @@ labeler = ReceiptLabeler()  # Will automatically use environment variable
 #     "places_api_key": "your_google_places_api_key"
 # }
 labeler = ReceiptLabeler(config_file="path/to/config.json")
-
-# 4. Custom Places API client
-from receipt_label.data import PlacesAPIClient
-
-class CustomPlacesClient(PlacesAPIClient):
-    def __init__(self):
-        # Custom initialization
-        pass
-
-    async def search_place(self, query: str):
-        # Custom implementation
-        pass
-
-labeler = ReceiptLabeler(places_client=CustomPlacesClient())
 ```
 
 ### ChatGPT API
-
-The package supports GPT-based processing for enhanced receipt analysis. Here are the supported access patterns:
 
 ```python
 # 1. Direct API key initialization
@@ -211,21 +158,7 @@ labeler = ReceiptLabeler()  # Will automatically use environment variable
 # }
 labeler = ReceiptLabeler(config_file="path/to/config.json")
 
-# 4. Custom GPT processor
-from receipt_label.processors import GPTProcessor
-
-class CustomGPTProcessor(GPTProcessor):
-    def __init__(self):
-        # Custom initialization
-        pass
-
-    async def process_receipt(self, receipt_text: str):
-        # Custom implementation
-        pass
-
-labeler = ReceiptLabeler(gpt_processor=CustomGPTProcessor())
-
-# 5. GPT Model Configuration
+# 4. GPT Model Configuration
 labeler = ReceiptLabeler(
     gpt_api_key="your_gpt_api_key",
     gpt_model="gpt-4",  # Default is "gpt-3.5-turbo"
@@ -282,14 +215,13 @@ receipt_label/
 ├── data/              # Data handling
 │   └── places_api.py  # Places API integration
 ├── models/            # Data models
-│   └── receipt.py     # Receipt data models
+│   ├── receipt.py     # Receipt data models
+│   └── line_item.py   # Line item models
 ├── processors/        # Processing strategies
 │   ├── gpt.py        # GPT-based processing
-│   ├── structure.py  # Structure analysis
-│   └── field.py      # Field labeling
+│   └── progressive_processor.py  # Progressive line item processing
 └── utils/            # Utility functions
     ├── address.py    # Address handling
-    ├── date.py      # Date handling
     └── validation.py # Validation utilities
 ```
 

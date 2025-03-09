@@ -1,0 +1,407 @@
+{
+  "receipt_id": 1,
+  "image_id": "e8b658b6-e731-4aab-8c9b-cd9df55efc57",
+  "structure_analysis": {
+    "discovered_sections": [
+      {
+        "name": "header_section",
+        "line_ids": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "spatial_patterns": [
+          "left-aligned",
+          "consistent spacing"
+        ],
+        "content_patterns": [
+          "COSTCO",
+          "WHOLESALE",
+          "Westlake Village"
+        ],
+        "confidence": 0.95
+      },
+      {
+        "name": "item_details_section",
+        "line_ids": [
+          8,
+          9,
+          10,
+          11
+        ],
+        "spatial_patterns": [
+          "left-aligned",
+          "consistent spacing"
+        ],
+        "content_patterns": [
+          "Member",
+          "Baker",
+          "Irish Bunter",
+          "Pork Tender"
+        ],
+        "confidence": 0.9
+      },
+      {
+        "name": "total_section",
+        "line_ids": [
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18
+        ],
+        "spatial_patterns": [
+          "left-aligned",
+          "consistent spacing"
+        ],
+        "content_patterns": [
+          "SUBTOTAL",
+          "TAX",
+          "TOTAL"
+        ],
+        "confidence": 0.9
+      },
+      {
+        "name": "payment_section",
+        "line_ids": [
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32,
+          33,
+          34,
+          35
+        ],
+        "spatial_patterns": [
+          "left-aligned",
+          "consistent spacing"
+        ],
+        "content_patterns": [
+          "AID",
+          "Sea#",
+          "Tran ID#",
+          "AMOUNT",
+          "CHANGE",
+          "Resp",
+          "APPROVED"
+        ],
+        "confidence": 0.85
+      },
+      {
+        "name": "footer_section",
+        "line_ids": [
+          43,
+          44,
+          45,
+          46,
+          47,
+          48
+        ],
+        "spatial_patterns": [
+          "left-aligned",
+          "consistent spacing"
+        ],
+        "content_patterns": [
+          "Thank You",
+          "Please Come Again",
+          "Whse",
+          "Trm",
+          "Trn",
+          "OP",
+          "Items Sold"
+        ],
+        "confidence": 0.9
+      }
+    ],
+    "overall_confidence": 0.9
+  },
+  "field_analysis": {
+    "labels": [
+      {
+        "word_id": 1,
+        "line_id": 1,
+        "label": "business_name",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 2,
+        "label": "business_name",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 3,
+        "label": "store_id",
+        "confidence": 1.5833333333333333
+      },
+      {
+        "word_id": 1,
+        "line_id": 5,
+        "label": "store_id",
+        "confidence": 1.5833333333333333
+      },
+      {
+        "word_id": 2,
+        "line_id": 3,
+        "label": "store_id",
+        "confidence": 1.5833333333333333
+      },
+      {
+        "word_id": 2,
+        "line_id": 5,
+        "label": "store_id",
+        "confidence": 1.5833333333333333
+      },
+      {
+        "word_id": 3,
+        "line_id": 3,
+        "label": "store_id",
+        "confidence": 1.5833333333333333
+      },
+      {
+        "word_id": 1,
+        "line_id": 4,
+        "label": "address_line",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 4,
+        "label": "address_line",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 3,
+        "line_id": 4,
+        "label": "address_line",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 4,
+        "line_id": 4,
+        "label": "address_line",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 3,
+        "label": "address_line",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 1,
+        "line_id": 5,
+        "label": "address_line",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 2,
+        "line_id": 3,
+        "label": "address_line",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 2,
+        "line_id": 5,
+        "label": "address_line",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 3,
+        "line_id": 5,
+        "label": "address_line",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 4,
+        "line_id": 5,
+        "label": "address_line",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 1,
+        "line_id": 6,
+        "label": "phone",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 6,
+        "label": "phone",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 8,
+        "label": "membership_id",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 8,
+        "label": "membership_id",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 3,
+        "line_id": 8,
+        "label": "membership_id",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 9,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 9,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 3,
+        "line_id": 9,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 10,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 10,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 3,
+        "line_id": 10,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 11,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 11,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 3,
+        "line_id": 11,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 14,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 29,
+        "label": "payment_status",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 31,
+        "label": "payment_status",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 28,
+        "label": "payment_method",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 34,
+        "label": "payment_method",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 35,
+        "label": "payment_method",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 46,
+        "label": "store_id",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 46,
+        "label": "store_id",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 3,
+        "line_id": 46,
+        "label": "transaction_id",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 4,
+        "line_id": 46,
+        "label": "transaction_id",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 5,
+        "line_id": 46,
+        "label": "cashier_id",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 6,
+        "line_id": 46,
+        "label": "cashier_id",
+        "confidence": 0.95
+      }
+    ],
+    "metadata": {
+      "total_labeled_words": 43,
+      "average_confidence": 1.089922480620155,
+      "requires_review": false,
+      "review_reasons": []
+    }
+  },
+  "places_api_data": {},
+  "validation_results": {
+    "line_item_validation": [
+      "warnings: ['Missing subtotal', 'Missing tax']",
+      "errors: ['Missing total']"
+    ],
+    "overall_valid": false
+  },
+  "overall_confidence": 0.9
+}

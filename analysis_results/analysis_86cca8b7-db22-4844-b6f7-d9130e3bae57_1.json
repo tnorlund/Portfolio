@@ -1,0 +1,341 @@
+{
+  "receipt_id": 1,
+  "image_id": "86cca8b7-db22-4844-b6f7-d9130e3bae57",
+  "structure_analysis": {
+    "discovered_sections": [
+      {
+        "name": "header_section",
+        "line_ids": [
+          1,
+          2,
+          3
+        ],
+        "spatial_patterns": [
+          "aligned",
+          "consistent spacing"
+        ],
+        "content_patterns": [
+          "date",
+          "payment method",
+          "card number"
+        ],
+        "confidence": 0.9
+      },
+      {
+        "name": "transaction_details_section",
+        "line_ids": [
+          34,
+          35,
+          36,
+          37,
+          38,
+          39,
+          40,
+          41
+        ],
+        "spatial_patterns": [
+          "bulleted list"
+        ],
+        "content_patterns": [
+          "itemized purchases"
+        ],
+        "confidence": 0.85
+      },
+      {
+        "name": "payment_total_section",
+        "line_ids": [
+          42,
+          43,
+          44,
+          45,
+          46,
+          47,
+          48,
+          49,
+          50,
+          51,
+          52,
+          53,
+          54,
+          55
+        ],
+        "spatial_patterns": [
+          "aligned",
+          "total amount highlighted"
+        ],
+        "content_patterns": [
+          "balance due",
+          "credit",
+          "change",
+          "amounts"
+        ],
+        "confidence": 0.9
+      },
+      {
+        "name": "footer_section",
+        "line_ids": [
+          59,
+          60,
+          61,
+          62,
+          63,
+          64,
+          65,
+          66,
+          67,
+          68,
+          69,
+          70,
+          71,
+          72,
+          73,
+          74,
+          75,
+          76,
+          77,
+          78,
+          79,
+          80,
+          81,
+          82,
+          83,
+          84
+        ],
+        "spatial_patterns": [
+          "aligned",
+          "separated by asterisks"
+        ],
+        "content_patterns": [
+          "feedback request",
+          "survey link",
+          "discount offer details"
+        ],
+        "confidence": 0.95
+      }
+    ],
+    "overall_confidence": 0.9
+  },
+  "field_analysis": {
+    "labels": [
+      {
+        "word_id": 1,
+        "line_id": 1,
+        "label": "date",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 2,
+        "label": "payment_method",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 34,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 35,
+        "label": "item",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 2,
+        "line_id": 37,
+        "label": "item",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 2,
+        "line_id": 35,
+        "label": "item",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 1,
+        "line_id": 36,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 36,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 3,
+        "line_id": 36,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 4,
+        "line_id": 36,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 37,
+        "label": "item",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 1,
+        "line_id": 35,
+        "label": "item",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 2,
+        "line_id": 37,
+        "label": "item",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 3,
+        "line_id": 37,
+        "label": "item",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 1,
+        "line_id": 38,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 39,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 40,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 40,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 3,
+        "line_id": 40,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 41,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 41,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 53,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 54,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 5,
+        "line_id": 61,
+        "label": "business_name",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 65,
+        "label": "business_name",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 4,
+        "line_id": 81,
+        "label": "business_name",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 64,
+        "label": "transaction_id",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 70,
+        "label": "store_id",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 68,
+        "label": "discount",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 3,
+        "line_id": 78,
+        "label": "discount",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 2,
+        "line_id": 68,
+        "label": "discount",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 2,
+        "line_id": 72,
+        "label": "date",
+        "confidence": 0.95
+      }
+    ],
+    "metadata": {
+      "total_labeled_words": 32,
+      "average_confidence": 1.0786458333333333,
+      "requires_review": false,
+      "review_reasons": []
+    }
+  },
+  "places_api_data": {},
+  "validation_results": {
+    "business_identity": [],
+    "address_verification": [],
+    "phone_validation": [],
+    "hours_verification": [],
+    "cross_field_consistency": [
+      {
+        "type": "warning",
+        "message": "Could not validate total: missing or invalid components"
+      }
+    ],
+    "line_item_validation": [
+      {
+        "type": "warning",
+        "message": "No line items found in receipt"
+      }
+    ],
+    "overall_valid": true
+  },
+  "overall_confidence": 0.9
+}

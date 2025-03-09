@@ -1,0 +1,537 @@
+{
+  "receipt_id": 1,
+  "image_id": "645a8dcb-ee5e-4207-9b73-567ebd1ccc45",
+  "structure_analysis": {
+    "discovered_sections": [
+      {
+        "name": "header_section",
+        "line_ids": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13
+        ],
+        "spatial_patterns": [
+          "aligned_left"
+        ],
+        "content_patterns": [
+          "DATE",
+          "CARD",
+          "PURCHASE",
+          "AUTH CODE",
+          "Mode",
+          "AID",
+          "TVR",
+          "IAD",
+          "MID"
+        ],
+        "confidence": 0.9
+      },
+      {
+        "name": "transaction_details_section",
+        "line_ids": [
+          27,
+          28,
+          29,
+          30,
+          31,
+          32,
+          33,
+          34,
+          35,
+          36,
+          37,
+          38,
+          39,
+          40,
+          41,
+          42,
+          43,
+          44,
+          45,
+          46,
+          47,
+          48,
+          49,
+          50,
+          51,
+          52
+        ],
+        "spatial_patterns": [
+          "aligned_left"
+        ],
+        "content_patterns": [
+          "STORE",
+          "ITEMS",
+          "PRICES"
+        ],
+        "confidence": 0.85
+      },
+      {
+        "name": "payment_total_section",
+        "line_ids": [
+          53,
+          54,
+          55,
+          56,
+          57,
+          58,
+          59,
+          60,
+          61
+        ],
+        "spatial_patterns": [
+          "aligned_left"
+        ],
+        "content_patterns": [
+          "BALANCE DUE",
+          "CREDIT",
+          "CHANGE",
+          "Auth#",
+          "Ref#"
+        ],
+        "confidence": 0.9
+      },
+      {
+        "name": "footer_section",
+        "line_ids": [
+          65,
+          66,
+          67,
+          68,
+          69,
+          70,
+          71,
+          72,
+          73,
+          74,
+          75,
+          76,
+          77,
+          78,
+          79,
+          80,
+          81,
+          82,
+          83,
+          84
+        ],
+        "spatial_patterns": [
+          "aligned_left"
+        ],
+        "content_patterns": [
+          "feedback",
+          "survey",
+          "store info"
+        ],
+        "confidence": 0.8
+      }
+    ],
+    "overall_confidence": 0.85
+  },
+  "field_analysis": {
+    "labels": [
+      {
+        "word_id": 1,
+        "line_id": 1,
+        "label": "date",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 2,
+        "label": "payment_method",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 3,
+        "label": "payment_status",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 4,
+        "label": "payment_status",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 5,
+        "label": "payment_status",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 5,
+        "label": "payment_status",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 3,
+        "line_id": 5,
+        "label": "payment_status",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 6,
+        "label": "payment_status",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 7,
+        "label": "payment_status",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 8,
+        "label": "payment_status",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 9,
+        "label": "payment_status",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 10,
+        "label": "payment_status",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 11,
+        "label": "payment_status",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 12,
+        "label": "payment_status",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 13,
+        "label": "store_id",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 13,
+        "label": "store_id",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 28,
+        "label": "business_name",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 29,
+        "label": "business_name",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 29,
+        "label": "business_name",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 30,
+        "label": "address_line",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 2,
+        "line_id": 30,
+        "label": "address_line",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 1,
+        "line_id": 31,
+        "label": "address_line",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 3,
+        "line_id": 30,
+        "label": "address_line",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 2,
+        "line_id": 30,
+        "label": "address_line",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 1,
+        "line_id": 31,
+        "label": "address_line",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 2,
+        "line_id": 31,
+        "label": "address_line",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 3,
+        "line_id": 31,
+        "label": "address_line",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 1,
+        "line_id": 32,
+        "label": "phone",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 34,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 35,
+        "label": "item",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 2,
+        "line_id": 40,
+        "label": "item",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 2,
+        "line_id": 35,
+        "label": "item",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 1,
+        "line_id": 38,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 40,
+        "label": "item",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 1,
+        "line_id": 35,
+        "label": "item",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 2,
+        "line_id": 40,
+        "label": "item",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 3,
+        "line_id": 40,
+        "label": "item",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 1,
+        "line_id": 44,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 45,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 45,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 3,
+        "line_id": 45,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 4,
+        "line_id": 45,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 46,
+        "label": "item",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 1,
+        "line_id": 47,
+        "label": "item",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 2,
+        "line_id": 46,
+        "label": "item",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 1,
+        "line_id": 46,
+        "label": "item",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 1,
+        "line_id": 47,
+        "label": "item",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 2,
+        "line_id": 47,
+        "label": "item",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 3,
+        "line_id": 47,
+        "label": "item",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 1,
+        "line_id": 48,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 48,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 3,
+        "line_id": 48,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 53,
+        "label": "payment_status",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 53,
+        "label": "payment_status",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 54,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 56,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 55,
+        "label": "payment_method",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 54,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 56,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 68,
+        "label": "website",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 4,
+        "line_id": 78,
+        "label": "website",
+        "confidence": 0.95
+      }
+    ],
+    "metadata": {
+      "total_labeled_words": 61,
+      "average_confidence": 1.0797814207650271,
+      "requires_review": false,
+      "review_reasons": []
+    }
+  },
+  "places_api_data": {},
+  "validation_results": {
+    "business_identity": [],
+    "address_verification": [],
+    "phone_validation": [],
+    "hours_verification": [],
+    "cross_field_consistency": [
+      {
+        "type": "error",
+        "message": "Line items total (47.05) doesn't match subtotal (0)"
+      },
+      {
+        "type": "warning",
+        "message": "Could not validate total: missing or invalid components"
+      }
+    ],
+    "line_item_validation": [],
+    "overall_valid": false
+  },
+  "overall_confidence": 0.85
+}

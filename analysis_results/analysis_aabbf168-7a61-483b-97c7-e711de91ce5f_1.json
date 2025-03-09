@@ -1,0 +1,546 @@
+{
+  "receipt_id": 1,
+  "image_id": "aabbf168-7a61-483b-97c7-e711de91ce5f",
+  "structure_analysis": {
+    "discovered_sections": [
+      {
+        "name": "header_section",
+        "line_ids": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "spatial_patterns": [
+          "centered",
+          "consistent spacing"
+        ],
+        "content_patterns": [
+          "SPROUTS",
+          "FARMERS MARKET",
+          "Address",
+          "Phone",
+          "Store Hours"
+        ],
+        "confidence": 0.9
+      },
+      {
+        "name": "items_section",
+        "line_ids": [
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23
+        ],
+        "spatial_patterns": [
+          "aligned columns"
+        ],
+        "content_patterns": [
+          "Category: DAIRY",
+          "Category: MEAT",
+          "Item names",
+          "Prices"
+        ],
+        "confidence": 0.85
+      },
+      {
+        "name": "payment_section",
+        "line_ids": [
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32
+        ],
+        "spatial_patterns": [
+          "aligned columns"
+        ],
+        "content_patterns": [
+          "BALANCE DUE",
+          "CREDIT",
+          "CHANGE",
+          "Ref#",
+          "Auth#"
+        ],
+        "confidence": 0.8
+      },
+      {
+        "name": "footer_section",
+        "line_ids": [
+          33,
+          34,
+          35,
+          36,
+          37,
+          38,
+          39,
+          40,
+          41,
+          42,
+          43,
+          44,
+          45,
+          46,
+          47,
+          48,
+          49,
+          50,
+          51,
+          52,
+          53,
+          54,
+          55,
+          56,
+          57,
+          58,
+          59,
+          60,
+          61,
+          62
+        ],
+        "spatial_patterns": [
+          "left-aligned",
+          "bullet points"
+        ],
+        "content_patterns": [
+          "Survey invitation",
+          "Promotional details",
+          "Terms and conditions"
+        ],
+        "confidence": 0.9
+      },
+      {
+        "name": "transaction_details_section",
+        "line_ids": [
+          62,
+          63,
+          64,
+          65,
+          66,
+          67,
+          68,
+          69,
+          70,
+          71,
+          72
+        ],
+        "spatial_patterns": [
+          "aligned columns",
+          "date and time stamp"
+        ],
+        "content_patterns": [
+          "Cashier",
+          "Store",
+          "Transaction",
+          "Date",
+          "Time"
+        ],
+        "confidence": 0.85
+      }
+    ],
+    "overall_confidence": 0.86
+  },
+  "field_analysis": {
+    "labels": [
+      {
+        "word_id": 1,
+        "line_id": 1,
+        "label": "business_name",
+        "confidence": 0.95,
+        "text": "SPROUTS"
+      },
+      {
+        "word_id": 1,
+        "line_id": 2,
+        "label": "business_name",
+        "confidence": 0.95,
+        "text": "FARMERS"
+      },
+      {
+        "word_id": 2,
+        "line_id": 2,
+        "label": "business_name",
+        "confidence": 0.95,
+        "text": "MARKET"
+      },
+      {
+        "word_id": 1,
+        "line_id": 3,
+        "label": "address_line",
+        "confidence": 1.2666666666666666,
+        "text": "1012"
+      },
+      {
+        "word_id": 2,
+        "line_id": 3,
+        "label": "address_line",
+        "confidence": 1.2666666666666666,
+        "text": "WESTLAKE"
+      },
+      {
+        "word_id": 1,
+        "line_id": 4,
+        "label": "address_line",
+        "confidence": 1.2666666666666666,
+        "text": "WESTLAKE,"
+      },
+      {
+        "word_id": 3,
+        "line_id": 3,
+        "label": "address_line",
+        "confidence": 1.2666666666666666,
+        "text": "BLVD."
+      },
+      {
+        "word_id": 2,
+        "line_id": 3,
+        "label": "address_line",
+        "confidence": 1.2666666666666666,
+        "text": "WESTLAKE"
+      },
+      {
+        "word_id": 1,
+        "line_id": 4,
+        "label": "address_line",
+        "confidence": 1.2666666666666666,
+        "text": "WESTLAKE,"
+      },
+      {
+        "word_id": 2,
+        "line_id": 4,
+        "label": "address_line",
+        "confidence": 1.2666666666666666,
+        "text": "CA"
+      },
+      {
+        "word_id": 3,
+        "line_id": 4,
+        "label": "address_line",
+        "confidence": 1.2666666666666666,
+        "text": "91361"
+      },
+      {
+        "word_id": 1,
+        "line_id": 5,
+        "label": "phone",
+        "confidence": 0.95,
+        "text": "(805)917-4200"
+      },
+      {
+        "word_id": 1,
+        "line_id": 13,
+        "label": "item",
+        "confidence": 0.95,
+        "text": "DAIRY"
+      },
+      {
+        "word_id": 1,
+        "line_id": 14,
+        "label": "item",
+        "confidence": 0.95,
+        "text": "ALFRESCO"
+      },
+      {
+        "word_id": 2,
+        "line_id": 14,
+        "label": "item",
+        "confidence": 0.95,
+        "text": "SLTD"
+      },
+      {
+        "word_id": 3,
+        "line_id": 14,
+        "label": "item",
+        "confidence": 0.95,
+        "text": "BUTTER"
+      },
+      {
+        "word_id": 1,
+        "line_id": 15,
+        "label": "item",
+        "confidence": 0.95,
+        "text": "RAW"
+      },
+      {
+        "word_id": 2,
+        "line_id": 15,
+        "label": "item",
+        "confidence": 0.95,
+        "text": "WHOLE"
+      },
+      {
+        "word_id": 3,
+        "line_id": 15,
+        "label": "item",
+        "confidence": 0.95,
+        "text": "MILK"
+      },
+      {
+        "word_id": 1,
+        "line_id": 16,
+        "label": "item_price",
+        "confidence": 0.95,
+        "text": "3.99"
+      },
+      {
+        "word_id": 1,
+        "line_id": 17,
+        "label": "item_price",
+        "confidence": 0.95,
+        "text": "17.99"
+      },
+      {
+        "word_id": 1,
+        "line_id": 18,
+        "label": "item",
+        "confidence": 0.95,
+        "text": "MEAT"
+      },
+      {
+        "word_id": 1,
+        "line_id": 19,
+        "label": "item_quantity",
+        "confidence": 0.95,
+        "text": "2"
+      },
+      {
+        "word_id": 1,
+        "line_id": 20,
+        "label": "item",
+        "confidence": 0.95,
+        "text": "APPLE"
+      },
+      {
+        "word_id": 2,
+        "line_id": 20,
+        "label": "item",
+        "confidence": 0.95,
+        "text": "CHICKEN"
+      },
+      {
+        "word_id": 3,
+        "line_id": 20,
+        "label": "item",
+        "confidence": 0.95,
+        "text": "SAUSGE"
+      },
+      {
+        "word_id": 1,
+        "line_id": 21,
+        "label": "item_quantity",
+        "confidence": 0.95,
+        "text": "a"
+      },
+      {
+        "word_id": 1,
+        "line_id": 22,
+        "label": "item_price",
+        "confidence": 0.95,
+        "text": "8.99"
+      },
+      {
+        "word_id": 1,
+        "line_id": 23,
+        "label": "item_total",
+        "confidence": 0.95,
+        "text": "17.98"
+      },
+      {
+        "word_id": 1,
+        "line_id": 25,
+        "label": "payment_method",
+        "confidence": 0.95,
+        "text": "CREDIT"
+      },
+      {
+        "word_id": 1,
+        "line_id": 29,
+        "label": "subtotal",
+        "confidence": 0.95,
+        "text": "39.96"
+      },
+      {
+        "word_id": 1,
+        "line_id": 30,
+        "label": "subtotal",
+        "confidence": 0.95,
+        "text": "$39.96"
+      },
+      {
+        "word_id": 1,
+        "line_id": 29,
+        "label": "total",
+        "confidence": 0.95,
+        "text": "39.96"
+      },
+      {
+        "word_id": 1,
+        "line_id": 30,
+        "label": "total",
+        "confidence": 0.95,
+        "text": "$39.96"
+      },
+      {
+        "word_id": 5,
+        "line_id": 36,
+        "label": "business_name",
+        "confidence": 0.95,
+        "text": "Sprouts"
+      },
+      {
+        "word_id": 1,
+        "line_id": 40,
+        "label": "business_name",
+        "confidence": 0.95,
+        "text": "SPROUTS"
+      },
+      {
+        "word_id": 6,
+        "line_id": 56,
+        "label": "business_name",
+        "confidence": 0.95,
+        "text": "Sprouts"
+      },
+      {
+        "word_id": 1,
+        "line_id": 45,
+        "label": "date",
+        "confidence": 0.95,
+        "text": "August"
+      },
+      {
+        "word_id": 2,
+        "line_id": 45,
+        "label": "date",
+        "confidence": 0.95,
+        "text": "26"
+      },
+      {
+        "word_id": 4,
+        "line_id": 45,
+        "label": "date",
+        "confidence": 0.95,
+        "text": "September"
+      },
+      {
+        "word_id": 5,
+        "line_id": 45,
+        "label": "date",
+        "confidence": 0.95,
+        "text": "1*"
+      },
+      {
+        "word_id": 1,
+        "line_id": 64,
+        "label": "cashier_id",
+        "confidence": 0.95,
+        "text": "Cashier:SSCO"
+      },
+      {
+        "word_id": 2,
+        "line_id": 64,
+        "label": "cashier_id",
+        "confidence": 0.95,
+        "text": "31"
+      },
+      {
+        "word_id": 3,
+        "line_id": 64,
+        "label": "cashier_id",
+        "confidence": 0.95,
+        "text": "Store:"
+      },
+      {
+        "word_id": 4,
+        "line_id": 64,
+        "label": "cashier_id",
+        "confidence": 0.95,
+        "text": "220"
+      },
+      {
+        "word_id": 1,
+        "line_id": 65,
+        "label": "store_id",
+        "confidence": 0.95,
+        "text": "BAS:"
+      },
+      {
+        "word_id": 2,
+        "line_id": 65,
+        "label": "store_id",
+        "confidence": 0.95,
+        "text": "031"
+      },
+      {
+        "word_id": 1,
+        "line_id": 66,
+        "label": "transaction_id",
+        "confidence": 0.95,
+        "text": "Transaction:6259"
+      },
+      {
+        "word_id": 1,
+        "line_id": 67,
+        "label": "date",
+        "confidence": 0.95,
+        "text": "August"
+      },
+      {
+        "word_id": 2,
+        "line_id": 67,
+        "label": "date",
+        "confidence": 0.95,
+        "text": "23,"
+      },
+      {
+        "word_id": 3,
+        "line_id": 67,
+        "label": "date",
+        "confidence": 0.95,
+        "text": "2024"
+      },
+      {
+        "word_id": 4,
+        "line_id": 67,
+        "label": "time",
+        "confidence": 0.95,
+        "text": "09:20"
+      },
+      {
+        "word_id": 5,
+        "line_id": 67,
+        "label": "time",
+        "confidence": 0.95,
+        "text": "AM"
+      }
+    ],
+    "metadata": {
+      "total_labeled_words": 53,
+      "average_confidence": 0.9977987421383647,
+      "requires_review": false,
+      "review_reasons": []
+    }
+  },
+  "places_api_data": {},
+  "validation_results": {
+    "line_item_validation": [
+      "warnings: ['Missing subtotal', 'Missing tax']",
+      "errors: ['Missing total']"
+    ],
+    "overall_valid": false
+  },
+  "overall_confidence": 0.86
+}

@@ -1,0 +1,257 @@
+{
+  "receipt_id": 1,
+  "image_id": "6f2f1d08-af1e-4716-a26c-dea4c065ab62",
+  "structure_analysis": {
+    "discovered_sections": [
+      {
+        "name": "header_section",
+        "line_ids": [
+          1,
+          2,
+          3
+        ],
+        "spatial_patterns": [
+          "aligned",
+          "consistent spacing"
+        ],
+        "content_patterns": [
+          "MASTERCARD",
+          "CARD #:"
+        ],
+        "confidence": 0.9
+      },
+      {
+        "name": "transaction_details_section",
+        "line_ids": [
+          28,
+          29,
+          30,
+          31,
+          32
+        ],
+        "spatial_patterns": [
+          "aligned",
+          "address format"
+        ],
+        "content_patterns": [
+          "SPROUTS",
+          "FARMERS MARKET"
+        ],
+        "confidence": 0.85
+      },
+      {
+        "name": "payment_total_section",
+        "line_ids": [
+          36,
+          37,
+          38,
+          39,
+          40
+        ],
+        "spatial_patterns": [
+          "aligned",
+          "consistent spacing"
+        ],
+        "content_patterns": [
+          "$3.99",
+          "CREDIT"
+        ],
+        "confidence": 0.9
+      },
+      {
+        "name": "footer_section",
+        "line_ids": [
+          47,
+          48,
+          49,
+          50,
+          51
+        ],
+        "spatial_patterns": [
+          "aligned",
+          "consistent spacing"
+        ],
+        "content_patterns": [
+          "feedback",
+          "SproutsFeedback.com"
+        ],
+        "confidence": 0.8
+      }
+    ],
+    "overall_confidence": 0.85
+  },
+  "field_analysis": {
+    "labels": [
+      {
+        "word_id": 1,
+        "line_id": 1,
+        "label": "date",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 2,
+        "label": "payment_method",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 28,
+        "label": "business_name",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 29,
+        "label": "business_name",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 29,
+        "label": "business_name",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 30,
+        "label": "address_line",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 2,
+        "line_id": 30,
+        "label": "address_line",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 1,
+        "line_id": 31,
+        "label": "address_line",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 3,
+        "line_id": 30,
+        "label": "address_line",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 2,
+        "line_id": 30,
+        "label": "address_line",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 1,
+        "line_id": 31,
+        "label": "address_line",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 2,
+        "line_id": 31,
+        "label": "address_line",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 3,
+        "line_id": 31,
+        "label": "address_line",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 1,
+        "line_id": 32,
+        "label": "phone",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 36,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 38,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 40,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 36,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 38,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 40,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 36,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 38,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 40,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 50,
+        "label": "website",
+        "confidence": 0.95
+      }
+    ],
+    "metadata": {
+      "total_labeled_words": 24,
+      "average_confidence": 1.0555555555555556,
+      "requires_review": false,
+      "review_reasons": []
+    }
+  },
+  "places_api_data": {},
+  "validation_results": {
+    "business_identity": [],
+    "address_verification": [],
+    "phone_validation": [],
+    "hours_verification": [],
+    "cross_field_consistency": [
+      {
+        "type": "error",
+        "message": "Line items total (3.99) doesn't match subtotal (0)"
+      },
+      {
+        "type": "warning",
+        "message": "Could not validate total: missing or invalid components"
+      }
+    ],
+    "line_item_validation": [],
+    "overall_valid": false
+  },
+  "overall_confidence": 0.85
+}

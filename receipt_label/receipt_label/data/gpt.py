@@ -210,7 +210,21 @@ async def gpt_request_field_labeling(
         raise ValueError("No labels were generated for any section.")
 
     final_result = {
-        "labels": all_labels,
+        "labels": [
+            {
+                **label,
+                "text": next((
+                    word.text if hasattr(word, 'text') else word.get('text', '')
+                    for word in receipt_words 
+                    if (
+                        (hasattr(word, 'line_id') and word.line_id == label["line_id"] and 
+                         hasattr(word, 'word_id') and word.word_id == label["word_id"]) or
+                        (isinstance(word, dict) and word.get('line_id') == label["line_id"] and 
+                         word.get('word_id') == label["word_id"])
+                    )
+                ), "")
+            } for label in all_labels
+        ],
         "metadata": {
             "total_labeled_words": len(all_labels),
             "average_confidence": (

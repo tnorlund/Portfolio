@@ -1,8 +1,12 @@
 from typing import Dict, List, Optional, Tuple
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 import logging
 from ..models.receipt import Receipt, ReceiptWord, ReceiptLine
 from ..models.line_item import LineItem, LineItemAnalysis, Price, Quantity
+from ..models.uncertainty import (
+    MultipleAmountsUncertainty, MissingComponentUncertainty, 
+    TotalMismatchUncertainty, UncertaintyItem, ensure_decimal
+)
 from ..data.gpt import gpt_request_line_item_analysis
 
 logger = logging.getLogger(__name__)
@@ -16,7 +20,7 @@ class LLMProcessor:
     
     async def process_uncertain_items(
         self,
-        uncertain_items: List[Dict],
+        uncertain_items: List[UncertaintyItem],
         receipt: Receipt,
         receipt_lines: List[ReceiptLine],
         receipt_words: List[ReceiptWord],
@@ -32,15 +36,15 @@ class LLMProcessor:
         # Group uncertain items by type
         missing_components = [
             item for item in uncertain_items 
-            if item.get("reason") == "missing_component"
+            if isinstance(item, MissingComponentUncertainty)
         ]
         multiple_amounts = [
             item for item in uncertain_items 
-            if item.get("reason") == "multiple_amounts"
+            if isinstance(item, MultipleAmountsUncertainty)
         ]
         total_mismatches = [
             item for item in uncertain_items 
-            if item.get("reason") == "total_mismatch"
+            if isinstance(item, TotalMismatchUncertainty)
         ]
         
         # Process missing components
@@ -117,7 +121,7 @@ class LLMProcessor:
 
     async def _process_missing_components(
         self,
-        missing_components: List[Dict],
+        missing_components: List[MissingComponentUncertainty],
         receipt: Receipt,
         receipt_lines: List[ReceiptLine],
         receipt_words: List[ReceiptWord],
@@ -130,7 +134,7 @@ class LLMProcessor:
         context = {
             "receipt_text": "\n".join(line.text for line in receipt_lines),
             "current_results": self._serialize_for_gpt(current_results),
-            "missing_components": [item["component"] for item in missing_components]
+            "missing_components": [item.component for item in missing_components]
         }
         
         try:
@@ -147,13 +151,18 @@ class LLMProcessor:
             # Extract updates from GPT response
             updates = {}
             analysis = gpt_result.get("analysis", {})
+            logger.debug(f"Received analysis from GPT: {analysis}")
             
-            if "subtotal" in analysis:
-                updates["subtotal"] = Decimal(str(analysis["subtotal"]))
-            if "tax" in analysis:
-                updates["tax"] = Decimal(str(analysis["tax"]))
-            if "total" in analysis:
-                updates["total"] = Decimal(str(analysis["total"]))
+            for field in ["subtotal", "tax", "total"]:
+                value = analysis.get(field)
+                if value is not None:  # Only try to convert if we actually got a value
+                    try:
+                        logger.debug(f"Converting {field} value: {value} (type: {type(value)})")
+                        updates[field] = ensure_decimal(value)
+                    except ValueError as e:
+                        logger.error(f"Failed to convert {field} value '{value}': {str(e)}")
+                else:
+                    logger.debug(f"No value found for {field}")
             
             return updates
             
@@ -163,7 +172,7 @@ class LLMProcessor:
     
     async def _process_multiple_amounts(
         self,
-        multiple_amounts: List[Dict],
+        multiple_amounts: List[MultipleAmountsUncertainty],
         receipt: Receipt,
         receipt_lines: List[ReceiptLine],
         receipt_words: List[ReceiptWord],
@@ -178,8 +187,9 @@ class LLMProcessor:
             "current_results": self._serialize_for_gpt(current_results),
             "multiple_amount_lines": [
                 {
-                    "text": item["text"],
-                    "amounts": [str(amount) for amount in item["amounts"]]  # Convert Decimals to strings
+                    "text": item.line.text,
+                    "line_id": item.line.line_id,
+                    "amounts": [str(amount) for amount in item.amounts]
                 }
                 for item in multiple_amounts
             ]
@@ -239,7 +249,7 @@ class LLMProcessor:
     
     async def _process_total_mismatches(
         self,
-        total_mismatches: List[Dict],
+        total_mismatches: List[TotalMismatchUncertainty],
         receipt: Receipt,
         receipt_lines: List[ReceiptLine],
         receipt_words: List[ReceiptWord],
@@ -254,8 +264,9 @@ class LLMProcessor:
             "current_results": self._serialize_for_gpt(current_results),
             "mismatches": [
                 {
-                    "calculated": item["calculated"],
-                    "found": item["found"]
+                    "calculated": str(item.calculated),
+                    "found": str(item.found),
+                    "difference": str(abs(item.calculated - item.found))
                 }
                 for item in total_mismatches
             ]

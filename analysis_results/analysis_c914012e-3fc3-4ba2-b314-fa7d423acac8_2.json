@@ -1,0 +1,314 @@
+{
+  "receipt_id": 2,
+  "image_id": "c914012e-3fc3-4ba2-b314-fa7d423acac8",
+  "structure_analysis": {
+    "discovered_sections": [
+      {
+        "name": "header_section",
+        "line_ids": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "spatial_patterns": [
+          "centered",
+          "consistent spacing"
+        ],
+        "content_patterns": [
+          "SPROUTS",
+          "FARMERS MARKET",
+          "1012 WESTLAKE BLVD.",
+          "WESTLAKE",
+          "CA 91361",
+          "(805)917. 4200",
+          "Store Hours MON-SUN 7AM-10PM"
+        ],
+        "confidence": 0.95
+      },
+      {
+        "name": "purchase_section",
+        "line_ids": [
+          14,
+          15,
+          16,
+          17,
+          18,
+          19
+        ],
+        "spatial_patterns": [
+          "aligned prices",
+          "item - price structure"
+        ],
+        "content_patterns": [
+          "DAIRY",
+          "RAW WHOLE MILK",
+          "10.99",
+          "BAKERY",
+          "RUSTIC BATARD BREAD",
+          "4.99"
+        ],
+        "confidence": 0.9
+      },
+      {
+        "name": "payment_section",
+        "line_ids": [
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28
+        ],
+        "spatial_patterns": [
+          "total amount identified",
+          "change mentioned"
+        ],
+        "content_patterns": [
+          "BALANCE DUE",
+          "CREDIT",
+          "CHANGE",
+          "$15.98",
+          "Ref# 311007",
+          "0.00"
+        ],
+        "confidence": 0.85
+      },
+      {
+        "name": "footer_section",
+        "line_ids": [
+          33,
+          34,
+          35,
+          36,
+          37,
+          52,
+          53,
+          54,
+          55,
+          56,
+          57,
+          58,
+          59,
+          60,
+          61
+        ],
+        "spatial_patterns": [
+          "aligned text",
+          "footer message structure"
+        ],
+        "content_patterns": [
+          "We need your feedback!",
+          "SproutsFeedback.com",
+          "Save money, save paper",
+          "sign up to receive our weekly ad",
+          "Please keep your original receipt",
+          "ID is required for returns without a receipt",
+          "Limits apply to returns without a receipt"
+        ],
+        "confidence": 0.9
+      }
+    ],
+    "overall_confidence": 0.9
+  },
+  "field_analysis": {
+    "labels": [
+      {
+        "word_id": 1,
+        "line_id": 1,
+        "label": "business_name",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 2,
+        "label": "business_name",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 2,
+        "label": "business_name",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 3,
+        "label": "address_line",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 3,
+        "label": "address_line",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 3,
+        "line_id": 3,
+        "label": "address_line",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 4,
+        "label": "address_line",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 5,
+        "label": "address_line",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 5,
+        "label": "address_line",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 6,
+        "label": "phone",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 6,
+        "label": "phone",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 14,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 15,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 15,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 3,
+        "line_id": 15,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 16,
+        "label": "item_price",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 17,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 18,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 18,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 3,
+        "line_id": 18,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 19,
+        "label": "item_price",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 21,
+        "label": "payment_method",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 25,
+        "label": "subtotal",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 26,
+        "label": "subtotal",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 25,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 26,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 36,
+        "label": "website",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 4,
+        "line_id": 54,
+        "label": "website",
+        "confidence": 0.95
+      }
+    ],
+    "metadata": {
+      "total_labeled_words": 28,
+      "average_confidence": 0.95,
+      "requires_review": false,
+      "review_reasons": []
+    }
+  },
+  "places_api_data": {},
+  "validation_results": {
+    "business_identity": [],
+    "address_verification": [],
+    "phone_validation": [],
+    "hours_verification": [],
+    "cross_field_consistency": [],
+    "line_item_validation": [
+      {
+        "type": "warning",
+        "message": "Could not parse subtotal for comparison"
+      }
+    ],
+    "overall_valid": true
+  },
+  "overall_confidence": 0.9
+}

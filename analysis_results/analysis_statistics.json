@@ -1,0 +1,1023 @@
+{
+  "total_receipts": 30,
+  "successful_analysis": 30,
+  "section_types": {
+    "header_section": {
+      "count": 23,
+      "avg_confidence": 0.9065217391304347,
+      "spatial_patterns": {
+        "centered": 8,
+        "consistent spacing": 19,
+        "aligned": 12,
+        "left-aligned": 4,
+        "center-aligned": 1
+      },
+      "content_patterns": {
+        "SPROUTS": 6,
+        "FARMERS MARKET": 6,
+        "Address": 1,
+        "Phone": 1,
+        "Store Hours": 3,
+        "date": 5,
+        "payment method": 5,
+        "authorization code": 3,
+        "COSTCO": 3,
+        "WHOLESALE": 2,
+        "Westlake Village": 3,
+        "1012 WESTLAKE BLVD.": 4,
+        "WESTLAKE, CA 91361": 4,
+        "(805)917-4200": 4,
+        "store Hours MON-SUN 7AM-10PM": 1,
+        "WESILAKE, CA 91361": 1,
+        "805)917-4200": 1,
+        "WESTLAKE BLVD.": 1,
+        "address": 3,
+        "phone number": 3,
+        "timestamp": 1,
+        "business name": 5,
+        "established year": 1,
+        "HARBOR FREIGHT": 1,
+        "WOODLAND HILLS CA #00217": 1,
+        "22912 Victory BIvd.": 1,
+        "Woodland Hills, CA 91367": 1,
+        "Telephone: (818) 888-4011": 1,
+        "mode": 1,
+        "AID": 1,
+        "TVR": 1,
+        "IAD": 1,
+        "MID": 1,
+        "TSI": 1,
+        "TC": 1,
+        "date and time": 1,
+        "location details": 1,
+        "server name": 1,
+        "check number": 1,
+        "guest count": 1,
+        "credit card details": 1,
+        "818-597-3901": 1,
+        "Server:": 1,
+        "Name:": 1,
+        "Phone:": 1,
+        "entry method": 1,
+        "card details": 1,
+        "approval status": 1,
+        "transaction details": 1,
+        "Store Hours MON- SUN 7AM-10PM": 1,
+        "Store Hours MON-SUN 7AN-10PM": 1,
+        "12/14/2024": 1,
+        "possible business name abbreviation 'HOMG'": 1
+      }
+    },
+    "purchase_section": {
+      "count": 3,
+      "avg_confidence": 0.8666666666666667,
+      "spatial_patterns": {
+        "aligned columns": 1,
+        "itemized list": 1,
+        "aligned to the left": 1,
+        "consistent spacing": 2,
+        "left-aligned": 1
+      },
+      "content_patterns": {
+        "Category: DAIRY": 1,
+        "Category: MEAT": 1,
+        "Item names": 1,
+        "Prices": 1,
+        "DAIRY": 2,
+        "RAW WHOLE MILK": 2,
+        "17.99": 2
+      }
+    },
+    "payment_section": {
+      "count": 11,
+      "avg_confidence": 0.8845454545454546,
+      "spatial_patterns": {
+        "total amount aligned": 1,
+        "payment method": 1,
+        "aligned": 5,
+        "consistent spacing": 7,
+        "aligned to the left": 1,
+        "left-aligned": 4,
+        "payment details": 1
+      },
+      "content_patterns": {
+        "BALANCE DUE": 5,
+        "CREDIT": 5,
+        "CHANGE": 6,
+        "Ref#": 4,
+        "Auth#": 3,
+        "payment type": 1,
+        "amount": 2,
+        "17.99": 2,
+        "$17.99": 2,
+        "333821": 1,
+        "XXXXXXXXXXXX7645": 1,
+        "Debit": 1,
+        "Scott Norlund": 1,
+        "999000837869": 1,
+        "$199.99": 2,
+        "$19.00": 1,
+        "$218.99": 1,
+        "SALE": 1,
+        "****": 1,
+        "****8712": 1,
+        "DEBIT": 1,
+        "Entry Method: Chip": 1,
+        "Read Contactless": 1,
+        "Appr Code: 002284": 1,
+        "Payment Type: DEBIT": 1,
+        "Cardholder: CARDHOLDER/VISA": 1,
+        "Application Pan:************8712": 1,
+        "Invoice: 001267449175520": 1,
+        "Mode: Issuer": 1,
+        "Result: CAPTURED": 1,
+        "Ref: 250112175531": 1,
+        "Response: Approved": 1,
+        "Approved: Online": 1,
+        "STAN: 175531": 1,
+        "CID Code: 0x80 (ARQC)": 1,
+        "US DEBIT": 1,
+        "SEQUENCE: 00000024": 1,
+        "AID: A0000000980840": 1,
+        "TVR: 0000000000": 1,
+        "TSI: 0000": 1,
+        "AC: 908BB4DAEDD8836C": 1,
+        "IAD: 06011203A00000": 1,
+        "ARC: 00": 1,
+        "TTQ: 36C04000": 1,
+        "PIN VERIFIED": 1,
+        "payment method": 2,
+        "card number": 1,
+        "authorization": 1,
+        "amounts": 2,
+        "transaction details": 1,
+        "change": 1,
+        "payment details": 1,
+        "transaction type": 1,
+        "approval code": 1,
+        "card reader": 1,
+        "date/time": 1,
+        "AID": 1,
+        "Sea#": 1,
+        "Tran ID#": 1,
+        "AMOUNT": 1,
+        "Resp": 1,
+        "APPROVED": 1,
+        "Ref# 334594": 1
+      }
+    },
+    "footer_section": {
+      "count": 22,
+      "avg_confidence": 0.85,
+      "spatial_patterns": {
+        "left-aligned": 6,
+        "bullet points": 4,
+        "aligned": 10,
+        "informational content": 1,
+        "consistent spacing": 8,
+        "closing message": 1,
+        "aligned to the left": 1,
+        "justified": 1,
+        "end of receipt content": 1,
+        "centered": 3,
+        "separated from main content": 1,
+        "centered text": 1,
+        "asterisks for emphasis": 1
+      },
+      "content_patterns": {
+        "Feedback request": 1,
+        "Promotional details": 1,
+        "Validity information": 1,
+        "feedback request": 5,
+        "store information": 1,
+        "return policy": 4,
+        "survey link": 2,
+        "Thank You!": 2,
+        "Whse: 117": 1,
+        "Trm:204": 1,
+        "We need your feedback!": 4,
+        "SproutsFeedback.com": 3,
+        "Cashier:": 1,
+        "Store:": 1,
+        "POS:": 1,
+        "Transaction:": 1,
+        "Monday, July 29, 2024 12:02 PM": 1,
+        "Save money, save paper": 1,
+        "Sprouts.com": 2,
+        "5 Winners Monthly": 2,
+        "Save money": 1,
+        "sign up to receive": 1,
+        "credit given": 1,
+        "method of payment": 1,
+        "ID is required": 1,
+        "returns without a receipt": 1,
+        "MASTERCARD": 1,
+        "CARD #": 1,
+        "PURCHASE": 1,
+        "AUTH CODE": 1,
+        "Total": 1,
+        "Entry Method": 1,
+        "USD$": 1,
+        "APPROVED": 1,
+        "Pro Xtra membership details": 1,
+        "return policy information": 1,
+        "website": 1,
+        "order online": 1,
+        "phone number": 1,
+        "Customer Copy": 1,
+        "Please Retain for records.": 1,
+        "Store: 00217": 1,
+        "Reg: 01": 1,
+        "Date: 1/11/2025 5:55:37 PM": 1,
+        "Ticket: 01267449": 1,
+        "Tran: 267449": 1,
+        "Assoc: XXXXXX": 1,
+        "Item(s) Sold: 1": 1,
+        "Item(s) Returned: 0": 1,
+        "Maria served you today.": 1,
+        "Thank you for shopping at": 1,
+        "COOLAND HILLS CA #00217": 1,
+        "od for Returns/ chase.": 1,
+        "survey information": 2,
+        "store details": 2,
+        "save paper message": 1,
+        "branding message": 1,
+        "thank you message": 1,
+        "items sold": 1,
+        "timestamp": 1,
+        "Thank You": 1,
+        "Please Come Again": 1,
+        "Whse": 2,
+        "Trm": 2,
+        "Trn": 2,
+        "OP": 2,
+        "Items Sold": 2,
+        "instructions": 2,
+        "GO": 1,
+        "Cilest LODY": 1,
+        "discount offer details": 1,
+        "validity dates": 1,
+        "Take a quick survey & enter for the chance": 1,
+        "SPROUTS": 1,
+        "FARMERS MARKET": 1,
+        "HOT SAVINGS!": 1,
+        "10% OFF$50": 1,
+        "Available in all regions except Nashville and Tucson": 1,
+        "Bring this back anytime from December 16-22*": 1,
+        "9899999980380": 1,
+        "*Valid 12/16/24 - 12/22/24 in-store only.": 1,
+        "Qualifying purchase calculated after applying all": 1,
+        "other coupons and discounts and excludes": 1,
+        "amounts for tax, alcohol, postage & gift cards.": 1,
+        "Not valid anline or on prior purchases. To use": 1,
+        "in-store scan receipt barcode. Limit one per": 1,
+        "possible 'Customer' reference": 1
+      }
+    },
+    "transaction_details_section": {
+      "count": 16,
+      "avg_confidence": 0.8937499999999999,
+      "spatial_patterns": {
+        "aligned labels": 1,
+        "transaction timestamp": 1,
+        "itemized list format": 3,
+        "consistent structure": 1,
+        "aligned": 6,
+        "address format": 1,
+        "itemized list": 2,
+        "grouped together": 2,
+        "left-aligned": 4,
+        "consistent spacing": 5,
+        "consistent format": 1
+      },
+      "content_patterns": {
+        "Cashier": 1,
+        "Store": 1,
+        "Transaction": 1,
+        "Date": 1,
+        "Time": 1,
+        "product categories": 1,
+        "quantity": 2,
+        "price per unit": 1,
+        "store name": 3,
+        "address": 3,
+        "phone number": 3,
+        "841930 THAI JASMINA": 1,
+        "598881 ORGANIC GRND": 1,
+        "product details": 1,
+        "pricing": 1,
+        "refund values": 1,
+        "item description": 1,
+        "price": 1,
+        "items purchased": 2,
+        "SALE": 1,
+        "Customer Name:": 1,
+        "Customer Number:": 1,
+        "71292 20V 6-TOOL COMBO KIT": 1,
+        "Subtotal": 1,
+        "Sales Tax 9.500%": 1,
+        "Total": 1,
+        "membership details": 1,
+        "itemized costs": 1,
+        "subtotal": 1,
+        "tax": 1,
+        "total": 1,
+        "cashier info": 1,
+        "transaction details": 1,
+        "payment info": 1,
+        "Member": 1,
+        "PASTURE EGGS": 1,
+        "ORG CHKTENDR": 1,
+        "TOTAL NUMBER OF ITEMS SOLD": 1,
+        "Purchase": 1,
+        "Amount": 1,
+        "Auth Code": 1,
+        "Invoice": 1,
+        "DAIRY": 2,
+        "RAW WHOLE MILK": 1,
+        "17.99": 1,
+        "PRODUCE": 1,
+        "ORG 2 LB CARROTS": 1,
+        "ORGANIC GREEN ONIONS": 1,
+        "GROCERY": 1,
+        "KOREAN BBQ SAUCE": 1,
+        "PLAIN PNKO BRDCRUMBS": 1,
+        "ORGANIC SOUR CREAM": 1,
+        "2.79": 1,
+        "1.29": 1,
+        "6.99": 1,
+        "4.99": 1,
+        "transaction details, amounts, quantities": 1
+      }
+    },
+    "payment_total_section": {
+      "count": 9,
+      "avg_confidence": 0.8944444444444445,
+      "spatial_patterns": {
+        "aligned": 6,
+        "total amount highlighted": 4,
+        "subtotal, sales tax, total alignment": 1,
+        "amounts aligned to the right": 1,
+        "consistent spacing": 3,
+        "left-aligned": 1
+      },
+      "content_patterns": {
+        "balance due": 2,
+        "credit amount": 1,
+        "authorization and reference numbers": 1,
+        "SUBTOTAL": 2,
+        "TAX": 2,
+        "TOTAL": 2,
+        "payment details": 1,
+        "debit card information": 1,
+        "payment method": 1,
+        "change amount": 1,
+        "total amount": 1,
+        "credit": 1,
+        "change": 1,
+        "amounts": 1,
+        "total": 1,
+        "reference number": 1,
+        "CHANGE": 2,
+        "AMOUNT": 1,
+        "Tran ID#": 1,
+        "Resp": 1,
+        "APPROVED": 1,
+        "TOTAL:": 1,
+        "Gross Amount:": 1,
+        "SUGGESTED GRATUITY": 1,
+        "Total:": 1,
+        "USD$ 18.85": 1,
+        "BALANCE DUE": 1,
+        "CREDIT": 1,
+        "$18.85": 1,
+        "Ref# 033479": 1,
+        "payment information, total amount": 1
+      }
+    },
+    "item_details_section": {
+      "count": 3,
+      "avg_confidence": 0.85,
+      "spatial_patterns": {
+        "aligned": 2,
+        "consistent spacing": 2,
+        "left-aligned": 1
+      },
+      "content_patterns": {
+        "item description": 1,
+        "price": 1,
+        "PRODUCE": 1,
+        "BROCCOLI FLORETS": 1,
+        "BRUSSELS SPROUTS BAG": 1,
+        "MILK CHOCOLATE CHIPS": 1,
+        "Member": 1,
+        "Baker": 1,
+        "Irish Bunter": 1,
+        "Pork Tender": 1
+      }
+    },
+    "header_business_info": {
+      "count": 5,
+      "avg_confidence": 0.9099999999999999,
+      "spatial_patterns": {
+        "aligned": 4,
+        "consistent spacing": 1,
+        "spaced": 1,
+        "aligned_left": 1,
+        "address and contact details": 1,
+        "address format": 1
+      },
+      "content_patterns": {
+        "Westlake Village": 1,
+        "California": 1,
+        "91362-4063": 1,
+        "business name": 1,
+        "address": 4,
+        "business_name": 1,
+        "phone": 2,
+        "contact details": 1,
+        "email": 1
+      }
+    },
+    "transaction_details": {
+      "count": 7,
+      "avg_confidence": 0.9357142857142858,
+      "spatial_patterns": {
+        "sequential": 2,
+        "itemized list": 3,
+        "aligned": 1,
+        "spaced": 1,
+        "aligned_left": 1,
+        "quantity and price alignment": 1,
+        "left-aligned": 1,
+        "consistent spacing": 1,
+        "itemized": 1,
+        "pricing alignment": 1
+      },
+      "content_patterns": {
+        "GROCERY": 1,
+        "VITAL FARMS": 1,
+        "CRPT CLNR": 1,
+        "SUBTOTAL": 1,
+        "CA TAX": 1,
+        "TOTAL": 1,
+        "itemized list": 1,
+        "payment method": 1,
+        "date": 1,
+        "check_number": 1,
+        "card_type": 1,
+        "card_number": 1,
+        "transaction_type": 1,
+        "transaction_number": 1,
+        "ref_number": 1,
+        "auth_code": 1,
+        "server": 1,
+        "amount": 1,
+        "product details": 1,
+        "quantity and price": 1,
+        "YOUR CASHIER TODAY WAS SELF": 1,
+        "PRODUCE": 1,
+        "66062812505 LIVING DILL": 1,
+        "88223420010 FRENCH GREEN BEANS": 1,
+        "item description": 1,
+        "quantity": 1,
+        "price": 1,
+        "item categories": 1,
+        "item names": 1,
+        "prices": 1,
+        "subtotal": 1,
+        "discounts": 1,
+        "tax": 1,
+        "total": 1
+      }
+    },
+    "payment_total": {
+      "count": 6,
+      "avg_confidence": 0.9133333333333334,
+      "spatial_patterns": {
+        "aligned": 2,
+        "payment method identified": 1,
+        "spaced": 1,
+        "aligned_left": 1,
+        "total calculation": 1,
+        "payment breakdown": 1,
+        "left-aligned": 1,
+        "consistent spacing": 1,
+        "subtotal": 1,
+        "tax": 1,
+        "total": 1
+      },
+      "content_patterns": {
+        "MASTERCARD": 1,
+        "CHARGE": 1,
+        "TOTAL": 1,
+        "cost breakdown": 1,
+        "total amount": 2,
+        "gratuity": 1,
+        "total_amount": 1,
+        "subtotal": 1,
+        "Credit Purchase": 1,
+        "CARD #": 1,
+        "REF:": 1,
+        "AUTH:": 1,
+        "PAYMENT AMOUNT": 1,
+        "AL MASTERCARD": 1,
+        "AID": 1,
+        "TVR": 1,
+        "TSI": 1,
+        "CHANGE": 1,
+        "TOTAL SAVINGS": 1,
+        "COULO BE APPROX": 1,
+        "TOTAL NUMBER OF ITEMS SOLD": 1,
+        "Thank you for shopping Vons!": 1,
+        "payment method": 1,
+        "amount": 1,
+        "currency": 1
+      }
+    },
+    "footer_additional_info": {
+      "count": 5,
+      "avg_confidence": 0.85,
+      "spatial_patterns": {
+        "paragraph format": 1,
+        "notice/warning section": 1,
+        "aligned": 1,
+        "spaced": 1,
+        "aligned_left": 1,
+        "footer notes": 1,
+        "business promotion": 1,
+        "footer": 1,
+        "promotional": 1
+      },
+      "content_patterns": {
+        "RETURN CREDIT": 1,
+        "NOTICE": 1,
+        "survey": 1,
+        "User ID": 1,
+        "Password": 1,
+        "closing message": 1,
+        "establishment policy": 1,
+        "signature": 1,
+        "app_label": 1,
+        "aid": 1,
+        "atc": 1,
+        "tc": 1,
+        "tvr": 1,
+        "tsi": 1,
+        "gratuity_suggestion": 1,
+        "Pro Xtra program": 1,
+        "credit card benefits": 1,
+        "credit card offer": 1,
+        "website link": 1
+      }
+    },
+    "card_payment_section": {
+      "count": 1,
+      "avg_confidence": 0.9,
+      "spatial_patterns": {
+        "aligned to the left": 1,
+        "consistent spacing": 1
+      },
+      "content_patterns": {
+        "07/29/2024": 1,
+        "MASTERCARD": 1,
+        "CARD #:": 1,
+        "PURCHASE": 1,
+        "AUTH CODE:": 1,
+        "Mode:": 1,
+        "AID:": 1,
+        "TVR:": 1,
+        "ARC:": 1,
+        "TC:": 1,
+        "MID:": 1,
+        "Total :": 1,
+        "12:03:14": 1,
+        "Entry": 1,
+        "Method:": 1,
+        "Cntctless": 1,
+        "XXXXXXXXXXXX5061": 1,
+        "- APPROVED": 1,
+        "Issuer": 1,
+        "A0000000041010": 1,
+        "0000008001": 1,
+        "0114A14003020000000400000000000": 1,
+        "TID:": 1,
+        "A800": 1,
+        "00": 1,
+        "7CC453E8DCC9D132": 1,
+        "001 SEQ: 333821": 1,
+        "USD$ 17.99": 1
+      }
+    },
+    "order_section": {
+      "count": 2,
+      "avg_confidence": 0.85,
+      "spatial_patterns": {
+        "itemized list": 1,
+        "pricing aligned": 1,
+        "aligned": 1,
+        "consistent spacing": 1
+      },
+      "content_patterns": {
+        "item description": 1,
+        "price": 1,
+        "ordered items": 1,
+        "subtotal": 1
+      }
+    },
+    "total_section": {
+      "count": 2,
+      "avg_confidence": 0.9,
+      "spatial_patterns": {
+        "aligned": 1,
+        "total keyword": 1,
+        "left-aligned": 1,
+        "consistent spacing": 1
+      },
+      "content_patterns": {
+        "sub total": 1,
+        "tax total": 1,
+        "tip": 1,
+        "order total": 1,
+        "SUBTOTAL": 1,
+        "TAX": 1,
+        "TOTAL": 1
+      }
+    },
+    "header": {
+      "count": 1,
+      "avg_confidence": 0.95,
+      "spatial_patterns": {
+        "left-aligned": 1,
+        "consistent spacing": 1
+      },
+      "content_patterns": {
+        "VONS": 1,
+        "Store": 1,
+        "Main": 1,
+        "Agoura Road": 1,
+        "WESTLAKE CA 91360": 1
+      }
+    },
+    "footer": {
+      "count": 1,
+      "avg_confidence": 0.9,
+      "spatial_patterns": {
+        "left-aligned": 1,
+        "consistent spacing": 1
+      },
+      "content_patterns": {
+        "Visit www.VONS.COM": 1,
+        "FOR U questions call": 1,
+        "877-276-9637": 1,
+        "Vons.com/Foru": 1
+      }
+    },
+    "additional_info_section": {
+      "count": 1,
+      "avg_confidence": 0.8,
+      "spatial_patterns": {
+        "aligned": 1,
+        "consistent spacing": 1
+      },
+      "content_patterns": {
+        "online ordering platforms": 1,
+        "review request": 1,
+        "final sales notice": 1
+      }
+    },
+    "discount_offer_section": {
+      "count": 1,
+      "avg_confidence": 0.85,
+      "spatial_patterns": {
+        "left-aligned": 1,
+        "bullet points": 1
+      },
+      "content_patterns": {
+        "discount offer details": 1,
+        "store locations": 1
+      }
+    },
+    "store_info_section": {
+      "count": 1,
+      "avg_confidence": 0.85,
+      "spatial_patterns": {
+        "aligned": 1,
+        "address format": 1
+      },
+      "content_patterns": {
+        "store name": 1,
+        "address": 1,
+        "phone number": 1,
+        "store hours": 1
+      }
+    },
+    "itemized_purchase_section": {
+      "count": 1,
+      "avg_confidence": 0.95,
+      "spatial_patterns": {
+        "itemized list format": 1,
+        "consistent pricing alignment": 1
+      },
+      "content_patterns": {
+        "product categories": 1,
+        "product names": 1,
+        "prices": 1,
+        "quantity": 1
+      }
+    },
+    "total_payment_section": {
+      "count": 1,
+      "avg_confidence": 0.9,
+      "spatial_patterns": {
+        "aligned": 1,
+        "total amount highlighted": 1
+      },
+      "content_patterns": {
+        "total amount due": 1,
+        "payment method": 1,
+        "credit amount": 1,
+        "authorization details": 1,
+        "change amount": 1
+      }
+    },
+    "business_info": {
+      "count": 1,
+      "avg_confidence": 0.95,
+      "spatial_patterns": {
+        "aligned": 1,
+        "address format": 1
+      },
+      "content_patterns": {
+        "phone number": 1,
+        "address": 1
+      }
+    },
+    "payment_info": {
+      "count": 1,
+      "avg_confidence": 0.85,
+      "spatial_patterns": {
+        "aligned": 1,
+        "payment details": 1
+      },
+      "content_patterns": {
+        "payment method": 1,
+        "authorization code": 1
+      }
+    },
+    "additional_info": {
+      "count": 1,
+      "avg_confidence": 0.8,
+      "spatial_patterns": {
+        "paragraph format": 1,
+        "bullet points": 1
+      },
+      "content_patterns": {
+        "return policy": 1,
+        "savings information": 1,
+        "survey invitation": 1,
+        "user ID": 1,
+        "password": 1
+      }
+    }
+  },
+  "avg_confidence": 0.8856666666666666,
+  "word_label_stats": {
+    "total_words": 4667,
+    "labeled_words": 1955,
+    "label_distribution": {
+      "business_name": {
+        "count": 90,
+        "avg_confidence": 0.9772685185185198
+      },
+      "address_line": {
+        "count": 237,
+        "avg_confidence": 1.189615564932019
+      },
+      "phone": {
+        "count": 39,
+        "avg_confidence": 0.9378205128205127
+      },
+      "item": {
+        "count": 736,
+        "avg_confidence": 2.398261354813666
+      },
+      "item_price": {
+        "count": 49,
+        "avg_confidence": 0.9500000000000005
+      },
+      "item_total": {
+        "count": 24,
+        "avg_confidence": 0.9499999999999996
+      },
+      "item_quantity": {
+        "count": 17,
+        "avg_confidence": 0.9499999999999997
+      },
+      "payment_method": {
+        "count": 82,
+        "avg_confidence": 1.019512195121952
+      },
+      "subtotal": {
+        "count": 34,
+        "avg_confidence": 1.061764705882353
+      },
+      "total": {
+        "count": 103,
+        "avg_confidence": 0.9868932038834968
+      },
+      "date": {
+        "count": 61,
+        "avg_confidence": 1.3284426229508206
+      },
+      "cashier_id": {
+        "count": 22,
+        "avg_confidence": 0.9499999999999996
+      },
+      "store_id": {
+        "count": 42,
+        "avg_confidence": 1.2949404761904773
+      },
+      "transaction_id": {
+        "count": 46,
+        "avg_confidence": 0.9500000000000004
+      },
+      "time": {
+        "count": 10,
+        "avg_confidence": 0.95
+      },
+      "payment_status": {
+        "count": 31,
+        "avg_confidence": 0.9499999999999995
+      },
+      "website": {
+        "count": 23,
+        "avg_confidence": 1.01195652173913
+      },
+      "tax": {
+        "count": 34,
+        "avg_confidence": 1.0952941176470588
+      },
+      "register_id": {
+        "count": 3,
+        "avg_confidence": 0.9499999999999998
+      },
+      "payment_total": {
+        "count": 16,
+        "avg_confidence": 0.9499999999999997
+      },
+      "footer_additional_info": {
+        "count": 97,
+        "avg_confidence": 1.1879896907216496
+      },
+      "card_number": {
+        "count": 2,
+        "avg_confidence": 0.95
+      },
+      "discount": {
+        "count": 23,
+        "avg_confidence": 1.1152173913043473
+      },
+      "membership_id": {
+        "count": 37,
+        "avg_confidence": 2.3172297297297293
+      },
+      "auth_code": {
+        "count": 1,
+        "avg_confidence": 0.95
+      },
+      "customer_name": {
+        "count": 3,
+        "avg_confidence": 1.4249999999999998
+      },
+      "customer_number": {
+        "count": 3,
+        "avg_confidence": 1.4249999999999998
+      },
+      "cardholder": {
+        "count": 2,
+        "avg_confidence": 0.95
+      },
+      "entry_method": {
+        "count": 1,
+        "avg_confidence": 0.95
+      },
+      "response": {
+        "count": 2,
+        "avg_confidence": 0.95
+      },
+      "approved_status": {
+        "count": 1,
+        "avg_confidence": 0.95
+      },
+      "ticket": {
+        "count": 1,
+        "avg_confidence": 0.95
+      },
+      "tip": {
+        "count": 2,
+        "avg_confidence": 0.95
+      },
+      "loyalty_id": {
+        "count": 25,
+        "avg_confidence": 3.0780000000000007
+      },
+      "payment_id": {
+        "count": 5,
+        "avg_confidence": 1.7099999999999997
+      },
+      "application_id": {
+        "count": 6,
+        "avg_confidence": 2.1374999999999997
+      },
+      "application_label": {
+        "count": 4,
+        "avg_confidence": 1.30625
+      },
+      "terminal_id": {
+        "count": 4,
+        "avg_confidence": 1.9
+      },
+      "transaction_type": {
+        "count": 1,
+        "avg_confidence": 0.95
+      },
+      "approval_code": {
+        "count": 1,
+        "avg_confidence": 0.95
+      },
+      "online_ordering_platform": {
+        "count": 5,
+        "avg_confidence": 0.95
+      },
+      "review_platform": {
+        "count": 2,
+        "avg_confidence": 0.95
+      },
+      "unknown": {
+        "count": 22,
+        "avg_confidence": 0.9499999999999996
+      },
+      "currency": {
+        "count": 2,
+        "avg_confidence": 0.95
+      },
+      "change_amount": {
+        "count": 2,
+        "avg_confidence": 0.95
+      },
+      "coupon": {
+        "count": 1,
+        "avg_confidence": 0.95
+      },
+      "change": {
+        "count": 1,
+        "avg_confidence": 0.95
+      }
+    },
+    "avg_label_confidence": 1.2130255689928118
+  },
+  "errors": [],
+  "validation_results": {
+    "total_valid": 25,
+    "validation_errors": [
+      {
+        "receipt_id": 1,
+        "category": "hours_verification",
+        "message": "Invalid date/time format: August 26 September 1* August 23, 2024 09:20 AM"
+      },
+      {
+        "receipt_id": 2,
+        "category": "hours_verification",
+        "message": "Invalid date/time format: 01/08/25 2025 PRO PRO PRO Pro Pro XTRA XTRA XTRA Xtra, Xtra SPEND 01/07: 10:55 AM"
+      },
+      {
+        "receipt_id": 1,
+        "category": "hours_verification",
+        "message": "Invalid date/time format: 1/11/2025 5:55:37 PM"
+      },
+      {
+        "receipt_id": 1,
+        "category": "hours_verification",
+        "message": "Invalid date/time format: August 12-18* Wednesday, August 7, 2024 07:09 PM"
+      },
+      {
+        "receipt_id": 1,
+        "category": "hours_verification",
+        "message": "Invalid date/time format: *Valid valid 6/3/24-6/9/24 in-store in-store IN in our CA, KS, LA, MO, NM, OK, TX, UT, WA, NV-Reno area locations only. 18:56:35"
+      }
+    ],
+    "validation_warnings": [
+      {
+        "receipt_id": 2,
+        "category": "cross_field_consistency",
+        "message": "Could not parse amounts: subtotal=SUBTOTAL $1,897.44, tax=SALES TAX, total=TOTAL $5...54 USD$ 53.54"
+      },
+      {
+        "receipt_id": 1,
+        "category": "cross_field_consistency",
+        "message": "Could not parse amounts: subtotal=SALE Subtotal $199.99 $199.99, tax=Sales Tax 9.500% $19.00, total=Total $218.99 $218.99"
+      }
+    ]
+  }
+}

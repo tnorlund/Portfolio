@@ -1,0 +1,642 @@
+{
+  "receipt_id": 1,
+  "image_id": "41885f70-0a10-4897-8840-8f7373d150cd",
+  "structure_analysis": {
+    "discovered_sections": [
+      {
+        "name": "header_section",
+        "line_ids": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "spatial_patterns": [
+          "centered",
+          "aligned_left"
+        ],
+        "content_patterns": [
+          "business_name",
+          "address",
+          "phone_number"
+        ],
+        "confidence": 0.9
+      },
+      {
+        "name": "transaction_details",
+        "line_ids": [
+          9,
+          10,
+          11,
+          12,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          23
+        ],
+        "spatial_patterns": [
+          "aligned_left",
+          "aligned_right"
+        ],
+        "content_patterns": [
+          "item_description",
+          "item_price",
+          "total_price"
+        ],
+        "confidence": 0.85
+      },
+      {
+        "name": "payment_total",
+        "line_ids": [
+          27,
+          28,
+          29,
+          30,
+          45,
+          46,
+          47,
+          48,
+          49,
+          50,
+          51,
+          52,
+          53
+        ],
+        "spatial_patterns": [
+          "aligned_left",
+          "aligned_right"
+        ],
+        "content_patterns": [
+          "subtotal",
+          "tax",
+          "total_amount"
+        ],
+        "confidence": 0.9
+      },
+      {
+        "name": "footer_section",
+        "line_ids": [
+          55,
+          56,
+          57,
+          58,
+          59,
+          60,
+          61
+        ],
+        "spatial_patterns": [
+          "centered",
+          "aligned_left"
+        ],
+        "content_patterns": [
+          "thank_you_message",
+          "location_info",
+          "items_sold"
+        ],
+        "confidence": 0.8
+      }
+    ],
+    "overall_confidence": 0.85
+  },
+  "field_analysis": {
+    "labels": [
+      {
+        "word_id": 1,
+        "line_id": 2,
+        "label": "business_name",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 3,
+        "label": "address_line",
+        "confidence": 1.5833333333333333
+      },
+      {
+        "word_id": 1,
+        "line_id": 6,
+        "label": "address_line",
+        "confidence": 1.5833333333333333
+      },
+      {
+        "word_id": 2,
+        "line_id": 3,
+        "label": "address_line",
+        "confidence": 1.5833333333333333
+      },
+      {
+        "word_id": 2,
+        "line_id": 6,
+        "label": "address_line",
+        "confidence": 1.5833333333333333
+      },
+      {
+        "word_id": 3,
+        "line_id": 3,
+        "label": "address_line",
+        "confidence": 1.5833333333333333
+      },
+      {
+        "word_id": 1,
+        "line_id": 4,
+        "label": "address_line",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 4,
+        "label": "address_line",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 5,
+        "label": "address_line",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 5,
+        "label": "address_line",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 3,
+        "label": "address_line",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 1,
+        "line_id": 6,
+        "label": "address_line",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 2,
+        "line_id": 3,
+        "label": "address_line",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 2,
+        "line_id": 6,
+        "label": "address_line",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 3,
+        "line_id": 6,
+        "label": "address_line",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 4,
+        "line_id": 6,
+        "label": "address_line",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 1,
+        "line_id": 7,
+        "label": "phone",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 7,
+        "label": "phone",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 9,
+        "label": "transaction_id",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 9,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 3,
+        "line_id": 9,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 10,
+        "label": "store_id",
+        "confidence": 2.28
+      },
+      {
+        "word_id": 1,
+        "line_id": 16,
+        "label": "store_id",
+        "confidence": 2.28
+      },
+      {
+        "word_id": 2,
+        "line_id": 10,
+        "label": "store_id",
+        "confidence": 2.28
+      },
+      {
+        "word_id": 3,
+        "line_id": 10,
+        "label": "store_id",
+        "confidence": 2.28
+      },
+      {
+        "word_id": 3,
+        "line_id": 16,
+        "label": "store_id",
+        "confidence": 2.28
+      },
+      {
+        "word_id": 2,
+        "line_id": 21,
+        "label": "store_id",
+        "confidence": 2.28
+      },
+      {
+        "word_id": 4,
+        "line_id": 10,
+        "label": "store_id",
+        "confidence": 2.28
+      },
+      {
+        "word_id": 4,
+        "line_id": 16,
+        "label": "store_id",
+        "confidence": 2.28
+      },
+      {
+        "word_id": 3,
+        "line_id": 21,
+        "label": "store_id",
+        "confidence": 2.28
+      },
+      {
+        "word_id": 5,
+        "line_id": 10,
+        "label": "store_id",
+        "confidence": 2.28
+      },
+      {
+        "word_id": 5,
+        "line_id": 16,
+        "label": "store_id",
+        "confidence": 2.28
+      },
+      {
+        "word_id": 4,
+        "line_id": 21,
+        "label": "store_id",
+        "confidence": 2.28
+      },
+      {
+        "word_id": 1,
+        "line_id": 11,
+        "label": "subtotal",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 12,
+        "label": "tax",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 14,
+        "label": "transaction_id",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 14,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 3,
+        "line_id": 14,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 15,
+        "label": "subtotal",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 10,
+        "label": "store_id",
+        "confidence": 2.28
+      },
+      {
+        "word_id": 1,
+        "line_id": 16,
+        "label": "store_id",
+        "confidence": 2.28
+      },
+      {
+        "word_id": 2,
+        "line_id": 16,
+        "label": "store_id",
+        "confidence": 2.28
+      },
+      {
+        "word_id": 3,
+        "line_id": 10,
+        "label": "store_id",
+        "confidence": 2.28
+      },
+      {
+        "word_id": 3,
+        "line_id": 16,
+        "label": "store_id",
+        "confidence": 2.28
+      },
+      {
+        "word_id": 2,
+        "line_id": 21,
+        "label": "store_id",
+        "confidence": 2.28
+      },
+      {
+        "word_id": 4,
+        "line_id": 10,
+        "label": "store_id",
+        "confidence": 2.28
+      },
+      {
+        "word_id": 4,
+        "line_id": 16,
+        "label": "store_id",
+        "confidence": 2.28
+      },
+      {
+        "word_id": 3,
+        "line_id": 21,
+        "label": "store_id",
+        "confidence": 2.28
+      },
+      {
+        "word_id": 5,
+        "line_id": 10,
+        "label": "store_id",
+        "confidence": 2.28
+      },
+      {
+        "word_id": 5,
+        "line_id": 16,
+        "label": "store_id",
+        "confidence": 2.28
+      },
+      {
+        "word_id": 4,
+        "line_id": 21,
+        "label": "store_id",
+        "confidence": 2.28
+      },
+      {
+        "word_id": 1,
+        "line_id": 17,
+        "label": "tax",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 18,
+        "label": "transaction_id",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 18,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 3,
+        "line_id": 18,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 19,
+        "label": "subtotal",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 21,
+        "label": "store_id",
+        "confidence": 2.375
+      },
+      {
+        "word_id": 3,
+        "line_id": 10,
+        "label": "store_id",
+        "confidence": 2.375
+      },
+      {
+        "word_id": 3,
+        "line_id": 16,
+        "label": "store_id",
+        "confidence": 2.375
+      },
+      {
+        "word_id": 2,
+        "line_id": 21,
+        "label": "store_id",
+        "confidence": 2.375
+      },
+      {
+        "word_id": 4,
+        "line_id": 10,
+        "label": "store_id",
+        "confidence": 2.375
+      },
+      {
+        "word_id": 4,
+        "line_id": 16,
+        "label": "store_id",
+        "confidence": 2.375
+      },
+      {
+        "word_id": 3,
+        "line_id": 21,
+        "label": "store_id",
+        "confidence": 2.375
+      },
+      {
+        "word_id": 5,
+        "line_id": 10,
+        "label": "store_id",
+        "confidence": 2.375
+      },
+      {
+        "word_id": 5,
+        "line_id": 16,
+        "label": "store_id",
+        "confidence": 2.375
+      },
+      {
+        "word_id": 4,
+        "line_id": 21,
+        "label": "store_id",
+        "confidence": 2.375
+      },
+      {
+        "word_id": 1,
+        "line_id": 23,
+        "label": "tax",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 30,
+        "label": "subtotal",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 51,
+        "label": "subtotal",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 52,
+        "label": "subtotal",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 49,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 58,
+        "label": "store_id",
+        "confidence": 1.2214285714285715
+      },
+      {
+        "word_id": 2,
+        "line_id": 58,
+        "label": "store_id",
+        "confidence": 1.2214285714285715
+      },
+      {
+        "word_id": 3,
+        "line_id": 58,
+        "label": "store_id",
+        "confidence": 1.2214285714285715
+      },
+      {
+        "word_id": 4,
+        "line_id": 58,
+        "label": "store_id",
+        "confidence": 1.2214285714285715
+      },
+      {
+        "word_id": 5,
+        "line_id": 58,
+        "label": "store_id",
+        "confidence": 1.2214285714285715
+      },
+      {
+        "word_id": 1,
+        "line_id": 55,
+        "label": "store_id",
+        "confidence": 1.2214285714285715
+      },
+      {
+        "word_id": 6,
+        "line_id": 58,
+        "label": "store_id",
+        "confidence": 1.2214285714285715
+      },
+      {
+        "word_id": 2,
+        "line_id": 55,
+        "label": "store_id",
+        "confidence": 1.2214285714285715
+      },
+      {
+        "word_id": 7,
+        "line_id": 58,
+        "label": "store_id",
+        "confidence": 1.2214285714285715
+      },
+      {
+        "word_id": 1,
+        "line_id": 61,
+        "label": "date",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 61,
+        "label": "date",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 3,
+        "line_id": 61,
+        "label": "date",
+        "confidence": 0.95
+      }
+    ],
+    "metadata": {
+      "total_labeled_words": 83,
+      "average_confidence": 1.6081870338496844,
+      "requires_review": false,
+      "review_reasons": []
+    }
+  },
+  "places_api_data": {},
+  "validation_results": {
+    "business_identity": [],
+    "address_verification": [],
+    "phone_validation": [],
+    "hours_verification": [],
+    "cross_field_consistency": [
+      {
+        "type": "error",
+        "message": "Line items total (59.47) doesn't match subtotal (18.49)"
+      },
+      {
+        "type": "error",
+        "message": "Total mismatch: Components sum (19.99) != total (66.70)\nComponents: line_items_total: 59.47, subtotal: 18.49, tax: 1.50, total: 66.70"
+      }
+    ],
+    "line_item_validation": [
+      {
+        "type": "warning",
+        "message": "Could not parse subtotal for comparison"
+      }
+    ],
+    "overall_valid": false
+  },
+  "overall_confidence": 0.85
+}

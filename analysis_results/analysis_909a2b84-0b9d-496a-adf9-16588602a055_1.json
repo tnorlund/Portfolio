@@ -1,0 +1,393 @@
+{
+  "receipt_id": 1,
+  "image_id": "909a2b84-0b9d-496a-adf9-16588602a055",
+  "structure_analysis": {
+    "discovered_sections": [
+      {
+        "name": "header_section",
+        "line_ids": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "spatial_patterns": [
+          "center-aligned",
+          "consistent spacing"
+        ],
+        "content_patterns": [
+          "business name",
+          "location details",
+          "phone number"
+        ],
+        "confidence": 0.9
+      },
+      {
+        "name": "transaction_details_section",
+        "line_ids": [
+          8,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17
+        ],
+        "spatial_patterns": [
+          "left-aligned",
+          "consistent spacing"
+        ],
+        "content_patterns": [
+          "membership details",
+          "itemized costs",
+          "subtotal",
+          "tax",
+          "total"
+        ],
+        "confidence": 0.85
+      },
+      {
+        "name": "payment_section",
+        "line_ids": [
+          20,
+          23,
+          24,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32
+        ],
+        "spatial_patterns": [
+          "left-aligned",
+          "consistent spacing"
+        ],
+        "content_patterns": [
+          "payment method",
+          "transaction details",
+          "amount",
+          "change"
+        ],
+        "confidence": 0.8
+      },
+      {
+        "name": "footer_section",
+        "line_ids": [
+          39,
+          40,
+          41,
+          42,
+          43,
+          44
+        ],
+        "spatial_patterns": [
+          "left-aligned",
+          "consistent spacing"
+        ],
+        "content_patterns": [
+          "thank you message",
+          "store details",
+          "items sold",
+          "timestamp"
+        ],
+        "confidence": 0.9
+      }
+    ],
+    "overall_confidence": 0.85
+  },
+  "field_analysis": {
+    "labels": [
+      {
+        "word_id": 1,
+        "line_id": 1,
+        "label": "business_name",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 3,
+        "label": "store_id",
+        "confidence": 1.5833333333333333
+      },
+      {
+        "word_id": 1,
+        "line_id": 5,
+        "label": "store_id",
+        "confidence": 1.5833333333333333
+      },
+      {
+        "word_id": 2,
+        "line_id": 3,
+        "label": "store_id",
+        "confidence": 1.5833333333333333
+      },
+      {
+        "word_id": 2,
+        "line_id": 5,
+        "label": "store_id",
+        "confidence": 1.5833333333333333
+      },
+      {
+        "word_id": 3,
+        "line_id": 3,
+        "label": "store_id",
+        "confidence": 1.5833333333333333
+      },
+      {
+        "word_id": 1,
+        "line_id": 4,
+        "label": "address_line",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 4,
+        "label": "address_line",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 3,
+        "line_id": 4,
+        "label": "address_line",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 4,
+        "line_id": 4,
+        "label": "address_line",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 3,
+        "label": "address_line",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 1,
+        "line_id": 5,
+        "label": "address_line",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 2,
+        "line_id": 3,
+        "label": "address_line",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 2,
+        "line_id": 5,
+        "label": "address_line",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 3,
+        "line_id": 5,
+        "label": "address_line",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 4,
+        "line_id": 5,
+        "label": "address_line",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 1,
+        "line_id": 6,
+        "label": "phone",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 6,
+        "label": "phone",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 8,
+        "label": "membership_id",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 8,
+        "label": "membership_id",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 3,
+        "line_id": 8,
+        "label": "membership_id",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 10,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 10,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 3,
+        "line_id": 10,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 4,
+        "line_id": 10,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 5,
+        "line_id": 10,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 11,
+        "label": "subtotal",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 12,
+        "label": "tax",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 13,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 14,
+        "label": "subtotal",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 15,
+        "label": "subtotal",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 14,
+        "label": "tax",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 15,
+        "label": "tax",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 16,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 17,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 24,
+        "label": "payment_status",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 26,
+        "label": "payment_status",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 27,
+        "label": "subtotal",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 31,
+        "label": "subtotal",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 41,
+        "label": "store_id",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 41,
+        "label": "store_id",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 3,
+        "line_id": 41,
+        "label": "register_id",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 4,
+        "line_id": 41,
+        "label": "transaction_id",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 5,
+        "line_id": 41,
+        "label": "transaction_id",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 6,
+        "line_id": 41,
+        "label": "cashier_id",
+        "confidence": 0.95
+      }
+    ],
+    "metadata": {
+      "total_labeled_words": 45,
+      "average_confidence": 1.0837037037037036,
+      "requires_review": false,
+      "review_reasons": []
+    }
+  },
+  "places_api_data": {},
+  "validation_results": {
+    "line_item_validation": [
+      "warnings: ['Missing subtotal', 'Missing tax']",
+      "errors: ['Missing total']"
+    ],
+    "overall_valid": false
+  },
+  "overall_confidence": 0.85
+}

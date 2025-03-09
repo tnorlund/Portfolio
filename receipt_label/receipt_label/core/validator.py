@@ -8,9 +8,17 @@ from ..utils.address import normalize_address
 from ..models.receipt import ReceiptWord, Receipt
 from ..models.line_item import LineItemAnalysis
 
+# Configure logger with a handler if not already configured
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)  # Set default level to INFO
+logger.setLevel(logging.DEBUG)  # Set to DEBUG level
 
+# Add a stream handler if no handlers exist
+if not logger.handlers:
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
 
 class ReceiptValidator:
     """Validates receipt data against Places API and internal consistency."""
@@ -49,18 +57,51 @@ class ReceiptValidator:
         word_text_map = {
             (word.line_id, word.word_id): word.text for word in receipt_words
         }
+        logger.debug("Created word_text_map with %d entries", len(word_text_map))
 
-        # Group labels by their label type
+        # Group labels by their label type and track their positions
         fields = {}
+        field_positions = {}  # Track the line_ids for each field type
+        logger.debug("Starting to group fields from %d labels", len(field_analysis["labels"]))
         for label in field_analysis["labels"]:
             label_type = label["label"]
             if label_type not in fields:
                 fields[label_type] = []
+                field_positions[label_type] = []
+                logger.debug("Created new field group for '%s'", label_type)
 
             # Get the text for this word
             word_text = word_text_map.get((label["line_id"], label["word_id"]))
             if word_text:
                 fields[label_type].append(word_text)
+                field_positions[label_type].append(label["line_id"])
+                logger.debug("Added text '%s' to field '%s' (line_id: %d, word_id: %d)", 
+                           word_text, label_type, label["line_id"], label["word_id"])
+
+        logger.debug("Completed field grouping. Fields found: %s", list(fields.keys()))
+        for field_type, texts in fields.items():
+            logger.debug("Field '%s' contains: %s", field_type, texts)
+            if field_positions[field_type]:
+                logger.debug("Field '%s' appears on lines: %s", field_type, field_positions[field_type])
+
+        # Check total appears after subtotal
+        if "subtotal" in field_positions and "total" in field_positions:
+            subtotal_lines = field_positions["subtotal"]
+            total_lines = field_positions["total"]
+            
+            # Get the last occurrence of each
+            last_subtotal_line = max(subtotal_lines)
+            last_total_line = max(total_lines)
+            
+            logger.debug("Last subtotal appears on line %d, last total on line %d", 
+                        last_subtotal_line, last_total_line)
+            
+            if last_total_line <= last_subtotal_line:
+                validation_results["cross_field_consistency"].append({
+                    "type": "error",
+                    "message": f"Total (line {last_total_line}) appears before or at the same line as subtotal (line {last_subtotal_line})"
+                })
+                logger.warning("Invalid order: Total appears before or at the same line as subtotal")
 
         # 1. Business Identity Validation
         if "business_name" in fields:
@@ -164,20 +205,28 @@ class ReceiptValidator:
             # Extract numeric values, handling currency symbols and commas
             def extract_amount(text_list):
                 if not text_list:
+                    logger.debug("No text list provided for amount extraction")
                     return Decimal('0')
-                text = " ".join(text_list)
-                # Remove currency symbols, commas, and whitespace
-                # Extract just the numeric part with optional decimal
-                match = re.search(r'(\d+\.?\d*)', text)
-                if match:
-                    try:
-                        return Decimal(match.group(1))
-                    except (ValueError, InvalidOperation):
-                        logger.warning(f"Could not parse amount: {text}")
-                        return None
+                
+                logger.debug("Attempting to extract amount from: %s", text_list)
+                # Try each text item separately instead of joining
+                for text in text_list:
+                    # Remove currency symbols, commas, and whitespace
+                    # Extract just the numeric part with optional decimal
+                    match = re.search(r'(\d+\.?\d*)', text)
+                    if match:
+                        try:
+                            amount = Decimal(match.group(1))
+                            logger.debug("Successfully extracted amount %s from text '%s'", amount, text)
+                            return amount
+                        except (ValueError, InvalidOperation) as e:
+                            logger.warning("Failed to parse amount '%s': %s", text, str(e))
+                            continue
+                logger.debug("No valid amount found in text list")
                 return None
 
             # Get all monetary components
+            logger.debug("Starting to extract monetary components")
             components = {
                 "line_items_total": Decimal('0'),
                 "subtotal": extract_amount(fields.get("subtotal", [])),
@@ -197,18 +246,18 @@ class ReceiptValidator:
                         components["line_items_total"] += item.price.unit_price * item.quantity.amount
 
             # Log all components for debugging
-            logger.debug("Receipt components:")
+            logger.debug("Receipt monetary components:")
             for component, value in components.items():
-                logger.debug("  %s: %s", component, value)
+                logger.debug("  %s: %s (type: %s)", component, value, type(value))
 
-            # Check for missing total (error)
+            # Check for missing components
+            logger.debug("Checking for missing components...")
             if components["total"] is None:
                 validation_results["cross_field_consistency"].append({
                     "type": "error",
                     "message": "Missing total amount"
                 })
 
-            # Check for missing subtotal and tax (warnings)
             if components["subtotal"] is None:
                 validation_results["cross_field_consistency"].append({
                     "type": "warning",

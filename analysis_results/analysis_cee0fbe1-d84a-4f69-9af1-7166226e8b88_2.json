@@ -1,0 +1,896 @@
+{
+  "receipt_id": 2,
+  "image_id": "cee0fbe1-d84a-4f69-9af1-7166226e8b88",
+  "structure_analysis": {
+    "discovered_sections": [
+      {
+        "name": "header_section",
+        "line_ids": [
+          1,
+          2,
+          22,
+          23,
+          24
+        ],
+        "spatial_patterns": [
+          "aligned",
+          "spaced"
+        ],
+        "content_patterns": [
+          "business name",
+          "address",
+          "phone number"
+        ],
+        "confidence": 0.9
+      },
+      {
+        "name": "transaction_details_section",
+        "line_ids": [
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "spatial_patterns": [
+          "aligned",
+          "spaced"
+        ],
+        "content_patterns": [
+          "takeout",
+          "item details"
+        ],
+        "confidence": 0.85
+      },
+      {
+        "name": "payment_total_section",
+        "line_ids": [
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32,
+          33,
+          34,
+          35,
+          36,
+          37
+        ],
+        "spatial_patterns": [
+          "aligned",
+          "spaced"
+        ],
+        "content_patterns": [
+          "payment method",
+          "total amounts",
+          "change given"
+        ],
+        "confidence": 0.95
+      },
+      {
+        "name": "footer_section",
+        "line_ids": [
+          21,
+          25,
+          26
+        ],
+        "spatial_patterns": [
+          "aligned",
+          "spaced"
+        ],
+        "content_patterns": [
+          "thank you message",
+          "feedback prompt"
+        ],
+        "confidence": 0.8
+      }
+    ],
+    "overall_confidence": 0.875
+  },
+  "field_analysis": {
+    "labels": [
+      {
+        "word_id": 1,
+        "line_id": 1,
+        "label": "business_name",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 1,
+        "label": "business_name",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 3,
+        "line_id": 2,
+        "label": "time",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 4,
+        "line_id": 2,
+        "label": "date",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 3,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 4,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 3,
+        "label": "item",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 1,
+        "line_id": 4,
+        "label": "item",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 2,
+        "line_id": 4,
+        "label": "item",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 3,
+        "line_id": 4,
+        "label": "item",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 1,
+        "line_id": 5,
+        "label": "item",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 1,
+        "line_id": 6,
+        "label": "item",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 2,
+        "line_id": 5,
+        "label": "item",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 1,
+        "line_id": 5,
+        "label": "item",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 1,
+        "line_id": 6,
+        "label": "item",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 2,
+        "line_id": 6,
+        "label": "item",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 3,
+        "line_id": 6,
+        "label": "item",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 2,
+        "line_id": 7,
+        "label": "item",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 4,
+        "line_id": 6,
+        "label": "item",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 3,
+        "line_id": 7,
+        "label": "item",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 5,
+        "line_id": 6,
+        "label": "item",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 6,
+        "line_id": 6,
+        "label": "item",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 1,
+        "line_id": 7,
+        "label": "item",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 3,
+        "line_id": 6,
+        "label": "item",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 2,
+        "line_id": 7,
+        "label": "item",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 4,
+        "line_id": 6,
+        "label": "item",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 3,
+        "line_id": 7,
+        "label": "item",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 4,
+        "line_id": 7,
+        "label": "item",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 5,
+        "line_id": 7,
+        "label": "item",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 6,
+        "line_id": 7,
+        "label": "item",
+        "confidence": 1.2666666666666666
+      },
+      {
+        "word_id": 2,
+        "line_id": 8,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 3,
+        "line_id": 10,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 13,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 18,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 19,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 20,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 29,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 31,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 34,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 35,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 37,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 18,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 19,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 20,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 29,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 31,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 34,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 35,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 37,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 18,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 19,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 20,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 29,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 31,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 34,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 35,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 37,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 18,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 19,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 20,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 29,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 31,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 34,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 35,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 37,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 18,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 19,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 20,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 29,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 31,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 34,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 35,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 37,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 18,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 19,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 20,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 29,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 31,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 34,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 35,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 37,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 18,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 19,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 20,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 29,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 31,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 34,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 35,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 37,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 18,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 19,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 20,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 29,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 31,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 34,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 35,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 37,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 18,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 19,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 20,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 29,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 31,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 34,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 35,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 37,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 21,
+        "label": "business_name",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 21,
+        "label": "business_name",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 25,
+        "label": "business_name",
+        "confidence": 1.2214285714285715
+      },
+      {
+        "word_id": 2,
+        "line_id": 25,
+        "label": "business_name",
+        "confidence": 1.2214285714285715
+      },
+      {
+        "word_id": 3,
+        "line_id": 25,
+        "label": "business_name",
+        "confidence": 1.2214285714285715
+      },
+      {
+        "word_id": 4,
+        "line_id": 25,
+        "label": "business_name",
+        "confidence": 1.2214285714285715
+      },
+      {
+        "word_id": 5,
+        "line_id": 25,
+        "label": "business_name",
+        "confidence": 1.2214285714285715
+      },
+      {
+        "word_id": 6,
+        "line_id": 25,
+        "label": "business_name",
+        "confidence": 1.2214285714285715
+      },
+      {
+        "word_id": 4,
+        "line_id": 26,
+        "label": "business_name",
+        "confidence": 1.2214285714285715
+      },
+      {
+        "word_id": 7,
+        "line_id": 25,
+        "label": "business_name",
+        "confidence": 1.2214285714285715
+      },
+      {
+        "word_id": 6,
+        "line_id": 26,
+        "label": "business_name",
+        "confidence": 1.2214285714285715
+      },
+      {
+        "word_id": 1,
+        "line_id": 26,
+        "label": "business_name",
+        "confidence": 1.1611111111111112
+      },
+      {
+        "word_id": 2,
+        "line_id": 26,
+        "label": "business_name",
+        "confidence": 1.1611111111111112
+      },
+      {
+        "word_id": 3,
+        "line_id": 26,
+        "label": "business_name",
+        "confidence": 1.1611111111111112
+      },
+      {
+        "word_id": 6,
+        "line_id": 25,
+        "label": "business_name",
+        "confidence": 1.1611111111111112
+      },
+      {
+        "word_id": 4,
+        "line_id": 26,
+        "label": "business_name",
+        "confidence": 1.1611111111111112
+      },
+      {
+        "word_id": 5,
+        "line_id": 26,
+        "label": "business_name",
+        "confidence": 1.1611111111111112
+      },
+      {
+        "word_id": 7,
+        "line_id": 25,
+        "label": "business_name",
+        "confidence": 1.1611111111111112
+      },
+      {
+        "word_id": 6,
+        "line_id": 26,
+        "label": "business_name",
+        "confidence": 1.1611111111111112
+      },
+      {
+        "word_id": 7,
+        "line_id": 26,
+        "label": "business_name",
+        "confidence": 1.1611111111111112
+      },
+      {
+        "word_id": 8,
+        "line_id": 26,
+        "label": "business_name",
+        "confidence": 1.1611111111111112
+      },
+      {
+        "word_id": 9,
+        "line_id": 26,
+        "label": "business_name",
+        "confidence": 1.1611111111111112
+      }
+    ],
+    "metadata": {
+      "total_labeled_words": 127,
+      "average_confidence": 1.062323459567554,
+      "requires_review": false,
+      "review_reasons": []
+    }
+  },
+  "places_api_data": {},
+  "validation_results": {
+    "business_identity": [],
+    "address_verification": [],
+    "phone_validation": [],
+    "hours_verification": [],
+    "cross_field_consistency": [
+      {
+        "type": "error",
+        "message": "Line items total (39.29) doesn't match subtotal (0)"
+      },
+      {
+        "type": "warning",
+        "message": "Could not validate total: missing or invalid components"
+      }
+    ],
+    "line_item_validation": [],
+    "overall_valid": false
+  },
+  "overall_confidence": 0.875
+}

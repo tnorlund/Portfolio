@@ -1,10 +1,8 @@
 from typing import Dict, List, Optional
 import logging
 from ..models.receipt import Receipt, ReceiptWord, ReceiptLine
-from ..processors.structure import StructureProcessor
-from ..processors.field import FieldProcessor
-from ..processors.progressive_processor import ProgressiveReceiptProcessor
-from ..processors.gpt import GPTProcessor
+from ..processors.receipt_analyzer import ReceiptAnalyzer
+from ..processors.line_item_processor import LineItemProcessor
 from ..data.places_api import BatchPlacesProcessor
 
 logger = logging.getLogger(__name__)
@@ -43,10 +41,8 @@ class ReceiptLabeler:
             api_key=places_api_key,
             dynamo_table_name=dynamodb_table_name,
         )
-        self.structure_processor = StructureProcessor()
-        self.field_processor = FieldProcessor()
-        self.progressive_processor = ProgressiveReceiptProcessor(gpt_api_key=gpt_api_key)
-        self.gpt_processor = GPTProcessor(api_key=gpt_api_key)
+        self.receipt_analyzer = ReceiptAnalyzer(api_key=gpt_api_key)
+        self.line_item_processor = LineItemProcessor(gpt_api_key=gpt_api_key)
 
     async def label_receipt(
         self,
@@ -72,17 +68,24 @@ class ReceiptLabeler:
             places_data = await self._get_places_data(receipt_words)
 
             # Analyze receipt structure
-            structure_analysis = await self._analyze_structure(
-                receipt, receipt_words, receipt_lines, places_data
+            structure_analysis = await self.receipt_analyzer.analyze_structure(
+                receipt=receipt,
+                receipt_lines=receipt_lines,
+                receipt_words=receipt_words,
+                places_api_data=places_data
             )
 
             # Label fields
-            field_analysis = await self._label_fields(
-                receipt, receipt_words, receipt_lines, structure_analysis, places_data
+            field_analysis = await self.receipt_analyzer.label_fields(
+                receipt=receipt,
+                receipt_lines=receipt_lines,
+                receipt_words=receipt_words,
+                section_boundaries=structure_analysis,
+                places_api_data=places_data
             )
 
-            # Process line items using progressive processor
-            line_item_analysis = await self.progressive_processor.process_receipt(
+            # Process line items using line item processor
+            line_item_analysis = await self.line_item_processor.process_receipt(
                 receipt=receipt,
                 receipt_lines=receipt_lines,
                 receipt_words=receipt_words,
@@ -100,7 +103,7 @@ class ReceiptLabeler:
                 "confidence": line_item_analysis.confidence
             }
 
-            # The progressive processor includes validation, so we'll use its results
+            # The line item processor includes validation, so we'll use its results
             validation_results = {
                 "line_item_validation": line_item_analysis.discrepancies,
                 "overall_valid": not any("error" in d.lower() for d in line_item_analysis.discrepancies)
@@ -142,42 +145,3 @@ class ReceiptLabeler:
         except Exception as e:
             logger.warning(f"Error getting Places data: {str(e)}")
             return None
-
-    async def _analyze_structure(
-        self,
-        receipt: Receipt,
-        receipt_words: List[ReceiptWord],
-        receipt_lines: List[ReceiptLine],
-        places_data: Optional[Dict],
-    ) -> Dict:
-        """Analyze receipt structure using GPT."""
-        try:
-            return await self.gpt_processor.analyze_structure(
-                receipt=receipt,
-                receipt_words=receipt_words,
-                receipt_lines=receipt_lines,
-                places_api_data=places_data or {},
-            )
-        except Exception as e:
-            logger.error(f"Error in structure analysis: {str(e)}")
-            return {
-                "discovered_sections": [],
-                "overall_confidence": 0.0
-            }
-
-    async def _label_fields(
-        self,
-        receipt: Receipt,
-        receipt_words: List[ReceiptWord],
-        receipt_lines: List[ReceiptLine],
-        structure_analysis: Dict,
-        places_data: Optional[Dict],
-    ) -> Dict:
-        """Label receipt fields using GPT."""
-        return await self.gpt_processor.label_fields(
-            receipt=receipt,
-            receipt_words=receipt_words,
-            receipt_lines=receipt_lines,
-            section_boundaries=structure_analysis,
-            places_api_data=places_data,
-        )

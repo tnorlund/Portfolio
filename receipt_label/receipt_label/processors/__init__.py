@@ -1,7 +1,6 @@
 """Processors for receipt labeling."""
 
-from .gpt import GPTProcessor
-from .structure import StructureProcessor
-from .field import FieldProcessor
+from .receipt_analyzer import ReceiptAnalyzer
+from .line_item_processor import LineItemProcessor
 
-__all__ = ["GPTProcessor", "StructureProcessor", "FieldProcessor"]
+__all__ = ["ReceiptAnalyzer", "LineItemProcessor"]

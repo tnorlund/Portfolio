@@ -1,0 +1,469 @@
+{
+  "receipt_id": 1,
+  "image_id": "3b594aaf-915e-49cc-97e6-3a924710cabf",
+  "structure_analysis": {
+    "discovered_sections": [
+      {
+        "name": "header_section",
+        "line_ids": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "spatial_patterns": [
+          "centered",
+          "aligned"
+        ],
+        "content_patterns": [
+          "SPROUTS",
+          "FARMERS MARKET",
+          "1012 WESTLAKE BLVD.",
+          "HESILARE, CA 91361",
+          "(805)917-4200",
+          "Store Hours HON-SUN 7AM-10PM"
+        ],
+        "confidence": 0.95
+      },
+      {
+        "name": "transaction_details_section",
+        "line_ids": [
+          30,
+          35,
+          36,
+          37,
+          38,
+          39,
+          40
+        ],
+        "spatial_patterns": [
+          "left-aligned",
+          "itemized"
+        ],
+        "content_patterns": [
+          "Total:",
+          "USD$ 14.25",
+          "BEER",
+          "FRUITLANDS GOSE 6 PK",
+          "*CRV TX 30",
+          "12.99 T",
+          "0.30 T"
+        ],
+        "confidence": 0.9
+      },
+      {
+        "name": "payment_total_section",
+        "line_ids": [
+          45,
+          46,
+          47,
+          48,
+          49,
+          50,
+          51,
+          52,
+          53
+        ],
+        "spatial_patterns": [
+          "right-aligned",
+          "total calculation"
+        ],
+        "content_patterns": [
+          "BALANCE DUE",
+          "14.25",
+          "CREDIT",
+          "$14.25",
+          "C 1 XXXXXXXXXXXX5061",
+          "Auth# 97201Z",
+          "Ref# 027865",
+          "CHANGE",
+          "0.00"
+        ],
+        "confidence": 0.9
+      },
+      {
+        "name": "footer_section",
+        "line_ids": [
+          56,
+          57,
+          58,
+          59,
+          60,
+          61,
+          62,
+          63,
+          64,
+          65,
+          66,
+          67,
+          68,
+          69,
+          70,
+          71,
+          72,
+          73,
+          74,
+          75,
+          76,
+          77,
+          78,
+          79
+        ],
+        "spatial_patterns": [
+          "justified",
+          "bullet points"
+        ],
+        "content_patterns": [
+          "We need your feedback!",
+          "Take a quick survey & enter for the chance",
+          "to WIN a $250 Sprouts gift card. Go to:",
+          "SproutsFeedback. com",
+          "*5 Winners Monthly*",
+          "HOT SAVINGS!",
+          "10% OFF$50",
+          "Bring this back anytime from September 16-22*",
+          "Valld 9/16/24 - 9/22/24 in-store locations only.",
+          "Qualifying purchase calculated after applying all",
+          "other coupons and discounts and excludes",
+          "amounts for tax, alcohol, postage & gift cards.",
+          "Maximum discount $10. Not valid online or on",
+          "prior purchases. To use in-store scan receipt",
+          "barcode. Lirit one per transaction. Cannot be",
+          "combined with other Sprouts cash-off offers or",
+          "employee discount. No cash redemption unless",
+          "required by law @ 1/100\u00a2. Void if duplicated",
+          "sold or transferred. Subject to all applicable laws.",
+          "Not valid in our Tucson or Nashville stores."
+        ],
+        "confidence": 0.85
+      }
+    ],
+    "overall_confidence": 0.9
+  },
+  "field_analysis": {
+    "labels": [
+      {
+        "word_id": 1,
+        "line_id": 1,
+        "label": "business_name",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 2,
+        "label": "business_name",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 2,
+        "label": "business_name",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 3,
+        "label": "address_line",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 3,
+        "label": "address_line",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 3,
+        "line_id": 3,
+        "label": "address_line",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 4,
+        "label": "address_line",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 4,
+        "label": "address_line",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 3,
+        "line_id": 4,
+        "label": "address_line",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 5,
+        "label": "phone",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 36,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 37,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 37,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 3,
+        "line_id": 37,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 4,
+        "line_id": 37,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 38,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 38,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 3,
+        "line_id": 38,
+        "label": "item",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 39,
+        "label": "item_price",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 40,
+        "label": "item_price",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 35,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 45,
+        "label": "payment_status",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 2,
+        "line_id": 45,
+        "label": "payment_status",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 46,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 48,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 47,
+        "label": "payment_method",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 46,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 48,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 52,
+        "label": "payment_status",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 53,
+        "label": "total",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 5,
+        "line_id": 58,
+        "label": "business_name",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 62,
+        "label": "business_name",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 4,
+        "line_id": 75,
+        "label": "business_name",
+        "confidence": 0.95
+      },
+      {
+        "word_id": 1,
+        "line_id": 65,
+        "label": "discount",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 3,
+        "line_id": 72,
+        "label": "discount",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 2,
+        "line_id": 65,
+        "label": "discount",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 1,
+        "line_id": 72,
+        "label": "discount",
+        "confidence": 1.5833333333333333
+      },
+      {
+        "word_id": 2,
+        "line_id": 72,
+        "label": "discount",
+        "confidence": 1.5833333333333333
+      },
+      {
+        "word_id": 2,
+        "line_id": 76,
+        "label": "discount",
+        "confidence": 1.5833333333333333
+      },
+      {
+        "word_id": 1,
+        "line_id": 65,
+        "label": "discount",
+        "confidence": 1.5833333333333333
+      },
+      {
+        "word_id": 3,
+        "line_id": 72,
+        "label": "discount",
+        "confidence": 1.5833333333333333
+      },
+      {
+        "word_id": 5,
+        "line_id": 58,
+        "label": "discount",
+        "confidence": 1.5833333333333333
+      },
+      {
+        "word_id": 1,
+        "line_id": 62,
+        "label": "discount",
+        "confidence": 1.5833333333333333
+      },
+      {
+        "word_id": 4,
+        "line_id": 75,
+        "label": "discount",
+        "confidence": 1.5833333333333333
+      },
+      {
+        "word_id": 5,
+        "line_id": 75,
+        "label": "discount",
+        "confidence": 1.5833333333333333
+      },
+      {
+        "word_id": 6,
+        "line_id": 75,
+        "label": "discount",
+        "confidence": 1.5833333333333333
+      },
+      {
+        "word_id": 1,
+        "line_id": 76,
+        "label": "discount",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 2,
+        "line_id": 72,
+        "label": "discount",
+        "confidence": 1.4249999999999998
+      },
+      {
+        "word_id": 2,
+        "line_id": 76,
+        "label": "discount",
+        "confidence": 1.4249999999999998
+      }
+    ],
+    "metadata": {
+      "total_labeled_words": 49,
+      "average_confidence": 1.1374149659863944,
+      "requires_review": false,
+      "review_reasons": []
+    }
+  },
+  "places_api_data": {},
+  "validation_results": {
+    "business_identity": [],
+    "address_verification": [],
+    "phone_validation": [],
+    "hours_verification": [],
+    "cross_field_consistency": [
+      {
+        "type": "error",
+        "message": "Line items total (13.29) doesn't match subtotal (0)"
+      },
+      {
+        "type": "warning",
+        "message": "Could not validate total: missing or invalid components"
+      }
+    ],
+    "line_item_validation": [],
+    "overall_valid": false
+  },
+  "overall_confidence": 0.9
+}

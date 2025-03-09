@@ -83,6 +83,10 @@ def validate_receipt_data(
     field_analysis, places_api_data, receipt_words, batch_processor
 ):
     """Validate receipt data against Places API and internal consistency."""
+    # Configure logging for this function
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.DEBUG)
+
     validation_results = {
         "business_identity": [],
         "address_verification": [],
@@ -94,18 +98,51 @@ def validate_receipt_data(
 
     # Create a mapping of line_id and word_id to word text
     word_text_map = {(word.line_id, word.word_id): word.text for word in receipt_words}
+    logger.debug("Created word_text_map with %d entries", len(word_text_map))
 
-    # Group labels by their label type
+    # Group labels by their label type and track their line positions
     fields = {}
+    field_positions = {}  # Track the line_ids for each field type
+    logger.debug("Starting to group fields from %d labels", len(field_analysis["labels"]))
     for label in field_analysis["labels"]:
         label_type = label["label"]
         if label_type not in fields:
             fields[label_type] = []
+            field_positions[label_type] = []
+            logger.debug("Created new field group for '%s'", label_type)
 
         # Get the text for this word
         word_text = word_text_map.get((label["line_id"], label["word_id"]))
         if word_text:
             fields[label_type].append(word_text)
+            field_positions[label_type].append(label["line_id"])
+            logger.debug("Added text '%s' to field '%s' (line_id: %d, word_id: %d)", 
+                       word_text, label_type, label["line_id"], label["word_id"])
+
+    logger.debug("Completed field grouping. Fields found: %s", list(fields.keys()))
+    for field_type, texts in fields.items():
+        logger.debug("Field '%s' contains: %s", field_type, texts)
+        if field_positions[field_type]:
+            logger.debug("Field '%s' appears on lines: %s", field_type, field_positions[field_type])
+
+    # Check total appears after subtotal
+    if "subtotal" in field_positions and "total" in field_positions:
+        subtotal_lines = field_positions["subtotal"]
+        total_lines = field_positions["total"]
+        
+        # Get the last occurrence of each
+        last_subtotal_line = max(subtotal_lines)
+        last_total_line = max(total_lines)
+        
+        logger.debug("Last subtotal appears on line %d, last total on line %d", 
+                    last_subtotal_line, last_total_line)
+        
+        if last_total_line <= last_subtotal_line:
+            validation_results["cross_field_consistency"].append({
+                "type": "error",
+                "message": f"Total (line {last_total_line}) appears before or at the same line as subtotal (line {last_subtotal_line})"
+            })
+            logger.warning("Invalid order: Total appears before or at the same line as subtotal")
 
     # 1. Business Identity Validation
     if "business_name" in fields:
@@ -231,37 +268,42 @@ def validate_receipt_data(
             def extract_amount(text):
                 # Remove currency symbols, commas, and whitespace
                 cleaned = re.sub(r"[$,]", "", text)
+                logger.debug("Attempting to extract amount from text: '%s' (cleaned: '%s')", text, cleaned)
                 try:
-                    return float(cleaned)
-                except ValueError:
+                    amount = float(cleaned)
+                    logger.debug("Successfully extracted amount: %f", amount)
+                    return amount
+                except ValueError as e:
+                    logger.debug("Failed to extract amount: %s", str(e))
                     return None
 
             subtotal_text = " ".join(fields["subtotal"])
             tax_text = " ".join(fields["tax"])
             total_text = " ".join(fields["total"])
 
+            logger.debug("Processing amounts - subtotal: '%s', tax: '%s', total: '%s'", 
+                        subtotal_text, tax_text, total_text)
+
             subtotal = extract_amount(subtotal_text)
             tax = extract_amount(tax_text)
             total = extract_amount(total_text)
 
+            logger.debug("Extracted amounts - subtotal: %s, tax: %s, total: %s", 
+                        subtotal, tax, total)
+
             if all(x is not None for x in [subtotal, tax, total]):
-                if (
-                    abs((subtotal + tax) - total) > 0.01
-                ):  # Allow for small rounding differences
-                    validation_results["cross_field_consistency"].append(
-                        {
-                            "type": "error",
-                            "message": f"Total mismatch: {subtotal} + {tax} != {total}",
-                        }
-                    )
+                if abs((subtotal + tax) - total) > 0.01:  # Allow for small rounding differences
+                    validation_results["cross_field_consistency"].append({
+                        "type": "error",
+                        "message": f"Total mismatch: {subtotal} + {tax} != {total}",
+                    })
             else:
-                validation_results["cross_field_consistency"].append(
-                    {
-                        "type": "warning",
-                        "message": f"Could not parse amounts: subtotal={subtotal_text}, tax={tax_text}, total={total_text}",
-                    }
-                )
+                validation_results["cross_field_consistency"].append({
+                    "type": "warning",
+                    "message": f"Could not parse amounts: subtotal={subtotal_text}, tax={tax_text}, total={total_text}",
+                })
         except Exception as e:
+            logger.error("Error processing amounts: %s", str(e))
             validation_results["cross_field_consistency"].append(
                 {"type": "error", "message": f"Error processing amounts: {str(e)}"}
             )
