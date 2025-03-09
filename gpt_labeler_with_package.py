@@ -360,52 +360,20 @@ async def main():
                     initial_taggings,
                 ) = client.getReceiptDetails(receipt.image_id, receipt.receipt_id)
 
-                # Convert dictionary data to proper objects
+                # Convert DynamoDB objects to receipt_label objects
                 try:
-                    if isinstance(receipt_lines_data[0], dict):
-                        receipt_lines = [
-                            ReceiptLine(
-                                line_id=line["line_id"],
-                                text=line["text"],
-                                confidence=line.get("confidence", 0.0),
-                                bounding_box=line.get("bounding_box", {}),
-                                top_right=line.get("top_right", {"x": 0, "y": 0}),
-                                top_left=line.get("top_left", {"x": 0, "y": 0}),
-                                bottom_right=line.get("bottom_right", {"x": 0, "y": 0}),
-                                bottom_left=line.get("bottom_left", {"x": 0, "y": 0}),
-                            )
-                            for line in receipt_lines_data
-                        ]
-                    else:
-                        receipt_lines = receipt_lines_data
+                    # Convert DynamoReceiptWord and DynamoReceiptLine objects using from_dynamo
+                    receipt_words = [ReceiptWord.from_dynamo(word) for word in receipt_words_data]
+                    receipt_lines = [ReceiptLine.from_dynamo(line) for line in receipt_lines_data]
 
-                    if isinstance(receipt_words_data[0], dict):
-                        receipt_words = [
-                            ReceiptWord(
-                                text=word["text"],
-                                line_id=word["line_id"],
-                                word_id=word["word_id"],
-                                confidence=word.get("confidence", 0.0),
-                                extracted_data=word.get("extracted_data"),
-                                bounding_box=word.get("bounding_box", {}),
-                                font_size=word.get("font_size"),
-                                font_weight=word.get("font_weight"),
-                                font_style=word.get("font_style"),
-                            )
-                            for word in receipt_words_data
-                        ]
-                    else:
-                        receipt_words = receipt_words_data
-
+                    # Create Receipt object from DynamoDB data
+                    receipt_obj = Receipt.from_dynamo(
+                        receipt.receipt_id, receipt.image_id, receipt_words, receipt_lines
+                    )
                 except Exception as e:
                     logger.error(f"Error converting data to objects: {str(e)}")
                     logger.error(f"Traceback: {traceback.format_exc()}")
                     raise
-
-                # Create Receipt object from DynamoDB data
-                receipt_obj = Receipt.from_dynamo(
-                    receipt.receipt_id, receipt.image_id, receipt_words, receipt_lines
-                )
 
                 # Analyze receipt using ReceiptLabeler
                 analysis_result = await process_receipt(labeler, receipt_obj, receipt_words, receipt_lines)
