@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 # Load .env file from root directory
 load_dotenv()
 
+
 def validate_environment():
     """Validate required environment variables are set and valid."""
     required_vars = {
@@ -33,45 +34,54 @@ def validate_environment():
         "OPENAI_API_KEY": "OpenAI API key for GPT-based processing",
         "AWS_ACCESS_KEY_ID": "AWS access key for DynamoDB access",
         "AWS_SECRET_ACCESS_KEY": "AWS secret key for DynamoDB access",
-        "AWS_DEFAULT_REGION": "AWS region for DynamoDB access"
+        "AWS_DEFAULT_REGION": "AWS region for DynamoDB access",
     }
-    
+
     missing_vars = []
     invalid_vars = []
-    
+
     for var_name, description in required_vars.items():
         value = os.getenv(var_name)
         if not value:
             missing_vars.append(f"{var_name} ({description})")
-        elif var_name.endswith("_KEY") and len(value) < 20:  # Basic validation for API keys
+        elif (
+            var_name.endswith("_KEY") and len(value) < 20
+        ):  # Basic validation for API keys
             invalid_vars.append(f"{var_name} (appears to be invalid)")
-    
+
     if missing_vars or invalid_vars:
         error_msg = []
         if missing_vars:
             error_msg.append("Missing required environment variables:")
             for var in missing_vars:
                 error_msg.append(f"  - {var}")
-        
+
         if invalid_vars:
             error_msg.append("\nInvalid environment variables:")
             for var in invalid_vars:
                 error_msg.append(f"  - {var}")
-        
-        error_msg.append("\nPlease set these variables in your .env file or environment.")
+
+        error_msg.append(
+            "\nPlease set these variables in your .env file or environment."
+        )
         error_msg.append("Example .env file:")
-        error_msg.append("""
+        error_msg.append(
+            """
 GOOGLE_PLACES_API_KEY=your_google_places_api_key
 OPENAI_API_KEY=your_openai_api_key
 AWS_ACCESS_KEY_ID=your_aws_access_key
 AWS_SECRET_ACCESS_KEY=your_aws_secret_key
 AWS_DEFAULT_REGION=your_aws_region
-""")
-        
+"""
+        )
+
         logger.error("\n".join(error_msg))
         sys.exit(1)
 
-def validate_receipt_data(field_analysis, places_api_data, receipt_words, batch_processor):
+
+def validate_receipt_data(
+    field_analysis, places_api_data, receipt_words, batch_processor
+):
     """Validate receipt data against Places API and internal consistency."""
     validation_results = {
         "business_identity": [],
@@ -118,13 +128,18 @@ def validate_receipt_data(field_analysis, places_api_data, receipt_words, batch_
     if "address_line" in fields:
         receipt_address = " ".join(fields["address_line"])
         api_address = places_api_data.get("formatted_address", "")
-        
+
         # Normalize addresses for comparison
         receipt_address_norm = normalize_address(receipt_address)
         api_address_norm = normalize_address(api_address)
-        logger.info(f"Comparing normalized addresses:\nReceipt: {receipt_address_norm}\nAPI: {api_address_norm}")
-        
-        if receipt_address_norm not in api_address_norm and api_address_norm not in receipt_address_norm:
+        logger.info(
+            f"Comparing normalized addresses:\nReceipt: {receipt_address_norm}\nAPI: {api_address_norm}"
+        )
+
+        if (
+            receipt_address_norm not in api_address_norm
+            and api_address_norm not in receipt_address_norm
+        ):
             validation_results["address_verification"].append(
                 {
                     "type": "warning",
@@ -182,7 +197,9 @@ def validate_receipt_data(field_analysis, places_api_data, receipt_words, batch_
             receipt_datetime = None
             for fmt in date_formats:
                 try:
-                    logger.info(f"Trying date format: {fmt} for date/time: {receipt_date} {receipt_time}")
+                    logger.info(
+                        f"Trying date format: {fmt} for date/time: {receipt_date} {receipt_time}"
+                    )
                     receipt_datetime = datetime.strptime(
                         f"{receipt_date} {receipt_time}", fmt
                     )
@@ -258,32 +275,34 @@ def validate_receipt_data(field_analysis, places_api_data, receipt_words, batch_
 
     return validation_results
 
+
 async def process_receipt(labeler, receipt_obj, receipt_words, receipt_lines):
     """Process a single receipt asynchronously."""
     return await labeler.label_receipt(receipt_obj, receipt_words, receipt_lines)
 
-def main():
+
+async def main():
     logger.info("Starting receipt analysis...")
-    
+
     # Process receipts
     total_receipts = 0
     successful_analyses = 0
     total_structure_confidence = 0
     total_word_confidence = 0
-    
+
     try:
         # Validate environment variables first
         validate_environment()
-        
+
         # Load environment and create clients
         env = load_env("dev")
         client = DynamoClient(env["dynamodb_table_name"])
-        
+
         # Initialize the ReceiptLabeler with validated API keys
         labeler = ReceiptLabeler(
             places_api_key=os.getenv("GOOGLE_PLACES_API_KEY"),
             dynamodb_table_name=env["dynamodb_table_name"],
-            gpt_api_key=os.getenv("OPENAI_API_KEY")
+            gpt_api_key=os.getenv("OPENAI_API_KEY"),
         )
 
         # Create output directory
@@ -312,8 +331,14 @@ def main():
 
         # Get sample receipts
         logger.info("Getting receipts...")
-        last_evaluated_key = {'PK': {'S': 'IMAGE#8d7e60ba-4167-4be1-8653-03924c7b69a2'}, 'SK': {'S': 'RECEIPT#00001'}, 'TYPE': {'S': 'RECEIPT'}}
-        receipts, last_evaluated_key = client.listReceipts(limit=30, lastEvaluatedKey=last_evaluated_key)  # Analyze 30 receipts
+        last_evaluated_key = {
+            "PK": {"S": "IMAGE#5c13b5c3-2244-4ea6-8872-925839ab22f7"},
+            "SK": {"S": "RECEIPT#00001"},
+            "TYPE": {"S": "RECEIPT"},
+        }
+        receipts, last_evaluated_key = client.listReceipts(
+            limit=30, lastEvaluatedKey=last_evaluated_key
+        )  # Analyze 30 receipts
         logger.info(f"Last evaluated key: {last_evaluated_key}")
         stats["total_receipts"] = len(receipts)
 
@@ -378,17 +403,23 @@ def main():
                     raise
 
                 # Create Receipt object from DynamoDB data
-                receipt_obj = Receipt.from_dynamo(receipt.receipt_id, receipt.image_id, receipt_words, receipt_lines)
+                receipt_obj = Receipt.from_dynamo(
+                    receipt.receipt_id, receipt.image_id, receipt_words, receipt_lines
+                )
 
                 # Analyze receipt using ReceiptLabeler
-                analysis_result = asyncio.run(process_receipt(labeler, receipt_obj, receipt_words, receipt_lines))
+                analysis_result = await process_receipt(labeler, receipt_obj, receipt_words, receipt_lines)
 
                 # Update statistics
                 stats["successful_analysis"] += 1
-                stats["avg_confidence"] += analysis_result.structure_analysis["overall_confidence"]
+                stats["avg_confidence"] += analysis_result.structure_analysis[
+                    "overall_confidence"
+                ]
 
                 # Track section types
-                for section in analysis_result.structure_analysis["discovered_sections"]:
+                for section in analysis_result.structure_analysis[
+                    "discovered_sections"
+                ]:
                     section_name = section["name"]
                     if section_name not in stats["section_types"]:
                         stats["section_types"][section_name] = {
@@ -414,33 +445,44 @@ def main():
 
                 # Update word label statistics
                 stats["word_label_stats"]["total_words"] += len(receipt_words)
-                stats["word_label_stats"]["labeled_words"] += len(analysis_result.field_analysis["labels"])
+                stats["word_label_stats"]["labeled_words"] += len(
+                    analysis_result.field_analysis["labels"]
+                )
 
                 # Track label distribution and confidence
                 total_confidence = 0
                 for label_info in analysis_result.field_analysis["labels"]:
                     label_type = label_info["label"]
-                    if label_type not in stats["word_label_stats"]["label_distribution"]:
+                    if (
+                        label_type
+                        not in stats["word_label_stats"]["label_distribution"]
+                    ):
                         stats["word_label_stats"]["label_distribution"][label_type] = {
                             "count": 0,
                             "avg_confidence": 0.0,
                         }
 
-                    label_stats = stats["word_label_stats"]["label_distribution"][label_type]
+                    label_stats = stats["word_label_stats"]["label_distribution"][
+                        label_type
+                    ]
                     label_stats["count"] += 1
                     label_stats["avg_confidence"] += label_info["confidence"]
                     total_confidence += label_info["confidence"]
 
                 if analysis_result.field_analysis["labels"]:
-                    stats["word_label_stats"]["avg_label_confidence"] += total_confidence / len(analysis_result.field_analysis["labels"])
+                    stats["word_label_stats"][
+                        "avg_label_confidence"
+                    ] += total_confidence / len(
+                        analysis_result.field_analysis["labels"]
+                    )
 
                 # Add validation step
                 try:
                     validation_results = validate_receipt_data(
-                        analysis_result.field_analysis, 
-                        analysis_result.places_api_data, 
+                        analysis_result.field_analysis,
+                        analysis_result.places_api_data,
                         receipt_words,
-                        labeler.places_processor
+                        labeler.places_processor,
                     )
                 except Exception as e:
                     logger.error(f"Error in validation: {str(e)}")
@@ -454,7 +496,9 @@ def main():
                         if isinstance(results, list):
                             for result in results:
                                 if result["type"] == "error":
-                                    stats["validation_results"]["validation_errors"].append(
+                                    stats["validation_results"][
+                                        "validation_errors"
+                                    ].append(
                                         {
                                             "receipt_id": receipt.receipt_id,
                                             "category": category,
@@ -462,7 +506,9 @@ def main():
                                         }
                                     )
                                 elif result["type"] == "warning":
-                                    stats["validation_results"]["validation_warnings"].append(
+                                    stats["validation_results"][
+                                        "validation_warnings"
+                                    ].append(
                                         {
                                             "receipt_id": receipt.receipt_id,
                                             "category": category,
@@ -478,19 +524,32 @@ def main():
                     "field_analysis": analysis_result.field_analysis,
                     "places_api_data": analysis_result.places_api_data,
                     "validation_results": analysis_result.validation_results,
-                    "overall_confidence": analysis_result.structure_analysis["overall_confidence"]
+                    "overall_confidence": analysis_result.structure_analysis[
+                        "overall_confidence"
+                    ],
                 }
-                output_file = output_dir / f"analysis_{receipt.image_id}_{receipt.receipt_id}.json"
+                output_file = (
+                    output_dir
+                    / f"analysis_{receipt.image_id}_{receipt.receipt_id}.json"
+                )
                 with open(output_file, "w") as f:
                     json.dump(result, f, indent=2)
 
                 logger.info(f"\nAnalysis saved to {output_file}")
-                logger.info(f"Structure confidence: {analysis_result.structure_analysis['overall_confidence']:.2f}")
-                logger.info(f"Word labeling confidence: {analysis_result.field_analysis['metadata']['average_confidence']:.2f}")
+                logger.info(
+                    f"Structure confidence: {analysis_result.structure_analysis['overall_confidence']:.2f}"
+                )
+                logger.info(
+                    f"Word labeling confidence: {analysis_result.field_analysis['metadata']['average_confidence']:.2f}"
+                )
 
                 # Update confidence totals
-                total_structure_confidence += analysis_result.structure_analysis["overall_confidence"]
-                total_word_confidence += analysis_result.field_analysis["metadata"]["average_confidence"]
+                total_structure_confidence += analysis_result.structure_analysis[
+                    "overall_confidence"
+                ]
+                total_word_confidence += analysis_result.field_analysis["metadata"][
+                    "average_confidence"
+                ]
 
             except Exception as e:
                 error_context = {
@@ -514,8 +573,12 @@ def main():
                 section_stats["avg_confidence"] /= section_stats["count"]
 
             if stats["word_label_stats"]["labeled_words"] > 0:
-                stats["word_label_stats"]["avg_label_confidence"] /= stats["successful_analysis"]
-                for label_type, label_stats in stats["word_label_stats"]["label_distribution"].items():
+                stats["word_label_stats"]["avg_label_confidence"] /= stats[
+                    "successful_analysis"
+                ]
+                for label_type, label_stats in stats["word_label_stats"][
+                    "label_distribution"
+                ].items():
                     label_stats["avg_confidence"] /= label_stats["count"]
 
         # Save statistics
@@ -524,21 +587,30 @@ def main():
             json.dump(stats, f, indent=2)
 
         # Print summary
-        logger.info("\n%s", "="*50)
+        logger.info("\n%s", "=" * 50)
         logger.info("ANALYSIS SUMMARY")
-        logger.info("%s\n", "="*50)
+        logger.info("%s\n", "=" * 50)
         logger.info("Total receipts processed: %d", stats["total_receipts"])
         logger.info("Successful analyses: %d", stats["successful_analysis"])
         logger.info("Average structure confidence: %.2f", stats["avg_confidence"])
         logger.info("\nWord-Level Statistics:")
-        logger.info("Total words processed: %d", stats["word_label_stats"]["total_words"])
+        logger.info(
+            "Total words processed: %d", stats["word_label_stats"]["total_words"]
+        )
         logger.info("Words labeled: %d", stats["word_label_stats"]["labeled_words"])
-        logger.info("Average label confidence: %.2f", stats["word_label_stats"]["avg_label_confidence"])
+        logger.info(
+            "Average label confidence: %.2f",
+            stats["word_label_stats"]["avg_label_confidence"],
+        )
 
         # Print validation summary
         logger.info("\nValidation Summary:")
-        logger.info("Total valid receipts: %d/%d", stats["validation_results"]["total_valid"], stats["total_receipts"])
-        
+        logger.info(
+            "Total valid receipts: %d/%d",
+            stats["validation_results"]["total_valid"],
+            stats["total_receipts"],
+        )
+
         if stats["validation_results"]["validation_errors"]:
             logger.error("\nValidation Errors:")
             for error in stats["validation_results"]["validation_errors"]:
@@ -550,5 +622,14 @@ def main():
         logger.error("Fatal error in receipt processing: %s", str(e))
         return 1
 
+
 if __name__ == "__main__":
-    exit(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("\nScript interrupted by user. Exiting...")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}")
+        logger.error(traceback.format_exc())
+        sys.exit(1)

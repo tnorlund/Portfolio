@@ -29,7 +29,6 @@ class GPTProcessor:
     ) -> Dict:
         """Analyze receipt structure using GPT."""
         try:
-
             # Convert receipt_words to the format expected by gpt_request_structure_analysis
             receipt_words_list = []
             for word in receipt_words:
@@ -58,7 +57,7 @@ class GPTProcessor:
                 receipt_lines_list.append(line_dict)
 
             # Call the GPT structure analysis implementation
-            structure_analysis, query, raw_response = gpt_request_structure_analysis(
+            structure_analysis, query, raw_response = await gpt_request_structure_analysis(
                 receipt=receipt,
                 receipt_lines=receipt_lines_list,
                 receipt_words=receipt_words_list,
@@ -84,7 +83,6 @@ class GPTProcessor:
     ) -> Dict:
         """Label receipt fields using GPT."""
         try:
-
             # Convert receipt_words to the format expected by gpt_request_field_labeling
             receipt_words_list = []
             for word in receipt_words:
@@ -98,7 +96,6 @@ class GPTProcessor:
                         "bounding_box": word.bounding_box,
                     }
                 receipt_words_list.append(word_dict)
-
 
             # Convert receipt_lines to the format expected by gpt_request_field_labeling
             receipt_lines_list = []
@@ -114,7 +111,7 @@ class GPTProcessor:
                 receipt_lines_list.append(line_dict)
 
             # Call the GPT field labeling implementation
-            field_analysis, query, raw_response = gpt_request_field_labeling(
+            field_analysis, query, raw_response = await gpt_request_field_labeling(
                 receipt=receipt,
                 receipt_lines=receipt_lines_list,
                 receipt_words=receipt_words_list,

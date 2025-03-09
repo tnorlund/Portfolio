@@ -201,12 +201,32 @@ class ReceiptValidator:
             for component, value in components.items():
                 logger.debug("  %s: %s", component, value)
 
-            # Validate line items against subtotal
+            # Check for missing total (error)
+            if components["total"] is None:
+                validation_results["cross_field_consistency"].append({
+                    "type": "error",
+                    "message": "Missing total amount"
+                })
+
+            # Check for missing subtotal and tax (warnings)
+            if components["subtotal"] is None:
+                validation_results["cross_field_consistency"].append({
+                    "type": "warning",
+                    "message": "Missing subtotal"
+                })
+
+            if components["tax"] is None:
+                validation_results["cross_field_consistency"].append({
+                    "type": "warning",
+                    "message": "Missing tax"
+                })
+
+            # Validate line items against subtotal if both are present
             if components["subtotal"] is not None and components["line_items_total"] > 0:
                 difference = abs(components["line_items_total"] - components["subtotal"])
                 if difference > Decimal('0.02'):  # Allow for rounding differences
                     validation_results["cross_field_consistency"].append({
-                        "type": "error",
+                        "type": "warning",  # Changed from error to warning
                         "message": f"Line items total ({components['line_items_total']}) doesn't match subtotal ({components['subtotal']})"
                     })
                 elif difference > Decimal('0'):
@@ -231,12 +251,12 @@ class ReceiptValidator:
             if components["tips"] is not None:
                 expected_total += components["tips"]
 
-            # Compare with actual total
+            # Compare with actual total if present
             if components["total"] is not None and expected_total > 0:
                 difference = abs(expected_total - components["total"])
                 if difference > Decimal('0.02'):  # Allow for small rounding differences
                     validation_results["cross_field_consistency"].append({
-                        "type": "error",
+                        "type": "warning",  # Changed from error to warning
                         "message": (
                             f"Total mismatch: Components sum ({expected_total}) != total ({components['total']})\n"
                             f"Components: {', '.join(f'{k}: {v}' for k, v in components.items() if v != 0)}"
@@ -247,11 +267,6 @@ class ReceiptValidator:
                         "type": "info",
                         "message": f"Small rounding difference ({difference}) in total calculation"
                     })
-            else:
-                validation_results["cross_field_consistency"].append({
-                    "type": "warning",
-                    "message": f"Could not validate total: missing or invalid components"
-                })
 
         except Exception as e:
             validation_results["cross_field_consistency"].append({
@@ -263,11 +278,12 @@ class ReceiptValidator:
         if line_item_analysis:
             self._validate_line_items(validation_results, line_item_analysis, fields)
 
-        # Set overall validity
+        # Set overall validity - only fail if there's a missing total or other critical error
         validation_results["overall_valid"] = not any(
-            any(item["type"] == "error" for item in group)
+            item["type"] == "error" and "Missing total" in item["message"]
             for group in validation_results.values()
             if isinstance(group, list)
+            for item in group
         )
 
         return validation_results

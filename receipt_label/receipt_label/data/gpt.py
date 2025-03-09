@@ -9,11 +9,16 @@ from decimal import Decimal
 from json import JSONEncoder
 from ..models.receipt import Receipt, ReceiptWord, ReceiptLine
 from datetime import datetime
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 # Configure logger
 logger = logging.getLogger(__name__)
 
 MODEL = "gpt-3.5-turbo"
+
+# Create a thread pool executor for running synchronous requests
+_executor = ThreadPoolExecutor(max_workers=4)
 
 class DecimalEncoder(JSONEncoder):
     def default(self, obj):
@@ -21,8 +26,15 @@ class DecimalEncoder(JSONEncoder):
             return str(obj)
         return super(DecimalEncoder, self).default(obj)
 
+async def _async_post(url: str, headers: Dict, json: Dict, timeout: int) -> Response:
+    """Run synchronous requests.post in a thread pool."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(
+        _executor, 
+        lambda: requests.post(url, headers=headers, json=json, timeout=timeout)
+    )
 
-def gpt_request_structure_analysis(
+async def gpt_request_structure_analysis(
     receipt: Receipt,
     receipt_lines: List[ReceiptLine],
     receipt_words: List[ReceiptWord],
@@ -74,16 +86,16 @@ def gpt_request_structure_analysis(
         ],
         "temperature": 0.3,  # Lower temperature for more consistent analysis
     }
-    response = requests.post(url, headers=headers, json=payload, timeout=30)
 
+    response = await _async_post(url, headers=headers, json=payload, timeout=30)
+    
     return (
         _validate_gpt_response_structure_analysis(response),
         query,
         response.text,
     )
 
-
-def gpt_request_field_labeling(
+async def gpt_request_field_labeling(
     receipt: Receipt,
     receipt_lines: List[ReceiptLine],
     receipt_words: List[ReceiptWord],
@@ -91,8 +103,7 @@ def gpt_request_field_labeling(
     places_api_data: Dict,
     gpt_api_key: Optional[str] = None,
 ) -> Tuple[Dict, str, str]:
-    """
-    Makes a request to the OpenAI API to label individual words in a receipt.
+    """Makes a request to the OpenAI API to label individual words in a receipt.
     Now uses a simpler format for GPT responses and maps the labels back to word IDs.
     """
     if not gpt_api_key and not getenv("OPENAI_API_KEY"):
@@ -157,10 +168,7 @@ def gpt_request_field_labeling(
             # Increased timeout to 60 seconds and added retries
             for attempt in range(3):  # Try up to 3 times
                 try:
-                    response = requests.post(
-                        url, headers=headers, json=payload, timeout=60
-                    )
-                    response.raise_for_status()
+                    response = await _async_post(url, headers=headers, json=payload, timeout=60)
                     break  # If successful, break the retry loop
                 except requests.Timeout:
                     if attempt == 2:  # Last attempt
@@ -219,8 +227,7 @@ def gpt_request_field_labeling(
         "\n---\n".join(responses),  # Join all responses for reference
     )
 
-
-def gpt_request_line_item_analysis(
+async def gpt_request_line_item_analysis(
     receipt: Receipt,
     receipt_lines: List[ReceiptLine],
     receipt_words: List[ReceiptWord],
@@ -277,14 +284,13 @@ def gpt_request_line_item_analysis(
         "temperature": 0.1,  # Low temperature for consistent numerical analysis
     }
 
-    response = requests.post(url, headers=headers, json=payload, timeout=60)
+    response = await _async_post(url, headers=headers, json=payload, timeout=60)
     
     return (
         _validate_gpt_response_line_item_analysis(response),
         query,
         response.text,
     )
-
 
 def _llm_prompt_structure_analysis(
     receipt: Receipt,
@@ -723,11 +729,12 @@ def _validate_gpt_response_line_item_analysis(response: Response) -> Dict:
             if not all(key in item for key in required_item_keys):
                 raise ValueError(f"Item missing required keys: {required_item_keys}")
 
-            # Validate quantity structure
-            if not isinstance(item["quantity"], dict):
-                raise ValueError("'quantity' must be a dictionary.")
-            if not all(key in item["quantity"] for key in ["amount", "unit"]):
-                raise ValueError("'quantity' must have 'amount' and 'unit' keys.")
+            # Validate quantity structure - allow null
+            if item["quantity"] is not None:
+                if not isinstance(item["quantity"], dict):
+                    raise ValueError("When present, 'quantity' must be a dictionary.")
+                if not all(key in item["quantity"] for key in ["amount", "unit"]):
+                    raise ValueError("When present, 'quantity' must have 'amount' and 'unit' keys.")
 
             # Validate price structure
             if not isinstance(item["price"], dict):

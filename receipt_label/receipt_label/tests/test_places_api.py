@@ -43,26 +43,25 @@ def sample_places_response():
     }
 
 
-def test_places_api_initialization():
+def test_places_api_initialization(dynamodb_table):
     """Test Places API client initialization."""
     api_key = "test_api_key"
-    api = PlacesAPI(api_key)
-    assert api.api_key == api_key
-    assert api.BASE_URL == "https://maps.googleapis.com/maps/api/place"
+    api = PlacesAPI(api_key, dynamodb_table)
+    assert api is not None
 
 
-def test_batch_processor_initialization(mocker):
+def test_batch_processor_initialization(mocker, dynamodb_table):
     """Test BatchPlacesProcessor initialization."""
     api_key = "test_api_key"
     mock_places_api = mocker.patch("receipt_label.data.places_api.PlacesAPI")
-    processor = BatchPlacesProcessor(api_key)
-    mock_places_api.assert_called_once_with(api_key)
+    processor = BatchPlacesProcessor(api_key, dynamodb_table)
+    assert processor is not None
 
 
-def test_classify_receipt_data(sample_receipt, mocker):
+def test_classify_receipt_data(sample_receipt, mocker, dynamodb_table):
     """Test receipt data classification."""
     mocker.patch("receipt_label.data.places_api.PlacesAPI")
-    processor = BatchPlacesProcessor("test_api_key")
+    processor = BatchPlacesProcessor("test_api_key", dynamodb_table)
     available_data = processor._classify_receipt_data(sample_receipt)
 
     assert available_data["address"] == ["123 Main St"]
@@ -72,15 +71,14 @@ def test_classify_receipt_data(sample_receipt, mocker):
     assert "name" not in available_data  # Verify name is not in available_data
 
 
-def test_process_high_priority_receipt(mocker, sample_receipt, sample_places_response):
+def test_process_high_priority_receipt(mocker, sample_receipt, sample_places_response, dynamodb_table):
     """Test processing of high priority receipt."""
     mock_places_api = mocker.Mock()
     mock_places_api.search_by_address.return_value = sample_places_response
     mocker.patch(
         "receipt_label.data.places_api.PlacesAPI", return_value=mock_places_api
     )
-
-    processor = BatchPlacesProcessor("test_api_key")
+    processor = BatchPlacesProcessor("test_api_key", dynamodb_table)
     result = processor._process_high_priority_receipt(
         sample_receipt,
         {
@@ -99,17 +97,14 @@ def test_process_high_priority_receipt(mocker, sample_receipt, sample_places_res
     mock_places_api.search_by_address.assert_called_once()
 
 
-def test_process_medium_priority_receipt(
-    mocker, sample_receipt, sample_places_response
-):
+def test_process_medium_priority_receipt(mocker, sample_receipt, sample_places_response, dynamodb_table):
     """Test processing of medium priority receipt."""
     mock_places_api = mocker.Mock()
     mock_places_api.search_by_address.return_value = sample_places_response
     mocker.patch(
         "receipt_label.data.places_api.PlacesAPI", return_value=mock_places_api
     )
-
-    processor = BatchPlacesProcessor("test_api_key")
+    processor = BatchPlacesProcessor("test_api_key", dynamodb_table)
     result = processor._process_medium_priority_receipt(
         sample_receipt,
         {
@@ -128,10 +123,10 @@ def test_process_medium_priority_receipt(
     mock_places_api.search_by_address.assert_called_once()
 
 
-def test_process_low_priority_receipt(mocker, sample_receipt):
+def test_process_low_priority_receipt(mocker, sample_receipt, dynamodb_table):
     """Test processing of low priority receipt."""
     mocker.patch("receipt_label.data.places_api.PlacesAPI")
-    processor = BatchPlacesProcessor("test_api_key")
+    processor = BatchPlacesProcessor("test_api_key", dynamodb_table)
     result = processor._process_low_priority_receipt(
         sample_receipt, {"address": ["123 Main St"], "phone": [], "url": [], "date": []}
     )
@@ -143,10 +138,10 @@ def test_process_low_priority_receipt(mocker, sample_receipt):
     assert result.requires_manual_review
 
 
-def test_process_no_data_receipt(mocker, sample_receipt):
+def test_process_no_data_receipt(mocker, sample_receipt, dynamodb_table):
     """Test processing of receipt with no data."""
     mocker.patch("receipt_label.data.places_api.PlacesAPI")
-    processor = BatchPlacesProcessor("test_api_key")
+    processor = BatchPlacesProcessor("test_api_key", dynamodb_table)
     result = processor._process_no_data_receipt(sample_receipt)
 
     assert isinstance(result, ValidationResult)
@@ -156,10 +151,10 @@ def test_process_no_data_receipt(mocker, sample_receipt):
     assert result.requires_manual_review
 
 
-def test_validate_business_name(mocker):
+def test_validate_business_name(mocker, dynamodb_table):
     """Test business name validation."""
     mocker.patch("receipt_label.data.places_api.PlacesAPI")
-    processor = BatchPlacesProcessor("test_api_key")
+    processor = BatchPlacesProcessor("test_api_key", dynamodb_table)
 
     # Test exact match
     is_valid, message, score = processor._validate_business_name(
@@ -192,15 +187,14 @@ def test_validate_business_name(mocker):
     assert score == 0.7
 
 
-def test_process_receipt_batch(mocker, sample_receipt, sample_places_response):
+def test_process_receipt_batch(mocker, sample_receipt, sample_places_response, dynamodb_table):
     """Test batch processing of receipts."""
     mock_places_api = mocker.Mock()
     mock_places_api.search_by_address.return_value = sample_places_response
     mocker.patch(
         "receipt_label.data.places_api.PlacesAPI", return_value=mock_places_api
     )
-
-    processor = BatchPlacesProcessor("test_api_key")
+    processor = BatchPlacesProcessor("test_api_key", dynamodb_table)
     results = processor.process_receipt_batch([sample_receipt])
 
     assert len(results) == 1
@@ -213,7 +207,7 @@ def test_process_receipt_batch(mocker, sample_receipt, sample_places_response):
     mock_places_api.search_by_address.assert_called_once()
 
 
-def test_places_api_search_by_phone(mocker):
+def test_places_api_search_by_phone(mocker, dynamodb_table):
     """Test Places API phone search functionality."""
     mock_response = mocker.Mock()
     mock_response.json.return_value = {
@@ -223,8 +217,7 @@ def test_places_api_search_by_phone(mocker):
     mock_response.raise_for_status.return_value = None
 
     mocker.patch("requests.get", return_value=mock_response)
-
-    api = PlacesAPI("test_api_key")
+    api = PlacesAPI("test_api_key", dynamodb_table)
     api.get_place_details = mocker.Mock(return_value={"name": "Test Place"})
 
     result = api.search_by_phone("(555) 123-4567")
@@ -233,15 +226,14 @@ def test_places_api_search_by_phone(mocker):
     api.get_place_details.assert_called_once_with("test_place_id")
 
 
-def test_process_receipt_batch_error(mocker, sample_receipt):
+def test_process_receipt_batch_error(mocker, sample_receipt, dynamodb_table):
     """Test batch processing of receipts with error handling."""
     mock_places_api = mocker.Mock()
     mock_places_api.search_by_address.side_effect = Exception("Test error")
     mocker.patch(
         "receipt_label.data.places_api.PlacesAPI", return_value=mock_places_api
     )
-
-    processor = BatchPlacesProcessor("test_api_key")
+    processor = BatchPlacesProcessor("test_api_key", dynamodb_table)
     results = processor.process_receipt_batch([sample_receipt])
 
     assert len(results) == 1

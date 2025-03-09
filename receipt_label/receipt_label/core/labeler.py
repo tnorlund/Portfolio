@@ -3,10 +3,9 @@ import logging
 from ..models.receipt import Receipt, ReceiptWord, ReceiptLine
 from ..processors.structure import StructureProcessor
 from ..processors.field import FieldProcessor
-from ..processors.line_item import LineItemProcessor
+from ..processors.progressive_processor import ProgressiveReceiptProcessor
 from ..processors.gpt import GPTProcessor
 from ..data.places_api import BatchPlacesProcessor
-from .validator import ReceiptValidator
 
 logger = logging.getLogger(__name__)
 
@@ -46,9 +45,8 @@ class ReceiptLabeler:
         )
         self.structure_processor = StructureProcessor()
         self.field_processor = FieldProcessor()
-        self.line_item_processor = LineItemProcessor(gpt_api_key=gpt_api_key)
+        self.progressive_processor = ProgressiveReceiptProcessor(gpt_api_key=gpt_api_key)
         self.gpt_processor = GPTProcessor(api_key=gpt_api_key)
-        self.validator = ReceiptValidator()
 
     async def label_receipt(
         self,
@@ -83,27 +81,35 @@ class ReceiptLabeler:
                 receipt, receipt_words, receipt_lines, structure_analysis, places_data
             )
 
-            # Process line items
-            line_item_analysis = await self.line_item_processor.process_line_items(
+            # Process line items using progressive processor
+            line_item_analysis = await self.progressive_processor.process_receipt(
                 receipt=receipt,
                 receipt_lines=receipt_lines,
                 receipt_words=receipt_words,
                 places_api_data=places_data
             )
 
-            # Validate results
-            validation_results = self.validator.validate_receipt_data(
-                field_analysis=field_analysis,
-                places_api_data=places_data,
-                receipt_words=receipt_words,
-                line_item_analysis=line_item_analysis,
-                batch_processor=self.places_processor,
-            )
+            # Convert line item analysis to dict format for consistency
+            line_item_dict = {
+                "line_items": [item.__dict__ for item in line_item_analysis.items],
+                "total_found": line_item_analysis.total_found,
+                "subtotal": str(line_item_analysis.subtotal) if line_item_analysis.subtotal else None,
+                "tax": str(line_item_analysis.tax) if line_item_analysis.tax else None,
+                "total": str(line_item_analysis.total) if line_item_analysis.total else None,
+                "discrepancies": line_item_analysis.discrepancies,
+                "confidence": line_item_analysis.confidence
+            }
+
+            # The progressive processor includes validation, so we'll use its results
+            validation_results = {
+                "line_item_validation": line_item_analysis.discrepancies,
+                "overall_valid": not any("error" in d.lower() for d in line_item_analysis.discrepancies)
+            }
 
             return LabelingResult(
                 structure_analysis=structure_analysis,
                 field_analysis=field_analysis,
-                line_item_analysis=line_item_analysis,
+                line_item_analysis=line_item_dict,
                 validation_results=validation_results,
                 places_api_data=places_data,
                 receipt_id=receipt.receipt_id,
@@ -175,51 +181,3 @@ class ReceiptLabeler:
             section_boundaries=structure_analysis,
             places_api_data=places_data,
         )
-
-    async def _analyze_line_items(
-        self,
-        receipt: Receipt,
-        receipt_words: List[ReceiptWord],
-        receipt_lines: List[ReceiptLine],
-        places_data: Optional[Dict],
-        traditional_analysis: Dict,
-    ) -> Dict:
-        """Analyze line items using GPT."""
-        try:
-            return await self.gpt_processor.analyze_line_items(
-                receipt=receipt,
-                receipt_words=receipt_words,
-                receipt_lines=receipt_lines,
-                traditional_analysis=traditional_analysis,
-                places_api_data=places_data or {},
-            )
-        except Exception as e:
-            logger.error(f"Error in line item analysis: {str(e)}")
-            return {
-                "line_items": [],
-                "overall_confidence": 0.0
-            }
-
-    async def _label_section(
-        self,
-        receipt: Receipt,
-        section_lines: List[ReceiptLine],
-        section_words: List[ReceiptWord],
-        section_info: Dict,
-        places_data: Optional[Dict],
-    ) -> Dict:
-        """Label a section using GPT."""
-        try:
-            return await self.gpt_processor.label_section(
-                receipt=receipt,
-                section_lines=section_lines,
-                section_words=section_words,
-                section_info=section_info,
-                places_api_data=places_data or {},
-            )
-        except Exception as e:
-            logger.error(f"Error in section labeling: {str(e)}")
-            return {
-                "labels": [],
-                "overall_confidence": 0.0
-            }

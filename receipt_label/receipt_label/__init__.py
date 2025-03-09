@@ -4,11 +4,13 @@ Receipt Label - A package for labeling and validating receipt data.
 
 from .core.labeler import ReceiptLabeler, LabelingResult
 from .core.validator import ReceiptValidator
-from .models.receipt import Receipt, ReceiptWord, ReceiptSection
+from .models.receipt import Receipt, ReceiptWord, ReceiptSection, ReceiptLine
+from .models.line_item import LineItem, LineItemAnalysis, Price, Quantity
 from .processors.gpt import GPTProcessor
 from .processors.structure import StructureProcessor
 from .processors.field import FieldProcessor
 from .data.places_api import BatchPlacesProcessor
+from .processors.progressive_processor import ProgressiveReceiptProcessor
 import logging
 
 # Configure logging
@@ -33,8 +35,14 @@ __all__ = [
     "Receipt",
     "ReceiptWord",
     "ReceiptSection",
+    "ReceiptLine",
+    "LineItem",
+    "LineItemAnalysis",
+    "Price",
+    "Quantity",
     "GPTProcessor",
     "StructureProcessor",
     "FieldProcessor",
     "BatchPlacesProcessor",
+    "ProgressiveReceiptProcessor",
 ]
