@@ -91,41 +91,43 @@ def extract_datetime(text: str) -> Optional[Dict]:
     try:
         # Common date patterns
         date_patterns = [
-            r"\d{1,2}[-/]\d{1,2}[-/]\d{2,4}",  # MM/DD/YYYY or DD/MM/YYYY
-            r"\d{4}[-/]\d{1,2}[-/]\d{1,2}",  # YYYY/MM/DD
-            r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4}",
-            r"\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}",
+            r"\d{4}-\d{1,2}-\d{1,2}",  # YYYY-MM-DD
+            r"\d{1,2}/\d{1,2}/\d{2,4}",  # MM/DD/YYYY or DD/MM/YYYY
+            r"\d{4}/\d{1,2}/\d{1,2}",  # YYYY/MM/DD
+            r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4}",  # Month DD, YYYY
+            r"\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}",  # DD Month YYYY
         ]
 
         # Common time patterns
         time_patterns = [
-            r"\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?",
-            r"\d{1,2}\s*(?:AM|PM)",
+            r"\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?",  # HH:MM(:SS) (AM/PM)
+            r"\d{1,2}\s*(?:AM|PM)",  # HH AM/PM
         ]
 
         # Find date
         date_match = None
+        date_str = None
         for pattern in date_patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
                 date_match = match
-                break
-
-        # Find time
-        time_match = None
-        for pattern in time_patterns:
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                time_match = match
+                date_str = match.group()
                 break
 
         if not date_match:
             return None
 
-        # Parse date and time
-        date_str = date_match.group()
-        time_str = time_match.group() if time_match else None
+        # Find time
+        time_match = None
+        time_str = None
+        for pattern in time_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                time_match = match
+                time_str = match.group()
+                break
 
+        # Parse date and time
         dt = parse_datetime(date_str, time_str)
         if not dt:
             return None

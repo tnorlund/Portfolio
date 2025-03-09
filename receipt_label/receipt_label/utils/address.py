@@ -1,9 +1,9 @@
 import re
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 
 def normalize_address(address: str) -> str:
-    """Normalize an address for comparison.
+    """Normalize an address string.
 
     Args:
         address: Address string to normalize
@@ -20,168 +20,98 @@ def normalize_address(address: str) -> str:
     # Remove punctuation
     address = re.sub(r"[^\w\s]", " ", address)
 
+    # Replace common abbreviations
+    replacements = {
+        r"\bst\b": "street",
+        r"\brd\b": "road",
+        r"\bave\b": "avenue",
+        r"\bblvd\b": "boulevard",
+        r"\bdr\b": "drive",
+        r"\bcir\b": "circle",
+        r"\bln\b": "lane",
+        r"\bpl\b": "place",
+        r"\bct\b": "court",
+        r"\bw\b": "west",
+        r"\be\b": "east",
+        r"\bn\b": "north",
+        r"\bs\b": "south",
+        r"\bne\b": "northeast",
+        r"\bnw\b": "northwest",
+        r"\bse\b": "southeast",
+        r"\bsw\b": "southwest",
+        r"\bste\b": "suite",
+        r"\bapt\b": "apartment",
+        r"\bunit\b": "unit"
+    }
+
+    for pattern, replacement in replacements.items():
+        address = re.sub(pattern, replacement, address)
+
     # Normalize whitespace
     address = " ".join(address.split())
-
-    # Normalize common abbreviations
-    abbreviations = {
-        r"(?<=\s)ave(?=\s|$)": "avenue",
-        r"(?<=\s)st(?=\s|$)": "street",
-        r"(?<=\s)rd(?=\s|$)": "road",
-        "blvd": "boulevard",  # unique enough to use word boundary
-        r"(?<=\s)ln(?=\s|$)": "lane",
-        r"(?<=\s)dr(?=\s|$)": "drive",
-        r"(?<=\s)ct(?=\s|$)": "court",
-        "cir": "circle",  # unique enough to use word boundary
-        r"(?<=\s)pl(?=\s|$)": "place",
-        r"(?<=\s)ste(?=\s|$)": "suite",
-        r"(?<=\s)apt(?=\s|$)": "apartment",
-        "po box": "post office box",
-        "p.o. box": "post office box",
-        "pobox": "post office box",
-    }
-
-    # Add directional abbreviations
-    directions = {
-        "n": "north",
-        "s": "south",
-        "e": "east",
-        "w": "west",
-        "ne": "northeast",
-        "nw": "northwest",
-        "se": "southeast",
-        "sw": "southwest",
-    }
-
-    # First normalize street types (blvd, st, etc)
-    for abbr, full in abbreviations.items():
-        # Use regex with word boundaries for unique abbreviations, whitespace bounds for others
-        if any(pattern in abbr for pattern in ["(?<=\\s)", "(?=\\s|$)"]):
-            address = re.sub(abbr, full, address)
-        else:
-            address = re.sub(rf"\b{abbr}\b", full, address)
-
-    # Then normalize directions, being careful with word boundaries
-    for abbr, full in directions.items():
-        # Only replace if it's a standalone word or at the start followed by a street type
-        address = re.sub(rf"\b{abbr}\b(?=\s+(?:street|avenue|road|boulevard|lane|drive|court|circle|place))", full, address)
-        # Also handle cases where it's a standalone word
-        address = re.sub(rf"^{abbr}\b|\b{abbr}$", full, address)
-
-    # Remove common words that aren't part of the address
-    common_words = [
-        "the",
-        "and",
-        "or",
-        "but",
-        "in",
-        "on",
-        "at",
-        "to",
-        "for",
-        "of",
-        "with",
-        "by",
-    ]
-    words = address.split()
-    words = [w for w in words if w not in common_words]
-    address = " ".join(words)
 
     return address
 
 
 def parse_address(address: str) -> Dict[str, str]:
-    """Parse an address into its components.
-
-    Args:
-        address: Address string to parse
-
-    Returns:
-        Dict containing address components
-    """
+    """Parse an address string into its components."""
     if not address:
         return {}
-
-    # Initialize components
+        
     components = {
         "street_number": None,
         "street_name": None,
         "street_type": None,
+        "unit": None,
         "city": None,
         "state": None,
         "zip_code": None,
-        "country": None,
-        "unit": None,
+        "country": None
     }
-
+    
+    # First extract unit/suite if present
+    unit_match = re.search(r"(?:suite|ste|apt|apartment|unit)\s+(\w+)", address.lower())
+    if unit_match:
+        components["unit"] = unit_match.group(1)
+    
     # Split address into parts
-    parts = address.split(",")
-
-    # Parse street address
-    if parts:
-        street_part = parts[0].strip()
-
-        # Extract street number
-        street_number_match = re.match(r"^\d+", street_part)
-        if street_number_match:
-            components["street_number"] = street_number_match.group()
-            street_part = street_part[len(components["street_number"]) :].strip()
-
-        # Extract unit/suite if present
-        unit_match = re.search(
-            r"(?:suite|ste|apt|apartment)\s+(\w+)", street_part.lower()
-        )
-        if unit_match:
-            components["unit"] = unit_match.group(1)
-            street_part = re.sub(
-                r"(?:suite|ste|apt|apartment)\s+\w+",
-                "",
-                street_part,
-                flags=re.IGNORECASE,
-            ).strip()
-
-        # Extract street name and type
-        street_words = street_part.split()
-        if street_words:
-            # Last word is usually the street type
-            components["street_type"] = street_words[-1]
-            components["street_name"] = " ".join(street_words[:-1])
-
-    # Parse city, state, zip
-    if len(parts) > 1:
-        city_state_zip = parts[1].strip()
-
-        # Extract zip code
-        zip_match = re.search(r"\b\d{5}(?:-\d{4})?\b", city_state_zip)
-        if zip_match:
-            components["zip_code"] = zip_match.group()
-            city_state_zip = re.sub(r"\b\d{5}(?:-\d{4})?\b", "", city_state_zip).strip()
-
-        # Split remaining into city and state
-        city_state_parts = city_state_zip.split()
-        if len(city_state_parts) >= 2:
-            components["state"] = city_state_parts[-1]
-            components["city"] = " ".join(city_state_parts[:-1])
-
-    # Parse country if present
-    if len(parts) > 2:
-        components["country"] = parts[2].strip()
-
+    parts = [p.strip() for p in address.split(",")]
+    
+    # Parse street address from first part
+    street_match = re.match(r"(\d+)\s+(\w+)\s+(\w+)", parts[0])
+    if street_match:
+        components["street_number"] = street_match.group(1)
+        components["street_name"] = street_match.group(2)
+        components["street_type"] = street_match.group(3)
+    
+    # Parse city, state, zip from remaining parts
+    for part in parts[1:]:
+        part = part.strip()
+        # Check for unit/suite first
+        if re.search(r"(?:suite|ste|apt|apartment|unit)", part.lower()):
+            continue
+        # Check for state and zip
+        state_zip_match = re.match(r"([A-Z]{2})\s+(\d{5})", part)
+        if state_zip_match:
+            components["state"] = state_zip_match.group(1)
+            components["zip_code"] = state_zip_match.group(2)
+            continue
+        # Check for country
+        if part.strip().upper() == "USA":
+            components["country"] = part.strip()
+            continue
+        # If none of the above, assume it's the city
+        if not components["city"]:
+            components["city"] = part.strip()
+    
     return components
 
 
 def format_address(components: Dict[str, str]) -> str:
-    """Format address components into a string.
-
-    Args:
-        components: Dict containing address components
-
-    Returns:
-        Formatted address string
-    """
+    """Format address components into a string."""
     parts = []
-
-    # Add street address
+    
+    # Street address
     street_parts = []
     if components.get("street_number"):
         street_parts.append(components["street_number"])
@@ -189,73 +119,118 @@ def format_address(components: Dict[str, str]) -> str:
         street_parts.append(components["street_name"])
     if components.get("street_type"):
         street_parts.append(components["street_type"])
-    if components.get("unit"):
-        street_parts.append(f"Suite {components['unit']}")
-
     if street_parts:
         parts.append(" ".join(street_parts))
-
-    # Add city, state, zip
-    city_state_zip = []
+    
+    # Unit/Suite
+    if components.get("unit"):
+        if parts:
+            parts[-1] = f"{parts[-1]} Suite {components['unit']}"
+        else:
+            parts.append(f"Suite {components['unit']}")
+    
+    # City, State, Zip
+    location_parts = []
     if components.get("city"):
-        city_state_zip.append(components["city"])
+        location_parts.append(components["city"])
     if components.get("state"):
-        city_state_zip.append(components["state"])
-    if components.get("zip_code"):
-        city_state_zip.append(components["zip_code"])
-
-    if city_state_zip:
-        parts.append(", ".join(city_state_zip))
-
-    # Add country
+        state_zip = components["state"]
+        if components.get("zip_code"):
+            state_zip += f" {components['zip_code']}"
+        location_parts.append(state_zip)
+    if location_parts:
+        parts.append(", ".join(location_parts))
+    
+    # Country
     if components.get("country"):
         parts.append(components["country"])
-
+    
     return ", ".join(parts)
 
 
 def compare_addresses(addr1: str, addr2: str) -> float:
-    """Compare two addresses and return a similarity score.
+    """Compare two addresses and return similarity score.
 
     Args:
-        addr1: First address to compare
-        addr2: Second address to compare
+        addr1: First address
+        addr2: Second address
 
     Returns:
         Similarity score between 0 and 1
     """
+    if not addr1 or not addr2:
+        return 0.0
+
     # Normalize both addresses
-    norm1 = normalize_address(addr1)
-    norm2 = normalize_address(addr2)
+    addr1_norm = normalize_address(addr1)
+    addr2_norm = normalize_address(addr2)
 
     # Parse both addresses
-    comp1 = parse_address(addr1)
-    comp2 = parse_address(addr2)
+    addr1_components = parse_address(addr1)
+    addr2_components = parse_address(addr2)
 
     # Compare components
     matches = 0
     total = 0
 
-    for key in [
-        "street_number",
-        "street_name",
-        "street_type",
-        "city",
-        "state",
-        "zip_code",
-    ]:
-        if comp1.get(key) and comp2.get(key):
+    # Required components that must match
+    required = ["street_number", "street_name", "city", "state"]
+    for component in required:
+        if addr1_components.get(component) and addr2_components.get(component):
+            total += 2
+            if addr1_components[component].lower() == addr2_components[component].lower():
+                matches += 2
+
+    # Optional components
+    optional = ["street_type", "unit", "zip_code", "country"]
+    for component in optional:
+        if addr1_components.get(component) or addr2_components.get(component):
             total += 1
-            if comp1[key].lower() == comp2[key].lower():
+            if addr1_components.get(component) == addr2_components.get(component):
                 matches += 1
 
     # If no components matched, fall back to string similarity
     if total == 0:
         # Simple word overlap
-        words1 = set(norm1.split())
-        words2 = set(norm2.split())
+        words1 = set(addr1_norm.split())
+        words2 = set(addr2_norm.split())
         overlap = len(words1.intersection(words2))
         total = max(len(words1), len(words2))
         return overlap / total if total > 0 else 0.0
 
-    return matches / total
+    # Boost score if street number and name match
+    if (addr1_components.get("street_number") == addr2_components.get("street_number") and
+        addr1_components.get("street_name") == addr2_components.get("street_name")):
+        matches += 4
+        total += 4
+
+    # Boost score if city and state match
+    if (addr1_components.get("city") == addr2_components.get("city") and
+        addr1_components.get("state") == addr2_components.get("state")):
+        matches += 4
+        total += 4
+
+    # Boost score if zip code matches
+    if (addr1_components.get("zip_code") == addr2_components.get("zip_code")):
+        matches += 2
+        total += 2
+
+    # If street type is similar (e.g., St vs Street), give partial credit
+    if (addr1_components.get("street_type") and addr2_components.get("street_type")):
+        st1 = normalize_address(addr1_components["street_type"])
+        st2 = normalize_address(addr2_components["street_type"])
+        if st1 == st2:
+            matches += 2
+            total += 2
+
+    # If all required components match exactly, but one has a unit and the other doesn't,
+    # return a high but not perfect score
+    if (addr1_components.get("street_number") == addr2_components.get("street_number") and
+        addr1_components.get("street_name") == addr2_components.get("street_name") and
+        addr1_components.get("city") == addr2_components.get("city") and
+        addr1_components.get("state") == addr2_components.get("state")):
+        if bool(addr1_components.get("unit")) != bool(addr2_components.get("unit")):
+            return 0.9
+        return 1.0
+
+    return matches / total if total > 0 else 0.0
