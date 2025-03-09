@@ -12,6 +12,7 @@ setup(
         "typing-extensions>=4.0.0",
         "python-dateutil>=2.8.2",
         "regex>=2021.8.3",
+        "receipt_dynamo @ file:///Users/tnorlund/GitHub/example/receipt_dynamo",
     ],
     extras_require={
         "dev": [

@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 from datetime import datetime
 from receipt_dynamo.entities.receipt_word import ReceiptWord as DynamoReceiptWord
+from receipt_dynamo.entities.receipt_line import ReceiptLine as DynamoReceiptLine
 
 
 @dataclass
@@ -85,6 +86,63 @@ class ReceiptWord:
 
 
 @dataclass
+class ReceiptLine:
+    """Represents a single line in a receipt."""
+    line_id: int
+    text: str
+    confidence: float
+    bounding_box: Dict
+    top_right: Dict
+    top_left: Dict
+    bottom_right: Dict
+    bottom_left: Dict
+
+    @classmethod
+    def from_dynamo(cls, line: DynamoReceiptLine) -> "ReceiptLine":
+        """Convert a DynamoDB ReceiptLine to a ReceiptLine for labeling.
+
+        Args:
+            line: DynamoDB ReceiptLine instance
+
+        Returns:
+            ReceiptLine instance for labeling
+        """
+        return cls(
+            line_id=line.line_id,
+            text=line.text,
+            confidence=line.confidence,
+            bounding_box=line.bounding_box,
+            top_right=line.top_right,
+            top_left=line.top_left,
+            bottom_right=line.bottom_right,
+            bottom_left=line.bottom_left,
+        )
+
+    def to_dynamo(self, receipt_id: int, image_id: str) -> DynamoReceiptLine:
+        """Convert this ReceiptLine back to a DynamoDB ReceiptLine.
+
+        Args:
+            receipt_id: The receipt ID
+            image_id: The image ID
+
+        Returns:
+            DynamoDB ReceiptLine instance
+        """
+        return DynamoReceiptLine(
+            receipt_id=receipt_id,
+            image_id=image_id,
+            line_id=self.line_id,
+            text=self.text,
+            bounding_box=self.bounding_box,
+            top_right=self.top_right,
+            top_left=self.top_left,
+            bottom_right=self.bottom_right,
+            bottom_left=self.bottom_left,
+            confidence=self.confidence,
+        )
+
+
+@dataclass
 class ReceiptSection:
     """Represents a section in a receipt."""
 
@@ -105,6 +163,7 @@ class Receipt:
     receipt_id: str
     image_id: str
     words: List[ReceiptWord]
+    lines: List[ReceiptLine]
     sections: Optional[List[ReceiptSection]] = None
     metadata: Optional[Dict] = None
     created_at: Optional[datetime] = None
@@ -112,7 +171,7 @@ class Receipt:
 
     @classmethod
     def from_dynamo(
-        cls, receipt_id: str, image_id: str, words: List[DynamoReceiptWord]
+        cls, receipt_id: str, image_id: str, words: List[DynamoReceiptWord], lines: List[DynamoReceiptLine] = None
     ) -> "Receipt":
         """Create a Receipt instance from DynamoDB data.
 
@@ -120,6 +179,7 @@ class Receipt:
             receipt_id: The receipt ID
             image_id: The image ID
             words: List of DynamoDB ReceiptWord instances
+            lines: List of DynamoDB ReceiptLine instances
 
         Returns:
             Receipt instance for labeling
@@ -128,6 +188,7 @@ class Receipt:
             receipt_id=receipt_id,
             image_id=image_id,
             words=[ReceiptWord.from_dynamo(word) for word in words],
+            lines=[ReceiptLine.from_dynamo(line) for line in (lines or [])],
             metadata=None,
             created_at=None,
             updated_at=None,
@@ -136,6 +197,13 @@ class Receipt:
     def get_words_by_line(self, line_id: int) -> List[ReceiptWord]:
         """Get all words in a specific line."""
         return [word for word in self.words if word.line_id == line_id]
+
+    def get_line_by_id(self, line_id: int) -> Optional[ReceiptLine]:
+        """Get a line by its ID."""
+        for line in self.lines:
+            if line.line_id == line_id:
+                return line
+        return None
 
     def get_section_by_name(self, name: str) -> Optional[ReceiptSection]:
         """Get a section by its name."""
@@ -149,6 +217,10 @@ class Receipt:
     def get_section_words(self, section: ReceiptSection) -> List[ReceiptWord]:
         """Get all words in a specific section."""
         return [word for word in self.words if word.line_id in section.line_ids]
+
+    def get_section_lines(self, section: ReceiptSection) -> List[ReceiptLine]:
+        """Get all lines in a specific section."""
+        return [line for line in self.lines if line.line_id in section.line_ids]
 
     def get_field_words(self, field_name: str) -> List[ReceiptWord]:
         """Get all words associated with a specific field."""
@@ -177,6 +249,19 @@ class Receipt:
                 }
                 for word in self.words
             ],
+            "lines": [
+                {
+                    "line_id": line.line_id,
+                    "text": line.text,
+                    "confidence": line.confidence,
+                    "bounding_box": line.bounding_box,
+                    "top_right": line.top_right,
+                    "top_left": line.top_left,
+                    "bottom_right": line.bottom_right,
+                    "bottom_left": line.bottom_left,
+                }
+                for line in self.lines
+            ],
             "sections": [
                 {
                     "name": section.name,
@@ -202,6 +287,7 @@ class Receipt:
             receipt_id=data["receipt_id"],
             image_id=data["image_id"],
             words=[ReceiptWord(**word_data) for word_data in data["words"]],
+            lines=[ReceiptLine(**line_data) for line_data in data.get("lines", [])],
             sections=[
                 ReceiptSection(**section_data)
                 for section_data in data.get("sections", [])

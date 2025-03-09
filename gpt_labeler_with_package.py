@@ -1,6 +1,6 @@
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_label.receipt_label import ReceiptLabeler
-from receipt_label.receipt_label.models.receipt import Receipt
+from receipt_label.receipt_label.models.receipt import Receipt, ReceiptWord, ReceiptLine
 from receipt_dynamo.data._gpt import (
     gpt_request_structure_analysis,
     gpt_request_field_labeling,
@@ -263,294 +263,292 @@ async def process_receipt(labeler, receipt_obj, receipt_words, receipt_lines):
     return await labeler.label_receipt(receipt_obj, receipt_words, receipt_lines)
 
 def main():
-    # Validate environment variables first
-    validate_environment()
+    logger.info("Starting receipt analysis...")
     
-    # Load environment and create clients
-    env = load_env("dev")
-    client = DynamoClient(env["dynamodb_table_name"])
+    # Process receipts
+    total_receipts = 0
+    successful_analyses = 0
+    total_structure_confidence = 0
+    total_word_confidence = 0
     
-    # Initialize the ReceiptLabeler with validated API keys
-    labeler = ReceiptLabeler(
-        places_api_key=os.getenv("GOOGLE_PLACES_API_KEY"),
-        dynamodb_table_name=env["dynamodb_table_name"],
-        gpt_api_key=os.getenv("OPENAI_API_KEY")
-    )
-
-    # Create output directory
-    output_dir = Path("analysis_results")
-    output_dir.mkdir(exist_ok=True)
-
-    # Track statistics
-    stats = {
-        "total_receipts": 0,
-        "successful_analysis": 0,
-        "section_types": {},
-        "avg_confidence": 0.0,
-        "word_label_stats": {
-            "total_words": 0,
-            "labeled_words": 0,
-            "label_distribution": {},
-            "avg_label_confidence": 0.0,
-        },
-        "errors": [],
-        "validation_results": {
-            "total_valid": 0,
-            "validation_errors": [],
-            "validation_warnings": [],
-        },
-    }
-
-    # Get sample receipts
-    logger.info("Getting receipts...")
-    receipts, last_evaluated_key = client.listReceipts(limit=20)  # Analyze 20 receipts
-    logger.info(f"Last evaluated key: {last_evaluated_key}")
-    stats["total_receipts"] = len(receipts)
-
-    # Process each receipt
-    for receipt_num, receipt in enumerate(receipts, 1):
-        logger.info(
-            f"\nProcessing receipt {receipt_num}/{len(receipts)} [image_id: {receipt.image_id}, receipt_id: {receipt.receipt_id}]..."
+    try:
+        # Validate environment variables first
+        validate_environment()
+        
+        # Load environment and create clients
+        env = load_env("dev")
+        client = DynamoClient(env["dynamodb_table_name"])
+        
+        # Initialize the ReceiptLabeler with validated API keys
+        labeler = ReceiptLabeler(
+            places_api_key=os.getenv("GOOGLE_PLACES_API_KEY"),
+            dynamodb_table_name=env["dynamodb_table_name"],
+            gpt_api_key=os.getenv("OPENAI_API_KEY")
         )
 
-        try:
-            # Get receipt details including lines
-            (
-                receipt_data,
-                receipt_lines,
-                receipt_words,
-                receipt_letters,
-                tags,
-                validations,
-                initial_taggings,
-            ) = client.getReceiptDetails(receipt.image_id, receipt.receipt_id)
+        # Create output directory
+        output_dir = Path("analysis_results")
+        output_dir.mkdir(exist_ok=True)
 
-            # Create Receipt object from DynamoDB data
-            receipt_obj = Receipt.from_dynamo(receipt.receipt_id, receipt.image_id, receipt_words)
+        # Track statistics
+        stats = {
+            "total_receipts": 0,
+            "successful_analysis": 0,
+            "section_types": {},
+            "avg_confidence": 0.0,
+            "word_label_stats": {
+                "total_words": 0,
+                "labeled_words": 0,
+                "label_distribution": {},
+                "avg_label_confidence": 0.0,
+            },
+            "errors": [],
+            "validation_results": {
+                "total_valid": 0,
+                "validation_errors": [],
+                "validation_warnings": [],
+            },
+        }
 
-            # Analyze receipt using ReceiptLabeler
-            analysis_result = asyncio.run(process_receipt(labeler, receipt_obj, receipt_words, receipt_lines))
+        # Get sample receipts
+        logger.info("Getting receipts...")
+        last_evaluated_key = {'PK': {'S': 'IMAGE#8d7e60ba-4167-4be1-8653-03924c7b69a2'}, 'SK': {'S': 'RECEIPT#00001'}, 'TYPE': {'S': 'RECEIPT'}}
+        receipts, last_evaluated_key = client.listReceipts(limit=30, lastEvaluatedKey=last_evaluated_key)  # Analyze 30 receipts
+        logger.info(f"Last evaluated key: {last_evaluated_key}")
+        stats["total_receipts"] = len(receipts)
 
-            # Update statistics
-            stats["successful_analysis"] += 1
-            stats["avg_confidence"] += analysis_result.structure_analysis["overall_confidence"]
+        # Process each receipt
+        for receipt_num, receipt in enumerate(receipts, 1):
+            logger.info(
+                f"\nProcessing receipt {receipt_num}/{len(receipts)} [image_id: {receipt.image_id}, receipt_id: {receipt.receipt_id}]..."
+            )
 
-            # Track section types
-            for section in analysis_result.structure_analysis["discovered_sections"]:
-                section_name = section["name"]
-                if section_name not in stats["section_types"]:
-                    stats["section_types"][section_name] = {
-                        "count": 0,
-                        "avg_confidence": 0.0,
-                        "spatial_patterns": {},
-                        "content_patterns": {},
-                    }
-
-                section_stats = stats["section_types"][section_name]
-                section_stats["count"] += 1
-                section_stats["avg_confidence"] += section["confidence"]
-
-                # Track patterns
-                for pattern in section["spatial_patterns"]:
-                    section_stats["spatial_patterns"][pattern] = (
-                        section_stats["spatial_patterns"].get(pattern, 0) + 1
-                    )
-                for pattern in section["content_patterns"]:
-                    section_stats["content_patterns"][pattern] = (
-                        section_stats["content_patterns"].get(pattern, 0) + 1
-                    )
-
-            # Update word label statistics
-            stats["word_label_stats"]["total_words"] += len(receipt_words)
-            stats["word_label_stats"]["labeled_words"] += len(analysis_result.field_analysis["labels"])
-
-            # Track label distribution and confidence
-            total_confidence = 0
-            for label_info in analysis_result.field_analysis["labels"]:
-                label_type = label_info["label"]
-                if label_type not in stats["word_label_stats"]["label_distribution"]:
-                    stats["word_label_stats"]["label_distribution"][label_type] = {
-                        "count": 0,
-                        "avg_confidence": 0.0,
-                    }
-
-                label_stats = stats["word_label_stats"]["label_distribution"][label_type]
-                label_stats["count"] += 1
-                label_stats["avg_confidence"] += label_info["confidence"]
-                total_confidence += label_info["confidence"]
-
-            if analysis_result.field_analysis["labels"]:
-                stats["word_label_stats"]["avg_label_confidence"] += total_confidence / len(analysis_result.field_analysis["labels"])
-
-            # Add validation step
             try:
-                validation_results = validate_receipt_data(
-                    analysis_result.field_analysis, 
-                    analysis_result.places_api_data, 
-                    receipt_words,
-                    labeler.places_processor
-                )
+                # Get receipt details including lines
+                (
+                    receipt_data,
+                    receipt_lines_data,
+                    receipt_words_data,
+                    receipt_letters,
+                    tags,
+                    validations,
+                    initial_taggings,
+                ) = client.getReceiptDetails(receipt.image_id, receipt.receipt_id)
+
+                # Convert dictionary data to proper objects
+                try:
+                    if isinstance(receipt_lines_data[0], dict):
+                        receipt_lines = [
+                            ReceiptLine(
+                                line_id=line["line_id"],
+                                text=line["text"],
+                                confidence=line.get("confidence", 0.0),
+                                bounding_box=line.get("bounding_box", {}),
+                                top_right=line.get("top_right", {"x": 0, "y": 0}),
+                                top_left=line.get("top_left", {"x": 0, "y": 0}),
+                                bottom_right=line.get("bottom_right", {"x": 0, "y": 0}),
+                                bottom_left=line.get("bottom_left", {"x": 0, "y": 0}),
+                            )
+                            for line in receipt_lines_data
+                        ]
+                    else:
+                        receipt_lines = receipt_lines_data
+
+                    if isinstance(receipt_words_data[0], dict):
+                        receipt_words = [
+                            ReceiptWord(
+                                text=word["text"],
+                                line_id=word["line_id"],
+                                word_id=word["word_id"],
+                                confidence=word.get("confidence", 0.0),
+                                extracted_data=word.get("extracted_data"),
+                                bounding_box=word.get("bounding_box", {}),
+                                font_size=word.get("font_size"),
+                                font_weight=word.get("font_weight"),
+                                font_style=word.get("font_style"),
+                            )
+                            for word in receipt_words_data
+                        ]
+                    else:
+                        receipt_words = receipt_words_data
+
+                except Exception as e:
+                    logger.error(f"Error converting data to objects: {str(e)}")
+                    logger.error(f"Traceback: {traceback.format_exc()}")
+                    raise
+
+                # Create Receipt object from DynamoDB data
+                receipt_obj = Receipt.from_dynamo(receipt.receipt_id, receipt.image_id, receipt_words, receipt_lines)
+
+                # Analyze receipt using ReceiptLabeler
+                analysis_result = asyncio.run(process_receipt(labeler, receipt_obj, receipt_words, receipt_lines))
+
+                # Update statistics
+                stats["successful_analysis"] += 1
+                stats["avg_confidence"] += analysis_result.structure_analysis["overall_confidence"]
+
+                # Track section types
+                for section in analysis_result.structure_analysis["discovered_sections"]:
+                    section_name = section["name"]
+                    if section_name not in stats["section_types"]:
+                        stats["section_types"][section_name] = {
+                            "count": 0,
+                            "avg_confidence": 0.0,
+                            "spatial_patterns": {},
+                            "content_patterns": {},
+                        }
+
+                    section_stats = stats["section_types"][section_name]
+                    section_stats["count"] += 1
+                    section_stats["avg_confidence"] += section["confidence"]
+
+                    # Track patterns
+                    for pattern in section["spatial_patterns"]:
+                        section_stats["spatial_patterns"][pattern] = (
+                            section_stats["spatial_patterns"].get(pattern, 0) + 1
+                        )
+                    for pattern in section["content_patterns"]:
+                        section_stats["content_patterns"][pattern] = (
+                            section_stats["content_patterns"].get(pattern, 0) + 1
+                        )
+
+                # Update word label statistics
+                stats["word_label_stats"]["total_words"] += len(receipt_words)
+                stats["word_label_stats"]["labeled_words"] += len(analysis_result.field_analysis["labels"])
+
+                # Track label distribution and confidence
+                total_confidence = 0
+                for label_info in analysis_result.field_analysis["labels"]:
+                    label_type = label_info["label"]
+                    if label_type not in stats["word_label_stats"]["label_distribution"]:
+                        stats["word_label_stats"]["label_distribution"][label_type] = {
+                            "count": 0,
+                            "avg_confidence": 0.0,
+                        }
+
+                    label_stats = stats["word_label_stats"]["label_distribution"][label_type]
+                    label_stats["count"] += 1
+                    label_stats["avg_confidence"] += label_info["confidence"]
+                    total_confidence += label_info["confidence"]
+
+                if analysis_result.field_analysis["labels"]:
+                    stats["word_label_stats"]["avg_label_confidence"] += total_confidence / len(analysis_result.field_analysis["labels"])
+
+                # Add validation step
+                try:
+                    validation_results = validate_receipt_data(
+                        analysis_result.field_analysis, 
+                        analysis_result.places_api_data, 
+                        receipt_words,
+                        labeler.places_processor
+                    )
+                except Exception as e:
+                    logger.error(f"Error in validation: {str(e)}")
+                    raise
+
+                # Update validation statistics
+                if validation_results["overall_valid"]:
+                    stats["validation_results"]["total_valid"] += 1
+                else:
+                    for category, results in validation_results.items():
+                        if isinstance(results, list):
+                            for result in results:
+                                if result["type"] == "error":
+                                    stats["validation_results"]["validation_errors"].append(
+                                        {
+                                            "receipt_id": receipt.receipt_id,
+                                            "category": category,
+                                            "message": result["message"],
+                                        }
+                                    )
+                                elif result["type"] == "warning":
+                                    stats["validation_results"]["validation_warnings"].append(
+                                        {
+                                            "receipt_id": receipt.receipt_id,
+                                            "category": category,
+                                            "message": result["message"],
+                                        }
+                                    )
+
+                # Save analysis results
+                result = {
+                    "receipt_id": analysis_result.receipt_id,
+                    "image_id": analysis_result.image_id,
+                    "structure_analysis": analysis_result.structure_analysis,
+                    "field_analysis": analysis_result.field_analysis,
+                    "places_api_data": analysis_result.places_api_data,
+                    "validation_results": analysis_result.validation_results,
+                    "overall_confidence": analysis_result.structure_analysis["overall_confidence"]
+                }
+                output_file = output_dir / f"analysis_{receipt.image_id}_{receipt.receipt_id}.json"
+                with open(output_file, "w") as f:
+                    json.dump(result, f, indent=2)
+
+                logger.info(f"\nAnalysis saved to {output_file}")
+                logger.info(f"Structure confidence: {analysis_result.structure_analysis['overall_confidence']:.2f}")
+                logger.info(f"Word labeling confidence: {analysis_result.field_analysis['metadata']['average_confidence']:.2f}")
+
+                # Update confidence totals
+                total_structure_confidence += analysis_result.structure_analysis["overall_confidence"]
+                total_word_confidence += analysis_result.field_analysis["metadata"]["average_confidence"]
+
             except Exception as e:
-                logger.error(f"Error in validation: {str(e)}")
-                raise
+                error_context = {
+                    "receipt_id": receipt.receipt_id,
+                    "image_id": receipt.image_id,
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                    "traceback": traceback.format_exc(),
+                }
+                logger.error(f"\nError processing receipt:")
+                logger.error(f"Receipt ID: {receipt.receipt_id}")
+                logger.error(f"Image ID: {receipt.image_id}")
+                logger.error(f"Error Message: {str(e)}")
+                stats["errors"].append(error_context)
+                continue
 
-            # Update validation statistics
-            if validation_results["overall_valid"]:
-                stats["validation_results"]["total_valid"] += 1
-            else:
-                for category, results in validation_results.items():
-                    if isinstance(results, list):
-                        for result in results:
-                            if result["type"] == "error":
-                                stats["validation_results"]["validation_errors"].append(
-                                    {
-                                        "receipt_id": receipt.receipt_id,
-                                        "category": category,
-                                        "message": result["message"],
-                                    }
-                                )
-                            elif result["type"] == "warning":
-                                stats["validation_results"]["validation_warnings"].append(
-                                    {
-                                        "receipt_id": receipt.receipt_id,
-                                        "category": category,
-                                        "message": result["message"],
-                                    }
-                                )
+        # Calculate final statistics
+        if stats["successful_analysis"] > 0:
+            stats["avg_confidence"] /= stats["successful_analysis"]
+            for section_name, section_stats in stats["section_types"].items():
+                section_stats["avg_confidence"] /= section_stats["count"]
 
-            # Save analysis results
-            result = {
-                "receipt_id": analysis_result.receipt_id,
-                "image_id": analysis_result.image_id,
-                "structure_analysis": analysis_result.structure_analysis,
-                "field_analysis": analysis_result.field_analysis,
-                "places_api_data": analysis_result.places_api_data,
-                "validation_results": analysis_result.validation_results,
-                "overall_confidence": analysis_result.structure_analysis["overall_confidence"]
-            }
-            output_file = output_dir / f"analysis_{receipt.image_id}_{receipt.receipt_id}.json"
-            with open(output_file, "w") as f:
-                json.dump(result, f, indent=2)
+            if stats["word_label_stats"]["labeled_words"] > 0:
+                stats["word_label_stats"]["avg_label_confidence"] /= stats["successful_analysis"]
+                for label_type, label_stats in stats["word_label_stats"]["label_distribution"].items():
+                    label_stats["avg_confidence"] /= label_stats["count"]
 
-            logger.info(f"\nAnalysis saved to {output_file}")
-            logger.info(f"Structure confidence: {analysis_result.structure_analysis['overall_confidence']:.2f}")
-            logger.info(f"Word labeling confidence: {analysis_result.field_analysis['metadata']['average_confidence']:.2f}")
+        # Save statistics
+        stats_file = output_dir / "analysis_statistics.json"
+        with open(stats_file, "w") as f:
+            json.dump(stats, f, indent=2)
 
-            logger.info("\nDiscovered sections:")
-            for section in analysis_result.structure_analysis["discovered_sections"]:
-                logger.info(f"\n{section['name'].upper()}:")
-                logger.info(f"Confidence: {section['confidence']:.2f}")
-                logger.info(f"Line count: {len(section['line_ids'])}")
-                logger.info(f"Spatial pattern: {section['spatial_patterns'][0] if section['spatial_patterns'] else 'None'}")
-                logger.info(f"Content pattern: {section['content_patterns'][0] if section['content_patterns'] else 'None'}")
+        # Print summary
+        logger.info("\n%s", "="*50)
+        logger.info("ANALYSIS SUMMARY")
+        logger.info("%s\n", "="*50)
+        logger.info("Total receipts processed: %d", stats["total_receipts"])
+        logger.info("Successful analyses: %d", stats["successful_analysis"])
+        logger.info("Average structure confidence: %.2f", stats["avg_confidence"])
+        logger.info("\nWord-Level Statistics:")
+        logger.info("Total words processed: %d", stats["word_label_stats"]["total_words"])
+        logger.info("Words labeled: %d", stats["word_label_stats"]["labeled_words"])
+        logger.info("Average label confidence: %.2f", stats["word_label_stats"]["avg_label_confidence"])
 
-            logger.info("\nWord-level tags:")
-            current_line = None
-            for label in analysis_result.field_analysis["labels"]:
-                if label["line_id"] != current_line:
-                    current_line = label["line_id"]
-                    logger.info(f"\nLine {current_line}:")
-                word = next(
-                    w for w in receipt_words
-                    if w.line_id == label["line_id"] and w.word_id == label["word_id"]
-                )
-                logger.info(f"  '{word.text}' -> {label['label']} (conf: {label['confidence']:.2f})")
+        # Print validation summary
+        logger.info("\nValidation Summary:")
+        logger.info("Total valid receipts: %d/%d", stats["validation_results"]["total_valid"], stats["total_receipts"])
+        
+        if stats["validation_results"]["validation_errors"]:
+            logger.error("\nValidation Errors:")
+            for error in stats["validation_results"]["validation_errors"]:
+                logger.error("- Receipt %s: %s", error["receipt_id"], error["message"])
 
-            # Sleep to respect rate limits
-            sleep(1)
+        return 0
 
-        except Exception as e:
-            error_context = {
-                "receipt_id": receipt.receipt_id,
-                "image_id": receipt.image_id,
-                "error_type": type(e).__name__,
-                "error_message": str(e),
-                "traceback": traceback.format_exc(),
-            }
-            logger.error(f"\nError processing receipt:")
-            logger.error(f"Receipt ID: {receipt.receipt_id}")
-            logger.error(f"Image ID: {receipt.image_id}")
-            logger.error(f"Error Type: {type(e).__name__}")
-            logger.error(f"Error Message: {str(e)}")
-            logger.error("Traceback:")
-            logger.error(traceback.format_exc())
-            stats["errors"].append(error_context)
-            continue
-
-    # Calculate final statistics
-    if stats["successful_analysis"] > 0:
-        stats["avg_confidence"] /= stats["successful_analysis"]
-        for section_name, section_stats in stats["section_types"].items():
-            section_stats["avg_confidence"] /= section_stats["count"]
-
-        if stats["word_label_stats"]["labeled_words"] > 0:
-            stats["word_label_stats"]["avg_label_confidence"] /= stats["successful_analysis"]
-            for label_type, label_stats in stats["word_label_stats"]["label_distribution"].items():
-                label_stats["avg_confidence"] /= label_stats["count"]
-
-    # Save statistics
-    stats_file = output_dir / "analysis_statistics.json"
-    with open(stats_file, "w") as f:
-        json.dump(stats, f, indent=2)
-
-    # Print summary
-    logger.info("\n" + "=" * 50)
-    logger.info("ANALYSIS SUMMARY")
-    logger.info("=" * 50)
-    logger.info(f"Total receipts processed: {stats['total_receipts']}")
-    logger.info(f"Successful analyses: {stats['successful_analysis']}")
-    logger.info(f"Average structure confidence: {stats['avg_confidence']:.2f}")
-    logger.info(f"\nWord-Level Tagging:")
-    logger.info(f"Total words processed: {stats['word_label_stats']['total_words']}")
-    logger.info(f"Words labeled: {stats['word_label_stats']['labeled_words']}")
-    logger.info(f"Average label confidence: {stats['word_label_stats']['avg_label_confidence']:.2f}")
-
-    logger.info("\nMost common sections:")
-    sorted_sections = sorted(
-        stats["section_types"].items(), key=lambda x: x[1]["count"], reverse=True
-    )
-    for section_name, section_stats in sorted_sections:
-        logger.info(f"\n{section_name}:")
-        logger.info(f"  Count: {section_stats['count']}")
-        logger.info(f"  Avg confidence: {section_stats['avg_confidence']:.2f}")
-        if section_stats["spatial_patterns"]:
-            top_spatial = max(
-                section_stats["spatial_patterns"].items(), key=lambda x: x[1]
-            )
-            logger.info(f"  Top spatial pattern: {top_spatial[0]} ({top_spatial[1]} occurrences)")
-        if section_stats["content_patterns"]:
-            top_content = max(
-                section_stats["content_patterns"].items(), key=lambda x: x[1]
-            )
-            logger.info(f"  Top content pattern: {top_content[0]} ({top_content[1]} occurrences)")
-
-    logger.info("\nMost common word labels:")
-    sorted_labels = sorted(
-        stats["word_label_stats"]["label_distribution"].items(),
-        key=lambda x: x[1]["count"],
-        reverse=True,
-    )
-    for label_type, label_stats in sorted_labels:
-        logger.info(f"\n{label_type}:")
-        logger.info(f"  Count: {label_stats['count']}")
-        logger.info(f"  Avg confidence: {label_stats['avg_confidence']:.2f}")
-
-    if stats["errors"]:
-        logger.error("\nErrors encountered:")
-        for error in stats["errors"]:
-            logger.error(f"- Receipt {error['receipt_id']}: {error['error_message']}")
-
-    # Add validation summary to output
-    logger.info("\nValidation Summary:")
-    logger.info(f"Total valid receipts: {stats['validation_results']['total_valid']}/{stats['total_receipts']}")
-    if stats["validation_results"]["validation_errors"]:
-        logger.error("\nValidation Errors:")
-        for error in stats["validation_results"]["validation_errors"]:
-            logger.error(f"- Receipt {error['receipt_id']}: {error['message']}")
-    if stats["validation_results"]["validation_warnings"]:
-        logger.warning("\nValidation Warnings:")
-        for warning in stats["validation_results"]["validation_warnings"]:
-            logger.warning(f"- Receipt {warning['receipt_id']}: {warning['message']}")
+    except Exception as e:
+        logger.error("Fatal error in receipt processing: %s", str(e))
+        return 1
 
 if __name__ == "__main__":
-    main()
+    exit(main())

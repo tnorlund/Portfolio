@@ -3,15 +3,29 @@ from json import JSONDecodeError, dumps, loads
 from os import environ, getenv
 import requests
 from requests.models import Response
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
+import logging
+from decimal import Decimal
+from json import JSONEncoder
+from ..models.receipt import Receipt, ReceiptWord, ReceiptLine
+from datetime import datetime
 
-from ..models.receipt import Receipt
+# Configure logger
+logger = logging.getLogger(__name__)
+
+MODEL = "gpt-3.5-turbo"
+
+class DecimalEncoder(JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            return str(obj)
+        return super(DecimalEncoder, self).default(obj)
 
 
 def gpt_request_structure_analysis(
     receipt: Receipt,
-    receipt_lines: List[Dict],
-    receipt_words: List[Dict],
+    receipt_lines: List[ReceiptLine],
+    receipt_words: List[ReceiptWord],
     places_api_data: Dict,
     gpt_api_key: Optional[str] = None,
 ) -> Tuple[Dict, str, str]:
@@ -24,8 +38,8 @@ def gpt_request_structure_analysis(
 
     Args:
         receipt (Receipt): The receipt object containing metadata.
-        receipt_lines (List[Dict]): List of receipt line objects.
-        receipt_words (List[Dict]): List of receipt word objects.
+        receipt_lines (List[ReceiptLine]): List of receipt line objects.
+        receipt_words (List[ReceiptWord]): List of receipt word objects.
         places_api_data (Dict): Business context from Google Places API.
         gpt_api_key (str, optional): The OpenAI API key. Defaults to None.
 
@@ -46,7 +60,7 @@ def gpt_request_structure_analysis(
         receipt, receipt_lines, receipt_words, places_api_data
     )
     payload = {
-        "model": "gpt-3.5-turbo",
+        "model": MODEL,
         "messages": [
             {
                 "role": "system",
@@ -71,8 +85,8 @@ def gpt_request_structure_analysis(
 
 def gpt_request_field_labeling(
     receipt: Receipt,
-    receipt_lines: List[Dict],
-    receipt_words: List[Dict],
+    receipt_lines: List[ReceiptLine],
+    receipt_words: List[ReceiptWord],
     section_boundaries: Dict,
     places_api_data: Dict,
     gpt_api_key: Optional[str] = None,
@@ -103,11 +117,13 @@ def gpt_request_field_labeling(
         # Get words for this section
         section_lines = [
             line for line in receipt_lines 
-            if line.line_id in section["line_ids"]
+            if (hasattr(line, 'line_id') and line.line_id in section["line_ids"]) or
+               (isinstance(line, dict) and line.get('line_id') in section["line_ids"])
         ]
         section_words = [
             word for word in receipt_words 
-            if word["line_id"] in section["line_ids"]
+            if (hasattr(word, 'line_id') and word.line_id in section["line_ids"]) or
+               (isinstance(word, dict) and word.get('line_id') in section["line_ids"])
         ]
 
         if not section_words:
@@ -123,7 +139,7 @@ def gpt_request_field_labeling(
         queries.append(query)
 
         payload = {
-            "model": "gpt-3.5-turbo",
+            "model": MODEL,
             "messages": [
                 {
                     "role": "system",
@@ -204,19 +220,88 @@ def gpt_request_field_labeling(
     )
 
 
+def gpt_request_line_item_analysis(
+    receipt: Receipt,
+    receipt_lines: List[ReceiptLine],
+    receipt_words: List[ReceiptWord],
+    traditional_analysis: Dict,
+    places_api_data: Dict,
+    gpt_api_key: Optional[str] = None,
+) -> Tuple[Dict, str, str]:
+    """
+    Makes a request to the OpenAI API to analyze line items in a receipt.
+
+    This function analyzes receipt line items using both traditional analysis results
+    and GPT processing to provide accurate item extraction with prices and quantities.
+
+    Args:
+        receipt (Receipt): The receipt object containing metadata.
+        receipt_lines (List[ReceiptLine]): List of receipt line objects.
+        receipt_words (List[ReceiptWord]): List of receipt word objects.
+        traditional_analysis (Dict): Results from traditional line item processing.
+        places_api_data (Dict): Business context from Google Places API.
+        gpt_api_key (str, optional): The OpenAI API key. Defaults to None.
+
+    Returns:
+        Tuple[Dict, str, str]: The formatted response from the OpenAI API, the query
+            sent to OpenAI API, and the raw response from OpenAI API.
+    """
+    if not gpt_api_key and not getenv("OPENAI_API_KEY"):
+        raise ValueError("The OPENAI_API_KEY environment variable is not set.")
+    if gpt_api_key:
+        environ["OPENAI_API_KEY"] = gpt_api_key
+
+    url = "https://api.openai.com/v1/chat/completions"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {getenv('OPENAI_API_KEY')}",
+    }
+
+    query = _llm_prompt_line_item_analysis(
+        receipt, receipt_lines, receipt_words, traditional_analysis, places_api_data
+    )
+
+    payload = {
+        "model": MODEL,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "You analyze receipt line items with high precision, focusing on "
+                    "accurate extraction of items, quantities, prices, and totals. "
+                    "Consider spatial layout and business context."
+                ),
+            },
+            {"role": "user", "content": query},
+        ],
+        "temperature": 0.1,  # Low temperature for consistent numerical analysis
+    }
+
+    response = requests.post(url, headers=headers, json=payload, timeout=60)
+    
+    return (
+        _validate_gpt_response_line_item_analysis(response),
+        query,
+        response.text,
+    )
+
+
 def _llm_prompt_structure_analysis(
     receipt: Receipt,
-    receipt_lines: List[Dict],
-    receipt_words: List[Dict],
-    places_api_data: Dict,
+    receipt_lines: List[ReceiptLine],
+    receipt_words: List[ReceiptWord],
+    places_api_data: Optional[Dict] = None,
 ) -> str:
-    """Generate the prompt for structure analysis."""
+    """Generate prompt for structure analysis."""
     # Format receipt content
     formatted_lines = []
     for line in receipt_lines:
-        line_words = [word for word in receipt_words if word["line_id"] == line.line_id]
-        line_text = " ".join(word["text"] for word in line_words)
-        formatted_lines.append(f"Line {line.line_id}: {line_text}")
+        # Get words for this line
+        line_words = [word for word in receipt_words if word.get('line_id') == line.get('line_id')]
+        line_text = " ".join(word.get('text', '') for word in line_words)
+        formatted_lines.append(f"Line {line.get('line_id')}: {line_text}")
+
+    receipt_content = "\n".join(formatted_lines)
 
     # Format business context
     business_context = {
@@ -230,7 +315,7 @@ def _llm_prompt_structure_analysis(
     return (
         f"Analyze the structure of this receipt.\n\n"
         f"Business Context:\n{dumps(business_context, indent=2)}\n\n"
-        f"Receipt Content:\n" + "\n".join(formatted_lines) + "\n\nINSTRUCTIONS:\n"
+        f"Receipt Content:\n" + receipt_content + "\n\nINSTRUCTIONS:\n"
         "1. Identify natural sections in the receipt based on spatial and content patterns\n"
         "2. Consider business context when identifying sections\n"
         "3. Look for patterns like:\n"
@@ -262,18 +347,33 @@ def _llm_prompt_structure_analysis(
 
 def _llm_prompt_field_labeling_section(
     receipt: Receipt,
-    section_lines: List[Dict],
-    section_words: List[Dict],
+    section_lines: List[ReceiptLine],
+    section_words: List[ReceiptWord],
     section_info: Dict,
-    places_api_data: Dict,
+    places_api_data: Optional[Dict] = None,
 ) -> str:
-    """Generate the prompt for field labeling of a specific section."""
-    # Format section content
+    """Generate prompt for field labeling of a specific section."""
+    # Format receipt content
     formatted_lines = []
     for line in section_lines:
-        line_words = [word for word in section_words if word["line_id"] == line.line_id]
-        line_text = " ".join(word["text"] for word in line_words)
-        formatted_lines.append(f"Line {line.line_id}: {line_text}")
+        # Get words for this line
+        line_id = line.line_id if hasattr(line, 'line_id') else line.get('line_id')
+        line_words = [
+            word for word in section_words 
+            if (hasattr(word, 'line_id') and word.line_id == line_id) or
+               (isinstance(word, dict) and word.get('line_id') == line_id)
+        ]
+        # Get text from words
+        word_texts = []
+        for word in line_words:
+            if hasattr(word, 'text'):
+                word_texts.append(word.text)
+            elif isinstance(word, dict):
+                word_texts.append(word.get('text', ''))
+        line_text = " ".join(word_texts)
+        formatted_lines.append(line_text)
+
+    receipt_content = "\n".join(formatted_lines)
 
     # Format business context
     business_context = {
@@ -344,7 +444,7 @@ def _llm_prompt_field_labeling_section(
         f"Label words in the {section_info['name'].upper()} section of this receipt.\n\n"
         f"Business Context:\n{dumps(business_context, indent=2)}\n\n"
         f"Receipt Content:\n"
-        + "\n".join(formatted_lines)
+        + receipt_content
         + "\n\nAvailable Labels:\n"
         + "\n".join(f"- {label}: {desc}" for label, desc in label_types.items())
         + "\n\nExample Labelings:\n"
@@ -354,7 +454,8 @@ def _llm_prompt_field_labeling_section(
         "2. Combine words that form a single meaningful unit (e.g., 'Lindero Canyon Rd' as one address_line)\n"
         "3. Never use 'unknown' or labels not in the list above\n"
         "4. Set high confidence (0.9+) for clear matches, lower (0.7-0.8) if uncertain\n"
-        "5. Mark requires_review true if you're unsure about any labels\n\n"
+        "5. Mark requires_review true if you're unsure about any labels\n"
+        "6. Calculate average_confidence as the mean of all word confidences\n\n"
         "Return this JSON structure:\n"
         "{\n"
         '  "labeled_words": [\n'
@@ -366,7 +467,68 @@ def _llm_prompt_field_labeling_section(
         "  ],\n"
         '  "metadata": {\n'
         '    "requires_review": false,\n'
-        '    "review_reasons": []\n'
+        '    "review_reasons": [],\n'
+        '    "average_confidence": 0.95\n'
+        "  }\n"
+        "}\n\n"
+        "Return ONLY the JSON object. No other text."
+    )
+
+
+def _llm_prompt_line_item_analysis(
+    receipt: Receipt,
+    receipt_lines: List[ReceiptLine],
+    receipt_words: List[ReceiptWord],
+    traditional_analysis: Dict,
+    places_api_data: Optional[Dict] = None,
+) -> str:
+    """Generate prompt for line item analysis."""
+    # Format receipt content
+    formatted_lines = []
+    for line in receipt_lines:
+        # Get words for this line
+        line_words = [word for word in receipt_words if word.line_id == line.line_id]
+        line_text = " ".join(word.text for word in line_words)
+        formatted_lines.append(f"Line {line.line_id}: {line_text}")
+
+    receipt_content = "\n".join(formatted_lines)
+
+    # Format business context
+    business_context = {
+        "name": places_api_data.get("name", "Unknown"),
+        "types": places_api_data.get("types", []),
+    }
+
+    return (
+        f"Analyze line items in this receipt with high precision.\n\n"
+        f"Business Context:\n{dumps(business_context, indent=2)}\n\n"
+        f"Receipt Content:\n" + receipt_content +
+        f"Traditional Analysis:\n{dumps(traditional_analysis, indent=2, cls=DecimalEncoder)}\n\n"
+        "INSTRUCTIONS:\n"
+        "1. Extract all line items with their descriptions, quantities, and prices\n"
+        "2. Consider spatial layout (items typically left-aligned, prices right-aligned)\n"
+        "3. Look for quantity indicators (e.g., @, x, EA) and unit prices\n"
+        "4. Validate price calculations (quantity * unit price = extended price)\n"
+        "5. Compare against receipt totals for consistency\n"
+        "6. Note any discrepancies or uncertain items\n\n"
+        "Return this JSON structure:\n"
+        "{\n"
+        '  "line_items": [\n'
+        "    {\n"
+        '      "description": "complete item description",\n'
+        '      "quantity": {"amount": number, "unit": "string"},\n'
+        '      "price": {"unit_price": number, "extended_price": number},\n'
+        '      "confidence": number,\n'
+        '      "line_ids": [number]\n'
+        "    }\n"
+        "  ],\n"
+        '  "analysis": {\n'
+        '    "total_found": number,\n'
+        '    "subtotal": number,\n'
+        '    "tax": number,\n'
+        '    "total": number,\n'
+        '    "discrepancies": [string],\n'
+        '    "confidence": number\n'
         "  }\n"
         "}\n\n"
         "Return ONLY the JSON object. No other text."
@@ -463,6 +625,57 @@ def _validate_gpt_response_structure_analysis(response: Response) -> Dict:
 
 def _validate_gpt_response_field_labeling(response: Response) -> Dict:
     """Validate the field labeling response from the OpenAI API."""
+    try:
+        response.raise_for_status()
+        data = response.json()
+
+        if "choices" not in data or not data["choices"]:
+            raise ValueError("The response does not contain any choices.")
+
+        first_choice = data["choices"][0]
+        if "message" not in first_choice or "content" not in first_choice["message"]:
+            raise ValueError("The response choice does not contain a message with content.")
+
+        try:
+            parsed = loads(first_choice["message"]["content"])
+        except JSONDecodeError:
+            raise ValueError(f"Invalid JSON in message content: {first_choice['message']['content']}")
+
+        # Validate required top-level keys
+        required_keys = ["labeled_words", "metadata"]
+        if not all(key in parsed for key in required_keys):
+            raise ValueError(f"Response missing required keys: {required_keys}")
+
+        # Validate labeled_words structure
+        if not isinstance(parsed["labeled_words"], list):
+            raise ValueError("'labeled_words' must be a list.")
+
+        for word in parsed["labeled_words"]:
+            if not isinstance(word, dict):
+                raise ValueError("Each labeled word must be a dictionary.")
+            required_word_keys = ["text", "label", "confidence"]
+            if not all(key in word for key in required_word_keys):
+                raise ValueError(f"Labeled word missing required keys: {required_word_keys}")
+            if not isinstance(word["confidence"], (int, float)):
+                raise ValueError("Word confidence must be a number.")
+            if not (0 <= word["confidence"] <= 1):
+                raise ValueError("Word confidence must be between 0 and 1.")
+
+        # Validate metadata structure
+        required_metadata_keys = ["requires_review", "review_reasons", "average_confidence"]
+        if not all(key in parsed["metadata"] for key in required_metadata_keys):
+            raise ValueError(f"Metadata missing required keys: {required_metadata_keys}")
+
+        return parsed
+
+    except JSONDecodeError as e:
+        raise ValueError(f"Invalid JSON in response: {e}\nResponse text: {response.text}")
+    except Exception as e:
+        raise ValueError(f"Error validating response: {e}\nResponse text: {response.text}")
+
+
+def _validate_gpt_response_line_item_analysis(response: Response) -> Dict:
+    """Validate the line item analysis response from the OpenAI API."""
     response.raise_for_status()
     data = response.json()
 
@@ -494,93 +707,200 @@ def _validate_gpt_response_field_labeling(response: Response) -> Dict:
         if not isinstance(parsed, dict):
             raise ValueError("The response must be a dictionary.")
 
-        required_keys = ["labeled_words", "metadata"]
+        required_keys = ["line_items", "analysis"]
         if not all(key in parsed for key in required_keys):
             raise ValueError(f"Missing required keys: {required_keys}")
 
-        # Validate labeled_words array
-        if not isinstance(parsed["labeled_words"], list):
-            raise ValueError("'labeled_words' must be a list.")
+        # Validate line_items array
+        if not isinstance(parsed["line_items"], list):
+            raise ValueError("'line_items' must be a list.")
 
-        for label in parsed["labeled_words"]:
-            if not isinstance(label, dict):
-                raise ValueError("Each label must be a dictionary.")
+        for item in parsed["line_items"]:
+            if not isinstance(item, dict):
+                raise ValueError("Each item must be a dictionary.")
 
-            required_label_keys = ["text", "label", "confidence"]
-            if not all(key in label for key in required_label_keys):
-                raise ValueError(f"Label missing required keys: {required_label_keys}")
+            required_item_keys = ["description", "quantity", "price", "confidence", "line_ids"]
+            if not all(key in item for key in required_item_keys):
+                raise ValueError(f"Item missing required keys: {required_item_keys}")
 
-            if not isinstance(label["text"], str):
-                raise ValueError("'text' must be a string.")
-            if not isinstance(label["label"], str):
-                raise ValueError("'label' must be a string.")
-            if not isinstance(label["confidence"], (int, float)):
-                raise ValueError("'confidence' must be a number.")
-            if not (0 <= label["confidence"] <= 1):
-                raise ValueError("'confidence' must be between 0 and 1.")
+            # Validate quantity structure
+            if not isinstance(item["quantity"], dict):
+                raise ValueError("'quantity' must be a dictionary.")
+            if not all(key in item["quantity"] for key in ["amount", "unit"]):
+                raise ValueError("'quantity' must have 'amount' and 'unit' keys.")
 
-        # Validate metadata
-        metadata = parsed["metadata"]
-        required_metadata_keys = ["requires_review", "review_reasons"]
-        if not all(key in metadata for key in required_metadata_keys):
-            raise ValueError(
-                f"Metadata missing required keys: {required_metadata_keys}"
-            )
+            # Validate price structure
+            if not isinstance(item["price"], dict):
+                raise ValueError("'price' must be a dictionary.")
+            if not all(key in item["price"] for key in ["unit_price", "extended_price"]):
+                raise ValueError("'price' must have 'unit_price' and 'extended_price' keys.")
 
-        if not isinstance(metadata["requires_review"], bool):
-            raise ValueError("'requires_review' must be a boolean.")
-        if not isinstance(metadata["review_reasons"], list):
-            raise ValueError("'review_reasons' must be a list.")
+        # Validate analysis structure
+        analysis = parsed["analysis"]
+        required_analysis_keys = ["total_found", "subtotal", "tax", "total", "discrepancies", "confidence"]
+        if not all(key in analysis for key in required_analysis_keys):
+            raise ValueError(f"Analysis missing required keys: {required_analysis_keys}")
 
         return parsed
 
     except JSONDecodeError as e:
-        raise ValueError(
-            f"Invalid JSON in response: {e}\nResponse text: {response.text}"
-        )
+        raise ValueError(f"Invalid JSON in response: {e}\nResponse text: {response.text}")
     except Exception as e:
-        raise ValueError(
-            f"Error validating response: {e}\nResponse text: {response.text}"
-        )
+        raise ValueError(f"Error validating response: {e}\nResponse text: {response.text}")
 
 
-def _map_labels_to_word_ids(
-    labeled_words: List[Dict], section_words: List[Dict]
-) -> List[Dict]:
-    """Map text labels back to word IDs."""
+def normalize_text(text: str) -> str:
+    """Normalize text by removing punctuation and standardizing spacing."""
+    # Remove punctuation and standardize spacing
+    text = re.sub(r'[^\w\s]', '', text)
+    return ' '.join(text.lower().split())
+
+
+def _map_labels_to_word_ids(labeled_words: List[Dict], section_words: List[Union[Dict, ReceiptWord]]) -> List[Dict]:
+    """Map labeled words back to their original word IDs using normalized token matching."""
     mapped_labels = []
-    for label in labeled_words:
-        # Find matching word(s) in section
-        matching_words = []
-        label_text = label["text"].strip()
-
-        # Try exact match first
-        for word in section_words:
-            if word["text"].strip() == label_text:
-                matching_words.append(word)
-                break
-
-        # If no exact match, try partial matches
-        if not matching_words:
-            words = label_text.split()
-            if len(words) > 1:
-                # Try to match consecutive words
-                for i in range(len(section_words) - len(words) + 1):
-                    if all(
-                        section_words[i + j]["text"].strip() == words[j]
-                        for j in range(len(words))
-                    ):
-                        matching_words.extend(section_words[i:i + len(words)])
-                        break
-
-        if matching_words:
-            # Create a label for each matching word
-            for word in matching_words:
+    
+    # Create normalized version of section words with mapping to original words
+    normalized_words = {}
+    for word in section_words:
+        # Handle both object and dictionary access
+        text = word.text if hasattr(word, 'text') else word.get("text", "")
+        normalized = normalize_text(text)
+        if normalized:  # Only add non-empty strings
+            if normalized not in normalized_words:
+                normalized_words[normalized] = []
+            normalized_words[normalized].append(word)
+    
+    for labeled_word in labeled_words:
+        original_text = labeled_word.get("text", "")
+        normalized_label = normalize_text(original_text)
+        if not normalized_label:  # Skip empty strings
+            continue
+            
+        words = normalized_label.split()
+        matches_found = False
+        
+        # Try exact phrase match first
+        if normalized_label in normalized_words:
+            matches_found = True
+            for word in normalized_words[normalized_label]:
                 mapped_labels.append({
-                    "line_id": word["line_id"],
-                    "word_id": word["word_id"],
-                    "label": label["label"],
-                    "confidence": label["confidence"],
+                    "word_id": word.word_id if hasattr(word, 'word_id') else word.get("word_id"),
+                    "line_id": word.line_id if hasattr(word, 'line_id') else word.get("line_id"),
+                    "label": labeled_word.get("label"),
+                    "confidence": labeled_word.get("confidence", 0.0)
                 })
-
+        
+        # If no exact match, try matching individual words
+        if not matches_found:
+            matched_words = []
+            for word in words:
+                if word in normalized_words:
+                    matched_words.extend(normalized_words[word])
+            
+            if matched_words:
+                # Adjust confidence based on how many words were matched
+                confidence_adjustment = len(matched_words) / len(words)
+                for word in matched_words:
+                    mapped_labels.append({
+                        "word_id": word.word_id if hasattr(word, 'word_id') else word.get("word_id"),
+                        "line_id": word.line_id if hasattr(word, 'line_id') else word.get("line_id"),
+                        "label": labeled_word.get("label"),
+                        "confidence": labeled_word.get("confidence", 0.0) * confidence_adjustment
+                    })
+            else:
+                # Log warning if no matches found
+                logger.warning(f"Could not find matching word ID for labeled text: {original_text}")
+    
     return mapped_labels
+
+
+def normalize_address(address: str) -> str:
+    """Normalize an address by removing punctuation and standardizing spacing."""
+    # Remove punctuation and standardize spacing
+    address = re.sub(r'[^\w\s]', '', address)
+    return ' '.join(address.lower().split())
+
+
+def validate_receipt_data(receipt: Receipt, places_api_data: Dict) -> Dict:
+    """Validate receipt data against Google Places API data."""
+    validation_results = {
+        "address_verification": [],
+        "hours_verification": [],
+    }
+
+    # 1. Business Name Verification
+    receipt_name = receipt.name
+    api_name = places_api_data.get("name", "")
+    
+    if receipt_name != api_name:
+        validation_results["business_name_verification"] = {
+            "type": "warning",
+            "message": f"Business name mismatch: Receipt '{receipt_name}' vs API '{api_name}'",
+        }
+
+    # 2. Address Verification
+    if "address_line" in receipt.fields:
+        receipt_address = " ".join(receipt.fields["address_line"])
+        api_address = places_api_data.get("formatted_address", "")
+        
+        # Normalize addresses for comparison
+        receipt_address_norm = normalize_address(receipt_address)
+        api_address_norm = normalize_address(api_address)
+        
+        if receipt_address_norm not in api_address_norm and api_address_norm not in receipt_address_norm:
+            validation_results["address_verification"].append(
+                {
+                    "type": "warning",
+                    "message": f"Address mismatch: Receipt '{receipt_address}' vs API '{api_address}'",
+                }
+            )
+
+    # 4. Hours Verification
+    if "date" in receipt.fields and "time" in receipt.fields:
+        receipt_date = " ".join(receipt.fields["date"])
+        receipt_time = " ".join(receipt.fields["time"])
+        try:
+            # Try multiple date formats
+            date_formats = [
+                "%Y-%m-%d %H:%M",
+                "%m/%d/%Y %H:%M",
+                "%m/%d/%y %H:%M",
+                "%m/%d/%y %I:%M %p",
+                "%m/%d/%y %H:%M %p",
+                "%m/%d/%y %H:%M:%S",
+                "%m/%d/%y %H:%M:%S %p",
+                "%m/%d/%Y %H:%M:%S",
+                "%m/%d/%Y %H:%M",
+                "%m/%d/%y %H:%M:%S",
+                "%m/%d/%y %I:%M %p",
+                "%A, %B %d, %Y %I:%M %p",
+                "%m/%d/%Y %I:%M %p",
+            ]
+
+            receipt_datetime = None
+            for fmt in date_formats:
+                try:
+                    receipt_datetime = datetime.strptime(
+                        f"{receipt_date} {receipt_time}", fmt
+                    )
+                    break
+                except ValueError:
+                    continue
+
+            if receipt_datetime is None:
+                error_msg = f"Could not parse date/time: {receipt_date} {receipt_time}"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+
+            # TODO: Add business hours verification when available in Places API
+            pass
+        except ValueError as e:
+            validation_results["hours_verification"].append(
+                {
+                    "type": "error",
+                    "message": f"Invalid date/time format: {receipt_date} {receipt_time}",
+                }
+            )
+
+    return validation_results

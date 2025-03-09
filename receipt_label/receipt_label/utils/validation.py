@@ -4,6 +4,7 @@ import logging
 from datetime import datetime
 from .date import parse_datetime, is_valid_date, is_valid_time
 from .address import normalize_address, compare_addresses
+from ..models.receipt import ReceiptLine
 
 logger = logging.getLogger(__name__)
 
@@ -226,12 +227,15 @@ def validate_receipt_data(
 
 
 def validate_receipt_format(
-    receipt_data: Dict, format_rules: Optional[Dict] = None
+    receipt_data: Dict,
+    receipt_lines: List[ReceiptLine],
+    format_rules: Optional[Dict] = None
 ) -> Tuple[bool, List[str], float]:
     """Validate receipt format against rules.
 
     Args:
         receipt_data: Receipt data to validate
+        receipt_lines: List of receipt lines
         format_rules: Optional format rules to check
 
     Returns:
@@ -249,19 +253,12 @@ def validate_receipt_format(
     violations = []
 
     # Check line lengths
-    for line in receipt_data.get("lines", []):
-        line_length = len(line.get("text", ""))
+    for line in receipt_lines:
+        line_length = len(line.text)
         if line_length > format_rules["max_line_length"]:
             violations.append(f"Line too long: {line_length} chars")
         if line_length < format_rules["min_line_length"]:
             violations.append(f"Line too short: {line_length} chars")
-
-        # Check word count
-        word_count = len(line.get("words", []))
-        if word_count > format_rules["max_words_per_line"]:
-            violations.append(f"Too many words: {word_count}")
-        if word_count < format_rules["min_words_per_line"]:
-            violations.append(f"Too few words: {word_count}")
 
     # Check required sections
     sections = receipt_data.get("sections", [])
@@ -274,6 +271,6 @@ def validate_receipt_format(
 
     confidence = 1.0 - (
         len(violations)
-        / (len(receipt_data.get("lines", [])) + len(format_rules["required_sections"]))
+        / (len(receipt_lines) + len(format_rules["required_sections"]))
     )
     return False, violations, confidence

@@ -1,165 +1,225 @@
-from typing import Dict, List, Optional, Tuple
-from dataclasses import dataclass
+from typing import Dict, List, Optional
 import logging
-from ..models.receipt import Receipt, ReceiptWord, ReceiptSection
-from ..processors.gpt import GPTProcessor
+from ..models.receipt import Receipt, ReceiptWord, ReceiptLine
 from ..processors.structure import StructureProcessor
 from ..processors.field import FieldProcessor
+from ..processors.line_item import LineItemProcessor
+from ..processors.gpt import GPTProcessor
 from ..data.places_api import BatchPlacesProcessor
 from .validator import ReceiptValidator
 
 logger = logging.getLogger(__name__)
 
-
-@dataclass
 class LabelingResult:
-    """Result of the labeling process for a receipt."""
-
-    receipt_id: str
-    image_id: str
-    structure_analysis: Dict
-    field_analysis: Dict
-    places_api_data: Optional[Dict]
-    validation_results: Dict
-    overall_confidence: float
-
+    """Results from receipt labeling process."""
+    def __init__(
+        self,
+        structure_analysis: Dict,
+        field_analysis: Dict,
+        line_item_analysis: Dict,
+        validation_results: Dict,
+        places_api_data: Optional[Dict] = None,
+        receipt_id: Optional[str] = None,
+        image_id: Optional[str] = None,
+    ):
+        self.structure_analysis = structure_analysis
+        self.field_analysis = field_analysis
+        self.line_item_analysis = line_item_analysis
+        self.validation_results = validation_results
+        self.places_api_data = places_api_data
+        self.receipt_id = receipt_id
+        self.image_id = image_id
 
 class ReceiptLabeler:
-    """Main class for orchestrating receipt labeling process."""
+    """Main class for receipt labeling."""
 
     def __init__(
         self,
-        places_api_key: str,
-        dynamodb_table_name: str,
+        places_api_key: Optional[str] = None,
         gpt_api_key: Optional[str] = None,
+        dynamodb_table_name: Optional[str] = None,
     ):
-        """Initialize the receipt labeler.
-
-        Args:
-            places_api_key: Google Places API key
-            dynamodb_table_name: DynamoDB table name for caching
-            gpt_api_key: Optional GPT API key for advanced processing
-        """
+        """Initialize the labeler with optional API keys."""
         self.places_processor = BatchPlacesProcessor(
-            places_api_key, dynamodb_table_name
+            api_key=places_api_key,
+            dynamo_table_name=dynamodb_table_name,
         )
-        self.gpt_processor = GPTProcessor(gpt_api_key) if gpt_api_key else None
         self.structure_processor = StructureProcessor()
         self.field_processor = FieldProcessor()
+        self.line_item_processor = LineItemProcessor(gpt_api_key=gpt_api_key)
+        self.gpt_processor = GPTProcessor(api_key=gpt_api_key)
         self.validator = ReceiptValidator()
 
     async def label_receipt(
         self,
         receipt: Receipt,
         receipt_words: List[ReceiptWord],
-        receipt_lines: List[Dict],
+        receipt_lines: List[ReceiptLine],
     ) -> LabelingResult:
-        """Label a receipt with business information and fields.
+        """
+        Label a receipt with all available processors.
 
         Args:
-            receipt: Receipt data model
-            receipt_words: List of words from the receipt
-            receipt_lines: List of lines from the receipt
+            receipt (Receipt): The receipt object containing metadata
+            receipt_words (List[ReceiptWord]): List of words from the receipt
+            receipt_lines (List[ReceiptLine]): List of lines from the receipt
 
         Returns:
-            LabelingResult containing all analysis and validation results
+            LabelingResult: The combined results of all processing
         """
         logger.info(f"Processing receipt {receipt.receipt_id}...")
 
-        # 1. Get Places API data
-        places_data = await self._get_places_data(receipt)
+        try:
+            # Get business context from Places API
+            places_data = await self._get_places_data(receipt_words)
 
-        # 2. Analyze structure
-        structure_analysis = await self._analyze_structure(
-            receipt, receipt_words, receipt_lines, places_data
-        )
+            # Analyze receipt structure
+            structure_analysis = await self._analyze_structure(
+                receipt, receipt_words, receipt_lines, places_data
+            )
 
-        # 3. Label fields
-        field_analysis = await self._label_fields(
-            receipt, receipt_words, receipt_lines, structure_analysis, places_data
-        )
+            # Label fields
+            field_analysis = await self._label_fields(
+                receipt, receipt_words, receipt_lines, structure_analysis, places_data
+            )
 
-        # 4. Validate results
-        validation_results = self.validator.validate_receipt_data(
-            field_analysis, places_data, receipt_words, self.places_processor
-        )
+            # Process line items
+            line_item_analysis = await self.line_item_processor.process_line_items(
+                receipt=receipt,
+                receipt_lines=receipt_lines,
+                receipt_words=receipt_words,
+                places_api_data=places_data
+            )
 
-        # Calculate overall confidence
-        overall_confidence = self._calculate_confidence(
-            structure_analysis, field_analysis
-        )
+            # Validate results
+            validation_results = self.validator.validate_receipt_data(
+                field_analysis=field_analysis,
+                places_api_data=places_data,
+                receipt_words=receipt_words,
+                line_item_analysis=line_item_analysis,
+                batch_processor=self.places_processor,
+            )
 
-        return LabelingResult(
-            receipt_id=receipt.receipt_id,
-            image_id=receipt.image_id,
-            structure_analysis=structure_analysis,
-            field_analysis=field_analysis,
-            places_api_data=places_data,
-            validation_results=validation_results,
-            overall_confidence=overall_confidence,
-        )
+            return LabelingResult(
+                structure_analysis=structure_analysis,
+                field_analysis=field_analysis,
+                line_item_analysis=line_item_analysis,
+                validation_results=validation_results,
+                places_api_data=places_data,
+                receipt_id=receipt.receipt_id,
+                image_id=receipt.image_id,
+            )
 
-    async def _get_places_data(self, receipt: Receipt) -> Optional[Dict]:
+        except Exception as e:
+            logger.error(f"Error processing receipt: {str(e)}")
+            raise
+
+    async def _get_places_data(self, receipt_words: List[ReceiptWord]) -> Optional[Dict]:
         """Get business data from Places API."""
         try:
+            # Format receipt for Places API
             receipt_dict = {
-                "receipt_id": receipt.receipt_id,
-                "image_id": receipt.image_id,
+                "receipt_id": "temp",  # Temporary ID since we don't have receipt ID here
                 "words": [
-                    {"text": word.text, "extracted_data": word.extracted_data}
-                    for word in receipt.words
+                    {
+                        "text": word.text,
+                        "extracted_data": None,  # Add extracted data if available
+                    }
+                    for word in receipt_words
                 ],
             }
-            enriched_receipt = self.places_processor.process_receipt_batch(
-                [receipt_dict]
-            )[0]
-            return enriched_receipt.get("places_api_match")
+            # Process as a batch of one receipt (not async)
+            results = self.places_processor.process_receipt_batch([receipt_dict])
+            if results and len(results) > 0:
+                return results[0].get("places_api_match")
+            return None
         except Exception as e:
-            logger.error(f"Error getting Places API data: {str(e)}")
+            logger.warning(f"Error getting Places data: {str(e)}")
             return None
 
     async def _analyze_structure(
         self,
         receipt: Receipt,
         receipt_words: List[ReceiptWord],
-        receipt_lines: List[Dict],
+        receipt_lines: List[ReceiptLine],
         places_data: Optional[Dict],
     ) -> Dict:
-        """Analyze receipt structure."""
-        if self.gpt_processor:
+        """Analyze receipt structure using GPT."""
+        try:
             return await self.gpt_processor.analyze_structure(
                 receipt=receipt,
-                receipt_lines=receipt_lines,
                 receipt_words=receipt_words,
-                places_api_data=places_data,
+                receipt_lines=receipt_lines,
+                places_api_data=places_data or {},
             )
-        return self.structure_processor.analyze_structure(receipt_words, receipt_lines)
+        except Exception as e:
+            logger.error(f"Error in structure analysis: {str(e)}")
+            return {
+                "discovered_sections": [],
+                "overall_confidence": 0.0
+            }
 
     async def _label_fields(
         self,
         receipt: Receipt,
         receipt_words: List[ReceiptWord],
-        receipt_lines: List[Dict],
+        receipt_lines: List[ReceiptLine],
         structure_analysis: Dict,
         places_data: Optional[Dict],
     ) -> Dict:
-        """Label receipt fields."""
-        if self.gpt_processor:
-            return await self.gpt_processor.label_fields(
-                receipt=receipt,
-                receipt_lines=receipt_lines,
-                receipt_words=receipt_words,
-                section_boundaries=structure_analysis,
-                places_api_data=places_data,
-            )
-        return self.field_processor.label_fields(
-            receipt_words, receipt_lines, structure_analysis
+        """Label receipt fields using GPT."""
+        return await self.gpt_processor.label_fields(
+            receipt=receipt,
+            receipt_words=receipt_words,
+            receipt_lines=receipt_lines,
+            section_boundaries=structure_analysis,
+            places_api_data=places_data,
         )
 
-    def _calculate_confidence(
-        self, structure_analysis: Dict, field_analysis: Dict
-    ) -> float:
-        """Calculate overall confidence score."""
-        structure_conf = structure_analysis.get("overall_confidence", 0.0)
-        field_conf = field_analysis.get("metadata", {}).get("average_confidence", 0.0)
-        return (structure_conf + field_conf) / 2
+    async def _analyze_line_items(
+        self,
+        receipt: Receipt,
+        receipt_words: List[ReceiptWord],
+        receipt_lines: List[ReceiptLine],
+        places_data: Optional[Dict],
+        traditional_analysis: Dict,
+    ) -> Dict:
+        """Analyze line items using GPT."""
+        try:
+            return await self.gpt_processor.analyze_line_items(
+                receipt=receipt,
+                receipt_words=receipt_words,
+                receipt_lines=receipt_lines,
+                traditional_analysis=traditional_analysis,
+                places_api_data=places_data or {},
+            )
+        except Exception as e:
+            logger.error(f"Error in line item analysis: {str(e)}")
+            return {
+                "line_items": [],
+                "overall_confidence": 0.0
+            }
+
+    async def _label_section(
+        self,
+        receipt: Receipt,
+        section_lines: List[ReceiptLine],
+        section_words: List[ReceiptWord],
+        section_info: Dict,
+        places_data: Optional[Dict],
+    ) -> Dict:
+        """Label a section using GPT."""
+        try:
+            return await self.gpt_processor.label_section(
+                receipt=receipt,
+                section_lines=section_lines,
+                section_words=section_words,
+                section_info=section_info,
+                places_api_data=places_data or {},
+            )
+        except Exception as e:
+            logger.error(f"Error in section labeling: {str(e)}")
+            return {
+                "labels": [],
+                "overall_confidence": 0.0
+            }

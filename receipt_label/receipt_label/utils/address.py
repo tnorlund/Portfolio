@@ -25,26 +25,50 @@ def normalize_address(address: str) -> str:
 
     # Normalize common abbreviations
     abbreviations = {
-        "ave": "avenue",
-        "st": "street",
-        "rd": "road",
-        "blvd": "boulevard",
-        "ln": "lane",
-        "dr": "drive",
-        "ct": "court",
-        "cir": "circle",
-        "pl": "place",
-        "ste": "suite",
-        "apt": "apartment",
+        r"(?<=\s)ave(?=\s|$)": "avenue",
+        r"(?<=\s)st(?=\s|$)": "street",
+        r"(?<=\s)rd(?=\s|$)": "road",
+        "blvd": "boulevard",  # unique enough to use word boundary
+        r"(?<=\s)ln(?=\s|$)": "lane",
+        r"(?<=\s)dr(?=\s|$)": "drive",
+        r"(?<=\s)ct(?=\s|$)": "court",
+        "cir": "circle",  # unique enough to use word boundary
+        r"(?<=\s)pl(?=\s|$)": "place",
+        r"(?<=\s)ste(?=\s|$)": "suite",
+        r"(?<=\s)apt(?=\s|$)": "apartment",
         "po box": "post office box",
         "p.o. box": "post office box",
         "pobox": "post office box",
     }
 
-    for abbr, full in abbreviations.items():
-        address = re.sub(rf"\b{abbr}\b", full, address)
+    # Add directional abbreviations
+    directions = {
+        "n": "north",
+        "s": "south",
+        "e": "east",
+        "w": "west",
+        "ne": "northeast",
+        "nw": "northwest",
+        "se": "southeast",
+        "sw": "southwest",
+    }
 
-    # Remove common words
+    # First normalize street types (blvd, st, etc)
+    for abbr, full in abbreviations.items():
+        # Use regex with word boundaries for unique abbreviations, whitespace bounds for others
+        if any(pattern in abbr for pattern in ["(?<=\\s)", "(?=\\s|$)"]):
+            address = re.sub(abbr, full, address)
+        else:
+            address = re.sub(rf"\b{abbr}\b", full, address)
+
+    # Then normalize directions, being careful with word boundaries
+    for abbr, full in directions.items():
+        # Only replace if it's a standalone word or at the start followed by a street type
+        address = re.sub(rf"\b{abbr}\b(?=\s+(?:street|avenue|road|boulevard|lane|drive|court|circle|place))", full, address)
+        # Also handle cases where it's a standalone word
+        address = re.sub(rf"^{abbr}\b|\b{abbr}$", full, address)
+
+    # Remove common words that aren't part of the address
     common_words = [
         "the",
         "and",
