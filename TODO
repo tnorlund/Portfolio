@@ -7,7 +7,6 @@
 - [ ] Create Receipt Validation in DynamoDB
 
 ## Implement Base Classes
-- [ ] Create Analysis base class with version and timestamp
 - [ ] Create LabelAnalysis class
 - [ ] Create StructureAnalysis class
 - [ ] Create LineItemAnalysis class
@@ -21,6 +20,7 @@
 - [x] Remove tags attribute from Receipt Word items
 - [x] Remove GPT prompt-related code from Receipt Dynamo
 - [ ] Remove tag-related code from codebase
+  - [ ] Prove new labeling approach works better
 
 ## Update `process.py`
 
