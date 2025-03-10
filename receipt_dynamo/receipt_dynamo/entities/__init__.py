@@ -62,3 +62,7 @@ from receipt_dynamo.entities.receipt_word_label import (
     ReceiptWordLabel,
     itemToReceiptWordLabel,
 )  # noqa: F401
+from receipt_dynamo.entities.receipt_field import (
+    ReceiptField,
+    itemToReceiptField,
+)  # noqa: F401
