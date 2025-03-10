@@ -16,7 +16,7 @@ class ReceiptWord:
 
     This class encapsulates receipt word-related information such as the receipt identifier,
     image UUID, line identifier, word identifier, text content, geometric properties, rotation angles,
-    detection confidence, and optional tags. It is designed to support operations such as generating
+    detection confidence, and character statistics. It is designed to support operations such as generating
     DynamoDB keys (including secondary indexes) and converting the receipt word to a DynamoDB item.
 
     Attributes:
@@ -34,7 +34,6 @@ class ReceiptWord:
         angle_radians (float): The angle of the receipt word in radians.
         confidence (float): The confidence level of the receipt word (between 0 and 1).
         extracted_data (dict): The extracted data of the receipt word provided by Apple's NL API.
-        tags (list[str]): Optional tags associated with the receipt word.
         histogram (dict): A histogram representing character frequencies in the text.
         num_chars (int): The number of characters in the receipt word.
     """
@@ -55,7 +54,6 @@ class ReceiptWord:
         angle_radians: float,
         confidence: float,
         extracted_data: dict = None,
-        tags: list[str] = None,
         histogram: dict = None,
         num_chars: int = None,
     ):
@@ -76,7 +74,6 @@ class ReceiptWord:
             angle_degrees (float): The angle of the receipt word in degrees.
             angle_radians (float): The angle of the receipt word in radians.
             confidence (float): The confidence level of the receipt word (between 0 and 1).
-            tags (list[str], optional): A list of tags associated with the receipt word.
             histogram (dict, optional): A histogram representing character frequencies in the text.
             num_chars (int, optional): The number of characters in the receipt word.
 
@@ -138,10 +135,6 @@ class ReceiptWord:
         if extracted_data is not None and not isinstance(extracted_data, dict):
             raise ValueError("extracted_data must be a dict")
         self.extracted_data = extracted_data
-
-        if tags is not None and not isinstance(tags, list):
-            raise ValueError("tags must be a list")
-        self.tags = tags if tags is not None else []
 
         self.histogram = (
             compute_histogram(self.text) if histogram is None else histogram
@@ -268,8 +261,6 @@ class ReceiptWord:
             },
             "num_chars": {"N": str(self.num_chars)},
         }
-        if self.tags:
-            item["tags"] = {"SS": self.tags}
         return item
 
     def warp_transform(
@@ -432,7 +423,6 @@ class ReceiptWord:
             and self.bottom_left == other.bottom_left
             and self.angle_degrees == other.angle_degrees
             and self.angle_radians == other.angle_radians
-            and self.tags == other.tags
             and self.confidence == other.confidence
             and self.extracted_data == other.extracted_data
         )
@@ -456,7 +446,6 @@ class ReceiptWord:
         yield "bottom_left", self.bottom_left
         yield "angle_degrees", self.angle_degrees
         yield "angle_radians", self.angle_radians
-        yield "tags", self.tags
         yield "extracted_data", self.extracted_data
         yield "confidence", self.confidence
         yield "histogram", self.histogram
@@ -523,7 +512,6 @@ class ReceiptWord:
                 self.angle_degrees,
                 self.angle_radians,
                 self.confidence,
-                tuple(self.tags),
                 self.extracted_data,
             )
         )
@@ -659,7 +647,6 @@ def itemToReceiptWord(item: dict) -> ReceiptWord:
             angle_degrees=float(item["angle_degrees"]["N"]),
             angle_radians=float(item["angle_radians"]["N"]),
             confidence=float(item["confidence"]["N"]),
-            tags=item.get("tags", {}).get("SS", []),
             extracted_data=(
                 None
                 if "NULL" in item.get("extracted_data", {})

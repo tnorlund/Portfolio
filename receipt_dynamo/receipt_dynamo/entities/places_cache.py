@@ -92,14 +92,10 @@ class PlacesCache:
         self.value_hash = value_hash
 
     def _pad_search_value(self, value: str) -> str:
-        """
-        Pad search value with underscores for consistent DynamoDB sort keys.
-        Different padding lengths for different types based on expected max lengths.
-        Replaces spaces with underscores and right-aligns the value with underscore padding.
-        Includes a hash of the original value to prevent collisions.
+        """Pad the search value to a fixed length.
         
         Args:
-            value: Value to pad
+            value: Value to pad (original OCR text)
             
         Returns:
             Padded value with appropriate length and hash
@@ -107,18 +103,19 @@ class PlacesCache:
         value = value.strip()
         
         if self.search_type == "ADDRESS":
-            # Normalize the address first
-            normalized = normalize_address(value)
-            # Replace spaces with underscores
-            normalized = normalized.replace(" ", "_")
-            # Create a hash of the original value (first 8 chars of md5)
+            # Create a hash of the original OCR text
             import hashlib
             value_hash = hashlib.md5(value.encode()).hexdigest()[:8]
-            # Store normalized value and hash
-            self.normalized_value = normalized
+            # Store hash
             self.value_hash = value_hash
-            # Combine normalized value with hash
-            return f"{normalized}_{value_hash}_{value:_>{self._MAX_ADDRESS_LENGTH}}"
+            
+            # Normalize the address for storage
+            normalized = normalize_address(value)
+            # Store normalized value
+            self.normalized_value = normalized
+            
+            # Return padded original value with hash
+            return f"{value_hash}_{value:_>{self._MAX_ADDRESS_LENGTH}}"
         elif self.search_type == "PHONE":
             # Keep only digits and basic formatting characters
             value = "".join(c for c in value if c.isdigit() or c in "()+-")
@@ -297,9 +294,9 @@ def itemToPlacesCache(item: Dict[str, Dict[str, Any]]) -> "PlacesCache":
             if search_type == "ADDRESS":
                 # Extract the original value after the hash
                 parts = padded_value.split("_")
-                if len(parts) >= 2:  # We have at least normalized value and hash
+                if len(parts) >= 2:  # We have hash and original value
                     # The original value is after the hash, strip padding
-                    search_value = parts[2].lstrip("_").replace("_", " ")
+                    search_value = parts[1].lstrip("_").replace("_", " ")
                 else:
                     # Fallback for old format
                     search_value = padded_value.lstrip("_").replace("_", " ")
@@ -324,8 +321,7 @@ def itemToPlacesCache(item: Dict[str, Dict[str, Any]]) -> "PlacesCache":
             # Try to extract from SK if not in item
             parts = item["SK"]["S"].split("#")[1].split("_")
             if len(parts) >= 2:
-                normalized_value = parts[0]
-                value_hash = parts[1]
+                value_hash = parts[0]
         
         if "value_hash" in item and "S" in item["value_hash"]:
             value_hash = item["value_hash"]["S"]

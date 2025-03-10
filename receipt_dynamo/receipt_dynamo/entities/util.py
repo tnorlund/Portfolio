@@ -227,11 +227,11 @@ def normalize_address(addr: str) -> str:
     """
     # Convert to lowercase
     addr = addr.lower()
-    # Replace common abbreviations
-    addr = addr.replace('blvd.', 'boulevard').replace('blvd', 'boulevard')
-    addr = addr.replace('st.', 'street').replace('st', 'street')
-    addr = addr.replace('ave.', 'avenue').replace('ave', 'avenue')
-    addr = addr.replace('rd.', 'road').replace('rd', 'road')
+    # Replace common abbreviations with word boundaries
+    addr = re.sub(r'\bblvd\.?\b', 'boulevard', addr)
+    addr = re.sub(r'\bst\.?\b', 'street', addr)
+    addr = re.sub(r'\bave\.?\b', 'avenue', addr)
+    addr = re.sub(r'\brd\.?\b', 'road', addr)
     # Remove punctuation except for numbers and letters
     addr = re.sub(r'[^\w\s]', '', addr)
     # Normalize whitespace

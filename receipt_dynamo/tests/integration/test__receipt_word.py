@@ -25,7 +25,6 @@ def sample_receipt_word():
         angle_degrees=2.0,
         angle_radians=0.0349066,
         confidence=0.95,
-        tags=["tag1", "tag2"],
     )
 
 
@@ -216,7 +215,6 @@ def test_addReceiptWords_large_batch(
             angle_degrees=2.0,
             angle_radians=0.0349066,
             confidence=0.95,
-            tags=["tag1", "tag2"],
         )
         words.append(word)
 

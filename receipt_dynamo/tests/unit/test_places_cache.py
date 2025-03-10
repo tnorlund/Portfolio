@@ -127,9 +127,27 @@ def test_pad_search_value(example_places_cache):
         last_updated=datetime.now().isoformat()
     )
     padded_address = address_cache._pad_search_value("123 Main St")
-    assert padded_address.startswith("_" * (400 - len("123_Main_St")))
-    assert padded_address.endswith("123_Main_St")
-    assert len(padded_address) == 400
+    print(f"Padded address: {padded_address}")  # Debug output
+    
+    # The padded address should be in format: {hash}_{original_value}
+    # First split on underscores to get all parts
+    parts = [p for p in padded_address.split("_") if p]  # Filter out empty strings
+    print(f"Parts: {parts}")  # Debug output
+    
+    # The first part should be the hash
+    value_hash = parts[0]
+    assert len(value_hash) == 8, f"Hash should be 8 chars, got {value_hash}"
+    
+    # The last part should be the original value
+    original_value = parts[-1]
+    assert original_value == "123 Main St"
+    
+    # Verify normalized value was stored
+    assert address_cache.normalized_value == "123 main street"
+    
+    # Verify total length (400 chars for the original value, plus hash and underscore)
+    expected_length = 400 + 8 + 1  # 8 for hash, 1 for underscore
+    assert len(padded_address) == expected_length, f"Expected length {expected_length}, got {len(padded_address)}"
 
     # Test PHONE padding
     phone_cache = PlacesCache(

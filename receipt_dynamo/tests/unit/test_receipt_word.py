@@ -22,30 +22,9 @@ def example_receipt_word():
     )
 
 
-@pytest.fixture
-def example_receipt_word_with_tags():
-    return ReceiptWord(
-        receipt_id=1,
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        line_id=3,
-        word_id=4,
-        text="Test",
-        bounding_box={"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4},
-        top_right={"x": 1.0, "y": 2.0},
-        top_left={"x": 1.0, "y": 3.0},
-        bottom_right={"x": 4.0, "y": 2.0},
-        bottom_left={"x": 1.0, "y": 1.0},
-        angle_degrees=1.0,
-        angle_radians=5.0,
-        confidence=0.9,
-        tags=["example", "word"],
-    )
-
-
 @pytest.mark.unit
 def test_receipt_word_init_valid(
     example_receipt_word,
-    example_receipt_word_with_tags,
 ):
     """Test that a ReceiptWord with valid arguments initializes correctly."""
     assert example_receipt_word.receipt_id == 1
@@ -68,7 +47,6 @@ def test_receipt_word_init_valid(
     assert example_receipt_word.angle_degrees == 1.0
     assert example_receipt_word.angle_radians == 5.0
     assert example_receipt_word.confidence == 0.9
-    assert example_receipt_word_with_tags.tags == ["example", "word"]
 
 
 @pytest.mark.unit
@@ -412,29 +390,10 @@ def test_receipt_word_init_invalid_extracted_data():
         confidence=0.9,
         extracted_data={"type": "test_type", "value": "test_value"},
     )
-    assert receipt.extracted_data == {"type": "test_type", "value": "test_value"}
-
-
-@pytest.mark.unit
-def test_receipt_word_init_invalid_tags():
-    """Test that tags must be a list of strings."""
-    with pytest.raises(ValueError, match="tags must be a list"):
-        ReceiptWord(
-            receipt_id=1,
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=1,
-            word_id=1,
-            text="Test",
-            bounding_box={"x": 0.0, "y": 0.0, "width": 1.0, "height": 1.0},
-            top_right={"x": 1.0, "y": 2.0},
-            top_left={"x": 1.0, "y": 2.0},
-            bottom_right={"x": 1.0, "y": 2.0},
-            bottom_left={"x": 1.0, "y": 2.0},
-            angle_degrees=0.0,
-            angle_radians=0.0,
-            confidence=0.9,
-            tags="tag1",
-        )
+    assert receipt.extracted_data == {
+        "type": "test_type",
+        "value": "test_value",
+    }
 
 
 @pytest.mark.unit
@@ -457,13 +416,11 @@ def test_receipt_word_to_item():
         angle_degrees=45.0,
         angle_radians=0.7853981634,
         confidence=0.95,
-        tags=["tag1", "tag2"],
     )
     item = word.to_item()
     assert item["PK"]["S"] == "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert item["SK"]["S"] == "RECEIPT#00001#LINE#00003#WORD#00004"
     assert item["bounding_box"]["M"]["x"]["N"]
-    assert "SS" in item["tags"]
 
 
 @pytest.mark.unit
@@ -510,7 +467,6 @@ def test_receipt_word_eq():
         angle_degrees=45.0,
         angle_radians=0.785398,
         confidence=0.99,
-        tags=["example", "word"],
     )
     word2 = ReceiptWord(
         receipt_id=1,
@@ -526,16 +482,15 @@ def test_receipt_word_eq():
         angle_degrees=45.0,
         angle_radians=0.785398,
         confidence=0.99,
-        tags=["example", "word"],
     )
     assert word1 == word2
     assert word1 != "Test"
 
 
 @pytest.mark.unit
-def test_receipt_word_iter(example_receipt_word_with_tags):
+def test_receipt_word_iter(example_receipt_word):
     """Test that the __iter__ method returns a dictionary."""
-    receipt_word_dict = dict(example_receipt_word_with_tags)
+    receipt_word_dict = dict(example_receipt_word)
     expected_keys = {
         "receipt_id",
         "image_id",
@@ -550,7 +505,6 @@ def test_receipt_word_iter(example_receipt_word_with_tags):
         "angle_degrees",
         "angle_radians",
         "confidence",
-        "tags",
         "histogram",
         "num_chars",
         "extracted_data",
@@ -576,8 +530,7 @@ def test_receipt_word_iter(example_receipt_word_with_tags):
     assert receipt_word_dict["angle_degrees"] == 1.0
     assert receipt_word_dict["angle_radians"] == 5.0
     assert receipt_word_dict["confidence"] == 0.9
-    assert receipt_word_dict["tags"] == ["example", "word"]
-    assert ReceiptWord(**receipt_word_dict) == example_receipt_word_with_tags
+    assert ReceiptWord(**receipt_word_dict) == example_receipt_word
 
 
 @pytest.mark.unit
@@ -611,11 +564,11 @@ def test_receipt_word_distance_and_angle(example_receipt_word):
 
 
 @pytest.mark.unit
-def test_item_to_receipt_word_round_trip(example_receipt_word_with_tags):
+def test_item_to_receipt_word_round_trip(example_receipt_word):
     """Test that converting an item to ReceiptWord and back is consistent."""
     assert (
-        itemToReceiptWord(example_receipt_word_with_tags.to_item())
-        == example_receipt_word_with_tags
+        itemToReceiptWord(example_receipt_word.to_item())
+        == example_receipt_word
     )
     with pytest.raises(ValueError, match="^Item is missing required keys:"):
         itemToReceiptWord({})
@@ -636,6 +589,5 @@ def test_item_to_receipt_word_round_trip(example_receipt_word_with_tags):
                 "angle_degrees": {"N": "1.0"},
                 "angle_radians": {"N": "5.0"},
                 "confidence": {"N": "0.9"},
-                "tags": {"SS": ["example", "word"]},
             }
         )

@@ -14,11 +14,11 @@
 - [ ] Create ValidationAnalysis class
 
 ## Remove Tag System
-- [ ] Delete Word Tag items from DynamoDB
-- [ ] Delete Receipt Word Tag items from DynamoDB
-- [ ] Delete GPT Prompt items from DynamoDB
-- [ ] Remove tags attribute from Word items
-- [ ] Remove tags attribute from Receipt Word items
+- [x] Delete Word Tag items from DynamoDB
+- [x] Delete Receipt Word Tag items from DynamoDB
+- [x] Delete GPT Prompt items from DynamoDB
+- [x] Remove tags attribute from Word items
+- [x] Remove tags attribute from Receipt Word items
 - [ ] Remove tag-related code from codebase
 
 ## Update Receipt Validation Schema
