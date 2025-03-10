@@ -65,7 +65,9 @@ class _ReceiptWordLabel:
                     f"Could not add receipt word label to DynamoDB: {e}"
                 ) from e
 
-    def addReceiptWordLabels(self, receipt_word_labels: list[ReceiptWordLabel]):
+    def addReceiptWordLabels(
+        self, receipt_word_labels: list[ReceiptWordLabel]
+    ):
         """Adds a list of receipt word labels to the database
 
         Args:
@@ -79,8 +81,13 @@ class _ReceiptWordLabel:
                 "ReceiptWordLabels parameter is required and cannot be None."
             )
         if not isinstance(receipt_word_labels, list):
-            raise ValueError("receipt_word_labels must be a list of ReceiptWordLabel instances.")
-        if not all(isinstance(label, ReceiptWordLabel) for label in receipt_word_labels):
+            raise ValueError(
+                "receipt_word_labels must be a list of ReceiptWordLabel instances."
+            )
+        if not all(
+            isinstance(label, ReceiptWordLabel)
+            for label in receipt_word_labels
+        ):
             raise ValueError(
                 "All receipt word labels must be instances of the ReceiptWordLabel class."
             )
@@ -160,7 +167,9 @@ class _ReceiptWordLabel:
             else:
                 raise ValueError(f"Error updating receipt word label: {e}")
 
-    def updateReceiptWordLabels(self, receipt_word_labels: list[ReceiptWordLabel]):
+    def updateReceiptWordLabels(
+        self, receipt_word_labels: list[ReceiptWordLabel]
+    ):
         """
         Updates a list of receipt word labels in the database using transactions.
         Each receipt word label update is conditional upon the label already existing.
@@ -177,8 +186,13 @@ class _ReceiptWordLabel:
                 "ReceiptWordLabels parameter is required and cannot be None."
             )
         if not isinstance(receipt_word_labels, list):
-            raise ValueError("receipt_word_labels must be a list of ReceiptWordLabel instances.")
-        if not all(isinstance(label, ReceiptWordLabel) for label in receipt_word_labels):
+            raise ValueError(
+                "receipt_word_labels must be a list of ReceiptWordLabel instances."
+            )
+        if not all(
+            isinstance(label, ReceiptWordLabel)
+            for label in receipt_word_labels
+        ):
             raise ValueError(
                 "All receipt word labels must be instances of the ReceiptWordLabel class."
             )
@@ -219,7 +233,9 @@ class _ReceiptWordLabel:
                 elif error_code == "AccessDeniedException":
                     raise Exception(f"Access denied: {e}") from e
                 else:
-                    raise ValueError(f"Error updating receipt word labels: {e}") from e
+                    raise ValueError(
+                        f"Error updating receipt word labels: {e}"
+                    ) from e
 
     def deleteReceiptWordLabel(self, receipt_word_label: ReceiptWordLabel):
         """Deletes a receipt word label from the database
@@ -261,9 +277,13 @@ class _ReceiptWordLabel:
             elif error_code == "AccessDeniedException":
                 raise Exception(f"Access denied: {e}") from e
             else:
-                raise ValueError(f"Error deleting receipt word label: {e}") from e
+                raise ValueError(
+                    f"Error deleting receipt word label: {e}"
+                ) from e
 
-    def deleteReceiptWordLabels(self, receipt_word_labels: list[ReceiptWordLabel]):
+    def deleteReceiptWordLabels(
+        self, receipt_word_labels: list[ReceiptWordLabel]
+    ):
         """
         Deletes a list of receipt word labels from the database using transactions.
         Each delete operation is conditional upon the label existing.
@@ -279,8 +299,13 @@ class _ReceiptWordLabel:
                 "ReceiptWordLabels parameter is required and cannot be None."
             )
         if not isinstance(receipt_word_labels, list):
-            raise ValueError("receipt_word_labels must be a list of ReceiptWordLabel instances.")
-        if not all(isinstance(label, ReceiptWordLabel) for label in receipt_word_labels):
+            raise ValueError(
+                "receipt_word_labels must be a list of ReceiptWordLabel instances."
+            )
+        if not all(
+            isinstance(label, ReceiptWordLabel)
+            for label in receipt_word_labels
+        ):
             raise ValueError(
                 "All receipt word labels must be instances of the ReceiptWordLabel class."
             )
@@ -306,7 +331,9 @@ class _ReceiptWordLabel:
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError("One or more receipt word labels do not exist") from e
+                raise ValueError(
+                    "One or more receipt word labels do not exist"
+                ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "InternalServerError":
@@ -318,10 +345,17 @@ class _ReceiptWordLabel:
             elif error_code == "AccessDeniedException":
                 raise Exception(f"Access denied: {e}") from e
             else:
-                raise ValueError(f"Error deleting receipt word labels: {e}") from e
+                raise ValueError(
+                    f"Error deleting receipt word labels: {e}"
+                ) from e
 
     def getReceiptWordLabel(
-        self, image_id: str, receipt_id: int, line_id: int, word_id: int, label: str
+        self,
+        image_id: str,
+        receipt_id: int,
+        line_id: int,
+        word_id: int,
+        label: str,
     ) -> ReceiptWordLabel:
         """
         Retrieves a receipt word label from the database.
@@ -389,7 +423,9 @@ class _ReceiptWordLabel:
             elif error_code == "AccessDeniedException":
                 raise Exception(f"Access denied: {e}") from e
             else:
-                raise Exception(f"Error getting receipt word label: {e}") from e
+                raise Exception(
+                    f"Error getting receipt word label: {e}"
+                ) from e
 
     def listReceiptWordLabels(
         self, limit: int = None, lastEvaluatedKey: dict | None = None
@@ -427,7 +463,9 @@ class _ReceiptWordLabel:
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "RECEIPT_WORD_LABEL"}},
+                "ExpressionAttributeValues": {
+                    ":val": {"S": "RECEIPT_WORD_LABEL"}
+                },
             }
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
@@ -439,7 +477,10 @@ class _ReceiptWordLabel:
 
                 response = self._client.query(**query_params)
                 labels.extend(
-                    [itemToReceiptWordLabel(item) for item in response["Items"]]
+                    [
+                        itemToReceiptWordLabel(item)
+                        for item in response["Items"]
+                    ]
                 )
 
                 if limit is not None and len(labels) >= limit:
@@ -476,7 +517,10 @@ class _ReceiptWordLabel:
                 ) from e
 
     def getReceiptWordLabelsByLabel(
-        self, label: str, limit: int = None, lastEvaluatedKey: dict | None = None
+        self,
+        label: str,
+        limit: int = None,
+        lastEvaluatedKey: dict | None = None,
     ) -> tuple[list[ReceiptWordLabel], dict | None]:
         """
         Retrieve receipt word labels by label type using GSI1.
@@ -513,7 +557,9 @@ class _ReceiptWordLabel:
                 "IndexName": "GSI1",
                 "KeyConditionExpression": "GSI1PK = :pk",
                 "ExpressionAttributeValues": {
-                    ":pk": {"S": f"LABEL#{label.upper()}{'_' * (40 - len('LABEL#') - len(label.upper()))}"}
+                    ":pk": {
+                        "S": f"LABEL#{label.upper()}{'_' * (40 - len('LABEL#') - len(label.upper()))}"
+                    }
                 },
             }
             if lastEvaluatedKey is not None:
@@ -526,7 +572,10 @@ class _ReceiptWordLabel:
 
                 response = self._client.query(**query_params)
                 labels.extend(
-                    [itemToReceiptWordLabel(item) for item in response["Items"]]
+                    [
+                        itemToReceiptWordLabel(item)
+                        for item in response["Items"]
+                    ]
                 )
 
                 if limit is not None and len(labels) >= limit:

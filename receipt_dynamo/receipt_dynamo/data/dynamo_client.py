@@ -24,6 +24,7 @@ from receipt_dynamo.data._word_tag import _WordTag
 from receipt_dynamo.data._receipt_word_label import _ReceiptWordLabel
 from receipt_dynamo.data._receipt_field import _ReceiptField
 
+
 class DynamoClient(
     _Image,
     _Line,

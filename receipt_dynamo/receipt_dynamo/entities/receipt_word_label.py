@@ -109,7 +109,7 @@ class ReceiptWordLabel:
 
     def gsi1_key(self) -> dict:
         """Generate the GSI1 key for this ReceiptWordLabel.
-        
+
         The GSI1PK will be exactly 40 characters long, with the format:
         "LABEL#<label><padding_underscores>"
         """

@@ -56,7 +56,9 @@ class ReceiptField:
             raise ValueError("field_type must be a string")
         if not field_type:
             raise ValueError("field_type cannot be empty")
-        self.field_type = field_type.upper()  # Store field type in uppercase for consistency
+        self.field_type = (
+            field_type.upper()
+        )  # Store field type in uppercase for consistency
 
         assert_valid_uuid(image_id)
         self.image_id = image_id
@@ -282,7 +284,9 @@ def itemToReceiptField(item: dict) -> ReceiptField:
                     elif "N" in value:
                         word_dict[key] = int(value["N"])
                     else:
-                        raise ValueError(f"Unsupported DynamoDB type in word field: {value}")
+                        raise ValueError(
+                            f"Unsupported DynamoDB type in word field: {value}"
+                        )
                 else:
                     word_dict[key] = value
             words.append(word_dict)

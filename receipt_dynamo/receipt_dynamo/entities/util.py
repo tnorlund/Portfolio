@@ -218,22 +218,22 @@ def shear_point(px, py, pivot_x, pivot_y, shx, shy):
 
 def normalize_address(addr: str) -> str:
     """Normalize an address for consistent caching.
-    
+
     Args:
         addr (str): The address to normalize
-        
+
     Returns:
         str: The normalized address
     """
     # Convert to lowercase
     addr = addr.lower()
     # Replace common abbreviations with word boundaries
-    addr = re.sub(r'\bblvd\.?\b', 'boulevard', addr)
-    addr = re.sub(r'\bst\.?\b', 'street', addr)
-    addr = re.sub(r'\bave\.?\b', 'avenue', addr)
-    addr = re.sub(r'\brd\.?\b', 'road', addr)
+    addr = re.sub(r"\bblvd\.?\b", "boulevard", addr)
+    addr = re.sub(r"\bst\.?\b", "street", addr)
+    addr = re.sub(r"\bave\.?\b", "avenue", addr)
+    addr = re.sub(r"\brd\.?\b", "road", addr)
     # Remove punctuation except for numbers and letters
-    addr = re.sub(r'[^\w\s]', '', addr)
+    addr = re.sub(r"[^\w\s]", "", addr)
     # Normalize whitespace
-    addr = ' '.join(addr.split())
+    addr = " ".join(addr.split())
     return addr

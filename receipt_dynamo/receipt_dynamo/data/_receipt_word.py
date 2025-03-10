@@ -39,7 +39,9 @@ class _ReceiptWord:
         if word is None:
             raise ValueError("word parameter is required and cannot be None.")
         if not isinstance(word, ReceiptWord):
-            raise ValueError("word must be an instance of the ReceiptWord class.")
+            raise ValueError(
+                "word must be an instance of the ReceiptWord class."
+            )
         try:
             self._client.put_item(
                 TableName=self.table_name,
@@ -135,7 +137,9 @@ class _ReceiptWord:
         if not isinstance(words, list):
             raise ValueError("words must be a list of ReceiptWord instances.")
         if not all(isinstance(w, ReceiptWord) for w in words):
-            raise ValueError("All words must be instances of the ReceiptWord class.")
+            raise ValueError(
+                "All words must be instances of the ReceiptWord class."
+            )
         for i in range(0, len(words), 25):
             chunk = words[i : i + 25]
             transact_items = [
@@ -159,7 +163,9 @@ class _ReceiptWord:
                 elif error_code == "InternalServerError":
                     raise Exception("Internal server error")
                 elif error_code == "ValidationException":
-                    raise Exception("One or more parameters given were invalid")
+                    raise Exception(
+                        "One or more parameters given were invalid"
+                    )
                 elif error_code == "AccessDeniedException":
                     raise Exception("Access denied")
                 else:
@@ -398,23 +404,29 @@ class _ReceiptWord:
                 f"Could not list ReceiptWords from the database: {e}"
             )
 
-    def listReceiptWordsFromReceipt(self, image_id: str, receipt_id: int) -> list[ReceiptWord]:
+    def listReceiptWordsFromReceipt(
+        self, image_id: str, receipt_id: int
+    ) -> list[ReceiptWord]:
         """Returns all ReceiptWords that match the given receipt/image IDs.
-        
+
         Args:
             image_id (str): The ID of the image
             receipt_id (int): The ID of the receipt
-            
+
         Returns:
             list[ReceiptWord]: List of ReceiptWord entities for the given receipt
-            
+
         Raises:
             ValueError: If the parameters are invalid or if there's an error querying DynamoDB
         """
         if image_id is None:
-            raise ValueError("image_id parameter is required and cannot be None.")
+            raise ValueError(
+                "image_id parameter is required and cannot be None."
+            )
         if receipt_id is None:
-            raise ValueError("receipt_id parameter is required and cannot be None.")
+            raise ValueError(
+                "receipt_id parameter is required and cannot be None."
+            )
         if not isinstance(image_id, str):
             raise ValueError("image_id must be a string.")
         if not isinstance(receipt_id, int):
@@ -426,45 +438,58 @@ class _ReceiptWord:
             query_params = {
                 "TableName": self.table_name,
                 "KeyConditionExpression": "#pk = :pk_val AND #sk BETWEEN :sk_start AND :sk_end",
-                "ExpressionAttributeNames": {
-                    "#pk": "PK",
-                    "#sk": "SK"
-                },
+                "ExpressionAttributeNames": {"#pk": "PK", "#sk": "SK"},
                 "ExpressionAttributeValues": {
                     ":pk_val": {"S": f"IMAGE#{image_id}"},
                     ":sk_start": {"S": f"RECEIPT#{receipt_id:05d}#LINE#"},
-                    ":sk_end": {"S": f"RECEIPT#{receipt_id:05d}#LINE#\uffff#WORD#\uffff"},
+                    ":sk_end": {
+                        "S": f"RECEIPT#{receipt_id:05d}#LINE#\uffff#WORD#\uffff"
+                    },
                 },
             }
-            
+
             # Initial query
             response = self._client.query(**query_params)
-            receipt_words.extend([
-                itemToReceiptWord(item) 
-                for item in response["Items"]
-                if "#WORD#" in item["SK"]["S"] and not item["SK"]["S"].endswith("#TAG#") and not item["SK"]["S"].endswith("#LETTER#")
-            ])
-            
+            receipt_words.extend(
+                [
+                    itemToReceiptWord(item)
+                    for item in response["Items"]
+                    if "#WORD#" in item["SK"]["S"]
+                    and not item["SK"]["S"].endswith("#TAG#")
+                    and not item["SK"]["S"].endswith("#LETTER#")
+                ]
+            )
+
             # Handle pagination
             while "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                query_params["ExclusiveStartKey"] = response[
+                    "LastEvaluatedKey"
+                ]
                 response = self._client.query(**query_params)
-                receipt_words.extend([
-                    itemToReceiptWord(item) 
-                    for item in response["Items"]
-                    if "#WORD#" in item["SK"]["S"] and not item["SK"]["S"].endswith("#TAG#") and not item["SK"]["S"].endswith("#LETTER#")
-                ])
-            
+                receipt_words.extend(
+                    [
+                        itemToReceiptWord(item)
+                        for item in response["Items"]
+                        if "#WORD#" in item["SK"]["S"]
+                        and not item["SK"]["S"].endswith("#TAG#")
+                        and not item["SK"]["S"].endswith("#LETTER#")
+                    ]
+                )
+
             return receipt_words
-            
+
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(f"Could not list receipt words from DynamoDB: {e}") from e
+                raise Exception(
+                    f"Could not list receipt words from DynamoDB: {e}"
+                ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "ValidationException":
-                raise ValueError(f"One or more parameters given were invalid: {e}") from e
+                raise ValueError(
+                    f"One or more parameters given were invalid: {e}"
+                ) from e
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:

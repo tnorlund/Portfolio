@@ -79,8 +79,12 @@ class _ReceiptField:
                 "ReceiptFields parameter is required and cannot be None."
             )
         if not isinstance(receipt_fields, list):
-            raise ValueError("receipt_fields must be a list of ReceiptField instances.")
-        if not all(isinstance(field, ReceiptField) for field in receipt_fields):
+            raise ValueError(
+                "receipt_fields must be a list of ReceiptField instances."
+            )
+        if not all(
+            isinstance(field, ReceiptField) for field in receipt_fields
+        ):
             raise ValueError(
                 "All receipt fields must be instances of the ReceiptField class."
             )
@@ -177,8 +181,12 @@ class _ReceiptField:
                 "ReceiptFields parameter is required and cannot be None."
             )
         if not isinstance(receipt_fields, list):
-            raise ValueError("receipt_fields must be a list of ReceiptField instances.")
-        if not all(isinstance(field, ReceiptField) for field in receipt_fields):
+            raise ValueError(
+                "receipt_fields must be a list of ReceiptField instances."
+            )
+        if not all(
+            isinstance(field, ReceiptField) for field in receipt_fields
+        ):
             raise ValueError(
                 "All receipt fields must be instances of the ReceiptField class."
             )
@@ -219,7 +227,9 @@ class _ReceiptField:
                 elif error_code == "AccessDeniedException":
                     raise Exception(f"Access denied: {e}") from e
                 else:
-                    raise ValueError(f"Error updating receipt fields: {e}") from e
+                    raise ValueError(
+                        f"Error updating receipt fields: {e}"
+                    ) from e
 
     def deleteReceiptField(self, receipt_field: ReceiptField):
         """Deletes a receipt field from the database
@@ -279,8 +289,12 @@ class _ReceiptField:
                 "ReceiptFields parameter is required and cannot be None."
             )
         if not isinstance(receipt_fields, list):
-            raise ValueError("receipt_fields must be a list of ReceiptField instances.")
-        if not all(isinstance(field, ReceiptField) for field in receipt_fields):
+            raise ValueError(
+                "receipt_fields must be a list of ReceiptField instances."
+            )
+        if not all(
+            isinstance(field, ReceiptField) for field in receipt_fields
+        ):
             raise ValueError(
                 "All receipt fields must be instances of the ReceiptField class."
             )
@@ -306,7 +320,9 @@ class _ReceiptField:
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError("One or more receipt fields do not exist") from e
+                raise ValueError(
+                    "One or more receipt fields do not exist"
+                ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "InternalServerError":
@@ -357,9 +373,7 @@ class _ReceiptField:
                 TableName=self.table_name,
                 Key={
                     "PK": {"S": f"FIELD#{field_type.upper()}"},
-                    "SK": {
-                        "S": f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"
-                    },
+                    "SK": {"S": f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"},
                 },
             )
             if "Item" in response:
@@ -466,7 +480,10 @@ class _ReceiptField:
                 ) from e
 
     def getReceiptFieldsByImage(
-        self, image_id: str, limit: int = None, lastEvaluatedKey: dict | None = None
+        self,
+        image_id: str,
+        limit: int = None,
+        lastEvaluatedKey: dict | None = None,
     ) -> tuple[list[ReceiptField], dict | None]:
         """
         Retrieve receipt fields by image ID using GSI1.
@@ -554,7 +571,11 @@ class _ReceiptField:
                 ) from e
 
     def getReceiptFieldsByReceipt(
-        self, image_id: str, receipt_id: int, limit: int = None, lastEvaluatedKey: dict | None = None
+        self,
+        image_id: str,
+        receipt_id: int,
+        limit: int = None,
+        lastEvaluatedKey: dict | None = None,
     ) -> tuple[list[ReceiptField], dict | None]:
         """
         Retrieve receipt fields by receipt ID using GSI2.
@@ -596,7 +617,9 @@ class _ReceiptField:
                 "KeyConditionExpression": "GSI2PK = :pk AND begins_with(GSI2SK, :sk_prefix)",
                 "ExpressionAttributeValues": {
                     ":pk": {"S": "RECEIPT"},
-                    ":sk_prefix": {"S": f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"}
+                    ":sk_prefix": {
+                        "S": f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"
+                    },
                 },
             }
             if lastEvaluatedKey is not None:

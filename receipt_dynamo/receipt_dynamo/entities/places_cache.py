@@ -23,10 +23,11 @@ class PlacesCache:
         normalized_value (str): Normalized version of the search value (for addresses)
         value_hash (str): Hash of the original search value (for addresses)
     """
+
     # Maximum field lengths based on Google Places API
     _MAX_ADDRESS_LENGTH = 400  # Allow for future growth beyond current 315 max
-    _MAX_PHONE_LENGTH = 30    # International format with extra padding
-    _MAX_URL_LENGTH = 100     # Standard URLs with some padding
+    _MAX_PHONE_LENGTH = 30  # International format with extra padding
+    _MAX_URL_LENGTH = 100  # Standard URLs with some padding
 
     def __init__(
         self,
@@ -37,7 +38,7 @@ class PlacesCache:
         last_updated: str,
         query_count: int = 0,
         normalized_value: str = None,
-        value_hash: str = None
+        value_hash: str = None,
     ):
         """
         Initialize a new PlacesCache entry.
@@ -57,7 +58,9 @@ class PlacesCache:
         """
         # Validate search_type
         if search_type not in ["ADDRESS", "PHONE", "URL"]:
-            raise ValueError(f"search_type must be one of: ADDRESS, PHONE, URL")
+            raise ValueError(
+                f"search_type must be one of: ADDRESS, PHONE, URL"
+            )
         self.search_type = search_type
 
         # Validate search_value
@@ -79,7 +82,9 @@ class PlacesCache:
         try:
             datetime.fromisoformat(last_updated)
         except (ValueError, TypeError):
-            raise ValueError("last_updated must be a valid ISO format timestamp")
+            raise ValueError(
+                "last_updated must be a valid ISO format timestamp"
+            )
         self.last_updated = last_updated
 
         # Validate query_count
@@ -93,27 +98,28 @@ class PlacesCache:
 
     def _pad_search_value(self, value: str) -> str:
         """Pad the search value to a fixed length.
-        
+
         Args:
             value: Value to pad (original OCR text)
-            
+
         Returns:
             Padded value with appropriate length and hash
         """
         value = value.strip()
-        
+
         if self.search_type == "ADDRESS":
             # Create a hash of the original OCR text
             import hashlib
+
             value_hash = hashlib.md5(value.encode()).hexdigest()[:8]
             # Store hash
             self.value_hash = value_hash
-            
+
             # Normalize the address for storage
             normalized = normalize_address(value)
             # Store normalized value
             self.normalized_value = normalized
-            
+
             # Return padded original value with hash
             return f"{value_hash}_{value:_>{self._MAX_ADDRESS_LENGTH}}"
         elif self.search_type == "PHONE":
@@ -130,38 +136,38 @@ class PlacesCache:
     def key(self) -> Dict[str, Dict[str, str]]:
         """
         Generate the primary key for DynamoDB.
-        
+
         Returns:
             Dict: The primary key attributes
         """
         padded_value = self._pad_search_value(self.search_value)
         return {
             "PK": {"S": f"PLACES#{self.search_type}"},
-            "SK": {"S": f"VALUE#{padded_value}"}
+            "SK": {"S": f"VALUE#{padded_value}"},
         }
 
     def gsi1_key(self) -> Dict[str, Dict[str, Any]]:
         """
         Generate the GSI1 key for DynamoDB.
-        
+
         Returns:
             Dict: The GSI1 key attributes
-        """ 
+        """
         return {
             "GSI1PK": {"S": "PLACE_ID"},
-            "GSI1SK": {"S": f"PLACE_ID#{self.place_id}"}
+            "GSI1SK": {"S": f"PLACE_ID#{self.place_id}"},
         }
 
     def gsi2_key(self) -> Dict[str, Dict[str, Any]]:
         """
         Generate the GSI2 key for DynamoDB.
-        
+
         Returns:
             Dict: The GSI2 key attributes
         """
         return {
             "GSI2PK": {"S": "LAST_USED"},
-            "GSI2SK": {"S": self.last_updated}
+            "GSI2SK": {"S": self.last_updated},
         }
 
     def to_item(self) -> Dict[str, Dict[str, Any]]:
@@ -171,7 +177,7 @@ class PlacesCache:
         - Base table: PK (PLACES#<search_type>), SK (VALUE#<padded_search_value>)
         - GSI1: GSI1PK (PLACE_ID), GSI1SK (PLACE_ID#<place_id>) - For place_id lookups
         - GSI2: GSI2PK (LAST_USED), GSI2SK (<timestamp>) - For cache invalidation
-        
+
         Returns:
             Dict: The DynamoDB item representation with all required attributes
         """
@@ -187,38 +193,38 @@ class PlacesCache:
             "last_updated": {"S": self.last_updated},
             "query_count": {"N": str(self.query_count)},
             "search_type": {"S": self.search_type},
-            "search_value": {"S": self.search_value}
+            "search_value": {"S": self.search_value},
         }
-        
+
         # Add normalized value and hash if they exist
         if self.normalized_value:
             item["normalized_value"] = {"S": self.normalized_value}
         if self.value_hash:
             item["value_hash"] = {"S": self.value_hash}
-            
+
         return item
 
     def __eq__(self, other: object) -> bool:
         """
         Compare two PlacesCache entries for equality.
-        
+
         Args:
             other: The object to compare with
-            
+
         Returns:
             bool: True if equal, False otherwise
         """
         if not isinstance(other, PlacesCache):
             return False
         return (
-            self.search_type == other.search_type and
-            self.search_value == other.search_value and
-            self.place_id == other.place_id and
-            self.places_response == other.places_response and
-            self.last_updated == other.last_updated and
-            self.query_count == other.query_count and
-            self.normalized_value == other.normalized_value and
-            self.value_hash == other.value_hash
+            self.search_type == other.search_type
+            and self.search_value == other.search_value
+            and self.place_id == other.place_id
+            and self.places_response == other.places_response
+            and self.last_updated == other.last_updated
+            and self.query_count == other.query_count
+            and self.normalized_value == other.normalized_value
+            and self.value_hash == other.value_hash
         )
 
     def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
@@ -226,7 +232,7 @@ class PlacesCache:
         Returns an iterator over the PlacesCache object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over the PlacesCache object's attribute name/value pairs.   
+            Generator[Tuple[str, Any], None, None]: An iterator over the PlacesCache object's attribute name/value pairs.
         """
         yield "search_type", self.search_type
         yield "search_value", self.search_value
@@ -238,12 +244,11 @@ class PlacesCache:
             yield "normalized_value", self.normalized_value
         if self.value_hash:
             yield "value_hash", self.value_hash
-    
 
     def __repr__(self) -> str:
         """
         Get string representation of the PlacesCache entry.
-        
+
         Returns:
             str: String representation
         """
@@ -263,34 +268,41 @@ class PlacesCache:
 def itemToPlacesCache(item: Dict[str, Dict[str, Any]]) -> "PlacesCache":
     """
     Convert a DynamoDB item to a PlacesCache object.
-    
+
     Args:
         item (Dict): The DynamoDB item
-        
+
     Returns:
         PlacesCache: The converted item
-        
+
     Raises:
         ValueError: If the item is missing required keys or has invalid data
     """
     required_keys = [
-        "PK", "SK", "search_type", "place_id", "places_response",
-        "last_updated", "query_count"
+        "PK",
+        "SK",
+        "search_type",
+        "place_id",
+        "places_response",
+        "last_updated",
+        "query_count",
     ]
-    
+
     if not all(key in item for key in required_keys):
         raise ValueError("Item is missing required keys")
-    
+
     try:
         places_response = json.loads(item["places_response"]["S"])
         search_type = item["search_type"]["S"]
-        
+
         # Try to get the original search_value first
         if "search_value" in item and "S" in item["search_value"]:
             search_value = item["search_value"]["S"]
         else:
             # Fall back to extracting from SK if search_value is missing
-            padded_value = item["SK"]["S"].split("#")[1]  # Get the value after VALUE#
+            padded_value = item["SK"]["S"].split("#")[
+                1
+            ]  # Get the value after VALUE#
             if search_type == "ADDRESS":
                 # Extract the original value after the hash
                 parts = padded_value.split("_")
@@ -304,17 +316,19 @@ def itemToPlacesCache(item: Dict[str, Dict[str, Any]]) -> "PlacesCache":
                 # For phone numbers, strip padding and normalize
                 search_value = padded_value.lstrip("_")
                 # Keep only digits and basic formatting
-                search_value = "".join(c for c in search_value if c.isdigit() or c in "()+-")
+                search_value = "".join(
+                    c for c in search_value if c.isdigit() or c in "()+-"
+                )
             elif search_type == "URL":
                 # For URLs, strip padding and keep underscores (they're part of the URL)
                 search_value = padded_value.lstrip("_")
             else:
                 raise ValueError(f"Invalid search type: {search_type}")
-        
+
         # Extract normalized value and hash if they exist
         normalized_value = None
         value_hash = None
-        
+
         if "normalized_value" in item and "S" in item["normalized_value"]:
             normalized_value = item["normalized_value"]["S"]
         elif search_type == "ADDRESS":
@@ -322,10 +336,10 @@ def itemToPlacesCache(item: Dict[str, Dict[str, Any]]) -> "PlacesCache":
             parts = item["SK"]["S"].split("#")[1].split("_")
             if len(parts) >= 2:
                 value_hash = parts[0]
-        
+
         if "value_hash" in item and "S" in item["value_hash"]:
             value_hash = item["value_hash"]["S"]
-        
+
         return PlacesCache(
             search_type=search_type,
             search_value=search_value,
@@ -334,7 +348,7 @@ def itemToPlacesCache(item: Dict[str, Dict[str, Any]]) -> "PlacesCache":
             last_updated=item["last_updated"]["S"],
             query_count=int(item["query_count"]["N"]),
             normalized_value=normalized_value,
-            value_hash=value_hash
+            value_hash=value_hash,
         )
     except (json.JSONDecodeError, ValueError, KeyError) as e:
-        raise ValueError(f"Error converting item to PlacesCache: {str(e)}") 
+        raise ValueError(f"Error converting item to PlacesCache: {str(e)}")

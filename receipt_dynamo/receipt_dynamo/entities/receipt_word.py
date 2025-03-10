@@ -177,7 +177,7 @@ class ReceiptWord:
                 )
             },
         }
-    
+
     def gsi3_key(self) -> dict:
         """
         Generates the secondary index key for the receipt word.
@@ -249,10 +249,12 @@ class ReceiptWord:
             "angle_radians": {"N": _format_float(self.angle_radians, 18, 20)},
             "confidence": {"N": _format_float(self.confidence, 2, 2)},
             "extracted_data": (
-                {"M": {
-                    "type": {"S": self.extracted_data["type"]},
-                    "value": {"S": self.extracted_data["value"]},
-                }}
+                {
+                    "M": {
+                        "type": {"S": self.extracted_data["type"]},
+                        "value": {"S": self.extracted_data["value"]},
+                    }
+                }
                 if self.extracted_data
                 else {"NULL": True}
             ),
@@ -555,7 +557,7 @@ class ReceiptWord:
             <= self.bounding_box["y"] + self.bounding_box["height"]
         )
 
-    def diff(self, other: 'ReceiptWord') -> dict:
+    def diff(self, other: "ReceiptWord") -> dict:
         """
         Compare this ReceiptWord with another and return their differences.
 
@@ -575,16 +577,13 @@ class ReceiptWord:
                     for k in all_keys:
                         if value.get(k) != other_value.get(k):
                             diff[k] = {
-                                'self': value.get(k),
-                                'other': other_value.get(k)
+                                "self": value.get(k),
+                                "other": other_value.get(k),
                             }
                     if diff:
                         differences[attr] = dict(sorted(diff.items()))
                 else:
-                    differences[attr] = {
-                        'self': value,
-                        'other': other_value
-                    }
+                    differences[attr] = {"self": value, "other": other_value}
         return differences
 
 
@@ -651,8 +650,14 @@ def itemToReceiptWord(item: dict) -> ReceiptWord:
                 None
                 if "NULL" in item.get("extracted_data", {})
                 else {
-                    "type": item.get("extracted_data", {}).get("M", {}).get("type", {}).get("S"),
-                    "value": item.get("extracted_data", {}).get("M", {}).get("value", {}).get("S")
+                    "type": item.get("extracted_data", {})
+                    .get("M", {})
+                    .get("type", {})
+                    .get("S"),
+                    "value": item.get("extracted_data", {})
+                    .get("M", {})
+                    .get("value", {})
+                    .get("S"),
                 }
             ),
         )

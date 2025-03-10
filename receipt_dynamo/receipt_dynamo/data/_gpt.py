@@ -540,7 +540,9 @@ def gpt_request_structure_analysis(
         "Content-Type": "application/json",
         "Authorization": f"Bearer {getenv('OPENAI_API_KEY')}",
     }
-    query = _llm_prompt_structure_analysis(receipt, receipt_lines, receipt_words, places_api_data)
+    query = _llm_prompt_structure_analysis(
+        receipt, receipt_lines, receipt_words, places_api_data
+    )
     payload = {
         "model": "gpt-3.5-turbo",
         "messages": [
@@ -580,22 +582,28 @@ def _llm_prompt_structure_analysis(
         str: The formatted prompt string.
     """
     # Calculate receipt dimensions and statistics
-    max_y = max(line.bounding_box["y"] + line.bounding_box["height"] for line in receipt_lines)
-    max_x = max(line.bounding_box["x"] + line.bounding_box["width"] for line in receipt_lines)
-    
+    max_y = max(
+        line.bounding_box["y"] + line.bounding_box["height"]
+        for line in receipt_lines
+    )
+    max_x = max(
+        line.bounding_box["x"] + line.bounding_box["width"]
+        for line in receipt_lines
+    )
+
     # Format lines with spatial information
     formatted_lines = []
     prev_y = None
     y_gap_threshold = max_y * 0.02  # 2% of receipt height
     current_group = []
     current_y = None
-    
+
     for line in sorted(receipt_lines, key=lambda l: l.bounding_box["y"]):
         # Normalize coordinates
         x = line.bounding_box["x"] / max_x
         y = line.bounding_box["y"] / max_y
         w = line.bounding_box["width"] / max_x
-        
+
         # Check if this line belongs to current group
         if current_y is not None and abs(y - current_y) <= y_gap_threshold:
             current_group.append(f"L{line.line_id}: {line.text}")
@@ -603,15 +611,24 @@ def _llm_prompt_structure_analysis(
             # Output previous group if exists
             if current_group:
                 spatial_info = f" [y:{current_y:.2f}"
-                if len(set(l.split(':')[1].strip()[:10] for l in current_group)) == 1:
+                if (
+                    len(
+                        set(
+                            l.split(":")[1].strip()[:10] for l in current_group
+                        )
+                    )
+                    == 1
+                ):
                     spatial_info += " repeated"
                 spatial_info += "]"
-                formatted_lines.append(f"{' | '.join(current_group)}{spatial_info}")
-            
+                formatted_lines.append(
+                    f"{' | '.join(current_group)}{spatial_info}"
+                )
+
             # Start new group
             current_group = [f"L{line.line_id}: {line.text}"]
             current_y = y
-    
+
     # Add last group
     if current_group:
         spatial_info = f" [y:{current_y:.2f}]"
@@ -622,7 +639,11 @@ def _llm_prompt_structure_analysis(
         "name": places_api_data.get("name", ""),
         "type": places_api_data.get("types", [])[:3],  # Only first 3 types
         "address": places_api_data.get("formatted_address", ""),
-        "hours": places_api_data.get("opening_hours", {}).get("weekday_text", [])[:1]  # Only first day
+        "hours": places_api_data.get("opening_hours", {}).get(
+            "weekday_text", []
+        )[
+            :1
+        ],  # Only first day
     }
 
     return (
@@ -695,92 +716,103 @@ def _validate_gpt_response_structure_analysis(response: Response) -> dict:
     """
     response.raise_for_status()
     data = response.json()
-    
+
     if "choices" not in data or not data["choices"]:
         raise ValueError("The response does not contain any choices.")
-    
+
     first_choice = data["choices"][0]
     if "message" not in first_choice:
         raise ValueError("The response does not contain a message.")
-    
+
     message = first_choice["message"]
     if "content" not in message:
         raise ValueError("The response message does not contain content.")
-    
+
     content = message["content"]
     if not content:
         raise ValueError("The response message content is empty.")
-    
+
     try:
         # Handle potential JSON code blocks
         if "```json" in content:
             match = re.search(r"```json(.*?)```", content, flags=re.DOTALL)
             content = match.group(1) if match else content
-        
+
         # Parse the JSON content
         parsed = loads(content.strip())
-        
+
         # Validate structure
         if not isinstance(parsed, dict):
             raise ValueError("The response must be a dictionary.")
-        
+
         if "discovered_sections" not in parsed:
             raise ValueError("Missing 'discovered_sections' key.")
-        
+
         if "overall_confidence" not in parsed:
             raise ValueError("Missing 'overall_confidence' key.")
-        
+
         if not isinstance(parsed["discovered_sections"], list):
             raise ValueError("'discovered_sections' must be a list.")
-        
+
         if not isinstance(parsed["overall_confidence"], (int, float)):
             raise ValueError("'overall_confidence' must be a number.")
-        
+
         # Validate each section
         for section in parsed["discovered_sections"]:
             if not isinstance(section, dict):
                 raise ValueError("Each section must be a dictionary.")
-            
-            required_keys = ["name", "line_ids", "spatial_patterns", "content_patterns", "confidence"]
+
+            required_keys = [
+                "name",
+                "line_ids",
+                "spatial_patterns",
+                "content_patterns",
+                "confidence",
+            ]
             if not all(key in section for key in required_keys):
-                raise ValueError(f"Section missing required keys: {required_keys}")
-            
+                raise ValueError(
+                    f"Section missing required keys: {required_keys}"
+                )
+
             if not isinstance(section["line_ids"], list):
                 raise ValueError("'line_ids' must be a list.")
-            
+
             if not isinstance(section["spatial_patterns"], list):
                 raise ValueError("'spatial_patterns' must be a list.")
-            
+
             if not isinstance(section["content_patterns"], list):
                 raise ValueError("'content_patterns' must be a list.")
-            
+
             if not isinstance(section["confidence"], (int, float)):
                 raise ValueError("Section 'confidence' must be a number.")
-        
+
         return parsed
-        
+
     except JSONDecodeError as e:
-        raise ValueError(f"Invalid JSON in response: {e}\nResponse text: {response.text}")
+        raise ValueError(
+            f"Invalid JSON in response: {e}\nResponse text: {response.text}"
+        )
     except Exception as e:
-        raise ValueError(f"Error validating response: {e}\nResponse text: {response.text}")
+        raise ValueError(
+            f"Error validating response: {e}\nResponse text: {response.text}"
+        )
 
 
 def _map_labels_to_word_ids(
-    labeled_words: list[dict],
-    section_words: list[ReceiptWord]
+    labeled_words: list[dict], section_words: list[ReceiptWord]
 ) -> list[dict]:
     """
     Maps labeled text back to word IDs.
-    
+
     Args:
         labeled_words: List of words labeled by GPT with their text and labels
         section_words: Original word objects with IDs
-        
+
     Returns:
         List of word labels with IDs instead of text
     """
     result = []
-    
+
     # Create a mapping of text to word objects
     # Some words might appear multiple times, so we need to track all instances
     text_to_words = {}
@@ -788,46 +820,52 @@ def _map_labels_to_word_ids(
         if word.text not in text_to_words:
             text_to_words[word.text] = []
         text_to_words[word.text].append(word)
-    
+
     # Process each labeled word/phrase
     for labeled_word in labeled_words:
         text = labeled_word["text"]
         words = text.split()
-        
+
         # Single word case
         if len(words) == 1:
             if text in text_to_words and text_to_words[text]:
-                word = text_to_words[text].pop(0)  # Get and remove first matching word
-                result.append({
-                    "line_id": word.line_id,
-                    "word_id": word.word_id,
-                    "label": labeled_word["label"],
-                    "confidence": labeled_word["confidence"]
-                })
+                word = text_to_words[text].pop(
+                    0
+                )  # Get and remove first matching word
+                result.append(
+                    {
+                        "line_id": word.line_id,
+                        "word_id": word.word_id,
+                        "label": labeled_word["label"],
+                        "confidence": labeled_word["confidence"],
+                    }
+                )
         # Multi-word phrase case
         else:
             matched_words = []
             for word_text in words:
                 if word_text in text_to_words and text_to_words[word_text]:
                     matched_words.append(text_to_words[word_text].pop(0))
-            
+
             # Only process if we found all words in the phrase
             if len(matched_words) == len(words):
                 # Sort by word_id to maintain order
                 matched_words.sort(key=lambda w: w.word_id)
-                
+
                 # Add each word with a reference to the previous word
                 prev_word_id = None
                 for word in matched_words:
-                    result.append({
-                        "line_id": word.line_id,
-                        "word_id": word.word_id,
-                        "label": labeled_word["label"],
-                        "confidence": labeled_word["confidence"],
-                        "continues_from": prev_word_id
-                    })
+                    result.append(
+                        {
+                            "line_id": word.line_id,
+                            "word_id": word.word_id,
+                            "label": labeled_word["label"],
+                            "confidence": labeled_word["confidence"],
+                            "continues_from": prev_word_id,
+                        }
+                    )
                     prev_word_id = word.word_id
-    
+
     return result
 
 
@@ -863,9 +901,13 @@ def gpt_request_field_labeling(
 
     for section in section_boundaries["discovered_sections"]:
         # Get words for this section
-        section_lines = [l for l in receipt_lines if l.line_id in section["line_ids"]]
-        section_words = [w for w in receipt_words if w.line_id in section["line_ids"]]
-        
+        section_lines = [
+            l for l in receipt_lines if l.line_id in section["line_ids"]
+        ]
+        section_words = [
+            w for w in receipt_words if w.line_id in section["line_ids"]
+        ]
+
         if not section_words:
             continue
 
@@ -874,10 +916,10 @@ def gpt_request_field_labeling(
             section_lines=section_lines,
             section_words=section_words,
             section_info=section,
-            places_api_data=places_api_data
+            places_api_data=places_api_data,
         )
         queries.append(query)
-        
+
         payload = {
             "model": "gpt-3.5-turbo",
             "messages": [
@@ -889,43 +931,52 @@ def gpt_request_field_labeling(
             ],
             "temperature": 0.3,
         }
-        
+
         try:
             # Increased timeout to 60 seconds and added retries
             for attempt in range(3):  # Try up to 3 times
                 try:
-                    response = requests.post(url, headers=headers, json=payload, timeout=60)
+                    response = requests.post(
+                        url, headers=headers, json=payload, timeout=60
+                    )
                     response.raise_for_status()
                     break  # If successful, break the retry loop
                 except requests.Timeout:
                     if attempt == 2:  # Last attempt
                         raise  # Re-raise the timeout error
-                    print(f"Timeout processing section {section['name']}, attempt {attempt + 1}/3")
+                    print(
+                        f"Timeout processing section {section['name']}, attempt {attempt + 1}/3"
+                    )
                     continue  # Try again
                 except requests.RequestException as e:
                     if attempt == 2:  # Last attempt
                         raise  # Re-raise the error
-                    print(f"Error processing section {section['name']}, attempt {attempt + 1}/3: {str(e)}")
+                    print(
+                        f"Error processing section {section['name']}, attempt {attempt + 1}/3: {str(e)}"
+                    )
                     continue  # Try again
-            
+
             responses.append(response.text)
-            
+
             # Validate and process section results
             section_result = _validate_gpt_response_field_labeling(response)
-            
+
             # Map the text labels back to word IDs
             mapped_labels = _map_labels_to_word_ids(
-                section_result["labeled_words"],
-                section_words
+                section_result["labeled_words"], section_words
             )
             all_labels.extend(mapped_labels)
-            
+
             if section_result["metadata"]["requires_review"]:
                 requires_review = True
-                review_reasons.extend(section_result["metadata"]["review_reasons"])
+                review_reasons.extend(
+                    section_result["metadata"]["review_reasons"]
+                )
 
         except Exception as e:
-            raise ValueError(f"Error processing section {section['name']}: {str(e)}")
+            raise ValueError(
+                f"Error processing section {section['name']}: {str(e)}"
+            )
 
     # Combine results
     if not all_labels:
@@ -935,16 +986,17 @@ def gpt_request_field_labeling(
         "labels": all_labels,
         "metadata": {
             "total_labeled_words": len(all_labels),
-            "average_confidence": sum(l["confidence"] for l in all_labels) / len(all_labels),
+            "average_confidence": sum(l["confidence"] for l in all_labels)
+            / len(all_labels),
             "requires_review": requires_review,
-            "review_reasons": list(set(review_reasons))  # Remove duplicates
-        }
+            "review_reasons": list(set(review_reasons)),  # Remove duplicates
+        },
     }
 
     return (
         final_result,
         "\n---\n".join(queries),  # Join all queries for reference
-        "\n---\n".join(responses)  # Join all responses for reference
+        "\n---\n".join(responses),  # Join all responses for reference
     )
 
 
@@ -972,40 +1024,42 @@ def _llm_prompt_field_labeling_section(
         "name": places_api_data.get("name", ""),
         "address": places_api_data.get("formatted_address", ""),
         "phone": places_api_data.get("formatted_phone_number", ""),
-        "types": places_api_data.get("types", [])[:3]
+        "types": places_api_data.get("types", [])[:3],
     }
 
     # Get label types for this section
     label_types = _get_section_label_types(section_info["name"])
-    
+
     # Create examples based on section type
     examples = []
     if "business_info" in section_info["name"].lower():
         examples = [
             '{"text": "COSTCO WHOLESALE", "label": "business_name", "confidence": 0.95}',
             '{"text": "5700 Lindero Canyon Rd", "label": "address_line", "confidence": 0.95}',
-            '{"text": "#117", "label": "store_id", "confidence": 0.90}'
+            '{"text": "#117", "label": "store_id", "confidence": 0.90}',
         ]
     elif "payment" in section_info["name"].lower():
         examples = [
             '{"text": "TOTAL", "label": "total", "confidence": 0.95}',
             '{"text": "$63.27", "label": "amount", "confidence": 0.95}',
-            '{"text": "APPROVED", "label": "payment_status", "confidence": 0.90}'
+            '{"text": "APPROVED", "label": "payment_status", "confidence": 0.90}',
         ]
     elif "transaction" in section_info["name"].lower():
         examples = [
             '{"text": "12/17/2024", "label": "date", "confidence": 0.95}',
             '{"text": "17:19", "label": "time", "confidence": 0.95}',
-            '{"text": "Tran ID#: 12345", "label": "transaction_id", "confidence": 0.90}'
+            '{"text": "Tran ID#: 12345", "label": "transaction_id", "confidence": 0.90}',
         ]
-    
+
     return (
         f"Label words in the {section_info['name'].upper()} section of this receipt.\n\n"
         f"Business Context:\n{dumps(business_context, indent=2)}\n\n"
         f"Receipt Content:\n"
         + "\n".join(formatted_lines)
         + "\n\nAvailable Labels:\n"
-        + "\n".join(f"- {label}: {desc}" for label, desc in label_types.items())
+        + "\n".join(
+            f"- {label}: {desc}" for label, desc in label_types.items()
+        )
         + "\n\nExample Labelings:\n"
         + "\n".join(examples)
         + "\n\nINSTRUCTIONS:\n"
@@ -1032,157 +1086,151 @@ def _llm_prompt_field_labeling_section(
     )
 
 
-def _detect_line_pattern(words: list[ReceiptWord], line: ReceiptLine, places_api_data: dict) -> str:
+def _detect_line_pattern(
+    words: list[ReceiptWord], line: ReceiptLine, places_api_data: dict
+) -> str:
     """
     Detects common patterns in a line of text.
-    
+
     Args:
         words (list[ReceiptWord]): Words in the line
         line (ReceiptLine): The line object
         places_api_data (dict): Business context
-    
+
     Returns:
         str: Detected pattern or None
     """
     text = line.text.strip()
-    
+
     # Address patterns
     if places_api_data.get("formatted_address"):
         addr_parts = places_api_data["formatted_address"].split(",")
         if any(part.strip() in text for part in addr_parts):
             return "address"
-    
+
     # Street address pattern
-    if re.match(r'^\d+\s+[A-Za-z\s]+(?:St|Street|Rd|Road|Ave|Avenue|Blvd|Boulevard|Ln|Lane|Dr|Drive|Way|Ct|Court|Circle|Cir)\.?', text):
+    if re.match(
+        r"^\d+\s+[A-Za-z\s]+(?:St|Street|Rd|Road|Ave|Avenue|Blvd|Boulevard|Ln|Lane|Dr|Drive|Way|Ct|Court|Circle|Cir)\.?",
+        text,
+    ):
         return "street_address"
-    
+
     # City, State ZIP pattern
-    if re.match(r'^[A-Za-z\s]+,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?$', text):
+    if re.match(r"^[A-Za-z\s]+,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?$", text):
         return "city_state_zip"
-    
+
     # Business name pattern
-    if places_api_data.get("name") and places_api_data["name"].upper() in text.upper():
+    if (
+        places_api_data.get("name")
+        and places_api_data["name"].upper() in text.upper()
+    ):
         return "business_name"
-    
+
     # Phone number pattern
-    if re.search(r'\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}', text):
+    if re.search(r"\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}", text):
         return "phone_number"
-    
+
     # Price pattern
-    if re.search(r'\$?\d+\.\d{2}\b', text):
+    if re.search(r"\$?\d+\.\d{2}\b", text):
         return "price"
-    
+
     # Date pattern
-    if re.search(r'\d{1,2}[-/]\d{1,2}[-/]\d{2,4}', text):
+    if re.search(r"\d{1,2}[-/]\d{1,2}[-/]\d{2,4}", text):
         return "date"
-    
+
     # Time pattern
-    if re.search(r'\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AaPp][Mm])?', text):
+    if re.search(r"\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AaPp][Mm])?", text):
         return "time"
-    
+
     return None
 
 
-def _extract_relevant_business_context(section_name: str, places_api_data: dict) -> dict:
+def _extract_relevant_business_context(
+    section_name: str, places_api_data: dict
+) -> dict:
     """
     Extracts relevant business context based on section type.
-    
+
     Args:
         section_name (str): Name of the section
         places_api_data (dict): Full business context
-    
+
     Returns:
         dict: Relevant context for this section
     """
     context = {}
     section_name_lower = section_name.lower()
-    
+
     if "business" in section_name_lower or "header" in section_name_lower:
-        context.update({
-            "name": places_api_data.get("name", ""),
-            "address": places_api_data.get("formatted_address", ""),
-            "phone": places_api_data.get("formatted_phone_number", ""),
-            "types": places_api_data.get("types", [])[:3]
-        })
-    
+        context.update(
+            {
+                "name": places_api_data.get("name", ""),
+                "address": places_api_data.get("formatted_address", ""),
+                "phone": places_api_data.get("formatted_phone_number", ""),
+                "types": places_api_data.get("types", [])[:3],
+            }
+        )
+
     if "payment" in section_name_lower or "total" in section_name_lower:
-        context.update({
-            "price_level": places_api_data.get("price_level", ""),
-            "currency": "USD"  # Default or get from configuration
-        })
-    
+        context.update(
+            {
+                "price_level": places_api_data.get("price_level", ""),
+                "currency": "USD",  # Default or get from configuration
+            }
+        )
+
     if "hours" in section_name_lower or "schedule" in section_name_lower:
-        context.update({
-            "hours": places_api_data.get("opening_hours", {}).get("weekday_text", [])
-        })
-    
+        context.update(
+            {
+                "hours": places_api_data.get("opening_hours", {}).get(
+                    "weekday_text", []
+                )
+            }
+        )
+
     return context
 
 
 def _get_pattern_examples(section_name: str) -> dict:
     """
     Returns pattern examples for different label types.
-    
+
     Args:
         section_name (str): Name of the section
-    
+
     Returns:
         dict: Label types with pattern examples
     """
     base_patterns = {
-        "address": [
-            "123 Main St.",
-            "New York, NY 10001",
-            "Suite 100"
-        ],
-        "business_name": [
-            "STORE NAME",
-            "Company LLC",
-            "Brand & Co."
-        ],
-        "phone": [
-            "(123) 456-7890",
-            "123-456-7890",
-            "1234567890"
-        ],
-        "date": [
-            "01/01/2024",
-            "2024-01-01",
-            "Jan 1, 2024"
-        ],
-        "time": [
-            "13:45:00",
-            "1:45 PM",
-            "13:45"
-        ],
-        "price": [
-            "$12.34",
-            "12.34",
-            "-12.34"
-        ]
+        "address": ["123 Main St.", "New York, NY 10001", "Suite 100"],
+        "business_name": ["STORE NAME", "Company LLC", "Brand & Co."],
+        "phone": ["(123) 456-7890", "123-456-7890", "1234567890"],
+        "date": ["01/01/2024", "2024-01-01", "Jan 1, 2024"],
+        "time": ["13:45:00", "1:45 PM", "13:45"],
+        "price": ["$12.34", "12.34", "-12.34"],
     }
-    
+
     section_patterns = {
         "payment": {
             "card_number": ["XXXX-XXXX-XXXX-1234", "**** **** **** 1234"],
             "auth_code": ["Auth: 123456", "Approval: ABC123"],
-            "payment_method": ["VISA", "MASTERCARD", "DEBIT", "CASH"]
+            "payment_method": ["VISA", "MASTERCARD", "DEBIT", "CASH"],
         },
         "items": {
             "item_name": ["Product Name", "Service Description"],
             "quantity": ["2 @", "QTY: 2", "2 ITEMS"],
-            "unit_price": ["@ $5.99", "$5.99 EA"]
-        }
+            "unit_price": ["@ $5.99", "$5.99 EA"],
+        },
     }
-    
+
     # Get patterns for this section
     section_name_lower = section_name.lower()
     patterns = base_patterns.copy()
-    
+
     for key, values in section_patterns.items():
         if key in section_name_lower:
             patterns.update(values)
-    
+
     return patterns
 
 
@@ -1192,32 +1240,32 @@ def _get_section_label_types(section_name: str) -> dict:
     Simplified and focused on clear semantic meanings.
     """
     section_name_lower = section_name.lower()
-    
+
     # Define label types based on section
     if "business_info" in section_name_lower or "header" in section_name_lower:
         return {
             "business_name": "Store or company name (e.g., COSTCO WHOLESALE)",
             "address_line": "Any part of the address (e.g., street, city, state, ZIP)",
             "phone": "Phone number in any format",
-            "store_id": "Store number or identifier (e.g., #117)"
+            "store_id": "Store number or identifier (e.g., #117)",
         }
-    
+
     elif "transaction" in section_name_lower:
         return {
             "date": "Transaction date in any format",
             "time": "Transaction time in any format",
             "transaction_id": "Receipt or transaction number",
-            "cashier": "Cashier name or ID"
+            "cashier": "Cashier name or ID",
         }
-    
+
     elif "item" in section_name_lower:
         return {
             "item_name": "Name or description of purchased item",
             "quantity": "Number of items (including units)",
             "price": "Price amount (with or without currency symbol)",
-            "discount": "Any discount or reduction amount"
+            "discount": "Any discount or reduction amount",
         }
-    
+
     elif "payment" in section_name_lower:
         return {
             "subtotal": "Pre-tax amount",
@@ -1226,23 +1274,23 @@ def _get_section_label_types(section_name: str) -> dict:
             "payment_method": "Form of payment (e.g., CREDIT, DEBIT, CASH)",
             "payment_status": "Payment status (e.g., APPROVED, DECLINED)",
             "card_info": "Masked card number or card-related info",
-            "amount": "Any monetary amount with clear purpose"
+            "amount": "Any monetary amount with clear purpose",
         }
-    
+
     elif "footer" in section_name_lower:
         return {
             "message": "Thank you message or general store message",
             "policy": "Store policy or return information",
             "promo": "Promotional text or special offers",
-            "survey": "Survey or feedback information"
+            "survey": "Survey or feedback information",
         }
-    
+
     # Default types for any section
     return {
         "date_time": "Any date or time information",
         "amount": "Any monetary amount",
         "identifier": "Any ID or reference number",
-        "text": "General text without specific category"
+        "text": "General text without specific category",
     }
 
 
@@ -1253,51 +1301,53 @@ def _validate_gpt_response_field_labeling(response: Response) -> dict:
     """
     response.raise_for_status()
     data = response.json()
-    
+
     if "choices" not in data or not data["choices"]:
         raise ValueError("The response does not contain any choices.")
-    
+
     first_choice = data["choices"][0]
     if "message" not in first_choice:
         raise ValueError("The response does not contain a message.")
-    
+
     message = first_choice["message"]
     if "content" not in message:
         raise ValueError("The response message does not contain content.")
-    
+
     content = message["content"]
     if not content:
         raise ValueError("The response message content is empty.")
-    
+
     try:
         # Handle potential JSON code blocks
         if "```json" in content:
             match = re.search(r"```json(.*?)```", content, flags=re.DOTALL)
             content = match.group(1) if match else content
-        
+
         # Parse the JSON content
         parsed = loads(content.strip())
-        
+
         # Validate structure
         if not isinstance(parsed, dict):
             raise ValueError("The response must be a dictionary.")
-        
+
         required_keys = ["labeled_words", "metadata"]
         if not all(key in parsed for key in required_keys):
             raise ValueError(f"Missing required keys: {required_keys}")
-        
+
         # Validate labeled_words array
         if not isinstance(parsed["labeled_words"], list):
             raise ValueError("'labeled_words' must be a list.")
-        
+
         for label in parsed["labeled_words"]:
             if not isinstance(label, dict):
                 raise ValueError("Each label must be a dictionary.")
-            
+
             required_label_keys = ["text", "label", "confidence"]
             if not all(key in label for key in required_label_keys):
-                raise ValueError(f"Label missing required keys: {required_label_keys}")
-            
+                raise ValueError(
+                    f"Label missing required keys: {required_label_keys}"
+                )
+
             if not isinstance(label["text"], str):
                 raise ValueError("'text' must be a string.")
             if not isinstance(label["label"], str):
@@ -1306,21 +1356,27 @@ def _validate_gpt_response_field_labeling(response: Response) -> dict:
                 raise ValueError("'confidence' must be a number.")
             if not (0 <= label["confidence"] <= 1):
                 raise ValueError("'confidence' must be between 0 and 1.")
-        
+
         # Validate metadata
         metadata = parsed["metadata"]
         required_metadata_keys = ["requires_review", "review_reasons"]
         if not all(key in metadata for key in required_metadata_keys):
-            raise ValueError(f"Metadata missing required keys: {required_metadata_keys}")
-        
+            raise ValueError(
+                f"Metadata missing required keys: {required_metadata_keys}"
+            )
+
         if not isinstance(metadata["requires_review"], bool):
             raise ValueError("'requires_review' must be a boolean.")
         if not isinstance(metadata["review_reasons"], list):
             raise ValueError("'review_reasons' must be a list.")
-        
+
         return parsed
-        
+
     except JSONDecodeError as e:
-        raise ValueError(f"Invalid JSON in response: {e}\nResponse text: {response.text}")
+        raise ValueError(
+            f"Invalid JSON in response: {e}\nResponse text: {response.text}"
+        )
     except Exception as e:
-        raise ValueError(f"Error validating response: {e}\nResponse text: {response.text}")
+        raise ValueError(
+            f"Error validating response: {e}\nResponse text: {response.text}"
+        )

@@ -703,7 +703,9 @@ class _Receipt:
                 "Could not list receipt details from the database"
             ) from e
 
-    def listReceiptAndWords(self, image_id: str, receipt_id: int) -> tuple[Receipt, list[ReceiptWord]]:
+    def listReceiptAndWords(
+        self, image_id: str, receipt_id: int
+    ) -> tuple[Receipt, list[ReceiptWord]]:
         """List a receipt and its words using GSI3
 
         Args:
@@ -758,11 +760,13 @@ class _Receipt:
                         continue
 
             if not receipt:
-                raise ValueError(f"Receipt with ID {receipt_id} and Image ID '{image_id}' does not exist")
+                raise ValueError(
+                    f"Receipt with ID {receipt_id} and Image ID '{image_id}' does not exist"
+                )
 
             # Sort words by line_id and word_id
             words.sort(key=lambda w: (w.line_id, w.word_id))
-            
+
             return receipt, words
 
         except ClientError as e:
@@ -777,4 +781,3 @@ class _Receipt:
                 raise Exception(f"Validation exception: {e}") from e
             else:
                 raise Exception(f"Error listing receipt and words: {e}") from e
-

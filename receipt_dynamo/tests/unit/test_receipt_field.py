@@ -32,7 +32,10 @@ def example_receipt_field():
 def test_receipt_field_init_valid(example_receipt_field):
     """Test constructing a valid ReceiptField."""
     assert example_receipt_field.field_type == "BUSINESS_NAME"
-    assert example_receipt_field.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    assert (
+        example_receipt_field.image_id
+        == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    )
     assert example_receipt_field.receipt_id == 1
     assert len(example_receipt_field.words) == 2
     assert example_receipt_field.words[0]["word_id"] == 1
@@ -230,7 +233,9 @@ def test_receipt_field_key_generation(example_receipt_field):
     """Test that the primary key is correctly generated."""
     assert example_receipt_field.key() == {
         "PK": {"S": "FIELD#BUSINESS_NAME"},
-        "SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"},
+        "SK": {
+            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"
+        },
     }
 
 
@@ -248,7 +253,9 @@ def test_receipt_field_gsi2_key_generation(example_receipt_field):
     """Test that the GSI2 key is correctly generated."""
     assert example_receipt_field.gsi2_key() == {
         "GSI2PK": {"S": "RECEIPT"},
-        "GSI2SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"},
+        "GSI2SK": {
+            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"
+        },
     }
 
 
@@ -257,11 +264,15 @@ def test_receipt_field_to_item(example_receipt_field):
     """Test converting a ReceiptField to a DynamoDB item."""
     assert example_receipt_field.to_item() == {
         "PK": {"S": "FIELD#BUSINESS_NAME"},
-        "SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"},
+        "SK": {
+            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"
+        },
         "GSI1PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "GSI1SK": {"S": "RECEIPT#00001#FIELD#BUSINESS_NAME"},
         "GSI2PK": {"S": "RECEIPT"},
-        "GSI2SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"},
+        "GSI2SK": {
+            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"
+        },
         "TYPE": {"S": "RECEIPT_FIELD"},
         "words": {
             "L": [
@@ -334,7 +345,10 @@ def test_receipt_field_eq(example_receipt_field):
 @pytest.mark.unit
 def test_item_to_receipt_field_valid_input(example_receipt_field):
     """Test itemToReceiptField with a valid DynamoDB item."""
-    assert itemToReceiptField(example_receipt_field.to_item()) == example_receipt_field
+    assert (
+        itemToReceiptField(example_receipt_field.to_item())
+        == example_receipt_field
+    )
 
 
 @pytest.mark.unit
@@ -342,7 +356,9 @@ def test_item_to_receipt_field_missing_keys():
     """itemToReceiptField raises ValueError when required keys are missing."""
     incomplete_item = {
         "PK": {"S": "FIELD#BUSINESS_NAME"},
-        "SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"},
+        "SK": {
+            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"
+        },
     }
     with pytest.raises(ValueError, match="Invalid item format\nmissing keys"):
         itemToReceiptField(incomplete_item)
@@ -353,10 +369,24 @@ def test_item_to_receipt_field_invalid_format():
     """itemToReceiptField raises ValueError when keys are incorrectly formatted."""
     invalid_item = {
         "PK": {"S": "FIELD#BUSINESS_NAME"},
-        "SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"},
-        "words": {"L": [{"M": {"word_id": {"N": "1"}, "line_id": {"N": "1"}, "label": {"S": "BUSINESS_NAME"}}}]},
+        "SK": {
+            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"
+        },
+        "words": {
+            "L": [
+                {
+                    "M": {
+                        "word_id": {"N": "1"},
+                        "line_id": {"N": "1"},
+                        "label": {"S": "BUSINESS_NAME"},
+                    }
+                }
+            ]
+        },
         "reasoning": {"N": "123"},  # Should be {"S": "123"}
         "timestamp_added": {"S": "2021-01-01T00:00:00"},
     }
-    with pytest.raises(ValueError, match="Error converting item to ReceiptField"):
+    with pytest.raises(
+        ValueError, match="Error converting item to ReceiptField"
+    ):
         itemToReceiptField(invalid_item)

@@ -16,6 +16,7 @@ from receipt_dynamo.data._geometry import (
     invert_affine,
     min_area_rect,
 )
+
 # from receipt_dynamo.data._gpt import gpt_request_initial_tagging
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import (

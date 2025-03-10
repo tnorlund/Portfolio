@@ -129,16 +129,16 @@ class _PlacesCache:
                 ExpressionAttributeValues={
                     ":inc": {"N": "1"},
                     ":zero": {"N": "0"},
-                    ":now": {"S": datetime.now().isoformat()}
+                    ":now": {"S": datetime.now().isoformat()},
                 },
-                ReturnValues="ALL_NEW"
+                ReturnValues="ALL_NEW",
             )
-            
+
             # Convert the response back to a PlacesCache object
             if "Attributes" in response:
                 return itemToPlacesCache(response["Attributes"])
             return item
-            
+
         except ClientError as e:
             raise Exception(f"Error incrementing query count: {e}")
 
@@ -226,7 +226,7 @@ class _PlacesCache:
                 KeyConditionExpression="#gsi1pk = :gsi1pk AND #gsi1sk = :gsi1sk",
                 ExpressionAttributeNames={
                     "#gsi1pk": "GSI1PK",
-                    "#gsi1sk": "GSI1SK"
+                    "#gsi1sk": "GSI1SK",
                 },
                 ExpressionAttributeValues={
                     ":gsi1pk": {"S": "PLACE_ID"},
@@ -257,7 +257,9 @@ class _PlacesCache:
         """
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None.")
-        if lastEvaluatedKey is not None and not isinstance(lastEvaluatedKey, dict):
+        if lastEvaluatedKey is not None and not isinstance(
+            lastEvaluatedKey, dict
+        ):
             raise ValueError("lastEvaluatedKey must be a dictionary or None.")
 
         places_caches = []
@@ -275,14 +277,20 @@ class _PlacesCache:
                 query_params["Limit"] = limit
 
             response = self._client.query(**query_params)
-            places_caches.extend([itemToPlacesCache(item) for item in response["Items"]])
+            places_caches.extend(
+                [itemToPlacesCache(item) for item in response["Items"]]
+            )
 
             if limit is None:
                 # Paginate through all the places caches
                 while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                     response = self._client.query(**query_params)
-                    places_caches.extend([itemToPlacesCache(item) for item in response["Items"]])
+                    places_caches.extend(
+                        [itemToPlacesCache(item) for item in response["Items"]]
+                    )
                 last_evaluated_key = None
             else:
                 last_evaluated_key = response.get("LastEvaluatedKey", None)
@@ -292,11 +300,15 @@ class _PlacesCache:
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(f"Could not list places caches from DynamoDB: {e}") from e
+                raise Exception(
+                    f"Could not list places caches from DynamoDB: {e}"
+                ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "ValidationException":
-                raise ValueError(f"One or more parameters given were invalid: {e}") from e
+                raise ValueError(
+                    f"One or more parameters given were invalid: {e}"
+                ) from e
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
@@ -311,7 +323,9 @@ class _PlacesCache:
         """
         from datetime import datetime, timedelta, timezone
 
-        cutoff_date = (datetime.now(timezone.utc) - timedelta(days=days_old)).isoformat()
+        cutoff_date = (
+            datetime.now(timezone.utc) - timedelta(days=days_old)
+        ).isoformat()
 
         try:
             # Query using GSI2 (LAST_USED index)

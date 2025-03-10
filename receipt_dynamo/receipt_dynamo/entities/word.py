@@ -856,7 +856,11 @@ class Word:
                 self.angle_degrees,
                 self.angle_radians,
                 self.confidence,
-                tuple(self.extracted_data.items()) if self.extracted_data else None,
+                (
+                    tuple(self.extracted_data.items())
+                    if self.extracted_data
+                    else None
+                ),
             )
         )
 
@@ -924,8 +928,14 @@ def itemToWord(item: dict) -> Word:
                 None
                 if "NULL" in item.get("extracted_data", {})
                 else {
-                    "type": item.get("extracted_data", {}).get("M", {}).get("type", {}).get("S"),
-                    "value": item.get("extracted_data", {}).get("M", {}).get("value", {}).get("S")
+                    "type": item.get("extracted_data", {})
+                    .get("M", {})
+                    .get("type", {})
+                    .get("S"),
+                    "value": item.get("extracted_data", {})
+                    .get("M", {})
+                    .get("value", {})
+                    .get("S"),
                 }
             ),
         )

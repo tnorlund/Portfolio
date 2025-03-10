@@ -333,7 +333,7 @@ def test_addReceiptFields_unprocessed_items(
     """
     client = DynamoClient(dynamodb_table)
     fields = [sample_receipt_field]
-    
+
     # Mock the batch_write_item to return unprocessed items on first call
     # and succeed on second call
     mock_batch_write = mocker.patch.object(
@@ -343,7 +343,11 @@ def test_addReceiptFields_unprocessed_items(
             {
                 "UnprocessedItems": {
                     dynamodb_table: [
-                        {"PutRequest": {"Item": sample_receipt_field.to_item()}}
+                        {
+                            "PutRequest": {
+                                "Item": sample_receipt_field.to_item()
+                            }
+                        }
                     ]
                 }
             },
@@ -352,7 +356,7 @@ def test_addReceiptFields_unprocessed_items(
     )
 
     client.addReceiptFields(fields)
-    
+
     # Verify that batch_write_item was called twice
     assert mock_batch_write.call_count == 2
 
@@ -370,7 +374,7 @@ def test_updateReceiptField_success(
     # Arrange
     client = DynamoClient(dynamodb_table)
     client.addReceiptField(sample_receipt_field)
-    
+
     # Update the field
     updated_field = ReceiptField(
         field_type=sample_receipt_field.field_type,
@@ -516,7 +520,7 @@ def test_updateReceiptFields_success(
     # Arrange
     client = DynamoClient(dynamodb_table)
     client.addReceiptField(sample_receipt_field)
-    
+
     # Create a second field
     second_field = ReceiptField(
         field_type="ADDRESS",
@@ -533,7 +537,7 @@ def test_updateReceiptFields_success(
         timestamp_added="2024-03-20T12:00:00Z",
     )
     client.addReceiptField(second_field)
-    
+
     # Update both fields
     updated_fields = [
         ReceiptField(
@@ -697,7 +701,7 @@ def test_updateReceiptFields_chunking(
     Tests that updateReceiptFields processes fields in chunks of 25 items.
     """
     client = DynamoClient(dynamodb_table)
-    
+
     # Create 30 fields (should be processed in 2 chunks)
     fields = [
         ReceiptField(
@@ -716,16 +720,16 @@ def test_updateReceiptFields_chunking(
         )
         for i in range(1, 31)
     ]
-    
+
     # Mock the transact_write_items method
     mock_transact_write = mocker.patch.object(
         client._client,
         "transact_write_items",
         return_value={},
     )
-    
+
     client.updateReceiptFields(fields)
-    
+
     # Verify that transact_write_items was called twice (for 2 chunks)
     assert mock_transact_write.call_count == 2
 
@@ -879,7 +883,7 @@ def test_deleteReceiptFields_success(
     # Arrange
     client = DynamoClient(dynamodb_table)
     client.addReceiptField(sample_receipt_field)
-    
+
     # Create a second field
     second_field = ReceiptField(
         field_type="ADDRESS",
@@ -896,7 +900,7 @@ def test_deleteReceiptFields_success(
         timestamp_added="2024-03-20T12:00:00Z",
     )
     client.addReceiptField(second_field)
-    
+
     fields = [sample_receipt_field, second_field]
 
     # Act
@@ -1041,7 +1045,7 @@ def test_deleteReceiptFields_chunking(
     Tests that deleteReceiptFields processes fields in chunks of 25 items.
     """
     client = DynamoClient(dynamodb_table)
-    
+
     # Create 30 fields (should be processed in 2 chunks)
     fields = [
         ReceiptField(
@@ -1060,16 +1064,16 @@ def test_deleteReceiptFields_chunking(
         )
         for i in range(1, 31)
     ]
-    
+
     # Mock the transact_write_items method
     mock_transact_write = mocker.patch.object(
         client._client,
         "transact_write_items",
         return_value={},
     )
-    
+
     client.deleteReceiptFields(fields)
-    
+
     # Verify that transact_write_items was called twice (for 2 chunks)
     assert mock_transact_write.call_count == 2
 
@@ -1245,7 +1249,7 @@ def test_listReceiptFields_success(
     # Arrange
     client = DynamoClient(dynamodb_table)
     client.addReceiptField(sample_receipt_field)
-    
+
     # Create a second field
     second_field = ReceiptField(
         field_type="ADDRESS",
@@ -1281,7 +1285,7 @@ def test_listReceiptFields_with_limit(
     # Arrange
     client = DynamoClient(dynamodb_table)
     client.addReceiptField(sample_receipt_field)
-    
+
     # Create a second field
     second_field = ReceiptField(
         field_type="ADDRESS",
@@ -1315,7 +1319,7 @@ def test_listReceiptFields_with_last_evaluated_key(
     # Arrange
     client = DynamoClient(dynamodb_table)
     client.addReceiptField(sample_receipt_field)
-    
+
     # Create a second field
     second_field = ReceiptField(
         field_type="ADDRESS",
@@ -1477,7 +1481,7 @@ def test_listReceiptFields_pagination_errors(
     - When a subsequent query fails
     """
     client = DynamoClient(dynamodb_table)
-    
+
     # Test first query failure
     mock_query = mocker.patch.object(
         client._client,
@@ -1493,7 +1497,9 @@ def test_listReceiptFields_pagination_errors(
         ),
     )
 
-    with pytest.raises(Exception, match="Could not list receipt fields from the database"):
+    with pytest.raises(
+        Exception, match="Could not list receipt fields from the database"
+    ):
         client.listReceiptFields()
     mock_query.assert_called_once()
 
@@ -1515,7 +1521,9 @@ def test_listReceiptFields_pagination_errors(
         ),
     ]
 
-    with pytest.raises(Exception, match="Could not list receipt fields from the database"):
+    with pytest.raises(
+        Exception, match="Could not list receipt fields from the database"
+    ):
         client.listReceiptFields()
     assert mock_query.call_count == 2
 
@@ -1533,7 +1541,7 @@ def test_getReceiptFieldsByImage_success(
     # Arrange
     client = DynamoClient(dynamodb_table)
     client.addReceiptField(sample_receipt_field)
-    
+
     # Create a second field with the same image_id
     second_field = ReceiptField(
         field_type="ADDRESS",
@@ -1552,7 +1560,9 @@ def test_getReceiptFieldsByImage_success(
     client.addReceiptField(second_field)
 
     # Act
-    fields, last_evaluated_key = client.getReceiptFieldsByImage(sample_receipt_field.image_id)
+    fields, last_evaluated_key = client.getReceiptFieldsByImage(
+        sample_receipt_field.image_id
+    )
 
     # Assert
     assert len(fields) == 2
@@ -1569,7 +1579,7 @@ def test_getReceiptFieldsByImage_with_limit(
     # Arrange
     client = DynamoClient(dynamodb_table)
     client.addReceiptField(sample_receipt_field)
-    
+
     # Create a second field with the same image_id
     second_field = ReceiptField(
         field_type="ADDRESS",
@@ -1588,7 +1598,9 @@ def test_getReceiptFieldsByImage_with_limit(
     client.addReceiptField(second_field)
 
     # Act
-    fields, last_evaluated_key = client.getReceiptFieldsByImage(sample_receipt_field.image_id, limit=1)
+    fields, last_evaluated_key = client.getReceiptFieldsByImage(
+        sample_receipt_field.image_id, limit=1
+    )
 
     # Assert
     assert len(fields) == 1
@@ -1603,7 +1615,7 @@ def test_getReceiptFieldsByImage_with_last_evaluated_key(
     # Arrange
     client = DynamoClient(dynamodb_table)
     client.addReceiptField(sample_receipt_field)
-    
+
     # Create a second field with the same image_id
     second_field = ReceiptField(
         field_type="ADDRESS",
@@ -1622,13 +1634,17 @@ def test_getReceiptFieldsByImage_with_last_evaluated_key(
     client.addReceiptField(second_field)
 
     # Get first page
-    first_page, last_evaluated_key = client.getReceiptFieldsByImage(sample_receipt_field.image_id, limit=1)
+    first_page, last_evaluated_key = client.getReceiptFieldsByImage(
+        sample_receipt_field.image_id, limit=1
+    )
     assert len(first_page) == 1
     assert last_evaluated_key is not None
 
     # Get second page
     second_page, last_evaluated_key = client.getReceiptFieldsByImage(
-        sample_receipt_field.image_id, limit=1, lastEvaluatedKey=last_evaluated_key
+        sample_receipt_field.image_id,
+        limit=1,
+        lastEvaluatedKey=last_evaluated_key,
     )
     assert len(second_page) == 1
     assert last_evaluated_key is None
@@ -1647,7 +1663,10 @@ def test_getReceiptFieldsByImage_with_last_evaluated_key(
             "uuid must be a valid UUIDv4",
         ),
         (
-            {"image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3", "limit": "not-an-int"},
+            {
+                "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+                "limit": "not-an-int",
+            },
             "Limit must be an integer",
         ),
         (
@@ -1659,15 +1678,24 @@ def test_getReceiptFieldsByImage_with_last_evaluated_key(
             "Limit must be greater than 0",
         ),
         (
-            {"image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3", "lastEvaluatedKey": "not-a-dict"},
+            {
+                "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+                "lastEvaluatedKey": "not-a-dict",
+            },
             "LastEvaluatedKey must be a dictionary",
         ),
         (
-            {"image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3", "lastEvaluatedKey": {}},
+            {
+                "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+                "lastEvaluatedKey": {},
+            },
             "LastEvaluatedKey must contain keys: \\{['PK', 'SK']|['SK', 'PK']\\}",
         ),
         (
-            {"image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3", "lastEvaluatedKey": {"PK": "not-a-dict", "SK": {"S": "value"}}},
+            {
+                "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+                "lastEvaluatedKey": {"PK": "not-a-dict", "SK": {"S": "value"}},
+            },
             "LastEvaluatedKey\\[PK\\] must be a dict containing a key 'S'",
         ),
     ],
@@ -1774,7 +1802,7 @@ def test_getReceiptFieldsByImage_pagination_errors(
     - When a subsequent query fails
     """
     client = DynamoClient(dynamodb_table)
-    
+
     # Test first query failure
     mock_query = mocker.patch.object(
         client._client,
@@ -1790,7 +1818,9 @@ def test_getReceiptFieldsByImage_pagination_errors(
         ),
     )
 
-    with pytest.raises(Exception, match="Could not list receipt fields by image ID"):
+    with pytest.raises(
+        Exception, match="Could not list receipt fields by image ID"
+    ):
         client.getReceiptFieldsByImage(sample_receipt_field.image_id)
     mock_query.assert_called_once()
 
@@ -1812,7 +1842,9 @@ def test_getReceiptFieldsByImage_pagination_errors(
         ),
     ]
 
-    with pytest.raises(Exception, match="Could not list receipt fields by image ID"):
+    with pytest.raises(
+        Exception, match="Could not list receipt fields by image ID"
+    ):
         client.getReceiptFieldsByImage(sample_receipt_field.image_id)
     assert mock_query.call_count == 2
 
@@ -1830,7 +1862,7 @@ def test_getReceiptFieldsByReceipt_success(
     # Arrange
     client = DynamoClient(dynamodb_table)
     client.addReceiptField(sample_receipt_field)
-    
+
     # Create a second field with the same image_id and receipt_id
     second_field = ReceiptField(
         field_type="ADDRESS",
@@ -1869,7 +1901,7 @@ def test_getReceiptFieldsByReceipt_with_limit(
     # Arrange
     client = DynamoClient(dynamodb_table)
     client.addReceiptField(sample_receipt_field)
-    
+
     # Create a second field with the same image_id and receipt_id
     second_field = ReceiptField(
         field_type="ADDRESS",
@@ -1907,7 +1939,7 @@ def test_getReceiptFieldsByReceipt_with_last_evaluated_key(
     # Arrange
     client = DynamoClient(dynamodb_table)
     client.addReceiptField(sample_receipt_field)
-    
+
     # Create a second field with the same image_id and receipt_id
     second_field = ReceiptField(
         field_type="ADDRESS",
@@ -1958,35 +1990,65 @@ def test_getReceiptFieldsByReceipt_with_last_evaluated_key(
             "uuid must be a valid UUIDv4",
         ),
         (
-            {"image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3", "receipt_id": None},
+            {
+                "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+                "receipt_id": None,
+            },
             "Receipt ID must be a positive integer",
         ),
         (
-            {"image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3", "receipt_id": 0},
+            {
+                "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+                "receipt_id": 0,
+            },
             "Receipt ID must be a positive integer",
         ),
         (
-            {"image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3", "receipt_id": 1, "limit": "not-an-int"},
+            {
+                "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+                "receipt_id": 1,
+                "limit": "not-an-int",
+            },
             "Limit must be an integer",
         ),
         (
-            {"image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3", "receipt_id": 1, "limit": 0},
+            {
+                "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+                "receipt_id": 1,
+                "limit": 0,
+            },
             "Limit must be greater than 0",
         ),
         (
-            {"image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3", "receipt_id": 1, "limit": -1},
+            {
+                "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+                "receipt_id": 1,
+                "limit": -1,
+            },
             "Limit must be greater than 0",
         ),
         (
-            {"image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3", "receipt_id": 1, "lastEvaluatedKey": "not-a-dict"},
+            {
+                "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+                "receipt_id": 1,
+                "lastEvaluatedKey": "not-a-dict",
+            },
             "LastEvaluatedKey must be a dictionary",
         ),
         (
-            {"image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3", "receipt_id": 1, "lastEvaluatedKey": {}},
+            {
+                "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+                "receipt_id": 1,
+                "lastEvaluatedKey": {},
+            },
             "LastEvaluatedKey must contain keys: \\{['PK', 'SK']|['SK', 'PK']\\}",
         ),
         (
-            {"image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3", "receipt_id": 1, "lastEvaluatedKey": {"PK": "not-a-dict", "SK": {"S": "value"}}},
+            {
+                "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+                "receipt_id": 1,
+                "lastEvaluatedKey": {"PK": "not-a-dict", "SK": {"S": "value"}},
+            },
             "LastEvaluatedKey\\[PK\\] must be a dict containing a key 'S'",
         ),
     ],
@@ -2097,7 +2159,7 @@ def test_getReceiptFieldsByReceipt_pagination_errors(
     - When a subsequent query fails
     """
     client = DynamoClient(dynamodb_table)
-    
+
     # Test first query failure
     mock_query = mocker.patch.object(
         client._client,
@@ -2113,7 +2175,9 @@ def test_getReceiptFieldsByReceipt_pagination_errors(
         ),
     )
 
-    with pytest.raises(Exception, match="Could not list receipt fields by receipt ID"):
+    with pytest.raises(
+        Exception, match="Could not list receipt fields by receipt ID"
+    ):
         client.getReceiptFieldsByReceipt(
             sample_receipt_field.image_id,
             sample_receipt_field.receipt_id,
@@ -2138,7 +2202,9 @@ def test_getReceiptFieldsByReceipt_pagination_errors(
         ),
     ]
 
-    with pytest.raises(Exception, match="Could not list receipt fields by receipt ID"):
+    with pytest.raises(
+        Exception, match="Could not list receipt fields by receipt ID"
+    ):
         client.getReceiptFieldsByReceipt(
             sample_receipt_field.image_id,
             sample_receipt_field.receipt_id,

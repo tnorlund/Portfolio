@@ -14,10 +14,10 @@ def example_places_cache():
             "name": "Test Business",
             "formatted_address": "123 Main St",
             "rating": 4.5,
-            "user_ratings_total": 100
+            "user_ratings_total": 100,
         },
         last_updated=datetime.now().isoformat(),
-        query_count=1
+        query_count=1,
     )
 
 
@@ -41,7 +41,7 @@ def test_places_cache_init_invalid_search_type():
             place_id="test123",
             places_response={"name": "Test"},
             last_updated=datetime.now().isoformat(),
-            query_count=1
+            query_count=1,
         )
 
 
@@ -55,7 +55,7 @@ def test_places_cache_init_invalid_search_value():
             place_id="test123",
             places_response={"name": "Test"},
             last_updated=datetime.now().isoformat(),
-            query_count=1
+            query_count=1,
         )
 
 
@@ -69,35 +69,39 @@ def test_places_cache_init_invalid_place_id():
             place_id="",
             places_response={"name": "Test"},
             last_updated=datetime.now().isoformat(),
-            query_count=1
+            query_count=1,
         )
 
 
 @pytest.mark.unit
 def test_places_cache_init_invalid_places_response():
     """Test initialization with invalid places_response."""
-    with pytest.raises(ValueError, match="places_response must be a dictionary"):
+    with pytest.raises(
+        ValueError, match="places_response must be a dictionary"
+    ):
         PlacesCache(
             search_type="ADDRESS",
             search_value="123 Main St",
             place_id="test123",
             places_response="not a dict",
             last_updated=datetime.now().isoformat(),
-            query_count=1
+            query_count=1,
         )
 
 
 @pytest.mark.unit
 def test_places_cache_init_invalid_last_updated():
     """Test initialization with invalid last_updated."""
-    with pytest.raises(ValueError, match="last_updated must be a valid ISO format"):
+    with pytest.raises(
+        ValueError, match="last_updated must be a valid ISO format"
+    ):
         PlacesCache(
             search_type="ADDRESS",
             search_value="123 Main St",
             place_id="test123",
             places_response={"name": "Test"},
             last_updated="invalid date",
-            query_count=1
+            query_count=1,
         )
 
 
@@ -111,7 +115,7 @@ def test_places_cache_init_invalid_query_count():
             place_id="test123",
             places_response={"name": "Test"},
             last_updated=datetime.now().isoformat(),
-            query_count=-1
+            query_count=-1,
         )
 
 
@@ -124,30 +128,34 @@ def test_pad_search_value(example_places_cache):
         search_value="123 Main St",
         place_id="test123",
         places_response={"name": "Test"},
-        last_updated=datetime.now().isoformat()
+        last_updated=datetime.now().isoformat(),
     )
     padded_address = address_cache._pad_search_value("123 Main St")
     print(f"Padded address: {padded_address}")  # Debug output
-    
+
     # The padded address should be in format: {hash}_{original_value}
     # First split on underscores to get all parts
-    parts = [p for p in padded_address.split("_") if p]  # Filter out empty strings
+    parts = [
+        p for p in padded_address.split("_") if p
+    ]  # Filter out empty strings
     print(f"Parts: {parts}")  # Debug output
-    
+
     # The first part should be the hash
     value_hash = parts[0]
     assert len(value_hash) == 8, f"Hash should be 8 chars, got {value_hash}"
-    
+
     # The last part should be the original value
     original_value = parts[-1]
     assert original_value == "123 Main St"
-    
+
     # Verify normalized value was stored
     assert address_cache.normalized_value == "123 main street"
-    
+
     # Verify total length (400 chars for the original value, plus hash and underscore)
     expected_length = 400 + 8 + 1  # 8 for hash, 1 for underscore
-    assert len(padded_address) == expected_length, f"Expected length {expected_length}, got {len(padded_address)}"
+    assert (
+        len(padded_address) == expected_length
+    ), f"Expected length {expected_length}, got {len(padded_address)}"
 
     # Test PHONE padding
     phone_cache = PlacesCache(
@@ -155,7 +163,7 @@ def test_pad_search_value(example_places_cache):
         search_value="(555) 123-4567",
         place_id="test123",
         places_response={"name": "Test"},
-        last_updated=datetime.now().isoformat()
+        last_updated=datetime.now().isoformat(),
     )
     padded_phone = phone_cache._pad_search_value("(555) 123-4567")
     assert padded_phone.startswith("_" * (30 - len("(555)123-4567")))
@@ -168,7 +176,7 @@ def test_pad_search_value(example_places_cache):
         search_value="www.Example.com",
         place_id="test123",
         places_response={"name": "Test"},
-        last_updated=datetime.now().isoformat()
+        last_updated=datetime.now().isoformat(),
     )
     padded_url = url_cache._pad_search_value("www.Example.com")
     assert padded_url.startswith("_" * (100 - len("www.example.com")))
@@ -182,7 +190,7 @@ def test_pad_search_value(example_places_cache):
             search_value="test",
             place_id="test123",
             places_response={"name": "Test"},
-            last_updated=datetime.now().isoformat()
+            last_updated=datetime.now().isoformat(),
         )
         invalid_cache.search_type = "INVALID"  # Change after init for testing
         invalid_cache._pad_search_value("test")
@@ -211,7 +219,7 @@ def test_eq(example_places_cache):
         place_id=example_places_cache.place_id,
         places_response=example_places_cache.places_response,
         last_updated=example_places_cache.last_updated,
-        query_count=example_places_cache.query_count
+        query_count=example_places_cache.query_count,
     )
     assert example_places_cache == same_item
     assert example_places_cache != "not a PlacesCache"
@@ -255,7 +263,9 @@ def test_item_to_places_cache_invalid_json():
         "last_updated": {"S": datetime.now().isoformat()},
         "query_count": {"N": "1"},
         "search_type": {"S": "ADDRESS"},
-        "search_value": {"S": "test"}
+        "search_value": {"S": "test"},
     }
-    with pytest.raises(ValueError, match="Error converting item to PlacesCache"):
-        itemToPlacesCache(item) 
+    with pytest.raises(
+        ValueError, match="Error converting item to PlacesCache"
+    ):
+        itemToPlacesCache(item)

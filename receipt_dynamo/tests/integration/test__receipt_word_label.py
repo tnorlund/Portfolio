@@ -322,7 +322,7 @@ def test_addReceiptWordLabels_unprocessed_items(
     """
     client = DynamoClient(dynamodb_table)
     labels = [sample_receipt_word_label]
-    
+
     # Mock the batch_write_item to return unprocessed items on first call
     # and succeed on second call
     mock_batch_write = mocker.patch.object(
@@ -332,7 +332,11 @@ def test_addReceiptWordLabels_unprocessed_items(
             {
                 "UnprocessedItems": {
                     dynamodb_table: [
-                        {"PutRequest": {"Item": sample_receipt_word_label.to_item()}}
+                        {
+                            "PutRequest": {
+                                "Item": sample_receipt_word_label.to_item()
+                            }
+                        }
                     ]
                 }
             },
@@ -341,7 +345,7 @@ def test_addReceiptWordLabels_unprocessed_items(
     )
 
     client.addReceiptWordLabels(labels)
-    
+
     # Verify that batch_write_item was called twice
     assert mock_batch_write.call_count == 2
 
@@ -359,7 +363,7 @@ def test_updateReceiptWordLabel_success(
     # Arrange
     client = DynamoClient(dynamodb_table)
     client.addReceiptWordLabel(sample_receipt_word_label)
-    
+
     # Update the label
     updated_label = ReceiptWordLabel(
         receipt_id=sample_receipt_word_label.receipt_id,
@@ -508,7 +512,7 @@ def test_updateReceiptWordLabels_success(
     # Arrange
     client = DynamoClient(dynamodb_table)
     client.addReceiptWordLabel(sample_receipt_word_label)
-    
+
     # Create a second label
     second_label = ReceiptWordLabel(
         receipt_id=2,
@@ -520,7 +524,7 @@ def test_updateReceiptWordLabels_success(
         timestamp_added="2024-03-20T12:00:00Z",
     )
     client.addReceiptWordLabel(second_label)
-    
+
     # Update both labels
     updated_labels = [
         ReceiptWordLabel(
@@ -688,7 +692,7 @@ def test_updateReceiptWordLabels_chunking(
     Tests that updateReceiptWordLabels processes labels in chunks of 25 items.
     """
     client = DynamoClient(dynamodb_table)
-    
+
     # Create 30 labels (should be processed in 2 chunks)
     labels = [
         ReceiptWordLabel(
@@ -702,16 +706,16 @@ def test_updateReceiptWordLabels_chunking(
         )
         for i in range(1, 31)
     ]
-    
+
     # Mock the transact_write_items method
     mock_transact_write = mocker.patch.object(
         client._client,
         "transact_write_items",
         return_value={},
     )
-    
+
     client.updateReceiptWordLabels(labels)
-    
+
     # Verify that transact_write_items was called twice (for 2 chunks)
     assert mock_transact_write.call_count == 2
 
@@ -867,7 +871,7 @@ def test_deleteReceiptWordLabels_success(
     # Arrange
     client = DynamoClient(dynamodb_table)
     client.addReceiptWordLabel(sample_receipt_word_label)
-    
+
     # Create a second label
     second_label = ReceiptWordLabel(
         receipt_id=2,
@@ -879,7 +883,7 @@ def test_deleteReceiptWordLabels_success(
         timestamp_added="2024-03-20T12:00:00Z",
     )
     client.addReceiptWordLabel(second_label)
-    
+
     labels = [sample_receipt_word_label, second_label]
 
     # Act
@@ -1026,7 +1030,7 @@ def test_deleteReceiptWordLabels_chunking(
     Tests that deleteReceiptWordLabels processes labels in chunks of 25 items.
     """
     client = DynamoClient(dynamodb_table)
-    
+
     # Create 30 labels (should be processed in 2 chunks)
     labels = [
         ReceiptWordLabel(
@@ -1040,16 +1044,16 @@ def test_deleteReceiptWordLabels_chunking(
         )
         for i in range(1, 31)
     ]
-    
+
     # Mock the transact_write_items method
     mock_transact_write = mocker.patch.object(
         client._client,
         "transact_write_items",
         return_value={},
     )
-    
+
     client.deleteReceiptWordLabels(labels)
-    
+
     # Verify that transact_write_items was called twice (for 2 chunks)
     assert mock_transact_write.call_count == 2
 
@@ -1247,7 +1251,7 @@ def test_listReceiptWordLabels_success(
     # Arrange
     client = DynamoClient(dynamodb_table)
     client.addReceiptWordLabel(sample_receipt_word_label)
-    
+
     # Create a second label
     second_label = ReceiptWordLabel(
         receipt_id=2,
@@ -1278,7 +1282,7 @@ def test_listReceiptWordLabels_with_limit(
     # Arrange
     client = DynamoClient(dynamodb_table)
     client.addReceiptWordLabel(sample_receipt_word_label)
-    
+
     # Create a second label
     second_label = ReceiptWordLabel(
         receipt_id=2,
@@ -1307,7 +1311,7 @@ def test_listReceiptWordLabels_with_last_evaluated_key(
     # Arrange
     client = DynamoClient(dynamodb_table)
     client.addReceiptWordLabel(sample_receipt_word_label)
-    
+
     # Create a second label
     second_label = ReceiptWordLabel(
         receipt_id=2,
@@ -1464,7 +1468,7 @@ def test_listReceiptWordLabels_pagination_errors(
     - When a subsequent query fails
     """
     client = DynamoClient(dynamodb_table)
-    
+
     # Test first query failure
     mock_query = mocker.patch.object(
         client._client,
@@ -1480,7 +1484,9 @@ def test_listReceiptWordLabels_pagination_errors(
         ),
     )
 
-    with pytest.raises(Exception, match="Could not list receipt word labels from the database"):
+    with pytest.raises(
+        Exception, match="Could not list receipt word labels from the database"
+    ):
         client.listReceiptWordLabels()
     mock_query.assert_called_once()
 
@@ -1502,7 +1508,9 @@ def test_listReceiptWordLabels_pagination_errors(
         ),
     ]
 
-    with pytest.raises(Exception, match="Could not list receipt word labels from the database"):
+    with pytest.raises(
+        Exception, match="Could not list receipt word labels from the database"
+    ):
         client.listReceiptWordLabels()
     assert mock_query.call_count == 2
 
@@ -1520,7 +1528,7 @@ def test_getReceiptWordLabelsByLabel_success(
     # Arrange
     client = DynamoClient(dynamodb_table)
     client.addReceiptWordLabel(sample_receipt_word_label)
-    
+
     # Create a second label with the same label type
     second_label = ReceiptWordLabel(
         receipt_id=2,
@@ -1551,7 +1559,7 @@ def test_getReceiptWordLabelsByLabel_with_limit(
     # Arrange
     client = DynamoClient(dynamodb_table)
     client.addReceiptWordLabel(sample_receipt_word_label)
-    
+
     # Create a second label with the same label type
     second_label = ReceiptWordLabel(
         receipt_id=2,
@@ -1565,7 +1573,9 @@ def test_getReceiptWordLabelsByLabel_with_limit(
     client.addReceiptWordLabel(second_label)
 
     # Act
-    labels, last_evaluated_key = client.getReceiptWordLabelsByLabel("ITEM", limit=1)
+    labels, last_evaluated_key = client.getReceiptWordLabelsByLabel(
+        "ITEM", limit=1
+    )
 
     # Assert
     assert len(labels) == 1
@@ -1580,7 +1590,7 @@ def test_getReceiptWordLabelsByLabel_with_last_evaluated_key(
     # Arrange
     client = DynamoClient(dynamodb_table)
     client.addReceiptWordLabel(sample_receipt_word_label)
-    
+
     # Create a second label with the same label type
     second_label = ReceiptWordLabel(
         receipt_id=2,
@@ -1594,7 +1604,9 @@ def test_getReceiptWordLabelsByLabel_with_last_evaluated_key(
     client.addReceiptWordLabel(second_label)
 
     # Get first page
-    first_page, last_evaluated_key = client.getReceiptWordLabelsByLabel("ITEM", limit=1)
+    first_page, last_evaluated_key = client.getReceiptWordLabelsByLabel(
+        "ITEM", limit=1
+    )
     assert len(first_page) == 1
     assert last_evaluated_key is not None
 
@@ -1639,7 +1651,10 @@ def test_getReceiptWordLabelsByLabel_with_last_evaluated_key(
             "LastEvaluatedKey must contain keys: \\{['PK', 'SK']|['SK', 'PK']\\}",
         ),
         (
-            {"label": "ITEM", "lastEvaluatedKey": {"PK": "not-a-dict", "SK": {"S": "value"}}},
+            {
+                "label": "ITEM",
+                "lastEvaluatedKey": {"PK": "not-a-dict", "SK": {"S": "value"}},
+            },
             "LastEvaluatedKey\\[PK\\] must be a dict containing a key 'S'",
         ),
     ],
@@ -1746,7 +1761,7 @@ def test_getReceiptWordLabelsByLabel_pagination_errors(
     - When a subsequent query fails
     """
     client = DynamoClient(dynamodb_table)
-    
+
     # Test first query failure
     mock_query = mocker.patch.object(
         client._client,
@@ -1762,7 +1777,9 @@ def test_getReceiptWordLabelsByLabel_pagination_errors(
         ),
     )
 
-    with pytest.raises(Exception, match="Could not list receipt word labels by label type"):
+    with pytest.raises(
+        Exception, match="Could not list receipt word labels by label type"
+    ):
         client.getReceiptWordLabelsByLabel("ITEM")
     mock_query.assert_called_once()
 
@@ -1784,6 +1801,8 @@ def test_getReceiptWordLabelsByLabel_pagination_errors(
         ),
     ]
 
-    with pytest.raises(Exception, match="Could not list receipt word labels by label type"):
+    with pytest.raises(
+        Exception, match="Could not list receipt word labels by label type"
+    ):
         client.getReceiptWordLabelsByLabel("ITEM")
     assert mock_query.call_count == 2
