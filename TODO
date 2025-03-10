@@ -16,25 +16,67 @@
 ## Remove Tag System
 - [ ] Delete Word Tag items from DynamoDB
 - [ ] Delete Receipt Word Tag items from DynamoDB
+- [ ] Delete GPT Prompt items from DynamoDB
 - [ ] Remove tags attribute from Word items
 - [ ] Remove tags attribute from Receipt Word items
 - [ ] Remove tag-related code from codebase
 
+## Update Receipt Validation Schema
+- [ ] Update Receipt Validation Analysis attributes to replace confidence with reasoning:
+  ```
+  - business_identity: [{type, message, reasoning}]
+  - address_verification: [{type, message, reasoning}]
+  - phone_validation: [{type, message, reasoning}]
+  - hours_verification: [{type, message, reasoning}]
+  - cross_field_consistency: [{type, message, reasoning}]
+  - line_item_validation: [{type, message, reasoning}]
+  ```
+- [ ] Update validation_status to include reason-based statuses
+- [ ] Add prompt_template field to track what was asked
+- [ ] Add response_template field to track expected response format
+
+## Improve GPT Integration
+- [ ] Update gpt.py validation functions:
+  - [ ] Replace confidence score with reasoning in _validate_gpt_response_structure_analysis
+  - [ ] Replace confidence score with reasoning in _validate_gpt_response_field_labeling
+  - [ ] Replace confidence score with reasoning in _validate_gpt_response_line_item_analysis
+
+- [ ] Update validation.py functions:
+  - [ ] Replace validate_business_name to return reasoning instead of confidence
+  - [ ] Replace validate_phone_number to return reasoning instead of confidence
+  - [ ] Replace validate_address to return reasoning instead of confidence
+  - [ ] Replace validate_datetime to return reasoning instead of confidence
+  - [ ] Replace validate_amounts to return reasoning instead of confidence
+  - [ ] Replace validate_receipt_data to return reasoning instead of confidence
+  - [ ] Replace validate_receipt_format to return reasoning instead of confidence
+
+- [ ] Update processors/line_item_processor.py:
+  - [ ] Replace _calculate_confidence with _calculate_reasoning in FastPatternMatcher
+  - [ ] Update reasoning to explain why line items match or don't match
+
+- [ ] Update data/places_api.py:
+  - [ ] Update ValidationResult class to use reasoning instead of confidence
+  - [ ] Update batch_processor._validate_business_name to return reasoning
+
 ## Add Features
-- [ ] Add confidence scoring to all analyses
 - [ ] Add position tracking to Label Analysis
 - [ ] Add pattern detection to Structure Analysis
 - [ ] Add price/quantity parsing to Line Items
 - [ ] Add validation types to Receipt Validation
+- [ ] Add reasoning field to validation results
 
 ## Testing
 - [ ] Write unit tests for each analysis class
 - [ ] Write integration tests for DynamoDB operations
 - [ ] Create test data for each analysis type
 - [ ] Test migration procedures
+- [ ] Test GPT reasoning responses
+- [ ] Create test cases for common validation scenarios
 
 ## Documentation
 - [ ] Update README with new analysis items
 - [ ] Document DynamoDB schemas
 - [ ] Add query examples
 - [ ] Document validation statuses
+- [ ] Document GPT reasoning patterns
+- [ ] Add examples of good vs bad reasoning responses
