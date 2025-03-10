@@ -19,7 +19,10 @@
 - [x] Delete GPT Prompt items from DynamoDB
 - [x] Remove tags attribute from Word items
 - [x] Remove tags attribute from Receipt Word items
+- [x] Remove GPT prompt-related code from Receipt Dynamo
 - [ ] Remove tag-related code from codebase
+
+## Update `process.py`
 
 ## Update Receipt Validation Schema
 - [ ] Update Receipt Validation Analysis attributes to replace confidence with reasoning:

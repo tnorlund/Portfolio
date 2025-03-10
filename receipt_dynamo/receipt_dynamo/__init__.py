@@ -26,10 +26,6 @@ __all__ = [
     "itemToReceiptWordTag",
     "WordTag",
     "itemToWordTag",
-    "GPTValidation",
-    "itemToGPTValidation",
-    "GPTInitialTagging",
-    "itemToGPTInitialTagging",
     "Job",
     "itemToJob",
     "JobMetric",
@@ -75,14 +71,6 @@ from receipt_dynamo.entities.receipt_word_tag import (
     itemToReceiptWordTag,
 )
 from receipt_dynamo.entities.word_tag import WordTag, itemToWordTag
-from receipt_dynamo.entities.gpt_validation import (
-    GPTValidation,
-    itemToGPTValidation,
-)
-from receipt_dynamo.entities.gpt_initial_tagging import (
-    GPTInitialTagging,
-    itemToGPTInitialTagging,
-)
 from receipt_dynamo.entities.job import Job, itemToJob
 from receipt_dynamo.entities.job_metric import JobMetric, itemToJobMetric
 from receipt_dynamo.entities.job_resource import JobResource, itemToJobResource

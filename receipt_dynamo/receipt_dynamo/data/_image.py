@@ -4,8 +4,6 @@ from typing import Dict, List, Optional, Tuple, Union
 from botocore.exceptions import ClientError
 
 from receipt_dynamo import (
-    GPTInitialTagging,
-    GPTValidation,
     Image,
     Letter,
     Line,
@@ -16,8 +14,6 @@ from receipt_dynamo import (
     ReceiptWordTag,
     Word,
     WordTag,
-    itemToGPTInitialTagging,
-    itemToGPTValidation,
     itemToImage,
     itemToLetter,
     itemToLine,
@@ -356,8 +352,6 @@ class _Image:
         list[ReceiptWord],
         list[ReceiptWordTag],
         list[ReceiptLetter],
-        list[GPTInitialTagging],
-        list[GPTValidation],
     ]:
         """
         Retrieves detailed information about an Image from the database,
@@ -399,8 +393,6 @@ class _Image:
         receipt_words = []
         receipt_word_tags = []
         receipt_letters = []
-        gpt_initial_taggings = []
-        gpt_validations = []
         try:
             response = self._client.query(
                 TableName=self.table_name,
@@ -450,10 +442,6 @@ class _Image:
                     receipt_word_tags.append(itemToReceiptWordTag(item))
                 elif item["TYPE"]["S"] == "RECEIPT_LETTER":
                     receipt_letters.append(itemToReceiptLetter(item))
-                elif item["TYPE"]["S"] == "GPT_INITIAL_TAGGING":
-                    gpt_initial_taggings.append(itemToGPTInitialTagging(item))
-                elif item["TYPE"]["S"] == "GPT_VALIDATION":
-                    gpt_validations.append(itemToGPTValidation(item))
 
             return (
                 images,
@@ -466,8 +454,6 @@ class _Image:
                 receipt_words,
                 receipt_word_tags,
                 receipt_letters,
-                gpt_initial_taggings,
-                gpt_validations,
             )
 
         except Exception as e:

@@ -9,14 +9,6 @@ Entity classes for the receipt_dynamo package.
 from receipt_dynamo.entities.util import assert_valid_uuid  # noqa: F401
 
 # Re-export entity classes needed by data modules
-from receipt_dynamo.entities.gpt_initial_tagging import (
-    GPTInitialTagging,
-    itemToGPTInitialTagging,
-)  # noqa: F401
-from receipt_dynamo.entities.gpt_validation import (
-    GPTValidation,
-    itemToGPTValidation,
-)  # noqa: F401
 from receipt_dynamo.entities.image import Image, itemToImage  # noqa: F401
 from receipt_dynamo.entities.letter import Letter, itemToLetter  # noqa: F401
 from receipt_dynamo.entities.line import Line, itemToLine  # noqa: F401

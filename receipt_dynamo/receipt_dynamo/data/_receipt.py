@@ -3,8 +3,6 @@ from typing import Dict, List, Optional, Tuple, Union
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.entities.gpt_initial_tagging import itemToGPTInitialTagging
-from receipt_dynamo.entities.gpt_validation import itemToGPTValidation
 from receipt_dynamo.entities.receipt import Receipt, itemToReceipt
 from receipt_dynamo.entities.receipt_letter import (
     ReceiptLetter,
@@ -412,8 +410,6 @@ class _Receipt:
         list[ReceiptWord],
         list[ReceiptLetter],
         list[ReceiptWordTag],
-        list[dict],
-        list[dict],
     ]:
         """Get a receipt with its details
 
@@ -428,8 +424,6 @@ class _Receipt:
             - list[ReceiptWord]: List of receipt words
             - list[ReceiptLetter]: List of receipt letters
             - list[ReceiptWordTag]: List of receipt word tags
-            - list[dict]: List of GPT validations
-            - list[dict]: List of GPT initial taggings
         """
         try:
             response = self._client.query(
@@ -445,8 +439,6 @@ class _Receipt:
             words = []
             letters = []
             tags = []
-            validations = []
-            initial_taggings = []
 
             for item in response["Items"]:
                 if item["TYPE"]["S"] == "RECEIPT":
@@ -459,10 +451,6 @@ class _Receipt:
                     letters.append(itemToReceiptLetter(item))
                 elif item["TYPE"]["S"] == "RECEIPT_WORD_TAG":
                     tags.append(itemToReceiptWordTag(item))
-                elif item["TYPE"]["S"] == "GPT_VALIDATION":
-                    validations.append(itemToGPTValidation(item))
-                elif item["TYPE"]["S"] == "GPT_INITIAL_TAGGING":
-                    initial_taggings.append(itemToGPTInitialTagging(item))
 
             return (
                 receipt,
@@ -470,8 +458,6 @@ class _Receipt:
                 words,
                 letters,
                 tags,
-                validations,
-                initial_taggings,
             )
         except ClientError as e:
             raise ValueError(f"Error getting receipt details: {e}")

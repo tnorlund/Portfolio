@@ -1,8 +1,6 @@
 import boto3
 
 # Import all the modules needed for multiple inheritance
-from receipt_dynamo.data._gpt_initial_tagging import _GPTInitialTagging
-from receipt_dynamo.data._gpt_validation import _GPTValidation
 from receipt_dynamo.data._image import _Image
 from receipt_dynamo.data._instance import _Instance
 from receipt_dynamo.data._job import _Job
@@ -36,8 +34,6 @@ class DynamoClient(
     _ReceiptLetter,
     _WordTag,
     _ReceiptWordTag,
-    _GPTValidation,
-    _GPTInitialTagging,
     _Job,
     _JobStatus,
     _JobResource,

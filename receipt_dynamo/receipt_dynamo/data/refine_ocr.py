@@ -117,8 +117,6 @@ def refine_receipt_ocr(
             old_receipt_words,
             old_receipt_letters,
             old_receipt_word_tags,
-            old_gpt_validations,
-            old_gpt_initial_taggings,
         ) = client.getReceiptDetails(image_id, receipt_id)
     except Exception as e:
         if debug:

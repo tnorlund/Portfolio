@@ -40,8 +40,6 @@ def export_image(table_name: str, image_id: str, output_dir: str) -> None:
         receipt_words,
         receipt_word_tags,
         receipt_letters,
-        gpt_initial_taggings,
-        gpt_validations,
     ) = dynamo_client.getImageDetails(image_id)
 
     if not images:
@@ -61,12 +59,6 @@ def export_image(table_name: str, image_id: str, output_dir: str) -> None:
             dict(word_tag) for word_tag in receipt_word_tags
         ],
         "receipt_letters": [dict(letter) for letter in receipt_letters],
-        "gpt_initial_taggings": [
-            dict(gpt_query) for gpt_query in gpt_initial_taggings
-        ],
-        "gpt_validations": [
-            dict(gpt_validation) for gpt_validation in gpt_validations
-        ],
     }
 
     with open(os.path.join(output_dir, f"{image_id}.json"), "w") as f:

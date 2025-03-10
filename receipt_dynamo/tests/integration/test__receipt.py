@@ -1733,8 +1733,6 @@ def test_getReceiptDetails_success(
         words,
         letters,
         tags,
-        validations,
-        initial_taggings,
     ) = client.getReceiptDetails(
         sample_receipt.image_id, sample_receipt.receipt_id
     )
@@ -1746,8 +1744,6 @@ def test_getReceiptDetails_success(
     assert (
         lines == []
     ), "No lines were added in this test, so expect an empty list."
-    assert validations == []
-    assert initial_taggings == []
 
 
 # -------------------------------------------------------------------

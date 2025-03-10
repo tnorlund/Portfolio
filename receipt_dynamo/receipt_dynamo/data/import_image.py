@@ -4,8 +4,6 @@ import os
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import (
-    GPTInitialTagging,
-    GPTValidation,
     Image,
     Letter,
     Line,
@@ -67,12 +65,6 @@ def import_image(table_name: str, json_path: str) -> None:
         "receipt_letters": [
             ReceiptLetter(**item) for item in data["receipt_letters"]
         ],
-        "gpt_initial_taggings": [
-            GPTInitialTagging(**item) for item in data["gpt_initial_taggings"]
-        ],
-        "gpt_validations": [
-            GPTValidation(**item) for item in data["gpt_validations"]
-        ],
     }
 
     # Import data in batches using existing DynamoClient methods
@@ -105,9 +97,3 @@ def import_image(table_name: str, json_path: str) -> None:
 
     if entities["receipt_letters"]:
         dynamo_client.addReceiptLetters(entities["receipt_letters"])
-
-    if entities["gpt_initial_taggings"]:
-        dynamo_client.addGPTInitialTaggings(entities["gpt_initial_taggings"])
-
-    if entities["gpt_validations"]:
-        dynamo_client.addGPTValidations(entities["gpt_validations"])

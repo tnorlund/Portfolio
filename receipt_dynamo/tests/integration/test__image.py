@@ -304,8 +304,6 @@ def test_image_get_details(dynamodb_table, example_image):
         receipt_words,
         receipt_word_tags,
         receipt_letters,
-        gpt_initial_taggings,
-        gpt_validations,
     ) = client.getImageDetails(image.image_id)
     retrieved_image = images[0]
     assert retrieved_image == image

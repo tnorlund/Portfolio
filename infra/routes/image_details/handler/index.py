@@ -55,7 +55,6 @@ def handler(event, context):
                 receipt_words,
                 receipt_letters,
                 gpt_validations,
-                gpt_initial_taggings,
             ) = image_details
             return {
                 "statusCode": 200,

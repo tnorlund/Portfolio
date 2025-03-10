@@ -16,10 +16,9 @@ from receipt_dynamo.data._geometry import (
     invert_affine,
     min_area_rect,
 )
-from receipt_dynamo.data._gpt import gpt_request_initial_tagging
+# from receipt_dynamo.data._gpt import gpt_request_initial_tagging
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import (
-    GPTInitialTagging,
     Image,
     Letter,
     Line,
@@ -188,7 +187,6 @@ def process(
     all_receipt_lines = []
     all_receipt_words = []
     all_receipt_letters = []
-    all_gpt_initial_taggings = []
     # We already have a "word_tags" list in the code, but let's rename it
     # to keep track of everything clearly:
     all_word_tags = []
@@ -265,7 +263,7 @@ def process(
             else:
                 raise
 
-        gpt_response, query, response = gpt_request_initial_tagging(r, r_words)
+        # gpt_response, query, response = gpt_request_initial_tagging(r, r_words)
 
         # Save the GPT response to the raw bucket
         try:
@@ -286,13 +284,13 @@ def process(
             else:
                 raise
 
-        initial_tagging = GPTInitialTagging(
-            image_id=image_obj.image_id,
-            receipt_id=cluster_id,
-            query=query,
-            response=response,
-            timestamp_added=datetime.now(timezone.utc),
-        )
+        # initial_tagging = GPTInitialTagging(
+        #     image_id=image_obj.image_id,
+        #     receipt_id=cluster_id,
+        #     query=query,
+        #     response=response,
+        #     timestamp_added=datetime.now(timezone.utc),
+        # )
 
         # Remove all tags without words
         tags = []
@@ -347,7 +345,6 @@ def process(
         all_receipt_words.extend(r_words)
         all_receipt_word_tags.extend(r_word_tags)
         all_receipt_letters.extend(r_letters)
-        all_gpt_initial_taggings.append(initial_tagging)
         all_word_tags.extend(word_tags)
 
     all_word_tags = deduplicate_word_tags(all_word_tags)
@@ -362,7 +359,6 @@ def process(
     DynamoClient(table_name).addReceiptWords(all_receipt_words)
     DynamoClient(table_name).addReceiptWordTags(all_receipt_word_tags)
     DynamoClient(table_name).addReceiptLetters(all_receipt_letters)
-    DynamoClient(table_name).addGPTInitialTaggings(all_gpt_initial_taggings)
 
 
 def update_words_with_tags(receipt_words: list, tags: list[Tag]) -> None:
