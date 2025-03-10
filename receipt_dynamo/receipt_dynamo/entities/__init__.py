@@ -58,3 +58,7 @@ from receipt_dynamo.entities.instance_job import (
     InstanceJob,
     itemToInstanceJob,
 )  # noqa: F401
+from receipt_dynamo.entities.receipt_word_label import (
+    ReceiptWordLabel,
+    itemToReceiptWordLabel,
+)  # noqa: F401

@@ -21,6 +21,7 @@ from receipt_dynamo.data._receipt_word import _ReceiptWord
 from receipt_dynamo.data._receipt_word_tag import _ReceiptWordTag
 from receipt_dynamo.data._word import _Word
 from receipt_dynamo.data._word_tag import _WordTag
+from receipt_dynamo.data._receipt_word_label import _ReceiptWordLabel
 
 
 class DynamoClient(
@@ -44,6 +45,7 @@ class DynamoClient(
     _Queue,
     _Instance,
     _PlacesCache,
+    _ReceiptWordLabel,
 ):
     """A class used to represent a DynamoDB client."""
 

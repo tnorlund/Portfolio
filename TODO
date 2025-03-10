@@ -7,6 +7,8 @@
 - [ ] Create Receipt Validation in DynamoDB
 
 ## Implement Base Classes
+- [x] Create Receipt Word Label class
+- [ ] Create Receipt Field Group class
 - [ ] Create LabelAnalysis class
 - [ ] Create StructureAnalysis class
 - [ ] Create LineItemAnalysis class
