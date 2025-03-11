@@ -404,11 +404,12 @@ class ReceiptValidator:
                         )
                     })
 
-            # Check confidence
-            if item.confidence < 0.8:
+            # Check for missing or insufficient reasoning
+            if not item.reasoning or len(item.reasoning) < 10:
                 validation_results["line_item_validation"].append({
                     "type": "warning",
-                    "message": f"Low confidence ({item.confidence}) for item: {item.description}"
+                    "message": f"Insufficient reasoning for item: {item.description}",
+                    "reasoning": "Detailed reasoning is required to explain how the item was identified and analyzed."
                 })
 
 def validate_receipt_components(
@@ -422,9 +423,9 @@ def validate_receipt_components(
         "subtotal": line_item_analysis.subtotal or Decimal('0'),
         "tax": line_item_analysis.tax or Decimal('0'),
         "total": line_item_analysis.total or Decimal('0'),
-        "fees": Decimal('0'),  # TODO: Add fees to LineItemAnalysis
-        "discounts": Decimal('0'),  # TODO: Add discounts to LineItemAnalysis
-        "tips": Decimal('0'),  # TODO: Add tips to LineItemAnalysis
+        "fees": line_item_analysis.fees or Decimal('0'),
+        "discounts": line_item_analysis.discounts or Decimal('0'),
+        "tips": line_item_analysis.tips or Decimal('0'),
     }
 
     # Validate components

@@ -6,13 +6,32 @@
 - [ ] Create Receipt Line Items in DynamoDB
 - [ ] Create Receipt Validation in DynamoDB
 
+## Align Base Classes with DynamoDB Schema
+- [ ] Consistency in Naming:
+  - [ ] Rename `discovered_sections` to `sections` in StructureAnalysis to match schema
+- [ ] Position Representation:
+  - [ ] Decide on consistent approach for positions (bounding boxes vs. individual points)
+  - [ ] Ensure consistent representation across ReceiptWord and ReceiptLine classes
+- [ ] Metadata and Version Tracking:
+  - [ ] Add version fields to analysis classes
+  - [ ] Ensure timestamp fields are consistently used
+- [ ] Validation Structure:
+  - [ ] Review ValidationAnalysis to ensure it represents all schema categories
+  - [ ] Ensure proper representation of validation status enums
+- [ ] Data Transformation:
+  - [ ] Update `from_dynamo` and `to_dynamo` methods to handle proper transformations
+  - [ ] Add special handling for nested objects and arrays
+- [ ] Optional vs. Required Fields:
+  - [ ] Review which fields are required in schema versus optional in models
+  - [ ] Adjust default values or optionality to match schema requirements
+
 ## Implement Base Classes
 - [x] Create Receipt Word Label class
 - [x] Create Receipt Field class
-- [ ] Create LabelAnalysis class
-- [ ] Create StructureAnalysis class
-- [ ] Create LineItemAnalysis class
-- [ ] Create ValidationAnalysis class
+- [x] Create LabelAnalysis class
+- [x] Create StructureAnalysis class
+- [x] Create LineItemAnalysis class
+- [x] Create ValidationAnalysis class
 
 ## Remove Tag System
 - [x] Delete Word Tag items from DynamoDB

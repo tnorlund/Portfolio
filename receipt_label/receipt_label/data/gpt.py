@@ -3,17 +3,36 @@ from json import JSONDecodeError, dumps, loads
 from os import environ, getenv
 import requests
 from requests.models import Response
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union, Any, Set
 import logging
 from decimal import Decimal
 from json import JSONEncoder
-from ..models.receipt import Receipt, ReceiptWord, ReceiptLine
+from ..models.receipt import Receipt, ReceiptWord, ReceiptLine, ReceiptSection
+from ..models.structure import StructureAnalysis
 from datetime import datetime
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+import json
 
 # Configure logger
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Type hints for HTTP requests
+try:
+    from requests import Response, post
+except ImportError:
+    # Define minimal interfaces for type checking when requests is not available
+    class Response:
+        def __init__(self):
+            self.status_code = 200
+            self.text = ""
+            
+        def json(self):
+            return {}
+            
+        def raise_for_status(self):
+            pass
 
 MODEL = "gpt-3.5-turbo"
 
@@ -99,7 +118,7 @@ async def gpt_request_field_labeling(
     receipt: Receipt,
     receipt_lines: List[ReceiptLine],
     receipt_words: List[ReceiptWord],
-    section_boundaries: Dict,
+    section_boundaries: Union[Dict, StructureAnalysis],
     places_api_data: Dict,
     gpt_api_key: Optional[str] = None,
 ) -> Tuple[Dict, str, str]:
@@ -124,20 +143,40 @@ async def gpt_request_field_labeling(
     queries = []
     responses = []
 
-    for section in section_boundaries["discovered_sections"]:
+    # Handle either dict or StructureAnalysis object
+    discovered_sections = []
+    if isinstance(section_boundaries, dict):
+        discovered_sections = section_boundaries.get("discovered_sections", [])
+    else:
+        # It's a StructureAnalysis object
+        discovered_sections = section_boundaries.discovered_sections
+
+    for section in discovered_sections:
+        # Get section details based on section type
+        section_name = "Unknown"
+        section_line_ids = []
+        if isinstance(section, dict):
+            section_name = section.get("name", "Unknown")
+            section_line_ids = section.get("line_ids", [])
+        else:
+            # It's a ReceiptSection object
+            section_name = section.name
+            section_line_ids = section.line_ids
+        
         # Get words for this section
         section_lines = [
             line for line in receipt_lines 
-            if (hasattr(line, 'line_id') and line.line_id in section["line_ids"]) or
-               (isinstance(line, dict) and line.get('line_id') in section["line_ids"])
+            if (hasattr(line, 'line_id') and line.line_id in section_line_ids) or
+               (isinstance(line, dict) and line.get('line_id') in section_line_ids)
         ]
         section_words = [
             word for word in receipt_words 
-            if (hasattr(word, 'line_id') and word.line_id in section["line_ids"]) or
-               (isinstance(word, dict) and word.get('line_id') in section["line_ids"])
+            if (hasattr(word, 'line_id') and word.line_id in section_line_ids) or
+               (isinstance(word, dict) and word.get('line_id') in section_line_ids)
         ]
-
+        
         if not section_words:
+            # Skip empty sections
             continue
 
         query = _llm_prompt_field_labeling_section(
@@ -155,7 +194,7 @@ async def gpt_request_field_labeling(
                 {
                     "role": "system",
                     "content": (
-                        f"You label words in the {section['name']} section of receipts, "
+                        f"You label words in the {section_name} section of receipts, "
                         "using business context for accuracy."
                     ),
                 },
@@ -174,7 +213,7 @@ async def gpt_request_field_labeling(
                     if attempt == 2:  # Last attempt
                         raise  # Re-raise the timeout error
                     print(
-                        f"Timeout processing section {section['name']}, "
+                        f"Timeout processing section {section_name}, "
                         f"attempt {attempt + 1}/3"
                     )
                     continue  # Try again
@@ -182,7 +221,7 @@ async def gpt_request_field_labeling(
                     if attempt == 2:  # Last attempt
                         raise  # Re-raise the error
                     print(
-                        f"Error processing section {section['name']}, "
+                        f"Error processing section {section_name}, "
                         f"attempt {attempt + 1}/3: {str(e)}"
                     )
                     continue  # Try again
@@ -203,7 +242,7 @@ async def gpt_request_field_labeling(
                 review_reasons.extend(section_result["metadata"]["review_reasons"])
 
         except Exception as e:
-            raise ValueError(f"Error processing section {section['name']}: {str(e)}")
+            raise ValueError(f"Error processing section {section_name}: {str(e)}")
 
     # Combine results
     if not all_labels:
@@ -214,11 +253,19 @@ async def gpt_request_field_labeling(
     section_analysis_reasoning = []
     
     # We need to collect both section-level reasoning and GPT's analysis_reasoning for each section
-    for i, section in enumerate(section_boundaries["discovered_sections"]):
-        section_name = section.get("name", "Unknown")
+    for i, section in enumerate(discovered_sections):
+        # Get section name based on section type
+        section_name = "Unknown"
+        if isinstance(section, dict):
+            section_name = section.get("name", "Unknown")
+            section_reasoning_text = section.get("reasoning", "No reasoning provided")
+        else:
+            # It's a ReceiptSection object
+            section_name = section.name
+            section_reasoning_text = section.reasoning if hasattr(section, 'reasoning') else "No reasoning provided"
         
         # Add section structural reasoning
-        section_reasoning.append(f"{section_name}: {section.get('reasoning', 'No reasoning provided')}")
+        section_reasoning.append(f"{section_name}: {section_reasoning_text}")
         
         # Get any available analysis_reasoning from GPT responses
         try:
@@ -248,7 +295,7 @@ async def gpt_request_field_labeling(
     
     # Create a comprehensive analysis reasoning
     combined_reasoning = (
-        f"Receipt analysis identified {len(section_boundaries['discovered_sections'])} "
+        f"Receipt analysis identified {len(discovered_sections)} "
         f"sections. Labels were applied based on content patterns, position, and business context. "
     )
     
@@ -420,10 +467,32 @@ def _llm_prompt_field_labeling_section(
     receipt: Receipt,
     section_lines: List[ReceiptLine],
     section_words: List[ReceiptWord],
-    section_info: Dict,
+    section_info: Union[Dict, ReceiptSection],
     places_api_data: Optional[Dict] = None,
 ) -> str:
-    """Generate prompt for field labeling of a specific section."""
+    """Generate a prompt for the field labeling task for a specific section.
+
+    Args:
+        receipt: Receipt object
+        section_lines: List of receipt lines for this section
+        section_words: List of receipt words for this section
+        section_info: Dictionary or ReceiptSection object containing section metadata
+        places_api_data: Optional Places API data dictionary
+
+    Returns:
+        str: Generated prompt
+    """
+    # Get section name and reasoning based on type
+    section_name = ""
+    section_reasoning = ""
+    if isinstance(section_info, dict):
+        section_name = section_info.get("name", "Unknown Section")
+        section_reasoning = section_info.get("reasoning", "")
+    else:
+        # It's a ReceiptSection object
+        section_name = section_info.name if hasattr(section_info, 'name') else "Unknown Section"
+        section_reasoning = section_info.reasoning if hasattr(section_info, 'reasoning') else ""
+
     # Format receipt content
     formatted_lines = []
     for line in section_lines:
@@ -490,19 +559,19 @@ def _llm_prompt_field_labeling_section(
     ]
 
     # Select examples based on section type - using reasoning instead of confidence
-    if "business_info" in section_info["name"].lower():
+    if "business_info" in section_name.lower():
         examples = [
             '{"text": "COSTCO WHOLESALE", "label": "business_name", "reasoning": "Matches business name from Places API and appears at top of receipt"}',
             '{"text": "5700 Lindero Canyon Rd", "label": "address_line", "reasoning": "Matches format of street address and verified against Places API"}',
             '{"text": "#117", "label": "store_id", "reasoning": "Store identifier format that appears near business name"}'
         ]
-    elif "payment" in section_info["name"].lower():
+    elif "payment" in section_name.lower():
         examples = [
             '{"text": "TOTAL", "label": "total", "reasoning": "Clear total indicator in payment section"}',
             '{"text": "$63.27", "label": "amount", "reasoning": "Currency format that appears after TOTAL indicator"}',
             '{"text": "APPROVED", "label": "payment_status", "reasoning": "Payment confirmation status message"}'
         ]
-    elif "transaction" in section_info["name"].lower():
+    elif "transaction" in section_name.lower():
         examples = [
             '{"text": "12/17/2024", "label": "date", "reasoning": "Matches date format MM/DD/YYYY in transaction section"}',
             '{"text": "17:19", "label": "time", "reasoning": "Matches time format HH:MM near the date"}',
@@ -512,7 +581,7 @@ def _llm_prompt_field_labeling_section(
         examples = default_examples
 
     return (
-        f"Label words in the {section_info['name'].upper()} section of this receipt.\n\n"
+        f"Label words in the {section_name.upper()} section of this receipt.\n\n"
         f"Business Context:\n{dumps(business_context, indent=2)}\n\n"
         f"Receipt Content:\n"
         + receipt_content
@@ -607,87 +676,107 @@ def _llm_prompt_line_item_analysis(
 
 
 def _validate_gpt_response_structure_analysis(response: Response) -> Dict:
-    """Validate the structure analysis response from the OpenAI API."""
-    response.raise_for_status()
-    data = response.json()
-
-    if "choices" not in data or not data["choices"]:
-        raise ValueError("The response does not contain any choices.")
-
-    first_choice = data["choices"][0]
-    if "message" not in first_choice:
-        raise ValueError("The response does not contain a message.")
-
-    message = first_choice["message"]
-    if "content" not in message:
-        raise ValueError("The response message does not contain content.")
-
-    content = message["content"]
-    if not content:
-        raise ValueError("The response message content is empty.")
-
+    """Validates the response from the OpenAI API for structure analysis.
+    
+    Args:
+        response (Response): The response from the OpenAI API.
+        
+    Returns:
+        Dict: A dictionary containing the validated and formatted content from the API.
+        
+    Raises:
+        ValueError: If the response is invalid or doesn't match the expected structure.
+    """
+    if not isinstance(response, Response):
+        raise ValueError("Invalid response object.")
+    
     try:
+        resp_json = response.json()
+    except JSONDecodeError:
+        raise ValueError("Invalid JSON response.")
+    
+    if "choices" not in resp_json or len(resp_json["choices"]) == 0:
+        raise ValueError("No choices in response.")
+    
+    try:
+        content = resp_json["choices"][0]["message"]["content"]
+        
         # Handle potential JSON code blocks
         if "```json" in content:
             match = re.search(r"```json(.*?)```", content, flags=re.DOTALL)
             content = match.group(1) if match else content
-
+        
         # Parse the JSON content
-        parsed = loads(content.strip())
-
-        # Validate structure
-        if not isinstance(parsed, dict):
-            raise ValueError("The response must be a dictionary.")
-
-        required_keys = ["discovered_sections", "overall_reasoning"]
-        if not all(key in parsed for key in required_keys):
-            raise ValueError(f"Missing required keys: {required_keys}")
-
-        # Validate discovered_sections array
-        if not isinstance(parsed["discovered_sections"], list):
+        content_json = json.loads(content.strip())
+        
+        # Validate overall structure
+        if "discovered_sections" not in content_json:
+            raise ValueError("Missing 'discovered_sections' in response.")
+        if not isinstance(content_json["discovered_sections"], list):
             raise ValueError("'discovered_sections' must be a list.")
-
-        for section in parsed["discovered_sections"]:
-            if not isinstance(section, dict):
-                raise ValueError("Each section must be a dictionary.")
-
-            required_section_keys = [
-                "name",
-                "line_ids",
-                "spatial_patterns",
-                "content_patterns",
-                "reasoning",
-            ]
-            if not all(key in section for key in required_section_keys):
-                raise ValueError(
-                    f"Section missing required keys: {required_section_keys}"
-                )
-
-            if not isinstance(section["name"], str):
-                raise ValueError("'name' must be a string.")
-            if not isinstance(section["line_ids"], list):
-                raise ValueError("'line_ids' must be a list.")
-            if not isinstance(section["spatial_patterns"], list):
-                raise ValueError("'spatial_patterns' must be a list.")
-            if not isinstance(section["content_patterns"], list):
-                raise ValueError("'content_patterns' must be a list.")
-            if not isinstance(section["reasoning"], str):
-                raise ValueError("'reasoning' must be a string.")
-
-        # Validate overall_reasoning
-        if not isinstance(parsed["overall_reasoning"], str):
+        if "overall_reasoning" not in content_json:
+            raise ValueError("Missing 'overall_reasoning' in response.")
+        if not isinstance(content_json["overall_reasoning"], str):
             raise ValueError("'overall_reasoning' must be a string.")
+        
+        # Validate each section
+        for section in content_json["discovered_sections"]:
+            # For dictionaries we check keys directly
+            if isinstance(section, dict):
+                if "name" not in section:
+                    raise ValueError(
+                        "Missing 'name' in section."
+                    )
+                if "line_ids" not in section:
+                    raise ValueError(
+                        "Missing 'line_ids' in section."
+                    )
+                if "spatial_patterns" not in section:
+                    raise ValueError(
+                        "Missing 'spatial_patterns' in section."
+                    )
+                if "content_patterns" not in section:
+                    raise ValueError(
+                        "Missing 'content_patterns' in section."
+                    )
+                if "reasoning" not in section:
+                    raise ValueError(
+                        "Missing 'reasoning' in section."
+                    )
 
-        return parsed
-
-    except JSONDecodeError as e:
-        raise ValueError(
-            f"Invalid JSON in response: {e}\nResponse text: {response.text}"
-        )
-    except Exception as e:
-        raise ValueError(
-            f"Error validating response: {e}\nResponse text: {response.text}"
-        )
+                if not isinstance(section["name"], str):
+                    raise ValueError("'name' must be a string.")
+                if not isinstance(section["line_ids"], list):
+                    raise ValueError("'line_ids' must be a list.")
+                if not isinstance(section["spatial_patterns"], list):
+                    raise ValueError("'spatial_patterns' must be a list.")
+                if not isinstance(section["content_patterns"], list):
+                    raise ValueError("'content_patterns' must be a list.")
+                if not isinstance(section["reasoning"], str):
+                    raise ValueError("'reasoning' must be a string.")
+            # For ReceiptSection objects we check attributes 
+            elif hasattr(section, 'name') and hasattr(section, 'line_ids'):
+                if not isinstance(section.name, str):
+                    raise ValueError("'name' must be a string.")
+                if not isinstance(section.line_ids, list):
+                    raise ValueError("'line_ids' must be a list.")
+                if not hasattr(section, 'spatial_patterns') or not isinstance(section.spatial_patterns, list):
+                    raise ValueError("'spatial_patterns' must be a list.")
+                if not hasattr(section, 'content_patterns') or not isinstance(section.content_patterns, list):
+                    raise ValueError("'content_patterns' must be a list.")
+                if not hasattr(section, 'reasoning') or not isinstance(section.reasoning, str):
+                    raise ValueError("'reasoning' must be a string.")
+            else:
+                raise ValueError("Sections must be dictionaries or ReceiptSection objects.")
+            
+        return content_json
+        
+    except KeyError as e:
+        raise ValueError(f"Missing key in response: {str(e)}")
+    except JSONDecodeError:
+        # Log the content for debugging
+        logger.error(f"Failed to parse JSON content: {content if 'content' in locals() else 'No content'}")
+        raise ValueError("Could not parse content as JSON.")
 
 
 def _validate_gpt_response_field_labeling(response: Response) -> Dict:

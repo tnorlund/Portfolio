@@ -40,9 +40,9 @@ def sample_line_item_data(sample_price_data: Dict, sample_quantity_data: Dict) -
         "description": "Test Item",
         "quantity": Quantity(**sample_quantity_data),
         "price": Price(**sample_price_data),
-        "confidence": 0.95,
         "line_ids": [1, 2],
-        "metadata": {"category": "test"}
+        "metadata": {"category": "test"},
+        "reasoning": "Test reasoning"
     }
 
 @pytest.fixture
@@ -54,8 +54,8 @@ def sample_line_item_analysis_data(sample_line_item_data: Dict) -> Dict:
         "tax": Decimal("2.20"),
         "total": Decimal("24.18"),
         "discrepancies": [],
-        "confidence": 0.95,
-        "metadata": {"store_type": "retail"}
+        "metadata": {"store_type": "retail"},
+        "reasoning": "Test analysis reasoning"
     }
 
 # Price Tests
@@ -122,7 +122,6 @@ class TestLineItem:
         assert line_item.description == "Test Item"
         assert isinstance(line_item.quantity, Quantity)
         assert isinstance(line_item.price, Price)
-        assert line_item.confidence == 0.95
         assert line_item.line_ids == [1, 2]
         assert line_item.metadata == {"category": "test"}
 
@@ -132,7 +131,6 @@ class TestLineItem:
         assert line_item.description == "Test Item"
         assert line_item.quantity is None
         assert line_item.price is None
-        assert line_item.confidence == 0.0
         assert line_item.line_ids == []
         assert line_item.metadata == {}
 
@@ -154,7 +152,6 @@ class TestLineItemAnalysis:
         assert analysis.tax == Decimal("2.20")
         assert analysis.total == Decimal("24.18")
         assert analysis.discrepancies == []
-        assert analysis.confidence == 0.95
         assert analysis.metadata == {"store_type": "retail"}
 
     def test_analysis_default_values(self):
@@ -162,12 +159,12 @@ class TestLineItemAnalysis:
         analysis = LineItemAnalysis(items=[])
         assert analysis.items == []
         assert analysis.total_found == 0
-        assert analysis.subtotal is None  # Subtotal is None when items is empty
-        assert analysis.tax == Decimal("0")  # Tax is always initialized to 0
-        assert analysis.total is None  # Total is None when subtotal is None
+        assert analysis.subtotal is None
+        assert analysis.tax == Decimal("0")
+        assert analysis.total is None
         assert analysis.discrepancies == []
-        assert analysis.confidence == 0.0
         assert analysis.metadata == {}
+        assert analysis.reasoning != ""
 
     def test_analysis_post_init(self):
         """Test LineItemAnalysis's __post_init__ method."""
@@ -184,7 +181,7 @@ class TestLineItemAnalysis:
         """Test automatic subtotal calculation."""
         items = [LineItem(**sample_line_item_data)]
         analysis = LineItemAnalysis(items=items)
-        assert analysis.subtotal == Decimal("21.98")  # From the sample data
+        assert analysis.subtotal == Decimal("21.98")
 
     def test_analysis_with_no_prices(self):
         """Test analysis with items that have no prices."""

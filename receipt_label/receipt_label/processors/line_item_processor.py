@@ -461,4 +461,30 @@ class LineItemProcessor:
             discrepancies=[f"{type}: {msg}" for type, msg in 
                          ([(k, v) for k, v in validation_results.items() if k != 'status'])],
             reasoning=reasoning,
-        ) 
+        )
+
+    async def analyze_line_items(
+        self,
+        receipt: Receipt,
+        receipt_lines: List[ReceiptLine],
+        receipt_words: List[ReceiptWord],
+        places_api_data: Optional[Dict] = None
+    ) -> LineItemAnalysis:
+        """Analyze line items in a receipt.
+        
+        This method orchestrates the full line item analysis process:
+        1. Fast pattern matching for initial detection
+        2. Validation and uncertainty detection
+        3. LLM-based enhancement for uncertain items (if needed)
+        
+        Args:
+            receipt: Receipt object containing metadata
+            receipt_lines: List of ReceiptLine objects
+            receipt_words: List of ReceiptWord objects
+            places_api_data: Optional dictionary with Places API data
+            
+        Returns:
+            LineItemAnalysis: Analysis results with items, totals, and reasoning
+        """
+        # Alias for process_receipt to ensure backward compatibility
+        return await self.process_receipt(receipt, receipt_lines, receipt_words, places_api_data) 

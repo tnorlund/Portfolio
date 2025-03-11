@@ -1,9 +1,12 @@
 from typing import Dict, List, Optional, Tuple, Union
 import logging
 import traceback
+import re
 from ..models.receipt import Receipt, ReceiptWord, ReceiptSection, ReceiptLine
 from ..data.places_api import BatchPlacesProcessor
 from ..data.gpt import gpt_request_structure_analysis, gpt_request_field_labeling, gpt_request_line_item_analysis
+from ..models.structure import StructureAnalysis
+from ..models.label import LabelAnalysis
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -26,7 +29,7 @@ class ReceiptAnalyzer:
         receipt_lines: List[ReceiptLine],
         receipt_words: List[ReceiptWord],
         places_api_data: Optional[Dict],
-    ) -> Dict:
+    ) -> StructureAnalysis:
         """Analyze receipt structure and layout.
         
         Args:
@@ -36,7 +39,7 @@ class ReceiptAnalyzer:
             places_api_data: Optional dictionary containing Places API data
 
         Returns:
-            Dict containing structure analysis results with reasoning instead of confidence scores.
+            StructureAnalysis containing structure analysis results with detailed reasoning instead of confidence scores.
             The response includes explanations for why certain sections were identified,
             providing more detailed insights than numerical confidence scores.
 
@@ -107,6 +110,7 @@ class ReceiptAnalyzer:
 
             # Analyze structure - pass the original objects directly
             logger.info("Calling gpt_request_structure_analysis...")
+            result = None
             try:
                 result = await gpt_request_structure_analysis(
                     receipt=receipt,
@@ -126,7 +130,10 @@ class ReceiptAnalyzer:
                 logger.info("Successfully unpacked structure analysis result")
             except ValueError as e:
                 logger.error(f"Error unpacking structure analysis result: {str(e)}")
-                logger.error(f"Result type: {type(result)}, content: {result}")
+                if result is not None:
+                    logger.error(f"Result type: {type(result)}, content: {result}")
+                else:
+                    logger.error("Result is None")
                 raise
             except Exception as e:
                 logger.error(f"Other error in structure analysis: {str(e)}")
@@ -137,7 +144,9 @@ class ReceiptAnalyzer:
             if isinstance(structure_analysis, dict):
                 reasoning_fields = [k for k in structure_analysis if 'reasoning' in k.lower()]
                 logger.info(f"Structure analysis reasoning fields: {reasoning_fields}")
-            return structure_analysis
+            # Convert the dictionary to a StructureAnalysis object
+            structure_analysis_obj = StructureAnalysis.from_gpt_response(structure_analysis)
+            return structure_analysis_obj
 
         except (TypeError, ValueError) as e:
             logger.error(f"Input validation error: {str(e)}")
@@ -152,22 +161,27 @@ class ReceiptAnalyzer:
         receipt: Receipt,
         receipt_lines: List[ReceiptLine],
         receipt_words: List[ReceiptWord],
-        section_boundaries: Dict,
+        section_boundaries: Union[Dict, StructureAnalysis],
         places_api_data: Optional[Dict],
-    ) -> Dict:
+    ) -> LabelAnalysis:
         """Label and classify receipt fields.
         
         Args:
             receipt: Receipt object containing metadata
             receipt_lines: List of ReceiptLine objects
             receipt_words: List of ReceiptWord objects
-            section_boundaries: Dictionary with section boundaries from structure analysis
+            section_boundaries: Either a dictionary containing section boundaries or a StructureAnalysis object
+                from structure analysis
             places_api_data: Optional dictionary containing Places API data
-            
+
         Returns:
-            Dict containing field labeling results with reasoning explanations for each labeled field.
+            LabelAnalysis containing field labels with detailed reasoning instead of confidence scores.
             Instead of confidence scores, each label includes detailed reasoning about why
-            the field was classified in a certain way.
+            it was applied, providing more interpretable and transparent results.
+
+        Raises:
+            TypeError: If any of the input types are incorrect or if list elements are invalid
+            ValueError: If any of the required inputs are None or empty or if required attributes are missing
         """
         try:
             # Label fields - pass the original objects directly
@@ -210,7 +224,22 @@ class ReceiptAnalyzer:
                         reasoning_fields.append(label['label'])
                 logger.info(f"Field labels with reasoning: {reasoning_fields}")
 
-            return field_analysis
+                logger.debug(f"Field analysis metadata keys: {list(field_analysis['metadata'].keys())}")
+            
+            # Convert the dictionary to a LabelAnalysis object
+            field_analysis_obj = LabelAnalysis.from_gpt_response(field_analysis)
+            
+            # Log the number of labels
+            logger.debug(f"Number of labels generated: {len(field_analysis_obj.labels)}")
+            
+            # Log a sample of labels for debugging
+            if field_analysis_obj.labels:
+                sample_size = min(3, len(field_analysis_obj.labels))
+                logger.debug(f"Sample of {sample_size} labels:")
+                for label in field_analysis_obj.labels[:sample_size]:
+                    logger.debug(f"  {label.text} -> {label.label} (reasoning: {label.reasoning})")
+            
+            return field_analysis_obj
 
         except Exception as e:
             logger.error(f"Error in field labeling: {str(e)}")

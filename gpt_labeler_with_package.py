@@ -423,10 +423,8 @@ async def main():
                 
                 # Track section types
                 try:
-                    for section in analysis_result.structure_analysis[
-                        "discovered_sections"
-                    ]:
-                        section_name = section["name"]
+                    for section in analysis_result.structure_analysis.discovered_sections:
+                        section_name = section.name
                         if section_name not in stats["section_types"]:
                             stats["section_types"][section_name] = {
                                 "count": 0,
@@ -438,13 +436,15 @@ async def main():
                         section_stats["count"] += 1
                         
                         # Track patterns
-                        for pattern in section.get("spatial_patterns", []):
-                            section_stats["spatial_patterns"][pattern] = (
-                                section_stats["spatial_patterns"].get(pattern, 0) + 1
+                        for pattern in section.spatial_patterns:
+                            pattern_desc = pattern.description if hasattr(pattern, 'description') else str(pattern)
+                            section_stats["spatial_patterns"][pattern_desc] = (
+                                section_stats["spatial_patterns"].get(pattern_desc, 0) + 1
                             )
-                        for pattern in section.get("content_patterns", []):
-                            section_stats["content_patterns"][pattern] = (
-                                section_stats["content_patterns"].get(pattern, 0) + 1
+                        for pattern in section.content_patterns:
+                            pattern_desc = pattern.description if hasattr(pattern, 'description') else str(pattern)
+                            section_stats["content_patterns"][pattern_desc] = (
+                                section_stats["content_patterns"].get(pattern_desc, 0) + 1
                             )
                 except (KeyError, TypeError) as e:
                     logger.warning(f"Could not process section statistics: {str(e)}")
@@ -453,12 +453,12 @@ async def main():
                 try:
                     stats["word_label_stats"]["total_words"] += len(receipt_words)
                     stats["word_label_stats"]["labeled_words"] += len(
-                        analysis_result.field_analysis.get("labels", [])
+                        analysis_result.field_analysis.labels
                     )
 
                     # Track label distribution
-                    for label_info in analysis_result.field_analysis.get("labels", []):
-                        label_type = label_info.get("label", "unknown")
+                    for label_info in analysis_result.field_analysis.labels:
+                        label_type = label_info.label
                         if (
                             label_type
                             not in stats["word_label_stats"]["label_distribution"]
