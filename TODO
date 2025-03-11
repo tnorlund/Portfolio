@@ -7,11 +7,11 @@
 - [ ] Create Receipt Validation in DynamoDB
 
 ## Align Base Classes with DynamoDB Schema
-- [ ] Consistency in Naming:
-  - [ ] Rename `discovered_sections` to `sections` in StructureAnalysis to match schema
-- [ ] Position Representation:
-  - [ ] Decide on consistent approach for positions (bounding boxes vs. individual points)
-  - [ ] Ensure consistent representation across ReceiptWord and ReceiptLine classes
+- [x] Consistency in Naming:
+  - [x] Rename `discovered_sections` to `sections` in StructureAnalysis to match schema
+- [x] Position Representation:
+  - [x] Decide on consistent approach for positions (bounding boxes vs. individual points)
+  - [x] Ensure consistent representation across ReceiptWord and ReceiptLine classes
 - [ ] Metadata and Version Tracking:
   - [ ] Add version fields to analysis classes
   - [ ] Ensure timestamp fields are consistently used

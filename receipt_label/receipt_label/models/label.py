@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 from decimal import Decimal
+from .position import BoundingBox, Point
 
 
 @dataclass
@@ -17,14 +18,55 @@ class WordLabel:
     word_id: int
     reasoning: str
     section_name: Optional[str] = None
-    bounding_box: Optional[Dict] = None
-    position: Optional[Dict] = None  # For tracking spatial positioning
+    bounding_box: Optional[BoundingBox] = None
+    position: Optional[Dict] = None  # Deprecated: Use bounding_box instead
 
     def __post_init__(self):
-        if self.bounding_box is None:
-            self.bounding_box = {}
+        # Convert dictionary bounding_box to BoundingBox object if needed
+        if isinstance(self.bounding_box, dict) and self.bounding_box:
+            self.bounding_box = BoundingBox.from_dict(self.bounding_box)
+        elif self.bounding_box is None:
+            self.bounding_box = None
+            
+        # For backward compatibility
         if self.position is None:
             self.position = {}
+    
+    def to_dict(self) -> Dict:
+        """Convert the WordLabel to a dictionary for serialization."""
+        result = {
+            "text": self.text,
+            "label": self.label,
+            "line_id": self.line_id,
+            "word_id": self.word_id,
+            "reasoning": self.reasoning,
+        }
+        
+        if self.section_name:
+            result["section_name"] = self.section_name
+            
+        if self.bounding_box:
+            result["bounding_box"] = self.bounding_box.to_dict()
+            
+        return result
+    
+    @classmethod
+    def from_dict(cls, data: Dict) -> "WordLabel":
+        """Create a WordLabel from a dictionary."""
+        bounding_box_data = data.get("bounding_box")
+        bounding_box = None
+        if bounding_box_data:
+            bounding_box = BoundingBox.from_dict(bounding_box_data)
+            
+        return cls(
+            text=data.get("text", ""),
+            label=data.get("label", ""),
+            line_id=data.get("line_id", 0),
+            word_id=data.get("word_id", 0),
+            reasoning=data.get("reasoning", ""),
+            section_name=data.get("section_name"),
+            bounding_box=bounding_box
+        )
 
 
 @dataclass
@@ -237,6 +279,11 @@ class LabelAnalysis:
         """
         labels = []
         for label_data in response_data.get("labels", []):
+            bounding_box_data = label_data.get("bounding_box")
+            bounding_box = None
+            if bounding_box_data:
+                bounding_box = BoundingBox.from_dict(bounding_box_data)
+            
             labels.append(
                 WordLabel(
                     text=label_data.get("text", ""),
@@ -245,7 +292,7 @@ class LabelAnalysis:
                     word_id=label_data.get("word_id", 0),
                     reasoning=label_data.get("reasoning", ""),
                     section_name=label_data.get("section_name", None),
-                    bounding_box=label_data.get("bounding_box", {})
+                    bounding_box=bounding_box
                 )
             )
         

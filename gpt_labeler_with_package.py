@@ -423,7 +423,7 @@ async def main():
                 
                 # Track section types
                 try:
-                    for section in analysis_result.structure_analysis.discovered_sections:
+                    for section in analysis_result.structure_analysis.sections:
                         section_name = section.name
                         if section_name not in stats["section_types"]:
                             stats["section_types"][section_name] = {

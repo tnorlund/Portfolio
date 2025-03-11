@@ -146,10 +146,10 @@ async def gpt_request_field_labeling(
     # Handle either dict or StructureAnalysis object
     discovered_sections = []
     if isinstance(section_boundaries, dict):
-        discovered_sections = section_boundaries.get("discovered_sections", [])
+        discovered_sections = section_boundaries.get("discovered_sections", section_boundaries.get("sections", []))
     else:
         # It's a StructureAnalysis object
-        discovered_sections = section_boundaries.discovered_sections
+        discovered_sections = section_boundaries.sections
 
     for section in discovered_sections:
         # Get section details based on section type
@@ -448,16 +448,20 @@ def _llm_prompt_structure_analysis(
         "   - Detailed reasoning for why this is a valid section\n\n"
         "Return this JSON structure:\n"
         "{\n"
-        '  "discovered_sections": [\n'
+        '  "sections": [\n'
         "    {\n"
-        '      "name": "section_name",\n'
+        '      "name": "header",\n'
         '      "line_ids": [1, 2, 3],\n'
-        '      "spatial_patterns": ["pattern1", "pattern2"],\n'
-        '      "content_patterns": ["pattern1", "pattern2"],\n'
-        '      "reasoning": "Detailed explanation of why these lines form a section, including spatial and content evidence"\n'
+        '      "spatial_patterns": [\n'
+        '        {"pattern_type": "alignment", "description": "top of receipt"}\n'
+        "      ],\n"
+        '      "content_patterns": [\n'
+        '        {"pattern_type": "business_info", "description": "contains business name"}\n'
+        "      ],\n"
+        '      "reasoning": "This section contains the business name and is located at the top of the receipt."\n'
         "    }\n"
         "  ],\n"
-        '  "overall_reasoning": "Comprehensive explanation of the receipt structure, relationships between sections, and key findings"\n'
+        '  "overall_reasoning": "The receipt is divided into logical sections based on content and layout."\n'
         "}\n\n"
         "Return ONLY the JSON object. No other text."
     )
@@ -710,17 +714,26 @@ def _validate_gpt_response_structure_analysis(response: Response) -> Dict:
         content_json = json.loads(content.strip())
         
         # Validate overall structure
-        if "discovered_sections" not in content_json:
-            raise ValueError("Missing 'discovered_sections' in response.")
-        if not isinstance(content_json["discovered_sections"], list):
-            raise ValueError("'discovered_sections' must be a list.")
+        # Handle both legacy ("discovered_sections") and new format ("sections")
+        if "sections" not in content_json and "discovered_sections" not in content_json:
+            raise ValueError("Missing 'sections' or 'discovered_sections' in response.")
+            
+        # Get the sections using either key
+        sections_data = content_json.get("sections", content_json.get("discovered_sections", []))
+        if not isinstance(sections_data, list):
+            raise ValueError("'sections' must be a list.")
+            
+        # If the response uses the old key, update it to the new key for consistency
+        if "discovered_sections" in content_json and "sections" not in content_json:
+            content_json["sections"] = content_json["discovered_sections"]
+            
         if "overall_reasoning" not in content_json:
             raise ValueError("Missing 'overall_reasoning' in response.")
         if not isinstance(content_json["overall_reasoning"], str):
             raise ValueError("'overall_reasoning' must be a string.")
         
         # Validate each section
-        for section in content_json["discovered_sections"]:
+        for section in sections_data:
             # For dictionaries we check keys directly
             if isinstance(section, dict):
                 if "name" not in section:

@@ -1,0 +1,28 @@
+refactor: implement consistent position representation across codebase
+
+This commit standardizes the position/bounding box representation across the receipt labeling system and ensures compatibility with DynamoDB schema:
+
+- Create dedicated Position models:
+  - Add new Point and BoundingBox classes with serialization support
+  - Implement to_dict/from_dict and to_dynamo/from_dynamo methods
+  - Provide utility methods for position calculations
+
+- Update WordLabel to use new position models:
+  - Replace Dict-based bounding_box with BoundingBox object
+  - Add serialization/deserialization methods
+  - Maintain backwards compatibility with legacy data
+
+- Standardize section representation in StructureAnalysis:
+  - Rename discovered_sections to sections for consistency
+  - Add version and timestamp tracking
+  - Improve serialization to/from DynamoDB
+  - Add to_dict/from_dict methods to all related classes
+
+- Ensure consistent handling in dependent code:
+  - Update references in labeler.py and gpt_labeler_with_package.py
+  - Add backward compatibility in gpt.py for section handling
+  - Update validation functions to work with both formats
+
+This change marks significant progress in the "Align Base Classes with DynamoDB Schema" task from the TODO file, specifically completing:
+- Consistency in Naming
+- Position Representation

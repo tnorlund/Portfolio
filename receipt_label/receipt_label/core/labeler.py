@@ -132,7 +132,7 @@ class ReceiptLabeler:
                 places_api_data=places_data
             )
             logger.debug("Structure analysis completed successfully")
-            logger.debug(f"Structure analysis sections: {len(structure_analysis.discovered_sections)} found")
+            logger.debug(f"Structure analysis sections: {len(structure_analysis.sections)} found")
 
             # Label fields
             logger.debug("Starting field labeling...")
