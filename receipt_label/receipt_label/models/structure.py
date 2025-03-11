@@ -2,6 +2,12 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 from .metadata import MetadataMixin
+from receipt_dynamo.entities.receipt_structure_analysis import (
+    ReceiptStructureAnalysis, 
+    ReceiptSection as DynamoReceiptSection,
+    SpatialPattern as DynamoSpatialPattern,
+    ContentPattern as DynamoContentPattern
+)
 
 
 @dataclass
@@ -194,6 +200,9 @@ class StructureAnalysis(MetadataMixin):
     """
     sections: List[ReceiptSection]
     overall_reasoning: str
+    receipt_id: Optional[int] = None
+    image_id: Optional[str] = None
+    version: str = "1.0.0" 
     metadata: Dict = field(default_factory=dict)
     timestamp_added: Optional[str] = None
     timestamp_updated: Optional[str] = None
@@ -323,50 +332,200 @@ class StructureAnalysis(MetadataMixin):
         return cls(
             sections=sections,
             overall_reasoning=response_data.get("overall_reasoning", ""),
+            receipt_id=response_data.get("receipt_id"),
+            image_id=response_data.get("image_id"),
+            version=response_data.get("version", "1.0.0"),
             metadata={k: v for k, v in response_data.items() 
-                     if k not in ["discovered_sections", "sections", "overall_reasoning"]},
+                     if k not in ["discovered_sections", "sections", "overall_reasoning", 
+                                 "receipt_id", "image_id", "version"]},
             timestamp_added=response_data.get("timestamp_added")
         )
         
-    def to_dynamo(self) -> Dict:
-        """
-        Convert the StructureAnalysis to a DynamoDB-compatible dictionary.
-        
-        Returns:
-            Dict: A dictionary representation for DynamoDB
-        """
-        # Get base metadata fields
-        result = super().to_dict()
-        
-        # Add class-specific fields
-        result.update({
-            "sections": [section.to_dict() if hasattr(section, 'to_dict') else section for section in self.sections],
-            "overall_reasoning": self.overall_reasoning,
-        })
-        
-        return result
-        
     @classmethod
-    def from_dynamo(cls, data: Dict) -> "StructureAnalysis":
+    def from_dynamo(cls, analysis: "ReceiptStructureAnalysis") -> "StructureAnalysis":
         """
-        Create a StructureAnalysis instance from DynamoDB data.
+        Create a StructureAnalysis instance from a DynamoDB ReceiptStructureAnalysis entity.
         
         Args:
-            data (Dict): Data from DynamoDB
+            analysis: A ReceiptStructureAnalysis object from the DynamoDB entities
             
         Returns:
-            StructureAnalysis: A new instance populated with the DynamoDB data
+            StructureAnalysis: A new instance populated with the data from the DynamoDB entity
         """
-        # Extract metadata fields
-        metadata_fields = MetadataMixin.from_dict(data)
-        
-        # Process sections
+        # Process sections from the DynamoDB entity
         sections = []
-        for section_dict in data.get("sections", []):
-            sections.append(ReceiptSection.from_dict(section_dict))
+        for section in analysis.sections:
+            sections.append(ReceiptSection(
+                name=section.name,
+                line_ids=section.line_ids,
+                spatial_patterns=[SpatialPattern(
+                    pattern_type=sp.pattern_type,
+                    description=sp.description,
+                    metadata=sp.metadata
+                ) for sp in section.spatial_patterns],
+                content_patterns=[ContentPattern(
+                    pattern_type=cp.pattern_type,
+                    description=cp.description,
+                    examples=cp.examples,
+                    metadata=cp.metadata
+                ) for cp in section.content_patterns],
+                reasoning=section.reasoning,
+                start_line=section.start_line,
+                end_line=section.end_line,
+                metadata=section.metadata
+            ))
             
-        return cls(
-            sections=sections,
-            overall_reasoning=data.get("overall_reasoning", ""),
-            **metadata_fields
-        ) 
+        # Create instance but bypass normal initialization to preserve timestamps
+        instance = cls.__new__(cls)
+        
+        # Set attributes manually
+        instance.sections = sections
+        instance.overall_reasoning = analysis.overall_reasoning
+        instance.receipt_id = analysis.receipt_id
+        instance.image_id = analysis.image_id
+        instance.version = analysis.version
+        instance.timestamp_added = analysis.timestamp_added.isoformat() if analysis.timestamp_added else None
+        instance.timestamp_updated = analysis.timestamp_updated.isoformat() if analysis.timestamp_updated else None
+        
+        # Create metadata from the DynamoDB entity's fields
+        instance.metadata = {
+            **analysis.metadata,
+            "processing_metrics": analysis.processing_metrics,
+            "source_info": analysis.source_info,
+            "processing_history": analysis.processing_history
+        }
+        
+        # Minimal initialization without updating timestamps
+        instance._initialize_from_dynamo()
+        
+        return instance
+        
+    def to_dynamo(self) -> Optional["ReceiptStructureAnalysis"]:
+        """
+        Convert this StructureAnalysis to a DynamoDB ReceiptStructureAnalysis entity.
+        
+        Returns:
+            ReceiptStructureAnalysis: A DynamoDB entity object
+            
+        Raises:
+            ValueError: If receipt_id or image_id are not set
+        """
+        # Check if required fields are set
+        if self.receipt_id is None:
+            raise ValueError("receipt_id must be set before calling to_dynamo()")
+        if self.image_id is None:
+            raise ValueError("image_id must be set before calling to_dynamo()")
+            
+        # Convert sections to DynamoDB format
+        dynamo_sections = []
+        for section in self.sections:
+            # Convert spatial patterns
+            spatial_patterns = []
+            for sp in section.spatial_patterns:
+                if isinstance(sp, str):
+                    spatial_patterns.append(DynamoSpatialPattern(
+                        pattern_type="legacy",
+                        description=sp
+                    ))
+                else:
+                    spatial_patterns.append(DynamoSpatialPattern(
+                        pattern_type=sp.pattern_type,
+                        description=sp.description,
+                        metadata=sp.metadata
+                    ))
+            
+            # Convert content patterns
+            content_patterns = []
+            for cp in section.content_patterns:
+                if isinstance(cp, str):
+                    content_patterns.append(DynamoContentPattern(
+                        pattern_type="legacy",
+                        description=cp,
+                        examples=[]
+                    ))
+                else:
+                    content_patterns.append(DynamoContentPattern(
+                        pattern_type=cp.pattern_type,
+                        description=cp.description,
+                        examples=cp.examples,
+                        metadata=cp.metadata
+                    ))
+            
+            # Create DynamoDB section
+            dynamo_sections.append(DynamoReceiptSection(
+                name=section.name,
+                line_ids=section.line_ids,
+                spatial_patterns=spatial_patterns,
+                content_patterns=content_patterns,
+                reasoning=section.reasoning,
+                start_line=section.start_line,
+                end_line=section.end_line,
+                metadata=section.metadata
+            ))
+        
+        # Parse timestamps if they are strings
+        timestamp_added = None
+        if self.timestamp_added:
+            if isinstance(self.timestamp_added, str):
+                from datetime import datetime
+                try:
+                    timestamp_added = datetime.fromisoformat(self.timestamp_added)
+                except ValueError:
+                    timestamp_added = datetime.now()
+            else:
+                timestamp_added = self.timestamp_added
+                
+        timestamp_updated = None
+        if self.timestamp_updated:
+            if isinstance(self.timestamp_updated, str):
+                from datetime import datetime
+                try:
+                    timestamp_updated = datetime.fromisoformat(self.timestamp_updated)
+                except ValueError:
+                    timestamp_updated = datetime.now()
+            else:
+                timestamp_updated = self.timestamp_updated
+        
+        # Extract processing metrics and source info from metadata if present
+        processing_metrics = self.metadata.get("processing_metrics", {})
+        source_info = self.metadata.get("source_info", {})
+        processing_history = self.metadata.get("processing_history", [])
+        
+        # Create metadata without the extracted fields to avoid duplication
+        metadata = {k: v for k, v in self.metadata.items() 
+                  if k not in ["processing_metrics", "source_info", "processing_history"]}
+        
+        # Create the DynamoDB ReceiptStructureAnalysis
+        return ReceiptStructureAnalysis(
+            receipt_id=self.receipt_id,
+            image_id=self.image_id,
+            sections=dynamo_sections,
+            overall_reasoning=self.overall_reasoning,
+            version=self.version,
+            metadata=metadata,
+            timestamp_added=timestamp_added,
+            timestamp_updated=timestamp_updated,
+            processing_metrics=processing_metrics,
+            source_info=source_info,
+            processing_history=processing_history
+        )
+        
+    def _initialize_from_dynamo(self):
+        """
+        Perform minimal initialization when creating from DynamoDB data.
+        This avoids overriding timestamps that came from the database.
+        """
+        # Sort sections by start line for consistent order
+        self.sections.sort(key=lambda section: 
+            section.start_line if section.start_line is not None else float('inf')
+        )
+        
+        # Ensure basic metadata structure exists
+        if "processing_metrics" not in self.metadata:
+            self.metadata["processing_metrics"] = {}
+            
+        if "source_info" not in self.metadata:
+            self.metadata["source_info"] = {}
+            
+        if "processing_history" not in self.metadata:
+            self.metadata["processing_history"] = [] 

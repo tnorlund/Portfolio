@@ -30,6 +30,8 @@ __all__ = [
     "itemToReceiptField",
     "ReceiptLabelAnalysis",
     "itemToReceiptLabelAnalysis",
+    "ReceiptStructureAnalysis",
+    "itemToReceiptStructureAnalysis",
     "WordTag",
     "itemToWordTag",
     "Job",
@@ -77,6 +79,8 @@ from receipt_dynamo.entities import (
     itemToReceiptField,
     ReceiptLabelAnalysis,
     itemToReceiptLabelAnalysis,
+    ReceiptStructureAnalysis,
+    itemToReceiptStructureAnalysis,
 )
 from receipt_dynamo.entities.receipt_word_tag import (
     ReceiptWordTag,
@@ -89,6 +93,13 @@ from receipt_dynamo.entities.job_resource import JobResource, itemToJobResource
 from receipt_dynamo.entities.job_status import JobStatus, itemToJobStatus
 from receipt_dynamo.entities.instance import Instance, itemToInstance
 from receipt_dynamo.entities.instance_job import InstanceJob, itemToInstanceJob
+from receipt_dynamo.entities.receipt_structure_analysis import (
+    ReceiptStructureAnalysis,
+    itemToReceiptStructureAnalysis,
+    SpatialPattern,
+    ContentPattern,
+    ReceiptSection
+)
 
 # Only import what's actually used elsewhere in the package
 from receipt_dynamo.data.dynamo_client import DynamoClient

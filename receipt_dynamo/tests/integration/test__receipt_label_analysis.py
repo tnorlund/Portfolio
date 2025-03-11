@@ -72,7 +72,10 @@ def test_addReceiptLabelAnalysis_duplicate_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ReceiptLabelAnalysis parameter is required and cannot be None."),
+        (
+            None,
+            "ReceiptLabelAnalysis parameter is required and cannot be None.",
+        ),
         (
             "not-a-receipt-label-analysis",
             "receipt_label_analysis must be an instance of the ReceiptLabelAnalysis class.",
@@ -219,7 +222,10 @@ def test_addReceiptLabelAnalyses_success(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ReceiptLabelAnalyses parameter is required and cannot be None."),
+        (
+            None,
+            "ReceiptLabelAnalyses parameter is required and cannot be None.",
+        ),
         (
             "not-a-list",
             "receipt_label_analyses must be a list of ReceiptLabelAnalysis instances.",
@@ -393,9 +399,7 @@ def test_updateReceiptLabelAnalysis_success(
     )
     assert retrieved_analysis == updated_analysis
     # Verify the label text was updated
-    assert (
-        retrieved_analysis.labels[0]["text"] == "Updated Business"
-    )
+    assert retrieved_analysis.labels[0]["text"] == "Updated Business"
 
 
 @pytest.mark.integration
@@ -415,7 +419,10 @@ def test_updateReceiptLabelAnalysis_nonexistent_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ReceiptLabelAnalysis parameter is required and cannot be None."),
+        (
+            None,
+            "ReceiptLabelAnalysis parameter is required and cannot be None.",
+        ),
         (
             "not-a-receipt-label-analysis",
             "receipt_label_analysis must be an instance of the ReceiptLabelAnalysis class.",
@@ -520,7 +527,7 @@ def test_updateReceiptLabelAnalyses_success(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    
+
     # Create two receipt label analyses
     analyses = [
         sample_receipt_label_analysis,
@@ -541,10 +548,10 @@ def test_updateReceiptLabelAnalyses_success(
             overall_reasoning="Overall reasoning for the label analysis",
         ),
     ]
-    
+
     # Add them to the database
     client.addReceiptLabelAnalyses(analyses)
-    
+
     # Update the analyses
     updated_analyses = [
         ReceiptLabelAnalysis(
@@ -611,7 +618,10 @@ def test_updateReceiptLabelAnalyses_nonexistent_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ReceiptLabelAnalyses parameter is required and cannot be None."),
+        (
+            None,
+            "ReceiptLabelAnalyses parameter is required and cannot be None.",
+        ),
         (
             "not-a-list",
             "receipt_label_analyses must be a list of ReceiptLabelAnalysis instances.",
@@ -715,7 +725,7 @@ def test_updateReceiptLabelAnalyses_chunking(
     DynamoDB transactions are limited to 25 items at a time.
     """
     client = DynamoClient(dynamodb_table)
-    
+
     # Create 30 different analyses by varying receipt_id
     analyses = []
     for i in range(1, 31):
@@ -736,7 +746,7 @@ def test_updateReceiptLabelAnalyses_chunking(
             overall_reasoning=f"Overall reasoning {i}",
         )
         analyses.append(analysis)
-    
+
     # Mock the transact_write_items method
     mock_transact = mocker.patch.object(
         client._client, "transact_write_items", return_value={}
@@ -748,11 +758,11 @@ def test_updateReceiptLabelAnalyses_chunking(
     # Assert
     # Should be called twice (25 items in first chunk, 5 in second)
     assert mock_transact.call_count == 2
-    
+
     # First call should have 25 items
     first_call_args = mock_transact.call_args_list[0][1]
     assert len(first_call_args["TransactItems"]) == 25
-    
+
     # Second call should have 5 items
     second_call_args = mock_transact.call_args_list[1][1]
     assert len(second_call_args["TransactItems"]) == 5
@@ -800,7 +810,10 @@ def test_deleteReceiptLabelAnalysis_nonexistent_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ReceiptLabelAnalysis parameter is required and cannot be None."),
+        (
+            None,
+            "ReceiptLabelAnalysis parameter is required and cannot be None.",
+        ),
         (
             "not-a-receipt-label-analysis",
             "receipt_label_analysis must be an instance of the ReceiptLabelAnalysis class.",
@@ -905,7 +918,7 @@ def test_deleteReceiptLabelAnalyses_success(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    
+
     # Create two receipt label analyses
     analyses = [
         sample_receipt_label_analysis,
@@ -926,10 +939,10 @@ def test_deleteReceiptLabelAnalyses_success(
             overall_reasoning="Overall reasoning for the label analysis",
         ),
     ]
-    
+
     # Add them to the database
     client.addReceiptLabelAnalyses(analyses)
-    
+
     # Act
     client.deleteReceiptLabelAnalyses(analyses)
 
@@ -960,7 +973,10 @@ def test_deleteReceiptLabelAnalyses_nonexistent_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ReceiptLabelAnalyses parameter is required and cannot be None."),
+        (
+            None,
+            "ReceiptLabelAnalyses parameter is required and cannot be None.",
+        ),
         (
             "not-a-list",
             "receipt_label_analyses must be a list of ReceiptLabelAnalysis instances.",
@@ -1064,7 +1080,7 @@ def test_deleteReceiptLabelAnalyses_chunking(
     DynamoDB transactions are limited to 25 items at a time.
     """
     client = DynamoClient(dynamodb_table)
-    
+
     # Create 30 different analyses by varying receipt_id
     analyses = []
     for i in range(1, 31):
@@ -1085,7 +1101,7 @@ def test_deleteReceiptLabelAnalyses_chunking(
             overall_reasoning=f"Overall reasoning {i}",
         )
         analyses.append(analysis)
-    
+
     # Mock the transact_write_items method
     mock_transact = mocker.patch.object(
         client._client, "transact_write_items", return_value={}
@@ -1097,11 +1113,11 @@ def test_deleteReceiptLabelAnalyses_chunking(
     # Assert
     # Should be called twice (25 items in first chunk, 5 in second)
     assert mock_transact.call_count == 2
-    
+
     # First call should have 25 items
     first_call_args = mock_transact.call_args_list[0][1]
     assert len(first_call_args["TransactItems"]) == 25
-    
+
     # Second call should have 5 items
     second_call_args = mock_transact.call_args_list[1][1]
     assert len(second_call_args["TransactItems"]) == 5
@@ -1284,7 +1300,7 @@ def test_listReceiptLabelAnalyses_with_limit(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    
+
     # Add 3 analyses
     analyses = []
     for i in range(1, 4):
@@ -1306,9 +1322,11 @@ def test_listReceiptLabelAnalyses_with_limit(
         )
         analyses.append(analysis)
         client.addReceiptLabelAnalysis(analysis)
-    
+
     # Act - get only 2 results
-    result_analyses, last_evaluated_key = client.listReceiptLabelAnalyses(limit=2)
+    result_analyses, last_evaluated_key = client.listReceiptLabelAnalyses(
+        limit=2
+    )
 
     # Assert
     assert len(result_analyses) == 2
@@ -1328,9 +1346,9 @@ def test_listReceiptLabelAnalyses_with_last_evaluated_key(
     mock_query = mocker.patch.object(
         client._client,
         "query",
-        autospec=True  # Use autospec to better track calls
+        autospec=True,  # Use autospec to better track calls
     )
-    
+
     # Configure the mock to return the desired response
     mock_query.return_value = {
         "Items": [sample_receipt_label_analysis.to_item()],
@@ -1340,9 +1358,11 @@ def test_listReceiptLabelAnalyses_with_last_evaluated_key(
             "TYPE": {"S": "RECEIPT_LABEL_ANALYSIS"},
         },
     }
-    
+
     # Act
-    analyses, last_evaluated_key = client.listReceiptLabelAnalyses(limit=1)  # Add a limit to ensure it exits the loop
+    analyses, last_evaluated_key = client.listReceiptLabelAnalyses(
+        limit=1
+    )  # Add a limit to ensure it exits the loop
 
     # Assert
     assert len(analyses) == 1
@@ -1400,7 +1420,7 @@ def test_listReceiptLabelAnalyses_invalid_parameters(
     - When lastEvaluatedKey has invalid format
     """
     client = DynamoClient(dynamodb_table)
-    
+
     # Call with the specific invalid parameter
     with pytest.raises(ValueError, match=expected_error):
         if "limit" in invalid_input:
@@ -1504,7 +1524,7 @@ def test_getReceiptLabelAnalysesByImage_with_limit(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    
+
     # Add 3 analyses with the same image_id but different receipt_ids
     analyses = []
     for i in range(1, 4):
@@ -1526,10 +1546,12 @@ def test_getReceiptLabelAnalysesByImage_with_limit(
         )
         analyses.append(analysis)
         client.addReceiptLabelAnalysis(analysis)
-    
+
     # Act - get only 2 results
-    result_analyses, last_evaluated_key = client.getReceiptLabelAnalysesByImage(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3", limit=2
+    result_analyses, last_evaluated_key = (
+        client.getReceiptLabelAnalysesByImage(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3", limit=2
+        )
     )
 
     # Assert
@@ -1598,20 +1620,20 @@ def test_getReceiptLabelAnalysesByImage_invalid_parameters(
     Tests that getReceiptLabelAnalysesByImage raises ValueError for invalid parameters.
     """
     client = DynamoClient(dynamodb_table)
-    
+
     # Build parameters for function call
     kwargs = {}
     if "image_id" in invalid_input:
         image_id = invalid_input["image_id"]
     else:
         image_id = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    
+
     if "limit" in invalid_input:
         kwargs["limit"] = invalid_input["limit"]
-    
+
     if "lastEvaluatedKey" in invalid_input:
         kwargs["lastEvaluatedKey"] = invalid_input["lastEvaluatedKey"]
-    
+
     # Call with the specific invalid parameter
     with pytest.raises(ValueError, match=expected_error):
         client.getReceiptLabelAnalysesByImage(image_id, **kwargs)  # type: ignore
@@ -1706,25 +1728,25 @@ def test_getReceiptLabelAnalysesByReceipt_invalid_parameters(
     Tests that getReceiptLabelAnalysesByReceipt raises ValueError for invalid parameters.
     """
     client = DynamoClient(dynamodb_table)
-    
+
     # Build parameters for function call
     kwargs = {}
     if "image_id" in invalid_input:
         image_id = invalid_input["image_id"]
     else:
         image_id = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    
+
     if "receipt_id" in invalid_input:
         receipt_id = invalid_input["receipt_id"]
     else:
         receipt_id = 1
-    
+
     if "limit" in invalid_input:
         kwargs["limit"] = invalid_input["limit"]
-    
+
     if "lastEvaluatedKey" in invalid_input:
         kwargs["lastEvaluatedKey"] = invalid_input["lastEvaluatedKey"]
-    
+
     # Call with the specific invalid parameter
     with pytest.raises(ValueError, match=expected_error):
         client.getReceiptLabelAnalysesByReceipt(image_id, receipt_id, **kwargs)  # type: ignore

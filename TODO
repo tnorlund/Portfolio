@@ -2,7 +2,7 @@
 
 ## Create Analysis Items
 - [x] Create Receipt Label Analysis in DynamoDB
-- [ ] Create Receipt Structure Analysis in DynamoDB
+- [x] Create Receipt Structure Analysis in DynamoDB
 - [ ] Create Receipt Line Items in DynamoDB
 - [ ] Create Receipt Validation in DynamoDB
 
@@ -37,12 +37,14 @@
   - [x] Update `from_dynamo` and `to_dynamo` methods to handle proper transformations
   - [x] Add special handling for nested objects and arrays
   - [ ] Create consistent serialization methods across all classes:
-    - [x] Implement to_dynamo() for LabelAnalysis
-    - [x] Implement from_dynamo() for LabelAnalysis
-    - [ ] Implement to_dynamo() for LineItemAnalysis
-    - [ ] Implement from_dynamo() for LineItemAnalysis
-    - [ ] Implement to_dynamo() for ValidationAnalysis
-    - [ ] Implement from_dynamo() for ValidationAnalysis
+    - [x] Implement `to_dynamo()` for LabelAnalysis
+    - [x] Implement `from_dynamo()` for LabelAnalysis
+    - [x] Implement `to_dynamo()` for StructureAnalysis
+    - [x] Implement `from_dynamo()` for StructureAnalysis
+    - [ ] Implement `to_dynamo()` for LineItemAnalysis
+    - [ ] Implement `from_dynamo()` for LineItemAnalysis
+    - [ ] Implement `to_dynamo()` for ValidationAnalysis
+    - [ ] Implement `from_dynamo()` for ValidationAnalysis
   - [x] Add integration tests for serialization/deserialization for ReceiptLabelAnalysis
   - [ ] Add integration tests for serialization/deserialization for other analysis types
 - [ ] Optional vs. Required Fields:

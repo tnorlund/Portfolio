@@ -70,3 +70,7 @@ from receipt_dynamo.entities.receipt_label_analysis import (
     ReceiptLabelAnalysis,
     itemToReceiptLabelAnalysis,
 )  # noqa: F401
+from receipt_dynamo.entities.receipt_structure_analysis import (
+    ReceiptStructureAnalysis,
+    itemToReceiptStructureAnalysis,
+)  # noqa: F401

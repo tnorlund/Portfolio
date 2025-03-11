@@ -23,7 +23,9 @@ def validate_last_evaluated_key(lek: dict) -> None:
 
 
 class _ReceiptLabelAnalysis:
-    def addReceiptLabelAnalysis(self, receipt_label_analysis: ReceiptLabelAnalysis):
+    def addReceiptLabelAnalysis(
+        self, receipt_label_analysis: ReceiptLabelAnalysis
+    ):
         """Adds a receipt label analysis to the database
 
         Args:
@@ -65,7 +67,9 @@ class _ReceiptLabelAnalysis:
                     f"Could not add receipt label analysis to DynamoDB: {e}"
                 ) from e
 
-    def addReceiptLabelAnalyses(self, receipt_label_analyses: list[ReceiptLabelAnalysis]):
+    def addReceiptLabelAnalyses(
+        self, receipt_label_analyses: list[ReceiptLabelAnalysis]
+    ):
         """Adds a list of receipt label analyses to the database
 
         Args:
@@ -83,7 +87,8 @@ class _ReceiptLabelAnalysis:
                 "receipt_label_analyses must be a list of ReceiptLabelAnalysis instances."
             )
         if not all(
-            isinstance(analysis, ReceiptLabelAnalysis) for analysis in receipt_label_analyses
+            isinstance(analysis, ReceiptLabelAnalysis)
+            for analysis in receipt_label_analyses
         ):
             raise ValueError(
                 "All receipt label analyses must be instances of the ReceiptLabelAnalysis class."
@@ -121,7 +126,9 @@ class _ReceiptLabelAnalysis:
             else:
                 raise ValueError(f"Error adding receipt label analyses: {e}")
 
-    def updateReceiptLabelAnalysis(self, receipt_label_analysis: ReceiptLabelAnalysis):
+    def updateReceiptLabelAnalysis(
+        self, receipt_label_analysis: ReceiptLabelAnalysis
+    ):
         """Updates a receipt label analysis in the database
 
         Args:
@@ -164,7 +171,9 @@ class _ReceiptLabelAnalysis:
             else:
                 raise ValueError(f"Error updating receipt label analysis: {e}")
 
-    def updateReceiptLabelAnalyses(self, receipt_label_analyses: list[ReceiptLabelAnalysis]):
+    def updateReceiptLabelAnalyses(
+        self, receipt_label_analyses: list[ReceiptLabelAnalysis]
+    ):
         """Updates a list of receipt label analyses in the database using transactions.
         Each receipt label analysis update is conditional upon the analysis already existing.
 
@@ -184,7 +193,8 @@ class _ReceiptLabelAnalysis:
                 "receipt_label_analyses must be a list of ReceiptLabelAnalysis instances."
             )
         if not all(
-            isinstance(analysis, ReceiptLabelAnalysis) for analysis in receipt_label_analyses
+            isinstance(analysis, ReceiptLabelAnalysis)
+            for analysis in receipt_label_analyses
         ):
             raise ValueError(
                 "All receipt label analyses must be instances of the ReceiptLabelAnalysis class."
@@ -235,7 +245,9 @@ class _ReceiptLabelAnalysis:
                         f"Error updating receipt label analyses: {e}"
                     ) from e
 
-    def deleteReceiptLabelAnalysis(self, receipt_label_analysis: ReceiptLabelAnalysis):
+    def deleteReceiptLabelAnalysis(
+        self, receipt_label_analysis: ReceiptLabelAnalysis
+    ):
         """Deletes a receipt label analysis from the database
 
         Args:
@@ -275,9 +287,13 @@ class _ReceiptLabelAnalysis:
             elif error_code == "AccessDeniedException":
                 raise Exception(f"Access denied: {e}") from e
             else:
-                raise ValueError(f"Error deleting receipt label analysis: {e}") from e
+                raise ValueError(
+                    f"Error deleting receipt label analysis: {e}"
+                ) from e
 
-    def deleteReceiptLabelAnalyses(self, receipt_label_analyses: list[ReceiptLabelAnalysis]):
+    def deleteReceiptLabelAnalyses(
+        self, receipt_label_analyses: list[ReceiptLabelAnalysis]
+    ):
         """Deletes a list of receipt label analyses from the database using transactions.
         Each delete operation is conditional upon the analysis existing.
 
@@ -296,7 +312,8 @@ class _ReceiptLabelAnalysis:
                 "receipt_label_analyses must be a list of ReceiptLabelAnalysis instances."
             )
         if not all(
-            isinstance(analysis, ReceiptLabelAnalysis) for analysis in receipt_label_analyses
+            isinstance(analysis, ReceiptLabelAnalysis)
+            for analysis in receipt_label_analyses
         ):
             raise ValueError(
                 "All receipt label analyses must be instances of the ReceiptLabelAnalysis class."
@@ -397,7 +414,9 @@ class _ReceiptLabelAnalysis:
             elif error_code == "AccessDeniedException":
                 raise Exception(f"Access denied: {e}") from e
             else:
-                raise Exception(f"Error getting receipt label analysis: {e}") from e
+                raise Exception(
+                    f"Error getting receipt label analysis: {e}"
+                ) from e
 
     def listReceiptLabelAnalyses(
         self, limit: int = None, lastEvaluatedKey: dict | None = None
@@ -434,7 +453,9 @@ class _ReceiptLabelAnalysis:
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "RECEIPT_LABEL_ANALYSIS"}},
+                "ExpressionAttributeValues": {
+                    ":val": {"S": "RECEIPT_LABEL_ANALYSIS"}
+                },
             }
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
@@ -446,7 +467,10 @@ class _ReceiptLabelAnalysis:
 
                 response = self._client.query(**query_params)
                 analyses.extend(
-                    [itemToReceiptLabelAnalysis(item) for item in response["Items"]]
+                    [
+                        itemToReceiptLabelAnalysis(item)
+                        for item in response["Items"]
+                    ]
                 )
 
                 if limit is not None and len(analyses) >= limit:
@@ -483,7 +507,10 @@ class _ReceiptLabelAnalysis:
                 ) from e
 
     def getReceiptLabelAnalysesByImage(
-        self, image_id: str, limit: int = None, lastEvaluatedKey: dict | None = None
+        self,
+        image_id: str,
+        limit: int = None,
+        lastEvaluatedKey: dict | None = None,
     ) -> tuple[list[ReceiptLabelAnalysis], dict | None]:
         """Retrieve receipt label analyses for a specific image from the database with support for pagination.
 
@@ -507,10 +534,10 @@ class _ReceiptLabelAnalysis:
             raise ValueError("Image ID must be a string")
         if not isinstance(image_id, str):
             raise ValueError("Image ID must be a string")
-        
+
         # Validate image_id as a UUID
         assert_valid_uuid(image_id)
-        
+
         if limit is not None and not isinstance(limit, int):
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
@@ -526,7 +553,9 @@ class _ReceiptLabelAnalysis:
                 "TableName": self.table_name,
                 "KeyConditionExpression": "#pk = :pk_val",
                 "ExpressionAttributeNames": {"#pk": "PK"},
-                "ExpressionAttributeValues": {":pk_val": {"S": f"IMAGE#{image_id}"}},
+                "ExpressionAttributeValues": {
+                    ":pk_val": {"S": f"IMAGE#{image_id}"}
+                },
             }
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
@@ -537,10 +566,14 @@ class _ReceiptLabelAnalysis:
                     query_params["Limit"] = remaining
 
                 response = self._client.query(**query_params)
-                
+
                 # Filter items to only include receipt label analyses
                 for item in response["Items"]:
-                    if "SK" in item and "S" in item["SK"] and "#ANALYSIS#LABELS" in item["SK"]["S"]:
+                    if (
+                        "SK" in item
+                        and "S" in item["SK"]
+                        and "#ANALYSIS#LABELS" in item["SK"]["S"]
+                    ):
                         analyses.append(itemToReceiptLabelAnalysis(item))
 
                 if limit is not None and len(analyses) >= limit:
@@ -549,7 +582,9 @@ class _ReceiptLabelAnalysis:
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                 else:
                     last_evaluated_key = None
                     break
@@ -575,7 +610,11 @@ class _ReceiptLabelAnalysis:
                 ) from e
 
     def getReceiptLabelAnalysesByReceipt(
-        self, image_id: str, receipt_id: int, limit: int = None, lastEvaluatedKey: dict | None = None
+        self,
+        image_id: str,
+        receipt_id: int,
+        limit: int = None,
+        lastEvaluatedKey: dict | None = None,
     ) -> tuple[list[ReceiptLabelAnalysis], dict | None]:
         """Retrieve receipt label analyses for a specific receipt from the database with support for pagination.
 
@@ -601,13 +640,17 @@ class _ReceiptLabelAnalysis:
             raise ValueError("Image ID must be a string")
         if not isinstance(image_id, str):
             raise ValueError("Image ID must be a string")
-        
+
         # Validate image_id as a UUID
         assert_valid_uuid(image_id)
-        
-        if receipt_id is None or not isinstance(receipt_id, int) or receipt_id <= 0:
+
+        if (
+            receipt_id is None
+            or not isinstance(receipt_id, int)
+            or receipt_id <= 0
+        ):
             raise ValueError("Receipt ID must be a positive integer")
-        
+
         if limit is not None and not isinstance(limit, int):
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
@@ -625,7 +668,7 @@ class _ReceiptLabelAnalysis:
                 "ExpressionAttributeNames": {"#pk": "PK", "#sk": "SK"},
                 "ExpressionAttributeValues": {
                     ":pk_val": {"S": f"IMAGE#{image_id}"},
-                    ":sk_val": {"S": f"RECEIPT#{receipt_id}#ANALYSIS#LABELS"}
+                    ":sk_val": {"S": f"RECEIPT#{receipt_id}#ANALYSIS#LABELS"},
                 },
             }
             if lastEvaluatedKey is not None:
@@ -638,7 +681,10 @@ class _ReceiptLabelAnalysis:
 
                 response = self._client.query(**query_params)
                 analyses.extend(
-                    [itemToReceiptLabelAnalysis(item) for item in response["Items"]]
+                    [
+                        itemToReceiptLabelAnalysis(item)
+                        for item in response["Items"]
+                    ]
                 )
 
                 if limit is not None and len(analyses) >= limit:
@@ -647,7 +693,9 @@ class _ReceiptLabelAnalysis:
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                 else:
                     last_evaluated_key = None
                     break

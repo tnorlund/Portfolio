@@ -1,6 +1,9 @@
 import pytest
 from datetime import datetime, timedelta
-from receipt_dynamo.entities.receipt_label_analysis import ReceiptLabelAnalysis, itemToReceiptLabelAnalysis
+from receipt_dynamo.entities.receipt_label_analysis import (
+    ReceiptLabelAnalysis,
+    itemToReceiptLabelAnalysis,
+)
 
 
 @pytest.fixture
@@ -17,8 +20,8 @@ def example_receipt_label_analysis():
                 "top_left": {"x": 10, "y": 10},
                 "top_right": {"x": 50, "y": 10},
                 "bottom_left": {"x": 10, "y": 20},
-                "bottom_right": {"x": 50, "y": 20}
-            }
+                "bottom_right": {"x": 50, "y": 20},
+            },
         },
         {
             "label_type": "total",
@@ -30,32 +33,29 @@ def example_receipt_label_analysis():
                 "top_left": {"x": 100, "y": 200},
                 "top_right": {"x": 150, "y": 200},
                 "bottom_left": {"x": 100, "y": 220},
-                "bottom_right": {"x": 150, "y": 220}
-            }
-        }
-    ]
-    
-    metadata = {
-        "processing_metrics": {
-            "processing_time_ms": 250,
-            "api_calls": 2
+                "bottom_right": {"x": 150, "y": 220},
+            },
         },
+    ]
+
+    metadata = {
+        "processing_metrics": {"processing_time_ms": 250, "api_calls": 2},
         "processing_history": [
             {
                 "event_type": "creation",
                 "timestamp": datetime.now().isoformat(),
                 "description": "Initial creation of label analysis",
-                "model_version": "gpt-4"
+                "model_version": "gpt-4",
             }
         ],
         "source_information": {
             "model_name": "gpt-4",
             "model_version": "2023-09",
             "algorithm": "llm-field-labeling",
-            "configuration": {"temperature": 0.2}
-        }
+            "configuration": {"temperature": 0.2},
+        },
     }
-    
+
     return ReceiptLabelAnalysis(
         image_id="test_image_123",
         receipt_id=456,
@@ -63,7 +63,7 @@ def example_receipt_label_analysis():
         timestamp_added=datetime.now(),
         version="1.2",
         overall_reasoning="Receipt contains standard business information and transaction details",
-        metadata=metadata
+        metadata=metadata,
     )
 
 
@@ -75,7 +75,10 @@ def test_receipt_label_analysis_init_valid(example_receipt_label_analysis):
     assert len(example_receipt_label_analysis.labels) == 2
     assert isinstance(example_receipt_label_analysis.timestamp_added, str)
     assert example_receipt_label_analysis.version == "1.2"
-    assert example_receipt_label_analysis.overall_reasoning == "Receipt contains standard business information and transaction details"
+    assert (
+        example_receipt_label_analysis.overall_reasoning
+        == "Receipt contains standard business information and transaction details"
+    )
     assert "processing_metrics" in example_receipt_label_analysis.metadata
     assert "processing_history" in example_receipt_label_analysis.metadata
     assert "source_information" in example_receipt_label_analysis.metadata
@@ -120,7 +123,9 @@ def test_receipt_label_analysis_init_invalid_labels():
 @pytest.mark.unit
 def test_receipt_label_analysis_init_invalid_timestamp():
     """Test that ReceiptLabelAnalysis raises ValueError with invalid timestamp_added."""
-    with pytest.raises(ValueError, match="timestamp_added must be a datetime object"):
+    with pytest.raises(
+        ValueError, match="timestamp_added must be a datetime object"
+    ):
         ReceiptLabelAnalysis(
             image_id="test_image_123",
             receipt_id=456,
@@ -164,37 +169,44 @@ def test_receipt_label_analysis_default_metadata():
         labels=[],
         timestamp_added=datetime.now(),
     )
-    
+
     assert "processing_metrics" in label_analysis.metadata
     assert "processing_history" in label_analysis.metadata
     assert "source_information" in label_analysis.metadata
     assert len(label_analysis.metadata["processing_history"]) == 1
-    assert label_analysis.metadata["processing_history"][0]["event_type"] == "creation"
+    assert (
+        label_analysis.metadata["processing_history"][0]["event_type"]
+        == "creation"
+    )
 
 
 @pytest.mark.unit
 def test_receipt_label_analysis_key_generation(example_receipt_label_analysis):
     """Test that key() generates the correct DynamoDB primary key."""
     key = example_receipt_label_analysis.key()
-    
+
     assert key["PK"]["S"] == "IMAGE#test_image_123"
     assert key["SK"]["S"] == "RECEIPT#456#ANALYSIS#LABELS"
 
 
 @pytest.mark.unit
-def test_receipt_label_analysis_gsi1_key_generation(example_receipt_label_analysis):
+def test_receipt_label_analysis_gsi1_key_generation(
+    example_receipt_label_analysis,
+):
     """Test that gsi1_key() generates the correct GSI1 key."""
     gsi1_key = example_receipt_label_analysis.gsi1_key()
-    
+
     assert gsi1_key["GSI1PK"]["S"] == "ANALYSIS_TYPE"
     assert gsi1_key["GSI1SK"]["S"].startswith("LABELS#")
 
 
 @pytest.mark.unit
-def test_receipt_label_analysis_gsi2_key_generation(example_receipt_label_analysis):
+def test_receipt_label_analysis_gsi2_key_generation(
+    example_receipt_label_analysis,
+):
     """Test that gsi2_key() generates the correct GSI2 key."""
     gsi2_key = example_receipt_label_analysis.gsi2_key()
-    
+
     assert gsi2_key["GSI2PK"]["S"] == "RECEIPT"
     assert gsi2_key["GSI2SK"]["S"] == "IMAGE#test_image_123#RECEIPT#456"
 
@@ -203,7 +215,7 @@ def test_receipt_label_analysis_gsi2_key_generation(example_receipt_label_analys
 def test_receipt_label_analysis_to_item(example_receipt_label_analysis):
     """Test that to_item() generates the correct DynamoDB item."""
     item = example_receipt_label_analysis.to_item()
-    
+
     # Check keys
     assert item["PK"]["S"] == "IMAGE#test_image_123"
     assert item["SK"]["S"] == "RECEIPT#456#ANALYSIS#LABELS"
@@ -211,32 +223,42 @@ def test_receipt_label_analysis_to_item(example_receipt_label_analysis):
     assert item["GSI1SK"]["S"].startswith("LABELS#")
     assert item["GSI2PK"]["S"] == "RECEIPT"
     assert item["GSI2SK"]["S"] == "IMAGE#test_image_123#RECEIPT#456"
-    
+
     # Check attributes
     assert item["TYPE"]["S"] == "RECEIPT_LABEL_ANALYSIS"
     assert len(item["labels"]["L"]) == 2
-    
+
     # Check first label
     first_label = item["labels"]["L"][0]["M"]
     assert first_label["label_type"]["S"] == "business_name"
     assert first_label["line_id"]["N"] == "1"
     assert first_label["word_id"]["N"] == "2"
     assert first_label["text"]["S"] == "ACME"
-    assert first_label["reasoning"]["S"] == "This word appears to be a business name at the top of the receipt"
-    
+    assert (
+        first_label["reasoning"]["S"]
+        == "This word appears to be a business name at the top of the receipt"
+    )
+
     # Check bounding box
     bounding_box = first_label["bounding_box"]["M"]
     assert bounding_box["top_left"]["M"]["x"]["N"] == "10"
     assert bounding_box["top_left"]["M"]["y"]["N"] == "10"
-    
+
     # Check other attributes
-    assert item["timestamp_added"]["S"] == example_receipt_label_analysis.timestamp_added
+    assert (
+        item["timestamp_added"]["S"]
+        == example_receipt_label_analysis.timestamp_added
+    )
     assert item["version"]["S"] == "1.2"
-    assert item["overall_reasoning"]["S"] == "Receipt contains standard business information and transaction details"
+    assert (
+        item["overall_reasoning"]["S"]
+        == "Receipt contains standard business information and transaction details"
+    )
     assert "metadata" in item
-    
+
     # Can deserialize the metadata JSON
     import json
+
     metadata = json.loads(item["metadata"]["S"])
     assert "processing_metrics" in metadata
     assert "processing_history" in metadata
@@ -250,16 +272,16 @@ def test_convert_bounding_box(example_receipt_label_analysis):
         "top_left": {"x": 10, "y": 10},
         "top_right": {"x": 50, "y": 10},
         "bottom_left": {"x": 10, "y": 20},
-        "bottom_right": {"x": 50, "y": 20}
+        "bottom_right": {"x": 50, "y": 20},
     }
-    
+
     result = example_receipt_label_analysis._convert_bounding_box(bbox)
-    
+
     assert "top_left" in result
     assert "top_right" in result
     assert "bottom_left" in result
     assert "bottom_right" in result
-    
+
     assert result["top_left"]["M"]["x"]["N"] == "10"
     assert result["top_left"]["M"]["y"]["N"] == "10"
     assert result["top_right"]["M"]["x"]["N"] == "50"
@@ -275,10 +297,10 @@ def test_convert_bounding_box_empty():
         labels=[],
         timestamp_added=datetime.now(),
     )
-    
+
     result = analysis._convert_bounding_box({})
     assert result == {}
-    
+
     result = analysis._convert_bounding_box(None)
     assert result == {}
 
@@ -287,7 +309,7 @@ def test_convert_bounding_box_empty():
 def test_receipt_label_analysis_repr(example_receipt_label_analysis):
     """Test that __repr__() returns the expected string representation."""
     repr_str = repr(example_receipt_label_analysis)
-    
+
     assert "ReceiptLabelAnalysis" in repr_str
     assert "image_id=test_image_123" in repr_str
     assert "receipt_id=456" in repr_str
@@ -299,13 +321,16 @@ def test_receipt_label_analysis_repr(example_receipt_label_analysis):
 def test_receipt_label_analysis_iter(example_receipt_label_analysis):
     """Test that __iter__() returns all expected attributes."""
     items = dict(example_receipt_label_analysis)
-    
+
     assert items["image_id"] == "test_image_123"
     assert items["receipt_id"] == 456
     assert len(items["labels"]) == 2
     assert isinstance(items["timestamp_added"], str)
     assert items["version"] == "1.2"
-    assert items["overall_reasoning"] == "Receipt contains standard business information and transaction details"
+    assert (
+        items["overall_reasoning"]
+        == "Receipt contains standard business information and transaction details"
+    )
     assert "processing_metrics" in items["metadata"]
 
 
@@ -317,12 +342,14 @@ def test_receipt_label_analysis_eq(example_receipt_label_analysis):
         image_id="test_image_123",
         receipt_id=456,
         labels=example_receipt_label_analysis.labels,
-        timestamp_added=datetime.fromisoformat(example_receipt_label_analysis.timestamp_added),
+        timestamp_added=datetime.fromisoformat(
+            example_receipt_label_analysis.timestamp_added
+        ),
         version="1.2",
         overall_reasoning="Receipt contains standard business information and transaction details",
-        metadata=example_receipt_label_analysis.metadata
+        metadata=example_receipt_label_analysis.metadata,
     )
-    
+
     # Create a different analysis
     different_analysis = ReceiptLabelAnalysis(
         image_id="different_image",
@@ -330,7 +357,7 @@ def test_receipt_label_analysis_eq(example_receipt_label_analysis):
         labels=[],
         timestamp_added=datetime.now(),
     )
-    
+
     assert example_receipt_label_analysis == same_analysis
     assert example_receipt_label_analysis != different_analysis
     assert example_receipt_label_analysis != "not an analysis object"
@@ -350,7 +377,7 @@ def test_itemToReceiptLabelAnalysis_valid_input():
     # Create a DynamoDB item
     now = datetime.now()
     now_str = now.isoformat()
-    
+
     item = {
         "PK": {"S": "IMAGE#test_image_123"},
         "SK": {"S": "RECEIPT#456#ANALYSIS#LABELS"},
@@ -365,12 +392,20 @@ def test_itemToReceiptLabelAnalysis_valid_input():
                         "reasoning": {"S": "This is a business name"},
                         "bounding_box": {
                             "M": {
-                                "top_left": {"M": {"x": {"N": "10"}, "y": {"N": "10"}}},
-                                "top_right": {"M": {"x": {"N": "50"}, "y": {"N": "10"}}},
-                                "bottom_left": {"M": {"x": {"N": "10"}, "y": {"N": "20"}}},
-                                "bottom_right": {"M": {"x": {"N": "50"}, "y": {"N": "20"}}}
+                                "top_left": {
+                                    "M": {"x": {"N": "10"}, "y": {"N": "10"}}
+                                },
+                                "top_right": {
+                                    "M": {"x": {"N": "50"}, "y": {"N": "10"}}
+                                },
+                                "bottom_left": {
+                                    "M": {"x": {"N": "10"}, "y": {"N": "20"}}
+                                },
+                                "bottom_right": {
+                                    "M": {"x": {"N": "50"}, "y": {"N": "20"}}
+                                },
                             }
-                        }
+                        },
                     }
                 }
             ]
@@ -378,12 +413,14 @@ def test_itemToReceiptLabelAnalysis_valid_input():
         "timestamp_added": {"S": now_str},
         "version": {"S": "1.0"},
         "overall_reasoning": {"S": "Analysis complete"},
-        "metadata": {"S": '{"processing_metrics": {"processing_time_ms": 100}}'}
+        "metadata": {
+            "S": '{"processing_metrics": {"processing_time_ms": 100}}'
+        },
     }
-    
+
     # Convert to ReceiptLabelAnalysis
     result = itemToReceiptLabelAnalysis(item)
-    
+
     # Verify conversion
     assert result.image_id == "test_image_123"
     assert result.receipt_id == 456
@@ -400,22 +437,25 @@ def test_itemToReceiptLabelAnalysis_valid_input():
 @pytest.mark.unit
 def test_itemToReceiptLabelAnalysis_missing_keys():
     """Test that itemToReceiptLabelAnalysis raises ValueError with missing keys."""
-    with pytest.raises(ValueError, match="Item must have PK and SK attributes"):
+    with pytest.raises(
+        ValueError, match="Item must have PK and SK attributes"
+    ):
         itemToReceiptLabelAnalysis({})
 
-    with pytest.raises(ValueError, match="Item must have PK and SK attributes"):
+    with pytest.raises(
+        ValueError, match="Item must have PK and SK attributes"
+    ):
         itemToReceiptLabelAnalysis({"PK": {"S": "IMAGE#test"}})
 
 
 @pytest.mark.unit
 def test_itemToReceiptLabelAnalysis_invalid_format():
     """Test that itemToReceiptLabelAnalysis raises ValueError with invalid SK format."""
-    item = {
-        "PK": {"S": "IMAGE#test_image_123"},
-        "SK": {"S": "INVALID_FORMAT"}
-    }
-    
-    with pytest.raises(ValueError, match="Invalid SK format for ReceiptLabelAnalysis"):
+    item = {"PK": {"S": "IMAGE#test_image_123"}, "SK": {"S": "INVALID_FORMAT"}}
+
+    with pytest.raises(
+        ValueError, match="Invalid SK format for ReceiptLabelAnalysis"
+    ):
         itemToReceiptLabelAnalysis(item)
 
 
@@ -424,11 +464,11 @@ def test_itemToReceiptLabelAnalysis_with_defaults():
     """Test that itemToReceiptLabelAnalysis provides default values."""
     item = {
         "PK": {"S": "IMAGE#test_image_123"},
-        "SK": {"S": "RECEIPT#456#ANALYSIS#LABELS"}
+        "SK": {"S": "RECEIPT#456#ANALYSIS#LABELS"},
     }
-    
+
     result = itemToReceiptLabelAnalysis(item)
-    
+
     assert result.image_id == "test_image_123"
     assert result.receipt_id == 456
     assert result.labels == []
