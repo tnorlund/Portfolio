@@ -68,20 +68,6 @@
 
 ## Update `process.py`
 
-## Update Receipt Validation Schema
-- [ ] Update Receipt Validation Analysis attributes to replace confidence with reasoning:
-  ```
-  - business_identity: [{type, message, reasoning}]
-  - address_verification: [{type, message, reasoning}]
-  - phone_validation: [{type, message, reasoning}]
-  - hours_verification: [{type, message, reasoning}]
-  - cross_field_consistency: [{type, message, reasoning}]
-  - line_item_validation: [{type, message, reasoning}]
-  ```
-- [ ] Update validation_status to include reason-based statuses
-- [ ] Add prompt_template field to track what was asked
-- [ ] Add response_template field to track expected response format
-
 ## Improve GPT Integration
 - [x] Update gpt.py validation functions:
   - [x] Replace confidence score with reasoning in _validate_gpt_response_structure_analysis
@@ -103,22 +89,9 @@
   - [x] Add backward compatibility for code expecting confidence scores
   - [x] Update any docstrings to reflect reasoning instead of confidence scores
 
-## Update validation.py functions:
-  - [ ] Replace validate_business_name to return reasoning instead of confidence
-  - [ ] Replace validate_phone_number to return reasoning instead of confidence
-  - [ ] Replace validate_address to return reasoning instead of confidence
-  - [ ] Replace validate_datetime to return reasoning instead of confidence
-  - [ ] Replace validate_amounts to return reasoning instead of confidence
-  - [ ] Replace validate_receipt_data to return reasoning instead of confidence
-  - [ ] Replace validate_receipt_format to return reasoning instead of confidence
-
 ## Update processors/line_item_processor.py:
   - [x] Replace _calculate_confidence with _calculate_reasoning in FastPatternMatcher
   - [x] Update reasoning to explain why line items match or don't match
-
-## Update data/places_api.py:
-  - [ ] Update ValidationResult class to use reasoning instead of confidence
-  - [ ] Update batch_processor._validate_business_name to return reasoning
 
 ## Add Features
 - [ ] Add position tracking to Label Analysis
