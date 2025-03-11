@@ -66,3 +66,7 @@ from receipt_dynamo.entities.receipt_field import (
     ReceiptField,
     itemToReceiptField,
 )  # noqa: F401
+from receipt_dynamo.entities.receipt_label_analysis import (
+    ReceiptLabelAnalysis,
+    itemToReceiptLabelAnalysis,
+)  # noqa: F401

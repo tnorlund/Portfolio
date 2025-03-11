@@ -1,7 +1,7 @@
 # Receipt Label Package TODOs
 
 ## Create Analysis Items
-- [ ] Create Receipt Label Analysis in DynamoDB
+- [x] Create Receipt Label Analysis in DynamoDB
 - [ ] Create Receipt Structure Analysis in DynamoDB
 - [ ] Create Receipt Line Items in DynamoDB
 - [ ] Create Receipt Validation in DynamoDB
@@ -34,16 +34,17 @@
   - [ ] Review ValidationAnalysis to ensure it represents all schema categories
   - [ ] Ensure proper representation of validation status enums
 - [ ] Data Transformation:
-  - [ ] Update `from_dynamo` and `to_dynamo` methods to handle proper transformations
-  - [ ] Add special handling for nested objects and arrays
-  - [x] Create consistent serialization methods across all classes:
+  - [x] Update `from_dynamo` and `to_dynamo` methods to handle proper transformations
+  - [x] Add special handling for nested objects and arrays
+  - [ ] Create consistent serialization methods across all classes:
     - [x] Implement to_dynamo() for LabelAnalysis
     - [x] Implement from_dynamo() for LabelAnalysis
-    - [x] Implement to_dynamo() for LineItemAnalysis
-    - [x] Implement from_dynamo() for LineItemAnalysis
-    - [x] Implement to_dynamo() for ValidationAnalysis
-    - [x] Implement from_dynamo() for ValidationAnalysis
-  - [ ] Add integration tests for serialization/deserialization
+    - [ ] Implement to_dynamo() for LineItemAnalysis
+    - [ ] Implement from_dynamo() for LineItemAnalysis
+    - [ ] Implement to_dynamo() for ValidationAnalysis
+    - [ ] Implement from_dynamo() for ValidationAnalysis
+  - [x] Add integration tests for serialization/deserialization for ReceiptLabelAnalysis
+  - [ ] Add integration tests for serialization/deserialization for other analysis types
 - [ ] Optional vs. Required Fields:
   - [ ] Review which fields are required in schema versus optional in models
   - [ ] Adjust default values or optionality to match schema requirements
@@ -102,7 +103,8 @@
 
 ## Testing
 - [ ] Write unit tests for each analysis class
-- [ ] Write integration tests for DynamoDB operations
+- [x] Write integration tests for DynamoDB operations for ReceiptLabelAnalysis
+- [ ] Write integration tests for remaining DynamoDB operations
 - [ ] Create test data for each analysis type
 - [ ] Test migration procedures
 - [ ] Test GPT reasoning responses

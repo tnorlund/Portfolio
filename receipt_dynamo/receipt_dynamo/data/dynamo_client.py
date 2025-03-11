@@ -23,6 +23,7 @@ from receipt_dynamo.data._word import _Word
 from receipt_dynamo.data._word_tag import _WordTag
 from receipt_dynamo.data._receipt_word_label import _ReceiptWordLabel
 from receipt_dynamo.data._receipt_field import _ReceiptField
+from receipt_dynamo.data._receipt_label_analysis import _ReceiptLabelAnalysis
 
 
 class DynamoClient(
@@ -48,6 +49,7 @@ class DynamoClient(
     _PlacesCache,
     _ReceiptWordLabel,
     _ReceiptField,
+    _ReceiptLabelAnalysis,
 ):
     """A class used to represent a DynamoDB client."""
 

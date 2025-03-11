@@ -1,9 +1,12 @@
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any, Generator, Tuple
 from decimal import Decimal
+from datetime import datetime
+import uuid
+
 from .position import BoundingBox, Point
 from .metadata import MetadataMixin
-
+from receipt_dynamo.entities.receipt_label_analysis import ReceiptLabelAnalysis as DynamoReceiptLabelAnalysis
 
 @dataclass
 class WordLabel:
@@ -281,6 +284,148 @@ class LabelAnalysis(MetadataMixin):
             result.append(line_text)
         
         return " ".join(result)
+    
+    def to_dynamo(self, image_id: str, receipt_id: int) -> DynamoReceiptLabelAnalysis:
+        """
+        Convert the LabelAnalysis instance to a DynamoReceiptLabelAnalysis instance for DynamoDB storage.
+        
+        This method transforms the LabelAnalysis object into a DynamoReceiptLabelAnalysis instance
+        that can be directly stored in DynamoDB via the DynamoDB client.
+        
+        Args:
+            image_id (str): The ID of the image
+            receipt_id (int): The ID of the receipt
+            
+        Returns:
+            DynamoReceiptLabelAnalysis: An instance ready for DynamoDB storage
+        """
+        # Convert labels to dictionaries
+        labels_list = []
+        for label in self.labels:
+            label_dict = {
+                "label_type": label.label,
+                "line_id": label.line_id,
+                "word_id": label.word_id,
+                "text": label.text,
+                "reasoning": label.reasoning,
+            }
+            
+            if label.section_name:
+                label_dict["section_name"] = label.section_name
+                
+            if label.bounding_box:
+                label_dict["bounding_box"] = label.bounding_box.to_dict()
+                
+            labels_list.append(label_dict)
+        
+        # Get the current timestamp if not provided
+        timestamp = self.timestamp_added
+        if not timestamp:
+            timestamp = datetime.now()
+        
+        # Create the DynamoReceiptLabelAnalysis instance
+        return DynamoReceiptLabelAnalysis(
+            image_id=image_id,
+            receipt_id=receipt_id,
+            labels=labels_list,
+            timestamp_added=timestamp,
+            version=self.metadata.get("version", "1.0"),
+            overall_reasoning=self.analysis_reasoning,
+            metadata=self.metadata
+        )
+    
+    def to_dict(self) -> Dict:
+        """
+        Convert the LabelAnalysis instance to a dictionary for serialization.
+        
+        Returns:
+            Dict: A dictionary representation suitable for serialization
+        """
+        # Convert labels to dictionaries
+        labels_dicts = [label.to_dict() for label in self.labels]
+        
+        # Convert sections to dictionaries
+        sections_dicts = []
+        for section in self.sections:
+            section_dict = {
+                "section_name": section.section_name,
+                "words": [word.to_dict() for word in section.words],
+                "reasoning": section.reasoning,
+                "requires_review": section.requires_review,
+                "review_reasons": section.review_reasons,
+            }
+            
+            if section.metadata:
+                section_dict["metadata"] = section.metadata
+                
+            sections_dicts.append(section_dict)
+        
+        # Build the main dictionary
+        result = {
+            "labels": labels_dicts,
+            "sections": sections_dicts,
+            "total_labeled_words": self.total_labeled_words,
+            "requires_review": self.requires_review,
+            "review_reasons": self.review_reasons,
+            "analysis_reasoning": self.analysis_reasoning,
+            "metadata": self.metadata,
+        }
+        
+        # Add timestamps if they exist
+        if self.timestamp_added:
+            result["timestamp_added"] = self.timestamp_added
+            
+        if self.timestamp_updated:
+            result["timestamp_updated"] = self.timestamp_updated
+            
+        return result
+    
+    @classmethod
+    def from_dynamo(cls, data: Dict) -> "LabelAnalysis":
+        """
+        Create a LabelAnalysis instance from DynamoDB data.
+        
+        This method reconstructs a LabelAnalysis object and all its nested objects
+        from a dictionary structure retrieved from DynamoDB.
+        
+        Args:
+            data (Dict): The DynamoDB data dictionary
+            
+        Returns:
+            LabelAnalysis: A new instance populated with the DynamoDB data
+        """
+        # Convert label dictionaries back to WordLabel objects
+        labels = []
+        for label_data in data.get("labels", []):
+            labels.append(WordLabel.from_dict(label_data))
+        
+        # Convert section dictionaries back to SectionLabels objects
+        sections = []
+        for section_data in data.get("sections", []):
+            section_words = [WordLabel.from_dict(word_data) for word_data in section_data.get("words", [])]
+            sections.append(
+                SectionLabels(
+                    section_name=section_data.get("section_name", ""),
+                    words=section_words,
+                    reasoning=section_data.get("reasoning", ""),
+                    requires_review=section_data.get("requires_review", False),
+                    review_reasons=section_data.get("review_reasons", []),
+                    metadata=section_data.get("metadata", {})
+                )
+            )
+        
+        # Create the LabelAnalysis instance
+        return cls(
+            labels=labels,
+            sections=sections,
+            total_labeled_words=data.get("total_labeled_words", len(labels)),
+            requires_review=data.get("requires_review", False),
+            review_reasons=data.get("review_reasons", []),
+            analysis_reasoning=data.get("analysis_reasoning", ""),
+            metadata=data.get("metadata", {}),
+            timestamp_added=data.get("timestamp_added"),
+            timestamp_updated=data.get("timestamp_updated")
+        )
     
     @classmethod
     def from_gpt_response(cls, response_data: Dict) -> "LabelAnalysis":

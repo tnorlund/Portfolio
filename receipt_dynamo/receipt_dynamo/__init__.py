@@ -28,6 +28,8 @@ __all__ = [
     "itemToReceiptWordLabel",
     "ReceiptField",
     "itemToReceiptField",
+    "ReceiptLabelAnalysis",
+    "itemToReceiptLabelAnalysis",
     "WordTag",
     "itemToWordTag",
     "Job",
@@ -73,6 +75,8 @@ from receipt_dynamo.entities import (
     itemToReceiptWordLabel,
     ReceiptField,
     itemToReceiptField,
+    ReceiptLabelAnalysis,
+    itemToReceiptLabelAnalysis,
 )
 from receipt_dynamo.entities.receipt_word_tag import (
     ReceiptWordTag,
