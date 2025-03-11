@@ -15,7 +15,7 @@ logger.setLevel(logging.INFO)
 class CurrencyMatch:
     """Represents a matched currency amount in text."""
     amount: Decimal
-    confidence: float
+    reasoning: str
     text: str
     position: Dict[str, int]  # x, y coordinates
     line_id: str
@@ -27,8 +27,12 @@ class ProcessingResult:
     subtotal: Optional[Decimal]
     tax: Optional[Decimal]
     total: Optional[Decimal]
-    confidence: float
-    uncertain_items: List[UncertaintyItem]
+    reasoning: str = ""
+    uncertain_items: List[UncertaintyItem] = None
+    
+    def __post_init__(self):
+        if self.uncertain_items is None:
+            self.uncertain_items = []
 
 class FastPatternMatcher:
     """Handles quick initial pattern matching for currency and line items."""
@@ -58,7 +62,7 @@ class FastPatternMatcher:
                     
                     matches.append(CurrencyMatch(
                         amount=amount,
-                        confidence=0.9,  # High confidence for exact matches
+                        reasoning="Exact match",
                         text=match.group(0),
                         position=position,
                         line_id=line_id
@@ -177,7 +181,7 @@ class FastPatternMatcher:
                         unit_price=unit_price,
                         extended_price=item_total
                     ),
-                    confidence=0.7,  # Medium confidence for initial pass
+                    reasoning="Identified through pattern matching of price and quantity formats",
                     line_ids=[line_id]
                 )
                 line_items.append(item)
@@ -199,15 +203,15 @@ class FastPatternMatcher:
                     amounts=[m.amount for m in amounts]
                 ))
         
-        # Calculate confidence based on components and mathematical consistency
-        confidence = self._calculate_confidence(subtotal, tax, total, line_items)
+        # Generate reasoning for the analysis
+        reasoning = self._generate_reasoning(subtotal, tax, total, line_items)
         
         return ProcessingResult(
             line_items=line_items,
             subtotal=subtotal,
             tax=tax,
             total=total,
-            confidence=confidence,
+            reasoning=reasoning,
             uncertain_items=uncertain_items
         )
     
@@ -236,14 +240,14 @@ class FastPatternMatcher:
             
         return None
     
-    def _calculate_confidence(
+    def _generate_reasoning(
         self,
         subtotal: Optional[Decimal],
         tax: Optional[Decimal],
         total: Optional[Decimal],
         line_items: List[LineItem]
-    ) -> float:
-        """Calculate overall confidence in the pattern matching results.
+    ) -> str:
+        """Generate reasoning explanation for the pattern matching results.
         
         Args:
             subtotal: Detected subtotal amount
@@ -252,32 +256,50 @@ class FastPatternMatcher:
             line_items: List of detected line items
             
         Returns:
-            Float confidence score between 0 and 1
+            String explaining the reasoning for the analysis results
         """
-        confidence = 0.5  # Base confidence
+        reasoning_parts = []
         
-        # Increase confidence based on presence of key components
+        # Base reasoning
+        reasoning_parts.append("Analysis based on pattern matching and structural recognition.")
+        
+        # Add reasoning based on presence of key components
         if subtotal is not None:
-            confidence += 0.1
+            reasoning_parts.append("Identified clear subtotal amount.")
+        else:
+            reasoning_parts.append("Could not identify a subtotal amount.")
+            
         if tax is not None:
-            confidence += 0.1
+            reasoning_parts.append("Identified tax amount.")
+        else:
+            reasoning_parts.append("Could not identify a tax amount.")
+            
         if total is not None:
-            confidence += 0.1
+            reasoning_parts.append("Identified total amount.")
+        else:
+            reasoning_parts.append("Could not identify a total amount.")
+            
         if line_items:
-            confidence += 0.1
+            reasoning_parts.append(f"Successfully identified {len(line_items)} line items.")
+        else:
+            reasoning_parts.append("Could not identify any line items.")
             
         # Check mathematical consistency if we have all components
         if all([subtotal, tax, total]):
             if abs(subtotal + tax - total) < Decimal('0.01'):
-                confidence += 0.1
+                reasoning_parts.append("Mathematical consistency verified: subtotal + tax = total.")
+            else:
+                reasoning_parts.append(f"Mathematical inconsistency: subtotal ({subtotal}) + tax ({tax}) ≠ total ({total}).")
                 
             # Additional check: line items sum should match subtotal
             if line_items:
                 line_items_sum = sum(item.price.extended_price or Decimal('0') for item in line_items)
                 if abs(line_items_sum - subtotal) < Decimal('0.01'):
-                    confidence += 0.1
+                    reasoning_parts.append("Line items sum matches the subtotal amount.")
+                else:
+                    reasoning_parts.append(f"Line items sum ({line_items_sum}) does not match subtotal ({subtotal}).")
                 
-        return min(confidence, 1.0)
+        return " ".join(reasoning_parts)
 
 class LineItemValidator:
     """Validates line items and identifies uncertain entries."""
@@ -365,187 +387,78 @@ class LineItemProcessor:
         receipt_words: List[ReceiptWord],
         places_api_data: Optional[Dict] = None,
     ) -> LineItemAnalysis:
-        """Process the receipt using progressive refinement for line items.
+        """Process a receipt to extract line items.
         
         Args:
-            receipt: Receipt data model
+            receipt: Receipt object
             receipt_lines: List of receipt lines
             receipt_words: List of receipt words
             places_api_data: Optional Places API data for context
-
+            
         Returns:
-            LineItemAnalysis containing processed line items and metadata
+            LineItemAnalysis with extracted line items and totals
         """
-        # Validate inputs
-        if receipt is None:
-            raise ValueError("Receipt cannot be None")
-        if receipt_lines is None:
-            raise ValueError("Receipt lines cannot be None")
-        if receipt_words is None:
-            raise ValueError("Receipt words cannot be None")
-        if not isinstance(receipt_lines, list):
-            raise ValueError("Receipt lines must be a list")
-        if not isinstance(receipt_words, list):
-            raise ValueError("Receipt words must be a list")
-        
-        # Ensure places_api_data is a dict if provided
-        if places_api_data is not None and not isinstance(places_api_data, dict):
-            raise ValueError("places_api_data must be None or a dictionary")
-        
         # Stage 1: Fast Pattern Matching
         logger.info("Stage 1: Performing fast pattern matching")
         initial_results = self.fast_processor.process(receipt, receipt_lines, receipt_words)
         
-        # Stage 2: Confidence Assessment
-        logger.info("Stage 2: Assessing confidence and identifying uncertain items")
+        # Stage 2: Validation and Uncertainty Detection
+        logger.info("Stage 2: Assessing receipt data and identifying uncertain items")
         uncertain_items = self.validator.identify_uncertain_items(initial_results)
         
-        # Stage 3: LLM Enhancement (if needed)
-        final_results = initial_results
+        # Add in any calculated values that weren't detected
+        if not initial_results.total and initial_results.subtotal and initial_results.tax:
+            initial_results.total = initial_results.subtotal + initial_results.tax
+            logger.debug(f"Calculated missing total: {initial_results.total}")
+        
+        # Stage 3: Apply LLM processing if needed and available
         if uncertain_items and self.llm_processor:
             logger.info("Stage 3: Enhancing results with LLM processing")
             try:
-                # Convert initial results to a clean dictionary format
-                initial_state = {
-                    "line_items": [
-                        {
-                            "description": item.description,
-                            "quantity": item.quantity.__dict__ if item.quantity else None,
-                            "price": {
-                                "unit_price": str(item.price.unit_price) if item.price and item.price.unit_price else None,
-                                "extended_price": str(item.price.extended_price) if item.price and item.price.extended_price else None
-                            } if item.price else None,
-                            "confidence": item.confidence,
-                            "line_ids": item.line_ids
-                        }
-                        for item in initial_results.line_items
-                    ],
-                    "subtotal": str(initial_results.subtotal) if initial_results.subtotal else None,
-                    "tax": str(initial_results.tax) if initial_results.tax else None,
-                    "total": str(initial_results.total) if initial_results.total else None,
-                }
-                
-                enhanced_dict = await self.llm_processor.process_uncertain_items(
+                # Call the LLM processor to handle uncertain items
+                llm_updates = await self.llm_processor.process_uncertain_items(
                     uncertain_items=uncertain_items,
                     receipt=receipt,
                     receipt_lines=receipt_lines,
                     receipt_words=receipt_words,
-                    initial_state=initial_state,
+                    initial_state=asdict(initial_results),
                     places_api_data=places_api_data or {}
                 )
                 
-                if enhanced_dict:
-                    logger.debug(f"Enhanced results received: {enhanced_dict}")
-                    # Convert dictionary results back to ProcessingResult
-                    try:
-                        # Convert line items from dict to LineItem objects if present
-                        line_items = []
-                        if "line_items" in enhanced_dict:
-                            for item in enhanced_dict["line_items"]:
-                                logger.debug(f"Processing line item: {item}")
-                                
-                                try:
-                                    # If it's already a LineItem, use it directly
-                                    if isinstance(item, LineItem):
-                                        line_items.append(item)
-                                        continue
-                                        
-                                    # If it's a dict, convert it
-                                    if isinstance(item, dict):
-                                        # Extract quantity
-                                        quantity = None
-                                        if isinstance(item.get("quantity"), dict):
-                                            qty_dict = item["quantity"]
-                                            quantity = Quantity(
-                                                amount=Decimal(str(qty_dict["amount"])),
-                                                unit=qty_dict.get("unit")
-                                            )
-                                        elif isinstance(item.get("quantity"), Quantity):
-                                            quantity = item["quantity"]
-                                        
-                                        # Extract price
-                                        price = None
-                                        if isinstance(item.get("price"), dict):
-                                            price_dict = item["price"]
-                                            price = Price(
-                                                unit_price=Decimal(str(price_dict["unit_price"])) if price_dict.get("unit_price") else None,
-                                                extended_price=Decimal(str(price_dict["extended_price"])) if price_dict.get("extended_price") else None
-                                            )
-                                        elif isinstance(item.get("price"), Price):
-                                            price = item["price"]
-                                        
-                                        # Create line item
-                                        line_item = LineItem(
-                                            description=str(item.get("description", "")),
-                                            quantity=quantity,
-                                            price=price,
-                                            confidence=float(item.get("confidence", 0.7)),
-                                            line_ids=list(item.get("line_ids", []))
-                                        )
-                                        line_items.append(line_item)
-                                    else:
-                                        logger.warning(
-                                            f"Skipping line item with unexpected type: {type(item)}. "
-                                            f"Expected LineItem or dict, got {type(item)}"
-                                        )
-                                        continue
-                                        
-                                except (KeyError, ValueError, TypeError, InvalidOperation) as e:
-                                    logger.error(
-                                        f"Error processing line item {item}: {str(e)}. "
-                                        f"Type: {type(item)}"
-                                    )
-                                    continue
-                        else:
-                            line_items = initial_results.line_items
-
-                        # Convert decimal values with proper error handling
-                        try:
-                            subtotal = Decimal(str(enhanced_dict["subtotal"])) if enhanced_dict.get("subtotal") else initial_results.subtotal
-                        except (ValueError, InvalidOperation, TypeError):
-                            logger.warning("Failed to convert subtotal, using initial value")
-                            subtotal = initial_results.subtotal
-                            
-                        try:
-                            tax = Decimal(str(enhanced_dict["tax"])) if enhanced_dict.get("tax") else initial_results.tax
-                        except (ValueError, InvalidOperation, TypeError):
-                            logger.warning("Failed to convert tax, using initial value")
-                            tax = initial_results.tax
-                            
-                        try:
-                            total = Decimal(str(enhanced_dict["total"])) if enhanced_dict.get("total") else initial_results.total
-                        except (ValueError, InvalidOperation, TypeError):
-                            logger.warning("Failed to convert total, using initial value")
-                            total = initial_results.total
-                        
-                        # Create new ProcessingResult with converted values
-                        final_results = ProcessingResult(
-                            line_items=line_items,
-                            subtotal=subtotal,
-                            tax=tax,
-                            total=total,
-                            confidence=float(enhanced_dict.get("confidence", initial_results.confidence)),
-                            uncertain_items=enhanced_dict.get("uncertain_items", [])
-                        )
-                    except Exception as e:
-                        logger.error(f"Error converting LLM results to ProcessingResult: {str(e)}", exc_info=True)
-                        # Keep initial results if conversion fails
-                        final_results = initial_results
+                # Apply any updates from LLM processing
+                if llm_updates:
+                    logger.info(f"Applying LLM updates: {llm_updates}")
+                    if "subtotal" in llm_updates:
+                        initial_results.subtotal = llm_updates["subtotal"]
+                    if "tax" in llm_updates:
+                        initial_results.tax = llm_updates["tax"]
+                    if "total" in llm_updates:
+                        initial_results.total = llm_updates["total"]
+                    if "line_items" in llm_updates:
+                        initial_results.line_items = llm_updates["line_items"]
             except Exception as e:
-                logger.error(f"Error in LLM processing: {str(e)}", exc_info=True)
-                # Continue with initial results if LLM processing fails
+                logger.error(f"Error during LLM processing: {str(e)}")
+                # Continue with traditional processing if LLM fails
+        
+        # Generate reasoning for the analysis
+        reasoning = self.fast_processor._generate_reasoning(
+            initial_results.subtotal,
+            initial_results.tax,
+            initial_results.total,
+            initial_results.line_items
+        )
         
         # Final validation
-        validation_results = self.validator.validate_full_receipt(final_results)
+        validation_results = self.validator.validate_full_receipt(initial_results)
         
-        # Convert to LineItemAnalysis
+        # Create the final analysis
         return LineItemAnalysis(
-            items=final_results.line_items,
-            total_found=len(final_results.line_items),
-            subtotal=final_results.subtotal,
-            tax=final_results.tax,
-            total=final_results.total,
+            items=initial_results.line_items,
+            total_found=len(initial_results.line_items),
+            subtotal=initial_results.subtotal,
+            tax=initial_results.tax,
+            total=initial_results.total,
             discrepancies=[f"{type}: {msg}" for type, msg in 
                          ([(k, v) for k, v in validation_results.items() if k != 'status'])],
-            confidence=final_results.confidence
+            reasoning=reasoning,
         ) 

@@ -208,6 +208,59 @@ async def gpt_request_field_labeling(
     # Combine results
     if not all_labels:
         raise ValueError("No labels were generated for any section.")
+    
+    # Extract and combine the analysis reasoning from all sections
+    section_reasoning = []
+    section_analysis_reasoning = []
+    
+    # We need to collect both section-level reasoning and GPT's analysis_reasoning for each section
+    for i, section in enumerate(section_boundaries["discovered_sections"]):
+        section_name = section.get("name", "Unknown")
+        
+        # Add section structural reasoning
+        section_reasoning.append(f"{section_name}: {section.get('reasoning', 'No reasoning provided')}")
+        
+        # Get any available analysis_reasoning from GPT responses
+        try:
+            # Parse the response to extract metadata
+            response_text = responses[i] if i < len(responses) else None
+            if response_text:
+                try:
+                    # Extract the JSON part from the response
+                    response_data = loads(response_text)
+                    if "choices" in response_data and response_data["choices"]:
+                        message_content = response_data["choices"][0].get("message", {}).get("content", "")
+                        try:
+                            parsed_content = loads(message_content)
+                            if isinstance(parsed_content, dict) and "metadata" in parsed_content:
+                                section_ar = parsed_content["metadata"].get("analysis_reasoning")
+                                if section_ar:
+                                    section_analysis_reasoning.append(f"{section_name}: {section_ar}")
+                        except (JSONDecodeError, KeyError):
+                            # If parsing fails, we just won't have this section's analysis reasoning
+                            pass
+                except (JSONDecodeError, KeyError):
+                    # If parsing fails, we just won't have this section's analysis reasoning
+                    pass
+        except Exception:
+            # We don't want to fail because of analysis reasoning extraction
+            pass
+    
+    # Create a comprehensive analysis reasoning
+    combined_reasoning = (
+        f"Receipt analysis identified {len(section_boundaries['discovered_sections'])} "
+        f"sections. Labels were applied based on content patterns, position, and business context. "
+    )
+    
+    # Add section-level structural reasoning
+    if section_reasoning:
+        combined_reasoning += f"Section structural reasoning: {' | '.join(section_reasoning)}. "
+    
+    # Add GPT's analysis reasoning for each section
+    if section_analysis_reasoning:
+        combined_reasoning += f"Section labeling reasoning: {' | '.join(section_analysis_reasoning)}."
+    else:
+        combined_reasoning += "Detailed reasoning for each label is provided at the individual word level."
 
     final_result = {
         "labels": [
@@ -227,9 +280,7 @@ async def gpt_request_field_labeling(
         ],
         "metadata": {
             "total_labeled_words": len(all_labels),
-            "average_confidence": (
-                sum(label["confidence"] for label in all_labels) / len(all_labels)
-            ),
+            "analysis_reasoning": combined_reasoning,
             "requires_review": requires_review,
             "review_reasons": list(set(review_reasons)),  # Remove duplicates
         },
@@ -317,9 +368,9 @@ def _llm_prompt_structure_analysis(
     formatted_lines = []
     for line in receipt_lines:
         # Get words for this line
-        line_words = [word for word in receipt_words if word.get('line_id') == line.get('line_id')]
-        line_text = " ".join(word.get('text', '') for word in line_words)
-        formatted_lines.append(f"Line {line.get('line_id')}: {line_text}")
+        line_words = [word for word in receipt_words if word.line_id == line.line_id]
+        line_text = " ".join(word.text for word in line_words)
+        formatted_lines.append(f"Line {line.line_id}: {line_text}")
 
     receipt_content = "\n".join(formatted_lines)
 
@@ -347,7 +398,7 @@ def _llm_prompt_structure_analysis(
         "   - Line IDs included\n"
         "   - Spatial patterns (alignment, spacing)\n"
         "   - Content patterns (keywords, formatting)\n"
-        "   - Confidence in the section identification\n\n"
+        "   - Detailed reasoning for why this is a valid section\n\n"
         "Return this JSON structure:\n"
         "{\n"
         '  "discovered_sections": [\n'
@@ -356,10 +407,10 @@ def _llm_prompt_structure_analysis(
         '      "line_ids": [1, 2, 3],\n'
         '      "spatial_patterns": ["pattern1", "pattern2"],\n'
         '      "content_patterns": ["pattern1", "pattern2"],\n'
-        '      "confidence": 0.95\n'
+        '      "reasoning": "Detailed explanation of why these lines form a section, including spatial and content evidence"\n'
         "    }\n"
         "  ],\n"
-        '  "overall_confidence": 0.95\n'
+        '  "overall_reasoning": "Comprehensive explanation of the receipt structure, relationships between sections, and key findings"\n'
         "}\n\n"
         "Return ONLY the JSON object. No other text."
     )
@@ -431,31 +482,31 @@ def _llm_prompt_field_labeling_section(
 
     # Default examples for any section type
     default_examples = [
-        '{"text": "COSTCO WHOLESALE", "label": "business_name", "confidence": 0.95}',
-        '{"text": "5700 Lindero Canyon Rd", "label": "address_line", "confidence": 0.95}',
-        '{"text": "12/17/2024", "label": "date", "confidence": 0.95}',
-        '{"text": "17:19", "label": "time", "confidence": 0.95}',
-        '{"text": "TOTAL", "label": "total", "confidence": 0.95}',
+        '{"text": "COSTCO WHOLESALE", "label": "business_name", "reasoning": "Matches business name from Places API and appears at top of receipt"}',
+        '{"text": "5700 Lindero Canyon Rd", "label": "address_line", "reasoning": "Matches format of street address and verified against Places API"}',
+        '{"text": "12/17/2024", "label": "date", "reasoning": "Matches date format MM/DD/YYYY and appears in transaction details section"}',
+        '{"text": "17:19", "label": "time", "reasoning": "Matches time format HH:MM and appears next to date"}',
+        '{"text": "TOTAL", "label": "total", "reasoning": "Clear total indicator in payment section with amount following"}'
     ]
 
-    # Select examples based on section type
+    # Select examples based on section type - using reasoning instead of confidence
     if "business_info" in section_info["name"].lower():
         examples = [
-            '{"text": "COSTCO WHOLESALE", "label": "business_name", "confidence": 0.95}',
-            '{"text": "5700 Lindero Canyon Rd", "label": "address_line", "confidence": 0.95}',
-            '{"text": "#117", "label": "store_id", "confidence": 0.90}',
+            '{"text": "COSTCO WHOLESALE", "label": "business_name", "reasoning": "Matches business name from Places API and appears at top of receipt"}',
+            '{"text": "5700 Lindero Canyon Rd", "label": "address_line", "reasoning": "Matches format of street address and verified against Places API"}',
+            '{"text": "#117", "label": "store_id", "reasoning": "Store identifier format that appears near business name"}'
         ]
     elif "payment" in section_info["name"].lower():
         examples = [
-            '{"text": "TOTAL", "label": "total", "confidence": 0.95}',
-            '{"text": "$63.27", "label": "amount", "confidence": 0.95}',
-            '{"text": "APPROVED", "label": "payment_status", "confidence": 0.90}',
+            '{"text": "TOTAL", "label": "total", "reasoning": "Clear total indicator in payment section"}',
+            '{"text": "$63.27", "label": "amount", "reasoning": "Currency format that appears after TOTAL indicator"}',
+            '{"text": "APPROVED", "label": "payment_status", "reasoning": "Payment confirmation status message"}'
         ]
     elif "transaction" in section_info["name"].lower():
         examples = [
-            '{"text": "12/17/2024", "label": "date", "confidence": 0.95}',
-            '{"text": "17:19", "label": "time", "confidence": 0.95}',
-            '{"text": "Tran ID#: 12345", "label": "transaction_id", "confidence": 0.90}',
+            '{"text": "12/17/2024", "label": "date", "reasoning": "Matches date format MM/DD/YYYY in transaction section"}',
+            '{"text": "17:19", "label": "time", "reasoning": "Matches time format HH:MM near the date"}',
+            '{"text": "Tran ID#: 12345", "label": "transaction_id", "reasoning": "Clear transaction identifier format"}'
         ]
     else:
         examples = default_examples
@@ -473,22 +524,22 @@ def _llm_prompt_field_labeling_section(
         "1. Label each piece of meaningful text with the most specific applicable label\n"
         "2. Combine words that form a single meaningful unit (e.g., 'Lindero Canyon Rd' as one address_line)\n"
         "3. Never use 'unknown' or labels not in the list above\n"
-        "4. Set high confidence (0.9+) for clear matches, lower (0.7-0.8) if uncertain\n"
+        "4. Provide clear reasoning for each label assignment\n"
         "5. Mark requires_review true if you're unsure about any labels\n"
-        "6. Calculate average_confidence as the mean of all word confidences\n\n"
+        "6. Explain overall labeling decisions in analysis_reasoning\n\n"
         "Return this JSON structure:\n"
         "{\n"
         '  "labeled_words": [\n'
         "    {\n"
         '      "text": "exact text from receipt",\n'
         '      "label": "label from list above",\n'
-        '      "confidence": 0.95\n'
+        '      "reasoning": "Detailed explanation of why this label was chosen, including context and verification"\n'
         "    }\n"
         "  ],\n"
         '  "metadata": {\n'
         '    "requires_review": false,\n'
         '    "review_reasons": [],\n'
-        '    "average_confidence": 0.95\n'
+        '    "analysis_reasoning": "Overall explanation of labeling decisions and any notable patterns or issues"\n'
         "  }\n"
         "}\n\n"
         "Return ONLY the JSON object. No other text."
@@ -530,7 +581,7 @@ def _llm_prompt_line_item_analysis(
         "3. Look for quantity indicators (e.g., @, x, EA) and unit prices\n"
         "4. Validate price calculations (quantity * unit price = extended price)\n"
         "5. Compare against receipt totals for consistency\n"
-        "6. Note any discrepancies or uncertain items\n\n"
+        "6. Provide detailed reasoning for each line item and overall analysis\n\n"
         "Return this JSON structure:\n"
         "{\n"
         '  "line_items": [\n'
@@ -538,7 +589,7 @@ def _llm_prompt_line_item_analysis(
         '      "description": "complete item description",\n'
         '      "quantity": {"amount": number, "unit": "string"},\n'
         '      "price": {"unit_price": number, "extended_price": number},\n'
-        '      "confidence": number,\n'
+        '      "reasoning": "Detailed explanation of how this item was parsed and validated",\n'
         '      "line_ids": [number]\n'
         "    }\n"
         "  ],\n"
@@ -548,7 +599,7 @@ def _llm_prompt_line_item_analysis(
         '    "tax": number,\n'
         '    "total": number,\n'
         '    "discrepancies": [string],\n'
-        '    "confidence": number\n'
+        '    "reasoning": "Comprehensive explanation of line item analysis, calculations, and any issues found"\n'
         "  }\n"
         "}\n\n"
         "Return ONLY the JSON object. No other text."
@@ -588,7 +639,7 @@ def _validate_gpt_response_structure_analysis(response: Response) -> Dict:
         if not isinstance(parsed, dict):
             raise ValueError("The response must be a dictionary.")
 
-        required_keys = ["discovered_sections", "overall_confidence"]
+        required_keys = ["discovered_sections", "overall_reasoning"]
         if not all(key in parsed for key in required_keys):
             raise ValueError(f"Missing required keys: {required_keys}")
 
@@ -605,7 +656,7 @@ def _validate_gpt_response_structure_analysis(response: Response) -> Dict:
                 "line_ids",
                 "spatial_patterns",
                 "content_patterns",
-                "confidence",
+                "reasoning",
             ]
             if not all(key in section for key in required_section_keys):
                 raise ValueError(
@@ -620,16 +671,12 @@ def _validate_gpt_response_structure_analysis(response: Response) -> Dict:
                 raise ValueError("'spatial_patterns' must be a list.")
             if not isinstance(section["content_patterns"], list):
                 raise ValueError("'content_patterns' must be a list.")
-            if not isinstance(section["confidence"], (int, float)):
-                raise ValueError("'confidence' must be a number.")
-            if not (0 <= section["confidence"] <= 1):
-                raise ValueError("'confidence' must be between 0 and 1.")
+            if not isinstance(section["reasoning"], str):
+                raise ValueError("'reasoning' must be a string.")
 
-        # Validate overall_confidence
-        if not isinstance(parsed["overall_confidence"], (int, float)):
-            raise ValueError("'overall_confidence' must be a number.")
-        if not (0 <= parsed["overall_confidence"] <= 1):
-            raise ValueError("'overall_confidence' must be between 0 and 1.")
+        # Validate overall_reasoning
+        if not isinstance(parsed["overall_reasoning"], str):
+            raise ValueError("'overall_reasoning' must be a string.")
 
         return parsed
 
@@ -673,16 +720,14 @@ def _validate_gpt_response_field_labeling(response: Response) -> Dict:
         for word in parsed["labeled_words"]:
             if not isinstance(word, dict):
                 raise ValueError("Each labeled word must be a dictionary.")
-            required_word_keys = ["text", "label", "confidence"]
+            required_word_keys = ["text", "label", "reasoning"]
             if not all(key in word for key in required_word_keys):
                 raise ValueError(f"Labeled word missing required keys: {required_word_keys}")
-            if not isinstance(word["confidence"], (int, float)):
-                raise ValueError("Word confidence must be a number.")
-            if not (0 <= word["confidence"] <= 1):
-                raise ValueError("Word confidence must be between 0 and 1.")
+            if not isinstance(word["reasoning"], str):
+                raise ValueError("Word reasoning must be a string.")
 
         # Validate metadata structure
-        required_metadata_keys = ["requires_review", "review_reasons", "average_confidence"]
+        required_metadata_keys = ["requires_review", "review_reasons", "analysis_reasoning"]
         if not all(key in parsed["metadata"] for key in required_metadata_keys):
             raise ValueError(f"Metadata missing required keys: {required_metadata_keys}")
 
@@ -739,7 +784,7 @@ def _validate_gpt_response_line_item_analysis(response: Response) -> Dict:
             if not isinstance(item, dict):
                 raise ValueError("Each item must be a dictionary.")
 
-            required_item_keys = ["description", "quantity", "price", "confidence", "line_ids"]
+            required_item_keys = ["description", "quantity", "price", "reasoning", "line_ids"]
             if not all(key in item for key in required_item_keys):
                 raise ValueError(f"Item missing required keys: {required_item_keys}")
 
@@ -758,7 +803,7 @@ def _validate_gpt_response_line_item_analysis(response: Response) -> Dict:
 
         # Validate analysis structure
         analysis = parsed["analysis"]
-        required_analysis_keys = ["total_found", "subtotal", "tax", "total", "discrepancies", "confidence"]
+        required_analysis_keys = ["total_found", "subtotal", "tax", "total", "discrepancies", "reasoning"]
         if not all(key in analysis for key in required_analysis_keys):
             raise ValueError(f"Analysis missing required keys: {required_analysis_keys}")
 
@@ -809,7 +854,7 @@ def _map_labels_to_word_ids(labeled_words: List[Dict], section_words: List[Union
                     "word_id": word.word_id if hasattr(word, 'word_id') else word.get("word_id"),
                     "line_id": word.line_id if hasattr(word, 'line_id') else word.get("line_id"),
                     "label": labeled_word.get("label"),
-                    "confidence": labeled_word.get("confidence", 0.0)
+                    "reasoning": labeled_word.get("reasoning")
                 })
         
         # If no exact match, try matching individual words
@@ -820,14 +865,16 @@ def _map_labels_to_word_ids(labeled_words: List[Dict], section_words: List[Union
                     matched_words.extend(normalized_words[word])
             
             if matched_words:
-                # Adjust confidence based on how many words were matched
-                confidence_adjustment = len(matched_words) / len(words)
+                # Adjust reasoning based on how many words were matched
+                reasoning_adjustment = len(matched_words) / len(words)
                 for word in matched_words:
+                    original_reasoning = labeled_word.get("reasoning", "")
+                    adjusted_reasoning = f"{original_reasoning} (Partial match confidence: {reasoning_adjustment:.2f})"
                     mapped_labels.append({
                         "word_id": word.word_id if hasattr(word, 'word_id') else word.get("word_id"),
                         "line_id": word.line_id if hasattr(word, 'line_id') else word.get("line_id"),
                         "label": labeled_word.get("label"),
-                        "confidence": labeled_word.get("confidence", 0.0) * confidence_adjustment
+                        "reasoning": adjusted_reasoning
                     })
             else:
                 # Log warning if no matches found

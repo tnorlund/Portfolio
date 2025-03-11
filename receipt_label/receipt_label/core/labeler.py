@@ -4,6 +4,7 @@ from ..models.receipt import Receipt, ReceiptWord, ReceiptLine
 from ..processors.receipt_analyzer import ReceiptAnalyzer
 from ..processors.line_item_processor import LineItemProcessor
 from ..data.places_api import BatchPlacesProcessor
+import traceback
 
 logger = logging.getLogger(__name__)
 
@@ -66,16 +67,21 @@ class ReceiptLabeler:
         try:
             # Get business context from Places API
             places_data = await self._get_places_data(receipt_words)
+            logger.debug("Places API data retrieved successfully")
 
             # Analyze receipt structure
+            logger.debug("Starting structure analysis...")
             structure_analysis = await self.receipt_analyzer.analyze_structure(
                 receipt=receipt,
                 receipt_lines=receipt_lines,
                 receipt_words=receipt_words,
                 places_api_data=places_data
             )
+            logger.debug("Structure analysis completed successfully")
+            logger.debug(f"Structure analysis keys: {list(structure_analysis.keys())}")
 
             # Label fields
+            logger.debug("Starting field labeling...")
             field_analysis = await self.receipt_analyzer.label_fields(
                 receipt=receipt,
                 receipt_lines=receipt_lines,
@@ -83,16 +89,24 @@ class ReceiptLabeler:
                 section_boundaries=structure_analysis,
                 places_api_data=places_data
             )
+            logger.debug("Field labeling completed successfully")
+            logger.debug(f"Field analysis keys: {list(field_analysis.keys())}")
+            if 'metadata' in field_analysis:
+                logger.debug(f"Field analysis metadata keys: {list(field_analysis['metadata'].keys())}")
 
             # Process line items using line item processor
+            logger.debug("Starting line item analysis...")
             line_item_analysis = await self.line_item_processor.process_receipt(
                 receipt=receipt,
                 receipt_lines=receipt_lines,
                 receipt_words=receipt_words,
                 places_api_data=places_data
             )
+            logger.debug("Line item analysis completed successfully")
+            logger.debug(f"Line item analysis attributes: {dir(line_item_analysis)}")
 
             # Convert line item analysis to dict format for consistency
+            logger.debug("Converting line item analysis to dictionary...")
             line_item_dict = {
                 "line_items": [item.__dict__ for item in line_item_analysis.items],
                 "total_found": line_item_analysis.total_found,
@@ -100,16 +114,19 @@ class ReceiptLabeler:
                 "tax": str(line_item_analysis.tax) if line_item_analysis.tax else None,
                 "total": str(line_item_analysis.total) if line_item_analysis.total else None,
                 "discrepancies": line_item_analysis.discrepancies,
-                "confidence": line_item_analysis.confidence
+                "reasoning": line_item_analysis.reasoning
             }
+            logger.debug(f"Line item dict keys: {list(line_item_dict.keys())}")
 
             # The line item processor includes validation, so we'll use its results
             validation_results = {
                 "line_item_validation": line_item_analysis.discrepancies,
                 "overall_valid": not any("error" in d.lower() for d in line_item_analysis.discrepancies)
             }
+            logger.debug("Validation results created successfully")
 
-            return LabelingResult(
+            logger.debug("Creating final LabelingResult...")
+            result = LabelingResult(
                 structure_analysis=structure_analysis,
                 field_analysis=field_analysis,
                 line_item_analysis=line_item_dict,
@@ -118,9 +135,13 @@ class ReceiptLabeler:
                 receipt_id=receipt.receipt_id,
                 image_id=receipt.image_id,
             )
+            logger.debug("LabelingResult created successfully")
+            return result
 
         except Exception as e:
             logger.error(f"Error processing receipt: {str(e)}")
+            logger.error(f"Error type: {type(e)}")
+            logger.error(f"Error traceback: {traceback.format_exc()}")
             raise
 
     async def _get_places_data(self, receipt_words: List[ReceiptWord]) -> Optional[Dict]:

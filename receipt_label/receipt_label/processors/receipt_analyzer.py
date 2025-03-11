@@ -36,7 +36,9 @@ class ReceiptAnalyzer:
             places_api_data: Optional dictionary containing Places API data
 
         Returns:
-            Dict containing structure analysis results
+            Dict containing structure analysis results with reasoning instead of confidence scores.
+            The response includes explanations for why certain sections were identified,
+            providing more detailed insights than numerical confidence scores.
 
         Raises:
             TypeError: If any of the input types are incorrect or if list elements are invalid
@@ -103,37 +105,38 @@ class ReceiptAnalyzer:
                 if not isinstance(word.bounding_box, dict):
                     raise TypeError(f"ReceiptWord.bounding_box at index {i} must be dict, got {type(word.bounding_box)}")
 
-            # Convert receipt_words to the expected format
-            receipt_words_list = []
-            for word in receipt_words:
-                word_dict = {
-                    "text": word.text,
-                    "line_id": word.line_id,
-                    "word_id": word.word_id,
-                    "bounding_box": word.bounding_box,
-                }
-                receipt_words_list.append(word_dict)
-
-            # Convert receipt_lines to the expected format
-            receipt_lines_list = []
-            for line in receipt_lines:
-                line_dict = {
-                    "text": line.text,
-                    "line_id": line.line_id,
-                    "bounding_box": line.bounding_box,
-                }
-                receipt_lines_list.append(line_dict)
-
-            # Analyze structure
-            structure_analysis, query, raw_response = await gpt_request_structure_analysis(
-                receipt=receipt,
-                receipt_lines=receipt_lines_list,
-                receipt_words=receipt_words_list,
-                places_api_data=places_api_data,
-                gpt_api_key=self.api_key,
-            )
+            # Analyze structure - pass the original objects directly
+            logger.info("Calling gpt_request_structure_analysis...")
+            try:
+                result = await gpt_request_structure_analysis(
+                    receipt=receipt,
+                    receipt_lines=receipt_lines,
+                    receipt_words=receipt_words,
+                    places_api_data=places_api_data,
+                    gpt_api_key=self.api_key,
+                )
+                logger.info(f"gpt_request_structure_analysis returned {len(result)} values: {type(result)}")
+                
+                if isinstance(result, tuple):
+                    logger.info(f"Result tuple length: {len(result)}")
+                    for i, item in enumerate(result):
+                        logger.info(f"  Result[{i}] type: {type(item)}")
+                
+                structure_analysis, query, raw_response = result
+                logger.info("Successfully unpacked structure analysis result")
+            except ValueError as e:
+                logger.error(f"Error unpacking structure analysis result: {str(e)}")
+                logger.error(f"Result type: {type(result)}, content: {result}")
+                raise
+            except Exception as e:
+                logger.error(f"Other error in structure analysis: {str(e)}")
+                raise
 
             logger.debug(f"Raw analysis response: {raw_response}")
+            # Log reasoning fields if they exist
+            if isinstance(structure_analysis, dict):
+                reasoning_fields = [k for k in structure_analysis if 'reasoning' in k.lower()]
+                logger.info(f"Structure analysis reasoning fields: {reasoning_fields}")
             return structure_analysis
 
         except (TypeError, ValueError) as e:
@@ -152,42 +155,60 @@ class ReceiptAnalyzer:
         section_boundaries: Dict,
         places_api_data: Optional[Dict],
     ) -> Dict:
-        """Label and classify receipt fields."""
+        """Label and classify receipt fields.
+        
+        Args:
+            receipt: Receipt object containing metadata
+            receipt_lines: List of ReceiptLine objects
+            receipt_words: List of ReceiptWord objects
+            section_boundaries: Dictionary with section boundaries from structure analysis
+            places_api_data: Optional dictionary containing Places API data
+            
+        Returns:
+            Dict containing field labeling results with reasoning explanations for each labeled field.
+            Instead of confidence scores, each label includes detailed reasoning about why
+            the field was classified in a certain way.
+        """
         try:
-            # Convert receipt_words to the expected format
-            receipt_words_list = []
-            for word in receipt_words:  # This should only process ReceiptWord objects
-                word_dict = {
-                    "text": word.text,
-                    "line_id": word.line_id,
-                    "word_id": word.word_id,
-                    "bounding_box": word.bounding_box,
-                }
-                receipt_words_list.append(word_dict)
-
-            # Convert receipt_lines to the expected format
-            receipt_lines_list = []
-            for line in receipt_lines:  # This should only process ReceiptLine objects
-                line_dict = {
-                    "text": line.text,
-                    "line_id": line.line_id,
-                    "bounding_box": line.bounding_box,
-                }
-                receipt_lines_list.append(line_dict)
-
-            # Label fields
-            field_analysis, query, raw_response = await gpt_request_field_labeling(
-                receipt=receipt,
-                receipt_lines=receipt_lines_list,
-                receipt_words=receipt_words_list,
-                section_boundaries=section_boundaries,
-                places_api_data=places_api_data,
-                gpt_api_key=self.api_key,
-            )
+            # Label fields - pass the original objects directly
+            logger.info("Calling gpt_request_field_labeling...")
+            try:
+                result = await gpt_request_field_labeling(
+                    receipt=receipt,
+                    receipt_lines=receipt_lines,
+                    receipt_words=receipt_words,
+                    section_boundaries=section_boundaries,
+                    places_api_data=places_api_data,
+                    gpt_api_key=self.api_key,
+                )
+                logger.info(f"gpt_request_field_labeling returned {len(result)} values: {type(result)}")
+                
+                if isinstance(result, tuple):
+                    logger.info(f"Result tuple length: {len(result)}")
+                    for i, item in enumerate(result):
+                        logger.info(f"  Result[{i}] type: {type(item)}")
+                
+                field_analysis, query, raw_response = result
+                logger.info("Successfully unpacked field labeling result")
+            except ValueError as e:
+                logger.error(f"Error unpacking field labeling result: {str(e)}")
+                logger.error(f"Result type: {type(result)}, content: {result}")
+                raise
+            except Exception as e:
+                logger.error(f"Other error in field labeling: {str(e)}")
+                raise
 
             logger.debug("Field labeling completed")
             logger.debug(f"Field analysis result type: {type(field_analysis)}")
             logger.debug(f"Number of labels generated: {len(field_analysis.get('labels', []))}")
+            
+            # Log reasoning fields if they exist
+            if isinstance(field_analysis, dict):
+                reasoning_fields = []
+                for label in field_analysis.get('labels', []):
+                    if 'reasoning' in label:
+                        reasoning_fields.append(label['label'])
+                logger.info(f"Field labels with reasoning: {reasoning_fields}")
 
             return field_analysis
 
@@ -204,44 +225,67 @@ class ReceiptAnalyzer:
         traditional_analysis: Dict,
         places_api_data: Optional[Dict],
     ) -> Dict:
-        """Analyze line items in the receipt."""
+        """Analyze line items in the receipt.
+        
+        Args:
+            receipt: Receipt object containing metadata
+            receipt_lines: List of ReceiptLine objects
+            receipt_words: List of ReceiptWord objects
+            traditional_analysis: Results from traditional processing methods
+            places_api_data: Optional dictionary containing Places API data
+            
+        Returns:
+            Dict containing line item analysis results with reasoning explanations.
+            Each identified line item includes explanatory text about why it was
+            classified as a line item and details about pricing, quantities, etc.,
+            rather than simple confidence scores.
+        """
         try:
-            # Convert receipt_words to the expected format
-            receipt_words_list = []
-            for word in receipt_words:  # This should only process ReceiptWord objects
-                word_dict = {
-                    "text": word.text,
-                    "line_id": word.line_id,
-                    "word_id": word.word_id,
-                    "bounding_box": word.bounding_box,
-                }
-                receipt_words_list.append(word_dict)
-
-            # Convert receipt_lines to the expected format
-            receipt_lines_list = []
-            for line in receipt_lines:  # This should only process ReceiptLine objects
-                line_dict = {
-                    "text": line.text,
-                    "line_id": line.line_id,
-                    "bounding_box": line.bounding_box,
-                }
-                receipt_lines_list.append(line_dict)
-
-            # Analyze line items
-            line_item_analysis, _, _ = gpt_request_line_item_analysis(
-                receipt=receipt,
-                receipt_lines=receipt_lines_list,
-                receipt_words=receipt_words_list,
-                traditional_analysis=traditional_analysis,
-                places_api_data=places_api_data,
-                gpt_api_key=self.api_key,
-            )
+            # Analyze line items - pass the original objects directly
+            logger.info("Calling gpt_request_line_item_analysis...")
+            try:
+                result = await gpt_request_line_item_analysis(
+                    receipt=receipt,
+                    receipt_lines=receipt_lines,
+                    receipt_words=receipt_words,
+                    traditional_analysis=traditional_analysis,
+                    places_api_data=places_api_data,
+                    gpt_api_key=self.api_key,
+                )
+                logger.info(f"gpt_request_line_item_analysis returned result of type: {type(result)}")
+                
+                if isinstance(result, tuple):
+                    logger.info(f"Result tuple length: {len(result)}")
+                    for i, item in enumerate(result):
+                        logger.info(f"  Result[{i}] type: {type(item)}")
+                
+                line_item_analysis, query, raw_response = result
+                logger.info("Successfully unpacked line item analysis result")
+            except ValueError as e:
+                logger.error(f"Error unpacking line item analysis result: {str(e)}")
+                logger.error(f"Result type: {type(result)}, content: {result}")
+                raise
+            except Exception as e:
+                logger.error(f"Other error in line item analysis: {str(e)}")
+                raise
 
             logger.debug(f"Raw line item analysis: {line_item_analysis}")
+            
+            # Log reasoning fields if they exist
+            if isinstance(line_item_analysis, dict):
+                reasoning_fields = [k for k in line_item_analysis if 'reasoning' in k.lower()]
+                logger.info(f"Line item analysis reasoning fields: {reasoning_fields}")
+                
+                if 'items' in line_item_analysis:
+                    for i, item in enumerate(line_item_analysis['items']):
+                        if 'reasoning' in item:
+                            logger.info(f"Line item {i} has reasoning: {item['reasoning'][:50]}...")
+
             return line_item_analysis
 
         except Exception as e:
             logger.error(f"Error in line item analysis: {str(e)}")
+            logger.error(f"Full traceback: {traceback.format_exc()}")
             raise
 
     def _prepare_prompt(

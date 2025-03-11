@@ -41,12 +41,27 @@
 - [ ] Add response_template field to track expected response format
 
 ## Improve GPT Integration
-- [ ] Update gpt.py validation functions:
-  - [ ] Replace confidence score with reasoning in _validate_gpt_response_structure_analysis
-  - [ ] Replace confidence score with reasoning in _validate_gpt_response_field_labeling
-  - [ ] Replace confidence score with reasoning in _validate_gpt_response_line_item_analysis
+- [x] Update gpt.py validation functions:
+  - [x] Replace confidence score with reasoning in _validate_gpt_response_structure_analysis
+  - [x] Replace confidence score with reasoning in _validate_gpt_response_field_labeling
+  - [x] Replace confidence score with reasoning in _validate_gpt_response_line_item_analysis
 
-- [ ] Update validation.py functions:
+## Iterative Changes to receipt_analyzer.py and llm_processor.py
+- [x] Modify receipt_analyzer.py:
+  - [x] Test that structure_analysis still returns correctly with reasoning instead of confidence
+  - [x] Test that field_labeling still returns correctly with reasoning instead of confidence
+  - [x] Test that line_item_analysis still returns correctly with reasoning instead of confidence
+  - [x] Update any docstrings to reflect reasoning instead of confidence scores
+  - [x] Add new debug logging for reasoning fields
+
+- [x] Modify llm_processor.py:
+  - [x] Update _process_missing_components to handle reasoning fields
+  - [x] Modify the updates dictionary structure to include reasoning
+  - [x] Test that analysis extraction still works with updated GPT response format
+  - [x] Add backward compatibility for code expecting confidence scores
+  - [x] Update any docstrings to reflect reasoning instead of confidence scores
+
+## Update validation.py functions:
   - [ ] Replace validate_business_name to return reasoning instead of confidence
   - [ ] Replace validate_phone_number to return reasoning instead of confidence
   - [ ] Replace validate_address to return reasoning instead of confidence
@@ -55,11 +70,11 @@
   - [ ] Replace validate_receipt_data to return reasoning instead of confidence
   - [ ] Replace validate_receipt_format to return reasoning instead of confidence
 
-- [ ] Update processors/line_item_processor.py:
-  - [ ] Replace _calculate_confidence with _calculate_reasoning in FastPatternMatcher
-  - [ ] Update reasoning to explain why line items match or don't match
+## Update processors/line_item_processor.py:
+  - [x] Replace _calculate_confidence with _calculate_reasoning in FastPatternMatcher
+  - [x] Update reasoning to explain why line items match or don't match
 
-- [ ] Update data/places_api.py:
+## Update data/places_api.py:
   - [ ] Update ValidationResult class to use reasoning instead of confidence
   - [ ] Update batch_processor._validate_business_name to return reasoning
 

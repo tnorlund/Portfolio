@@ -232,7 +232,7 @@ class LLMProcessor:
                         description=item_data["description"],
                         quantity=quantity,
                         price=price,
-                        confidence=item_data["confidence"],
+                        reasoning=item_data.get("reasoning", "Generated via LLM analysis"),
                         line_ids=item_data["line_ids"]
                     )
                     updates["line_items"].append(item)

@@ -32,7 +32,7 @@ class LineItem:
     description: str
     quantity: Optional[Quantity] = None
     price: Optional[Price] = None
-    confidence: float = 0.0
+    reasoning: str = ""
     line_ids: List[int] = None
     metadata: Dict = None
 
@@ -52,7 +52,7 @@ class LineItemAnalysis:
     tax: Optional[Decimal] = None
     total: Optional[Decimal] = None
     discrepancies: List[str] = None
-    confidence: float = 0.0
+    reasoning: str = ""
     metadata: Dict = None
 
     def __post_init__(self):
