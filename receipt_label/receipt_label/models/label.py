@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 from decimal import Decimal
 from .position import BoundingBox, Point
+from .metadata import MetadataMixin
 
 
 @dataclass
@@ -141,7 +142,7 @@ class SectionLabels:
 
 
 @dataclass
-class LabelAnalysis:
+class LabelAnalysis(MetadataMixin):
     """
     Comprehensive analysis of labeled words in a receipt.
     
@@ -159,6 +160,8 @@ class LabelAnalysis:
     review_reasons: List[str] = field(default_factory=list)
     analysis_reasoning: str = ""
     metadata: Dict = field(default_factory=dict)
+    timestamp_added: Optional[str] = None
+    timestamp_updated: Optional[str] = None
 
     def __post_init__(self):
         if self.total_labeled_words == 0:
@@ -167,6 +170,19 @@ class LabelAnalysis:
         # If no reasoning is provided, generate a basic one
         if not self.analysis_reasoning:
             self.analysis_reasoning = self.generate_reasoning()
+            
+        # Initialize metadata
+        self.initialize_metadata()
+        
+        # Add analysis-specific metrics
+        self.add_processing_metric("total_words", self.total_labeled_words)
+        self.add_processing_metric("section_count", len(self.sections))
+        
+        # If requires review, add to history
+        if self.requires_review:
+            self.add_history_event("flagged_for_review", {
+                "reasons": self.review_reasons
+            })
     
     def generate_reasoning(self) -> str:
         """

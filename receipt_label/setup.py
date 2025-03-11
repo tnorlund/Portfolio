@@ -1,8 +1,21 @@
 from setuptools import setup, find_packages
+import re
+import os
+
+# Read version from version.py without importing it
+version_file = os.path.join("receipt_label", "version.py")
+with open(version_file, "r") as f:
+    version_content = f.read()
+
+# Extract version using regex
+version_match = re.search(r'__version__\s*=\s*["\']([^"\']+)["\']', version_content)
+if not version_match:
+    raise RuntimeError(f"Unable to find version string in {version_file}")
+version = version_match.group(1)
 
 setup(
     name="receipt_label",
-    version="0.1.0",
+    version=version,
     packages=find_packages(),
     install_requires=[
         "python-dotenv>=0.19.0",

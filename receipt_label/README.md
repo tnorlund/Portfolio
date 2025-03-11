@@ -247,6 +247,24 @@ mypy .
 flake8
 ```
 
+### Versioning
+
+This package follows semantic versioning (SemVer) and uses a single source of truth for version management:
+
+1. The canonical version is defined in `receipt_label/version.py` as `__version__`
+2. All package components reference this single version definition
+3. Packaging files (setup.py and pyproject.toml) read from this source
+
+To update the version:
+
+```bash
+# 1. Edit receipt_label/version.py to change the version number
+# 2. Run the update script to sync all version references
+python update_version.py
+```
+
+This ensures version consistency across all parts of the codebase and packaging.
+
 ## Contributing
 
 1. Fork the repository

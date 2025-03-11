@@ -9,6 +9,7 @@ from .models.line_item import LineItem, LineItemAnalysis, Price, Quantity
 from .processors.receipt_analyzer import ReceiptAnalyzer
 from .data.places_api import BatchPlacesProcessor
 from .processors.line_item_processor import LineItemProcessor
+from .version import __version__
 import logging
 
 # Configure logging
@@ -22,8 +23,6 @@ logging.getLogger('urllib3').setLevel(logging.WARNING)
 
 # Only show important info logs from main module
 logging.getLogger('__main__').setLevel(logging.INFO)
-
-__version__ = "0.1.0"
 
 __all__ = [
     "ReceiptLabeler",

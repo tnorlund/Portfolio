@@ -1,28 +1,21 @@
-refactor: implement consistent position representation across codebase
+fix: implement single source of truth for package versioning
 
-This commit standardizes the position/bounding box representation across the receipt labeling system and ensures compatibility with DynamoDB schema:
+This commit establishes a centralized versioning approach to solve circular
+import problems and ensure version consistency across the codebase:
 
-- Create dedicated Position models:
-  - Add new Point and BoundingBox classes with serialization support
-  - Implement to_dict/from_dict and to_dynamo/from_dynamo methods
-  - Provide utility methods for position calculations
+- Create dedicated version.py file as the single source of truth for package version
+- Fix circular import issues in MetadataMixin by using explicit imports from version.py
+- Add MetadataMixin to analysis classes to ensure consistent version handling
+- Modify setup.py to extract version from version.py without importing it
+- Create update_version.py utility to synchronize version across package files
+- Update README.md with versioning documentation and instructions
 
-- Update WordLabel to use new position models:
-  - Replace Dict-based bounding_box with BoundingBox object
-  - Add serialization/deserialization methods
-  - Maintain backwards compatibility with legacy data
+This approach improves maintainability by:
+1. Centralizing version definition in a single location
+2. Providing a clear procedure for version updates
+3. Eliminating potential version inconsistencies across the package
+4. Resolving circular import issues that could prevent package initialization
 
-- Standardize section representation in StructureAnalysis:
-  - Rename discovered_sections to sections for consistency
-  - Add version and timestamp tracking
-  - Improve serialization to/from DynamoDB
-  - Add to_dict/from_dict methods to all related classes
-
-- Ensure consistent handling in dependent code:
-  - Update references in labeler.py and gpt_labeler_with_package.py
-  - Add backward compatibility in gpt.py for section handling
-  - Update validation functions to work with both formats
-
-This change marks significant progress in the "Align Base Classes with DynamoDB Schema" task from the TODO file, specifically completing:
-- Consistency in Naming
-- Position Representation
+The version now defaults to the package version for all analysis classes
+through MetadataMixin, ensuring consistent version tracking that stays in
+sync with package releases. 

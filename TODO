@@ -15,12 +15,35 @@
 - [ ] Metadata and Version Tracking:
   - [ ] Add version fields to analysis classes
   - [ ] Ensure timestamp fields are consistently used
+  - [x] Add standardized metadata structure across all classes:
+    - [x] Include processing metrics (time, API calls)
+    - [x] Add source information (model/version)
+    - [x] Track creation and modification timestamps
+  - [x] Implement consistent versioning approach:
+    - [x] Add version field to LabelAnalysis
+    - [x] Add version field to LineItemAnalysis
+    - [x] Add version field to ValidationAnalysis
+  - [x] Add processing history tracking in metadata:
+    - [x] Track creation events
+    - [x] Track update events with change descriptions
+    - [x] Record model/algorithm versions used
+  - [x] Create helper methods for version operations:
+    - [x] Add version comparison methods
+    - [x] Add timestamp conversion utilities
 - [ ] Validation Structure:
   - [ ] Review ValidationAnalysis to ensure it represents all schema categories
   - [ ] Ensure proper representation of validation status enums
 - [ ] Data Transformation:
   - [ ] Update `from_dynamo` and `to_dynamo` methods to handle proper transformations
   - [ ] Add special handling for nested objects and arrays
+  - [x] Create consistent serialization methods across all classes:
+    - [x] Implement to_dynamo() for LabelAnalysis
+    - [x] Implement from_dynamo() for LabelAnalysis
+    - [x] Implement to_dynamo() for LineItemAnalysis
+    - [x] Implement from_dynamo() for LineItemAnalysis
+    - [x] Implement to_dynamo() for ValidationAnalysis
+    - [x] Implement from_dynamo() for ValidationAnalysis
+  - [ ] Add integration tests for serialization/deserialization
 - [ ] Optional vs. Required Fields:
   - [ ] Review which fields are required in schema versus optional in models
   - [ ] Adjust default values or optionality to match schema requirements

@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any
 from datetime import datetime
+from .metadata import MetadataMixin
 
 
 @dataclass
@@ -183,7 +184,7 @@ class ReceiptSection:
 
 
 @dataclass
-class StructureAnalysis:
+class StructureAnalysis(MetadataMixin):
     """
     Comprehensive analysis of a receipt's structure.
     
@@ -194,8 +195,8 @@ class StructureAnalysis:
     sections: List[ReceiptSection]
     overall_reasoning: str
     metadata: Dict = field(default_factory=dict)
-    version: str = "1.0"
     timestamp_added: Optional[str] = None
+    timestamp_updated: Optional[str] = None
     
     def __post_init__(self):
         # Initialize timestamp if not provided
@@ -206,6 +207,21 @@ class StructureAnalysis:
         self.sections.sort(key=lambda section: 
             section.start_line if section.start_line is not None else float('inf')
         )
+        
+        # Initialize metadata
+        self.initialize_metadata()
+        
+        # Add structure-specific metrics
+        self.add_processing_metric("section_count", len(self.sections))
+        section_types = set(section.name for section in self.sections)
+        self.add_processing_metric("section_types", list(section_types))
+        
+        # Track patterns
+        pattern_counts = {
+            "spatial_patterns": sum(len(s.spatial_patterns) for s in self.sections),
+            "content_patterns": sum(len(s.content_patterns) for s in self.sections)
+        }
+        self.add_processing_metric("pattern_counts", pattern_counts)
     
     @property
     def discovered_sections(self) -> List[ReceiptSection]:
@@ -309,7 +325,6 @@ class StructureAnalysis:
             overall_reasoning=response_data.get("overall_reasoning", ""),
             metadata={k: v for k, v in response_data.items() 
                      if k not in ["discovered_sections", "sections", "overall_reasoning"]},
-            version=response_data.get("version", "1.0"),
             timestamp_added=response_data.get("timestamp_added")
         )
         
@@ -320,13 +335,16 @@ class StructureAnalysis:
         Returns:
             Dict: A dictionary representation for DynamoDB
         """
-        return {
+        # Get base metadata fields
+        result = super().to_dict()
+        
+        # Add class-specific fields
+        result.update({
             "sections": [section.to_dict() if hasattr(section, 'to_dict') else section for section in self.sections],
             "overall_reasoning": self.overall_reasoning,
-            "metadata": self.metadata,
-            "version": self.version,
-            "timestamp_added": self.timestamp_added
-        }
+        })
+        
+        return result
         
     @classmethod
     def from_dynamo(cls, data: Dict) -> "StructureAnalysis":
@@ -339,6 +357,10 @@ class StructureAnalysis:
         Returns:
             StructureAnalysis: A new instance populated with the DynamoDB data
         """
+        # Extract metadata fields
+        metadata_fields = MetadataMixin.from_dict(data)
+        
+        # Process sections
         sections = []
         for section_dict in data.get("sections", []):
             sections.append(ReceiptSection.from_dict(section_dict))
@@ -346,7 +368,5 @@ class StructureAnalysis:
         return cls(
             sections=sections,
             overall_reasoning=data.get("overall_reasoning", ""),
-            metadata=data.get("metadata", {}),
-            version=data.get("version", "1.0"),
-            timestamp_added=data.get("timestamp_added")
+            **metadata_fields
         ) 

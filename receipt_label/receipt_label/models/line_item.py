@@ -1,6 +1,7 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional, Dict
 from decimal import Decimal
+from .metadata import MetadataMixin
 
 
 @dataclass
@@ -44,7 +45,7 @@ class LineItem:
 
 
 @dataclass
-class LineItemAnalysis:
+class LineItemAnalysis(MetadataMixin):
     """
     Analysis results for line items in a receipt, with detailed reasoning.
     
@@ -66,13 +67,13 @@ class LineItemAnalysis:
     tips: Optional[Decimal] = None
     discrepancies: List[str] = None
     reasoning: str = ""
-    metadata: Dict = None
+    metadata: Dict = field(default_factory=dict)
+    timestamp_added: Optional[str] = None
+    timestamp_updated: Optional[str] = None
 
     def __post_init__(self):
         if self.discrepancies is None:
             self.discrepancies = []
-        if self.metadata is None:
-            self.metadata = {}
         if self.total_found == 0:
             self.total_found = len(self.items)
         # Calculate subtotal if not provided
@@ -98,6 +99,27 @@ class LineItemAnalysis:
         # If no reasoning is provided, generate a basic one
         if not self.reasoning:
             self.reasoning = self.generate_reasoning()
+            
+        # Initialize metadata
+        self.initialize_metadata()
+        
+        # Add line item specific metrics
+        self.add_processing_metric("item_count", self.total_found)
+        self.add_processing_metric("financial_totals", {
+            "subtotal": str(self.subtotal) if self.subtotal else "0",
+            "tax": str(self.tax) if self.tax else "0",
+            "fees": str(self.fees) if self.fees else "0",
+            "discounts": str(self.discounts) if self.discounts else "0",
+            "tips": str(self.tips) if self.tips else "0",
+            "total": str(self.total) if self.total else "0"
+        })
+        
+        # If there are discrepancies, add to history
+        if self.discrepancies:
+            self.add_history_event("discrepancies_detected", {
+                "count": len(self.discrepancies),
+                "details": self.discrepancies[:3]  # Just include first few for brevity
+            })
     
     def generate_reasoning(self) -> str:
         """
@@ -153,4 +175,87 @@ class LineItemAnalysis:
         for item in self.items:
             if item.description.lower() == description.lower():
                 return item
-        return None 
+        return None
+
+    def to_dynamo(self) -> Dict:
+        """
+        Convert the LineItemAnalysis to a DynamoDB-compatible dictionary.
+        
+        Returns:
+            Dict: A dictionary representation for DynamoDB
+        """
+        # Get base metadata fields
+        result = super().to_dict()
+        
+        # Add class-specific fields
+        result.update({
+            "items": [item.__dict__ for item in self.items],
+            "total_found": self.total_found,
+            "subtotal": str(self.subtotal) if self.subtotal else None,
+            "tax": str(self.tax) if self.tax else None,
+            "total": str(self.total) if self.total else None,
+            "fees": str(self.fees) if self.fees else None,
+            "discounts": str(self.discounts) if self.discounts else None,
+            "tips": str(self.tips) if self.tips else None,
+            "discrepancies": self.discrepancies,
+            "reasoning": self.reasoning
+        })
+        
+        return result
+    
+    @classmethod
+    def from_dynamo(cls, data: Dict) -> "LineItemAnalysis":
+        """
+        Create a LineItemAnalysis instance from DynamoDB data.
+        
+        Args:
+            data (Dict): Data from DynamoDB
+            
+        Returns:
+            LineItemAnalysis: A new instance populated with the DynamoDB data
+        """
+        # Extract metadata fields
+        metadata_fields = MetadataMixin.from_dict(data)
+        
+        # Process decimal values
+        financial_fields = {}
+        for field in ["subtotal", "tax", "total", "fees", "discounts", "tips"]:
+            if data.get(field):
+                financial_fields[field] = Decimal(data.get(field))
+        
+        # Process items
+        items = []
+        for item_data in data.get("items", []):
+            item = LineItem(
+                description=item_data.get("description", ""),
+                reasoning=item_data.get("reasoning", ""),
+                line_ids=item_data.get("line_ids", []),
+                metadata=item_data.get("metadata", {})
+            )
+            
+            # Add price if available
+            price_data = item_data.get("price")
+            if price_data:
+                item.price = Price(
+                    unit_price=Decimal(price_data.get("unit_price")) if price_data.get("unit_price") else None,
+                    extended_price=Decimal(price_data.get("extended_price")) if price_data.get("extended_price") else None
+                )
+                
+            # Add quantity if available
+            quantity_data = item_data.get("quantity")
+            if quantity_data:
+                item.quantity = Quantity(
+                    amount=Decimal(quantity_data.get("amount")),
+                    unit=quantity_data.get("unit", "each")
+                )
+                
+            items.append(item)
+            
+        return cls(
+            items=items,
+            total_found=data.get("total_found", len(items)),
+            discrepancies=data.get("discrepancies", []),
+            reasoning=data.get("reasoning", ""),
+            **financial_fields,
+            **metadata_fields
+        ) 

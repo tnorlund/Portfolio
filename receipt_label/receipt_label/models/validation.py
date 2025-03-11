@@ -3,6 +3,7 @@ from typing import Dict, List, Optional, Literal, Any
 from enum import Enum
 from datetime import datetime
 from decimal import Decimal
+from .metadata import MetadataMixin
 
 
 class ValidationResultType(str, Enum):
@@ -123,7 +124,7 @@ class FieldValidation:
 
 
 @dataclass
-class ValidationAnalysis:
+class ValidationAnalysis(MetadataMixin):
     """
     Comprehensive analysis of receipt validation results.
     
@@ -144,6 +145,8 @@ class ValidationAnalysis:
     prompt_template: Optional[str] = None
     response_template: Optional[str] = None
     metadata: Dict = dataclass_field(default_factory=dict)
+    timestamp_added: Optional[str] = None
+    timestamp_updated: Optional[str] = None
     
     def __post_init__(self):
         # Update overall_status based on individual field validations
@@ -152,7 +155,49 @@ class ValidationAnalysis:
         # Generate overall reasoning if not provided
         if not self.overall_reasoning:
             self.overall_reasoning = self._generate_overall_reasoning()
-    
+            
+        # Initialize metadata
+        self.initialize_metadata()
+        
+        # Add validation-specific metrics
+        self.add_processing_metric("validation_status", self.overall_status)
+        
+        field_counts = {
+            "business_identity": len(self.business_identity.results),
+            "address_verification": len(self.address_verification.results),
+            "phone_validation": len(self.phone_validation.results),
+            "hours_verification": len(self.hours_verification.results),
+            "cross_field_consistency": len(self.cross_field_consistency.results),
+            "line_item_validation": len(self.line_item_validation.results)
+        }
+        self.add_processing_metric("validation_counts", field_counts)
+        
+        result_types = {
+            "error": sum(sum(1 for r in v.results if r.type == ValidationResultType.ERROR) for v in self._get_field_validations()),
+            "warning": sum(sum(1 for r in v.results if r.type == ValidationResultType.WARNING) for v in self._get_field_validations()),
+            "info": sum(sum(1 for r in v.results if r.type == ValidationResultType.INFO) for v in self._get_field_validations()),
+            "success": sum(sum(1 for r in v.results if r.type == ValidationResultType.SUCCESS) for v in self._get_field_validations())
+        }
+        self.add_processing_metric("result_types", result_types)
+        
+        # Add to history based on validation status
+        if self.overall_status != ValidationStatus.VALID:
+            self.add_history_event(f"validation_{self.overall_status.lower()}", {
+                "error_count": result_types["error"],
+                "warning_count": result_types["warning"]
+            })
+
+    def _get_field_validations(self) -> List[FieldValidation]:
+        """Get all field validations as a list."""
+        return [
+            self.business_identity,
+            self.address_verification,
+            self.phone_validation,
+            self.hours_verification,
+            self.cross_field_consistency,
+            self.line_item_validation
+        ]
+
     def _update_overall_status(self) -> None:
         """Update the overall validation status based on field validations."""
         field_validations = [
@@ -276,34 +321,85 @@ class ValidationAnalysis:
             "timestamp": self.validation_timestamp.isoformat()
         }
     
-    @classmethod
-    def from_dict(cls, data: Dict) -> "ValidationAnalysis":
+    def to_dynamo(self) -> Dict:
         """
-        Create a ValidationAnalysis from a dictionary representation.
+        Convert the ValidationAnalysis to a DynamoDB-compatible dictionary.
+        
+        Returns:
+            Dict: A dictionary representation for DynamoDB
+        """
+        # Get base metadata fields
+        result = super().to_dict()
+        
+        # Add class-specific fields
+        field_validations = {}
+        for field_name, field_validation in [
+            ("business_identity", self.business_identity),
+            ("address_verification", self.address_verification),
+            ("phone_validation", self.phone_validation),
+            ("hours_verification", self.hours_verification),
+            ("cross_field_consistency", self.cross_field_consistency),
+            ("line_item_validation", self.line_item_validation)
+        ]:
+            field_validations[field_name] = {
+                "status": field_validation.status,
+                "reasoning": field_validation.reasoning,
+                "results": [
+                    {
+                        "type": r.type,
+                        "message": r.message,
+                        "reasoning": r.reasoning,
+                        "field": r.field,
+                        "expected_value": str(r.expected_value) if r.expected_value is not None else None,
+                        "actual_value": str(r.actual_value) if r.actual_value is not None else None,
+                        "metadata": r.metadata
+                    }
+                    for r in field_validation.results
+                ]
+            }
+            
+        result.update({
+            **field_validations,
+            "overall_status": self.overall_status,
+            "overall_reasoning": self.overall_reasoning,
+            "validation_timestamp": self.validation_timestamp.isoformat(),
+            "prompt_template": self.prompt_template,
+            "response_template": self.response_template
+        })
+        
+        return result
+    
+    @classmethod
+    def from_dynamo(cls, data: Dict) -> "ValidationAnalysis":
+        """
+        Create a ValidationAnalysis instance from DynamoDB data.
         
         Args:
-            data (Dict): Dictionary containing validation results
+            data (Dict): Data from DynamoDB
             
         Returns:
-            ValidationAnalysis: A new instance populated with the data
+            ValidationAnalysis: A new instance populated with the DynamoDB data
         """
-        # Create field validations from the data
-        field_categories = [
+        # Extract metadata fields
+        metadata_fields = MetadataMixin.from_dict(data)
+        
+        # Process field validations
+        field_validations = {}
+        for category in [
             "business_identity",
             "address_verification",
             "phone_validation",
             "hours_verification",
             "cross_field_consistency",
             "line_item_validation"
-        ]
-        
-        field_validations = {}
-        for category in field_categories:
+        ]:
             if category in data:
+                category_data = data[category]
                 results = []
-                for result_data in data[category]:
+                
+                for result_data in category_data.get("results", []):
                     results.append(ValidationResult(
-                        type=result_data.get("type", "info"),
+                        type=result_data.get("type", ValidationResultType.INFO),
                         message=result_data.get("message", ""),
                         reasoning=result_data.get("reasoning", ""),
                         field=result_data.get("field"),
@@ -314,22 +410,26 @@ class ValidationAnalysis:
                 
                 field_validations[category] = FieldValidation(
                     field_category=category.replace("_", " ").title(),
-                    results=results
+                    results=results,
+                    status=category_data.get("status", ValidationStatus.VALID),
+                    reasoning=category_data.get("reasoning", "")
                 )
-        
-        # Create the validation analysis
-        analysis = cls(
+            
+        # Create validation analysis
+        result = cls(
             **field_validations,
             overall_status=data.get("overall_status", ValidationStatus.VALID),
             overall_reasoning=data.get("overall_reasoning", ""),
-            metadata=data.get("metadata", {})
+            prompt_template=data.get("prompt_template"),
+            response_template=data.get("response_template"),
+            **metadata_fields
         )
         
-        # Parse timestamp if available
-        if "timestamp" in data:
+        # Parse validation timestamp
+        if "validation_timestamp" in data:
             try:
-                analysis.validation_timestamp = datetime.fromisoformat(data["timestamp"])
+                result.validation_timestamp = datetime.fromisoformat(data["validation_timestamp"])
             except (ValueError, TypeError):
                 pass
                 
-        return analysis 
+        return result 
