@@ -1,0 +1,66 @@
+{
+  "overall_status": "invalid",
+  "overall_reasoning": "Validation found 1 critical errors. Missing total amount",
+  "field_validations": {
+    "business_identity": {
+      "status": "incomplete",
+      "reasoning": "No validation performed for Business Identity",
+      "errors": [],
+      "warnings": [],
+      "info": [],
+      "success": []
+    },
+    "address_verification": {
+      "status": "incomplete",
+      "reasoning": "No validation performed for Address Verification",
+      "errors": [],
+      "warnings": [],
+      "info": [],
+      "success": []
+    },
+    "phone_validation": {
+      "status": "incomplete",
+      "reasoning": "No validation performed for Phone Validation",
+      "errors": [],
+      "warnings": [],
+      "info": [],
+      "success": []
+    },
+    "hours_verification": {
+      "status": "incomplete",
+      "reasoning": "No validation performed for Hours Verification",
+      "errors": [],
+      "warnings": [],
+      "info": [],
+      "success": []
+    },
+    "cross_field_consistency": {
+      "status": "incomplete",
+      "reasoning": "No validation performed for Cross-Field Consistency",
+      "errors": [],
+      "warnings": [],
+      "info": [],
+      "success": []
+    },
+    "line_item_validation": {
+      "status": "invalid",
+      "reasoning": "Line Item Validation validation FAILED with 1 errors. Issues found: Missing total amount",
+      "errors": [
+        {
+          "message": "Critical validation error",
+          "reasoning": "Missing total amount",
+          "field": null,
+          "expected_value": null,
+          "actual_value": null
+        }
+      ],
+      "warnings": [],
+      "info": [],
+      "success": []
+    }
+  },
+  "error_count": 1,
+  "warning_count": 0,
+  "info_count": 0,
+  "success_count": 0
+}
