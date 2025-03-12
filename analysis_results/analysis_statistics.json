@@ -1,0 +1,152 @@
+{
+  "total_receipts": 3,
+  "successful_analysis": 3,
+  "section_types": {
+    "header": {
+      "count": 3,
+      "spatial_patterns": {
+        "top of receipt": 3
+      },
+      "content_patterns": {
+        "contains business name": 3
+      }
+    },
+    "contact_info": {
+      "count": 1,
+      "spatial_patterns": {
+        "consistent spacing": 1
+      },
+      "content_patterns": {
+        "includes phone number": 1,
+        "includes address": 1,
+        "includes store hours": 1
+      }
+    },
+    "purchase_details": {
+      "count": 1,
+      "spatial_patterns": {
+        "itemized list": 1
+      },
+      "content_patterns": {
+        "includes categories like dairy and meat": 1,
+        "includes specific item names": 1,
+        "includes prices": 1
+      }
+    },
+    "payment": {
+      "count": 1,
+      "spatial_patterns": {
+        "payment summary": 1
+      },
+      "content_patterns": {
+        "indicates payment method": 1,
+        "includes total amount": 1,
+        "indicates change due": 1
+      }
+    },
+    "footer": {
+      "count": 3,
+      "spatial_patterns": {
+        "bottom of receipt": 2,
+        "end of receipt with additional information": 1
+      },
+      "content_patterns": {
+        "includes promotional offers": 1,
+        "prompts for feedback": 1,
+        "mentions validity dates and locations": 1,
+        "survey, store details, and return policy": 1,
+        "includes promotional messages and store policies": 1
+      }
+    },
+    "transaction_details": {
+      "count": 2,
+      "spatial_patterns": {
+        "grouped under store information": 1,
+        "grouped information about the transaction": 1
+      },
+      "content_patterns": {
+        "list of items purchased": 1,
+        "mentions store name": 1,
+        "includes store address": 1,
+        "provides store contact number": 1
+      }
+    },
+    "payment_total": {
+      "count": 2,
+      "spatial_patterns": {
+        "bottom of receipt": 1,
+        "grouped payment and total information": 1
+      },
+      "content_patterns": {
+        "payment amount and method": 1,
+        "indicates payment method": 1,
+        "displays total amount": 1,
+        "includes authorization code": 1
+      }
+    }
+  },
+  "reasoning_provided": 3,
+  "word_label_stats": {
+    "total_words": 599,
+    "labeled_words": 147,
+    "label_distribution": {
+      "BUSINESS_NAME": {
+        "count": 16
+      },
+      "ADDRESS_LINE": {
+        "count": 25
+      },
+      "PHONE": {
+        "count": 4
+      },
+      "STORE_HOURS": {
+        "count": 4
+      },
+      "ITEM": {
+        "count": 33
+      },
+      "ITEM_PRICE": {
+        "count": 13
+      },
+      "TAX": {
+        "count": 2
+      },
+      "ITEM_QUANTITY": {
+        "count": 5
+      },
+      "ITEM_TOTAL": {
+        "count": 10
+      },
+      "PAYMENT_STATUS": {
+        "count": 5
+      },
+      "PAYMENT_METHOD": {
+        "count": 6
+      },
+      "TOTAL": {
+        "count": 2
+      },
+      "WEBSITE": {
+        "count": 5
+      },
+      "COUPON": {
+        "count": 3
+      },
+      "DATE": {
+        "count": 2
+      },
+      "ITEM_NAME": {
+        "count": 8
+      },
+      "PAYMENT_TOTAL": {
+        "count": 4
+      }
+    }
+  },
+  "errors": [],
+  "validation_results": {
+    "total_valid": 0,
+    "validation_errors": [],
+    "validation_warnings": []
+  }
+}

@@ -356,12 +356,11 @@ async def main():
             "total_receipts": 0,
             "successful_analysis": 0,
             "section_types": {},
-            "avg_confidence": 0.0,
+            "reasoning_provided": 0,
             "word_label_stats": {
                 "total_words": 0,
                 "labeled_words": 0,
                 "label_distribution": {},
-                "avg_label_confidence": 0.0,
             },
             "errors": [],
             "validation_results": {
@@ -379,8 +378,8 @@ async def main():
             "TYPE": {"S": "RECEIPT"},
         }
         receipts, last_evaluated_key = client.listReceipts(
-            limit=30, lastEvaluatedKey=last_evaluated_key
-        )  # Analyze 30 receipts
+            limit=3, lastEvaluatedKey=last_evaluated_key
+        )  # Analyze 3 receipts
         logger.info(f"Last evaluated key: {last_evaluated_key}")
         stats["total_receipts"] = len(receipts)
 
@@ -473,8 +472,14 @@ async def main():
                     logger.warning(f"Could not process word label statistics: {str(e)}")
 
                 # Update reasoning tracking
-                # We're not tracking confidence scores anymore, so we'll just count successful analyses
-                successful_analyses += 1
+                # We're not tracking confidence scores anymore, so we'll count successful analyses with reasoning
+                if analysis_result.field_analysis and hasattr(analysis_result.field_analysis, 'labels'):
+                    has_reasoning = any(
+                        hasattr(label, 'reasoning') and label.reasoning 
+                        for label in analysis_result.field_analysis.labels
+                    )
+                    if has_reasoning:
+                        stats["reasoning_provided"] += 1
 
             except Exception as e:
                 error_context = {
@@ -493,18 +498,11 @@ async def main():
 
         # Calculate final statistics
         if stats["successful_analysis"] > 0:
-            stats["avg_confidence"] /= stats["successful_analysis"]
-            for section_name, section_stats in stats["section_types"].items():
-                section_stats["avg_confidence"] /= section_stats["count"]
-
-            if stats["word_label_stats"]["labeled_words"] > 0:
-                stats["word_label_stats"]["avg_label_confidence"] /= stats[
-                    "successful_analysis"
-                ]
-                for label_type, label_stats in stats["word_label_stats"][
-                    "label_distribution"
-                ].items():
-                    label_stats["avg_confidence"] /= label_stats["count"]
+            # We don't calculate avg_confidence anymore
+            pass  # Remove all the confidence calculations
+            
+            # Instead, calculate percentage of analyses with reasoning
+            reasoning_percentage = (stats["reasoning_provided"] / stats["successful_analysis"]) * 100
 
         # Save statistics
         stats_file = output_dir / "analysis_statistics.json"
@@ -517,16 +515,15 @@ async def main():
         logger.info("%s\n", "=" * 50)
         logger.info("Total receipts processed: %d", stats["total_receipts"])
         logger.info("Successful analyses: %d", stats["successful_analysis"])
-        logger.info("Average structure confidence: %.2f", stats["avg_confidence"])
+        logger.info("Analyses with reasoning: %.1f%%", reasoning_percentage)
         logger.info("\nWord-Level Statistics:")
         logger.info(
             "Total words processed: %d", stats["word_label_stats"]["total_words"]
         )
         logger.info("Words labeled: %d", stats["word_label_stats"]["labeled_words"])
-        logger.info(
-            "Average label confidence: %.2f",
-            stats["word_label_stats"]["avg_label_confidence"],
-        )
+        if stats["word_label_stats"]["labeled_words"] > 0:
+            labeling_percentage = (stats["word_label_stats"]["labeled_words"] / stats["word_label_stats"]["total_words"]) * 100
+            logger.info("Word labeling coverage: %.1f%%", labeling_percentage)
 
         # Print validation summary
         logger.info("\nValidation Summary:")

@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Tuple, Any
 from decimal import Decimal
 from .metadata import MetadataMixin
 
@@ -67,6 +67,7 @@ class LineItemAnalysis(MetadataMixin):
     tips: Optional[Decimal] = None
     discrepancies: List[str] = None
     reasoning: str = ""
+    word_labels: Dict[Tuple[int, int], Dict[str, Any]] = None  # Maps (line_id, word_id) to label info
     metadata: Dict = field(default_factory=dict)
     timestamp_added: Optional[str] = None
     timestamp_updated: Optional[str] = None
@@ -96,6 +97,10 @@ class LineItemAnalysis(MetadataMixin):
         if self.total is None and self.subtotal is not None:
             self.total = self.subtotal + self.tax + self.fees - self.discounts + self.tips
         
+        # Initialize word_labels if None
+        if self.word_labels is None:
+            self.word_labels = {}
+        
         # If no reasoning is provided, generate a basic one
         if not self.reasoning:
             self.reasoning = self.generate_reasoning()
@@ -113,6 +118,16 @@ class LineItemAnalysis(MetadataMixin):
             "tips": str(self.tips) if self.tips else "0",
             "total": str(self.total) if self.total else "0"
         })
+        
+        # Add labeled word metrics if any
+        if self.word_labels:
+            self.add_processing_metric("labeled_words", len(self.word_labels))
+            label_counts = {}
+            for label_info in self.word_labels.values():
+                label_type = label_info.get("label")
+                if label_type:
+                    label_counts[label_type] = label_counts.get(label_type, 0) + 1
+            self.add_processing_metric("label_distribution", label_counts)
         
         # If there are discrepancies, add to history
         if self.discrepancies:
@@ -198,7 +213,8 @@ class LineItemAnalysis(MetadataMixin):
             "discounts": str(self.discounts) if self.discounts else None,
             "tips": str(self.tips) if self.tips else None,
             "discrepancies": self.discrepancies,
-            "reasoning": self.reasoning
+            "reasoning": self.reasoning,
+            "word_labels": self.word_labels,
         })
         
         return result
@@ -256,6 +272,7 @@ class LineItemAnalysis(MetadataMixin):
             total_found=data.get("total_found", len(items)),
             discrepancies=data.get("discrepancies", []),
             reasoning=data.get("reasoning", ""),
+            word_labels=data.get("word_labels", {}),
             **financial_fields,
             **metadata_fields
         ) 

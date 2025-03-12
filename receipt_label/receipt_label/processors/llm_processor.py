@@ -8,6 +8,8 @@ from ..models.uncertainty import (
     TotalMismatchUncertainty, UncertaintyItem, ensure_decimal
 )
 from ..data.gpt import gpt_request_line_item_analysis
+import traceback
+import json
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -15,8 +17,9 @@ logger.setLevel(logging.INFO)
 class LLMProcessor:
     """Handles processing of uncertain items using LLM."""
     
-    def __init__(self, gpt_api_key: Optional[str] = None):
-        self.gpt_api_key = gpt_api_key
+    def __init__(self, api_key: Optional[str] = None):
+        """Initialize with optional API key."""
+        self.api_key = api_key
     
     async def process_uncertain_items(
         self,
@@ -25,11 +28,24 @@ class LLMProcessor:
         receipt_lines: List[ReceiptLine],
         receipt_words: List[ReceiptWord],
         initial_state: Dict,
-        places_api_data: Dict,
-    ) -> Optional[Dict]:
-        """Process uncertain items using LLM analysis."""
-        if not uncertain_items:
-            return None
+        places_api_data: Dict = None
+    ) -> Dict:
+        """
+        Process uncertain items using LLM capabilities.
+        
+        Args:
+            uncertain_items: List of uncertain items to process
+            receipt: Receipt object
+            receipt_lines: List of receipt lines
+            receipt_words: List of receipt words
+            initial_state: Current state of line item analysis
+            places_api_data: Optional Places API data
+            
+        Returns:
+            Dictionary with updates to apply to the results
+        """
+        if not uncertain_items or not self.api_key:
+            return {}
             
         updates = {}
         
@@ -98,7 +114,7 @@ class LLMProcessor:
             except Exception as e:
                 logger.error(f"Error in LLM processing of total mismatches: {str(e)}")
         
-        return updates if updates else None
+        return updates
     
     def _serialize_for_gpt(self, obj: Dict) -> Dict:
         """Convert objects to JSON-serializable format."""
@@ -145,7 +161,7 @@ class LLMProcessor:
                 receipt_words=receipt_words,
                 traditional_analysis=context,
                 places_api_data=places_api_data,
-                gpt_api_key=self.gpt_api_key
+                gpt_api_key=self.api_key
             )
             
             # Extract updates from GPT response
@@ -203,7 +219,7 @@ class LLMProcessor:
                 receipt_words=receipt_words,
                 traditional_analysis=context,
                 places_api_data=places_api_data,
-                gpt_api_key=self.gpt_api_key
+                gpt_api_key=self.api_key
             )
             
             # Process GPT response
@@ -280,7 +296,7 @@ class LLMProcessor:
                 receipt_words=receipt_words,
                 traditional_analysis=context,
                 places_api_data=places_api_data,
-                gpt_api_key=self.gpt_api_key
+                gpt_api_key=self.api_key
             )
             
             # Extract updates from GPT response

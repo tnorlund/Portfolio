@@ -13,6 +13,7 @@ from datetime import datetime
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import json
+from dataclasses import dataclass
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -46,12 +47,68 @@ class DecimalEncoder(JSONEncoder):
         return super(DecimalEncoder, self).default(obj)
 
 async def _async_post(url: str, headers: Dict, json: Dict, timeout: int) -> Response:
-    """Run synchronous requests.post in a thread pool."""
-    loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(
-        _executor, 
-        lambda: requests.post(url, headers=headers, json=json, timeout=timeout)
-    )
+    """
+    Make an asynchronous POST request.
+    
+    Args:
+        url: The URL to make the request to
+        headers: Headers to include in the request
+        json: JSON data to include in the request
+        timeout: Timeout in seconds
+        
+    Returns:
+        Response object
+    """
+    logger = logging.getLogger(__name__)
+    
+    try:
+        logger.debug(f"Making API request to {url}")
+        
+        if "Authorization" in headers:
+            # Log a masked version of the auth header
+            auth_header = headers["Authorization"]
+            if auth_header.startswith("Bearer "):
+                token = auth_header[7:]  # Remove "Bearer " prefix
+                masked_token = token[:4] + "..." + token[-4:] if len(token) > 8 else "***"
+                logger.debug(f"Using Bearer token: {masked_token}")
+            else:
+                logger.warning("Authorization header doesn't use Bearer format")
+        else:
+            logger.error("No Authorization header present in request!")
+            
+        # Make the actual request
+        loop = asyncio.get_running_loop()
+        response = await loop.run_in_executor(
+            _executor, 
+            lambda: requests.post(url, headers=headers, json=json, timeout=timeout)
+        )
+        
+        # Log response info
+        logger.debug(f"API response status code: {response.status_code}")
+        if response.status_code >= 400:
+            logger.error(f"API error: {response.status_code} - {response.text}")
+        else:
+            logger.debug("API request completed successfully")
+            
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error in API request: {str(e)}")
+        # Recreate a Response-like object to handle the error
+        
+        @dataclass
+        class ErrorResponse:
+            status_code: int = 500
+            text: str = ""
+            
+            def json(self):
+                return {"error": self.text}
+                
+            def raise_for_status(self):
+                raise requests.HTTPError(f"Error during API call: {self.text}")
+                
+        error_response = ErrorResponse(text=str(e))
+        return error_response
 
 async def gpt_request_structure_analysis(
     receipt: Receipt,
@@ -404,6 +461,121 @@ async def gpt_request_line_item_analysis(
         response.text,
     )
 
+async def gpt_request_spatial_currency_analysis(
+    receipt: Receipt,
+    receipt_lines: List[ReceiptLine],
+    receipt_words: List[ReceiptWord],
+    currency_contexts: List[Dict],
+    gpt_api_key: Optional[str] = None,
+) -> Tuple[Dict, str, str]:
+    """
+    Request OpenAI GPT to analyze currency amounts with spatial context.
+    
+    Args:
+        receipt: Receipt object with metadata
+        receipt_lines: List of ReceiptLine objects
+        receipt_words: List of ReceiptWord objects
+        currency_contexts: List of dictionaries with currency amounts and spatial context
+        gpt_api_key: Optional OpenAI API key
+    
+    Returns:
+        Tuple[Dict, str, str]: The formatted response from the OpenAI API, the query
+            sent to OpenAI API, and the raw response from OpenAI API.
+    """
+    import os
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    # Debug logging for API key detection
+    logger.info("--- GPT SPATIAL ANALYSIS API KEY DEBUG ---")
+    
+    env_key = os.getenv("OPENAI_API_KEY")
+    if env_key:
+        # Only log first and last few characters for security
+        masked_key = env_key[:4] + "..." + env_key[-4:] if len(env_key) > 8 else "***"
+        logger.info(f"ENV variable OPENAI_API_KEY is set: {masked_key}")
+    else:
+        logger.warning("ENV variable OPENAI_API_KEY is NOT set")
+        
+    if gpt_api_key:
+        masked_key = gpt_api_key[:4] + "..." + gpt_api_key[-4:] if len(gpt_api_key) > 8 else "***"
+        logger.info(f"Function parameter API key: {masked_key}")
+    else:
+        logger.warning("No API key provided as parameter")
+        
+    # Log where we're looking for the API key
+    if not gpt_api_key and not env_key:
+        logger.error("No API key available from any source!")
+    elif gpt_api_key:
+        logger.info("Using provided parameter API key")
+    else:
+        logger.info("Using environment variable API key")
+        
+    logger.info("------------------------------")
+    
+    if not gpt_api_key and not os.getenv("OPENAI_API_KEY"):
+        logger.error("The OPENAI_API_KEY environment variable is not set and no key was provided.")
+        raise ValueError("The OPENAI_API_KEY environment variable is not set.")
+    if gpt_api_key:
+        os.environ["OPENAI_API_KEY"] = gpt_api_key
+        
+    url = "https://api.openai.com/v1/chat/completions"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}",
+    }
+    
+    # Generate the prompt with spatial context information
+    logger.info(f"Generating prompt with {len(currency_contexts)} currency contexts")
+    
+    # Debug currency contexts
+    for i, ctx in enumerate(currency_contexts[:3]):  # Log first 3 for brevity
+        logger.info(f"Context {i+1}: amount={ctx.get('amount')}, left_text={ctx.get('left_text')}")
+    
+    try:
+        query = _llm_prompt_spatial_currency_analysis(receipt, currency_contexts)
+        logger.info(f"Generated prompt of length {len(query)}")
+        
+        payload = {
+            "model": MODEL,  # Using a more capable model for spatial understanding
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an expert receipt analyzer that understands how spatial layout of text relates to "
+                        "the meaning of currency amounts on receipts. You identify line items, subtotals, taxes, "
+                        "and totals based on their position and surrounding context."
+                    ),
+                },
+                {"role": "user", "content": query},
+            ],
+            "temperature": 0.3,  # Lower temperature for more consistent analysis
+        }
+        
+        logger.info("Making API request to OpenAI")
+        response = await _async_post(url, headers=headers, json=payload, timeout=60)
+        logger.info(f"Received response with status code: {response.status_code if hasattr(response, 'status_code') else 'unknown'}")
+        
+        # Validate the response
+        try:
+            validated_result, validation_errors = _validate_gpt_response_spatial_currency(response)
+            if validation_errors:
+                logger.error(f"Validation failed with errors: {validation_errors}")
+                # Return an empty dict as the result if validation failed
+                return {}, query, response.text if hasattr(response, 'text') else str(response)
+            
+            logger.info("Response validation successful")
+            return validated_result, query, response.text if hasattr(response, 'text') else str(response)
+        except Exception as e:
+            logger.error(f"Error validating response: {str(e)}")
+            return {}, query, response.text if hasattr(response, 'text') else str(response)
+            
+    except Exception as e:
+        logger.error(f"Error in spatial currency analysis: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return {}, "", ""
+
 def _llm_prompt_structure_analysis(
     receipt: Receipt,
     receipt_lines: List[ReceiptLine],
@@ -530,56 +702,56 @@ def _llm_prompt_field_labeling_section(
 
     # Define label types and their descriptions
     label_types = {
-        "business_name": "Name of the business",
-        "address_line": "Part of the business address",
-        "phone": "Phone number",
-        "date": "Date of transaction",
-        "time": "Time of transaction",
-        "transaction_id": "Unique transaction identifier",
-        "store_id": "Store or location identifier",
-        "subtotal": "Subtotal amount",
-        "tax": "Tax amount",
-        "total": "Total amount",
-        "payment_status": "Payment status (e.g., APPROVED)",
-        "payment_method": "Method of payment",
-        "cashier_id": "Cashier identifier",
-        "item": "Individual item on receipt",
-        "item_quantity": "Quantity of an item",
-        "item_price": "Price of an item",
-        "item_total": "Total for an item",
-        "discount": "Discount amount",
-        "coupon": "Coupon code or amount",
-        "loyalty_id": "Loyalty program identifier",
-        "membership_id": "Membership identifier",
+        "BUSINESS_NAME": "Name of the business",
+        "ADDRESS_LINE": "Part of the business address",
+        "PHONE": "Phone number",
+        "DATE": "Date of transaction",
+        "TIME": "Time of transaction",
+        "TRANSACTION_ID": "Unique transaction identifier",
+        "STORE_ID": "Store or location identifier",
+        "SUBTOTAL": "Subtotal amount",
+        "TAX": "Tax amount",
+        "TOTAL": "Total amount",
+        "PAYMENT_STATUS": "Payment status (e.g., APPROVED)",
+        "PAYMENT_METHOD": "Method of payment",
+        "CASHIER_ID": "Cashier identifier",
+        "ITEM": "Individual item on receipt",
+        "ITEM_QUANTITY": "Quantity of an item",
+        "ITEM_PRICE": "Price of an item",
+        "ITEM_TOTAL": "Total for an item",
+        "DISCOUNT": "Discount amount",
+        "COUPON": "Coupon code or amount",
+        "LOYALTY_ID": "Loyalty program identifier",
+        "MEMBERSHIP_ID": "Membership identifier",
     }
 
     # Default examples for any section type
     default_examples = [
-        '{"text": "COSTCO WHOLESALE", "label": "business_name", "reasoning": "Matches business name from Places API and appears at top of receipt"}',
-        '{"text": "5700 Lindero Canyon Rd", "label": "address_line", "reasoning": "Matches format of street address and verified against Places API"}',
-        '{"text": "12/17/2024", "label": "date", "reasoning": "Matches date format MM/DD/YYYY and appears in transaction details section"}',
-        '{"text": "17:19", "label": "time", "reasoning": "Matches time format HH:MM and appears next to date"}',
-        '{"text": "TOTAL", "label": "total", "reasoning": "Clear total indicator in payment section with amount following"}'
+        '{"text": "COSTCO WHOLESALE", "label": "BUSINESS_NAME", "reasoning": "Matches business name from Places API and appears at top of receipt"}',
+        '{"text": "5700 Lindero Canyon Rd", "label": "ADDRESS_LINE", "reasoning": "Matches format of street address and verified against Places API"}',
+        '{"text": "12/17/2024", "label": "DATE", "reasoning": "Matches date format MM/DD/YYYY and appears in transaction details section"}',
+        '{"text": "17:19", "label": "TIME", "reasoning": "Matches time format HH:MM and appears next to date"}',
+        '{"text": "TOTAL", "label": "TOTAL", "reasoning": "Clear total indicator in payment section with amount following"}'
     ]
 
     # Select examples based on section type - using reasoning instead of confidence
     if "business_info" in section_name.lower():
         examples = [
-            '{"text": "COSTCO WHOLESALE", "label": "business_name", "reasoning": "Matches business name from Places API and appears at top of receipt"}',
-            '{"text": "5700 Lindero Canyon Rd", "label": "address_line", "reasoning": "Matches format of street address and verified against Places API"}',
-            '{"text": "#117", "label": "store_id", "reasoning": "Store identifier format that appears near business name"}'
+            '{"text": "COSTCO WHOLESALE", "label": "BUSINESS_NAME", "reasoning": "Matches business name from Places API and appears at top of receipt"}',
+            '{"text": "5700 Lindero Canyon Rd", "label": "ADDRESS_LINE", "reasoning": "Matches format of street address and verified against Places API"}',
+            '{"text": "#117", "label": "STORE_ID", "reasoning": "Store identifier format that appears near business name"}'
         ]
     elif "payment" in section_name.lower():
         examples = [
-            '{"text": "TOTAL", "label": "total", "reasoning": "Clear total indicator in payment section"}',
-            '{"text": "$63.27", "label": "amount", "reasoning": "Currency format that appears after TOTAL indicator"}',
-            '{"text": "APPROVED", "label": "payment_status", "reasoning": "Payment confirmation status message"}'
+            '{"text": "TOTAL", "label": "TOTAL", "reasoning": "Clear total indicator in payment section"}',
+            '{"text": "$63.27", "label": "TOTAL", "reasoning": "Currency format that appears after TOTAL indicator"}',
+            '{"text": "APPROVED", "label": "PAYMENT_STATUS", "reasoning": "Payment confirmation status message"}'
         ]
     elif "transaction" in section_name.lower():
         examples = [
-            '{"text": "12/17/2024", "label": "date", "reasoning": "Matches date format MM/DD/YYYY in transaction section"}',
-            '{"text": "17:19", "label": "time", "reasoning": "Matches time format HH:MM near the date"}',
-            '{"text": "Tran ID#: 12345", "label": "transaction_id", "reasoning": "Clear transaction identifier format"}'
+            '{"text": "12/17/2024", "label": "DATE", "reasoning": "Matches date format MM/DD/YYYY in transaction section"}',
+            '{"text": "17:19", "label": "TIME", "reasoning": "Matches time format HH:MM near the date"}',
+            '{"text": "Tran ID#: 12345", "label": "TRANSACTION_ID", "reasoning": "Clear transaction identifier format"}'
         ]
     else:
         examples = default_examples
@@ -678,6 +850,86 @@ def _llm_prompt_line_item_analysis(
         "Return ONLY the JSON object. No other text."
     )
 
+def _llm_prompt_spatial_currency_analysis(receipt, currency_contexts):
+    """Generate a prompt for the OpenAI API to analyze currency amounts with spatial context."""
+    prompt = """You are an expert receipt analyzer, specialized in identifying line items, subtotals, taxes, and totals on receipts from any business type.
+    
+I'll provide you with a list of currency amounts detected in a receipt image, along with the text to the LEFT of each amount, the FULL LINE text, and their line positions. Your task is to analyze the entire receipt structure and classify each amount based on its context and position.
+
+IMPORTANT: Different businesses use different terms for financial summary fields:
+- For TOTAL: Look for terms like "Total", "Balance Due", "Amount Due", "Pay This Amount", "Credit", "Grand Total", "Balance", etc.
+- For SUBTOTAL: Look for terms like "Subtotal", "Sub Total", "Sub-total", "Net", "Merchandise", etc.
+- For TAX: Look for terms like "Tax", "VAT", "GST", "HST", "Sales Tax", etc.
+
+Also consider the POSITION and CONTEXT of amounts in the receipt:
+- Financial summary fields (subtotal, tax, total) typically appear near the bottom of the receipt
+- The TOTAL is usually the last or one of the last currency amounts on the receipt
+- Line items typically appear in sequence before the summary section
+- Even if there's no clear label, if a currency amount appears after the list of items, it may be a subtotal or total
+
+Here are the currency amounts with their spatial context information:
+
+"""
+
+    # Add currency amounts and their coordinates as numbered items
+    for i, item in enumerate(currency_contexts, 1):
+        amount_id = item.get("id", i)
+        amount = item.get("amount", "")
+        left_text = item.get("left_text", "")
+        full_line = item.get("full_line", "")
+        line_id = item.get("line_id", "")
+        
+        prompt += f"{amount_id}. Amount: {amount}, Text to Left: \"{left_text}\", Full Line: \"{full_line}\", Line: {line_id}\n"
+
+    prompt += """
+Analyze each amount and classify it into one of these categories:
+- LINE_ITEM: A specific product or service with its price
+- SUBTOTAL: Sum of line items before tax
+- TAX: Any tax amount
+- TOTAL: The final total amount to be paid (look for "Balance Due", "Credit", "Amount Due", etc.)
+- DISCOUNT: Any reduction in price
+- OTHER: Amounts that don't fit the above categories (like deposits, tips, etc.)
+
+For each currency amount, consider:
+1. The text to the left and full line text (check for keywords that indicate items or financial summary fields)
+2. The position in the receipt (financial summaries usually appear near the bottom)
+3. The value of the amount (the total is typically larger than individual line items)
+4. The pattern of values (e.g., a set of smaller amounts, followed by a subtotal, tax, and total)
+
+CRITICAL: For line items, extract meaningful descriptions:
+1. DO NOT use generic "Item on line X" descriptions unless absolutely necessary
+2. For each line item, analyze both the "Text to Left" and "Full Line" fields to find the most descriptive product name
+3. Look for patterns like product names, brands, SKUs, or product categories
+4. If you see quantity information (like "2x" or "1.5 lb"), include it in the description
+5. Clean up the description by removing irrelevant symbols or repeated information
+6. If multiple items appear on the same line, try to separate them
+7. For grocery or retail receipts, look for product names or categories
+
+Return your analysis as a JSON object with these fields:
+1. "classification": A list of objects, each containing:
+   - "amount": The currency amount (numeric value)
+   - "category": One of the categories above (LINE_ITEM, SUBTOTAL, TAX, TOTAL, DISCOUNT, OTHER)
+   - "reasoning": Why you classified it this way
+   
+2. "line_items": A list of objects containing:
+   - "description": The meaningful item description extracted from context (NOT just "Item on line X")
+   - "amount": The price of the item (numeric value)
+   - "quantity": If detected, otherwise null
+   - "unit_price": If detected, otherwise null
+   - "line_id": The line number where this item appears
+
+3. "financial_summary": An object containing:
+   - "subtotal": The subtotal amount if found, otherwise null
+   - "tax": The tax amount if found, otherwise null
+   - "total": The total amount if found, otherwise null
+
+4. "reasoning": Overall explanation of your classification logic, including how you identified the financial summary fields
+
+CRITICAL: Identify a total amount for the receipt if present. Use contextual clues like position, relative value, and terms like "Balance Due" or "Credit". In most receipts, the total appears near the end.
+
+Be thorough and accurate with your analysis. Return ONLY valid JSON with no additional text."""
+
+    return prompt
 
 def _validate_gpt_response_structure_analysis(response: Response) -> Dict:
     """Validates the response from the OpenAI API for structure analysis.
@@ -915,6 +1167,140 @@ def _validate_gpt_response_line_item_analysis(response: Response) -> Dict:
         raise ValueError(f"Invalid JSON in response: {e}\nResponse text: {response.text}")
     except Exception as e:
         raise ValueError(f"Error validating response: {e}\nResponse text: {response.text}")
+
+def _validate_gpt_response_spatial_currency(response):
+    """Validate the GPT response from spatial currency analysis."""
+    validation_errors = []
+    
+    try:
+        # First check if we have a Response object or already parsed data
+        if hasattr(response, 'json'):
+            try:
+                response_data = response.json()
+            except Exception as e:
+                validation_errors.append(f"Failed to parse response as JSON: {str(e)}")
+                return None, validation_errors
+        else:
+            response_data = response  # Assume it's already parsed
+        
+        # Check for the required JSON structure from OpenAI API
+        if not isinstance(response_data, dict):
+            validation_errors.append("Response is not a dictionary")
+            return None, validation_errors
+        
+        if "choices" not in response_data:
+            validation_errors.append("No 'choices' field in response")
+            return None, validation_errors
+        
+        if not response_data["choices"] or not isinstance(response_data["choices"], list):
+            validation_errors.append("'choices' field is empty or not a list")
+            return None, validation_errors
+        
+        choice = response_data["choices"][0]
+        if "message" not in choice:
+            validation_errors.append("No 'message' field in first choice")
+            return None, validation_errors
+        
+        if "content" not in choice["message"]:
+            validation_errors.append("No 'content' field in message")
+            return None, validation_errors
+        
+        content = choice["message"]["content"]
+        
+        # Extract JSON from content if it's wrapped in a code block
+        if "```json" in content:
+            content = content.split("```json")[1].split("```")[0].strip()
+        elif "```" in content:
+            content = content.split("```")[1].split("```")[0].strip()
+        
+        try:
+            parsed_content = json.loads(content)
+        except json.JSONDecodeError as e:
+            validation_errors.append(f"Failed to parse content as JSON: {str(e)}")
+            return None, validation_errors
+        
+        if not isinstance(parsed_content, dict):
+            validation_errors.append("Parsed content is not a dictionary")
+            return None, validation_errors
+        
+        # Check required keys in the parsed content
+        required_keys = ["classification", "line_items"]
+        for key in required_keys:
+            if key not in parsed_content:
+                validation_errors.append(f"Missing required key '{key}' in response")
+                return None, validation_errors
+        
+        # Check classification format
+        if not isinstance(parsed_content["classification"], list):
+            validation_errors.append("'classification' is not a list")
+            return None, validation_errors
+        
+        # Validate each classification item
+        for i, item in enumerate(parsed_content["classification"]):
+            if not isinstance(item, dict):
+                validation_errors.append(f"Classification item {i} is not a dictionary")
+                continue
+                
+            if "amount" not in item:
+                validation_errors.append(f"Classification item {i} missing 'amount'")
+            
+            if "category" not in item:
+                validation_errors.append(f"Classification item {i} missing 'category'")
+            elif item["category"] not in ["LINE_ITEM", "SUBTOTAL", "TAX", "TOTAL", "DISCOUNT", "OTHER"]:
+                validation_errors.append(f"Invalid category '{item['category']}' in classification item {i}")
+                
+            # Check for reasoning (optional but recommended)
+            if "reasoning" not in item:
+                logging.warning(f"Classification item {i} missing 'reasoning' field")
+        
+        # Validate line_items format
+        if not isinstance(parsed_content["line_items"], list):
+            validation_errors.append("'line_items' is not a list")
+            return None, validation_errors
+        
+        # Validate each line item
+        for i, item in enumerate(parsed_content["line_items"]):
+            if not isinstance(item, dict):
+                validation_errors.append(f"Line item {i} is not a dictionary")
+                continue
+                
+            if "amount" not in item:
+                validation_errors.append(f"Line item {i} missing 'amount'")
+                
+            if "description" not in item:
+                validation_errors.append(f"Line item {i} missing 'description'")
+                
+            # Check for line_id (optional)
+            if "line_id" not in item:
+                logging.warning(f"Line item {i} missing 'line_id' field")
+        
+        # Check for financial_summary (optional but recommended)
+        if "financial_summary" in parsed_content:
+            if not isinstance(parsed_content["financial_summary"], dict):
+                validation_errors.append("'financial_summary' is not a dictionary")
+            else:
+                # Check for expected fields in financial_summary
+                for field in ["subtotal", "tax", "total"]:
+                    if field not in parsed_content["financial_summary"]:
+                        logging.warning(f"Financial summary missing '{field}' field")
+        else:
+            logging.warning("Response missing 'financial_summary' field")
+        
+        # Check for overall reasoning (optional)
+        if "reasoning" not in parsed_content:
+            logging.warning("Response missing overall 'reasoning' field")
+        
+        # Determine if validation passed
+        if len(validation_errors) == 0:
+            return parsed_content, []
+        else:
+            return None, validation_errors
+            
+    except Exception as e:
+        validation_errors.append(f"Unexpected error during validation: {str(e)}")
+        import traceback
+        logging.error(f"Validation error: {traceback.format_exc()}")
+        return None, validation_errors
 
 
 def normalize_text(text: str) -> str:

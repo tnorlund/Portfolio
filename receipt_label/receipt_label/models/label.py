@@ -445,10 +445,15 @@ class LabelAnalysis(MetadataMixin):
             if bounding_box_data:
                 bounding_box = BoundingBox.from_dict(bounding_box_data)
             
+            # Convert label to uppercase to ensure consistency
+            label_value = label_data.get("label", "")
+            if label_value:
+                label_value = label_value.upper()
+            
             labels.append(
                 WordLabel(
                     text=label_data.get("text", ""),
-                    label=label_data.get("label", ""),
+                    label=label_value,
                     line_id=label_data.get("line_id", 0),
                     word_id=label_data.get("word_id", 0),
                     reasoning=label_data.get("reasoning", ""),
