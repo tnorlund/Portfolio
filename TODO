@@ -3,7 +3,7 @@
 ## Create Analysis Items
 - [x] Create Receipt Label Analysis in DynamoDB
 - [x] Create Receipt Structure Analysis in DynamoDB
-- [ ] Create Receipt Line Items in DynamoDB
+- [x] Create Receipt Line Items Analysis in DynamoDB
 - [ ] Create Receipt Validation in DynamoDB
 
 ## Align Base Classes with DynamoDB Schema
@@ -49,8 +49,8 @@
     - [x] Implement `from_dynamo()` for LabelAnalysis
     - [x] Implement `to_dynamo()` for StructureAnalysis
     - [x] Implement `from_dynamo()` for StructureAnalysis
-    - [ ] Implement `to_dynamo()` for LineItemAnalysis
-    - [ ] Implement `from_dynamo()` for LineItemAnalysis
+    - [x] Implement `to_dynamo()` for LineItemAnalysis
+    - [x] Implement `from_dynamo()` for LineItemAnalysis
     - [ ] Implement `to_dynamo()` for ValidationAnalysis
     - [ ] Implement `from_dynamo()` for ValidationAnalysis
   - [x] Add integration tests for serialization/deserialization for ReceiptLabelAnalysis
@@ -128,9 +128,9 @@
     - TOTAL: For the final total amount
   5. Modifier Labels (for special cases)
     - ITEM_MODIFIER: For modifiers like "void", "discount", "special price"
-- [ ] Enhance line item processing to apply standardized labels:
-  - [ ] Update LineItemProcessor to assign labels to words based on their role
-  - [ ] Implement metadata structure to track line item associations separate from labels
+- [x] Enhance line item processing to apply standardized labels:
+  - [x] Update LineItemProcessor to assign labels to words based on their role
+  - [x] Implement metadata structure to track line item associations separate from labels
 
 
 ## Testing

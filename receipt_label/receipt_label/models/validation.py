@@ -8,6 +8,7 @@ from .metadata import MetadataMixin
 
 class ValidationResultType(str, Enum):
     """Types of validation results."""
+
     INFO = "info"
     WARNING = "warning"
     ERROR = "error"
@@ -16,6 +17,7 @@ class ValidationResultType(str, Enum):
 
 class ValidationStatus(str, Enum):
     """Overall validation status."""
+
     VALID = "valid"
     INVALID = "invalid"
     NEEDS_REVIEW = "needs_review"
@@ -26,10 +28,11 @@ class ValidationStatus(str, Enum):
 class ValidationResult:
     """
     Represents a single validation check result.
-    
+
     Instead of using a confidence score, this class includes detailed reasoning
     explaining why the validation passed or failed.
     """
+
     type: ValidationResultType
     message: str
     reasoning: str
@@ -43,15 +46,16 @@ class ValidationResult:
 class FieldValidation:
     """
     Represents validation results for a specific field category.
-    
+
     Field categories include business identity, address, phone number, etc.
     """
+
     field_category: str
     results: List[ValidationResult]
     status: ValidationStatus = ValidationStatus.VALID
     reasoning: str = ""
     metadata: Dict = dataclass_field(default_factory=dict)
-    
+
     def __post_init__(self):
         # Determine overall status based on the validation results
         if not self.results:
@@ -62,21 +66,27 @@ class FieldValidation:
             self.status = ValidationStatus.NEEDS_REVIEW
         else:
             self.status = ValidationStatus.VALID
-            
+
         # Generate reasoning if not provided
         if not self.reasoning:
             self.reasoning = self._generate_reasoning()
-    
+
     def _generate_reasoning(self) -> str:
         """Generate reasoning based on validation results."""
         if not self.results:
             return f"No validation performed for {self.field_category}"
-        
-        error_count = sum(1 for r in self.results if r.type == ValidationResultType.ERROR)
-        warning_count = sum(1 for r in self.results if r.type == ValidationResultType.WARNING)
+
+        error_count = sum(
+            1 for r in self.results if r.type == ValidationResultType.ERROR
+        )
+        warning_count = sum(
+            1 for r in self.results if r.type == ValidationResultType.WARNING
+        )
         info_count = sum(1 for r in self.results if r.type == ValidationResultType.INFO)
-        success_count = sum(1 for r in self.results if r.type == ValidationResultType.SUCCESS)
-        
+        success_count = sum(
+            1 for r in self.results if r.type == ValidationResultType.SUCCESS
+        )
+
         result_parts = []
         if error_count:
             result_parts.append(f"{error_count} errors")
@@ -86,39 +96,42 @@ class FieldValidation:
             result_parts.append(f"{info_count} informational items")
         if success_count:
             result_parts.append(f"{success_count} successful checks")
-            
+
         status_text = {
             ValidationStatus.VALID: "PASSED",
             ValidationStatus.INVALID: "FAILED",
             ValidationStatus.NEEDS_REVIEW: "NEEDS REVIEW",
-            ValidationStatus.INCOMPLETE: "INCOMPLETE"
+            ValidationStatus.INCOMPLETE: "INCOMPLETE",
         }
-        
+
         # Include some specific reasoning from the results
         specific_reasons = []
         for r in self.results:
             if r.type in [ValidationResultType.ERROR, ValidationResultType.WARNING]:
                 specific_reasons.append(r.reasoning)
-                
+
         reasoning = f"{self.field_category} validation {status_text[self.status]} with {', '.join(result_parts)}"
-        
+
         if specific_reasons:
             reasoning += f". Issues found: {'; '.join(specific_reasons[:3])}"
             if len(specific_reasons) > 3:
                 reasoning += f" and {len(specific_reasons) - 3} more"
-                
+
         return reasoning
-    
+
     def add_result(self, result: ValidationResult) -> None:
         """Add a validation result and update the status."""
         self.results.append(result)
-        
+
         # Update status based on the new result
         if result.type == ValidationResultType.ERROR:
             self.status = ValidationStatus.INVALID
-        elif result.type == ValidationResultType.WARNING and self.status != ValidationStatus.INVALID:
+        elif (
+            result.type == ValidationResultType.WARNING
+            and self.status != ValidationStatus.INVALID
+        ):
             self.status = ValidationStatus.NEEDS_REVIEW
-            
+
         # Update reasoning
         self.reasoning = self._generate_reasoning()
 
@@ -127,18 +140,43 @@ class FieldValidation:
 class ValidationAnalysis(MetadataMixin):
     """
     Comprehensive analysis of receipt validation results.
-    
+
     This class encapsulates all validation checks performed on a receipt, organized by
     validation category. Instead of confidence scores, it provides detailed reasoning
     about the validation process and results.
     """
-    business_identity: FieldValidation = dataclass_field(default_factory=lambda: FieldValidation(field_category="Business Identity", results=[]))
-    address_verification: FieldValidation = dataclass_field(default_factory=lambda: FieldValidation(field_category="Address Verification", results=[]))
-    phone_validation: FieldValidation = dataclass_field(default_factory=lambda: FieldValidation(field_category="Phone Validation", results=[]))
-    hours_verification: FieldValidation = dataclass_field(default_factory=lambda: FieldValidation(field_category="Hours Verification", results=[]))
-    cross_field_consistency: FieldValidation = dataclass_field(default_factory=lambda: FieldValidation(field_category="Cross-Field Consistency", results=[]))
-    line_item_validation: FieldValidation = dataclass_field(default_factory=lambda: FieldValidation(field_category="Line Item Validation", results=[]))
-    
+
+    business_identity: FieldValidation = dataclass_field(
+        default_factory=lambda: FieldValidation(
+            field_category="Business Identity", results=[]
+        )
+    )
+    address_verification: FieldValidation = dataclass_field(
+        default_factory=lambda: FieldValidation(
+            field_category="Address Verification", results=[]
+        )
+    )
+    phone_validation: FieldValidation = dataclass_field(
+        default_factory=lambda: FieldValidation(
+            field_category="Phone Validation", results=[]
+        )
+    )
+    hours_verification: FieldValidation = dataclass_field(
+        default_factory=lambda: FieldValidation(
+            field_category="Hours Verification", results=[]
+        )
+    )
+    cross_field_consistency: FieldValidation = dataclass_field(
+        default_factory=lambda: FieldValidation(
+            field_category="Cross-Field Consistency", results=[]
+        )
+    )
+    line_item_validation: FieldValidation = dataclass_field(
+        default_factory=lambda: FieldValidation(
+            field_category="Line Item Validation", results=[]
+        )
+    )
+
     overall_status: ValidationStatus = ValidationStatus.VALID
     overall_reasoning: str = ""
     validation_timestamp: datetime = dataclass_field(default_factory=datetime.now)
@@ -147,45 +185,60 @@ class ValidationAnalysis(MetadataMixin):
     metadata: Dict = dataclass_field(default_factory=dict)
     timestamp_added: Optional[str] = None
     timestamp_updated: Optional[str] = None
-    
+
     def __post_init__(self):
         # Update overall_status based on individual field validations
         self._update_overall_status()
-        
+
         # Generate overall reasoning if not provided
         if not self.overall_reasoning:
             self.overall_reasoning = self._generate_overall_reasoning()
-            
+
         # Initialize metadata
         self.initialize_metadata()
-        
+
         # Add validation-specific metrics
         self.add_processing_metric("validation_status", self.overall_status)
-        
+
         field_counts = {
             "business_identity": len(self.business_identity.results),
             "address_verification": len(self.address_verification.results),
             "phone_validation": len(self.phone_validation.results),
             "hours_verification": len(self.hours_verification.results),
             "cross_field_consistency": len(self.cross_field_consistency.results),
-            "line_item_validation": len(self.line_item_validation.results)
+            "line_item_validation": len(self.line_item_validation.results),
         }
         self.add_processing_metric("validation_counts", field_counts)
-        
+
         result_types = {
-            "error": sum(sum(1 for r in v.results if r.type == ValidationResultType.ERROR) for v in self._get_field_validations()),
-            "warning": sum(sum(1 for r in v.results if r.type == ValidationResultType.WARNING) for v in self._get_field_validations()),
-            "info": sum(sum(1 for r in v.results if r.type == ValidationResultType.INFO) for v in self._get_field_validations()),
-            "success": sum(sum(1 for r in v.results if r.type == ValidationResultType.SUCCESS) for v in self._get_field_validations())
+            "error": sum(
+                sum(1 for r in v.results if r.type == ValidationResultType.ERROR)
+                for v in self._get_field_validations()
+            ),
+            "warning": sum(
+                sum(1 for r in v.results if r.type == ValidationResultType.WARNING)
+                for v in self._get_field_validations()
+            ),
+            "info": sum(
+                sum(1 for r in v.results if r.type == ValidationResultType.INFO)
+                for v in self._get_field_validations()
+            ),
+            "success": sum(
+                sum(1 for r in v.results if r.type == ValidationResultType.SUCCESS)
+                for v in self._get_field_validations()
+            ),
         }
         self.add_processing_metric("result_types", result_types)
-        
+
         # Add to history based on validation status
         if self.overall_status != ValidationStatus.VALID:
-            self.add_history_event(f"validation_{self.overall_status.lower()}", {
-                "error_count": result_types["error"],
-                "warning_count": result_types["warning"]
-            })
+            self.add_history_event(
+                f"validation_{self.overall_status.lower()}",
+                {
+                    "error_count": result_types["error"],
+                    "warning_count": result_types["warning"],
+                },
+            )
 
     def _get_field_validations(self) -> List[FieldValidation]:
         """Get all field validations as a list."""
@@ -195,7 +248,7 @@ class ValidationAnalysis(MetadataMixin):
             self.phone_validation,
             self.hours_verification,
             self.cross_field_consistency,
-            self.line_item_validation
+            self.line_item_validation,
         ]
 
     def _update_overall_status(self) -> None:
@@ -206,9 +259,9 @@ class ValidationAnalysis(MetadataMixin):
             self.phone_validation,
             self.hours_verification,
             self.cross_field_consistency,
-            self.line_item_validation
+            self.line_item_validation,
         ]
-        
+
         if any(v.status == ValidationStatus.INVALID for v in field_validations):
             self.overall_status = ValidationStatus.INVALID
         elif any(v.status == ValidationStatus.NEEDS_REVIEW for v in field_validations):
@@ -217,7 +270,7 @@ class ValidationAnalysis(MetadataMixin):
             self.overall_status = ValidationStatus.INCOMPLETE
         else:
             self.overall_status = ValidationStatus.VALID
-    
+
     def _generate_overall_reasoning(self) -> str:
         """Generate overall reasoning based on field validations."""
         field_validations = [
@@ -226,44 +279,56 @@ class ValidationAnalysis(MetadataMixin):
             self.phone_validation,
             self.hours_verification,
             self.cross_field_consistency,
-            self.line_item_validation
+            self.line_item_validation,
         ]
-        
+
         active_validations = [v for v in field_validations if v.results]
         if not active_validations:
             return "No validation checks performed"
-        
+
         # Count validation results by type
-        error_count = sum(sum(1 for r in v.results if r.type == ValidationResultType.ERROR) for v in active_validations)
-        warning_count = sum(sum(1 for r in v.results if r.type == ValidationResultType.WARNING) for v in active_validations)
-        
+        error_count = sum(
+            sum(1 for r in v.results if r.type == ValidationResultType.ERROR)
+            for v in active_validations
+        )
+        warning_count = sum(
+            sum(1 for r in v.results if r.type == ValidationResultType.WARNING)
+            for v in active_validations
+        )
+
         # Generate overall status description
         status_text = {
             ValidationStatus.VALID: "valid",
             ValidationStatus.INVALID: "invalid",
             ValidationStatus.NEEDS_REVIEW: "needs review",
-            ValidationStatus.INCOMPLETE: "incomplete validation"
+            ValidationStatus.INCOMPLETE: "incomplete validation",
         }
-        
+
         reasoning = f"Receipt validation determined the receipt is {status_text[self.overall_status]}"
-        
+
         if error_count or warning_count:
             reasoning += f" with {error_count} errors and {warning_count} warnings"
-        
+
         # Add field-specific reasoning for problem areas
-        problem_fields = [v for v in active_validations if v.status in [ValidationStatus.INVALID, ValidationStatus.NEEDS_REVIEW]]
+        problem_fields = [
+            v
+            for v in active_validations
+            if v.status in [ValidationStatus.INVALID, ValidationStatus.NEEDS_REVIEW]
+        ]
         if problem_fields:
-            field_problems = [f"{v.field_category}: {v.reasoning}" for v in problem_fields]
+            field_problems = [
+                f"{v.field_category}: {v.reasoning}" for v in problem_fields
+            ]
             reasoning += f". Problem areas include: {'; '.join(field_problems[:3])}"
             if len(field_problems) > 3:
                 reasoning += f" and {len(field_problems) - 3} more"
-        
+
         return reasoning
-    
+
     def add_result(self, category: str, result: ValidationResult) -> None:
         """
         Add a validation result to the appropriate category.
-        
+
         Args:
             category (str): The validation category (e.g., "business_identity")
             result (ValidationResult): The validation result to add
@@ -274,18 +339,18 @@ class ValidationAnalysis(MetadataMixin):
             "phone_validation": self.phone_validation,
             "hours_verification": self.hours_verification,
             "cross_field_consistency": self.cross_field_consistency,
-            "line_item_validation": self.line_item_validation
+            "line_item_validation": self.line_item_validation,
         }
-        
+
         if category in field_map:
             field_map[category].add_result(result)
             self._update_overall_status()
             self.overall_reasoning = self._generate_overall_reasoning()
-    
+
     def get_validation_summary(self) -> Dict:
         """
         Get a summary of the validation results.
-        
+
         Returns:
             Dict: Summary of validation results by category and overall status
         """
@@ -295,42 +360,42 @@ class ValidationAnalysis(MetadataMixin):
             "categories": {
                 "business_identity": {
                     "status": self.business_identity.status,
-                    "results_count": len(self.business_identity.results)
+                    "results_count": len(self.business_identity.results),
                 },
                 "address_verification": {
                     "status": self.address_verification.status,
-                    "results_count": len(self.address_verification.results)
+                    "results_count": len(self.address_verification.results),
                 },
                 "phone_validation": {
                     "status": self.phone_validation.status,
-                    "results_count": len(self.phone_validation.results)
+                    "results_count": len(self.phone_validation.results),
                 },
                 "hours_verification": {
                     "status": self.hours_verification.status,
-                    "results_count": len(self.hours_verification.results)
+                    "results_count": len(self.hours_verification.results),
                 },
                 "cross_field_consistency": {
                     "status": self.cross_field_consistency.status,
-                    "results_count": len(self.cross_field_consistency.results)
+                    "results_count": len(self.cross_field_consistency.results),
                 },
                 "line_item_validation": {
                     "status": self.line_item_validation.status,
-                    "results_count": len(self.line_item_validation.results)
-                }
+                    "results_count": len(self.line_item_validation.results),
+                },
             },
-            "timestamp": self.validation_timestamp.isoformat()
+            "timestamp": self.validation_timestamp.isoformat(),
         }
-    
+
     def to_dynamo(self) -> Dict:
         """
         Convert the ValidationAnalysis to a DynamoDB-compatible dictionary.
-        
+
         Returns:
             Dict: A dictionary representation for DynamoDB
         """
         # Get base metadata fields
         result = super().to_dict()
-        
+
         # Add class-specific fields
         field_validations = {}
         for field_name, field_validation in [
@@ -339,7 +404,7 @@ class ValidationAnalysis(MetadataMixin):
             ("phone_validation", self.phone_validation),
             ("hours_verification", self.hours_verification),
             ("cross_field_consistency", self.cross_field_consistency),
-            ("line_item_validation", self.line_item_validation)
+            ("line_item_validation", self.line_item_validation),
         ]:
             field_validations[field_name] = {
                 "status": field_validation.status,
@@ -350,39 +415,47 @@ class ValidationAnalysis(MetadataMixin):
                         "message": r.message,
                         "reasoning": r.reasoning,
                         "field": r.field,
-                        "expected_value": str(r.expected_value) if r.expected_value is not None else None,
-                        "actual_value": str(r.actual_value) if r.actual_value is not None else None,
-                        "metadata": r.metadata
+                        "expected_value": (
+                            str(r.expected_value)
+                            if r.expected_value is not None
+                            else None
+                        ),
+                        "actual_value": (
+                            str(r.actual_value) if r.actual_value is not None else None
+                        ),
+                        "metadata": r.metadata,
                     }
                     for r in field_validation.results
-                ]
+                ],
             }
-            
-        result.update({
-            **field_validations,
-            "overall_status": self.overall_status,
-            "overall_reasoning": self.overall_reasoning,
-            "validation_timestamp": self.validation_timestamp.isoformat(),
-            "prompt_template": self.prompt_template,
-            "response_template": self.response_template
-        })
-        
+
+        result.update(
+            {
+                **field_validations,
+                "overall_status": self.overall_status,
+                "overall_reasoning": self.overall_reasoning,
+                "validation_timestamp": self.validation_timestamp.isoformat(),
+                "prompt_template": self.prompt_template,
+                "response_template": self.response_template,
+            }
+        )
+
         return result
-    
+
     @classmethod
     def from_dynamo(cls, data: Dict) -> "ValidationAnalysis":
         """
         Create a ValidationAnalysis instance from DynamoDB data.
-        
+
         Args:
             data (Dict): Data from DynamoDB
-            
+
         Returns:
             ValidationAnalysis: A new instance populated with the DynamoDB data
         """
         # Extract metadata fields
         metadata_fields = MetadataMixin.from_dict(data)
-        
+
         # Process field validations
         field_validations = {}
         for category in [
@@ -391,30 +464,32 @@ class ValidationAnalysis(MetadataMixin):
             "phone_validation",
             "hours_verification",
             "cross_field_consistency",
-            "line_item_validation"
+            "line_item_validation",
         ]:
             if category in data:
                 category_data = data[category]
                 results = []
-                
+
                 for result_data in category_data.get("results", []):
-                    results.append(ValidationResult(
-                        type=result_data.get("type", ValidationResultType.INFO),
-                        message=result_data.get("message", ""),
-                        reasoning=result_data.get("reasoning", ""),
-                        field=result_data.get("field"),
-                        expected_value=result_data.get("expected_value"),
-                        actual_value=result_data.get("actual_value"),
-                        metadata=result_data.get("metadata", {})
-                    ))
-                
+                    results.append(
+                        ValidationResult(
+                            type=result_data.get("type", ValidationResultType.INFO),
+                            message=result_data.get("message", ""),
+                            reasoning=result_data.get("reasoning", ""),
+                            field=result_data.get("field"),
+                            expected_value=result_data.get("expected_value"),
+                            actual_value=result_data.get("actual_value"),
+                            metadata=result_data.get("metadata", {}),
+                        )
+                    )
+
                 field_validations[category] = FieldValidation(
                     field_category=category.replace("_", " ").title(),
                     results=results,
                     status=category_data.get("status", ValidationStatus.VALID),
-                    reasoning=category_data.get("reasoning", "")
+                    reasoning=category_data.get("reasoning", ""),
                 )
-            
+
         # Create validation analysis
         result = cls(
             **field_validations,
@@ -422,14 +497,16 @@ class ValidationAnalysis(MetadataMixin):
             overall_reasoning=data.get("overall_reasoning", ""),
             prompt_template=data.get("prompt_template"),
             response_template=data.get("response_template"),
-            **metadata_fields
+            **metadata_fields,
         )
-        
+
         # Parse validation timestamp
         if "validation_timestamp" in data:
             try:
-                result.validation_timestamp = datetime.fromisoformat(data["validation_timestamp"])
+                result.validation_timestamp = datetime.fromisoformat(
+                    data["validation_timestamp"]
+                )
             except (ValueError, TypeError):
                 pass
-                
-        return result 
+
+        return result

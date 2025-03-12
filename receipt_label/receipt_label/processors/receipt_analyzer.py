@@ -4,7 +4,11 @@ import traceback
 import re
 from ..models.receipt import Receipt, ReceiptWord, ReceiptSection, ReceiptLine
 from ..data.places_api import BatchPlacesProcessor
-from ..data.gpt import gpt_request_structure_analysis, gpt_request_field_labeling, gpt_request_line_item_analysis
+from ..data.gpt import (
+    gpt_request_structure_analysis,
+    gpt_request_field_labeling,
+    gpt_request_line_item_analysis,
+)
 from ..models.structure import StructureAnalysis
 from ..models.label import LabelAnalysis
 
@@ -31,7 +35,7 @@ class ReceiptAnalyzer:
         places_api_data: Optional[Dict],
     ) -> StructureAnalysis:
         """Analyze receipt structure and layout.
-        
+
         Args:
             receipt: Receipt object containing metadata
             receipt_lines: List of ReceiptLine objects
@@ -50,63 +54,93 @@ class ReceiptAnalyzer:
         try:
             # Type checking for main parameters
             if not isinstance(receipt, Receipt):
-                raise TypeError(f"Expected receipt to be Receipt object, got {type(receipt)}")
-            
+                raise TypeError(
+                    f"Expected receipt to be Receipt object, got {type(receipt)}"
+                )
+
             if not isinstance(receipt_lines, list):
-                raise TypeError(f"Expected receipt_lines to be list, got {type(receipt_lines)}")
-            
+                raise TypeError(
+                    f"Expected receipt_lines to be list, got {type(receipt_lines)}"
+                )
+
             if not isinstance(receipt_words, list):
-                raise TypeError(f"Expected receipt_words to be list, got {type(receipt_words)}")
-            
+                raise TypeError(
+                    f"Expected receipt_words to be list, got {type(receipt_words)}"
+                )
+
             if places_api_data is not None and not isinstance(places_api_data, dict):
-                raise TypeError(f"Expected places_api_data to be dict or None, got {type(places_api_data)}")
+                raise TypeError(
+                    f"Expected places_api_data to be dict or None, got {type(places_api_data)}"
+                )
 
             # Value checking for lists
             if not receipt_lines:
                 raise ValueError("receipt_lines cannot be empty")
-            
+
             if not receipt_words:
                 raise ValueError("receipt_words cannot be empty")
 
             # Detailed type checking for receipt_lines
-            required_line_attrs = {'text', 'line_id', 'bounding_box'}
+            required_line_attrs = {"text", "line_id", "bounding_box"}
             for i, line in enumerate(receipt_lines):
                 if not isinstance(line, ReceiptLine):
-                    raise TypeError(f"Item {i} in receipt_lines is {type(line)}, expected ReceiptLine")
-                
+                    raise TypeError(
+                        f"Item {i} in receipt_lines is {type(line)}, expected ReceiptLine"
+                    )
+
                 # Check for required attributes
                 missing_attrs = required_line_attrs - set(dir(line))
                 if missing_attrs:
-                    raise ValueError(f"ReceiptLine at index {i} is missing required attributes: {missing_attrs}")
-                
+                    raise ValueError(
+                        f"ReceiptLine at index {i} is missing required attributes: {missing_attrs}"
+                    )
+
                 # Type check the attributes
                 if not isinstance(line.text, str):
-                    raise TypeError(f"ReceiptLine.text at index {i} must be str, got {type(line.text)}")
+                    raise TypeError(
+                        f"ReceiptLine.text at index {i} must be str, got {type(line.text)}"
+                    )
                 if not isinstance(line.line_id, int):
-                    raise TypeError(f"ReceiptLine.line_id at index {i} must be int, got {type(line.line_id)}")
+                    raise TypeError(
+                        f"ReceiptLine.line_id at index {i} must be int, got {type(line.line_id)}"
+                    )
                 if not isinstance(line.bounding_box, dict):
-                    raise TypeError(f"ReceiptLine.bounding_box at index {i} must be dict, got {type(line.bounding_box)}")
+                    raise TypeError(
+                        f"ReceiptLine.bounding_box at index {i} must be dict, got {type(line.bounding_box)}"
+                    )
 
             # Detailed type checking for receipt_words
-            required_word_attrs = {'text', 'line_id', 'word_id', 'bounding_box'}
+            required_word_attrs = {"text", "line_id", "word_id", "bounding_box"}
             for i, word in enumerate(receipt_words):
                 if not isinstance(word, ReceiptWord):
-                    raise TypeError(f"Item {i} in receipt_words is {type(word)}, expected ReceiptWord")
-                
+                    raise TypeError(
+                        f"Item {i} in receipt_words is {type(word)}, expected ReceiptWord"
+                    )
+
                 # Check for required attributes
                 missing_attrs = required_word_attrs - set(dir(word))
                 if missing_attrs:
-                    raise ValueError(f"ReceiptWord at index {i} is missing required attributes: {missing_attrs}")
-                
+                    raise ValueError(
+                        f"ReceiptWord at index {i} is missing required attributes: {missing_attrs}"
+                    )
+
                 # Type check the attributes
                 if not isinstance(word.text, str):
-                    raise TypeError(f"ReceiptWord.text at index {i} must be str, got {type(word.text)}")
+                    raise TypeError(
+                        f"ReceiptWord.text at index {i} must be str, got {type(word.text)}"
+                    )
                 if not isinstance(word.line_id, int):
-                    raise TypeError(f"ReceiptWord.line_id at index {i} must be int, got {type(word.line_id)}")
+                    raise TypeError(
+                        f"ReceiptWord.line_id at index {i} must be int, got {type(word.line_id)}"
+                    )
                 if not isinstance(word.word_id, int):
-                    raise TypeError(f"ReceiptWord.word_id at index {i} must be int, got {type(word.word_id)}")
+                    raise TypeError(
+                        f"ReceiptWord.word_id at index {i} must be int, got {type(word.word_id)}"
+                    )
                 if not isinstance(word.bounding_box, dict):
-                    raise TypeError(f"ReceiptWord.bounding_box at index {i} must be dict, got {type(word.bounding_box)}")
+                    raise TypeError(
+                        f"ReceiptWord.bounding_box at index {i} must be dict, got {type(word.bounding_box)}"
+                    )
 
             # Analyze structure - pass the original objects directly
             logger.info("Calling gpt_request_structure_analysis...")
@@ -119,13 +153,15 @@ class ReceiptAnalyzer:
                     places_api_data=places_api_data,
                     gpt_api_key=self.api_key,
                 )
-                logger.info(f"gpt_request_structure_analysis returned {len(result)} values: {type(result)}")
-                
+                logger.info(
+                    f"gpt_request_structure_analysis returned {len(result)} values: {type(result)}"
+                )
+
                 if isinstance(result, tuple):
                     logger.info(f"Result tuple length: {len(result)}")
                     for i, item in enumerate(result):
                         logger.info(f"  Result[{i}] type: {type(item)}")
-                
+
                 structure_analysis, query, raw_response = result
                 logger.info("Successfully unpacked structure analysis result")
             except ValueError as e:
@@ -142,10 +178,14 @@ class ReceiptAnalyzer:
             logger.debug(f"Raw analysis response: {raw_response}")
             # Log reasoning fields if they exist
             if isinstance(structure_analysis, dict):
-                reasoning_fields = [k for k in structure_analysis if 'reasoning' in k.lower()]
+                reasoning_fields = [
+                    k for k in structure_analysis if "reasoning" in k.lower()
+                ]
                 logger.info(f"Structure analysis reasoning fields: {reasoning_fields}")
             # Convert the dictionary to a StructureAnalysis object
-            structure_analysis_obj = StructureAnalysis.from_gpt_response(structure_analysis)
+            structure_analysis_obj = StructureAnalysis.from_gpt_response(
+                structure_analysis
+            )
             return structure_analysis_obj
 
         except (TypeError, ValueError) as e:
@@ -165,7 +205,7 @@ class ReceiptAnalyzer:
         places_api_data: Optional[Dict],
     ) -> LabelAnalysis:
         """Label and classify receipt fields.
-        
+
         Args:
             receipt: Receipt object containing metadata
             receipt_lines: List of ReceiptLine objects
@@ -195,13 +235,15 @@ class ReceiptAnalyzer:
                     places_api_data=places_api_data,
                     gpt_api_key=self.api_key,
                 )
-                logger.info(f"gpt_request_field_labeling returned {len(result)} values: {type(result)}")
-                
+                logger.info(
+                    f"gpt_request_field_labeling returned {len(result)} values: {type(result)}"
+                )
+
                 if isinstance(result, tuple):
                     logger.info(f"Result tuple length: {len(result)}")
                     for i, item in enumerate(result):
                         logger.info(f"  Result[{i}] type: {type(item)}")
-                
+
                 field_analysis, query, raw_response = result
                 logger.info("Successfully unpacked field labeling result")
             except ValueError as e:
@@ -214,31 +256,39 @@ class ReceiptAnalyzer:
 
             logger.debug("Field labeling completed")
             logger.debug(f"Field analysis result type: {type(field_analysis)}")
-            logger.debug(f"Number of labels generated: {len(field_analysis.get('labels', []))}")
-            
+            logger.debug(
+                f"Number of labels generated: {len(field_analysis.get('labels', []))}"
+            )
+
             # Log reasoning fields if they exist
             if isinstance(field_analysis, dict):
                 reasoning_fields = []
-                for label in field_analysis.get('labels', []):
-                    if 'reasoning' in label:
-                        reasoning_fields.append(label['label'])
+                for label in field_analysis.get("labels", []):
+                    if "reasoning" in label:
+                        reasoning_fields.append(label["label"])
                 logger.info(f"Field labels with reasoning: {reasoning_fields}")
 
-                logger.debug(f"Field analysis metadata keys: {list(field_analysis['metadata'].keys())}")
-            
+                logger.debug(
+                    f"Field analysis metadata keys: {list(field_analysis['metadata'].keys())}"
+                )
+
             # Convert the dictionary to a LabelAnalysis object
             field_analysis_obj = LabelAnalysis.from_gpt_response(field_analysis)
-            
+
             # Log the number of labels
-            logger.debug(f"Number of labels generated: {len(field_analysis_obj.labels)}")
-            
+            logger.debug(
+                f"Number of labels generated: {len(field_analysis_obj.labels)}"
+            )
+
             # Log a sample of labels for debugging
             if field_analysis_obj.labels:
                 sample_size = min(3, len(field_analysis_obj.labels))
                 logger.debug(f"Sample of {sample_size} labels:")
                 for label in field_analysis_obj.labels[:sample_size]:
-                    logger.debug(f"  {label.text} -> {label.label} (reasoning: {label.reasoning})")
-            
+                    logger.debug(
+                        f"  {label.text} -> {label.label} (reasoning: {label.reasoning})"
+                    )
+
             return field_analysis_obj
 
         except Exception as e:
@@ -255,14 +305,14 @@ class ReceiptAnalyzer:
         places_api_data: Optional[Dict],
     ) -> Dict:
         """Analyze line items in the receipt.
-        
+
         Args:
             receipt: Receipt object containing metadata
             receipt_lines: List of ReceiptLine objects
             receipt_words: List of ReceiptWord objects
             traditional_analysis: Results from traditional processing methods
             places_api_data: Optional dictionary containing Places API data
-            
+
         Returns:
             Dict containing line item analysis results with reasoning explanations.
             Each identified line item includes explanatory text about why it was
@@ -281,13 +331,15 @@ class ReceiptAnalyzer:
                     places_api_data=places_api_data,
                     gpt_api_key=self.api_key,
                 )
-                logger.info(f"gpt_request_line_item_analysis returned result of type: {type(result)}")
-                
+                logger.info(
+                    f"gpt_request_line_item_analysis returned result of type: {type(result)}"
+                )
+
                 if isinstance(result, tuple):
                     logger.info(f"Result tuple length: {len(result)}")
                     for i, item in enumerate(result):
                         logger.info(f"  Result[{i}] type: {type(item)}")
-                
+
                 line_item_analysis, query, raw_response = result
                 logger.info("Successfully unpacked line item analysis result")
             except ValueError as e:
@@ -299,16 +351,20 @@ class ReceiptAnalyzer:
                 raise
 
             logger.debug(f"Raw line item analysis: {line_item_analysis}")
-            
+
             # Log reasoning fields if they exist
             if isinstance(line_item_analysis, dict):
-                reasoning_fields = [k for k in line_item_analysis if 'reasoning' in k.lower()]
+                reasoning_fields = [
+                    k for k in line_item_analysis if "reasoning" in k.lower()
+                ]
                 logger.info(f"Line item analysis reasoning fields: {reasoning_fields}")
-                
-                if 'items' in line_item_analysis:
-                    for i, item in enumerate(line_item_analysis['items']):
-                        if 'reasoning' in item:
-                            logger.info(f"Line item {i} has reasoning: {item['reasoning'][:50]}...")
+
+                if "items" in line_item_analysis:
+                    for i, item in enumerate(line_item_analysis["items"]):
+                        if "reasoning" in item:
+                            logger.info(
+                                f"Line item {i} has reasoning: {item['reasoning'][:50]}..."
+                            )
 
             return line_item_analysis
 
@@ -360,4 +416,4 @@ class ReceiptAnalyzer:
             Parsed response as a dictionary
         """
         # TODO: Implement response parsing
-        raise NotImplementedError("Response parsing not yet implemented") 
+        raise NotImplementedError("Response parsing not yet implemented")

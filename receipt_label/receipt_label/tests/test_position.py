@@ -28,22 +28,12 @@ def test_point_to_dynamo():
     """Test Point serialization to DynamoDB format."""
     point = Point(10.5, 20.5)
     dynamo_dict = point.to_dynamo()
-    assert dynamo_dict == {
-        "M": {
-            "x": {"N": "10.5"},
-            "y": {"N": "20.5"}
-        }
-    }
+    assert dynamo_dict == {"M": {"x": {"N": "10.5"}, "y": {"N": "20.5"}}}
 
 
 def test_point_from_dynamo():
     """Test Point deserialization from DynamoDB format."""
-    dynamo_dict = {
-        "M": {
-            "x": {"N": "10.5"},
-            "y": {"N": "20.5"}
-        }
-    }
+    dynamo_dict = {"M": {"x": {"N": "10.5"}, "y": {"N": "20.5"}}}
     point = Point.from_dynamo(dynamo_dict)
     assert point.x == 10.5
     assert point.y == 20.5
@@ -97,7 +87,7 @@ def test_bounding_box_to_dynamo():
             "x": {"N": "10"},
             "y": {"N": "20"},
             "width": {"N": "30"},
-            "height": {"N": "40"}
+            "height": {"N": "40"},
         }
     }
 
@@ -109,7 +99,7 @@ def test_bounding_box_from_dynamo():
             "x": {"N": "10"},
             "y": {"N": "20"},
             "width": {"N": "30"},
-            "height": {"N": "40"}
+            "height": {"N": "40"},
         }
     }
     bbox = BoundingBox.from_dynamo(dynamo_dict)
@@ -122,18 +112,18 @@ def test_bounding_box_from_dynamo():
 def test_bounding_box_contains_point():
     """Test the BoundingBox contains_point method."""
     bbox = BoundingBox(10, 20, 30, 40)
-    
+
     # Point inside
     assert bbox.contains_point(Point(15, 25))
-    
+
     # Points on edges
     assert bbox.contains_point(Point(10, 20))  # Top-left
     assert bbox.contains_point(Point(40, 20))  # Top-right
     assert bbox.contains_point(Point(10, 60))  # Bottom-left
     assert bbox.contains_point(Point(40, 60))  # Bottom-right
-    
+
     # Points outside
-    assert not bbox.contains_point(Point(5, 25))   # Left
+    assert not bbox.contains_point(Point(5, 25))  # Left
     assert not bbox.contains_point(Point(45, 25))  # Right
     assert not bbox.contains_point(Point(15, 15))  # Above
     assert not bbox.contains_point(Point(15, 65))  # Below
@@ -143,9 +133,9 @@ def test_bounding_box_from_points():
     """Test creating BoundingBox from two points."""
     top_left = Point(10, 20)
     bottom_right = Point(40, 60)
-    
+
     bbox = BoundingBox.from_points(top_left, bottom_right)
-    
+
     assert bbox.x == 10
     assert bbox.y == 20
     assert bbox.width == 30
@@ -158,9 +148,9 @@ def test_bounding_box_from_corners():
     top_right = Point(40, 20)
     bottom_left = Point(10, 60)
     bottom_right = Point(40, 60)
-    
+
     bbox = BoundingBox.from_corners(top_left, top_right, bottom_left, bottom_right)
-    
+
     assert bbox.x == 10
     assert bbox.y == 20
     assert bbox.width == 30
@@ -173,9 +163,9 @@ def test_bounding_box_from_corners_dicts():
     top_right = {"x": 40, "y": 20}
     bottom_left = {"x": 10, "y": 60}
     bottom_right = {"x": 40, "y": 60}
-    
+
     bbox = BoundingBox.from_corners(top_left, top_right, bottom_left, bottom_right)
-    
+
     assert bbox.x == 10
     assert bbox.y == 20
     assert bbox.width == 30
@@ -188,10 +178,12 @@ def test_bounding_box_from_corners_dynamo():
     top_right = {"M": {"x": {"N": "40"}, "y": {"N": "20"}}}
     bottom_left = {"M": {"x": {"N": "10"}, "y": {"N": "60"}}}
     bottom_right = {"M": {"x": {"N": "40"}, "y": {"N": "60"}}}
-    
-    bbox = BoundingBox.from_corners_dynamo(top_left, top_right, bottom_left, bottom_right)
-    
+
+    bbox = BoundingBox.from_corners_dynamo(
+        top_left, top_right, bottom_left, bottom_right
+    )
+
     assert bbox.x == 10
     assert bbox.y == 20
     assert bbox.width == 30
-    assert bbox.height == 40 
+    assert bbox.height == 40

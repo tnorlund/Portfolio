@@ -75,7 +75,9 @@ def test_classify_receipt_data(sample_receipt, mocker, dynamodb_table):
 
 
 @pytest.mark.integration
-def test_process_high_priority_receipt(mocker, sample_receipt, sample_places_response, dynamodb_table):
+def test_process_high_priority_receipt(
+    mocker, sample_receipt, sample_places_response, dynamodb_table
+):
     """Test processing of high priority receipt."""
     mock_places_api = mocker.Mock()
     mock_places_api.search_by_address.return_value = sample_places_response
@@ -102,7 +104,9 @@ def test_process_high_priority_receipt(mocker, sample_receipt, sample_places_res
 
 
 @pytest.mark.integration
-def test_process_medium_priority_receipt(mocker, sample_receipt, sample_places_response, dynamodb_table):
+def test_process_medium_priority_receipt(
+    mocker, sample_receipt, sample_places_response, dynamodb_table
+):
     """Test processing of medium priority receipt."""
     mock_places_api = mocker.Mock()
     mock_places_api.search_by_address.return_value = sample_places_response
@@ -196,7 +200,9 @@ def test_validate_business_name(mocker, dynamodb_table):
 
 
 @pytest.mark.integration
-def test_process_receipt_batch(mocker, sample_receipt, sample_places_response, dynamodb_table):
+def test_process_receipt_batch(
+    mocker, sample_receipt, sample_places_response, dynamodb_table
+):
     """Test batch processing of receipts."""
     mock_places_api = mocker.Mock()
     mock_places_api.search_by_address.return_value = sample_places_response

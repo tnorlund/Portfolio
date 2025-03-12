@@ -1,7 +1,10 @@
 from botocore.exceptions import ClientError
 from typing import List, Optional, Dict, Tuple, Any
 
-from receipt_dynamo import ReceiptStructureAnalysis, itemToReceiptStructureAnalysis
+from receipt_dynamo import (
+    ReceiptStructureAnalysis,
+    itemToReceiptStructureAnalysis,
+)
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
@@ -89,7 +92,9 @@ class _ReceiptStructureAnalysis:
                     f"Could not add receipt structure analysis to DynamoDB: {e}"
                 ) from e
 
-    def addReceiptStructureAnalyses(self, analyses: list[ReceiptStructureAnalysis]):
+    def addReceiptStructureAnalyses(
+        self, analyses: list[ReceiptStructureAnalysis]
+    ):
         """Adds multiple ReceiptStructureAnalyses to DynamoDB in batches.
 
         Args:
@@ -143,7 +148,9 @@ class _ReceiptStructureAnalysis:
                     f"Could not add ReceiptStructureAnalyses to the database: {e}"
                 ) from e
 
-    def updateReceiptStructureAnalysis(self, analysis: ReceiptStructureAnalysis):
+    def updateReceiptStructureAnalysis(
+        self, analysis: ReceiptStructureAnalysis
+    ):
         """Updates an existing ReceiptStructureAnalysis in the database.
 
         Args:
@@ -190,7 +197,9 @@ class _ReceiptStructureAnalysis:
                     "Could not update ReceiptStructureAnalysis in the database"
                 )
 
-    def updateReceiptStructureAnalyses(self, analyses: list[ReceiptStructureAnalysis]):
+    def updateReceiptStructureAnalyses(
+        self, analyses: list[ReceiptStructureAnalysis]
+    ):
         """Updates multiple ReceiptStructureAnalyses in the database.
 
         Args:
@@ -232,7 +241,8 @@ class _ReceiptStructureAnalysis:
                     # Check if cancellation was due to conditional check failure
                     if "ConditionalCheckFailed" in str(e):
                         raise ValueError(
-                            "Error updating receipt structure analyses: " + str(e)
+                            "Error updating receipt structure analyses: "
+                            + str(e)
                         )
                 elif error_code == "ResourceNotFoundException":
                     raise Exception(
@@ -243,7 +253,9 @@ class _ReceiptStructureAnalysis:
                 elif error_code == "ProvisionedThroughputExceededException":
                     raise Exception("Provisioned throughput exceeded")
                 elif error_code == "ValidationException":
-                    raise Exception("One or more parameters given were invalid")
+                    raise Exception(
+                        "One or more parameters given were invalid"
+                    )
                 elif error_code == "AccessDeniedException":
                     raise Exception("Access denied")
                 else:
@@ -277,7 +289,9 @@ class _ReceiptStructureAnalysis:
                 TableName=self.table_name,
                 Key={
                     "PK": {"S": f"IMAGE#{analysis.image_id}"},
-                    "SK": {"S": f"RECEIPT#{analysis.receipt_id}#ANALYSIS#STRUCTURE#{analysis.version}"},
+                    "SK": {
+                        "S": f"RECEIPT#{analysis.receipt_id}#ANALYSIS#STRUCTURE#{analysis.version}"
+                    },
                 },
                 ConditionExpression="attribute_exists(PK)",
             )
@@ -302,7 +316,9 @@ class _ReceiptStructureAnalysis:
                     f"Could not delete ReceiptStructureAnalysis from the database: {e}"
                 ) from e
 
-    def deleteReceiptStructureAnalyses(self, analyses: list[ReceiptStructureAnalysis]):
+    def deleteReceiptStructureAnalyses(
+        self, analyses: list[ReceiptStructureAnalysis]
+    ):
         """Deletes multiple ReceiptStructureAnalyses in batch.
 
         Args:
@@ -332,7 +348,9 @@ class _ReceiptStructureAnalysis:
                         "TableName": self.table_name,
                         "Key": {
                             "PK": {"S": f"IMAGE#{a.image_id}"},
-                            "SK": {"S": f"RECEIPT#{a.receipt_id}#ANALYSIS#STRUCTURE#{a.version}"},
+                            "SK": {
+                                "S": f"RECEIPT#{a.receipt_id}#ANALYSIS#STRUCTURE#{a.version}"
+                            },
                         },
                         "ConditionExpression": "attribute_exists(PK)",
                     }
@@ -347,7 +365,8 @@ class _ReceiptStructureAnalysis:
                     # Check if cancellation was due to conditional check failure
                     if "ConditionalCheckFailed" in str(e):
                         raise ValueError(
-                            "Error deleting receipt structure analyses: " + str(e)
+                            "Error deleting receipt structure analyses: "
+                            + str(e)
                         ) from e
                 elif error_code == "ProvisionedThroughputExceededException":
                     raise Exception(
@@ -392,7 +411,7 @@ class _ReceiptStructureAnalysis:
             raise ValueError(
                 f"image_id must be a string, got {type(image_id).__name__}"
             )
-        
+
         try:
             assert_valid_uuid(image_id)
         except ValueError as e:
@@ -408,19 +427,21 @@ class _ReceiptStructureAnalysis:
                 },
                 "ExpressionAttributeValues": {
                     ":pk": {"S": f"IMAGE#{image_id}"},
-                    ":sk_prefix": {"S": f"RECEIPT#{receipt_id}#ANALYSIS#STRUCTURE"},
+                    ":sk_prefix": {
+                        "S": f"RECEIPT#{receipt_id}#ANALYSIS#STRUCTURE"
+                    },
                 },
                 "Limit": 1,  # We only need one result
             }
-            
+
             response = self._client.query(**query_params)
             items = response.get("Items", [])
-            
+
             if not items:
                 raise ValueError(
                     f"No ReceiptStructureAnalysis found for receipt {receipt_id} and image {image_id}"
                 )
-                
+
             return itemToReceiptStructureAnalysis(items[0])
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
@@ -479,7 +500,10 @@ class _ReceiptStructureAnalysis:
                 query_params["Limit"] = limit
             response = self._client.query(**query_params)
             structure_analyses.extend(
-                [itemToReceiptStructureAnalysis(item) for item in response["Items"]]
+                [
+                    itemToReceiptStructureAnalysis(item)
+                    for item in response["Items"]
+                ]
             )
 
             if limit is None:
@@ -541,7 +565,7 @@ class _ReceiptStructureAnalysis:
             raise ValueError(
                 f"image_id must be a string, got {type(image_id).__name__}"
             )
-        
+
         try:
             assert_valid_uuid(image_id)
         except ValueError as e:
@@ -558,23 +582,31 @@ class _ReceiptStructureAnalysis:
                 },
                 "ExpressionAttributeValues": {
                     ":g2pk": {"S": "RECEIPT"},
-                    ":g2sk_prefix": {"S": f"IMAGE#{image_id}#RECEIPT#{receipt_id}"}
+                    ":g2sk_prefix": {
+                        "S": f"IMAGE#{image_id}#RECEIPT#{receipt_id}"
+                    },
                 },
             }
-            
+
             response = self._client.query(**query_params)
             analyses = [
-                itemToReceiptStructureAnalysis(item) for item in response["Items"]
+                itemToReceiptStructureAnalysis(item)
+                for item in response["Items"]
             ]
-            
+
             # Continue querying if there are more results
             while "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                query_params["ExclusiveStartKey"] = response[
+                    "LastEvaluatedKey"
+                ]
                 response = self._client.query(**query_params)
                 analyses.extend(
-                    [itemToReceiptStructureAnalysis(item) for item in response["Items"]]
+                    [
+                        itemToReceiptStructureAnalysis(item)
+                        for item in response["Items"]
+                    ]
                 )
-                
+
             return analyses
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")

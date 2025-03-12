@@ -24,6 +24,7 @@ from receipt_label.core.labeler import ReceiptLabeler, LabelingResult
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+
 @pytest.fixture
 def receipt_words():
     """Create sample receipt words."""
@@ -44,6 +45,7 @@ def receipt_words():
         ),
     ]
 
+
 @pytest.fixture
 def receipt_lines(receipt_words):
     """Create sample receipt lines."""
@@ -58,9 +60,10 @@ def receipt_lines(receipt_words):
             bottom_right={"x": 260, "y": 320},
             bottom_left={"x": 100, "y": 320},
             angle_degrees=0.0,
-            angle_radians=0.0
+            angle_radians=0.0,
         ),
     ]
+
 
 @pytest.fixture
 def receipt(receipt_words, receipt_lines):
@@ -70,8 +73,13 @@ def receipt(receipt_words, receipt_lines):
         image_id="test-image-001",
         words=receipt_words,
         lines=receipt_lines,
-        metadata={"merchant_name": "Test Store", "date": "2023-01-01", "time": "12:00:00"},
+        metadata={
+            "merchant_name": "Test Store",
+            "date": "2023-01-01",
+            "time": "12:00:00",
+        },
     )
+
 
 @pytest.fixture
 def mock_structure_analysis():
@@ -86,7 +94,7 @@ def mock_structure_analysis():
                 "line_ids": [],
                 "spatial_patterns": ["Left-aligned text"],
                 "content_patterns": ["Store name pattern"],
-                "reasoning": "This section contains the store header information."
+                "reasoning": "This section contains the store header information.",
             },
             {
                 "name": "total",
@@ -96,14 +104,15 @@ def mock_structure_analysis():
                 "line_ids": [1],
                 "spatial_patterns": ["Right-aligned text"],
                 "content_patterns": ["Total amount pattern"],
-                "reasoning": "This section contains the total amount."
+                "reasoning": "This section contains the total amount.",
             },
         ],
         "overall_reasoning": "The receipt consists of a simple header and total section.",
         "metadata": {
             "analysis_reasoning": "The receipt consists of a simple header and total section."
-        }
+        },
     }
+
 
 @pytest.fixture
 def mock_field_analysis():
@@ -115,8 +124,9 @@ def mock_field_analysis():
         ],
         "metadata": {
             "analysis_reasoning": "Identified the merchant name and total amount."
-        }
+        },
     }
+
 
 @pytest.fixture
 def mock_line_items():
@@ -124,13 +134,14 @@ def mock_line_items():
     return [
         LineItem(
             description="Test Item",
-            quantity=Quantity(amount=Decimal('1')),
-            price=Price(unit_price=Decimal('15.99'), extended_price=Decimal('15.99')),
+            quantity=Quantity(amount=Decimal("1")),
+            price=Price(unit_price=Decimal("15.99"), extended_price=Decimal("15.99")),
             reasoning="Single test item",
             line_ids=[1],
-            metadata={}
+            metadata={},
         )
     ]
+
 
 @pytest.fixture
 def mock_line_item_analysis(mock_line_items):
@@ -138,35 +149,48 @@ def mock_line_item_analysis(mock_line_items):
     return LineItemAnalysis(
         items=mock_line_items,
         total_found=1,
-        subtotal=Decimal('15.99'),
-        tax=Decimal('0'),
-        total=Decimal('15.99'),
+        subtotal=Decimal("15.99"),
+        tax=Decimal("0"),
+        total=Decimal("15.99"),
         discrepancies=[],
-        reasoning="Found a single item with price matching the total."
+        reasoning="Found a single item with price matching the total.",
     )
+
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-@patch('receipt_label.processors.receipt_analyzer.ReceiptAnalyzer.analyze_structure')
-@patch('receipt_label.processors.receipt_analyzer.ReceiptAnalyzer.label_fields')
-@patch('receipt_label.processors.line_item_processor.LineItemProcessor.analyze_line_items')
-@patch('receipt_label.data.places_api.PlacesAPI')
-@patch('receipt_dynamo.data.dynamo_client.DynamoClient')
-@patch('receipt_label.core.labeler.ReceiptLabeler.label_receipt')
-async def test_labeling_result_with_base_classes(mock_label_receipt, mock_dynamo_client, mock_places_api, 
-                                               mock_analyze_line_items, mock_label_fields, mock_analyze_structure,
-                                               receipt, receipt_words, receipt_lines, mock_structure_analysis, 
-                                               mock_field_analysis, mock_line_item_analysis):
+@patch("receipt_label.processors.receipt_analyzer.ReceiptAnalyzer.analyze_structure")
+@patch("receipt_label.processors.receipt_analyzer.ReceiptAnalyzer.label_fields")
+@patch(
+    "receipt_label.processors.line_item_processor.LineItemProcessor.analyze_line_items"
+)
+@patch("receipt_label.data.places_api.PlacesAPI")
+@patch("receipt_dynamo.data.dynamo_client.DynamoClient")
+@patch("receipt_label.core.labeler.ReceiptLabeler.label_receipt")
+async def test_labeling_result_with_base_classes(
+    mock_label_receipt,
+    mock_dynamo_client,
+    mock_places_api,
+    mock_analyze_line_items,
+    mock_label_fields,
+    mock_analyze_structure,
+    receipt,
+    receipt_words,
+    receipt_lines,
+    mock_structure_analysis,
+    mock_field_analysis,
+    mock_line_item_analysis,
+):
     """Test that LabelingResult correctly uses our base classes."""
     # Set up mocks
     structure_analysis = StructureAnalysis.from_gpt_response(mock_structure_analysis)
     mock_analyze_structure.return_value = structure_analysis
-    
+
     field_analysis = LabelAnalysis.from_gpt_response(mock_field_analysis)
     mock_label_fields.return_value = field_analysis
-    
+
     mock_analyze_line_items.return_value = mock_line_item_analysis
-    
+
     # Create a mock result
     result = LabelingResult(
         receipt_id=receipt.receipt_id,
@@ -175,25 +199,26 @@ async def test_labeling_result_with_base_classes(mock_label_receipt, mock_dynamo
         line_items=[mock_line_item_analysis],
         validation_results=ValidationAnalysis(
             overall_reasoning="No discrepancies found"
-        )
+        ),
     )
-    
+
     # Set up the mock to return our result
     mock_label_receipt.return_value = result
-    
+
     # Create labeler
     labeler = ReceiptLabeler()
-    
+
     # Assert labeling result contains our base classes
     assert isinstance(result, LabelingResult)
     assert isinstance(result.structure_analysis, StructureAnalysis)
     assert isinstance(result.field_analysis, LabelAnalysis)
     assert len(result.line_items) == 1
     assert isinstance(result.validation_results, ValidationAnalysis)
-    
+
     # Verify validation results
     assert result.validation_results.overall_reasoning == "No discrepancies found"
 
+
 # Run the test directly when this file is executed
 if __name__ == "__main__":
-    pytest.main(["-xvs", __file__]) 
+    pytest.main(["-xvs", __file__])

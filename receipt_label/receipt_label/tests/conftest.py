@@ -3,6 +3,7 @@ import boto3
 from moto import mock_aws
 from receipt_label.data.places_api import PlacesAPI, BatchPlacesProcessor
 
+
 @pytest.fixture
 def dynamodb_table():
     """
@@ -60,9 +61,7 @@ def dynamodb_table():
                 },
                 {
                     "IndexName": "GSITYPE",
-                    "KeySchema": [
-                        {"AttributeName": "TYPE", "KeyType": "HASH"}
-                    ],
+                    "KeySchema": [{"AttributeName": "TYPE", "KeyType": "HASH"}],
                     "Projection": {"ProjectionType": "ALL"},
                     "ProvisionedThroughput": {
                         "ReadCapacityUnits": 5,
@@ -73,11 +72,10 @@ def dynamodb_table():
         )
 
         # Wait for the table to be created
-        dynamodb.meta.client.get_waiter("table_exists").wait(
-            TableName=table_name
-        )
+        dynamodb.meta.client.get_waiter("table_exists").wait(TableName=table_name)
 
         yield table_name
+
 
 @pytest.fixture
 def places_api(dynamodb_table):
@@ -86,9 +84,10 @@ def places_api(dynamodb_table):
     """
     return PlacesAPI("test_api_key", dynamodb_table)
 
+
 @pytest.fixture
 def batch_processor(dynamodb_table):
     """
     Creates a BatchPlacesProcessor instance with a mock DynamoDB table.
     """
-    return BatchPlacesProcessor("test_api_key", dynamodb_table) 
+    return BatchPlacesProcessor("test_api_key", dynamodb_table)

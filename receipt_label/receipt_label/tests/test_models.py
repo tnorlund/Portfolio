@@ -12,6 +12,7 @@ from receipt_label.models.receipt import (
 from receipt_dynamo.entities.receipt_word import ReceiptWord as DynamoReceiptWord
 from receipt_dynamo.entities.receipt_line import ReceiptLine as DynamoReceiptLine
 
+
 # Test data fixtures
 @pytest.fixture
 def sample_word_data() -> Dict:
@@ -25,8 +26,9 @@ def sample_word_data() -> Dict:
         "bounding_box": {"x": 0, "y": 0, "width": 100, "height": 20},
         "font_size": 12.0,
         "font_weight": "normal",
-        "font_style": "normal"
+        "font_style": "normal",
     }
+
 
 @pytest.fixture
 def sample_line_data() -> Dict:
@@ -41,8 +43,9 @@ def sample_line_data() -> Dict:
         "bottom_right": {"x": 200, "y": 50},
         "bottom_left": {"x": 0, "y": 50},
         "angle_degrees": 0.0,
-        "angle_radians": 0.0
+        "angle_radians": 0.0,
     }
+
 
 @pytest.fixture
 def sample_section_data() -> Dict:
@@ -55,11 +58,14 @@ def sample_section_data() -> Dict:
         "content_patterns": ["date_format"],
         "start_line": 1,
         "end_line": 1,
-        "metadata": {"key": "value"}
+        "metadata": {"key": "value"},
     }
 
+
 @pytest.fixture
-def sample_receipt_data(sample_word_data: Dict, sample_line_data: Dict, sample_section_data: Dict) -> Dict:
+def sample_receipt_data(
+    sample_word_data: Dict, sample_line_data: Dict, sample_section_data: Dict
+) -> Dict:
     """Sample data for a Receipt."""
     return {
         "receipt_id": "123",
@@ -69,8 +75,9 @@ def sample_receipt_data(sample_word_data: Dict, sample_line_data: Dict, sample_s
         "sections": [sample_section_data],
         "metadata": {"store": "Test Store"},
         "created_at": datetime.now(),
-        "updated_at": datetime.now()
+        "updated_at": datetime.now(),
     }
+
 
 @pytest.fixture
 def sample_dynamo_receipt_data() -> Dict:
@@ -83,8 +90,9 @@ def sample_dynamo_receipt_data() -> Dict:
         "bottom_left": {"x": 0, "y": 2000},
         "bottom_right": {"x": 1000, "y": 2000},
         "top_left": {"x": 0, "y": 0},
-        "top_right": {"x": 1000, "y": 0}
+        "top_right": {"x": 1000, "y": 0},
     }
+
 
 @pytest.fixture
 def sample_dynamo_word_data() -> Dict:
@@ -99,8 +107,9 @@ def sample_dynamo_word_data() -> Dict:
         "top_right": {"x": 100, "y": 0},
         "top_left": {"x": 0, "y": 0},
         "bottom_right": {"x": 100, "y": 20},
-        "bottom_left": {"x": 0, "y": 20}
+        "bottom_left": {"x": 0, "y": 20},
     }
+
 
 @pytest.fixture
 def sample_dynamo_line_data() -> Dict:
@@ -113,8 +122,9 @@ def sample_dynamo_line_data() -> Dict:
         "top_right": {"x": 200, "y": 0},
         "top_left": {"x": 0, "y": 0},
         "bottom_right": {"x": 200, "y": 50},
-        "bottom_left": {"x": 0, "y": 50}
+        "bottom_left": {"x": 0, "y": 50},
     }
+
 
 # ReceiptWord Tests
 @pytest.mark.unit
@@ -149,7 +159,7 @@ class TestReceiptWord:
             bottom_left={"x": 0, "y": 20},
             angle_degrees=0.0,
             angle_radians=0.0,
-            extracted_data={"field": "test_field"}
+            extracted_data={"field": "test_field"},
         )
         word = ReceiptWord.from_dynamo(dynamo_word)
         assert word.text == "Sample"
@@ -169,7 +179,7 @@ class TestReceiptWord:
             bounding_box=sample_dynamo_word_data["bounding_box"],
             font_size=None,
             font_weight=None,
-            font_style=None
+            font_style=None,
         )
         assert word.text == "Sample"
         assert word.line_id == 1
@@ -189,13 +199,14 @@ class TestReceiptWord:
             font_weight="bold",
             font_style="italic",
             extracted_data={"field": "test_field"},
-            bounding_box={"x": 0, "y": 0, "width": 100, "height": 20}
+            bounding_box={"x": 0, "y": 0, "width": 100, "height": 20},
         )
         image_id = str(uuid.uuid4())
         dynamo_word = word.to_dynamo(receipt_id=123, image_id=image_id)
         assert dynamo_word.extracted_data["font_size"] == 12.0
         assert dynamo_word.extracted_data["font_weight"] == "bold"
         assert dynamo_word.extracted_data["font_style"] == "italic"
+
 
 # ReceiptLine Tests
 @pytest.mark.unit
@@ -227,7 +238,7 @@ class TestReceiptLine:
             bottom_right={"x": 200, "y": 50},
             bottom_left={"x": 0, "y": 50},
             angle_degrees=0.0,
-            angle_radians=0.0
+            angle_radians=0.0,
         )
         line = ReceiptLine.from_dynamo(dynamo_line)
         assert line.text == "Sample line text"
@@ -245,6 +256,7 @@ class TestReceiptLine:
         assert dynamo_line.text == "Sample line text"
         assert dynamo_line.confidence == 0.95
 
+
 # ReceiptSection Tests
 @pytest.mark.unit
 class TestReceiptSection:
@@ -260,6 +272,7 @@ class TestReceiptSection:
         assert section.end_line == 1
         assert section.metadata == {"key": "value"}
 
+
 # Receipt Tests
 @pytest.mark.unit
 class TestReceipt:
@@ -273,7 +286,7 @@ class TestReceipt:
             sections=[ReceiptSection(**s) for s in sample_receipt_data["sections"]],
             metadata=sample_receipt_data["metadata"],
             created_at=sample_receipt_data["created_at"],
-            updated_at=sample_receipt_data["updated_at"]
+            updated_at=sample_receipt_data["updated_at"],
         )
         assert receipt.receipt_id == "123"
         assert receipt.image_id == "test-image-id"
@@ -299,7 +312,7 @@ class TestReceipt:
             bottom_left={"x": 0, "y": 20},
             angle_degrees=0.0,
             angle_radians=0.0,
-            extracted_data={"field": "test_field"}
+            extracted_data={"field": "test_field"},
         )
         dynamo_line = DynamoReceiptLine(
             receipt_id=123,
@@ -313,7 +326,7 @@ class TestReceipt:
             bottom_right={"x": 200, "y": 50},
             bottom_left={"x": 0, "y": 50},
             angle_degrees=0.0,
-            angle_radians=0.0
+            angle_radians=0.0,
         )
         receipt = Receipt.from_dynamo("123", image_id, [dynamo_word], [dynamo_line])
         assert receipt.receipt_id == "123"
@@ -321,34 +334,43 @@ class TestReceipt:
         assert len(receipt.words) == 1
         assert len(receipt.lines) == 1
 
-    def test_receipt_from_dynamo_dict(self, sample_dynamo_receipt_data: Dict, sample_dynamo_word_data: Dict, sample_dynamo_line_data: Dict):
+    def test_receipt_from_dynamo_dict(
+        self,
+        sample_dynamo_receipt_data: Dict,
+        sample_dynamo_word_data: Dict,
+        sample_dynamo_line_data: Dict,
+    ):
         """Test creating a Receipt from raw DynamoDB data (as returned by getReceiptDetails)."""
         receipt = Receipt(
             receipt_id=str(sample_dynamo_receipt_data["receipt_id"]),
             image_id=sample_dynamo_receipt_data["image_id"],
-            words=[ReceiptWord(
-                text=sample_dynamo_word_data["text"],
-                line_id=sample_dynamo_word_data["line_id"],
-                word_id=sample_dynamo_word_data["word_id"],
-                confidence=sample_dynamo_word_data["confidence"],
-                extracted_data=sample_dynamo_word_data.get("extracted_data"),
-                bounding_box=sample_dynamo_word_data["bounding_box"],
-                font_size=None,
-                font_weight=None,
-                font_style=None
-            )],
-            lines=[ReceiptLine(
-                line_id=sample_dynamo_line_data["line_id"],
-                text=sample_dynamo_line_data["text"],
-                confidence=sample_dynamo_line_data["confidence"],
-                bounding_box=sample_dynamo_line_data["bounding_box"],
-                top_right=sample_dynamo_line_data["top_right"],
-                top_left=sample_dynamo_line_data["top_left"],
-                bottom_right=sample_dynamo_line_data["bottom_right"],
-                bottom_left=sample_dynamo_line_data["bottom_left"],
-                angle_degrees=0.0,
-                angle_radians=0.0
-            )]
+            words=[
+                ReceiptWord(
+                    text=sample_dynamo_word_data["text"],
+                    line_id=sample_dynamo_word_data["line_id"],
+                    word_id=sample_dynamo_word_data["word_id"],
+                    confidence=sample_dynamo_word_data["confidence"],
+                    extracted_data=sample_dynamo_word_data.get("extracted_data"),
+                    bounding_box=sample_dynamo_word_data["bounding_box"],
+                    font_size=None,
+                    font_weight=None,
+                    font_style=None,
+                )
+            ],
+            lines=[
+                ReceiptLine(
+                    line_id=sample_dynamo_line_data["line_id"],
+                    text=sample_dynamo_line_data["text"],
+                    confidence=sample_dynamo_line_data["confidence"],
+                    bounding_box=sample_dynamo_line_data["bounding_box"],
+                    top_right=sample_dynamo_line_data["top_right"],
+                    top_left=sample_dynamo_line_data["top_left"],
+                    bottom_right=sample_dynamo_line_data["bottom_right"],
+                    bottom_left=sample_dynamo_line_data["bottom_left"],
+                    angle_degrees=0.0,
+                    angle_radians=0.0,
+                )
+            ],
         )
         assert receipt.receipt_id == str(sample_dynamo_receipt_data["receipt_id"])
         assert receipt.image_id == sample_dynamo_receipt_data["image_id"]
@@ -365,7 +387,7 @@ class TestReceipt:
             sections=[ReceiptSection(**s) for s in sample_receipt_data["sections"]],
             metadata=sample_receipt_data["metadata"],
             created_at=sample_receipt_data["created_at"],
-            updated_at=sample_receipt_data["updated_at"]
+            updated_at=sample_receipt_data["updated_at"],
         )
         words = receipt.get_words_by_line(1)
         assert len(words) == 1
@@ -381,7 +403,7 @@ class TestReceipt:
             sections=[ReceiptSection(**s) for s in sample_receipt_data["sections"]],
             metadata=sample_receipt_data["metadata"],
             created_at=sample_receipt_data["created_at"],
-            updated_at=sample_receipt_data["updated_at"]
+            updated_at=sample_receipt_data["updated_at"],
         )
         line = receipt.get_line_by_id(1)
         assert line is not None
@@ -397,7 +419,7 @@ class TestReceipt:
             sections=[ReceiptSection(**s) for s in sample_receipt_data["sections"]],
             metadata=sample_receipt_data["metadata"],
             created_at=sample_receipt_data["created_at"],
-            updated_at=sample_receipt_data["updated_at"]
+            updated_at=sample_receipt_data["updated_at"],
         )
         section = receipt.get_section_by_name("header")
         assert section is not None
@@ -413,7 +435,7 @@ class TestReceipt:
             sections=[ReceiptSection(**s) for s in sample_receipt_data["sections"]],
             metadata=sample_receipt_data["metadata"],
             created_at=sample_receipt_data["created_at"],
-            updated_at=sample_receipt_data["updated_at"]
+            updated_at=sample_receipt_data["updated_at"],
         )
         section = receipt.sections[0]
         words = receipt.get_section_words(section)
@@ -430,7 +452,7 @@ class TestReceipt:
             sections=[ReceiptSection(**s) for s in sample_receipt_data["sections"]],
             metadata=sample_receipt_data["metadata"],
             created_at=sample_receipt_data["created_at"],
-            updated_at=sample_receipt_data["updated_at"]
+            updated_at=sample_receipt_data["updated_at"],
         )
         section = receipt.sections[0]
         lines = receipt.get_section_lines(section)
@@ -447,7 +469,7 @@ class TestReceipt:
             sections=[ReceiptSection(**s) for s in sample_receipt_data["sections"]],
             metadata=sample_receipt_data["metadata"],
             created_at=sample_receipt_data["created_at"],
-            updated_at=sample_receipt_data["updated_at"]
+            updated_at=sample_receipt_data["updated_at"],
         )
         words = receipt.get_field_words("test_field")
         assert len(words) == 1
@@ -463,7 +485,7 @@ class TestReceipt:
             sections=[ReceiptSection(**s) for s in sample_receipt_data["sections"]],
             metadata=sample_receipt_data["metadata"],
             created_at=sample_receipt_data["created_at"],
-            updated_at=sample_receipt_data["updated_at"]
+            updated_at=sample_receipt_data["updated_at"],
         )
         receipt_dict = receipt.to_dict()
         assert receipt_dict["receipt_id"] == "123"
@@ -482,7 +504,7 @@ class TestReceipt:
             sections=[ReceiptSection(**s) for s in sample_receipt_data["sections"]],
             metadata=sample_receipt_data["metadata"],
             created_at=sample_receipt_data["created_at"],
-            updated_at=sample_receipt_data["updated_at"]
+            updated_at=sample_receipt_data["updated_at"],
         )
         line = receipt.get_line_by_id(999)
         assert line is None
@@ -497,7 +519,7 @@ class TestReceipt:
             sections=[ReceiptSection(**s) for s in sample_receipt_data["sections"]],
             metadata=sample_receipt_data["metadata"],
             created_at=sample_receipt_data["created_at"],
-            updated_at=sample_receipt_data["updated_at"]
+            updated_at=sample_receipt_data["updated_at"],
         )
         section = receipt.get_section_by_name("nonexistent")
         assert section is None
@@ -512,7 +534,7 @@ class TestReceipt:
             sections=[ReceiptSection(**s) for s in sample_receipt_data["sections"]],
             metadata=sample_receipt_data["metadata"],
             created_at=sample_receipt_data["created_at"],
-            updated_at=sample_receipt_data["updated_at"]
+            updated_at=sample_receipt_data["updated_at"],
         )
         words = receipt.get_field_words("nonexistent")
         assert len(words) == 0
@@ -524,7 +546,7 @@ class TestReceipt:
             image_id="test-image-id",
             words=[],
             lines=[],
-            sections=None
+            sections=None,
         )
         assert receipt.get_section_by_name("header") is None
 
@@ -537,8 +559,8 @@ class TestReceipt:
             "words": [],
             "lines": [],
             "created_at": now.isoformat(),
-            "updated_at": now.isoformat()
+            "updated_at": now.isoformat(),
         }
         receipt = Receipt.from_dict(data)
         assert receipt.created_at == now
-        assert receipt.updated_at == now 
+        assert receipt.updated_at == now

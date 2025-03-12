@@ -16,13 +16,17 @@ import logging
 logging.basicConfig(level=logging.INFO)
 
 # Set module-specific log levels
-logging.getLogger('receipt_label.receipt_label.processors.receipt_analyzer').setLevel(logging.WARNING)
-logging.getLogger('receipt_label.receipt_label.core.validator').setLevel(logging.WARNING)
-logging.getLogger('botocore').setLevel(logging.WARNING)
-logging.getLogger('urllib3').setLevel(logging.WARNING)
+logging.getLogger("receipt_label.receipt_label.processors.receipt_analyzer").setLevel(
+    logging.WARNING
+)
+logging.getLogger("receipt_label.receipt_label.core.validator").setLevel(
+    logging.WARNING
+)
+logging.getLogger("botocore").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 # Only show important info logs from main module
-logging.getLogger('__main__').setLevel(logging.INFO)
+logging.getLogger("__main__").setLevel(logging.INFO)
 
 __all__ = [
     "ReceiptLabeler",

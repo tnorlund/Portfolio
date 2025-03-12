@@ -6,6 +6,7 @@ from receipt_label.utils.address import (
     compare_addresses,
 )
 
+
 @pytest.mark.unit
 class TestAddressUtils:
     def test_normalize_address(self):
@@ -13,14 +14,14 @@ class TestAddressUtils:
         # Test basic normalization
         assert normalize_address("123 Main St.") == "123 main street"
         assert normalize_address("456 W. Oak Ave") == "456 west oak avenue"
-        
+
         # Test abbreviation handling
         assert normalize_address("789 N. Blvd") == "789 north boulevard"
         assert normalize_address("321 SE Circle Dr.") == "321 southeast circle drive"
-        
+
         # Test whitespace handling
         assert normalize_address("  100   Pine    St  ") == "100 pine street"
-        
+
         # Test empty input
         assert normalize_address("") == ""
         assert normalize_address(None) == ""
@@ -65,7 +66,7 @@ class TestAddressUtils:
             "city": "Boston",
             "state": "MA",
             "zip_code": "02108",
-            "country": "USA"
+            "country": "USA",
         }
         expected = "123 Main Street Suite 4, Boston, MA 02108, USA"
         assert format_address(components) == expected
@@ -76,7 +77,7 @@ class TestAddressUtils:
             "street_name": "Oak",
             "street_type": "Ave",
             "city": "Chicago",
-            "state": "IL"
+            "state": "IL",
         }
         assert format_address(minimal) == "456 Oak Ave, Chicago, IL"
 
@@ -101,4 +102,4 @@ class TestAddressUtils:
         # Test empty addresses
         assert compare_addresses("", "") == 0.0
         assert compare_addresses(None, None) == 0.0
-        assert compare_addresses(addr1, "") == 0.0 
+        assert compare_addresses(addr1, "") == 0.0

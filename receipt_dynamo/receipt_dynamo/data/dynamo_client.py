@@ -24,7 +24,12 @@ from receipt_dynamo.data._word_tag import _WordTag
 from receipt_dynamo.data._receipt_word_label import _ReceiptWordLabel
 from receipt_dynamo.data._receipt_field import _ReceiptField
 from receipt_dynamo.data._receipt_label_analysis import _ReceiptLabelAnalysis
-from receipt_dynamo.data._receipt_structure_analysis import _ReceiptStructureAnalysis
+from receipt_dynamo.data._receipt_structure_analysis import (
+    _ReceiptStructureAnalysis,
+)
+from receipt_dynamo.data._receipt_line_item_analysis import (
+    _ReceiptLineItemAnalysis,
+)
 
 
 class DynamoClient(
@@ -52,6 +57,7 @@ class DynamoClient(
     _ReceiptField,
     _ReceiptLabelAnalysis,
     _ReceiptStructureAnalysis,
+    _ReceiptLineItemAnalysis,
 ):
     """A class used to represent a DynamoDB client."""
 

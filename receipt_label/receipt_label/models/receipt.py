@@ -90,6 +90,7 @@ class ReceiptWord:
 @dataclass
 class ReceiptLine:
     """Represents a single line in a receipt."""
+
     line_id: int
     text: str
     confidence: float
@@ -121,7 +122,7 @@ class ReceiptLine:
             bottom_right=line.bottom_right,
             bottom_left=line.bottom_left,
             angle_degrees=line.angle_degrees,
-            angle_radians=line.angle_radians
+            angle_radians=line.angle_radians,
         )
 
     def to_dynamo(self, receipt_id: int, image_id: str) -> DynamoReceiptLine:
@@ -146,7 +147,7 @@ class ReceiptLine:
             bottom_left=self.bottom_left,
             confidence=self.confidence,
             angle_degrees=self.angle_degrees,
-            angle_radians=self.angle_radians
+            angle_radians=self.angle_radians,
         )
 
 
@@ -179,7 +180,11 @@ class Receipt:
 
     @classmethod
     def from_dynamo(
-        cls, receipt_id: str, image_id: str, words: List[DynamoReceiptWord], lines: List[DynamoReceiptLine] = None
+        cls,
+        receipt_id: str,
+        image_id: str,
+        words: List[DynamoReceiptWord],
+        lines: List[DynamoReceiptLine] = None,
     ) -> "Receipt":
         """Create a Receipt instance from DynamoDB data.
 
@@ -268,7 +273,7 @@ class Receipt:
                     "bottom_right": line.bottom_right,
                     "bottom_left": line.bottom_left,
                     "angle_degrees": line.angle_degrees,
-                    "angle_radians": line.angle_radians
+                    "angle_radians": line.angle_radians,
                 }
                 for line in self.lines
             ],

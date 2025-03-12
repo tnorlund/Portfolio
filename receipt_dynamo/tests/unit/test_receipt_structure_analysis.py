@@ -76,25 +76,58 @@ def example_dynamo_item(example_receipt_section):
         "receipt_id": {"N": "123"},
         "image_id": {"S": "abc123"},
         "entity_type": {"S": "STRUCTURE_ANALYSIS"},
-        "sections": {"L": [{"M": {
-            "name": {"S": "header"},
-            "line_ids": {"L": [{"N": "1"}, {"N": "2"}, {"N": "3"}]},
-            "spatial_patterns": {"L": [{"M": {
-                "pattern_type": {"S": "alignment"},
-                "description": {"S": "left-aligned text"},
-                "metadata": {"M": {"confidence": {"S": "0.95"}}}
-            }}]},
-            "content_patterns": {"L": [{"M": {
-                "pattern_type": {"S": "format"},
-                "description": {"S": "price pattern"},
-                "examples": {"L": [{"S": "$10.99"}, {"S": "20.50"}]},
-                "metadata": {"M": {"reliability": {"S": "0.9"}}}
-            }}]},
-            "reasoning": {"S": "This section has typical header formatting"},
-            "start_line": {"N": "1"},
-            "end_line": {"N": "3"},
-            "metadata": {"M": {"confidence": {"S": "0.85"}}}
-        }}]},
+        "sections": {
+            "L": [
+                {
+                    "M": {
+                        "name": {"S": "header"},
+                        "line_ids": {
+                            "L": [{"N": "1"}, {"N": "2"}, {"N": "3"}]
+                        },
+                        "spatial_patterns": {
+                            "L": [
+                                {
+                                    "M": {
+                                        "pattern_type": {"S": "alignment"},
+                                        "description": {
+                                            "S": "left-aligned text"
+                                        },
+                                        "metadata": {
+                                            "M": {"confidence": {"S": "0.95"}}
+                                        },
+                                    }
+                                }
+                            ]
+                        },
+                        "content_patterns": {
+                            "L": [
+                                {
+                                    "M": {
+                                        "pattern_type": {"S": "format"},
+                                        "description": {"S": "price pattern"},
+                                        "examples": {
+                                            "L": [
+                                                {"S": "$10.99"},
+                                                {"S": "20.50"},
+                                            ]
+                                        },
+                                        "metadata": {
+                                            "M": {"reliability": {"S": "0.9"}}
+                                        },
+                                    }
+                                }
+                            ]
+                        },
+                        "reasoning": {
+                            "S": "This section has typical header formatting"
+                        },
+                        "start_line": {"N": "1"},
+                        "end_line": {"N": "3"},
+                        "metadata": {"M": {"confidence": {"S": "0.85"}}},
+                    }
+                }
+            ]
+        },
         "overall_reasoning": {"S": "Clear structure with distinct sections"},
         "version": {"S": "1.0.0"},
         "metadata": {"M": {"source": {"S": "test"}}},
@@ -102,15 +135,21 @@ def example_dynamo_item(example_receipt_section):
         "timestamp_updated": {"S": "2023-01-02T12:00:00"},
         "processing_metrics": {"M": {"time_ms": {"N": "150"}}},
         "source_info": {"M": {"model": {"S": "test_model"}}},
-        "processing_history": {"L": [{"M": {
-            "event": {"S": "creation"},
-            "timestamp": {"S": "2023-01-01T12:00:00"},
-            "details": {"S": "Initial creation"}
-        }}]},
+        "processing_history": {
+            "L": [
+                {
+                    "M": {
+                        "event": {"S": "creation"},
+                        "timestamp": {"S": "2023-01-01T12:00:00"},
+                        "details": {"S": "Initial creation"},
+                    }
+                }
+            ]
+        },
         "GSI1PK": {"S": "ANALYSIS_TYPE"},
         "GSI1SK": {"S": "STRUCTURE#2023-01-01T12:00:00"},
         "GSI2PK": {"S": "RECEIPT"},
-        "GSI2SK": {"S": "IMAGE#abc123#RECEIPT#123"}
+        "GSI2SK": {"S": "IMAGE#abc123#RECEIPT#123"},
     }
 
 
