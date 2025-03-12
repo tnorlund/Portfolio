@@ -172,21 +172,25 @@ async def process_receipt(labeler, receipt_obj, receipt_words, receipt_lines):
     # Check if line_item_analysis is available
     if hasattr(analysis_result, "line_item_analysis"):
         logger.info("Line item analysis is available")
-        
+
         # Only log values that were explicitly labeled, not inferred ones
         found_values = {"subtotal": None, "tax": None, "total": None}
-        
+
         # Look for explicitly labeled financial values in the field analysis
-        if hasattr(analysis_result, "field_analysis") and hasattr(analysis_result.field_analysis, "labels"):
+        if hasattr(analysis_result, "field_analysis") and hasattr(
+            analysis_result.field_analysis, "labels"
+        ):
             for label in analysis_result.field_analysis.labels:
                 if label.label in ["SUBTOTAL", "Subtotal", "subtotal"]:
                     try:
                         text_value = label.text.replace("$", "").replace(",", "")
                         found_values["subtotal"] = float(text_value)
-                        logger.info(f"Subtotal (from labels): {found_values['subtotal']}")
+                        logger.info(
+                            f"Subtotal (from labels): {found_values['subtotal']}"
+                        )
                     except (ValueError, TypeError):
                         pass
-                        
+
                 elif label.label in ["TAX", "Tax", "tax"]:
                     try:
                         text_value = label.text.replace("$", "").replace(",", "")
@@ -194,7 +198,7 @@ async def process_receipt(labeler, receipt_obj, receipt_words, receipt_lines):
                         logger.info(f"Tax (from labels): {found_values['tax']}")
                     except (ValueError, TypeError):
                         pass
-                        
+
                 elif label.label in ["TOTAL", "Total", "total"]:
                     try:
                         text_value = label.text.replace("$", "").replace(",", "")
@@ -202,14 +206,20 @@ async def process_receipt(labeler, receipt_obj, receipt_words, receipt_lines):
                         logger.info(f"Total (from labels): {found_values['total']}")
                     except (ValueError, TypeError):
                         pass
-        
+
         # Only log labeled values, not inferred ones
         if hasattr(analysis_result.line_item_analysis, "subtotal"):
-            logger.info(f"Subtotal (possibly inferred): {analysis_result.line_item_analysis.subtotal}")
+            logger.info(
+                f"Subtotal (possibly inferred): {analysis_result.line_item_analysis.subtotal}"
+            )
         if hasattr(analysis_result.line_item_analysis, "tax"):
-            logger.info(f"Tax (possibly inferred): {analysis_result.line_item_analysis.tax}")
+            logger.info(
+                f"Tax (possibly inferred): {analysis_result.line_item_analysis.tax}"
+            )
         if hasattr(analysis_result.line_item_analysis, "total"):
-            logger.info(f"Total (possibly inferred): {analysis_result.line_item_analysis.total}")
+            logger.info(
+                f"Total (possibly inferred): {analysis_result.line_item_analysis.total}"
+            )
 
     # Check if validation_analysis is available
     if (
@@ -609,7 +619,8 @@ async def main():
 
                         # Save validation details to a file for this receipt
                         validation_file = (
-                            output_dir / f"validation_details_{receipt.receipt_id}.json"
+                            output_dir
+                            / f"validation_details_{receipt.image_id}_{receipt.receipt_id}.json"
                         )
                         with open(validation_file, "w") as f:
                             json.dump(validation_details, f, indent=2)

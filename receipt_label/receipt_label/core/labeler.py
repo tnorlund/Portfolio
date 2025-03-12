@@ -98,14 +98,14 @@ class ReceiptLabeler:
         validation_config: Optional[Dict] = None,
     ):
         """Initialize the labeler with optional API keys and validation configuration.
-        
+
         Args:
             places_api_key: Google Places API key for business validation
             gpt_api_key: OpenAI API key for GPT-based processing
             dynamodb_table_name: DynamoDB table name for caching
             validation_level: Level of validation to perform ("basic", "strict", or "none")
                 - "basic": Standard validation requiring total, date, and business name
-                - "strict": Stricter validation requiring all fields to match exactly 
+                - "strict": Stricter validation requiring all fields to match exactly
                 - "none": No validation is performed
             validation_config: [Deprecated] Use validation_level instead.
                 Configuration options will be automatically set based on the validation_level.
@@ -116,15 +116,19 @@ class ReceiptLabeler:
         )
         self.receipt_analyzer = ReceiptAnalyzer(api_key=gpt_api_key)
         self.line_item_processor = LineItemProcessor(gpt_api_key=gpt_api_key)
-        
+
         # Set default validation config based on validation level
-        self.validation_config = self._get_validation_config_from_level(validation_level)
-        
+        self.validation_config = self._get_validation_config_from_level(
+            validation_level
+        )
+
         # For backward compatibility, allow overriding with explicit validation_config
         if validation_config:
             self.validation_config.update(validation_config)
-        
-        logger.info(f"Initialized ReceiptLabeler with validation_config: {self.validation_config}")
+
+        logger.info(
+            f"Initialized ReceiptLabeler with validation_config: {self.validation_config}"
+        )
 
     async def label_receipt(
         self,
@@ -149,7 +153,7 @@ class ReceiptLabeler:
         # Use validation config if enable_validation is not explicitly provided
         if enable_validation is None:
             enable_validation = self.validation_config["enable_validation"]
-            
+
         logger.info(f"Processing receipt {receipt.receipt_id}...")
 
         # Initialize tracking dictionaries
@@ -451,7 +455,9 @@ class ReceiptLabeler:
                             # Extract financial values
                             if label.label in ["TOTAL", "Total", "total"]:
                                 try:
-                                    text_value = label.text.replace("$", "").replace(",", "")
+                                    text_value = label.text.replace("$", "").replace(
+                                        ",", ""
+                                    )
                                     receipt_total = float(text_value)
                                 except (ValueError, TypeError):
                                     logger.warning(
@@ -460,7 +466,9 @@ class ReceiptLabeler:
                             # Check for subtotal
                             elif label.label in ["SUBTOTAL", "Subtotal", "subtotal"]:
                                 try:
-                                    text_value = label.text.replace("$", "").replace(",", "")
+                                    text_value = label.text.replace("$", "").replace(
+                                        ",", ""
+                                    )
                                     receipt_subtotal = float(text_value)
                                 except (ValueError, TypeError):
                                     logger.warning(
@@ -469,7 +477,9 @@ class ReceiptLabeler:
                             # Check for tax
                             elif label.label in ["TAX", "Tax", "tax"]:
                                 try:
-                                    text_value = label.text.replace("$", "").replace(",", "")
+                                    text_value = label.text.replace("$", "").replace(
+                                        ",", ""
+                                    )
                                     receipt_tax = float(text_value)
                                 except (ValueError, TypeError):
                                     logger.warning(
@@ -479,17 +489,25 @@ class ReceiptLabeler:
                             elif label.label in ["DATE", "Date", "date"]:
                                 receipt_date = label.text
                             # Check for business name
-                            elif label.label in ["MERCHANT", "Merchant", "merchant", "BUSINESS_NAME", "business_name"]:
+                            elif label.label in [
+                                "MERCHANT",
+                                "Merchant",
+                                "merchant",
+                                "BUSINESS_NAME",
+                                "business_name",
+                            ]:
                                 business_name = label.text
 
                     # Get values from line item analysis, only if use_inferred_values is True
-                    use_inferred = self.validation_config.get("use_inferred_values", True)
-                    
+                    use_inferred = self.validation_config.get(
+                        "use_inferred_values", True
+                    )
+
                     # For line item totals, only use inferred values if use_inferred_values is True
                     line_item_total = None
-                    line_item_subtotal = None 
+                    line_item_subtotal = None
                     line_item_tax = None
-                    
+
                     if use_inferred:
                         line_item_total = (
                             float(line_item_analysis.total)
@@ -506,11 +524,15 @@ class ReceiptLabeler:
                             if line_item_analysis.tax
                             else None
                         )
-                        
+
                         # Log that we're using inferred values
-                        logger.info("Using inferred values from line item analysis for validation")
+                        logger.info(
+                            "Using inferred values from line item analysis for validation"
+                        )
                     else:
-                        logger.info("Using only explicitly labeled values for validation (inferred values disabled)")
+                        logger.info(
+                            "Using only explicitly labeled values for validation (inferred values disabled)"
+                        )
                         # If there's no explicitly labeled receipt total, subtotal, or tax,
                         # we'll leave them as None and the validation will handle them accordingly
 
@@ -537,10 +559,16 @@ class ReceiptLabeler:
 
                     # Check total match - only if both values exist and we're using inferred values
                     # If we're not using inferred values, skip this check
-                    if receipt_total is not None and line_item_total is not None and use_inferred:
+                    if (
+                        receipt_total is not None
+                        and line_item_total is not None
+                        and use_inferred
+                    ):
                         difference = abs(receipt_total - line_item_total)
-                        allowed_difference = receipt_total * (self.validation_config["discrepancy_percentage"] / 100.0)
-                        
+                        allowed_difference = receipt_total * (
+                            self.validation_config["discrepancy_percentage"] / 100.0
+                        )
+
                         if difference > allowed_difference:
                             discrepancy_reason = (
                                 f"Receipt total ({receipt_total:.2f}) doesn't match "
@@ -548,41 +576,64 @@ class ReceiptLabeler:
                                 f"difference: {difference:.2f}"
                             )
                             # Always treat total discrepancies as warnings if configured to do so
-                            if self.validation_config["treat_total_discrepancy_as_warning"]:
+                            if self.validation_config[
+                                "treat_total_discrepancy_as_warning"
+                            ]:
                                 warnings.append(discrepancy_reason)
-                            elif self.validation_config["treat_nontotal_errors_as_warnings"]:
+                            elif self.validation_config[
+                                "treat_nontotal_errors_as_warnings"
+                            ]:
                                 warnings.append(discrepancy_reason)
                             else:
                                 discrepancies.append(discrepancy_reason)
 
                     # Check subtotal match - only if both values exist and we're using inferred values
-                    if receipt_subtotal is not None and line_item_subtotal is not None and use_inferred:
+                    if (
+                        receipt_subtotal is not None
+                        and line_item_subtotal is not None
+                        and use_inferred
+                    ):
                         difference = abs(receipt_subtotal - line_item_subtotal)
-                        allowed_difference = receipt_subtotal * (self.validation_config["discrepancy_percentage"] / 100.0)
-                        
+                        allowed_difference = receipt_subtotal * (
+                            self.validation_config["discrepancy_percentage"] / 100.0
+                        )
+
                         if difference > allowed_difference:
                             discrepancy_reason = (
                                 f"Receipt subtotal ({receipt_subtotal:.2f}) doesn't match "
                                 f"line item subtotal ({line_item_subtotal:.2f}), "
                                 f"difference: {difference:.2f}"
                             )
-                            if self.validation_config["treat_nontotal_errors_as_warnings"]:
+                            if self.validation_config[
+                                "treat_nontotal_errors_as_warnings"
+                            ]:
                                 warnings.append(discrepancy_reason)
                             else:
                                 discrepancies.append(discrepancy_reason)
 
                     # Check tax match - only if both values exist and we're using inferred values
-                    if receipt_tax is not None and line_item_tax is not None and use_inferred:
+                    if (
+                        receipt_tax is not None
+                        and line_item_tax is not None
+                        and use_inferred
+                    ):
                         difference = abs(receipt_tax - line_item_tax)
-                        allowed_difference = receipt_tax * (self.validation_config["discrepancy_percentage"] / 100.0) if receipt_tax > 0 else 0.01
-                        
+                        allowed_difference = (
+                            receipt_tax
+                            * (self.validation_config["discrepancy_percentage"] / 100.0)
+                            if receipt_tax > 0
+                            else 0.01
+                        )
+
                         if difference > allowed_difference:
                             discrepancy_reason = (
                                 f"Receipt tax ({receipt_tax:.2f}) doesn't match "
                                 f"line item tax ({line_item_tax:.2f}), "
                                 f"difference: {difference:.2f}"
                             )
-                            if self.validation_config["treat_nontotal_errors_as_warnings"]:
+                            if self.validation_config[
+                                "treat_nontotal_errors_as_warnings"
+                            ]:
                                 warnings.append(discrepancy_reason)
                             else:
                                 discrepancies.append(discrepancy_reason)
@@ -598,7 +649,7 @@ class ReceiptLabeler:
                         found_total = True
                     elif line_item_total is not None and use_inferred:
                         found_total = True
-                    
+
                     # If not using inferred values, don't try to find totals from line items
                     if not found_total and use_inferred:
                         potential_total = None
@@ -661,7 +712,10 @@ class ReceiptLabeler:
                             warnings.append(message)
 
                     # Check for business name
-                    if self.validation_config["require_business_name"] and not business_name:
+                    if (
+                        self.validation_config["require_business_name"]
+                        and not business_name
+                    ):
                         message = "Missing business name"
                         if self.validation_config["missing_business_name_error"]:
                             critical_errors.append(message)
@@ -670,39 +724,47 @@ class ReceiptLabeler:
 
                     # Check for subtotal - only if we're using inferred values or if receipt_subtotal exists
                     if (
-                        (not use_inferred and receipt_subtotal is None) or 
-                        (use_inferred and line_item_subtotal is None and receipt_subtotal is None)
+                        (not use_inferred and receipt_subtotal is None)
+                        or (
+                            use_inferred
+                            and line_item_subtotal is None
+                            and receipt_subtotal is None
+                        )
                     ) and self.validation_config["require_subtotal"]:
                         message = "Missing subtotal value"
                         if self.validation_config["missing_subtotal_warning"]:
                             warnings.append(message)
                         else:
                             discrepancies.append(message)
-                    elif (
-                        (not use_inferred and receipt_subtotal is None) or 
-                        (use_inferred and line_item_subtotal is None and receipt_subtotal is None)
+                    elif (not use_inferred and receipt_subtotal is None) or (
+                        use_inferred
+                        and line_item_subtotal is None
+                        and receipt_subtotal is None
                     ):
                         logger.info("Missing subtotal value (not required)")
 
                     # Check for tax - only if we're using inferred values or if receipt_tax exists
                     if (
-                        (not use_inferred and receipt_tax is None) or 
-                        (use_inferred and line_item_tax is None and receipt_tax is None)
+                        (not use_inferred and receipt_tax is None)
+                        or (
+                            use_inferred
+                            and line_item_tax is None
+                            and receipt_tax is None
+                        )
                     ) and self.validation_config["require_tax"]:
                         message = "Missing tax value"
                         if self.validation_config["missing_tax_warning"]:
                             warnings.append(message)
                         else:
                             discrepancies.append(message)
-                    elif (
-                        (not use_inferred and receipt_tax is None) or 
-                        (use_inferred and line_item_tax is None and receipt_tax is None)
+                    elif (not use_inferred and receipt_tax is None) or (
+                        use_inferred and line_item_tax is None and receipt_tax is None
                     ):
                         logger.info("Missing tax value (not required)")
-                    
+
                     # Create a ValidationAnalysis object
                     validation_analysis = ValidationAnalysis()
-                    
+
                     # Add critical errors to validation
                     for error in critical_errors:
                         validation_analysis.line_item_validation.add_result(
@@ -712,7 +774,7 @@ class ReceiptLabeler:
                                 reasoning=error,
                             )
                         )
-                    
+
                     # Add regular discrepancies to validation
                     for discrepancy in discrepancies:
                         validation_analysis.line_item_validation.add_result(
@@ -722,7 +784,7 @@ class ReceiptLabeler:
                                 reasoning=discrepancy,
                             )
                         )
-                        
+
                     # Add warnings to validation
                     for warning in warnings:
                         validation_analysis.line_item_validation.add_result(
@@ -732,28 +794,34 @@ class ReceiptLabeler:
                                 reasoning=warning,
                             )
                         )
-                    
+
                     # Set overall reasoning
                     if critical_errors:
                         validation_analysis.overall_reasoning = (
-                            f"Validation found {len(critical_errors)} critical errors. " + 
-                            " ".join(critical_errors)
+                            f"Validation found {len(critical_errors)} critical errors. "
+                            + " ".join(critical_errors)
                         )
                         validation_analysis.overall_status = ValidationStatus.INVALID
                     elif discrepancies:
                         validation_analysis.overall_reasoning = (
-                            f"Validation found {len(discrepancies)} discrepancies. " + 
-                            " ".join(discrepancies)
+                            f"Validation found {len(discrepancies)} discrepancies. "
+                            + " ".join(discrepancies)
                         )
-                        validation_analysis.overall_status = ValidationStatus.NEEDS_REVIEW
+                        validation_analysis.overall_status = (
+                            ValidationStatus.NEEDS_REVIEW
+                        )
                     elif warnings:
                         validation_analysis.overall_reasoning = (
-                            f"Validation found {len(warnings)} warnings. " + 
-                            " ".join(warnings)
+                            f"Validation found {len(warnings)} warnings. "
+                            + " ".join(warnings)
                         )
-                        validation_analysis.overall_status = ValidationStatus.NEEDS_REVIEW
+                        validation_analysis.overall_status = (
+                            ValidationStatus.NEEDS_REVIEW
+                        )
                     else:
-                        validation_analysis.overall_reasoning = "No issues found during validation."
+                        validation_analysis.overall_reasoning = (
+                            "No issues found during validation."
+                        )
                         validation_analysis.overall_status = ValidationStatus.VALID
 
                     logger.info(
@@ -768,7 +836,7 @@ class ReceiptLabeler:
                     logger.error(f"Error during validation: {str(e)}")
                     validation_analysis = ValidationAnalysis(
                         overall_reasoning=f"Validation failed due to error: {str(e)}",
-                        overall_status=ValidationStatus.INCOMPLETE
+                        overall_status=ValidationStatus.INCOMPLETE,
                     )
 
                     # Add the error to cross_field_consistency
@@ -909,26 +977,28 @@ class ReceiptLabeler:
         line_item_analysis: Optional[LineItemAnalysis] = None,
     ) -> Optional[ValidationAnalysis]:
         """Validate a receipt using existing analysis results.
-        
+
         Args:
             receipt: Receipt object containing metadata
             field_analysis: Existing field analysis results
             line_item_analysis: Existing line item analysis results
-            
+
         Returns:
             ValidationAnalysis object containing validation results
         """
         if not field_analysis or not line_item_analysis:
-            logger.warning("Cannot validate receipt without field and line item analysis")
+            logger.warning(
+                "Cannot validate receipt without field and line item analysis"
+            )
             return None
-            
+
         # Create a fake LabelingResult to reuse the existing validation logic
         fake_result = LabelingResult(
             receipt_id=receipt.receipt_id,
             field_analysis=field_analysis,
             line_item_analysis=line_item_analysis,
         )
-        
+
         # Generate a new result using the label_receipt method with only validation
         full_result = await self.label_receipt(
             receipt=receipt,
@@ -937,67 +1007,67 @@ class ReceiptLabeler:
             enable_validation=True,
             enable_places_api=False,
         )
-        
+
         # Return just the validation analysis
         return full_result.validation_analysis
 
     def _get_validation_config_from_level(self, level: str) -> Dict:
         """Generate a validation configuration based on the validation level.
-        
+
         Args:
             level: The validation level ("basic", "strict", or "none")
-            
+
         Returns:
             Dict containing the validation configuration
         """
         # Default to no validation if level is not recognized
         if level.lower() == "none":
             return {"enable_validation": False}
-            
+
         # Basic validation - mapped from the gpt_labeler_with_package.py file
         elif level.lower() == "basic":
             return {
                 "enable_validation": True,
-                "require_total": True,            # Missing total is an error
-                "require_subtotal": False,        # Missing subtotal is not an error
-                "require_tax": False,             # Missing tax is not an error
-                "require_date": True,             # Missing date is an error
-                "require_business_name": True,    # Missing business name is an error
+                "require_total": True,  # Missing total is an error
+                "require_subtotal": False,  # Missing subtotal is not an error
+                "require_tax": False,  # Missing tax is not an error
+                "require_date": True,  # Missing date is an error
+                "require_business_name": True,  # Missing business name is an error
                 "validation_level": "basic",
                 "allow_discrepancies": True,
-                "discrepancy_percentage": 10.0,   # Allow up to 10% discrepancy
+                "discrepancy_percentage": 10.0,  # Allow up to 10% discrepancy
                 "treat_nontotal_errors_as_warnings": True,  # Only total errors are critical
-                "treat_total_discrepancy_as_warning": True, # Total discrepancy is a warning
-                "missing_total_error": True,      # Explicitly mark missing total as error
-                "missing_subtotal_warning": True, # Make missing subtotal a warning
-                "missing_tax_warning": True,      # Make missing tax a warning 
-                "missing_date_error": True,       # Make missing date an error
-                "missing_business_name_error": True, # Make missing business name an error
-                "use_inferred_values": False      # Only use explicitly labeled values
+                "treat_total_discrepancy_as_warning": True,  # Total discrepancy is a warning
+                "missing_total_error": True,  # Explicitly mark missing total as error
+                "missing_subtotal_warning": True,  # Make missing subtotal a warning
+                "missing_tax_warning": True,  # Make missing tax a warning
+                "missing_date_error": True,  # Make missing date an error
+                "missing_business_name_error": True,  # Make missing business name an error
+                "use_inferred_values": False,  # Only use explicitly labeled values
             }
-            
+
         # Strict validation - requires all fields and exact matches
         elif level.lower() == "strict":
             return {
                 "enable_validation": True,
-                "require_total": True,            # Missing total is an error
-                "require_subtotal": True,         # Missing subtotal is an error
-                "require_tax": True,              # Missing tax is an error
-                "require_date": True,             # Missing date is an error
-                "require_business_name": True,    # Missing business name is an error
+                "require_total": True,  # Missing total is an error
+                "require_subtotal": True,  # Missing subtotal is an error
+                "require_tax": True,  # Missing tax is an error
+                "require_date": True,  # Missing date is an error
+                "require_business_name": True,  # Missing business name is an error
                 "validation_level": "strict",
-                "allow_discrepancies": False,     # No discrepancies allowed
-                "discrepancy_percentage": 0.0,    # 0% discrepancy allowed
-                "treat_nontotal_errors_as_warnings": False, # All errors are critical
-                "treat_total_discrepancy_as_warning": False, # Total discrepancy is an error
-                "missing_total_error": True,      # Missing total is an error
-                "missing_subtotal_warning": False, # Missing subtotal is an error
-                "missing_tax_warning": False,     # Missing tax is an error
-                "missing_date_error": True,       # Missing date is an error
-                "missing_business_name_error": True, # Missing business name is an error
-                "use_inferred_values": False      # Only use explicitly labeled values
+                "allow_discrepancies": False,  # No discrepancies allowed
+                "discrepancy_percentage": 0.0,  # 0% discrepancy allowed
+                "treat_nontotal_errors_as_warnings": False,  # All errors are critical
+                "treat_total_discrepancy_as_warning": False,  # Total discrepancy is an error
+                "missing_total_error": True,  # Missing total is an error
+                "missing_subtotal_warning": False,  # Missing subtotal is an error
+                "missing_tax_warning": False,  # Missing tax is an error
+                "missing_date_error": True,  # Missing date is an error
+                "missing_business_name_error": True,  # Missing business name is an error
+                "use_inferred_values": False,  # Only use explicitly labeled values
             }
-            
+
         # Default to basic validation for any other value
         else:
             return self._get_validation_config_from_level("basic")
