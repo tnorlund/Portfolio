@@ -78,3 +78,19 @@ from receipt_dynamo.entities.receipt_line_item_analysis import (
     ReceiptLineItemAnalysis,
     itemToReceiptLineItemAnalysis,
 )  # noqa: F401
+from receipt_dynamo.entities.receipt_validation_summary import (
+    ReceiptValidationSummary,
+    itemToReceiptValidationSummary,
+)  # noqa: F401
+from receipt_dynamo.entities.receipt_validation_result import (
+    ReceiptValidationResult,
+    itemToReceiptValidationResult,
+)  # noqa: F401
+from receipt_dynamo.entities.receipt_validation_category import (
+    ReceiptValidationCategory,
+    itemToReceiptValidationCategory,
+)  # noqa: F401
+from receipt_dynamo.entities.receipt_chatgpt_validation import (
+    ReceiptChatGPTValidation,
+    itemToReceiptChatGPTValidation,
+)  # noqa: F401

@@ -912,7 +912,7 @@ def test_receipt_structure_analysis_key(example_receipt_structure_analysis):
     """Test key generation."""
     key = example_receipt_structure_analysis.key()
     assert key["PK"] == "IMAGE#abc123"
-    assert key["SK"] == "RECEIPT#123#ANALYSIS#STRUCTURE"
+    assert key["SK"] == "RECEIPT#123#ANALYSIS#STRUCTURE#1.0.0"
 
 
 @pytest.mark.unit
@@ -932,7 +932,7 @@ def test_receipt_structure_analysis_gsi2_key(
     """Test GSI2 key generation."""
     key = example_receipt_structure_analysis.gsi2_key()
     assert key["GSI2PK"] == "RECEIPT"
-    assert key["GSI2SK"] == "IMAGE#abc123#RECEIPT#123"
+    assert key["GSI2SK"] == "IMAGE#abc123#RECEIPT#123#1.0.0"
 
 
 @pytest.mark.unit
@@ -942,24 +942,28 @@ def test_receipt_structure_analysis_to_item(
     """Test conversion to DynamoDB item."""
     item = example_receipt_structure_analysis.to_item()
     assert item["PK"]["S"] == "IMAGE#abc123"
-    assert item["SK"]["S"] == "RECEIPT#123#ANALYSIS#STRUCTURE"
+    assert item["SK"]["S"] == "RECEIPT#123#ANALYSIS#STRUCTURE#1.0.0"
     assert item["GSI1PK"]["S"] == "ANALYSIS_TYPE"
     assert item["GSI1SK"]["S"] == "STRUCTURE#2023-01-01T12:00:00"
     assert item["GSI2PK"]["S"] == "RECEIPT"
-    assert item["GSI2SK"]["S"] == "IMAGE#abc123#RECEIPT#123"
-    assert item["receipt_id"] == 123
-    assert item["image_id"] == "abc123"
-    assert item["entity_type"] == "STRUCTURE_ANALYSIS"
-    assert item["sections"] == [example_receipt_section.to_dict()]
-    assert (
-        item["overall_reasoning"] == "Clear structure with distinct sections"
-    )
-    assert item["version"] == "1.0.0"
-    assert item["metadata"] == {"source": "test"}
-    assert item["timestamp_added"] == "2023-01-01T12:00:00"
-    assert item["timestamp_updated"] == "2023-01-02T12:00:00"
-    assert item["processing_metrics"] == {"time_ms": 150}
-    assert item["source_info"] == {"model": "test_model"}
+    assert item["GSI2SK"]["S"] == "IMAGE#abc123#RECEIPT#123#1.0.0"
+    assert item["receipt_id"]["N"] == "123"
+    assert item["image_id"]["S"] == "abc123"
+    assert item["entity_type"]["S"] == "STRUCTURE_ANALYSIS"
+    section_item = item["sections"]["L"][0]["M"]
+    assert section_item["name"]["S"] == "header"
+    assert section_item["line_ids"]["L"] == [{"N": "1"}, {"N": "2"}, {"N": "3"}]
+    assert section_item["reasoning"]["S"] == "Contains store name and logo"
+    assert section_item["start_line"]["N"] == "1"
+    assert section_item["end_line"]["N"] == "3"
+    assert section_item["metadata"]["M"]["confidence"]["S"] == "0.9"
+    assert item["overall_reasoning"]["S"] == "Clear structure with distinct sections"
+    assert item["version"]["S"] == "1.0.0"
+    assert item["metadata"]["M"]["source"]["S"] == "test"
+    assert item["timestamp_added"]["S"] == "2023-01-01T12:00:00"
+    assert item["timestamp_updated"]["S"] == "2023-01-02T12:00:00"
+    assert item["processing_metrics"]["M"]["time_ms"]["S"] == "150"
+    assert item["source_info"]["M"]["model"]["S"] == "test_model"
     assert len(item["processing_history"]) == 1
 
 

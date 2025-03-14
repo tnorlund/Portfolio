@@ -45,6 +45,8 @@ def dynamodb_table():
                 {"AttributeName": "GSI1SK", "AttributeType": "S"},
                 {"AttributeName": "GSI2PK", "AttributeType": "S"},
                 {"AttributeName": "GSI2SK", "AttributeType": "S"},
+                {"AttributeName": "GSI3PK", "AttributeType": "S"},
+                {"AttributeName": "GSI3SK", "AttributeType": "S"},
                 {"AttributeName": "TYPE", "AttributeType": "S"},
             ],
             ProvisionedThroughput={
@@ -69,6 +71,18 @@ def dynamodb_table():
                     "KeySchema": [
                         {"AttributeName": "GSI2PK", "KeyType": "HASH"},
                         {"AttributeName": "GSI2SK", "KeyType": "RANGE"},
+                    ],
+                    "Projection": {"ProjectionType": "ALL"},
+                    "ProvisionedThroughput": {
+                        "ReadCapacityUnits": 5,
+                        "WriteCapacityUnits": 5,
+                    },
+                },
+                {
+                    "IndexName": "GSI3",
+                    "KeySchema": [
+                        {"AttributeName": "GSI3PK", "KeyType": "HASH"},
+                        {"AttributeName": "GSI3SK", "KeyType": "RANGE"},
                     ],
                     "Projection": {"ProjectionType": "ALL"},
                     "ProvisionedThroughput": {

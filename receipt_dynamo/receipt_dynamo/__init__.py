@@ -55,6 +55,13 @@ __all__ = [
     "JobService",
     "QueueService",
     "InstanceService",
+    "ReceiptValidationSummary",
+    "itemToReceiptValidationSummary",
+    "ReceiptValidationResult",
+    "itemToReceiptValidationResult",
+    "ReceiptValidationCategory",
+    "itemToReceiptValidationCategory",
+    "ReceiptChatGPTValidation",
 ]
 
 # Entities must be imported first to avoid circular imports
@@ -85,6 +92,14 @@ from receipt_dynamo.entities import (
     itemToReceiptStructureAnalysis,
     ReceiptLineItemAnalysis,
     itemToReceiptLineItemAnalysis,
+    ReceiptValidationSummary,
+    itemToReceiptValidationSummary,
+    ReceiptValidationResult,
+    itemToReceiptValidationResult,
+    ReceiptValidationCategory,
+    itemToReceiptValidationCategory,
+    ReceiptChatGPTValidation,
+    itemToReceiptChatGPTValidation,
 )
 from receipt_dynamo.entities.receipt_word_tag import (
     ReceiptWordTag,

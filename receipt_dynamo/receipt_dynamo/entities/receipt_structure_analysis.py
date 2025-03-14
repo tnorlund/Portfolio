@@ -686,7 +686,7 @@ class ReceiptStructureAnalysis:
         """
         return {
             "GSI2PK": "RECEIPT",
-            "GSI2SK": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id}",
+            "GSI2SK": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id}#{self.version}",
         }
 
     def to_item(self) -> Dict[str, Any]:
@@ -812,7 +812,7 @@ class ReceiptStructureAnalysis:
             "GSI1SK": {"S": f"STRUCTURE#{self.timestamp_added.isoformat()}"},
             "GSI2PK": {"S": "RECEIPT"},
             "GSI2SK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id}"
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id}#{self.version}"
             },
             "receipt_id": {"N": str(self.receipt_id)},
             "image_id": {"S": self.image_id},

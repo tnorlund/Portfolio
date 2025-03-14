@@ -4,7 +4,11 @@
 - [x] Create Receipt Label Analysis in DynamoDB
 - [x] Create Receipt Structure Analysis in DynamoDB
 - [x] Create Receipt Line Items Analysis in DynamoDB
-- [ ] Create Receipt Validation in DynamoDB
+- [x] Create Receipt Validation in DynamoDB using split storage pattern:
+  - [x] Implement Receipt Validation Summary in DynamoDB
+  - [x] Implement Receipt Validation Category in DynamoDB
+  - [x] Implement Receipt Validation Result in DynamoDB
+  - [x] Implement Receipt ChatGPT Validation in DynamoDB
 
 ## Align Base Classes with DynamoDB Schema
 - [x] Consistency in Naming:
@@ -51,9 +55,16 @@
     - [x] Implement `from_dynamo()` for StructureAnalysis
     - [x] Implement `to_dynamo()` for LineItemAnalysis
     - [x] Implement `from_dynamo()` for LineItemAnalysis
-    - [ ] Implement `to_dynamo()` for ValidationAnalysis
-    - [ ] Implement `from_dynamo()` for ValidationAnalysis
+    - [x] Implement split storage serialization for ValidationAnalysis:
+      - [x] Implement `to_dynamo_validation_summary()` for ValidationAnalysis (creates ReceiptValidationSummary objects with ValidationAnalysis attributes)
+      - [x] Implement `to_dynamo_validation_categories()` for ValidationAnalysis (creates ReceiptValidationCategory objects with ValidationAnalysis attributes)
+      - [x] Implement `to_dynamo_validation_results()` for ValidationAnalysis (creates ReceiptValidationResult objects with ValidationAnalysis attributes)
+      - [x] Implement `from_dynamo_items()` to reconstruct ValidationAnalysis from ReceiptValidationSummary, ReceiptValidationCategory, and ReceiptValidationResult items
+    - [ ] Implement ChatGPT second-pass validation serialization:
+      - [ ] Implement `to_dynamo_chatgpt_validation()` method (creates ReceiptChatGPTValidation items with PK=IMAGE#<image_id>, SK=RECEIPT#<receipt_id>#ANALYSIS#VALIDATION#CHATGPT#<timestamp>)
+      - [ ] Implement `from_dynamo_chatgpt_validation()` method to reconstruct ChatGPT validation from DynamoDB items
   - [x] Add integration tests for serialization/deserialization for ReceiptLabelAnalysis
+  - [x] Add integration tests for serialization/deserialization for ValidationAnalysis
   - [ ] Add integration tests for serialization/deserialization for other analysis types
 - [ ] Optional vs. Required Fields:
   - [ ] Review which fields are required in schema versus optional in models
