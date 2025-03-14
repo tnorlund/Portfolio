@@ -952,12 +952,19 @@ def test_receipt_structure_analysis_to_item(
     assert item["entity_type"]["S"] == "STRUCTURE_ANALYSIS"
     section_item = item["sections"]["L"][0]["M"]
     assert section_item["name"]["S"] == "header"
-    assert section_item["line_ids"]["L"] == [{"N": "1"}, {"N": "2"}, {"N": "3"}]
+    assert section_item["line_ids"]["L"] == [
+        {"N": "1"},
+        {"N": "2"},
+        {"N": "3"},
+    ]
     assert section_item["reasoning"]["S"] == "Contains store name and logo"
     assert section_item["start_line"]["N"] == "1"
     assert section_item["end_line"]["N"] == "3"
     assert section_item["metadata"]["M"]["confidence"]["S"] == "0.9"
-    assert item["overall_reasoning"]["S"] == "Clear structure with distinct sections"
+    assert (
+        item["overall_reasoning"]["S"]
+        == "Clear structure with distinct sections"
+    )
     assert item["version"]["S"] == "1.0.0"
     assert item["metadata"]["M"]["source"]["S"] == "test"
     assert item["timestamp_added"]["S"] == "2023-01-01T12:00:00"

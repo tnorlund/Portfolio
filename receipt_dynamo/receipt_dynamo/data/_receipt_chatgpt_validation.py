@@ -1,6 +1,9 @@
 from botocore.exceptions import ClientError
 
-from receipt_dynamo import ReceiptChatGPTValidation, itemToReceiptChatGPTValidation
+from receipt_dynamo import (
+    ReceiptChatGPTValidation,
+    itemToReceiptChatGPTValidation,
+)
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
@@ -32,7 +35,9 @@ class _ReceiptChatGPTValidation:
         Returns ReceiptChatGPTValidations with a specific status.
     """
 
-    def addReceiptChatGPTValidation(self, validation: ReceiptChatGPTValidation):
+    def addReceiptChatGPTValidation(
+        self, validation: ReceiptChatGPTValidation
+    ):
         """Adds a ReceiptChatGPTValidation to DynamoDB.
 
         Args:
@@ -80,8 +85,10 @@ class _ReceiptChatGPTValidation:
                 raise Exception(
                     f"Could not add receipt ChatGPT validation to DynamoDB: {e}"
                 ) from e
-    
-    def addReceiptChatGPTValidations(self, validations: list[ReceiptChatGPTValidation]):
+
+    def addReceiptChatGPTValidations(
+        self, validations: list[ReceiptChatGPTValidation]
+    ):
         """Adds multiple ReceiptChatGPTValidations to DynamoDB in batches.
 
         Args:
@@ -99,7 +106,9 @@ class _ReceiptChatGPTValidation:
             raise ValueError(
                 "validations must be a list of ReceiptChatGPTValidation instances."
             )
-        if not all(isinstance(val, ReceiptChatGPTValidation) for val in validations):
+        if not all(
+            isinstance(val, ReceiptChatGPTValidation) for val in validations
+        ):
             raise ValueError(
                 "All validations must be instances of the ReceiptChatGPTValidation class."
             )
@@ -134,8 +143,10 @@ class _ReceiptChatGPTValidation:
                 raise Exception(
                     f"Could not add ReceiptChatGPTValidations to the database: {e}"
                 ) from e
-    
-    def updateReceiptChatGPTValidation(self, validation: ReceiptChatGPTValidation):
+
+    def updateReceiptChatGPTValidation(
+        self, validation: ReceiptChatGPTValidation
+    ):
         """Updates an existing ReceiptChatGPTValidation in the database.
 
         Args:
@@ -179,8 +190,10 @@ class _ReceiptChatGPTValidation:
                 raise Exception(
                     f"Could not update ReceiptChatGPTValidation in the database: {e}"
                 ) from e
-    
-    def updateReceiptChatGPTValidations(self, validations: list[ReceiptChatGPTValidation]):
+
+    def updateReceiptChatGPTValidations(
+        self, validations: list[ReceiptChatGPTValidation]
+    ):
         """Updates multiple ReceiptChatGPTValidations in the database.
 
         Args:
@@ -198,7 +211,9 @@ class _ReceiptChatGPTValidation:
             raise ValueError(
                 "validations must be a list of ReceiptChatGPTValidation instances."
             )
-        if not all(isinstance(val, ReceiptChatGPTValidation) for val in validations):
+        if not all(
+            isinstance(val, ReceiptChatGPTValidation) for val in validations
+        ):
             raise ValueError(
                 "All validations must be instances of the ReceiptChatGPTValidation class."
             )
@@ -240,7 +255,7 @@ class _ReceiptChatGPTValidation:
                     raise Exception(
                         f"Could not update ReceiptChatGPTValidations in the database: {e}"
                     ) from e
-    
+
     def deleteReceiptChatGPTValidation(
         self,
         validation: ReceiptChatGPTValidation,
@@ -289,7 +304,9 @@ class _ReceiptChatGPTValidation:
                     f"Could not delete ReceiptChatGPTValidation from the database: {e}"
                 ) from e
 
-    def deleteReceiptChatGPTValidations(self, validations: list[ReceiptChatGPTValidation]):
+    def deleteReceiptChatGPTValidations(
+        self, validations: list[ReceiptChatGPTValidation]
+    ):
         """Deletes multiple ReceiptChatGPTValidations in batch.
 
         Args:
@@ -307,7 +324,9 @@ class _ReceiptChatGPTValidation:
             raise ValueError(
                 "validations must be a list of ReceiptChatGPTValidation instances."
             )
-        if not all(isinstance(val, ReceiptChatGPTValidation) for val in validations):
+        if not all(
+            isinstance(val, ReceiptChatGPTValidation) for val in validations
+        ):
             raise ValueError(
                 "All validations must be instances of the ReceiptChatGPTValidation class."
             )
@@ -359,7 +378,7 @@ class _ReceiptChatGPTValidation:
         Raises:
             ValueError: If any parameters are invalid.
             Exception: If the receipt ChatGPT validation cannot be retrieved from DynamoDB.
-            
+
         Returns:
             ReceiptChatGPTValidation: The retrieved receipt ChatGPT validation.
         """
@@ -375,10 +394,12 @@ class _ReceiptChatGPTValidation:
             )
         assert_valid_uuid(image_id)
         if timestamp is None:
-            raise ValueError("timestamp parameter is required and cannot be None.")
+            raise ValueError(
+                "timestamp parameter is required and cannot be None."
+            )
         if not isinstance(timestamp, str):
             raise ValueError("timestamp must be a string.")
-        
+
         try:
             response = self._client.get_item(
                 TableName=self.table_name,
@@ -406,23 +427,25 @@ class _ReceiptChatGPTValidation:
             elif error_code == "AccessDeniedException":
                 raise Exception(f"Access denied: {e}") from e
             else:
-                raise Exception(f"Error getting receipt ChatGPT validation: {e}") from e
+                raise Exception(
+                    f"Error getting receipt ChatGPT validation: {e}"
+                ) from e
 
     def listReceiptChatGPTValidations(
         self, limit: int = None, lastEvaluatedKey: dict | None = None
     ) -> tuple[list[ReceiptChatGPTValidation], dict | None]:
         """Returns all ReceiptChatGPTValidations from the table.
-        
+
         Args:
             limit (int, optional): The maximum number of results to return. Defaults to None.
             lastEvaluatedKey (dict, optional): The last evaluated key from a previous request. Defaults to None.
-            
+
         Raises:
             ValueError: If any parameters are invalid.
             Exception: If the receipt ChatGPT validations cannot be retrieved from DynamoDB.
-            
+
         Returns:
-            tuple[list[ReceiptChatGPTValidation], dict | None]: A tuple containing a list of validations and 
+            tuple[list[ReceiptChatGPTValidation], dict | None]: A tuple containing a list of validations and
                                                                the last evaluated key (or None if no more results).
         """
         if limit is not None and not isinstance(limit, int):
@@ -439,24 +462,24 @@ class _ReceiptChatGPTValidation:
                 "TableName": self.table_name,
                 "IndexName": "GSI1",
                 "KeyConditionExpression": "#pk = :pk_val AND begins_with(#sk, :sk_prefix)",
-                "ExpressionAttributeNames": {
-                    "#pk": "GSI1PK", 
-                    "#sk": "GSI1SK"
-                },
+                "ExpressionAttributeNames": {"#pk": "GSI1PK", "#sk": "GSI1SK"},
                 "ExpressionAttributeValues": {
                     ":pk_val": {"S": "ANALYSIS_TYPE"},
                     ":sk_prefix": {"S": "VALIDATION_CHATGPT#"},
                 },
             }
-            
+
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
             if limit is not None:
                 query_params["Limit"] = limit
-                
+
             response = self._client.query(**query_params)
             validations.extend(
-                [itemToReceiptChatGPTValidation(item) for item in response["Items"]]
+                [
+                    itemToReceiptChatGPTValidation(item)
+                    for item in response["Items"]
+                ]
             )
 
             if limit is None:
@@ -492,21 +515,23 @@ class _ReceiptChatGPTValidation:
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(f"Error listing receipt ChatGPT validations: {e}") from e
+                raise Exception(
+                    f"Error listing receipt ChatGPT validations: {e}"
+                ) from e
 
     def listReceiptChatGPTValidationsForReceipt(
         self, receipt_id: int, image_id: str
     ) -> list[ReceiptChatGPTValidation]:
         """Returns all ReceiptChatGPTValidations for a given receipt.
-        
+
         Args:
             receipt_id (int): The receipt ID.
             image_id (str): The image ID.
-            
+
         Raises:
             ValueError: If any parameters are invalid.
             Exception: If the receipt ChatGPT validations cannot be retrieved from DynamoDB.
-            
+
         Returns:
             list[ReceiptChatGPTValidation]: A list of ChatGPT validations for the specified receipt.
         """
@@ -535,7 +560,10 @@ class _ReceiptChatGPTValidation:
                 },
             )
             validations.extend(
-                [itemToReceiptChatGPTValidation(item) for item in response["Items"]]
+                [
+                    itemToReceiptChatGPTValidation(item)
+                    for item in response["Items"]
+                ]
             )
 
             while "LastEvaluatedKey" in response:
@@ -551,7 +579,10 @@ class _ReceiptChatGPTValidation:
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                 )
                 validations.extend(
-                    [itemToReceiptChatGPTValidation(item) for item in response["Items"]]
+                    [
+                        itemToReceiptChatGPTValidation(item)
+                        for item in response["Items"]
+                    ]
                 )
             return validations
 
@@ -571,23 +602,26 @@ class _ReceiptChatGPTValidation:
                 raise Exception(
                     f"Could not list ReceiptChatGPTValidations from the database: {e}"
                 ) from e
-    
+
     def listReceiptChatGPTValidationsByStatus(
-        self, status: str, limit: int = None, lastEvaluatedKey: dict | None = None
+        self,
+        status: str,
+        limit: int = None,
+        lastEvaluatedKey: dict | None = None,
     ) -> tuple[list[ReceiptChatGPTValidation], dict | None]:
         """Returns all ReceiptChatGPTValidations with a specific status.
-        
+
         Args:
             status (str): The status to filter by ("VALID", "INVALID", etc.).
             limit (int, optional): The maximum number of results to return. Defaults to None.
             lastEvaluatedKey (dict, optional): The last evaluated key from a previous request. Defaults to None.
-            
+
         Raises:
             ValueError: If any parameters are invalid.
             Exception: If the receipt ChatGPT validations cannot be retrieved from DynamoDB.
-            
+
         Returns:
-            tuple[list[ReceiptChatGPTValidation], dict | None]: A tuple containing a list of validations and 
+            tuple[list[ReceiptChatGPTValidation], dict | None]: A tuple containing a list of validations and
                                                                the last evaluated key (or None if no more results).
         """
         if status is None:
@@ -612,22 +646,23 @@ class _ReceiptChatGPTValidation:
                 "TableName": self.table_name,
                 "IndexName": "GSI3",
                 "KeyConditionExpression": "#pk = :pk_val",
-                "ExpressionAttributeNames": {
-                    "#pk": "GSI3PK"
-                },
+                "ExpressionAttributeNames": {"#pk": "GSI3PK"},
                 "ExpressionAttributeValues": {
                     ":pk_val": {"S": f"VALIDATION_STATUS#{status}"},
                 },
             }
-            
+
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
             if limit is not None:
                 query_params["Limit"] = limit
-                
+
             response = self._client.query(**query_params)
             validations.extend(
-                [itemToReceiptChatGPTValidation(item) for item in response["Items"]]
+                [
+                    itemToReceiptChatGPTValidation(item)
+                    for item in response["Items"]
+                ]
             )
 
             if limit is None:
@@ -663,4 +698,6 @@ class _ReceiptChatGPTValidation:
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(f"Error listing receipt ChatGPT validations: {e}") from e
+                raise Exception(
+                    f"Error listing receipt ChatGPT validations: {e}"
+                ) from e

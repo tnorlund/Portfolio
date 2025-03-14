@@ -124,7 +124,8 @@ def test_receipt_label_analysis_init_invalid_labels():
 def test_receipt_label_analysis_init_invalid_timestamp():
     """Test that ReceiptLabelAnalysis raises ValueError with invalid timestamp_added."""
     with pytest.raises(
-        ValueError, match="timestamp_added must be a datetime object or a string"
+        ValueError,
+        match="timestamp_added must be a datetime object or a string",
     ):
         ReceiptLabelAnalysis(
             image_id="test_image_123",

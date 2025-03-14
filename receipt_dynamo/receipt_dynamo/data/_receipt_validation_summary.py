@@ -1,6 +1,9 @@
 from botocore.exceptions import ClientError
 
-from receipt_dynamo import ReceiptValidationSummary, itemToReceiptValidationSummary
+from receipt_dynamo import (
+    ReceiptValidationSummary,
+    itemToReceiptValidationSummary,
+)
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
@@ -88,7 +91,9 @@ class _ReceiptValidationSummary:
                     f"Could not add receipt validation summary to DynamoDB: {e}"
                 ) from e
 
-    def updateReceiptValidationSummary(self, summary: ReceiptValidationSummary):
+    def updateReceiptValidationSummary(
+        self, summary: ReceiptValidationSummary
+    ):
         """Updates an existing ReceiptValidationSummary in the database.
 
         Args:
@@ -198,7 +203,7 @@ class _ReceiptValidationSummary:
         Raises:
             ValueError: If any parameters are invalid.
             Exception: If the summary cannot be retrieved from DynamoDB.
-            
+
         Returns:
             ReceiptValidationSummary | None: The retrieved receipt validation summary or None if not found.
         """
@@ -213,7 +218,7 @@ class _ReceiptValidationSummary:
                 "image_id parameter is required and cannot be None."
             )
         assert_valid_uuid(image_id)
-        
+
         try:
             response = self._client.get_item(
                 TableName=self.table_name,
@@ -231,29 +236,33 @@ class _ReceiptValidationSummary:
             if error_code == "ProvisionedThroughputExceededException":
                 raise Exception("Provisioned throughput exceeded") from e
             elif error_code == "ValidationException":
-                raise Exception("One or more parameters given were invalid") from e
+                raise Exception(
+                    "One or more parameters given were invalid"
+                ) from e
             elif error_code == "InternalServerError":
                 raise Exception("Internal server error") from e
             elif error_code == "AccessDeniedException":
                 raise Exception("Access denied") from e
             else:
-                raise Exception("Could not retrieve ReceiptValidationSummary from the database") from e
+                raise Exception(
+                    "Could not retrieve ReceiptValidationSummary from the database"
+                ) from e
 
     def listReceiptValidationSummaries(
         self, limit: int = None, lastEvaluatedKey: dict | None = None
     ) -> tuple[list[ReceiptValidationSummary], dict | None]:
         """Lists all ReceiptValidationSummaries with pagination support.
-        
+
         Args:
             limit (int, optional): The maximum number of results to return. Defaults to None.
             lastEvaluatedKey (dict, optional): The last evaluated key from a previous request. Defaults to None.
-            
+
         Raises:
             ValueError: If any parameters are invalid.
             Exception: If the validation summaries cannot be retrieved from DynamoDB.
-            
+
         Returns:
-            tuple[list[ReceiptValidationSummary], dict | None]: A tuple containing a list of validation summaries and 
+            tuple[list[ReceiptValidationSummary], dict | None]: A tuple containing a list of validation summaries and
                                                                the last evaluated key (or None if no more results).
         """
         if limit is not None and not isinstance(limit, int):
@@ -270,27 +279,27 @@ class _ReceiptValidationSummary:
                 "TableName": self.table_name,
                 "IndexName": "GSI1",
                 "KeyConditionExpression": "#pk = :pk_val AND begins_with(#sk, :sk_prefix)",
-                "ExpressionAttributeNames": {
-                    "#pk": "GSI1PK", 
-                    "#sk": "GSI1SK"
-                },
+                "ExpressionAttributeNames": {"#pk": "GSI1PK", "#sk": "GSI1SK"},
                 "ExpressionAttributeValues": {
                     ":pk_val": {"S": "ANALYSIS_TYPE"},
                     ":sk_prefix": {"S": "VALIDATION#"},
                 },
             }
-            
+
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
             if limit is not None:
                 query_params["Limit"] = limit
-                
+
             response = self._client.query(**query_params)
             validation_summaries.extend(
-                [itemToReceiptValidationSummary(item) for item in response["Items"] 
-                 if not item["SK"]["S"].endswith("#CATEGORY") and 
-                 not "#RESULT#" in item["SK"]["S"] and
-                 not "#CHATGPT#" in item["SK"]["S"]]
+                [
+                    itemToReceiptValidationSummary(item)
+                    for item in response["Items"]
+                    if not item["SK"]["S"].endswith("#CATEGORY")
+                    and not "#RESULT#" in item["SK"]["S"]
+                    and not "#CHATGPT#" in item["SK"]["S"]
+                ]
             )
 
             if limit is None:
@@ -304,9 +313,9 @@ class _ReceiptValidationSummary:
                         [
                             itemToReceiptValidationSummary(item)
                             for item in response["Items"]
-                            if not item["SK"]["S"].endswith("#CATEGORY") and 
-                            not "#RESULT#" in item["SK"]["S"] and
-                            not "#CHATGPT#" in item["SK"]["S"]
+                            if not item["SK"]["S"].endswith("#CATEGORY")
+                            and not "#RESULT#" in item["SK"]["S"]
+                            and not "#CHATGPT#" in item["SK"]["S"]
                         ]
                     )
                 last_evaluated_key = None
@@ -329,24 +338,29 @@ class _ReceiptValidationSummary:
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(f"Error listing receipt validation summaries: {e}") from e
+                raise Exception(
+                    f"Error listing receipt validation summaries: {e}"
+                ) from e
 
     def listReceiptValidationSummariesByStatus(
-        self, status: str, limit: int = None, lastEvaluatedKey: dict | None = None
+        self,
+        status: str,
+        limit: int = None,
+        lastEvaluatedKey: dict | None = None,
     ) -> tuple[list[ReceiptValidationSummary], dict | None]:
         """Lists ReceiptValidationSummaries by status with pagination support.
-        
+
         Args:
             status (str): The validation status to filter by.
             limit (int, optional): The maximum number of results to return. Defaults to None.
             lastEvaluatedKey (dict, optional): The last evaluated key from a previous request. Defaults to None.
-            
+
         Raises:
             ValueError: If any parameters are invalid.
             Exception: If the validation summaries cannot be retrieved from DynamoDB.
-            
+
         Returns:
-            tuple[list[ReceiptValidationSummary], dict | None]: A tuple containing a list of validation summaries and 
+            tuple[list[ReceiptValidationSummary], dict | None]: A tuple containing a list of validation summaries and
                                                                the last evaluated key (or None if no more results).
         """
         if status is None:
@@ -371,22 +385,23 @@ class _ReceiptValidationSummary:
                 "TableName": self.table_name,
                 "IndexName": "GSI3",
                 "KeyConditionExpression": "#pk = :pk_val",
-                "ExpressionAttributeNames": {
-                    "#pk": "GSI3PK"
-                },
+                "ExpressionAttributeNames": {"#pk": "GSI3PK"},
                 "ExpressionAttributeValues": {
                     ":pk_val": {"S": f"VALIDATION_STATUS#{status}"},
                 },
             }
-            
+
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
             if limit is not None:
                 query_params["Limit"] = limit
-                
+
             response = self._client.query(**query_params)
             validation_summaries.extend(
-                [itemToReceiptValidationSummary(item) for item in response["Items"]]
+                [
+                    itemToReceiptValidationSummary(item)
+                    for item in response["Items"]
+                ]
             )
 
             if limit is None:
@@ -422,20 +437,22 @@ class _ReceiptValidationSummary:
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(f"Error listing receipt validation summaries by status: {e}") from e
+                raise Exception(
+                    f"Error listing receipt validation summaries by status: {e}"
+                ) from e
 
     def listReceiptValidationSummariesByReceiptId(
         self, receipt_id: int
     ) -> list[ReceiptValidationSummary]:
         """Lists all ReceiptValidationSummaries for a given receipt_id.
-        
+
         Args:
             receipt_id (int): The receipt ID to find summaries for.
-            
+
         Raises:
             ValueError: If any parameters are invalid.
             Exception: If the summaries cannot be retrieved from DynamoDB.
-            
+
         Returns:
             list[ReceiptValidationSummary]: A list of validation summaries for the specified receipt.
         """
@@ -453,24 +470,26 @@ class _ReceiptValidationSummary:
                 "TableName": self.table_name,
                 "IndexName": "GSI2",
                 "KeyConditionExpression": "#pk = :pk_val AND begins_with(#sk, :sk_prefix)",
-                "ExpressionAttributeNames": {
-                    "#pk": "GSI2PK", 
-                    "#sk": "GSI2SK"
-                },
+                "ExpressionAttributeNames": {"#pk": "GSI2PK", "#sk": "GSI2SK"},
                 "ExpressionAttributeValues": {
                     ":pk_val": {"S": "RECEIPT"},
                     ":sk_prefix": {"S": f"IMAGE#"},
                 },
             }
-                
+
             response = self._client.query(**query_params)
             validation_summaries.extend(
-                [itemToReceiptValidationSummary(item) for item in response["Items"]]
+                [
+                    itemToReceiptValidationSummary(item)
+                    for item in response["Items"]
+                ]
             )
 
             # Paginate through all the validation summaries.
             while "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                query_params["ExclusiveStartKey"] = response[
+                    "LastEvaluatedKey"
+                ]
                 response = self._client.query(**query_params)
                 validation_summaries.extend(
                     [
@@ -481,7 +500,8 @@ class _ReceiptValidationSummary:
 
             # Filter the results by receipt_id
             validation_summaries = [
-                summary for summary in validation_summaries 
+                summary
+                for summary in validation_summaries
                 if summary.receipt_id == receipt_id
             ]
 
@@ -503,20 +523,22 @@ class _ReceiptValidationSummary:
             elif error_code == "AccessDeniedException":
                 raise Exception(f"Access denied: {e}") from e
             else:
-                raise Exception(f"Could not list ReceiptValidationSummaries from the database: {e}") from e
+                raise Exception(
+                    f"Could not list ReceiptValidationSummaries from the database: {e}"
+                ) from e
 
     def listReceiptValidationSummariesByImageId(
         self, image_id: str
     ) -> list[ReceiptValidationSummary]:
         """Lists all ReceiptValidationSummaries for a given image_id.
-        
+
         Args:
             image_id (str): The image ID to find summaries for.
-            
+
         Raises:
             ValueError: If any parameters are invalid.
             Exception: If the summaries cannot be retrieved from DynamoDB.
-            
+
         Returns:
             list[ReceiptValidationSummary]: A list of validation summaries for the specified image.
         """
@@ -532,24 +554,26 @@ class _ReceiptValidationSummary:
             query_params = {
                 "TableName": self.table_name,
                 "KeyConditionExpression": "#pk = :pkVal AND begins_with(#sk, :skPrefix)",
-                "ExpressionAttributeNames": {
-                    "#pk": "PK", 
-                    "#sk": "SK"
-                },
+                "ExpressionAttributeNames": {"#pk": "PK", "#sk": "SK"},
                 "ExpressionAttributeValues": {
                     ":pkVal": {"S": f"IMAGE#{image_id}"},
                     ":skPrefix": {"S": f"RECEIPT#"},
                 },
             }
-                
+
             response = self._client.query(**query_params)
             validation_summaries.extend(
-                [itemToReceiptValidationSummary(item) for item in response["Items"]]
+                [
+                    itemToReceiptValidationSummary(item)
+                    for item in response["Items"]
+                ]
             )
 
             # Paginate through all the validation summaries.
             while "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                query_params["ExclusiveStartKey"] = response[
+                    "LastEvaluatedKey"
+                ]
                 response = self._client.query(**query_params)
                 validation_summaries.extend(
                     [
@@ -576,4 +600,6 @@ class _ReceiptValidationSummary:
             elif error_code == "AccessDeniedException":
                 raise Exception(f"Access denied: {e}") from e
             else:
-                raise Exception(f"Could not list ReceiptValidationSummaries from the database: {e}") from e
+                raise Exception(
+                    f"Could not list ReceiptValidationSummaries from the database: {e}"
+                ) from e

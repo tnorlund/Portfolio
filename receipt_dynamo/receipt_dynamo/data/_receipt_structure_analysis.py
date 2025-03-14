@@ -83,7 +83,9 @@ class _ReceiptStructureAnalysis:
             elif error_code == "InternalServerError":
                 raise Exception("Internal server error") from e
             elif error_code == "ValidationException":
-                raise Exception("One or more parameters given were invalid") from e
+                raise Exception(
+                    "One or more parameters given were invalid"
+                ) from e
             elif error_code == "AccessDeniedException":
                 raise Exception("Access denied") from e
             else:
@@ -143,13 +145,17 @@ class _ReceiptStructureAnalysis:
                     "Could not add receipt structure analyses to DynamoDB: Table not found"
                 ) from e
             elif error_code == "TransactionCanceledException":
-                raise Exception("Error adding receipt structure analyses") from e
+                raise Exception(
+                    "Error adding receipt structure analyses"
+                ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception("Provisioned throughput exceeded") from e
             elif error_code == "InternalServerError":
                 raise Exception("Internal server error") from e
             elif error_code == "ValidationException":
-                raise Exception("One or more parameters given were invalid") from e
+                raise Exception(
+                    "One or more parameters given were invalid"
+                ) from e
             elif error_code == "AccessDeniedException":
                 raise Exception("Access denied") from e
             else:
@@ -198,7 +204,9 @@ class _ReceiptStructureAnalysis:
             elif error_code == "InternalServerError":
                 raise Exception("Internal server error") from e
             elif error_code == "ValidationException":
-                raise Exception("One or more parameters given were invalid") from e
+                raise Exception(
+                    "One or more parameters given were invalid"
+                ) from e
             elif error_code == "AccessDeniedException":
                 raise Exception("Access denied") from e
             else:
@@ -258,13 +266,17 @@ class _ReceiptStructureAnalysis:
                     "Could not update receipt structure analyses in DynamoDB: Table not found"
                 ) from e
             elif error_code == "TransactionCanceledException":
-                raise Exception("Error updating receipt structure analyses") from e
+                raise Exception(
+                    "Error updating receipt structure analyses"
+                ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception("Provisioned throughput exceeded") from e
             elif error_code == "InternalServerError":
                 raise Exception("Internal server error") from e
             elif error_code == "ValidationException":
-                raise Exception("One or more parameters given were invalid") from e
+                raise Exception(
+                    "One or more parameters given were invalid"
+                ) from e
             elif error_code == "AccessDeniedException":
                 raise Exception("Access denied") from e
             else:
@@ -297,7 +309,9 @@ class _ReceiptStructureAnalysis:
                 TableName=self.table_name,
                 Key={
                     "PK": {"S": f"IMAGE#{analysis.image_id}"},
-                    "SK": {"S": f"RECEIPT#{analysis.receipt_id}#ANALYSIS#STRUCTURE#{analysis.version}"},
+                    "SK": {
+                        "S": f"RECEIPT#{analysis.receipt_id}#ANALYSIS#STRUCTURE#{analysis.version}"
+                    },
                 },
             )
         except ClientError as e:
@@ -315,7 +329,9 @@ class _ReceiptStructureAnalysis:
             elif error_code == "InternalServerError":
                 raise Exception("Internal server error") from e
             elif error_code == "ValidationException":
-                raise Exception("One or more parameters given were invalid") from e
+                raise Exception(
+                    "One or more parameters given were invalid"
+                ) from e
             elif error_code == "AccessDeniedException":
                 raise Exception("Access denied") from e
             else:
@@ -385,13 +401,17 @@ class _ReceiptStructureAnalysis:
                     "Could not delete receipt structure analyses from DynamoDB: Table not found"
                 ) from e
             elif error_code == "TransactionCanceledException":
-                raise Exception("Error deleting receipt structure analyses") from e
+                raise Exception(
+                    "Error deleting receipt structure analyses"
+                ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception("Provisioned throughput exceeded") from e
             elif error_code == "InternalServerError":
                 raise Exception("Internal server error") from e
             elif error_code == "ValidationException":
-                raise Exception("One or more parameters given were invalid") from e
+                raise Exception(
+                    "One or more parameters given were invalid"
+                ) from e
             elif error_code == "AccessDeniedException":
                 raise Exception("Access denied") from e
             else:
@@ -444,7 +464,9 @@ class _ReceiptStructureAnalysis:
                     TableName=self.table_name,
                     Key={
                         "PK": {"S": f"IMAGE#{image_id}"},
-                        "SK": {"S": f"RECEIPT#{receipt_id}#ANALYSIS#STRUCTURE#{version}"},
+                        "SK": {
+                            "S": f"RECEIPT#{receipt_id}#ANALYSIS#STRUCTURE#{version}"
+                        },
                     },
                 )
                 item = response.get("Item")
@@ -491,7 +513,9 @@ class _ReceiptStructureAnalysis:
             elif error_code == "InternalServerError":
                 raise Exception("Internal server error") from e
             elif error_code == "ValidationException":
-                raise Exception("One or more parameters given were invalid") from e
+                raise Exception(
+                    "One or more parameters given were invalid"
+                ) from e
             elif error_code == "AccessDeniedException":
                 raise Exception("Access denied") from e
             else:
@@ -574,7 +598,9 @@ class _ReceiptStructureAnalysis:
             elif error_code == "InternalServerError":
                 raise Exception("Internal server error") from e
             elif error_code == "ValidationException":
-                raise Exception("One or more parameters given were invalid") from e
+                raise Exception(
+                    "One or more parameters given were invalid"
+                ) from e
             elif error_code == "AccessDeniedException":
                 raise Exception("Access denied") from e
             else:
@@ -660,7 +686,9 @@ class _ReceiptStructureAnalysis:
             elif error_code == "InternalServerError":
                 raise Exception("Internal server error") from e
             elif error_code == "ValidationException":
-                raise Exception("One or more parameters given were invalid") from e
+                raise Exception(
+                    "One or more parameters given were invalid"
+                ) from e
             elif error_code == "AccessDeniedException":
                 raise Exception("Access denied") from e
             else:

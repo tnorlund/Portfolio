@@ -1,6 +1,9 @@
 from botocore.exceptions import ClientError
 
-from receipt_dynamo import ReceiptValidationResult, itemToReceiptValidationResult
+from receipt_dynamo import (
+    ReceiptValidationResult,
+    itemToReceiptValidationResult,
+)
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
@@ -91,7 +94,9 @@ class _ReceiptValidationResult:
                     f"Could not add receipt validation result to DynamoDB: {e}"
                 ) from e
 
-    def addReceiptValidationResults(self, results: list[ReceiptValidationResult]):
+    def addReceiptValidationResults(
+        self, results: list[ReceiptValidationResult]
+    ):
         """Adds multiple ReceiptValidationResults to DynamoDB in batches.
 
         Args:
@@ -109,7 +114,9 @@ class _ReceiptValidationResult:
             raise ValueError(
                 "results must be a list of ReceiptValidationResult instances."
             )
-        if not all(isinstance(res, ReceiptValidationResult) for res in results):
+        if not all(
+            isinstance(res, ReceiptValidationResult) for res in results
+        ):
             raise ValueError(
                 "All results must be instances of the ReceiptValidationResult class."
             )
@@ -190,7 +197,9 @@ class _ReceiptValidationResult:
                     f"Could not update ReceiptValidationResult in the database: {e}"
                 ) from e
 
-    def updateReceiptValidationResults(self, results: list[ReceiptValidationResult]):
+    def updateReceiptValidationResults(
+        self, results: list[ReceiptValidationResult]
+    ):
         """Updates multiple ReceiptValidationResults in the database.
 
         Args:
@@ -208,7 +217,9 @@ class _ReceiptValidationResult:
             raise ValueError(
                 "results must be a list of ReceiptValidationResult instances."
             )
-        if not all(isinstance(res, ReceiptValidationResult) for res in results):
+        if not all(
+            isinstance(res, ReceiptValidationResult) for res in results
+        ):
             raise ValueError(
                 "All results must be instances of the ReceiptValidationResult class."
             )
@@ -299,7 +310,9 @@ class _ReceiptValidationResult:
                     f"Could not delete ReceiptValidationResult from the database: {e}"
                 ) from e
 
-    def deleteReceiptValidationResults(self, results: list[ReceiptValidationResult]):
+    def deleteReceiptValidationResults(
+        self, results: list[ReceiptValidationResult]
+    ):
         """Deletes multiple ReceiptValidationResults in batch.
 
         Args:
@@ -317,7 +330,9 @@ class _ReceiptValidationResult:
             raise ValueError(
                 "results must be a list of ReceiptValidationResult instances."
             )
-        if not all(isinstance(res, ReceiptValidationResult) for res in results):
+        if not all(
+            isinstance(res, ReceiptValidationResult) for res in results
+        ):
             raise ValueError(
                 "All results must be instances of the ReceiptValidationResult class."
             )
@@ -371,7 +386,7 @@ class _ReceiptValidationResult:
         Raises:
             ValueError: If any parameters are invalid.
             Exception: If the receipt validation result cannot be retrieved from DynamoDB.
-            
+
         Returns:
             ReceiptValidationResult: The retrieved receipt validation result.
         """
@@ -402,7 +417,7 @@ class _ReceiptValidationResult:
             raise ValueError("result_index must be an integer.")
         if result_index < 0:
             raise ValueError("result_index must be non-negative.")
-        
+
         try:
             response = self._client.get_item(
                 TableName=self.table_name,
@@ -430,23 +445,25 @@ class _ReceiptValidationResult:
             elif error_code == "AccessDeniedException":
                 raise Exception(f"Access denied: {e}") from e
             else:
-                raise Exception(f"Error getting receipt validation result: {e}") from e
+                raise Exception(
+                    f"Error getting receipt validation result: {e}"
+                ) from e
 
     def listReceiptValidationResults(
         self, limit: int = None, lastEvaluatedKey: dict | None = None
     ) -> tuple[list[ReceiptValidationResult], dict | None]:
         """Returns all ReceiptValidationResults from the table.
-        
+
         Args:
             limit (int, optional): The maximum number of results to return. Defaults to None.
             lastEvaluatedKey (dict, optional): The last evaluated key from a previous request. Defaults to None.
-            
+
         Raises:
             ValueError: If any parameters are invalid.
             Exception: If the receipt validation results cannot be retrieved from DynamoDB.
-            
+
         Returns:
-            tuple[list[ReceiptValidationResult], dict | None]: A tuple containing a list of validation results and 
+            tuple[list[ReceiptValidationResult], dict | None]: A tuple containing a list of validation results and
                                                                the last evaluated key (or None if no more results).
         """
         if limit is not None and not isinstance(limit, int):
@@ -463,24 +480,24 @@ class _ReceiptValidationResult:
                 "TableName": self.table_name,
                 "IndexName": "GSI1",
                 "KeyConditionExpression": "#pk = :pk_val AND begins_with(#sk, :sk_prefix)",
-                "ExpressionAttributeNames": {
-                    "#pk": "GSI1PK", 
-                    "#sk": "GSI1SK"
-                },
+                "ExpressionAttributeNames": {"#pk": "GSI1PK", "#sk": "GSI1SK"},
                 "ExpressionAttributeValues": {
                     ":pk_val": {"S": "ANALYSIS_TYPE"},
                     ":sk_prefix": {"S": "VALIDATION#"},
                 },
             }
-            
+
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
             if limit is not None:
                 query_params["Limit"] = limit
-                
+
             response = self._client.query(**query_params)
             validation_results.extend(
-                [itemToReceiptValidationResult(item) for item in response["Items"]]
+                [
+                    itemToReceiptValidationResult(item)
+                    for item in response["Items"]
+                ]
             )
 
             if limit is None:
@@ -516,22 +533,24 @@ class _ReceiptValidationResult:
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(f"Error listing receipt validation results: {e}") from e
+                raise Exception(
+                    f"Error listing receipt validation results: {e}"
+                ) from e
 
     def listReceiptValidationResultsForField(
         self, receipt_id: int, image_id: str, field_name: str
     ) -> list[ReceiptValidationResult]:
         """Returns all ReceiptValidationResults for a given field.
-        
+
         Args:
             receipt_id (int): The receipt ID.
             image_id (str): The image ID.
             field_name (str): The field name.
-            
+
         Raises:
             ValueError: If any parameters are invalid.
             Exception: If the receipt validation results cannot be retrieved from DynamoDB.
-            
+
         Returns:
             list[ReceiptValidationResult]: A list of validation results for the specified field.
         """
@@ -568,7 +587,10 @@ class _ReceiptValidationResult:
                 },
             )
             validation_results.extend(
-                [itemToReceiptValidationResult(item) for item in response["Items"]]
+                [
+                    itemToReceiptValidationResult(item)
+                    for item in response["Items"]
+                ]
             )
 
             while "LastEvaluatedKey" in response:
@@ -584,7 +606,10 @@ class _ReceiptValidationResult:
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                 )
                 validation_results.extend(
-                    [itemToReceiptValidationResult(item) for item in response["Items"]]
+                    [
+                        itemToReceiptValidationResult(item)
+                        for item in response["Items"]
+                    ]
                 )
             return validation_results
 
@@ -604,23 +629,26 @@ class _ReceiptValidationResult:
                 raise Exception(
                     f"Could not list ReceiptValidationResults from the database: {e}"
                 ) from e
-    
+
     def listReceiptValidationResultsByType(
-        self, result_type: str, limit: int = None, lastEvaluatedKey: dict | None = None
+        self,
+        result_type: str,
+        limit: int = None,
+        lastEvaluatedKey: dict | None = None,
     ) -> tuple[list[ReceiptValidationResult], dict | None]:
         """Returns all ReceiptValidationResults of a specific type.
-        
+
         Args:
             result_type (str): The type of validation results to retrieve.
             limit (int, optional): The maximum number of results to return. Defaults to None.
             lastEvaluatedKey (dict, optional): The last evaluated key from a previous request. Defaults to None.
-            
+
         Raises:
             ValueError: If any parameters are invalid.
             Exception: If the receipt validation results cannot be retrieved from DynamoDB.
-            
+
         Returns:
-            tuple[list[ReceiptValidationResult], dict | None]: A tuple containing a list of validation results and 
+            tuple[list[ReceiptValidationResult], dict | None]: A tuple containing a list of validation results and
                                                                the last evaluated key (or None if no more results).
         """
         if result_type is None:
@@ -645,22 +673,23 @@ class _ReceiptValidationResult:
                 "TableName": self.table_name,
                 "IndexName": "GSI3",
                 "KeyConditionExpression": "#pk = :pk_val",
-                "ExpressionAttributeNames": {
-                    "#pk": "GSI3PK"
-                },
+                "ExpressionAttributeNames": {"#pk": "GSI3PK"},
                 "ExpressionAttributeValues": {
                     ":pk_val": {"S": f"RESULT_TYPE#{result_type}"},
                 },
             }
-            
+
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
             if limit is not None:
                 query_params["Limit"] = limit
-                
+
             response = self._client.query(**query_params)
             validation_results.extend(
-                [itemToReceiptValidationResult(item) for item in response["Items"]]
+                [
+                    itemToReceiptValidationResult(item)
+                    for item in response["Items"]
+                ]
             )
 
             if limit is None:
@@ -696,4 +725,6 @@ class _ReceiptValidationResult:
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(f"Error listing receipt validation results: {e}") from e
+                raise Exception(
+                    f"Error listing receipt validation results: {e}"
+                ) from e

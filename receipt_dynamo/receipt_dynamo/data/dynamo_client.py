@@ -30,10 +30,18 @@ from receipt_dynamo.data._receipt_structure_analysis import (
 from receipt_dynamo.data._receipt_line_item_analysis import (
     _ReceiptLineItemAnalysis,
 )
-from receipt_dynamo.data._receipt_validation_result import _ReceiptValidationResult
-from receipt_dynamo.data._receipt_validation_category import _ReceiptValidationCategory
-from receipt_dynamo.data._receipt_validation_summary import _ReceiptValidationSummary
-from receipt_dynamo.data._receipt_chatgpt_validation import _ReceiptChatGPTValidation
+from receipt_dynamo.data._receipt_validation_result import (
+    _ReceiptValidationResult,
+)
+from receipt_dynamo.data._receipt_validation_category import (
+    _ReceiptValidationCategory,
+)
+from receipt_dynamo.data._receipt_validation_summary import (
+    _ReceiptValidationSummary,
+)
+from receipt_dynamo.data._receipt_chatgpt_validation import (
+    _ReceiptChatGPTValidation,
+)
 
 
 class DynamoClient(

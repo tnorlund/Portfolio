@@ -37,7 +37,10 @@ def example_validation_summary():
             "source_info": {"model": "test-model", "version": "1.0"},
             "processing_metrics": {"execution_time_ms": 150},
             "processing_history": [
-                {"event_type": "validation_started", "timestamp": "2023-05-15T10:29:00"}
+                {
+                    "event_type": "validation_started",
+                    "timestamp": "2023-05-15T10:29:00",
+                }
             ],
         },
         timestamp_added=datetime(2023, 5, 15, 10, 30, 0),
@@ -58,26 +61,34 @@ def test_validation_summary_init_valid(example_validation_summary):
         example_validation_summary.overall_reasoning
         == "Receipt validation passed all checks"
     )
-    
+
     # Direct access to field_summary
     assert "business_identity" in example_validation_summary.field_summary
     assert "address_verification" in example_validation_summary.field_summary
-    
+
     assert (
         example_validation_summary.validation_timestamp
         == "2023-05-15T10:30:00"
     )
     assert example_validation_summary.version == "1.0.0"
-    
+
     # Check metadata structure
     assert "source_info" in example_validation_summary.metadata
     assert "processing_metrics" in example_validation_summary.metadata
     assert "processing_history" in example_validation_summary.metadata
-    
-    assert example_validation_summary.metadata["source_info"]["model"] == "test-model"
-    assert example_validation_summary.metadata["processing_metrics"]["execution_time_ms"] == 150
+
+    assert (
+        example_validation_summary.metadata["source_info"]["model"]
+        == "test-model"
+    )
+    assert (
+        example_validation_summary.metadata["processing_metrics"][
+            "execution_time_ms"
+        ]
+        == 150
+    )
     assert len(example_validation_summary.metadata["processing_history"]) == 1
-    
+
     assert example_validation_summary.timestamp_added == "2023-05-15T10:30:00"
     assert (
         example_validation_summary.timestamp_updated == "2023-05-15T10:30:00"
@@ -96,12 +107,12 @@ def test_validation_summary_init_default_metadata():
         validation_timestamp="2023-05-15T10:30:00",
         timestamp_added=datetime(2023, 5, 15, 10, 30, 0),
     )
-    
+
     # Check default metadata structure
     assert "source_info" in summary.metadata
     assert "processing_metrics" in summary.metadata
     assert "processing_history" in summary.metadata
-    
+
     # Check empty dictionaries/lists
     assert isinstance(summary.metadata["source_info"], dict)
     assert isinstance(summary.metadata["processing_metrics"], dict)
@@ -113,27 +124,42 @@ def test_add_processing_metric(example_validation_summary):
     """Test adding processing metrics"""
     example_validation_summary.add_processing_metric("validation_time_ms", 250)
     example_validation_summary.add_processing_metric("api_calls", 3)
-    
-    assert example_validation_summary.metadata["processing_metrics"]["validation_time_ms"] == 250
-    assert example_validation_summary.metadata["processing_metrics"]["api_calls"] == 3
-    
+
+    assert (
+        example_validation_summary.metadata["processing_metrics"][
+            "validation_time_ms"
+        ]
+        == 250
+    )
+    assert (
+        example_validation_summary.metadata["processing_metrics"]["api_calls"]
+        == 3
+    )
+
     # Existing metrics should still be there
-    assert example_validation_summary.metadata["processing_metrics"]["execution_time_ms"] == 150
+    assert (
+        example_validation_summary.metadata["processing_metrics"][
+            "execution_time_ms"
+        ]
+        == 150
+    )
 
 
 @pytest.mark.unit
 def test_add_history_event(example_validation_summary):
     """Test adding history events"""
     # Add a new event
-    example_validation_summary.add_history_event("validation_completed", {"status": "success"})
-    
+    example_validation_summary.add_history_event(
+        "validation_completed", {"status": "success"}
+    )
+
     # Check that the history was updated
     history = example_validation_summary.metadata["processing_history"]
     assert len(history) == 2
-    
+
     # First event should remain unchanged
     assert history[0]["event_type"] == "validation_started"
-    
+
     # New event should be added with details
     assert history[1]["event_type"] == "validation_completed"
     assert history[1]["status"] == "success"
@@ -145,19 +171,26 @@ def test_metadata_persistence_in_item_conversion(example_validation_summary):
     """Test that metadata is properly preserved during to_item/from_item conversion"""
     # Add some additional metadata
     example_validation_summary.add_processing_metric("token_count", 1250)
-    example_validation_summary.add_history_event("additional_validation", {"details": "Extra checks"})
-    
+    example_validation_summary.add_history_event(
+        "additional_validation", {"details": "Extra checks"}
+    )
+
     # Record the number of history events before conversion
-    original_history_count = len(example_validation_summary.metadata["processing_history"])
-    
+    original_history_count = len(
+        example_validation_summary.metadata["processing_history"]
+    )
+
     # Convert to DynamoDB item and back
     item = example_validation_summary.to_item()
     reconstructed = ReceiptValidationSummary.from_item(item)
-    
+
     # Verify the metadata was preserved
     assert reconstructed.metadata["processing_metrics"]["token_count"] == 1250
-    assert reconstructed.metadata["processing_metrics"]["execution_time_ms"] == 150
-    
+    assert (
+        reconstructed.metadata["processing_metrics"]["execution_time_ms"]
+        == 150
+    )
+
     # Verify history was preserved
     history = reconstructed.metadata["processing_history"]
     assert len(history) == original_history_count
@@ -374,35 +407,41 @@ def test_gsi3_key(example_validation_summary):
 def test_to_item(example_validation_summary):
     """Test the to_item method"""
     item = example_validation_summary.to_item()
-    
+
     # Check basic structure with proper DynamoDB types
     assert item["PK"]["S"] == "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert item["SK"]["S"] == "RECEIPT#1#ANALYSIS#VALIDATION"
     assert item["GSI1PK"]["S"] == "ANALYSIS_TYPE"
     assert item["GSI1SK"]["S"] == "VALIDATION#2023-05-15T10:30:00"
     assert item["GSI2PK"]["S"] == "RECEIPT"
-    assert item["GSI2SK"]["S"] == "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#1"
+    assert (
+        item["GSI2SK"]["S"]
+        == "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#1"
+    )
     assert item["GSI3PK"]["S"] == "VALIDATION_STATUS#valid"
     assert item["GSI3SK"]["S"] == "TIMESTAMP#2023-05-15T10:30:00"
     assert item["TYPE"]["S"] == "RECEIPT_VALIDATION_SUMMARY"
     assert item["overall_status"]["S"] == "valid"
-    assert item["overall_reasoning"]["S"] == "Receipt validation passed all checks"
+    assert (
+        item["overall_reasoning"]["S"]
+        == "Receipt validation passed all checks"
+    )
     assert item["validation_timestamp"]["S"] == "2023-05-15T10:30:00"
     assert item["version"]["S"] == "1.0.0"
-    
+
     # Check complex nested structures
     assert "field_summary" in item
     assert "M" in item["field_summary"]
     assert "business_identity" in item["field_summary"]["M"]
     assert "address_verification" in item["field_summary"]["M"]
-    
+
     # Check metadata
     assert "metadata" in item
     assert "M" in item["metadata"]
     assert "source_info" in item["metadata"]["M"]
     assert "processing_metrics" in item["metadata"]["M"]
     assert "processing_history" in item["metadata"]["M"]
-    
+
     # Check timestamps
     assert item["timestamp_added"]["S"] == "2023-05-15T10:30:00"
     assert item["timestamp_updated"]["S"] == "2023-05-15T10:30:00"
@@ -419,21 +458,32 @@ def test_from_item(example_validation_summary):
     assert summary.receipt_id == example_validation_summary.receipt_id
     assert summary.image_id == example_validation_summary.image_id
     assert summary.overall_status == example_validation_summary.overall_status
-    assert summary.overall_reasoning == example_validation_summary.overall_reasoning
-    
+    assert (
+        summary.overall_reasoning
+        == example_validation_summary.overall_reasoning
+    )
+
     # Verify complex fields
     assert summary.field_summary == example_validation_summary.field_summary
-    assert summary.validation_timestamp == example_validation_summary.validation_timestamp
+    assert (
+        summary.validation_timestamp
+        == example_validation_summary.validation_timestamp
+    )
     assert summary.version == example_validation_summary.version
-    
+
     # Verify metadata structure
     assert "source_info" in summary.metadata
     assert "processing_metrics" in summary.metadata
     assert "processing_history" in summary.metadata
-    
+
     # Verify timestamps
-    assert summary.timestamp_added == example_validation_summary.timestamp_added
-    assert summary.timestamp_updated == example_validation_summary.timestamp_updated
+    assert (
+        summary.timestamp_added == example_validation_summary.timestamp_added
+    )
+    assert (
+        summary.timestamp_updated
+        == example_validation_summary.timestamp_updated
+    )
 
 
 @pytest.mark.unit
@@ -470,7 +520,7 @@ def test_itemToReceiptValidationSummary(example_validation_summary):
     """Test the itemToReceiptValidationSummary function"""
     # Convert to DynamoDB item
     item = example_validation_summary.to_item()
-    
+
     # Use the conversion function
     summary = itemToReceiptValidationSummary(item)
 
@@ -478,11 +528,17 @@ def test_itemToReceiptValidationSummary(example_validation_summary):
     assert summary.receipt_id == example_validation_summary.receipt_id
     assert summary.image_id == example_validation_summary.image_id
     assert summary.overall_status == example_validation_summary.overall_status
-    assert summary.overall_reasoning == example_validation_summary.overall_reasoning
-    
+    assert (
+        summary.overall_reasoning
+        == example_validation_summary.overall_reasoning
+    )
+
     # Verify complex fields
     assert summary.field_summary == example_validation_summary.field_summary
-    assert summary.validation_timestamp == example_validation_summary.validation_timestamp
+    assert (
+        summary.validation_timestamp
+        == example_validation_summary.validation_timestamp
+    )
     assert summary.version == example_validation_summary.version
 
     # Test with missing keys

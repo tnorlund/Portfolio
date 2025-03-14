@@ -3,6 +3,7 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime
 from receipt_dynamo.entities import assert_valid_uuid
 
+
 class ReceiptChatGPTValidation:
     """
     DynamoDB entity representing a second-pass validation by ChatGPT.
@@ -68,7 +69,9 @@ class ReceiptChatGPTValidation:
         """Return the DynamoDB key for this item."""
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {"S": f"RECEIPT#{self.receipt_id}#ANALYSIS#VALIDATION#CHATGPT#{self.timestamp}"},
+            "SK": {
+                "S": f"RECEIPT#{self.receipt_id}#ANALYSIS#VALIDATION#CHATGPT#{self.timestamp}"
+            },
         }
 
     @property
@@ -84,7 +87,9 @@ class ReceiptChatGPTValidation:
         """Return the GSI2 key for this item."""
         return {
             "GSI2PK": {"S": "RECEIPT"},
-            "GSI2SK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id}#VALIDATION"},
+            "GSI2SK": {
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id}#VALIDATION"
+            },
         }
 
     @property
@@ -99,14 +104,18 @@ class ReceiptChatGPTValidation:
         """Convert a Python value to a DynamoDB typed value."""
         if value is None:
             return {"NULL": True}
-        elif isinstance(value, bool):  # Check for bool before int since bool is a subclass of int
+        elif isinstance(
+            value, bool
+        ):  # Check for bool before int since bool is a subclass of int
             return {"BOOL": value}
         elif isinstance(value, str):
             return {"S": value}
         elif isinstance(value, (int, float)):
             return {"N": str(value)}
         elif isinstance(value, dict):
-            return {"M": {k: self._python_to_dynamo(v) for k, v in value.items()}}
+            return {
+                "M": {k: self._python_to_dynamo(v) for k, v in value.items()}
+            }
         elif isinstance(value, list):
             return {"L": [self._python_to_dynamo(item) for item in value]}
         else:
@@ -155,7 +164,11 @@ class ReceiptChatGPTValidation:
             prompt=item["prompt"]["S"],
             response=item["response"]["S"],
             timestamp=timestamp,
-            metadata=cls._dynamo_to_python(item["metadata"]) if "metadata" in item else {},
+            metadata=(
+                cls._dynamo_to_python(item["metadata"])
+                if "metadata" in item
+                else {}
+            ),
         )
 
     @staticmethod
@@ -174,9 +187,15 @@ class ReceiptChatGPTValidation:
         elif "BOOL" in dynamo_value:
             return dynamo_value["BOOL"]
         elif "M" in dynamo_value:
-            return {k: ReceiptChatGPTValidation._dynamo_to_python(v) for k, v in dynamo_value["M"].items()}
+            return {
+                k: ReceiptChatGPTValidation._dynamo_to_python(v)
+                for k, v in dynamo_value["M"].items()
+            }
         elif "L" in dynamo_value:
-            return [ReceiptChatGPTValidation._dynamo_to_python(item) for item in dynamo_value["L"]]
+            return [
+                ReceiptChatGPTValidation._dynamo_to_python(item)
+                for item in dynamo_value["L"]
+            ]
         else:
             # Return empty dict for unsupported types
             return {}

@@ -3,6 +3,7 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime
 from receipt_dynamo.entities import assert_valid_uuid
 
+
 class ReceiptValidationCategory:
     """
     DynamoDB entity representing a specific validation category for a receipt.
@@ -73,7 +74,9 @@ class ReceiptValidationCategory:
         """Return the DynamoDB key for this item."""
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {"S": f"RECEIPT#{self.receipt_id}#ANALYSIS#VALIDATION#CATEGORY#{self.field_name}"},
+            "SK": {
+                "S": f"RECEIPT#{self.receipt_id}#ANALYSIS#VALIDATION#CATEGORY#{self.field_name}"
+            },
         }
 
     @property
@@ -81,7 +84,9 @@ class ReceiptValidationCategory:
         """Return the GSI1 key for this item."""
         return {
             "GSI1PK": {"S": "ANALYSIS_TYPE"},
-            "GSI1SK": {"S": f"VALIDATION#{self.validation_timestamp}#CATEGORY#{self.field_name}"},
+            "GSI1SK": {
+                "S": f"VALIDATION#{self.validation_timestamp}#CATEGORY#{self.field_name}"
+            },
         }
 
     @property
@@ -89,7 +94,9 @@ class ReceiptValidationCategory:
         """Return the GSI2 key for this item."""
         return {
             "GSI2PK": {"S": "RECEIPT"},
-            "GSI2SK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id}#VALIDATION"},
+            "GSI2SK": {
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id}#VALIDATION"
+            },
         }
 
     @property
@@ -97,7 +104,9 @@ class ReceiptValidationCategory:
         """Return the GSI3 key for this item."""
         return {
             "GSI3PK": {"S": f"FIELD_STATUS#{self.field_name}#{self.status}"},
-            "GSI3SK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id}"},
+            "GSI3SK": {
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id}"
+            },
         }
 
     def _python_to_dynamo(self, value: Any) -> Dict[str, Any]:
@@ -111,7 +120,9 @@ class ReceiptValidationCategory:
         elif isinstance(value, bool):
             return {"BOOL": value}
         elif isinstance(value, dict):
-            return {"M": {k: self._python_to_dynamo(v) for k, v in value.items()}}
+            return {
+                "M": {k: self._python_to_dynamo(v) for k, v in value.items()}
+            }
         elif isinstance(value, list):
             return {"L": [self._python_to_dynamo(item) for item in value]}
         else:
@@ -152,9 +163,11 @@ class ReceiptValidationCategory:
         status = item.get("status", {}).get("S", "")
         reasoning = item.get("reasoning", {}).get("S", "")
         validation_timestamp = item.get("validation_timestamp", {}).get("S")
-        
+
         # Extract complex structures with recursive conversion
-        result_summary = cls._dynamo_to_python(item.get("result_summary", {"M": {}}))
+        result_summary = cls._dynamo_to_python(
+            item.get("result_summary", {"M": {}})
+        )
         metadata = cls._dynamo_to_python(item.get("metadata", {"M": {}}))
 
         # Create the ReceiptValidationCategory
@@ -186,9 +199,15 @@ class ReceiptValidationCategory:
         elif "BOOL" in dynamo_value:
             return dynamo_value["BOOL"]
         elif "M" in dynamo_value:
-            return {k: ReceiptValidationCategory._dynamo_to_python(v) for k, v in dynamo_value["M"].items()}
+            return {
+                k: ReceiptValidationCategory._dynamo_to_python(v)
+                for k, v in dynamo_value["M"].items()
+            }
         elif "L" in dynamo_value:
-            return [ReceiptValidationCategory._dynamo_to_python(item) for item in dynamo_value["L"]]
+            return [
+                ReceiptValidationCategory._dynamo_to_python(item)
+                for item in dynamo_value["L"]
+            ]
         else:
             # Handle any other type
             for key, value in dynamo_value.items():

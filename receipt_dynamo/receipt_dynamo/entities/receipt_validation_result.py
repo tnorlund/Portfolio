@@ -81,7 +81,9 @@ class ReceiptValidationResult:
         elif isinstance(validation_timestamp, str):
             self.validation_timestamp = validation_timestamp
         else:
-            raise ValueError("validation_timestamp must be a datetime or string")
+            raise ValueError(
+                "validation_timestamp must be a datetime or string"
+            )
 
         if metadata is not None and not isinstance(metadata, dict):
             raise ValueError("metadata must be a dictionary or None")
@@ -92,7 +94,9 @@ class ReceiptValidationResult:
         """Return the DynamoDB key for this item."""
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {"S": f"RECEIPT#{self.receipt_id}#ANALYSIS#VALIDATION#CATEGORY#{self.field_name}#RESULT#{self.result_index}"},
+            "SK": {
+                "S": f"RECEIPT#{self.receipt_id}#ANALYSIS#VALIDATION#CATEGORY#{self.field_name}#RESULT#{self.result_index}"
+            },
         }
 
     @property
@@ -100,7 +104,9 @@ class ReceiptValidationResult:
         """Return the GSI1 key for this item."""
         return {
             "GSI1PK": {"S": "ANALYSIS_TYPE"},
-            "GSI1SK": {"S": f"VALIDATION#{self.validation_timestamp}#CATEGORY#{self.field_name}#RESULT"},
+            "GSI1SK": {
+                "S": f"VALIDATION#{self.validation_timestamp}#CATEGORY#{self.field_name}#RESULT"
+            },
         }
 
     @property
@@ -108,7 +114,9 @@ class ReceiptValidationResult:
         """Return the GSI2 key for this item."""
         return {
             "GSI2PK": {"S": "RECEIPT"},
-            "GSI2SK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id}#VALIDATION#CATEGORY#{self.field_name}"},
+            "GSI2SK": {
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id}#VALIDATION#CATEGORY#{self.field_name}"
+            },
         }
 
     @property
@@ -116,7 +124,9 @@ class ReceiptValidationResult:
         """Return the GSI3 key for this item."""
         return {
             "GSI3PK": {"S": f"RESULT_TYPE#{self.type}"},
-            "GSI3SK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id}#CATEGORY#{self.field_name}"},
+            "GSI3SK": {
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id}#CATEGORY#{self.field_name}"
+            },
         }
 
     def _python_to_dynamo(self, value: Any) -> Dict[str, Any]:
@@ -130,7 +140,9 @@ class ReceiptValidationResult:
         elif isinstance(value, bool):
             return {"BOOL": value}
         elif isinstance(value, dict):
-            return {"M": {k: self._python_to_dynamo(v) for k, v in value.items()}}
+            return {
+                "M": {k: self._python_to_dynamo(v) for k, v in value.items()}
+            }
         elif isinstance(value, list):
             return {"L": [self._python_to_dynamo(item) for item in value]}
         else:
@@ -152,7 +164,7 @@ class ReceiptValidationResult:
         item["message"] = {"S": self.message}
         item["reasoning"] = {"S": self.reasoning}
         item["validation_timestamp"] = {"S": self.validation_timestamp}
-        
+
         # Add metadata as a map
         item["metadata"] = self._python_to_dynamo(self.metadata)
 
@@ -180,13 +192,21 @@ class ReceiptValidationResult:
         result_type = item.get("type", {}).get("S", "")
         message = item.get("message", {}).get("S", "")
         reasoning = item.get("reasoning", {}).get("S", "")
-        
+
         # Handle optional fields
         field = item.get("field", {}).get("S") if "field" in item else None
-        expected_value = item.get("expected_value", {}).get("S") if "expected_value" in item else None
-        actual_value = item.get("actual_value", {}).get("S") if "actual_value" in item else None
+        expected_value = (
+            item.get("expected_value", {}).get("S")
+            if "expected_value" in item
+            else None
+        )
+        actual_value = (
+            item.get("actual_value", {}).get("S")
+            if "actual_value" in item
+            else None
+        )
         validation_timestamp = item.get("validation_timestamp", {}).get("S")
-        
+
         # Extract metadata with recursive conversion
         metadata = cls._dynamo_to_python(item.get("metadata", {"M": {}}))
 
@@ -222,9 +242,15 @@ class ReceiptValidationResult:
         elif "BOOL" in dynamo_value:
             return dynamo_value["BOOL"]
         elif "M" in dynamo_value:
-            return {k: ReceiptValidationResult._dynamo_to_python(v) for k, v in dynamo_value["M"].items()}
+            return {
+                k: ReceiptValidationResult._dynamo_to_python(v)
+                for k, v in dynamo_value["M"].items()
+            }
         elif "L" in dynamo_value:
-            return [ReceiptValidationResult._dynamo_to_python(item) for item in dynamo_value["L"]]
+            return [
+                ReceiptValidationResult._dynamo_to_python(item)
+                for item in dynamo_value["L"]
+            ]
         else:
             # Handle any other type
             for key, value in dynamo_value.items():

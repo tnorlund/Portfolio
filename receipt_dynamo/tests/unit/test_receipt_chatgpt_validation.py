@@ -19,8 +19,12 @@ def example_chatgpt_validation():
         revised_status="valid",
         reasoning="After reviewing the receipt details, all information appears valid.",
         corrections=[
-            {"field": "merchant_name", "original": "McDonalds", "corrected": "McDonald's"},
-            {"field": "total", "original": "15.90", "corrected": "15.99"}
+            {
+                "field": "merchant_name",
+                "original": "McDonalds",
+                "corrected": "McDonald's",
+            },
+            {"field": "total", "original": "15.90", "corrected": "15.99"},
         ],
         prompt="Please review this receipt validation result and correct any errors",
         response="The receipt appears to be valid with minor corrections needed.",
@@ -28,7 +32,7 @@ def example_chatgpt_validation():
         metadata={
             "source_info": {"model": "gpt-4-0314"},
             "confidence": 0.92,
-            "processing_time_ms": 1250
+            "processing_time_ms": 1250,
         },
     )
 
@@ -37,17 +41,34 @@ def example_chatgpt_validation():
 def test_chatgpt_validation_init_valid(example_chatgpt_validation):
     """Test initialization with valid parameters"""
     assert example_chatgpt_validation.receipt_id == 1
-    assert example_chatgpt_validation.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    assert (
+        example_chatgpt_validation.image_id
+        == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    )
     assert example_chatgpt_validation.original_status == "suspect"
     assert example_chatgpt_validation.revised_status == "valid"
-    assert example_chatgpt_validation.reasoning == "After reviewing the receipt details, all information appears valid."
+    assert (
+        example_chatgpt_validation.reasoning
+        == "After reviewing the receipt details, all information appears valid."
+    )
     assert len(example_chatgpt_validation.corrections) == 2
-    assert example_chatgpt_validation.corrections[0]["field"] == "merchant_name"
+    assert (
+        example_chatgpt_validation.corrections[0]["field"] == "merchant_name"
+    )
     assert example_chatgpt_validation.corrections[1]["original"] == "15.90"
-    assert example_chatgpt_validation.prompt == "Please review this receipt validation result and correct any errors"
-    assert example_chatgpt_validation.response == "The receipt appears to be valid with minor corrections needed."
+    assert (
+        example_chatgpt_validation.prompt
+        == "Please review this receipt validation result and correct any errors"
+    )
+    assert (
+        example_chatgpt_validation.response
+        == "The receipt appears to be valid with minor corrections needed."
+    )
     assert example_chatgpt_validation.timestamp == "2023-05-15T10:30:00"
-    assert example_chatgpt_validation.metadata["source_info"]["model"] == "gpt-4-0314"
+    assert (
+        example_chatgpt_validation.metadata["source_info"]["model"]
+        == "gpt-4-0314"
+    )
     assert example_chatgpt_validation.metadata["confidence"] == 0.92
 
 
@@ -66,7 +87,7 @@ def test_chatgpt_validation_init_minimal():
         timestamp="2023-05-15T10:30:00",
         metadata={},
     )
-    
+
     assert validation.receipt_id == 1
     assert validation.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert validation.original_status == "suspect"
@@ -77,7 +98,7 @@ def test_chatgpt_validation_init_minimal():
     assert validation.prompt == "Test prompt"
     assert validation.response == "Test response"
     assert validation.timestamp == "2023-05-15T10:30:00"
-    
+
     # Check that metadata defaults to an empty dict
     assert isinstance(validation.metadata, dict)
     assert len(validation.metadata) == 0
@@ -275,7 +296,9 @@ def test_key(example_chatgpt_validation):
     """Test the key property"""
     assert example_chatgpt_validation.key == {
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-        "SK": {"S": "RECEIPT#1#ANALYSIS#VALIDATION#CHATGPT#2023-05-15T10:30:00"},
+        "SK": {
+            "S": "RECEIPT#1#ANALYSIS#VALIDATION#CHATGPT#2023-05-15T10:30:00"
+        },
     }
 
 
@@ -293,7 +316,9 @@ def test_gsi2_key(example_chatgpt_validation):
     """Test the gsi2_key property"""
     assert example_chatgpt_validation.gsi2_key == {
         "GSI2PK": {"S": "RECEIPT"},
-        "GSI2SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#1#VALIDATION"},
+        "GSI2SK": {
+            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#1#VALIDATION"
+        },
     }
 
 
@@ -310,41 +335,59 @@ def test_gsi3_key(example_chatgpt_validation):
 def test_to_item(example_chatgpt_validation):
     """Test the to_item method"""
     item = example_chatgpt_validation.to_item()
-    
+
     # Check that the basic keys are present
     assert item["PK"] == {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"}
-    assert item["SK"] == {"S": "RECEIPT#1#ANALYSIS#VALIDATION#CHATGPT#2023-05-15T10:30:00"}
+    assert item["SK"] == {
+        "S": "RECEIPT#1#ANALYSIS#VALIDATION#CHATGPT#2023-05-15T10:30:00"
+    }
     assert item["GSI1PK"] == {"S": "ANALYSIS_TYPE"}
     assert item["GSI1SK"] == {"S": "VALIDATION_CHATGPT#2023-05-15T10:30:00"}
     assert item["GSI2PK"] == {"S": "RECEIPT"}
-    assert item["GSI2SK"] == {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#1#VALIDATION"}
+    assert item["GSI2SK"] == {
+        "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#1#VALIDATION"
+    }
     assert item["GSI3PK"] == {"S": "VALIDATION_STATUS#valid"}
     assert item["GSI3SK"] == {"S": "CHATGPT#2023-05-15T10:30:00"}
-    
+
     # Check that the required fields are present
     assert item["original_status"] == {"S": "suspect"}
     assert item["revised_status"] == {"S": "valid"}
-    assert item["reasoning"] == {"S": "After reviewing the receipt details, all information appears valid."}
-    assert item["corrections"] == {"L": [
-        {"M": {
-            "field": {"S": "merchant_name"},
-            "original": {"S": "McDonalds"},
-            "corrected": {"S": "McDonald's"}
-        }},
-        {"M": {
-            "field": {"S": "total"},
-            "original": {"S": "15.90"},
-            "corrected": {"S": "15.99"}
-        }}
-    ]}
-    assert item["prompt"] == {"S": "Please review this receipt validation result and correct any errors"}
-    assert item["response"] == {"S": "The receipt appears to be valid with minor corrections needed."}
+    assert item["reasoning"] == {
+        "S": "After reviewing the receipt details, all information appears valid."
+    }
+    assert item["corrections"] == {
+        "L": [
+            {
+                "M": {
+                    "field": {"S": "merchant_name"},
+                    "original": {"S": "McDonalds"},
+                    "corrected": {"S": "McDonald's"},
+                }
+            },
+            {
+                "M": {
+                    "field": {"S": "total"},
+                    "original": {"S": "15.90"},
+                    "corrected": {"S": "15.99"},
+                }
+            },
+        ]
+    }
+    assert item["prompt"] == {
+        "S": "Please review this receipt validation result and correct any errors"
+    }
+    assert item["response"] == {
+        "S": "The receipt appears to be valid with minor corrections needed."
+    }
     assert item["timestamp"] == {"S": "2023-05-15T10:30:00"}
-    assert item["metadata"] == {"M": {
-        "source_info": {"M": {"model": {"S": "gpt-4-0314"}}},
-        "confidence": {"N": "0.92"},
-        "processing_time_ms": {"N": "1250"}
-    }}
+    assert item["metadata"] == {
+        "M": {
+            "source_info": {"M": {"model": {"S": "gpt-4-0314"}}},
+            "confidence": {"N": "0.92"},
+            "processing_time_ms": {"N": "1250"},
+        }
+    }
 
 
 @pytest.mark.unit
@@ -353,12 +396,17 @@ def test_from_item(example_chatgpt_validation):
     # Convert to item and back
     item = example_chatgpt_validation.to_item()
     validation = ReceiptChatGPTValidation.from_item(item)
-    
+
     # Check that all fields match
     assert validation.receipt_id == example_chatgpt_validation.receipt_id
     assert validation.image_id == example_chatgpt_validation.image_id
-    assert validation.original_status == example_chatgpt_validation.original_status
-    assert validation.revised_status == example_chatgpt_validation.revised_status
+    assert (
+        validation.original_status
+        == example_chatgpt_validation.original_status
+    )
+    assert (
+        validation.revised_status == example_chatgpt_validation.revised_status
+    )
     assert validation.reasoning == example_chatgpt_validation.reasoning
     assert validation.corrections == example_chatgpt_validation.corrections
     assert validation.prompt == example_chatgpt_validation.prompt
@@ -374,21 +422,21 @@ def test_eq(example_chatgpt_validation):
     validation1 = example_chatgpt_validation
     validation2 = deepcopy(example_chatgpt_validation)
     assert validation1 == validation2
-    
+
     # Different receipt_id should not be equal
     validation2.receipt_id = 2
     assert validation1 != validation2
-    
+
     # Different image_id should not be equal
     validation2.receipt_id = 1
     validation2.image_id = "4f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert validation1 != validation2
-    
-    # Different timestamp should not be equal 
+
+    # Different timestamp should not be equal
     validation2.image_id = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     validation2.timestamp = "2023-05-16T10:30:00"
     assert validation1 != validation2
-    
+
     # Non-ReceiptChatGPTValidation should not be equal
     assert validation1 != "not a ReceiptChatGPTValidation"
 
@@ -410,21 +458,27 @@ def test_itemToReceiptChatGPTValidation(example_chatgpt_validation):
     """Test the itemToReceiptChatGPTValidation function"""
     # Convert to item using to_item
     item = example_chatgpt_validation.to_item()
-    
+
     # Make sure the timestamp is included in the item
     assert "timestamp" in item
     timestamp = item["timestamp"]
-    
+
     # Use the conversion function
     # Note: The utility function might need to be fixed to handle the timestamp correctly
     try:
         validation = itemToReceiptChatGPTValidation(item)
-        
+
         # Check that the result matches the original
         assert validation.receipt_id == example_chatgpt_validation.receipt_id
         assert validation.image_id == example_chatgpt_validation.image_id
-        assert validation.original_status == example_chatgpt_validation.original_status
-        assert validation.revised_status == example_chatgpt_validation.revised_status
+        assert (
+            validation.original_status
+            == example_chatgpt_validation.original_status
+        )
+        assert (
+            validation.revised_status
+            == example_chatgpt_validation.revised_status
+        )
         assert validation.reasoning == example_chatgpt_validation.reasoning
         assert validation.corrections == example_chatgpt_validation.corrections
         assert validation.prompt == example_chatgpt_validation.prompt
@@ -435,12 +489,12 @@ def test_itemToReceiptChatGPTValidation(example_chatgpt_validation):
         if "timestamp must be a string" in str(e):
             # If the utility function isn't passing the timestamp correctly, create a manual test
             # to ensure that we're testing the object construction from an item
-            
+
             # Extract values directly from the item
             image_id = item["PK"].split("#")[1]
             sk_parts = item["SK"].split("#")
             receipt_id = int(sk_parts[1])
-            
+
             # Create the validation object manually with the extracted data
             manual_validation = ReceiptChatGPTValidation(
                 receipt_id=receipt_id,
@@ -454,21 +508,52 @@ def test_itemToReceiptChatGPTValidation(example_chatgpt_validation):
                 timestamp=timestamp,  # Use the timestamp from the item
                 metadata=item.get("metadata", {}),
             )
-            
+
             # Perform assertions on the manually created object
-            assert manual_validation.receipt_id == example_chatgpt_validation.receipt_id
-            assert manual_validation.image_id == example_chatgpt_validation.image_id
-            assert manual_validation.original_status == example_chatgpt_validation.original_status
-            assert manual_validation.revised_status == example_chatgpt_validation.revised_status
-            assert manual_validation.reasoning == example_chatgpt_validation.reasoning
-            assert manual_validation.corrections == example_chatgpt_validation.corrections
-            assert manual_validation.prompt == example_chatgpt_validation.prompt
-            assert manual_validation.response == example_chatgpt_validation.response
-            assert manual_validation.timestamp == example_chatgpt_validation.timestamp
-            assert manual_validation.metadata == example_chatgpt_validation.metadata
-            
+            assert (
+                manual_validation.receipt_id
+                == example_chatgpt_validation.receipt_id
+            )
+            assert (
+                manual_validation.image_id
+                == example_chatgpt_validation.image_id
+            )
+            assert (
+                manual_validation.original_status
+                == example_chatgpt_validation.original_status
+            )
+            assert (
+                manual_validation.revised_status
+                == example_chatgpt_validation.revised_status
+            )
+            assert (
+                manual_validation.reasoning
+                == example_chatgpt_validation.reasoning
+            )
+            assert (
+                manual_validation.corrections
+                == example_chatgpt_validation.corrections
+            )
+            assert (
+                manual_validation.prompt == example_chatgpt_validation.prompt
+            )
+            assert (
+                manual_validation.response
+                == example_chatgpt_validation.response
+            )
+            assert (
+                manual_validation.timestamp
+                == example_chatgpt_validation.timestamp
+            )
+            assert (
+                manual_validation.metadata
+                == example_chatgpt_validation.metadata
+            )
+
             # Print a message indicating that there's an issue with the utility function
-            print("\nNOTE: The itemToReceiptChatGPTValidation function appears to be missing timestamp handling.")
+            print(
+                "\nNOTE: The itemToReceiptChatGPTValidation function appears to be missing timestamp handling."
+            )
         else:
             # If it's a different error, re-raise it
             raise

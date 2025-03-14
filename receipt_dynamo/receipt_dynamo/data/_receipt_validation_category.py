@@ -1,6 +1,9 @@
 from botocore.exceptions import ClientError
 
-from receipt_dynamo import ReceiptValidationCategory, itemToReceiptValidationCategory
+from receipt_dynamo import (
+    ReceiptValidationCategory,
+    itemToReceiptValidationCategory,
+)
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
@@ -41,7 +44,9 @@ class _ReceiptValidationCategory:
         Returns ReceiptValidationCategories with a specific status.
     """
 
-    def addReceiptValidationCategory(self, category: ReceiptValidationCategory):
+    def addReceiptValidationCategory(
+        self, category: ReceiptValidationCategory
+    ):
         """Adds a ReceiptValidationCategory to DynamoDB.
 
         Args:
@@ -90,7 +95,9 @@ class _ReceiptValidationCategory:
                     f"Could not add receipt validation category to DynamoDB: {e}"
                 ) from e
 
-    def addReceiptValidationCategories(self, categories: list[ReceiptValidationCategory]):
+    def addReceiptValidationCategories(
+        self, categories: list[ReceiptValidationCategory]
+    ):
         """Adds multiple ReceiptValidationCategories to DynamoDB in batches.
 
         Args:
@@ -108,7 +115,9 @@ class _ReceiptValidationCategory:
             raise ValueError(
                 "categories must be a list of ReceiptValidationCategory instances."
             )
-        if not all(isinstance(cat, ReceiptValidationCategory) for cat in categories):
+        if not all(
+            isinstance(cat, ReceiptValidationCategory) for cat in categories
+        ):
             raise ValueError(
                 "All categories must be instances of the ReceiptValidationCategory class."
             )
@@ -144,7 +153,9 @@ class _ReceiptValidationCategory:
                     f"Could not add ReceiptValidationCategories to the database: {e}"
                 ) from e
 
-    def updateReceiptValidationCategory(self, category: ReceiptValidationCategory):
+    def updateReceiptValidationCategory(
+        self, category: ReceiptValidationCategory
+    ):
         """Updates an existing ReceiptValidationCategory in the database.
 
         Args:
@@ -189,7 +200,9 @@ class _ReceiptValidationCategory:
                     f"Could not update ReceiptValidationCategory in the database: {e}"
                 ) from e
 
-    def updateReceiptValidationCategories(self, categories: list[ReceiptValidationCategory]):
+    def updateReceiptValidationCategories(
+        self, categories: list[ReceiptValidationCategory]
+    ):
         """Updates multiple ReceiptValidationCategories in the database.
 
         Args:
@@ -207,7 +220,9 @@ class _ReceiptValidationCategory:
             raise ValueError(
                 "categories must be a list of ReceiptValidationCategory instances."
             )
-        if not all(isinstance(cat, ReceiptValidationCategory) for cat in categories):
+        if not all(
+            isinstance(cat, ReceiptValidationCategory) for cat in categories
+        ):
             raise ValueError(
                 "All categories must be instances of the ReceiptValidationCategory class."
             )
@@ -250,7 +265,9 @@ class _ReceiptValidationCategory:
                         f"Could not update ReceiptValidationCategories in the database: {e}"
                     ) from e
 
-    def deleteReceiptValidationCategory(self, category: ReceiptValidationCategory):
+    def deleteReceiptValidationCategory(
+        self, category: ReceiptValidationCategory
+    ):
         """Deletes a single ReceiptValidationCategory.
 
         Args:
@@ -295,7 +312,9 @@ class _ReceiptValidationCategory:
                     f"Could not delete ReceiptValidationCategory from the database: {e}"
                 ) from e
 
-    def deleteReceiptValidationCategories(self, categories: list[ReceiptValidationCategory]):
+    def deleteReceiptValidationCategories(
+        self, categories: list[ReceiptValidationCategory]
+    ):
         """Deletes multiple ReceiptValidationCategories in batch.
 
         Args:
@@ -313,7 +332,9 @@ class _ReceiptValidationCategory:
             raise ValueError(
                 "categories must be a list of ReceiptValidationCategory instances."
             )
-        if not all(isinstance(cat, ReceiptValidationCategory) for cat in categories):
+        if not all(
+            isinstance(cat, ReceiptValidationCategory) for cat in categories
+        ):
             raise ValueError(
                 "All categories must be instances of the ReceiptValidationCategory class."
             )
@@ -350,10 +371,7 @@ class _ReceiptValidationCategory:
                 ) from e
 
     def getReceiptValidationCategory(
-        self,
-        receipt_id: int,
-        image_id: str,
-        field_name: str
+        self, receipt_id: int, image_id: str, field_name: str
     ) -> ReceiptValidationCategory:
         """Retrieves a single ReceiptValidationCategory by IDs.
 
@@ -370,25 +388,33 @@ class _ReceiptValidationCategory:
             Exception: If the ReceiptValidationCategory cannot be retrieved from DynamoDB.
         """
         if receipt_id is None:
-            raise ValueError("receipt_id parameter is required and cannot be None.")
+            raise ValueError(
+                "receipt_id parameter is required and cannot be None."
+            )
         if not isinstance(receipt_id, int):
             raise ValueError("receipt_id must be an integer.")
         if image_id is None:
-            raise ValueError("image_id parameter is required and cannot be None.")
+            raise ValueError(
+                "image_id parameter is required and cannot be None."
+            )
         assert_valid_uuid(image_id)
         if field_name is None:
-            raise ValueError("field_name parameter is required and cannot be None.")
+            raise ValueError(
+                "field_name parameter is required and cannot be None."
+            )
         if not isinstance(field_name, str):
             raise ValueError("field_name must be a string.")
         if not field_name:
             raise ValueError("field_name must not be empty.")
-        
+
         try:
             response = self._client.get_item(
                 TableName=self.table_name,
                 Key={
                     "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"RECEIPT#{receipt_id}#ANALYSIS#VALIDATION#CATEGORY#{field_name}"},
+                    "SK": {
+                        "S": f"RECEIPT#{receipt_id}#ANALYSIS#VALIDATION#CATEGORY#{field_name}"
+                    },
                 },
             )
             if "Item" in response:
@@ -408,25 +434,25 @@ class _ReceiptValidationCategory:
             elif error_code == "AccessDeniedException":
                 raise Exception(f"Access denied: {e}") from e
             else:
-                raise Exception(f"Error getting receipt validation category: {e}") from e
+                raise Exception(
+                    f"Error getting receipt validation category: {e}"
+                ) from e
 
     def listReceiptValidationCategories(
-        self,
-        limit: int = None,
-        lastEvaluatedKey: dict | None = None
+        self, limit: int = None, lastEvaluatedKey: dict | None = None
     ) -> tuple[list[ReceiptValidationCategory], dict | None]:
         """Returns all ReceiptValidationCategories from the table using GSI1.
-        
+
         Args:
             limit (int, optional): The maximum number of results to return. Defaults to None.
             lastEvaluatedKey (dict, optional): The last evaluated key from a previous request. Defaults to None.
-            
+
         Raises:
             ValueError: If any parameters are invalid.
             Exception: If the receipt validation categories cannot be retrieved from DynamoDB.
-            
+
         Returns:
-            tuple[list[ReceiptValidationCategory], dict | None]: A tuple containing a list of validation categories and 
+            tuple[list[ReceiptValidationCategory], dict | None]: A tuple containing a list of validation categories and
                                                                the last evaluated key (or None if no more results).
         """
         if limit is not None and not isinstance(limit, int):
@@ -443,24 +469,24 @@ class _ReceiptValidationCategory:
                 "TableName": self.table_name,
                 "IndexName": "GSI1",
                 "KeyConditionExpression": "#pk = :pk_val AND begins_with(#sk, :sk_prefix)",
-                "ExpressionAttributeNames": {
-                    "#pk": "GSI1PK", 
-                    "#sk": "GSI1SK"
-                },
+                "ExpressionAttributeNames": {"#pk": "GSI1PK", "#sk": "GSI1SK"},
                 "ExpressionAttributeValues": {
                     ":pk_val": {"S": "ANALYSIS_TYPE"},
                     ":sk_prefix": {"S": "VALIDATION#"},
                 },
             }
-            
+
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
             if limit is not None:
                 query_params["Limit"] = limit
-                
+
             response = self._client.query(**query_params)
             validation_categories.extend(
-                [itemToReceiptValidationCategory(item) for item in response["Items"]]
+                [
+                    itemToReceiptValidationCategory(item)
+                    for item in response["Items"]
+                ]
             )
 
             if limit is None:
@@ -496,38 +522,44 @@ class _ReceiptValidationCategory:
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(f"Error listing receipt validation categories: {e}") from e
+                raise Exception(
+                    f"Error listing receipt validation categories: {e}"
+                ) from e
 
     def listReceiptValidationCategoriesByStatus(
         self,
         status: str,
         limit: int = None,
-        lastEvaluatedKey: dict | None = None
+        lastEvaluatedKey: dict | None = None,
     ) -> tuple[list[ReceiptValidationCategory], dict | None]:
         """Returns ReceiptValidationCategories with a specific status using GSI3.
-        
+
         Args:
             status (str): The status to filter by.
             limit (int, optional): The maximum number of results to return. Defaults to None.
             lastEvaluatedKey (dict, optional): The last evaluated key from a previous request. Defaults to None.
-            
+
         Raises:
             ValueError: If any parameters are invalid.
             Exception: If the receipt validation categories cannot be retrieved from DynamoDB.
-            
+
         Returns:
-            tuple[list[ReceiptValidationCategory], dict | None]: A tuple containing a list of validation categories and 
+            tuple[list[ReceiptValidationCategory], dict | None]: A tuple containing a list of validation categories and
                                                                the last evaluated key (or None if no more results).
         """
         if status is None:
-            raise ValueError("status parameter is required and cannot be None.")
+            raise ValueError(
+                "status parameter is required and cannot be None."
+            )
         if not isinstance(status, str):
             raise ValueError("status must be a string.")
         if not status:
             raise ValueError("status must not be empty.")
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None.")
-        if lastEvaluatedKey is not None and not isinstance(lastEvaluatedKey, dict):
+        if lastEvaluatedKey is not None and not isinstance(
+            lastEvaluatedKey, dict
+        ):
             raise ValueError("lastEvaluatedKey must be a dictionary or None.")
 
         validation_categories = []
@@ -537,22 +569,23 @@ class _ReceiptValidationCategory:
                 "TableName": self.table_name,
                 "IndexName": "GSI3",
                 "KeyConditionExpression": "begins_with(#pk, :pk_val)",
-                "ExpressionAttributeNames": {
-                    "#pk": "GSI3PK"
-                },
+                "ExpressionAttributeNames": {"#pk": "GSI3PK"},
                 "ExpressionAttributeValues": {
                     ":pk_val": {"S": f"FIELD_STATUS##{status}"},
                 },
             }
-            
+
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
             if limit is not None:
                 query_params["Limit"] = limit
-                
+
             response = self._client.query(**query_params)
             validation_categories.extend(
-                [itemToReceiptValidationCategory(item) for item in response["Items"]]
+                [
+                    itemToReceiptValidationCategory(item)
+                    for item in response["Items"]
+                ]
             )
 
             if limit is None:
@@ -588,41 +621,49 @@ class _ReceiptValidationCategory:
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(f"Error listing receipt validation categories: {e}") from e
+                raise Exception(
+                    f"Error listing receipt validation categories: {e}"
+                ) from e
 
     def listReceiptValidationCategoriesForReceipt(
         self,
         receipt_id: int,
         image_id: str,
         limit: int = None,
-        lastEvaluatedKey: dict | None = None
+        lastEvaluatedKey: dict | None = None,
     ) -> tuple[list[ReceiptValidationCategory], dict | None]:
         """Returns ReceiptValidationCategories for a specific receipt.
-        
+
         Args:
             receipt_id (int): The receipt ID.
             image_id (str): The image ID.
             limit (int, optional): The maximum number of results to return. Defaults to None.
             lastEvaluatedKey (dict, optional): The last evaluated key from a previous request. Defaults to None.
-            
+
         Raises:
             ValueError: If any parameters are invalid.
             Exception: If the receipt validation categories cannot be retrieved from DynamoDB.
-            
+
         Returns:
-            tuple[list[ReceiptValidationCategory], dict | None]: A tuple containing a list of validation categories and 
+            tuple[list[ReceiptValidationCategory], dict | None]: A tuple containing a list of validation categories and
                                                                the last evaluated key (or None if no more results).
         """
         if receipt_id is None:
-            raise ValueError("receipt_id parameter is required and cannot be None.")
+            raise ValueError(
+                "receipt_id parameter is required and cannot be None."
+            )
         if not isinstance(receipt_id, int):
             raise ValueError("receipt_id must be an integer.")
         if image_id is None:
-            raise ValueError("image_id parameter is required and cannot be None.")
+            raise ValueError(
+                "image_id parameter is required and cannot be None."
+            )
         assert_valid_uuid(image_id)
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None.")
-        if lastEvaluatedKey is not None and not isinstance(lastEvaluatedKey, dict):
+        if lastEvaluatedKey is not None and not isinstance(
+            lastEvaluatedKey, dict
+        ):
             raise ValueError("lastEvaluatedKey must be a dictionary or None.")
 
         validation_categories = []
@@ -633,27 +674,37 @@ class _ReceiptValidationCategory:
                 "KeyConditionExpression": "PK = :pkVal AND begins_with(SK, :skPrefix)",
                 "ExpressionAttributeValues": {
                     ":pkVal": {"S": f"IMAGE#{image_id}"},
-                    ":skPrefix": {"S": f"RECEIPT#{receipt_id}#ANALYSIS#VALIDATION#CATEGORY#"},
+                    ":skPrefix": {
+                        "S": f"RECEIPT#{receipt_id}#ANALYSIS#VALIDATION#CATEGORY#"
+                    },
                 },
             }
-            
+
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
             if limit is not None:
                 query_params["Limit"] = limit
-                
+
             response = self._client.query(**query_params)
             validation_categories.extend(
-                [itemToReceiptValidationCategory(item) for item in response["Items"]]
+                [
+                    itemToReceiptValidationCategory(item)
+                    for item in response["Items"]
+                ]
             )
 
             if limit is None:
                 # Paginate through all the validation categories.
                 while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                     response = self._client.query(**query_params)
                     validation_categories.extend(
-                        [itemToReceiptValidationCategory(item) for item in response["Items"]]
+                        [
+                            itemToReceiptValidationCategory(item)
+                            for item in response["Items"]
+                        ]
                     )
                 last_evaluated_key = None
             else:
@@ -679,4 +730,4 @@ class _ReceiptValidationCategory:
             else:
                 raise Exception(
                     f"Could not list ReceiptValidationCategories from the database: {e}"
-                ) from e 
+                ) from e
