@@ -498,7 +498,7 @@ class _ReceiptStructureAnalysis:
 
                 if not items:
                     raise ValueError(
-                        f"No ReceiptStructureAnalysis found for receipt {receipt_id} and image {image_id}"
+                        f"Receipt Structure Analysis for Image ID {image_id} and Receipt ID {receipt_id} does not exist"
                     )
 
                 return itemToReceiptStructureAnalysis(items[0])

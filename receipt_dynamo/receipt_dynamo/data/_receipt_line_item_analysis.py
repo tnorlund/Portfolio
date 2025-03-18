@@ -389,7 +389,7 @@ class _ReceiptLineItemAnalysis:
                 return itemToReceiptLineItemAnalysis(response["Item"])
             else:
                 raise ValueError(
-                    f"ReceiptLineItemAnalysis for receipt ID {receipt_id} not found"
+                    f"Receipt Line Item Analysis for Image ID {image_id} and Receipt ID {receipt_id} does not exist"
                 )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
