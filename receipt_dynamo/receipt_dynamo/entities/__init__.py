@@ -94,3 +94,4 @@ from receipt_dynamo.entities.receipt_chatgpt_validation import (
     ReceiptChatGPTValidation,
     itemToReceiptChatGPTValidation,
 )  # noqa: F401
+from receipt_dynamo.entities.receipt_analysis import ReceiptAnalysis  # noqa: F401

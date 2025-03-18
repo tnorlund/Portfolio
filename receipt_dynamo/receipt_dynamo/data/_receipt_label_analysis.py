@@ -6,6 +6,31 @@ from receipt_dynamo.entities.receipt_label_analysis import (
     ReceiptLabelAnalysis,
     itemToReceiptLabelAnalysis,
 )
+from receipt_dynamo.entities.receipt_structure_analysis import (
+    ReceiptStructureAnalysis,
+    itemToReceiptStructureAnalysis,
+)
+from receipt_dynamo.entities.receipt_line_item_analysis import (
+    ReceiptLineItemAnalysis,
+    itemToReceiptLineItemAnalysis,
+)
+from receipt_dynamo.entities.receipt_validation_summary import (
+    ReceiptValidationSummary,
+    itemToReceiptValidationSummary,
+)
+from receipt_dynamo.entities.receipt_validation_category import (
+    ReceiptValidationCategory,
+    itemToReceiptValidationCategory,
+)
+from receipt_dynamo.entities.receipt_validation_result import (
+    ReceiptValidationResult,
+    itemToReceiptValidationResult,
+)
+from receipt_dynamo.entities.receipt_chatgpt_validation import (
+    ReceiptChatGPTValidation,
+    itemToReceiptChatGPTValidation,
+)
+from receipt_dynamo.entities.receipt_analysis import ReceiptAnalysis
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
@@ -719,3 +744,101 @@ class _ReceiptLabelAnalysis:
                 raise Exception(
                     f"Could not get receipt label analyses for image '{image_id}' and receipt '{receipt_id}': {e}"
                 ) from e
+
+    def getReceiptAnalysis(
+        self,
+        image_id: str,
+        receipt_id: int,
+    ) -> ReceiptAnalysis:
+        """Retrieve receipt analysis for a specific receipt from the database.
+
+        Args:
+            image_id (str): The ID of the image the receipt belongs to.
+            receipt_id (int): The ID of the receipt to retrieve analysis for.
+
+        Returns:
+            ReceiptAnalysis: The receipt analysis for the specified receipt, containing
+                             all available analysis types including label analysis, structure analysis,
+                             line item analysis, validation summary, validation categories,
+                             validation results, and ChatGPT validations.
+
+        Raises:
+            ValueError: If the image_id is not a string or not a valid UUID.
+            ValueError: If the receipt_id is not a positive integer.
+            Exception: If the underlying database query fails.
+        """
+        if image_id is None:
+            raise ValueError("Image ID is required and cannot be None.")
+        if receipt_id is None:
+            raise ValueError("Receipt ID is required and cannot be None.")
+
+        # Validate image_id as a UUID and receipt_id as a positive integer
+        assert_valid_uuid(image_id)
+        if not isinstance(receipt_id, int) or receipt_id <= 0:
+            raise ValueError("Receipt ID must be a positive integer.")
+
+        # Create a ReceiptAnalysis object to store all analyses
+        receipt_analysis = ReceiptAnalysis(
+            image_id=image_id,
+            receipt_id=receipt_id
+        )
+
+        try:
+            # Query for all analysis items for this receipt in a single operation
+            response = self._client.query(
+                TableName=self.table_name,
+                KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_prefix)",
+                ExpressionAttributeNames={
+                    "#pk": "PK",
+                    "#sk": "SK"
+                },
+                ExpressionAttributeValues={
+                    ":pk_val": {"S": f"IMAGE#{image_id}"},
+                    ":sk_prefix": {"S": f"RECEIPT#{receipt_id}#ANALYSIS"}
+                }
+            )
+
+            # Process each item based on its TYPE attribute
+            for item in response.get("Items", []):
+                # Get the item's type
+                item_type = item.get("TYPE", {}).get("S", "")
+                
+                # Assign the item to the appropriate field based on its TYPE
+                try:
+                    if item_type == "RECEIPT_LABEL_ANALYSIS":
+                        receipt_analysis.label_analysis = itemToReceiptLabelAnalysis(item)
+                    elif item_type == "RECEIPT_STRUCTURE_ANALYSIS":
+                        receipt_analysis.structure_analysis = itemToReceiptStructureAnalysis(item)
+                    elif item_type == "RECEIPT_LINE_ITEM_ANALYSIS":
+                        receipt_analysis.line_item_analysis = itemToReceiptLineItemAnalysis(item)
+                    elif item_type == "RECEIPT_VALIDATION_SUMMARY":
+                        receipt_analysis.validation_summary = itemToReceiptValidationSummary(item)
+                    elif item_type == "RECEIPT_VALIDATION_CATEGORY":
+                        category = itemToReceiptValidationCategory(item)
+                        receipt_analysis.validation_categories.append(category)
+                    elif item_type == "RECEIPT_VALIDATION_RESULT":
+                        result = itemToReceiptValidationResult(item)
+                        receipt_analysis.validation_results.append(result)
+                    elif item_type == "RECEIPT_CHATGPT_VALIDATION":
+                        chatgpt_validation = itemToReceiptChatGPTValidation(item)
+                        receipt_analysis.chatgpt_validations.append(chatgpt_validation)
+                except Exception as e:
+                    # Skip if conversion fails, but log the error
+                    print(f"Error converting {item_type}: {str(e)}")
+                    pass
+
+            return receipt_analysis
+
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ProvisionedThroughputExceededException":
+                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+            elif error_code == "ValidationException":
+                raise Exception(f"Validation error: {e}") from e
+            elif error_code == "InternalServerError":
+                raise Exception(f"Internal server error: {e}") from e
+            elif error_code == "AccessDeniedException":
+                raise Exception(f"Access denied: {e}") from e
+            else:
+                raise Exception(f"Error getting receipt analysis: {e}") from e
+        

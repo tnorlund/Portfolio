@@ -34,6 +34,7 @@ __all__ = [
     "itemToReceiptStructureAnalysis",
     "ReceiptLineItemAnalysis",
     "itemToReceiptLineItemAnalysis",
+    "ReceiptAnalysis",
     "WordTag",
     "itemToWordTag",
     "Job",
@@ -100,6 +101,7 @@ from receipt_dynamo.entities import (
     itemToReceiptValidationCategory,
     ReceiptChatGPTValidation,
     itemToReceiptChatGPTValidation,
+    ReceiptAnalysis,
 )
 from receipt_dynamo.entities.receipt_word_tag import (
     ReceiptWordTag,
