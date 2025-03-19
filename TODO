@@ -1,5 +1,10 @@
 # Receipt Label Package TODOs
 
+## 🐛 Fix Items in DynamoDB
+- [ ] Set the receipt ID to be `:05d` padded
+- [ ] Figure out where `"type"` is being set from for the Validation Categories
+- [ ] Metadata not being set for some "analysis" items
+
 ## Create Analysis Items
 - [x] Create Receipt Label Analysis in DynamoDB
 - [x] Create Receipt Structure Analysis in DynamoDB
@@ -77,6 +82,63 @@
 - [x] Create StructureAnalysis class
 - [x] Create LineItemAnalysis class
 - [x] Create ValidationAnalysis class
+
+## Implement DynamoDB CRUD Operations
+- [ ] Create a dedicated module for analysis operations:
+  - [ ] Create `receipt_label/receipt_label/data/analysis_operations.py` module
+  - [ ] Define common utility functions for DynamoDB operations
+  - [ ] Implement error handling and logging for DynamoDB operations
+  - [ ] Add documentation for each operation with usage examples
+
+- [ ] Implement Label Analysis operations:
+  - [ ] Create `get_label_analysis(receipt_id, image_id)` function leveraging `LabelAnalysis.from_dynamo()`
+  - [ ] Create `list_label_analyses_by_receipt(receipt_id, limit=None, last_evaluated_key=None)` function
+  - [ ] Create `list_label_analyses_by_image(image_id, limit=None, last_evaluated_key=None)` function
+  - [ ] Create `save_label_analysis(label_analysis)` function utilizing `LabelAnalysis.to_dynamo()`
+  - [ ] Create `delete_label_analysis(receipt_id, image_id)` function
+
+- [ ] Implement Structure Analysis operations:
+  - [ ] Create `get_structure_analysis(receipt_id, image_id)` function leveraging `StructureAnalysis.from_dynamo()`
+  - [ ] Create `list_structure_analyses_by_receipt(receipt_id, limit=None, last_evaluated_key=None)` function
+  - [ ] Create `save_structure_analysis(structure_analysis)` function utilizing `StructureAnalysis.to_dynamo()`
+  - [ ] Create `delete_structure_analysis(receipt_id, image_id)` function
+
+- [ ] Implement Line Item Analysis operations:
+  - [ ] Create `get_line_item_analysis(receipt_id, image_id)` function leveraging `LineItemAnalysis.from_dynamo()`
+  - [ ] Create `list_line_item_analyses_by_receipt(receipt_id, limit=None, last_evaluated_key=None)` function
+  - [ ] Create `save_line_item_analysis(line_item_analysis)` function utilizing `LineItemAnalysis.to_dynamo()`
+  - [ ] Create `delete_line_item_analysis(receipt_id, image_id)` function
+
+- [ ] Implement Validation Analysis operations with split storage support:
+  - [ ] Create `get_validation_analysis(receipt_id, image_id)` function leveraging `from_dynamo_items()`
+  - [ ] Create `list_validation_analyses_by_receipt(receipt_id, limit=None, last_evaluated_key=None)` function
+  - [ ] Create `save_validation_analysis(validation_analysis)` function utilizing the split storage pattern methods
+  - [ ] Create `delete_validation_analysis(receipt_id, image_id)` function to delete all related items
+
+- [ ] Implement ChatGPT Validation operations:
+  - [ ] Create `get_chatgpt_validation(receipt_id, image_id, timestamp)` function
+  - [ ] Create `list_chatgpt_validations_by_receipt_image(receipt_id, image_id)` function
+  - [ ] Create `save_chatgpt_validation(chatgpt_validation)` function
+  - [ ] Create `delete_chatgpt_validation(receipt_id, image_id, timestamp)` function
+
+- [ ] Add batch and transaction support:
+  - [ ] Implement `batch_get_analyses(receipt_image_pairs, analysis_type)` function for efficient retrieval
+  - [ ] Implement `batch_save_analyses(analyses, analysis_type)` function for efficient creation/updates
+  - [ ] Implement `batch_delete_analyses(receipt_image_pairs, analysis_type)` function
+  - [ ] Create `save_receipt_analysis_transaction(label_analysis, structure_analysis, line_item_analysis, validation_analysis)` function for atomic operations
+  - [ ] Create `delete_receipt_analysis_transaction(receipt_id, image_id)` function for atomic deletion
+
+- [ ] Integrate with existing code:
+  - [ ] Add analysis saving to the `process_receipt` function
+  - [ ] Add error handling and retry logic for DynamoDB operations
+  - [ ] Implement version checking before updates
+  - [ ] Add metadata tracking for DynamoDB operations
+
+- [ ] Create unit and integration tests:
+  - [ ] Write unit tests for each analysis operation
+  - [ ] Create mock DynamoDB responses for testing
+  - [ ] Implement integration tests with actual DynamoDB
+  - [ ] Test transaction rollback scenarios
 
 ## Remove Tag System
 - [x] Delete Word Tag items from DynamoDB
