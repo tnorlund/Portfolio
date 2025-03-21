@@ -1688,7 +1688,7 @@ class LineItemProcessor:
 
         return regular_items
 
-    async def process(
+    def process(
         self,
         receipt: Receipt,
         receipt_lines: List[ReceiptLine],
@@ -1767,7 +1767,7 @@ class LineItemProcessor:
                 # Process with GPT API (using the centralized function in gpt.py)
                 if self.openai_api_key:
                     gpt_result, prompt, response_text = (
-                        await gpt_request_spatial_currency_analysis(
+                        gpt_request_spatial_currency_analysis(
                             receipt=receipt,
                             receipt_lines=receipt_lines,
                             receipt_words=receipt_words,
@@ -2108,7 +2108,7 @@ class LineItemProcessor:
                 word_labels={},
             )
 
-    async def analyze_line_items(
+    def analyze_line_items(
         self,
         receipt: Receipt,
         receipt_lines: List[ReceiptLine],
@@ -2131,7 +2131,7 @@ class LineItemProcessor:
         """
         try:
             # Process the receipt using the new process method
-            return await self.process(receipt, receipt_lines, receipt_words)
+            return self.process(receipt, receipt_lines, receipt_words)
 
         except Exception as e:
             logger.error(f"Error analyzing line items: {str(e)}")
@@ -2149,7 +2149,7 @@ class LineItemProcessor:
                 word_labels={},
             )
 
-    async def _handle_uncertainties(
+    def _handle_uncertainties(
         self,
         llm_processor: LLMProcessor,
         uncertain_items: List[UncertaintyItem],
@@ -2177,7 +2177,7 @@ class LineItemProcessor:
 
         try:
             # Call the LLM processor to handle uncertain items
-            llm_updates = await llm_processor.process_uncertain_items(
+            llm_updates = llm_processor.process_uncertain_items(
                 uncertain_items=uncertain_items,
                 receipt=receipt,
                 receipt_lines=receipt_lines,

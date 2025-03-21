@@ -49,74 +49,8 @@ class DecimalEncoder(JSONEncoder):
         return super(DecimalEncoder, self).default(obj)
 
 
-async def _async_post(url: str, headers: Dict, json: Dict, timeout: int) -> Response:
-    """
-    Make an asynchronous POST request.
 
-    Args:
-        url: The URL to make the request to
-        headers: Headers to include in the request
-        json: JSON data to include in the request
-        timeout: Timeout in seconds
-
-    Returns:
-        Response object
-    """
-    logger = logging.getLogger(__name__)
-
-    try:
-        logger.debug(f"Making API request to {url}")
-
-        if "Authorization" in headers:
-            # Log a masked version of the auth header
-            auth_header = headers["Authorization"]
-            if auth_header.startswith("Bearer "):
-                token = auth_header[7:]  # Remove "Bearer " prefix
-                masked_token = (
-                    token[:4] + "..." + token[-4:] if len(token) > 8 else "***"
-                )
-                logger.debug(f"Using Bearer token: {masked_token}")
-            else:
-                logger.warning("Authorization header doesn't use Bearer format")
-        else:
-            logger.error("No Authorization header present in request!")
-
-        # Make the actual request
-        loop = asyncio.get_running_loop()
-        response = await loop.run_in_executor(
-            _executor,
-            lambda: requests.post(url, headers=headers, json=json, timeout=timeout),
-        )
-
-        # Log response info
-        logger.debug(f"API response status code: {response.status_code}")
-        if response.status_code >= 400:
-            logger.error(f"API error: {response.status_code} - {response.text}")
-        else:
-            logger.debug("API request completed successfully")
-
-        return response
-
-    except Exception as e:
-        logger.error(f"Error in API request: {str(e)}")
-        # Recreate a Response-like object to handle the error
-
-        @dataclass
-        class ErrorResponse:
-            status_code: int = 500
-            text: str = ""
-
-            def json(self):
-                return {"error": self.text}
-
-            def raise_for_status(self):
-                raise requests.HTTPError(f"Error during API call: {self.text}")
-
-        error_response = ErrorResponse(text=str(e))
-        return error_response
-
-
-async def gpt_request_structure_analysis(
+def gpt_request_structure_analysis(
     receipt: Receipt,
     receipt_lines: List[ReceiptLine],
     receipt_words: List[ReceiptWord],
@@ -169,7 +103,7 @@ async def gpt_request_structure_analysis(
         "temperature": 0.3,  # Lower temperature for more consistent analysis
     }
 
-    response = await _async_post(url, headers=headers, json=payload, timeout=30)
+    response = requests.post(url, headers=headers, json=payload, timeout=30)
 
     return (
         _validate_gpt_response_structure_analysis(response),
@@ -178,7 +112,7 @@ async def gpt_request_structure_analysis(
     )
 
 
-async def gpt_request_field_labeling(
+def gpt_request_field_labeling(
     receipt: Receipt,
     receipt_lines: List[ReceiptLine],
     receipt_words: List[ReceiptWord],
@@ -275,7 +209,7 @@ async def gpt_request_field_labeling(
             # Increased timeout to 60 seconds and added retries
             for attempt in range(3):  # Try up to 3 times
                 try:
-                    response = await _async_post(
+                    response = requests.post(
                         url, headers=headers, json=payload, timeout=60
                     )
                     break  # If successful, break the retry loop
@@ -440,7 +374,7 @@ async def gpt_request_field_labeling(
     )
 
 
-async def gpt_request_line_item_analysis(
+def gpt_request_line_item_analysis(
     receipt: Receipt,
     receipt_lines: List[ReceiptLine],
     receipt_words: List[ReceiptWord],
@@ -497,7 +431,7 @@ async def gpt_request_line_item_analysis(
         "temperature": 0.1,  # Low temperature for consistent numerical analysis
     }
 
-    response = await _async_post(url, headers=headers, json=payload, timeout=60)
+    response = requests.post(url, headers=headers, json=payload, timeout=60)
 
     return (
         _validate_gpt_response_line_item_analysis(response),
@@ -506,7 +440,7 @@ async def gpt_request_line_item_analysis(
     )
 
 
-async def gpt_request_spatial_currency_analysis(
+def gpt_request_spatial_currency_analysis(
     receipt: Receipt,
     receipt_lines: List[ReceiptLine],
     receipt_words: List[ReceiptWord],
@@ -607,7 +541,7 @@ async def gpt_request_spatial_currency_analysis(
         }
 
         logger.info("Making API request to OpenAI")
-        response = await _async_post(url, headers=headers, json=payload, timeout=60)
+        response = requests.post(url, headers=headers, json=payload, timeout=60)
         logger.info(
             f"Received response with status code: {response.status_code if hasattr(response, 'status_code') else 'unknown'}"
         )

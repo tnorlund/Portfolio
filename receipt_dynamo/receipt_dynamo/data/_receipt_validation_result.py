@@ -424,7 +424,7 @@ class _ReceiptValidationResult:
                 Key={
                     "PK": {"S": f"IMAGE#{image_id}"},
                     "SK": {
-                        "S": f"RECEIPT#{receipt_id}#ANALYSIS#VALIDATION#CATEGORY#{field_name}#RESULT#{result_index}"
+                        "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{field_name}#RESULT#{result_index}"
                     },
                 },
             )
@@ -478,12 +478,11 @@ class _ReceiptValidationResult:
             # Use GSI1 to query all validation results
             query_params = {
                 "TableName": self.table_name,
-                "IndexName": "GSI1",
-                "KeyConditionExpression": "#pk = :pk_val AND begins_with(#sk, :sk_prefix)",
-                "ExpressionAttributeNames": {"#pk": "GSI1PK", "#sk": "GSI1SK"},
+                "IndexName": "GSITYPE",
+                "KeyConditionExpression": "#t = :val",
+                "ExpressionAttributeNames": {"#t": "TYPE"},
                 "ExpressionAttributeValues": {
-                    ":pk_val": {"S": "ANALYSIS_TYPE"},
-                    ":sk_prefix": {"S": "VALIDATION#"},
+                    ":val": {"S": "RECEIPT_VALIDATION_RESULT"}
                 },
             }
 
@@ -582,7 +581,7 @@ class _ReceiptValidationResult:
                 ExpressionAttributeValues={
                     ":pkVal": {"S": f"IMAGE#{image_id}"},
                     ":skPrefix": {
-                        "S": f"RECEIPT#{receipt_id}#ANALYSIS#VALIDATION#CATEGORY#{field_name}#RESULT#"
+                        "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{field_name}#RESULT#"
                     },
                 },
             )
@@ -600,7 +599,7 @@ class _ReceiptValidationResult:
                     ExpressionAttributeValues={
                         ":pkVal": {"S": f"IMAGE#{image_id}"},
                         ":skPrefix": {
-                            "S": f"RECEIPT#{receipt_id}#ANALYSIS#VALIDATION#CATEGORY#{field_name}#RESULT#"
+                            "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{field_name}#RESULT#"
                         },
                     },
                     ExclusiveStartKey=response["LastEvaluatedKey"],

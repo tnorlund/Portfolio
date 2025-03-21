@@ -117,6 +117,10 @@ class LineItemAnalysis(MetadataMixin):
         # Initialize word_labels if None
         if self.word_labels is None:
             self.word_labels = {}
+            
+        # Initialize metadata if None
+        if self.metadata is None:
+            self.metadata = {}
 
         # If no reasoning is provided, generate a basic one
         if not self.reasoning:
@@ -381,11 +385,13 @@ class LineItemAnalysis(MetadataMixin):
         instance.receipt_id = analysis.receipt_id
         instance.version = analysis.version
         instance.timestamp_added = (
-            analysis.timestamp_added.isoformat() if analysis.timestamp_added else None
+            analysis.timestamp_added if isinstance(analysis.timestamp_added, str) 
+            else analysis.timestamp_added.isoformat() if analysis.timestamp_added 
+            else None
         )
         instance.timestamp_updated = (
-            analysis.timestamp_updated.isoformat()
-            if analysis.timestamp_updated
+            analysis.timestamp_updated if isinstance(analysis.timestamp_updated, str)
+            else analysis.timestamp_updated.isoformat() if analysis.timestamp_updated
             else None
         )
 

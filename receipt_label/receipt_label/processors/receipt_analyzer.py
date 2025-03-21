@@ -27,7 +27,7 @@ class ReceiptAnalyzer:
         """
         self.api_key = api_key
 
-    async def analyze_structure(
+    def analyze_structure(
         self,
         receipt: Receipt,
         receipt_lines: List[ReceiptLine],
@@ -146,7 +146,7 @@ class ReceiptAnalyzer:
             logger.info("Calling gpt_request_structure_analysis...")
             result = None
             try:
-                result = await gpt_request_structure_analysis(
+                result = gpt_request_structure_analysis(
                     receipt=receipt,
                     receipt_lines=receipt_lines,
                     receipt_words=receipt_words,
@@ -196,7 +196,7 @@ class ReceiptAnalyzer:
             logger.error(f"Full traceback: {traceback.format_exc()}")
             raise
 
-    async def label_fields(
+    def label_fields(
         self,
         receipt: Receipt,
         receipt_lines: List[ReceiptLine],
@@ -227,7 +227,7 @@ class ReceiptAnalyzer:
             # Label fields - pass the original objects directly
             logger.info("Calling gpt_request_field_labeling...")
             try:
-                result = await gpt_request_field_labeling(
+                result = gpt_request_field_labeling(
                     receipt=receipt,
                     receipt_lines=receipt_lines,
                     receipt_words=receipt_words,
@@ -275,6 +275,12 @@ class ReceiptAnalyzer:
             # Convert the dictionary to a LabelAnalysis object
             field_analysis_obj = LabelAnalysis.from_gpt_response(field_analysis)
 
+            # Set receipt and image IDs which are required for DynamoDB storage
+            field_analysis_obj.set_receipt_info(
+                receipt_id=str(receipt.receipt_id),
+                image_id=receipt.image_id
+            )
+
             # Log the number of labels
             logger.debug(
                 f"Number of labels generated: {len(field_analysis_obj.labels)}"
@@ -296,7 +302,7 @@ class ReceiptAnalyzer:
             logger.error(f"Full traceback: {traceback.format_exc()}")
             raise
 
-    async def analyze_line_items(
+    def analyze_line_items(
         self,
         receipt: Receipt,
         receipt_lines: List[ReceiptLine],
@@ -323,7 +329,7 @@ class ReceiptAnalyzer:
             # Analyze line items - pass the original objects directly
             logger.info("Calling gpt_request_line_item_analysis...")
             try:
-                result = await gpt_request_line_item_analysis(
+                result = gpt_request_line_item_analysis(
                     receipt=receipt,
                     receipt_lines=receipt_lines,
                     receipt_words=receipt_words,
@@ -389,7 +395,7 @@ class ReceiptAnalyzer:
         # TODO: Implement prompt preparation
         raise NotImplementedError("Prompt preparation not yet implemented")
 
-    async def _call_gpt(
+    def _call_gpt(
         self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7
     ) -> str:
         """Call GPT with a prompt.

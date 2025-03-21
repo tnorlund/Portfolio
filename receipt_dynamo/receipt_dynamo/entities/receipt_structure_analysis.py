@@ -661,7 +661,7 @@ class ReceiptStructureAnalysis:
         """
         return {
             "PK": f"IMAGE#{self.image_id}",
-            "SK": f"RECEIPT#{self.receipt_id}#ANALYSIS#STRUCTURE#{self.version}",
+            "SK": f"RECEIPT#{self.receipt_id:05d}#ANALYSIS#STRUCTURE#{self.version}",
         }
 
     def gsi1_key(self) -> Dict[str, str]:
@@ -686,7 +686,7 @@ class ReceiptStructureAnalysis:
         """
         return {
             "GSI2PK": "RECEIPT",
-            "GSI2SK": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id}#{self.version}",
+            "GSI2SK": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#{self.version}",
         }
 
     def to_item(self) -> Dict[str, Any]:
@@ -806,14 +806,15 @@ class ReceiptStructureAnalysis:
         item = {
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {
-                "S": f"RECEIPT#{self.receipt_id}#ANALYSIS#STRUCTURE#{self.version}"
+                "S": f"RECEIPT#{self.receipt_id:05d}#ANALYSIS#STRUCTURE#{self.version}"
             },
             "GSI1PK": {"S": "ANALYSIS_TYPE"},
             "GSI1SK": {"S": f"STRUCTURE#{self.timestamp_added.isoformat()}"},
             "GSI2PK": {"S": "RECEIPT"},
             "GSI2SK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id}#{self.version}"
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#{self.version}"
             },
+            "TYPE": {"S": "RECEIPT_STRUCTURE_ANALYSIS"},
             "receipt_id": {"N": str(self.receipt_id)},
             "image_id": {"S": self.image_id},
             "entity_type": {"S": "STRUCTURE_ANALYSIS"},
@@ -983,7 +984,7 @@ class ReceiptStructureAnalysis:
 
 
 def itemToReceiptStructureAnalysis(
-    item: Dict[str, Any]
+    item: Dict[str, Any],
 ) -> ReceiptStructureAnalysis:
     """
     Convert a DynamoDB item to a ReceiptStructureAnalysis.

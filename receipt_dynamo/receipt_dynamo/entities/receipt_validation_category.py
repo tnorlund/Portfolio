@@ -75,7 +75,7 @@ class ReceiptValidationCategory:
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {
-                "S": f"RECEIPT#{self.receipt_id}#ANALYSIS#VALIDATION#CATEGORY#{self.field_name}"
+                "S": f"RECEIPT#{self.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{self.field_name}"
             },
         }
 
@@ -95,7 +95,7 @@ class ReceiptValidationCategory:
         return {
             "GSI2PK": {"S": "RECEIPT"},
             "GSI2SK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id}#VALIDATION"
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#VALIDATION"
             },
         }
 
@@ -105,7 +105,7 @@ class ReceiptValidationCategory:
         return {
             "GSI3PK": {"S": f"FIELD_STATUS#{self.field_name}#{self.status}"},
             "GSI3SK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id}"
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
             },
         }
 
@@ -137,9 +137,11 @@ class ReceiptValidationCategory:
             **self.gsi1_key,
             **self.gsi2_key,
             **self.gsi3_key,
+            "TYPE": {"S": "RECEIPT_VALIDATION_CATEGORY"},
         }
 
         # Add the required fields with proper DynamoDB typing
+        item["field_name"] = {"S": self.field_name}
         item["field_category"] = {"S": self.field_category}
         item["status"] = {"S": self.status}
         item["reasoning"] = {"S": self.reasoning}
@@ -233,6 +235,56 @@ class ReceiptValidationCategory:
         )
 
 
+def dynamo_to_python(dynamo_value):
+    """
+    Convert a DynamoDB typed value to a native Python value.
+
+    Args:
+        dynamo_value (dict): A DynamoDB formatted value with type indicators
+            like S, N, BOOL, M, L, etc.
+
+    Returns:
+        The equivalent Python native value (str, int, float, bool, dict, list, None)
+    """
+    if not dynamo_value or not isinstance(dynamo_value, dict):
+        return dynamo_value
+
+    if "NULL" in dynamo_value:
+        return None
+    elif "S" in dynamo_value:
+        return dynamo_value["S"]
+    elif "N" in dynamo_value:
+        # Try to convert to int if possible, otherwise float
+        try:
+            return int(dynamo_value["N"])
+        except ValueError:
+            return float(dynamo_value["N"])
+    elif "BOOL" in dynamo_value:
+        return dynamo_value["BOOL"]
+    elif "M" in dynamo_value:
+        return {k: dynamo_to_python(v) for k, v in dynamo_value["M"].items()}
+    elif "L" in dynamo_value:
+        return [dynamo_to_python(item) for item in dynamo_value["L"]]
+    elif "SS" in dynamo_value:  # String Set
+        return set(dynamo_value["SS"])
+    elif "NS" in dynamo_value:  # Number Set
+        # Try to convert to int if possible, otherwise float
+        result = set()
+        for num_str in dynamo_value["NS"]:
+            try:
+                result.add(int(num_str))
+            except ValueError:
+                result.add(float(num_str))
+        return result
+    elif "BS" in dynamo_value:  # Binary Set
+        return set(dynamo_value["BS"])
+    else:
+        # Handle any other type by returning the first value
+        for key, value in dynamo_value.items():
+            return value
+        return None
+
+
 def itemToReceiptValidationCategory(
     item: Dict[str, Any],
 ) -> ReceiptValidationCategory:
@@ -244,4 +296,23 @@ def itemToReceiptValidationCategory(
     Returns:
         ReceiptValidationCategory: The converted object.
     """
-    return ReceiptValidationCategory.from_item(item)
+    receipt_id = item["SK"]["S"].split("#")[1]
+    image_id = item["PK"]["S"].split("#")[1]
+    field_name = item["SK"]["S"].split("#")[5]
+    field_category = item["field_category"]["S"]
+    status = item["status"]["S"]
+    reasoning = item["reasoning"]["S"]
+    result_summary = dynamo_to_python(item["result_summary"])
+    validation_timestamp = item["validation_timestamp"]["S"]
+    metadata = dynamo_to_python(item["metadata"])
+    return ReceiptValidationCategory(
+        receipt_id=int(receipt_id),
+        image_id=image_id,
+        field_name=field_name,
+        field_category=field_category,
+        status=status,
+        reasoning=reasoning,
+        result_summary=result_summary,
+        validation_timestamp=validation_timestamp,
+        metadata=metadata,
+    )

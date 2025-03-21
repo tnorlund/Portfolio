@@ -310,7 +310,7 @@ class _ReceiptStructureAnalysis:
                 Key={
                     "PK": {"S": f"IMAGE#{analysis.image_id}"},
                     "SK": {
-                        "S": f"RECEIPT#{analysis.receipt_id}#ANALYSIS#STRUCTURE#{analysis.version}"
+                        "S": f"RECEIPT#{analysis.receipt_id:05d}#ANALYSIS#STRUCTURE#{analysis.version}"
                     },
                 },
             )
@@ -372,7 +372,7 @@ class _ReceiptStructureAnalysis:
                             "Key": {
                                 "PK": {"S": f"IMAGE#{a.image_id}"},
                                 "SK": {
-                                    "S": f"RECEIPT#{a.receipt_id}#ANALYSIS#STRUCTURE#{a.version}"
+                                    "S": f"RECEIPT#{a.receipt_id:05d}#ANALYSIS#STRUCTURE#{a.version}"
                                 },
                             }
                         }
@@ -465,7 +465,7 @@ class _ReceiptStructureAnalysis:
                     Key={
                         "PK": {"S": f"IMAGE#{image_id}"},
                         "SK": {
-                            "S": f"RECEIPT#{receipt_id}#ANALYSIS#STRUCTURE#{version}"
+                            "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#STRUCTURE#{version}"
                         },
                     },
                 )
@@ -487,7 +487,7 @@ class _ReceiptStructureAnalysis:
                     "ExpressionAttributeValues": {
                         ":pk": {"S": f"IMAGE#{image_id}"},
                         ":sk_prefix": {
-                            "S": f"RECEIPT#{receipt_id}#ANALYSIS#STRUCTURE"
+                            "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#STRUCTURE"
                         },
                     },
                     "Limit": 1,  # We only need one result
@@ -650,7 +650,7 @@ class _ReceiptStructureAnalysis:
                 "ExpressionAttributeValues": {
                     ":g2pk": {"S": "RECEIPT"},
                     ":g2sk_prefix": {
-                        "S": f"IMAGE#{image_id}#RECEIPT#{receipt_id}"
+                        "S": f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"
                     },
                 },
             }

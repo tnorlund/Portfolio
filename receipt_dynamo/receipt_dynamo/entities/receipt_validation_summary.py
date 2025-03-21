@@ -114,36 +114,34 @@ class ReceiptValidationSummary:
                 "timestamp_updated must be a datetime, string, or None"
             )
 
-    @property
     def key(self) -> Dict[str, str]:
         """Return the DynamoDB key for this item."""
         return {
-            "PK": f"IMAGE#{self.image_id}",
-            "SK": f"RECEIPT#{self.receipt_id}#ANALYSIS#VALIDATION",
+            "PK": {"S": f"IMAGE#{self.image_id}"},
+            "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#ANALYSIS#VALIDATION"},
         }
 
-    @property
     def gsi1_key(self) -> Dict[str, str]:
         """Return the GSI1 key for this item."""
         return {
-            "GSI1PK": "ANALYSIS_TYPE",
-            "GSI1SK": f"VALIDATION#{self.validation_timestamp}",
+            "GSI1PK": {"S": "ANALYSIS_TYPE"},
+            "GSI1SK": {"S": f"VALIDATION#{self.validation_timestamp}"},
         }
 
-    @property
     def gsi2_key(self) -> Dict[str, str]:
         """Return the GSI2 key for this item."""
         return {
-            "GSI2PK": "RECEIPT",
-            "GSI2SK": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id}",
+            "GSI2PK": {"S": "RECEIPT"},
+            "GSI2SK": {
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
+            },
         }
 
-    @property
     def gsi3_key(self) -> Dict[str, str]:
         """Return the GSI3 key for this item."""
         return {
-            "GSI3PK": f"VALIDATION_STATUS#{self.overall_status}",
-            "GSI3SK": f"TIMESTAMP#{self.validation_timestamp}",
+            "GSI3PK": {"S": f"VALIDATION_STATUS#{self.overall_status}"},
+            "GSI3SK": {"S": f"TIMESTAMP#{self.validation_timestamp}"},
         }
 
     def to_item(self) -> Dict[str, Any]:
@@ -191,14 +189,10 @@ class ReceiptValidationSummary:
             return result
 
         item = {
-            "PK": {"S": self.key["PK"]},
-            "SK": {"S": self.key["SK"]},
-            "GSI1PK": {"S": self.gsi1_key["GSI1PK"]},
-            "GSI1SK": {"S": self.gsi1_key["GSI1SK"]},
-            "GSI2PK": {"S": self.gsi2_key["GSI2PK"]},
-            "GSI2SK": {"S": self.gsi2_key["GSI2SK"]},
-            "GSI3PK": {"S": self.gsi3_key["GSI3PK"]},
-            "GSI3SK": {"S": self.gsi3_key["GSI3SK"]},
+            **self.key(),
+            **self.gsi1_key(),
+            **self.gsi2_key(),
+            **self.gsi3_key(),
             "TYPE": {"S": "RECEIPT_VALIDATION_SUMMARY"},
             "overall_status": {"S": self.overall_status},
             "overall_reasoning": {"S": self.overall_reasoning},
@@ -233,7 +227,7 @@ class ReceiptValidationSummary:
                     if "S" in v:
                         result[k] = v["S"]
                     elif "N" in v:
-                        # Check for boolean values stored as strings
+                        # Check for string booleans first
                         if v["N"] == "True":
                             result[k] = True
                         elif v["N"] == "False":
@@ -243,11 +237,7 @@ class ReceiptValidationSummary:
                             try:
                                 result[k] = int(v["N"])
                             except ValueError:
-                                try:
-                                    result[k] = float(v["N"])
-                                except ValueError:
-                                    # If all else fails, keep it as a string
-                                    result[k] = v["N"]
+                                result[k] = float(v["N"])
                     elif "BOOL" in v:
                         result[k] = v["BOOL"]
                     elif "NULL" in v:
@@ -360,7 +350,7 @@ class ReceiptValidationSummary:
 
         event = {
             "event_type": event_type,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.utcnow().isoformat(),
         }
 
         if details:
@@ -372,23 +362,99 @@ class ReceiptValidationSummary:
 def itemToReceiptValidationSummary(
     item: Dict[str, Any],
 ) -> ReceiptValidationSummary:
-    """Convert a DynamoDB item to a ReceiptValidationSummary object.
+    """
+    Converts a DynamoDB item to a ReceiptValidationSummary object.
 
     Args:
-        item: DynamoDB item dictionary.
+        item (dict): The DynamoDB item to convert.
 
     Returns:
-        ReceiptValidationSummary: The converted object.
+        ReceiptValidationSummary: The ReceiptValidationSummary object represented by the DynamoDB item.
+
+    Raises:
+        ValueError: When the item format is invalid or required keys are missing.
     """
-    # Check for required keys
-    required_keys = ["PK", "SK"]
-    if not all(key in item for key in required_keys):
-        missing_keys = [key for key in required_keys if key not in item]
+    required_keys = {
+        "PK",
+        "SK",
+        "overall_status",
+        "overall_reasoning",
+        "validation_timestamp",
+        "field_summary",
+    }
+    if not required_keys.issubset(item.keys()):
+        missing_keys = required_keys - set(item.keys())
         raise ValueError(f"Item is missing required keys: {missing_keys}")
 
     try:
-        return ReceiptValidationSummary.from_item(item)
-    except (KeyError, ValueError) as e:
+        # Helper function to convert DynamoDB format back to Python dicts
+        def dynamo_to_python(dynamo_item):
+            if "M" in dynamo_item:
+                result = {}
+                for k, v in dynamo_item["M"].items():
+                    if "S" in v:
+                        result[k] = v["S"]
+                    elif "N" in v:
+                        # Check for string booleans first
+                        if v["N"] == "True":
+                            result[k] = True
+                        elif v["N"] == "False":
+                            result[k] = False
+                        else:
+                            # Try to convert to int first, then float
+                            try:
+                                result[k] = int(v["N"])
+                            except ValueError:
+                                result[k] = float(v["N"])
+                    elif "BOOL" in v:
+                        result[k] = v["BOOL"]
+                    elif "NULL" in v:
+                        result[k] = None
+                    elif "M" in v:
+                        result[k] = dynamo_to_python(v)
+                    elif "L" in v:
+                        result[k] = [
+                            (
+                                dynamo_to_python(item)
+                                if "M" in item
+                                else item.get(
+                                    "S", item.get("N", item.get("BOOL", None))
+                                )
+                            )
+                            for item in v["L"]
+                        ]
+                return result
+            return {}
+
+        # Extract basic values
+        image_id = item["PK"]["S"].split("#")[1]
+        receipt_id = int(item["SK"]["S"].split("#")[1])
+        overall_status = item["overall_status"]["S"]
+        overall_reasoning = item["overall_reasoning"]["S"]
+        validation_timestamp = item["validation_timestamp"]["S"]
+        version = item.get("version", {}).get("S", "1.0.0")
+
+        # Convert complex structures
+        field_summary = dynamo_to_python(item["field_summary"])
+        metadata = dynamo_to_python(item.get("metadata", {"M": {}}))
+
+        # Handle timestamps
+        timestamp_added = item.get("timestamp_added", {}).get("S")
+        timestamp_updated = item.get("timestamp_updated", {}).get("S")
+
+        return ReceiptValidationSummary(
+            receipt_id=receipt_id,
+            image_id=image_id,
+            overall_status=overall_status,
+            overall_reasoning=overall_reasoning,
+            field_summary=field_summary,
+            validation_timestamp=validation_timestamp,
+            version=version,
+            metadata=metadata,
+            timestamp_added=timestamp_added,
+            timestamp_updated=timestamp_updated,
+        )
+    except (KeyError, IndexError, ValueError) as e:
         raise ValueError(
-            f"Error converting item to ReceiptValidationSummary: {e}"
+            f"Error converting item to ReceiptValidationSummary"
         ) from e

@@ -25,7 +25,7 @@ class LLMProcessor:
         """Initialize with optional API key."""
         self.api_key = api_key
 
-    async def process_uncertain_items(
+    def process_uncertain_items(
         self,
         uncertain_items: List[UncertaintyItem],
         receipt: Receipt,
@@ -74,7 +74,7 @@ class LLMProcessor:
         if missing_components:
             try:
                 logger.info(f"Processing {len(missing_components)} missing components")
-                component_updates = await self._process_missing_components(
+                component_updates = self._process_missing_components(
                     missing_components,
                     receipt,
                     receipt_lines,
@@ -93,7 +93,7 @@ class LLMProcessor:
                 logger.info(
                     f"Processing {len(multiple_amounts)} items with multiple amounts"
                 )
-                amount_updates = await self._process_multiple_amounts(
+                amount_updates = self._process_multiple_amounts(
                     multiple_amounts,
                     receipt,
                     receipt_lines,
@@ -110,7 +110,7 @@ class LLMProcessor:
         if total_mismatches:
             try:
                 logger.info(f"Processing {len(total_mismatches)} total mismatches")
-                mismatch_updates = await self._process_total_mismatches(
+                mismatch_updates = self._process_total_mismatches(
                     total_mismatches,
                     receipt,
                     receipt_lines,
@@ -144,7 +144,7 @@ class LLMProcessor:
             return str(obj)
         return obj
 
-    async def _process_missing_components(
+    def _process_missing_components(
         self,
         missing_components: List[MissingComponentUncertainty],
         receipt: Receipt,
@@ -164,7 +164,7 @@ class LLMProcessor:
 
         try:
             # Call GPT for analysis
-            gpt_result, _, _ = await gpt_request_line_item_analysis(
+            gpt_result, _, _ = gpt_request_line_item_analysis(
                 receipt=receipt,
                 receipt_lines=receipt_lines,
                 receipt_words=receipt_words,
@@ -199,7 +199,7 @@ class LLMProcessor:
             logger.error(f"Error in LLM processing of missing components: {str(e)}")
             return {}
 
-    async def _process_multiple_amounts(
+    def _process_multiple_amounts(
         self,
         multiple_amounts: List[MultipleAmountsUncertainty],
         receipt: Receipt,
@@ -226,7 +226,7 @@ class LLMProcessor:
 
         try:
             # Call GPT for analysis
-            gpt_result, _, _ = await gpt_request_line_item_analysis(
+            gpt_result, _, _ = gpt_request_line_item_analysis(
                 receipt=receipt,
                 receipt_lines=receipt_lines,
                 receipt_words=receipt_words,
@@ -286,7 +286,7 @@ class LLMProcessor:
             logger.error(f"Error in LLM processing of multiple amounts: {str(e)}")
             return {}
 
-    async def _process_total_mismatches(
+    def _process_total_mismatches(
         self,
         total_mismatches: List[TotalMismatchUncertainty],
         receipt: Receipt,
@@ -313,7 +313,7 @@ class LLMProcessor:
 
         try:
             # Call GPT for analysis
-            gpt_result, _, _ = await gpt_request_line_item_analysis(
+            gpt_result, _, _ = gpt_request_line_item_analysis(
                 receipt=receipt,
                 receipt_lines=receipt_lines,
                 receipt_words=receipt_words,

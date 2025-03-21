@@ -95,7 +95,7 @@ class ReceiptValidationResult:
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {
-                "S": f"RECEIPT#{self.receipt_id}#ANALYSIS#VALIDATION#CATEGORY#{self.field_name}#RESULT#{self.result_index}"
+                "S": f"RECEIPT#{self.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{self.field_name}#RESULT#{self.result_index}"
             },
         }
 
@@ -115,7 +115,7 @@ class ReceiptValidationResult:
         return {
             "GSI2PK": {"S": "RECEIPT"},
             "GSI2SK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id}#VALIDATION#CATEGORY#{self.field_name}"
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#VALIDATION#CATEGORY#{self.field_name}"
             },
         }
 
@@ -125,7 +125,7 @@ class ReceiptValidationResult:
         return {
             "GSI3PK": {"S": f"RESULT_TYPE#{self.type}"},
             "GSI3SK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id}#CATEGORY#{self.field_name}"
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#CATEGORY#{self.field_name}"
             },
         }
 
@@ -157,6 +157,7 @@ class ReceiptValidationResult:
             **self.gsi1_key,
             **self.gsi2_key,
             **self.gsi3_key,
+            "TYPE": {"S": "RECEIPT_VALIDATION_RESULT"},
         }
 
         # Add the required fields with proper DynamoDB typing

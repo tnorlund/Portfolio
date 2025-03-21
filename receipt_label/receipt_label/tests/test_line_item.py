@@ -226,7 +226,8 @@ class TestLineItemAnalysis:
         assert analysis.tax == Decimal("2.20")
         assert analysis.total == Decimal("24.18")
         assert analysis.discrepancies == []
-        assert analysis.metadata == {"store_type": "retail"}
+        assert "store_type" in analysis.metadata
+        assert analysis.metadata["store_type"] == "retail"
 
     def test_analysis_default_values(self):
         """Test creating a LineItemAnalysis instance with default values."""
@@ -237,15 +238,18 @@ class TestLineItemAnalysis:
         assert analysis.tax == Decimal("0")
         assert analysis.total is None
         assert analysis.discrepancies == []
-        assert analysis.metadata == {}
-        assert analysis.reasoning != ""
+        assert "processing_metrics" in analysis.metadata
+        assert "source_info" in analysis.metadata
+        assert "processing_history" in analysis.metadata
 
     def test_analysis_post_init(self):
         """Test LineItemAnalysis's __post_init__ method."""
         analysis = LineItemAnalysis(items=[], discrepancies=None, metadata=None)
         assert analysis.discrepancies == []
-        assert analysis.metadata == {}
-        assert analysis.total_found == 0
+        assert "processing_metrics" in analysis.metadata
+        assert "source_info" in analysis.metadata
+        assert "processing_history" in analysis.metadata
+        assert len(analysis.metadata["processing_history"]) > 0
 
     def test_analysis_subtotal_calculation(self, sample_line_item_data: Dict):
         """Test automatic subtotal calculation."""

@@ -406,7 +406,7 @@ class _ReceiptChatGPTValidation:
                 Key={
                     "PK": {"S": f"IMAGE#{image_id}"},
                     "SK": {
-                        "S": f"RECEIPT#{receipt_id}#ANALYSIS#VALIDATION#CHATGPT#{timestamp}"
+                        "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#CHATGPT#{timestamp}"
                     },
                 },
             )
@@ -555,7 +555,7 @@ class _ReceiptChatGPTValidation:
                 ExpressionAttributeValues={
                     ":pkVal": {"S": f"IMAGE#{image_id}"},
                     ":skPrefix": {
-                        "S": f"RECEIPT#{receipt_id}#ANALYSIS#VALIDATION#CHATGPT#"
+                        "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#CHATGPT#"
                     },
                 },
             )
@@ -573,7 +573,7 @@ class _ReceiptChatGPTValidation:
                     ExpressionAttributeValues={
                         ":pkVal": {"S": f"IMAGE#{image_id}"},
                         ":skPrefix": {
-                            "S": f"RECEIPT#{receipt_id}#ANALYSIS#VALIDATION#CHATGPT#"
+                            "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#CHATGPT#"
                         },
                     },
                     ExclusiveStartKey=response["LastEvaluatedKey"],

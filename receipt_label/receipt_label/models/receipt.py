@@ -3,7 +3,7 @@ from typing import Dict, List, Optional
 from datetime import datetime
 from receipt_dynamo.entities.receipt_word import ReceiptWord as DynamoReceiptWord
 from receipt_dynamo.entities.receipt_line import ReceiptLine as DynamoReceiptLine
-
+from receipt_dynamo.entities.receipt import Receipt as DynamoReceipt
 
 @dataclass
 class ReceiptWord:
@@ -20,6 +20,8 @@ class ReceiptWord:
     font_style: Optional[str] = None
     angle_degrees: Optional[float] = None
     angle_radians: Optional[float] = None
+    receipt_id: Optional[int] = None
+    image_id: Optional[str] = None
 
     @classmethod
     def from_dynamo(cls, word: DynamoReceiptWord) -> "ReceiptWord":
@@ -48,18 +50,25 @@ class ReceiptWord:
             font_style=(
                 word.extracted_data.get("font_style") if word.extracted_data else None
             ),
+            receipt_id=word.receipt_id,
+            image_id=word.image_id,
         )
 
-    def to_dynamo(self, receipt_id: int, image_id: str) -> DynamoReceiptWord:
+    def to_dynamo(self) -> DynamoReceiptWord:
         """Convert this ReceiptWord back to a DynamoDB ReceiptWord.
-
-        Args:
-            receipt_id: The receipt ID
-            image_id: The image ID
 
         Returns:
             DynamoDB ReceiptWord instance
+            
+        Raises:
+            ValueError: If receipt_id or image_id are not set
         """
+        if self.receipt_id is None:
+            raise ValueError("receipt_id must be set before calling to_dynamo()")
+            
+        if self.image_id is None:
+            raise ValueError("image_id must be set before calling to_dynamo()")
+            
         # Update extracted_data with font information
         extracted_data = self.extracted_data or {}
         if self.font_size:
@@ -70,8 +79,8 @@ class ReceiptWord:
             extracted_data["font_style"] = self.font_style
 
         return DynamoReceiptWord(
-            receipt_id=receipt_id,
-            image_id=image_id,
+            receipt_id=self.receipt_id,
+            image_id=self.image_id,
             line_id=self.line_id,
             word_id=self.word_id,
             text=self.text,
@@ -101,6 +110,8 @@ class ReceiptLine:
     bottom_left: Dict
     angle_degrees: float
     angle_radians: float
+    receipt_id: Optional[int] = None
+    image_id: Optional[str] = None
 
     @classmethod
     def from_dynamo(cls, line: DynamoReceiptLine) -> "ReceiptLine":
@@ -123,21 +134,28 @@ class ReceiptLine:
             bottom_left=line.bottom_left,
             angle_degrees=line.angle_degrees,
             angle_radians=line.angle_radians,
+            receipt_id=line.receipt_id,
+            image_id=line.image_id,
         )
 
-    def to_dynamo(self, receipt_id: int, image_id: str) -> DynamoReceiptLine:
+    def to_dynamo(self) -> DynamoReceiptLine:
         """Convert this ReceiptLine back to a DynamoDB ReceiptLine.
-
-        Args:
-            receipt_id: The receipt ID
-            image_id: The image ID
 
         Returns:
             DynamoDB ReceiptLine instance
+            
+        Raises:
+            ValueError: If receipt_id or image_id are not set
         """
+        if self.receipt_id is None:
+            raise ValueError("receipt_id must be set before calling to_dynamo()")
+            
+        if self.image_id is None:
+            raise ValueError("image_id must be set before calling to_dynamo()")
+            
         return DynamoReceiptLine(
-            receipt_id=receipt_id,
-            image_id=image_id,
+            receipt_id=self.receipt_id,
+            image_id=self.image_id,
             line_id=self.line_id,
             text=self.text,
             bounding_box=self.bounding_box,
@@ -181,30 +199,66 @@ class Receipt:
     @classmethod
     def from_dynamo(
         cls,
-        receipt_id: str,
-        image_id: str,
+        receipt_data: DynamoReceipt,
         words: List[DynamoReceiptWord],
         lines: List[DynamoReceiptLine] = None,
     ) -> "Receipt":
         """Create a Receipt instance from DynamoDB data.
 
         Args:
-            receipt_id: The receipt ID
-            image_id: The image ID
+            receipt_data: DynamoDB Receipt instance
             words: List of DynamoDB ReceiptWord instances
-            lines: List of DynamoDB ReceiptLine instances
+            lines: Optional list of DynamoDB ReceiptLine instances
 
         Returns:
             Receipt instance for labeling
         """
+        # Convert DynamoReceiptWord objects to ReceiptWord
+        receipt_words = [ReceiptWord.from_dynamo(word) for word in words] if words else []
+        
+        # Convert DynamoReceiptLine objects to ReceiptLine
+        receipt_lines = [ReceiptLine.from_dynamo(line) for line in lines] if lines else []
+        
+        return cls(
+            receipt_id=str(receipt_data.receipt_id),
+            image_id=receipt_data.image_id,
+            words=receipt_words,
+            lines=receipt_lines,
+        )
+            
+    @classmethod
+    def from_dynamo_data(
+        cls,
+        receipt_id: str,
+        image_id: str,
+        words: List[DynamoReceiptWord],
+        lines: List[DynamoReceiptLine] = None,
+    ) -> "Receipt":
+        """Create a Receipt instance directly from raw DynamoDB data.
+        
+        This method is primarily intended for testing or when a DynamoReceipt object 
+        is not available but individual receipt/image IDs are.
+        
+        Args:
+            receipt_id: The receipt ID as a string
+            image_id: The image ID
+            words: List of DynamoReceiptWord instances
+            lines: Optional list of DynamoReceiptLine instances
+            
+        Returns:
+            Receipt instance for labeling
+        """
+        # Convert DynamoReceiptWord objects to ReceiptWord
+        receipt_words = [ReceiptWord.from_dynamo(word) for word in words] if words else []
+        
+        # Convert DynamoReceiptLine objects to ReceiptLine
+        receipt_lines = [ReceiptLine.from_dynamo(line) for line in lines] if lines else []
+        
         return cls(
             receipt_id=receipt_id,
             image_id=image_id,
-            words=[ReceiptWord.from_dynamo(word) for word in words],
-            lines=[ReceiptLine.from_dynamo(line) for line in (lines or [])],
-            metadata=None,
-            created_at=None,
-            updated_at=None,
+            words=receipt_words,
+            lines=receipt_lines
         )
 
     def get_words_by_line(self, line_id: int) -> List[ReceiptWord]:

@@ -505,10 +505,7 @@ def test_deleteReceiptValidationSummary_success(
     assert "Item" in response
 
     # Now delete the validation summary
-    client.deleteReceiptValidationSummary(
-        receipt_id=sample_receipt_validation_summary.receipt_id,
-        image_id=sample_receipt_validation_summary.image_id,
-    )
+    client.deleteReceiptValidationSummary(sample_receipt_validation_summary)
 
     # Verify it was deleted
     response = client._client.get_item(
@@ -535,8 +532,7 @@ def test_deleteReceiptValidationSummary_not_exists_raises(
     # Attempt to delete a validation summary that wasn't previously added
     with pytest.raises(ValueError) as excinfo:
         client.deleteReceiptValidationSummary(
-            receipt_id=sample_receipt_validation_summary.receipt_id,
-            image_id=sample_receipt_validation_summary.image_id,
+            sample_receipt_validation_summary
         )
 
     # Check that the error message contains useful information
@@ -555,14 +551,14 @@ def test_deleteReceiptValidationSummary_not_exists_raises(
         (
             None,
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            "receipt_id parameter is required and cannot be None.",
+            "receipt_id must be an integer",
         ),
         (
             "not_an_int",
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            "receipt_id must be an integer.",
+            "receipt_id must be an integer",
         ),
-        (12345, None, "image_id parameter is required and cannot be None."),
+        (12345, None, "uuid must be a string"),
         (12345, "invalid-uuid", "uuid must be a valid UUIDv4"),
     ],
 )
@@ -578,9 +574,21 @@ def test_deleteReceiptValidationSummary_invalid_parameters(
 
     # Try to delete with invalid input
     with pytest.raises(ValueError) as excinfo:
-        client.deleteReceiptValidationSummary(
-            receipt_id=receipt_id, image_id=image_id
-        )
+        # Create a summary object with the test parameters
+        try:
+            summary = ReceiptValidationSummary(
+                receipt_id=receipt_id,
+                image_id=image_id,
+                overall_status="VALID",
+                overall_reasoning="Test reasoning",
+                field_summary={},
+                validation_timestamp="2023-01-01T00:00:00",
+            )
+            # If we get here without error, pass the summary to the delete method
+            client.deleteReceiptValidationSummary(summary)
+        except ValueError as e:
+            # Re-raise the ValueError to be caught by pytest.raises
+            raise ValueError(str(e))
 
     # Verify the error message
     assert expected_error in str(excinfo.value)
@@ -658,14 +666,12 @@ def test_deleteReceiptValidationSummary_client_errors(
     if error_code == "ConditionalCheckFailedException":
         with pytest.raises(ValueError, match=expected_error):
             client.deleteReceiptValidationSummary(
-                receipt_id=sample_receipt_validation_summary.receipt_id,
-                image_id=sample_receipt_validation_summary.image_id,
+                sample_receipt_validation_summary
             )
     else:
         with pytest.raises(Exception, match=expected_error):
             client.deleteReceiptValidationSummary(
-                receipt_id=sample_receipt_validation_summary.receipt_id,
-                image_id=sample_receipt_validation_summary.image_id,
+                sample_receipt_validation_summary
             )
 
     # Verify the mocked method was called

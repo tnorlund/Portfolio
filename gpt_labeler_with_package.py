@@ -155,10 +155,10 @@ AWS_DEFAULT_REGION=your_aws_region
         sys.exit(1)
 
 
-async def process_receipt(labeler, receipt_obj, receipt_words, receipt_lines):
+def process_receipt(labeler, receipt_obj, receipt_words, receipt_lines):
     """Process a single receipt asynchronously."""
     # Perform standard labeling with validation included
-    analysis_result = await labeler.label_receipt(
+    analysis_result = labeler.label_receipt(
         receipt_obj, receipt_words, receipt_lines
     )
 
@@ -236,7 +236,7 @@ async def process_receipt(labeler, receipt_obj, receipt_words, receipt_lines):
     return analysis_result
 
 
-async def main():
+def main():
     logger.info("Starting receipt analysis...")
 
     # Process receipts
@@ -377,7 +377,7 @@ async def main():
                     raise
 
                 # Analyze receipt using ReceiptLabeler
-                analysis_result = await process_receipt(
+                analysis_result = process_receipt(
                     labeler, receipt_obj, receipt_words, receipt_lines
                 )
 

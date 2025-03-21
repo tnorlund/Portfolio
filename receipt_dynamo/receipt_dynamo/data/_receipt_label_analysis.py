@@ -419,7 +419,7 @@ class _ReceiptLabelAnalysis:
                 TableName=self.table_name,
                 Key={
                     "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"RECEIPT#{receipt_id}#ANALYSIS#LABELS"},
+                    "SK": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LABELS"},
                 },
             )
             if "Item" in response:
@@ -693,7 +693,9 @@ class _ReceiptLabelAnalysis:
                 "ExpressionAttributeNames": {"#pk": "PK", "#sk": "SK"},
                 "ExpressionAttributeValues": {
                     ":pk_val": {"S": f"IMAGE#{image_id}"},
-                    ":sk_val": {"S": f"RECEIPT#{receipt_id}#ANALYSIS#LABELS"},
+                    ":sk_val": {
+                        "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LABELS"
+                    },
                 },
             }
             if lastEvaluatedKey is not None:
@@ -779,8 +781,7 @@ class _ReceiptLabelAnalysis:
 
         # Create a ReceiptAnalysis object to store all analyses
         receipt_analysis = ReceiptAnalysis(
-            image_id=image_id,
-            receipt_id=receipt_id
+            image_id=image_id, receipt_id=receipt_id
         )
 
         try:
@@ -788,31 +789,36 @@ class _ReceiptLabelAnalysis:
             response = self._client.query(
                 TableName=self.table_name,
                 KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_prefix)",
-                ExpressionAttributeNames={
-                    "#pk": "PK",
-                    "#sk": "SK"
-                },
+                ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
                 ExpressionAttributeValues={
                     ":pk_val": {"S": f"IMAGE#{image_id}"},
-                    ":sk_prefix": {"S": f"RECEIPT#{receipt_id}#ANALYSIS"}
-                }
+                    ":sk_prefix": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS"},
+                },
             )
 
             # Process each item based on its TYPE attribute
             for item in response.get("Items", []):
                 # Get the item's type
                 item_type = item.get("TYPE", {}).get("S", "")
-                
+
                 # Assign the item to the appropriate field based on its TYPE
                 try:
                     if item_type == "RECEIPT_LABEL_ANALYSIS":
-                        receipt_analysis.label_analysis = itemToReceiptLabelAnalysis(item)
+                        receipt_analysis.label_analysis = (
+                            itemToReceiptLabelAnalysis(item)
+                        )
                     elif item_type == "RECEIPT_STRUCTURE_ANALYSIS":
-                        receipt_analysis.structure_analysis = itemToReceiptStructureAnalysis(item)
+                        receipt_analysis.structure_analysis = (
+                            itemToReceiptStructureAnalysis(item)
+                        )
                     elif item_type == "RECEIPT_LINE_ITEM_ANALYSIS":
-                        receipt_analysis.line_item_analysis = itemToReceiptLineItemAnalysis(item)
+                        receipt_analysis.line_item_analysis = (
+                            itemToReceiptLineItemAnalysis(item)
+                        )
                     elif item_type == "RECEIPT_VALIDATION_SUMMARY":
-                        receipt_analysis.validation_summary = itemToReceiptValidationSummary(item)
+                        receipt_analysis.validation_summary = (
+                            itemToReceiptValidationSummary(item)
+                        )
                     elif item_type == "RECEIPT_VALIDATION_CATEGORY":
                         category = itemToReceiptValidationCategory(item)
                         receipt_analysis.validation_categories.append(category)
@@ -820,8 +826,12 @@ class _ReceiptLabelAnalysis:
                         result = itemToReceiptValidationResult(item)
                         receipt_analysis.validation_results.append(result)
                     elif item_type == "RECEIPT_CHATGPT_VALIDATION":
-                        chatgpt_validation = itemToReceiptChatGPTValidation(item)
-                        receipt_analysis.chatgpt_validations.append(chatgpt_validation)
+                        chatgpt_validation = itemToReceiptChatGPTValidation(
+                            item
+                        )
+                        receipt_analysis.chatgpt_validations.append(
+                            chatgpt_validation
+                        )
                 except Exception as e:
                     # Skip if conversion fails, but log the error
                     print(f"Error converting {item_type}: {str(e)}")
@@ -841,4 +851,3 @@ class _ReceiptLabelAnalysis:
                 raise Exception(f"Access denied: {e}") from e
             else:
                 raise Exception(f"Error getting receipt analysis: {e}") from e
-        

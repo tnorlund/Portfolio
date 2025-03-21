@@ -372,6 +372,8 @@ class _ReceiptLineItemAnalysis:
             )
         if not isinstance(receipt_id, int):
             raise ValueError("receipt_id must be an integer.")
+        if receipt_id <= 0:
+            raise ValueError("receipt_id must be greater than 0")
         if image_id is None:
             raise ValueError(
                 "image_id parameter is required and cannot be None."
@@ -382,7 +384,9 @@ class _ReceiptLineItemAnalysis:
                 TableName=self.table_name,
                 Key={
                     "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"RECEIPT#{receipt_id}#ANALYSIS#LINE_ITEMS"},
+                    "SK": {
+                        "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LINE_ITEMS"
+                    },
                 },
             )
             if "Item" in response:
@@ -434,14 +438,12 @@ class _ReceiptLineItemAnalysis:
         try:
             query_params = {
                 "TableName": self.table_name,
-                "IndexName": "GSI1",
-                "KeyConditionExpression": "#pk = :val",
-                "ExpressionAttributeNames": {"#pk": "GSI1PK"},
+                "IndexName": "GSITYPE",
+                "KeyConditionExpression": "#t = :val",
+                "ExpressionAttributeNames": {"#t": "TYPE"},
                 "ExpressionAttributeValues": {
-                    ":val": {"S": "ANALYSIS_TYPE"},
-                    ":prefix": {"S": "LINE_ITEMS#"},
+                    ":val": {"S": "RECEIPT_LINE_ITEM_ANALYSIS"},
                 },
-                "FilterExpression": "begins_with(GSI1SK, :prefix)",
             }
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey

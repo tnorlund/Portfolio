@@ -1,7 +1,6 @@
 import pytest
 from copy import deepcopy
-from datetime import datetime
-from typing import Dict, Any, Optional
+
 
 from receipt_dynamo import (
     ReceiptValidationCategory,
@@ -320,7 +319,7 @@ def test_key(example_validation_category):
     """Test the key property"""
     assert example_validation_category.key == {
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-        "SK": {"S": "RECEIPT#1#ANALYSIS#VALIDATION#CATEGORY#payment_info"},
+        "SK": {"S": "RECEIPT#00001#ANALYSIS#VALIDATION#CATEGORY#payment_info"},
     }
 
 
@@ -341,7 +340,8 @@ def test_gsi2_key(example_validation_category):
     assert example_validation_category.gsi2_key == {
         "GSI2PK": {"S": "RECEIPT"},
         "GSI2SK": {
-            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#1#VALIDATION"
+            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#"
+            "RECEIPT#00001#VALIDATION"
         },
     }
 
@@ -352,7 +352,7 @@ def test_gsi3_key(example_validation_category):
     assert example_validation_category.gsi3_key == {
         "GSI3PK": {"S": "FIELD_STATUS#payment_info#valid"},
         "GSI3SK": {
-            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#1"
+            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"
         },
     }
 
@@ -365,7 +365,7 @@ def test_to_item(example_validation_category):
     # Check that the basic keys are present
     assert item["PK"] == {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"}
     assert item["SK"] == {
-        "S": "RECEIPT#1#ANALYSIS#VALIDATION#CATEGORY#payment_info"
+        "S": "RECEIPT#00001#ANALYSIS#VALIDATION#CATEGORY#payment_info"
     }
     assert item["GSI1PK"] == {"S": "ANALYSIS_TYPE"}
     assert item["GSI1SK"] == {
@@ -373,11 +373,12 @@ def test_to_item(example_validation_category):
     }
     assert item["GSI2PK"] == {"S": "RECEIPT"}
     assert item["GSI2SK"] == {
-        "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#1#VALIDATION"
+        "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#"
+        "RECEIPT#00001#VALIDATION"
     }
     assert item["GSI3PK"] == {"S": "FIELD_STATUS#payment_info#valid"}
     assert item["GSI3SK"] == {
-        "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#1"
+        "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"
     }
 
     # Check that the required fields are present
@@ -476,25 +477,154 @@ def test_repr(example_validation_category):
 def test_itemToReceiptValidationCategory(example_validation_category):
     """Test the itemToReceiptValidationCategory function"""
     # Convert to item using to_item
-    item = example_validation_category.to_item()
+    item = {
+        "metadata": {
+            "M": {
+                "processing_metrics": {
+                    "M": {
+                        "validation_counts": {
+                            "M": {
+                                "business_identity": {"N": "0"},
+                                "hours_verification": {"N": "0"},
+                                "address_verification": {"N": "0"},
+                                "line_item_validation": {"N": "0"},
+                                "phone_validation": {"N": "0"},
+                                "cross_field_consistency": {"N": "0"},
+                            }
+                        },
+                        "validation_status": {"S": "incomplete"},
+                        "result_types": {
+                            "M": {
+                                "warning": {"N": "0"},
+                                "error": {"N": "0"},
+                                "success": {"N": "0"},
+                                "info": {"N": "0"},
+                            }
+                        },
+                    }
+                },
+                "source_information": {
+                    "M": {"package_version": {"S": "0.1.0"}}
+                },
+                "source_info": {"M": {}},
+                "version": {"S": "0.1.0"},
+                "processing_history": {
+                    "L": [
+                        {
+                            "M": {
+                                "action": {"S": "created"},
+                                "version": {"S": "0.1.0"},
+                                "timestamp": {
+                                    "S": "2025-03-18T19:03:19.301664"
+                                },
+                            }
+                        },
+                        {
+                            "M": {
+                                "action": {"S": "validation_incomplete"},
+                                "warning_count": {"N": "0"},
+                                "error_count": {"N": "0"},
+                                "version": {"S": "0.1.0"},
+                                "timestamp": {
+                                    "S": "2025-03-18T19:03:19.301683"
+                                },
+                            }
+                        },
+                    ]
+                },
+            }
+        },
+        "field_category": {"S": "Business Identity"},
+        "status": {"S": "incomplete"},
+        "GSI1SK": {
+            "S": "VALIDATION#2025-03-18T19:03:19.301645#CATEGORY#"
+            "business_identity"
+        },
+        "GSI3SK": {
+            "S": "IMAGE#aabbf168-7a61-483b-97c7-e711de91ce5f#RECEIPT#1"
+        },
+        "TYPE": {"S": "RECEIPT_VALIDATION_CATEGORY"},
+        "GSI2SK": {
+            "S": "IMAGE#aabbf168-7a61-483b-97c7-e711de91ce5f#"
+            "RECEIPT#00001#VALIDATION"
+        },
+        "GSI2PK": {"S": "RECEIPT"},
+        "GSI1PK": {"S": "ANALYSIS_TYPE"},
+        "GSI3PK": {"S": "FIELD_STATUS#business_identity#incomplete"},
+        "validation_timestamp": {"S": "2025-03-18T19:03:19.301645"},
+        "SK": {
+            "S": "RECEIPT#00001#ANALYSIS#VALIDATION#CATEGORY#business_identity"
+        },
+        "PK": {"S": "IMAGE#aabbf168-7a61-483b-97c7-e711de91ce5f"},
+        "result_summary": {
+            "M": {
+                "info_count": {"N": "0"},
+                "success_count": {"N": "0"},
+                "warning_count": {"N": "0"},
+                "error_count": {"N": "0"},
+                "total_count": {"N": "0"},
+            }
+        },
+        "reasoning": {"S": "No validation performed for Business Identity"},
+    }
 
     # Use the conversion function
     category = itemToReceiptValidationCategory(item)
 
     # Check that the result matches the original
-    assert category.receipt_id == example_validation_category.receipt_id
-    assert category.image_id == example_validation_category.image_id
-    assert category.field_name == example_validation_category.field_name
+    assert category.receipt_id == 1
+    assert category.image_id == "aabbf168-7a61-483b-97c7-e711de91ce5f"
+    assert category.field_name == "business_identity"
+    assert category.field_category == "Business Identity"
+    assert category.status == "incomplete"
     assert (
-        category.field_category == example_validation_category.field_category
+        category.reasoning == "No validation performed for Business Identity"
     )
-    assert category.status == example_validation_category.status
-    assert category.reasoning == example_validation_category.reasoning
+    assert category.result_summary == {
+        "info_count": 0,
+        "success_count": 0,
+        "warning_count": 0,
+        "error_count": 0,
+        "total_count": 0,
+    }
+    assert category.validation_timestamp == "2025-03-18T19:03:19.301645"
+    assert category.metadata == {
+        "processing_history": [
+            {
+                "action": "created",
+                "timestamp": "2025-03-18T19:03:19.301664",
+                "version": "0.1.0",
+            },
+            {
+                "action": "validation_incomplete",
+                "error_count": 0,
+                "timestamp": "2025-03-18T19:03:19.301683",
+                "version": "0.1.0",
+                "warning_count": 0,
+            },
+        ],
+        "processing_metrics": {
+            "result_types": {
+                "error": 0,
+                "info": 0,
+                "success": 0,
+                "warning": 0,
+            },
+            "validation_counts": {
+                "address_verification": 0,
+                "business_identity": 0,
+                "cross_field_consistency": 0,
+                "hours_verification": 0,
+                "line_item_validation": 0,
+                "phone_validation": 0,
+            },
+            "validation_status": "incomplete",
+        },
+        "source_info": {},
+        "source_information": {"package_version": "0.1.0"},
+        "version": "0.1.0",
+    }
     assert (
-        category.result_summary == example_validation_category.result_summary
+        itemToReceiptValidationCategory(example_validation_category.to_item())
+        == example_validation_category
     )
-    assert (
-        category.validation_timestamp
-        == example_validation_category.validation_timestamp
-    )
-    assert category.metadata == example_validation_category.metadata

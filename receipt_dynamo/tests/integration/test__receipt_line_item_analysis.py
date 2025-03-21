@@ -68,7 +68,7 @@ def test_addReceiptLineItemAnalysis_success(
         Key={
             "PK": {"S": f"IMAGE#{sample_receipt_line_item_analysis.image_id}"},
             "SK": {
-                "S": f"RECEIPT#{sample_receipt_line_item_analysis.receipt_id}#ANALYSIS#LINE_ITEMS"
+                "S": f"RECEIPT#{sample_receipt_line_item_analysis.receipt_id:05d}#ANALYSIS#LINE_ITEMS"
             },
         },
     )
@@ -79,7 +79,7 @@ def test_addReceiptLineItemAnalysis_success(
     )
     assert (
         response["Item"]["SK"]["S"]
-        == f"RECEIPT#{sample_receipt_line_item_analysis.receipt_id}#ANALYSIS#LINE_ITEMS"
+        == f"RECEIPT#{sample_receipt_line_item_analysis.receipt_id:05d}#ANALYSIS#LINE_ITEMS"
     )
     assert response["Item"]["TYPE"]["S"] == "RECEIPT_LINE_ITEM_ANALYSIS"
     assert (
@@ -239,7 +239,7 @@ def test_addReceiptLineItemAnalyses_success(
             Key={
                 "PK": {"S": f"IMAGE#{analysis.image_id}"},
                 "SK": {
-                    "S": f"RECEIPT#{analysis.receipt_id}#ANALYSIS#LINE_ITEMS"
+                    "S": f"RECEIPT#{analysis.receipt_id:05d}#ANALYSIS#LINE_ITEMS"
                 },
             },
         )
@@ -282,7 +282,7 @@ def test_addReceiptLineItemAnalyses_with_large_batch(
                 "PK": {
                     "S": f"IMAGE#{sample_receipt_line_item_analysis.image_id}"
                 },
-                "SK": {"S": f"RECEIPT#{receipt_id}#ANALYSIS#LINE_ITEMS"},
+                "SK": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LINE_ITEMS"},
             },
         )
         assert "Item" in response
@@ -307,7 +307,7 @@ def test_addReceiptLineItemAnalyses_with_unprocessed_items_retries(
                     "PutRequest": {
                         "Item": {
                             "PK": {"S": "IMAGE#test"},
-                            "SK": {"S": "RECEIPT#1#ANALYSIS#LINE_ITEMS"},
+                            "SK": {"S": "RECEIPT#00001#ANALYSIS#LINE_ITEMS"},
                         }
                     }
                 }
@@ -463,7 +463,7 @@ def test_updateReceiptLineItemAnalysis_success(
         Key={
             "PK": {"S": f"IMAGE#{updated_analysis.image_id}"},
             "SK": {
-                "S": f"RECEIPT#{updated_analysis.receipt_id}#ANALYSIS#LINE_ITEMS"
+                "S": f"RECEIPT#{updated_analysis.receipt_id:05d}#ANALYSIS#LINE_ITEMS"
             },
         },
     )
@@ -641,7 +641,7 @@ def test_updateReceiptLineItemAnalyses_success(
             Key={
                 "PK": {"S": f"IMAGE#{analysis.image_id}"},
                 "SK": {
-                    "S": f"RECEIPT#{analysis.receipt_id}#ANALYSIS#LINE_ITEMS"
+                    "S": f"RECEIPT#{analysis.receipt_id:05d}#ANALYSIS#LINE_ITEMS"
                 },
             },
         )
@@ -704,7 +704,7 @@ def test_updateReceiptLineItemAnalyses_with_large_batch(
                 "PK": {
                     "S": f"IMAGE#{sample_receipt_line_item_analysis.image_id}"
                 },
-                "SK": {"S": f"RECEIPT#{receipt_id}#ANALYSIS#LINE_ITEMS"},
+                "SK": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LINE_ITEMS"},
             },
         )
         assert "Item" in response
@@ -855,7 +855,7 @@ def test_deleteReceiptLineItemAnalysis_success(
         Key={
             "PK": {"S": f"IMAGE#{sample_receipt_line_item_analysis.image_id}"},
             "SK": {
-                "S": f"RECEIPT#{sample_receipt_line_item_analysis.receipt_id}#ANALYSIS#LINE_ITEMS"
+                "S": f"RECEIPT#{sample_receipt_line_item_analysis.receipt_id:05d}#ANALYSIS#LINE_ITEMS"
             },
         },
     )
@@ -1049,7 +1049,7 @@ def test_deleteReceiptLineItemAnalyses_success(
             Key={
                 "PK": {"S": f"IMAGE#{analysis.image_id}"},
                 "SK": {
-                    "S": f"RECEIPT#{analysis.receipt_id}#ANALYSIS#LINE_ITEMS"
+                    "S": f"RECEIPT#{analysis.receipt_id:05d}#ANALYSIS#LINE_ITEMS"
                 },
             },
         )
@@ -1108,7 +1108,7 @@ def test_deleteReceiptLineItemAnalyses_with_large_batch(
                 "PK": {
                     "S": f"IMAGE#{sample_receipt_line_item_analysis.image_id}"
                 },
-                "SK": {"S": f"RECEIPT#{receipt_id}#ANALYSIS#LINE_ITEMS"},
+                "SK": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LINE_ITEMS"},
             },
         )
         assert "Item" in response
@@ -1332,7 +1332,7 @@ def test_getReceiptLineItemAnalysis_not_found(
     except ValueError as e:
         # If it raises an exception, make sure it's the expected one
         assert (
-            f"ReceiptLineItemAnalysis for receipt ID {non_existent_receipt_id} not found"
+            f"Receipt Line Item Analysis for Image ID {valid_uuid} and Receipt ID {non_existent_receipt_id} does not exist"
             in str(e)
         )
 
@@ -1356,7 +1356,7 @@ def test_getReceiptLineItemAnalysis_not_found(
         (
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             -1,
-            "ReceiptLineItemAnalysis for receipt ID -1 not found",
+            "receipt_id must be greater than 0",
         ),
     ],
 )

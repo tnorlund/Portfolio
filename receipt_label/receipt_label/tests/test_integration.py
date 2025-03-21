@@ -167,7 +167,7 @@ def mock_line_item_analysis(mock_line_items):
 @patch("receipt_label.data.places_api.PlacesAPI")
 @patch("receipt_dynamo.data.dynamo_client.DynamoClient")
 @patch("receipt_label.core.labeler.ReceiptLabeler.label_receipt")
-async def test_labeling_result_with_base_classes(
+def test_labeling_result_with_base_classes(
     mock_label_receipt,
     mock_dynamo_client,
     mock_places_api,
@@ -196,8 +196,8 @@ async def test_labeling_result_with_base_classes(
         receipt_id=receipt.receipt_id,
         structure_analysis=structure_analysis,
         field_analysis=field_analysis,
-        line_items=[mock_line_item_analysis],
-        validation_results=ValidationAnalysis(
+        line_item_analysis=mock_line_item_analysis,
+        validation_analysis=ValidationAnalysis(
             overall_reasoning="No discrepancies found"
         ),
     )
@@ -212,11 +212,12 @@ async def test_labeling_result_with_base_classes(
     assert isinstance(result, LabelingResult)
     assert isinstance(result.structure_analysis, StructureAnalysis)
     assert isinstance(result.field_analysis, LabelAnalysis)
-    assert len(result.line_items) == 1
-    assert isinstance(result.validation_results, ValidationAnalysis)
+    assert isinstance(result.line_item_analysis, LineItemAnalysis)
+    assert len(result.line_item_analysis.items) == 1
+    assert isinstance(result.validation_analysis, ValidationAnalysis)
 
     # Verify validation results
-    assert result.validation_results.overall_reasoning == "No discrepancies found"
+    assert result.validation_analysis.overall_reasoning == "No discrepancies found"
 
 
 # Run the test directly when this file is executed

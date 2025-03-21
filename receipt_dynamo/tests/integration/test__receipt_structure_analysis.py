@@ -95,7 +95,7 @@ def test_addReceiptStructureAnalysis_success(
         Key={
             "PK": {"S": f"IMAGE#{analysis.image_id}"},
             "SK": {
-                "S": f"RECEIPT#{analysis.receipt_id}#ANALYSIS#STRUCTURE#{analysis.version}"
+                "S": f"RECEIPT#{analysis.receipt_id:05d}#ANALYSIS#STRUCTURE#{analysis.version}"
             },
         },
     )
@@ -186,7 +186,7 @@ def test_addReceiptStructureAnalyses_success(
             Key={
                 "PK": {"S": f"IMAGE#{analysis.image_id}"},
                 "SK": {
-                    "S": f"RECEIPT#{analysis.receipt_id}#ANALYSIS#STRUCTURE#{analysis.version}"
+                    "S": f"RECEIPT#{analysis.receipt_id:05d}#ANALYSIS#STRUCTURE#{analysis.version}"
                 },
             },
         )
@@ -301,7 +301,7 @@ def test_updateReceiptStructureAnalysis_success(
         Key={
             "PK": {"S": f"IMAGE#{analysis.image_id}"},
             "SK": {
-                "S": f"RECEIPT#{analysis.receipt_id}#ANALYSIS#STRUCTURE#{analysis.version}"
+                "S": f"RECEIPT#{analysis.receipt_id:05d}#ANALYSIS#STRUCTURE#{analysis.version}"
             },
         },
     )
@@ -356,7 +356,7 @@ def test_updateReceiptStructureAnalyses_success(
             Key={
                 "PK": {"S": f"IMAGE#{analysis.image_id}"},
                 "SK": {
-                    "S": f"RECEIPT#{analysis.receipt_id}#ANALYSIS#STRUCTURE#{analysis.version}"
+                    "S": f"RECEIPT#{analysis.receipt_id:05d}#ANALYSIS#STRUCTURE#{analysis.version}"
                 },
             },
         )

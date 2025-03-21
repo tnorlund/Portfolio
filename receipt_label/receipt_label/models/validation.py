@@ -478,15 +478,15 @@ class ValidationAnalysis(MetadataMixin):
             info_count = sum(1 for r in field_validation.results if r.type == ValidationResultType.INFO)
             success_count = sum(1 for r in field_validation.results if r.type == ValidationResultType.SUCCESS)
             
-            # Determine if there are errors or warnings
-            has_errors = error_count > 0
-            has_warnings = warning_count > 0
+            # Determine if there are errors or warnings - convert to integers for DynamoDB compatibility
+            has_errors = 1 if error_count > 0 else 0
+            has_warnings = 1 if warning_count > 0 else 0
             
             field_summary[field_name] = {
                 "status": field_validation.status.value,
                 "count": len(field_validation.results),
-                "has_errors": has_errors,
-                "has_warnings": has_warnings,
+                "has_errors": has_errors,  # Now an integer (1 or 0) instead of boolean
+                "has_warnings": has_warnings,  # Now an integer (1 or 0) instead of boolean
                 "error_count": error_count,
                 "warning_count": warning_count,
                 "info_count": info_count,

@@ -56,7 +56,7 @@ def test_addReceiptValidationResult_success(
         Key={
             "PK": {"S": f"IMAGE#{sample_receipt_validation_result.image_id}"},
             "SK": {
-                "S": f"RECEIPT#{sample_receipt_validation_result.receipt_id}#ANALYSIS#VALIDATION#CATEGORY#{sample_receipt_validation_result.field_name}#RESULT#{sample_receipt_validation_result.result_index}"
+                "S": f"RECEIPT#{sample_receipt_validation_result.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{sample_receipt_validation_result.field_name}#RESULT#{sample_receipt_validation_result.result_index}"
             },
         },
     )
@@ -219,7 +219,7 @@ def test_addReceiptValidationResults_success(
             Key={
                 "PK": {"S": f"IMAGE#{result.image_id}"},
                 "SK": {
-                    "S": f"RECEIPT#{result.receipt_id}#ANALYSIS#VALIDATION#CATEGORY#{result.field_name}#RESULT#{result.result_index}"
+                    "S": f"RECEIPT#{result.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{result.field_name}#RESULT#{result.result_index}"
                 },
             },
         )
@@ -254,7 +254,7 @@ def test_addReceiptValidationResults_with_large_batch(
             Key={
                 "PK": {"S": f"IMAGE#{result.image_id}"},
                 "SK": {
-                    "S": f"RECEIPT#{result.receipt_id}#ANALYSIS#VALIDATION#CATEGORY#{result.field_name}#RESULT#{result.result_index}"
+                    "S": f"RECEIPT#{result.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{result.field_name}#RESULT#{result.result_index}"
                 },
             },
         )
@@ -453,7 +453,7 @@ def test_updateReceiptValidationResult_success(
         Key={
             "PK": {"S": f"IMAGE#{updated_result.image_id}"},
             "SK": {
-                "S": f"RECEIPT#{updated_result.receipt_id}#ANALYSIS#VALIDATION#CATEGORY#{updated_result.field_name}#RESULT#{updated_result.result_index}"
+                "S": f"RECEIPT#{updated_result.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{updated_result.field_name}#RESULT#{updated_result.result_index}"
             },
         },
     )
@@ -612,7 +612,7 @@ def test_updateReceiptValidationResults_success(
             Key={
                 "PK": {"S": f"IMAGE#{result.image_id}"},
                 "SK": {
-                    "S": f"RECEIPT#{result.receipt_id}#ANALYSIS#VALIDATION#CATEGORY#{result.field_name}#RESULT#{result.result_index}"
+                    "S": f"RECEIPT#{result.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{result.field_name}#RESULT#{result.result_index}"
                 },
             },
         )
@@ -659,7 +659,7 @@ def test_updateReceiptValidationResults_with_large_batch(
             Key={
                 "PK": {"S": f"IMAGE#{result.image_id}"},
                 "SK": {
-                    "S": f"RECEIPT#{result.receipt_id}#ANALYSIS#VALIDATION#CATEGORY#{result.field_name}#RESULT#{result.result_index}"
+                    "S": f"RECEIPT#{result.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{result.field_name}#RESULT#{result.result_index}"
                 },
             },
         )
@@ -813,7 +813,7 @@ def test_deleteReceiptValidationResult_success(
         Key={
             "PK": {"S": f"IMAGE#{sample_receipt_validation_result.image_id}"},
             "SK": {
-                "S": f"RECEIPT#{sample_receipt_validation_result.receipt_id}#ANALYSIS#VALIDATION#CATEGORY#{sample_receipt_validation_result.field_name}#RESULT#{sample_receipt_validation_result.result_index}"
+                "S": f"RECEIPT#{sample_receipt_validation_result.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{sample_receipt_validation_result.field_name}#RESULT#{sample_receipt_validation_result.result_index}"
             },
         },
     )
@@ -829,7 +829,7 @@ def test_deleteReceiptValidationResult_success(
         Key={
             "PK": {"S": f"IMAGE#{sample_receipt_validation_result.image_id}"},
             "SK": {
-                "S": f"RECEIPT#{sample_receipt_validation_result.receipt_id}#ANALYSIS#VALIDATION#CATEGORY#{sample_receipt_validation_result.field_name}#RESULT#{sample_receipt_validation_result.result_index}"
+                "S": f"RECEIPT#{sample_receipt_validation_result.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{sample_receipt_validation_result.field_name}#RESULT#{sample_receipt_validation_result.result_index}"
             },
         },
     )
@@ -968,7 +968,7 @@ def test_deleteReceiptValidationResults_success(
             Key={
                 "PK": {"S": f"IMAGE#{result.image_id}"},
                 "SK": {
-                    "S": f"RECEIPT#{result.receipt_id}#ANALYSIS#VALIDATION#CATEGORY#{result.field_name}#RESULT#{result.result_index}"
+                    "S": f"RECEIPT#{result.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{result.field_name}#RESULT#{result.result_index}"
                 },
             },
         )
@@ -1175,7 +1175,7 @@ def test_deleteReceiptValidationResults_with_large_batch(
             Key={
                 "PK": {"S": f"IMAGE#{result.image_id}"},
                 "SK": {
-                    "S": f"RECEIPT#{result.receipt_id}#ANALYSIS#VALIDATION#CATEGORY#{result.field_name}#RESULT#{result.result_index}"
+                    "S": f"RECEIPT#{result.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{result.field_name}#RESULT#{result.result_index}"
                 },
             },
         )
@@ -2050,7 +2050,7 @@ def test_listReceiptValidationResultsForField_success(
                     "S": f"IMAGE#{sample_receipt_validation_result.image_id}"
                 },
                 "SK": {
-                    "S": f"RECEIPT#{sample_receipt_validation_result.receipt_id}#ANALYSIS#VALIDATION#CATEGORY#{sample_receipt_validation_result.field_name}#RESULT#0"
+                    "S": f"RECEIPT#{sample_receipt_validation_result.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{sample_receipt_validation_result.field_name}#RESULT#0"
                 },
                 "receipt_id": {
                     "N": str(sample_receipt_validation_result.receipt_id)
@@ -2110,7 +2110,7 @@ def test_listReceiptValidationResultsForField_success(
                 "S": f"IMAGE#{sample_receipt_validation_result.image_id}"
             },
             ":skPrefix": {
-                "S": f"RECEIPT#{sample_receipt_validation_result.receipt_id}#ANALYSIS#VALIDATION#CATEGORY#{sample_receipt_validation_result.field_name}#RESULT#"
+                "S": f"RECEIPT#{sample_receipt_validation_result.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{sample_receipt_validation_result.field_name}#RESULT#"
             },
         },
     )

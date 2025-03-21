@@ -164,6 +164,8 @@ class LabelAnalysis(MetadataMixin):
     """
 
     labels: List[WordLabel]
+    receipt_id: Optional[str] = None  # Made optional but will be required for to_dynamo
+    image_id: Optional[str] = None    # Made optional but will be required for to_dynamo
     sections: List[SectionLabels] = field(default_factory=list)
     total_labeled_words: int = 0
     requires_review: bool = False
@@ -193,6 +195,22 @@ class LabelAnalysis(MetadataMixin):
             self.add_history_event(
                 "flagged_for_review", {"reasons": self.review_reasons}
             )
+
+    def set_receipt_info(self, receipt_id: str, image_id: str) -> "LabelAnalysis":
+        """Set receipt and image IDs after instance creation.
+        
+        This allows for deferred setting of IDs when they're not available at creation time.
+        
+        Args:
+            receipt_id: The receipt ID
+            image_id: The image ID
+            
+        Returns:
+            Self for method chaining
+        """
+        self.receipt_id = receipt_id
+        self.image_id = image_id
+        return self
 
     def generate_reasoning(self) -> str:
         """
@@ -292,20 +310,31 @@ class LabelAnalysis(MetadataMixin):
 
         return " ".join(result)
 
-    def to_dynamo(self, image_id: str, receipt_id: int) -> DynamoReceiptLabelAnalysis:
+    def to_dynamo(self) -> DynamoReceiptLabelAnalysis:
         """
         Convert the LabelAnalysis instance to a DynamoReceiptLabelAnalysis instance for DynamoDB storage.
 
         This method transforms the LabelAnalysis object into a DynamoReceiptLabelAnalysis instance
         that can be directly stored in DynamoDB via the DynamoDB client.
 
-        Args:
-            image_id (str): The ID of the image
-            receipt_id (int): The ID of the receipt
-
         Returns:
             DynamoReceiptLabelAnalysis: An instance ready for DynamoDB storage
+            
+        Raises:
+            ValueError: If receipt_id or image_id is missing or invalid
         """
+        # Validate required attributes
+        if not self.receipt_id:
+            raise ValueError("receipt_id is required for DynamoDB storage")
+        if not self.image_id:
+            raise ValueError("image_id is required for DynamoDB storage")
+            
+        # Convert receipt_id to int
+        try:
+            receipt_id_int = int(self.receipt_id)
+        except ValueError:
+            raise ValueError(f"receipt_id must be convertible to int, got: {self.receipt_id}")
+
         # Convert labels to dictionaries
         labels_list = []
         for label in self.labels:
@@ -332,8 +361,8 @@ class LabelAnalysis(MetadataMixin):
 
         # Create the DynamoReceiptLabelAnalysis instance
         return DynamoReceiptLabelAnalysis(
-            image_id=image_id,
-            receipt_id=receipt_id,
+            image_id=self.image_id,
+            receipt_id=receipt_id_int,
             labels=labels_list,
             timestamp_added=timestamp,
             version=self.metadata.get("version", "1.0"),
@@ -388,27 +417,27 @@ class LabelAnalysis(MetadataMixin):
         return result
 
     @classmethod
-    def from_dynamo(cls, data: Dict) -> "LabelAnalysis":
+    def from_dynamo(cls, analysis: DynamoReceiptLabelAnalysis) -> "LabelAnalysis":
         """
-        Create a LabelAnalysis instance from DynamoDB data.
+        Create a LabelAnalysis instance from a DynamoDB ReceiptLabelAnalysis entity.
 
         This method reconstructs a LabelAnalysis object and all its nested objects
         from a dictionary structure retrieved from DynamoDB.
 
         Args:
-            data (Dict): The DynamoDB data dictionary
+            analysis: A ReceiptLabelAnalysis object from the DynamoDB entities
 
         Returns:
-            LabelAnalysis: A new instance populated with the DynamoDB data
+            LabelAnalysis: A new instance populated with the data from the DynamoDB entity
         """
         # Convert label dictionaries back to WordLabel objects
         labels = []
-        for label_data in data.get("labels", []):
+        for label_data in analysis.labels:
             labels.append(WordLabel.from_dict(label_data))
 
         # Convert section dictionaries back to SectionLabels objects
         sections = []
-        for section_data in data.get("sections", []):
+        for section_data in getattr(analysis, 'sections', []):
             section_words = [
                 WordLabel.from_dict(word_data)
                 for word_data in section_data.get("words", [])
@@ -427,23 +456,28 @@ class LabelAnalysis(MetadataMixin):
         # Create the LabelAnalysis instance
         return cls(
             labels=labels,
+            receipt_id=str(analysis.receipt_id),  # Convert to string
+            image_id=analysis.image_id,
             sections=sections,
-            total_labeled_words=data.get("total_labeled_words", len(labels)),
-            requires_review=data.get("requires_review", False),
-            review_reasons=data.get("review_reasons", []),
-            analysis_reasoning=data.get("analysis_reasoning", ""),
-            metadata=data.get("metadata", {}),
-            timestamp_added=data.get("timestamp_added"),
-            timestamp_updated=data.get("timestamp_updated"),
+            total_labeled_words=getattr(analysis, 'total_labeled_words', len(labels)),
+            requires_review=getattr(analysis, 'requires_review', False),
+            review_reasons=getattr(analysis, 'review_reasons', []),
+            analysis_reasoning=getattr(analysis, 'overall_reasoning', ""),
+            metadata=getattr(analysis, 'metadata', {}),
+            timestamp_added=getattr(analysis, 'timestamp_added', None),
+            timestamp_updated=getattr(analysis, 'timestamp_updated', None),
         )
 
     @classmethod
     def from_gpt_response(cls, response_data: Dict) -> "LabelAnalysis":
         """
         Create a LabelAnalysis instance from GPT API response data.
+        
+        Note: The receipt_id and image_id are not available from the GPT response.
+        Use the set_receipt_info() method after creation to add these values.
 
         Args:
-            response_data (Dict): The processed response from gpt_request_field_labeling
+            response_data: The processed response from gpt_request_field_labeling
 
         Returns:
             LabelAnalysis: A new instance populated with the response data
@@ -473,9 +507,15 @@ class LabelAnalysis(MetadataMixin):
             )
 
         metadata = response_data.get("metadata", {})
+        
+        # Extract receipt_id and image_id from metadata if available
+        receipt_id = metadata.get("receipt_id")
+        image_id = metadata.get("image_id")
 
         return cls(
             labels=labels,
+            receipt_id=receipt_id,
+            image_id=image_id,
             total_labeled_words=metadata.get("total_labeled_words", len(labels)),
             requires_review=metadata.get("requires_review", False),
             review_reasons=metadata.get("review_reasons", []),

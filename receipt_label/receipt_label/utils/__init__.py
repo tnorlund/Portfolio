@@ -24,6 +24,7 @@ from .validation import (
     validate_receipt_data,
     validate_receipt_format,
 )
+import importlib.metadata
 
 __all__ = [
     # Address utilities
@@ -48,3 +49,16 @@ __all__ = [
     "validate_receipt_data",
     "validate_receipt_format",
 ]
+
+def get_package_version() -> str:
+    """
+    Get the current version of the receipt_label package.
+    
+    Returns:
+        str: The version string of the receipt_label package.
+    """
+    try:
+        return importlib.metadata.version("receipt_label")
+    except importlib.metadata.PackageNotFoundError:
+        # If installed in development mode or not installed via pip
+        return "unknown"

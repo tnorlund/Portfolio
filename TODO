@@ -1,11 +1,7 @@
 # Receipt Label Package TODOs
 
-## 🐛 Fix Items in DynamoDB
-- [ ] Set the receipt ID to be `:05d` padded
-- [ ] Figure out where `"type"` is being set from for the Validation Categories
-- [ ] Metadata not being set for some "analysis" items
-
 ## Create Analysis Items
+
 - [x] Create Receipt Label Analysis in DynamoDB
 - [x] Create Receipt Structure Analysis in DynamoDB
 - [x] Create Receipt Line Items Analysis in DynamoDB
@@ -16,6 +12,7 @@
   - [x] Implement Receipt ChatGPT Validation in DynamoDB
 
 ## Align Base Classes with DynamoDB Schema
+
 - [x] Consistency in Naming:
   - [x] Rename `discovered_sections` to `sections` in StructureAnalysis to match schema
 - [x] Position Representation:
@@ -76,6 +73,7 @@
   - [ ] Adjust default values or optionality to match schema requirements
 
 ## Implement Base Classes
+
 - [x] Create Receipt Word Label class
 - [x] Create Receipt Field class
 - [x] Create LabelAnalysis class
@@ -84,13 +82,16 @@
 - [x] Create ValidationAnalysis class
 
 ## Implement DynamoDB CRUD Operations
+
 - [ ] Create a dedicated module for analysis operations:
+
   - [ ] Create `receipt_label/receipt_label/data/analysis_operations.py` module
   - [ ] Define common utility functions for DynamoDB operations
   - [ ] Implement error handling and logging for DynamoDB operations
   - [ ] Add documentation for each operation with usage examples
 
 - [ ] Implement Label Analysis operations:
+
   - [ ] Create `get_label_analysis(receipt_id, image_id)` function leveraging `LabelAnalysis.from_dynamo()`
   - [ ] Create `list_label_analyses_by_receipt(receipt_id, limit=None, last_evaluated_key=None)` function
   - [ ] Create `list_label_analyses_by_image(image_id, limit=None, last_evaluated_key=None)` function
@@ -98,30 +99,35 @@
   - [ ] Create `delete_label_analysis(receipt_id, image_id)` function
 
 - [ ] Implement Structure Analysis operations:
+
   - [ ] Create `get_structure_analysis(receipt_id, image_id)` function leveraging `StructureAnalysis.from_dynamo()`
   - [ ] Create `list_structure_analyses_by_receipt(receipt_id, limit=None, last_evaluated_key=None)` function
   - [ ] Create `save_structure_analysis(structure_analysis)` function utilizing `StructureAnalysis.to_dynamo()`
   - [ ] Create `delete_structure_analysis(receipt_id, image_id)` function
 
 - [ ] Implement Line Item Analysis operations:
+
   - [ ] Create `get_line_item_analysis(receipt_id, image_id)` function leveraging `LineItemAnalysis.from_dynamo()`
   - [ ] Create `list_line_item_analyses_by_receipt(receipt_id, limit=None, last_evaluated_key=None)` function
   - [ ] Create `save_line_item_analysis(line_item_analysis)` function utilizing `LineItemAnalysis.to_dynamo()`
   - [ ] Create `delete_line_item_analysis(receipt_id, image_id)` function
 
 - [ ] Implement Validation Analysis operations with split storage support:
+
   - [ ] Create `get_validation_analysis(receipt_id, image_id)` function leveraging `from_dynamo_items()`
   - [ ] Create `list_validation_analyses_by_receipt(receipt_id, limit=None, last_evaluated_key=None)` function
   - [ ] Create `save_validation_analysis(validation_analysis)` function utilizing the split storage pattern methods
   - [ ] Create `delete_validation_analysis(receipt_id, image_id)` function to delete all related items
 
 - [ ] Implement ChatGPT Validation operations:
+
   - [ ] Create `get_chatgpt_validation(receipt_id, image_id, timestamp)` function
   - [ ] Create `list_chatgpt_validations_by_receipt_image(receipt_id, image_id)` function
   - [ ] Create `save_chatgpt_validation(chatgpt_validation)` function
   - [ ] Create `delete_chatgpt_validation(receipt_id, image_id, timestamp)` function
 
 - [ ] Add batch and transaction support:
+
   - [ ] Implement `batch_get_analyses(receipt_image_pairs, analysis_type)` function for efficient retrieval
   - [ ] Implement `batch_save_analyses(analyses, analysis_type)` function for efficient creation/updates
   - [ ] Implement `batch_delete_analyses(receipt_image_pairs, analysis_type)` function
@@ -129,6 +135,7 @@
   - [ ] Create `delete_receipt_analysis_transaction(receipt_id, image_id)` function for atomic deletion
 
 - [ ] Integrate with existing code:
+
   - [ ] Add analysis saving to the `process_receipt` function
   - [ ] Add error handling and retry logic for DynamoDB operations
   - [ ] Implement version checking before updates
@@ -141,6 +148,7 @@
   - [ ] Test transaction rollback scenarios
 
 ## Remove Tag System
+
 - [x] Delete Word Tag items from DynamoDB
 - [x] Delete Receipt Word Tag items from DynamoDB
 - [x] Delete GPT Prompt items from DynamoDB
@@ -153,13 +161,16 @@
 ## Update `process.py`
 
 ## Improve GPT Integration
+
 - [x] Update gpt.py validation functions:
-  - [x] Replace confidence score with reasoning in _validate_gpt_response_structure_analysis
-  - [x] Replace confidence score with reasoning in _validate_gpt_response_field_labeling
-  - [x] Replace confidence score with reasoning in _validate_gpt_response_line_item_analysis
+  - [x] Replace confidence score with reasoning in \_validate_gpt_response_structure_analysis
+  - [x] Replace confidence score with reasoning in \_validate_gpt_response_field_labeling
+  - [x] Replace confidence score with reasoning in \_validate_gpt_response_line_item_analysis
 
 ## Iterative Changes to receipt_analyzer.py and llm_processor.py
+
 - [x] Modify receipt_analyzer.py:
+
   - [x] Test that structure_analysis still returns correctly with reasoning instead of confidence
   - [x] Test that field_labeling still returns correctly with reasoning instead of confidence
   - [x] Test that line_item_analysis still returns correctly with reasoning instead of confidence
@@ -167,17 +178,19 @@
   - [x] Add new debug logging for reasoning fields
 
 - [x] Modify llm_processor.py:
-  - [x] Update _process_missing_components to handle reasoning fields
+  - [x] Update \_process_missing_components to handle reasoning fields
   - [x] Modify the updates dictionary structure to include reasoning
   - [x] Test that analysis extraction still works with updated GPT response format
   - [x] Add backward compatibility for code expecting confidence scores
   - [x] Update any docstrings to reflect reasoning instead of confidence scores
 
 ## Update processors/line_item_processor.py:
-  - [x] Replace _calculate_confidence with _calculate_reasoning in FastPatternMatcher
-  - [x] Update reasoning to explain why line items match or don't match
+
+- [x] Replace \_calculate_confidence with \_calculate_reasoning in FastPatternMatcher
+- [x] Update reasoning to explain why line items match or don't match
 
 ## Add Features
+
 - [ ] Add position tracking to Label Analysis
 - [ ] Add pattern detection to Structure Analysis
 - [ ] Add price/quantity parsing to Line Items
@@ -185,28 +198,29 @@
 - [ ] Add reasoning field to validation results
 
 ## Line Item Processor and Validator Update
+
 - [x] Define standardized NER label vocabulary for receipts:
   1. Item Description Labels
-    - ITEM_NAME: For the primary product name (e.g., "APPLES", "ALFRESCO SLTD BUTTER")
+  - ITEM_NAME: For the primary product name (e.g., "APPLES", "ALFRESCO SLTD BUTTER")
   2. Quantity Labels
-    - ITEM_QUANTITY: For numeric quantity values (e.g., "2", "1.31")
-    - ITEM_UNIT: For unit of measure (e.g., "EA", "lb")
+  - ITEM_QUANTITY: For numeric quantity values (e.g., "2", "1.31")
+  - ITEM_UNIT: For unit of measure (e.g., "EA", "lb")
   3. Price Labels
-    - ITEM_PRICE: For unit prices (e.g., "$3.99")
-    - ITEM_TOTAL: For extended prices of individual items (e.g., "$17.98" for 2 items at $8.99)
+  - ITEM_PRICE: For unit prices (e.g., "$3.99")
+  - ITEM_TOTAL: For extended prices of individual items (e.g., "$17.98" for 2 items at $8.99)
   4. Receipt Summary Labels
-    - SUBTOTAL: For the subtotal amount
-    - TAX: For tax amount
-    - DISCOUNT: For any discounts applied
-    - TOTAL: For the final total amount
+  - SUBTOTAL: For the subtotal amount
+  - TAX: For tax amount
+  - DISCOUNT: For any discounts applied
+  - TOTAL: For the final total amount
   5. Modifier Labels (for special cases)
-    - ITEM_MODIFIER: For modifiers like "void", "discount", "special price"
+  - ITEM_MODIFIER: For modifiers like "void", "discount", "special price"
 - [x] Enhance line item processing to apply standardized labels:
   - [x] Update LineItemProcessor to assign labels to words based on their role
   - [x] Implement metadata structure to track line item associations separate from labels
 
-
 ## Testing
+
 - [ ] Write unit tests for each analysis class
 - [x] Write integration tests for DynamoDB operations for ReceiptLabelAnalysis
 - [ ] Write integration tests for remaining DynamoDB operations
@@ -216,6 +230,7 @@
 - [ ] Create test cases for common validation scenarios
 
 ## Documentation
+
 - [ ] Update README with new analysis items
 - [ ] Document DynamoDB schemas
 - [ ] Add query examples

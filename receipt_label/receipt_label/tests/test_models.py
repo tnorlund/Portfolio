@@ -189,12 +189,12 @@ class TestReceiptWord:
         assert word.bounding_box == {"x": 0, "y": 0, "width": 100, "height": 20}
 
     def test_receipt_word_to_dynamo_with_font_info(self):
-        """Test converting ReceiptWord to DynamoDB format with font information."""
+        """Test converting ReceiptWord to DynamoReceiptWord with font information."""
         word = ReceiptWord(
             text="Sample",
             line_id=1,
             word_id=1,
-            confidence=0.95,
+            confidence=0.99,
             font_size=12.0,
             font_weight="bold",
             font_style="italic",
@@ -202,7 +202,10 @@ class TestReceiptWord:
             bounding_box={"x": 0, "y": 0, "width": 100, "height": 20},
         )
         image_id = str(uuid.uuid4())
-        dynamo_word = word.to_dynamo(receipt_id=123, image_id=image_id)
+        # Set the receipt_id and image_id attributes
+        word.receipt_id = 123
+        word.image_id = image_id
+        dynamo_word = word.to_dynamo()
         assert dynamo_word.extracted_data["font_size"] == 12.0
         assert dynamo_word.extracted_data["font_weight"] == "bold"
         assert dynamo_word.extracted_data["font_style"] == "italic"
@@ -249,7 +252,10 @@ class TestReceiptLine:
         """Test converting ReceiptLine to DynamoReceiptLine."""
         line = ReceiptLine(**sample_line_data)
         image_id = str(uuid.uuid4())
-        dynamo_line = line.to_dynamo(receipt_id=123, image_id=image_id)
+        # Set the receipt_id and image_id attributes
+        line.receipt_id = 123
+        line.image_id = image_id
+        dynamo_line = line.to_dynamo()
         assert dynamo_line.receipt_id == 123
         assert dynamo_line.image_id == image_id
         assert dynamo_line.line_id == 1
@@ -328,7 +334,7 @@ class TestReceipt:
             angle_degrees=0.0,
             angle_radians=0.0,
         )
-        receipt = Receipt.from_dynamo("123", image_id, [dynamo_word], [dynamo_line])
+        receipt = Receipt.from_dynamo_data("123", image_id, [dynamo_word], [dynamo_line])
         assert receipt.receipt_id == "123"
         assert receipt.image_id == image_id
         assert len(receipt.words) == 1

@@ -138,43 +138,38 @@ class _ReceiptValidationSummary:
                     f"Could not update ReceiptValidationSummary in the database: {e}"
                 ) from e
 
-    def deleteReceiptValidationSummary(self, receipt_id: int, image_id: str):
+    def deleteReceiptValidationSummary(
+        self, summary: ReceiptValidationSummary
+    ):
         """Deletes a ReceiptValidationSummary from DynamoDB.
 
         Args:
-            receipt_id (int): The receipt ID.
-            image_id (str): The image ID.
+            summary (ReceiptValidationSummary): The ReceiptValidationSummary to delete.
 
         Raises:
             ValueError: If any parameters are invalid.
             Exception: If the summary cannot be deleted from DynamoDB.
         """
-        if receipt_id is None:
+        if summary is None:
             raise ValueError(
-                "receipt_id parameter is required and cannot be None."
+                "summary parameter is required and cannot be None."
             )
-        if not isinstance(receipt_id, int):
-            raise ValueError("receipt_id must be an integer.")
-        if image_id is None:
+        if not isinstance(summary, ReceiptValidationSummary):
             raise ValueError(
-                "image_id parameter is required and cannot be None."
+                "summary must be an instance of the ReceiptValidationSummary class."
             )
-        assert_valid_uuid(image_id)
 
         try:
             self._client.delete_item(
                 TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"RECEIPT#{receipt_id}#ANALYSIS#VALIDATION"},
-                },
+                Key=summary.key(),
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    f"ReceiptValidationSummary for receipt {receipt_id} and image {image_id} does not exist"
+                    f"ReceiptValidationSummary for receipt {summary.receipt_id} and image {summary.image_id} does not exist"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
@@ -224,7 +219,9 @@ class _ReceiptValidationSummary:
                 TableName=self.table_name,
                 Key={
                     "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"RECEIPT#{receipt_id}#ANALYSIS#VALIDATION"},
+                    "SK": {
+                        "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION"
+                    },
                 },
             )
             if "Item" in response:
@@ -274,15 +271,14 @@ class _ReceiptValidationSummary:
 
         validation_summaries = []
         try:
-            # Use GSI1 to query all validation summaries
+            # Use GSITYPE to query all validation summaries
             query_params = {
                 "TableName": self.table_name,
-                "IndexName": "GSI1",
-                "KeyConditionExpression": "#pk = :pk_val AND begins_with(#sk, :sk_prefix)",
-                "ExpressionAttributeNames": {"#pk": "GSI1PK", "#sk": "GSI1SK"},
+                "IndexName": "GSITYPE",
+                "KeyConditionExpression": "#t = :val",
+                "ExpressionAttributeNames": {"#t": "TYPE"},
                 "ExpressionAttributeValues": {
-                    ":pk_val": {"S": "ANALYSIS_TYPE"},
-                    ":sk_prefix": {"S": "VALIDATION#"},
+                    ":val": {"S": "RECEIPT_VALIDATION_SUMMARY"},
                 },
             }
 

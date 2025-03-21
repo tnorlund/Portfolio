@@ -370,36 +370,38 @@ def test_validation_summary_init_invalid_timestamp_updated():
 @pytest.mark.unit
 def test_key(example_validation_summary):
     """Test the key property"""
-    assert example_validation_summary.key == {
-        "PK": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        "SK": "RECEIPT#1#ANALYSIS#VALIDATION",
+    assert example_validation_summary.key() == {
+        "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "SK": {"S": "RECEIPT#00001#ANALYSIS#VALIDATION"},
     }
 
 
 @pytest.mark.unit
 def test_gsi1_key(example_validation_summary):
     """Test the gsi1_key property"""
-    assert example_validation_summary.gsi1_key == {
-        "GSI1PK": "ANALYSIS_TYPE",
-        "GSI1SK": "VALIDATION#2023-05-15T10:30:00",
+    assert example_validation_summary.gsi1_key() == {
+        "GSI1PK": {"S": "ANALYSIS_TYPE"},
+        "GSI1SK": {"S": "VALIDATION#2023-05-15T10:30:00"},
     }
 
 
 @pytest.mark.unit
 def test_gsi2_key(example_validation_summary):
     """Test the gsi2_key property"""
-    assert example_validation_summary.gsi2_key == {
-        "GSI2PK": "RECEIPT",
-        "GSI2SK": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#1",
+    assert example_validation_summary.gsi2_key() == {
+        "GSI2PK": {"S": "RECEIPT"},
+        "GSI2SK": {
+            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"
+        },
     }
 
 
 @pytest.mark.unit
 def test_gsi3_key(example_validation_summary):
     """Test the gsi3_key property"""
-    assert example_validation_summary.gsi3_key == {
-        "GSI3PK": "VALIDATION_STATUS#valid",
-        "GSI3SK": "TIMESTAMP#2023-05-15T10:30:00",
+    assert example_validation_summary.gsi3_key() == {
+        "GSI3PK": {"S": "VALIDATION_STATUS#valid"},
+        "GSI3SK": {"S": "TIMESTAMP#2023-05-15T10:30:00"},
     }
 
 
@@ -410,13 +412,13 @@ def test_to_item(example_validation_summary):
 
     # Check basic structure with proper DynamoDB types
     assert item["PK"]["S"] == "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    assert item["SK"]["S"] == "RECEIPT#1#ANALYSIS#VALIDATION"
+    assert item["SK"]["S"] == "RECEIPT#00001#ANALYSIS#VALIDATION"
     assert item["GSI1PK"]["S"] == "ANALYSIS_TYPE"
     assert item["GSI1SK"]["S"] == "VALIDATION#2023-05-15T10:30:00"
     assert item["GSI2PK"]["S"] == "RECEIPT"
     assert (
         item["GSI2SK"]["S"]
-        == "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#1"
+        == "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"
     )
     assert item["GSI3PK"]["S"] == "VALIDATION_STATUS#valid"
     assert item["GSI3SK"]["S"] == "TIMESTAMP#2023-05-15T10:30:00"
@@ -519,27 +521,232 @@ def test_repr(example_validation_summary):
 def test_itemToReceiptValidationSummary(example_validation_summary):
     """Test the itemToReceiptValidationSummary function"""
     # Convert to DynamoDB item
-    item = example_validation_summary.to_item()
+    item = {
+        "metadata": {
+            "M": {
+                "processing_metrics": {
+                    "M": {
+                        "validation_counts": {
+                            "M": {
+                                "business_identity": {"N": "0"},
+                                "hours_verification": {"N": "0"},
+                                "address_verification": {"N": "0"},
+                                "line_item_validation": {"N": "0"},
+                                "phone_validation": {"N": "0"},
+                                "cross_field_consistency": {"N": "0"},
+                            }
+                        },
+                        "validation_status": {"S": "incomplete"},
+                        "result_types": {
+                            "M": {
+                                "warning": {"N": "0"},
+                                "error": {"N": "0"},
+                                "success": {"N": "0"},
+                                "info": {"N": "0"},
+                            }
+                        },
+                    }
+                },
+                "source_information": {
+                    "M": {"package_version": {"S": "0.1.0"}}
+                },
+                "source_info": {"M": {}},
+                "version": {"S": "0.1.0"},
+                "processing_history": {
+                    "L": [
+                        {
+                            "M": {
+                                "action": {"S": "created"},
+                                "version": {"S": "0.1.0"},
+                                "timestamp": {
+                                    "S": "2025-03-19T08:43:08.877848"
+                                },
+                            }
+                        },
+                        {
+                            "M": {
+                                "action": {"S": "validation_incomplete"},
+                                "warning_count": {"N": "0"},
+                                "error_count": {"N": "0"},
+                                "version": {"S": "0.1.0"},
+                                "timestamp": {
+                                    "S": "2025-03-19T08:43:08.877865"
+                                },
+                            }
+                        },
+                    ]
+                },
+            }
+        },
+        "version": {"S": "0.1.0"},
+        "timestamp_updated": {"S": "2025-03-19T08:43:08.877865"},
+        "GSI1SK": {"S": "VALIDATION#2025-03-19T08:43:08.877826"},
+        "overall_status": {"S": "valid"},
+        "GSI3SK": {"S": "TIMESTAMP#2025-03-19T08:43:08.877826"},
+        "TYPE": {"S": "RECEIPT_VALIDATION_SUMMARY"},
+        "GSI2SK": {
+            "S": "IMAGE#aabbf168-7a61-483b-97c7-e711de91ce5f#RECEIPT#00001"
+        },
+        "GSI2PK": {"S": "RECEIPT"},
+        "GSI1PK": {"S": "ANALYSIS_TYPE"},
+        "GSI3PK": {"S": "VALIDATION_STATUS#valid"},
+        "timestamp_added": {"S": "2025-03-19T08:43:08.877845"},
+        "field_summary": {
+            "M": {
+                "business_identity": {
+                    "M": {
+                        "has_errors": {"N": "0"},
+                        "count": {"N": "0"},
+                        "info_count": {"N": "0"},
+                        "success_count": {"N": "0"},
+                        "has_warnings": {"N": "0"},
+                        "warning_count": {"N": "0"},
+                        "error_count": {"N": "0"},
+                        "status": {"S": "incomplete"},
+                    }
+                },
+                "hours_verification": {
+                    "M": {
+                        "has_errors": {"N": "0"},
+                        "count": {"N": "0"},
+                        "info_count": {"N": "0"},
+                        "success_count": {"N": "0"},
+                        "has_warnings": {"N": "0"},
+                        "warning_count": {"N": "0"},
+                        "error_count": {"N": "0"},
+                        "status": {"S": "incomplete"},
+                    }
+                },
+                "address_verification": {
+                    "M": {
+                        "has_errors": {"N": "0"},
+                        "count": {"N": "0"},
+                        "info_count": {"N": "0"},
+                        "success_count": {"N": "0"},
+                        "has_warnings": {"N": "0"},
+                        "warning_count": {"N": "0"},
+                        "error_count": {"N": "0"},
+                        "status": {"S": "incomplete"},
+                    }
+                },
+                "line_item_validation": {
+                    "M": {
+                        "has_errors": {"N": "0"},
+                        "count": {"N": "0"},
+                        "info_count": {"N": "0"},
+                        "success_count": {"N": "0"},
+                        "has_warnings": {"N": "0"},
+                        "warning_count": {"N": "0"},
+                        "error_count": {"N": "0"},
+                        "status": {"S": "incomplete"},
+                    }
+                },
+                "phone_validation": {
+                    "M": {
+                        "has_errors": {"N": "0"},
+                        "count": {"N": "0"},
+                        "info_count": {"N": "0"},
+                        "success_count": {"N": "0"},
+                        "has_warnings": {"N": "0"},
+                        "warning_count": {"N": "0"},
+                        "error_count": {"N": "0"},
+                        "status": {"S": "incomplete"},
+                    }
+                },
+                "cross_field_consistency": {
+                    "M": {
+                        "has_errors": {"N": "0"},
+                        "count": {"N": "0"},
+                        "info_count": {"N": "0"},
+                        "success_count": {"N": "0"},
+                        "has_warnings": {"N": "0"},
+                        "warning_count": {"N": "0"},
+                        "error_count": {"N": "0"},
+                        "status": {"S": "incomplete"},
+                    }
+                },
+            }
+        },
+        "validation_timestamp": {"S": "2025-03-19T08:43:08.877826"},
+        "SK": {"S": "RECEIPT#00001#ANALYSIS#VALIDATION"},
+        "overall_reasoning": {"S": "No issues found during validation."},
+        "PK": {"S": "IMAGE#aabbf168-7a61-483b-97c7-e711de91ce5f"},
+    }
 
     # Use the conversion function
     summary = itemToReceiptValidationSummary(item)
 
     # Verify basic fields
-    assert summary.receipt_id == example_validation_summary.receipt_id
-    assert summary.image_id == example_validation_summary.image_id
-    assert summary.overall_status == example_validation_summary.overall_status
-    assert (
-        summary.overall_reasoning
-        == example_validation_summary.overall_reasoning
-    )
+    assert summary.receipt_id == 1
+    assert summary.image_id == "aabbf168-7a61-483b-97c7-e711de91ce5f"
+    assert summary.overall_status == "valid"
+    assert summary.overall_reasoning == "No issues found during validation."
 
     # Verify complex fields
-    assert summary.field_summary == example_validation_summary.field_summary
-    assert (
-        summary.validation_timestamp
-        == example_validation_summary.validation_timestamp
-    )
-    assert summary.version == example_validation_summary.version
+    assert summary.field_summary == {
+        "address_verification": {
+            "count": 0,
+            "error_count": 0,
+            "has_errors": 0,
+            "has_warnings": 0,
+            "info_count": 0,
+            "status": "incomplete",
+            "success_count": 0,
+            "warning_count": 0,
+        },
+        "business_identity": {
+            "count": 0,
+            "error_count": 0,
+            "has_errors": 0,
+            "has_warnings": 0,
+            "info_count": 0,
+            "status": "incomplete",
+            "success_count": 0,
+            "warning_count": 0,
+        },
+        "cross_field_consistency": {
+            "count": 0,
+            "error_count": 0,
+            "has_errors": 0,
+            "has_warnings": 0,
+            "info_count": 0,
+            "status": "incomplete",
+            "success_count": 0,
+            "warning_count": 0,
+        },
+        "hours_verification": {
+            "count": 0,
+            "error_count": 0,
+            "has_errors": 0,
+            "has_warnings": 0,
+            "info_count": 0,
+            "status": "incomplete",
+            "success_count": 0,
+            "warning_count": 0,
+        },
+        "line_item_validation": {
+            "count": 0,
+            "error_count": 0,
+            "has_errors": 0,
+            "has_warnings": 0,
+            "info_count": 0,
+            "status": "incomplete",
+            "success_count": 0,
+            "warning_count": 0,
+        },
+        "phone_validation": {
+            "count": 0,
+            "error_count": 0,
+            "has_errors": 0,
+            "has_warnings": 0,
+            "info_count": 0,
+            "status": "incomplete",
+            "success_count": 0,
+            "warning_count": 0,
+        },
+    }
+    assert summary.validation_timestamp == "2025-03-19T08:43:08.877826"
+    assert summary.version == "0.1.0"
 
     # Test with missing keys
     with pytest.raises(ValueError, match="Item is missing required keys"):

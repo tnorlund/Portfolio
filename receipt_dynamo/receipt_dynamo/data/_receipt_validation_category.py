@@ -413,7 +413,7 @@ class _ReceiptValidationCategory:
                 Key={
                     "PK": {"S": f"IMAGE#{image_id}"},
                     "SK": {
-                        "S": f"RECEIPT#{receipt_id}#ANALYSIS#VALIDATION#CATEGORY#{field_name}"
+                        "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{field_name}"
                     },
                 },
             )
@@ -675,7 +675,7 @@ class _ReceiptValidationCategory:
                 "ExpressionAttributeValues": {
                     ":pkVal": {"S": f"IMAGE#{image_id}"},
                     ":skPrefix": {
-                        "S": f"RECEIPT#{receipt_id}#ANALYSIS#VALIDATION#CATEGORY#"
+                        "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#"
                     },
                 },
             }
