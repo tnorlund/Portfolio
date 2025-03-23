@@ -17,6 +17,9 @@ from ..models.line_item import LineItemAnalysis
 from ..models.validation import ValidationAnalysis
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities.receipt_analysis import ReceiptAnalysis
+from datetime import datetime
+from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
+import traceback  # Import traceback for error handling
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -24,44 +27,97 @@ logger = logging.getLogger(__name__)
 # ======================== Label Analysis Operations ========================
 
 
-def save_label_analysis(label_analysis: LabelAnalysis, client: DynamoClient) -> bool:
-    """Save a LabelAnalysis object to DynamoDB.
+def save_label_analysis(label_analysis: LabelAnalysis, client: Any) -> bool:
+    """Save label analysis to DynamoDB.
 
     Args:
-        label_analysis: The LabelAnalysis object to save
-        client: DynamoClient instance
+        label_analysis: The label analysis to save
+        client: The DynamoDB client to use
 
     Returns:
-        Boolean indicating success
+        bool: True if successful, False otherwise
     """
+    if not label_analysis:
+        logger.warning("No label analysis provided")
+        return False
+
+    if not hasattr(label_analysis, "labels") or not label_analysis.labels:
+        logger.warning("No labels in label analysis")
+        return False
+
+    logger.info("==== SAVE_LABEL_ANALYSIS CALLED ====")
+    logger.info(f"Label analysis has {len(label_analysis.labels)} labels")
+
+    # Debug - print the first few labels to ensure they're correct
+    for i in range(min(3, len(label_analysis.labels))):
+        label = label_analysis.labels[i]
+        logger.info(
+            f"DEBUG - Label {i}: {label.text} - {label.label} (L{label.line_id}W{label.word_id})"
+        )
+    logger.info("===================================")
+
     try:
-        # Type checking
-        if not isinstance(label_analysis, LabelAnalysis):
-            logger.error(
-                f"Expected LabelAnalysis object, got {type(label_analysis).__name__}"
-            )
+        # Get receipt_id from the label_analysis object
+        receipt_id = getattr(label_analysis, "receipt_id", None)
+        if receipt_id is None:
+            logger.error("No receipt_id found in label_analysis")
             return False
 
-        if not isinstance(client, DynamoClient):
-            logger.error(f"Expected DynamoClient object, got {type(client).__name__}")
-            return False
+        # Convert receipt_id to int if it's a string
+        if isinstance(receipt_id, str):
+            try:
+                receipt_id = int(receipt_id)
+            except ValueError:
+                logger.error(f"Failed to convert receipt_id '{receipt_id}' to integer")
+                return False
 
-        if not label_analysis:
-            logger.warning("Cannot save empty label analysis")
-            return False
+        # Save labels individually - more reliable than batch operations
+        saved_count = 0
+        for word_label in label_analysis.labels:
+            try:
+                # Import the correct path to ReceiptWordLabel
+                from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
+                import datetime
 
-        # Convert the model to DynamoDB format
-        receipt_label_analysis = label_analysis.to_dynamo()
+                # Create word label with correct attributes
+                receipt_word_label = ReceiptWordLabel(
+                    image_id=label_analysis.image_id,
+                    receipt_id=receipt_id,
+                    line_id=word_label.line_id,
+                    word_id=word_label.word_id,
+                    label=word_label.label,
+                    reasoning=getattr(word_label, "reasoning", ""),
+                    timestamp_added=datetime.datetime.now().isoformat(),
+                )
 
-        # Use the DynamoClient's proper method to save the item
-        client.addReceiptLabelAnalysis(receipt_label_analysis)
+                # Try to add the label - if it exists already, update it
+                try:
+                    client.addReceiptWordLabel(receipt_word_label)
+                    saved_count += 1
+                except ValueError as e:
+                    if "already exists" in str(e):
+                        # Update the existing label
+                        client.updateReceiptWordLabel(receipt_word_label)
+                        saved_count += 1
+                        logger.info(
+                            f"Updated existing word label for L{word_label.line_id}W{word_label.word_id}"
+                        )
+                    else:
+                        raise e
+            except Exception as e:
+                logger.error(f"Error saving word label: {str(e)}")
+                logger.error(
+                    f"Label data: line_id={word_label.line_id}, word_id={word_label.word_id}, label={word_label.label}"
+                )
 
         logger.info(
-            f"Saved label analysis for receipt {label_analysis.receipt_id}, image {label_analysis.image_id}"
+            f"Successfully saved {saved_count} out of {len(label_analysis.labels)} word labels"
         )
-        return True
+        return saved_count > 0
+
     except Exception as e:
         logger.error(f"Error saving label analysis: {str(e)}")
+        logger.error(f"Full traceback: {traceback.format_exc()}")
         return False
 
 

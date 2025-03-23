@@ -20,7 +20,7 @@ from ..data.analysis_operations import (
     save_structure_analysis,
     save_line_item_analysis,
     save_validation_analysis,
-    save_analysis_transaction
+    save_analysis_transaction,
 )
 from ..utils import get_package_version
 import traceback
@@ -126,7 +126,7 @@ class ReceiptLabeler:
         )
         self.receipt_analyzer = ReceiptAnalyzer(api_key=gpt_api_key)
         self.line_item_processor = LineItemProcessor(gpt_api_key=gpt_api_key)
-        
+
         # Store the DynamoDB table name for later use
         self.dynamodb_table_name = dynamodb_table_name
 
@@ -958,9 +958,7 @@ class ReceiptLabeler:
 
         logger.info(f"{divider}\n")
 
-    def _get_places_data(
-        self, receipt_words: List[ReceiptWord]
-    ) -> Optional[Dict]:
+    def _get_places_data(self, receipt_words: List[ReceiptWord]) -> Optional[Dict]:
         """Get business data from Places API."""
         try:
             # Format receipt for Places API
@@ -1086,17 +1084,17 @@ class ReceiptLabeler:
             return self._get_validation_config_from_level("basic")
 
     def process_receipt_by_id(
-        self, 
-        receipt_id: int, 
+        self,
+        receipt_id: int,
         image_id: str,
         enable_validation: Optional[bool] = None,
         enable_places_api: bool = True,
         save_results: bool = True,
-        force_reprocess: bool = False
+        force_reprocess: bool = False,
     ) -> LabelingResult:
         """
         Process a receipt by ID, fetching data from DynamoDB and performing analysis.
-        
+
         Args:
             receipt_id: The receipt ID to process
             image_id: The image ID containing the receipt
@@ -1104,7 +1102,7 @@ class ReceiptLabeler:
             enable_places_api: Whether to use the Places API for business validation
             save_results: Whether to save analysis results back to DynamoDB
             force_reprocess: If True, always reprocess even if valid analysis exists
-            
+
         Returns:
             LabelingResult containing the analysis results
         """
@@ -1112,38 +1110,54 @@ class ReceiptLabeler:
             logger.warning("No DynamoDB table name provided, will not save results")
             save_results = False
 
-        client = DynamoClient(self.dynamodb_table_name) if self.dynamodb_table_name else None
-        
+        client = (
+            DynamoClient(self.dynamodb_table_name) if self.dynamodb_table_name else None
+        )
+
         # Check for existing analysis if not forcing reprocess
         if client and not force_reprocess:
-            logger.info(f"Checking for existing analysis for receipt {receipt_id}, image {image_id}")
-            
+            logger.info(
+                f"Checking for existing analysis for receipt {receipt_id}, image {image_id}"
+            )
+
             # Get all analyses in a single query using the new method
             (
                 existing_label_analysis,
                 existing_structure_analysis,
                 existing_line_item_analysis,
-                existing_validation
+                existing_validation,
             ) = get_receipt_analyses(receipt_id, image_id, client)
-            
+
             # Check if we have all necessary analyses with the current package version
             current_version = get_package_version()
-            
-            if (existing_label_analysis and 
-                existing_structure_analysis and 
-                existing_line_item_analysis):
-                
+
+            if (
+                existing_label_analysis
+                and existing_structure_analysis
+                and existing_line_item_analysis
+            ):
+
                 # Get the version from metadata (assuming standardized metadata format)
-                label_version = existing_label_analysis.metadata.get("source_information", {}).get("package_version")
-                structure_version = existing_structure_analysis.metadata.get("source_information", {}).get("package_version")
-                line_item_version = existing_line_item_analysis.metadata.get("source_information", {}).get("package_version")
-                
-                if (label_version == current_version and 
-                    structure_version == current_version and 
-                    line_item_version == current_version):
-                    
-                    logger.info(f"Using existing analysis for receipt {receipt_id} (version {current_version})")
-                    
+                label_version = existing_label_analysis.metadata.get(
+                    "source_information", {}
+                ).get("package_version")
+                structure_version = existing_structure_analysis.metadata.get(
+                    "source_information", {}
+                ).get("package_version")
+                line_item_version = existing_line_item_analysis.metadata.get(
+                    "source_information", {}
+                ).get("package_version")
+
+                if (
+                    label_version == current_version
+                    and structure_version == current_version
+                    and line_item_version == current_version
+                ):
+
+                    logger.info(
+                        f"Using existing analysis for receipt {receipt_id} (version {current_version})"
+                    )
+
                     # Create result using existing analyses
                     result = LabelingResult(
                         receipt_id=receipt_id,
@@ -1151,37 +1165,54 @@ class ReceiptLabeler:
                         structure_analysis=existing_structure_analysis,
                         line_item_analysis=existing_line_item_analysis,
                     )
-                    
+
                     # If validation is enabled, check for existing validation or create new
-                    if enable_validation or (enable_validation is None and self.validation_config["enable_validation"]):
+                    if enable_validation or (
+                        enable_validation is None
+                        and self.validation_config["enable_validation"]
+                    ):
                         # We already have validation from the get_receipt_analyses call
-                        validation_version = existing_validation.metadata.get("source_information", {}).get("package_version") if existing_validation else None
-                        
-                        if existing_validation and validation_version == current_version:
+                        validation_version = (
+                            existing_validation.metadata.get(
+                                "source_information", {}
+                            ).get("package_version")
+                            if existing_validation
+                            else None
+                        )
+
+                        if (
+                            existing_validation
+                            and validation_version == current_version
+                        ):
                             result.validation_analysis = existing_validation
                         else:
                             # Only run validation if needed
                             result.validation_analysis = self.validate_receipt(
                                 receipt=None,  # Not needed for validation
                                 field_analysis=existing_label_analysis,
-                                line_item_analysis=existing_line_item_analysis
+                                line_item_analysis=existing_line_item_analysis,
                             )
-                            
+
                             if save_results and result.validation_analysis:
-                                self._update_metadata_with_version(result.validation_analysis.metadata)
+                                self._update_metadata_with_version(
+                                    result.validation_analysis.metadata
+                                )
                                 # Save just the validation analysis
-                                self._save_validation_analysis(result.validation_analysis, get_package_version())
-                    
+                                self._save_validation_analysis(
+                                    result.validation_analysis, get_package_version()
+                                )
+
                     return result
-        
+
         # Existing analysis not found or version mismatch, proceed with normal processing
         logger.info(f"Processing receipt {receipt_id} from image {image_id}")
-        
+
         # Get receipt data from DynamoDB
         if not client:
-            raise ValueError("DynamoDB client is required for processing receipts by ID")
+            raise ValueError(
+                "DynamoDB client is required for processing receipts by ID"
+            )
 
-        
         # Get receipt details including lines
         (
             receipt_data,
@@ -1192,29 +1223,27 @@ class ReceiptLabeler:
         ) = client.getReceiptDetails(image_id, receipt_id)
         if not receipt_data:
             raise ValueError(f"Receipt {receipt_id} not found for image {image_id}")
-        
+
         # Fetch receipt words...
         receipt_words = [ReceiptWord.from_dynamo(word) for word in receipt_words_data]
-        
+
         # Fetch receipt lines...
         receipt_lines = [ReceiptLine.from_dynamo(line) for line in receipt_lines_data]
-        
+
         # Convert to Receipt object
         receipt = Receipt.from_dynamo(
-            receipt_data=receipt_data,
-            words=receipt_words,
-            lines=receipt_lines
+            receipt_data=receipt_data, words=receipt_words, lines=receipt_lines
         )
-        
+
         # Process the receipt
         result = self.label_receipt(
             receipt=receipt,
             receipt_words=receipt_words,
             receipt_lines=receipt_lines,
             enable_validation=enable_validation,
-            enable_places_api=enable_places_api
+            enable_places_api=enable_places_api,
         )
-        
+
         # Add version information to metadata
         current_version = get_package_version()
         self._update_metadata_with_version(result.field_analysis.metadata)
@@ -1222,235 +1251,107 @@ class ReceiptLabeler:
         self._update_metadata_with_version(result.line_item_analysis.metadata)
         if result.validation_analysis:
             self._update_metadata_with_version(result.validation_analysis.metadata)
-        
+
         # Save results if requested
         if save_results:
-            self.save_analysis_results(result)
-        
+            # Add direct debugging print statements
+            print("==== DEBUG: ABOUT TO SAVE RESULTS ====")
+            if hasattr(result, "field_analysis") and result.field_analysis:
+                print(
+                    f"Field analysis has {len(getattr(result.field_analysis, 'labels', []))} labels"
+                )
+                if (
+                    hasattr(result.field_analysis, "labels")
+                    and result.field_analysis.labels
+                ):
+                    for i, label in enumerate(result.field_analysis.labels[:3]):
+                        print(
+                            f"Label {i}: {label.text} - {label.label} (L{label.line_id}W{label.word_id})"
+                        )
+            print("=====================================")
+
+            self._save_analysis_results(result, receipt_id, image_id)
+
         return result
 
-    def _update_metadata_with_version(self, metadata: Dict):
-        """Update metadata dictionary with current package version."""
-        if not metadata:
-            return
-        
-        if "source_information" not in metadata:
-            metadata["source_information"] = {}
-        
-        metadata["source_information"]["package_version"] = get_package_version()
-
-    def _save_validation_analysis(self, validation_analysis, model_version):
-        """Save validation analysis"""
-        logger.info(f"Saving validation analysis for model version: {model_version}")
-        
-        # Add model version to metadata dictionary
-        if not hasattr(validation_analysis, 'metadata') or validation_analysis.metadata is None:
-            validation_analysis.metadata = {}
-            
-        # Set the version in the metadata
-        validation_analysis.metadata["version"] = model_version
-        
-        # Initialize metadata if needed (will set up processing_metrics, source_info, etc.)
-        if hasattr(validation_analysis, 'initialize_metadata'):
-            validation_analysis.initialize_metadata()
-        
-        receipt_id = getattr(validation_analysis, 'receipt_id', None)
-        image_id = getattr(validation_analysis, 'image_id', None)
-        
-        logger.debug(f"Validation analysis receipt_id: {receipt_id}, image_id: {image_id}")
-        
-        # Extract or use the receipt_id/image_id from self.receipt if they're not set
-        if not receipt_id and hasattr(self, 'receipt') and self.receipt:
-            receipt_id = getattr(self.receipt, 'receipt_id', None)
-            if receipt_id:
-                validation_analysis.receipt_id = receipt_id
-                
-        if not image_id and hasattr(self, 'receipt') and self.receipt:
-            image_id = getattr(self.receipt, 'image_id', None)
-            if image_id:
-                validation_analysis.image_id = image_id
-                
-        # Log the final values
-        logger.debug(f"Final validation analysis receipt_id: {getattr(validation_analysis, 'receipt_id', None)}, "
-                    f"image_id: {getattr(validation_analysis, 'image_id', None)}")
-        
-        # Create DynamoDB client if we have a table name
-        if not self.dynamodb_table_name:
-            logger.error("Cannot save validation analysis: No DynamoDB table name provided")
-            return False
-            
-        # Import DynamoClient and create an instance
-        from receipt_dynamo.data.dynamo_client import DynamoClient
-        client = DynamoClient(self.dynamodb_table_name)
-                
-        # Call save_validation_analysis with the receipt_id and image_id
-        from ..data.analysis_operations import save_validation_analysis
-        return save_validation_analysis(validation_analysis, client, 
-                                      receipt_id=receipt_id, 
-                                      image_id=image_id)
-
-    def save_analysis_results(self, result: LabelingResult) -> bool:
-        """Save analysis results to DynamoDB.
-        
-        Args:
-            result: LabelingResult containing analysis objects to save
-            
-        Returns:
-            Boolean indicating success
-        """
-        if not self.dynamodb_table_name:
-            logger.warning("No DynamoDB table name provided, cannot save results")
-            return False
-        
+    def _save_analysis_results(self, analysis_result, receipt_id, image_id):
+        """Save all analysis results to DynamoDB."""
         try:
-            # Create DynamoDB client
-            client = DynamoClient(self.dynamodb_table_name)
-            
-            # Track success status
-            success = True
-            
-            # Get receipt_id and image_id
-            receipt_id = result.receipt_id
-            # Convert receipt_id to integer if it's a string
-            if isinstance(receipt_id, str):
-                try:
-                    receipt_id = int(receipt_id)
-                except ValueError:
-                    logger.error(f"Failed to convert receipt_id '{receipt_id}' to integer")
-                    return False
-            
-            # Find image_id - it should be in one of the analyses
-            image_id = None
-            if result.field_analysis and hasattr(result.field_analysis, 'image_id'):
-                image_id = result.field_analysis.image_id
-            elif result.structure_analysis and hasattr(result.structure_analysis, 'image_id'):
-                image_id = result.structure_analysis.image_id
-            elif result.line_item_analysis and hasattr(result.line_item_analysis, 'image_id'):
-                image_id = result.line_item_analysis.image_id
-            
-            # Log the values for debugging
-            logger.info(f"Saving analysis results for receipt_id: {receipt_id}, image_id: {image_id}")
-            
-            # Ensure all analyses have receipt_id and image_id set
-            if receipt_id and image_id:
-                # Set IDs on each analysis if they're not already set
-                if result.field_analysis:
-                    if not hasattr(result.field_analysis, 'receipt_id') or not result.field_analysis.receipt_id:
-                        result.field_analysis.receipt_id = receipt_id
-                    elif isinstance(result.field_analysis.receipt_id, str):
-                        # Convert existing receipt_id to integer if it's a string
-                        try:
-                            result.field_analysis.receipt_id = int(result.field_analysis.receipt_id)
-                        except ValueError:
-                            logger.error(f"Failed to convert field_analysis.receipt_id '{result.field_analysis.receipt_id}' to integer")
-                    
-                    if not hasattr(result.field_analysis, 'image_id') or not result.field_analysis.image_id:
-                        result.field_analysis.image_id = image_id
-                
-                if result.structure_analysis:
-                    if not hasattr(result.structure_analysis, 'receipt_id') or not result.structure_analysis.receipt_id:
-                        result.structure_analysis.receipt_id = receipt_id
-                    elif isinstance(result.structure_analysis.receipt_id, str):
-                        # Convert existing receipt_id to integer if it's a string
-                        try:
-                            result.structure_analysis.receipt_id = int(result.structure_analysis.receipt_id)
-                        except ValueError:
-                            logger.error(f"Failed to convert structure_analysis.receipt_id '{result.structure_analysis.receipt_id}' to integer")
-                    
-                    if not hasattr(result.structure_analysis, 'image_id') or not result.structure_analysis.image_id:
-                        result.structure_analysis.image_id = image_id
-                
-                if result.line_item_analysis:
-                    if not hasattr(result.line_item_analysis, 'receipt_id') or not result.line_item_analysis.receipt_id:
-                        result.line_item_analysis.receipt_id = receipt_id
-                    elif isinstance(result.line_item_analysis.receipt_id, str):
-                        # Convert existing receipt_id to integer if it's a string
-                        try:
-                            result.line_item_analysis.receipt_id = int(result.line_item_analysis.receipt_id)
-                        except ValueError:
-                            logger.error(f"Failed to convert line_item_analysis.receipt_id '{result.line_item_analysis.receipt_id}' to integer")
-                    
-                    if not hasattr(result.line_item_analysis, 'image_id') or not result.line_item_analysis.image_id:
-                        result.line_item_analysis.image_id = image_id
-                
-                if result.validation_analysis:
-                    if not hasattr(result.validation_analysis, 'receipt_id') or not result.validation_analysis.receipt_id:
-                        result.validation_analysis.receipt_id = receipt_id
-                    elif isinstance(result.validation_analysis.receipt_id, str):
-                        # Convert existing receipt_id to integer if it's a string
-                        try:
-                            result.validation_analysis.receipt_id = int(result.validation_analysis.receipt_id)
-                        except ValueError:
-                            logger.error(f"Failed to convert validation_analysis.receipt_id '{result.validation_analysis.receipt_id}' to integer")
-                    
-                    if not hasattr(result.validation_analysis, 'image_id') or not result.validation_analysis.image_id:
-                        result.validation_analysis.image_id = image_id
-            else:
-                logger.error(f"Cannot save analyses: receipt_id or image_id is missing")
+            # Create a DynamoClient using the table name
+            from receipt_dynamo.data.dynamo_client import DynamoClient
+
+            if not self.dynamodb_table_name:
+                logger.error("No DynamoDB table name provided, cannot save results")
                 return False
-            
-            # Ensure version information is in metadata
-            if result.field_analysis and result.field_analysis.metadata:
-                self._update_metadata_with_version(result.field_analysis.metadata)
-            
-            if result.structure_analysis and result.structure_analysis.metadata:
-                self._update_metadata_with_version(result.structure_analysis.metadata)
-            
-            if result.line_item_analysis and result.line_item_analysis.metadata:
-                self._update_metadata_with_version(result.line_item_analysis.metadata)
-            
-            if result.validation_analysis and result.validation_analysis.metadata:
-                self._update_metadata_with_version(result.validation_analysis.metadata)
-            
-            # Import the analysis operations
-            from ..data.analysis_operations import (
+
+            client = DynamoClient(table_name=self.dynamodb_table_name)
+
+            # Import the save_analysis_transaction function
+            from receipt_label.receipt_label.data.analysis_operations import (
+                save_analysis_transaction,
                 save_label_analysis,
-                save_structure_analysis,
-                save_line_item_analysis,
                 save_validation_analysis,
-                save_analysis_transaction
             )
-            
-            # First try to save using a transaction for the non-validation analyses
-            if (result.field_analysis and 
-                result.structure_analysis and 
-                result.line_item_analysis):
-                
-                transaction_success = save_analysis_transaction(
-                    result.field_analysis,
-                    result.structure_analysis,
-                    result.line_item_analysis,
-                    client,
-                    receipt_id=receipt_id,
-                    image_id=image_id
+
+            # Create a transaction to save all analyses
+            success = save_analysis_transaction(
+                label_analysis=getattr(analysis_result, "field_analysis", None),
+                structure_analysis=getattr(analysis_result, "structure_analysis", None),
+                line_item_analysis=getattr(analysis_result, "line_item_analysis", None),
+                client=client,
+                receipt_id=receipt_id,
+                image_id=image_id,
+            )
+
+            # Debug logging for label saving
+            if (
+                hasattr(analysis_result, "field_analysis")
+                and analysis_result.field_analysis
+            ):
+                logger.info(
+                    f"DEBUG: About to save field_analysis with {len(getattr(analysis_result.field_analysis, 'labels', []))} labels"
                 )
-                
-                if not transaction_success:
-                    logger.warning("Transaction save failed, falling back to individual saves")
-                    # Fall back to individual saves
-                    success = success and save_label_analysis(result.field_analysis, client)
-                    success = success and save_structure_analysis(result.structure_analysis, client)
-                    success = success and save_line_item_analysis(result.line_item_analysis, client)
-            else:
-                # Save individual analyses as needed
-                if result.field_analysis:
-                    success = success and save_label_analysis(result.field_analysis, client)
-                
-                if result.structure_analysis:
-                    success = success and save_structure_analysis(result.structure_analysis, client)
-                
-                if result.line_item_analysis:
-                    success = success and save_line_item_analysis(result.line_item_analysis, client)
-            
-            # Validation analysis must be saved separately due to split storage pattern
-            if result.validation_analysis:
+                # Try to save labels directly from field_analysis for debugging purposes
+                save_result = save_label_analysis(
+                    analysis_result.field_analysis, client
+                )
+                logger.info(
+                    f"DEBUG: Direct call to save_label_analysis returned: {save_result}"
+                )
+
+            # Save validation results separately (not part of transaction due to split storage model)
+            if (
+                hasattr(analysis_result, "validation_analysis")
+                and analysis_result.validation_analysis
+            ):
                 logger.info("Saving validation analysis...")
-                self._save_validation_analysis(result.validation_analysis, get_package_version())
-            else:
-                logger.info("No validation analysis to save.")
-            
+                logger.info(
+                    f"Saving validation analysis for model version: {getattr(analysis_result.validation_analysis, 'model_version', '0.1.0')}"
+                )
+                validation_success = save_validation_analysis(
+                    validation_analysis=analysis_result.validation_analysis,
+                    client=client,
+                    receipt_id=receipt_id,
+                    image_id=image_id,
+                )
+                success = success and validation_success
+
             return success
         except Exception as e:
             logger.error(f"Error saving analysis results: {str(e)}")
-            logger.debug(traceback.format_exc())
+            import traceback
+
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return False
+
+    def _update_metadata_with_version(self, metadata):
+        """Update metadata with the current package version."""
+        if metadata:
+            metadata["source_information"] = metadata.get("source_information", {})
+            metadata["source_information"]["package_version"] = get_package_version()
+
+    def _save_validation_analysis(self, validation_analysis, version):
+        """Save validation analysis to DynamoDB."""
+        if validation_analysis:
+            validation_analysis.model_version = version
+            self._save_analysis_results(validation_analysis, None, None)

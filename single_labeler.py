@@ -16,7 +16,7 @@ import os
 import json
 import logging
 import argparse
-import time  # Replace asyncio with time
+import time
 import traceback
 import sys
 from pathlib import Path
@@ -37,9 +37,6 @@ logger = logging.getLogger(__name__)
 
 # Load .env file from root directory
 load_dotenv()
-
-# Placeholder functions have been removed as they're now properly implemented
-# in receipt_label/receipt_label/data/analysis_operations.py
 
 
 def validate_environment():
@@ -186,6 +183,21 @@ def analyze_single_receipt(receipt_id, image_id, output_dir=None):
                 f"Deleted {len(analysis_result.chatgpt_validations)} existing ChatGPT validations"
             )
 
+        # Delete any existing word labels
+        client = DynamoClient(table_name=table_name)
+        try:
+            word_labels, _ = client.listReceiptWordLabels()
+            if word_labels:
+                logger.info(f"Found {len(word_labels)} existing word labels to delete")
+                for label in word_labels:
+                    if label.image_id == image_id and label.receipt_id == int(
+                        receipt_id
+                    ):
+                        client.deleteReceiptWordLabel(label)
+                logger.info("Deleted existing word labels")
+        except Exception as e:
+            logger.error(f"Error deleting word labels: {str(e)}")
+
         # Add a small delay to ensure deletions are processed
         logger.info("Waiting for deletion operations to complete...")
         time.sleep(1)  # Use time.sleep instead of asyncio.sleep
@@ -196,11 +208,11 @@ def analyze_single_receipt(receipt_id, image_id, output_dir=None):
             # 1. Retrieving receipt data from DynamoDB
             # 2. Converting DynamoDB objects to model objects
             # 3. Processing the receipt
-            # 4. Saving results back to DynamoDB
-            analysis_result = labeler.process_receipt_by_id(  # Change to sync version
+            # 4. Saving results back to DynamoDB (including word labels)
+            analysis_result = labeler.process_receipt_by_id(
                 receipt_id=int(receipt_id),
                 image_id=image_id,
-                save_results=True,  # Re-enable automatic saving
+                save_results=True,  # The package will handle saving all results, including word labels
             )
         except Exception as e:
             logger.error(f"Error processing receipt: {str(e)}")
@@ -217,6 +229,17 @@ def analyze_single_receipt(receipt_id, image_id, output_dir=None):
         ):
             field_count = len(getattr(analysis_result.field_analysis, "labels", []))
             logger.info(f"Field analysis found {field_count} labeled fields")
+
+            # Print the labels for debugging
+            if hasattr(analysis_result.field_analysis, "labels"):
+                labels = analysis_result.field_analysis.labels
+                logger.info(f"Found {len(labels)} labels in field_analysis.labels")
+                for i, label in enumerate(labels):
+                    logger.info(
+                        f"Label {i+1}: {label.text} - {label.label} (L{label.line_id}W{label.word_id})"
+                    )
+            else:
+                logger.warning("No 'labels' attribute in field_analysis")
         else:
             logger.warning("No field analysis available")
 
