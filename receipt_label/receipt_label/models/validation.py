@@ -7,7 +7,11 @@ from .metadata import MetadataMixin
 import json
 
 # Import the ReceiptValidationSummary class
-from receipt_dynamo import ReceiptValidationSummary, ReceiptValidationCategory, ReceiptValidationResult
+from receipt_dynamo import (
+    ReceiptValidationSummary,
+    ReceiptValidationCategory,
+    ReceiptValidationResult,
+)
 
 
 class ValidationResultType(str, Enum):
@@ -86,7 +90,9 @@ class FieldValidation:
         warning_count = sum(
             1 for r in self.results if r.type == ValidationResultType.WARNING
         )
-        info_count = sum(1 for r in self.results if r.type == ValidationResultType.INFO)
+        info_count = sum(
+            1 for r in self.results if r.type == ValidationResultType.INFO
+        )
         success_count = sum(
             1 for r in self.results if r.type == ValidationResultType.SUCCESS
         )
@@ -111,7 +117,10 @@ class FieldValidation:
         # Include some specific reasoning from the results
         specific_reasons = []
         for r in self.results:
-            if r.type in [ValidationResultType.ERROR, ValidationResultType.WARNING]:
+            if r.type in [
+                ValidationResultType.ERROR,
+                ValidationResultType.WARNING,
+            ]:
                 specific_reasons.append(r.reasoning)
 
         reasoning = f"{self.field_category} validation {status_text[self.status]} with {', '.join(result_parts)}"
@@ -183,7 +192,9 @@ class ValidationAnalysis(MetadataMixin):
 
     overall_status: ValidationStatus = ValidationStatus.VALID
     overall_reasoning: str = ""
-    validation_timestamp: datetime = dataclass_field(default_factory=datetime.now)
+    validation_timestamp: datetime = dataclass_field(
+        default_factory=datetime.now
+    )
     prompt_template: Optional[str] = None
     response_template: Optional[str] = None
     metadata: Dict = dataclass_field(default_factory=dict)
@@ -211,26 +222,42 @@ class ValidationAnalysis(MetadataMixin):
             "address_verification": len(self.address_verification.results),
             "phone_validation": len(self.phone_validation.results),
             "hours_verification": len(self.hours_verification.results),
-            "cross_field_consistency": len(self.cross_field_consistency.results),
+            "cross_field_consistency": len(
+                self.cross_field_consistency.results
+            ),
             "line_item_validation": len(self.line_item_validation.results),
         }
         self.add_processing_metric("validation_counts", field_counts)
 
         result_types = {
             "error": sum(
-                sum(1 for r in v.results if r.type == ValidationResultType.ERROR)
+                sum(
+                    1
+                    for r in v.results
+                    if r.type == ValidationResultType.ERROR
+                )
                 for v in self._get_field_validations()
             ),
             "warning": sum(
-                sum(1 for r in v.results if r.type == ValidationResultType.WARNING)
+                sum(
+                    1
+                    for r in v.results
+                    if r.type == ValidationResultType.WARNING
+                )
                 for v in self._get_field_validations()
             ),
             "info": sum(
-                sum(1 for r in v.results if r.type == ValidationResultType.INFO)
+                sum(
+                    1 for r in v.results if r.type == ValidationResultType.INFO
+                )
                 for v in self._get_field_validations()
             ),
             "success": sum(
-                sum(1 for r in v.results if r.type == ValidationResultType.SUCCESS)
+                sum(
+                    1
+                    for r in v.results
+                    if r.type == ValidationResultType.SUCCESS
+                )
                 for v in self._get_field_validations()
             ),
         }
@@ -268,11 +295,18 @@ class ValidationAnalysis(MetadataMixin):
             self.line_item_validation,
         ]
 
-        if any(v.status == ValidationStatus.INVALID for v in field_validations):
+        if any(
+            v.status == ValidationStatus.INVALID for v in field_validations
+        ):
             self.overall_status = ValidationStatus.INVALID
-        elif any(v.status == ValidationStatus.NEEDS_REVIEW for v in field_validations):
+        elif any(
+            v.status == ValidationStatus.NEEDS_REVIEW
+            for v in field_validations
+        ):
             self.overall_status = ValidationStatus.NEEDS_REVIEW
-        elif all(v.status == ValidationStatus.INCOMPLETE for v in field_validations):
+        elif all(
+            v.status == ValidationStatus.INCOMPLETE for v in field_validations
+        ):
             self.overall_status = ValidationStatus.INCOMPLETE
         else:
             self.overall_status = ValidationStatus.VALID
@@ -313,19 +347,24 @@ class ValidationAnalysis(MetadataMixin):
         reasoning = f"Receipt validation determined the receipt is {status_text[self.overall_status]}"
 
         if error_count or warning_count:
-            reasoning += f" with {error_count} errors and {warning_count} warnings"
+            reasoning += (
+                f" with {error_count} errors and {warning_count} warnings"
+            )
 
         # Add field-specific reasoning for problem areas
         problem_fields = [
             v
             for v in active_validations
-            if v.status in [ValidationStatus.INVALID, ValidationStatus.NEEDS_REVIEW]
+            if v.status
+            in [ValidationStatus.INVALID, ValidationStatus.NEEDS_REVIEW]
         ]
         if problem_fields:
             field_problems = [
                 f"{v.field_category}: {v.reasoning}" for v in problem_fields
             ]
-            reasoning += f". Problem areas include: {'; '.join(field_problems[:3])}"
+            reasoning += (
+                f". Problem areas include: {'; '.join(field_problems[:3])}"
+            )
             if len(field_problems) > 3:
                 reasoning += f" and {len(field_problems) - 3} more"
 
@@ -427,7 +466,9 @@ class ValidationAnalysis(MetadataMixin):
                             else None
                         ),
                         "actual_value": (
-                            str(r.actual_value) if r.actual_value is not None else None
+                            str(r.actual_value)
+                            if r.actual_value is not None
+                            else None
                         ),
                         "metadata": r.metadata,
                     }
@@ -451,19 +492,21 @@ class ValidationAnalysis(MetadataMixin):
     def to_dynamo_validation_summary(self) -> ReceiptValidationSummary:
         """
         Convert ValidationAnalysis to a ReceiptValidationSummary.
-        
+
         This method creates a ReceiptValidationSummary object which contains the overall
         validation status and a summary of field validations.
-            
+
         Returns:
             ReceiptValidationSummary: A ReceiptValidationSummary instance
         """
         if self.receipt_id is None or self.image_id is None:
-            raise ValueError("receipt_id and image_id must be set on the ValidationAnalysis instance")
-            
+            raise ValueError(
+                "receipt_id and image_id must be set on the ValidationAnalysis instance"
+            )
+
         # Generate field summary with counts and statuses for each field
         field_summary = {}
-        
+
         for field_name, field_validation in [
             ("business_identity", self.business_identity),
             ("address_verification", self.address_verification),
@@ -473,15 +516,31 @@ class ValidationAnalysis(MetadataMixin):
             ("line_item_validation", self.line_item_validation),
         ]:
             # Count results by type
-            error_count = sum(1 for r in field_validation.results if r.type == ValidationResultType.ERROR)
-            warning_count = sum(1 for r in field_validation.results if r.type == ValidationResultType.WARNING)
-            info_count = sum(1 for r in field_validation.results if r.type == ValidationResultType.INFO)
-            success_count = sum(1 for r in field_validation.results if r.type == ValidationResultType.SUCCESS)
-            
+            error_count = sum(
+                1
+                for r in field_validation.results
+                if r.type == ValidationResultType.ERROR
+            )
+            warning_count = sum(
+                1
+                for r in field_validation.results
+                if r.type == ValidationResultType.WARNING
+            )
+            info_count = sum(
+                1
+                for r in field_validation.results
+                if r.type == ValidationResultType.INFO
+            )
+            success_count = sum(
+                1
+                for r in field_validation.results
+                if r.type == ValidationResultType.SUCCESS
+            )
+
             # Determine if there are errors or warnings - convert to integers for DynamoDB compatibility
             has_errors = 1 if error_count > 0 else 0
             has_warnings = 1 if warning_count > 0 else 0
-            
+
             field_summary[field_name] = {
                 "status": field_validation.status.value,
                 "count": len(field_validation.results),
@@ -490,9 +549,9 @@ class ValidationAnalysis(MetadataMixin):
                 "error_count": error_count,
                 "warning_count": warning_count,
                 "info_count": info_count,
-                "success_count": success_count
+                "success_count": success_count,
             }
-        
+
         # Prepare timestamp values
         timestamp_added = None
         if self.timestamp_added:
@@ -502,17 +561,19 @@ class ValidationAnalysis(MetadataMixin):
                 timestamp_added = self.timestamp_added
         else:
             timestamp_added = datetime.now()
-            
+
         timestamp_updated = None
         if self.timestamp_updated:
             if isinstance(self.timestamp_updated, str):
-                timestamp_updated = datetime.fromisoformat(self.timestamp_updated)
+                timestamp_updated = datetime.fromisoformat(
+                    self.timestamp_updated
+                )
             else:
                 timestamp_updated = self.timestamp_updated
-        
+
         # Extract metadata
         metadata = self.metadata.copy() if self.metadata else {}
-        
+
         # Create a ReceiptValidationSummary instance
         validation_summary = ReceiptValidationSummary(
             receipt_id=self.receipt_id,
@@ -524,31 +585,35 @@ class ValidationAnalysis(MetadataMixin):
             version=metadata.get("version", "1.0.0"),
             metadata=metadata,
             timestamp_added=timestamp_added,
-            timestamp_updated=timestamp_updated
+            timestamp_updated=timestamp_updated,
         )
-        
+
         # Return the summary object
         return validation_summary
-    
-    def to_dynamo_validation_categories(self) -> List[ReceiptValidationCategory]:
+
+    def to_dynamo_validation_categories(
+        self,
+    ) -> List[ReceiptValidationCategory]:
         """
         Convert ValidationAnalysis to a list of ReceiptValidationCategory instances.
-        
+
         This method creates category items containing detailed validation results for each field.
-            
+
         Returns:
             List[ReceiptValidationCategory]: A list of ReceiptValidationCategory instances
         """
         if self.receipt_id is None or self.image_id is None:
-            raise ValueError("receipt_id and image_id must be set on the ValidationAnalysis instance")
-            
+            raise ValueError(
+                "receipt_id and image_id must be set on the ValidationAnalysis instance"
+            )
+
         # Extract metadata and prepare timestamps
         metadata = self.metadata.copy() if self.metadata else {}
         validation_timestamp = self.validation_timestamp.isoformat()
-        
+
         # List to store all category items
         categories = []
-        
+
         # Create a category item for each field validation
         for field_name, field_validation in [
             ("business_identity", self.business_identity),
@@ -559,20 +624,36 @@ class ValidationAnalysis(MetadataMixin):
             ("line_item_validation", self.line_item_validation),
         ]:
             # Count results by type
-            error_count = sum(1 for r in field_validation.results if r.type == ValidationResultType.ERROR)
-            warning_count = sum(1 for r in field_validation.results if r.type == ValidationResultType.WARNING)
-            info_count = sum(1 for r in field_validation.results if r.type == ValidationResultType.INFO)
-            success_count = sum(1 for r in field_validation.results if r.type == ValidationResultType.SUCCESS)
-            
+            error_count = sum(
+                1
+                for r in field_validation.results
+                if r.type == ValidationResultType.ERROR
+            )
+            warning_count = sum(
+                1
+                for r in field_validation.results
+                if r.type == ValidationResultType.WARNING
+            )
+            info_count = sum(
+                1
+                for r in field_validation.results
+                if r.type == ValidationResultType.INFO
+            )
+            success_count = sum(
+                1
+                for r in field_validation.results
+                if r.type == ValidationResultType.SUCCESS
+            )
+
             # Create result summary
             result_summary = {
                 "error_count": error_count,
                 "warning_count": warning_count,
                 "info_count": info_count,
                 "success_count": success_count,
-                "total_count": len(field_validation.results)
+                "total_count": len(field_validation.results),
             }
-            
+
             # Create a ReceiptValidationCategory instance
             category = ReceiptValidationCategory(
                 receipt_id=self.receipt_id,
@@ -583,33 +664,35 @@ class ValidationAnalysis(MetadataMixin):
                 reasoning=field_validation.reasoning,
                 result_summary=result_summary,
                 validation_timestamp=validation_timestamp,
-                metadata=metadata
+                metadata=metadata,
             )
-            
+
             # Add the category to the list
             categories.append(category)
-        
+
         return categories
-    
+
     def to_dynamo_validation_results(self) -> List[ReceiptValidationResult]:
         """
         Convert ValidationAnalysis to a list of ReceiptValidationResult instances.
-        
+
         This method creates detailed result items for each validation check in each category.
-            
+
         Returns:
             List[ReceiptValidationResult]: A list of ReceiptValidationResult instances
         """
         if self.receipt_id is None or self.image_id is None:
-            raise ValueError("receipt_id and image_id must be set on the ValidationAnalysis instance")
-            
+            raise ValueError(
+                "receipt_id and image_id must be set on the ValidationAnalysis instance"
+            )
+
         # Extract metadata and prepare timestamp
         metadata = self.metadata.copy() if self.metadata else {}
         validation_timestamp = self.validation_timestamp.isoformat()
-        
+
         # List to store all result items
         results = []
-        
+
         # Process each field validation
         for field_name, field_validation in [
             ("business_identity", self.business_identity),
@@ -620,7 +703,9 @@ class ValidationAnalysis(MetadataMixin):
             ("line_item_validation", self.line_item_validation),
         ]:
             # Convert each validation result in this field
-            for result_index, validation_result in enumerate(field_validation.results):
+            for result_index, validation_result in enumerate(
+                field_validation.results
+            ):
                 # Create the ReceiptValidationResult instance
                 result_item = ReceiptValidationResult(
                     receipt_id=self.receipt_id,
@@ -631,15 +716,23 @@ class ValidationAnalysis(MetadataMixin):
                     message=validation_result.message,
                     reasoning=validation_result.reasoning,
                     field=validation_result.field,
-                    expected_value=str(validation_result.expected_value) if validation_result.expected_value is not None else None,
-                    actual_value=str(validation_result.actual_value) if validation_result.actual_value is not None else None,
+                    expected_value=(
+                        str(validation_result.expected_value)
+                        if validation_result.expected_value is not None
+                        else None
+                    ),
+                    actual_value=(
+                        str(validation_result.actual_value)
+                        if validation_result.actual_value is not None
+                        else None
+                    ),
                     validation_timestamp=validation_timestamp,
-                    metadata=validation_result.metadata
+                    metadata=validation_result.metadata,
                 )
-                
+
                 # Add the result to the list
                 results.append(result_item)
-        
+
         return results
 
     @classmethod
@@ -673,7 +766,9 @@ class ValidationAnalysis(MetadataMixin):
                 for result_data in category_data.get("results", []):
                     results.append(
                         ValidationResult(
-                            type=result_data.get("type", ValidationResultType.INFO),
+                            type=result_data.get(
+                                "type", ValidationResultType.INFO
+                            ),
                             message=result_data.get("message", ""),
                             reasoning=result_data.get("reasoning", ""),
                             field=result_data.get("field"),
@@ -710,31 +805,31 @@ class ValidationAnalysis(MetadataMixin):
                 pass
 
         return result
-    
+
     @classmethod
     def from_dynamo_items(
         cls,
         summary: ReceiptValidationSummary,
         categories: List[ReceiptValidationCategory],
-        results: List[ReceiptValidationResult]
+        results: List[ReceiptValidationResult],
     ) -> "ValidationAnalysis":
         """
         Reconstruct a ValidationAnalysis from separate DynamoDB items.
-        
-        This method combines data from ReceiptValidationSummary, ReceiptValidationCategory, 
+
+        This method combines data from ReceiptValidationSummary, ReceiptValidationCategory,
         and ReceiptValidationResult objects to create a complete ValidationAnalysis.
-        
+
         Args:
             summary: The ReceiptValidationSummary object
             categories: List of ReceiptValidationCategory objects
             results: List of ReceiptValidationResult objects
-            
+
         Returns:
             ValidationAnalysis: A new instance populated with data from the DynamoDB items
         """
         # Initialize the field validations dict
         field_validations = {}
-        
+
         # Extract common information from summary
         receipt_id = summary.receipt_id
         image_id = summary.image_id
@@ -743,27 +838,27 @@ class ValidationAnalysis(MetadataMixin):
         validation_timestamp = summary.validation_timestamp
         metadata = summary.metadata.copy() if summary.metadata else {}
         version = summary.version
-        
+
         # Process categories and organize results by field name
         results_by_field = {}
         for result in results:
             if result.field_name not in results_by_field:
                 results_by_field[result.field_name] = []
             results_by_field[result.field_name].append(result)
-            
+
         # Process each field category
         for category in categories:
             field_name = category.field_name
             field_category = category.field_category
             status = category.status
             reasoning = category.reasoning
-            
+
             # Get results for this field
             field_results = results_by_field.get(field_name, [])
-            
+
             # Sort results by index to maintain original order
             field_results.sort(key=lambda r: r.result_index)
-            
+
             # Convert ReceiptValidationResult objects to ValidationResult objects
             validation_results = []
             for result in field_results:
@@ -772,7 +867,7 @@ class ValidationAnalysis(MetadataMixin):
                     result_type = ValidationResultType(result.type)
                 except ValueError:
                     result_type = ValidationResultType.INFO
-                
+
                 # Create ValidationResult
                 validation_result = ValidationResult(
                     type=result_type,
@@ -781,52 +876,60 @@ class ValidationAnalysis(MetadataMixin):
                     field=result.field,
                     expected_value=result.expected_value,
                     actual_value=result.actual_value,
-                    metadata=result.metadata
+                    metadata=(
+                        result.metadata if hasattr(result, "metadata") else {}
+                    ),
                 )
                 validation_results.append(validation_result)
-            
+
             # Create FieldValidation
             try:
                 field_status = ValidationStatus(status)
             except ValueError:
                 field_status = ValidationStatus.VALID
-                
+
             field_validations[field_name] = FieldValidation(
                 field_category=field_category,
                 results=validation_results,
                 status=field_status,
-                reasoning=reasoning
+                reasoning=reasoning,
             )
-        
+
         # Create validation analysis with all the gathered information
         analysis = cls(
             receipt_id=receipt_id,
             image_id=image_id,
-            overall_status=ValidationStatus(overall_status) if overall_status else ValidationStatus.VALID,
+            overall_status=(
+                ValidationStatus(overall_status)
+                if overall_status
+                else ValidationStatus.VALID
+            ),
             overall_reasoning=overall_reasoning,
             **field_validations,
-            metadata=metadata
+            metadata=metadata,
         )
-        
+
         # Set timestamp fields
         if validation_timestamp:
             try:
-                analysis.validation_timestamp = datetime.fromisoformat(validation_timestamp)
+                analysis.validation_timestamp = datetime.fromisoformat(
+                    validation_timestamp
+                )
             except (ValueError, TypeError):
                 pass
-                
+
         # Set timestamp_added and timestamp_updated if available
-        if hasattr(summary, 'timestamp_added') and summary.timestamp_added:
+        if hasattr(summary, "timestamp_added") and summary.timestamp_added:
             analysis.timestamp_added = summary.timestamp_added
-            
-        if hasattr(summary, 'timestamp_updated') and summary.timestamp_updated:
+
+        if hasattr(summary, "timestamp_updated") and summary.timestamp_updated:
             analysis.timestamp_updated = summary.timestamp_updated
-        
+
         # Copy any other relevant fields from the summary
-        if hasattr(summary, 'prompt_template') and summary.prompt_template:
+        if hasattr(summary, "prompt_template") and summary.prompt_template:
             analysis.prompt_template = summary.prompt_template
-            
-        if hasattr(summary, 'response_template') and summary.response_template:
+
+        if hasattr(summary, "response_template") and summary.response_template:
             analysis.response_template = summary.response_template
-            
+
         return analysis

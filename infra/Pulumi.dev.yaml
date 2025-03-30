@@ -3,3 +3,5 @@ config:
   portfolio:OPENAI_API_KEY:
     secure: AAABANhLu9Xk4cxD7v1K8q1IRD5Lwtnr3cQTcuUOPWIBM80amq3juqBmrNtIUlWWoQAfIi3U8Pwht4vkU7kTzOryw13iDQUdHiB2D2LJl2Y8ZXMN97lftEASOScKZihcaiNWXSm9YAgDhLbR0HtRewr1XfRt6FlohCAzFu/KuphaJd4zy+PU0t1thvj8OAErHIxU4fUQL8rkwDcqqm+bnR1J4ag2UGz075zRbEfPJAWUnen0zsN34xUDlM/JXVRMBR4dhw==
   portfolio:environment: dev
+  portfolio:GOOGLE_PLACES_API_KEY:
+    secure: AAABAAK8xGIKbSJImf3isrPRyJRt+P7pDXSUshC3r34OoDik3KWknQmYuu0q+/KfLXLReYCPe4IXmWFDEpFNnE4kEnOl7SM=

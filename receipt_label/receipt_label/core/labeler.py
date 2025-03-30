@@ -79,16 +79,22 @@ class LabelingResult:
         return {
             "receipt_id": self.receipt_id,
             "structure_analysis": (
-                self.structure_analysis.to_dict() if self.structure_analysis else None
+                self.structure_analysis.to_dict()
+                if self.structure_analysis
+                else None
             ),
             "field_analysis": (
                 self.field_analysis.to_dict() if self.field_analysis else None
             ),
             "line_item_analysis": (
-                self.line_item_analysis.to_dict() if self.line_item_analysis else None
+                self.line_item_analysis.to_dict()
+                if self.line_item_analysis
+                else None
             ),
             "validation_analysis": (
-                self.validation_analysis.to_dict() if self.validation_analysis else None
+                self.validation_analysis.to_dict()
+                if self.validation_analysis
+                else None
             ),
             "places_api_data": self.places_api_data,
             "execution_times": self.execution_times,
@@ -208,14 +214,20 @@ class ReceiptLabeler:
                 f"Field analysis found {len(field_analysis.labels) if hasattr(field_analysis, 'labels') else 0} labels"
             )
             if hasattr(field_analysis, "metadata") and field_analysis.metadata:
-                logger.debug(f"Field analysis has metadata: {field_analysis.metadata}")
+                logger.debug(
+                    f"Field analysis has metadata: {field_analysis.metadata}"
+                )
 
             # Process line items using line item processor
             logger.info("Processing line items")
             line_item_processor = LineItemProcessor()
             start_time = time.time()
             line_item_analysis = line_item_processor.analyze_line_items(
-                receipt, receipt_lines, receipt_words, places_data, structure_analysis
+                receipt,
+                receipt_lines,
+                receipt_words,
+                places_data,
+                structure_analysis,
             )
             execution_times["line_item_processing"] = time.time() - start_time
 
@@ -270,7 +282,10 @@ class ReceiptLabeler:
                     ), label_info in line_item_analysis.word_labels.items():
                         # Find the corresponding word
                         for word in receipt_words:
-                            if word.line_id == line_id and word.word_id == word_id:
+                            if (
+                                word.line_id == line_id
+                                and word.word_id == word_id
+                            ):
                                 # Check if this word already has a label
                                 existing_label = next(
                                     (
@@ -293,14 +308,21 @@ class ReceiptLabeler:
                                             reasoning=label_info["reasoning"],
                                             bounding_box=(
                                                 word.bounding_box
-                                                if hasattr(word, "bounding_box")
+                                                if hasattr(
+                                                    word, "bounding_box"
+                                                )
                                                 else None
                                             ),
                                         )
                                     )
                                     # Add to applied labels for logging
-                                    if label_info["label"] not in applied_labels:
-                                        applied_labels[label_info["label"]] = []
+                                    if (
+                                        label_info["label"]
+                                        not in applied_labels
+                                    ):
+                                        applied_labels[label_info["label"]] = (
+                                            []
+                                        )
                                     applied_labels[label_info["label"]].append(
                                         {
                                             "text": word.text,
@@ -330,7 +352,9 @@ class ReceiptLabeler:
                                         and new_label.isupper()
                                     ):
                                         # Keep track of the old label for reference
-                                        old_reasoning = existing_label.reasoning
+                                        old_reasoning = (
+                                            existing_label.reasoning
+                                        )
 
                                         # Update the existing label
                                         existing_label.label = new_label
@@ -360,15 +384,24 @@ class ReceiptLabeler:
                                                 <= item_idx
                                                 < len(line_item_analysis.items)
                                             ):
-                                                item = line_item_analysis.items[
-                                                    item_idx
-                                                ]
+                                                item = (
+                                                    line_item_analysis.items[
+                                                        item_idx
+                                                    ]
+                                                )
                                                 existing_label.reasoning += f" (Part of line item: {item.description})"
 
                                         # Track skipped label
-                                        if label_info["label"] not in skipped_labels:
-                                            skipped_labels[label_info["label"]] = []
-                                        skipped_labels[label_info["label"]].append(
+                                        if (
+                                            label_info["label"]
+                                            not in skipped_labels
+                                        ):
+                                            skipped_labels[
+                                                label_info["label"]
+                                            ] = []
+                                        skipped_labels[
+                                            label_info["label"]
+                                        ].append(
                                             {
                                                 "text": word.text,
                                                 "position": f"L{line_id}W{word_id}",
@@ -387,7 +420,9 @@ class ReceiptLabeler:
                     )
 
                     # Update total labeled words count
-                    field_analysis.total_labeled_words = len(field_analysis.labels)
+                    field_analysis.total_labeled_words = len(
+                        field_analysis.labels
+                    )
 
                     # Add line item labeling to metadata
                     if "processing_metrics" not in field_analysis.metadata:
@@ -424,13 +459,16 @@ class ReceiptLabeler:
                         {
                             "count": len(line_item_analysis.word_labels),
                             "applied": sum(
-                                len(labels) for labels in applied_labels.values()
+                                len(labels)
+                                for labels in applied_labels.values()
                             ),
                             "updated": sum(
-                                len(labels) for labels in updated_labels.values()
+                                len(labels)
+                                for labels in updated_labels.values()
                             ),
                             "skipped": sum(
-                                len(labels) for labels in skipped_labels.values()
+                                len(labels)
+                                for labels in skipped_labels.values()
                             ),
                             "timestamp": datetime.now().isoformat(),
                         },
@@ -453,7 +491,9 @@ class ReceiptLabeler:
             # Create validation results if validation is enabled
             validation_analysis = None
             if enable_validation and line_item_analysis:
-                logger.info(f"Performing validation for receipt {receipt.receipt_id}")
+                logger.info(
+                    f"Performing validation for receipt {receipt.receipt_id}"
+                )
                 try:
                     # Extract validation-related data from line items and field analysis
                     receipt_total = None
@@ -468,20 +508,24 @@ class ReceiptLabeler:
                             # Extract financial values
                             if label.label in ["TOTAL", "Total", "total"]:
                                 try:
-                                    text_value = label.text.replace("$", "").replace(
-                                        ",", ""
-                                    )
+                                    text_value = label.text.replace(
+                                        "$", ""
+                                    ).replace(",", "")
                                     receipt_total = float(text_value)
                                 except (ValueError, TypeError):
                                     logger.warning(
                                         f"Could not convert {label.label} label text '{label.text}' to float"
                                     )
                             # Check for subtotal
-                            elif label.label in ["SUBTOTAL", "Subtotal", "subtotal"]:
+                            elif label.label in [
+                                "SUBTOTAL",
+                                "Subtotal",
+                                "subtotal",
+                            ]:
                                 try:
-                                    text_value = label.text.replace("$", "").replace(
-                                        ",", ""
-                                    )
+                                    text_value = label.text.replace(
+                                        "$", ""
+                                    ).replace(",", "")
                                     receipt_subtotal = float(text_value)
                                 except (ValueError, TypeError):
                                     logger.warning(
@@ -490,9 +534,9 @@ class ReceiptLabeler:
                             # Check for tax
                             elif label.label in ["TAX", "Tax", "tax"]:
                                 try:
-                                    text_value = label.text.replace("$", "").replace(
-                                        ",", ""
-                                    )
+                                    text_value = label.text.replace(
+                                        "$", ""
+                                    ).replace(",", "")
                                     receipt_tax = float(text_value)
                                 except (ValueError, TypeError):
                                     logger.warning(
@@ -579,7 +623,8 @@ class ReceiptLabeler:
                     ):
                         difference = abs(receipt_total - line_item_total)
                         allowed_difference = receipt_total * (
-                            self.validation_config["discrepancy_percentage"] / 100.0
+                            self.validation_config["discrepancy_percentage"]
+                            / 100.0
                         )
 
                         if difference > allowed_difference:
@@ -608,7 +653,8 @@ class ReceiptLabeler:
                     ):
                         difference = abs(receipt_subtotal - line_item_subtotal)
                         allowed_difference = receipt_subtotal * (
-                            self.validation_config["discrepancy_percentage"] / 100.0
+                            self.validation_config["discrepancy_percentage"]
+                            / 100.0
                         )
 
                         if difference > allowed_difference:
@@ -633,7 +679,12 @@ class ReceiptLabeler:
                         difference = abs(receipt_tax - line_item_tax)
                         allowed_difference = (
                             receipt_tax
-                            * (self.validation_config["discrepancy_percentage"] / 100.0)
+                            * (
+                                self.validation_config[
+                                    "discrepancy_percentage"
+                                ]
+                                / 100.0
+                            )
                             if receipt_tax > 0
                             else 0.01
                         )
@@ -709,7 +760,10 @@ class ReceiptLabeler:
                                     break
 
                     # Check for required values based on configuration
-                    if self.validation_config["require_total"] and not found_total:
+                    if (
+                        self.validation_config["require_total"]
+                        and not found_total
+                    ):
                         message = "Missing total amount"
                         if self.validation_config["missing_total_error"]:
                             critical_errors.append(message)
@@ -717,7 +771,10 @@ class ReceiptLabeler:
                             warnings.append(message)
 
                     # Check for date
-                    if self.validation_config["require_date"] and not receipt_date:
+                    if (
+                        self.validation_config["require_date"]
+                        and not receipt_date
+                    ):
                         message = "Missing date"
                         if self.validation_config["missing_date_error"]:
                             critical_errors.append(message)
@@ -730,7 +787,9 @@ class ReceiptLabeler:
                         and not business_name
                     ):
                         message = "Missing business name"
-                        if self.validation_config["missing_business_name_error"]:
+                        if self.validation_config[
+                            "missing_business_name_error"
+                        ]:
                             critical_errors.append(message)
                         else:
                             warnings.append(message)
@@ -771,7 +830,9 @@ class ReceiptLabeler:
                         else:
                             discrepancies.append(message)
                     elif (not use_inferred and receipt_tax is None) or (
-                        use_inferred and line_item_tax is None and receipt_tax is None
+                        use_inferred
+                        and line_item_tax is None
+                        and receipt_tax is None
                     ):
                         logger.info("Missing tax value (not required)")
 
@@ -814,7 +875,9 @@ class ReceiptLabeler:
                             f"Validation found {len(critical_errors)} critical errors. "
                             + " ".join(critical_errors)
                         )
-                        validation_analysis.overall_status = ValidationStatus.INVALID
+                        validation_analysis.overall_status = (
+                            ValidationStatus.INVALID
+                        )
                     elif discrepancies:
                         validation_analysis.overall_reasoning = (
                             f"Validation found {len(discrepancies)} discrepancies. "
@@ -835,7 +898,9 @@ class ReceiptLabeler:
                         validation_analysis.overall_reasoning = (
                             "No issues found during validation."
                         )
-                        validation_analysis.overall_status = ValidationStatus.VALID
+                        validation_analysis.overall_status = (
+                            ValidationStatus.VALID
+                        )
 
                     logger.info(
                         f"Validation results for receipt {receipt.receipt_id}: "
@@ -899,7 +964,9 @@ class ReceiptLabeler:
                 logger.info(f"\n  🏷️  {label_type}: {len(labels)} labels")
                 # Show first 5 examples at most to keep logs reasonable
                 for i, label in enumerate(labels[:5]):
-                    logger.info(f"    • '{label['text']}' ({label['position']})")
+                    logger.info(
+                        f"    • '{label['text']}' ({label['position']})"
+                    )
                 if len(labels) > 5:
                     logger.info(f"    • ... and {len(labels) - 5} more")
         else:
@@ -944,7 +1011,9 @@ class ReceiptLabeler:
         logger.info(f"\n📊 OVERALL STATISTICS:")
         logger.info(f"   Total attempted: {total_attempted}")
         if total_attempted > 0:
-            success_rate = ((total_applied + total_updated) / total_attempted) * 100
+            success_rate = (
+                (total_applied + total_updated) / total_attempted
+            ) * 100
             logger.info(f"   Success rate: {success_rate:.1f}%")
             logger.info(
                 f"   Applied: {total_applied} ({(total_applied/total_attempted)*100:.1f}%)"
@@ -958,7 +1027,9 @@ class ReceiptLabeler:
 
         logger.info(f"{divider}\n")
 
-    def _get_places_data(self, receipt_words: List[ReceiptWord]) -> Optional[Dict]:
+    def _get_places_data(
+        self, receipt_words: List[ReceiptWord]
+    ) -> Optional[Dict]:
         """Get business data from Places API."""
         try:
             # Format receipt for Places API
@@ -973,7 +1044,9 @@ class ReceiptLabeler:
                 ],
             }
             # Process as a batch of one receipt (not async)
-            results = self.places_processor.process_receipt_batch([receipt_dict])
+            results = self.places_processor.process_receipt_batch(
+                [receipt_dict]
+            )
             if results and len(results) > 0:
                 return results[0].get("places_api_match")
             return None
@@ -1107,11 +1180,15 @@ class ReceiptLabeler:
             LabelingResult containing the analysis results
         """
         if not self.dynamodb_table_name:
-            logger.warning("No DynamoDB table name provided, will not save results")
+            logger.warning(
+                "No DynamoDB table name provided, will not save results"
+            )
             save_results = False
 
         client = (
-            DynamoClient(self.dynamodb_table_name) if self.dynamodb_table_name else None
+            DynamoClient(self.dynamodb_table_name)
+            if self.dynamodb_table_name
+            else None
         )
 
         # Check for existing analysis if not forcing reprocess
@@ -1199,7 +1276,8 @@ class ReceiptLabeler:
                                 )
                                 # Save just the validation analysis
                                 self._save_validation_analysis(
-                                    result.validation_analysis, get_package_version()
+                                    result.validation_analysis,
+                                    get_package_version(),
                                 )
 
                     return result
@@ -1222,13 +1300,19 @@ class ReceiptLabeler:
             validations,
         ) = client.getReceiptDetails(image_id, receipt_id)
         if not receipt_data:
-            raise ValueError(f"Receipt {receipt_id} not found for image {image_id}")
+            raise ValueError(
+                f"Receipt {receipt_id} not found for image {image_id}"
+            )
 
         # Fetch receipt words...
-        receipt_words = [ReceiptWord.from_dynamo(word) for word in receipt_words_data]
+        receipt_words = [
+            ReceiptWord.from_dynamo(word) for word in receipt_words_data
+        ]
 
         # Fetch receipt lines...
-        receipt_lines = [ReceiptLine.from_dynamo(line) for line in receipt_lines_data]
+        receipt_lines = [
+            ReceiptLine.from_dynamo(line) for line in receipt_lines_data
+        ]
 
         # Convert to Receipt object
         receipt = Receipt.from_dynamo(
@@ -1250,7 +1334,9 @@ class ReceiptLabeler:
         self._update_metadata_with_version(result.structure_analysis.metadata)
         self._update_metadata_with_version(result.line_item_analysis.metadata)
         if result.validation_analysis:
-            self._update_metadata_with_version(result.validation_analysis.metadata)
+            self._update_metadata_with_version(
+                result.validation_analysis.metadata
+            )
 
         # Save results if requested
         if save_results:
@@ -1264,7 +1350,9 @@ class ReceiptLabeler:
                     hasattr(result.field_analysis, "labels")
                     and result.field_analysis.labels
                 ):
-                    for i, label in enumerate(result.field_analysis.labels[:3]):
+                    for i, label in enumerate(
+                        result.field_analysis.labels[:3]
+                    ):
                         print(
                             f"Label {i}: {label.text} - {label.label} (L{label.line_id}W{label.word_id})"
                         )
@@ -1281,13 +1369,15 @@ class ReceiptLabeler:
             from receipt_dynamo.data.dynamo_client import DynamoClient
 
             if not self.dynamodb_table_name:
-                logger.error("No DynamoDB table name provided, cannot save results")
+                logger.error(
+                    "No DynamoDB table name provided, cannot save results"
+                )
                 return False
 
             client = DynamoClient(table_name=self.dynamodb_table_name)
 
             # Import the save_analysis_transaction function
-            from receipt_label.receipt_label.data.analysis_operations import (
+            from receipt_label.data.analysis_operations import (
                 save_analysis_transaction,
                 save_label_analysis,
                 save_validation_analysis,
@@ -1295,9 +1385,15 @@ class ReceiptLabeler:
 
             # Create a transaction to save all analyses
             success = save_analysis_transaction(
-                label_analysis=getattr(analysis_result, "field_analysis", None),
-                structure_analysis=getattr(analysis_result, "structure_analysis", None),
-                line_item_analysis=getattr(analysis_result, "line_item_analysis", None),
+                label_analysis=getattr(
+                    analysis_result, "field_analysis", None
+                ),
+                structure_analysis=getattr(
+                    analysis_result, "structure_analysis", None
+                ),
+                line_item_analysis=getattr(
+                    analysis_result, "line_item_analysis", None
+                ),
                 client=client,
                 receipt_id=receipt_id,
                 image_id=image_id,
@@ -1347,8 +1443,12 @@ class ReceiptLabeler:
     def _update_metadata_with_version(self, metadata):
         """Update metadata with the current package version."""
         if metadata:
-            metadata["source_information"] = metadata.get("source_information", {})
-            metadata["source_information"]["package_version"] = get_package_version()
+            metadata["source_information"] = metadata.get(
+                "source_information", {}
+            )
+            metadata["source_information"][
+                "package_version"
+            ] = get_package_version()
 
     def _save_validation_analysis(self, validation_analysis, version):
         """Save validation analysis to DynamoDB."""

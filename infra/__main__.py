@@ -23,6 +23,8 @@ except ImportError:
     # These may not be available in all environments
     pass
 
+import step_function
+
 # Original exports from main branch
 pulumi.export("region", aws.config.region)
 
@@ -145,13 +147,12 @@ job_queue = JobQueue(
     tags={
         "Purpose": "ML Training Job Management",
         "ManagedBy": "Pulumi",
-    }
+    },
 )
 
 # Update the IAM role to allow access to SQS
 sqs_policy_document = pulumi.Output.all(
-    queue_arn=job_queue.get_queue_arn(), 
-    dlq_arn=job_queue.get_dlq_arn()
+    queue_arn=job_queue.get_queue_arn(), dlq_arn=job_queue.get_dlq_arn()
 ).apply(
     lambda args: f"""{{
         "Version": "2012-10-17",
@@ -179,7 +180,7 @@ sqs_policy_document = pulumi.Output.all(
 sqs_policy = aws.iam.Policy(
     "ml-training-sqs-policy",
     description="Allow ML training instances to access SQS queues",
-    policy=sqs_policy_document
+    policy=sqs_policy_document,
 )
 
 # Attach the policy to the role
@@ -187,7 +188,7 @@ sqs_policy_attachment = aws.iam.RolePolicyAttachment(
     "ml-sqs-policy-attachment",
     role=ml_training_role.name,
     policy_arn=sqs_policy.arn,
-    opts=ResourceOptions(depends_on=[ml_training_role])
+    opts=ResourceOptions(depends_on=[ml_training_role]),
 )
 
 # Generate instance registration script
@@ -203,7 +204,7 @@ user_data_script = pulumi.Output.all(
     instance_registry_table=instance_registry.table_name,
     registration_script=registration_script,
     job_queue_url=job_queue.get_queue_url(),
-    job_dlq_url=job_queue.get_dlq_url()
+    job_dlq_url=job_queue.get_dlq_url(),
 ).apply(
     lambda args: f"""#!/bin/bash
 # User data script for ML training instances

@@ -26,12 +26,17 @@ from dotenv import load_dotenv
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data._pulumi import load_env
 from receipt_label.receipt_label import ReceiptLabeler
-from receipt_label.receipt_label.models.receipt import Receipt, ReceiptWord, ReceiptLine
+from receipt_label.receipt_label.models.receipt import (
+    Receipt,
+    ReceiptWord,
+    ReceiptLine,
+)
 from receipt_label.receipt_label.models.validation import ValidationStatus
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
@@ -99,7 +104,9 @@ def extract_validation_details(validation_analysis):
         hasattr(validation_analysis, "overall_reasoning")
         and validation_analysis.overall_reasoning
     ):
-        logger.info(f"Validation reasoning: {validation_analysis.overall_reasoning}")
+        logger.info(
+            f"Validation reasoning: {validation_analysis.overall_reasoning}"
+        )
 
     return {
         "status": validation_status,
@@ -132,9 +139,9 @@ def analyze_single_receipt(receipt_id, image_id, output_dir=None):
 
         logger.info(f"Processing receipt {receipt_id} from image {image_id}")
         # Get the analysis results from DynamoDB
-        analysis_result = DynamoClient(table_name=table_name).getReceiptAnalysis(
-            image_id, int(receipt_id)
-        )
+        analysis_result = DynamoClient(
+            table_name=table_name
+        ).getReceiptAnalysis(image_id, int(receipt_id))
         if analysis_result.label_analysis:
             DynamoClient(table_name=table_name).deleteReceiptLabelAnalysis(
                 analysis_result.label_analysis
@@ -158,27 +165,27 @@ def analyze_single_receipt(receipt_id, image_id, output_dir=None):
         if len(analysis_result.validation_categories) > 0:
             for validation_category in analysis_result.validation_categories:
                 print(f"validation_category: {validation_category}")
-                DynamoClient(table_name=table_name).deleteReceiptValidationCategory(
-                    validation_category
-                )
+                DynamoClient(
+                    table_name=table_name
+                ).deleteReceiptValidationCategory(validation_category)
             logger.info(
                 f"Deleted {len(analysis_result.validation_categories)} existing validation categories"
             )
         if len(analysis_result.validation_results) > 0:
             for validation_result in analysis_result.validation_results:
                 print(f"validation_result: {validation_result}")
-                DynamoClient(table_name=table_name).deleteReceiptValidationResult(
-                    validation_result
-                )
+                DynamoClient(
+                    table_name=table_name
+                ).deleteReceiptValidationResult(validation_result)
             logger.info(
                 f"Deleted {len(analysis_result.validation_results)} existing validation results"
             )
         if len(analysis_result.chatgpt_validations) > 0:
             for chatgpt_validation in analysis_result.chatgpt_validations:
                 print(f"chatgpt_validation: {chatgpt_validation}")
-                DynamoClient(table_name=table_name).deleteReceiptChatGPTValidation(
-                    chatgpt_validation
-                )
+                DynamoClient(
+                    table_name=table_name
+                ).deleteReceiptChatGPTValidation(chatgpt_validation)
             logger.info(
                 f"Deleted {len(analysis_result.chatgpt_validations)} existing ChatGPT validations"
             )
@@ -188,7 +195,9 @@ def analyze_single_receipt(receipt_id, image_id, output_dir=None):
         try:
             word_labels, _ = client.listReceiptWordLabels()
             if word_labels:
-                logger.info(f"Found {len(word_labels)} existing word labels to delete")
+                logger.info(
+                    f"Found {len(word_labels)} existing word labels to delete"
+                )
                 for label in word_labels:
                     if label.image_id == image_id and label.receipt_id == int(
                         receipt_id
@@ -227,13 +236,17 @@ def analyze_single_receipt(receipt_id, image_id, output_dir=None):
             hasattr(analysis_result, "field_analysis")
             and analysis_result.field_analysis
         ):
-            field_count = len(getattr(analysis_result.field_analysis, "labels", []))
+            field_count = len(
+                getattr(analysis_result.field_analysis, "labels", [])
+            )
             logger.info(f"Field analysis found {field_count} labeled fields")
 
             # Print the labels for debugging
             if hasattr(analysis_result.field_analysis, "labels"):
                 labels = analysis_result.field_analysis.labels
-                logger.info(f"Found {len(labels)} labels in field_analysis.labels")
+                logger.info(
+                    f"Found {len(labels)} labels in field_analysis.labels"
+                )
                 for i, label in enumerate(labels):
                     logger.info(
                         f"Label {i+1}: {label.text} - {label.label} (L{label.line_id}W{label.word_id})"
@@ -260,7 +273,9 @@ def analyze_single_receipt(receipt_id, image_id, output_dir=None):
             hasattr(analysis_result, "line_item_analysis")
             and analysis_result.line_item_analysis
         ):
-            item_count = len(getattr(analysis_result.line_item_analysis, "items", []))
+            item_count = len(
+                getattr(analysis_result.line_item_analysis, "items", [])
+            )
             logger.info(f"Line item analysis found {item_count} line items")
         else:
             logger.warning("No line item analysis available")
@@ -288,7 +303,9 @@ def analyze_single_receipt(receipt_id, image_id, output_dir=None):
                     ),
                     "field_analysis": {
                         "labeled_fields": len(
-                            getattr(analysis_result.field_analysis, "labels", [])
+                            getattr(
+                                analysis_result.field_analysis, "labels", []
+                            )
                         ),
                         "fields": [
                             {"text": label.text, "label": label.label}
@@ -304,21 +321,29 @@ def analyze_single_receipt(receipt_id, image_id, output_dir=None):
                                 "pattern_count": len(section.spatial_patterns),
                             }
                             for section in getattr(
-                                analysis_result.structure_analysis, "sections", []
+                                analysis_result.structure_analysis,
+                                "sections",
+                                [],
                             )
                         ]
                     },
                     "line_item_analysis": {
                         "item_count": len(
-                            getattr(analysis_result.line_item_analysis, "items", [])
+                            getattr(
+                                analysis_result.line_item_analysis, "items", []
+                            )
                         ),
                         "subtotal": getattr(
-                            analysis_result.line_item_analysis, "subtotal", None
+                            analysis_result.line_item_analysis,
+                            "subtotal",
+                            None,
                         ),
                         "total": getattr(
                             analysis_result.line_item_analysis, "total", None
                         ),
-                        "tax": getattr(analysis_result.line_item_analysis, "tax", None),
+                        "tax": getattr(
+                            analysis_result.line_item_analysis, "tax", None
+                        ),
                     },
                 }
 
@@ -331,7 +356,8 @@ def analyze_single_receipt(receipt_id, image_id, output_dir=None):
 
                 # Save to file
                 output_file = (
-                    output_dir / f"receipt_analysis_{receipt_id}_{image_id}.json"
+                    output_dir
+                    / f"receipt_analysis_{receipt_id}_{image_id}.json"
                 )
                 with open(output_file, "w") as f:
                     json.dump(results_dict, f, indent=2)
@@ -354,15 +380,21 @@ def main():
     parser = argparse.ArgumentParser(
         description="Process a single receipt and save analysis to DynamoDB"
     )
-    parser.add_argument("--receipt_id", required=True, help="Receipt ID to process")
+    parser.add_argument(
+        "--receipt_id", required=True, help="Receipt ID to process"
+    )
     parser.add_argument(
         "--image_id", required=True, help="Image ID containing the receipt"
     )
-    parser.add_argument("--output_dir", help="Directory to save JSON output (optional)")
+    parser.add_argument(
+        "--output_dir", help="Directory to save JSON output (optional)"
+    )
 
     args = parser.parse_args()
 
-    success = analyze_single_receipt(args.receipt_id, args.image_id, args.output_dir)
+    success = analyze_single_receipt(
+        args.receipt_id, args.image_id, args.output_dir
+    )
 
     if success:
         logger.info("Receipt processing completed successfully")
