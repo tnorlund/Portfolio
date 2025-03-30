@@ -8,7 +8,7 @@ from pulumi import AssetArchive, FileArchive
 from dynamo_db import dynamodb_table
 
 # Import the Lambda Layer from the lambda_layer module
-from lambda_layer import lambda_layer
+from lambda_layer import dynamo_layer
 
 from raw_bucket import raw_bucket
 from s3_website import site_bucket
@@ -123,7 +123,7 @@ process_lambda = aws.lambda_.Function(
         }
     ),
     handler="index.handler",  # file_name.function_name
-    layers=[lambda_layer.arn],
+    layers=[dynamo_layer.arn],
     environment={
         "variables": {
             "DYNAMODB_TABLE_NAME": DYNAMODB_TABLE_NAME,
