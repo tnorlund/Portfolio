@@ -1,13 +1,18 @@
 {
   "python.testing.pytestArgs": [
     "receipt_dynamo/tests",
+    "receipt_trainer/tests",
     "--cov=receipt_dynamo/receipt_dynamo",
+    "--cov=receipt_trainer/receipt_trainer",
     "--cov-config=receipt_dynamo/tests/.coveragerc",
     "--cov-report=xml:receipt_dynamo/tests/coverage.xml"
   ],
   "python.testing.unittestEnabled": false,
   "python.testing.pytestEnabled": true,
-  "python.analysis.extraPaths": ["${workspaceFolder}/receipt_dynamo"],
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}/receipt_dynamo",
+    "${workspaceFolder}/receipt_trainer"
+  ],
   "python.testing.pytestPath": "pytest",
   "python.testing.cwd": "${workspaceFolder}",
   "python.envFile": "${workspaceFolder}/.env",

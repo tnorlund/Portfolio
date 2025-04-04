@@ -24,7 +24,7 @@ class MetricsCallback(TrainerCallback):
 
     def __init__(self, job_service=None, job_id=None):
         """Initialize the callback.
-        
+
         Args:
             job_service: The JobService instance for logging metrics
             job_id: The ID of the current job
@@ -34,7 +34,7 @@ class MetricsCallback(TrainerCallback):
         self.step = 0
         self.job_service = job_service
         self.job_id = job_id
-        
+
         if not self.job_service or not self.job_id:
             raise ValueError(
                 "JobService and job_id must be provided for metrics logging."
@@ -52,13 +52,11 @@ class MetricsCallback(TrainerCallback):
         print("Training started - MetricsCallback initialized")
         if not self.trainer:
             print("Warning: Trainer not available in on_train_begin")
-            
+
         # Log training start
         if self.job_service and self.job_id:
             self.job_service.add_job_log(
-                self.job_id,
-                "INFO",
-                "Training started with MetricsCallback"
+                self.job_id, "INFO", "Training started with MetricsCallback"
             )
 
     def on_evaluate(self, args, state, control, metrics=None, **kwargs):
@@ -142,14 +140,14 @@ class MetricsCallback(TrainerCallback):
             print("\nLogging metrics to DynamoDB:")
             for key, value in metric_dict.items():
                 print(f"{key}: {value}")
-                
+
                 # Log each metric to DynamoDB
                 if self.job_service and self.job_id:
                     self.job_service.add_job_metric(
                         job_id=self.job_id,
                         metric_name=key,
                         metric_value=value,
-                        metadata={"step": self.step}
+                        metadata={"step": self.step},
                     )
 
             # Create confusion matrix
@@ -172,18 +170,20 @@ class MetricsCallback(TrainerCallback):
             plt.tight_layout()
 
             # Save the plot to a temporary file
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_file:
+            with tempfile.NamedTemporaryFile(
+                suffix=".png", delete=False
+            ) as tmp_file:
                 plt_path = tmp_file.name
                 plt.savefig(plt_path)
-                
+
                 # Log the plot path to DynamoDB
                 if self.job_service and self.job_id:
                     self.job_service.add_job_log(
                         self.job_id,
                         "INFO",
-                        f"Performance plot saved to {plt_path}"
+                        f"Performance plot saved to {plt_path}",
                     )
-                    
+
                     # Add as a resource
                     self.job_service.add_job_resource(
                         job_id=self.job_id,
@@ -192,8 +192,8 @@ class MetricsCallback(TrainerCallback):
                         metadata={
                             "path": plt_path,
                             "type": "performance_plot",
-                            "step": self.step
-                        }
+                            "step": self.step,
+                        },
                     )
 
             plt.close("all")
@@ -242,8 +242,12 @@ def validate_environment():
 
 def parse_args():
     """Parse command-line arguments."""
-    parser = argparse.ArgumentParser(description="Train a Receipt Trainer model.")
-    parser.add_argument("--run_name", type=str, default=None, help="Name of the run.")
+    parser = argparse.ArgumentParser(
+        description="Train a Receipt Trainer model."
+    )
+    parser.add_argument(
+        "--run_name", type=str, default=None, help="Name of the run."
+    )
     parser.add_argument(
         "--model_name",
         type=str,
@@ -254,10 +258,16 @@ def parse_args():
         "--batch_size", type=int, default=8, help="Batch size for training."
     )
     parser.add_argument(
-        "--learning_rate", type=float, default=2e-5, help="Learning rate for training."
+        "--learning_rate",
+        type=float,
+        default=2e-5,
+        help="Learning rate for training.",
     )
     parser.add_argument(
-        "--num_train_epochs", type=int, default=10, help="Number of training epochs."
+        "--num_train_epochs",
+        type=int,
+        default=10,
+        help="Number of training epochs.",
     )
     parser.add_argument(
         "--warmup_ratio",
@@ -266,7 +276,10 @@ def parse_args():
         help="Warmup ratio for learning rate.",
     )
     parser.add_argument(
-        "--weight_decay", type=float, default=0.01, help="Weight decay for training."
+        "--weight_decay",
+        type=float,
+        default=0.01,
+        help="Weight decay for training.",
     )
     parser.add_argument(
         "--max_steps",
@@ -275,13 +288,22 @@ def parse_args():
         help="Maximum number of steps for training. If None, will train for num_train_epochs.",
     )
     parser.add_argument(
-        "--train_dataset", type=str, default=None, help="Path to the training dataset."
+        "--train_dataset",
+        type=str,
+        default=None,
+        help="Path to the training dataset.",
     )
     parser.add_argument(
-        "--eval_dataset", type=str, default=None, help="Path to the evaluation dataset."
+        "--eval_dataset",
+        type=str,
+        default=None,
+        help="Path to the evaluation dataset.",
     )
     parser.add_argument(
-        "--model_path", type=str, default=None, help="Path to the model checkpoint."
+        "--model_path",
+        type=str,
+        default=None,
+        help="Path to the model checkpoint.",
     )
     parser.add_argument(
         "--resume_from_checkpoint",
@@ -305,13 +327,6 @@ def main():
 
     # Validate environment variables
     validate_environment()
-
-    # Initialize wandb first
-    wandb.init(
-        project="receipt-ocr",
-        name=args.run_name if args.run_name else None,
-        resume="allow",
-    )
 
     # Create training config with default values
     training_config = TrainingConfig()
@@ -340,19 +355,20 @@ def main():
 
     # Create trainer with explicit DynamoDB table name
     trainer = ReceiptTrainer(
-        wandb_project="receipt-ocr",
         model_name=args.model_name,
         training_config=training_config,
         data_config=data_config,
         dynamo_table=args.dynamo_table,  # Use the table name from arguments
     )
 
-    # Create metrics callback
-    metrics_callback = MetricsCallback()
-
     try:
         # Initialize DynamoDB client explicitly
         trainer.initialize_dynamo()
+
+        # Create metrics callback with job_service and job_id from the trainer
+        metrics_callback = MetricsCallback(
+            job_service=trainer.job_service, job_id=trainer.job_id
+        )
 
         # Load and prepare data
         print("Loading and preparing data...")
@@ -375,16 +391,12 @@ def main():
         trainer.train(
             enable_checkpointing=True,
             enable_early_stopping=True,
-            log_to_wandb=True,
             resume_training=True if args.resume_from_checkpoint else False,
             callbacks=[metrics_callback],
         )
     except Exception as e:
         print(f"Training failed with error: {str(e)}")
         traceback.print_exc()
-    finally:
-        # Finish the W&B run
-        wandb.finish()
 
 
 if __name__ == "__main__":

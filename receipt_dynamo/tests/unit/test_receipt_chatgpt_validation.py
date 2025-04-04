@@ -312,17 +312,6 @@ def test_gsi1_key(example_chatgpt_validation):
 
 
 @pytest.mark.unit
-def test_gsi2_key(example_chatgpt_validation):
-    """Test the gsi2_key property"""
-    assert example_chatgpt_validation.gsi2_key == {
-        "GSI2PK": {"S": "RECEIPT"},
-        "GSI2SK": {
-            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#1#VALIDATION"
-        },
-    }
-
-
-@pytest.mark.unit
 def test_gsi3_key(example_chatgpt_validation):
     """Test the gsi3_key property"""
     assert example_chatgpt_validation.gsi3_key == {
@@ -343,10 +332,6 @@ def test_to_item(example_chatgpt_validation):
     }
     assert item["GSI1PK"] == {"S": "ANALYSIS_TYPE"}
     assert item["GSI1SK"] == {"S": "VALIDATION_CHATGPT#2023-05-15T10:30:00"}
-    assert item["GSI2PK"] == {"S": "RECEIPT"}
-    assert item["GSI2SK"] == {
-        "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#1#VALIDATION"
-    }
     assert item["GSI3PK"] == {"S": "VALIDATION_STATUS#valid"}
     assert item["GSI3SK"] == {"S": "CHATGPT#2023-05-15T10:30:00"}
 

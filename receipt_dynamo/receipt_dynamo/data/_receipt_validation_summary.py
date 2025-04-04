@@ -138,6 +138,70 @@ class _ReceiptValidationSummary:
                     f"Could not update ReceiptValidationSummary in the database: {e}"
                 ) from e
 
+    def updateReceiptValidationSummaries(
+        self, summaries: list[ReceiptValidationSummary]
+    ):
+        """Updates a list of ReceiptValidationSummaries in the database.
+
+        Args:
+            summaries (list[ReceiptValidationSummary]): The ReceiptValidationSummaries to update.
+
+        Raises:
+            ValueError: If any parameters are invalid.
+            Exception: If the summaries cannot be updated in DynamoDB.
+        """
+        if summaries is None:
+            raise ValueError(
+                "summaries parameter is required and cannot be None."
+            )
+        if not isinstance(summaries, list):
+            raise ValueError("summaries must be a list.")
+        if not all(
+            isinstance(summary, ReceiptValidationSummary)
+            for summary in summaries
+        ):
+            raise ValueError(
+                "All summaries must be instances of the ReceiptValidationSummary class."
+            )
+        for i in range(0, len(summaries), 25):
+            chunk = summaries[i : i + 25]
+            transact_items = [
+                {
+                    "Put": {
+                        "TableName": self.table_name,
+                        "Item": summary.to_item(),
+                        "ConditionExpression": "attribute_exists(PK)",
+                    }
+                }
+                for summary in chunk
+            ]
+            try:
+                self._client.transact_write_items(TransactItems=transact_items)
+            except ClientError as e:
+                error_code = e.response.get("Error", {}).get("Code", "")
+                if error_code == "TransactionCanceledException":
+                    # Check if cancellation was due to conditional check failure
+                    if "ConditionalCheckFailed" in str(e):
+                        raise ValueError(
+                            "One or more ReceiptValidationSummaries do not exist"
+                        ) from e
+                elif error_code == "ProvisionedThroughputExceededException":
+                    raise Exception(
+                        f"Provisioned throughput exceeded: {e}"
+                    ) from e
+                elif error_code == "InternalServerError":
+                    raise Exception(f"Internal server error: {e}") from e
+                elif error_code == "ValidationException":
+                    raise Exception(
+                        f"One or more parameters given were invalid: {e}"
+                    ) from e
+                elif error_code == "AccessDeniedException":
+                    raise Exception(f"Access denied: {e}") from e
+                else:
+                    raise Exception(
+                        f"Could not update ReceiptValidationSummaries in the database: {e}"
+                    ) from e
+
     def deleteReceiptValidationSummary(
         self, summary: ReceiptValidationSummary
     ):
@@ -435,167 +499,4 @@ class _ReceiptValidationSummary:
             else:
                 raise Exception(
                     f"Error listing receipt validation summaries by status: {e}"
-                ) from e
-
-    def listReceiptValidationSummariesByReceiptId(
-        self, receipt_id: int
-    ) -> list[ReceiptValidationSummary]:
-        """Lists all ReceiptValidationSummaries for a given receipt_id.
-
-        Args:
-            receipt_id (int): The receipt ID to find summaries for.
-
-        Raises:
-            ValueError: If any parameters are invalid.
-            Exception: If the summaries cannot be retrieved from DynamoDB.
-
-        Returns:
-            list[ReceiptValidationSummary]: A list of validation summaries for the specified receipt.
-        """
-        if receipt_id is None:
-            raise ValueError(
-                "receipt_id parameter is required and cannot be None."
-            )
-        if not isinstance(receipt_id, int):
-            raise ValueError("receipt_id must be an integer.")
-
-        validation_summaries = []
-        try:
-            # Use GSI2 to query all validation summaries for a receipt
-            query_params = {
-                "TableName": self.table_name,
-                "IndexName": "GSI2",
-                "KeyConditionExpression": "#pk = :pk_val AND begins_with(#sk, :sk_prefix)",
-                "ExpressionAttributeNames": {"#pk": "GSI2PK", "#sk": "GSI2SK"},
-                "ExpressionAttributeValues": {
-                    ":pk_val": {"S": "RECEIPT"},
-                    ":sk_prefix": {"S": f"IMAGE#"},
-                },
-            }
-
-            response = self._client.query(**query_params)
-            validation_summaries.extend(
-                [
-                    itemToReceiptValidationSummary(item)
-                    for item in response["Items"]
-                ]
-            )
-
-            # Paginate through all the validation summaries.
-            while "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-                response = self._client.query(**query_params)
-                validation_summaries.extend(
-                    [
-                        itemToReceiptValidationSummary(item)
-                        for item in response["Items"]
-                    ]
-                )
-
-            # Filter the results by receipt_id
-            validation_summaries = [
-                summary
-                for summary in validation_summaries
-                if summary.receipt_id == receipt_id
-            ]
-
-            return validation_summaries
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise Exception(
-                    f"Could not list ReceiptValidationSummaries from the database: {e}"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
-            elif error_code == "ValidationException":
-                raise ValueError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
-            elif error_code == "AccessDeniedException":
-                raise Exception(f"Access denied: {e}") from e
-            else:
-                raise Exception(
-                    f"Could not list ReceiptValidationSummaries from the database: {e}"
-                ) from e
-
-    def listReceiptValidationSummariesByImageId(
-        self, image_id: str
-    ) -> list[ReceiptValidationSummary]:
-        """Lists all ReceiptValidationSummaries for a given image_id.
-
-        Args:
-            image_id (str): The image ID to find summaries for.
-
-        Raises:
-            ValueError: If any parameters are invalid.
-            Exception: If the summaries cannot be retrieved from DynamoDB.
-
-        Returns:
-            list[ReceiptValidationSummary]: A list of validation summaries for the specified image.
-        """
-        if image_id is None:
-            raise ValueError(
-                "image_id parameter is required and cannot be None."
-            )
-        assert_valid_uuid(image_id)
-
-        validation_summaries = []
-        try:
-            # Query the base table directly using the PK (which is the image_id)
-            query_params = {
-                "TableName": self.table_name,
-                "KeyConditionExpression": "#pk = :pkVal AND begins_with(#sk, :skPrefix)",
-                "ExpressionAttributeNames": {"#pk": "PK", "#sk": "SK"},
-                "ExpressionAttributeValues": {
-                    ":pkVal": {"S": f"IMAGE#{image_id}"},
-                    ":skPrefix": {"S": f"RECEIPT#"},
-                },
-            }
-
-            response = self._client.query(**query_params)
-            validation_summaries.extend(
-                [
-                    itemToReceiptValidationSummary(item)
-                    for item in response["Items"]
-                ]
-            )
-
-            # Paginate through all the validation summaries.
-            while "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-                response = self._client.query(**query_params)
-                validation_summaries.extend(
-                    [
-                        itemToReceiptValidationSummary(item)
-                        for item in response["Items"]
-                    ]
-                )
-
-            return validation_summaries
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise Exception(
-                    f"Could not list ReceiptValidationSummaries from the database: {e}"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
-            elif error_code == "ValidationException":
-                raise ValueError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
-            elif error_code == "AccessDeniedException":
-                raise Exception(f"Access denied: {e}") from e
-            else:
-                raise Exception(
-                    f"Could not list ReceiptValidationSummaries from the database: {e}"
                 ) from e

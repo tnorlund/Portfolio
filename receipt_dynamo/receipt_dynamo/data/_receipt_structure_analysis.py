@@ -274,8 +274,38 @@ class _ReceiptStructureAnalysis:
             elif error_code == "InternalServerError":
                 raise Exception("Internal server error") from e
             elif error_code == "ValidationException":
+                # Extract and log more detailed error information
+                error_message = e.response.get("Error", {}).get(
+                    "Message", "Unknown validation error"
+                )
+
+                # If there's duplicate items, try to identify them
+                if "contains duplicates" in error_message:
+                    # Create a dictionary to find duplicates
+                    keys_seen = {}
+                    duplicate_keys = []
+
+                    for i, a in enumerate(analyses):
+                        key_str = f"PK: IMAGE#{a.image_id}, SK: RECEIPT#{a.receipt_id:05d}#ANALYSIS#STRUCTURE#{a.version}"
+                        if key_str in keys_seen:
+                            duplicate_keys.append(
+                                f"Duplicate at indexes {keys_seen[key_str]} and {i}: {key_str}"
+                            )
+                        else:
+                            keys_seen[key_str] = i
+
+                    if duplicate_keys:
+                        detailed_error = f"Validation error with duplicate keys: {error_message}\nDuplicate keys: {duplicate_keys}"
+                    else:
+                        detailed_error = f"Validation error possibly with duplicate keys: {error_message}"
+                else:
+                    detailed_error = f"Validation error: {error_message}"
+
+                print(
+                    f"Error in updateReceiptStructureAnalyses: {detailed_error}"
+                )
                 raise Exception(
-                    "One or more parameters given were invalid"
+                    f"One or more parameters given were invalid: {detailed_error}"
                 ) from e
             elif error_code == "AccessDeniedException":
                 raise Exception("Access denied") from e
@@ -552,10 +582,12 @@ class _ReceiptStructureAnalysis:
         try:
             query_params = {
                 "TableName": self.table_name,
-                "IndexName": "GSI1",
-                "KeyConditionExpression": "#g1pk = :val",
-                "ExpressionAttributeNames": {"#g1pk": "GSI1PK"},
-                "ExpressionAttributeValues": {":val": {"S": "ANALYSIS_TYPE"}},
+                "IndexName": "GSITYPE",
+                "KeyConditionExpression": "#t = :val",
+                "ExpressionAttributeNames": {"#t": "TYPE"},
+                "ExpressionAttributeValues": {
+                    ":val": {"S": "RECEIPT_STRUCTURE_ANALYSIS"}
+                },
             }
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
@@ -641,16 +673,15 @@ class _ReceiptStructureAnalysis:
         try:
             query_params = {
                 "TableName": self.table_name,
-                "IndexName": "GSI2",
-                "KeyConditionExpression": "#g2pk = :g2pk AND begins_with(#g2sk, :g2sk_prefix)",
+                "KeyConditionExpression": "#pk = :pk AND begins_with(#sk, :sk_prefix)",
                 "ExpressionAttributeNames": {
-                    "#g2pk": "GSI2PK",
-                    "#g2sk": "GSI2SK",
+                    "#pk": "PK",
+                    "#sk": "SK",
                 },
                 "ExpressionAttributeValues": {
-                    ":g2pk": {"S": "RECEIPT"},
-                    ":g2sk_prefix": {
-                        "S": f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"
+                    ":pk": {"S": f"IMAGE#{image_id}"},
+                    ":sk_prefix": {
+                        "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#STRUCTURE#"
                     },
                 },
             }

@@ -90,16 +90,6 @@ class ReceiptValidationCategory:
         }
 
     @property
-    def gsi2_key(self) -> Dict[str, Dict[str, str]]:
-        """Return the GSI2 key for this item."""
-        return {
-            "GSI2PK": {"S": "RECEIPT"},
-            "GSI2SK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#VALIDATION"
-            },
-        }
-
-    @property
     def gsi3_key(self) -> Dict[str, Dict[str, str]]:
         """Return the GSI3 key for this item."""
         return {
@@ -135,7 +125,6 @@ class ReceiptValidationCategory:
         item = {
             **self.key,
             **self.gsi1_key,
-            **self.gsi2_key,
             **self.gsi3_key,
             "TYPE": {"S": "RECEIPT_VALIDATION_CATEGORY"},
         }
@@ -296,17 +285,119 @@ def itemToReceiptValidationCategory(
     Returns:
         ReceiptValidationCategory: The converted object.
     """
-    receipt_id = item["SK"]["S"].split("#")[1]
-    image_id = item["PK"]["S"].split("#")[1]
-    field_name = item["SK"]["S"].split("#")[5]
-    field_category = item["field_category"]["S"]
-    status = item["status"]["S"]
-    reasoning = item["reasoning"]["S"]
-    result_summary = dynamo_to_python(item["result_summary"])
-    validation_timestamp = item["validation_timestamp"]["S"]
-    metadata = dynamo_to_python(item["metadata"])
+    # Safely extract SK parts
+    sk_parts = item["SK"]["S"].split("#")
+
+    # Get receipt_id from SK safely
+    receipt_id = None
+    for i, part in enumerate(sk_parts):
+        if part == "RECEIPT" and i + 1 < len(sk_parts):
+            receipt_id = sk_parts[i + 1]
+            break
+
+    # If receipt_id not found in SK, look for it as a separate attribute
+    if receipt_id is None:
+        if "receipt_id" in item:
+            receipt_id = (
+                int(item["receipt_id"]["N"])
+                if "N" in item["receipt_id"]
+                else item["receipt_id"]
+            )
+        else:
+            raise ValueError("Could not extract receipt_id from item")
+    else:
+        # Convert to integer (removing any leading zeros like in "00001")
+        try:
+            receipt_id = int(receipt_id.lstrip("0"))
+        except ValueError:
+            receipt_id = int(receipt_id)
+
+    # Get image_id safely
+    image_id = (
+        item["PK"]["S"].split("#")[1]
+        if len(item["PK"]["S"].split("#")) > 1
+        else None
+    )
+    if image_id is None and "image_id" in item:
+        image_id = (
+            item["image_id"]["S"]
+            if "S" in item["image_id"]
+            else item["image_id"]
+        )
+
+    # Get field_name safely
+    field_name = None
+    # Try to find field_name after "CATEGORY#" in SK if it exists
+    for i, part in enumerate(sk_parts):
+        if part == "CATEGORY" and i + 1 < len(sk_parts):
+            field_name = sk_parts[i + 1]
+            break
+
+    # If not found in SK, try direct attribute
+    if field_name is None:
+        if "field_name" in item:
+            field_name = (
+                item["field_name"]["S"]
+                if "S" in item["field_name"]
+                else item["field_name"]
+            )
+        else:
+            # Use a default or extract from another part of the item
+            field_name = "unknown"
+
+    # Get field_category safely - first try from the direct attribute
+    if "field_category" in item:
+        field_category = item["field_category"]["S"]
+    else:
+        # Try to extract from SK if it follows a pattern like CATEGORY#<field_name>#<category>
+        field_category = None
+        for i, part in enumerate(sk_parts):
+            if part == "CATEGORY" and i + 2 < len(sk_parts):
+                # Try to get the category after the field_name
+                field_category = sk_parts[i + 2]
+                break
+
+        # If still not found, use a default value
+        if field_category is None:
+            field_category = "general"
+
+    # Get status safely
+    if "status" in item:
+        status = item["status"]["S"]
+    else:
+        # Use a default status
+        status = "unknown"
+
+    # Get reasoning safely
+    if "reasoning" in item:
+        reasoning = item["reasoning"]["S"]
+    else:
+        # Use a default reasoning
+        reasoning = "No reasoning provided"
+
+    # Get result_summary safely
+    if "result_summary" in item:
+        result_summary = dynamo_to_python(item["result_summary"])
+    else:
+        # Use an empty dictionary as default
+        result_summary = {}
+
+    # Get validation_timestamp safely
+    if "validation_timestamp" in item:
+        validation_timestamp = item["validation_timestamp"]["S"]
+    else:
+        # Use current timestamp as default
+        validation_timestamp = datetime.now().isoformat()
+
+    # Get metadata safely
+    if "metadata" in item:
+        metadata = dynamo_to_python(item["metadata"])
+    else:
+        # Use an empty dictionary as default
+        metadata = {}
+
     return ReceiptValidationCategory(
-        receipt_id=int(receipt_id),
+        receipt_id=receipt_id,
         image_id=image_id,
         field_name=field_name,
         field_category=field_category,

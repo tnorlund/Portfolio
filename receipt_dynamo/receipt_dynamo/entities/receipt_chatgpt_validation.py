@@ -83,16 +83,6 @@ class ReceiptChatGPTValidation:
         }
 
     @property
-    def gsi2_key(self) -> Dict[str, Dict[str, str]]:
-        """Return the GSI2 key for this item."""
-        return {
-            "GSI2PK": {"S": "RECEIPT"},
-            "GSI2SK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id}#VALIDATION"
-            },
-        }
-
-    @property
     def gsi3_key(self) -> Dict[str, Dict[str, str]]:
         """Return the GSI3 key for this item."""
         return {
@@ -128,7 +118,6 @@ class ReceiptChatGPTValidation:
         item = {
             **self.key,
             **self.gsi1_key,
-            **self.gsi2_key,
             **self.gsi3_key,
         }
 

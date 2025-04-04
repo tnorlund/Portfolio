@@ -50,6 +50,34 @@
       ],
       "console": "integratedTerminal",
       "justMyCode": false
+    },
+    {
+      "name": "Python: Receipt Trainer Tests",
+      "type": "python",
+      "request": "launch",
+      "module": "pytest",
+      "args": [
+        "receipt_trainer/tests",
+        "--cov=receipt_trainer/receipt_trainer",
+        "--cov-config=receipt_trainer/tests/.coveragerc",
+        "--cov-report=xml:receipt_trainer/tests/coverage.xml"
+      ],
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Python: Receipt Label Tests",
+      "type": "python",
+      "request": "launch",
+      "module": "pytest",
+      "args": [
+        "receipt_label/tests",
+        "--cov=receipt_label/receipt_label",
+        "--cov-config=receipt_label/tests/.coveragerc",
+        "--cov-report=xml:receipt_label/tests/coverage.xml"
+      ],
+      "console": "integratedTerminal",
+      "justMyCode": false
     }
   ]
 }

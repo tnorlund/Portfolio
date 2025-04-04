@@ -8,6 +8,10 @@ from receipt_dynamo.entities.receipt_letter import (
     ReceiptLetter,
     itemToReceiptLetter,
 )
+from receipt_dynamo.entities.receipt_word_label import (
+    ReceiptWordLabel,
+    itemToReceiptWordLabel,
+)
 from receipt_dynamo.entities.receipt_line import ReceiptLine, itemToReceiptLine
 from receipt_dynamo.entities.receipt_word import ReceiptWord, itemToReceiptWord
 from receipt_dynamo.entities.receipt_word_tag import (
@@ -611,28 +615,38 @@ class _Receipt:
     ) -> Tuple[
         Dict[
             str,
-            Dict[str, Union[Receipt, List[ReceiptWord], List[ReceiptWordTag]]],
+            Dict[
+                str, Union[Receipt, List[ReceiptWord], List[ReceiptWordLabel]]
+            ],
         ],
         Optional[Dict],
     ]:
-        """List receipts with their words and word tags
+        """List receipts with their words and word labels using GSI2.
+
+        This method queries the database for all receipt items using GSI2 (where GSI2PK = 'RECEIPT')
+        and returns a dictionary containing the receipt details, including associated words and word labels.
 
         Args:
-            limit (Optional[int], optional): The number of receipt details to return. Defaults to None.
-            last_evaluated_key (Optional[dict], optional): The key to start the query from. Defaults to None.
+            limit (Optional[int], optional): The maximum number of receipt details to return. Defaults to None.
+            last_evaluated_key (Optional[dict], optional): The key to start the query from for pagination. Defaults to None.
 
         Returns:
             Tuple[Dict[str, Dict], Optional[Dict]]: A tuple containing:
-                - Dictionary mapping "<image_id>_<receipt_id>" to receipt details
+                - Dictionary mapping "<image_id>_<receipt_id>" to a dictionary with:
+                    - "receipt": The Receipt object
+                    - "words": List of ReceiptWord objects
+                    - "word_labels": List of ReceiptWordLabel objects
                 - Last evaluated key for pagination (None if no more pages)
+
+        Raises:
+            ValueError: If there is an error querying the database
         """
         try:
             query_params = {
                 "TableName": self.table_name,
                 "IndexName": "GSI2",
-                "KeyConditionExpression": "#pk = :pk_value",
-                "ExpressionAttributeNames": {"#pk": "GSI2PK"},
-                "ExpressionAttributeValues": {":pk_value": {"S": "RECEIPT"}},
+                "KeyConditionExpression": "GSI2PK = :pk",
+                "ExpressionAttributeValues": {":pk": {"S": "RECEIPT"}},
                 "ScanIndexForward": True,
             }
 
@@ -669,7 +683,7 @@ class _Receipt:
                         payload[current_key] = {
                             "receipt": receipt,
                             "words": [],
-                            "word_tags": [],
+                            "word_labels": [],
                         }
                         current_receipt = receipt
                         receipt_count += 1
@@ -682,13 +696,13 @@ class _Receipt:
                         ):
                             payload[current_key]["words"].append(word)
 
-                    elif item_type == "RECEIPT_WORD_TAG" and current_receipt:
-                        tag = itemToReceiptWordTag(item)
+                    elif item_type == "RECEIPT_WORD_LABEL" and current_receipt:
+                        label = itemToReceiptWordLabel(item)
                         if (
-                            tag.image_id == current_receipt.image_id
-                            and tag.receipt_id == current_receipt.receipt_id
+                            label.image_id == current_receipt.image_id
+                            and label.receipt_id == current_receipt.receipt_id
                         ):
-                            payload[current_key]["word_tags"].append(tag)
+                            payload[current_key]["word_labels"].append(label)
 
                 # If no more pages
                 if "LastEvaluatedKey" not in response:

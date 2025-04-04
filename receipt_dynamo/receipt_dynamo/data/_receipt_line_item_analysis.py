@@ -154,7 +154,8 @@ class _ReceiptLineItemAnalysis:
             )
         if not isinstance(analysis, ReceiptLineItemAnalysis):
             raise ValueError(
-                "analysis must be an instance of the ReceiptLineItemAnalysis class."
+                "analysis must be an instance of the ReceiptLineItemAnalysis class.",
+                f"\nGot type: {type(analysis)}",
             )
         try:
             self._client.put_item(

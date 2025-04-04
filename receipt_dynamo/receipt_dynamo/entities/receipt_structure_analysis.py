@@ -660,8 +660,10 @@ class ReceiptStructureAnalysis:
             Dict[str, str]: The primary key
         """
         return {
-            "PK": f"IMAGE#{self.image_id}",
-            "SK": f"RECEIPT#{self.receipt_id:05d}#ANALYSIS#STRUCTURE#{self.version}",
+            "PK": {"S": f"IMAGE#{self.image_id}"},
+            "SK": {
+                "S": f"RECEIPT#{self.receipt_id:05d}#ANALYSIS#STRUCTURE#{self.version}"
+            },
         }
 
     def gsi1_key(self) -> Dict[str, str]:
@@ -673,20 +675,8 @@ class ReceiptStructureAnalysis:
         """
         timestamp_str = self.timestamp_added.isoformat()
         return {
-            "GSI1PK": "ANALYSIS_TYPE",
-            "GSI1SK": f"STRUCTURE#{timestamp_str}",
-        }
-
-    def gsi2_key(self) -> Dict[str, str]:
-        """
-        Get the GSI2 key for the DynamoDB table.
-
-        Returns:
-            Dict[str, str]: The GSI2 key
-        """
-        return {
-            "GSI2PK": "RECEIPT",
-            "GSI2SK": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#{self.version}",
+            "GSI1PK": {"S": "ANALYSIS_TYPE"},
+            "GSI1SK": {"S": f"STRUCTURE#{timestamp_str}"},
         }
 
     def to_item(self) -> Dict[str, Any]:
@@ -804,16 +794,8 @@ class ReceiptStructureAnalysis:
 
         # Create the item with properly formatted values
         item = {
-            "PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {
-                "S": f"RECEIPT#{self.receipt_id:05d}#ANALYSIS#STRUCTURE#{self.version}"
-            },
-            "GSI1PK": {"S": "ANALYSIS_TYPE"},
-            "GSI1SK": {"S": f"STRUCTURE#{self.timestamp_added.isoformat()}"},
-            "GSI2PK": {"S": "RECEIPT"},
-            "GSI2SK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#{self.version}"
-            },
+            **self.key(),
+            **self.gsi1_key(),
             "TYPE": {"S": "RECEIPT_STRUCTURE_ANALYSIS"},
             "receipt_id": {"N": str(self.receipt_id)},
             "image_id": {"S": self.image_id},
@@ -1003,31 +985,15 @@ def itemToReceiptStructureAnalysis(
             "Cannot create ReceiptStructureAnalysis from empty item"
         )
 
-    # Extract the receipt_id (as integer)
-    receipt_id_attr = item.get("receipt_id")
-    if receipt_id_attr is None:
-        raise ValueError("receipt_id is required but was not found in item")
     receipt_id = (
-        int(receipt_id_attr.get("N", 0))
-        if isinstance(receipt_id_attr, dict)
-        else receipt_id_attr
+        item["SK"].get("S", "").split("#")[1] if "SK" in item else None
     )
+    if receipt_id is None:
+        raise ValueError("receipt_id is required but was not found in item")
 
-    # Extract the image_id (as string)
-    image_id_attr = item.get("image_id")
-    if image_id_attr is None:
-        # Try to extract from PK if not directly available
-        pk = item.get("PK", {}).get("S", "")
-        if pk.startswith("IMAGE#"):
-            image_id = pk[6:]  # Remove "IMAGE#" prefix
-        else:
-            raise ValueError("image_id is required but was not found in item")
-    else:
-        image_id = (
-            image_id_attr.get("S", "")
-            if isinstance(image_id_attr, dict)
-            else image_id_attr
-        )
+    image_id = item["PK"].get("S", "").split("#")[1] if "PK" in item else None
+    if image_id is None:
+        raise ValueError("image_id is required but was not found in item")
 
     # Extract sections (as list of dicts converted to ReceiptSection objects)
     sections = []

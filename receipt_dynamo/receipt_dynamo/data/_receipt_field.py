@@ -578,7 +578,7 @@ class _ReceiptField:
         lastEvaluatedKey: dict | None = None,
     ) -> tuple[list[ReceiptField], dict | None]:
         """
-        Retrieve receipt fields by receipt ID using GSI2.
+        Retrieve receipt fields by receipt ID using GSI1.
 
         Args:
             image_id (str): The image ID to search for
@@ -613,13 +613,11 @@ class _ReceiptField:
         try:
             query_params = {
                 "TableName": self.table_name,
-                "IndexName": "GSI2",
-                "KeyConditionExpression": "GSI2PK = :pk AND begins_with(GSI2SK, :sk_prefix)",
+                "IndexName": "GSI1",
+                "KeyConditionExpression": "GSI1PK = :pk AND begins_with(GSI1SK, :sk_prefix)",
                 "ExpressionAttributeValues": {
-                    ":pk": {"S": "RECEIPT"},
-                    ":sk_prefix": {
-                        "S": f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"
-                    },
+                    ":pk": {"S": f"IMAGE#{image_id}"},
+                    ":sk_prefix": {"S": f"RECEIPT#{receipt_id:05d}"},
                 },
             }
             if lastEvaluatedKey is not None:

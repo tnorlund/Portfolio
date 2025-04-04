@@ -15,7 +15,14 @@ from sklearn.metrics import (
 )
 
 from typing import Optional, Dict, Any, List, Tuple, Union
-from datasets import Dataset, DatasetDict, load_dataset, Value, Features, Sequence
+from datasets import (
+    Dataset,
+    DatasetDict,
+    load_dataset,
+    Value,
+    Features,
+    Sequence,
+)
 from transformers import (
     LayoutLMForTokenClassification,
     LayoutLMTokenizerFast,
@@ -66,7 +73,7 @@ class DynamoMetricsCallback(TrainerCallback):
 
     def __init__(self, job_service, job_id):
         """Initialize the callback.
-        
+
         Args:
             job_service: JobService instance for logging metrics
             job_id: ID of the training job
@@ -88,14 +95,12 @@ class DynamoMetricsCallback(TrainerCallback):
         if "trainer" in kwargs:
             self.trainer = kwargs["trainer"]
         print("Training started - DynamoMetricsCallback initialized")
-        
+
         # Log training start
         self.job_service.add_job_status(
-            self.job_id, 
-            "TRAINING", 
-            "Training started"
+            self.job_id, "running", "Training started"
         )
-        
+
         if not self.trainer:
             print("Warning: Trainer not available in on_train_begin")
 
@@ -186,26 +191,26 @@ class DynamoMetricsCallback(TrainerCallback):
                     metric_name=key,
                     metric_value=value,
                     step=self.step,
-                    metadata={"type": "evaluation"}
+                    metadata={"type": "evaluation"},
                 )
 
             # Create confusion matrix
             cm = confusion_matrix(true_flat, pred_flat, labels=labels)
-            
+
             # Log confusion matrix as a metric
             # Convert the confusion matrix to a serializable format
             cm_data = {
                 "matrix": cm.tolist(),
                 "labels": label_names,
             }
-            
+
             # Store confusion matrix as a complex metric
             self.job_service.add_job_metric(
                 job_id=self.job_id,
                 metric_name="eval/confusion_matrix",
                 metric_value=cm_data,
                 step=self.step,
-                metadata={"type": "confusion_matrix"}
+                metadata={"type": "confusion_matrix"},
             )
 
             # Print per-label performance
@@ -221,12 +226,12 @@ class DynamoMetricsCallback(TrainerCallback):
             print("Full error details:")
             traceback.print_exc()
             # Don't raise the exception to avoid interrupting training
-            
+
             # Log the error to DynamoDB
             self.job_service.add_job_log(
-                job_id=self.job_id,
-                log_level="ERROR",
-                message=f"Error during evaluation: {str(e)}\n{traceback.format_exc()}"
+                self.job_id,
+                "ERROR",
+                f"Error during evaluation: {str(e)}\n{traceback.format_exc()}",
             )
 
 
@@ -284,85 +289,100 @@ class ReceiptTrainer:
             )
         os.makedirs(self.data_config.cache_dir, exist_ok=True)
 
-        # Initialize DynamoDB table name and client.
-        try:
-            self.dynamo_table = dynamo_table or get_dynamo_table(
-                env=self.data_config.env
-            )
-            self.logger.info(f"Using DynamoDB table: {self.dynamo_table}")
-            # Initialize DynamoDB client immediately to fail fast if there are issues.
-            self.dynamo_client = DynamoClient(self.dynamo_table)
-            
-            # Initialize JobService for metrics tracking
-            self.job_service = JobService(self.dynamo_table)
-            
-            self.logger.info("Successfully initialized DynamoDB client and JobService")
-        except Exception as e:
-            self.logger.error(f"Failed to initialize DynamoDB: {e}")
-            raise ValueError(
-                f"Failed to initialize DynamoDB. Please ensure your Pulumi stack '{self.data_config.env}' "
-                f"is properly configured and accessible. Error: {str(e)}"
-            )
+        # Store DynamoDB table name for later initialization
+        self.dynamo_table = dynamo_table
 
-        # Create a new training job record
-        try:
-            self.create_training_job()
-        except Exception as e:
-            self.logger.error(f"Failed to create training job record: {e}")
-            
+        # Note: We don't initialize DynamoDB client or JobService here
+        # This is done in initialize_dynamo() to allow for proper error handling
+        # and to avoid making AWS calls during initialization
+
         self.logger.info("ReceiptTrainer initialized")
-    
+
     def create_training_job(self):
-        """Create a new training job record in DynamoDB."""
+        """Create a new training job record in DynamoDB.
+
+        This method will create a new job record in DynamoDB using the JobService.
+        If JobService is not initialized, it will attempt to initialize it.
+
+        Returns:
+            bool: True if job was created successfully, False otherwise
+        """
+        # Check if job_service is initialized
         if not self.job_service:
-            self.logger.warning("JobService not initialized, skipping job creation")
-            return
-            
+            self.logger.warning(
+                "JobService not initialized, attempting to initialize"
+            )
+            try:
+                # Initialize DynamoDB and JobService
+                if not self.dynamo_table:
+                    self.dynamo_table = get_dynamo_table(
+                        env=self.data_config.env
+                    )
+
+                from receipt_dynamo.services.job_service import JobService
+
+                self.job_service = JobService(self.dynamo_table)
+            except Exception as e:
+                self.logger.error(f"Failed to initialize JobService: {e}")
+                return False
+
+        # Create job config dictionary
         job_config = {
             "model_name": self.model_name,
-            "training_config": {k: str(v) for k, v in vars(self.training_config).items()},
-            "data_config": {k: str(v) for k, v in vars(self.data_config).items()},
+            "training_config": {
+                k: str(v) for k, v in vars(self.training_config).items()
+            },
+            "data_config": {
+                k: str(v) for k, v in vars(self.data_config).items()
+            },
             "device": str(self.device),
-            "version": __version__
+            "version": __version__,
         }
-        
-        self.job_service.create_job(
-            job_id=self.job_id,
-            name=f"LayoutLM Training Job - {self.model_name}",
-            description=f"Training LayoutLM model for receipt OCR",
-            created_by="receipt_trainer",
-            status="INITIALIZED",
-            priority="HIGH",
-            job_config=job_config,
-        )
-        
-        self.logger.info(f"Created training job with ID: {self.job_id}")
-        
-        # Log initialization status
-        self.job_service.add_job_status(
-            self.job_id,
-            "INITIALIZED",
-            "Training job initialized"
-        )
-        
-        # Log initial message
-        self.job_service.add_job_log(
-            self.job_id,
-            "INFO",
-            f"Initialized training for model {self.model_name} on device {self.device}"
-        )
+
+        try:
+            # Create the job in DynamoDB
+            self.job_service.create_job(
+                job_id=self.job_id,
+                name=f"LayoutLM Training Job - {self.model_name}",
+                description=f"Training LayoutLM model for receipt OCR",
+                created_by="receipt_trainer",
+                status="pending",
+                priority="HIGH",
+                job_config=job_config,
+            )
+
+            self.logger.info(f"Created training job with ID: {self.job_id}")
+
+            # Log initialization status
+            self.job_service.add_job_status(
+                self.job_id, "pending", "Training job initialized"
+            )
+
+            # Log initial message
+            self.job_service.add_job_log(
+                self.job_id,
+                "INFO",
+                f"Initialized training for model {self.model_name} on device {self.device}",
+            )
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to create training job: {e}")
+            return False
 
     def _validate_env_vars(self):
         """Validate that all required environment variables are set."""
         missing_vars = [
-            var for var, desc in REQUIRED_ENV_VARS.items() if not os.environ.get(var)
+            var
+            for var, desc in REQUIRED_ENV_VARS.items()
+            if not os.environ.get(var)
         ]
         if missing_vars:
             raise EnvironmentError(
                 f"Missing required environment variables: {missing_vars}\n"
                 f"Required variables and their purposes:\n"
                 + "\n".join(
-                    f"- {var}: {desc}" for var, desc in REQUIRED_ENV_VARS.items()
+                    f"- {var}: {desc}"
+                    for var, desc in REQUIRED_ENV_VARS.items()
                 )
             )
 
@@ -384,30 +404,36 @@ class ReceiptTrainer:
             # Save checkpoint if we're in the middle of training
             if self.model and self.training_args:
                 self.logger.info("Saving emergency checkpoint...")
-                checkpoint_dir = os.path.join(self.output_dir, "interrupt_checkpoint")
+                checkpoint_dir = os.path.join(
+                    self.output_dir, "interrupt_checkpoint"
+                )
                 self.save_checkpoint(checkpoint_dir)
 
                 # Upload checkpoint to S3 if possible
                 try:
                     self._upload_checkpoint_to_s3(checkpoint_dir)
                 except Exception as e:
-                    self.logger.error(f"Failed to upload checkpoint to S3: {e}")
+                    self.logger.error(
+                        f"Failed to upload checkpoint to S3: {e}"
+                    )
 
             # Log the interruption to DynamoDB
             if self.job_service:
                 try:
                     self.job_service.add_job_status(
                         self.job_id,
-                        "INTERRUPTED",
-                        "Spot instance interruption detected"
+                        "interrupted",
+                        "Spot instance interruption detected",
                     )
                     self.job_service.add_job_log(
                         self.job_id,
                         "WARNING",
-                        "Training interrupted due to spot instance termination"
+                        "Training interrupted due to spot instance termination",
                     )
                 except Exception as e:
-                    self.logger.error(f"Failed to log interruption to DynamoDB: {e}")
+                    self.logger.error(
+                        f"Failed to log interruption to DynamoDB: {e}"
+                    )
 
         signal.signal(signal.SIGTERM, handle_sigterm)
         self.logger.info("Spot interruption handler configured")
@@ -445,26 +471,34 @@ class ReceiptTrainer:
 
         self.last_checkpoint = checkpoint_dir
         self.logger.info(f"Checkpoint saved to {checkpoint_dir}")
-        
+
         # Log checkpoint to DynamoDB
         if self.job_service:
             try:
                 checkpoint_metadata = {
                     "path": checkpoint_dir,
-                    "global_step": self.global_step if hasattr(self, "global_step") else None,
-                    "epoch": self.current_epoch if hasattr(self, "current_epoch") else None,
+                    "global_step": (
+                        self.global_step
+                        if hasattr(self, "global_step")
+                        else None
+                    ),
+                    "epoch": (
+                        self.current_epoch
+                        if hasattr(self, "current_epoch")
+                        else None
+                    ),
                 }
-                
+
                 self.job_service.add_job_checkpoint(
                     self.job_id,
                     checkpoint_name=f"checkpoint_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-                    metadata=checkpoint_metadata
+                    metadata=checkpoint_metadata,
                 )
-                
+
                 self.job_service.add_job_log(
                     self.job_id,
                     "INFO",
-                    f"Checkpoint saved to {checkpoint_dir}"
+                    f"Checkpoint saved to {checkpoint_dir}",
                 )
             except Exception as e:
                 self.logger.error(f"Failed to log checkpoint to DynamoDB: {e}")
@@ -485,8 +519,10 @@ class ReceiptTrainer:
             raise ValueError("CHECKPOINT_BUCKET environment variable not set")
 
         # Create a checkpoint ID using job ID
-        checkpoint_id = f"{self.job_id}/{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-            
+        checkpoint_id = (
+            f"{self.job_id}/{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        )
+
         # Upload all files in checkpoint directory
         for root, _, files in os.walk(checkpoint_dir):
             for file in files:
@@ -502,12 +538,12 @@ class ReceiptTrainer:
                 except ClientError as e:
                     self.logger.error(f"Failed to upload {file} to S3: {e}")
                     raise
-        
+
         # Log S3 upload to DynamoDB
         if self.job_service:
             try:
                 s3_path = f"s3://{bucket_name}/checkpoints/{checkpoint_id}"
-                
+
                 # Record S3 location in job resources
                 self.job_service.add_job_resource(
                     self.job_id,
@@ -516,14 +552,12 @@ class ReceiptTrainer:
                     metadata={
                         "bucket": bucket_name,
                         "prefix": f"checkpoints/{checkpoint_id}",
-                        "upload_time": datetime.now().isoformat()
-                    }
+                        "upload_time": datetime.now().isoformat(),
+                    },
                 )
-                
+
                 self.job_service.add_job_log(
-                    self.job_id,
-                    "INFO",
-                    f"Checkpoint uploaded to {s3_path}"
+                    self.job_id, "INFO", f"Checkpoint uploaded to {s3_path}"
                 )
             except Exception as e:
                 self.logger.error(f"Failed to log S3 upload to DynamoDB: {e}")
@@ -547,63 +581,80 @@ class ReceiptTrainer:
 
         if not bucket_name:
             raise ValueError("CHECKPOINT_BUCKET environment variable not set")
-            
+
         # Use provided job_id or current job_id
         target_job_id = job_id or self.job_id
 
         # Create temporary directory for checkpoint
         checkpoint_dir = tempfile.mkdtemp()
-        
+
         try:
             # If we have JobService and a job_id, try to find checkpoint from resources
             if self.job_service and target_job_id:
                 try:
                     # Find checkpoint resources for this job
                     checkpoints = []
-                    
+
                     # Get job resources of checkpoint type
-                    resources = self.job_service.get_job_resources(target_job_id)
+                    resources = self.job_service.get_job_resources(
+                        target_job_id
+                    )
                     for resource in resources:
                         if resource.resource_type == "CHECKPOINT_S3":
                             checkpoints.append(resource)
-                    
+
                     # Sort by timestamp in metadata if available
                     checkpoints.sort(
                         key=lambda r: r.metadata.get("upload_time", ""),
-                        reverse=True  # Most recent first
+                        reverse=True,  # Most recent first
                     )
-                    
+
                     # Use the most recent checkpoint
                     if checkpoints:
                         most_recent = checkpoints[0]
-                        prefix = most_recent.metadata.get("prefix", f"checkpoints/{target_job_id}")
-                        
-                        self.logger.info(f"Found checkpoint in job resources: {prefix}")
-                        
+                        prefix = most_recent.metadata.get(
+                            "prefix", f"checkpoints/{target_job_id}"
+                        )
+
+                        self.logger.info(
+                            f"Found checkpoint in job resources: {prefix}"
+                        )
+
                         # List objects with this prefix
-                        response = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
-                        
+                        response = s3.list_objects_v2(
+                            Bucket=bucket_name, Prefix=prefix
+                        )
+
                         if "Contents" in response:
                             # Download all checkpoint files
                             for obj in response["Contents"]:
-                                local_path = os.path.join(checkpoint_dir, os.path.basename(obj["Key"]))
-                                s3.download_file(bucket_name, obj["Key"], local_path)
-                            
-                            self.logger.info(f"Downloaded checkpoint from {prefix} to {checkpoint_dir}")
-                            
+                                local_path = os.path.join(
+                                    checkpoint_dir,
+                                    os.path.basename(obj["Key"]),
+                                )
+                                s3.download_file(
+                                    bucket_name, obj["Key"], local_path
+                                )
+
+                            self.logger.info(
+                                f"Downloaded checkpoint from {prefix} to {checkpoint_dir}"
+                            )
+
                             # Log the download
                             self.job_service.add_job_log(
                                 self.job_id,
                                 "INFO",
-                                f"Downloaded checkpoint from {prefix}"
+                                f"Downloaded checkpoint from {prefix}",
                             )
-                            
+
                             return checkpoint_dir
-                            
+
                 except Exception as e:
-                    self.logger.warning(f"Failed to get checkpoint from job resources: {e}")
+                    self.logger.warning(
+                        f"Failed to get checkpoint from job resources: {e}"
+                    )
                     # Continue with legacy approach
-            
+
             # Legacy approach: list objects in checkpoint directory
             prefix = f"checkpoints/{target_job_id}/"
             response = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
@@ -613,7 +664,9 @@ class ReceiptTrainer:
 
             # Download all checkpoint files
             for obj in response["Contents"]:
-                local_path = os.path.join(checkpoint_dir, os.path.basename(obj["Key"]))
+                local_path = os.path.join(
+                    checkpoint_dir, os.path.basename(obj["Key"])
+                )
                 s3.download_file(bucket_name, obj["Key"], local_path)
 
             return checkpoint_dir
@@ -634,21 +687,22 @@ class ReceiptTrainer:
         if self.output_dir:
             local_checkpoint = os.path.join(self.output_dir, "checkpoint-*")
             checkpoints = sorted(
-                glob.glob(local_checkpoint), key=lambda x: int(x.split("-")[-1])
+                glob.glob(local_checkpoint),
+                key=lambda x: int(x.split("-")[-1]),
             )
             if checkpoints:
                 checkpoint_dir = checkpoints[-1]  # Use the latest checkpoint
                 self.logger.info(f"Found local checkpoint: {checkpoint_dir}")
                 self.last_checkpoint = checkpoint_dir
-                
+
                 # Log resuming from local checkpoint
                 if self.job_service:
                     self.job_service.add_job_log(
                         self.job_id,
                         "INFO",
-                        f"Resuming from local checkpoint: {checkpoint_dir}"
+                        f"Resuming from local checkpoint: {checkpoint_dir}",
                     )
-                    
+
                 return checkpoint_dir
 
         # If no local checkpoint, try S3
@@ -659,15 +713,15 @@ class ReceiptTrainer:
             self.logger.warning(
                 "No checkpoints found locally or in S3, starting fresh training"
             )
-            
+
             # Log starting fresh training
             if self.job_service:
                 self.job_service.add_job_log(
                     self.job_id,
                     "INFO",
-                    "No checkpoints found, starting fresh training"
+                    "No checkpoints found, starting fresh training",
                 )
-                
+
             return
 
         # Load model and tokenizer from checkpoint
@@ -678,10 +732,14 @@ class ReceiptTrainer:
                 label2id=self.label2id,
                 id2label=self.id2label,
             )
-            self.tokenizer = LayoutLMTokenizerFast.from_pretrained(checkpoint_dir)
+            self.tokenizer = LayoutLMTokenizerFast.from_pretrained(
+                checkpoint_dir
+            )
 
             # Load training state if available
-            training_state_path = os.path.join(checkpoint_dir, "training_state.pt")
+            training_state_path = os.path.join(
+                checkpoint_dir, "training_state.pt"
+            )
             if os.path.exists(training_state_path):
                 training_state = torch.load(training_state_path)
                 if hasattr(self, "optimizer"):
@@ -701,37 +759,35 @@ class ReceiptTrainer:
             self.logger.info(
                 f"Resumed training from checkpoint at step {self.global_step}"
             )
-            
+
             # Log resuming training
             if self.job_service:
                 self.job_service.add_job_status(
                     self.job_id,
-                    "RESUMED",
-                    f"Resumed training from checkpoint at step {self.global_step}"
+                    "resumed",
+                    f"Resumed training from checkpoint at step {self.global_step}",
                 )
 
         except Exception as e:
             self.logger.error(f"Failed to load checkpoint: {e}")
             self.logger.warning("Starting fresh training")
-            
+
             # Log failure to load checkpoint
             if self.job_service:
                 self.job_service.add_job_log(
-                    self.job_id,
-                    "ERROR",
-                    f"Failed to load checkpoint: {e}"
+                    self.job_id, "ERROR", f"Failed to load checkpoint: {e}"
                 )
-                
+
             return None
 
     def _initialize_wandb_early(self):
         """Initialize W&B at the start to ensure single process."""
-        # This is now a no-op since we no longer use W&B
+        # This is now a no-op since we're removing W&B
         pass
 
-    def initialize_wandb(self):
+    def initialize_wandb(self, config=None):
         """Initialize Weights & Biases for experiment tracking."""
-        # This is now a no-op since we no longer use W&B
+        # This is now a no-op since we're removing W&B
         pass
 
     def initialize_model(self):
@@ -747,7 +803,7 @@ class ReceiptTrainer:
         self.logger.info("Model and tokenizer initialized")
 
     def initialize_dynamo(self):
-        """Initialize DynamoDB client if not already initialized.
+        """Initialize DynamoDB client and JobService if not already initialized.
 
         This is a no-op if the client is already initialized. If not initialized,
         it will attempt to initialize using the table name from constructor or Pulumi.
@@ -755,8 +811,10 @@ class ReceiptTrainer:
         Raises:
             ValueError: If DynamoDB client cannot be initialized.
         """
-        if self.dynamo_client is not None:
-            self.logger.debug("DynamoDB client already initialized")
+        if self.dynamo_client is not None and self.job_service is not None:
+            self.logger.debug(
+                "DynamoDB client and JobService already initialized"
+            )
             return
 
         if not self.dynamo_table:
@@ -766,15 +824,38 @@ class ReceiptTrainer:
                     f"Retrieved DynamoDB table name from Pulumi: {self.dynamo_table}"
                 )
             except Exception as e:
-                raise ValueError(f"Failed to get DynamoDB table name from Pulumi: {e}")
+                raise ValueError(
+                    f"Failed to get DynamoDB table name from Pulumi: {e}"
+                )
 
         try:
+            # Initialize DynamoDB client
             self.dynamo_client = DynamoClient(self.dynamo_table)
+
+            # Initialize JobService for metrics tracking
+            if self.job_service is None:
+                from receipt_dynamo.services.job_service import JobService
+
+                self.job_service = JobService(self.dynamo_table)
+
+                # Create a new training job record if it doesn't exist
+                if not hasattr(self, "job_id") or not self.job_id:
+                    self.job_id = str(uuid.uuid4())
+
+                try:
+                    self.create_training_job()
+                except Exception as e:
+                    self.logger.error(
+                        f"Failed to create training job record: {e}"
+                    )
+
             self.logger.info(
-                f"Successfully initialized DynamoDB client for table: {self.dynamo_table}"
+                f"Successfully initialized DynamoDB client and JobService for table: {self.dynamo_table}"
             )
         except Exception as e:
-            raise ValueError(f"Failed to initialize DynamoDB client: {e}")
+            raise ValueError(
+                f"Failed to initialize DynamoDB client or JobService: {e}"
+            )
 
     def _load_dynamo_data(self) -> Dict[str, Any]:
         """Load receipt data from DynamoDB."""
@@ -948,13 +1029,17 @@ class ReceiptTrainer:
             token_labels = token_labels[:512]
 
         # Create attention mask (1 for real tokens, 0 for padding)
-        attention_mask = [1] * min(len(example["words"]) + 2, 512)  # +2 for CLS and SEP
+        attention_mask = [1] * min(
+            len(example["words"]) + 2, 512
+        )  # +2 for CLS and SEP
         attention_mask.extend([0] * max(512 - len(attention_mask), 0))
 
         # Normalize box coordinates
         normalized_boxes = []
         for box in token_boxes:
-            normalized_boxes.append([min(max(0, int(coord)), 1000) for coord in box])
+            normalized_boxes.append(
+                [min(max(0, int(coord)), 1000) for coord in box]
+            )
 
         return {
             "input_ids": tokens,
@@ -962,6 +1047,21 @@ class ReceiptTrainer:
             "bbox": normalized_boxes,
             "labels": token_labels,
         }
+
+    def preprocess_example(self, example):
+        """Process a single example for LayoutLM.
+
+        This is a dedicated class method to ensure proper function hashing for caching.
+
+        Args:
+            example: Dictionary containing words, bboxes, and labels
+
+        Returns:
+            Dictionary containing encoded inputs for the model
+        """
+        return self.encode_example_for_layoutlm(
+            example, tokenizer=self.tokenizer, label2id=self.label2id
+        )
 
     def _preprocess_dataset(self, dataset: Dataset) -> Dataset:
         """Preprocess dataset by encoding inputs for LayoutLM.
@@ -972,28 +1072,28 @@ class ReceiptTrainer:
         Returns:
             Processed dataset with encoded inputs
         """
-
-        # Create a preprocessing function that uses the class tokenizer and label mappings
-        def preprocess_function(example):
-            return self.encode_example_for_layoutlm(
-                example, tokenizer=self.tokenizer, label2id=self.label2id
-            )
-
         # Apply preprocessing to each split with caching enabled
         processed_dataset = {}
         for split, data in dataset.items():
             self.logger.info(f"Preprocessing {split} split...")
-            # Enable caching by providing a descriptive cache_file_name
-            cache_dir = os.path.join(self.data_config.cache_dir, "preprocessed")
+
+            # Create a unique cache file name that includes model info and split
+            cache_dir = os.path.join(
+                self.data_config.cache_dir, "preprocessed"
+            )
             os.makedirs(cache_dir, exist_ok=True)
 
+            # Create a stable cache identifier
+            model_id = self.model_name.replace("/", "_")
+            cache_file_name = os.path.join(
+                cache_dir, f"layoutlm_processed_{split}_{model_id}"
+            )
+
+            # Use the class method for preprocessing to ensure proper function hashing
             processed_dataset[split] = data.map(
-                preprocess_function,
+                self.preprocess_example,
                 load_from_cache_file=True,
-                cache_file_name=os.path.join(
-                    cache_dir,
-                    f"layoutlm_processed_{split}_{self.model_name.replace('/', '_')}",
-                ),
+                cache_file_name=cache_file_name,
                 desc=f"Preprocessing {split} split",
             )
             self.logger.info(f"Finished preprocessing {split} split")
@@ -1029,7 +1129,9 @@ class ReceiptTrainer:
         # Load data from DynamoDB
         self.logger.info("Loading data from DynamoDB...")
         dynamo_examples = self._load_dynamo_data()
-        self.logger.info(f"Loaded {len(dynamo_examples)} receipts from DynamoDB")
+        self.logger.info(
+            f"Loaded {len(dynamo_examples)} receipts from DynamoDB"
+        )
 
         # Convert DynamoDB data to list format
         examples = {"words": [], "bboxes": [], "labels": [], "image_id": []}
@@ -1052,8 +1154,12 @@ class ReceiptTrainer:
 
         # Balance dataset if requested and if we have examples
         if balance_ratio > 0 and len(examples["words"]) > 0:
-            self.logger.info(f"Balancing dataset with target ratio {balance_ratio}...")
-            examples = balance_dataset(examples, target_entity_ratio=balance_ratio)
+            self.logger.info(
+                f"Balancing dataset with target ratio {balance_ratio}..."
+            )
+            examples = balance_dataset(
+                examples, target_entity_ratio=balance_ratio
+            )
 
         # Apply data augmentation if requested and if we have examples
         if augment and len(examples["words"]) > 0:
@@ -1129,7 +1235,9 @@ class ReceiptTrainer:
         self._print_dataset_statistics(val_dataset, "Validation")
 
         # Create dataset dictionary
-        dataset_dict = DatasetDict({"train": train_dataset, "validation": val_dataset})
+        dataset_dict = DatasetDict(
+            {"train": train_dataset, "validation": val_dataset}
+        )
 
         # Create label mappings before preprocessing
         unique_labels = set()
@@ -1164,19 +1272,6 @@ class ReceiptTrainer:
             percentage = (count / total_words) * 100
             self.logger.info(f"{label}: {count} ({percentage:.2f}%)")
 
-        if self.wandb_run:
-            # Log statistics to W&B
-            self.wandb_run.log(
-                {
-                    f"{split_name}/total_documents": len(dataset),
-                    f"{split_name}/total_words": total_words,
-                    **{
-                        f"{split_name}/label_{label}": count
-                        for label, count in label_counts.items()
-                    },
-                }
-            )
-
     def configure_training(
         self,
         output_dir: Optional[str] = None,
@@ -1205,7 +1300,9 @@ class ReceiptTrainer:
                     label2id=self.label2id,
                     id2label=self.id2label,
                 )
-                self.logger.info(f"Successfully initialized model: {self.model_name}")
+                self.logger.info(
+                    f"Successfully initialized model: {self.model_name}"
+                )
             except Exception as e:
                 raise ValueError(f"Failed to initialize model: {str(e)}")
 
@@ -1227,7 +1324,9 @@ class ReceiptTrainer:
                 self.logger.debug(f"Setting {key} = {value}")
                 setattr(self.training_config, key, value)
             else:
-                self.logger.warning(f"Unknown training config parameter: {key}")
+                self.logger.warning(
+                    f"Unknown training config parameter: {key}"
+                )
 
         # Set up output directory with path validation
         try:
@@ -1304,7 +1403,9 @@ class ReceiptTrainer:
             self.logger.info(f"Model moved to device: {self.device}")
 
         except Exception as e:
-            raise ValueError(f"Failed to configure device and optimizations: {str(e)}")
+            raise ValueError(
+                f"Failed to configure device and optimizations: {str(e)}"
+            )
 
         # Create training arguments
         try:
@@ -1343,7 +1444,9 @@ class ReceiptTrainer:
             )
             self.logger.info("Training arguments configured successfully")
         except Exception as e:
-            raise ValueError(f"Failed to configure training arguments: {str(e)}")
+            raise ValueError(
+                f"Failed to configure training arguments: {str(e)}"
+            )
 
         # Log final configuration summary
         self.logger.info("\nTraining Configuration Summary:")
@@ -1367,7 +1470,8 @@ class ReceiptTrainer:
         """Create and configure the Trainer object."""
         # Create data collator
         data_collator = DataCollatorForTokenClassification(
-            self.tokenizer, pad_to_multiple_of=8 if self.training_config.bf16 else None
+            self.tokenizer,
+            pad_to_multiple_of=8 if self.training_config.bf16 else None,
         )
 
         # Setup callbacks
@@ -1401,8 +1505,12 @@ class ReceiptTrainer:
         os.makedirs(eval_output_dir, exist_ok=True)
 
         # Get metrics for both splits
-        train_metrics = self.evaluate("train", eval_output_dir, detailed_report=True)
-        val_metrics = self.evaluate("validation", eval_output_dir, detailed_report=True)
+        train_metrics = self.evaluate(
+            "train", eval_output_dir, detailed_report=True
+        )
+        val_metrics = self.evaluate(
+            "validation", eval_output_dir, detailed_report=True
+        )
 
         # Prepare metrics for logging
         metrics = {
@@ -1419,20 +1527,26 @@ class ReceiptTrainer:
                     self.job_service.add_job_metric(
                         job_id=self.job_id,
                         metric_name=metric_name,
-                        metric_value=float(metric_value) if isinstance(metric_value, (int, float)) else metric_value,
+                        metric_value=(
+                            float(metric_value)
+                            if isinstance(metric_value, (int, float))
+                            else metric_value
+                        ),
                         step=train_result.global_step,
-                        metadata={"type": "training_result"}
+                        metadata={"type": "training_result"},
                     )
                 except Exception as e:
-                    self.logger.warning(f"Failed to log metric {metric_name} to DynamoDB: {e}")
-            
+                    self.logger.warning(
+                        f"Failed to log metric {metric_name} to DynamoDB: {e}"
+                    )
+
             # Log training completion
             self.job_service.add_job_status(
                 self.job_id,
-                "COMPLETED",
-                f"Training completed after {train_result.global_step} steps"
+                "succeeded",
+                f"Training completed after {train_result.global_step} steps",
             )
-            
+
             # Log summary message
             summary_msg = (
                 f"Training completed with:\n"
@@ -1441,18 +1555,18 @@ class ReceiptTrainer:
                 f"- Total steps: {train_result.global_step}\n"
                 f"- Final loss: {train_result.training_loss:.4f}"
             )
-            self.job_service.add_job_log(
-                self.job_id,
-                "INFO",
-                summary_msg
-            )
+            self.job_service.add_job_log(self.job_id, "INFO", summary_msg)
 
         # Print summary
         self.logger.info("\nTraining Results Summary:")
         self.logger.info(f"Total steps: {train_result.global_step}")
-        self.logger.info(f"Average training loss: {train_result.training_loss:.4f}")
+        self.logger.info(
+            f"Average training loss: {train_result.training_loss:.4f}"
+        )
         self.logger.info(f"\nTrain Metrics:")
-        self.logger.info(f"Macro F1: {train_metrics['train/macro_avg/f1-score']:.4f}")
+        self.logger.info(
+            f"Macro F1: {train_metrics['train/macro_avg/f1-score']:.4f}"
+        )
         self.logger.info(
             f"Weighted F1: {train_metrics['train/weighted_avg/f1-score']:.4f}"
         )
@@ -1487,7 +1601,9 @@ class ReceiptTrainer:
         self.logger.info(f"Starting evaluation on {split} split...")
 
         if not self.model or not self.dataset:
-            raise ValueError("Model and dataset must be initialized before evaluation")
+            raise ValueError(
+                "Model and dataset must be initialized before evaluation"
+            )
 
         if split not in self.dataset:
             raise ValueError(f"Dataset split '{split}' not found")
@@ -1545,7 +1661,9 @@ class ReceiptTrainer:
         for avg_type in ["macro avg", "weighted avg"]:
             if avg_type in report:
                 for metric, value in report[avg_type].items():
-                    metrics[f"{split}/{avg_type.replace(' ', '_')}/{metric}"] = value
+                    metrics[
+                        f"{split}/{avg_type.replace(' ', '_')}/{metric}"
+                    ] = value
 
         if detailed_report:
             # Generate confusion matrix
@@ -1555,25 +1673,26 @@ class ReceiptTrainer:
             # Log confusion matrix to DynamoDB
             if self.job_service:
                 # Convert confusion matrix to serializable format
-                cm_data = {
-                    "matrix": cm.tolist(),
-                    "labels": labels
-                }
-                
+                cm_data = {"matrix": cm.tolist(), "labels": labels}
+
                 try:
                     # Log confusion matrix
                     self.job_service.add_job_metric(
                         job_id=self.job_id,
                         metric_name=f"{split}/confusion_matrix",
                         metric_value=cm_data,
-                        metadata={"type": "evaluation"}
+                        metadata={"type": "evaluation"},
                     )
                 except Exception as e:
-                    self.logger.warning(f"Failed to log confusion matrix to DynamoDB: {e}")
+                    self.logger.warning(
+                        f"Failed to log confusion matrix to DynamoDB: {e}"
+                    )
 
             # Add per-document analysis
             doc_metrics = self._compute_document_metrics(
-                self.dataset[split], predictions.predictions, predictions.label_ids
+                self.dataset[split],
+                predictions.predictions,
+                predictions.label_ids,
             )
             metrics.update(doc_metrics)
 
@@ -1586,18 +1705,20 @@ class ReceiptTrainer:
                             job_id=self.job_id,
                             metric_name=metric_name,
                             metric_value=float(metric_value),
-                            metadata={"type": "evaluation", "split": split}
+                            metadata={"type": "evaluation", "split": split},
                         )
                     except Exception as e:
-                        self.logger.warning(f"Failed to log metric {metric_name} to DynamoDB: {e}")
+                        self.logger.warning(
+                            f"Failed to log metric {metric_name} to DynamoDB: {e}"
+                        )
 
             # Add evaluation status
             self.job_service.add_job_status(
                 self.job_id,
-                "EVALUATING",
-                f"Evaluation on {split} split completed"
+                "evaluating",
+                f"Evaluation on {split} split completed",
             )
-            
+
             # Log summary message
             summary_msg = (
                 f"Evaluation results for {split} split:\n"
@@ -1605,16 +1726,14 @@ class ReceiptTrainer:
                 f"- Macro F1: {metrics.get(f'{split}/macro_avg/f1-score', 0):.4f}\n"
                 f"- Weighted F1: {metrics.get(f'{split}/weighted_avg/f1-score', 0):.4f}"
             )
-            self.job_service.add_job_log(
-                self.job_id,
-                "INFO",
-                summary_msg
-            )
+            self.job_service.add_job_log(self.job_id, "INFO", summary_msg)
 
         # Print summary
         self.logger.info("\nEvaluation Results:")
         self.logger.info(f"Split: {split}")
-        self.logger.info(f"Macro F1: {metrics[f'{split}/macro_avg/f1-score']:.4f}")
+        self.logger.info(
+            f"Macro F1: {metrics[f'{split}/macro_avg/f1-score']:.4f}"
+        )
         self.logger.info(
             f"Weighted F1: {metrics[f'{split}/weighted_avg/f1-score']:.4f}"
         )
@@ -1669,8 +1788,12 @@ class ReceiptTrainer:
                                 recall = recall_score(
                                     label_true, label_pred, zero_division=0
                                 )
-                                f1 = f1_score(label_true, label_pred, zero_division=0)
-                                doc_metrics[label].append((precision, recall, f1))
+                                f1 = f1_score(
+                                    label_true, label_pred, zero_division=0
+                                )
+                                doc_metrics[label].append(
+                                    (precision, recall, f1)
+                                )
 
                 # Reset for new document
                 current_doc = image_id
@@ -1709,13 +1832,17 @@ class ReceiptTrainer:
             self.logger.info("Using Apple Neural Engine (MPS)")
             return torch.device("mps")
         elif torch.cuda.is_available():
-            self.logger.info(f"Using CUDA GPU: {torch.cuda.get_device_name(0)}")
+            self.logger.info(
+                f"Using CUDA GPU: {torch.cuda.get_device_name(0)}"
+            )
             return torch.device("cuda")
 
         self.logger.info("Using CPU")
         return torch.device("cpu")
 
-    def _generate_hyperparameter_report(self, sweep_job_id: str) -> Dict[str, Any]:
+    def _generate_hyperparameter_report(
+        self, sweep_job_id: str
+    ) -> Dict[str, Any]:
         """Generate a comprehensive report of hyperparameter performance.
 
         Args:
@@ -1729,7 +1856,7 @@ class ReceiptTrainer:
         # Get sweep data from DynamoDB
         if not self.job_service:
             raise ValueError("JobService not initialized")
-            
+
         # Find all trial jobs that are part of this sweep
         trial_jobs = []
         try:
@@ -1738,26 +1865,35 @@ class ReceiptTrainer:
             for dependency in dependencies:
                 # Get the full job with its metrics
                 dependent_job_id = dependency.job_id
-                trial_job, _ = self.job_service.get_job_with_status(dependent_job_id)
-                trial_metrics = self.job_service.get_job_metrics(dependent_job_id)
-                
+                trial_job, _ = self.job_service.get_job_with_status(
+                    dependent_job_id
+                )
+                trial_metrics = self.job_service.get_job_metrics(
+                    dependent_job_id
+                )
+
                 # Find the best validation metric
                 best_f1 = 0.0
                 for metric in trial_metrics:
                     if metric.metric_name == "validation/macro_avg/f1-score":
-                        if isinstance(metric.value, (int, float)) and float(metric.value) > best_f1:
+                        if (
+                            isinstance(metric.value, (int, float))
+                            and float(metric.value) > best_f1
+                        ):
                             best_f1 = float(metric.value)
-                
+
                 # Get hyperparameters from job config
                 config = trial_job.job_config.get("training_config", {})
-                
-                trial_jobs.append({
-                    "job_id": dependent_job_id,
-                    "metrics": {
-                        "validation/macro_avg/f1-score": best_f1,
-                    },
-                    "params": config,
-                })
+
+                trial_jobs.append(
+                    {
+                        "job_id": dependent_job_id,
+                        "metrics": {
+                            "validation/macro_avg/f1-score": best_f1,
+                        },
+                        "params": config,
+                    }
+                )
         except Exception as e:
             self.logger.error(f"Failed to get trial jobs: {e}")
             raise
@@ -1766,7 +1902,13 @@ class ReceiptTrainer:
         report = {
             "sweep_job_id": sweep_job_id,
             "total_trials": len(trial_jobs),
-            "completed_trials": len([j for j in trial_jobs if j["metrics"]["validation/macro_avg/f1-score"] > 0]),
+            "completed_trials": len(
+                [
+                    j
+                    for j in trial_jobs
+                    if j["metrics"]["validation/macro_avg/f1-score"] > 0
+                ]
+            ),
             "best_trial": None,
             "param_importance": {},
             "best_configs": [],
@@ -1775,7 +1917,8 @@ class ReceiptTrainer:
         if trial_jobs:
             # Find best trial
             best_trial = max(
-                trial_jobs, key=lambda x: x["metrics"]["validation/macro_avg/f1-score"]
+                trial_jobs,
+                key=lambda x: x["metrics"]["validation/macro_avg/f1-score"],
             )
             report["best_trial"] = {
                 "job_id": best_trial["job_id"],
@@ -1797,20 +1940,20 @@ class ReceiptTrainer:
                 }
                 for trial in sorted_trials[:3]
             ]
-            
+
             # Log report to DynamoDB
             try:
                 self.job_service.add_job_metric(
                     job_id=sweep_job_id,
                     metric_name="hyperparameter_sweep/report",
                     metric_value=report,
-                    metadata={"type": "sweep_report"}
+                    metadata={"type": "sweep_report"},
                 )
-                
+
                 self.job_service.add_job_log(
                     sweep_job_id,
                     "INFO",
-                    f"Generated hyperparameter sweep report. Best validation F1: {best_trial['metrics']['validation/macro_avg/f1-score']:.4f}"
+                    f"Generated hyperparameter sweep report. Best validation F1: {best_trial['metrics']['validation/macro_avg/f1-score']:.4f}",
                 )
             except Exception as e:
                 self.logger.error(f"Failed to log hyperparameter report: {e}")
@@ -1827,4 +1970,105 @@ class ReceiptTrainer:
             ValueError: If model or tokenizer is not initialized, or if validation fails
         """
         if not self.model or not self.tokenizer:
-            raise ValueError("Model and tokenizer must be initialized before saving")
+            raise ValueError(
+                "Model and tokenizer must be initialized before saving"
+            )
+
+    def train(
+        self,
+        enable_checkpointing: bool = True,
+        enable_early_stopping: bool = False,
+        resume_training: bool = False,
+        callbacks: Optional[List[TrainerCallback]] = None,
+        log_to_wandb: bool = False,
+    ):
+        """Train the model.
+
+        Args:
+            enable_checkpointing: Whether to save checkpoints during training
+            enable_early_stopping: Whether to enable early stopping
+            resume_training: Whether to resume from the latest checkpoint
+            callbacks: Additional callbacks to use during training
+            log_to_wandb: Whether to log metrics to Weights & Biases (deprecated)
+
+        Returns:
+            Training result containing metrics and stats
+
+        Raises:
+            ValueError: If model or dataset is not initialized
+        """
+        self.logger.info("Starting training...")
+
+        if not self.model or not self.dataset or not self.training_args:
+            raise ValueError(
+                "Model, dataset, and training arguments must be configured before training. "
+                "Call configure_training() first."
+            )
+
+        # Set up spot interruption handler
+        self._setup_spot_interruption_handler()
+
+        # Resume from checkpoint if requested
+        checkpoint_path = None
+        if resume_training:
+            self.logger.info("Attempting to resume from checkpoint...")
+            checkpoint_path = self.resume_training()
+
+        # Create a Hugging Face Trainer instance
+        trainer = self._create_trainer(
+            enable_early_stopping=enable_early_stopping, callbacks=callbacks
+        )
+
+        # Add DynamoDB metrics callback if we have JobService
+        if self.job_service and not any(
+            isinstance(cb, DynamoMetricsCallback) for cb in (callbacks or [])
+        ):
+            self.logger.info("Adding DynamoDB metrics callback")
+            dynamo_callback = DynamoMetricsCallback(
+                job_service=self.job_service,
+                job_id=self.job_id,
+            )
+            trainer.add_callback(dynamo_callback)
+
+        # Log training start to DynamoDB
+        if self.job_service:
+            self.job_service.add_job_status(
+                self.job_id, "running", "Training started"
+            )
+            self.job_service.add_job_log(
+                self.job_id,
+                "INFO",
+                f"Starting training with batch size {self.training_config.batch_size} and {self.training_config.num_epochs} epochs",
+            )
+
+        try:
+            # Start training
+            self.logger.info(f"Starting training with Trainer...")
+            train_result = trainer.train(
+                resume_from_checkpoint=checkpoint_path
+            )
+
+            # Save the final model
+            self.logger.info("Saving final model...")
+            trainer.save_model(self.output_dir)
+
+            # Save tokenizer for completeness
+            self.tokenizer.save_pretrained(self.output_dir)
+
+            # Log training results
+            self._log_training_results(train_result)
+
+            return train_result
+
+        except Exception as e:
+            self.logger.error(f"Training failed: {str(e)}")
+            if self.job_service:
+                self.job_service.add_job_status(
+                    self.job_id, "failed", f"Training failed: {str(e)}"
+                )
+                self.job_service.add_job_log(
+                    self.job_id,
+                    "ERROR",
+                    f"Training error: {str(e)}\n{traceback.format_exc()}",
+                )
+            raise

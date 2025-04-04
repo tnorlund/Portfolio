@@ -8,21 +8,26 @@ logger = logging.getLogger(__name__)
 
 
 def process_receipt_details(
-    receipt_details: Dict[str, Any]
+    receipt_details: Dict[str, Any],
 ) -> Optional[Dict[str, Any]]:
     """Process a single receipt's details into the LayoutLM format.
 
     Args:
-        receipt_details: Dictionary containing receipt information
+        receipt_details: Dictionary containing receipt information with structure:
+            {
+                "receipt": Receipt object,
+                "words": List[ReceiptWord],
+                "word_labels": List[ReceiptWordLabel]
+            }
 
     Returns:
-        Processed receipt data in LayoutLM format, or None if no validated words
+        Processed receipt data in LayoutLM format, or None if no labeled words
     """
     receipt = receipt_details["receipt"]
     words = receipt_details["words"]
-    word_tags = receipt_details["word_tags"]
+    word_labels = receipt_details["word_labels"]
 
-    has_validated_word = False
+    has_labeled_word = False
     word_data = []
 
     # Calculate scale factor maintaining aspect ratio
@@ -34,10 +39,10 @@ def process_receipt_details(
     # First pass: collect words and their base labels
     for word in words:
         tag_label = "O"  # Default to Outside
-        for tag in word_tags:
-            if tag.word_id == word.word_id and tag.human_validated:
-                tag_label = tag.tag
-                has_validated_word = True
+        for label in word_labels:
+            if label.word_id == word.word_id:
+                tag_label = label.label
+                has_labeled_word = True
                 break
 
         # Get the coordinates (already normalized 0-1)
@@ -69,7 +74,7 @@ def process_receipt_details(
             }
         )
 
-    if not has_validated_word:
+    if not has_labeled_word:
         return None
 
     # Sort words by line_id and word_id to maintain reading order
@@ -95,10 +100,16 @@ def process_receipt_details(
                 ):
                     is_continuation = True
 
-            iob_label = f"I-{base_label}" if is_continuation else f"B-{base_label}"
+            iob_label = (
+                f"I-{base_label}" if is_continuation else f"B-{base_label}"
+            )
 
         processed_words.append(
-            {"text": word["text"], "bboxes": word["bboxes"], "label": iob_label}
+            {
+                "text": word["text"],
+                "bboxes": word["bboxes"],
+                "label": iob_label,
+            }
         )
 
     return {
@@ -207,7 +218,9 @@ def balance_dataset(
         while i < len(labels):
             if labels[i].startswith("B-"):
                 # Found start of entity
-                entity_type = labels[i].split("-")[1].split("_")[0]  # Get base type
+                entity_type = (
+                    labels[i].split("-")[1].split("_")[0]
+                )  # Get base type
 
                 # Find entity end
                 j = i + 1
@@ -222,7 +235,8 @@ def balance_dataset(
                     "words": words[start:end],
                     "bboxes": bboxes[start:end],
                     "labels": labels[start:end],
-                    "entity_start": i - start,  # Track where entity starts in window
+                    "entity_start": i
+                    - start,  # Track where entity starts in window
                     "entity_end": j - start,
                     "image_id": image_id,
                 }

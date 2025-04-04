@@ -126,6 +126,20 @@ class ReceiptWordLabel:
             },
         }
 
+    def gsi2_key(self) -> dict:
+        """
+        Generates the secondary index key for the receipt word label.
+
+        Returns:
+            dict: The secondary index key for the receipt word label.
+        """
+        return {
+            "GSI2PK": {"S": "RECEIPT"},
+            "GSI2SK": {
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"
+            },
+        }
+
     def to_item(self) -> dict:
         """Converts the ReceiptWordLabel object to a DynamoDB item.
 
@@ -135,6 +149,7 @@ class ReceiptWordLabel:
         return {
             **self.key(),
             **self.gsi1_key(),
+            **self.gsi2_key(),
             "TYPE": {"S": "RECEIPT_WORD_LABEL"},
             "reasoning": {"S": self.reasoning},
             "timestamp_added": {"S": self.timestamp_added},

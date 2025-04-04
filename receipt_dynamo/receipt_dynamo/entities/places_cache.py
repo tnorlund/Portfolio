@@ -158,25 +158,12 @@ class PlacesCache:
             "GSI1SK": {"S": f"PLACE_ID#{self.place_id}"},
         }
 
-    def gsi2_key(self) -> Dict[str, Dict[str, Any]]:
-        """
-        Generate the GSI2 key for DynamoDB.
-
-        Returns:
-            Dict: The GSI2 key attributes
-        """
-        return {
-            "GSI2PK": {"S": "LAST_USED"},
-            "GSI2SK": {"S": self.last_updated},
-        }
-
     def to_item(self) -> Dict[str, Dict[str, Any]]:
         """
         Convert to a DynamoDB item format.
         Includes all necessary attributes for the base table and GSIs:
         - Base table: PK (PLACES#<search_type>), SK (VALUE#<padded_search_value>)
         - GSI1: GSI1PK (PLACE_ID), GSI1SK (PLACE_ID#<place_id>) - For place_id lookups
-        - GSI2: GSI2PK (LAST_USED), GSI2SK (<timestamp>) - For cache invalidation
 
         Returns:
             Dict: The DynamoDB item representation with all required attributes
@@ -185,7 +172,6 @@ class PlacesCache:
         item = {
             **key,  # Base table keys (PK, SK)
             **self.gsi1_key(),  # GSI1 keys
-            **self.gsi2_key(),  # GSI2 keys
             "TYPE": {"S": "PLACES_CACHE"},
             # Item attributes
             "place_id": {"S": self.place_id},

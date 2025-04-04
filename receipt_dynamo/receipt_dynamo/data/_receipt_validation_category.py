@@ -464,15 +464,14 @@ class _ReceiptValidationCategory:
 
         validation_categories = []
         try:
-            # Use GSI1 to query all validation categories
+            # Use GSITYPE to query all validation categories
             query_params = {
                 "TableName": self.table_name,
-                "IndexName": "GSI1",
-                "KeyConditionExpression": "#pk = :pk_val AND begins_with(#sk, :sk_prefix)",
-                "ExpressionAttributeNames": {"#pk": "GSI1PK", "#sk": "GSI1SK"},
+                "IndexName": "GSITYPE",
+                "KeyConditionExpression": "#t = :val",
+                "ExpressionAttributeNames": {"#t": "TYPE"},
                 "ExpressionAttributeValues": {
-                    ":pk_val": {"S": "ANALYSIS_TYPE"},
-                    ":sk_prefix": {"S": "VALIDATION#"},
+                    ":val": {"S": "RECEIPT_VALIDATION_CATEGORY"},
                 },
             }
 

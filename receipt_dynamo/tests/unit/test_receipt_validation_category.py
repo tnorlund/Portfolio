@@ -335,18 +335,6 @@ def test_gsi1_key(example_validation_category):
 
 
 @pytest.mark.unit
-def test_gsi2_key(example_validation_category):
-    """Test the gsi2_key property"""
-    assert example_validation_category.gsi2_key == {
-        "GSI2PK": {"S": "RECEIPT"},
-        "GSI2SK": {
-            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#"
-            "RECEIPT#00001#VALIDATION"
-        },
-    }
-
-
-@pytest.mark.unit
 def test_gsi3_key(example_validation_category):
     """Test the gsi3_key property"""
     assert example_validation_category.gsi3_key == {
@@ -370,11 +358,6 @@ def test_to_item(example_validation_category):
     assert item["GSI1PK"] == {"S": "ANALYSIS_TYPE"}
     assert item["GSI1SK"] == {
         "S": "VALIDATION#2023-05-15T10:30:00#CATEGORY#payment_info"
-    }
-    assert item["GSI2PK"] == {"S": "RECEIPT"}
-    assert item["GSI2SK"] == {
-        "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#"
-        "RECEIPT#00001#VALIDATION"
     }
     assert item["GSI3PK"] == {"S": "FIELD_STATUS#payment_info#valid"}
     assert item["GSI3SK"] == {

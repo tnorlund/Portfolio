@@ -21,7 +21,6 @@ dependencies = [
     "torch>=2.0.0",
     "transformers>=4.30.0",
     "datasets>=2.12.0",
-    "wandb>=0.15.0",
     
     # Data processing and ML
     "numpy>=1.24.0",

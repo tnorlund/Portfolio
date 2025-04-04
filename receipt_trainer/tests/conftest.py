@@ -20,7 +20,9 @@ def setup_logging():
 
 def pytest_configure(config):
     """Add custom markers."""
-    config.addinivalue_line("markers", "integration: mark test as an integration test")
+    config.addinivalue_line(
+        "markers", "integration: mark test as an integration test"
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -31,8 +33,13 @@ def disable_wandb_logging():
 
 
 @pytest.fixture(autouse=True)
-def mock_aws_credentials():
-    """Set mock AWS credentials for all tests."""
+def mock_aws_credentials(request):
+    """Set mock AWS credentials for all tests except end-to-end tests."""
+    # Skip mocking credentials for end-to-end tests
+    if request.node.get_closest_marker("end_to_end"):
+        return
+
+    # Apply mock credentials for non-end-to-end tests
     os.environ.update(
         {
             "AWS_ACCESS_KEY_ID": "testing",
@@ -61,7 +68,9 @@ def mock_dynamo_data():
     """Mock DynamoDB receipt data."""
     return {
         "receipt1": {
-            "receipt": Mock(image_id="img1", receipt_id="rec1", width=800, height=1000),
+            "receipt": Mock(
+                image_id="img1", receipt_id="rec1", width=800, height=1000
+            ),
             "words": [
                 Mock(
                     word_id=1,
@@ -73,7 +82,9 @@ def mock_dynamo_data():
                     bottom_right={"x": 0.2, "y": 0.2},
                 )
             ],
-            "word_tags": [Mock(word_id=1, tag="store_name", human_validated=True)],
+            "word_tags": [
+                Mock(word_id=1, tag="store_name", human_validated=True)
+            ],
         }
     }
 

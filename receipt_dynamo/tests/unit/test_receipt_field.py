@@ -249,17 +249,6 @@ def test_receipt_field_gsi1_key_generation(example_receipt_field):
 
 
 @pytest.mark.unit
-def test_receipt_field_gsi2_key_generation(example_receipt_field):
-    """Test that the GSI2 key is correctly generated."""
-    assert example_receipt_field.gsi2_key() == {
-        "GSI2PK": {"S": "RECEIPT"},
-        "GSI2SK": {
-            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"
-        },
-    }
-
-
-@pytest.mark.unit
 def test_receipt_field_to_item(example_receipt_field):
     """Test converting a ReceiptField to a DynamoDB item."""
     assert example_receipt_field.to_item() == {
@@ -269,10 +258,6 @@ def test_receipt_field_to_item(example_receipt_field):
         },
         "GSI1PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "GSI1SK": {"S": "RECEIPT#00001#FIELD#BUSINESS_NAME"},
-        "GSI2PK": {"S": "RECEIPT"},
-        "GSI2SK": {
-            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"
-        },
         "TYPE": {"S": "RECEIPT_FIELD"},
         "words": {
             "L": [

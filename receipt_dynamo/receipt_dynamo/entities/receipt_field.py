@@ -128,19 +128,6 @@ class ReceiptField:
             },
         }
 
-    def gsi2_key(self) -> dict:
-        """Generate the GSI2 key for this ReceiptField.
-
-        Returns:
-            dict: The GSI2 key for the receipt field.
-        """
-        return {
-            "GSI2PK": {"S": "RECEIPT"},
-            "GSI2SK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
-            },
-        }
-
     def to_item(self) -> dict:
         """Converts the ReceiptField object to a DynamoDB item.
 
@@ -150,7 +137,6 @@ class ReceiptField:
         return {
             **self.key(),
             **self.gsi1_key(),
-            **self.gsi2_key(),
             "TYPE": {"S": "RECEIPT_FIELD"},
             "words": {
                 "L": [

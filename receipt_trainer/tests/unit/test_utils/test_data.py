@@ -2,7 +2,10 @@
 
 import pytest
 from unittest.mock import Mock
-from receipt_trainer.utils.data import process_receipt_details, create_sliding_windows
+from receipt_trainer.utils.data import (
+    process_receipt_details,
+    create_sliding_windows,
+)
 
 
 @pytest.fixture
@@ -32,9 +35,9 @@ def mock_receipt_details():
                 bottom_right={"x": 0.4, "y": 0.2},
             ),
         ],
-        "word_tags": [
-            Mock(word_id=1, tag="store_name", human_validated=True),
-            Mock(word_id=2, tag="store_name", human_validated=True),
+        "word_labels": [
+            Mock(word_id=1, tag="store_name"),
+            Mock(word_id=2, tag="store_name"),
         ],
     }
 
@@ -56,11 +59,13 @@ def test_process_receipt_details(mock_receipt_details):
     assert result["labels"][1] == "I-store_name"  # Second word should be I-
 
     # Check coordinate scaling
-    assert all(0 <= coord <= 1000 for bbox in result["bboxes"] for coord in bbox)
+    assert all(
+        0 <= coord <= 1000 for bbox in result["bboxes"] for coord in bbox
+    )
 
 
-def test_process_receipt_details_no_validated_words():
-    """Test processing with no validated words."""
+def test_process_receipt_details_no_labels():
+    """Test processing with no word labels."""
     details = {
         "receipt": Mock(
             image_id="test_img", receipt_id="test_rec", width=1000, height=1000
@@ -76,9 +81,7 @@ def test_process_receipt_details_no_validated_words():
                 bottom_right={"x": 0.2, "y": 0.2},
             )
         ],
-        "word_tags": [
-            Mock(word_id=1, tag="test_tag", human_validated=False)  # Not validated
-        ],
+        "word_labels": [],  # No labels
     }
 
     result = process_receipt_details(details)
