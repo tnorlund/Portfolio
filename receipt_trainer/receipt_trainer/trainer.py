@@ -43,7 +43,6 @@ from sklearn.metrics import (
     precision_score,
     recall_score,
     f1_score,
-    confusion_matrix,
     classification_report,
 )
 import threading
@@ -53,6 +52,24 @@ from receipt_trainer.utils.aws import get_dynamo_table
 import traceback
 import uuid
 from datetime import datetime
+from receipt_trainer.utils.metrics import (
+    entity_level_metrics,
+    entity_class_accuracy,
+    field_extraction_accuracy,
+    confusion_matrix_entities,
+    compute_all_ner_metrics,
+)
+from receipt_trainer.config import TrainingConfig, DataConfig
+from receipt_trainer.utils.data import (
+    process_receipt_details,
+    create_sliding_windows,
+    balance_dataset,
+    augment_example,
+)
+from receipt_trainer.constants import REQUIRED_ENV_VARS
+from receipt_trainer.version import __version__
+from receipt_trainer.jobs import JobQueue
+import dataclasses
 
 # Set tokenizer parallelism to false to avoid deadlocks
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -71,38 +88,42 @@ from receipt_trainer.version import __version__
 class DynamoMetricsCallback(TrainerCallback):
     """Custom callback to log metrics to DynamoDB during training."""
 
-    def __init__(self, job_service, job_id):
+    def __init__(self, job_service=None, job_id=None):
         """Initialize the callback.
 
         Args:
-            job_service: JobService instance for logging metrics
-            job_id: ID of the training job
+            job_service: The JobService instance for logging metrics
+            job_id: The ID of the current job
         """
         super().__init__()
         self.trainer = None
         self.step = 0
         self.job_service = job_service
         self.job_id = job_id
-        print(f"DynamoMetricsCallback initialized for job: {job_id}")
+
+        if not self.job_service or not self.job_id:
+            raise ValueError(
+                "JobService and job_id must be provided for metrics logging."
+            )
 
     def setup(self, trainer):
         """Set up the callback with a trainer instance."""
         self.trainer = trainer
-        print(f"DynamoMetricsCallback setup complete with trainer: {trainer}")
+        print(f"MetricsCallback setup complete with trainer: {trainer}")
 
     def on_train_begin(self, args, state, control, **kwargs):
         """Called when training begins."""
         if "trainer" in kwargs:
             self.trainer = kwargs["trainer"]
-        print("Training started - DynamoMetricsCallback initialized")
-
-        # Log training start
-        self.job_service.add_job_status(
-            self.job_id, "running", "Training started"
-        )
-
+        print("Training started - MetricsCallback initialized")
         if not self.trainer:
             print("Warning: Trainer not available in on_train_begin")
+
+        # Log training start
+        if self.job_service and self.job_id:
+            self.job_service.add_job_log(
+                self.job_id, "INFO", "Training started with MetricsCallback"
+            )
 
     def on_evaluate(self, args, state, control, metrics=None, **kwargs):
         """Log metrics after each evaluation."""
@@ -137,32 +158,49 @@ class DynamoMetricsCallback(TrainerCallback):
             pred_labels = np.argmax(predictions.predictions, axis=2)
             true_labels = predictions.label_ids
 
-            # Flatten predictions and labels, removing padding (-100)
-            true_flat = []
-            pred_flat = []
-            for i in range(len(true_labels)):
-                for j in range(len(true_labels[i])):
-                    if true_labels[i][j] != -100:
-                        true_flat.append(true_labels[i][j])
-                        pred_flat.append(pred_labels[i][j])
-
-            print(f"Processed {len(true_flat)} valid predictions")
-
             # Get label names
             id2label = self.trainer.model.config.id2label
             labels = list(range(len(id2label)))
             label_names = [id2label[i] for i in labels]
 
-            # Calculate metrics
+            # Flatten predictions and labels, removing padding (-100)
+            true_flat = []
+            pred_flat = []
+            true_flat_labels = []
+            pred_flat_labels = []
+
+            for i in range(len(true_labels)):
+                for j in range(len(true_labels[i])):
+                    if true_labels[i][j] != -100:
+                        true_flat.append(true_labels[i][j])
+                        pred_flat.append(pred_labels[i][j])
+                        # Also convert to actual labels for entity-level evaluation
+                        true_flat_labels.append(id2label[true_labels[i][j]])
+                        pred_flat_labels.append(id2label[pred_labels[i][j]])
+
+            print(f"Processed {len(true_flat)} valid predictions")
+
+            # Calculate token-level metrics
             precision, recall, f1, support = precision_recall_fscore_support(
                 true_flat, pred_flat, labels=labels, zero_division=0
             )
             accuracy = accuracy_score(true_flat, pred_flat)
 
+            # Calculate entity-level metrics
+            entity_metrics = entity_level_metrics(
+                true_flat_labels, pred_flat_labels
+            )
+            entity_acc = entity_class_accuracy(
+                true_flat_labels, pred_flat_labels
+            )
+            entity_confusion = confusion_matrix_entities(
+                true_flat_labels, pred_flat_labels
+            )
+
             # Create metrics dictionary with step information
             self.step = state.global_step if state else 0
 
-            # Prepare metrics dictionary
+            # Prepare metrics dictionary for token-level metrics
             metric_dict = {
                 "train/global_step": self.step,
                 "eval/accuracy": float(accuracy),
@@ -182,7 +220,7 @@ class DynamoMetricsCallback(TrainerCallback):
                         }
                     )
 
-            print("\nLogging metrics to DynamoDB:")
+            print("\nLogging token-level metrics to DynamoDB:")
             for key, value in metric_dict.items():
                 print(f"{key}: {value}")
                 # Log each metric to DynamoDB
@@ -191,14 +229,77 @@ class DynamoMetricsCallback(TrainerCallback):
                     metric_name=key,
                     metric_value=value,
                     step=self.step,
-                    metadata={"type": "evaluation"},
+                    metadata={"type": "token_level"},
                 )
 
-            # Create confusion matrix
-            cm = confusion_matrix(true_flat, pred_flat, labels=labels)
+            # Log entity-level metrics
+            print("\nLogging entity-level metrics to DynamoDB:")
+            for entity_type, metrics in entity_metrics.items():
+                for metric_name, value in metrics.items():
+                    metric_key = f"entity/{entity_type}/{metric_name}"
+                    print(f"{metric_key}: {value}")
+                    self.job_service.add_job_metric(
+                        job_id=self.job_id,
+                        metric_name=metric_key,
+                        metric_value=(
+                            float(value)
+                            if isinstance(value, (int, float))
+                            else value
+                        ),
+                        step=self.step,
+                        metadata={"type": "entity_level"},
+                    )
+
+            # Log entity accuracy metrics
+            print("\nLogging entity accuracy metrics to DynamoDB:")
+            for entity_type, acc in entity_acc.items():
+                metric_key = f"entity_accuracy/{entity_type}"
+                print(f"{metric_key}: {acc}")
+                self.job_service.add_job_metric(
+                    job_id=self.job_id,
+                    metric_name=metric_key,
+                    metric_value=float(acc),
+                    step=self.step,
+                    metadata={"type": "entity_accuracy"},
+                )
+
+            # Try to extract tokens from dataset for field extraction accuracy
+            try:
+                # Get tokens from the dataset
+                tokens = []
+                for example in self.trainer.eval_dataset:
+                    # Skip special tokens and padding
+                    valid_tokens = [
+                        self.trainer.tokenizer.convert_ids_to_tokens(idx)
+                        for idx in example["input_ids"]
+                        if idx > 0
+                        and idx != self.trainer.tokenizer.pad_token_id
+                    ]
+                    tokens.extend(valid_tokens)
+
+                if tokens:
+                    # Calculate field extraction accuracy
+                    field_acc = field_extraction_accuracy(
+                        true_flat_labels, pred_flat_labels, tokens
+                    )
+
+                    print("\nLogging field extraction accuracy to DynamoDB:")
+                    for field, acc in field_acc.items():
+                        metric_key = f"field_extraction/{field}"
+                        print(f"{metric_key}: {acc}")
+                        self.job_service.add_job_metric(
+                            job_id=self.job_id,
+                            metric_name=metric_key,
+                            metric_value=float(acc),
+                            step=self.step,
+                            metadata={"type": "field_extraction"},
+                        )
+            except Exception as e:
+                print(f"Error calculating field extraction accuracy: {e}")
 
             # Log confusion matrix as a metric
             # Convert the confusion matrix to a serializable format
+            cm = confusion_matrix(true_flat, pred_flat, labels=labels)
             cm_data = {
                 "matrix": cm.tolist(),
                 "labels": label_names,
@@ -213,12 +314,32 @@ class DynamoMetricsCallback(TrainerCallback):
                 metadata={"type": "confusion_matrix"},
             )
 
+            # Store entity confusion matrix
+            self.job_service.add_job_metric(
+                job_id=self.job_id,
+                metric_name="entity/confusion_matrix",
+                metric_value=entity_confusion,
+                step=self.step,
+                metadata={"type": "entity_confusion_matrix"},
+            )
+
             # Print per-label performance
             print("\nPer-label Performance:")
             for i, label in enumerate(label_names):
                 if label != "O":
                     print(
                         f"{label:15} F1: {f1[i]:.4f} | Precision: {precision[i]:.4f} | Recall: {recall[i]:.4f}"
+                    )
+
+            # Print entity-level performance
+            print("\nEntity-level Performance:")
+            for entity_type, metrics in entity_metrics.items():
+                if entity_type != "overall":
+                    print(
+                        f"{entity_type:15} F1: {metrics['f1']:.4f} | "
+                        f"Precision: {metrics['precision']:.4f} | "
+                        f"Recall: {metrics['recall']:.4f} | "
+                        f"Support: {metrics['support']}"
                     )
 
         except Exception as e:
@@ -292,82 +413,61 @@ class ReceiptTrainer:
         # Store DynamoDB table name for later initialization
         self.dynamo_table = dynamo_table
 
-        # Note: We don't initialize DynamoDB client or JobService here
-        # This is done in initialize_dynamo() to allow for proper error handling
-        # and to avoid making AWS calls during initialization
+        # SQS integration
+        self.job_receipt_handle = None
+        self.job_queue = None
+        self.last_heartbeat_time = (
+            time.time()
+        )  # Track last visibility extension
+        self.heartbeat_interval = 900  # Default to 15 minutes
+        self._heartbeat_thread = None
+        self._stop_heartbeat = threading.Event()
+
+        # Load job service if available
+        self.initialize_dynamo()
 
         self.logger.info("ReceiptTrainer initialized")
 
     def create_training_job(self):
-        """Create a new training job record in DynamoDB.
-
-        This method will create a new job record in DynamoDB using the JobService.
-        If JobService is not initialized, it will attempt to initialize it.
-
-        Returns:
-            bool: True if job was created successfully, False otherwise
-        """
-        # Check if job_service is initialized
+        """Create a job record in DynamoDB."""
         if not self.job_service:
             self.logger.warning(
-                "JobService not initialized, attempting to initialize"
+                "Cannot create job record - job service not initialized"
             )
-            try:
-                # Initialize DynamoDB and JobService
-                if not self.dynamo_table:
-                    self.dynamo_table = get_dynamo_table(
-                        env=self.data_config.env
-                    )
-
-                from receipt_dynamo.services.job_service import JobService
-
-                self.job_service = JobService(self.dynamo_table)
-            except Exception as e:
-                self.logger.error(f"Failed to initialize JobService: {e}")
-                return False
-
-        # Create job config dictionary
-        job_config = {
-            "model_name": self.model_name,
-            "training_config": {
-                k: str(v) for k, v in vars(self.training_config).items()
-            },
-            "data_config": {
-                k: str(v) for k, v in vars(self.data_config).items()
-            },
-            "device": str(self.device),
-            "version": __version__,
-        }
+            return
 
         try:
-            # Create the job in DynamoDB
-            self.job_service.create_job(
+            # Check if job already exists
+            job = self.job_service.get_job(self.job_id)
+            if job:
+                self.logger.info(
+                    f"Job record already exists for {self.job_id}"
+                )
+                return job
+
+            # Create new job
+            job_config = {
+                "model_name": self.model_name,
+                "training_config": dataclasses.asdict(self.training_config),
+                "data_config": dataclasses.asdict(self.data_config),
+            }
+
+            job = self.job_service.create_job(
                 job_id=self.job_id,
-                name=f"LayoutLM Training Job - {self.model_name}",
-                description=f"Training LayoutLM model for receipt OCR",
-                created_by="receipt_trainer",
-                status="pending",
-                priority="HIGH",
-                job_config=job_config,
+                name=f"Training {self.model_name}",
+                type="training",
+                config=job_config,
+                status="created",
+                message="Job created",
             )
 
-            self.logger.info(f"Created training job with ID: {self.job_id}")
+            self.logger.info(f"Created training job record: {self.job_id}")
+            return job
 
-            # Log initialization status
-            self.job_service.add_job_status(
-                self.job_id, "pending", "Training job initialized"
-            )
-
-            # Log initial message
-            self.job_service.add_job_log(
-                self.job_id,
-                "INFO",
-                f"Initialized training for model {self.model_name} on device {self.device}",
-            )
-            return True
         except Exception as e:
-            self.logger.error(f"Failed to create training job: {e}")
-            return False
+            self.logger.error(f"Failed to create training job record: {e}")
+            self.logger.error(traceback.format_exc())
+            return None
 
     def _validate_env_vars(self):
         """Validate that all required environment variables are set."""
@@ -491,7 +591,7 @@ class ReceiptTrainer:
 
                 self.job_service.add_job_checkpoint(
                     self.job_id,
-                    checkpoint_name=f"checkpoint_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                    checkpoint_name=f"checkpoint_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}",
                     metadata=checkpoint_metadata,
                 )
 
@@ -519,9 +619,7 @@ class ReceiptTrainer:
             raise ValueError("CHECKPOINT_BUCKET environment variable not set")
 
         # Create a checkpoint ID using job ID
-        checkpoint_id = (
-            f"{self.job_id}/{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        )
+        checkpoint_id = f"{self.job_id}/{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
         # Upload all files in checkpoint directory
         for root, _, files in os.walk(checkpoint_dir):
@@ -552,7 +650,7 @@ class ReceiptTrainer:
                     metadata={
                         "bucket": bucket_name,
                         "prefix": f"checkpoints/{checkpoint_id}",
-                        "upload_time": datetime.now().isoformat(),
+                        "upload_time": datetime.datetime.now().isoformat(),
                     },
                 )
 
@@ -1974,11 +2072,190 @@ class ReceiptTrainer:
                 "Model and tokenizer must be initialized before saving"
             )
 
+    def start_heartbeat_thread(self):
+        """Start a background thread to extend the SQS visibility timeout."""
+        if not self.job_queue or not self.job_receipt_handle:
+            self.logger.warning(
+                "Cannot start heartbeat thread - no job queue or receipt handle"
+            )
+            return False
+
+        self._stop_heartbeat.clear()
+
+        def heartbeat_loop():
+            """Background thread to extend SQS visibility timeout."""
+            while not self._stop_heartbeat.is_set():
+                try:
+                    # Extend visibility timeout
+                    extended = self.job_queue.extend_visibility_timeout(
+                        self.job_receipt_handle, self.heartbeat_interval
+                    )
+                    if extended:
+                        self.last_heartbeat_time = time.time()
+                        self.logger.debug(
+                            f"Extended SQS visibility timeout for job {self.job_id} by {self.heartbeat_interval} seconds"
+                        )
+                    else:
+                        self.logger.warning(
+                            f"Failed to extend SQS visibility timeout for job {self.job_id}"
+                        )
+                except Exception as e:
+                    self.logger.error(f"Error in heartbeat thread: {e}")
+
+                # Sleep for half the interval to ensure we extend before timeout
+                sleep_time = min(
+                    self.heartbeat_interval // 2, 300
+                )  # Max 5 minutes
+                time.sleep(sleep_time)
+
+        self._heartbeat_thread = threading.Thread(
+            target=heartbeat_loop, daemon=True
+        )
+        self._heartbeat_thread.start()
+        self.logger.info(
+            f"Started SQS visibility heartbeat thread for job {self.job_id}"
+        )
+        return True
+
+    def stop_heartbeat_thread(self):
+        """Stop the visibility timeout heartbeat thread."""
+        if not self._heartbeat_thread:
+            return
+
+        self._stop_heartbeat.set()
+        self._heartbeat_thread.join(timeout=10)
+        self.logger.info("Stopped SQS visibility heartbeat thread")
+
+    def update_job_status(self, status: str, message: str = None):
+        """Update the job status in DynamoDB and optionally via SQS.
+
+        Args:
+            status: Status string (running, completed, failed, etc.)
+            message: Optional status message
+        """
+        # Update using job service if available
+        if self.job_service:
+            try:
+                self.job_service.add_job_status(
+                    self.job_id, status, message or f"Job {status}"
+                )
+                self.logger.info(f"Updated job status to {status}: {message}")
+            except Exception as e:
+                self.logger.error(f"Failed to update job status: {e}")
+
+        # If we have a job queue, update message attributes
+        if self.job_queue and self.job_receipt_handle:
+            try:
+                # For FIFO queues, we can't update in place, so this is a placeholder
+                # In a real implementation, we might send a separate status update to another queue
+                self.logger.debug(f"SQS status update would go here: {status}")
+            except Exception as e:
+                self.logger.error(f"Failed to update SQS job status: {e}")
+
+    def process_from_job_queue(
+        self, job: "Job", receipt_handle: str, job_queue: "JobQueue"
+    ):
+        """Process a training job received from SQS.
+
+        This method sets up the receipt handle and job queue references,
+        starts the visibility timeout heartbeat, and tracks job status.
+
+        Args:
+            job: Job object from the queue
+            receipt_handle: SQS receipt handle
+            job_queue: JobQueue instance
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Store job identifiers and queue references
+            self.job_id = job.job_id
+            self.job_receipt_handle = receipt_handle
+            self.job_queue = job_queue
+
+            # Start visibility timeout heartbeat
+            self.start_heartbeat_thread()
+
+            # Update job status
+            self.update_job_status("running", "Training started")
+
+            # Configure from job parameters
+            job_config = job.job_config or {}
+
+            # Configure output directory
+            output_dir = job_config.get("output_dir") or os.path.join(
+                self.data_config.cache_dir, "jobs", self.job_id
+            )
+
+            # Set up checkpoint path if resuming
+            checkpoint_path = TrainingEnvironment.find_latest_checkpoint(
+                self.job_id
+            )
+            resume_training = bool(checkpoint_path)
+
+            if checkpoint_path:
+                self.logger.info(
+                    f"Found existing checkpoint: {checkpoint_path}"
+                )
+                self.update_job_status(
+                    "running",
+                    f"Resuming training from checkpoint: {checkpoint_path}",
+                )
+
+            # Load and configure
+            try:
+                self.logger.info("Loading data...")
+                self.load_data()
+
+                self.logger.info("Initializing model...")
+                self.initialize_model()
+
+                self.logger.info("Configuring training...")
+                self.configure_training(output_dir=output_dir)
+
+                # Train the model
+                self.logger.info("Starting training...")
+                result = self.train(
+                    enable_checkpointing=True,
+                    enable_early_stopping=True,
+                    resume_training=resume_training,
+                    resume_from_checkpoint=checkpoint_path,
+                )
+
+                # Update job status on completion
+                self.update_job_status(
+                    "completed", "Training completed successfully"
+                )
+
+                # Stop heartbeat thread
+                self.stop_heartbeat_thread()
+
+                return True
+
+            except Exception as e:
+                self.logger.error(f"Error during training: {str(e)}")
+                self.logger.error(traceback.format_exc())
+
+                # Update job status on failure
+                self.update_job_status("failed", f"Training failed: {str(e)}")
+
+                # Stop heartbeat thread
+                self.stop_heartbeat_thread()
+
+                return False
+
+        except Exception as e:
+            self.logger.error(f"Error processing job: {str(e)}")
+            self.logger.error(traceback.format_exc())
+            return False
+
     def train(
         self,
         enable_checkpointing: bool = True,
         enable_early_stopping: bool = False,
         resume_training: bool = False,
+        resume_from_checkpoint: Optional[str] = None,
         callbacks: Optional[List[TrainerCallback]] = None,
         log_to_wandb: bool = False,
     ):
@@ -1988,6 +2265,7 @@ class ReceiptTrainer:
             enable_checkpointing: Whether to save checkpoints during training
             enable_early_stopping: Whether to enable early stopping
             resume_training: Whether to resume from the latest checkpoint
+            resume_from_checkpoint: Path to specific checkpoint to resume from
             callbacks: Additional callbacks to use during training
             log_to_wandb: Whether to log metrics to Weights & Biases (deprecated)
 
@@ -2009,37 +2287,27 @@ class ReceiptTrainer:
         self._setup_spot_interruption_handler()
 
         # Resume from checkpoint if requested
-        checkpoint_path = None
-        if resume_training:
+        checkpoint_path = resume_from_checkpoint
+        if resume_training and not checkpoint_path:
             self.logger.info("Attempting to resume from checkpoint...")
             checkpoint_path = self.resume_training()
 
+        # Get our status update callbacks
+        status_callbacks = self._get_training_callbacks()
+
+        # Combine with any user-provided callbacks
+        all_callbacks = status_callbacks
+        if callbacks:
+            all_callbacks.extend(callbacks)
+
         # Create a Hugging Face Trainer instance
         trainer = self._create_trainer(
-            enable_early_stopping=enable_early_stopping, callbacks=callbacks
+            enable_early_stopping=enable_early_stopping,
+            callbacks=all_callbacks,
         )
 
-        # Add DynamoDB metrics callback if we have JobService
-        if self.job_service and not any(
-            isinstance(cb, DynamoMetricsCallback) for cb in (callbacks or [])
-        ):
-            self.logger.info("Adding DynamoDB metrics callback")
-            dynamo_callback = DynamoMetricsCallback(
-                job_service=self.job_service,
-                job_id=self.job_id,
-            )
-            trainer.add_callback(dynamo_callback)
-
-        # Log training start to DynamoDB
-        if self.job_service:
-            self.job_service.add_job_status(
-                self.job_id, "running", "Training started"
-            )
-            self.job_service.add_job_log(
-                self.job_id,
-                "INFO",
-                f"Starting training with batch size {self.training_config.batch_size} and {self.training_config.num_epochs} epochs",
-            )
+        # Update status before training starts
+        self.update_job_status("running", "Starting training process")
 
         try:
             # Start training
@@ -2072,3 +2340,30 @@ class ReceiptTrainer:
                     f"Training error: {str(e)}\n{traceback.format_exc()}",
                 )
             raise
+
+    def _get_training_callbacks(self):
+        """Get custom training callbacks for progress reporting."""
+
+        class StatusUpdateCallback(TrainerCallback):
+            """Custom callback to update job status during training."""
+
+            def __init__(self, trainer_instance):
+                self.trainer = trainer_instance
+
+            def on_epoch_end(self, args, state, control, **kwargs):
+                """Update status on epoch completion."""
+                epoch = state.epoch
+                epochs = args.num_train_epochs
+                progress = round((epoch / epochs) * 100, 1)
+
+                message = f"Training progress: {progress}% (epoch {epoch:.1f}/{epochs})"
+                self.trainer.update_job_status("running", message)
+
+            def on_train_end(self, args, state, control, **kwargs):
+                """Update status when training ends."""
+                self.trainer.update_job_status(
+                    "evaluating", "Training complete, running evaluation"
+                )
+
+        # Return our custom callback
+        return [StatusUpdateCallback(self)]

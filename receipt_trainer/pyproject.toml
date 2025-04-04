@@ -60,6 +60,8 @@ addopts = "-v --cov=receipt_trainer"
 markers = [
     "unit: mark test as a unit test",
     "integration: mark test as an integration test",
+    "end_to_end: marks tests that test the full system (may be slower)",
+    "real_aws: marks tests that interact with real AWS resources (and incur costs)",
 ]
 
 [tool.coverage.run]

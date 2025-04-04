@@ -2,44 +2,48 @@
 
 ## Metrics in DynamoDB
 
-- [ ] Add F1 Score tracking to evaluate NER/token classification performance
-- [ ] Implement Token-level Precision and Recall metrics
-- [ ] Track Entity-level metrics:
-  - [ ] Entity-level F1
-  - [ ] Entity-level accuracy by class (business_name, total_amount, etc.)
-- [ ] Generate Confusion Matrix to understand entity misclassifications
+- [x] Add F1 Score tracking to evaluate NER/token classification performance
+- [x] Implement Token-level Precision and Recall metrics
+- [x] Track Entity-level metrics:
+  - [x] Entity-level F1
+  - [x] Entity-level accuracy by class (business_name, total_amount, etc.)
+- [x] Generate Confusion Matrix to understand entity misclassifications
 - [ ] Implement IoU (Intersection over Union) for spatial accuracy of bounding boxes
-- [ ] Add receipt-specific metrics:
-  - [ ] Field extraction accuracy (total amount, date, store name)
+- [x] Add receipt-specific metrics:
+  - [x] Field extraction accuracy (total amount, date, store name)
   - [ ] Line-item detection accuracy
 
 ## Distributed Training Infrastructure
 
-- [ ] Integrate SQS job queue system with main training pipeline:
+- [x] Integrate SQS job queue system with main training pipeline:
 
-  - [ ] Connect JobQueue to ReceiptTrainer for job processing
-  - [ ] Use job_queue.py module to pull training jobs from SQS
-  - [ ] Implement proper job status updates via SQS
+  - [x] Implement job classes (Job, JobStatus, JobPriority, JobQueue)
+  - [x] Create worker module for processing jobs from SQS
+  - [x] Complete direct connection between JobQueue and ReceiptTrainer
+  - [x] Implement full job status updates via SQS
 
 - [ ] Implement EFS capabilities for distributed training:
 
-  - [ ] Use EFS mounts for shared datasets between instances
-  - [ ] Store and load checkpoints from EFS for job continuity
-  - [ ] Implement checkpoint sharing between training instances
+  - [x] Create EFSManager for EFS mounting functionality
+  - [x] Implement methods to mount and check EFS filesystems
+  - [ ] Enhance checkpoint sharing between training instances
+  - [ ] Fully integrate EFS mounts with training workflow
 
 - [ ] Instance coordination and management:
 
-  - [ ] Integrate with Instance Registry for cluster awareness
-  - [ ] Implement leader election for coordinated tasks
-  - [ ] Add instance heartbeat monitoring for health checks
+  - [x] Implement InstanceRegistry class for cluster awareness
+  - [x] Create leader election functionality
+  - [ ] Complete integration with Instance Registry for coordinated tasks
+  - [ ] Enhance heartbeat monitoring for health checks
 
 - [ ] Fault tolerance and recovery:
 
-  - [ ] Enhance spot interruption handling with job recovery
-  - [ ] Implement job retry logic for failed jobs
-  - [ ] Add visibility timeout management for long-running jobs
+  - [x] Create SpotInstanceHandler for handling spot interruptions
+  - [x] Implement job retry strategies
+  - [ ] Complete job recovery logic after spot interruptions
+  - [x] Add visibility timeout management for long-running jobs
 
-- [ ] Auto-scaling and resource optimization:
-  - [ ] Add logic to request/release instances based on queue depth
-  - [ ] Select appropriate instance type based on job requirements
-  - [ ] Implement cost optimization strategies with instance selection
+- [x] Auto-scaling and resource optimization:
+  - [x] Add logic to request/release instances based on queue depth
+  - [x] Select appropriate instance type based on job requirements
+  - [x] Implement cost optimization strategies with instance selection

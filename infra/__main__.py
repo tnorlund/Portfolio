@@ -9,7 +9,9 @@ import base64
 import s3_website  # noqa: F401
 import api_gateway  # noqa: F401
 import raw_bucket  # Import raw bucket module
-from dynamo_db import dynamodb_table  # Import DynamoDB table from original code
+from dynamo_db import (
+    dynamodb_table,
+)  # Import DynamoDB table from original code
 from spot_interruption import SpotInterruptionHandler  # Import the class
 from efs_storage import EFSStorage  # Import the class
 from instance_registry import InstanceRegistry  # Import the class
@@ -40,9 +42,7 @@ except FileNotFoundError:
 
 # Use stack-specific existing key pair from AWS console
 stack = pulumi.get_stack()
-key_pair_name = (
-    f"portfolio-receipt-{stack}"  # Use existing key pairs created in AWS console
-)
+key_pair_name = f"portfolio-receipt-{stack}"  # Use existing key pairs created in AWS console
 
 # Create EC2 Instance Profile for ML training instances
 ml_training_role = aws.iam.Role(
@@ -376,8 +376,12 @@ scaling_policy = aws.autoscaling.Policy(
 # ML Infrastructure Exports
 pulumi.export("instance_registry_table", instance_registry.table_name)
 pulumi.export("efs_dns_name", efs_storage.file_system_dns_name)
-pulumi.export("efs_training_access_point", efs_storage.training_access_point_id)
-pulumi.export("efs_checkpoints_access_point", efs_storage.checkpoints_access_point_id)
+pulumi.export(
+    "efs_training_access_point", efs_storage.training_access_point_id
+)
+pulumi.export(
+    "efs_checkpoints_access_point", efs_storage.checkpoints_access_point_id
+)
 pulumi.export("spot_interruption_sns_topic", spot_handler.sns_topic_arn)
 pulumi.export("launch_template_id", launch_template.id)
 pulumi.export("auto_scaling_group_name", asg.name)
@@ -385,3 +389,13 @@ pulumi.export("deep_learning_ami_id", dl_ami.id)
 pulumi.export("deep_learning_ami_name", dl_ami.name)
 pulumi.export("job_queue_url", job_queue.get_queue_url())
 pulumi.export("job_dlq_url", job_queue.get_dlq_url())
+
+# Export additional values needed for auto-scaling
+pulumi.export("training_ami_id", dl_ami.id)
+pulumi.export("training_instance_profile_name", ml_instance_profile.name)
+pulumi.export(
+    "training_subnet_id", default_subnets.ids[0]
+)  # Export the first subnet for auto-scaling
+pulumi.export("training_security_group_id", ml_security_group.id)
+pulumi.export("training_efs_id", efs_storage.file_system_id)
+pulumi.export("instance_registry_table_name", instance_registry.table_name)
