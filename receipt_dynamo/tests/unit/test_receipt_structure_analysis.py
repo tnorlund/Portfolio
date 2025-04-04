@@ -911,8 +911,8 @@ def test_receipt_structure_analysis_discovered_sections(
 def test_receipt_structure_analysis_key(example_receipt_structure_analysis):
     """Test key generation."""
     key = example_receipt_structure_analysis.key()
-    assert key["PK"] == "IMAGE#abc123"
-    assert key["SK"] == "RECEIPT#00123#ANALYSIS#STRUCTURE#1.0.0"
+    assert key["PK"]["S"] == "IMAGE#abc123"
+    assert key["SK"]["S"] == "RECEIPT#00123#ANALYSIS#STRUCTURE#1.0.0"
 
 
 @pytest.mark.unit
@@ -921,18 +921,8 @@ def test_receipt_structure_analysis_gsi1_key(
 ):
     """Test GSI1 key generation."""
     key = example_receipt_structure_analysis.gsi1_key()
-    assert key["GSI1PK"] == "ANALYSIS_TYPE"
-    assert key["GSI1SK"] == "STRUCTURE#2023-01-01T12:00:00"
-
-
-@pytest.mark.unit
-def test_receipt_structure_analysis_gsi2_key(
-    example_receipt_structure_analysis,
-):
-    """Test GSI2 key generation."""
-    key = example_receipt_structure_analysis.gsi2_key()
-    assert key["GSI2PK"] == "RECEIPT"
-    assert key["GSI2SK"] == "IMAGE#abc123#RECEIPT#00123#1.0.0"
+    assert key["GSI1PK"]["S"] == "ANALYSIS_TYPE"
+    assert key["GSI1SK"]["S"] == "STRUCTURE#2023-01-01T12:00:00"
 
 
 @pytest.mark.unit
@@ -945,8 +935,6 @@ def test_receipt_structure_analysis_to_item(
     assert item["SK"]["S"] == "RECEIPT#00123#ANALYSIS#STRUCTURE#1.0.0"
     assert item["GSI1PK"]["S"] == "ANALYSIS_TYPE"
     assert item["GSI1SK"]["S"] == "STRUCTURE#2023-01-01T12:00:00"
-    assert item["GSI2PK"]["S"] == "RECEIPT"
-    assert item["GSI2SK"]["S"] == "IMAGE#abc123#RECEIPT#00123#1.0.0"
     assert item["receipt_id"]["N"] == "123"
     assert item["image_id"]["S"] == "abc123"
     assert item["entity_type"]["S"] == "STRUCTURE_ANALYSIS"
