@@ -16,6 +16,7 @@ from spot_interruption import SpotInterruptionHandler  # Import the class
 from efs_storage import EFSStorage  # Import the class
 from instance_registry import InstanceRegistry  # Import the class
 from job_queue import JobQueue  # Import the job queue class
+from ml_packages import MLPackageBuilder  # Import the ML package builder
 
 # Import other necessary components
 try:
@@ -373,6 +374,26 @@ scaling_policy = aws.autoscaling.Policy(
     ),
 )
 
+# ML Package Building
+# -------------------
+# Get force_rebuild from config if set
+config = pulumi.Config("ml-training")
+force_rebuild = config.get_bool("force-rebuild") or False
+
+# List of packages to build
+ml_packages = ["receipt_trainer", "receipt_dynamo"]
+
+# Create the package builder
+package_builder = MLPackageBuilder(
+    "ml-packages",
+    packages=ml_packages,
+    efs_storage_id=efs_storage.file_system_id,
+    python_version="3.9",
+    cuda_version="11.7",
+    force_rebuild=force_rebuild,
+    opts=pulumi.ResourceOptions(depends_on=[efs_storage.file_system]),
+)
+
 # ML Infrastructure Exports
 pulumi.export("instance_registry_table", instance_registry.table_name)
 pulumi.export("efs_dns_name", efs_storage.file_system_dns_name)
@@ -399,3 +420,4 @@ pulumi.export(
 pulumi.export("training_security_group_id", ml_security_group.id)
 pulumi.export("training_efs_id", efs_storage.file_system_id)
 pulumi.export("instance_registry_table_name", instance_registry.table_name)
+pulumi.export("ml_packages_built", package_builder.packages)
