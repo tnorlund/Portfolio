@@ -12,11 +12,12 @@ import raw_bucket  # Import raw bucket module
 from dynamo_db import (
     dynamodb_table,
 )  # Import DynamoDB table from original code
-from spot_interruption import SpotInterruptionHandler  # Import the class
-from efs_storage import EFSStorage  # Import the class
-from instance_registry import InstanceRegistry  # Import the class
-from job_queue import JobQueue  # Import the job queue class
-from ml_packages import MLPackageBuilder  # Import the ML package builder
+from spot_interruption import SpotInterruptionHandler
+from efs_storage import EFSStorage
+from instance_registry import InstanceRegistry
+from job_queue import JobQueue
+from ml_packages import MLPackageBuilder
+from networking import VpcForCodeBuild  # Import the new VPC component
 
 # Import other necessary components
 try:
@@ -25,10 +26,13 @@ try:
 except ImportError:
     # These may not be available in all environments
     pass
-
 import step_function
 
-# Original exports from main branch
+# Create the dedicated VPC network infrastructure
+network = VpcForCodeBuild("codebuild-network")
+
+# --- Removed Config reading for VPC resources ---
+
 pulumi.export("region", aws.config.region)
 
 # Open template readme and read contents into stack output
@@ -48,16 +52,14 @@ key_pair_name = f"portfolio-receipt-{stack}"  # Use existing key pairs created i
 # Create EC2 Instance Profile for ML training instances
 ml_training_role = aws.iam.Role(
     "ml-training-role",
-    assume_role_policy="""
-    {
+    assume_role_policy="""{
         "Version": "2012-10-17",
         "Statement": [{
             "Action": "sts:AssumeRole",
             "Principal": {"Service": "ec2.amazonaws.com"},
             "Effect": "Allow"
         }]
-    }
-    """,
+    }""",
 )
 
 # Attach basic policies for S3 access
@@ -72,73 +74,73 @@ ml_instance_profile = aws.iam.InstanceProfile(
     "ml-instance-profile", role=ml_training_role.name
 )
 
-# Get default VPC and subnets for EFS
-default_vpc = aws.ec2.get_vpc(default=True)
-default_subnets = aws.ec2.get_subnets(
-    filters=[
-        aws.ec2.GetSubnetsFilterArgs(
-            name="vpc-id",
-            values=[default_vpc.id],
-        ),
-    ]
+
+# Create EFS storage, referencing the new VPC and SG from the network component
+efs_storage = EFSStorage(
+    "ml-training-vpc",
+    vpc_id=network.vpc_id,  # Use network component output
+    subnet_ids=network.private_subnet_ids,  # Use network component output
+    security_group_ids=[network.security_group_id],  # Use new security group
+    instance_role_name=ml_training_role.name,
+    lifecycle_policies=[{"transition_to_ia": "AFTER_30_DAYS"}],
+    opts=pulumi.ResourceOptions(
+        depends_on=[network], replace_on_changes=["vpc_id"]
+    ),  # Depend on network creation
 )
 
-# Create security group for ML training instances
-ml_security_group = aws.ec2.SecurityGroup(
-    "ml-security-group",
-    description="Security group for ML training instances",
-    vpc_id=default_vpc.id,
-    ingress=[
-        # Allow SSH
-        aws.ec2.SecurityGroupIngressArgs(
-            from_port=22,
-            to_port=22,
-            protocol="tcp",
-            cidr_blocks=["0.0.0.0/0"],
-        ),
-        # Allow all traffic between instances in this security group
-        aws.ec2.SecurityGroupIngressArgs(
-            from_port=0,
-            to_port=0,
-            protocol="-1",
-            self=True,
-        ),
-    ],
-    egress=[
-        # Allow all outbound traffic
-        aws.ec2.SecurityGroupEgressArgs(
-            from_port=0,
-            to_port=0,
-            protocol="-1",
-            cidr_blocks=["0.0.0.0/0"],
-        ),
-    ],
-)
+# Create VPC endpoints in parallel, using the new VPC and SG from the network component
+vpc_endpoints = []
+for service in [
+    "com.amazonaws.us-east-1.codebuild",
+    "com.amazonaws.us-east-1.ecr.api",
+    "com.amazonaws.us-east-1.ecr.dkr",
+    "com.amazonaws.us-east-1.logs",
+    "com.amazonaws.us-east-1.elasticfilesystem",
+]:
+    private_dns = False  # Keep disabled as per previous findings
+    endpoint = aws.ec2.VpcEndpoint(
+        f"codebuild-{service.split('.')[-1]}",
+        vpc_id=network.vpc_id,  # Use network component output
+        service_name=service,
+        vpc_endpoint_type="Interface",
+        subnet_ids=network.private_subnet_ids,  # Use network component output
+        security_group_ids=[
+            network.security_group_id
+        ],  # Use new security group
+        private_dns_enabled=private_dns,
+        opts=pulumi.ResourceOptions(
+            depends_on=[network]
+        ),  # Depend on network creation
+    )
+    vpc_endpoints.append(endpoint)
+
+# --- Security Group Rule for EFS is now handled within the VpcForCodeBuild component ---
+# --- or should be, if not, add it back referencing network outputs ---
+# Re-adding here explicitly for clarity, referencing component outputs
+# aws.ec2.SecurityGroupRule(
+#     "codebuild-efs-nfs-explicit",  # Renamed to avoid conflict if defined in component
+#     type="ingress",
+#     from_port=2049,
+#     to_port=2049,
+#     protocol="tcp",
+#     security_group_id=network.efs_security_group_id, # Use network component output
+#     source_security_group_id=network.codebuild_security_group_id, # Use network component output
+#     description="Allow NFS from CodeBuild SG (Explicit)",
+#     opts=pulumi.ResourceOptions(depends_on=[network]), # Depend on network creation
+# )
 
 # Create spot interruption handler
 spot_handler = SpotInterruptionHandler(
     "ml-training",
     instance_role_name=ml_training_role.name,
-    # Optional: Add email for notifications
-    # sns_email="your-email@example.com",
-)
-
-# Create EFS for shared storage
-efs_storage = EFSStorage(
-    "ml-training",
-    vpc_id=default_vpc.id,
-    subnet_ids=default_subnets.ids,
-    security_group_ids=[ml_security_group.id],
-    instance_role_name=ml_training_role.name,
-    # Optional: Configure lifecycle policies
-    lifecycle_policies=[{"transition_to_ia": "AFTER_30_DAYS"}],
 )
 
 # Create instance registry for auto-registration
 instance_registry = InstanceRegistry(
     "ml-training",
     instance_role_name=ml_training_role.name,
-    ttl_hours=2,  # Entries expire after 2 hours if not updated
+    dynamodb_table_name=dynamodb_table.name,
+    ttl_hours=2,
 )
 
 # Create job queue for training job management
@@ -177,14 +179,12 @@ sqs_policy_document = pulumi.Output.all(
     }}"""
 )
 
-# Create the policy
 sqs_policy = aws.iam.Policy(
     "ml-training-sqs-policy",
     description="Allow ML training instances to access SQS queues",
     policy=sqs_policy_document,
 )
 
-# Attach the policy to the role
 sqs_policy_attachment = aws.iam.RolePolicyAttachment(
     "ml-sqs-policy-attachment",
     role=ml_training_role.name,
@@ -195,71 +195,6 @@ sqs_policy_attachment = aws.iam.RolePolicyAttachment(
 # Generate instance registration script
 registration_script = instance_registry.create_registration_script(
     leader_election_enabled=True
-)
-
-# Create user data script for EC2 instances
-user_data_script = pulumi.Output.all(
-    efs_dns_name=efs_storage.file_system_dns_name,
-    training_ap_id=efs_storage.training_access_point_id,
-    checkpoints_ap_id=efs_storage.checkpoints_access_point_id,
-    instance_registry_table=instance_registry.table_name,
-    registration_script=registration_script,
-    job_queue_url=job_queue.get_queue_url(),
-    job_dlq_url=job_queue.get_dlq_url(),
-).apply(
-    lambda args: f"""#!/bin/bash
-# User data script for ML training instances
-
-# Set environment variables
-echo "export INSTANCE_REGISTRY_TABLE={args['instance_registry_table']}" >> /etc/environment
-echo "export EFS_DNS_NAME={args['efs_dns_name']}" >> /etc/environment
-echo "export TRAINING_ACCESS_POINT_ID={args['training_ap_id']}" >> /etc/environment
-echo "export CHECKPOINTS_ACCESS_POINT_ID={args['checkpoints_ap_id']}" >> /etc/environment
-echo "export JOB_QUEUE_URL={args['job_queue_url']}" >> /etc/environment
-echo "export JOB_DLQ_URL={args['job_dlq_url']}" >> /etc/environment
-
-# Install necessary packages
-apt-get update
-apt-get install -y amazon-efs-utils git python3-pip
-
-# Mount EFS access points
-mkdir -p /mnt/training
-mkdir -p /mnt/checkpoints
-
-# Mount training directory
-mount -t efs -o tls,accesspoint={args['training_ap_id']} {args['efs_dns_name']}:/ /mnt/training
-echo "{args['efs_dns_name']}:/ /mnt/training efs _netdev,tls,accesspoint={args['training_ap_id']} 0 0" >> /etc/fstab
-
-# Mount checkpoints directory
-mount -t efs -o tls,accesspoint={args['checkpoints_ap_id']} {args['efs_dns_name']}:/ /mnt/checkpoints
-echo "{args['efs_dns_name']}:/ /mnt/checkpoints efs _netdev,tls,accesspoint={args['checkpoints_ap_id']} 0 0" >> /etc/fstab
-
-# Set up instance registration
-cat > /usr/local/bin/register-instance.sh << 'EOL'
-{args['registration_script']}
-EOL
-
-chmod +x /usr/local/bin/register-instance.sh
-/usr/local/bin/register-instance.sh
-
-# Install required Python packages
-pip install wandb boto3 torch transformers
-
-# Clone repository and set up environment
-git clone https://github.com/yourusername/your-repo.git /home/ubuntu/training
-cd /home/ubuntu/training
-pip install -r requirements.txt
-
-# Create symlinks to mounted directories
-ln -s /mnt/training /home/ubuntu/training/shared
-ln -s /mnt/checkpoints /home/ubuntu/training/checkpoints
-
-# Set up environment for training
-echo "export PYTHONPATH=/home/ubuntu/training:$PYTHONPATH" >> /home/ubuntu/.bashrc
-echo "export CHECKPOINT_DIR=/mnt/checkpoints" >> /home/ubuntu/.bashrc
-echo "export JOB_QUEUE_URL={args['job_queue_url']}" >> /home/ubuntu/.bashrc
-echo "export JOB_DLQ_URL={args['job_dlq_url']}" >> /home/ubuntu/.bashrc
-"""
 )
 
 # Get the latest Deep Learning AMI
@@ -275,18 +210,102 @@ dl_ami = aws.ec2.get_ami(
     ],
 )
 
-# Create EC2 Launch Template
+# Create EC2 Launch Template, referencing SG from network component
 launch_template = aws.ec2.LaunchTemplate(
     "ml-training-launch-template",
-    image_id=dl_ami.id,  # Use the Deep Learning AMI we found
-    instance_type="p3.2xlarge",  # Default instance type with GPU
-    key_name=key_pair_name,  # Reference existing key pair created in AWS console
+    image_id=dl_ami.id,
+    instance_type="p3.2xlarge",
+    key_name=key_pair_name,
     iam_instance_profile=aws.ec2.LaunchTemplateIamInstanceProfileArgs(
         name=ml_instance_profile.name,
     ),
-    vpc_security_group_ids=[ml_security_group.id],
-    user_data=user_data_script.apply(
-        lambda s: base64.b64encode(s.encode("utf-8")).decode("utf-8")
+    network_interfaces=[
+        aws.ec2.LaunchTemplateNetworkInterfaceArgs(
+            associate_public_ip_address=False,  # Ensure instances in private subnets don't get public IPs
+            security_groups=[
+                network.security_group_id
+            ],  # Use new security group
+            # subnet_id is determined by the ASG's vpc_zone_identifiers
+        )
+    ],
+    user_data=pulumi.Output.all(
+        efs_dns_name=efs_storage.file_system_dns_name,
+        training_ap_id=efs_storage.training_access_point_id,
+        checkpoints_ap_id=efs_storage.checkpoints_access_point_id,
+        instance_registry_table=instance_registry.table_name,
+        spot_topic_arn=spot_handler.sns_topic_arn,
+        job_queue_url=job_queue.get_queue_url(),
+    ).apply(
+        lambda args: base64.b64encode(
+            f"""#!/bin/bash
+# Install required utilities
+yum update -y
+yum install -y amazon-efs-utils awscli jq
+
+# Create mount points
+mkdir -p /mnt/training
+mkdir -p /mnt/checkpoints
+
+# Mount EFS access points
+mount -t efs -o tls,accesspoint={args['training_ap_id']} {args['efs_dns_name']}:/ /mnt/training
+echo "{args['efs_dns_name']}:/ /mnt/training efs _netdev,tls,accesspoint={args['training_ap_id']} 0 0" >> /etc/fstab
+
+mount -t efs -o tls,accesspoint={args['checkpoints_ap_id']} {args['efs_dns_name']}:/ /mnt/checkpoints
+echo "{args['efs_dns_name']}:/ /mnt/checkpoints efs _netdev,tls,accesspoint={args['checkpoints_ap_id']} 0 0" >> /etc/fstab
+
+# Get instance metadata
+INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
+REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)
+INSTANCE_TYPE=$(curl -s http://169.254.169.254/latest/meta-data/instance-type)
+AZ=$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone)
+IP_ADDRESS=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
+IS_SPOT=$(curl -s http://169.254.169.254/latest/meta-data/instance-life-cycle | grep -q "spot" && echo "true" || echo "false")
+GPU_COUNT=$(nvidia-smi --query-gpu=count --format=csv,noheader | grep -v "No devices were found" | wc -l || echo "0")
+
+# Register instance with DynamoDB using Instance entity schema
+aws dynamodb put-item \
+    --table-name {args['instance_registry_table']} \
+    --item '{{"PK":{{"S":"INSTANCE#$INSTANCE_ID"}},"SK":{{"S":"INSTANCE"}},"GSI1PK":{{"S":"STATUS#running"}},"GSI1SK":{{"S":"INSTANCE#$INSTANCE_ID"}},"TYPE":{{"S":"INSTANCE"}},"instance_type":{{"S":"$INSTANCE_TYPE"}},"gpu_count":{{"N":"$GPU_COUNT"}},"status":{{"S":"running"}},"launched_at":{{"S":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}},"ip_address":{{"S":"$IP_ADDRESS"}},"availability_zone":{{"S":"$AZ"}},"is_spot":{{"BOOL":$IS_SPOT}},"health_status":{{"S":"healthy"}}}}' \
+    --region $REGION
+
+# Subscribe to spot interruption notifications
+aws sns subscribe \
+    --topic-arn {args['spot_topic_arn']} \
+    --protocol http \
+    --notification-endpoint http://169.254.169.254/latest/meta-data/spot/instance-action \
+    --region $REGION
+
+# Download and setup training code
+cd /mnt/training
+aws s3 sync s3://{ml_package_builder.artifact_bucket}/output/receipt_trainer/ .
+
+# Start training job
+cd /mnt/training
+python -m receipt_trainer.train \
+    --checkpoint-dir /mnt/checkpoints \
+    --job-queue {args['job_queue_url']} \
+    --instance-id $INSTANCE_ID \
+    --region $REGION &
+
+# Monitor spot interruption
+while true; do
+    if [ -f /tmp/spot-interruption-notice ]; then
+        # Handle spot interruption
+        aws dynamodb update-item \
+            --table-name {args['instance_registry_table']} \
+            --key '{{"PK":{{"S":"INSTANCE#$INSTANCE_ID"}},"SK":{{"S":"INSTANCE"}}}}' \
+            --update-expression "SET #s = :s, #t = :t, #h = :h" \
+            --expression-attribute-names '{{"#s":"status","#t":"launched_at","#h":"health_status"}}' \
+            --expression-attribute-values '{{":s":{{"S":"terminated"}},":t":{{"S":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}},":h":{{"S":"unhealthy"}}}}' \
+            --region $REGION
+        break
+    fi
+    sleep 5
+done
+""".encode(
+                "utf-8"
+            )
+        ).decode("utf-8")
     ),
     tag_specifications=[
         aws.ec2.LaunchTemplateTagSpecificationArgs(
@@ -298,20 +317,23 @@ launch_template = aws.ec2.LaunchTemplate(
             },
         ),
     ],
+    opts=pulumi.ResourceOptions(
+        depends_on=[network]
+    ),  # Depend on network creation
 )
 
-# Create Auto Scaling Group
+# Create Auto Scaling Group using private subnets from network component
 asg = aws.autoscaling.Group(
     "ml-training-asg",
     max_size=4,
     min_size=0,
-    desired_capacity=0,  # Start with 0 instances, scale up when needed
-    vpc_zone_identifiers=default_subnets.ids,
+    desired_capacity=0,
+    vpc_zone_identifiers=network.private_subnet_ids,  # Use network component output
     mixed_instances_policy=aws.autoscaling.GroupMixedInstancesPolicyArgs(
         instances_distribution=aws.autoscaling.GroupMixedInstancesPolicyInstancesDistributionArgs(
             on_demand_base_capacity=0,
-            on_demand_percentage_above_base_capacity=0,  # Use 100% spot instances
-            spot_allocation_strategy="capacity-optimized",  # Optimize for availability
+            on_demand_percentage_above_base_capacity=0,
+            spot_allocation_strategy="capacity-optimized",
         ),
         launch_template=aws.autoscaling.GroupMixedInstancesPolicyLaunchTemplateArgs(
             launch_template_specification=aws.autoscaling.GroupMixedInstancesPolicyLaunchTemplateLaunchTemplateSpecificationArgs(
@@ -319,7 +341,6 @@ asg = aws.autoscaling.Group(
                 version="$Latest",
             ),
             overrides=[
-                # Define multiple instance types for better spot availability
                 aws.autoscaling.GroupMixedInstancesPolicyLaunchTemplateOverrideArgs(
                     instance_type="p3.2xlarge",
                 ),
@@ -329,7 +350,6 @@ asg = aws.autoscaling.Group(
                 aws.autoscaling.GroupMixedInstancesPolicyLaunchTemplateOverrideArgs(
                     instance_type="p3.16xlarge",
                 ),
-                # Add g4dn instances as well
                 aws.autoscaling.GroupMixedInstancesPolicyLaunchTemplateOverrideArgs(
                     instance_type="g4dn.xlarge",
                 ),
@@ -342,10 +362,8 @@ asg = aws.autoscaling.Group(
             ],
         ),
     ),
-    # Configure health checks
     health_check_type="EC2",
     health_check_grace_period=300,
-    # Add tags
     tags=[
         aws.autoscaling.GroupTagArgs(
             key="Name",
@@ -358,6 +376,9 @@ asg = aws.autoscaling.Group(
             propagate_at_launch=True,
         ),
     ],
+    opts=pulumi.ResourceOptions(
+        depends_on=[launch_template]
+    ),  # Depend on launch template
 )
 
 # Create a simple scaling policy based on CPU utilization
@@ -369,32 +390,42 @@ scaling_policy = aws.autoscaling.Policy(
         predefined_metric_specification=aws.autoscaling.PolicyTargetTrackingConfigurationPredefinedMetricSpecificationArgs(
             predefined_metric_type="ASGAverageCPUUtilization",
         ),
-        target_value=70.0,  # Target CPU utilization of 70%
+        target_value=70.0,
         disable_scale_in=False,
     ),
 )
 
 # ML Package Building
 # -------------------
-# Get force_rebuild from config if set
-config = pulumi.Config("ml-training")
-force_rebuild = config.get_bool("force-rebuild") or False
+ml_training_config = pulumi.Config("ml-training")
+force_rebuild = ml_training_config.get_bool("force-rebuild") or False
 
-# List of packages to build
 ml_packages = ["receipt_trainer", "receipt_dynamo"]
 
-# Create the package builder
-package_builder = MLPackageBuilder(
-    "ml-packages",
-    packages=ml_packages,
-    efs_storage_id=efs_storage.file_system_id,
+# Create the package builder using VPC info from network component
+ml_package_builder = MLPackageBuilder(
+    f"receipt-trainer-{stack}",
+    packages=["receipt_trainer"],
     python_version="3.9",
     cuda_version="11.7",
+    vpc_id=network.vpc_id,  # Use network component output
+    subnet_ids=network.private_subnet_ids,  # Use network component output
+    security_group_ids=[network.security_group_id],  # Use new security group
+    efs_storage_id=efs_storage.file_system_id,  # Get EFS ID from EFS component
+    efs_access_point_id=efs_storage.training_access_point_id,  # Get AP ID from EFS component
     force_rebuild=force_rebuild,
-    opts=pulumi.ResourceOptions(depends_on=[efs_storage.file_system]),
+    vpc_endpoints=vpc_endpoints,  # Pass created endpoints
+    opts=pulumi.ResourceOptions(depends_on=[network] + vpc_endpoints),
 )
 
-# ML Infrastructure Exports
+# --- Adjusted Exports ---
+pulumi.export("vpc_id", network.vpc_id)
+pulumi.export("private_subnet_ids", network.private_subnet_ids)
+pulumi.export("public_subnet_ids", network.public_subnet_ids)
+pulumi.export(
+    "security_group_id", network.security_group_id
+)  # Updated export name
+
 pulumi.export("instance_registry_table", instance_registry.table_name)
 pulumi.export("efs_dns_name", efs_storage.file_system_dns_name)
 pulumi.export(
@@ -411,13 +442,42 @@ pulumi.export("deep_learning_ami_name", dl_ami.name)
 pulumi.export("job_queue_url", job_queue.get_queue_url())
 pulumi.export("job_dlq_url", job_queue.get_dlq_url())
 
-# Export additional values needed for auto-scaling
 pulumi.export("training_ami_id", dl_ami.id)
 pulumi.export("training_instance_profile_name", ml_instance_profile.name)
+
+
+def get_first_subnet(subnets):
+    return subnets[0]
+
+
 pulumi.export(
-    "training_subnet_id", default_subnets.ids[0]
-)  # Export the first subnet for auto-scaling
-pulumi.export("training_security_group_id", ml_security_group.id)
+    "training_subnet_id", network.private_subnet_ids.apply(get_first_subnet)
+)
+
 pulumi.export("training_efs_id", efs_storage.file_system_id)
 pulumi.export("instance_registry_table_name", instance_registry.table_name)
-pulumi.export("ml_packages_built", package_builder.packages)
+pulumi.export("ml_packages_built", ml_package_builder.packages)
+
+# Create EFS
+efs = aws.efs.FileSystem(
+    "efs",
+    encrypted=True,
+    performance_mode="generalPurpose",
+    throughput_mode="bursting",
+    tags={"Name": "efs"},
+    opts=ResourceOptions(parent=network),
+)
+
+# Create EFS mount targets in each private subnet
+network.private_subnet_ids.apply(
+    lambda subnet_ids: [
+        aws.efs.MountTarget(
+            f"efs-mount-{i}",
+            file_system_id=efs.id,
+            subnet_id=subnet_id,
+            security_groups=[network.security_group_id],
+            opts=ResourceOptions(parent=efs),
+        )
+        for i, subnet_id in enumerate(subnet_ids)
+    ]
+)
