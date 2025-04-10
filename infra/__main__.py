@@ -192,6 +192,50 @@ sqs_policy_attachment = aws.iam.RolePolicyAttachment(
     opts=ResourceOptions(depends_on=[ml_training_role]),
 )
 
+# IAM policy for EFS access required by EC2 instances
+efs_ec2_policy = aws.iam.Policy(
+    "ml-training-efs-ec2-policy",
+    description="Allow EC2 instances to use EFS and describe necessary resources",
+    policy=pulumi.Output.all(
+        file_system_id=efs_storage.file_system_id,
+        region=aws.config.region,
+        account_id=aws.get_caller_identity().account_id,
+    ).apply(
+        lambda args: f"""{{
+            "Version": "2012-10-17",
+            "Statement": [
+                {{
+                    "Effect": "Allow",
+                    "Action": [
+                        "ec2:DescribeAvailabilityZones",
+                        "ec2:DescribeSubnets",
+                        "ec2:DescribeNetworkInterfaces",
+                        "elasticfilesystem:DescribeMountTargets",
+                        "elasticfilesystem:DescribeFileSystems"
+                    ],
+                    "Resource": "*"
+                }},
+                {{
+                    "Effect": "Allow",
+                    "Action": [
+                        "elasticfilesystem:ClientMount",
+                        "elasticfilesystem:ClientWrite"
+                    ],
+                    "Resource": "arn:aws:elasticfilesystem:{args['region']}:{args['account_id']}:file-system/{args['file_system_id']}"
+                }}
+            ]
+        }}"""
+    ),
+)
+
+# Attach this policy to your EC2 instance role
+efs_ec2_policy_attachment = aws.iam.RolePolicyAttachment(
+    "ml-training-efs-ec2-policy-attachment",
+    role=ml_training_role.name,
+    policy_arn=efs_ec2_policy.arn,
+    opts=pulumi.ResourceOptions(depends_on=[ml_training_role, efs_ec2_policy]),
+)
+
 # Generate instance registration script
 registration_script = instance_registry.create_registration_script(
     leader_election_enabled=True
@@ -342,22 +386,10 @@ asg = aws.autoscaling.Group(
             ),
             overrides=[
                 aws.autoscaling.GroupMixedInstancesPolicyLaunchTemplateOverrideArgs(
-                    instance_type="p3.2xlarge",
-                ),
-                aws.autoscaling.GroupMixedInstancesPolicyLaunchTemplateOverrideArgs(
-                    instance_type="p3.8xlarge",
-                ),
-                aws.autoscaling.GroupMixedInstancesPolicyLaunchTemplateOverrideArgs(
-                    instance_type="p3.16xlarge",
-                ),
-                aws.autoscaling.GroupMixedInstancesPolicyLaunchTemplateOverrideArgs(
                     instance_type="g4dn.xlarge",
                 ),
                 aws.autoscaling.GroupMixedInstancesPolicyLaunchTemplateOverrideArgs(
-                    instance_type="g4dn.2xlarge",
-                ),
-                aws.autoscaling.GroupMixedInstancesPolicyLaunchTemplateOverrideArgs(
-                    instance_type="g4dn.4xlarge",
+                    instance_type="g5.xlarge",
                 ),
             ],
         ),

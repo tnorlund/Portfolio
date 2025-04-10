@@ -291,9 +291,9 @@ class MLPackageBuilder(pulumi.ComponentResource):
                     name=f"{package}.zip",
                 ),
                 environment=aws.codebuild.ProjectEnvironmentArgs(
-                    type="LINUX_GPU_CONTAINER",  # Use GPU environment for ML training
+                    type="LINUX_CONTAINER",
                     image="aws/codebuild/amazonlinux2-x86_64-standard:5.0",
-                    compute_type="BUILD_GENERAL1_LARGE",
+                    compute_type="BUILD_GENERAL1_SMALL",
                     privileged_mode=True,  # Required for Docker
                     environment_variables=[
                         aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
@@ -342,20 +342,29 @@ class MLPackageBuilder(pulumi.ComponentResource):
                     else None
                 ),
                 # Use apply to handle the Output nature of efs_storage_id
-                file_system_locations=self.efs_storage_id.apply(
-                    lambda fs_id: (
+                file_system_locations=pulumi.Output.all(
+                    fs_id=self.efs_storage_id,
+                    ap_id=self.efs_access_point_id,
+                ).apply(
+                    lambda args: (
                         [
                             aws.codebuild.ProjectFileSystemLocationArgs(
                                 identifier="efs_mount",
-                                location=f"{fs_id}.efs.us-east-1.amazonaws.com:/",  # Use resolved fs_id here
+                                location=f"{args['fs_id']}.efs.{aws.config.region}.amazonaws.com:/",
                                 mount_point="/mnt/efs",
                                 type="EFS",
-                                mount_options="nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2",
+                                mount_options=(
+                                    f"accesspoint={args['ap_id']},"
+                                    "nfsvers=4.1,"
+                                    "rsize=1048576,"
+                                    "wsize=1048576,"
+                                    "hard,timeo=600,retrans=2"
+                                ),
                             )
                         ]
-                        if fs_id
+                        if args["fs_id"] and args["ap_id"]
                         else []
-                    )  # Handle potential None value inside apply
+                    )
                 ),
                 service_role=codebuild_role.arn,
                 source=aws.codebuild.ProjectSourceArgs(
@@ -428,10 +437,10 @@ class MLPackageBuilder(pulumi.ComponentResource):
                         # Install Python dependencies for CUDA compatibility
                         "pip install --upgrade pip",
                         "pip install boto3 awscli",
-                        # Install common CUDA-related Python packages
-                        "pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cpu",
-                        "pip install cupy-cuda11x",
-                        "pip install nvidia-ml-py3",
+                        # Install common Python packages for CPU-only PyTorch
+                        "pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu",
+                        "# Removed CUDA package for cost efficiency",
+                        "# Removed NVIDIA ML package for cost efficiency",
                     ],
                 },
                 "pre_build": {

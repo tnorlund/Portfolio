@@ -1,5 +1,16 @@
 config:
   aws:region: us-east-1
+  vpcCidr: "10.10.0.0/16"
+  publicSubnetCidrs:
+    - "10.10.0.0/24"
+    - "10.10.1.0/24"
+    - "10.10.2.0/24"
+    - "10.10.3.0/24"
+  privateSubnetCidrs:
+    - "10.10.10.0/24"
+    - "10.10.11.0/24"
+    - "10.10.12.0/24"
+    - "10.10.13.0/24"
   portfolio:OPENAI_API_KEY:
     secure: AAABANhLu9Xk4cxD7v1K8q1IRD5Lwtnr3cQTcuUOPWIBM80amq3juqBmrNtIUlWWoQAfIi3U8Pwht4vkU7kTzOryw13iDQUdHiB2D2LJl2Y8ZXMN97lftEASOScKZihcaiNWXSm9YAgDhLbR0HtRewr1XfRt6FlohCAzFu/KuphaJd4zy+PU0t1thvj8OAErHIxU4fUQL8rkwDcqqm+bnR1J4ag2UGz075zRbEfPJAWUnen0zsN34xUDlM/JXVRMBR4dhw==
   portfolio:environment: dev

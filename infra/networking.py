@@ -46,80 +46,58 @@ class VpcForCodeBuild(ComponentResource):
             opts=ResourceOptions(parent=igw, depends_on=[igw, vpc]),
         )
 
-        # Public Subnets (using first two AZs)
-        public_subnet1 = aws.ec2.Subnet(
-            f"{name}-public-subnet-1",
-            vpc_id=vpc.id,
-            cidr_block="10.2.1.0/24",
-            availability_zone=azs.names[0],
-            map_public_ip_on_launch=True,
-            tags={"Name": f"{name}-public-subnet-1"},
-            opts=ResourceOptions(parent=vpc),
-        )
+        # Create subnets in all available AZs
+        public_subnets = []
+        private_subnets = []
+        nat_gateways = []
+        nat_eips = []
 
-        public_subnet2 = aws.ec2.Subnet(
-            f"{name}-public-subnet-2",
-            vpc_id=vpc.id,
-            cidr_block="10.2.2.0/24",
-            availability_zone=azs.names[1],
-            map_public_ip_on_launch=True,
-            tags={"Name": f"{name}-public-subnet-2"},
-            opts=ResourceOptions(parent=vpc),
-        )
+        # Create NAT Gateway EIPs first
+        for i in range(len(azs.names)):
+            nat_eip = aws.ec2.Eip(
+                f"{name}-nat-eip-{i}",
+                domain="vpc",
+                opts=ResourceOptions(parent=self, depends_on=[igw]),
+            )
+            nat_eips.append(nat_eip)
 
-        # Private Subnets (using next two AZs)
-        private_subnet1 = aws.ec2.Subnet(
-            f"{name}-private-subnet-1",
-            vpc_id=vpc.id,
-            cidr_block="10.2.11.0/24",
-            availability_zone=azs.names[2],
-            map_public_ip_on_launch=False,
-            tags={"Name": f"{name}-private-subnet-1"},
-            opts=ResourceOptions(parent=vpc),
-        )
+        # Create public and private subnets in each AZ
+        for i, az in enumerate(azs.names):
+            # Public subnet
+            public_subnet = aws.ec2.Subnet(
+                f"{name}-public-subnet-{i}",
+                vpc_id=vpc.id,
+                cidr_block=f"10.2.{i}.0/24",
+                availability_zone=az,
+                map_public_ip_on_launch=True,
+                tags={"Name": f"{name}-public-subnet-{i}"},
+                opts=ResourceOptions(parent=vpc),
+            )
+            public_subnets.append(public_subnet)
 
-        private_subnet2 = aws.ec2.Subnet(
-            f"{name}-private-subnet-2",
-            vpc_id=vpc.id,
-            cidr_block="10.2.12.0/24",
-            availability_zone=azs.names[3],
-            map_public_ip_on_launch=False,
-            tags={"Name": f"{name}-private-subnet-2"},
-            opts=ResourceOptions(parent=vpc),
-        )
+            # Private subnet
+            private_subnet = aws.ec2.Subnet(
+                f"{name}-private-subnet-{i}",
+                vpc_id=vpc.id,
+                cidr_block=f"10.2.{i+10}.0/24",
+                availability_zone=az,
+                map_public_ip_on_launch=False,
+                tags={"Name": f"{name}-private-subnet-{i}"},
+                opts=ResourceOptions(parent=vpc),
+            )
+            private_subnets.append(private_subnet)
 
-        # NAT Gateway EIPs and NAT Gateways (one in each public subnet)
-        nat_eip1 = aws.ec2.Eip(
-            f"{name}-nat-eip-1",
-            domain="vpc",
-            opts=ResourceOptions(parent=self, depends_on=[igw]),
-        )
-
-        nat_eip2 = aws.ec2.Eip(
-            f"{name}-nat-eip-2",
-            domain="vpc",
-            opts=ResourceOptions(parent=self, depends_on=[igw]),
-        )
-
-        nat_gw1 = aws.ec2.NatGateway(
-            f"{name}-nat-gw-1",
-            allocation_id=nat_eip1.id,
-            subnet_id=public_subnet1.id,
-            tags={"Name": f"{name}-nat-gw-1"},
-            opts=ResourceOptions(
-                parent=self, depends_on=[public_subnet1, nat_eip1]
-            ),
-        )
-
-        nat_gw2 = aws.ec2.NatGateway(
-            f"{name}-nat-gw-2",
-            allocation_id=nat_eip2.id,
-            subnet_id=public_subnet2.id,
-            tags={"Name": f"{name}-nat-gw-2"},
-            opts=ResourceOptions(
-                parent=self, depends_on=[public_subnet2, nat_eip2]
-            ),
-        )
+            # Create NAT Gateway in public subnet
+            nat_gw = aws.ec2.NatGateway(
+                f"{name}-nat-gw-{i}",
+                allocation_id=nat_eips[i].id,
+                subnet_id=public_subnet.id,
+                tags={"Name": f"{name}-nat-gw-{i}"},
+                opts=ResourceOptions(
+                    parent=self, depends_on=[public_subnet, nat_eips[i]]
+                ),
+            )
+            nat_gateways.append(nat_gw)
 
         # Public Route Table
         public_rt = aws.ec2.RouteTable(
@@ -138,67 +116,45 @@ class VpcForCodeBuild(ComponentResource):
             opts=ResourceOptions(parent=public_rt),
         )
 
-        aws.ec2.RouteTableAssociation(
-            f"{name}-public-rta-1",
-            subnet_id=public_subnet1.id,
-            route_table_id=public_rt.id,
-            opts=ResourceOptions(parent=public_rt),
-        )
+        # Associate public subnets with public route table
+        for i, subnet in enumerate(public_subnets):
+            aws.ec2.RouteTableAssociation(
+                f"{name}-public-rta-{i}",
+                subnet_id=subnet.id,
+                route_table_id=public_rt.id,
+                opts=ResourceOptions(parent=public_rt),
+            )
 
-        aws.ec2.RouteTableAssociation(
-            f"{name}-public-rta-2",
-            subnet_id=public_subnet2.id,
-            route_table_id=public_rt.id,
-            opts=ResourceOptions(parent=public_rt),
-        )
+        # Create private route tables and associate with private subnets
+        private_route_tables = []
+        for i, (private_subnet, nat_gw) in enumerate(
+            zip(private_subnets, nat_gateways)
+        ):
+            private_rt = aws.ec2.RouteTable(
+                f"{name}-private-rt-{i}",
+                vpc_id=vpc.id,
+                tags={"Name": f"{name}-private-rt-{i}"},
+                opts=ResourceOptions(parent=vpc),
+            )
 
-        # Private Route Tables (one for each private subnet)
-        private_rt1 = aws.ec2.RouteTable(
-            f"{name}-private-rt-1",
-            vpc_id=vpc.id,
-            tags={"Name": f"{name}-private-rt-1"},
-            opts=ResourceOptions(parent=vpc),
-        )
+            # Create default route for private subnet
+            private_route = aws.ec2.Route(
+                f"{name}-private-route-{i}",
+                route_table_id=private_rt.id,
+                destination_cidr_block="0.0.0.0/0",
+                nat_gateway_id=nat_gw.id,
+                opts=ResourceOptions(parent=private_rt, depends_on=[nat_gw]),
+            )
 
-        # Create default route for first private subnet
-        private_route1 = aws.ec2.Route(
-            f"{name}-private-route-1",
-            route_table_id=private_rt1.id,
-            destination_cidr_block="0.0.0.0/0",
-            nat_gateway_id=nat_gw1.id,
-            opts=ResourceOptions(parent=private_rt1, depends_on=[nat_gw1]),
-        )
+            # Associate private subnet with its route table
+            aws.ec2.RouteTableAssociation(
+                f"{name}-private-rta-{i}",
+                subnet_id=private_subnet.id,
+                route_table_id=private_rt.id,
+                opts=ResourceOptions(parent=private_rt),
+            )
 
-        private_rt2 = aws.ec2.RouteTable(
-            f"{name}-private-rt-2",
-            vpc_id=vpc.id,
-            tags={"Name": f"{name}-private-rt-2"},
-            opts=ResourceOptions(parent=vpc),
-        )
-
-        # Create default route for second private subnet
-        private_route2 = aws.ec2.Route(
-            f"{name}-private-route-2",
-            route_table_id=private_rt2.id,
-            destination_cidr_block="0.0.0.0/0",
-            nat_gateway_id=nat_gw2.id,
-            opts=ResourceOptions(parent=private_rt2, depends_on=[nat_gw2]),
-        )
-
-        # Associate private subnets with their route tables
-        aws.ec2.RouteTableAssociation(
-            f"{name}-private-rta-1",
-            subnet_id=private_subnet1.id,
-            route_table_id=private_rt1.id,
-            opts=ResourceOptions(parent=private_rt1),
-        )
-
-        aws.ec2.RouteTableAssociation(
-            f"{name}-private-rta-2",
-            subnet_id=private_subnet2.id,
-            route_table_id=private_rt2.id,
-            opts=ResourceOptions(parent=private_rt2),
-        )
+            private_route_tables.append(private_rt)
 
         # Create DynamoDB VPC endpoint
         dynamodb_endpoint = aws.ec2.VpcEndpoint(
@@ -206,7 +162,7 @@ class VpcForCodeBuild(ComponentResource):
             vpc_id=vpc.id,
             service_name=f"com.amazonaws.{aws.config.region}.dynamodb",
             vpc_endpoint_type="Gateway",
-            route_table_ids=[private_rt1.id, private_rt2.id],
+            route_table_ids=[rt.id for rt in private_route_tables],
             tags={"Name": f"{name}-dynamodb-endpoint"},
             opts=ResourceOptions(parent=vpc),
         )
@@ -231,10 +187,10 @@ class VpcForCodeBuild(ComponentResource):
         # Store outputs
         self.vpc_id = vpc.id
         self.public_subnet_ids = Output.all(
-            public_subnet1.id, public_subnet2.id
+            *[subnet.id for subnet in public_subnets]
         )
         self.private_subnet_ids = Output.all(
-            private_subnet1.id, private_subnet2.id
+            *[subnet.id for subnet in private_subnets]
         )
         self.security_group_id = no_ingress_sg.id
 
