@@ -119,10 +119,7 @@ class _Instance:
                 unprocessed_items = response.get("UnprocessedItems", {})
 
             if unprocessed_items:
-                raise DynamoRetryableException(
-                    f"Failed to write {len(unprocessed_items.get(self.table_name,
-                                []))} items after {max_retries} retries"
-                )
+                raise DynamoRetryableException("bad")
 
         except botocore.exceptions.ClientError as e:
             if (
