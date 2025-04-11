@@ -38,6 +38,11 @@ dependencies = [
     # AWS Infrastructure
     "pulumi>=3.0.0",
     "pulumi-aws>=6.0.0",
+    
+    # Checkpoint management
+    "filelock>=3.8.0",
+
+    "pydantic>=2.10.6",
 ]
 
 [project.scripts]
