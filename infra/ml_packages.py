@@ -1,4 +1,20 @@
-"""Pulumi component for building and deploying ML packages using AWS CodeBuild."""
+"""Pulumi component for building and deploying ML packages using AWS CodeBuild.
+
+This module provides infrastructure for building and deploying machine learning packages
+in a cloud environment. It handles the complete lifecycle of ML package deployment,
+including:
+
+- Package source code management and versioning
+- Build environment configuration with Python support
+- Automated build and deployment using AWS CodeBuild
+- Artifact storage in S3 and deployment to EFS
+- Build state tracking and caching
+- VPC and security group configuration for build environments
+
+The main component, MLPackageBuilder, manages the entire process of building and
+deploying ML packages, ensuring they are properly configured for use in ML training
+environments.
+"""
 
 import os
 import json
@@ -13,24 +29,45 @@ from typing import Dict, List, Optional, Any
 class MLPackageBuilder(pulumi.ComponentResource):
     """A Pulumi component that builds and manages ML packages using AWS CodeBuild.
 
-    This component is responsible for:
-    1. Checking if packages need to be rebuilt
+    This component automates the process of building and deploying machine learning
+    packages in a cloud environment. It handles the complete lifecycle from source
+    code to deployment, including build environment setup, dependency management,
+    and artifact distribution.
+
+    The component is responsible for:
+    1. Checking if packages need to be rebuilt based on source changes
     2. Building packages with the right environment in AWS CodeBuild
     3. Deploying packages to EFS via CodeBuild
     4. Tracking build state across Pulumi runs
+    5. Managing build artifacts and caching
+    6. Configuring VPC and security settings for builds
+
+    Attributes:
+        packages (List[str]): List of package directories to build
+        efs_storage_id (Optional[pulumi.Input[str]]): EFS volume ID for deployment
+        efs_access_point_id (Optional[pulumi.Input[str]]): EFS access point ID for mounting
+        efs_dns_name (Optional[pulumi.Input[str]]): EFS DNS name for mounting
+        vpc_id (Optional[pulumi.Input[str]]): VPC ID where CodeBuild will run
+        subnet_ids (Optional[List[pulumi.Input[str]]]): List of subnet IDs for CodeBuild
+        security_group_ids (Optional[List[pulumi.Input[str]]]): List of security group IDs
+        python_version (str): Python version to use for building
+        force_rebuild (bool): Whether to force rebuilding packages
+        vpc_endpoints (List[Any]): List of VPC endpoints that CodeBuild depends on
+        artifact_bucket (aws.s3.Bucket): S3 bucket for storing build artifacts
     """
 
     def __init__(
         self,
         name: str,
         packages: List[str],
+        supplementary_packages: Optional[List[str]] = None,  # NEW parameter
         efs_storage_id: Optional[pulumi.Input[str]] = None,
         efs_access_point_id: Optional[pulumi.Input[str]] = None,
+        efs_dns_name: Optional[pulumi.Input[str]] = None,
         vpc_id: Optional[pulumi.Input[str]] = None,
         subnet_ids: Optional[List[pulumi.Input[str]]] = None,
         security_group_ids: Optional[List[pulumi.Input[str]]] = None,
         python_version: str = "3.9",
-        cuda_version: str = "11.7",
         force_rebuild: bool = False,
         vpc_endpoints: Optional[List[Any]] = None,
         opts: Optional[pulumi.ResourceOptions] = None,
@@ -38,30 +75,36 @@ class MLPackageBuilder(pulumi.ComponentResource):
         """Initialize the ML package builder.
 
         Args:
-            name: The unique name for this component
-            packages: List of package directories to build
-            efs_storage_id: EFS volume ID for deployment (optional)
-            efs_access_point_id: EFS access point ID for mounting (optional)
-            vpc_id: VPC ID where CodeBuild will run (optional)
-            subnet_ids: List of subnet IDs for CodeBuild (optional)
-            security_group_ids: List of security group IDs for CodeBuild (optional)
-            python_version: Python version to use for building
-            cuda_version: CUDA version to use for building
-            force_rebuild: Force rebuilding packages
-            vpc_endpoints: List of VPC endpoints that CodeBuild depends on
-            opts: Resource options for this component
+            name (str): The unique name for this component
+            packages (List[str]): List of package directories to build
+            efs_storage_id (Optional[pulumi.Input[str]]): EFS volume ID for deployment
+            efs_access_point_id (Optional[pulumi.Input[str]]): EFS access point ID for mounting
+            efs_dns_name (Optional[pulumi.Input[str]]): EFS DNS name for mounting
+            vpc_id (Optional[pulumi.Input[str]]): VPC ID where CodeBuild will run
+            subnet_ids (Optional[List[pulumi.Input[str]]]): List of subnet IDs for CodeBuild
+            security_group_ids (Optional[List[pulumi.Input[str]]]): List of security group IDs
+            python_version (str): Python version to use for building
+            force_rebuild (bool): Whether to force rebuilding packages
+            vpc_endpoints (Optional[List[Any]]): List of VPC endpoints that CodeBuild depends on
+            opts (Optional[pulumi.ResourceOptions]): Resource options for this component
+
+        Raises:
+            ValueError: If a package directory does not exist
         """
         super().__init__("custom:ml:PackageBuilder", name, {}, opts)
 
         # Save input parameters
         self.packages = packages
+        self.supplementary_packages = (
+            supplementary_packages or []
+        )  # Save the optional list
         self.efs_storage_id = efs_storage_id
         self.efs_access_point_id = efs_access_point_id
+        self.efs_dns_name = efs_dns_name
         self.vpc_id = vpc_id
         self.subnet_ids = subnet_ids
         self.security_group_ids = security_group_ids
         self.python_version = python_version
-        self.cuda_version = cuda_version
         self.force_rebuild = force_rebuild
         self.vpc_endpoints = vpc_endpoints or []
 
@@ -244,9 +287,32 @@ class MLPackageBuilder(pulumi.ComponentResource):
             opts=pulumi.ResourceOptions(parent=self),
         )
 
+        # Process supplementary packages: zip and upload their source to S3
+        supplementary_upload_commands = []
+        for supp_pkg in self.supplementary_packages:
+            supp_pkg_dir = os.path.join(self.project_dir, supp_pkg)
+            if not os.path.isdir(supp_pkg_dir):
+                raise ValueError(
+                    f"Supplementary package directory '{supp_pkg_dir}' does not exist"
+                )
+            supp_upload_command = command.local.Command(
+                f"{name}-{supp_pkg}-upload",
+                create=(
+                    f"cd {self.project_dir} && "
+                    f"zip -r {supp_pkg}.zip {supp_pkg}/* && "
+                    f"aws s3 cp {supp_pkg}.zip s3://${{bucket_name}}/source/{supp_pkg}.zip && "
+                    f"rm {supp_pkg}.zip"
+                ),
+                environment={
+                    "bucket_name": self.artifact_bucket.bucket,
+                },
+                opts=pulumi.ResourceOptions(parent=self),
+            )
+            supplementary_upload_commands.append(supp_upload_command)
+
         # Process each package
         built_packages = []
-        for package in packages:
+        for package in self.packages:
             # Upload package source to S3 first
             package_dir = os.path.join(self.project_dir, package)
             if not os.path.isdir(package_dir):
@@ -277,7 +343,6 @@ class MLPackageBuilder(pulumi.ComponentResource):
                 package=package,
                 stack=self.stack,
                 python_version=python_version,
-                cuda_version=cuda_version,
                 force_rebuild=force_rebuild,
             ).apply(self._create_buildspec)
 
@@ -305,10 +370,6 @@ class MLPackageBuilder(pulumi.ComponentResource):
                             value=python_version,
                         ),
                         aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
-                            name="CUDA_VERSION",
-                            value=cuda_version,
-                        ),
-                        aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
                             name="STACK",
                             value=self.stack,
                         ),
@@ -328,6 +389,16 @@ class MLPackageBuilder(pulumi.ComponentResource):
                             name="EFS_ACCESS_POINT_ID",
                             value=self.efs_access_point_id or "",
                         ),
+                        aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
+                            name="EFS_DNS_NAME",
+                            value=self.efs_dns_name or "",
+                        ),
+                        aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
+                            name="LOCAL_PACKAGES",
+                            value=",".join(
+                                self.supplementary_packages
+                            ),  # If self.supplementary_packages is empty, this will be empty.
+                        ),
                     ],
                 ),
                 vpc_config=(
@@ -345,24 +416,48 @@ class MLPackageBuilder(pulumi.ComponentResource):
                 file_system_locations=pulumi.Output.all(
                     fs_id=self.efs_storage_id,
                     ap_id=self.efs_access_point_id,
+                    dns_name=self.efs_dns_name,
+                    region=aws.config.region,
                 ).apply(
                     lambda args: (
                         [
                             aws.codebuild.ProjectFileSystemLocationArgs(
                                 identifier="efs_mount",
-                                location=f"{args['fs_id']}.efs.{aws.config.region}.amazonaws.com:/",
-                                mount_point="/mnt/efs",
+                                location=f"{args['dns_name']}:/",
+                                mount_point="/mnt/training",  # Use /mnt/training (same as production)
                                 type="EFS",
                                 mount_options=(
-                                    f"accesspoint={args['ap_id']},"
+                                    # TODO We originally attempted to mount EFS in CodeBuild using the accesspoint and region options:
+                                    #        mount -t efs -o tls,accesspoint=fsap-00a6b574642179604,region=us-east-1,noresvport,nfsvers=4.1 <EFS_DNS_NAME>:/ /mnt/training
+                                    #
+                                    # However, this configuration caused the mount command to fail with the error:
+                                    #        "mounting '127.0.0.1:/' failed. invalid argument"
+                                    # and reported that the amazon-efs-mount-watchdog couldn't start due to an unrecognized init system.
+                                    #
+                                    # Our debugging revealed that:
+                                    #   • The EFS DNS name resolves correctly (e.g., via nslookup it returns a valid IP such as 10.2.11.108).
+                                    #   • Mounting the EFS root (without these options) works correctly.
+                                    #
+                                    # For now, we have commented out the "accesspoint" and "region" options from the mount command
+                                    # to allow the EFS root to be mounted successfully in CodeBuild.
+                                    #
+                                    # Further investigation is needed to determine how to properly mount via the access point in CodeBuild
+                                    # (possibly by updating amazon-efs-utils or adjusting CodeBuild's environment).
+                                    # f"region={args['region']},"
+                                    # f"accesspoint={args['ap_id']},"
                                     "nfsvers=4.1,"
                                     "rsize=1048576,"
                                     "wsize=1048576,"
-                                    "hard,timeo=600,retrans=2"
+                                    "hard,"
+                                    "timeo=600,"
+                                    "retrans=2"
                                 ),
                             )
                         ]
-                        if args["fs_id"] and args["ap_id"]
+                        if args["fs_id"]
+                        and args["ap_id"]
+                        and args["dns_name"]
+                        and args["region"]
                         else []
                     )
                 ),
@@ -378,7 +473,7 @@ class MLPackageBuilder(pulumi.ComponentResource):
                         self.artifact_bucket.bucket, "/cache/", package
                     ),
                 ),
-                description=f"Build ML package {package} with CUDA support",
+                description=f"Build ML package {package}",
                 logs_config=aws.codebuild.ProjectLogsConfigArgs(
                     cloudwatch_logs=aws.codebuild.ProjectLogsConfigCloudwatchLogsArgs(
                         group_name=f"/aws/codebuild/{name}-{package}",
@@ -417,76 +512,88 @@ class MLPackageBuilder(pulumi.ComponentResource):
             {
                 "packages": packages,
                 "python_version": python_version,
-                "cuda_version": cuda_version,
                 "force_rebuild": force_rebuild,
                 "artifact_bucket": self.artifact_bucket.bucket,
             }
         )
 
-    def _create_buildspec(self, args):
-        """Create a buildspec for AWS CodeBuild."""
+    def _create_buildspec(self, args: Dict[str, Any]) -> str:
+        """Create a buildspec for AWS CodeBuild.
+
+        This method generates the buildspec configuration used by AWS CodeBuild to
+        build and deploy ML packages. It includes all necessary build phases,
+        environment setup, and deployment steps.
+
+        Args:
+            args (Dict[str, Any]): Dictionary containing build configuration:
+                - bucket_name (str): S3 bucket name for artifacts
+                - efs_id (str): EFS file system ID
+                - efs_access_point_id (str): EFS access point ID
+                - package (str): Package name to build
+                - stack (str): Pulumi stack name
+                - python_version (str): Python version to use
+                - force_rebuild (bool): Whether to force rebuild
+
+        Returns:
+            str: JSON string containing the buildspec configuration
+        """
         buildspec = {
-            "version": "0.2",
+            "version": 0.2,
             "phases": {
                 "install": {
                     "runtime-versions": {"python": args["python_version"]},
                     "commands": [
                         "echo Installing dependencies...",
                         "yum update -y",
-                        "yum install -y gcc-c++ make unzip git amazon-efs-utils",
-                        # Install Python dependencies for CUDA compatibility
-                        "pip install --upgrade pip",
-                        "pip install boto3 awscli",
-                        # Install common Python packages for CPU-only PyTorch
-                        "pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu",
-                        "# Removed CUDA package for cost efficiency",
-                        "# Removed NVIDIA ML package for cost efficiency",
+                        "yum install -y amazon-efs-utils",
+                        "mkdir -p /mnt/training",
+                        "echo 'Installing wheel package...'",
+                        "pip install wheel",
                     ],
                 },
                 "pre_build": {
                     "commands": [
-                        "echo Checking if rebuild is needed...",
-                        f"mkdir -p /tmp/source/{args['package']}",
+                        "echo Starting pre_build phase...",
+                        "mkdir -p /tmp/source",
+                        "for pkg in receipt_trainer receipt_dynamo; do "
+                        + "echo Downloading source for $pkg... && "
+                        + f"aws s3 cp s3://{args['bucket_name']}/source/$pkg.zip /tmp/$pkg.zip && "
+                        + "echo Unzipping source for $pkg... && "
+                        + "unzip /tmp/$pkg.zip -d /tmp/source/ && "
+                        + "rm /tmp/$pkg.zip; "
+                        + "done",
                         "mkdir -p /tmp/cache",
                         "mkdir -p /tmp/output",
-                        # Download package source from S3
-                        f"aws s3 cp s3://{args['bucket_name']}/source/{args['package']}.zip /tmp/{args['package']}.zip",
-                        f"unzip /tmp/{args['package']}.zip -d /tmp/source/",
-                        f"rm /tmp/{args['package']}.zip",
-                        # Download previous build state if exists
-                        f"aws s3 cp s3://{args['bucket_name']}/state/{args['package']}.json /tmp/cache/state.json || echo 'No previous build state'",
+                        f"aws s3 cp s3://{args['bucket_name']}/state/{args['package']}.json /tmp/cache/state.json || echo 'No previous build state for {args['package']}'",
+                        'if [ ! -z "$LOCAL_PACKAGES" ]; then '
+                        + "echo 'Processing local packages: $LOCAL_PACKAGES' && "
+                        + "for pkg in $(echo $LOCAL_PACKAGES | tr ',' ' '); do "
+                        + '  echo "Zipping local package $pkg..." && '
+                        + "  cd /tmp/source/$pkg && zip -r ${pkg}.zip . && "
+                        + '  echo "Uploading local package $pkg..." && '
+                        + f"  aws s3 cp ${{pkg}}.zip s3://{args['bucket_name']}/local/${{pkg}}.zip && rm ${{pkg}}.zip; "
+                        + "done; "
+                        + "fi",
                     ]
                 },
                 "build": {
                     "commands": [
-                        "echo Building ML package...",
-                        # Create state.json early to avoid post-build failure
-                        'echo \'{"package_name": "${PACKAGE_NAME}", "build_timestamp": \'$(date +%s)\', "build_date": "\'$(date -Iseconds)\'", "python_version": "${PYTHON_VERSION}", "cuda_version": "${CUDA_VERSION}", "source_hash": "initial"}\' > /tmp/cache/state.json',
-                        f"cd /tmp/source/{args['package']}",
-                        # Check if we need to handle receipt_dynamo dependency
-                        "if grep -q 'receipt_dynamo' requirements.txt; then "
-                        + "  echo 'Found receipt_dynamo dependency, handling specially...' && "
-                        + "  sed -i 's|../receipt_dynamo|/tmp/source/receipt_dynamo|g' requirements.txt && "
-                        + "  cat requirements.txt && "
-                        + "  if [ ! -d '/tmp/source/receipt_dynamo' ] && [ -f '/tmp/${PACKAGE_NAME}.zip' ]; then "
-                        + "    echo 'Downloading receipt_dynamo package...' && "
-                        + f"    aws s3 cp s3://{args['bucket_name']}/source/receipt_dynamo.zip /tmp/receipt_dynamo.zip && "
-                        + "    unzip /tmp/receipt_dynamo.zip -d /tmp/source/ && "
-                        + "    rm /tmp/receipt_dynamo.zip; "
-                        + "  fi; "
-                        + "fi",
-                        # Continue with normal installation
-                        "pip install -r requirements.txt || echo 'Warning: requirements installation failed'",
-                        "pip install -e . || echo 'Warning: package installation failed'",
-                        # Install the package to the output directory
-                        "mkdir -p /tmp/output/python",
-                        "cp -r * /tmp/output/ || echo 'Warning: could not copy all files'",
-                        "cp requirements.txt /tmp/output/ || echo 'Warning: could not copy requirements.txt'",
-                        # Calculate hash and update build state
-                        'HASH=$(find . -type f \\( -name "*.py" -o -name "*.txt" -o -name "*.yml" -o -name "*.yaml" -o -name "*.json" \\) | sort | xargs cat | sha256sum | cut -d \' \' -f 1)',
+                        "echo Building receipt_trainer package...",
+                        "cd /tmp/source/receipt_trainer",
+                        "pip install build || echo 'Warning: could not install build package for receipt_trainer'",
+                        "python -m build --wheel --outdir /tmp/output/wheels || echo 'Warning: could not build receipt_trainer package'",
+                        "mkdir -p /tmp/output/python/receipt_trainer",
+                        "cp -r /tmp/output/wheels/* /tmp/output/python/receipt_trainer/ || echo 'Warning: no wheel files found for receipt_trainer'",
+                        "echo Finished building receipt_trainer.",
+                        "echo Building receipt_dynamo package...",
+                        "cd /tmp/source/receipt_dynamo",
+                        "pip install build || echo 'Warning: could not install build package for receipt_dynamo'",
+                        "python -m build --wheel --outdir /tmp/output/wheels || echo 'Warning: could not build receipt_dynamo package'",
+                        "mkdir -p /tmp/output/python/receipt_dynamo",
+                        "cp -r /tmp/output/wheels/* /tmp/output/python/receipt_dynamo/ || echo 'Warning: no wheel files found for receipt_dynamo'",
+                        "HASH=$(find . -type f \\( -name '*.py' -o -name '*.txt' -o -name '*.yml' -o -name '*.yaml' -o -name '*.json' \\) | sort | xargs cat | sha256sum | cut -d ' ' -f 1)",
                         "BUILD_TIME=$(date +%s)",
-                        # Update state.json with final hash
-                        'echo \'{"package_name": "${PACKAGE_NAME}", "build_timestamp": \'$(date +%s)\', "build_date": "\'$(date -Iseconds)\'", "python_version": "${PYTHON_VERSION}", "cuda_version": "${CUDA_VERSION}", "source_hash": "\'$HASH\'"}\' > /tmp/cache/state.json',
+                        'echo \'{"build_timestamp": "$(date +%s)", "build_date": "$(date -Iseconds)", "source_hash": "\'$HASH\'"}\' > /tmp/cache/state.json',
                     ]
                 },
                 "post_build": {
@@ -495,18 +602,25 @@ class MLPackageBuilder(pulumi.ComponentResource):
                         # Make sure the cache directory exists
                         "mkdir -p /tmp/cache",
                         # Create minimal state.json if it doesn't exist
-                        'if [ ! -f /tmp/cache/state.json ]; then echo "{\\"package_name\\": \\"${PACKAGE_NAME}\\", \\"build_timestamp\\": \\"$(date +%s)\\", \\"build_date\\": \\"$(date -Iseconds)\\", \\"python_version\\": \\"${PYTHON_VERSION}\\", \\"cuda_version\\": \\"${CUDA_VERSION}\\", \\"source_hash\\": \\"error\\"}" > /tmp/cache/state.json; fi',
+                        'if [ ! -f /tmp/cache/state.json ]; then echo "{\\"package_name\\": \\"${PACKAGE_NAME}\\", \\"build_timestamp\\": \\"$(date +%s)\\", \\"build_date\\": \\"$(date -Iseconds)\\", \\"python_version\\": \\"${PYTHON_VERSION}\\", \\"source_hash\\": \\"error\\"}" > /tmp/cache/state.json; fi',
                         # Upload build state
                         f"aws s3 cp /tmp/cache/state.json s3://{args['bucket_name']}/state/{args['package']}.json || echo 'Failed to upload state.json'",
                         # Create minimal output if it doesn't exist
                         "if [ ! -d /tmp/output ]; then mkdir -p /tmp/output; echo 'Build failed' > /tmp/output/BUILD_FAILED.txt; fi",
                         # Upload build output
                         f"aws s3 cp /tmp/output s3://{args['bucket_name']}/output/{args['package']} --recursive || echo 'Failed to upload output'",
+                        'if [ ! -z "$LOCAL_PACKAGES" ]; then '
+                        + "for pkg in $(echo $LOCAL_PACKAGES | tr ',' ' '); do "
+                        + '  echo "Installing local package $pkg..." && '
+                        + f"  aws s3 cp s3://{args['bucket_name']}/local/${{pkg}}.zip /tmp/${{pkg}}.zip || echo \"Local package $pkg not found\" && "
+                        + "  pip install /tmp/${pkg}.zip && rm /tmp/${pkg}.zip; "
+                        + "done; "
+                        + "fi",
                         # Copy files to EFS if it's mounted (using native EFS integration)
-                        f"if [ -d /mnt/efs ]; then "
+                        f"if [ -d /mnt/training ]; then "
                         + f"  echo 'Copying files to EFS...' && "
-                        + f"  mkdir -p /mnt/efs/packages/{args['package']} && "
-                        + f"  cp -r /tmp/output/* /mnt/efs/packages/{args['package']}/ && "
+                        + f"  mkdir -p /mnt/training/{args['package']} && "
+                        + f"  cp -r /tmp/output/* /mnt/training/{args['package']}/ && "
                         + "  echo 'Successfully deployed to EFS'; "
                         + "else "
                         + "  echo 'EFS mount point not found. Skipping EFS deployment.'; "
@@ -516,7 +630,7 @@ class MLPackageBuilder(pulumi.ComponentResource):
             },
             "artifacts": {
                 "files": ["**/*"],
-                "base-directory": "/tmp/output",
+                "base-directory": "/tmp/output/python",
                 "discard-paths": "no",
             },
             "cache": {"paths": ["/tmp/cache/**/*"]},

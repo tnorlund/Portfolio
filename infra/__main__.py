@@ -69,6 +69,46 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
     policy_arn="arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
 )
 
+# Create spot interruption handler
+spot_handler = SpotInterruptionHandler(
+    "ml-training",
+    instance_role_name=ml_training_role.name,
+)
+
+# Create SNS policy for spot interruption notifications
+sns_policy = aws.iam.Policy(
+    "ml-training-sns-policy",
+    description="Allow ML training instances to subscribe to SNS topics",
+    policy=pulumi.Output.all(
+        spot_topic_arn=spot_handler.sns_topic_arn,
+    ).apply(
+        lambda args: f"""{{
+            "Version": "2012-10-17",
+            "Statement": [
+                {{
+                    "Effect": "Allow",
+                    "Action": [
+                        "sns:Subscribe",
+                        "sns:Unsubscribe",
+                        "sns:ListSubscriptionsByTopic"
+                    ],
+                    "Resource": "{args['spot_topic_arn']}"
+                }}
+            ]
+        }}"""
+    ),
+)
+
+# Attach SNS policy to the role
+sns_policy_attachment = aws.iam.RolePolicyAttachment(
+    "ml-sns-policy-attachment",
+    role=ml_training_role.name,
+    policy_arn=sns_policy.arn,
+    opts=ResourceOptions(
+        depends_on=[ml_training_role, spot_handler.sns_topic]
+    ),
+)
+
 # Create instance profile
 ml_instance_profile = aws.iam.InstanceProfile(
     "ml-instance-profile", role=ml_training_role.name
@@ -84,7 +124,9 @@ efs_storage = EFSStorage(
     instance_role_name=ml_training_role.name,
     lifecycle_policies=[{"transition_to_ia": "AFTER_30_DAYS"}],
     opts=pulumi.ResourceOptions(
-        depends_on=[network], replace_on_changes=["vpc_id"]
+        depends_on=[network],
+        replace_on_changes=["vpc_id", "subnet_ids", "security_group_ids"],
+        delete_before_replace=True,
     ),  # Depend on network creation
 )
 
@@ -128,12 +170,6 @@ for service in [
 #     description="Allow NFS from CodeBuild SG (Explicit)",
 #     opts=pulumi.ResourceOptions(depends_on=[network]), # Depend on network creation
 # )
-
-# Create spot interruption handler
-spot_handler = SpotInterruptionHandler(
-    "ml-training",
-    instance_role_name=ml_training_role.name,
-)
 
 # Create instance registry for auto-registration
 instance_registry = InstanceRegistry(
@@ -254,18 +290,39 @@ dl_ami = aws.ec2.get_ami(
     ],
 )
 
+# Get ML training configuration
+ml_training_config = pulumi.Config("ml-training")
+force_rebuild = ml_training_config.get_bool("force-rebuild") or False
+
+# Create the package builder using VPC info from network component
+ml_package_builder = MLPackageBuilder(
+    f"receipt-trainer-{stack}",
+    packages=["receipt_trainer"],
+    supplementary_packages=["receipt_dynamo"],
+    python_version="3.9",
+    vpc_id=network.vpc_id,  # Use network component output
+    subnet_ids=network.private_subnet_ids,  # Use network component output
+    security_group_ids=[network.security_group_id],  # Use new security group
+    efs_storage_id=efs_storage.file_system_id,  # Get EFS ID from EFS component
+    efs_access_point_id=efs_storage.training_access_point_id,  # Get AP ID from EFS component
+    efs_dns_name=efs_storage.file_system_dns_name,  # Get DNS name from EFS component
+    force_rebuild=force_rebuild,
+    vpc_endpoints=vpc_endpoints,  # Pass created endpoints
+    opts=pulumi.ResourceOptions(depends_on=[network] + vpc_endpoints),
+)
+
 # Create EC2 Launch Template, referencing SG from network component
 launch_template = aws.ec2.LaunchTemplate(
     "ml-training-launch-template",
     image_id=dl_ami.id,
-    instance_type="p3.2xlarge",
+    instance_type="g4dn.xlarge",
     key_name=key_pair_name,
     iam_instance_profile=aws.ec2.LaunchTemplateIamInstanceProfileArgs(
         name=ml_instance_profile.name,
     ),
     network_interfaces=[
         aws.ec2.LaunchTemplateNetworkInterfaceArgs(
-            associate_public_ip_address=False,  # Ensure instances in private subnets don't get public IPs
+            associate_public_ip_address=True,  # Ensure instances in private subnets don't get public IPs
             security_groups=[
                 network.security_group_id
             ],  # Use new security group
@@ -276,15 +333,19 @@ launch_template = aws.ec2.LaunchTemplate(
         efs_dns_name=efs_storage.file_system_dns_name,
         training_ap_id=efs_storage.training_access_point_id,
         checkpoints_ap_id=efs_storage.checkpoints_access_point_id,
-        instance_registry_table=instance_registry.table_name,
+        dynamo_table_name=dynamodb_table.name,
         spot_topic_arn=spot_handler.sns_topic_arn,
         job_queue_url=job_queue.get_queue_url(),
+        bucket_name=ml_package_builder.artifact_bucket.bucket,
     ).apply(
         lambda args: base64.b64encode(
             f"""#!/bin/bash
 # Install required utilities
 yum update -y
 yum install -y amazon-efs-utils awscli jq
+
+# Activate the PyTorch Conda environment (adjust path/environment name as needed)
+source /opt/conda/bin/activate pytorch
 
 # Create mount points
 mkdir -p /mnt/training
@@ -304,11 +365,24 @@ INSTANCE_TYPE=$(curl -s http://169.254.169.254/latest/meta-data/instance-type)
 AZ=$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone)
 IP_ADDRESS=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
 IS_SPOT=$(curl -s http://169.254.169.254/latest/meta-data/instance-life-cycle | grep -q "spot" && echo "true" || echo "false")
-GPU_COUNT=$(nvidia-smi --query-gpu=count --format=csv,noheader | grep -v "No devices were found" | wc -l || echo "0")
+# Determine GPU count in a generic manner
+if command -v nvidia-smi >/dev/null 2>&1; then
+    GPU_COUNT=$(nvidia-smi --query-gpu=count --format=csv,noheader 2>/dev/null)
+    if [[ $GPU_COUNT =~ ^[0-9]+$ ]]; then
+        echo "Detected NVIDIA GPUs: $GPU_COUNT"
+    else
+        echo "nvidia-smi did not return a valid count. Assuming GPU_COUNT=0."
+        GPU_COUNT=0
+    fi
+else
+    echo "nvidia-smi not found. Setting GPU_COUNT=0."
+    GPU_COUNT=0
+fi
 
+#TODO: use the python package to register the instance
 # Register instance with DynamoDB using Instance entity schema
 aws dynamodb put-item \
-    --table-name {args['instance_registry_table']} \
+    --table-name {args['dynamo_table_name']} \
     --item '{{"PK":{{"S":"INSTANCE#$INSTANCE_ID"}},"SK":{{"S":"INSTANCE"}},"GSI1PK":{{"S":"STATUS#running"}},"GSI1SK":{{"S":"INSTANCE#$INSTANCE_ID"}},"TYPE":{{"S":"INSTANCE"}},"instance_type":{{"S":"$INSTANCE_TYPE"}},"gpu_count":{{"N":"$GPU_COUNT"}},"status":{{"S":"running"}},"launched_at":{{"S":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}},"ip_address":{{"S":"$IP_ADDRESS"}},"availability_zone":{{"S":"$AZ"}},"is_spot":{{"BOOL":$IS_SPOT}},"health_status":{{"S":"healthy"}}}}' \
     --region $REGION
 
@@ -321,7 +395,15 @@ aws sns subscribe \
 
 # Download and setup training code
 cd /mnt/training
-aws s3 sync s3://{ml_package_builder.artifact_bucket}/output/receipt_trainer/ .
+aws s3 cp s3://{args['bucket_name']}/output/receipt_trainer/wheels/receipt_trainer-0.1.0-py3-none-any.whl /tmp/
+
+# Install the package with pip (this will also install dependencies if specified in setup.py)
+pip install /tmp/receipt_trainer-0.1.0-py3-none-any.whl
+
+# (Optional) Verify installation of key modules
+python -c "import receipt_trainer; print('ReceiptTrainer module loaded successfully')"
+python -c "import transformers; print('Transformers version:', getattr(transformers, '__version__', 'unknown'))"
+python -c "import datasets; print('Datasets version:', getattr(datasets, '__version__', 'unknown'))"
 
 # Start training job
 cd /mnt/training
@@ -334,9 +416,10 @@ python -m receipt_trainer.train \
 # Monitor spot interruption
 while true; do
     if [ -f /tmp/spot-interruption-notice ]; then
+        #TODO: use the python package to update the instance
         # Handle spot interruption
         aws dynamodb update-item \
-            --table-name {args['instance_registry_table']} \
+            --table-name {args['dynamo_table_name']} \
             --key '{{"PK":{{"S":"INSTANCE#$INSTANCE_ID"}},"SK":{{"S":"INSTANCE"}}}}' \
             --update-expression "SET #s = :s, #t = :t, #h = :h" \
             --expression-attribute-names '{{"#s":"status","#t":"launched_at","#h":"health_status"}}' \
@@ -427,29 +510,6 @@ scaling_policy = aws.autoscaling.Policy(
     ),
 )
 
-# ML Package Building
-# -------------------
-ml_training_config = pulumi.Config("ml-training")
-force_rebuild = ml_training_config.get_bool("force-rebuild") or False
-
-ml_packages = ["receipt_trainer", "receipt_dynamo"]
-
-# Create the package builder using VPC info from network component
-ml_package_builder = MLPackageBuilder(
-    f"receipt-trainer-{stack}",
-    packages=["receipt_trainer"],
-    python_version="3.9",
-    cuda_version="11.7",
-    vpc_id=network.vpc_id,  # Use network component output
-    subnet_ids=network.private_subnet_ids,  # Use network component output
-    security_group_ids=[network.security_group_id],  # Use new security group
-    efs_storage_id=efs_storage.file_system_id,  # Get EFS ID from EFS component
-    efs_access_point_id=efs_storage.training_access_point_id,  # Get AP ID from EFS component
-    force_rebuild=force_rebuild,
-    vpc_endpoints=vpc_endpoints,  # Pass created endpoints
-    opts=pulumi.ResourceOptions(depends_on=[network] + vpc_endpoints),
-)
-
 # --- Adjusted Exports ---
 pulumi.export("vpc_id", network.vpc_id)
 pulumi.export("private_subnet_ids", network.private_subnet_ids)
@@ -489,27 +549,3 @@ pulumi.export(
 pulumi.export("training_efs_id", efs_storage.file_system_id)
 pulumi.export("instance_registry_table_name", instance_registry.table_name)
 pulumi.export("ml_packages_built", ml_package_builder.packages)
-
-# Create EFS
-efs = aws.efs.FileSystem(
-    "efs",
-    encrypted=True,
-    performance_mode="generalPurpose",
-    throughput_mode="bursting",
-    tags={"Name": "efs"},
-    opts=ResourceOptions(parent=network),
-)
-
-# Create EFS mount targets in each private subnet
-network.private_subnet_ids.apply(
-    lambda subnet_ids: [
-        aws.efs.MountTarget(
-            f"efs-mount-{i}",
-            file_system_id=efs.id,
-            subnet_id=subnet_id,
-            security_groups=[network.security_group_id],
-            opts=ResourceOptions(parent=efs),
-        )
-        for i, subnet_id in enumerate(subnet_ids)
-    ]
-)

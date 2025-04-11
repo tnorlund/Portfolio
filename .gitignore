@@ -193,3 +193,6 @@ receipt_dynamo/coverage.lcov
 
 # Temp files for Pulumi
 infra/temp/*
+
+# Zips in Build
+infra/*.zip
