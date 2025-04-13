@@ -344,66 +344,112 @@ launch_template = aws.ec2.LaunchTemplate(
 yum update -y
 yum install -y amazon-efs-utils awscli jq
 
+# Set environment variable for DynamoDB table name
+export DYNAMO_TABLE_NAME={args['dynamo_table_name']}
+
 # Activate the PyTorch Conda environment (adjust path/environment name as needed)
 source /opt/conda/bin/activate pytorch
 
 # Create mount points
-mkdir -p /mnt/training
-mkdir -p /mnt/checkpoints
+mkdir -p /mnt/training || echo "Failed to create training mount point"
+mkdir -p /mnt/checkpoints || echo "Failed to create checkpoints mount point"
 
 # Mount EFS access points
-mount -t efs -o tls,accesspoint={args['training_ap_id']} {args['efs_dns_name']}:/ /mnt/training
-echo "{args['efs_dns_name']}:/ /mnt/training efs _netdev,tls,accesspoint={args['training_ap_id']} 0 0" >> /etc/fstab
+mount -t efs -o tls,accesspoint={args['training_ap_id']} {args['efs_dns_name']}:/ /mnt/training || echo "Failed to mount EFS training"
+echo "{args['efs_dns_name']}:/ /mnt/training efs _netdev,tls,accesspoint={args['training_ap_id']} 0 0" >> /etc/fstab || echo "Failed to add EFS training to fstab"
 
-mount -t efs -o tls,accesspoint={args['checkpoints_ap_id']} {args['efs_dns_name']}:/ /mnt/checkpoints
-echo "{args['efs_dns_name']}:/ /mnt/checkpoints efs _netdev,tls,accesspoint={args['checkpoints_ap_id']} 0 0" >> /etc/fstab
+mount -t efs -o tls,accesspoint={args['checkpoints_ap_id']} {args['efs_dns_name']}:/ /mnt/checkpoints || echo "Failed to mount EFS checkpoints"
+echo "{args['efs_dns_name']}:/ /mnt/checkpoints efs _netdev,tls,accesspoint={args['checkpoints_ap_id']} 0 0" >> /etc/fstab || echo "Failed to add EFS checkpoints to fstab"
 
 # Get instance metadata
-INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
-REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)
-INSTANCE_TYPE=$(curl -s http://169.254.169.254/latest/meta-data/instance-type)
-AZ=$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone)
-IP_ADDRESS=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
-IS_SPOT=$(curl -s http://169.254.169.254/latest/meta-data/instance-life-cycle | grep -q "spot" && echo "true" || echo "false")
+export INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
+export REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)
+export INSTANCE_TYPE=$(curl -s http://169.254.169.254/latest/meta-data/instance-type)
+export AZ=$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone)
+export IP_ADDRESS=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
+export IS_SPOT=$(curl -s http://169.254.169.254/latest/meta-data/instance-life-cycle | grep -q "spot" && echo "true" || echo "false")
 # Determine GPU count in a generic manner
 if command -v nvidia-smi >/dev/null 2>&1; then
-    GPU_COUNT=$(nvidia-smi --query-gpu=count --format=csv,noheader 2>/dev/null)
+    export GPU_COUNT=$(nvidia-smi --query-gpu=count --format=csv,noheader 2>/dev/null)
     if [[ $GPU_COUNT =~ ^[0-9]+$ ]]; then
         echo "Detected NVIDIA GPUs: $GPU_COUNT"
     else
         echo "nvidia-smi did not return a valid count. Assuming GPU_COUNT=0."
-        GPU_COUNT=0
+        export GPU_COUNT=0
     fi
 else
     echo "nvidia-smi not found. Setting GPU_COUNT=0."
-    GPU_COUNT=0
+    export GPU_COUNT=0
 fi
 
-#TODO: use the python package to register the instance
-# Register instance with DynamoDB using Instance entity schema
-aws dynamodb put-item \
-    --table-name {args['dynamo_table_name']} \
-    --item '{{"PK":{{"S":"INSTANCE#$INSTANCE_ID"}},"SK":{{"S":"INSTANCE"}},"GSI1PK":{{"S":"STATUS#running"}},"GSI1SK":{{"S":"INSTANCE#$INSTANCE_ID"}},"TYPE":{{"S":"INSTANCE"}},"instance_type":{{"S":"$INSTANCE_TYPE"}},"gpu_count":{{"N":"$GPU_COUNT"}},"status":{{"S":"running"}},"launched_at":{{"S":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}},"ip_address":{{"S":"$IP_ADDRESS"}},"availability_zone":{{"S":"$AZ"}},"is_spot":{{"BOOL":$IS_SPOT}},"health_status":{{"S":"healthy"}}}}' \
-    --region $REGION
+cat <<EOF
+###############################
+# Instance Metadata Summary
+###############################
+Instance ID:       $INSTANCE_ID
+Region:            $REGION
+Instance Type:     $INSTANCE_TYPE
+Availability Zone: $AZ
+Local IP:          $IP_ADDRESS
+Is Spot Instance:  $IS_SPOT
+Detected GPUs:     $GPU_COUNT
+###############################
+EOF
+
+# Download and setup training code
+cd /mnt/training
+aws s3 cp s3://{args['bucket_name']}/output/receipt_trainer/wheels/receipt_trainer-0.1.0-py3-none-any.whl /tmp/ || echo "Failed to download receipt_trainer"
+aws s3 cp s3://{args['bucket_name']}/output/receipt_dynamo/wheels/receipt_dynamo-0.1.0-py3-none-any.whl /tmp/ || echo "Failed to download receipt_dynamo"
+
+# Install the package with pip (this will also install dependencies if specified in setup.py)
+pip install /tmp/receipt_dynamo-0.1.0-py3-none-any.whl
+pip install /tmp/receipt_trainer-0.1.0-py3-none-any.whl 
+
+# (Optional) Verify installation of key modules
+python -c "import receipt_trainer; print('ReceiptTrainer module loaded successfully')"
+python -c "import transformers; print('Transformers version:', getattr(transformers, '__version__', 'unknown'))"
+python -c "import datasets; print('Datasets version:', getattr(datasets, '__version__', 'unknown'))"
+
+# Register instance using the receipt_dynamo package
+python -c "
+import os
+from datetime import datetime
+
+from receipt_dynamo import DynamoClient, Instance
+
+table_name = os.environ['DYNAMO_TABLE_NAME']
+region = os.environ['REGION']
+
+instance_id = os.environ['INSTANCE_ID']
+instance_type = os.environ['INSTANCE_TYPE']
+gpu_count = int(os.environ['GPU_COUNT'])
+ip_address = os.environ['IP_ADDRESS']
+availability_zone = os.environ['AZ']
+is_spot = (os.environ['IS_SPOT'].lower() == 'true')
+
+dynamo_client = DynamoClient(table_name=table_name, region_name=region)
+
+instance = Instance(
+    instance_id=instance_id,
+    instance_type=instance_type,
+    gpu_count=gpu_count,
+    status='pending',
+    launched_at=datetime.utcnow().isoformat(),
+    ip_address=ip_address,
+    availability_zone=availability_zone,
+    is_spot=is_spot,
+    health_status='healthy',
+)
+
+dynamo_client.addInstance(instance)
+" || echo "Failed to register instance"
 
 # Subscribe to spot interruption notifications
 aws sns subscribe \
     --topic-arn {args['spot_topic_arn']} \
     --protocol http \
     --notification-endpoint http://169.254.169.254/latest/meta-data/spot/instance-action \
-    --region $REGION
-
-# Download and setup training code
-cd /mnt/training
-aws s3 cp s3://{args['bucket_name']}/output/receipt_trainer/wheels/receipt_trainer-0.1.0-py3-none-any.whl /tmp/
-
-# Install the package with pip (this will also install dependencies if specified in setup.py)
-pip install /tmp/receipt_trainer-0.1.0-py3-none-any.whl
-
-# (Optional) Verify installation of key modules
-python -c "import receipt_trainer; print('ReceiptTrainer module loaded successfully')"
-python -c "import transformers; print('Transformers version:', getattr(transformers, '__version__', 'unknown'))"
-python -c "import datasets; print('Datasets version:', getattr(datasets, '__version__', 'unknown'))"
+    --region $REGION || echo "Failed to subscribe to spot interruption notifications"
 
 # Start training job
 cd /mnt/training
@@ -416,15 +462,30 @@ python -m receipt_trainer.train \
 # Monitor spot interruption
 while true; do
     if [ -f /tmp/spot-interruption-notice ]; then
-        #TODO: use the python package to update the instance
-        # Handle spot interruption
-        aws dynamodb update-item \
-            --table-name {args['dynamo_table_name']} \
-            --key '{{"PK":{{"S":"INSTANCE#$INSTANCE_ID"}},"SK":{{"S":"INSTANCE"}}}}' \
-            --update-expression "SET #s = :s, #t = :t, #h = :h" \
-            --expression-attribute-names '{{"#s":"status","#t":"launched_at","#h":"health_status"}}' \
-            --expression-attribute-values '{{":s":{{"S":"terminated"}},":t":{{"S":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}},":h":{{"S":"unhealthy"}}}}' \
-            --region $REGION
+        # Update the instance using receipt_dynamo
+        python -c "
+import os
+from datetime import datetime
+
+from receipt_dynamo import DynamoClient
+
+table_name = os.environ['DYNAMO_TABLE_NAME']
+region = os.environ['REGION']
+instance_id = os.environ['INSTANCE_ID']
+
+dynamo_client = DynamoClient(table_name=table_name, region_name=region)
+
+# Fetch the current record
+instance = dynamo_client.getInstance(instance_id)
+
+# Adjust fields to reflect termination
+instance.status = 'terminated'
+instance.launched_at = datetime.utcnow().isoformat()  # or store a termination timestamp if desired
+instance.health_status = 'unhealthy'
+
+# Write changes back to DynamoDB
+dynamo_client.updateInstance(instance)
+" || echo "Failed to update instance"
         break
     fi
     sleep 5
@@ -453,9 +514,9 @@ done
 asg = aws.autoscaling.Group(
     "ml-training-asg",
     max_size=4,
-    min_size=0,
-    desired_capacity=0,
-    vpc_zone_identifiers=network.private_subnet_ids,  # Use network component output
+    min_size=1,
+    desired_capacity=1,
+    vpc_zone_identifiers=network.public_subnet_ids,  # Use network component output
     mixed_instances_policy=aws.autoscaling.GroupMixedInstancesPolicyArgs(
         instances_distribution=aws.autoscaling.GroupMixedInstancesPolicyInstancesDistributionArgs(
             on_demand_base_capacity=0,
