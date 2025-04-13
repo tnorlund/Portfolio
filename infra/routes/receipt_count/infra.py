@@ -72,21 +72,22 @@ aws.iam.RolePolicyAttachment(
 # Create the Lambda function for the "user" route
 receipt_count_lambda = aws.lambda_.Function(
     f"api_{ROUTE_NAME}_GET_lambda",
-    runtime="python3.13",  # or whichever version you prefer
+    runtime="python3.12",
     role=lambda_role.arn,
     code=AssetArchive(
         {
             ".": FileArchive(HANDLER_DIR),
         }
     ),
-    handler="index.handler",  # file_name.function_name
+    handler="index.handler",
     layers=[dynamo_layer.arn],
     environment={
         "variables": {
             "DYNAMODB_TABLE_NAME": DYNAMODB_TABLE_NAME,
         }
     },
-    memory_size=1024,  # Increase the RAM to 1024 MB
+    memory_size=1024,
+    tags={"environment": pulumi.get_stack()},
 )
 
 # CloudWatch log group for the Lambda function

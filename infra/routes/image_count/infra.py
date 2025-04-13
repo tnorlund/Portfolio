@@ -72,7 +72,7 @@ aws.iam.RolePolicyAttachment(
 # Create the Lambda function for the "user" route
 image_count_lambda = aws.lambda_.Function(
     f"api_{ROUTE_NAME}_GET_lambda",
-    runtime="python3.13",  # or whichever version you prefer
+    runtime="python3.12",
     role=lambda_role.arn,
     code=AssetArchive(
         {
@@ -87,6 +87,7 @@ image_count_lambda = aws.lambda_.Function(
         }
     },
     memory_size=1024,  # Increase the RAM to 1024 MB
+    tags={"environment": pulumi.get_stack()},
 )
 
 # CloudWatch log group for the Lambda function

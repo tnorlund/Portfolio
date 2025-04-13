@@ -17,3 +17,4 @@ config:
   portfolio:GOOGLE_PLACES_API_KEY:
     secure: AAABAAK8xGIKbSJImf3isrPRyJRt+P7pDXSUshC3r34OoDik3KWknQmYuu0q+/KfLXLReYCPe4IXmWFDEpFNnE4kEnOl7SM=
   ml-training:force-rebuild: "true"
+  lambda-layer:force-rebuild: "false"

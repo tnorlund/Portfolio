@@ -80,7 +80,7 @@ aws.iam.RolePolicyAttachment(
 # Create the Lambda function for the "user" route
 receipt_word_tag_lambda = aws.lambda_.Function(
     f"api_{ROUTE_NAME}_POST_lambda",
-    runtime="python3.13",
+    runtime="python3.12",
     role=lambda_role.arn,
     code=AssetArchive(
         {
@@ -96,6 +96,7 @@ receipt_word_tag_lambda = aws.lambda_.Function(
     },
     memory_size=1024,
     timeout=30,
+    tags={"environment": pulumi.get_stack()},
 )
 
 # CloudWatch log group for the Lambda function

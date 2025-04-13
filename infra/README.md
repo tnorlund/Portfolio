@@ -129,6 +129,7 @@ Manages shared Lambda layer:
 - Creates Lambda layer for shared code
 - Manages layer versions
 - Configures layer permissions
+- Updates layers through Codebuild when any files in the package changes
 
 #### `routes/`
 
