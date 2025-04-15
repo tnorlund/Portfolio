@@ -7,6 +7,7 @@ from receipt_dynamo.entities.receipt_word_label import (
     itemToReceiptWordLabel,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
+from receipt_dynamo.constants import ValidationStatus
 
 
 def validate_last_evaluated_key(lek: dict) -> None:
@@ -609,4 +610,106 @@ class _ReceiptWordLabel:
             else:
                 raise Exception(
                     f"Could not list receipt word labels by label type: {e}"
+                ) from e
+
+    def getReceiptWordLabelsByValidationStatus(
+        self,
+        validation_status: str,
+        limit: int = None,
+        lastEvaluatedKey: dict | None = None,
+    ) -> tuple[list[ReceiptWordLabel], dict | None]:
+        """
+        Retrieve receipt word labels by validation status using GSI3.
+
+        Args:
+            validation_status (str): The validation status to search for
+            limit (int, optional): The maximum number of labels to return
+            lastEvaluatedKey (dict, optional): The key to start the query from
+
+        Returns:
+            tuple[list[ReceiptWordLabel], dict | None]: A tuple containing:
+                - List of ReceiptWordLabel objects
+                - Last evaluated key for pagination (None if no more pages)
+
+        Raises:
+            ValueError: If the validation status is invalid or if pagination parameters are invalid
+            Exception: For underlying DynamoDB errors
+        """
+        if not isinstance(validation_status, str) or not validation_status:
+            raise ValueError("Validation status must be a non-empty string")
+        # Check if validation_status is a valid status by comparing against enum values
+        valid_statuses = [status.value for status in ValidationStatus]
+        if validation_status not in valid_statuses:
+            raise ValueError(
+                "Validation status must be one of the following: "
+                + ", ".join(valid_statuses)
+            )
+        if limit is not None and not isinstance(limit, int):
+            raise ValueError("Limit must be an integer")
+        if limit is not None and limit <= 0:
+            raise ValueError("Limit must be greater than 0")
+        if lastEvaluatedKey is not None:
+            if not isinstance(lastEvaluatedKey, dict):
+                raise ValueError("LastEvaluatedKey must be a dictionary")
+            validate_last_evaluated_key(lastEvaluatedKey)
+
+        labels = []
+        try:
+            query_params = {
+                "TableName": self.table_name,
+                "IndexName": "GSI3",
+                "KeyConditionExpression": "GSI3PK = :pk",
+                "ExpressionAttributeValues": {
+                    ":pk": {
+                        "S": f"VALIDATION_STATUS#{validation_status.upper()}"
+                    }
+                },
+            }
+            if lastEvaluatedKey is not None:
+                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+
+            while True:
+                if limit is not None:
+                    remaining = limit - len(labels)
+                    query_params["Limit"] = remaining
+
+                response = self._client.query(**query_params)
+                labels.extend(
+                    [
+                        itemToReceiptWordLabel(item)
+                        for item in response["Items"]
+                    ]
+                )
+
+                if limit is not None and len(labels) >= limit:
+                    labels = labels[:limit]
+                    last_evaluated_key = response.get("LastEvaluatedKey", None)
+                    break
+
+                if "LastEvaluatedKey" in response:
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
+                else:
+                    last_evaluated_key = None
+                    break
+
+            return labels, last_evaluated_key
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ResourceNotFoundException":
+                raise Exception(
+                    f"Could not list receipt word labels by validation status: {e}"
+                ) from e
+            elif error_code == "ProvisionedThroughputExceededException":
+                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+            elif error_code == "ValidationException":
+                raise Exception(
+                    f"One or more parameters given were invalid: {e}"
+                ) from e
+            elif error_code == "InternalServerError":
+                raise Exception(f"Internal server error: {e}") from e
+            else:
+                raise Exception(
+                    f"Could not list receipt word labels by validation status: {e}"
                 ) from e

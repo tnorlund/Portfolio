@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Generator, Tuple
+from typing import Any, Generator, Optional, Tuple
 
 from receipt_dynamo.entities.util import (
     _format_float,
@@ -7,6 +7,8 @@ from receipt_dynamo.entities.util import (
     assert_valid_point,
     assert_valid_uuid,
 )
+
+from receipt_dynamo.constants import ValidationStatus
 
 
 class ReceiptWordLabel:
@@ -37,6 +39,9 @@ class ReceiptWordLabel:
         label: str,
         reasoning: str,
         timestamp_added: datetime,
+        validation_status: Optional[str] = None,
+        label_proposed_by: Optional[str] = None,
+        label_consolidated_from: Optional[str] = None,
     ):
         """Initializes a new ReceiptWordLabel object for DynamoDB.
 
@@ -48,7 +53,7 @@ class ReceiptWordLabel:
             label (str): The label assigned to the word.
             reasoning (str): Explanation for why this label was assigned.
             timestamp_added (datetime): The timestamp when the label was added.
-
+            validation_status (Optional[str]): The status of the label validation.
         Raises:
             ValueError: If any parameter is of an invalid type or has an invalid value.
         """
@@ -93,6 +98,37 @@ class ReceiptWordLabel:
             raise ValueError(
                 "timestamp_added must be a datetime object or a string"
             )
+
+        if validation_status is not None:
+            if not isinstance(validation_status, str):
+                raise ValueError("validation_status must be a string")
+            if not validation_status:
+                raise ValueError("validation_status cannot be empty")
+            if not validation_status in [s.value for s in ValidationStatus]:
+                raise ValueError(
+                    f"validation_status must be one of: {', '.join(status.value for status in ValidationStatus)}"
+                )
+            self.validation_status = validation_status
+        else:
+            self.validation_status = None
+
+        if label_proposed_by is not None:
+            if not isinstance(label_proposed_by, str):
+                raise ValueError("label_proposed_by must be a string")
+            if not label_proposed_by:
+                raise ValueError("label_proposed_by cannot be empty")
+            self.label_proposed_by = label_proposed_by
+        else:
+            self.label_proposed_by = None
+
+        if label_consolidated_from is not None:
+            if not isinstance(label_consolidated_from, str):
+                raise ValueError("label_consolidated_from must be a string")
+            if not label_consolidated_from:
+                raise ValueError("label_consolidated_from cannot be empty")
+            self.label_consolidated_from = label_consolidated_from
+        else:
+            self.label_consolidated_from = None
 
     def key(self) -> dict:
         """Generates the primary key for the receipt word label.
@@ -140,6 +176,22 @@ class ReceiptWordLabel:
             },
         }
 
+    def gsi3_key(self) -> dict:
+        """
+        Generates the GSI3 key for the receipt word label.
+
+        Returns:
+            dict: The GSI3 key for the receipt word label.
+        """
+        return {
+            "GSI3PK": {
+                "S": f"VALIDATION_STATUS#{self.validation_status or 'UNKNOWN'}"
+            },
+            "GSI3SK": {
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#LINE#{self.line_id:05d}#WORD#{self.word_id:05d}#LABEL#{self.label}"
+            },
+        }
+
     def to_item(self) -> dict:
         """Converts the ReceiptWordLabel object to a DynamoDB item.
 
@@ -150,9 +202,25 @@ class ReceiptWordLabel:
             **self.key(),
             **self.gsi1_key(),
             **self.gsi2_key(),
+            **self.gsi3_key(),
             "TYPE": {"S": "RECEIPT_WORD_LABEL"},
             "reasoning": {"S": self.reasoning},
             "timestamp_added": {"S": self.timestamp_added},
+            "validation_status": (
+                {"S": self.validation_status}
+                if self.validation_status is not None
+                else {"NULL": True}
+            ),
+            "label_consolidated_from": (
+                {"S": self.label_consolidated_from}
+                if self.label_consolidated_from is not None
+                else {"NULL": True}
+            ),
+            "label_proposed_by": (
+                {"S": self.label_proposed_by}
+                if self.label_proposed_by is not None
+                else {"NULL": True}
+            ),
         }
 
     def __repr__(self) -> str:
@@ -169,7 +237,10 @@ class ReceiptWordLabel:
             f"word_id={self.word_id}, "
             f"label={_repr_str(self.label)}, "
             f"reasoning={_repr_str(self.reasoning)}, "
-            f"timestamp_added={_repr_str(self.timestamp_added)}"
+            f"timestamp_added={_repr_str(self.timestamp_added)}, "
+            f"validation_status={_repr_str(self.validation_status)}, "
+            f"label_consolidated_from={_repr_str(self.label_consolidated_from)}, "
+            f"label_proposed_by={_repr_str(self.label_proposed_by)}"
             ")"
         )
 
@@ -186,6 +257,9 @@ class ReceiptWordLabel:
         yield "label", self.label
         yield "reasoning", self.reasoning
         yield "timestamp_added", self.timestamp_added
+        yield "validation_status", self.validation_status
+        yield "label_consolidated_from", self.label_consolidated_from
+        yield "label_proposed_by", self.label_proposed_by
 
     def __eq__(self, other) -> bool:
         """Determines whether two ReceiptWordLabel objects are equal.
@@ -209,6 +283,9 @@ class ReceiptWordLabel:
             and self.label == other.label
             and self.reasoning == other.reasoning
             and self.timestamp_added == other.timestamp_added
+            and self.validation_status == other.validation_status
+            and self.label_consolidated_from == other.label_consolidated_from
+            and self.label_proposed_by == other.label_proposed_by
         )
 
     def __hash__(self) -> int:
@@ -226,6 +303,9 @@ class ReceiptWordLabel:
                 self.label,
                 self.reasoning,
                 self.timestamp_added,
+                self.validation_status,
+                self.label_consolidated_from,
+                self.label_proposed_by,
             )
         )
 
@@ -255,21 +335,48 @@ def itemToReceiptWordLabel(item: dict) -> ReceiptWordLabel:
             f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
         )
     try:
-        # Parse SK to get receipt_id, line_id, word_id, and label
         sk_parts = item["SK"]["S"].split("#")
+        image_id = item["PK"]["S"].split("#")[1]
         receipt_id = int(sk_parts[1])
         line_id = int(sk_parts[3])
         word_id = int(sk_parts[5])
         label = sk_parts[7]
+        reasoning = item["reasoning"]["S"]
+        timestamp_added = item["timestamp_added"]["S"]
+        validation_status = None
+        if "validation_status" in item:
+            # Check if the value is NULL (None in DynamoDB)
+            if "NULL" in item["validation_status"]:
+                validation_status = None
+            # Check if it's a string value
+            elif "S" in item["validation_status"]:
+                validation_status = item["validation_status"]["S"]
+
+        label_consolidated_from = None
+        if "label_consolidated_from" in item:
+            if "NULL" in item["label_consolidated_from"]:
+                label_consolidated_from = None
+            elif "S" in item["label_consolidated_from"]:
+                label_consolidated_from = item["label_consolidated_from"]["S"]
+
+        label_proposed_by = None
+        if "label_proposed_by" in item:
+            if "NULL" in item["label_proposed_by"]:
+                label_proposed_by = None
+            elif "S" in item["label_proposed_by"]:
+                label_proposed_by = item["label_proposed_by"]["S"]
 
         return ReceiptWordLabel(
-            image_id=item["PK"]["S"].split("#")[1],
+            image_id=image_id,
             receipt_id=receipt_id,
             line_id=line_id,
             word_id=word_id,
             label=label,
-            reasoning=item["reasoning"]["S"],
-            timestamp_added=item["timestamp_added"]["S"],
+            reasoning=reasoning,
+            timestamp_added=timestamp_added,
+            validation_status=validation_status,
+            label_consolidated_from=label_consolidated_from,
+            label_proposed_by=label_proposed_by,
         )
     except Exception as e:
         raise ValueError(f"Error converting item to ReceiptWordLabel: {e}")

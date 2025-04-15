@@ -42,6 +42,7 @@ from receipt_dynamo.data._receipt_validation_summary import (
 from receipt_dynamo.data._receipt_chatgpt_validation import (
     _ReceiptChatGPTValidation,
 )
+from receipt_dynamo.data._batch_summary import _BatchSummary
 
 
 class DynamoClient(
@@ -74,6 +75,7 @@ class DynamoClient(
     _ReceiptValidationCategory,
     _ReceiptValidationSummary,
     _ReceiptChatGPTValidation,
+    _BatchSummary,
 ):
     """A class used to represent a DynamoDB client."""
 

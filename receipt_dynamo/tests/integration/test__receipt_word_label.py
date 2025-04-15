@@ -3,6 +3,7 @@ from typing import Literal, Any, Type, Optional, List, Dict
 import pytest
 from botocore.exceptions import ClientError, ParamValidationError
 from receipt_dynamo import DynamoClient, ReceiptWordLabel
+from receipt_dynamo.constants import ValidationStatus
 
 # -------------------------------------------------------------------
 #                        FIXTURES
@@ -19,6 +20,7 @@ def sample_receipt_word_label():
         label="ITEM",
         reasoning="This word appears to be an item description",
         timestamp_added="2024-03-20T12:00:00Z",
+        validation_status="VALIDATED",
     )
 
 
@@ -1806,3 +1808,298 @@ def test_getReceiptWordLabelsByLabel_pagination_errors(
     ):
         client.getReceiptWordLabelsByLabel("ITEM")
     assert mock_query.call_count == 2
+
+
+# -------------------------------------------------------------------
+#                        getReceiptWordLabelsByValidationStatus
+# -------------------------------------------------------------------
+
+
+@pytest.mark.integration
+def test_getReceiptWordLabelsByValidationStatus_success(
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt_word_label: ReceiptWordLabel,
+    mocker,
+):
+    # Arrange
+    client = DynamoClient(dynamodb_table)
+
+    # No need to mock ValidationStatus.values anymore
+
+    client.addReceiptWordLabel(sample_receipt_word_label)
+
+    # Act
+    labels, last_evaluated_key = client.getReceiptWordLabelsByValidationStatus(
+        "VALIDATED"
+    )
+
+    # Assert
+    assert len(labels) == 1
+    assert labels[0] == sample_receipt_word_label
+    assert last_evaluated_key is None
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "invalid_input,expected_error",
+    [
+        (
+            {"validation_status": None},
+            "Validation status must be a non-empty string",
+        ),
+        (
+            {"validation_status": ""},
+            "Validation status must be a non-empty string",
+        ),
+        (
+            {"validation_status": "INVALID"},
+            "Validation status must be one of the following: "
+            + ", ".join([status.value for status in ValidationStatus]),
+        ),
+        (
+            {"validation_status": "VALIDATED", "limit": "not-an-int"},
+            "Limit must be an integer",
+        ),
+        (
+            {"validation_status": "VALIDATED", "limit": 0},
+            "Limit must be greater than 0",
+        ),
+        (
+            {"validation_status": "VALIDATED", "limit": -1},
+            "Limit must be greater than 0",
+        ),
+        (
+            {
+                "validation_status": "VALIDATED",
+                "lastEvaluatedKey": "not-a-dict",
+            },
+            "LastEvaluatedKey must be a dictionary",
+        ),
+        (
+            {"validation_status": "VALIDATED", "lastEvaluatedKey": {}},
+            "LastEvaluatedKey must contain keys: \\{['PK', 'SK']|['SK', 'PK']\\}",
+        ),
+        (
+            {
+                "validation_status": "VALIDATED",
+                "lastEvaluatedKey": {"PK": "not-a-dict", "SK": {"S": "value"}},
+            },
+            "LastEvaluatedKey\\[PK\\] must be a dict containing a key 'S'",
+        ),
+    ],
+)
+def test_getReceiptWordLabelsByValidationStatus_invalid_parameters(
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt_word_label: ReceiptWordLabel,
+    mocker,
+    invalid_input: dict,
+    expected_error: str,
+):
+    # Arrange
+    client = DynamoClient(dynamodb_table)
+
+    # Act & Assert
+    with pytest.raises(ValueError, match=expected_error):
+        client.getReceiptWordLabelsByValidationStatus(**invalid_input)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "error_code, error_message, expected_exception",
+    [
+        (
+            "ResourceNotFoundException",
+            "Table not found",
+            "Could not list receipt word labels by validation status",
+        ),
+        (
+            "ProvisionedThroughputExceededException",
+            "Provisioned throughput exceeded",
+            "Provisioned throughput exceeded",
+        ),
+        (
+            "ValidationException",
+            "One or more parameters given were invalid",
+            "One or more parameters given were invalid",
+        ),
+        (
+            "InternalServerError",
+            "An error occurred on the server",
+            "An error occurred on the server",
+        ),
+    ],
+)
+def test_getReceiptWordLabelsByValidationStatus_client_errors(
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt_word_label: ReceiptWordLabel,
+    mocker,
+    error_code,
+    error_message,
+    expected_exception,
+):
+    # Arrange
+    client = DynamoClient(dynamodb_table)
+    mock_query = mocker.patch.object(
+        client._client,
+        "query",
+        side_effect=ClientError(
+            {"Error": {"Code": error_code, "Message": error_message}}, "Query"
+        ),
+    )
+
+    with pytest.raises(Exception, match=expected_exception):
+        client.getReceiptWordLabelsByValidationStatus("VALIDATED")
+    mock_query.assert_called_once()
+
+
+@pytest.mark.integration
+def test_getReceiptWordLabelsByValidationStatus_pagination_midway_failure(
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt_word_label: ReceiptWordLabel,
+    mocker,
+):
+    client = DynamoClient(dynamodb_table)
+
+    mock_query = mocker.patch.object(client._client, "query")
+    mock_query.side_effect = [
+        {
+            "Items": [sample_receipt_word_label.to_item()],
+            "LastEvaluatedKey": {"PK": {"S": "key"}, "SK": {"S": "key"}},
+        },
+        ClientError(
+            {
+                "Error": {
+                    "Code": "UnknownError",
+                    "Message": "An unexpected error occurred",
+                }
+            },
+            "Query",
+        ),
+    ]
+
+    with pytest.raises(
+        Exception,
+        match="Could not list receipt word labels by validation status",
+    ):
+        client.getReceiptWordLabelsByValidationStatus("VALIDATED")
+    assert mock_query.call_count == 2
+
+
+def test_getReceiptWordLabelsByValidationStatus_multi_page_success(
+    dynamodb_table,
+    sample_receipt_word_label,
+    mocker,
+):
+    client = DynamoClient(dynamodb_table)
+
+    mock_query = mocker.patch.object(client._client, "query")
+    mock_query.side_effect = [
+        {
+            "Items": [sample_receipt_word_label.to_item()],
+            "LastEvaluatedKey": {"PK": {"S": "foo"}, "SK": {"S": "bar"}},
+        },
+        {
+            "Items": [],
+        },
+    ]
+
+    labels, lek = client.getReceiptWordLabelsByValidationStatus("VALIDATED")
+    assert len(labels) == 1
+    assert lek is None
+
+
+@pytest.mark.integration
+def test_getReceiptWordLabelsByValidationStatus_hits_limit_mid_loop(
+    dynamodb_table,
+    sample_receipt_word_label,
+    mocker,
+):
+    client = DynamoClient(dynamodb_table)
+    mock_query = mocker.patch.object(client._client, "query")
+
+    mock_query.side_effect = [
+        {
+            "Items": [sample_receipt_word_label.to_item()],  # total = 1
+            "LastEvaluatedKey": {"PK": {"S": "k1"}, "SK": {"S": "k1"}},
+        },
+        {
+            "Items": [sample_receipt_word_label.to_item()],  # total = 2
+            "LastEvaluatedKey": {"PK": {"S": "k2"}, "SK": {"S": "k2"}},
+        },
+        {
+            "Items": [
+                sample_receipt_word_label.to_item()
+            ],  # total = 3 (hits limit)
+        },
+    ]
+
+    labels, lek = client.getReceiptWordLabelsByValidationStatus(
+        "VALIDATED", limit=3
+    )
+
+    assert len(labels) == 3
+    assert lek is None
+    assert mock_query.call_count == 3  # ensures we looped and reassigned limit
+
+
+def test_getReceiptWordLabelsByValidationStatus_limit_updates_mid_loop(
+    dynamodb_table,
+    sample_receipt_word_label,
+    mocker,
+):
+    client = DynamoClient(dynamodb_table)
+    mock_query = mocker.patch.object(client._client, "query")
+
+    mock_query.side_effect = [
+        {
+            "Items": [sample_receipt_word_label.to_item()],
+            "LastEvaluatedKey": {"PK": {"S": "k1"}, "SK": {"S": "k1"}},
+        },
+        {
+            "Items": [
+                sample_receipt_word_label.to_item(),
+                sample_receipt_word_label.to_item(),
+            ],
+        },
+    ]
+
+    labels, lek = client.getReceiptWordLabelsByValidationStatus(
+        "VALIDATED", limit=2
+    )
+
+    assert len(labels) == 2
+    assert lek is None
+    assert mock_query.call_count == 2
+
+
+@pytest.mark.integration
+def test_getReceiptWordLabelsByValidationStatus_triggers_limit_mid_loop(
+    dynamodb_table,
+    sample_receipt_word_label,
+    mocker,
+):
+    client = DynamoClient(dynamodb_table)
+    mock_query = mocker.patch.object(client._client, "query")
+
+    # Mock 3 query pages
+    mock_query.side_effect = [
+        {
+            "Items": [sample_receipt_word_label.to_item()],
+            "LastEvaluatedKey": {"PK": {"S": "k1"}, "SK": {"S": "k1"}},
+        },
+        {
+            "Items": [sample_receipt_word_label.to_item()],
+            "LastEvaluatedKey": {"PK": {"S": "k2"}, "SK": {"S": "k2"}},
+        },
+        {
+            "Items": [sample_receipt_word_label.to_item()],
+        },
+    ]
+
+    labels, lek = client.getReceiptWordLabelsByValidationStatus(
+        "VALIDATED", limit=3
+    )
+
+    assert len(labels) == 3
+    assert lek is None  # loop completed
+    assert mock_query.call_count == 3

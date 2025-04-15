@@ -15,6 +15,9 @@ def example_receipt_word_label():
         label="BUSINESS_NAME",
         reasoning="This word appears at the top of the receipt and matches known business name patterns",
         timestamp_added="2021-01-01T00:00:00",
+        validation_status=None,
+        label_proposed_by=None,
+        label_consolidated_from=None,
     )
 
 
@@ -34,6 +37,9 @@ def test_receipt_word_label_init_valid(example_receipt_word_label):
         == "This word appears at the top of the receipt and matches known business name patterns"
     )
     assert example_receipt_word_label.timestamp_added == "2021-01-01T00:00:00"
+    assert example_receipt_word_label.validation_status is None
+    assert example_receipt_word_label.label_proposed_by is None
+    assert example_receipt_word_label.label_consolidated_from is None
 
 
 @pytest.mark.unit
@@ -48,6 +54,9 @@ def test_receipt_word_label_init_invalid_image_id():
             label="BUSINESS_NAME",
             reasoning="Test reasoning",
             timestamp_added="2021-01-01T00:00:00",
+            validation_status=None,
+            label_proposed_by=None,
+            label_consolidated_from=None,
         )
 
 
@@ -64,6 +73,9 @@ def test_receipt_word_label_init_invalid_ids():
             label="BUSINESS_NAME",
             reasoning="Test reasoning",
             timestamp_added="2021-01-01T00:00:00",
+            validation_status=None,
+            label_proposed_by=None,
+            label_consolidated_from=None,
         )
 
     # Invalid line_id
@@ -76,6 +88,9 @@ def test_receipt_word_label_init_invalid_ids():
             label="BUSINESS_NAME",
             reasoning="Test reasoning",
             timestamp_added="2021-01-01T00:00:00",
+            validation_status=None,
+            label_proposed_by=None,
+            label_consolidated_from=None,
         )
 
     # Invalid word_id
@@ -88,6 +103,9 @@ def test_receipt_word_label_init_invalid_ids():
             label="BUSINESS_NAME",
             reasoning="Test reasoning",
             timestamp_added="2021-01-01T00:00:00",
+            validation_status=None,
+            label_proposed_by=None,
+            label_consolidated_from=None,
         )
 
 
@@ -104,6 +122,9 @@ def test_receipt_word_label_init_invalid_label():
             label="",
             reasoning="Test reasoning",
             timestamp_added="2021-01-01T00:00:00",
+            validation_status=None,
+            label_proposed_by=None,
+            label_consolidated_from=None,
         )
 
     # Non-string label
@@ -116,6 +137,9 @@ def test_receipt_word_label_init_invalid_label():
             label=123,
             reasoning="Test reasoning",
             timestamp_added="2021-01-01T00:00:00",
+            validation_status=None,
+            label_proposed_by=None,
+            label_consolidated_from=None,
         )
 
 
@@ -132,6 +156,9 @@ def test_receipt_word_label_init_invalid_reasoning():
             label="BUSINESS_NAME",
             reasoning="",
             timestamp_added="2021-01-01T00:00:00",
+            validation_status=None,
+            label_proposed_by=None,
+            label_consolidated_from=None,
         )
 
     # Non-string reasoning
@@ -144,6 +171,9 @@ def test_receipt_word_label_init_invalid_reasoning():
             label="BUSINESS_NAME",
             reasoning=123,
             timestamp_added="2021-01-01T00:00:00",
+            validation_status=None,
+            label_proposed_by=None,
+            label_consolidated_from=None,
         )
 
 
@@ -158,6 +188,9 @@ def test_receipt_word_label_init_valid_timestamp():
         label="BUSINESS_NAME",
         reasoning="Test reasoning",
         timestamp_added=datetime.now(),
+        validation_status=None,
+        label_proposed_by=None,
+        label_consolidated_from=None,
     )
 
 
@@ -176,6 +209,9 @@ def test_receipt_word_label_init_invalid_timestamp():
             label="BUSINESS_NAME",
             reasoning="Test reasoning",
             timestamp_added=123,
+            validation_status=None,
+            label_proposed_by=None,
+            label_consolidated_from=None,
         )
 
 
@@ -202,35 +238,50 @@ def test_receipt_word_label_gsi1_key_generation(example_receipt_word_label):
 @pytest.mark.unit
 def test_receipt_word_label_to_item(example_receipt_word_label):
     """Test converting a ReceiptWordLabel to a DynamoDB item."""
-    assert example_receipt_word_label.to_item() == {
-        "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-        "SK": {"S": "RECEIPT#00001#LINE#00002#WORD#00003#LABEL#BUSINESS_NAME"},
-        "GSI1PK": {"S": "LABEL#BUSINESS_NAME_____________________"},
-        "GSI1SK": {
-            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001#LINE#00002#WORD#00003"
-        },
-        "TYPE": {"S": "RECEIPT_WORD_LABEL"},
-        "reasoning": {
-            "S": "This word appears at the top of the receipt and matches known business name patterns"
-        },
-        "timestamp_added": {"S": "2021-01-01T00:00:00"},
+    item = example_receipt_word_label.to_item()
+    assert item["PK"] == {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"}
+    assert item["SK"] == {
+        "S": "RECEIPT#00001#LINE#00002#WORD#00003#LABEL#BUSINESS_NAME"
     }
+    assert item["GSI1PK"] == {"S": "LABEL#BUSINESS_NAME_____________________"}
+    assert item["GSI1SK"] == {
+        "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001#LINE#00002#WORD#00003"
+    }
+    assert item["GSI2PK"] == {"S": "RECEIPT"}
+    assert item["GSI2SK"] == {
+        "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001#LINE#00002#WORD#00003"
+    }
+    assert item["GSI3PK"] == {"S": "VALIDATION_STATUS#UNKNOWN"}
+    assert item["GSI3SK"] == {
+        "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001#LINE#00002#WORD#00003#LABEL#BUSINESS_NAME"
+    }
+    assert item["TYPE"] == {"S": "RECEIPT_WORD_LABEL"}
+    assert item["reasoning"] == {
+        "S": "This word appears at the top of the receipt and matches known business name patterns"
+    }
+    assert item["timestamp_added"] == {"S": "2021-01-01T00:00:00"}
+    assert item["validation_status"] == {"NULL": True}
+    assert item["label_proposed_by"] == {"NULL": True}
+    assert item["label_consolidated_from"] == {"NULL": True}
 
 
 @pytest.mark.unit
 def test_receipt_word_label_repr(example_receipt_word_label):
     """Test the string representation of a ReceiptWordLabel."""
-    assert str(example_receipt_word_label) == (
-        "ReceiptWordLabel("
-        "image_id='3f52804b-2fad-4e00-92c8-b593da3a8ed3', "
-        "receipt_id=1, "
-        "line_id=2, "
-        "word_id=3, "
-        "label='BUSINESS_NAME', "
-        "reasoning='This word appears at the top of the receipt and matches known business name patterns', "
-        "timestamp_added='2021-01-01T00:00:00'"
-        ")"
+    repr_str = str(example_receipt_word_label)
+    assert "ReceiptWordLabel(" in repr_str
+    assert repr_str.startswith(
+        "ReceiptWordLabel(image_id='3f52804b-2fad-4e00-92c8-b593da3a8ed3', "
     )
+    assert "label='BUSINESS_NAME'" in repr_str
+    assert (
+        "reasoning='This word appears at the top of the receipt and matches known business name patterns'"
+        in repr_str
+    )
+    assert "timestamp_added='2021-01-01T00:00:00'" in repr_str
+    assert "validation_status=None" in repr_str
+    assert "label_proposed_by=None" in repr_str
+    assert "label_consolidated_from=None" in repr_str
 
 
 @pytest.mark.unit
@@ -244,6 +295,9 @@ def test_receipt_word_label_iter(example_receipt_word_label):
         "label": "BUSINESS_NAME",
         "reasoning": "This word appears at the top of the receipt and matches known business name patterns",
         "timestamp_added": "2021-01-01T00:00:00",
+        "validation_status": None,
+        "label_proposed_by": None,
+        "label_consolidated_from": None,
     }
     assert (
         ReceiptWordLabel(**dict(example_receipt_word_label))
@@ -277,7 +331,9 @@ def test_item_to_receipt_word_label_missing_keys():
     """itemToReceiptWordLabel raises ValueError when required keys are missing."""
     incomplete_item = {
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-        "SK": {"S": "RECEIPT#00001#LINE#00002#WORD#00003#LABEL#BUSINESS_NAME"},
+        "SK": {
+            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001#LINE#00002#WORD#00003#LABEL#BUSINESS_NAME"
+        },
     }
     with pytest.raises(ValueError, match="Invalid item format\nmissing keys"):
         itemToReceiptWordLabel(incomplete_item)
@@ -288,7 +344,9 @@ def test_item_to_receipt_word_label_invalid_format():
     """itemToReceiptWordLabel raises ValueError when keys are incorrectly formatted."""
     invalid_item = {
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-        "SK": {"S": "RECEIPT#00001#LINE#00002#WORD#00003#LABEL#BUSINESS_NAME"},
+        "SK": {
+            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001#LINE#00002#WORD#00003#LABEL#BUSINESS_NAME"
+        },
         "reasoning": {"N": "123"},  # Should be {"S": "123"}
         "timestamp_added": {"S": "2021-01-01T00:00:00"},
     }

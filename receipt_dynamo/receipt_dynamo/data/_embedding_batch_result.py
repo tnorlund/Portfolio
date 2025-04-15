@@ -1,0 +1,479 @@
+from typing import List, Optional, Tuple, Dict
+
+from botocore.exceptions import ClientError
+
+from receipt_dynamo.entities.embedding_batch_result import (
+    EmbeddingBatchResult,
+    itemToEmbeddingBatchResult,
+)
+from receipt_dynamo.entities.util import assert_valid_uuid
+from receipt_dynamo.constants import EmbeddingStatus
+
+
+def validate_last_evaluated_key(lek: dict) -> None:
+    required_keys = {"PK", "SK"}
+    if not required_keys.issubset(lek.keys()):
+        raise ValueError(
+            f"LastEvaluatedKey must contain keys: {required_keys}"
+        )
+    for key in required_keys:
+        if not isinstance(lek[key], dict) or "S" not in lek[key]:
+            raise ValueError(
+                f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'"
+            )
+
+
+class _EmbeddingBatchResult:
+    """DynamoDB accessor for EmbeddingBatchResult items."""
+
+    def addEmbeddingBatchResult(
+        self, embedding_batch_result: EmbeddingBatchResult
+    ):
+        """
+        Adds an EmbeddingBatchResult to the database.
+
+        Raises ValueError on invalid input or if item already exists.
+        """
+        if embedding_batch_result is None:
+            raise ValueError(
+                "EmbeddingBatchResult parameter is required and cannot be None."
+            )
+        if not isinstance(embedding_batch_result, EmbeddingBatchResult):
+            raise ValueError(
+                "embedding_batch_result must be an instance of EmbeddingBatchResult."
+            )
+
+        try:
+            self._client.put_item(
+                TableName=self.table_name,
+                Item=embedding_batch_result.to_item(),
+                ConditionExpression="attribute_not_exists(PK)",
+            )
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ConditionalCheckFailedException":
+                raise ValueError(
+                    f"Embedding batch result for Batch ID '{embedding_batch_result.batch_id}' already exists"
+                ) from e
+            elif error_code == "ResourceNotFoundException":
+                raise Exception(
+                    f"Could not add embedding batch result to DynamoDB: {e}"
+                ) from e
+            else:
+                raise Exception(
+                    f"Could not add embedding batch result to DynamoDB: {e}"
+                ) from e
+
+    def addEmbeddingBatchResults(
+        self, embedding_batch_results: List[EmbeddingBatchResult]
+    ):
+        """
+        Batch add EmbeddingBatchResults to DynamoDB.
+        """
+        if embedding_batch_results is None:
+            raise ValueError(
+                "EmbeddingBatchResults parameter is required and cannot be None."
+            )
+        if not isinstance(embedding_batch_results, list):
+            raise ValueError(
+                "embedding_batch_results must be a list of EmbeddingBatchResult instances."
+            )
+        if not all(
+            isinstance(r, EmbeddingBatchResult)
+            for r in embedding_batch_results
+        ):
+            raise ValueError(
+                "All embedding batch results must be instances of EmbeddingBatchResult."
+            )
+
+        try:
+            for i in range(0, len(embedding_batch_results), 25):
+                chunk = embedding_batch_results[i : i + 25]
+                request_items = [
+                    {"PutRequest": {"Item": r.to_item()}} for r in chunk
+                ]
+                response = self._client.batch_write_item(
+                    RequestItems={self.table_name: request_items}
+                )
+                unprocessed = response.get("UnprocessedItems", {})
+                while unprocessed.get(self.table_name):
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
+                    unprocessed = response.get("UnprocessedItems", {})
+        except ClientError as e:
+            raise Exception(
+                f"Error adding embedding batch results: {e}"
+            ) from e
+
+    def updateEmbeddingBatchResult(
+        self, embedding_batch_result: EmbeddingBatchResult
+    ):
+        """
+        Updates an EmbeddingBatchResult in DynamoDB. Raises if it does not exist.
+        """
+        if embedding_batch_result is None:
+            raise ValueError(
+                "EmbeddingBatchResult parameter is required and cannot be None."
+            )
+        if not isinstance(embedding_batch_result, EmbeddingBatchResult):
+            raise ValueError(
+                "embedding_batch_result must be an instance of EmbeddingBatchResult."
+            )
+
+        try:
+            self._client.put_item(
+                TableName=self.table_name,
+                Item=embedding_batch_result.to_item(),
+                ConditionExpression="attribute_exists(PK)",
+            )
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ConditionalCheckFailedException":
+                raise ValueError(
+                    f"Embedding batch result for Batch ID '{embedding_batch_result.batch_id}' does not exist"
+                ) from e
+            else:
+                raise Exception(
+                    f"Error updating embedding batch result: {e}"
+                ) from e
+
+    def updateEmbeddingBatchResults(
+        self, embedding_batch_results: List[EmbeddingBatchResult]
+    ):
+        """
+        Batch update EmbeddingBatchResults in DynamoDB.
+        """
+        if embedding_batch_results is None:
+            raise ValueError(
+                "EmbeddingBatchResults parameter is required and cannot be None."
+            )
+        if not isinstance(embedding_batch_results, list):
+            raise ValueError(
+                "embedding_batch_results must be a list of EmbeddingBatchResult instances."
+            )
+        if not all(
+            isinstance(r, EmbeddingBatchResult)
+            for r in embedding_batch_results
+        ):
+            raise ValueError(
+                "All embedding batch results must be instances of EmbeddingBatchResult."
+            )
+
+        for i in range(0, len(embedding_batch_results), 25):
+            chunk = embedding_batch_results[i : i + 25]
+            transact_items = [
+                {
+                    "Put": {
+                        "TableName": self.table_name,
+                        "Item": r.to_item(),
+                        "ConditionExpression": "attribute_exists(PK)",
+                    }
+                }
+                for r in chunk
+            ]
+            try:
+                self._client.transact_write_items(TransactItems=transact_items)
+            except ClientError as e:
+                raise Exception(
+                    f"Error updating embedding batch results: {e}"
+                ) from e
+
+    def deleteEmbeddingBatchResult(
+        self, embedding_batch_result: EmbeddingBatchResult
+    ):
+        """
+        Deletes an EmbeddingBatchResult from DynamoDB.
+        """
+        if embedding_batch_result is None:
+            raise ValueError(
+                "EmbeddingBatchResult parameter is required and cannot be None."
+            )
+        if not isinstance(embedding_batch_result, EmbeddingBatchResult):
+            raise ValueError(
+                "embedding_batch_result must be an instance of EmbeddingBatchResult."
+            )
+
+        try:
+            self._client.delete_item(
+                TableName=self.table_name,
+                Key=embedding_batch_result.key(),
+                ConditionExpression="attribute_exists(PK)",
+            )
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ConditionalCheckFailedException":
+                raise ValueError(
+                    f"Embedding batch result for Batch ID '{embedding_batch_result.batch_id}' does not exist"
+                ) from e
+            else:
+                raise Exception(
+                    f"Error deleting embedding batch result: {e}"
+                ) from e
+
+    def deleteEmbeddingBatchResults(
+        self, embedding_batch_results: List[EmbeddingBatchResult]
+    ):
+        """
+        Batch delete EmbeddingBatchResults from DynamoDB.
+        """
+        if embedding_batch_results is None:
+            raise ValueError(
+                "EmbeddingBatchResults parameter is required and cannot be None."
+            )
+        if not isinstance(embedding_batch_results, list):
+            raise ValueError(
+                "embedding_batch_results must be a list of EmbeddingBatchResult instances."
+            )
+        if not all(
+            isinstance(r, EmbeddingBatchResult)
+            for r in embedding_batch_results
+        ):
+            raise ValueError(
+                "All embedding batch results must be instances of EmbeddingBatchResult."
+            )
+
+        for i in range(0, len(embedding_batch_results), 25):
+            chunk = embedding_batch_results[i : i + 25]
+            transact_items = [
+                {
+                    "Delete": {
+                        "TableName": self.table_name,
+                        "Key": r.key(),
+                        "ConditionExpression": "attribute_exists(PK)",
+                    }
+                }
+                for r in chunk
+            ]
+            try:
+                self._client.transact_write_items(TransactItems=transact_items)
+            except ClientError as e:
+                raise Exception(
+                    f"Error deleting embedding batch results: {e}"
+                ) from e
+
+    def getEmbeddingBatchResult(
+        self,
+        batch_id: str,
+        receipt_id: int,
+        line_id: int,
+        word_id: int,
+        label: str,
+    ) -> EmbeddingBatchResult:
+        """
+        Gets an EmbeddingBatchResult from DynamoDB by primary key.
+        """
+        assert_valid_uuid(batch_id)
+        if not isinstance(receipt_id, int) or receipt_id <= 0:
+            raise ValueError("receipt_id must be a positive integer")
+        if not isinstance(line_id, int) or line_id < 0:
+            raise ValueError("line_id must be zero or positive integer")
+        if not isinstance(word_id, int) or word_id < 0:
+            raise ValueError("word_id must be zero or positive integer")
+        if not isinstance(label, str) or not label:
+            raise ValueError("label must be a non-empty string")
+
+        try:
+            response = self._client.get_item(
+                TableName=self.table_name,
+                Key={
+                    "PK": {"S": f"BATCH#{batch_id}"},
+                    "SK": {
+                        "S": f"RESULT#RECEIPT#{receipt_id}#LINE#{line_id}#WORD#{word_id}#LABEL#{label}"
+                    },
+                },
+            )
+            if "Item" in response:
+                return itemToEmbeddingBatchResult(response["Item"])
+            else:
+                raise ValueError(
+                    f"Embedding batch result for Batch ID '{batch_id}', Receipt ID {receipt_id}, Line ID {line_id}, Word ID {word_id}, Label '{label}' does not exist."
+                )
+        except ClientError as e:
+            raise Exception(
+                f"Error getting embedding batch result: {e}"
+            ) from e
+
+    def listEmbeddingBatchResults(
+        self, limit: int = None, lastEvaluatedKey: dict = None
+    ) -> Tuple[List[EmbeddingBatchResult], Optional[dict]]:
+        """
+        List all EmbeddingBatchResults, paginated.
+        """
+        if limit is not None and (not isinstance(limit, int) or limit <= 0):
+            raise ValueError("Limit must be a positive integer.")
+        if lastEvaluatedKey is not None:
+            if not isinstance(lastEvaluatedKey, dict):
+                raise ValueError("LastEvaluatedKey must be a dictionary.")
+            validate_last_evaluated_key(lastEvaluatedKey)
+
+        results = []
+        try:
+            query_params = {
+                "TableName": self.table_name,
+                "IndexName": "GSITYPE",
+                "KeyConditionExpression": "#t = :val",
+                "ExpressionAttributeNames": {"#t": "TYPE"},
+                "ExpressionAttributeValues": {
+                    ":val": {"S": "EMBEDDING_BATCH_RESULT"}
+                },
+            }
+            if lastEvaluatedKey is not None:
+                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+
+            while True:
+                if limit is not None:
+                    remaining = limit - len(results)
+                    query_params["Limit"] = remaining
+
+                response = self._client.query(**query_params)
+                results.extend(
+                    [
+                        itemToEmbeddingBatchResult(item)
+                        for item in response["Items"]
+                    ]
+                )
+
+                if limit is not None and len(results) >= limit:
+                    results = results[:limit]
+                    last_evaluated_key = response.get("LastEvaluatedKey", None)
+                    break
+
+                if "LastEvaluatedKey" in response:
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
+                else:
+                    last_evaluated_key = None
+                    break
+
+            return results, last_evaluated_key
+        except ClientError as e:
+            raise Exception(
+                f"Error listing embedding batch results: {e}"
+            ) from e
+
+    def getEmbeddingBatchResultsByStatus(
+        self, status: str, limit: int = None, lastEvaluatedKey: dict = None
+    ) -> Tuple[List[EmbeddingBatchResult], Optional[dict]]:
+        """
+        Query EmbeddingBatchResults by status using GSI2.
+        """
+        if not isinstance(status, str) or not status:
+            raise ValueError("Status must be a non-empty string")
+        if status not in [s.value for s in EmbeddingStatus]:
+            raise ValueError(
+                "Status must be one of: "
+                + ", ".join(s.value for s in EmbeddingStatus)
+            )
+        if limit is not None and (not isinstance(limit, int) or limit <= 0):
+            raise ValueError("Limit must be a positive integer.")
+        if lastEvaluatedKey is not None:
+            if not isinstance(lastEvaluatedKey, dict):
+                raise ValueError("LastEvaluatedKey must be a dictionary.")
+            validate_last_evaluated_key(lastEvaluatedKey)
+
+        results = []
+        try:
+            query_params = {
+                "TableName": self.table_name,
+                "IndexName": "GSI2",
+                "KeyConditionExpression": "GSI2SK = :sk",
+                "ExpressionAttributeValues": {
+                    ":sk": {"S": f"STATUS#{status}"}
+                },
+            }
+            if lastEvaluatedKey is not None:
+                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+
+            while True:
+                if limit is not None:
+                    remaining = limit - len(results)
+                    query_params["Limit"] = remaining
+
+                response = self._client.query(**query_params)
+                results.extend(
+                    [
+                        itemToEmbeddingBatchResult(item)
+                        for item in response["Items"]
+                    ]
+                )
+
+                if limit is not None and len(results) >= limit:
+                    results = results[:limit]
+                    last_evaluated_key = response.get("LastEvaluatedKey", None)
+                    break
+
+                if "LastEvaluatedKey" in response:
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
+                else:
+                    last_evaluated_key = None
+                    break
+
+            return results, last_evaluated_key
+        except ClientError as e:
+            raise Exception(
+                f"Error querying embedding batch results by status: {e}"
+            ) from e
+
+    def getEmbeddingBatchResultsByReceipt(
+        self, receipt_id: int, limit: int = None, lastEvaluatedKey: dict = None
+    ) -> Tuple[List[EmbeddingBatchResult], Optional[dict]]:
+        """
+        Query EmbeddingBatchResults by receipt_id using GSI3.
+        """
+        if not isinstance(receipt_id, int) or receipt_id <= 0:
+            raise ValueError("receipt_id must be a positive integer.")
+        if limit is not None and (not isinstance(limit, int) or limit <= 0):
+            raise ValueError("Limit must be a positive integer.")
+        if lastEvaluatedKey is not None:
+            if not isinstance(lastEvaluatedKey, dict):
+                raise ValueError("LastEvaluatedKey must be a dictionary.")
+            validate_last_evaluated_key(lastEvaluatedKey)
+
+        results = []
+        try:
+            query_params = {
+                "TableName": self.table_name,
+                "IndexName": "GSI3",
+                "KeyConditionExpression": "GSI3PK = :pk",
+                "ExpressionAttributeValues": {
+                    ":pk": {"S": f"RECEIPT#{receipt_id}"}
+                },
+            }
+            if lastEvaluatedKey is not None:
+                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+
+            while True:
+                if limit is not None:
+                    remaining = limit - len(results)
+                    query_params["Limit"] = remaining
+
+                response = self._client.query(**query_params)
+                results.extend(
+                    [
+                        itemToEmbeddingBatchResult(item)
+                        for item in response["Items"]
+                    ]
+                )
+
+                if limit is not None and len(results) >= limit:
+                    results = results[:limit]
+                    last_evaluated_key = response.get("LastEvaluatedKey", None)
+                    break
+
+                if "LastEvaluatedKey" in response:
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
+                else:
+                    last_evaluated_key = None
+                    break
+
+            return results, last_evaluated_key
+        except ClientError as e:
+            raise Exception(
+                f"Error querying embedding batch results by receipt: {e}"
+            ) from e
