@@ -50,11 +50,16 @@ flowchart TD
     ListReceiptWordLabels --> FetchReceiptWords
     FetchReceiptWords --> JoinWordsAndLabels
     JoinWordsAndLabels --> ChunkIntoEmbeddingBatches
-    ChunkIntoEmbeddingBatches -->|In parallel| GenerateOpenAIInput
-    ChunkIntoEmbeddingBatches -->|In parallel| WriteNDJSON
-    GenerateOpenAIInput --> UploadEmbeddingFile
-    WriteNDJSON --> UploadEmbeddingFile
-    UploadEmbeddingFile --> SubmitEmbeddingBatchJob
-    SubmitEmbeddingBatchJob --> SaveBatchSummary
+
+    ChunkIntoEmbeddingBatches --> EachEmbeddingBatch
+
+    subgraph EachEmbeddingBatch [For each embedding batch (N total)]
+        direction TB
+        GenerateOpenAIInput --> WriteNDJSON
+        WriteNDJSON --> UploadEmbeddingFile
+        UploadEmbeddingFile --> SubmitEmbeddingBatchJob
+        SubmitEmbeddingBatchJob --> SaveBatchSummary
+    end
+
     SaveBatchSummary --> End([End])
 ```
