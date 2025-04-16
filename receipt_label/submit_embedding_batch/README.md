@@ -51,15 +51,29 @@ flowchart TD
     FetchReceiptWords --> JoinWordsAndLabels["Merge Words and Labels"]
     JoinWordsAndLabels --> ChunkIntoEmbeddingBatches["Chunk into Batches"]
 
-    ChunkIntoEmbeddingBatches --> EachEmbeddingBatch["Batched Embedding Jobs"]
+    ChunkIntoEmbeddingBatches --> Batch1Start
+    ChunkIntoEmbeddingBatches --> Batch2Start
+    ChunkIntoEmbeddingBatches --> BatchDotDotDot["..."]
 
-    subgraph "Batch Embedding Job"
+    subgraph "Batch Embedding Job 1"
         direction TB
-        GenerateOpenAIInput["Format Embedding Payload"] --> WriteNDJSON["Write NDJSON"]
-        WriteNDJSON --> UploadEmbeddingFile["Upload Embedding File"]
-        UploadEmbeddingFile --> SubmitEmbeddingBatchJob["Submit Embedding Batch Job"]
-        SubmitEmbeddingBatchJob --> SaveBatchSummary["Save Batch Summary"]
+        Batch1Start --> Format1["Format Embedding Payload"]
+        Format1 --> NDJSON1["Write NDJSON"]
+        NDJSON1 --> Upload1["Upload Embedding File"]
+        Upload1 --> Submit1["Submit Embedding Batch Job"]
+        Submit1 --> Save1["Save Batch Summary"]
     end
 
-    SaveBatchSummary --> End([End])
+    subgraph "Batch Embedding Job 2"
+        direction TB
+        Batch2Start --> Format2["Format Embedding Payload"]
+        Format2 --> NDJSON2["Write NDJSON"]
+        NDJSON2 --> Upload2["Upload Embedding File"]
+        Upload2 --> Submit2["Submit Embedding Batch Job"]
+        Submit2 --> Save2["Save Batch Summary"]
+    end
+
+    Save1 --> End([End])
+    Save2 --> End
+    BatchDotDotDot --> End
 ```
