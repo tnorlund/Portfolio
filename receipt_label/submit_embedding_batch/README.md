@@ -53,7 +53,7 @@ flowchart TD
 
     ChunkIntoEmbeddingBatches --> EachEmbeddingBatch
 
-    subgraph EachEmbeddingBatch [For each embedding batch (N total)]
+    subgraph "For each embedding batch (N total)"
         direction TB
         GenerateOpenAIInput --> WriteNDJSON
         WriteNDJSON --> UploadEmbeddingFile
