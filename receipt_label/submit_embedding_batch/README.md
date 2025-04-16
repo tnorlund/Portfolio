@@ -53,9 +53,9 @@ flowchart TD
 
     ChunkIntoEmbeddingBatches --> EachEmbeddingBatch["Batched Embedding Jobs"]
 
-    subgraph "For each embedding batch (N total)"
+    subgraph "Batch Embedding Job"
         direction TB
-        GenerateOpenAIInput["Generate OpenAI Input"] --> WriteNDJSON["Write NDJSON"]
+        GenerateOpenAIInput["Format Embedding Payload"] --> WriteNDJSON["Write NDJSON"]
         WriteNDJSON --> UploadEmbeddingFile["Upload Embedding File"]
         UploadEmbeddingFile --> SubmitEmbeddingBatchJob["Submit Embedding Batch Job"]
         SubmitEmbeddingBatchJob --> SaveBatchSummary["Save Batch Summary"]
