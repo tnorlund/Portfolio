@@ -1,3 +1,5 @@
+# Poll Embedding Batch
+
 ```mermaid
 stateDiagram-v2
     [*] --> ListPendingEmbeddingBatches

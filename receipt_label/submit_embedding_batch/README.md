@@ -1,3 +1,5 @@
+# Submit Embedding Batch
+
 ```mermaid
 stateDiagram-v2
     [*] --> ListReceiptWordLabels

@@ -22,10 +22,10 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
 ]
-
-[project.urls]
-Homepage = "https://github.com/yourusername/receipt_label"
-Repository = "https://github.com/yourusername/receipt_label.git"
+dependencies = [
+  "openai>=1.0",
+  "pinecone-client>=2.2",
+]
 
 [project.optional-dependencies]
 dev = [
@@ -60,4 +60,4 @@ addopts = "-ra -q"
 testpaths = [
     "tests",
 ]
-python_files = ["test_*.py"] 
+python_files = ["test_*.py"]
