@@ -1,6 +1,6 @@
 import pytest
 from datetime import datetime
-from receipt_dynamo.entities.label_hygiene_result import (
+from receipt_dynamo.entities.label_hygeine_result import (
     LabelHygieneResult,
     itemToLabelHygieneResult,
 )

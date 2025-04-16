@@ -297,7 +297,7 @@ class _ReceiptWord:
 
         except ClientError as e:
             raise ValueError(
-                f"Could not delete ReceiptWords from the database: {e}"
+                f"Could not get ReceiptWords from the database: {e}"
             )
 
     def listReceiptWords(

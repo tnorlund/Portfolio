@@ -4,7 +4,7 @@ lambda_layer.py
 
 This module defines the LambdaLayer component resource, which automates the process of building,
 publishing, and updating AWS Lambda Layers via AWS CodeBuild and Step Functions. The component manages
-the entire lifecycle of a Lambda layer – from verifying the source package to producing a built artifact,
+the entire lifecycle of a Lambda layer - from verifying the source package to producing a built artifact,
 and then updating dependent Lambda functions automatically.
 
 Key features:
@@ -19,7 +19,7 @@ Key features:
       python/lib/python<version>/site-packages/...
 
   - **Metadata Configuration:** The LambdaLayer constructor now accepts a `description` parameter, which is
-    used to provide a human‑readable description for the layer version. This description is propagated
+    used to provide a human-readable description for the layer version. This description is propagated
     both to the Pulumi-managed Lambda layer version and the publish handler environment.
 
   - **Compatible Architectures:** The component explicitly sets `compatible_architectures` (e.g., ["x86_64", "arm64"])

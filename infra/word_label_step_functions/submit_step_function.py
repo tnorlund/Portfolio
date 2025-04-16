@@ -1,0 +1,283 @@
+import os
+import pulumi
+from pulumi import (
+    ComponentResource,
+    Output,
+    ResourceOptions,
+    Config,
+    FileAsset,
+    AssetArchive,
+)
+import pulumi_aws as aws
+from pulumi_aws.sfn import StateMachine
+from pulumi_aws.lambda_ import Function, FunctionEnvironmentArgs
+from pulumi_aws.iam import Role, RolePolicy, RolePolicyAttachment
+import json
+
+
+"""
+submit_batch.py
+
+This module handles the preparation, formatting, submission, and tracking of
+embedding batch jobs to OpenAI's Batch API. It includes functionality to:
+
+- Fetch ReceiptWordLabel and ReceiptWord entities from DynamoDB
+- Join and structure the data into OpenAI-compatible embedding requests
+- Write these requests to an NDJSON file
+- Upload the NDJSON file to S3 and OpenAI
+- Submit the batch embedding job to OpenAI
+- Track job metadata and store summaries in DynamoDB
+
+This script supports agentic document labeling and validation pipelines
+by facilitating scalable embedding of labeled receipt tokens.
+"""
+
+
+from dynamo_db import dynamodb_table
+from lambda_layer import dynamo_layer, label_layer
+
+config = Config("portfolio")
+openai_api_key = config.require_secret("OPENAI_API_KEY")
+pinecone_api_key = config.require_secret("PINECONE_API_KEY")
+pinecone_index_name = config.require("PINECONE_INDEX_NAME")
+stack = pulumi.get_stack()
+
+
+class WordLabelStepFunctions(ComponentResource):
+    def __init__(self, name: str, opts: ResourceOptions = None):
+        super().__init__(
+            f"{__name__}-{name}", "aws:stepfunctions:StateMachine", opts
+        )
+
+        # Create S3 bucket for NDJSON batch files
+        batch_bucket = aws.s3.Bucket(
+            f"{name}-embedding-batch-bucket",
+            acl="private",
+            force_destroy=True,
+            tags={"environment": stack},
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Define IAM role for Lambda
+        submit_lambda_role = Role(
+            f"{name}-lambda-role",
+            assume_role_policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"Service": "lambda.amazonaws.com"},
+                            "Action": "sts:AssumeRole",
+                        }
+                    ],
+                }
+            ),
+            opts=ResourceOptions(parent=self),
+        )
+
+        RolePolicyAttachment(
+            f"{name}-lambda-basic-execution",
+            role=submit_lambda_role.name,
+            policy_arn=(
+                "arn:aws:iam::aws:policy/service-role/"
+                "AWSLambdaBasicExecutionRole"
+            ),
+        )
+
+        # Custom inline policy for DynamoDB access
+        RolePolicy(
+            f"{name}-lambda-dynamo-policy",
+            role=submit_lambda_role.id,
+            policy=dynamodb_table.name.apply(
+                lambda table_name: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "dynamodb:DescribeTable",
+                                    "dynamodb:GetItem",
+                                    "dynamodb:BatchGetItem",
+                                    "dynamodb:Query",
+                                    "dynamodb:PutItem",
+                                    "dynamodb:UpdateItem",
+                                ],
+                                "Resource": (
+                                    "arn:aws:dynamodb:*:*:table/"
+                                    f"{table_name}*"
+                                ),
+                            }
+                        ],
+                    }
+                )
+            ),
+        )
+
+        RolePolicy(
+            f"{name}-lambda-s3-write-policy",
+            role=submit_lambda_role.id,
+            policy=batch_bucket.bucket.apply(
+                lambda bucket_name: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": ["s3:PutObject", "s3:GetObject"],
+                                "Resource": f"arn:aws:s3:::{bucket_name}/*",
+                            }
+                        ],
+                    }
+                )
+            ),
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Define the prepare lambda
+        prepare_batch_lambda = Function(
+            f"{name}-prepare-embedding-batch-lambda",
+            role=submit_lambda_role.arn,
+            runtime="python3.12",
+            handler="prepare_embedding_batch_handler.submit_handler",
+            timeout=900,
+            memory_size=512,
+            code=AssetArchive(
+                {
+                    "prepare_embedding_batch_handler.py": FileAsset(
+                        os.path.join(
+                            os.path.dirname(__file__),
+                            "prepare_embedding_batch_handler.py",
+                        )
+                    )
+                }
+            ),
+            environment=FunctionEnvironmentArgs(
+                variables={
+                    "DYNAMO_TABLE_NAME": dynamodb_table.name,
+                    "OPENAI_API_KEY": openai_api_key,
+                    "PINECONE_API_KEY": pinecone_api_key,
+                    "PINECONE_INDEX_NAME": pinecone_index_name,
+                    "S3_BUCKET": batch_bucket.bucket,
+                }
+            ),
+            layers=[dynamo_layer.arn, label_layer.arn],
+            tags={"environment": stack},
+            opts=ResourceOptions(
+                parent=self,
+                ignore_changes=["layers"],
+            ),
+        )
+
+        # Define the submit lambda
+        submit_batch_lambda = Function(
+            f"{name}-submit-embedding-batch-lambda",
+            role=submit_lambda_role.arn,
+            runtime="python3.12",
+            handler="submit_embedding_batch_handler.submit_handler",
+            timeout=900,
+            memory_size=512,
+            code=AssetArchive(
+                {
+                    "submit_embedding_batch_handler.py": FileAsset(
+                        os.path.join(
+                            os.path.dirname(__file__),
+                            "submit_embedding_batch_handler.py",
+                        )
+                    )
+                }
+            ),
+            environment=FunctionEnvironmentArgs(
+                variables={
+                    "DYNAMO_TABLE_NAME": dynamodb_table.name,
+                    "OPENAI_API_KEY": openai_api_key,
+                    "PINECONE_API_KEY": pinecone_api_key,
+                    "PINECONE_INDEX_NAME": pinecone_index_name,
+                    "S3_BUCKET": batch_bucket.bucket,
+                }
+            ),
+            layers=[dynamo_layer.arn, label_layer.arn],
+            tags={"environment": stack},
+            opts=ResourceOptions(
+                parent=self,
+                ignore_changes=["layers"],
+            ),
+        )
+
+        # Define IAM role for Step Function
+        submit_sfn_role = Role(
+            f"{name}-sfn-role",
+            assume_role_policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"Service": "states.amazonaws.com"},
+                            "Action": "sts:AssumeRole",
+                        }
+                    ],
+                }
+            ),
+            opts=ResourceOptions(parent=self),
+        )
+
+        RolePolicy(
+            f"{name}-sfn-lambda-invoke-policy",
+            role=submit_sfn_role.id,
+            policy=Output.all(
+                prepare_batch_lambda.arn, submit_batch_lambda.arn
+            ).apply(
+                lambda arns: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": "lambda:InvokeFunction",
+                                "Resource": arns,
+                            }
+                        ],
+                    }
+                )
+            ),
+        )
+
+        StateMachine(
+            f"{name}-submit-embedding-batch-sm",
+            role_arn=submit_sfn_role.arn,
+            definition=Output.all(
+                prepare_batch_lambda.arn, submit_batch_lambda.arn
+            ).apply(
+                lambda arns: json.dumps(
+                    {
+                        "StartAt": "PrepareBatch",
+                        "States": {
+                            "PrepareBatch": {
+                                "Type": "Task",
+                                "Resource": arns[0],
+                                "Next": "ForEachBatch",
+                            },
+                            "ForEachBatch": {
+                                "Type": "Map",
+                                "ItemsPath": "$.batches",
+                                "MaxConcurrency": 10,
+                                "Iterator": {
+                                    "StartAt": "SubmitBatch",
+                                    "States": {
+                                        "SubmitBatch": {
+                                            "Type": "Task",
+                                            "Resource": arns[1],
+                                            "End": True,
+                                        }
+                                    },
+                                },
+                                "End": True,
+                            },
+                        },
+                    }
+                )
+            ),
+            opts=ResourceOptions(parent=self),
+        )

@@ -33,7 +33,7 @@ def example_completion_batch_result():
 
 @pytest.mark.unit
 def test_completion_batch_result_valid(example_completion_batch_result):
-    assert example_completion_batch_result.status == "VALID"
+    assert example_completion_batch_result.status == "VALIDATED"
     assert example_completion_batch_result.label_confidence == 0.98
 
 
@@ -168,7 +168,7 @@ def test_completion_batch_result_invalid_date_format():
         "gpt_suggested_label": {"S": "TOTAL"},
         "label_confidence": {"N": "0.9"},
         "label_changed": {"BOOL": True},
-        "status": {"S": "VALID"},
+        "status": {"S": "VALIDATED"},
         "validated_at": {"S": "not-a-date"},
         "reasoning": {"S": "reasoning"},
         "raw_prompt": {"S": "prompt"},

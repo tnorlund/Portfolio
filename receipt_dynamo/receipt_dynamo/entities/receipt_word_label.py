@@ -223,6 +223,23 @@ class ReceiptWordLabel:
             ),
         }
 
+    def to_ReceiptWord_key(self) -> dict:
+        """Generates the key for the ReceiptWord table associated with this label.
+
+        Returns:
+            dict: A dictionary representing the key for the ReceiptWord in DynamoDB.
+        """
+        return {
+            "PK": {"S": f"IMAGE#{self.image_id}"},
+            "SK": {
+                "S": (
+                    f"RECEIPT#{self.receipt_id:05d}"
+                    f"#LINE#{self.line_id:05d}"
+                    f"#WORD#{self.word_id:05d}"
+                )
+            },
+        }
+
     def __repr__(self) -> str:
         """Returns a string representation of the ReceiptWordLabel object.
 

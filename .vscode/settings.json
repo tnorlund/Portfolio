@@ -27,5 +27,6 @@
       "depth": 0
     }
   ],
-  "editor.formatOnSave": true
+  "editor.formatOnSave": true,
+  "cSpell.words": ["stepfunctions"]
 }

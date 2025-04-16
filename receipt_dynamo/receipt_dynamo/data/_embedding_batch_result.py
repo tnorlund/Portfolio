@@ -1,4 +1,5 @@
 from typing import List, Optional, Tuple, Dict
+from uuid import uuid4
 
 from botocore.exceptions import ClientError
 
@@ -419,11 +420,16 @@ class _EmbeddingBatchResult:
             ) from e
 
     def getEmbeddingBatchResultsByReceipt(
-        self, receipt_id: int, limit: int = None, lastEvaluatedKey: dict = None
+        self,
+        image_id: str,
+        receipt_id: int,
+        limit: int = None,
+        lastEvaluatedKey: dict = None,
     ) -> Tuple[List[EmbeddingBatchResult], Optional[dict]]:
         """
         Query EmbeddingBatchResults by receipt_id using GSI3.
         """
+        assert_valid_uuid(image_id)
         if not isinstance(receipt_id, int) or receipt_id <= 0:
             raise ValueError("receipt_id must be a positive integer.")
         if limit is not None and (not isinstance(limit, int) or limit <= 0):
@@ -435,12 +441,24 @@ class _EmbeddingBatchResult:
 
         results = []
         try:
+            template_embedding_batch_result = EmbeddingBatchResult(
+                batch_id=str(uuid4()),
+                image_id=image_id,
+                receipt_id=receipt_id,
+                line_id=0,
+                word_id=0,
+                pinecone_id="dummy",
+                status="dummy",
+                text="dummy",
+                label="dummy",
+                error_message="dummy",
+            )
             query_params = {
                 "TableName": self.table_name,
                 "IndexName": "GSI3",
                 "KeyConditionExpression": "GSI3PK = :pk",
                 "ExpressionAttributeValues": {
-                    ":pk": {"S": f"RECEIPT#{receipt_id}"}
+                    ":pk": template_embedding_batch_result.gsi3_key()["GSI3PK"]
                 },
             }
             if lastEvaluatedKey is not None:

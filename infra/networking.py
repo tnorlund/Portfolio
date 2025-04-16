@@ -76,7 +76,7 @@ class VpcForCodeBuild(ComponentResource):
         # Create Elastic IP for NAT Gateway
         self.nat_eip = aws.ec2.Eip(
             f"{name}-nat-eip",
-            vpc=True,
+            domain="vpc",
             tags={
                 "Name": f"{name}-nat-eip",
                 "Environment": pulumi.get_stack(),

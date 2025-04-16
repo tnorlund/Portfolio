@@ -52,19 +52,28 @@ Builds a BatchSummary entity to track the submitted batch.
 
 ## 🧠 Usage
 
-This module is intended to be called from a Step Function or a job runner that:
+This module is split across two phases in a Step Function workflow:
 
-1. Lists all receipt word labels with `validation_status = "NONE"`
-2. Retrieves corresponding receipt word OCR data
-3. Joins each label with its corresponding word by composite key
-4. Chunks the dataset into batches (e.g., 500–1000 items)
-5. For each batch, format embedding input payloads using OCR and label metadata
-6. Write each batch to an NDJSON file
-7. Upload the NDJSON file to OpenAI as a source file
-8. Submit a batch embedding job and record the job ID
-9. Store a `BatchSummary` per batch with submission metadata and receipt lineage
+### Phase 1: Prepare Batches
 
-The output of this module is a fully-formed batch job that can be polled and processed by the downstream polling workflow.
+1. List all receipt word labels with `validation_status = "NONE"`
+2. Retrieve corresponding receipt word OCR data
+3. Join each label with its matching word via composite key
+4. Chunk the data into batches (e.g., 500 items each)
+5. Format each chunk into OpenAI-compatible NDJSON
+6. Upload each NDJSON file to S3
+7. Return metadata for each batch (including `batch_id`, `s3_bucket`, and `s3_key`)
+
+### Phase 2: Submit Batches (fanned out by Step Function `Map`)
+
+1. Each fanned-out Lambda reads its NDJSON batch from S3
+2. Uploads it to OpenAI's file endpoint
+3. Submits the embedding batch job
+4. Stores a `BatchSummary` entity in DynamoDB to track the job
+
+---
+
+## 📊 Step Function Architecture
 
 ```mermaid
 flowchart TD
@@ -72,17 +81,18 @@ flowchart TD
     ListReceiptWordLabels --> FetchReceiptWords["Fetch Receipt Word OCR"]
     FetchReceiptWords --> JoinWordsAndLabels["Merge Words and Labels"]
     JoinWordsAndLabels --> ChunkIntoEmbeddingBatches["Chunk into Batches"]
+    ChunkIntoEmbeddingBatches --> FormatChunk["Format Chunk into NDJSON"]
+    FormatChunk --> UploadChunk["Upload Chunk to S3"]
 
-    ChunkIntoEmbeddingBatches --> EachEmbeddingBatch["Batch Embedding Job"]
-    ChunkIntoEmbeddingBatches --> EachEmbeddingBatch1["Batch Embedding Job"]
-    ChunkIntoEmbeddingBatches --> EachEmbeddingBatchEllipsis["..."]
+    UploadChunk --> EachEmbeddingBatch["Batch Embedding Job"]
+    UploadChunk --> EachEmbeddingBatch1["Batch Embedding Job"]
+    UploadChunk --> EachEmbeddingBatchEllipsis["..."]
 
     subgraph "Batch Embedding Job"
         direction TB
-        GenerateOpenAIInput["Format Embedding Payload"] --> WriteNDJSON["Write NDJSON"]
-        WriteNDJSON --> UploadEmbeddingFile["Upload Embedding File"]
-        UploadEmbeddingFile --> SubmitEmbeddingBatchJob["Submit Embedding Batch Job"]
-        SubmitEmbeddingBatchJob --> SaveBatchSummary["Save Batch Summary"]
+        ReadNDJSON["Read NDJSON from S3"] --> UploadToOpenAI["Upload to OpenAI"]
+        UploadToOpenAI --> SubmitEmbeddingBatchJob["Submit Embedding job to OpenAI"]
+        SubmitEmbeddingBatchJob --> CreateBatchJobDynamo["Create Batch Job in Dynamo"]
     end
 
     SaveBatchSummary --> End([End])

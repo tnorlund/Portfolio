@@ -1,28 +1,45 @@
 from enum import Enum
 
+"""
+This module defines standardized status enums for DynamoDB entities related to
+receipt parsing, labeling, embedding, and batch processing.
+"""
+
 
 class ValidationStatus(str, Enum):
-    PENDING = "PENDING"
-    VALIDATED = "VALIDATED"
-    REJECTED = "REJECTED"
+    """Standardized validation state for receipt word labels."""
+
+    NONE = "NONE"  # No validation has ever been initiated
+    PENDING = "PENDING"  # Validation has been queued
+    VALID = "VALID"  # Validation succeeded
+    INVALID = "INVALID"  # Validation rejected
+    REJECTED = "REJECTED"  # Explicitly discarded (deprecated)
 
 
 class BatchStatus(str, Enum):
+    """States for batch job execution."""
+
     PENDING = "PENDING"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
 
 
 class BatchType(str, Enum):
+    """Types of batch jobs for label processing."""
+
     COMPLETION = "COMPLETION"
     EMBEDDING = "EMBEDDING"
 
 
 class LabelStatus(str, Enum):
+    """Status assigned to a canonical label."""
+
     ACTIVE = "ACTIVE"
     DEPRECATED = "DEPRECATED"
 
 
 class EmbeddingStatus(str, Enum):
+    """Tracking the outcome of OpenAI embedding jobs."""
+
     SUCCESS = "SUCCESS"
     FAILED = "FAILED"

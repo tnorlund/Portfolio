@@ -94,4 +94,26 @@ from receipt_dynamo.entities.receipt_chatgpt_validation import (
     ReceiptChatGPTValidation,
     itemToReceiptChatGPTValidation,
 )  # noqa: F401
-from receipt_dynamo.entities.receipt_analysis import ReceiptAnalysis  # noqa: F401
+from receipt_dynamo.entities.receipt_analysis import (
+    ReceiptAnalysis,
+)  # noqa: F401
+from receipt_dynamo.entities.embedding_batch_result import (
+    EmbeddingBatchResult,
+    itemToEmbeddingBatchResult,
+)  # noqa: F401
+from receipt_dynamo.entities.batch_summary import (
+    BatchSummary,
+    itemToBatchSummary,
+)  # noqa: F401
+from receipt_dynamo.entities.completion_batch_result import (
+    CompletionBatchResult,
+    itemToCompletionBatchResult,
+)  # noqa: F401
+from receipt_dynamo.entities.label_hygiene_result import (
+    LabelHygieneResult,
+    itemToLabelHygieneResult,
+)  # noqa: F401
+from receipt_dynamo.entities.label_metadata import (
+    LabelMetadata,
+    itemToLabelMetadata,
+)  # noqa: F401

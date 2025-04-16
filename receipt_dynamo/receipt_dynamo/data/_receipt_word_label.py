@@ -428,6 +428,71 @@ class _ReceiptWordLabel:
                     f"Error getting receipt word label: {e}"
                 ) from e
 
+    def getReceiptWordLabelsByKeys(
+        self, keys: list[dict]
+    ) -> list[ReceiptWordLabel]:
+        """Retrieves multiple receipt word labels by their keys."""
+        # Check the validity of the keys
+        for key in keys:
+            if not {"PK", "SK"}.issubset(key.keys()):
+                raise ValueError("Keys must contain 'PK' and 'SK'")
+            if not key["PK"]["S"].startswith("IMAGE#"):
+                raise ValueError("PK must start with 'IMAGE#'")
+            if not key["SK"]["S"].startswith("RECEIPT#"):
+                raise ValueError("SK must start with 'RECEIPT#'")
+            if len(key["SK"]["S"].split("#")[1]) != 5:
+                raise ValueError("SK must contain a 5-digit receipt ID")
+            if not key["SK"]["S"].split("#")[2] == "LINE":
+                raise ValueError("SK must contain 'LINE'")
+            if len(key["SK"]["S"].split("#")[3]) != 5:
+                raise ValueError("SK must contain a 5-digit line ID")
+            if not key["SK"]["S"].split("#")[4] == "WORD":
+                raise ValueError("SK must contain 'WORD'")
+            if len(key["SK"]["S"].split("#")[5]) != 5:
+                raise ValueError("SK must contain a 5-digit word ID")
+            if not key["SK"]["S"].split("#")[6] == "LABEL":
+                raise ValueError("SK must contain 'LABEL'")
+
+        results = []
+        try:
+            # Split keys into chunks of up to 100
+            for i in range(0, len(keys), 100):
+                chunk = keys[i : i + 100]
+
+                # Prepare parameters for BatchGetItem
+                request = {
+                    "RequestItems": {
+                        self.table_name: {
+                            "Keys": chunk,
+                        }
+                    }
+                }
+
+                # Perform BatchGet
+                response = self._client.batch_get_item(**request)
+
+                # Combine all found items
+                batch_items = response["Responses"].get(self.table_name, [])
+                results.extend(batch_items)
+
+                # Retry unprocessed keys if any
+                unprocessed = response.get("UnprocessedKeys", {})
+                while unprocessed.get(self.table_name, {}).get("Keys"):
+                    response = self._client.batch_get_item(
+                        RequestItems=unprocessed
+                    )
+                    batch_items = response["Responses"].get(
+                        self.table_name, []
+                    )
+                    results.extend(batch_items)
+                    unprocessed = response.get("UnprocessedKeys", {})
+
+            return [itemToReceiptWordLabel(result) for result in results]
+        except ClientError as e:
+            raise ValueError(
+                f"Could not get ReceiptWordLabels from the database: {e}"
+            )
+
     def listReceiptWordLabels(
         self, limit: int = None, lastEvaluatedKey: dict | None = None
     ) -> tuple[list[ReceiptWordLabel], dict | None]:

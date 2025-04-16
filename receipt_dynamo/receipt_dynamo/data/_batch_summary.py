@@ -294,22 +294,16 @@ class _BatchSummary:
         """
         if not isinstance(batch_id, str):
             raise ValueError("batch_id must be a string")
-        if not assert_valid_uuid(batch_id):
-            raise ValueError("batch_id must be a valid UUID")
+        assert_valid_uuid(batch_id)
 
+        # The BatchSummary is templated with dummy values
         try:
             response = self._client.get_item(
                 TableName=self.table_name,
-                Key=BatchSummary(
-                    batch_id,
-                    BatchType.BATCH.value,
-                    "dummy-openai-id",
-                    datetime.now(),
-                    BatchStatus.PENDING.value,
-                    0,
-                    "dummy-result-file",
-                    [],
-                ).key(),
+                Key={
+                    "PK": {"S": f"BATCH#{batch_id}"},
+                    "SK": {"S": "STATUS"},
+                },
             )
             if "Item" in response:
                 return itemToBatchSummary(response["Item"])

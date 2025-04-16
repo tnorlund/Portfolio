@@ -98,10 +98,10 @@ class EmbeddingBatchResult:
 
     def gsi3_key(self) -> dict:
         return {
-            "GSI3PK": {"S": f"RECEIPT#{self.receipt_id}"},
-            "GSI3SK": {
-                "S": f"IMAGE#{self.image_id}#BATCH#{self.batch_id}#STATUS#{self.status}"
+            "GSI3PK": {
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id}"
             },
+            "GSI3SK": {"S": f"BATCH#{self.batch_id}#STATUS#{self.status}"},
         }
 
     def to_item(self) -> dict:

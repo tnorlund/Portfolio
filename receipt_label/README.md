@@ -174,21 +174,25 @@ Both APIs support automatic retries with exponential backoff and rate limiting t
 The `ReceiptValidator` performs comprehensive validation of receipt data across multiple dimensions:
 
 1. **Business Identity Validation**
+
    - Compares business names from receipt against Google Places API data
    - Validates business existence and name accuracy
    - Flags potential mismatches or discrepancies
 
 2. **Address Verification**
+
    - Normalizes and compares receipt addresses with Places API data
    - Handles different address formats and variations
    - Validates address completeness and accuracy
 
 3. **Phone Number Validation**
+
    - Compares phone numbers from receipt against Places API data
    - Normalizes phone numbers by removing non-numeric characters
    - Flags mismatches between receipt and official business phone numbers
 
 4. **Hours Verification**
+
    - Validates receipt date and time formats
    - Supports multiple date/time format patterns
    - Prepared for future business hours verification against Places API data
@@ -200,6 +204,7 @@ The `ReceiptValidator` performs comprehensive validation of receipt data across 
    - Flags mathematical discrepancies in calculations
 
 Each validation category produces detailed results including:
+
 - Warning and error messages for identified issues
 - Confidence scores where applicable
 - Detailed comparison information
@@ -275,4 +280,4 @@ This ensures version consistency across all parts of the codebase and packaging.
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details. 
+This project is licensed under the MIT License - see the LICENSE file for details.

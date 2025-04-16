@@ -18,6 +18,7 @@ from instance_registry import InstanceRegistry
 from job_queue import JobQueue
 from ml_packages import MLPackageBuilder
 from networking import VpcForCodeBuild  # Import the new VPC component
+from word_label_step_functions import WordLabelStepFunctions
 
 # Import other necessary components
 try:
@@ -41,6 +42,8 @@ try:
         pulumi.export("readme", f.read())
 except FileNotFoundError:
     pulumi.export("readme", "README file not found")
+
+word_label_step_functions = WordLabelStepFunctions("word-label-step-functions")
 
 # ML Training Infrastructure
 # -------------------------
@@ -514,8 +517,8 @@ done
 asg = aws.autoscaling.Group(
     "ml-training-asg",
     max_size=4,
-    min_size=1,
-    desired_capacity=1,
+    min_size=0,
+    desired_capacity=0,
     vpc_zone_identifiers=network.public_subnet_ids,  # Use network component output
     mixed_instances_policy=aws.autoscaling.GroupMixedInstancesPolicyArgs(
         instances_distribution=aws.autoscaling.GroupMixedInstancesPolicyInstancesDistributionArgs(
