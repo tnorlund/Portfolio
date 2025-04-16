@@ -1,4 +1,3 @@
-<pre>
 ```mermaid
 stateDiagram-v2
     [*] --> ListPendingEmbeddingBatches
@@ -13,4 +12,3 @@ stateDiagram-v2
     UpdateLabelsToPending --> MarkBatchComplete
     MarkBatchComplete --> [*]
 ```
-</pre>
