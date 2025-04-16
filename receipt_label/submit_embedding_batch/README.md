@@ -51,8 +51,8 @@ flowchart TD
     FetchReceiptWords --> JoinWordsAndLabels["Merge Words and Labels"]
     JoinWordsAndLabels --> ChunkIntoEmbeddingBatches["Chunk into Batches"]
 
-    ChunkIntoEmbeddingBatches --> EachEmbeddingBatch["Batched Embedding Jobs"]
-    ChunkIntoEmbeddingBatches --> EachEmbeddingBatch1["Batched Embedding Jobs"]
+    ChunkIntoEmbeddingBatches --> EachEmbeddingBatch["Batch Embedding Job"]
+    ChunkIntoEmbeddingBatches --> EachEmbeddingBatch1["Batch Embedding Job"]
     ChunkIntoEmbeddingBatches --> EachEmbeddingBatchEllipsis["..."]
 
     subgraph "Batch Embedding Job"
