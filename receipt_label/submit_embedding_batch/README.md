@@ -46,19 +46,19 @@ The output of this module is a fully-formed batch job that can be polled and pro
 
 ```mermaid
 flowchart TD
-    Start([Start]) --> ListReceiptWordLabels
-    ListReceiptWordLabels --> FetchReceiptWords
-    FetchReceiptWords --> JoinWordsAndLabels
-    JoinWordsAndLabels --> ChunkIntoEmbeddingBatches
+    Start([Start]) --> ListReceiptWordLabels["List Receipt Word Labels"]
+    ListReceiptWordLabels --> FetchReceiptWords["Fetch Receipt Word OCR"]
+    FetchReceiptWords --> JoinWordsAndLabels["Merge Words and Labels"]
+    JoinWordsAndLabels --> ChunkIntoEmbeddingBatches["Chunk into Batches"]
 
-    ChunkIntoEmbeddingBatches --> EachEmbeddingBatch
+    ChunkIntoEmbeddingBatches --> EachEmbeddingBatch["Batched Embedding Jobs"]
 
     subgraph "For each embedding batch (N total)"
         direction TB
-        GenerateOpenAIInput --> WriteNDJSON
-        WriteNDJSON --> UploadEmbeddingFile
-        UploadEmbeddingFile --> SubmitEmbeddingBatchJob
-        SubmitEmbeddingBatchJob --> SaveBatchSummary
+        GenerateOpenAIInput["Generate OpenAI Input"] --> WriteNDJSON["Write NDJSON"]
+        WriteNDJSON --> UploadEmbeddingFile["Upload Embedding File"]
+        UploadEmbeddingFile --> SubmitEmbeddingBatchJob["Submit Embedding Batch Job"]
+        SubmitEmbeddingBatchJob --> SaveBatchSummary["Save Batch Summary"]
     end
 
     SaveBatchSummary --> End([End])
