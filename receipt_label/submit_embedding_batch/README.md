@@ -1,3 +1,4 @@
+<pre>
 ```mermaid
 stateDiagram-v2
     [*] --> ListReceiptWordLabels
@@ -10,3 +11,4 @@ stateDiagram-v2
     SubmitEmbeddingBatchJob --> SaveBatchSummary
     SaveBatchSummary --> [*]
 ```
+</pre>

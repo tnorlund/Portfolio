@@ -1,4 +1,5 @@
-<pre><code>```mermaid
+<pre>
+```mermaid
 stateDiagram-v2
     [*] --> ListPendingEmbeddingBatches
     ListPendingEmbeddingBatches --> RetrieveBatchStatus
@@ -11,4 +12,5 @@ stateDiagram-v2
     WriteEmbeddingResults --> UpdateLabelsToPending
     UpdateLabelsToPending --> MarkBatchComplete
     MarkBatchComplete --> [*]
-```</code></pre>
+```
+</pre>
