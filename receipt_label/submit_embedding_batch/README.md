@@ -51,15 +51,17 @@ flowchart TD
     FetchReceiptWords --> JoinWordsAndLabels["Merge Words and Labels"]
     JoinWordsAndLabels --> ChunkIntoEmbeddingBatches["Chunk into Batches"]
 
-    ChunkIntoEmbeddingBatches --> EachEmbeddingBatch["Batched Embedding Jobs"]
+    ChunkIntoEmbeddingBatches --> EachEmbeddingBatch1["Batched Embedding Jobs"]
+    ChunkIntoEmbeddingBatches --> EachEmbeddingBatch2["Batched Embedding Jobs"]
+    ChunkIntoEmbeddingBatches --> EachEmbeddingBatchEllipsis["..."]
 
-    subgraph "Batch Embedding Job"
-        direction TB
-        GenerateOpenAIInput["Format Embedding Payload"] --> WriteNDJSON["Write NDJSON"]
-        WriteNDJSON --> UploadEmbeddingFile["Upload Embedding File"]
-        UploadEmbeddingFile --> SubmitEmbeddingBatchJob["Submit Embedding Batch Job"]
-        SubmitEmbeddingBatchJob --> SaveBatchSummary["Save Batch Summary"]
-    end
-
+    EachEmbeddingBatch1 --> GenerateOpenAIInput["Format Embedding Payload"]
+    GenerateOpenAIInput --> WriteNDJSON["Write NDJSON"]
+    WriteNDJSON --> UploadEmbeddingFile["Upload Embedding File"]
+    UploadEmbeddingFile --> SubmitEmbeddingBatchJob["Submit Embedding Batch Job"]
+    SubmitEmbeddingBatchJob --> SaveBatchSummary["Save Batch Summary"]
     SaveBatchSummary --> End([End])
+
+    EachEmbeddingBatch2 --> GenerateOpenAIInput
+    EachEmbeddingBatchEllipsis --> GenerateOpenAIInput
 ```
