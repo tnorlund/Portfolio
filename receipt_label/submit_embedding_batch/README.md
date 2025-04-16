@@ -34,22 +34,27 @@ This module is intended to be called from a Step Function or a job runner that:
 
 1. Lists all receipt word labels with `validation_status = "NONE"`
 2. Retrieves corresponding receipt word OCR data
-3. Chunks the dataset into batches (e.g., 500–1000 items)
-4. Writes each batch to NDJSON
-5. Uploads the file to OpenAI's Batch API
-6. Stores a `BatchSummary` with the submission metadata
+3. Joins each label with its corresponding word by composite key
+4. Chunks the dataset into batches (e.g., 500–1000 items)
+5. Converts each chunk into OpenAI embedding batch input
+6. Writes input to NDJSON
+7. Uploads the file to OpenAI's Batch API
+8. Submits the batch job and records the job ID
+9. Stores a `BatchSummary` with submission metadata and receipt lineage
 
 The output of this module is a fully-formed batch job that can be polled and processed by the downstream polling workflow.
 
 ```mermaid
-stateDiagram-v2
-    [*] --> ListReceiptWordLabels
+flowchart TD
+    Start([Start]) --> ListReceiptWordLabels
     ListReceiptWordLabels --> FetchReceiptWords
     FetchReceiptWords --> JoinWordsAndLabels
     JoinWordsAndLabels --> ChunkIntoEmbeddingBatches
-    ChunkIntoEmbeddingBatches --> WriteNDJSON
+    ChunkIntoEmbeddingBatches -->|In parallel| GenerateOpenAIInput
+    ChunkIntoEmbeddingBatches -->|In parallel| WriteNDJSON
+    GenerateOpenAIInput --> UploadEmbeddingFile
     WriteNDJSON --> UploadEmbeddingFile
     UploadEmbeddingFile --> SubmitEmbeddingBatchJob
     SubmitEmbeddingBatchJob --> SaveBatchSummary
-    SaveBatchSummary --> [*]
+    SaveBatchSummary --> End([End])
 ```
