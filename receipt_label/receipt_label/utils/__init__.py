@@ -25,6 +25,7 @@ from .validation import (
     validate_receipt_format,
 )
 import importlib.metadata
+from .clients import get_clients
 
 __all__ = [
     # Address utilities
@@ -48,12 +49,15 @@ __all__ = [
     "validate_amounts",
     "validate_receipt_data",
     "validate_receipt_format",
+    # Client utilities
+    "get_clients",
 ]
+
 
 def get_package_version() -> str:
     """
     Get the current version of the receipt_label package.
-    
+
     Returns:
         str: The version string of the receipt_label package.
     """
