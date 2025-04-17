@@ -4,22 +4,20 @@ This Step Function periodically polls OpenAI batch embedding jobs and handles su
 
 ```mermaid
 stateDiagram-v2
-    [*] --> ListPendingEmbeddingBatches
-    ListPendingEmbeddingBatches --> RetrieveBatchStatus
-    RetrieveBatchStatus --> IsBatchComplete
-    IsBatchComplete --> DownloadResults : if complete
-    IsBatchComplete --> WaitAndRetry : if still pending
-    WaitAndRetry --> RetrieveBatchStatus
+    Start([Start]) --> ListPendingEmbeddingBatches["List Pending Batches"]
+    ListPendingEmbeddingBatches --> RetrieveBatchStatus["Check Batch Status with Open AI"]
+    ListPendingEmbeddingBatches --> RetrieveBatchStatus1["Check Batch Status with Open AI"]
+    ListPendingEmbeddingBatches --> RetrieveBatchEllipsis["..."]
 
-    DownloadResults --> ParseResults
-    ParseResults --> UpsertToPinecone
-    UpsertToPinecone --> WriteEmbeddingResults : Write to DynamoDB
-    WriteEmbeddingResults --> UpdateLabelsToPending : Update DynamoDB labels
-    UpdateLabelsToPending --> MarkBatchComplete : Mark batch complete in DynamoDB
-    MarkBatchComplete --> [*]
+    subgraph "Check Batch Status with Open AI"
+        direction TB
+        RetrieveBatchStatus["Query Open AI"] --> IsBatchComplete["Check if Batch Complete"]
+        IsBatchComplete --> DownloadResults["Download Results"] : complete
+        IsBatchComplete --> End([End]) : not complete
+        DownloadResults --> UpsertPinecone["Add to Pinecone"]
+        UpsertPinecone --> AddEmbeddingBatchResult["Add Embedding Batch Results to DynamoDB"]
+        AddEmbeddingBatchResult --> UpdateBatchSummary["Update Batch Summary in DynamoDB"]
+    end
 
-    DownloadResults --> Fail : if download error
-    UpsertToPinecone --> Fail : if Pinecone error
-    RetrieveBatchStatus --> Fail : if API error
-    ListPendingEmbeddingBatches --> Fail : if no batches found
+    UpdateBatchSummary --> end([End])
 ```
