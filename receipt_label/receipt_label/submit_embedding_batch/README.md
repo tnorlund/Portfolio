@@ -93,5 +93,7 @@ flowchart TD
         ReadNDJSON["Read NDJSON from S3"] --> UploadToOpenAI["Upload to OpenAI"]
         UploadToOpenAI --> SubmitEmbeddingBatchJob["Submit Embedding job to OpenAI"]
         SubmitEmbeddingBatchJob --> CreateBatchJobDynamo["Create Batch Job in Dynamo"]
-    end --> ([end])
+    end
+
+    CreateBatchJobDynamo --> End([End])
 ```
