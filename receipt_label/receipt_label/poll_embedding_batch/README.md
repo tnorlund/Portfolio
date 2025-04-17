@@ -19,5 +19,5 @@ flowchart TD
         AddEmbeddingBatchResult --> UpdateBatchSummary["Update Batch Summary in DynamoDB"]
     end
 
-    UpdateBatchSummary --> end([End])
+    UpdateBatchSummary --> End([End])
 ```
