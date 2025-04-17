@@ -12,8 +12,8 @@ flowchart TD
     subgraph "Check Batch Status with Open AI"
         direction TB
         RetrieveBatchStatus["Query Open AI"] --> IsBatchComplete["Check if Batch Complete"]
-        IsBatchComplete --> DownloadResults["Download Results"] : complete
-        IsBatchComplete --> End([End]) : not complete
+        IsBatchComplete -->|complete| DownloadResults["Download Results"]
+        IsBatchComplete -->|not complete| End([End])
         DownloadResults --> UpsertPinecone["Add to Pinecone"]
         UpsertPinecone --> AddEmbeddingBatchResult["Add Embedding Batch Results to DynamoDB"]
         AddEmbeddingBatchResult --> UpdateBatchSummary["Update Batch Summary in DynamoDB"]
