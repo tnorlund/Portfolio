@@ -84,8 +84,7 @@ flowchart TD
 
     subgraph "Validate Merchant"
         direction TB
-        ListReceiptsNeedingValidation --> extract_candidate_merchant_fields["Extract candidate merchant fields"]
-        extract_candidate_merchant_fields --> query_google_places["Query Google Places API"]
+        extract_candidate_merchant_fields["Extract candidate merchant fields"] --> query_google_places["Query Google Places API"]
         query_google_places --> IsMatchFound{"Is match found?"}
 
         IsMatchFound -- Yes --> validate_match_with_gpt["Validate match with GPT"]
