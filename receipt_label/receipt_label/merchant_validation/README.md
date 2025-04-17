@@ -9,7 +9,10 @@ flowchart TD
     SearchGooglePlaces --> IsMatchFound{"Is match found?"}
 
     IsMatchFound -- Yes --> ValidateWithGPT["Validate match with GPT"]
-    IsMatchFound -- No --> WriteNoResultMetadata["Write 'no match' ReceiptMetadata"]
+    IsMatchFound -- No --> InferWithGPT["Write 'no match' ReceiptMetadata"]
+    InferWithGPT --> RetryGoogleSearch["Retry Google Places with inferred data"]
+    RetryGoogleSearch --> IsRetryMatchFound{"Match found on retry?"}
+    IsRetryMatchFound -- Yes --> ValidateWithGPT
     ValidateWithGPT --> WriteMetadata["Write validated ReceiptMetadata to DynamoDB"]
     WriteNoResultMetadata --> End([End])
     WriteMetadata --> End([End])
