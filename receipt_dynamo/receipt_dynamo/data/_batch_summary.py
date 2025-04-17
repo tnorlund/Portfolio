@@ -393,6 +393,7 @@ class _BatchSummary:
     def getBatchSummariesByStatus(
         self,
         status: str,
+        batch_type: str = "EMBEDDING",
         limit: int = None,
         lastEvaluatedKey: dict | None = None,
     ) -> Tuple[List[BatchSummary], dict | None]:
@@ -412,6 +413,12 @@ class _BatchSummary:
         """
         if not isinstance(status, str) or not status:
             raise ValueError("Status must be a non-empty string")
+        if not isinstance(batch_type, str) or not batch_type:
+            raise ValueError("Type must be a non-empty string")
+        if batch_type not in [t.value for t in BatchType]:
+            raise ValueError(
+                f"Invalid batch type: {batch_type} must be one of {', '.join([t.value for t in BatchType])}"
+            )
         if limit is not None and (not isinstance(limit, int) or limit <= 0):
             raise ValueError("Limit must be a positive integer")
         if lastEvaluatedKey is not None:
@@ -455,6 +462,11 @@ class _BatchSummary:
                     last_evaluated_key = None
                     break
 
+            summaries = [
+                summary
+                for summary in summaries
+                if summary.batch_type == batch_type
+            ]
             return summaries, last_evaluated_key
         except ClientError as e:
             error_code = e.response["Error"]["Code"]

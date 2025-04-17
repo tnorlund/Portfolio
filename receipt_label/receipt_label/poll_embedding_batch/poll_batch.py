@@ -2,7 +2,6 @@ from typing import List
 import json
 import logging
 
-
 """
 poll_batch.py
 
@@ -24,6 +23,7 @@ distributed receipt labeling and validation workflow.
 """
 
 from receipt_dynamo.entities import EmbeddingBatchResult, BatchSummary
+from receipt_dynamo.constants import BatchType
 from receipt_label.utils import get_clients
 
 dynamo_client, openai_client, pinecone_index = get_clients()
@@ -68,12 +68,14 @@ def list_pending_embedding_batches() -> List[BatchSummary]:
     """
     summaries, lek = dynamo_client.getBatchSummariesByStatus(
         status="PENDING",
+        batch_type=BatchType.EMBEDDING,
         limit=25,
         lastEvaluatedKey=None,
     )
     while lek:
         next_summaries, lek = dynamo_client.getBatchSummariesByStatus(
             status="PENDING",
+            batch_type=BatchType.EMBEDDING,
             limit=25,
             lastEvaluatedKey=lek,
         )
