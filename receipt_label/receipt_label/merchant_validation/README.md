@@ -55,11 +55,29 @@ Stores a fallback `ReceiptMetadata` record when no match is found — even after
 
 ---
 
+## 🧠 Usage
+
+This module is designed to be run inside a Step Function dedicated to receipt-level merchant validation. It operates independently from the embedding flow and focuses on identifying and validating the business that issued the receipt.
+
+### Step-by-step Usage:
+
+1. **Extract merchant fields** using `extract_candidate_merchant_fields(...)`, pulling from ReceiptWord or ReceiptWordLabel entries.
+2. **Query Google Places API** using the extracted fields via `query_google_places(...)`.
+3. If Google returns a result:
+   - **Validate it with GPT** using `validate_match_with_gpt(...)`
+   - **Build and write validated ReceiptMetadata** using `build_receipt_metadata_from_result(...)` and `write_receipt_metadata_to_dynamo(...)`
+4. If no Google match is found:
+   - **Infer merchant metadata with GPT** via `infer_merchant_with_gpt(...)`
+   - **Retry Google Places query** with `retry_google_search_with_inferred_data(...)`
+   - If still no match, call `write_no_match_receipt_metadata(...)`
+5. **The output of this module is a ReceiptMetadata entity**, saved in DynamoDB, which supports future word label validation and Pinecone scoping.
+
 ## 📊 Step Function Architecture
 
 ```mermaid
 flowchart TD
-    Start([Start]) --> extract_candidate_merchant_fields["Extract candidate merchant fields"]
+    Start([Start]) --> ListReceiptsNeedingValidation["List receipts needing merchant validation"]
+    ListReceiptsNeedingValidation --> extract_candidate_merchant_fields["Extract candidate merchant fields"]
     extract_candidate_merchant_fields --> query_google_places["Query Google Places API"]
     query_google_places --> IsMatchFound{"Is match found?"}
 
@@ -68,7 +86,7 @@ flowchart TD
     InferWithGPT --> retry_google_search_with_inferred_data["Retry Google Places with inferred data"]
     retry_google_search_with_inferred_data --> IsRetryMatchFound{"Match found on retry?"}
     IsRetryMatchFound -- Yes --> validate_match_with_gpt
-    IsRetryMatchFound -- No --> build_receipt_metadata_from_result_no_match["Build no-match ReceiptMetadata"] --> write_no_match_receipt_metadata
+    IsRetryMatchFound -- No --> build_receipt_metadata_from_result_no_match --> write_no_match_receipt_metadata
 
     validate_match_with_gpt --> IsValid{"Is match valid?"}
     IsValid -- Yes --> build_receipt_metadata_from_result["Build validated ReceiptMetadata"] --> write_receipt_metadata_to_dynamo
