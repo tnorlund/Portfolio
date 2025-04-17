@@ -77,20 +77,28 @@ This module is designed to be run inside a Step Function dedicated to receipt-le
 ```mermaid
 flowchart TD
     Start([Start]) --> ListReceiptsNeedingValidation["List receipts needing merchant validation"]
-    ListReceiptsNeedingValidation --> extract_candidate_merchant_fields["Extract candidate merchant fields"]
-    extract_candidate_merchant_fields --> query_google_places["Query Google Places API"]
-    query_google_places --> IsMatchFound{"Is match found?"}
+    ListReceiptsNeedingValidation --> ValidateMerchant0["Validate Merchant"]
+    ListReceiptsNeedingValidation --> ValidateMerchant1["Validate Merchant"]
+    ListReceiptsNeedingValidation --> ValidateMerchantEllipsis["..."]
 
-    IsMatchFound -- Yes --> validate_match_with_gpt["Validate match with GPT"]
-    IsMatchFound -- No --> InferWithGPT["Infer merchant info with GPT"]
-    InferWithGPT --> retry_google_search_with_inferred_data["Retry Google Places with inferred data"]
-    retry_google_search_with_inferred_data --> IsRetryMatchFound{"Match found on retry?"}
-    IsRetryMatchFound -- Yes --> validate_match_with_gpt
-    IsRetryMatchFound -- No --> build_receipt_metadata_from_result_no_match --> write_no_match_receipt_metadata
 
-    validate_match_with_gpt --> IsValid{"Is match valid?"}
-    IsValid -- Yes --> build_receipt_metadata_from_result["Build validated ReceiptMetadata"] --> write_receipt_metadata_to_dynamo
-    IsValid -- No --> build_receipt_metadata_from_result_no_match --> write_no_match_receipt_metadata
+    subgraph "Validate Merchant"
+        direction TB
+        ListReceiptsNeedingValidation --> extract_candidate_merchant_fields["Extract candidate merchant fields"]
+        extract_candidate_merchant_fields --> query_google_places["Query Google Places API"]
+        query_google_places --> IsMatchFound{"Is match found?"}
+
+        IsMatchFound -- Yes --> validate_match_with_gpt["Validate match with GPT"]
+        IsMatchFound -- No --> InferWithGPT["Infer merchant info with GPT"]
+        InferWithGPT --> retry_google_search_with_inferred_data["Retry Google Places with inferred data"]
+        retry_google_search_with_inferred_data --> IsRetryMatchFound{"Match found on retry?"}
+        IsRetryMatchFound -- Yes --> validate_match_with_gpt
+        IsRetryMatchFound -- No --> build_receipt_metadata_from_result_no_match --> write_no_match_receipt_metadata
+
+        validate_match_with_gpt --> IsValid{"Is match valid?"}
+        IsValid -- Yes --> build_receipt_metadata_from_result["Build validated ReceiptMetadata"] --> write_receipt_metadata_to_dynamo
+        IsValid -- No --> build_receipt_metadata_from_result_no_match --> write_no_match_receipt_metadata
+    end
 
     write_no_match_receipt_metadata --> End([End])
     write_receipt_metadata_to_dynamo --> End([End])
