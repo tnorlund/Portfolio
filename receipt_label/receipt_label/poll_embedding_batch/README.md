@@ -5,7 +5,7 @@ This Step Function periodically polls OpenAI batch embedding jobs and handles su
 ```mermaid
 flowchart TD
     Start([Start]) --> ListPendingEmbeddingBatches["List Pending Batches"]
-    ListPendingEmbeddingBatches --> RetrieveBatchStatus["Check Batch Status with Open AI"]
+    ListPendingEmbeddingBatches --> RetrieveBatchStatus0["Check Batch Status with Open AI"]
     ListPendingEmbeddingBatches --> RetrieveBatchStatus1["Check Batch Status with Open AI"]
     ListPendingEmbeddingBatches --> RetrieveBatchEllipsis["..."]
 
