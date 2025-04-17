@@ -40,21 +40,16 @@ flowchart TD
     ExtractReceiptFields --> SearchGooglePlaces["Query Google Places API"]
     SearchGooglePlaces --> IsMatchFound{"Is match found?"}
 
-    IsMatchFound -- Yes --> PrepareValidationBatch["Format ChatGPT batch input"]
+    IsMatchFound -- Yes --> ValidateWithGPT["Validate match with GPT"]
     IsMatchFound -- No --> InferWithGPT["Infer merchant info with GPT"]
     InferWithGPT --> RetryGoogleSearch["Retry Google Places with inferred data"]
     RetryGoogleSearch --> IsRetryMatchFound{"Match found on retry?"}
-    IsRetryMatchFound -- Yes --> PrepareValidationBatch
+    IsRetryMatchFound -- Yes --> ValidateWithGPT
     IsRetryMatchFound -- No --> WriteNoResultMetadata["Write 'no match' ReceiptMetadata"]
 
-    PrepareValidationBatch --> SubmitBatch["Submit validation batch to OpenAI"]
-    SubmitBatch --> PollBatchStatus["Poll OpenAI for batch completion"]
-    PollBatchStatus --> ParseBatchResults["Parse GPT results and decisions"]
-
-    ParseBatchResults --> DecisionPoint{"Decision from GPT?"}
-    DecisionPoint -- Valid Match --> WriteMetadata["Write validated ReceiptMetadata to DynamoDB"]
-    DecisionPoint -- No Match --> WriteNoResultMetadata
-    DecisionPoint -- Unclear --> WriteNoResultMetadata
+    ValidateWithGPT --> IsValid{"Is match valid?"}
+    IsValid -- Yes --> WriteMetadata["Write validated ReceiptMetadata to DynamoDB"]
+    IsValid -- No --> WriteNoResultMetadata
 
     WriteNoResultMetadata --> End([End])
     WriteMetadata --> End([End])
