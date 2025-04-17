@@ -6,21 +6,36 @@ Semantic understanding of receipts is necessary for accurate word labeling. Here
 
 ## 📦 Functions
 
-### `extract_candidate_merchant_fields(receipt_words)`
+### `extract_candidate_merchant_fields(image_id, receipt_id)`
 
-Extracts possible `BUSINESS_NAME`, `ADDRESS_LINE`, and `PHONE` values from `ReceiptWordLabel` or `ReceiptWord` entities. Used as input for Google Places and GPT.
+Extracts possible `address`, `url`, and `phone` values from `ReceiptWord` entities.
 
-### `search_google_places(business_name, address, phone=None)`
+### `query_google_places(addresses, urls, phone_numbers)`
 
 Queries the Google Places API using available fields and returns the top place match, if any.
 
-### `infer_merchant_with_gpt(lines)`
+### `infer_merchant_with_gpt(receipt_word_lines)`
 
-Given a list of top lines from a receipt, ask GPT to return a structured guess for `merchant_name`, `address`, and `phone`. Used when Google fails.
+When no result is found in Google Places, this function sends the text of the receipt lines to GPT and asks it to infer likely merchant metadata. Returns a structured result containing a guessed merchant name, address, and phone number.
 
 ### `validate_match_with_gpt(receipt_fields, google_match)`
 
-Compares extracted receipt fields to the Google result and returns GPT's decision (YES/NO/UNSURE), confidence score, and matched fields.
+Compares the merchant fields extracted from the receipt to a Google Places match using ChatGPT. This function constructs a structured prompt including the receipt's name, address, and phone number, along with the corresponding Google result, and sends it to GPT to evaluate whether the match is valid.
+
+**Inputs:**
+
+- `receipt_fields` (dict): The raw merchant fields extracted from the receipt (e.g., `"name"`, `"address"`, `"phone"`).
+- `google_match` (dict): A Google Places result including `name`, `formatted_address`, `formatted_phone_number`, and `place_id`.
+
+**Returns:**
+
+- A dictionary with GPT's structured decision:
+  - `decision`: "YES" | "NO" | "UNSURE"
+  - `confidence`: Float between 0–1
+  - `matched_fields`: List of field names that aligned
+  - `reason`: Explanation from GPT
+
+This result is stored in `ReceiptMetadata` and determines whether the merchant match should be trusted or retried.
 
 ### `write_receipt_metadata_to_dynamo(metadata)`
 
@@ -30,27 +45,35 @@ Stores a `ReceiptMetadata` entity to DynamoDB based on either a successful or fa
 
 Formats the final `ReceiptMetadata` object to store in DynamoDB, including source reasoning and match details.
 
+### `retry_google_search_with_inferred_data(gpt_merchant_data)`
+
+Uses the data inferred by GPT (e.g., merchant name + address) to retry a Google Places API search. Returns a new Google match or `None`.
+
+### `write_no_match_receipt_metadata(receipt_id, image_id, raw_fields, reasoning)`
+
+Stores a fallback `ReceiptMetadata` record when no match is found — even after retrying with GPT. Includes the attempted inputs, GPT inferences (if any), and a status of `"NO_MATCH"`.
+
 ---
 
 ## 📊 Step Function Architecture
 
 ```mermaid
 flowchart TD
-    Start([Start]) --> ExtractReceiptFields["Extract candidate merchant fields"]
-    ExtractReceiptFields --> SearchGooglePlaces["Query Google Places API"]
-    SearchGooglePlaces --> IsMatchFound{"Is match found?"}
+    Start([Start]) --> extract_candidate_merchant_fields["Extract candidate merchant fields"]
+    extract_candidate_merchant_fields --> query_google_places["Query Google Places API"]
+    query_google_places --> IsMatchFound{"Is match found?"}
 
-    IsMatchFound -- Yes --> ValidateWithGPT["Validate match with GPT"]
+    IsMatchFound -- Yes --> validate_match_with_gpt["Validate match with GPT"]
     IsMatchFound -- No --> InferWithGPT["Infer merchant info with GPT"]
-    InferWithGPT --> RetryGoogleSearch["Retry Google Places with inferred data"]
-    RetryGoogleSearch --> IsRetryMatchFound{"Match found on retry?"}
-    IsRetryMatchFound -- Yes --> ValidateWithGPT
-    IsRetryMatchFound -- No --> WriteNoResultMetadata["Write 'no match' ReceiptMetadata"]
+    InferWithGPT --> retry_google_search_with_inferred_data["Retry Google Places with inferred data"]
+    retry_google_search_with_inferred_data --> IsRetryMatchFound{"Match found on retry?"}
+    IsRetryMatchFound -- Yes --> validate_match_with_gpt
+    IsRetryMatchFound -- No --> build_receipt_metadata_from_result_no_match["Build no-match ReceiptMetadata"] --> write_no_match_receipt_metadata
 
-    ValidateWithGPT --> IsValid{"Is match valid?"}
-    IsValid -- Yes --> WriteMetadata["Write validated ReceiptMetadata to DynamoDB"]
-    IsValid -- No --> WriteNoResultMetadata
+    validate_match_with_gpt --> IsValid{"Is match valid?"}
+    IsValid -- Yes --> build_receipt_metadata_from_result["Build validated ReceiptMetadata"] --> write_receipt_metadata_to_dynamo
+    IsValid -- No --> build_receipt_metadata_from_result_no_match --> write_no_match_receipt_metadata
 
-    WriteNoResultMetadata --> End([End])
-    WriteMetadata --> End([End])
+    write_no_match_receipt_metadata --> End([End])
+    write_receipt_metadata_to_dynamo --> End([End])
 ```
