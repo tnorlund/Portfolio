@@ -5,13 +5,15 @@ import json
 import uuid
 import logging
 import argparse
-from typing import Dict, Any, Optional, List, Union
+from typing import Dict, Any, Optional, List, Union, Tuple
 from pathlib import Path
 
 import yaml
+import itertools
 
 from receipt_trainer.config import TrainingConfig, DataConfig
-from receipt_trainer.jobs import Job, JobQueue, JobQueueConfig
+from receipt_trainer.jobs.job import Job, JobStatus, JobPriority
+from receipt_trainer.jobs.queue import JobQueue, JobQueueConfig
 
 logger = logging.getLogger(__name__)
 
@@ -164,6 +166,164 @@ def submit_job_from_config_file(
         tags=config.get("tags"),
         region=region,
     )
+
+
+def submit_hyperparameter_sweep(
+    model_name: str,
+    param_grid: Dict[str, List[Any]],
+    base_config: Dict[str, Any] = None,
+    queue_url: str = None,
+    dynamo_table: str = None,
+    parent_job_id: str = None,
+    region: Optional[str] = None,
+) -> Tuple[List[str], str]:
+    """Submit a hyperparameter sweep as multiple training jobs to the SQS queue.
+
+    Args:
+        model_name: Name or path of the model
+        param_grid: Dictionary mapping parameter names to lists of values
+        base_config: Base configuration to use for all jobs
+        queue_url: SQS queue URL
+        dynamo_table: DynamoDB table name
+        parent_job_id: Optional parent job ID for tracking related jobs
+        region: AWS region (optional)
+
+    Returns:
+        Tuple of (list of submitted job IDs, parent job ID)
+    """
+    # Generate all hyperparameter configurations
+    param_keys = list(param_grid.keys())
+    param_values = list(param_grid.values())
+
+    sweep_configs = []
+    for combo in itertools.product(*param_values):
+        config = {param_keys[i]: combo[i] for i in range(len(param_keys))}
+        sweep_configs.append(config)
+
+    logger.info(
+        f"Generated {len(sweep_configs)} hyperparameter configurations"
+    )
+
+    # Initialize queue
+    aws_region = region or os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
+    config = JobQueueConfig(
+        queue_url=queue_url,
+        aws_region=aws_region,
+    )
+    queue = JobQueue(config)
+
+    # Ensure base_config exists
+    if base_config is None:
+        base_config = {}
+
+    # If parent_job_id not provided, create a sweep parent job
+    if parent_job_id is None:
+        parent_job_id = str(uuid.uuid4())
+
+        # Create a DynamoDB entry for the sweep parent job if dynamo_table is provided
+        if dynamo_table:
+            try:
+                # Create parent job metadata in DynamoDB
+                sweep_job = Job(
+                    job_id=parent_job_id,
+                    name=f"Hyperparameter Sweep - {model_name}",
+                    type="hyperparameter_sweep",
+                    config={
+                        "model": model_name,
+                        "param_grid": param_grid,
+                        "base_config": base_config,
+                        "num_trials": len(sweep_configs),
+                    },
+                    priority=JobPriority.HIGH,
+                    status=JobStatus.PENDING,
+                    tags={"type": "sweep_parent"},
+                )
+
+                # Add to DynamoDB if possible
+                # Note that different versions of the system might use different methods
+                # We try multiple approaches to be compatible
+                try:
+                    # Try to use a job service if available
+                    if "job_service" in globals():
+                        globals()["job_service"].create_job(sweep_job)
+                    # Otherwise try to use DynamoDB client directly
+                    else:
+                        from receipt_dynamo.data.dynamo_client import (
+                            DynamoClient,
+                        )
+
+                        dynamo_client = DynamoClient(dynamo_table)
+
+                        if hasattr(dynamo_client, "putJob"):
+                            dynamo_client.putJob(sweep_job)
+                        elif hasattr(dynamo_client, "addJob"):
+                            dynamo_client.addJob(sweep_job)
+
+                    logger.info(
+                        f"Created parent sweep job with ID: {parent_job_id}"
+                    )
+                except Exception as inner_e:
+                    logger.warning(
+                        f"Failed to store parent sweep job: {inner_e}"
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to create parent sweep job: {e}")
+
+    # Submit individual jobs for each hyperparameter configuration
+    job_ids = []
+    for i, sweep_config in enumerate(sweep_configs):
+        # Create job name
+        trial_name = f"Sweep Trial {i+1}/{len(sweep_configs)} - {model_name}"
+
+        # Create training configuration with this sweep config
+        training_config = base_config.get("training_config", {}).copy()
+        training_config.update(sweep_config)
+
+        # Create data configuration
+        data_config = base_config.get("data_config", {})
+
+        # Create full job configuration
+        job_config = {
+            "model": model_name,
+            "training_config": training_config,
+            "data_config": data_config,
+            "sweep_parent_id": parent_job_id,
+            "sweep_trial_index": i,
+            "requires_gpu": base_config.get("requires_gpu", True),
+        }
+
+        # Submit individual training job
+        try:
+            # Create job
+            job = Job(
+                job_id=str(uuid.uuid4()),
+                name=trial_name,
+                type="training",
+                config=job_config,
+                priority=JobPriority.MEDIUM,
+                status=JobStatus.PENDING,
+                tags={
+                    "type": "sweep_trial",
+                    "parent_id": parent_job_id,
+                    "trial_index": str(i),
+                },
+            )
+
+            # Submit job to queue
+            job_id = queue.submit_job(job)
+            job_ids.append(job_id)
+            logger.info(
+                f"Submitted sweep trial {i+1}/{len(sweep_configs)}, job ID: {job_id}"
+            )
+        except Exception as e:
+            logger.error(f"Failed to submit sweep trial {i+1}: {e}")
+
+    logger.info(
+        f"Submitted {len(job_ids)}/{len(sweep_configs)} hyperparameter training jobs"
+    )
+    logger.info(f"Parent sweep job ID: {parent_job_id}")
+
+    return job_ids, parent_job_id
 
 
 def main():

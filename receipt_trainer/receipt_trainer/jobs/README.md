@@ -6,144 +6,182 @@ A job queue system for managing machine learning training jobs using AWS SQS.
 
 This module provides a complete job queue system for managing machine learning training jobs, with the following features:
 
-- **Job Definition**: Define training jobs with configuration, priority, and dependencies
+- **Standardized Processing**: Unified interface for job processing across different environments
 - **Job Queue**: Submit, process, and manage jobs using AWS SQS
-- **Retry Mechanism**: Automatic retries with configurable backoff strategies
+- **Debug Mode**: Enhanced logging and debugging capabilities
+- **Test Isolation**: Support for isolated test environments
 - **CLI Tools**: Command-line interface for job queue management
-- **AWS Integration**: Utilities for creating and managing SQS queues
 
-## Usage
+## Standardized Job Processing
 
-### Creating a Queue
-
-To create a queue for ML training jobs:
+The standardized job processing system provides a unified interface for processing jobs across different environments:
 
 ```python
-from receipt_trainer.jobs import create_queue_with_dlq
-
-# Create a queue with a dead-letter queue
-queue_url, dlq_url = create_queue_with_dlq(
-    queue_name="ml-training-jobs",
-    region_name="us-west-2"
+from receipt_trainer.jobs import (
+    Job,
+    create_job_processor,
+    ProcessingMode,
 )
+
+# Create a job processor
+processor = create_job_processor(
+    processor_type="sqs",  # or "ec2" for EC2-specific functionality
+    queue_url="https://sqs.us-east-1.amazonaws.com/123456789012/my-queue",
+    dynamo_table="my-dynamo-table",
+    handler=my_job_handler_function,
+    mode=ProcessingMode.DEBUG,  # Enable debug mode for detailed logging
+)
+
+# Submit a job
+job = Job(
+    name="training-job",
+    type="training",
+    config={
+        "model_name": "layoutlm-base",
+        "training_params": {
+            "learning_rate": 0.001,
+            "batch_size": 32,
+            "epochs": 5,
+        },
+    },
+)
+job_id = processor.submit_job(job)
+
+# Start processing jobs
+processor.start()
+
+# ... later on ...
+
+# Stop processing jobs
+processor.stop()
 ```
 
-### Defining and Submitting a Job
+### Processing Modes
 
-To define and submit a training job:
+The job processor supports different modes:
+
+- **NORMAL**: Standard processing mode
+- **DEBUG**: Detailed logging for debugging
+- **TEST**: Isolated resources for testing
+
+### Job Processor Types
+
+Two job processor types are available:
+
+- **SQSJobProcessor**: Standard processor using AWS SQS for job queueing
+- **EC2JobProcessor**: Extended processor with EC2-specific functionality (spot instances, cluster coordination)
+
+## Basic Usage
+
+### Submitting a Job
 
 ```python
-from receipt_trainer.jobs import Job, JobPriority, JobQueue, JobQueueConfig
+from receipt_trainer.jobs import Job, JobQueue, JobQueueConfig
+
+# Configure the job queue
+queue = JobQueue(JobQueueConfig(
+    queue_url="https://sqs.us-east-1.amazonaws.com/123456789012/my-queue",
+))
 
 # Create a job
 job = Job(
-    name="Train ResNet50 on receipts-v1",
-    type="model_training",
+    name="training-job",
+    type="training",
     config={
-        "model_name": "resnet50",
-        "dataset_id": "receipts-v1",
-        "hyperparameters": {
-            "learning_rate": 0.001,
-            "batch_size": 32,
-            "epochs": 10,
-        },
-        "output_bucket": "my-ml-models",
+        "model_name": "layoutlm-base",
+        "epochs": 5,
     },
-    priority=JobPriority.HIGH,
-    tags={"environment": "development"}
 )
 
-# Configure the job queue
-queue_config = JobQueueConfig(
-    queue_url=queue_url,
-    aws_region="us-west-2"
-)
-
-# Create the queue and submit the job
-queue = JobQueue(queue_config)
+# Submit the job
 job_id = queue.submit_job(job)
+print(f"Submitted job: {job_id}")
 ```
 
 ### Processing Jobs
 
-To process jobs from the queue:
-
 ```python
-from receipt_trainer.jobs import JobQueue, JobQueueConfig
-
-# Configure the job queue
-queue_config = JobQueueConfig(
-    queue_url=queue_url,
-    aws_region="us-west-2"
-)
-
-# Create the queue
-queue = JobQueue(queue_config)
-
-# Define a job handler
 def process_job(job):
-    """Process a job. Return True if successful, False otherwise."""
-    print(f"Processing job: {job.name}")
-    # Your ML training logic here
-    return True
+    print(f"Processing job: {job.name} (type: {job.type})")
+    # Process the job...
+    return True  # Return True for success, False for failure
 
-# Process jobs in a background thread
+# Start processing jobs
 thread = queue.start_processing(process_job)
 
-# Later, stop processing
+# ... later ...
+
+# Stop processing
 queue.stop_processing()
-thread.join()
 ```
 
-### Command-Line Interface
+## Command Line Interface
 
 The job queue system includes a command-line interface for queue management:
 
-```bash
+```
 # Create a queue
-python -m receipt_trainer.jobs.cli create-queue ml-training-jobs --region us-west-2
+python -m receipt_trainer.jobs.cli create-queue my-queue
 
 # Submit a job
 python -m receipt_trainer.jobs.cli submit-job QUEUE_URL \
-    --name "Train ResNet50" \
-    --type "model_training" \
-    --config '{"model_name": "resnet50", "dataset_id": "receipts-v1"}' \
-    --priority "HIGH"
+    --type training \
+    --name "Training Job" \
+    --config '{"model": "layoutlm-base", "epochs": 5}'
 
-# List jobs in the queue
-python -m receipt_trainer.jobs.cli list-jobs QUEUE_URL
-
-# Get queue attributes
-python -m receipt_trainer.jobs.cli queue-attributes QUEUE_URL
+# Monitor a queue
+python -m receipt_trainer.jobs.cli monitor-queue QUEUE_URL
 ```
 
-## Example
+## Examples
+
+An example script demonstrating the standardized job processing system is provided in `examples/standardized_job_example.py`:
+
+```
+python -m receipt_trainer.jobs.examples.standardized_job_example --mode=debug
+```
 
 An example script demonstrating the job queue system is provided in `examples/train_job_example.py`:
 
-```bash
-# Navigate to the examples directory
-cd examples
-
-# Create a queue, submit jobs, and process them
-python train_job_example.py --create-queue --submit --process --num-jobs 5
+```
+python -m receipt_trainer.jobs.examples.train_job_example --create-queue
 ```
 
 ## Architecture
 
 The job queue system consists of the following components:
 
-1. **Job**: Defines a training job with configuration, status, and metadata
-2. **JobQueue**: Manages job submission, processing, and retries using AWS SQS
-3. **AWS Utilities**: Functions for creating and managing SQS queues
+1. **Job**: Class representing a job with properties, serialization, and status tracking
+2. **JobQueue**: Class for interacting with AWS SQS queues
+3. **JobProcessor**: Abstract interface for job processing with concrete implementations
 4. **CLI**: Command-line interface for job queue management
 
-## Best Practices
+## Additional Features
 
-- **Job Timeout**: Set appropriate timeout values for jobs to prevent them from running indefinitely
-- **Retry Strategy**: Choose a retry strategy based on the nature of your ML training jobs
-- **Dead-Letter Queue**: Use the DLQ to capture failed jobs for later analysis
-- **Long Polling**: The job queue uses long polling to reduce SQS costs and latency 
+- **Long Polling**: The job queue uses long polling to reduce SQS costs and latency
+- **Visibility Timeout Management**: Automatically extends visibility timeout for long-running jobs
+- **Retries**: Configurable retry strategies for failed jobs
+- **Dead-Letter Queue**: Support for dead-letter queues to capture failed jobs
+- **Debugging**: Debug mode with detailed logging for troubleshooting
+- **Test Isolation**: Test mode with isolated resources for testing
+
+## Job Queue Management
+
+### Create a new job queue with a dead-letter queue:
+
+```python
+from receipt_trainer.jobs import create_queue_with_dlq
+
+queue_url, dlq_url = create_queue_with_dlq("my-queue")
+```
+
+### Delete a job queue:
+
+```python
+from receipt_trainer.jobs import delete_queue
+
+delete_queue("my-queue")
+```
 
 # Receipt Training Job CLI
 
@@ -315,4 +353,4 @@ The CLI respects the following environment variables:
 
 ## Logging
 
-The CLI logs messages to stdout. You can adjust logging verbosity using Python's logging configuration. 
+The CLI logs messages to stdout. You can adjust logging verbosity using Python's logging configuration.

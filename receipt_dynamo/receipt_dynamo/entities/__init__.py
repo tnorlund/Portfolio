@@ -115,3 +115,7 @@ from receipt_dynamo.entities.label_metadata import (
     LabelMetadata,
     itemToLabelMetadata,
 )  # noqa: F401
+from receipt_dynamo.entities.receipt_metadata import (
+    ReceiptMetadata,
+    itemToReceiptMetadata,
+)  # noqa: F401

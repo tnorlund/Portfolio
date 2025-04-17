@@ -20,6 +20,9 @@ pyyaml>=6.0.0   # For YAML parsing
 matplotlib>=3.7.0
 seaborn>=0.12.0
 
+# Checkpoint management
+filelock>=3.8.0  # For safe checkpoint file locking
+
 # Development dependencies
 pytest>=7.0.0
 black>=23.0.0

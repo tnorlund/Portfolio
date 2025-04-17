@@ -119,13 +119,43 @@ def upsert_embeddings_to_pinecone(results: List[dict]):
     Args:
         results (List[dict]): The list of embedding results.
     """
+    keys = []
+    for r in results:
+        custom_id = r["custom_id"]
+        meta = parse_metadata_from_custom_id(custom_id, r.get("body", {}))
+        keys.append(
+            {
+                "PK": {"S": f"IMAGE#{meta['image_id']}"},
+                "SK": {
+                    "S": f"RECEIPT#{meta['receipt_id']:05d}#LINE#{meta['line_id']:05d}#WORD#{meta['word_id']:05d}"
+                },
+            }
+        )
+
+    receipt_words = dynamo_client.getReceiptWordsByKeys(keys)
+    text_by_key = {}
+    for word in receipt_words:
+        key = (word.image_id, word.receipt_id, word.line_id, word.word_id)
+        text_by_key[key] = word.text
+
     vectors = [
         {
             "id": r["custom_id"],
             "values": r["response"]["body"]["data"][0]["embedding"],
             "metadata": parse_metadata_from_custom_id(
                 r["custom_id"], r.get("body", {})
-            ),
+            )
+            | {
+                "text": text_by_key.get(
+                    (
+                        meta["image_id"],
+                        meta["receipt_id"],
+                        meta["line_id"],
+                        meta["word_id"],
+                    ),
+                    "",
+                )
+            },
         }
         for r in results
         if r.get("response", {}).get("body", {}).get("data")

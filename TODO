@@ -1,49 +1,21 @@
-# Receipt Trainer
+### Receipt and Receipt Merchant Validation
 
-## Metrics in DynamoDB
-
-- [x] Add F1 Score tracking to evaluate NER/token classification performance
-- [x] Implement Token-level Precision and Recall metrics
-- [x] Track Entity-level metrics:
-  - [x] Entity-level F1
-  - [x] Entity-level accuracy by class (business_name, total_amount, etc.)
-- [x] Generate Confusion Matrix to understand entity misclassifications
-- [ ] Implement IoU (Intersection over Union) for spatial accuracy of bounding boxes
-- [x] Add receipt-specific metrics:
-  - [x] Field extraction accuracy (total amount, date, store name)
-  - [ ] Line-item detection accuracy
-
-## Distributed Training Infrastructure
-
-- [x] Integrate SQS job queue system with main training pipeline:
-
-  - [x] Implement job classes (Job, JobStatus, JobPriority, JobQueue)
-  - [x] Create worker module for processing jobs from SQS
-  - [x] Complete direct connection between JobQueue and ReceiptTrainer
-  - [x] Implement full job status updates via SQS
-
-- [ ] Implement EFS capabilities for distributed training:
-
-  - [x] Create EFSManager for EFS mounting functionality
-  - [x] Implement methods to mount and check EFS filesystems
-  - [ ] Enhance checkpoint sharing between training instances
-  - [ ] Fully integrate EFS mounts with training workflow
-
-- [ ] Instance coordination and management:
-
-  - [x] Implement InstanceRegistry class for cluster awareness
-  - [x] Create leader election functionality
-  - [ ] Complete integration with Instance Registry for coordinated tasks
-  - [ ] Enhance heartbeat monitoring for health checks
-
-- [ ] Fault tolerance and recovery:
-
-  - [x] Create SpotInstanceHandler for handling spot interruptions
-  - [x] Implement job retry strategies
-  - [ ] Complete job recovery logic after spot interruptions
-  - [x] Add visibility timeout management for long-running jobs
-
-- [x] Auto-scaling and resource optimization:
-  - [x] Add logic to request/release instances based on queue depth
-  - [x] Select appropriate instance type based on job requirements
-  - [x] Implement cost optimization strategies with instance selection
+- [ ] Phase 1: Receipt-Level Merchant Validation
+  - [ ] 1.1 Extract candidate fields from the receipt
+  - [ ] 1.2 Call Google Places API
+  - [ ] 1.3 Validate match with GPT (optional but powerful)
+  - [ ] 1.4 Write ReceiptMetadata entity to DynamoDB
+  - [ ] 1.5 Update receipt context - Add to DynamoDB entities. Not sure if this is necessary
+- [ ] Phase 2: Word-Level Label Validation
+  - [ ] 2.1 Reconstruct embedding input string (word text + label + position/confidence)
+  - [ ] 2.2 Generate new embedding via OpenAI
+  - [ ] 2.3 Query Pinecone for top 5 similar neighbors (merchant-scoped if possible)
+  - [ ] 2.4 Send neighbors and word context to GPT for validation
+  - [ ] 2.5 Parse GPT result: - decision: YES / NO / UNSURE - suggested_label (optional) - confidence score and reason
+  - [ ] 2.6 Update ReceiptWordLabel in DynamoDB: - validation_status = VALIDATED, FLAGGED, or UNSURE - suggested_label and GPT justification
+  - [ ] 2.7 Re-embed corrected labels if applicable
+- [ ] Phase 3: Post-Validation Actions
+  - [ ] 3.1 For VALIDATED labels: - Mark label as validated - Optionally mark Receipt as partially/fully validated
+  - [ ] 3.2 For FLAGGED or corrected labels: - Remove original vector from Pinecone - Update label in DynamoDB (if corrected) - Re-embed the corrected label and upsert to Pinecone - Track correction history for auditability
+  - [ ] 3.3 For UNSURE labels: - Flag for human review - Optionally write to a “review queue” DynamoDB table
+  - [ ] 3.4 For receipt-level metadata: - Update `Receipt` entity with merchant_id and validation confidence - Record GPT confidence and justification for match

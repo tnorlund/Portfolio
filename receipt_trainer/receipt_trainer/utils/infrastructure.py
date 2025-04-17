@@ -19,7 +19,7 @@ import uuid
 import requests
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Dict, Any, Optional, List, Tuple, Callable
 
 import boto3
 from botocore.exceptions import ClientError
@@ -497,6 +497,7 @@ class TrainingEnvironment:
         registry_table: Optional[str] = None,
         setup_efs: bool = True,
         handle_spot: bool = True,
+        enable_coordination: bool = False,
     ):
         """Initialize training environment.
 
@@ -505,11 +506,16 @@ class TrainingEnvironment:
             registry_table: Instance registry table name (optional)
             setup_efs: Whether to set up EFS mounts (default: True)
             handle_spot: Whether to set up spot interruption handling (default: True)
+            enable_coordination: Whether to enable enhanced coordination (default: False)
         """
         self.job_id = job_id
         self.registry_table = registry_table
         self.instance_registry = None
+        self.instance_coordinator = None
+        self.cluster_manager = None
         self.spot_handler = None
+        self.enable_coordination = enable_coordination
+        self._heartbeat_thread = None
 
         # Initialize components
         if setup_efs:
@@ -539,8 +545,46 @@ class TrainingEnvironment:
             logger.warning("No registry table specified")
             return False
 
+        # Initialize basic registry client
         self.instance_registry = InstanceRegistry(self.registry_table)
-        return self.instance_registry.register_instance()
+        result = self.instance_registry.register_instance()
+
+        # If enhanced coordination is enabled, initialize the coordinator
+        if result and self.enable_coordination:
+            try:
+                # Import here to avoid circular imports
+                from receipt_trainer.utils.coordinator import (
+                    InstanceCoordinator,
+                )
+                from receipt_trainer.utils.cluster import ClusterManager
+
+                # Initialize coordinator
+                self.instance_coordinator = InstanceCoordinator(
+                    self.registry_table
+                )
+                coord_result = self.instance_coordinator.initialize()
+
+                if coord_result:
+                    logger.info(
+                        "Instance coordinator initialized successfully"
+                    )
+
+                    # Initialize cluster manager
+                    self.cluster_manager = ClusterManager(self.registry_table)
+                    cluster_result = self.cluster_manager.initialize()
+
+                    if cluster_result:
+                        logger.info("Cluster manager initialized successfully")
+                    else:
+                        logger.warning("Failed to initialize cluster manager")
+                else:
+                    logger.warning("Failed to initialize instance coordinator")
+            except ImportError:
+                logger.info("Enhanced coordination modules not available")
+            except Exception as e:
+                logger.error(f"Error setting up enhanced coordination: {e}")
+
+        return result
 
     def setup_spot_handler(self, checkpoint_callback=None) -> bool:
         """Set up spot instance interruption handler.
@@ -573,7 +617,7 @@ class TrainingEnvironment:
         Returns:
             Thread object if started, None otherwise
         """
-        if not self.instance_registry:
+        if not self.instance_registry and not self.instance_coordinator:
             return None
 
         import threading
@@ -581,18 +625,159 @@ class TrainingEnvironment:
         def heartbeat_loop():
             while True:
                 try:
-                    self.instance_registry.heartbeat()
+                    # Regular registry heartbeat
+                    if self.instance_registry:
+                        self.instance_registry.heartbeat()
+
+                    # The instance coordinator handles its own heartbeats
+                    # in its health monitoring thread
                 except Exception as e:
                     logger.error(f"Error sending heartbeat: {e}")
 
                 time.sleep(interval_seconds)
 
-        thread = threading.Thread(target=heartbeat_loop, daemon=True)
-        thread.start()
+        self._heartbeat_thread = threading.Thread(
+            target=heartbeat_loop, daemon=True
+        )
+        self._heartbeat_thread.start()
         logger.info(
             f"Started heartbeat thread with interval {interval_seconds}s"
         )
-        return thread
+        return self._heartbeat_thread
+
+    def register_task_handler(
+        self,
+        task_type: str,
+        handler: Callable[[Dict[str, Any]], Dict[str, Any]],
+    ) -> bool:
+        """Register a handler for a specific task type.
+
+        Args:
+            task_type: Type of task to handle
+            handler: Function to call when a task of this type is assigned
+
+        Returns:
+            True if registered successfully, False otherwise
+        """
+        if self.instance_coordinator:
+            self.instance_coordinator.register_task_callback(
+                task_type, handler
+            )
+            logger.info(f"Registered handler for task type '{task_type}'")
+            return True
+        else:
+            logger.warning(
+                f"Cannot register task handler '{task_type}' - coordinator not initialized"
+            )
+            return False
+
+    def register_leader_handler(self, handler: Callable[[], None]) -> bool:
+        """Register a handler to be called when this instance becomes the leader.
+
+        Args:
+            handler: Function to call when instance becomes leader
+
+        Returns:
+            True if registered successfully, False otherwise
+        """
+        if self.instance_coordinator:
+            self.instance_coordinator.register_leader_callback(handler)
+            logger.info("Registered leader callback handler")
+            return True
+        else:
+            logger.warning(
+                "Cannot register leader handler - coordinator not initialized"
+            )
+            return False
+
+    def get_cluster_state(self) -> Dict[str, Any]:
+        """Get the current state of the cluster.
+
+        Returns:
+            Dictionary with cluster state information
+        """
+        if self.cluster_manager:
+            return self.cluster_manager.get_cluster_state()
+        elif self.instance_registry:
+            # Basic info from registry
+            try:
+                import boto3
+
+                dynamodb = boto3.resource(
+                    "dynamodb", region_name=EC2Metadata.get_instance_region()
+                )
+                table = dynamodb.Table(self.registry_table)
+
+                response = table.scan()
+                instances = [
+                    item
+                    for item in response.get("Items", [])
+                    if "instance_id" in item
+                    and not item["instance_id"].startswith("TASK#")
+                ]
+
+                return {"instances": instances, "timestamp": int(time.time())}
+            except Exception as e:
+                logger.error(f"Error getting cluster state: {e}")
+                return {"error": str(e)}
+        else:
+            return {"error": "No registry or cluster manager available"}
+
+    def is_leader(self) -> bool:
+        """Check if this instance is the leader.
+
+        Returns:
+            True if this instance is the leader, False otherwise
+        """
+        if self.instance_coordinator:
+            return self.instance_coordinator.is_leader_instance
+        elif self.instance_registry:
+            return self.instance_registry.is_leader()
+        else:
+            return False
+
+    def cleanup(self) -> None:
+        """Clean up resources on shutdown."""
+        logger.info("Cleaning up training environment...")
+
+        # Stop heartbeat thread
+        if self._heartbeat_thread and self._heartbeat_thread.is_alive():
+            if hasattr(self, "_stop_heartbeat"):
+                self._stop_heartbeat.set()
+
+        # Shut down coordinator and cluster manager
+        if self.cluster_manager:
+            try:
+                self.cluster_manager.shutdown()
+            except Exception as e:
+                logger.error(f"Error shutting down cluster manager: {e}")
+
+        elif self.instance_coordinator:
+            try:
+                self.instance_coordinator.shutdown()
+            except Exception as e:
+                logger.error(f"Error shutting down instance coordinator: {e}")
+
+        # Deregister from registry if needed
+        elif self.instance_registry:
+            try:
+                import boto3
+
+                dynamodb = boto3.resource(
+                    "dynamodb", region_name=EC2Metadata.get_instance_region()
+                )
+                table = dynamodb.Table(self.registry_table)
+
+                instance_id = EC2Metadata.get_instance_id()
+                if instance_id:
+                    table.delete_item(Key={"instance_id": instance_id})
+                    logger.info(
+                        f"Deregistered instance {instance_id} from registry"
+                    )
+            except Exception as e:
+                logger.error(f"Error deregistering from registry: {e}")
+
+        logger.info("Training environment cleanup complete")
 
     @classmethod
     def find_latest_checkpoint(cls, job_id: str) -> Optional[str]:

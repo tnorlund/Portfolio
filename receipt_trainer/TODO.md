@@ -19,7 +19,7 @@
 - [x] Add command-line interface for job submission and worker management
 - [x] Create example EC2 user-data script for spot instances
 - [ ] Add CloudWatch metric integration
-- [ ] Implement auto-scaling based on queue depth
+- [x] Implement auto-scaling based on queue depth
 
 ## Documentation
 

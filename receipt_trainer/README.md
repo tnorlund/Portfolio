@@ -1,217 +1,489 @@
 # Receipt Trainer
 
-A Python package for training OCR models on receipt images using distributed computing on AWS.
+A Python package for training LayoutLM on AWS.
 
-## Features
+## Architecture Overview
 
-- Train LayoutLM models for receipt field extraction
-- Distributed training using SQS, EFS, and EC2 Spot Instances
-- Auto-resumable training from checkpoints on EFS
-- Fault-tolerant job processing with retry mechanisms
-- Metrics and logs stored in DynamoDB
-- Support for spot instance interruption handling
+The `receipt_trainer` package integrates with AWS services and the DynamoDB table design to provide a robust system for training machine learning models on receipt data. The system is designed to handle spot instance interruptions gracefully while maintaining training progress.
 
-## Installation
+## Training Job Workflow
 
-```bash
-pip install receipt-trainer
-```
+1. Job Queue Polling
 
-Or for development:
+- Poll the SQS job queue to retrieve the next available job
 
-```bash
-git clone https://github.com/yourusername/receipt-trainer.git
-cd receipt-trainer
-pip install -e .
-```
+2. Job Initialization
 
-## Distributed Training Architecture
+- Query DynamoDB for the job configuration using the job ID
+- Check if this is a new job or a resumed job
+- For resumed jobs, locate the latest checkpoint in /mnt/checkpoints or S3
+- Set the appropriate starting epoch, step, and parameters
 
-The receipt-trainer package supports a distributed training architecture using AWS services:
+3. Checkpointing and Status Updates
 
-![Architecture Diagram](docs/images/architecture.png)
+- Regularly update the job status in DynamoDB
+- Save checkpoints with detailed metadata including epoch, step, and metrics
+- Increase checkpoint frequency when approaching expected spot termination
+- Use atomic file operations to ensure checkpoints aren't corrupted by interruptions
 
-### Components:
+4. Graceful Interruption Handling:
 
-1. **SQS Queue**: Jobs are submitted to an SQS queue
-2. **EC2 Spot Instances**: Process jobs from the queue
-3. **EFS File System**: Shared storage for datasets, checkpoints, and models
-4. **DynamoDB**: Stores job metadata, metrics, and instance registry
+- Implement a signal handler for spot termination notifications
+- Perform an emergency checkpoint when a termination signal is received
+- Update the job status to "INTERRUPTED" in DynamoDB
+- Release the job back to the queue with its progress information
 
-## Setting Up AWS Infrastructure
+## Working with SQS Job Queue
 
-### 1. Create EFS File System
+The training infrastructure uses AWS SQS FIFO queues to manage job distribution. This section explains how to properly interact with the queues.
 
-```bash
-# Create EFS file system
-aws efs create-file-system --performance-mode generalPurpose --throughput-mode bursting --encrypted --tags Key=Name,Value=receipt-trainer
+### SQS Queue Configuration
 
-# Create access points for training data and checkpoints
-aws efs create-access-point --file-system-id fs-xxxxxxxx --posix-user Uid=1000,Gid=1000 --root-directory Path=/training --tags Key=Name,Value=training
-aws efs create-access-point --file-system-id fs-xxxxxxxx --posix-user Uid=1000,Gid=1000 --root-directory Path=/checkpoints --tags Key=Name,Value=checkpoints
-```
+The job queue defined in the Pulumi infrastructure has the following key characteristics:
 
-### 2. Create DynamoDB Tables
+- **FIFO Queue**: Ensures jobs are processed in order and once only
+- **Content-Based Deduplication**: Prevents duplicate job submissions
+- **Visibility Timeout**: Set to 30 minutes (1800 seconds)
+- **Message Retention**: 4 days (345600 seconds)
+- **Dead Letter Queue**: Messages are sent to DLQ after 5 failed processing attempts
 
-```bash
-# Create job tracking table
-aws dynamodb create-table --table-name receipt-trainer-jobs \
-    --attribute-definitions AttributeName=job_id,AttributeType=S \
-    --key-schema AttributeName=job_id,KeyType=HASH \
-    --billing-mode PAY_PER_REQUEST
-
-# Create instance registry table
-aws dynamodb create-table --table-name receipt-trainer-instances \
-    --attribute-definitions AttributeName=instance_id,AttributeType=S \
-    --key-schema AttributeName=instance_id,KeyType=HASH \
-    --billing-mode PAY_PER_REQUEST
-```
-
-### 3. Create SQS Queue
-
-```bash
-# Create main job queue
-aws sqs create-queue --queue-name receipt-trainer-jobs \
-    --attributes FifoQueue=true,ContentBasedDeduplication=true
-
-# Create dead-letter queue for failed jobs
-aws sqs create-queue --queue-name receipt-trainer-jobs-dlq \
-    --attributes FifoQueue=true,ContentBasedDeduplication=true
-```
-
-### 4. Configure EC2 Spot Fleet
-
-Create an EC2 Launch Template with the user-data script from `scripts/ec2_user_data.sh`, then create a spot fleet request:
-
-```bash
-aws ec2 request-spot-fleet --spot-fleet-request-config file://spot-fleet-config.json
-```
-
-Example spot-fleet-config.json:
-
-```json
-{
-  "SpotPrice": "1.00",
-  "TargetCapacity": 2,
-  "AllocationStrategy": "capacityOptimized",
-  "LaunchTemplateConfigs": [
-    {
-      "LaunchTemplateSpecification": {
-        "LaunchTemplateId": "lt-0abc123def456789",
-        "Version": "1"
-      },
-      "Overrides": [
-        { "InstanceType": "p3.2xlarge", "SubnetId": "subnet-abc123" },
-        { "InstanceType": "g4dn.xlarge", "SubnetId": "subnet-def456" }
-      ]
-    }
-  ],
-  "Type": "maintain",
-  "IamFleetRole": "arn:aws:iam::123456789012:role/SpotFleetRole"
-}
-```
-
-## Usage
-
-### 1. Submit a Training Job
-
-```bash
-# Submit a job using a YAML configuration file
-receipt-trainer submit-job \
-    --config examples/training_job.yaml \
-    --queue-url https://sqs.us-east-1.amazonaws.com/123456789012/receipt-trainer-jobs.fifo \
-    --priority high
-```
-
-### 2. Run Hyperparameter Sweep
-
-```bash
-# Run a hyperparameter sweep with default parameters
-python -m receipt_trainer.scripts.hyperparameter_sweep --stack dev --monitor
-
-# Customize the hyperparameter search space
-python -m receipt_trainer.scripts.hyperparameter_sweep \
-  --stack dev \
-  --learning-rates 5e-5,3e-5,1e-5 \
-  --batch-sizes 4,8,16 \
-  --epochs 3,5,10 \
-  --max-samples 1000 \
-  --monitor
-```
-
-For more details on hyperparameter sweeps, see the [Model Training Guide](docs/model_training.md).
-
-### 3. Run a Worker Manually
-
-```bash
-# Start a worker to process jobs from the queue
-receipt-trainer start-worker \
-    --queue-url https://sqs.us-east-1.amazonaws.com/123456789012/receipt-trainer-jobs.fifo \
-    --dynamo-table receipt-trainer-jobs \
-    --instance-registry-table receipt-trainer-instances \
-    --mount-efs
-```
-
-### 4. Monitor Jobs
-
-```bash
-# Monitor job status
-receipt-trainer job-status --job-id 12345678-abcd-efgh-ijkl-123456789abc
-
-# View job details
-receipt-trainer job-details --job-id 12345678-abcd-efgh-ijkl-123456789abc
-```
-
-## Programmatic Usage
+## Creating and submitting a job
 
 ```python
-from receipt_trainer.jobs.submit import submit_training_job
-from receipt_trainer.config import TrainingConfig, DataConfig
+import json
+import uuid
+import time
+import boto3
+from datetime import datetime
 
-# Create configurations
-training_config = TrainingConfig(
-    num_epochs=5,
+# Load environment configuration
+def load_environment(env='dev'):
+    """Load environment configuration"""
+    # This would normally come from a configuration file or environment variables
+    # The values below are just examples
+    return {
+        'job_queue_url': 'https://sqs.us-east-1.amazonaws.com/123456789012/ml-training-job-queue-dev.fifo',
+        'queue_id': 'main-training-queue',  # Logical queue ID in DynamoDB
+        'dynamo_table': 'ReceiptsTable',
+        'region': 'us-east-1'
+    }
+
+def create_training_job(
+    model_name,
+    dataset_id,
     batch_size=8,
     learning_rate=5e-5,
-    weight_decay=0.01
-)
+    num_epochs=3,
+    priority=0
+):
+    """Create a training job definition"""
+    job_id = str(uuid.uuid4())
 
-data_config = DataConfig(
-    dataset_name="internal-receipts",
-    train_split="train",
-    eval_split="validation"
-)
+    job = {
+        'job_id': job_id,
+        'name': f"Training {model_name} on {dataset_id}",
+        'type': 'training',
+        'created_at': datetime.utcnow().isoformat(),
+        'status': 'PENDING',
+        'priority': priority,
+        'config': {
+            'model': {
+                'name': model_name,
+                'type': 'layoutlm',
+            },
+            'training': {
+                'batch_size': batch_size,
+                'learning_rate': learning_rate,
+                'num_epochs': num_epochs,
+                'optimizer': 'adamw',
+                'weight_decay': 0.01,
+                'warmup_steps': 0,
+                'max_grad_norm': 1.0,
+            },
+            'dataset': {
+                'id': dataset_id,
+                'type': 'receipts',
+            }
+        }
+    }
 
-# Submit job
-job_id = submit_training_job(
-    model_name="microsoft/layoutlm-base-uncased",
-    training_config=training_config,
-    data_config=data_config,
-    queue_url="https://sqs.us-east-1.amazonaws.com/123456789012/receipt-trainer-jobs.fifo",
-    priority="high"
-)
+    return job
 
-print(f"Submitted job: {job_id}")
+def submit_job_to_sqs(job_id, queue_url, model_name, region=None):
+    """
+    Submit a lightweight job reference to the SQS queue.
+
+    Unlike storing the entire job in SQS, we only send the job_id as
+    the actual job data is stored in DynamoDB.
+    """
+    sqs_client = boto3.client('sqs', region_name=region)
+
+    # Create a simplified message with just the job ID
+    message = {
+        'job_id': job_id,
+        'enqueued_at': datetime.utcnow().isoformat()
+    }
+
+    response = sqs_client.send_message(
+        QueueUrl=queue_url,
+        MessageBody=json.dumps(message),
+        MessageGroupId=f"job-{model_name}",  # Group by model type
+        MessageDeduplicationId=f"{job_id}-{int(time.time())}"  # Ensure unique
+    )
+
+    print(f"Submitted job {job_id} to SQS. Message ID: {response.get('MessageId')}")
+    return response
+
+def store_job_in_dynamo(job, table_name, region=None):
+    """Store job definition in DynamoDB"""
+    dynamodb = boto3.client('dynamodb', region_name=region)
+
+    item = {
+        'PK': {'S': f"JOB#{job['job_id']}"},
+        'SK': {'S': 'JOB'},
+        'GSI1PK': {'S': f"STATUS#{job['status']}"},
+        'GSI1SK': {'S': f"CREATED#{job['created_at']}"},
+        'TYPE': {'S': 'JOB'},
+        'name': {'S': job['name']},
+        'description': {'S': f"Training job for {job['config']['model']['name']}"},
+        'created_at': {'S': job['created_at']},
+        'status': {'S': job['status']},
+        'priority': {'N': str(job['priority'])},
+        'job_config': {'S': json.dumps(job['config'])}
+    }
+
+    response = dynamodb.put_item(
+        TableName=table_name,
+        Item=item
+    )
+
+    print(f"Stored job {job['job_id']} in DynamoDB")
+    return response
+
+def add_job_to_queue_in_dynamo(job_id, queue_id, priority, table_name, region=None):
+    """
+    Create a Queue Job entity in DynamoDB to track the relationship
+    between the job and queue.
+    """
+    dynamodb = boto3.client('dynamodb', region_name=region)
+
+    now = datetime.utcnow().isoformat()
+
+    # Create the Queue Job entity
+    queue_job_item = {
+        'PK': {'S': f"QUEUE#{queue_id}"},
+        'SK': {'S': f"JOB#{job_id}"},
+        'GSI1PK': {'S': f"JOB#{job_id}"},  # For finding all queues for a job
+        'GSI1SK': {'S': f"QUEUE#{queue_id}"},
+        'TYPE': {'S': 'QUEUE_JOB'},
+        'queue_id': {'S': queue_id},
+        'job_id': {'S': job_id},
+        'added_at': {'S': now},
+        'priority': {'N': str(priority)},
+        'status': {'S': 'pending'}
+    }
+
+    response = dynamodb.put_item(
+        TableName=table_name,
+        Item=queue_job_item
+    )
+
+    print(f"Added job {job_id} to queue {queue_id} in DynamoDB")
+    return response
+
+def main():
+    # Load environment configuration
+    env_config = load_environment('dev')
+
+    # Create a training job
+    job = create_training_job(
+        model_name='layoutlm-base-uncased',
+        dataset_id='receipts-v1',
+        batch_size=8,
+        learning_rate=5e-5,
+        num_epochs=3,
+        priority=10  # Higher priority
+    )
+
+    # Store job in DynamoDB
+    store_job_in_dynamo(
+        job=job,
+        table_name=env_config['dynamo_table'],
+        region=env_config['region']
+    )
+
+    # Create a Queue Job entity in DynamoDB
+    add_job_to_queue_in_dynamo(
+        job_id=job['job_id'],
+        queue_id=env_config['queue_id'],
+        priority=job['priority'],
+        table_name=env_config['dynamo_table'],
+        region=env_config['region']
+    )
+
+    # Submit job reference to SQS queue (lightweight message)
+    submit_job_to_sqs(
+        job_id=job['job_id'],
+        queue_url=env_config['job_queue_url'],
+        model_name=job['config']['model']['name'],
+        region=env_config['region']
+    )
+
+    print(f"Job {job['job_id']} submitted successfully")
+    return job['job_id']
+
+if __name__ == '__main__':
+    main()
 ```
 
-## Fault Tolerance and Spot Instance Handling
+## `receipt_trainer.train` Template
 
-The training system is designed to be fault-tolerant and handle spot instance interruptions seamlessly:
+```python
+import argparse
+import boto3
+import json
+import signal
+import sys
+import time
+import os
+from datetime import datetime
+from pathlib import Path
+import torch
 
-1. When a spot instance receives a termination notice, it:
+from receipt_trainer.models import get_model
+from receipt_trainer.data import get_datasets
+from receipt_trainer.utils import dynamo, sqs, checkpointing
 
-   - Saves a checkpoint to EFS
-   - Updates the job status in DynamoDB
-   - Releases the SQS message with a short visibility timeout
+def parse_args():
+    parser = argparse.ArgumentParser(description="Training job processor")
+    parser.add_argument("--checkpoint-dir", required=True, help="Directory for checkpoints")
+    parser.add_argument("--job-queue", required=True, help="SQS queue URL for jobs")
+    parser.add_argument("--instance-id", required=True, help="EC2 instance ID")
+    parser.add_argument("--region", required=True, help="AWS region")
+    return parser.parse_args()
 
-2. When a new instance starts, it:
-   - Mounts the same EFS file systems
-   - Picks up the job from SQS
-   - Finds the latest checkpoint
-   - Resumes training from where it left off
+def setup_interruption_handler(trainer, job_id, queue_id, instance_id, dynamo_client, sqs_client, queue_url):
+    """Set up handler for spot instance interruption"""
+    def handler(signum, frame):
+        print(f"Received interruption signal. Performing emergency checkpoint...")
+        # Save emergency checkpoint
+        trainer.save_checkpoint("emergency")
 
-This creates a completely seamless experience where spot interruptions are handled automatically without losing training progress.
+        timestamp = datetime.utcnow().isoformat()
 
-## License
+        # Update job status in DynamoDB
+        dynamo.update_job_status(
+            dynamo_client,
+            job_id,
+            "INTERRUPTED",
+            f"Interrupted at epoch {trainer.epoch}, step {trainer.step}"
+        )
 
-MIT License
+        # Update queue job status
+        dynamo.update_queue_job_status(
+            dynamo_client,
+            queue_id,
+            job_id,
+            "interrupted",
+            f"Spot instance interrupted at {timestamp}"
+        )
+
+        # Re-queue the job with progress information
+        sqs.requeue_job(
+            sqs_client,
+            queue_url,
+            job_id,
+            {
+                "checkpoint": trainer.last_checkpoint_path,
+                "epoch": trainer.epoch,
+                "step": trainer.step
+            }
+        )
+
+        # Update instance status (using valid values from Instance entity)
+        dynamo.update_instance(
+            dynamo_client,
+            instance_id,
+            status="terminated",
+            health_status="unhealthy",
+            reason="Spot instance termination"
+        )
+
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, handler)
+    return handler
+
+def main():
+    args = parse_args()
+
+    # Initialize AWS clients
+    dynamo_client = boto3.client('dynamodb', region_name=args.region)
+    sqs_client = boto3.client('sqs', region_name=args.region)
+    s3_client = boto3.client('s3', region_name=args.region)
+
+    # Register instance as available for jobs (using valid values from Instance entity)
+    try:
+        dynamo.update_instance(
+            dynamo_client,
+            args.instance_id,
+            status="running",
+            health_status="healthy"
+        )
+    except Exception as e:
+        raise Exception(f"Failed to update instance's status: {e}")
+
+    # Extract queue ID from the queue URL (last part of the path, without .fifo)
+    queue_name = args.job_queue.split('/')[-1]
+    queue_id = queue_name.replace('.fifo', '')
+
+    # Main job processing loop
+    while True:
+        try:
+            # Poll for next job
+            job_message = sqs.receive_job(sqs_client, args.job_queue)
+            if not job_message:
+                time.sleep(10)
+                continue
+
+            # Extract job ID and receipt handle
+            job_id = job_message['job_id']
+            receipt_handle = job_message['receipt_handle']
+
+            # Get queue job information (priority, status, etc)
+            queue_job = dynamo.get_queue_job(dynamo_client, queue_id, job_id)
+
+            if not queue_job or queue_job.get('status') == 'completed':
+                # Job already completed or removed from queue - delete message and continue
+                sqs.delete_message(sqs_client, args.job_queue, receipt_handle)
+                continue
+
+            # Get job configuration from DynamoDB
+            job_config = dynamo.get_job_config(dynamo_client, job_id)
+
+            # Update job status to RUNNING in both Job and QueueJob entities
+            dynamo.update_job_status(
+                dynamo_client,
+                job_id,
+                "RUNNING",
+                f"Job started on instance {args.instance_id}"
+            )
+
+            dynamo.update_queue_job_status(
+                dynamo_client,
+                queue_id,
+                job_id,
+                "processing",
+                f"Job being processed by instance {args.instance_id}"
+            )
+
+            # Update instance to show which job it's running
+            dynamo.link_instance_to_job(dynamo_client, args.instance_id, job_id)
+
+            # Initialize datasets
+            train_dataset, val_dataset = get_datasets(job_config)
+
+            # Initialize model
+            model = get_model(job_config)
+
+            # Check for checkpoint to resume from
+            start_epoch = 0
+            start_step = 0
+
+            if 'checkpoint' in job_message:
+                checkpoint_path = job_message['checkpoint']
+                start_epoch = job_message.get('epoch', 0)
+                start_step = job_message.get('step', 0)
+                checkpointing.load_checkpoint(model, checkpoint_path)
+                print(f"Resuming from checkpoint at epoch {start_epoch}, step {start_step}")
+
+            # Initialize trainer
+            trainer = Trainer(
+                model=model,
+                train_dataset=train_dataset,
+                val_dataset=val_dataset,
+                checkpoint_dir=args.checkpoint_dir,
+                job_id=job_id,
+                job_config=job_config,
+                start_epoch=start_epoch,
+                start_step=start_step,
+                dynamo_client=dynamo_client,
+                s3_client=s3_client
+            )
+
+            # Set up interruption handler
+            setup_interruption_handler(
+                trainer,
+                job_id,
+                queue_id,
+                args.instance_id,
+                dynamo_client,
+                sqs_client,
+                args.job_queue
+            )
+
+            # Start training
+            trainer.train()
+
+            # If training completes successfully, update status in both Job and QueueJob entities
+            dynamo.update_job_status(
+                dynamo_client,
+                job_id,
+                "COMPLETED",
+                f"Training completed successfully by instance {args.instance_id}"
+            )
+
+            dynamo.update_queue_job_status(
+                dynamo_client,
+                queue_id,
+                job_id,
+                "completed",
+                f"Job completed by instance {args.instance_id}"
+            )
+
+            # Delete the message from the queue
+            sqs.delete_message(sqs_client, args.job_queue, receipt_handle)
+
+            # Update instance status back to available
+            dynamo.update_instance(
+                dynamo_client,
+                args.instance_id,
+                status="running",
+                health_status="healthy"
+            )
+            dynamo.unlink_instance_from_job(dynamo_client, args.instance_id, job_id)
+
+        except Exception as e:
+            print(f"Error processing job: {e}")
+            # Update job and instance status on error
+            if 'job_id' in locals() and 'queue_id' in locals():
+                # Update Job status
+                dynamo.update_job_status(
+                    dynamo_client,
+                    job_id,
+                    "ERROR",
+                    str(e)
+                )
+
+                # Update QueueJob status
+                dynamo.update_queue_job_status(
+                    dynamo_client,
+                    queue_id,
+                    job_id,
+                    "error",
+                    f"Error: {str(e)}"
+                )
+
+            # Update instance health status to unhealthy
+            dynamo.update_instance(
+                dynamo_client,
+                args.instance_id,
+                status="running",  # Keep running but mark as unhealthy
+                health_status="unhealthy",
+                reason=f"Error processing job: {str(e)}"
+            )
+            time.sleep(30)  # Wait before trying again
+
+if __name__ == "__main__":
+    main()
+```

@@ -8,10 +8,18 @@ This module provides a job queue system for managing ML training jobs, including
 3. AWS utilities for creating and managing SQS queues
 4. Command-line interface for job queue management
 5. Job definition models for LayoutLM training configuration
+6. Standardized job processor interface for different environments
 """
 
 from .job import Job, JobStatus, JobPriority
 from .queue import JobQueue, JobQueueConfig, JobRetryStrategy
+from .processor import (
+    JobProcessor,
+    SQSJobProcessor,
+    EC2JobProcessor,
+    ProcessingMode,
+    create_job_processor,
+)
 from .job_definition import (
     LayoutLMJobDefinition,
     ResourceConfig,
@@ -39,6 +47,11 @@ __all__ = [
     "JobQueue",
     "JobQueueConfig",
     "JobRetryStrategy",
+    "JobProcessor",
+    "SQSJobProcessor",
+    "EC2JobProcessor",
+    "ProcessingMode",
+    "create_job_processor",
     "LayoutLMJobDefinition",
     "ResourceConfig",
     "ModelConfig",

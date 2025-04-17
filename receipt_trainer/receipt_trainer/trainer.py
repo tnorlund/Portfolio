@@ -33,6 +33,8 @@ from transformers import (
     AutoModel,
     AutoTokenizer,
     TrainerCallback,
+    TrainerState,
+    TrainerControl,
 )
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.services.job_service import JobService
@@ -70,6 +72,8 @@ from receipt_trainer.constants import REQUIRED_ENV_VARS
 from receipt_trainer.version import __version__
 from receipt_trainer.jobs import JobQueue
 import dataclasses
+from receipt_trainer.utils.infrastructure import TrainingEnvironment
+from receipt_trainer.utils.checkpoint import CheckpointManager
 
 # Set tokenizer parallelism to false to avoid deadlocks
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -361,28 +365,76 @@ class ReceiptTrainer:
 
     def __init__(
         self,
-        model_name: str,
-        training_config: Optional[TrainingConfig] = None,
+        model_name_or_path: str = "microsoft/layoutlm-base-uncased",
+        output_dir: str = "./output",
+        num_train_epochs: int = 3,
+        learning_rate: float = 5e-5,
+        per_device_train_batch_size: int = 8,
+        per_device_eval_batch_size: int = 8,
+        warmup_ratio: float = 0.1,
+        weight_decay: float = 0.01,
+        max_grad_norm: float = 1.0,
+        gradient_accumulation_steps: int = 1,
+        evaluation_strategy: str = "epoch",
+        save_strategy: str = "epoch",
+        fp16: bool = False,
+        logging_steps: int = 100,
+        save_steps: int = 500,
+        save_total_limit: int = 3,
         data_config: Optional[DataConfig] = None,
         dynamo_table: Optional[str] = None,
+        job_id: Optional[str] = None,
+        seed: int = 42,
     ):
         """Initialize the trainer.
 
         Args:
-            model_name: Name/path of the pre-trained model.
-            training_config: Training configuration.
+            model_name_or_path: Name/path of the pre-trained model.
+            output_dir: Directory to save model checkpoints.
+            num_train_epochs: Number of training epochs.
+            learning_rate: Learning rate for the optimizer.
+            per_device_train_batch_size: Batch size per device for training.
+            per_device_eval_batch_size: Batch size per device for evaluation.
+            warmup_ratio: Proportion of training steps to use for a linear warmup.
+            weight_decay: Weight decay for AdamW optimizer.
+            max_grad_norm: Maximum gradient norm for gradient clipping.
+            gradient_accumulation_steps: Number of steps to accumulate gradients before updating model weights.
+            evaluation_strategy: Strategy for evaluating the model during training.
+            save_strategy: Strategy for saving checkpoints during training.
+            fp16: Whether to use 16-bit precision for training.
+            logging_steps: Number of steps to log training metrics.
+            save_steps: Number of steps to save checkpoints.
+            save_total_limit: Number of checkpoints to keep.
             data_config: Data loading configuration.
             dynamo_table: DynamoDB table name for data loading (optional; will try to load from Pulumi if not provided).
+            job_id: Optional job ID to resume from.
+            seed: Random seed for reproducibility.
         """
         self.logger = logging.getLogger(__name__)
         self._validate_env_vars()
 
-        self.model_name = model_name
-        self.training_config = training_config or TrainingConfig()
+        self.model_name = model_name_or_path
+        self.output_dir = output_dir
+        self.num_train_epochs = num_train_epochs
+        self.learning_rate = learning_rate
+        self.per_device_train_batch_size = per_device_train_batch_size
+        self.per_device_eval_batch_size = per_device_eval_batch_size
+        self.warmup_ratio = warmup_ratio
+        self.weight_decay = weight_decay
+        self.max_grad_norm = max_grad_norm
+        self.gradient_accumulation_steps = gradient_accumulation_steps
+        self.evaluation_strategy = evaluation_strategy
+        self.save_strategy = save_strategy
+        self.fp16 = fp16
+        self.logging_steps = logging_steps
+        self.save_steps = save_steps
+        self.save_total_limit = save_total_limit
         self.data_config = data_config or DataConfig()
+        self.dynamo_table = dynamo_table
+        self.job_id = job_id
+        self.seed = seed
 
         # Initialize job tracking
-        self.job_id = str(uuid.uuid4())
         self.job_service = None
 
         # Initialize other components as None.
@@ -391,12 +443,6 @@ class ReceiptTrainer:
         self.dataset = None
         self.training_args = None
         self.dynamo_client = None
-        self.output_dir = None
-
-        # Set the training device.
-        self.device = self._get_device()
-
-        # Initialize checkpoint tracking.
         self.last_checkpoint = None
         self.is_interrupted = False
 
@@ -410,21 +456,23 @@ class ReceiptTrainer:
             )
         os.makedirs(self.data_config.cache_dir, exist_ok=True)
 
-        # Store DynamoDB table name for later initialization
-        self.dynamo_table = dynamo_table
+        # Initialize checkpoint manager if job_id is provided
+        self.checkpoint_manager = None
+        if job_id and dynamo_table:
+            self.checkpoint_manager = CheckpointManager(
+                job_id=job_id, dynamo_table=dynamo_table
+            )
 
-        # SQS integration
-        self.job_receipt_handle = None
-        self.job_queue = None
-        self.last_heartbeat_time = (
-            time.time()
-        )  # Track last visibility extension
-        self.heartbeat_interval = 900  # Default to 15 minutes
-        self._heartbeat_thread = None
-        self._stop_heartbeat = threading.Event()
-
-        # Load job service if available
-        self.initialize_dynamo()
+        # Initialize other attributes
+        self.device = self._get_device()
+        self.current_epoch = 0
+        self.global_step = 0
+        self.optimizer = None
+        self.scheduler = None
+        self.label_list = []
+        self.num_labels = 0
+        self.label2id = {}
+        self.id2label = {}
 
         self.logger.info("ReceiptTrainer initialized")
 
@@ -487,11 +535,7 @@ class ReceiptTrainer:
             )
 
     def _setup_spot_interruption_handler(self):
-        """Set up handler for spot instance interruption.
-
-        This method sets up a signal handler for SIGTERM, which AWS sends
-        2 minutes before interrupting a spot instance.
-        """
+        """Set up interruption handler for spot instances."""
         import signal
 
         def handle_sigterm(*args):
@@ -504,10 +548,51 @@ class ReceiptTrainer:
             # Save checkpoint if we're in the middle of training
             if self.model and self.training_args:
                 self.logger.info("Saving emergency checkpoint...")
+
+                # Create a local checkpoint directory
                 checkpoint_dir = os.path.join(
                     self.output_dir, "interrupt_checkpoint"
                 )
                 self.save_checkpoint(checkpoint_dir)
+
+                # If we have EFS checkpoint manager, also save directly to EFS
+                if (
+                    self.checkpoint_manager
+                    and self.checkpoint_manager.is_efs_mounted()
+                ):
+                    try:
+                        interrupt_checkpoint_name = f"emergency_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+                        # Get current step and epoch
+                        step = (
+                            self.global_step
+                            if hasattr(self, "global_step")
+                            else None
+                        )
+                        epoch = (
+                            self.current_epoch
+                            if hasattr(self, "current_epoch")
+                            else None
+                        )
+
+                        # Save emergency checkpoint to EFS
+                        efs_path = self.checkpoint_manager.save_checkpoint(
+                            source_dir=checkpoint_dir,
+                            checkpoint_name=interrupt_checkpoint_name,
+                            step=step,
+                            epoch=epoch,
+                            metrics=getattr(self, "eval_metrics", {}),
+                            is_best=False,
+                        )
+
+                        if efs_path:
+                            self.logger.info(
+                                f"Emergency checkpoint saved to EFS at {efs_path}"
+                            )
+                    except Exception as e:
+                        self.logger.error(
+                            f"Failed to save emergency checkpoint to EFS: {e}"
+                        )
 
                 # Upload checkpoint to S3 if possible
                 try:
@@ -602,6 +687,50 @@ class ReceiptTrainer:
                 )
             except Exception as e:
                 self.logger.error(f"Failed to log checkpoint to DynamoDB: {e}")
+
+        # Save to EFS using checkpoint manager if available
+        if self.checkpoint_manager:
+            try:
+                checkpoint_name = f"checkpoint_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                step = (
+                    self.global_step if hasattr(self, "global_step") else None
+                )
+                epoch = (
+                    self.current_epoch
+                    if hasattr(self, "current_epoch")
+                    else None
+                )
+
+                # Get metrics if available
+                metrics = {}
+                if hasattr(self, "eval_metrics") and self.eval_metrics:
+                    metrics = self.eval_metrics
+
+                # Save to EFS
+                efs_path = self.checkpoint_manager.save_checkpoint(
+                    source_dir=checkpoint_dir,
+                    checkpoint_name=checkpoint_name,
+                    step=step,
+                    epoch=epoch,
+                    metrics=metrics,
+                    # Set as best if it's the first checkpoint or if metrics improved
+                    is_best=False,  # We'll update this separately based on metrics
+                )
+
+                if efs_path:
+                    self.logger.info(
+                        f"Checkpoint also saved to EFS at {efs_path}"
+                    )
+
+                    # Update job log
+                    if self.job_service:
+                        self.job_service.add_job_log(
+                            self.job_id,
+                            "INFO",
+                            f"Checkpoint saved to EFS at {efs_path}",
+                        )
+            except Exception as e:
+                self.logger.error(f"Failed to save checkpoint to EFS: {e}")
 
     def _upload_checkpoint_to_s3(self, checkpoint_dir: str):
         """Upload checkpoint to S3.
@@ -780,9 +909,98 @@ class ReceiptTrainer:
             job_id: Optional job ID to resume from
         """
         checkpoint_dir = None
+        self.logger.info("Attempting to resume from checkpoint...")
 
-        # First try to find local checkpoint
-        if self.output_dir:
+        # First try to load from EFS if checkpoint manager is available
+        if (
+            self.checkpoint_manager
+            and self.checkpoint_manager.is_efs_mounted()
+        ):
+            try:
+                # Sync metadata from DynamoDB first
+                self.checkpoint_manager.sync_from_dynamo()
+
+                # Try to get best checkpoint first
+                best_checkpoint = self.checkpoint_manager.get_best_checkpoint()
+                if best_checkpoint:
+                    self.logger.info(
+                        f"Found best checkpoint on EFS: {best_checkpoint}"
+                    )
+
+                    # Create a local directory for the checkpoint
+                    local_checkpoint_dir = os.path.join(
+                        self.output_dir, "best_checkpoint"
+                    )
+                    os.makedirs(local_checkpoint_dir, exist_ok=True)
+
+                    # Load the checkpoint from EFS to local directory
+                    success = self.checkpoint_manager.load_checkpoint(
+                        dest_dir=local_checkpoint_dir,
+                        checkpoint_path=best_checkpoint,
+                    )
+
+                    if success:
+                        checkpoint_dir = local_checkpoint_dir
+                        self.logger.info(
+                            f"Loaded best checkpoint from EFS to {checkpoint_dir}"
+                        )
+
+                        # Log resuming from best EFS checkpoint
+                        if self.job_service:
+                            self.job_service.add_job_log(
+                                self.job_id,
+                                "INFO",
+                                f"Resuming from best checkpoint on EFS: {best_checkpoint}",
+                            )
+                    else:
+                        self.logger.warning(
+                            "Failed to load best checkpoint from EFS"
+                        )
+
+                # If no best checkpoint or loading failed, try latest
+                if not checkpoint_dir:
+                    latest_checkpoint = (
+                        self.checkpoint_manager.get_latest_checkpoint()
+                    )
+                    if latest_checkpoint:
+                        self.logger.info(
+                            f"Found latest checkpoint on EFS: {latest_checkpoint}"
+                        )
+
+                        # Create a local directory for the checkpoint
+                        local_checkpoint_dir = os.path.join(
+                            self.output_dir, "latest_checkpoint"
+                        )
+                        os.makedirs(local_checkpoint_dir, exist_ok=True)
+
+                        # Load the checkpoint from EFS to local directory
+                        success = self.checkpoint_manager.load_checkpoint(
+                            dest_dir=local_checkpoint_dir,
+                            checkpoint_path=latest_checkpoint,
+                        )
+
+                        if success:
+                            checkpoint_dir = local_checkpoint_dir
+                            self.logger.info(
+                                f"Loaded latest checkpoint from EFS to {checkpoint_dir}"
+                            )
+
+                            # Log resuming from latest EFS checkpoint
+                            if self.job_service:
+                                self.job_service.add_job_log(
+                                    self.job_id,
+                                    "INFO",
+                                    f"Resuming from latest checkpoint on EFS: {latest_checkpoint}",
+                                )
+                        else:
+                            self.logger.warning(
+                                "Failed to load latest checkpoint from EFS"
+                            )
+            except Exception as e:
+                self.logger.error(f"Error loading checkpoint from EFS: {e}")
+
+        # If no checkpoint from EFS, try local checkpoint
+        if not checkpoint_dir and self.output_dir:
             local_checkpoint = os.path.join(self.output_dir, "checkpoint-*")
             checkpoints = sorted(
                 glob.glob(local_checkpoint),
@@ -801,15 +1019,13 @@ class ReceiptTrainer:
                         f"Resuming from local checkpoint: {checkpoint_dir}",
                     )
 
-                return checkpoint_dir
-
         # If no local checkpoint, try S3
         if not checkpoint_dir:
             checkpoint_dir = self._download_checkpoint_from_s3(job_id)
 
         if not checkpoint_dir:
             self.logger.warning(
-                "No checkpoints found locally or in S3, starting fresh training"
+                "No checkpoints found locally, in EFS, or in S3, starting fresh training"
             )
 
             # Log starting fresh training
@@ -858,24 +1074,18 @@ class ReceiptTrainer:
                 f"Resumed training from checkpoint at step {self.global_step}"
             )
 
-            # Log resuming training
+            # Log resuming training in DynamoDB
             if self.job_service:
-                self.job_service.add_job_status(
+                self.job_service.add_job_log(
                     self.job_id,
-                    "resumed",
+                    "INFO",
                     f"Resumed training from checkpoint at step {self.global_step}",
                 )
 
+            return checkpoint_dir
         except Exception as e:
-            self.logger.error(f"Failed to load checkpoint: {e}")
-            self.logger.warning("Starting fresh training")
-
-            # Log failure to load checkpoint
-            if self.job_service:
-                self.job_service.add_job_log(
-                    self.job_id, "ERROR", f"Failed to load checkpoint: {e}"
-                )
-
+            self.logger.error(f"Error loading model from checkpoint: {e}")
+            self.logger.error(traceback.format_exc())
             return None
 
     def _initialize_wandb_early(self):
@@ -2188,10 +2398,56 @@ class ReceiptTrainer:
                 self.data_config.cache_dir, "jobs", self.job_id
             )
 
-            # Set up checkpoint path if resuming
-            checkpoint_path = TrainingEnvironment.find_latest_checkpoint(
-                self.job_id
-            )
+            # Initialize checkpoint manager
+            if not self.checkpoint_manager and self.job_id:
+                self.checkpoint_manager = CheckpointManager(
+                    job_id=self.job_id,
+                    dynamo_table=getattr(self, "dynamo_table", None),
+                )
+
+            # First check for EFS checkpoint
+            checkpoint_path = None
+            if (
+                self.checkpoint_manager
+                and self.checkpoint_manager.is_efs_mounted()
+            ):
+                self.logger.info("Checking for checkpoints on EFS...")
+
+                # Sync metadata from DynamoDB
+                self.checkpoint_manager.sync_from_dynamo()
+
+                # First try to get best checkpoint
+                best_checkpoint = self.checkpoint_manager.get_best_checkpoint()
+                if best_checkpoint:
+                    checkpoint_path = best_checkpoint
+                    self.logger.info(
+                        f"Found best checkpoint on EFS: {checkpoint_path}"
+                    )
+                    self.update_job_status(
+                        "running",
+                        f"Resuming training from best checkpoint: {checkpoint_path}",
+                    )
+                else:
+                    # Try to get latest checkpoint
+                    latest_checkpoint = (
+                        self.checkpoint_manager.get_latest_checkpoint()
+                    )
+                    if latest_checkpoint:
+                        checkpoint_path = latest_checkpoint
+                        self.logger.info(
+                            f"Found latest checkpoint on EFS: {checkpoint_path}"
+                        )
+                        self.update_job_status(
+                            "running",
+                            f"Resuming training from latest checkpoint: {checkpoint_path}",
+                        )
+
+            # If no EFS checkpoint, check local paths
+            if not checkpoint_path:
+                checkpoint_path = TrainingEnvironment.find_latest_checkpoint(
+                    self.job_id
+                )
+
             resume_training = bool(checkpoint_path)
 
             if checkpoint_path:
@@ -2203,51 +2459,113 @@ class ReceiptTrainer:
                     f"Resuming training from checkpoint: {checkpoint_path}",
                 )
 
-            # Load and configure
-            try:
-                self.logger.info("Loading data...")
-                self.load_data()
+            # Configure model training
+            self.configure_training(
+                output_dir=output_dir,
+                num_train_epochs=job_config.get("num_train_epochs", 3),
+                learning_rate=job_config.get("learning_rate", 5e-5),
+                per_device_train_batch_size=job_config.get(
+                    "per_device_train_batch_size", 8
+                ),
+                per_device_eval_batch_size=job_config.get(
+                    "per_device_eval_batch_size", 8
+                ),
+                warmup_ratio=job_config.get("warmup_ratio", 0.1),
+                weight_decay=job_config.get("weight_decay", 0.01),
+                max_grad_norm=job_config.get("max_grad_norm", 1.0),
+                logging_steps=job_config.get("logging_steps", 100),
+                save_steps=job_config.get("save_steps", 500),
+                save_total_limit=job_config.get("save_total_limit", 3),
+                evaluation_strategy=job_config.get(
+                    "evaluation_strategy", "epoch"
+                ),
+                save_strategy=job_config.get("save_strategy", "epoch"),
+                fp16=job_config.get("fp16", False),
+                gradient_accumulation_steps=job_config.get(
+                    "gradient_accumulation_steps", 1
+                ),
+            )
 
-                self.logger.info("Initializing model...")
-                self.initialize_model()
+            # Prepare dataset
+            max_samples = job_config.get("max_samples")
+            self.prepare_dataset(max_train_samples=max_samples)
 
-                self.logger.info("Configuring training...")
-                self.configure_training(output_dir=output_dir)
+            # Start training
+            result = self.train(
+                enable_checkpointing=True,
+                enable_early_stopping=job_config.get("early_stopping", False),
+                resume_training=resume_training,
+                resume_from_checkpoint=(
+                    checkpoint_path if resume_training else None
+                ),
+            )
 
-                # Train the model
-                self.logger.info("Starting training...")
-                result = self.train(
-                    enable_checkpointing=True,
-                    enable_early_stopping=True,
-                    resume_training=resume_training,
-                    resume_from_checkpoint=checkpoint_path,
-                )
+            # Save final model
+            final_model_path = os.path.join(output_dir, "final_model")
+            self.save_model(final_model_path)
 
-                # Update job status on completion
-                self.update_job_status(
-                    "completed", "Training completed successfully"
-                )
+            # Save final model to EFS if available
+            if (
+                self.checkpoint_manager
+                and self.checkpoint_manager.is_efs_mounted()
+            ):
+                try:
+                    # Save final model to EFS
+                    final_checkpoint_name = f"final_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-                # Stop heartbeat thread
-                self.stop_heartbeat_thread()
+                    # Add metrics to final checkpoint
+                    metrics = {}
+                    if result and hasattr(result, "metrics"):
+                        metrics = result.metrics
 
-                return True
+                    efs_path = self.checkpoint_manager.save_checkpoint(
+                        source_dir=final_model_path,
+                        checkpoint_name=final_checkpoint_name,
+                        step=(
+                            self.global_step
+                            if hasattr(self, "global_step")
+                            else None
+                        ),
+                        epoch=(
+                            self.current_epoch
+                            if hasattr(self, "current_epoch")
+                            else None
+                        ),
+                        metrics=metrics,
+                        is_best=True,  # Mark final model as best by default
+                    )
 
-            except Exception as e:
-                self.logger.error(f"Error during training: {str(e)}")
-                self.logger.error(traceback.format_exc())
+                    if efs_path:
+                        self.logger.info(
+                            f"Final model saved to EFS at {efs_path}"
+                        )
+                except Exception as e:
+                    self.logger.error(
+                        f"Failed to save final model to EFS: {e}"
+                    )
 
-                # Update job status on failure
-                self.update_job_status("failed", f"Training failed: {str(e)}")
+            # Upload to S3 if bucket configured
+            if self.data_config.s3_bucket:
+                try:
+                    self._upload_model_to_s3(final_model_path)
+                except Exception as e:
+                    self.logger.error(f"Error uploading model to S3: {e}")
 
-                # Stop heartbeat thread
-                self.stop_heartbeat_thread()
+            # Update final status
+            self.update_job_status(
+                "succeeded",
+                f"Training completed successfully. Model saved to {final_model_path}",
+            )
 
-                return False
+            return True
 
         except Exception as e:
-            self.logger.error(f"Error processing job: {str(e)}")
+            self.logger.error(f"Error processing job: {e}")
             self.logger.error(traceback.format_exc())
+
+            # Update job status
+            self.update_job_status("failed", f"Training failed: {str(e)}")
+
             return False
 
     def train(
