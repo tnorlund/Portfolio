@@ -6,6 +6,10 @@ Semantic understanding of receipts is necessary for accurate word labeling. Here
 
 ## 📦 Functions
 
+### `list_receipts()`
+
+Lists all receipts. This provides the `image_id` and `receipt_id` per validation process.
+
 ### `extract_candidate_merchant_fields(image_id, receipt_id)`
 
 Extracts possible `address`, `url`, and `phone` values from `ReceiptWord` entities.
@@ -76,10 +80,10 @@ This module is designed to be run inside a Step Function dedicated to receipt-le
 
 ```mermaid
 flowchart TD
-    Start([Start]) --> ListReceiptsNeedingValidation["List receipts needing merchant validation"]
-    ListReceiptsNeedingValidation --> ValidateMerchant0["Validate Merchant"]
-    ListReceiptsNeedingValidation --> ValidateMerchant1["Validate Merchant"]
-    ListReceiptsNeedingValidation --> ValidateMerchantEllipsis["..."]
+    Start([Start]) --> list_receipts["List receipts needing merchant validation"]
+    list_receipts --> ValidateMerchant0["Validate Merchant"]
+    list_receipts --> ValidateMerchant1["Validate Merchant"]
+    list_receipts --> ValidateMerchantEllipsis["..."]
 
 
     subgraph "Validate Merchant"
