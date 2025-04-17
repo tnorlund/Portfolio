@@ -94,6 +94,4 @@ flowchart TD
         UploadToOpenAI --> SubmitEmbeddingBatchJob["Submit Embedding job to OpenAI"]
         SubmitEmbeddingBatchJob --> CreateBatchJobDynamo["Create Batch Job in Dynamo"]
     end
-
-    SaveBatchSummary --> End([End])
 ```

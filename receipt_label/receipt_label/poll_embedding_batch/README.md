@@ -13,9 +13,9 @@ stateDiagram-v2
 
     DownloadResults --> ParseResults
     ParseResults --> UpsertToPinecone
-    UpsertToPinecone --> WriteEmbeddingResults
-    WriteEmbeddingResults --> UpdateLabelsToPending
-    UpdateLabelsToPending --> MarkBatchComplete
+    UpsertToPinecone --> WriteEmbeddingResults : Write to DynamoDB
+    WriteEmbeddingResults --> UpdateLabelsToPending : Update DynamoDB labels
+    UpdateLabelsToPending --> MarkBatchComplete : Mark batch complete in DynamoDB
     MarkBatchComplete --> [*]
 
     DownloadResults --> Fail : if download error
