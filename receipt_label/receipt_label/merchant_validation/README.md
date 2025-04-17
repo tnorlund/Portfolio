@@ -10,6 +10,10 @@ Semantic understanding of receipts is necessary for accurate word labeling. Here
 
 Lists all receipts. This provides the `image_id` and `receipt_id` per validation process.
 
+## `get_receipt_details()`
+
+Gets the receipt details given the `image_id` and `receipt_id`. This provides the receipt words and lines for the validation.
+
 ### `extract_candidate_merchant_fields(image_id, receipt_id)`
 
 Extracts possible `address`, `url`, and `phone` values from `ReceiptWord` entities.
@@ -88,7 +92,8 @@ flowchart TD
 
     subgraph "Validate Merchant"
         direction TB
-        extract_candidate_merchant_fields["Extract candidate merchant fields"] --> query_google_places["Query Google Places API"]
+        get_receipt_details["Get Receipt Details"] --> extract_candidate_merchant_fields["Extract candidate merchant fields"]
+        extract_candidate_merchant_fields --> query_google_places["Query Google Places API"]
         query_google_places --> IsMatchFound{"Is match found?"}
 
         IsMatchFound -- Yes --> validate_match_with_gpt["Validate match with GPT"]
