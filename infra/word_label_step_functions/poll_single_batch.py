@@ -1,3 +1,4 @@
+import json
 from logging import getLogger, StreamHandler, Formatter, INFO
 from receipt_label.poll_embedding_batch import (
     list_pending_embedding_batches,
@@ -39,5 +40,18 @@ def poll_handler(event, context):
         upserted_count = upsert_embeddings_to_pinecone(embeddings)
         logger.info(f"Upserted {upserted_count} embeddings to Pinecone")
 
-        # mark_batch_complete(batch_id)
-        # logger.info(f"Marked batch {batch_id} as complete")
+        num_results = write_embedding_results_to_dynamo(embeddings, batch_id)
+        logger.info(f"Wrote {num_results} embeddings to DynamoDB")
+
+        mark_batch_complete(batch_id)
+        logger.info(f"Marked batch {batch_id} as complete")
+
+        return {
+            "statusCode": 200,
+            "body": json.dumps({"message": "Batch processed successfully"}),
+        }
+    else:
+        return {
+            "statusCode": 200,
+            "body": json.dumps({"message": "Batch not completed"}),
+        }

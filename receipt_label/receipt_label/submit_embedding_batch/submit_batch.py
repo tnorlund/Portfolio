@@ -138,9 +138,9 @@ def format_openai_input(
         y_center = centroid[1]
         pinecone_id = (
             f"IMAGE#{rwl.image_id}#"
-            f"RECEIPT#{rwl.receipt_id}#"
-            f"LINE#{rwl.line_id}#"
-            f"WORD#{rwl.word_id}#"
+            f"RECEIPT#{rwl.receipt_id:05d}#"
+            f"LINE#{rwl.line_id:05d}#"
+            f"WORD#{rwl.word_id:05d}#"
             f"LABEL#{rwl.label}"
         )
         entry = {

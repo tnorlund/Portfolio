@@ -119,9 +119,6 @@ def upsert_embeddings_to_pinecone(results: List[dict]):
     Args:
         results (List[dict]): The list of embedding results.
     """
-    print(f"Upserting {len(results)} embeddings to Pinecone")
-    print("First few embedding results:")
-
     vectors = [
         {
             "id": r["custom_id"],
@@ -154,20 +151,44 @@ def write_embedding_results_to_dynamo(results: List[dict], batch_id: str):
         results (List[dict]): The list of embedding results.
     """
 
-    embedding_results = []
+    keys = []
+    meta_by_custom_id = {}
     for result in results:
         custom_id = result["custom_id"]
         meta = parse_metadata_from_custom_id(custom_id, result.get("body", {}))
+        meta_by_custom_id[custom_id] = meta
+        image_id = meta["image_id"]
+        receipt_id = meta["receipt_id"]
+        line_id = meta["line_id"]
+        word_id = meta["word_id"]
+        key = {
+            "PK": {"S": f"IMAGE#{image_id}"},
+            "SK": {
+                "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}"
+            },
+        }
+        keys.append(key)
+
+    receipt_words = dynamo_client.getReceiptWordsByKeys(keys)
+    text_by_key = {}
+    for word in receipt_words:
+        key = (word.image_id, word.receipt_id, word.line_id, word.word_id)
+        text_by_key[key] = word.text
+
+    embedding_results = []
+    for result in results:
+        custom_id = result["custom_id"]
+        meta = meta_by_custom_id[custom_id]
         image_id = meta["image_id"]
         receipt_id = meta["receipt_id"]
         line_id = meta["line_id"]
         word_id = meta["word_id"]
         label = meta["label"]
-        pinecone_id = (
-            f"RECEIPT#{receipt_id}#LINE#{line_id}#WORD#{word_id}#LABEL#{label}"
-        )
-        input_text = result["body"]["input"]
-        text = input_text.split(" [label=")[0].strip()
+        pinecone_id = f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}#LABEL#{label}"
+        key = (image_id, receipt_id, line_id, word_id)
+        text = text_by_key.get(key)
+        if not text:
+            raise Exception(f"No text found for {custom_id}")
         status = "SUCCESS"
         embedding_result = EmbeddingBatchResult(
             batch_id=batch_id,
@@ -182,10 +203,26 @@ def write_embedding_results_to_dynamo(results: List[dict], batch_id: str):
         )
         embedding_results.append(embedding_result)
 
+    # Check for duplicate SK values in embedding_results
+    sk_counts = {}
+    for er in embedding_results:
+        sk = er.key()["SK"]["S"]
+        sk_counts[sk] = sk_counts.get(sk, 0) + 1
+    duplicates = {sk: count for sk, count in sk_counts.items() if count > 1}
+    if duplicates:
+        for sk, count in duplicates.items():
+            print(f"Duplicate SK found: {sk} appears {count} times")
+        raise Exception(
+            f"Found {len(duplicates)} duplicate SK values in embedding results"
+        )
+
+    num_results = 0
     # Batch embedding_results into chunks of 25 and process each chunk separately
     for i in range(0, len(embedding_results), 25):
         chunk = embedding_results[i : i + 25]
-        dynamo_client.embedding_batch_result.addEmbeddingBatchResults(chunk)
+        dynamo_client.addEmbeddingBatchResults(chunk)
+        num_results += len(chunk)
+    return num_results
 
 
 def mark_batch_complete(batch_id: str):

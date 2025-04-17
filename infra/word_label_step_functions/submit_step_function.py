@@ -259,6 +259,7 @@ class WordLabelStepFunctions(ComponentResource):
                                     "dynamodb:Query",
                                     "dynamodb:PutItem",
                                     "dynamodb:UpdateItem",
+                                    "dynamodb:BatchWriteItem",
                                 ],
                                 "Resource": (
                                     "arn:aws:dynamodb:*:*:table/"

@@ -6,14 +6,12 @@ import re
 
 
 def validate_pinecone_id_format(
-    pinecone_id: str, receipt_id: int, line_id: int, word_id: int
+    pinecone_id: str, receipt_id: int, line_id: int, word_id: int, label: str
 ) -> bool:
-    expected = f"RECEIPT#{receipt_id}#LINE#{line_id}#WORD#{word_id}"
+    expected = f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}#LABEL#{label}"
     if pinecone_id != expected:
         return False
-
-    pattern = r"^RECEIPT#\d+#LINE#\d+#WORD#\d+$"
-    return bool(re.match(pattern, pinecone_id))
+    return True
 
 
 class EmbeddingBatchResult:
@@ -55,10 +53,10 @@ class EmbeddingBatchResult:
         self.word_id = word_id
 
         if not validate_pinecone_id_format(
-            pinecone_id, receipt_id, line_id, word_id
+            pinecone_id, receipt_id, line_id, word_id, label
         ):
             raise ValueError(
-                "pinecone_id must be in the format RECEIPT#<receipt_id>#LINE#<line_id>#WORD#<word_id>"
+                "pinecone_id must be in the format RECEIPT#<receipt_id>#LINE#<line_id>#WORD#<word_id>#LABEL#<label>"
             )
         self.pinecone_id = pinecone_id
 
@@ -86,7 +84,7 @@ class EmbeddingBatchResult:
         return {
             "PK": {"S": f"BATCH#{self.batch_id}"},
             "SK": {
-                "S": f"RESULT#RECEIPT#{self.receipt_id}#LINE#{self.line_id}#WORD#{self.word_id}#LABEL#{self.label}"
+                "S": f"RESULT#IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#LINE#{self.line_id:03}#WORD#{self.word_id:03}#LABEL#{self.label}"
             },
         }
 
@@ -99,7 +97,7 @@ class EmbeddingBatchResult:
     def gsi3_key(self) -> dict:
         return {
             "GSI3PK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id}"
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
             },
             "GSI3SK": {"S": f"BATCH#{self.batch_id}#STATUS#{self.status}"},
         }
