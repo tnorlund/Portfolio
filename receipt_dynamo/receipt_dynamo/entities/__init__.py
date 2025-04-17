@@ -1,14 +1,12 @@
 """
 Entity classes for the receipt_dynamo package.
-"""
 
-# This file intentionally left empty as these imports
-# should be done directly from their respective modules
+TODO: Make this import work with intellisense
+"""
 
 # Re-export utility functions needed by other modules
 from receipt_dynamo.entities.util import assert_valid_uuid  # noqa: F401
 
-# Re-export entity classes needed by data modules
 from receipt_dynamo.entities.image import Image, itemToImage  # noqa: F401
 from receipt_dynamo.entities.letter import Letter, itemToLetter  # noqa: F401
 from receipt_dynamo.entities.line import Line, itemToLine  # noqa: F401

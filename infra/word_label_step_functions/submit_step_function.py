@@ -40,6 +40,7 @@ config = Config("portfolio")
 openai_api_key = config.require_secret("OPENAI_API_KEY")
 pinecone_api_key = config.require_secret("PINECONE_API_KEY")
 pinecone_index_name = config.require("PINECONE_INDEX_NAME")
+pinecone_host = config.require("PINECONE_HOST")
 stack = pulumi.get_stack()
 
 
@@ -47,15 +48,6 @@ class WordLabelStepFunctions(ComponentResource):
     def __init__(self, name: str, opts: ResourceOptions = None):
         super().__init__(
             f"{__name__}-{name}", "aws:stepfunctions:StateMachine", opts
-        )
-
-        # Create S3 bucket for NDJSON batch files
-        batch_bucket = aws.s3.Bucket(
-            f"{name}-embedding-batch-bucket",
-            acl="private",
-            force_destroy=True,
-            tags={"environment": stack},
-            opts=ResourceOptions(parent=self),
         )
 
         # Define IAM role for Lambda
@@ -72,6 +64,170 @@ class WordLabelStepFunctions(ComponentResource):
                         }
                     ],
                 }
+            ),
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Create S3 bucket for NDJSON batch files
+        batch_bucket = aws.s3.Bucket(
+            f"{name}-embedding-batch-bucket",
+            acl="private",
+            force_destroy=True,
+            tags={"environment": stack},
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Define the poll lambda
+        poll_embedding_batch_lambda = Function(
+            f"{name}-poll-embedding-batch-lambda",
+            role=submit_lambda_role.arn,
+            runtime="python3.12",
+            handler="poll_single_batch.poll_handler",
+            timeout=900,
+            memory_size=512,
+            code=AssetArchive(
+                {
+                    "poll_single_batch.py": FileAsset(
+                        os.path.join(
+                            os.path.dirname(__file__),
+                            "poll_single_batch.py",
+                        )
+                    )
+                }
+            ),
+            environment=FunctionEnvironmentArgs(
+                variables={
+                    "DYNAMO_TABLE_NAME": dynamodb_table.name,
+                    "OPENAI_API_KEY": openai_api_key,
+                    "PINECONE_API_KEY": pinecone_api_key,
+                    "PINECONE_INDEX_NAME": pinecone_index_name,
+                    "PINECONE_HOST": pinecone_host,
+                    "S3_BUCKET": batch_bucket.bucket,
+                }
+            ),
+            layers=[dynamo_layer.arn, label_layer.arn],
+            tags={"environment": stack},
+            opts=ResourceOptions(
+                parent=self,
+                ignore_changes=["layers"],
+            ),
+        )
+
+        # Define IAM role for poll Step Function
+        poll_sfn_role = Role(
+            f"{name}-poll-sfn-role",
+            assume_role_policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"Service": "states.amazonaws.com"},
+                            "Action": "sts:AssumeRole",
+                        }
+                    ],
+                }
+            ),
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Define the list pending batches lambda
+        list_pending_batches_lambda = Function(
+            f"{name}-list-pending-batches-lambda",
+            role=submit_lambda_role.arn,
+            runtime="python3.12",
+            handler="list_pending_batches_for_polling.list_handler",
+            timeout=900,
+            memory_size=512,
+            code=AssetArchive(
+                {
+                    "list_pending_batches_for_polling.py": FileAsset(
+                        os.path.join(
+                            os.path.dirname(__file__),
+                            "list_pending_batches_for_polling.py",
+                        )
+                    )
+                }
+            ),
+            environment=FunctionEnvironmentArgs(
+                variables={
+                    "DYNAMO_TABLE_NAME": dynamodb_table.name,
+                    "OPENAI_API_KEY": openai_api_key,
+                    "PINECONE_API_KEY": pinecone_api_key,
+                    "PINECONE_INDEX_NAME": pinecone_index_name,
+                    "PINECONE_HOST": pinecone_host,
+                    "S3_BUCKET": batch_bucket.bucket,
+                }
+            ),
+            layers=[dynamo_layer.arn, label_layer.arn],
+            tags={"environment": stack},
+            opts=ResourceOptions(
+                parent=self,
+                ignore_changes=["layers"],
+            ),
+        )
+        RolePolicy(
+            f"{name}-poll-sfn-lambda-invoke-policy",
+            role=poll_sfn_role.id,
+            policy=Output.all(
+                list_pending_batches_lambda.arn,
+                poll_embedding_batch_lambda.arn,
+            ).apply(
+                lambda arns: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": "lambda:InvokeFunction",
+                                "Resource": arns,
+                            }
+                        ],
+                    }
+                )
+            ),
+        )
+
+        # Define the poll embedding batch Step Function
+        StateMachine(
+            f"{name}-poll-embedding-batch-sm",
+            role_arn=poll_sfn_role.arn,
+            definition=Output.all(
+                poll_embedding_batch_lambda.arn,
+                list_pending_batches_lambda.arn,
+            ).apply(
+                lambda arns: json.dumps(
+                    {
+                        "StartAt": "ListPendingBatches",
+                        "States": {
+                            "ListPendingBatches": {
+                                "Type": "Task",
+                                "Resource": arns[1],
+                                "Next": "PollEmbeddingBatch",
+                            },
+                            "PollEmbeddingBatch": {
+                                "Type": "Map",
+                                "ItemsPath": "$.body",
+                                "MaxConcurrency": 10,
+                                "Parameters": {
+                                    "batch_id.$": "$$.Map.Item.Value.batch_id",
+                                    "openai_batch_id.$": "$$.Map.Item.Value.openai_batch_id",
+                                },
+                                "Iterator": {
+                                    "StartAt": "PollEmbeddingBatchTask",
+                                    "States": {
+                                        "PollEmbeddingBatchTask": {
+                                            "Type": "Task",
+                                            "Resource": arns[0],
+                                            "End": True,
+                                        }
+                                    },
+                                },
+                                "End": True,
+                            },
+                        },
+                    }
+                )
             ),
             opts=ResourceOptions(parent=self),
         )
@@ -159,6 +315,7 @@ class WordLabelStepFunctions(ComponentResource):
                     "OPENAI_API_KEY": openai_api_key,
                     "PINECONE_API_KEY": pinecone_api_key,
                     "PINECONE_INDEX_NAME": pinecone_index_name,
+                    "PINECONE_HOST": pinecone_host,
                     "S3_BUCKET": batch_bucket.bucket,
                 }
             ),
@@ -194,6 +351,7 @@ class WordLabelStepFunctions(ComponentResource):
                     "OPENAI_API_KEY": openai_api_key,
                     "PINECONE_API_KEY": pinecone_api_key,
                     "PINECONE_INDEX_NAME": pinecone_index_name,
+                    "PINECONE_HOST": pinecone_host,
                     "S3_BUCKET": batch_bucket.bucket,
                 }
             ),
@@ -227,7 +385,9 @@ class WordLabelStepFunctions(ComponentResource):
             f"{name}-sfn-lambda-invoke-policy",
             role=submit_sfn_role.id,
             policy=Output.all(
-                prepare_batch_lambda.arn, submit_batch_lambda.arn
+                prepare_batch_lambda.arn,
+                submit_batch_lambda.arn,
+                list_pending_batches_lambda.arn,
             ).apply(
                 lambda arns: json.dumps(
                     {

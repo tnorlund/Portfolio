@@ -425,7 +425,9 @@ class _BatchSummary:
                 "TableName": self.table_name,
                 "IndexName": "GSI1",
                 "KeyConditionExpression": "GSI1PK = :pk",
-                "ExpressionAttributeValues": {":pk": {"S": f"BATCH#{status}"}},
+                "ExpressionAttributeValues": {
+                    ":pk": {"S": f"STATUS#{status}"}
+                },
             }
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey

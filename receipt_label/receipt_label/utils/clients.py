@@ -12,6 +12,8 @@ def get_clients():
     dynamo_client = DynamoClient(dynamodb_table)
     openai_client = OpenAI(api_key=openai_api_key)
     pinecone = Pinecone(api_key=pinecone_api_key)
-    pinecone_index = pinecone.Index(os.environ["PINECONE_INDEX_NAME"])
+    pinecone_index = pinecone.Index(
+        os.environ["PINECONE_INDEX_NAME"], host=os.environ["PINECONE_HOST"]
+    )
 
     return dynamo_client, openai_client, pinecone_index
