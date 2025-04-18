@@ -19,6 +19,7 @@ from job_queue import JobQueue
 from ml_packages import MLPackageBuilder
 from networking import VpcForCodeBuild  # Import the new VPC component
 from word_label_step_functions import WordLabelStepFunctions
+from validate_merchant_step_functions import ValidateMerchantStepFunctions
 
 # Import other necessary components
 try:
@@ -44,13 +45,18 @@ except FileNotFoundError:
     pulumi.export("readme", "README file not found")
 
 word_label_step_functions = WordLabelStepFunctions("word-label-step-functions")
+validate_merchant_step_functions = ValidateMerchantStepFunctions(
+    "validate-merchant-step-functions"
+)
 
 # ML Training Infrastructure
 # -------------------------
 
 # Use stack-specific existing key pair from AWS console
 stack = pulumi.get_stack()
-key_pair_name = f"portfolio-receipt-{stack}"  # Use existing key pairs created in AWS console
+key_pair_name = (
+    f"portfolio-receipt-{stack}"  # Use existing key pairs created in AWS console
+)
 
 # Create EC2 Instance Profile for ML training instances
 ml_training_role = aws.iam.Role(
@@ -107,9 +113,7 @@ sns_policy_attachment = aws.iam.RolePolicyAttachment(
     "ml-sns-policy-attachment",
     role=ml_training_role.name,
     policy_arn=sns_policy.arn,
-    opts=ResourceOptions(
-        depends_on=[ml_training_role, spot_handler.sns_topic]
-    ),
+    opts=ResourceOptions(depends_on=[ml_training_role, spot_handler.sns_topic]),
 )
 
 # Create instance profile
@@ -149,13 +153,9 @@ for service in [
         service_name=service,
         vpc_endpoint_type="Interface",
         subnet_ids=network.private_subnet_ids,  # Use network component output
-        security_group_ids=[
-            network.security_group_id
-        ],  # Use new security group
+        security_group_ids=[network.security_group_id],  # Use new security group
         private_dns_enabled=private_dns,
-        opts=pulumi.ResourceOptions(
-            depends_on=[network]
-        ),  # Depend on network creation
+        opts=pulumi.ResourceOptions(depends_on=[network]),  # Depend on network creation
     )
     vpc_endpoints.append(endpoint)
 
@@ -326,9 +326,7 @@ launch_template = aws.ec2.LaunchTemplate(
     network_interfaces=[
         aws.ec2.LaunchTemplateNetworkInterfaceArgs(
             associate_public_ip_address=True,  # Ensure instances in private subnets don't get public IPs
-            security_groups=[
-                network.security_group_id
-            ],  # Use new security group
+            security_groups=[network.security_group_id],  # Use new security group
             # subnet_id is determined by the ASG's vpc_zone_identifiers
         )
     ],
@@ -508,9 +506,7 @@ done
             },
         ),
     ],
-    opts=pulumi.ResourceOptions(
-        depends_on=[network]
-    ),  # Depend on network creation
+    opts=pulumi.ResourceOptions(depends_on=[network]),  # Depend on network creation
 )
 
 # Create Auto Scaling Group using private subnets from network component
@@ -578,18 +574,12 @@ scaling_policy = aws.autoscaling.Policy(
 pulumi.export("vpc_id", network.vpc_id)
 pulumi.export("private_subnet_ids", network.private_subnet_ids)
 pulumi.export("public_subnet_ids", network.public_subnet_ids)
-pulumi.export(
-    "security_group_id", network.security_group_id
-)  # Updated export name
+pulumi.export("security_group_id", network.security_group_id)  # Updated export name
 
 pulumi.export("instance_registry_table", instance_registry.table_name)
 pulumi.export("efs_dns_name", efs_storage.file_system_dns_name)
-pulumi.export(
-    "efs_training_access_point", efs_storage.training_access_point_id
-)
-pulumi.export(
-    "efs_checkpoints_access_point", efs_storage.checkpoints_access_point_id
-)
+pulumi.export("efs_training_access_point", efs_storage.training_access_point_id)
+pulumi.export("efs_checkpoints_access_point", efs_storage.checkpoints_access_point_id)
 pulumi.export("spot_interruption_sns_topic", spot_handler.sns_topic_arn)
 pulumi.export("launch_template_id", launch_template.id)
 pulumi.export("auto_scaling_group_name", asg.name)
@@ -606,9 +596,7 @@ def get_first_subnet(subnets):
     return subnets[0]
 
 
-pulumi.export(
-    "training_subnet_id", network.private_subnet_ids.apply(get_first_subnet)
-)
+pulumi.export("training_subnet_id", network.private_subnet_ids.apply(get_first_subnet))
 
 pulumi.export("training_efs_id", efs_storage.file_system_id)
 pulumi.export("instance_registry_table_name", instance_registry.table_name)

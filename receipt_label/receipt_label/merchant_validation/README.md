@@ -8,7 +8,7 @@ Semantic understanding of receipts is necessary for accurate word labeling. Here
 
 ### `list_receipts()`
 
-Lists all receipts. This provides the `image_id` and `receipt_id` per validation process.
+Lists all receipts that do not have receipt metadata. This provides the `image_id` and `receipt_id` per validation process.
 
 ## `get_receipt_details()`
 

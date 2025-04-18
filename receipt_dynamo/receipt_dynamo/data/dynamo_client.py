@@ -46,6 +46,9 @@ from receipt_dynamo.data._batch_summary import _BatchSummary
 from receipt_dynamo.data._embedding_batch_result import (
     _EmbeddingBatchResult,
 )
+from receipt_dynamo.data._receipt_metadata import (
+    _ReceiptMetadata,
+)
 
 
 class DynamoClient(
@@ -80,6 +83,7 @@ class DynamoClient(
     _ReceiptChatGPTValidation,
     _BatchSummary,
     _EmbeddingBatchResult,
+    _ReceiptMetadata,
 ):
     """A class used to represent a DynamoDB client."""
 

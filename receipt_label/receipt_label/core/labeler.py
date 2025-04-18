@@ -1297,7 +1297,7 @@ class ReceiptLabeler:
             receipt_lines_data,
             receipt_words_data,
             receipt_letters,
-            validations,
+            receipt_word_labels,
         ) = client.getReceiptDetails(image_id, receipt_id)
         if not receipt_data:
             raise ValueError(
