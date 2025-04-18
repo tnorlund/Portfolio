@@ -97,7 +97,6 @@ flowchart TD
     end
 
     write_receipt_metadata_to_dynamo --> End([End])
-    write_receipt_metadata_to_dynamo --> End([End])
 ```
 
 ## 🛠️ Remaining Work
