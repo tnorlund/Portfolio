@@ -22,6 +22,25 @@ Extracts possible `address`, `url`, and `phone` values from `ReceiptWord` entiti
 
 Queries the Google Places API using a dict of `ReceiptWords` grouped by type and returns the top place match, if any.
 
+### `is_match_found(results)`
+
+Checks whether the Google Places API query returned any match data.
+
+**Signature:**
+
+```python
+def is_match_found(results: Optional[dict]) -> bool:
+    """
+    Args:
+        results (dict or None): The output from `query_google_places`.
+    Returns:
+        bool: True if a place dict was returned (even if later deemed invalid), False if `None`.
+    """
+```
+
+Returns `True` when `results` is not `None`, indicating that a Google response was received (regardless of validity).
+Returns `False` when `results` is `None`, indicating no match was found.
+
 ### `infer_merchant_with_gpt(receipt_word_lines)`
 
 When no result is found in Google Places, this function sends the text of the receipt lines to GPT using function-calling with OpenAI and asks it to infer likely merchant metadata. Returns a structured result containing a guessed merchant name, address, and phone number.
@@ -104,8 +123,12 @@ flowchart TD
 - [ ] Create confidence thresholds or fallback logic when GPT match is “UNSURE”.
 - [x] Implement `retry_google_search_with_inferred_data(gpt_merchant_data)`
 - [ ] Add tests for `is_valid_google_match(...)` with diverse `place` input cases.
-- [ ] Implement `build_receipt_metadata_from_result_no_match(...)` to store fallback metadata when no Google match is accepted, even after GPT validation.
-- [ ] Add retry validation step using `validate_match_with_gpt` on the Google match retrieved via retry
-- [ ] Add a confidence threshold (e.g. GPT confidence >= 0.7) before accepting "YES" decisions
-- [ ] Unit tests
-- [ ] End to End tests???
+- [x] Implement `build_receipt_metadata_from_result_no_match(...)` to store fallback metadata when no Google match is accepted, even after GPT validation.
+- [x] Add retry validation step using `validate_match_with_gpt` on the Google match retrieved via retry.
+- [x] Pass the validated GPT result (with boosted confidence and matched_fields) into `build_receipt_metadata_from_result` instead of raw GPT inference.
+- [x] Guard against empty phone/address values in `retry_google_search_with_inferred_data` and the caching layer to prevent errors.
+- [x] Fix the `search_by_address` cache key generation to stringify receipt words and avoid `TypeError` when elements are not strings.
+- [ ] Add unit tests covering:
+  - Empty phone/address handling in retry logic.
+  - Cache behavior for empty search values.
+  - Correct propagation of validated confidence and matched_fields into metadata.

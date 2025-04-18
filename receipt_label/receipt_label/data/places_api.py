@@ -65,6 +65,9 @@ class PlacesAPI:
         Returns:
             Optional[Dict]: Cached place details if found, None otherwise
         """
+        if not search_value:
+            logger.debug(f"Skipping cache lookup for empty {search_type}")
+            return None
         try:
             # Skip cache for area searches
             if search_type == "ADDRESS":
@@ -159,6 +162,9 @@ class PlacesAPI:
             place_id (str): The Google Places place_id
             places_response (Dict): The Places API response
         """
+        if not search_value:
+            logger.debug(f"Skipping cache write for empty {search_type}")
+            return
         try:
             if search_type == "ADDRESS":
                 # Skip caching if this is an area search
@@ -233,7 +239,9 @@ class PlacesAPI:
             c for c in phone_number if c.isdigit() or c in "()+-"
         )
         logger.info(f"Searching by phone: {clean_phone}")
-
+        if not clean_phone:
+            logger.info("Empty phone—skipping Places API search and cache")
+            return None
         # Check cache first
         cached_result = self._get_cached_place("PHONE", clean_phone)
         if cached_result:
@@ -280,13 +288,31 @@ class PlacesAPI:
                 place_id = data["candidates"][0]["place_id"]
                 place_details = self.get_place_details(place_id)
 
-                # Cache the result
-                if place_details:
+                # If this is a genuine business listing, return it
+                if place_details and "establishment" in place_details.get(
+                    "types", []
+                ):
                     logger.info(f"Caching new result for phone: {clean_phone}")
                     self._cache_place(
                         "PHONE", clean_phone, place_id, place_details
                     )
+                    return place_details
 
+                # Otherwise, fallback to text search using the phone number
+                logger.info(
+                    "Phone lookup did not yield an establishment, trying text search fallback"
+                )
+                text_res = self._text_search(clean_phone)
+                if text_res:
+                    return text_res
+
+                # Cache the non-establishment result
+                logger.info(
+                    f"Caching non-establishment result for phone: {clean_phone}"
+                )
+                self._cache_place(
+                    "PHONE", clean_phone, place_id, place_details or {}
+                )
                 return place_details
             else:
                 logger.info(
@@ -349,7 +375,26 @@ class PlacesAPI:
         Returns:
             Optional[Dict]: The place details if found, None otherwise
         """
+        if not address or not address.strip():
+            logger.info("Empty address—skipping Places API search and cache")
+            return None
         try:
+            # If we have a business name from the receipt, try a text-based business search first
+            business_name = None
+            if receipt_words:
+                for word in receipt_words[:10]:
+                    text = getattr(word, "text", "")
+                    if text.isupper() and not any(c.isdigit() for c in text):
+                        business_name = text
+                        break
+            if business_name:
+                logger.debug(
+                    f"Attempting text search for business: {business_name} {address}"
+                )
+                text_res = self._text_search(f"{business_name} {address}")
+                if text_res:
+                    return text_res
+
             # First try to get a complete address suggestion
             # Extract the street address part (assuming it starts with numbers)
             street_address = None
@@ -477,7 +522,16 @@ class PlacesAPI:
             cache_key = f"{cache_key}:{keyword}"
         if receipt_words:
             # Include first few words from receipt to make cache key more specific
-            receipt_key = "_".join(receipt_words[:3])
+            # Ensure each element is a string (e.g. the word.text or its repr)
+            texts = []
+            for w in receipt_words[:3]:
+                if isinstance(w, str):
+                    texts.append(w)
+                elif hasattr(w, "text"):
+                    texts.append(str(w.text))
+                else:
+                    texts.append(str(w))
+            receipt_key = "_".join(texts)
             cache_key = f"{cache_key}:{receipt_key}"
 
         # Check cache first
@@ -1139,3 +1193,21 @@ class BatchPlacesProcessor:
             validation_score=0.0,
             requires_manual_review=True,
         )
+
+    def _text_search(self, query: str) -> Optional[Dict]:
+        """
+        Searches for a business by free‑form text (e.g. “Costco Wholesale Westlake Village”).
+        Uses the Text Search endpoint to return an establishment, not just a route.
+        """
+        url = f"{self.BASE_URL}/textsearch/json"
+        params = {
+            "query": query,
+            "fields": "place_id,formatted_address,name,formatted_phone_number,types,business_status",
+            "key": self.api_key,
+        }
+        resp = requests.get(url, params=params)
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("status") == "OK" and data.get("results"):
+            return data["results"][0]
+        return None

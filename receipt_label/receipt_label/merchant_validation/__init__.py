@@ -11,6 +11,7 @@ from .merchant_validation import (
     build_receipt_metadata_from_result,
     build_receipt_metadata_from_result_no_match,
     write_receipt_metadata_to_dynamo,
+    is_match_found,
 )
 
 __all__ = [
@@ -26,4 +27,5 @@ __all__ = [
     "build_receipt_metadata_from_result",
     "build_receipt_metadata_from_result_no_match",
     "write_receipt_metadata_to_dynamo",
+    "is_match_found",
 ]

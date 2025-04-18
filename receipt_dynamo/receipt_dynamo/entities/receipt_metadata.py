@@ -181,6 +181,31 @@ class ReceiptMetadata:
             "validation_status": {"S": self.validation_status},
         }
 
+    def __repr__(self) -> str:
+        """
+        Returns a string representation of the ReceiptMetadata object.
+
+        Returns:
+            str: A string representation of the ReceiptMetadata object.
+        """
+        return (
+            f"ReceiptMetadata("
+            f"image_id={_repr_str(self.image_id)}, "
+            f"receipt_id={self.receipt_id}, "
+            f"place_id={_repr_str(self.place_id)}, "
+            f"merchant_name={_repr_str(self.merchant_name)}, "
+            f"merchant_category={_repr_str(self.merchant_category)}, "
+            f"address={_repr_str(self.address)}, "
+            f"phone_number={_repr_str(self.phone_number)}, "
+            f"match_confidence={_format_float(self.match_confidence)}, "
+            f"matched_fields={self.matched_fields}, "
+            f"validated_by={_repr_str(self.validated_by)}, "
+            f"timestamp={_repr_str(self.timestamp)}, "
+            f"reasoning={_repr_str(self.reasoning)}, "
+            f"validation_status={_repr_str(self.validation_status)}"
+            f")"
+        )
+
 
 def itemToReceiptMetadata(item: dict) -> ReceiptMetadata:
     required_keys = {

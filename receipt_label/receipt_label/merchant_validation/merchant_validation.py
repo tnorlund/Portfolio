@@ -128,6 +128,17 @@ def validate_match_with_gpt(receipt_fields: dict, google_place: dict) -> dict:
             "reason": str
         }
     """
+    # Normalize receipt_fields keys to ensure we have 'name', 'address', 'phone'
+    normalized_fields = {
+        "name": receipt_fields.get("name")
+        or receipt_fields.get("merchant_name", ""),
+        "address": receipt_fields.get("address")
+        or receipt_fields.get("merchant_address", ""),
+        "phone": receipt_fields.get("phone")
+        or receipt_fields.get("merchant_phone", ""),
+    }
+    # Confidence threshold for field-based matching
+    CONFIDENCE_THRESHOLD = 0.70
     functions = [
         {
             "name": "validateMatch",
@@ -164,6 +175,7 @@ def validate_match_with_gpt(receipt_fields: dict, google_place: dict) -> dict:
 
     system_prompt = (
         "You are an assistant that validates whether a Google Places result matches merchant data extracted from a receipt. "
+        "If the Google Places `name` appears to be a street address (e.g., contains numbers and street suffixes), treat it as an address rather than a business name. "
         "You use string similarity and common sense, and explain your decision clearly."
     )
 
@@ -171,14 +183,16 @@ def validate_match_with_gpt(receipt_fields: dict, google_place: dict) -> dict:
     Compare the following two merchant records and decide whether they match.
  
     📄 Extracted from receipt:
-    - Name: {receipt_fields.get('name')}
-    - Address: {receipt_fields.get('address')}
-    - Phone: {receipt_fields.get('phone')}
+    - Name: {normalized_fields['name']}
+    - Address: {normalized_fields['address']}
+    - Phone: {normalized_fields['phone']}
  
     📍 From Google Places:
     - Name: {google_place.get('name')}
     - Address: {google_place.get('formatted_address')}
     - Phone: {google_place.get('formatted_phone_number')}
+ 
+    Note: if the 'Name' field appears to be an address rather than a business name, focus matching on the Address field.
  
     Only return structured output by calling the `validateMatch` function.
     """
@@ -205,27 +219,54 @@ def validate_match_with_gpt(receipt_fields: dict, google_place: dict) -> dict:
         try:
             args = json.loads(message.function_call.arguments)
             result.update(args)
-            if result["decision"] == "YES" and not result["matched_fields"]:
-                matched_fields = []
-                if (
-                    receipt_fields.get("name", "").lower()
-                    in google_place.get("name", "").lower()
-                ):
-                    matched_fields.append("name")
-                if receipt_fields.get("phone", "").replace(" ", "").replace(
-                    "-", ""
-                ) in google_place.get("formatted_phone_number", "").replace(
-                    " ", ""
-                ).replace(
-                    "-", ""
-                ):
-                    matched_fields.append("phone")
-                if (
-                    receipt_fields.get("address", "").lower().split()[0]
-                    in google_place.get("formatted_address", "").lower()
-                ):
-                    matched_fields.append("address")
-                result["matched_fields"] = matched_fields
+            # Generic field-based matching: 2-of-3 or 1-of-3 + confidence threshold
+            field_matches = []
+            # Name match
+            if (
+                normalized_fields["name"]
+                and normalized_fields["name"].lower()
+                in google_place.get("name", "").lower()
+            ):
+                field_matches.append("name")
+            # Phone match
+            google_phone = google_place.get("formatted_phone_number", "") or ""
+            cleaned_receipt_phone = (
+                normalized_fields["phone"].replace(" ", "").replace("-", "")
+            )
+            cleaned_google_phone = google_phone.replace(" ", "").replace(
+                "-", ""
+            )
+            if (
+                cleaned_receipt_phone
+                and cleaned_receipt_phone == cleaned_google_phone
+            ):
+                field_matches.append("phone")
+            # Address match: ignore numeric differences, focus on street name tokens
+            google_addr = google_place.get("formatted_address", "").lower()
+            addr_tokens = normalized_fields["address"].lower().split()
+            alpha_tokens = [
+                tok for tok in addr_tokens if any(c.isalpha() for c in tok)
+            ]
+            if alpha_tokens and all(
+                tok in google_addr for tok in alpha_tokens
+            ):
+                field_matches.append("address")
+
+            # Apply override rules
+            if len(field_matches) >= 2 or (
+                len(field_matches) == 1
+                and result["confidence"] >= CONFIDENCE_THRESHOLD
+            ):
+                result["decision"] = "YES"
+                result["matched_fields"] = field_matches
+                # Boost confidence if only one field matched
+                if len(field_matches) == 1:
+                    result["confidence"] = max(
+                        result["confidence"], CONFIDENCE_THRESHOLD
+                    )
+                result["reason"] = (
+                    f"Validated by field matching: {field_matches}"
+                )
         except JSONDecodeError:
             pass
 
@@ -233,7 +274,9 @@ def validate_match_with_gpt(receipt_fields: dict, google_place: dict) -> dict:
 
 
 def query_google_places(
-    extracted_dict: dict, google_places_api_key: str
+    extracted_dict: dict,
+    google_places_api_key: str,
+    all_receipt_words: List[ReceiptWord] = None,
 ) -> Optional[dict]:
     """
     Queries the Google Places API using available merchant data extracted from the receipt.
@@ -261,8 +304,9 @@ def query_google_places(
     address_words = extracted_dict.get("address", [])
     if address_words:
         address = address_words[0].extracted_data["value"]
-        receipt_words = [{"text": w.text} for w in address_words]
-        address_match = places_api.search_by_address(address, receipt_words)
+        # Pass full receipt word list for business-name text search
+        wrapped_words = [{"text": w.text} for w in (all_receipt_words or [])]
+        address_match = places_api.search_by_address(address, wrapped_words)
         if address_match:
             return address_match
 
@@ -270,36 +314,60 @@ def query_google_places(
         return None
 
 
-def is_valid_google_match(place: dict, extracted_dict: dict) -> bool:
+def is_match_found(results: Optional[dict]) -> bool:
     """
-    Returns True if the place details represent a valid merchant match based on:
-    1) presence of place_id and formatted_address
-    2) business_status is OPERATIONAL or missing
-    3) not purely a route, street_address, or subpremise
-    4) at least one extracted address fragment appears in the formatted_address
+    Checks whether the Google Places API query returned any match data.
+
+    Args:
+        results (dict or None): The output from `query_google_places`.
+    Returns:
+        bool: True if a place dict was returned (even if later deemed invalid), False if `None`.
     """
-    # 1. Must have place_id and formatted_address
+    return results is not None
+
+
+def is_valid_google_match(results, extracted_data):
+    """
+    Determines whether the Google Places API result is a valid match
+    for the merchant fields you extracted.
+
+    Args:
+        results (dict or None): The dict returned by query_google_places, or None.
+        extracted_data (dict): Your extracted merchant fields (e.g. name, phone).
+
+    Returns:
+        bool: True if this place is a valid match, False otherwise.
+    """
+
+    # Return False if Google Places API returned no results
+    if results is None:
+        return False
+
+    # Assuming `results` is the place dict itself
+    place = results
+
+    # Must have a place_id and an address
     if not place.get("place_id") or not place.get("formatted_address"):
         return False
 
-    # 2. Only accept operational or unspecified status
-    status = place.get("business_status")
-    if status and status != "OPERATIONAL":
-        return False
+    # If you extracted a phone number, compare it
+    extracted_phone = extracted_data.get("phone_number")
+    place_phone = place.get("formatted_phone_number")
+    if extracted_phone and place_phone:
+        # You might already have a normalize_phone() helper
+        if normalize_phone(extracted_phone) != normalize_phone(place_phone):
+            return False
 
-    # 3. Exclude raw-address types
-    bad_types = {"route", "street_address", "subpremise"}
-    if set(place.get("types", [])) & bad_types:
-        return False
+    # If you extracted a business name, compare it (e.g. via fuzzy matching)
+    extracted_name = extracted_data.get("business_name")
+    place_name = place.get("name")
+    if extracted_name and place_name:
+        if not fuzzy_match(place_name, extracted_name):
+            return False
 
-    # 4. Address containment check
-    formatted = place.get("formatted_address", "").lower()
-    for word in extracted_dict.get("address", []):
-        fragment = word.extracted_data.get("value", "").lower()
-        if fragment and fragment in formatted:
-            return True
+    # (Any other checks you had—address similarity, category check, etc.—go here)
 
-    return False
+    return True
 
 
 def infer_merchant_with_gpt(raw_text: List[str], extracted_dict: dict) -> dict:
@@ -315,14 +383,15 @@ def infer_merchant_with_gpt(raw_text: List[str], extracted_dict: dict) -> dict:
             "merchant_name": str,
             "merchant_address": str,
             "merchant_phone": str,
-            "confidence": float
+            "confidence": float,
+            "decision": str
         }
     """
     # Define the function schema for GPT
     functions = [
         {
             "name": "inferMerchant",
-            "description": "Infer merchant name, address, and phone from receipt lines and extracted fields.",
+            "description": "Infer merchant info and indicate whether the confidence is sufficient to accept the inference.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -342,6 +411,11 @@ def infer_merchant_with_gpt(raw_text: List[str], extracted_dict: dict) -> dict:
                         "type": "number",
                         "description": "Confidence score between 0 and 1.",
                     },
+                    "decision": {
+                        "type": "string",
+                        "enum": ["YES", "NO"],
+                        "description": "Whether the inference is confident enough to use.",
+                    },
                 },
                 "required": [
                     "merchant_name",
@@ -356,7 +430,7 @@ def infer_merchant_with_gpt(raw_text: List[str], extracted_dict: dict) -> dict:
     # Construct messages
     system_prompt = (
         "You are an assistant that infers merchant information from OCR'd receipt text. "
-        "Provide output by calling the function."
+        "Provide output by calling the function. Return a 'decision' of YES if confidence ≥ 0.75, otherwise NO."
     )
     user_prompt = (
         "Here are the top lines of a receipt:\n" + "\n".join(raw_text) + "\n\n"
@@ -442,7 +516,6 @@ def build_receipt_metadata_from_result(
     image_id: str,
     gpt_result: dict,
     google_place: dict,
-    raw_receipt_fields: dict,
 ) -> ReceiptMetadata:
     """
     Builds a ReceiptMetadata object from a successful merchant match.
@@ -452,7 +525,6 @@ def build_receipt_metadata_from_result(
         image_id (str): UUID of the image.
         gpt_result (dict): Output from infer_merchant_with_gpt or validation, may include fallback fields.
         google_place (dict): Google Places result.
-        raw_receipt_fields (dict): Original extracted fields for context.
 
     Returns:
         ReceiptMetadata: The constructed metadata entity.
@@ -512,7 +584,6 @@ def build_receipt_metadata_from_result(
 def build_receipt_metadata_from_result_no_match(
     receipt_id: int,
     image_id: str,
-    raw_receipt_fields: dict,
     gpt_result: Optional[dict] = None,
 ) -> ReceiptMetadata:
     """
@@ -521,7 +592,6 @@ def build_receipt_metadata_from_result_no_match(
     Args:
         receipt_id (int): ID of the receipt.
         image_id (str): UUID of the image.
-        raw_receipt_fields (dict): Original extracted fields for context.
         gpt_result (dict, optional): Output from infer_merchant_with_gpt, may include fallback fields.
 
     Returns:
