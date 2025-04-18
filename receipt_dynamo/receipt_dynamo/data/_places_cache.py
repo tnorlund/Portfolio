@@ -177,6 +177,70 @@ class _PlacesCache:
             else:
                 raise Exception(f"Error deleting PlacesCache: {e}")
 
+    def deletePlacesCaches(self, places_cache_items: List[PlacesCache]):
+        """
+        Deletes a list of PlacesCache items from the database.
+        """
+        if places_cache_items is None:
+            raise ValueError(
+                "places_cache_items parameter is required and cannot be None."
+            )
+        if not isinstance(places_cache_items, list):
+            raise ValueError("places_cache_items must be a list.")
+        if not all(
+            isinstance(item, PlacesCache) for item in places_cache_items
+        ):
+            raise ValueError(
+                "All items in places_cache_items must be PlacesCache objects."
+            )
+
+        for i in range(0, len(places_cache_items), CHUNK_SIZE):
+            chunk = places_cache_items[i : i + CHUNK_SIZE]
+            transact_items = [
+                {
+                    "Delete": {
+                        "TableName": self.table_name,
+                        "Key": item.key(),
+                        # "ConditionExpression": "attribute_exists(PK)",
+                    }
+                }
+                for item in chunk
+            ]
+            # Deduplicate transact_items by PK and SK values
+            seen_keys = set()
+            deduped_items = []
+            for tx in transact_items:
+                key = tx["Delete"]["Key"]
+                pk = key["PK"]["S"]
+                sk = key["SK"]["S"]
+                if (pk, sk) not in seen_keys:
+                    seen_keys.add((pk, sk))
+                    deduped_items.append(tx)
+            transact_items = deduped_items
+
+            try:
+                self._client.transact_write_items(TransactItems=transact_items)
+            except ClientError as e:
+                error_code = e.response["Error"]["Code"]
+                if error_code == "ConditionalCheckFailedException":
+                    raise ValueError(
+                        "places_cache_items contains invalid attributes or values"
+                    ) from e
+                elif error_code == "ValidationException":
+                    raise ValueError(
+                        "places_cache_items contains invalid attributes or values"
+                    ) from e
+                elif error_code == "InternalServerError":
+                    raise ValueError("internal server error") from e
+                elif error_code == "ProvisionedThroughputExceededException":
+                    raise ValueError("provisioned throughput exceeded") from e
+                elif error_code == "ResourceNotFoundException":
+                    raise ValueError("table not found") from e
+                else:
+                    raise ValueError(
+                        f"Error deleting places caches: {e}"
+                    ) from e
+
     def getPlacesCache(
         self, search_type: str, search_value: str
     ) -> Optional[PlacesCache]:

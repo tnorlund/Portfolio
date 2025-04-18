@@ -25,6 +25,36 @@ dynamodb_table = env_vars["dynamodb_table_name"]
 dynamo_client = DynamoClient(dynamodb_table)
 batch_id = str(uuid4())
 
+# Get all Places Cache Items
+print("Getting all Places Cache Items", end="")
+sys.stdout.write(".")
+sys.stdout.flush()
+places_cache_items, lek = dynamo_client.listPlacesCaches(
+    limit=25,
+    lastEvaluatedKey=None,
+)
+while lek is not None:
+    next_places_cache_items, lek = dynamo_client.listPlacesCaches(
+        limit=25,
+        lastEvaluatedKey=lek,
+    )
+    places_cache_items.extend(next_places_cache_items)
+    sys.stdout.write(".")
+    sys.stdout.flush()
+print()
+print(f"Found {len(places_cache_items)} Places Cache Items")
+
+# Delete all Places Cache Items
+print("Deleting all Places Cache Items", end="")
+sys.stdout.write(".")
+sys.stdout.flush()
+# Chunk places cache items into 25 and delete
+for i in range(0, len(places_cache_items), 25):
+    chunk = places_cache_items[i : i + 25]
+    dynamo_client.deletePlacesCaches(chunk)
+    sys.stdout.write(".")
+    sys.stdout.flush()
+
 # Get all Embedding Batch Results
 # print("Getting all Embedding Batch Results", end="")
 # sys.stdout.write(".")

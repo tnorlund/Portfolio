@@ -1,4 +1,5 @@
 import json
+import time
 from datetime import datetime
 from typing import Dict, Any, Literal, Generator, Tuple
 from receipt_dynamo.entities.util import normalize_address
@@ -39,6 +40,7 @@ class PlacesCache:
         query_count: int = 0,
         normalized_value: str = None,
         value_hash: str = None,
+        time_to_live: int = None,
     ):
         """
         Initialize a new PlacesCache entry.
@@ -52,7 +54,7 @@ class PlacesCache:
             query_count (int, optional): Times this cache entry was accessed. Defaults to 0.
             normalized_value (str, optional): Normalized version of the search value. Defaults to None.
             value_hash (str, optional): Hash of the original search value. Defaults to None.
-
+            time_to_live (int, optional): Time to live for the cache entry. Defaults to None.
         Raises:
             ValueError: If any of the parameters are invalid
         """
@@ -95,6 +97,16 @@ class PlacesCache:
         # Store normalized value and hash if provided
         self.normalized_value = normalized_value
         self.value_hash = value_hash
+        if time_to_live is not None:
+            if not isinstance(time_to_live, int) or time_to_live < 0:
+                raise ValueError("time_to_live must be non-negative")
+            now = int(time.time())
+            now = int(time.time())
+            if time_to_live < now:
+                raise ValueError("time_to_live must be in the future")
+            self.time_to_live = time_to_live
+        else:
+            self.time_to_live = None
 
     def _pad_search_value(self, value: str) -> str:
         """Pad the search value to a fixed length.
@@ -180,6 +192,7 @@ class PlacesCache:
             "query_count": {"N": str(self.query_count)},
             "search_type": {"S": self.search_type},
             "search_value": {"S": self.search_value},
+            "time_to_live": {"N": str(self.time_to_live)},
         }
 
         # Add normalized value and hash if they exist
@@ -211,6 +224,7 @@ class PlacesCache:
             and self.query_count == other.query_count
             and self.normalized_value == other.normalized_value
             and self.value_hash == other.value_hash
+            and self.time_to_live == other.time_to_live
         )
 
     def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
@@ -230,6 +244,8 @@ class PlacesCache:
             yield "normalized_value", self.normalized_value
         if self.value_hash:
             yield "value_hash", self.value_hash
+        if self.time_to_live:
+            yield "time_to_live", self.time_to_live
 
     def __repr__(self) -> str:
         """
@@ -248,6 +264,8 @@ class PlacesCache:
             base += f", normalized_value='{self.normalized_value}'"
         if self.value_hash:
             base += f", value_hash='{self.value_hash}'"
+        if self.time_to_live:
+            base += f", time_to_live={self.time_to_live}"
         return base + ")"
 
 
@@ -326,6 +344,11 @@ def itemToPlacesCache(item: Dict[str, Dict[str, Any]]) -> "PlacesCache":
         if "value_hash" in item and "S" in item["value_hash"]:
             value_hash = item["value_hash"]["S"]
 
+        if "time_to_live" in item and "N" in item["time_to_live"]:
+            time_to_live = int(item["time_to_live"]["N"])
+        else:
+            time_to_live = None
+
         return PlacesCache(
             search_type=search_type,
             search_value=search_value,
@@ -335,6 +358,7 @@ def itemToPlacesCache(item: Dict[str, Dict[str, Any]]) -> "PlacesCache":
             query_count=int(item["query_count"]["N"]),
             normalized_value=normalized_value,
             value_hash=value_hash,
+            time_to_live=time_to_live,
         )
     except (json.JSONDecodeError, ValueError, KeyError) as e:
         raise ValueError(f"Error converting item to PlacesCache: {str(e)}")
