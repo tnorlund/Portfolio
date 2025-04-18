@@ -43,3 +43,11 @@ class EmbeddingStatus(str, Enum):
 
     SUCCESS = "SUCCESS"
     FAILED = "FAILED"
+
+
+class MerchantValidationStatus(str, Enum):
+    """Tracking the outcome of merchant validation jobs."""
+
+    MATCHED = "MATCHED"
+    NO_MATCH = "NO_MATCH"
+    UNSURE = "UNSURE"

@@ -7,6 +7,7 @@ from receipt_dynamo.entities.util import (
     assert_valid_point,
     assert_valid_uuid,
 )
+from receipt_dynamo.constants import MerchantValidationStatus
 
 
 class ReceiptMetadata:
@@ -109,6 +110,13 @@ class ReceiptMetadata:
             raise ValueError("reasoning must be a string")
         self.reasoning = reasoning
 
+        if self.match_confidence >= 0.85:
+            self.validation_status = MerchantValidationStatus.MATCHED
+        elif self.match_confidence >= 0.5:
+            self.validation_status = MerchantValidationStatus.UNSURE
+        else:
+            self.validation_status = MerchantValidationStatus.NO_MATCH
+
     def key(self) -> dict:
         """Returns the primary key used to store this record in DynamoDB."""
         return {
@@ -140,6 +148,16 @@ class ReceiptMetadata:
             "GSI2SK": {"S": f"CONFIDENCE#{formatted_match_confidence}"},
         }
 
+    def gsi3_key(self) -> dict:
+        """
+        Returns the key for GSI3: used to sort ReceiptMetadata entries by validation status.
+        Supports filtering low/high-confidence merchant matches across receipts.
+        """
+        return {
+            "GSI3PK": {"S": f"MERCHANT_VALIDATION"},
+            "GSI3SK": {"S": f"STATUS#{self.validation_status}"},
+        }
+
     def to_item(self) -> dict:
         """
         Serializes the ReceiptMetadata object into a DynamoDB-compatible item.
@@ -160,6 +178,7 @@ class ReceiptMetadata:
             "validated_by": {"S": self.validated_by},
             "timestamp": {"S": self.timestamp.isoformat()},
             "reasoning": {"S": self.reasoning},
+            "validation_status": {"S": self.validation_status},
         }
 
 

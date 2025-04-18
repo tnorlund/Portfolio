@@ -32,13 +32,15 @@ Stores a `ReceiptMetadata` entity to DynamoDB based on either a successful or fa
 
 ### `build_receipt_metadata_from_result(receipt_id, image_id, gpt_result, google_result, raw_receipt_fields)`
 
-Formats the final `ReceiptMetadata` object to store in DynamoDB, including source reasoning and match details.
+Builds a `ReceiptMetadata` object from a successful merchant match.
 
 ### `retry_google_search_with_inferred_data(gpt_merchant_data)`
 
 Uses the data inferred by GPT (e.g., merchant name + address) to retry a Google Places API search. Returns a new Google match or `None`.
 
-### `write_no_match_receipt_metadata(receipt_id, image_id, raw_fields, reasoning)`
+### `build_receipt_metadata_from_result_no_match(receipt_id, image_id, raw_fields, reasoning)`
+
+Builds a `ReceiptMetadata` object for the no‑match scenario.
 
 ### `validate_match_with_gpt(receipt_fields, google_place)`
 
@@ -80,7 +82,8 @@ flowchart TD
         query_google_places --> IsMatchFound{"Is match found?"}
 
         IsMatchFound -- Yes --> is_valid_google_match["Is valid Google match?"]
-        is_valid_google_match -- Yes --> build_receipt_metadata_from_result["Build validated ReceiptMetadata"] --> write_receipt_metadata_to_dynamo
+        is_valid_google_match -- Yes --> build_receipt_metadata_from_result["Build validated ReceiptMetadata"]
+        build_receipt_metadata_from_result --> write_receipt_metadata_to_dynamo["Write results to DynamoDB"]
         is_valid_google_match -- No --> validate_match_with_gpt["Validate match with GPT"]
         validate_match_with_gpt -- Yes --> build_receipt_metadata_from_result
         validate_match_with_gpt -- No --> InferWithGPT["Infer merchant info with GPT"]
@@ -89,17 +92,21 @@ flowchart TD
         InferWithGPT --> retry_google_search_with_inferred_data["Retry Google Places with inferred data"]
         retry_google_search_with_inferred_data --> IsRetryMatchFound{"Match found on retry?"}
         IsRetryMatchFound -- Yes --> build_receipt_metadata_from_result
-        IsRetryMatchFound -- No --> build_receipt_metadata_from_result_no_match["Build no-match ReceiptMetadata"] --> write_no_match_receipt_metadata
+        IsRetryMatchFound -- No --> build_receipt_metadata_from_result_no_match["Build no-match ReceiptMetadata"]
+        build_receipt_metadata_from_result_no_match --> write_receipt_metadata_to_dynamo
     end
 
     write_receipt_metadata_to_dynamo --> End([End])
-    write_no_match_receipt_metadata --> End([End])
+    write_receipt_metadata_to_dynamo --> End([End])
 ```
 
 ## 🛠️ Remaining Work
 
 - [ ] Create confidence thresholds or fallback logic when GPT match is “UNSURE”.
+- [x] Implement `retry_google_search_with_inferred_data(gpt_merchant_data)`
 - [ ] Add tests for `is_valid_google_match(...)` with diverse `place` input cases.
 - [ ] Implement `build_receipt_metadata_from_result_no_match(...)` to store fallback metadata when no Google match is accepted, even after GPT validation.
+- [ ] Add retry validation step using `validate_match_with_gpt` on the Google match retrieved via retry
+- [ ] Add a confidence threshold (e.g. GPT confidence >= 0.7) before accepting "YES" decisions
 - [ ] Unit tests
 - [ ] End to End tests???

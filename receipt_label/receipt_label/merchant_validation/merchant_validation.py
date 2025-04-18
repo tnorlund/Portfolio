@@ -1,6 +1,7 @@
 from typing import Tuple, List, Optional
 import json
 from json import JSONDecodeError
+from datetime import datetime, timezone
 
 from receipt_dynamo.entities import (
     ReceiptWordLabel,
@@ -10,6 +11,7 @@ from receipt_dynamo.entities import (
     ReceiptWord,
     ReceiptLetter,
     ReceiptWordTag,
+    ReceiptMetadata,
 )
 from receipt_label.data.places_api import PlacesAPI
 from receipt_label.utils import get_clients
@@ -389,3 +391,180 @@ def infer_merchant_with_gpt(raw_text: List[str], extracted_dict: dict) -> dict:
             pass
 
     return result
+
+
+def retry_google_search_with_inferred_data(
+    gpt_merchant_data: dict, google_places_api_key: str
+) -> Optional[dict]:
+    """
+    Re-attempts a Google Places API search using GPT-inferred address or phone.
+
+    Args:
+        gpt_merchant_data (dict): Output from `infer_merchant_with_gpt(...)`, must include address and phone.
+        google_places_api_key (str): API key for accessing Google Places.
+
+    Returns:
+        dict or None: Google match result or None.
+    """
+    places_api = PlacesAPI(google_places_api_key)
+
+    phone = gpt_merchant_data.get("merchant_phone")
+    if phone:
+        match = places_api.search_by_phone(phone)
+        if match and match.get("status") != "NO_RESULTS":
+            return match
+
+    address = gpt_merchant_data.get("merchant_address")
+    if address:
+        match = places_api.search_by_address(address)
+        if match:
+            return match
+
+    return None
+
+
+def write_receipt_metadata_to_dynamo(metadata: ReceiptMetadata) -> None:
+    """
+    Stores a ReceiptMetadata entity into DynamoDB using the DynamoDB client.
+
+    Args:
+        metadata (ReceiptMetadata): The metadata object to persist.
+    """
+    if metadata is None:
+        raise ValueError("metadata cannot be None")
+    if not isinstance(metadata, ReceiptMetadata):
+        raise ValueError("metadata must be a ReceiptMetadata")
+    dynamo_client.addReceiptMetadata(metadata)
+
+
+def build_receipt_metadata_from_result(
+    receipt_id: int,
+    image_id: str,
+    gpt_result: dict,
+    google_place: dict,
+    raw_receipt_fields: dict,
+) -> ReceiptMetadata:
+    """
+    Builds a ReceiptMetadata object from a successful merchant match.
+
+    Args:
+        receipt_id (int): ID of the receipt.
+        image_id (str): UUID of the image.
+        gpt_result (dict): Output from infer_merchant_with_gpt or validation, may include fallback fields.
+        google_place (dict): Google Places result.
+        raw_receipt_fields (dict): Original extracted fields for context.
+
+    Returns:
+        ReceiptMetadata: The constructed metadata entity.
+    """
+    # Core fields from Google
+    place_id = google_place.get("place_id", "")
+    merchant_name = google_place.get("name", "")
+    address = google_place.get("formatted_address", "")
+    # Phone from Google or fallback to GPT
+    phone = google_place.get("formatted_phone_number") or gpt_result.get(
+        "merchant_phone", ""
+    )
+
+    # Confidence: prefer GPT confidence if provided, else default to 1.0
+    match_confidence = (
+        gpt_result.get("confidence")
+        if gpt_result and "confidence" in gpt_result
+        else 1.0
+    )
+
+    # Matched fields: from GPT validation result if present
+    matched_fields = (
+        gpt_result.get("matched_fields", [])
+        if gpt_result and "matched_fields" in gpt_result
+        else []
+    )
+
+    # Determine source of validation
+    validated_by = "GooglePlaces"
+    if gpt_result and matched_fields:
+        validated_by = "GPT+GooglePlaces"
+
+    # Basic reasoning
+    reasoning = f"Selected merchant based on Google Places"
+    if validated_by == "GPT+GooglePlaces":
+        reasoning += " with GPT validation"
+
+    # Optional category: use first Google type if available
+    merchant_category = google_place.get("types", [None])[0] or ""
+
+    return ReceiptMetadata(
+        image_id=image_id,
+        receipt_id=receipt_id,
+        place_id=place_id,
+        merchant_name=merchant_name,
+        merchant_category=merchant_category,
+        address=address,
+        phone_number=phone,
+        match_confidence=match_confidence,
+        matched_fields=matched_fields,
+        validated_by=validated_by,
+        timestamp=datetime.now(timezone.utc),
+        reasoning=reasoning,
+    )
+
+
+def build_receipt_metadata_from_result_no_match(
+    receipt_id: int,
+    image_id: str,
+    raw_receipt_fields: dict,
+    gpt_result: Optional[dict] = None,
+) -> ReceiptMetadata:
+    """
+    Builds a ReceiptMetadata object for the no-match path when no valid merchant was identified.
+
+    Args:
+        receipt_id (int): ID of the receipt.
+        image_id (str): UUID of the image.
+        raw_receipt_fields (dict): Original extracted fields for context.
+        gpt_result (dict, optional): Output from infer_merchant_with_gpt, may include fallback fields.
+
+    Returns:
+        ReceiptMetadata: The constructed metadata entity with status NO_MATCH.
+    """
+    # Use GPT inference if available, else leave blank
+    merchant_name = gpt_result.get("merchant_name", "") if gpt_result else ""
+    address = gpt_result.get("merchant_address", "") if gpt_result else ""
+    phone = gpt_result.get("merchant_phone", "") if gpt_result else ""
+
+    # Confidence and matched fields default to 0.0 and empty list
+    match_confidence = gpt_result.get("confidence", 0.0) if gpt_result else 0.0
+    matched_fields = gpt_result.get("matched_fields", []) if gpt_result else []
+
+    # Determine validated_by source
+    validated_by = "GPT" if gpt_result else "None"
+
+    # Reasoning message
+    if gpt_result:
+        reasoning = (
+            f"No valid Google Places match; used GPT inference with confidence "
+            f"{match_confidence:.2f}"
+        )
+    else:
+        reasoning = (
+            "No valid Google Places match and no GPT inference was performed"
+        )
+
+    # Use empty placeholders for place_id and category
+    place_id = ""
+    merchant_category = ""
+
+    return ReceiptMetadata(
+        image_id=image_id,
+        receipt_id=receipt_id,
+        place_id=place_id,
+        merchant_name=merchant_name,
+        merchant_category=merchant_category,
+        address=address,
+        phone_number=phone,
+        match_confidence=match_confidence,
+        matched_fields=matched_fields,
+        validated_by=validated_by,
+        timestamp=datetime.now(timezone.utc),
+        reasoning=reasoning,
+    )
