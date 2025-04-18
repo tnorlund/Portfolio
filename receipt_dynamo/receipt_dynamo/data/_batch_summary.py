@@ -13,6 +13,7 @@ from receipt_dynamo.entities.batch_summary import (
     itemToBatchSummary,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
+from receipt_dynamo.constants import BatchType
 
 
 def validate_last_evaluated_key(lek: dict) -> None:

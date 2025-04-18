@@ -414,6 +414,7 @@ class _Receipt:
         list[ReceiptWord],
         list[ReceiptLetter],
         list[ReceiptWordTag],
+        list[ReceiptWordLabel],
     ]:
         """Get a receipt with its details
 
@@ -428,6 +429,7 @@ class _Receipt:
             - list[ReceiptWord]: List of receipt words
             - list[ReceiptLetter]: List of receipt letters
             - list[ReceiptWordTag]: List of receipt word tags
+            - list[ReceiptWordLabel]: List of receipt word labels
         """
         try:
             response = self._client.query(
@@ -443,7 +445,7 @@ class _Receipt:
             words = []
             letters = []
             tags = []
-
+            labels = []
             for item in response["Items"]:
                 if item["TYPE"]["S"] == "RECEIPT":
                     receipt = itemToReceipt(item)
@@ -455,6 +457,8 @@ class _Receipt:
                     letters.append(itemToReceiptLetter(item))
                 elif item["TYPE"]["S"] == "RECEIPT_WORD_TAG":
                     tags.append(itemToReceiptWordTag(item))
+                elif item["TYPE"]["S"] == "RECEIPT_WORD_LABEL":
+                    labels.append(itemToReceiptWordLabel(item))
 
             return (
                 receipt,
@@ -462,6 +466,7 @@ class _Receipt:
                 words,
                 letters,
                 tags,
+                labels,
             )
         except ClientError as e:
             raise ValueError(f"Error getting receipt details: {e}")

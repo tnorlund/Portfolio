@@ -113,7 +113,7 @@ class ReceiptMetadata:
         """Returns the primary key used to store this record in DynamoDB."""
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {"S": f"RECEIPT#{self.receipt_id}#METADATA"},
+            "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#METADATA"},
         }
 
     def gsi1_key(self) -> dict:
@@ -125,7 +125,7 @@ class ReceiptMetadata:
         return {
             "GSI1PK": {"S": f"MERCHANT#{normalized_merchant_name}"},
             "GSI1SK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id}#METADATA"
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#METADATA"
             },
         }
 

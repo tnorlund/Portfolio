@@ -1785,6 +1785,7 @@ def test_getReceiptDetails_success(
         words,
         letters,
         tags,
+        labels,
     ) = client.getReceiptDetails(
         sample_receipt.image_id, sample_receipt.receipt_id
     )

@@ -52,14 +52,6 @@ class EmbeddingBatchResult:
             raise ValueError("word_id must be greater than or equal to zero")
         self.word_id = word_id
 
-        if not validate_pinecone_id_format(
-            pinecone_id, receipt_id, line_id, word_id, label
-        ):
-            raise ValueError(
-                "pinecone_id must be in the format RECEIPT#<receipt_id>#LINE#<line_id>#WORD#<word_id>#LABEL#<label>"
-            )
-        self.pinecone_id = pinecone_id
-
         if not isinstance(status, str):
             raise ValueError("status must be a string")
         if status not in [s.value for s in EmbeddingStatus]:
@@ -79,6 +71,15 @@ class EmbeddingBatchResult:
         if error_message is not None and not isinstance(error_message, str):
             raise ValueError("error_message must be a string")
         self.error_message = error_message
+
+        # validate pinecone_id format
+        if not validate_pinecone_id_format(
+            pinecone_id, receipt_id, line_id, word_id, label
+        ):
+            raise ValueError(
+                "pinecone_id must be in the format RECEIPT#<receipt_id>#LINE#<line_id>#WORD#<word_id>#LABEL#<label>"
+            )
+        self.pinecone_id = pinecone_id
 
     def key(self) -> dict:
         return {
@@ -207,10 +208,10 @@ def itemToEmbeddingBatchResult(item: dict) -> EmbeddingBatchResult:
         batch_id = item["PK"]["S"].split("#")[1]
         sk_parts = item["SK"]["S"].split("#")
         image_id = item["image_id"]["S"]
-        receipt_id = int(sk_parts[2])
-        line_id = int(sk_parts[4])
-        word_id = int(sk_parts[6])
-        label = sk_parts[8]
+        receipt_id = int(sk_parts[4])
+        line_id = int(sk_parts[6])
+        word_id = int(sk_parts[8])
+        label = sk_parts[10]
         pinecone_id = item["pinecone_id"]["S"]
         text = item["text"]["S"]
         status = item["status"]["S"]
@@ -233,4 +234,4 @@ def itemToEmbeddingBatchResult(item: dict) -> EmbeddingBatchResult:
             error_message=error_message,
         )
     except Exception as e:
-        raise ValueError("Error converting item to EmbeddingBatchResult")
+        raise ValueError(f"Error converting item to EmbeddingBatchResult: {e}")

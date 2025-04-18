@@ -14,7 +14,7 @@ def example_embedding_batch_result():
         receipt_id=101,
         line_id=2,
         word_id=3,
-        pinecone_id="RECEIPT#101#LINE#2#WORD#3",
+        pinecone_id="RECEIPT#00101#LINE#00002#WORD#00003#LABEL#ITEM",
         status=EmbeddingStatus.SUCCESS.value,
         text="Organic Bananas",
         label="ITEM",
@@ -108,7 +108,7 @@ def test_embedding_batch_result_invalid_field(field, value, expected_error):
         receipt_id=101,
         line_id=2,
         word_id=3,
-        pinecone_id="RECEIPT#101#LINE#2#WORD#3",
+        pinecone_id="RECEIPT#00101#LINE#00002#WORD#00003#LABEL#ITEM",
         status=EmbeddingStatus.SUCCESS.value,
         text="OK",
         label="LABEL",
@@ -130,7 +130,7 @@ def test_receipt_id_must_be_positive():
             receipt_id=0,
             line_id=1,
             word_id=1,
-            pinecone_id="RECEIPT#0#LINE#1#WORD#1",
+            pinecone_id="RECEIPT#00000#LINE#00001#WORD#00001#LABEL#ITEM",
             status=EmbeddingStatus.SUCCESS.value,
             text="txt",
             label="LBL",
@@ -149,7 +149,7 @@ def test_line_id_must_be_positive():
             receipt_id=1,
             line_id=-1,
             word_id=1,
-            pinecone_id="RECEIPT#1#LINE#-1#WORD#1",
+            pinecone_id="RECEIPT#00001#LINE#-00001#WORD#00001#LABEL#ITEM",
             status=EmbeddingStatus.SUCCESS.value,
             text="txt",
             label="LBL",
@@ -168,7 +168,7 @@ def test_word_id_must_be_positive():
             receipt_id=1,
             line_id=1,
             word_id=-1,
-            pinecone_id="RECEIPT#1#LINE#1#WORD#-1",
+            pinecone_id="RECEIPT#00001#LINE#00001#WORD#-00001#LABEL#ITEM",
             status=EmbeddingStatus.SUCCESS.value,
             text="txt",
             label="LBL",
@@ -185,8 +185,25 @@ def test_invalid_embedding_status_enum():
             receipt_id=1,
             line_id=1,
             word_id=1,
-            pinecone_id="RECEIPT#1#LINE#1#WORD#1",
+            pinecone_id="RECEIPT#00101#LINE#00002#WORD#00003#LABEL#ITEM",
             status="BAD",
+            text="txt",
+            label="LBL",
+            error_message=None,
+        )
+
+
+@pytest.mark.unit
+def test_pinecone_id_must_be_in_expected_format():
+    with pytest.raises(ValueError, match="pinecone_id must be in the format"):
+        EmbeddingBatchResult(
+            batch_id="dc7e61ba-5722-43a2-8e99-9df9f54287a9",
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            receipt_id=1,
+            line_id=1,
+            word_id=1,
+            pinecone_id="BAD",
+            status=EmbeddingStatus.SUCCESS.value,
             text="txt",
             label="LBL",
             error_message=None,
@@ -297,9 +314,11 @@ def test_embedding_batch_result_malformed_sk_parsing():
 def test_embedding_batch_result_deserialization_without_error_message():
     item = {
         "PK": {"S": "BATCH#dc7e61ba-5722-43a2-8e99-9df9f54287a9"},
-        "SK": {"S": "RESULT#RECEIPT#1#LINE#2#WORD#3#LABEL#ITEM"},
+        "SK": {
+            "S": "RESULT#IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00101#LINE#00002#WORD#00003#LABEL#ITEM"
+        },
         "image_id": {"S": "3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-        "pinecone_id": {"S": "RECEIPT#1#LINE#2#WORD#3"},
+        "pinecone_id": {"S": "RECEIPT#00101#LINE#00002#WORD#00003#LABEL#ITEM"},
         "text": {"S": "Bananas"},
         "label": {"S": "ITEM"},
         "status": {"S": "SUCCESS"},
@@ -313,9 +332,11 @@ def test_embedding_batch_result_deserialization_without_error_message():
 def test_embedding_batch_result_deserialization_with_error_message():
     item = {
         "PK": {"S": "BATCH#dc7e61ba-5722-43a2-8e99-9df9f54287a9"},
-        "SK": {"S": "RESULT#RECEIPT#1#LINE#2#WORD#3#LABEL#ITEM"},
+        "SK": {
+            "S": "RESULT#IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00101#LINE#00002#WORD#00003#LABEL#ITEM"
+        },
         "image_id": {"S": "3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-        "pinecone_id": {"S": "RECEIPT#1#LINE#2#WORD#3"},
+        "pinecone_id": {"S": "RECEIPT#00101#LINE#00002#WORD#00003#LABEL#ITEM"},
         "text": {"S": "Bananas"},
         "label": {"S": "ITEM"},
         "status": {"S": "SUCCESS"},

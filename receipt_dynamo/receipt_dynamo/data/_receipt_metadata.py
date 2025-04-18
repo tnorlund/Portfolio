@@ -351,6 +351,52 @@ class _ReceiptMetadata:
             else:
                 raise ValueError(f"Error getting receipt metadata: {e}")
 
+    def getReceiptMetadatas(self, keys: list[dict]) -> list[ReceiptMetadata]:
+        """
+        Retrieves a list of ReceiptMetadata records from DynamoDB using a list of keys.
+
+        Args:
+            keys (list[dict]): A list of keys to retrieve the ReceiptMetadata records by.
+
+        Returns:
+            list[ReceiptMetadata]: A list of ReceiptMetadata records.
+
+        Raises:
+            ValueError: If keys is None, not a list, or contains None or non-dict items.
+        """
+        if keys is None:
+            raise ValueError("keys cannot be None")
+        if not isinstance(keys, list):
+            raise ValueError("keys must be a list")
+        if not all(isinstance(key, dict) for key in keys):
+            raise ValueError("keys must be a list of dictionaries")
+        for key in keys:
+            if not {"PK", "SK"}.issubset(key.keys()):
+                raise ValueError("keys must contain 'PK' and 'SK'")
+            if not key["PK"]["S"].startswith("IMAGE#"):
+                raise ValueError("PK must start with 'IMAGE#'")
+            if not key["SK"]["S"].startswith("RECEIPT#"):
+                raise ValueError("SK must start with 'RECEIPT#'")
+            if not key["SK"]["S"].split("#")[-1] == "METADATA":
+                raise ValueError("SK must contain 'METADATA'")
+        results = []
+        for i in range(0, len(keys), 25):
+            chunk = keys[i : i + 25]
+            response = self._client.batch_get_item(
+                RequestItems={self.table_name: {"Keys": chunk}}
+            )
+            batch_items = response["Responses"].get(self.table_name, [])
+            results.extend(batch_items)
+            unprocessed = response.get("UnprocessedKeys", {})
+            while unprocessed.get(self.table_name):
+                response = self._client.batch_get_item(
+                    RequestItems=unprocessed
+                )
+                batch_items = response["Responses"].get(self.table_name, [])
+                results.extend(batch_items)
+                unprocessed = response.get("UnprocessedKeys", {})
+        return [itemToReceiptMetadata(result) for result in results]
+
     def listReceiptMetadatas(
         self, limit: int = None, lastEvaluatedKey: dict | None = None
     ) -> Tuple[List[ReceiptMetadata], dict | None]:

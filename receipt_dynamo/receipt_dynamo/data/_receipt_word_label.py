@@ -708,6 +708,7 @@ class _ReceiptWordLabel:
             raise ValueError(
                 "Validation status must be one of the following: "
                 + ", ".join(valid_statuses)
+                + f" but got {validation_status}"
             )
         if limit is not None and not isinstance(limit, int):
             raise ValueError("Limit must be an integer")

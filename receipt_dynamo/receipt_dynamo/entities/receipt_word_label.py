@@ -184,9 +184,7 @@ class ReceiptWordLabel:
             dict: The GSI3 key for the receipt word label.
         """
         return {
-            "GSI3PK": {
-                "S": f"VALIDATION_STATUS#{self.validation_status or 'UNKNOWN'}"
-            },
+            "GSI3PK": {"S": f"VALIDATION_STATUS#{self.validation_status}"},
             "GSI3SK": {
                 "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#LINE#{self.line_id:05d}#WORD#{self.word_id:05d}#LABEL#{self.label}"
             },

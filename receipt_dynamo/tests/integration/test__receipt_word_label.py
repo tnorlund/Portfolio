@@ -20,7 +20,7 @@ def sample_receipt_word_label():
         label="ITEM",
         reasoning="This word appears to be an item description",
         timestamp_added="2024-03-20T12:00:00Z",
-        validation_status="VALIDATED",
+        validation_status="VALID",
     )
 
 
@@ -524,6 +524,7 @@ def test_updateReceiptWordLabels_success(
         label="PRICE",
         reasoning="This word appears to be a price",
         timestamp_added="2024-03-20T12:00:00Z",
+        validation_status="VALID",
     )
     client.addReceiptWordLabel(second_label)
 
@@ -537,6 +538,7 @@ def test_updateReceiptWordLabels_success(
             label=sample_receipt_word_label.label,
             reasoning="Updated reasoning 1",
             timestamp_added=sample_receipt_word_label.timestamp_added,
+            validation_status="VALID",
         ),
         ReceiptWordLabel(
             receipt_id=second_label.receipt_id,
@@ -546,6 +548,7 @@ def test_updateReceiptWordLabels_success(
             label=second_label.label,
             reasoning="Updated reasoning 2",
             timestamp_added=second_label.timestamp_added,
+            validation_status="VALID",
         ),
     ]
 
@@ -705,6 +708,7 @@ def test_updateReceiptWordLabels_chunking(
             label=f"LABEL_{i}",
             reasoning=f"Reasoning {i}",
             timestamp_added="2024-03-20T12:00:00Z",
+            validation_status="VALID",
         )
         for i in range(1, 31)
     ]
@@ -883,6 +887,7 @@ def test_deleteReceiptWordLabels_success(
         label="PRICE",
         reasoning="This word appears to be a price",
         timestamp_added="2024-03-20T12:00:00Z",
+        validation_status="VALID",
     )
     client.addReceiptWordLabel(second_label)
 
@@ -1043,6 +1048,7 @@ def test_deleteReceiptWordLabels_chunking(
             label=f"LABEL_{i}",
             reasoning=f"Reasoning {i}",
             timestamp_added="2024-03-20T12:00:00Z",
+            validation_status="VALID",
         )
         for i in range(1, 31)
     ]
@@ -1263,6 +1269,7 @@ def test_listReceiptWordLabels_success(
         label="PRICE",
         reasoning="This word appears to be a price",
         timestamp_added="2024-03-20T12:00:00Z",
+        validation_status="VALID",
     )
     client.addReceiptWordLabel(second_label)
 
@@ -1294,6 +1301,7 @@ def test_listReceiptWordLabels_with_limit(
         label="PRICE",
         reasoning="This word appears to be a price",
         timestamp_added="2024-03-20T12:00:00Z",
+        validation_status="VALID",
     )
     client.addReceiptWordLabel(second_label)
 
@@ -1323,6 +1331,7 @@ def test_listReceiptWordLabels_with_last_evaluated_key(
         label="PRICE",
         reasoning="This word appears to be a price",
         timestamp_added="2024-03-20T12:00:00Z",
+        validation_status="VALID",
     )
     client.addReceiptWordLabel(second_label)
 
@@ -1540,6 +1549,7 @@ def test_getReceiptWordLabelsByLabel_success(
         label="ITEM",  # Same label as sample_receipt_word_label
         reasoning="This word appears to be an item description",
         timestamp_added="2024-03-20T12:00:00Z",
+        validation_status="VALID",
     )
     client.addReceiptWordLabel(second_label)
 
@@ -1571,6 +1581,7 @@ def test_getReceiptWordLabelsByLabel_with_limit(
         label="ITEM",  # Same label as sample_receipt_word_label
         reasoning="This word appears to be an item description",
         timestamp_added="2024-03-20T12:00:00Z",
+        validation_status="VALID",
     )
     client.addReceiptWordLabel(second_label)
 
@@ -1602,6 +1613,7 @@ def test_getReceiptWordLabelsByLabel_with_last_evaluated_key(
         label="ITEM",  # Same label as sample_receipt_word_label
         reasoning="This word appears to be an item description",
         timestamp_added="2024-03-20T12:00:00Z",
+        validation_status="VALID",
     )
     client.addReceiptWordLabel(second_label)
 
@@ -1830,7 +1842,7 @@ def test_getReceiptWordLabelsByValidationStatus_success(
 
     # Act
     labels, last_evaluated_key = client.getReceiptWordLabelsByValidationStatus(
-        "VALIDATED"
+        "VALID"
     )
 
     # Assert
@@ -1852,36 +1864,36 @@ def test_getReceiptWordLabelsByValidationStatus_success(
             "Validation status must be a non-empty string",
         ),
         (
-            {"validation_status": "INVALID"},
+            {"validation_status": "VALIDATED"},
             "Validation status must be one of the following: "
             + ", ".join([status.value for status in ValidationStatus]),
         ),
         (
-            {"validation_status": "VALIDATED", "limit": "not-an-int"},
+            {"validation_status": "VALID", "limit": "not-an-int"},
             "Limit must be an integer",
         ),
         (
-            {"validation_status": "VALIDATED", "limit": 0},
+            {"validation_status": "VALID", "limit": 0},
             "Limit must be greater than 0",
         ),
         (
-            {"validation_status": "VALIDATED", "limit": -1},
+            {"validation_status": "VALID", "limit": -1},
             "Limit must be greater than 0",
         ),
         (
             {
-                "validation_status": "VALIDATED",
+                "validation_status": "VALID",
                 "lastEvaluatedKey": "not-a-dict",
             },
             "LastEvaluatedKey must be a dictionary",
         ),
         (
-            {"validation_status": "VALIDATED", "lastEvaluatedKey": {}},
+            {"validation_status": "VALID", "lastEvaluatedKey": {}},
             "LastEvaluatedKey must contain keys: \\{['PK', 'SK']|['SK', 'PK']\\}",
         ),
         (
             {
-                "validation_status": "VALIDATED",
+                "validation_status": "VALID",
                 "lastEvaluatedKey": {"PK": "not-a-dict", "SK": {"S": "value"}},
             },
             "LastEvaluatedKey\\[PK\\] must be a dict containing a key 'S'",
@@ -1948,7 +1960,7 @@ def test_getReceiptWordLabelsByValidationStatus_client_errors(
     )
 
     with pytest.raises(Exception, match=expected_exception):
-        client.getReceiptWordLabelsByValidationStatus("VALIDATED")
+        client.getReceiptWordLabelsByValidationStatus("VALID")
     mock_query.assert_called_once()
 
 
@@ -1981,7 +1993,7 @@ def test_getReceiptWordLabelsByValidationStatus_pagination_midway_failure(
         Exception,
         match="Could not list receipt word labels by validation status",
     ):
-        client.getReceiptWordLabelsByValidationStatus("VALIDATED")
+        client.getReceiptWordLabelsByValidationStatus("VALID")
     assert mock_query.call_count == 2
 
 
@@ -2003,7 +2015,7 @@ def test_getReceiptWordLabelsByValidationStatus_multi_page_success(
         },
     ]
 
-    labels, lek = client.getReceiptWordLabelsByValidationStatus("VALIDATED")
+    labels, lek = client.getReceiptWordLabelsByValidationStatus("VALID")
     assert len(labels) == 1
     assert lek is None
 
@@ -2034,7 +2046,7 @@ def test_getReceiptWordLabelsByValidationStatus_hits_limit_mid_loop(
     ]
 
     labels, lek = client.getReceiptWordLabelsByValidationStatus(
-        "VALIDATED", limit=3
+        "VALID", limit=3
     )
 
     assert len(labels) == 3
@@ -2064,7 +2076,7 @@ def test_getReceiptWordLabelsByValidationStatus_limit_updates_mid_loop(
     ]
 
     labels, lek = client.getReceiptWordLabelsByValidationStatus(
-        "VALIDATED", limit=2
+        "VALID", limit=2
     )
 
     assert len(labels) == 2
@@ -2097,7 +2109,7 @@ def test_getReceiptWordLabelsByValidationStatus_triggers_limit_mid_loop(
     ]
 
     labels, lek = client.getReceiptWordLabelsByValidationStatus(
-        "VALIDATED", limit=3
+        "VALID", limit=3
     )
 
     assert len(labels) == 3
