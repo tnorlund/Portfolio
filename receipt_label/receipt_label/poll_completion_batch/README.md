@@ -42,5 +42,5 @@ flowchart TB
     UpsertPineconeValid   --> End([End])
     UpsertPineconeInvalid --> End
 
-    MapBatches --> ForEachBatch
+    end
 ```
