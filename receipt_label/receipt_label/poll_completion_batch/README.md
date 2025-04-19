@@ -21,11 +21,11 @@ flowchart TB
 
     subgraph ForEachBatch
         direction TB
-        CheckStatus["Check Job Status via OpenAI"]
-        CheckStatus -->|No| End([End])
-        CheckStatus -->|Yes| Download["Download NDJSON result file"]
+        CheckStatus{"Check Job Status via OpenAI"}
+        CheckStatus -- No --> End([End])
+        CheckStatus -- Yes --> Download["Download NDJSON result file"]
         Download --> ParseResults["Parse NDJSON into CompletionBatchResult entries"]
-        ParseResults["Parse NDJSON into CompletionBatchResult entries"] --> ForEachResult{"For each result\n(is_valid?)"}
+        ParseResults --> ForEachResult{"Is `is_valid` true?"}
 
         subgraph DynamoAndPineconeSync
             direction TB
