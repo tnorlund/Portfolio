@@ -19,14 +19,11 @@ class CompletionBatchResult:
         word_id: int,
         original_label: str,
         gpt_suggested_label: str,
-        label_confidence: float,
-        label_changed: bool,
         status: str,
         validated_at: datetime,
         reasoning: str,
         raw_prompt: str,
         raw_response: str,
-        label_target: Optional[str] = None,  # Added label_target as optional
     ):
         assert_valid_uuid(batch_id)
         self.batch_id = batch_id
@@ -54,14 +51,6 @@ class CompletionBatchResult:
             raise ValueError("gpt_suggested_label must be a string")
         self.gpt_suggested_label = gpt_suggested_label
 
-        if not isinstance(label_confidence, float):
-            raise ValueError("label_confidence must be a float")
-        self.label_confidence = label_confidence
-
-        if not isinstance(label_changed, bool):
-            raise ValueError("label_changed must be a boolean")
-        self.label_changed = label_changed
-
         if not isinstance(status, str):
             raise ValueError("status must be a string")
         if not status in [s.value for s in ValidationStatus]:
@@ -86,10 +75,6 @@ class CompletionBatchResult:
             raise ValueError("raw_response must be a string")
         self.raw_response = raw_response
 
-        if label_target is not None and not isinstance(label_target, str):
-            raise ValueError("label_target must be a string if provided")
-        self.label_target = label_target  # Initialize label_target
-
     def key(self) -> dict:
         """
         The key for the completion batch result is a composite key that consists of the batch id and the receipt id, line id, and word id.
@@ -109,7 +94,7 @@ class CompletionBatchResult:
 
     def gsi1_key(self) -> dict:
         return {
-            "GSI1PK": {"S": f"LABEL_TARGET#{self.label_target or 'unknown'}"},
+            "GSI1PK": {"S": f"LABEL#{self.original_label}"},
             "GSI1SK": {"S": f"STATUS#{self.status}"},
         }
 
@@ -131,7 +116,7 @@ class CompletionBatchResult:
         """
         Converts the completion batch result to an item for DynamoDB.
         """
-        item = {
+        return {
             **self.key(),
             **self.gsi1_key(),
             **self.gsi2_key(),
@@ -139,19 +124,12 @@ class CompletionBatchResult:
             "TYPE": {"S": "COMPLETION_BATCH_RESULT"},
             "original_label": {"S": self.original_label},
             "gpt_suggested_label": {"S": self.gpt_suggested_label},
-            "label_confidence": {"N": str(self.label_confidence)},
-            "label_changed": {"BOOL": self.label_changed},
             "status": {"S": self.status},
             "validated_at": {"S": self.validated_at.isoformat()},
             "reasoning": {"S": self.reasoning},
             "raw_prompt": {"S": self.raw_prompt},
             "raw_response": {"S": self.raw_response},
         }
-        if self.label_target is not None:
-            item["label_target"] = {
-                "S": self.label_target
-            }  # Include label_target if not None
-        return item
 
     def __repr__(self) -> str:
         """
@@ -166,14 +144,11 @@ class CompletionBatchResult:
             f"word_id={_repr_str(self.word_id)}, "
             f"original_label={_repr_str(self.original_label)}, "
             f"gpt_suggested_label={_repr_str(self.gpt_suggested_label)}, "
-            f"label_confidence={self.label_confidence}, "
-            f"label_changed={self.label_changed}, "
             f"status={_repr_str(self.status)}, "
             f"validated_at={_repr_str(self.validated_at)}, "
             f"reasoning={_repr_str(self.reasoning)}, "
             f"raw_prompt={_repr_str(self.raw_prompt)}, "
             f"raw_response={_repr_str(self.raw_response)}"
-            f", label_target={_repr_str(self.label_target)}"  # Include label_target in repr
             ")"
         )
 
@@ -188,14 +163,11 @@ class CompletionBatchResult:
         yield "word_id", self.word_id
         yield "original_label", self.original_label
         yield "gpt_suggested_label", self.gpt_suggested_label
-        yield "label_confidence", self.label_confidence
-        yield "label_changed", self.label_changed
         yield "status", self.status
         yield "validated_at", self.validated_at
         yield "reasoning", self.reasoning
         yield "raw_prompt", self.raw_prompt
         yield "raw_response", self.raw_response
-        yield "label_target", self.label_target  # Yield label_target
 
     def __eq__(self, other) -> bool:
         """
@@ -211,14 +183,11 @@ class CompletionBatchResult:
             and self.word_id == other.word_id
             and self.original_label == other.original_label
             and self.gpt_suggested_label == other.gpt_suggested_label
-            and self.label_confidence == other.label_confidence
-            and self.label_changed == other.label_changed
             and self.status == other.status
             and self.validated_at == other.validated_at
             and self.reasoning == other.reasoning
             and self.raw_prompt == other.raw_prompt
             and self.raw_response == other.raw_response
-            and self.label_target == other.label_target  # Compare label_target
         )
 
     def __hash__(self) -> int:
@@ -231,14 +200,11 @@ class CompletionBatchResult:
                 self.word_id,
                 self.original_label,
                 self.gpt_suggested_label,
-                self.label_confidence,
-                self.label_changed,
                 self.status,
                 self.validated_at,
                 self.reasoning,
                 self.raw_prompt,
                 self.raw_response,
-                self.label_target,  # Include label_target in hash
             )
         )
 
@@ -252,8 +218,6 @@ def itemToCompletionBatchResult(item: dict) -> CompletionBatchResult:
         "SK",
         "original_label",
         "gpt_suggested_label",
-        "label_confidence",
-        "label_changed",
         "status",
         "validated_at",
         "reasoning",
@@ -274,16 +238,11 @@ def itemToCompletionBatchResult(item: dict) -> CompletionBatchResult:
         word_id = int(sk_parts[6])
         original_label = sk_parts[8]
         gpt_suggested_label = item["gpt_suggested_label"]["S"]
-        label_confidence = float(item["label_confidence"]["N"])
-        label_changed = item["label_changed"]["BOOL"]
         status = item["status"]["S"]
         validated_at = datetime.fromisoformat(item["validated_at"]["S"])
         reasoning = item["reasoning"]["S"]
         raw_prompt = item["raw_prompt"]["S"]
         raw_response = item["raw_response"]["S"]
-        label_target = item.get("label_target", {}).get(
-            "S"
-        )  # Get label_target if present
         image_id = item["GSI3PK"]["S"].split("#")[1]
         return CompletionBatchResult(
             batch_id=batch_id,
@@ -293,14 +252,11 @@ def itemToCompletionBatchResult(item: dict) -> CompletionBatchResult:
             word_id=word_id,
             original_label=original_label,
             gpt_suggested_label=gpt_suggested_label,
-            label_confidence=label_confidence,
-            label_changed=label_changed,
             status=status,
             validated_at=validated_at,
             reasoning=reasoning,
             raw_prompt=raw_prompt,
             raw_response=raw_response,
-            label_target=label_target,  # Pass label_target to constructor
         )
     except Exception as e:
         raise ValueError(
