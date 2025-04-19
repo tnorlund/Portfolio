@@ -30,6 +30,51 @@ from receipt_label.utils import get_clients
 dynamo_client, openai_client, _ = get_clients()
 
 
+def get_hybrid_context(
+    word: ReceiptWord,
+    words: list[ReceiptWord],
+    max_words_line: int = 10,
+    y_thresh: float = 0.02,
+) -> list[ReceiptWord]:
+    """
+    Returns a mix of all words on the same line (if that line is short enough),
+    plus any off‑line words whose vertical position is within y_thresh of the target.
+
+    - max_words_line: if the line has <= this many words, include the whole line.
+    - y_thresh: fraction of page height (or normalized coords) to capture near‑by rows.
+    """
+    # 1) Line‑based group
+    same_line = [w for w in words if w.line_id == word.line_id]
+    if len(same_line) <= max_words_line:
+        context = same_line.copy()
+    else:
+        # Fall back to sliding window on the line
+        same_line_sorted = sorted(same_line, key=lambda w: w.word_id)
+        idx = [
+            i
+            for i, w in enumerate(same_line_sorted)
+            if w.word_id == word.word_id
+        ][0]
+        left = max(0, idx - 2)
+        right = min(len(same_line_sorted), idx + 3)
+        context = same_line_sorted[left:right]
+
+    # 2) Spatial neighbors off the line
+    _, y0 = word.calculate_centroid()
+    # Collect words whose vertical centroid is within y_thresh
+    spatial_neighbors = [
+        w
+        for w in words
+        if w.line_id != word.line_id
+        and abs(w.calculate_centroid()[1] - y0) < y_thresh
+    ]
+
+    # Merge and dedupe
+    key = lambda w: (w.line_id, w.word_id)
+    merged = {key(w): w for w in context + spatial_neighbors}
+    return list(merged.values())
+
+
 def generate_batch_id() -> str:
     """Generate a unique batch ID as a UUID string."""
     return str(uuid4())
@@ -86,7 +131,14 @@ def fetch_original_receipt_word_labels(
 
     keys = []
     for pinecone_id in pinecone_ids:
-        parts = pinecone_id.split("#")
+        if pinecone_id.startswith("WORD#"):
+            suffix = pinecone_id[len("WORD#") :]
+        elif pinecone_id.startswith("CTX#"):
+            suffix = pinecone_id[len("CTX#") :]
+        else:
+            suffix = pinecone_id
+
+        parts = suffix.split("#")
         image_id = parts[1]
         receipt_id = int(parts[3])
         line_id = int(parts[5])
@@ -137,6 +189,7 @@ def format_openai_input(
         x_center = centroid[0]
         y_center = centroid[1]
         pinecone_id = (
+            "WORD#"
             f"IMAGE#{rwl.image_id}#"
             f"RECEIPT#{rwl.receipt_id:05d}#"
             f"LINE#{rwl.line_id:05d}#"
@@ -154,6 +207,39 @@ def format_openai_input(
                     f"angle={word.angle_degrees:.2f} "
                     f"conf={word.confidence:.2f}"
                 ),
+                "model": "text-embedding-3-small",
+            },
+        }
+        inputs.append(entry)
+    return inputs
+
+
+def format_context_openai_input(
+    joined_batch: List[Tuple[ReceiptWordLabel, ReceiptWord]],
+) -> List[dict]:
+    """
+    Format each (ReceiptWordLabel, ReceiptWord) pair into a context-level entry
+    for OpenAI embeddings, using a hybrid line+spatial window.
+    """
+    inputs = []
+    for rwl, word in joined_batch:
+        # Build hybrid context around this word
+        context_words = get_hybrid_context(word, [w for _, w in joined_batch])
+        context_text = " ".join(w.text for w in context_words)
+        pinecone_id = (
+            "CTX#"
+            f"IMAGE#{rwl.image_id}#"
+            f"RECEIPT#{rwl.receipt_id:05d}#"
+            f"LINE#{rwl.line_id:05d}#"
+            f"WORD#{rwl.word_id:05d}#"
+            f"LABEL#{rwl.label}"
+        )
+        entry = {
+            "custom_id": pinecone_id,
+            "method": "POST",
+            "url": "/v1/embeddings",
+            "body": {
+                "input": context_text + f" [label={rwl.label}]",
                 "model": "text-embedding-3-small",
             },
         }

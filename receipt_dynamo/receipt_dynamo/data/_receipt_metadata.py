@@ -330,7 +330,7 @@ class _ReceiptMetadata:
                 TableName=self.table_name,
                 Key={
                     "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"RECEIPT#{receipt_id}#METADATA"},
+                    "SK": {"S": f"RECEIPT#{receipt_id:05d}#METADATA"},
                 },
             )
             item = response.get("Item")

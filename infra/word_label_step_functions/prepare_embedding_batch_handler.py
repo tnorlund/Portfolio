@@ -6,6 +6,7 @@ from receipt_label.submit_embedding_batch import (
     join_labels_with_words,
     chunk_joined_pairs,
     format_openai_input,
+    format_context_openai_input,
     write_ndjson,
     generate_batch_id,
     upload_to_s3,
@@ -52,11 +53,12 @@ def submit_handler(event, context):
     output = []
     for batch in batches:
         batch_id = generate_batch_id()
-        formatted = format_openai_input(batch)
+        # Prepare both word- and context-level embeddings
+        word_inputs = format_openai_input(batch)
+        context_inputs = format_context_openai_input(batch)
+        formatted = word_inputs + context_inputs
         filepath = write_ndjson(batch_id, formatted)
         s3_key = upload_to_s3(filepath, batch_id, bucket=bucket)
-        output.append(
-            {"batch_id": batch_id, "s3_key": s3_key, "s3_bucket": bucket}
-        )
+        output.append({"batch_id": batch_id, "s3_key": s3_key, "s3_bucket": bucket})
 
     return {"statusCode": 200, "batches": output}

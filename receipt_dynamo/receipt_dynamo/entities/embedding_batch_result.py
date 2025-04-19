@@ -8,9 +8,52 @@ import re
 def validate_pinecone_id_format(
     pinecone_id: str, receipt_id: int, line_id: int, word_id: int, label: str
 ) -> bool:
-    expected = f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}#LABEL#{label}"
-    if pinecone_id != expected:
+    parts = pinecone_id.split("#")
+    # Must start with CTX or WORD
+    if parts[0] not in ("CTX", "WORD"):
         return False
+
+    idx = 1
+
+    # Optional IMAGE segment: skip if present (handles WORD#IMAGE#<uuid>#... or CTX#IMAGE#<uuid>#...)
+    if len(parts) > idx + 1 and parts[idx] == "IMAGE":
+        idx += 2
+
+    # Optional "RECEIPT" literal segment: skip if present
+    if len(parts) > idx and parts[idx] == "RECEIPT":
+        idx += 1
+
+    # Now parts[idx] should be the zero-padded receipt_id
+    if parts[idx] != f"{receipt_id:05d}":
+        return False
+    idx += 1
+
+    # Check LINE segment
+    if (
+        len(parts) <= idx + 1
+        or parts[idx] != "LINE"
+        or parts[idx + 1] != f"{line_id:05d}"
+    ):
+        return False
+    idx += 2
+
+    # Check WORD segment
+    if (
+        len(parts) <= idx + 1
+        or parts[idx] != "WORD"
+        or parts[idx + 1] != f"{word_id:05d}"
+    ):
+        return False
+    idx += 2
+
+    # Check LABEL segment
+    if (
+        len(parts) <= idx + 1
+        or parts[idx] != "LABEL"
+        or parts[idx + 1] != label
+    ):
+        return False
+
     return True
 
 
@@ -27,6 +70,7 @@ class EmbeddingBatchResult:
         text: str,
         label: str,
         error_message: Optional[str] = None,
+        view: str = "WORD",
     ):
         assert_valid_uuid(batch_id)
         self.batch_id = batch_id
@@ -68,6 +112,10 @@ class EmbeddingBatchResult:
             raise ValueError("label must be a string")
         self.label = label
 
+        if not isinstance(view, str):
+            raise ValueError("view must be a string")
+        self.view = view
+
         if error_message is not None and not isinstance(error_message, str):
             raise ValueError("error_message must be a string")
         self.error_message = error_message
@@ -77,16 +125,27 @@ class EmbeddingBatchResult:
             pinecone_id, receipt_id, line_id, word_id, label
         ):
             raise ValueError(
-                "pinecone_id must be in the format RECEIPT#<receipt_id>#LINE#<line_id>#WORD#<word_id>#LABEL#<label>"
+                "pinecone_id must be in the format "
+                "CTX#<receipt_id>#LINE#<line_id>#WORD#<word_id>#LABEL#<label> or "
+                "WORD#<receipt_id>#LINE#<line_id>#WORD#<word_id>#LABEL#<label>"
+                f"\nGot: {pinecone_id}"
             )
         self.pinecone_id = pinecone_id
 
     def key(self) -> dict:
+        # Include view in the SK to differentiate word vs. context results
+        view_prefix = f"VIEW#{self.view.upper()}#"
+        sk = (
+            f"{view_prefix}"
+            f"RESULT#IMAGE#{self.image_id}"
+            f"#RECEIPT#{self.receipt_id:05d}"
+            f"#LINE#{self.line_id:03}"
+            f"#WORD#{self.word_id:03}"
+            f"#LABEL#{self.label}"
+        )
         return {
             "PK": {"S": f"BATCH#{self.batch_id}"},
-            "SK": {
-                "S": f"RESULT#IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#LINE#{self.line_id:03}#WORD#{self.word_id:03}#LABEL#{self.label}"
-            },
+            "SK": {"S": sk},
         }
 
     def gsi2_key(self) -> dict:
@@ -114,6 +173,7 @@ class EmbeddingBatchResult:
             "text": {"S": self.text},
             "label": {"S": self.label},
             "status": {"S": self.status},
+            "view": {"S": self.view},
             "error_message": (
                 {"S": self.error_message}
                 if self.error_message
@@ -195,6 +255,7 @@ def itemToEmbeddingBatchResult(item: dict) -> EmbeddingBatchResult:
         "pinecone_id",
         "text",
         "label",
+        "view",
         "error_message",
         "status",
     }
@@ -205,16 +266,34 @@ def itemToEmbeddingBatchResult(item: dict) -> EmbeddingBatchResult:
             f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
         )
     try:
-        batch_id = item["PK"]["S"].split("#")[1]
+        # Extract batch_id from PK
+        batch_id = item["PK"]["S"].split("#", 1)[1]
+
+        # Split SK into parts for flexible parsing
         sk_parts = item["SK"]["S"].split("#")
+
+        # Helper to find the value after a given key in SK
+        def sk_value(key: str) -> str:
+            # Find all positions of the key and use the last one to avoid prefix collisions
+            idxs = [i for i, part in enumerate(sk_parts) if part == key]
+            if idxs:
+                idx = idxs[-1]
+                return sk_parts[idx + 1]
+            raise ValueError(
+                f"SK missing expected key '{key}': {item['SK']['S']}"
+            )
+
         image_id = item["image_id"]["S"]
-        receipt_id = int(sk_parts[4])
-        line_id = int(sk_parts[6])
-        word_id = int(sk_parts[8])
-        label = sk_parts[10]
+
+        # Dynamically parse IDs and label
+        receipt_id = int(sk_value("RECEIPT"))
+        line_id = int(sk_value("LINE"))
+        word_id = int(sk_value("WORD"))
+        label = sk_value("LABEL")
         pinecone_id = item["pinecone_id"]["S"]
         text = item["text"]["S"]
         status = item["status"]["S"]
+        view = item["view"]["S"]
 
         if "error_message" in item and "S" in item["error_message"]:
             error_message = item["error_message"]["S"]
@@ -231,6 +310,7 @@ def itemToEmbeddingBatchResult(item: dict) -> EmbeddingBatchResult:
             status=status,
             text=text,
             label=label,
+            view=view,
             error_message=error_message,
         )
     except Exception as e:

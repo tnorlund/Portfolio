@@ -30,7 +30,18 @@ dynamo_client, openai_client, pinecone_index = get_clients()
 
 
 def parse_metadata_from_custom_id(custom_id: str, body: dict) -> dict:
-    parts = custom_id.split("#")
+    # Detect view from custom_id prefix ("WORD" or "CTX")
+    if custom_id.startswith("WORD#"):
+        view = "word"
+        suffix = custom_id[len("WORD#") :]
+    elif custom_id.startswith("CTX#"):
+        view = "context"
+        suffix = custom_id[len("CTX#") :]
+    else:
+        view = "unknown"
+        suffix = custom_id
+
+    parts = suffix.split("#")
     label = parts[-1]
 
     # Parse position and angle from input text (if you want to reuse it from there)
@@ -42,6 +53,8 @@ def parse_metadata_from_custom_id(custom_id: str, body: dict) -> dict:
         "label": label,
         "source": "openai_embedding_batch",
     }
+    # Attach view metadata
+    meta["view"] = view
 
     try:
         # extract raw input text
@@ -134,34 +147,68 @@ def upsert_embeddings_to_pinecone(results: List[dict]):
             }
         )
 
+    # Remove duplicate keys to avoid BatchGetItem errors when both word and context views exist
+    unique = {}
+    for key in keys:
+        pk = key["PK"]["S"]
+        sk = key["SK"]["S"]
+        unique[(pk, sk)] = key
+    keys = list(unique.values())
+
     receipt_words = dynamo_client.getReceiptWordsByKeys(keys)
+    unique_pairs = {(w.image_id, w.receipt_id) for w in receipt_words}
+    meta_keys = [
+        {
+            "PK": {"S": f"IMAGE#{image_id}"},
+            "SK": {"S": f"RECEIPT#{receipt_id:05d}#METADATA"},
+        }
+        for image_id, receipt_id in unique_pairs
+    ]
+    metadata_items = dynamo_client.getReceiptMetadatas(meta_keys)
+    merchant_map = {
+        (m.image_id, m.receipt_id): m.merchant_name for m in metadata_items
+    }
+
     text_by_key = {}
     for word in receipt_words:
         key = (word.image_id, word.receipt_id, word.line_id, word.word_id)
         text_by_key[key] = word.text
 
-    vectors = [
-        {
-            "id": r["custom_id"],
-            "values": r["response"]["body"]["data"][0]["embedding"],
-            "metadata": parse_metadata_from_custom_id(
-                r["custom_id"], r.get("body", {})
-            )
-            | {
-                "text": text_by_key.get(
-                    (
-                        meta["image_id"],
-                        meta["receipt_id"],
-                        meta["line_id"],
-                        meta["word_id"],
-                    ),
-                    "",
-                )
-            },
+    vectors = []
+    for r in results:
+        resp_data = r.get("response", {}).get("body", {}).get("data")
+        if not resp_data:
+            continue
+        # parse our metadata fields
+        meta = parse_metadata_from_custom_id(r["custom_id"], r.get("body", {}))
+        # build the text field
+        key = (
+            meta["image_id"],
+            meta["receipt_id"],
+            meta["line_id"],
+            meta["word_id"],
+        )
+        combined_text = text_by_key.get(key, "")
+        # fetch merchant name for this receipt
+        merchant_name = merchant_map.get(
+            (meta["image_id"], meta["receipt_id"]), ""
+        )
+        # assemble metadata dict
+        vec_meta = {
+            **meta,
+            "text": combined_text,
         }
-        for r in results
-        if r.get("response", {}).get("body", {}).get("data")
-    ]
+        # attach merchant_name without dropping existing keys
+        if merchant_name:
+            vec_meta["merchant_name"] = merchant_name
+        # build the vector entry
+        vectors.append(
+            {
+                "id": r["custom_id"],
+                "values": resp_data[0]["embedding"],
+                "metadata": vec_meta,
+            }
+        )
 
     batch_size = 100
     upserted_count = 0
@@ -201,6 +248,14 @@ def write_embedding_results_to_dynamo(results: List[dict], batch_id: str):
         }
         keys.append(key)
 
+    # Deduplicate keys to avoid BatchGetItem ValidationException
+    unique = {}
+    for key in keys:
+        pk = key["PK"]["S"]
+        sk = key["SK"]["S"]
+        unique[(pk, sk)] = key
+    keys = list(unique.values())
+
     receipt_words = dynamo_client.getReceiptWordsByKeys(keys)
     text_by_key = {}
     for word in receipt_words:
@@ -216,7 +271,8 @@ def write_embedding_results_to_dynamo(results: List[dict], batch_id: str):
         line_id = meta["line_id"]
         word_id = meta["word_id"]
         label = meta["label"]
-        pinecone_id = f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}#LABEL#{label}"
+        # Use the original custom_id (which includes view prefix) as the Pinecone ID
+        pinecone_id = result["custom_id"]
         key = (image_id, receipt_id, line_id, word_id)
         text = text_by_key.get(key)
         if not text:
@@ -232,6 +288,7 @@ def write_embedding_results_to_dynamo(results: List[dict], batch_id: str):
             status=status,
             text=text,
             label=label,
+            view=meta.get("view", "word"),
         )
         embedding_results.append(embedding_result)
 

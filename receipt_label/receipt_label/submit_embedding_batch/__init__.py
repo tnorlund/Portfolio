@@ -14,6 +14,8 @@ from .submit_batch import (
     add_batch_summary,
     fetch_original_receipt_word_labels,
     update_receipt_word_labels,
+    get_hybrid_context,
+    format_context_openai_input,
 )
 
 __all__ = [
@@ -32,4 +34,6 @@ __all__ = [
     "add_batch_summary",
     "fetch_original_receipt_word_labels",
     "update_receipt_word_labels",
+    "get_hybrid_context",
+    "format_context_openai_input",
 ]
