@@ -67,7 +67,7 @@ Processes retrieved completion results and updates the corresponding `ReceiptWor
 ## 📊 Step Function Architecture
 
 ```mermaid
-flowchart TD
+flowchart TB
     Start([Start]) --> ListValidationTargets["List Validation Targets"]
     ListValidationTargets --> ChunkTargets["Chunk Validation Targets"]
     ChunkTargets --> MapChunks{"Map over chunks"}
