@@ -30,7 +30,11 @@ Joins each label record with its corresponding embedding and OCR data.
 
 ### `chunk_joined_records(joined, batch_size)`
 
-Splits the joined list into appropriately sized chunks for submission.
+Splits the joined list of items into sublists (chunks) of size `batch_size` for parallel processing.
+
+### `write_ndjson(batch_id, input_data)`
+
+Writes the provided `input_data` (NDJSON string) to a file named `{batch_id}.ndjson` in the local workspace.
 
 ### `build_completion_prompts(joined_batch)`
 
@@ -57,6 +61,24 @@ Submits the completion batch job to OpenAI using the uploaded file ID, returning
 Creates a `CompletionBatchSummary` record in DynamoDB to track the job submission and metadata.
 
 > **Note:** Polling for completion results and processing them occurs in a separate Step Function module, not here.
+
+---
+
+## 🧠 Usage
+
+---
+
+1. List all receipt words that need validation.
+2. Split them into manageable chunks.
+3. For each chunk:
+   1. Fetch the word embeddings.
+   2. Merge embeddings with their labels.
+   3. Build validation prompts.
+   4. Format prompts as NDJSON.
+   5. Upload the NDJSON file to S3.
+   6. Submit the completion job to OpenAI.
+   7. Create a CompletionBatchSummary record in DynamoDB.
+4. End.
 
 ## 📊 Step Function Architecture
 
