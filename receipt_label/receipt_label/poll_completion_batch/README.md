@@ -29,8 +29,8 @@ flowchart TB
 
         subgraph DynamoAndPineconeSync
             direction TB
-            ForEachResult -->|Yes| AddValid["Add to validItems list"]
-            ForEachResult -->|No|  AddInvalid["Add to invalidItems list"]
+            ForEachResult -- Yes --> AddValid["Add to validItems list"]
+            ForEachResult -- No -->  AddInvalid["Add to invalidItems list"]
 
             AddValid     --> WriteDynamoValid["batchWrite RECEIPT_WORD_LABEL → VALID updates"]
             AddInvalid   --> WriteDynamoInvalid["batchWrite RECEIPT_WORD_LABEL → INVALID updates"]
