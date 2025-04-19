@@ -15,32 +15,30 @@ This module manages the asynchronous polling of OpenAI completion jobs submitted
 ## 📊 Step Function Architecture
 
 ```mermaid
-flowchart TB
-    Start([Start]) --> ListPending["List Pending CompletionBatchSummaries"]
-    ListPending --> MapBatches{"For each pending batch"}
+    flowchart TB
+        Start([Start]) --> ListPending["List Pending CompletionBatchSummaries"]
+        ListPending --> MapBatches{"For each pending batch"}
 
-    subgraph ForEachBatch
-        direction TB
-        CheckStatus{"Check Job Status via OpenAI"}
-        CheckStatus -- No --> End([End])
-        CheckStatus -- Yes --> Download["Download NDJSON result file"]
-        Download --> ParseResults["Parse NDJSON into CompletionBatchResult entries"]
-        ParseResults --> ForEachResult{"Is Valid?"}
-
-        subgraph DynamoAndPineconeSync
+        subgraph ForEachBatch
             direction TB
-            ForEachResult -- Yes --> AddValid["Add to validItems list"]
-            ForEachResult -- No -->  AddInvalid["Add to invalidItems list"]
+            CheckStatus{"Check Job Status via OpenAI"}
+            CheckStatus -- No --> End([End])
+            CheckStatus -- Yes --> Download["Download NDJSON result file"]
+            Download --> ParseResults["Parse NDJSON into CompletionBatchResult entries"]
+            ParseResults --> ForEachResult{"Is `is_valid` true?"}
 
-            AddValid     --> WriteDynamoValid["batchWrite RECEIPT_WORD_LABEL → VALID updates"]
-            AddInvalid   --> WriteDynamoInvalid["batchWrite RECEIPT_WORD_LABEL → INVALID updates"]
+            subgraph DynamoSync
+                direction TB
+                ForEachResult -- Yes --> UpdateValid["Update ReceiptWordLabel: VALID"]
+                UpdateValid --> UpsertPineconeValid["Upsert Pinecone metadata: VALID"]
+                ForEachResult -- No --> UpdateInvalid["Update ReceiptWordLabel: INVALID"]
+                UpdateInvalid --> CreateProposed["Create new ReceiptWordLabel: status=NONE"]
+                CreateProposed --> UpsertPineconeInvalid["Upsert Pinecone metadata: proposed label"]
+            end
 
-            WriteDynamoValid   --> UpsertPineconeValid["batchUpsert Pinecone metadata VALID"]
-            WriteDynamoInvalid --> UpsertPineconeInvalid["batchUpsert Pinecone metadata INVALID"]
+            UpsertPineconeValid --> End
+            UpsertPineconeInvalid --> End
         end
 
-    UpsertPineconeValid   --> End([End])
-    UpsertPineconeInvalid --> End
-
-    end
+        MapBatches --> ForEachBatch
 ```
