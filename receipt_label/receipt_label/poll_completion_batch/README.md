@@ -18,9 +18,9 @@ This module manages the asynchronous polling of OpenAI completion jobs submitted
     flowchart TB
         Start([Start]) --> ListPending["List Pending CompletionBatchSummaries"]
         ListPending --> ChunkPending["Chunk Pending CompletionBatchSummaries"]
-        ChunkPending --> MapBatches{"For each pending batch"}
+        ChunkPending --> MapChunks{"Map over chunks"}
 
-        subgraph ForEachBatch
+        subgraph MapChunks Branch
             direction TB
             CheckStatus{"Check Job Status via OpenAI"}
             CheckStatus -- No --> End([End])
