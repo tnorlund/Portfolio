@@ -16,6 +16,10 @@ Generates a unique UUID for each completion batch.
 
 Fetches all `ReceiptWordLabel` items with `validation_status = "PENDING"` (or the flag indicating they need validation).
 
+### `chunk_validation_targets(targets, batch_size)`
+
+Splits the list of pending `ReceiptWordLabel` records into chunks of size `batch_size` for parallel Map processing.
+
 ### `fetch_receipt_word_embeddings(labels)`
 
 Retrieves receipt word embeddings and associated metadata (including OCR spatial data) for the given labels from DynamoDB or Pinecone.
@@ -65,24 +69,21 @@ Processes retrieved completion results and updates the corresponding `ReceiptWor
 ```mermaid
 flowchart TD
     Start([Start]) --> ListValidationTargets["List Validation Targets"]
-    ListValidationTargets --> FetchEmbeddings["Fetch Receipt Word Embeddings"]
-    FetchEmbeddings --> JoinEmbeddingsAndLabels["Merge Embeddings and Labels"]
-    JoinEmbeddingsAndLabels --> ChunkIntoCompletionBatches["Chunk into Batches"]
-    ChunkIntoCompletionBatches --> BuildPrompts["Build Completion Prompts"]
-    BuildPrompts --> FormatChunk["Format Chunk into NDJSON"]
-    FormatChunk --> UploadChunk["Upload Chunk to S3"]
+    ListValidationTargets --> ChunkTargets["Chunk Validation Targets"]
+    ChunkTargets --> MapChunks{"Map over chunks"}
 
-    UploadChunk --> EachCompletionBatch["Batch Completion Job"]
-    UploadChunk --> EachCompletionBatch1["Batch Completion Job"]
-    UploadChunk --> EachCompletionBatchEllipsis["..."]
-
-    subgraph "Batch Completion Job"
+    subgraph MapChunks Branch
         direction TB
-        ReadNDJSON["Read NDJSON from S3"] --> UploadToOpenAI["Upload to OpenAI"]
-        UploadToOpenAI --> SubmitCompletionJob["Submit Completion job to OpenAI"]
-        SubmitCompletionJob --> CreateCompletionBatchSummary["Create CompletionBatchSummary in DynamoDB"]
-        CreateCompletionBatchSummary --> PollResults["Poll Completion Results"]
-        PollResults --> ProcessResults["Process Completion Results"]
-        ProcessResults --> End([End])
+        FetchEmbeddings["Fetch Receipt Word Embeddings"]
+        JoinEmbeddingsAndLabels["Merge Embeddings and Labels"]
+        BuildPrompts["Build Completion Prompts"]
+        FormatChunk["Format Chunk into NDJSON"]
+        UploadChunk["Upload NDJSON to S3"]
+        SubmitCompletionJob["Submit Completion job to OpenAI"]
+        CreateCompletionBatchSummary["Create CompletionBatchSummary in DynamoDB"]
+        PollResults["Poll Completion Results"]
+        ProcessResults["Process Completion Results"]
     end
+
+    ProcessResults --> End([End])
 ```
