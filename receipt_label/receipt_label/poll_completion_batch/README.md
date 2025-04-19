@@ -17,7 +17,8 @@ This module manages the asynchronous polling of OpenAI completion jobs submitted
 ```mermaid
     flowchart TB
         Start([Start]) --> ListPending["List Pending CompletionBatchSummaries"]
-        ListPending --> MapBatches{"For each pending batch"}
+        ListPending --> ChunkPending["Chunk Pending CompletionBatchSummaries"]
+        ChunkPending --> MapBatches{"For each pending batch"}
 
         subgraph ForEachBatch
             direction TB
