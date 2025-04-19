@@ -74,15 +74,14 @@ flowchart TB
 
     subgraph MapChunks Branch
         direction TB
-        FetchEmbeddings["Fetch Receipt Word Embeddings"]
-        JoinEmbeddingsAndLabels["Merge Embeddings and Labels"]
-        BuildPrompts["Build Completion Prompts"]
-        FormatChunk["Format Chunk into NDJSON"]
-        UploadChunk["Upload NDJSON to S3"]
-        SubmitCompletionJob["Submit Completion job to OpenAI"]
-        CreateCompletionBatchSummary["Create CompletionBatchSummary in DynamoDB"]
-        PollResults["Poll Completion Results"]
-        ProcessResults["Process Completion Results"]
+        FetchEmbeddings["Fetch Receipt Word Embeddings"] --> JoinEmbeddingsAndLabels["Merge Embeddings and Labels"]
+        JoinEmbeddingsAndLabels --> BuildPrompts["Build Completion Prompts"]
+        BuildPrompts --> FormatChunk["Format Chunk into NDJSON"]
+        FormatChunk --> UploadChunk["Upload NDJSON to S3"]
+        UploadChunk --> SubmitCompletionJob["Submit Completion job to OpenAI"]
+        SubmitCompletionJob --> CreateCompletionBatchSummary["Create CompletionBatchSummary in DynamoDB"]
+        CreateCompletionBatchSummary --> PollResults["Poll Completion Results"]
+        PollResults --> ProcessResults["Process Completion Results"]
     end
 
     ProcessResults --> End([End])
