@@ -40,6 +40,4 @@ This module manages the asynchronous polling of OpenAI completion jobs submitted
             UpsertPineconeValid --> End
             UpsertPineconeInvalid --> End
         end
-
-        MapBatches --> ForEachBatch
 ```
