@@ -25,7 +25,7 @@ flowchart TB
         CheckStatus -- No --> End([End])
         CheckStatus -- Yes --> Download["Download NDJSON result file"]
         Download --> ParseResults["Parse NDJSON into CompletionBatchResult entries"]
-        ParseResults --> ForEachResult{"Is `is_valid` true?"}
+        ParseResults --> ForEachResult{"Is Valid?"}
 
         subgraph DynamoAndPineconeSync
             direction TB
