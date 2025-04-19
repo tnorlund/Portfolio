@@ -26,7 +26,7 @@ This module manages the asynchronous polling of OpenAI completion jobs submitted
             CheckStatus -- No --> End([End])
             CheckStatus -- Yes --> Download["Download NDJSON result file"]
             Download --> ParseResults["Parse NDJSON into CompletionBatchResult entries"]
-            ParseResults --> ForEachResult{"Is `is_valid` true?"}
+            ParseResults --> ForEachResult{"Check if Valid"}
 
             subgraph DynamoSync
                 direction TB
