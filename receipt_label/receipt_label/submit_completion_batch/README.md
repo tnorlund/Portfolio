@@ -56,22 +56,7 @@ Submits the completion batch job to OpenAI using the uploaded file ID, returning
 
 Creates a `CompletionBatchSummary` record in DynamoDB to track the job submission and metadata.
 
-### `poll_completion_batch_results(batch_id)`
-
-Periodically checks the status of the asynchronous completion job and retrieves results when complete.
-
-### `process_completion_results(batch_id, results)`
-
-Processes retrieved completion results and updates the corresponding `ReceiptWordLabel` items according to the model output:
-
-- **If `is_valid` is `True:**
-  - Set the record's `validation_status` to `VALID`.
-  - Keep the original proposed label unchanged.
-  - Clear or leave blank any existing rationale.
-- **If `is_valid` is `False:**
-  - Set the record's `validation_status` to `INVALID`.
-  - Update the record's label to the suggested `correct_label`.
-  - Save the provided `rationale` explanation.
+> **Note:** Polling for completion results and processing them occurs in a separate Step Function module, not here.
 
 ## 📊 Step Function Architecture
 
@@ -89,11 +74,6 @@ flowchart TB
         FormatChunk --> UploadChunk["Upload NDJSON to S3"]
         UploadChunk --> SubmitCompletionJob["Submit Completion job to OpenAI"]
         SubmitCompletionJob --> CreateCompletionBatchSummary["Create CompletionBatchSummary in DynamoDB"]
-        CreateCompletionBatchSummary --> PollResults["Poll Completion Results"]
-        PollResults --> ProcessResults["Process Completion Results"]
-        ProcessResults -->|is_valid == True| SetValid["Set VALID, keep label, clear rationale"]
-        ProcessResults -->|is_valid == False| SetInvalid["Set INVALID, update label, save rationale"]
-        SetValid --> End([End])
-        SetInvalid --> End
+        CreateCompletionBatchSummary --> End([End])
     end
 ```
