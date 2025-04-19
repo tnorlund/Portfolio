@@ -207,6 +207,7 @@ class ValidateMerchantStepFunctions(ComponentResource):
                             "ForEachReceipt": {
                                 "Type": "Map",
                                 "ItemsPath": "$.receipts",
+                                "MaxConcurrency": 25,
                                 "Parameters": {
                                     "image_id.$": "$$.Map.Item.Value.image_id",
                                     "receipt_id.$": "$$.Map.Item.Value.receipt_id",

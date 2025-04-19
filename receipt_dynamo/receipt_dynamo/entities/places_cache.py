@@ -192,7 +192,6 @@ class PlacesCache:
             "query_count": {"N": str(self.query_count)},
             "search_type": {"S": self.search_type},
             "search_value": {"S": self.search_value},
-            "time_to_live": {"N": str(self.time_to_live)},
         }
 
         # Add normalized value and hash if they exist
@@ -200,6 +199,9 @@ class PlacesCache:
             item["normalized_value"] = {"S": self.normalized_value}
         if self.value_hash:
             item["value_hash"] = {"S": self.value_hash}
+        # Include time_to_live only when it’s set
+        if self.time_to_live is not None:
+            item["time_to_live"] = {"N": str(self.time_to_live)}
 
         return item
 
@@ -349,13 +351,17 @@ def itemToPlacesCache(item: Dict[str, Dict[str, Any]]) -> "PlacesCache":
         else:
             time_to_live = None
 
+        place_id = item["place_id"]["S"]
+        last_updated = item["last_updated"]["S"]
+        query_count = int(item["query_count"]["N"])
+
         return PlacesCache(
             search_type=search_type,
             search_value=search_value,
-            place_id=item["place_id"]["S"],
+            place_id=place_id,
             places_response=places_response,
-            last_updated=item["last_updated"]["S"],
-            query_count=int(item["query_count"]["N"]),
+            last_updated=last_updated,
+            query_count=query_count,
             normalized_value=normalized_value,
             value_hash=value_hash,
             time_to_live=time_to_live,

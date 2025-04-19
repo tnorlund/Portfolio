@@ -99,18 +99,17 @@ class ReceiptWordLabel:
                 "timestamp_added must be a datetime object or a string"
             )
 
-        if validation_status is not None:
-            if not isinstance(validation_status, str):
-                raise ValueError("validation_status must be a string")
-            if not validation_status:
-                raise ValueError("validation_status cannot be empty")
-            if not validation_status in [s.value for s in ValidationStatus]:
-                raise ValueError(
-                    f"validation_status must be one of: {', '.join(status.value for status in ValidationStatus)}"
-                )
-            self.validation_status = validation_status
-        else:
-            self.validation_status = None
+        # Always assign a valid enum value for validation_status
+        status = validation_status or ValidationStatus.NONE.value
+        if not isinstance(status, str):
+            raise ValueError("validation_status must be a string")
+        if not status:
+            raise ValueError("validation_status cannot be empty")
+        if status not in [s.value for s in ValidationStatus]:
+            raise ValueError(
+                f"validation_status must be one of: {', '.join(s.value for s in ValidationStatus)}"
+            )
+        self.validation_status = status
 
         if label_proposed_by is not None:
             if not isinstance(label_proposed_by, str):
@@ -204,11 +203,7 @@ class ReceiptWordLabel:
             "TYPE": {"S": "RECEIPT_WORD_LABEL"},
             "reasoning": {"S": self.reasoning},
             "timestamp_added": {"S": self.timestamp_added},
-            "validation_status": (
-                {"S": self.validation_status}
-                if self.validation_status is not None
-                else {"NULL": True}
-            ),
+            "validation_status": {"S": self.validation_status},
             "label_consolidated_from": (
                 {"S": self.label_consolidated_from}
                 if self.label_consolidated_from is not None

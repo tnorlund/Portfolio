@@ -22,6 +22,8 @@ from receipt_label.merchant_validation import (
 )
 from receipt_label.utils import get_clients
 import logging
+import csv
+from types import SimpleNamespace
 
 # Silence the PlacesAPI logger entirely:
 logging.getLogger("receipt_label.data.places_api").setLevel(logging.WARNING)
@@ -32,9 +34,33 @@ GOOGLE_PLACES_API_KEY = os.environ["GOOGLE_PLACES_API_KEY"]
 
 dynamo_client, openai_client, pinecone_index = get_clients()
 
-receipts, last_evaluated_key = dynamo_client.listReceipts(limit=25)
+# receipts, last_evaluated_key = dynamo_client.listReceipts(limit=25)
+
+# Load receipts (image_id and receipt_id) from results-4.csv for debugging
+receipts = []
+with open("/Users/tnorlund/Downloads/results-4.csv", newline="") as csvfile:
+    reader = csv.DictReader(csvfile)
+    for row in reader:
+        # print(row)
+        # Ensure receipt_id is integer
+        if row["merchant_category"] in [
+            "street_address",
+            "postal_code",
+            "subpremise",
+            "premise",
+        ]:
+            image_id = row["PK"].split("#")[1]
+            receipt_id = row["SK"].split("#")[1]
+            receipts.append(
+                SimpleNamespace(
+                    image_id=image_id,
+                    receipt_id=receipt_id,
+                )
+            )
 
 for receipt in receipts:
+    receipt_id = int(receipt.receipt_id)
+    image_id = receipt.image_id
     # Get Receipt details
     (
         receipt,
@@ -43,7 +69,7 @@ for receipt in receipts:
         receipt_letters,
         receipt_word_tags,
         receipt_word_labels,
-    ) = dynamo_client.getReceiptDetails(receipt.image_id, receipt.receipt_id)
+    ) = dynamo_client.getReceiptDetails(image_id, receipt_id)
 
     # Build raw_text as the lines of the receipt
     raw_text = [line.text for line in receipt_lines]
@@ -58,7 +84,7 @@ for receipt in receipts:
     print(f"Google Places results: {results}")
 
     # 1) Check if Google returned any match at all
-    is_match = is_match_found(results)
+    is_match = is_match_found(results) and not results.get("name")
     print(f"Is match found: {is_match}")
 
     if is_match:

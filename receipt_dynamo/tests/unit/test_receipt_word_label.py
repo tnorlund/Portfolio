@@ -3,6 +3,7 @@ from datetime import datetime
 import pytest
 
 from receipt_dynamo import ReceiptWordLabel, itemToReceiptWordLabel
+from receipt_dynamo.constants import ValidationStatus
 
 
 @pytest.fixture
@@ -15,9 +16,6 @@ def example_receipt_word_label():
         label="BUSINESS_NAME",
         reasoning="This word appears at the top of the receipt and matches known business name patterns",
         timestamp_added="2021-01-01T00:00:00",
-        validation_status=None,
-        label_proposed_by=None,
-        label_consolidated_from=None,
     )
 
 
@@ -37,7 +35,10 @@ def test_receipt_word_label_init_valid(example_receipt_word_label):
         == "This word appears at the top of the receipt and matches known business name patterns"
     )
     assert example_receipt_word_label.timestamp_added == "2021-01-01T00:00:00"
-    assert example_receipt_word_label.validation_status is None
+    assert (
+        example_receipt_word_label.validation_status
+        == ValidationStatus.NONE.value
+    )
     assert example_receipt_word_label.label_proposed_by is None
     assert example_receipt_word_label.label_consolidated_from is None
 
@@ -251,7 +252,9 @@ def test_receipt_word_label_to_item(example_receipt_word_label):
     assert item["GSI2SK"] == {
         "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001#LINE#00002#WORD#00003"
     }
-    assert item["GSI3PK"] == {"S": "VALIDATION_STATUS#UNKNOWN"}
+    assert item["GSI3PK"] == {
+        "S": f"VALIDATION_STATUS#{ValidationStatus.NONE.value}"
+    }
     assert item["GSI3SK"] == {
         "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001#LINE#00002#WORD#00003#LABEL#BUSINESS_NAME"
     }
@@ -260,7 +263,7 @@ def test_receipt_word_label_to_item(example_receipt_word_label):
         "S": "This word appears at the top of the receipt and matches known business name patterns"
     }
     assert item["timestamp_added"] == {"S": "2021-01-01T00:00:00"}
-    assert item["validation_status"] == {"NULL": True}
+    assert item["validation_status"] == {"S": ValidationStatus.NONE.value}
     assert item["label_proposed_by"] == {"NULL": True}
     assert item["label_consolidated_from"] == {"NULL": True}
 
@@ -279,7 +282,7 @@ def test_receipt_word_label_repr(example_receipt_word_label):
         in repr_str
     )
     assert "timestamp_added='2021-01-01T00:00:00'" in repr_str
-    assert "validation_status=None" in repr_str
+    assert f"validation_status='{ValidationStatus.NONE.value}'" in repr_str
     assert "label_proposed_by=None" in repr_str
     assert "label_consolidated_from=None" in repr_str
 
@@ -295,7 +298,7 @@ def test_receipt_word_label_iter(example_receipt_word_label):
         "label": "BUSINESS_NAME",
         "reasoning": "This word appears at the top of the receipt and matches known business name patterns",
         "timestamp_added": "2021-01-01T00:00:00",
-        "validation_status": None,
+        "validation_status": ValidationStatus.NONE.value,
         "label_proposed_by": None,
         "label_consolidated_from": None,
     }

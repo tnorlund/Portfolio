@@ -1,6 +1,7 @@
+from botocore.exceptions import ClientError
 from typing import List, Tuple
 
-from receipt_dynamo.entities import ReceiptMetadata
+from receipt_dynamo.entities import ReceiptMetadata, itemToReceiptMetadata
 from receipt_dynamo.entities.util import (
     _format_float,
     _repr_str,
@@ -38,7 +39,7 @@ class _ReceiptMetadata:
                 raise ValueError("receipt_metadata already exists")
             elif error_code == "ValidationException":
                 raise ValueError(
-                    "receipt_metadata contains invalid attributes or values"
+                    f"receipt_metadata contains invalid attributes or values: {e}"
                 )
             elif error_code == "InternalServerError":
                 raise ValueError("internal server error")
@@ -91,7 +92,7 @@ class _ReceiptMetadata:
                 raise ValueError("receipt_metadata already exists")
             elif error_code == "ValidationException":
                 raise ValueError(
-                    "receipt_metadata contains invalid attributes or values"
+                    f"receipt_metadata contains invalid attributes or values: {e}"
                 )
             elif error_code == "InternalServerError":
                 raise ValueError("internal server error")
@@ -129,7 +130,7 @@ class _ReceiptMetadata:
                 raise ValueError("receipt_metadata does not exist")
             elif error_code == "ValidationException":
                 raise ValueError(
-                    "receipt_metadata contains invalid attributes or values"
+                    f"receipt_metadata contains invalid attributes or values: {e}"
                 )
             elif error_code == "InternalServerError":
                 raise ValueError("internal server error")
@@ -188,7 +189,7 @@ class _ReceiptMetadata:
                 raise ValueError("receipt_metadata does not exist")
             elif error_code == "ValidationException":
                 raise ValueError(
-                    "receipt_metadata contains invalid attributes or values"
+                    f"receipt_metadata contains invalid attributes or values: {e}"
                 )
             elif error_code == "InternalServerError":
                 raise ValueError("internal server error")
@@ -225,7 +226,7 @@ class _ReceiptMetadata:
                 raise ValueError("receipt_metadata does not exist")
             elif error_code == "ValidationException":
                 raise ValueError(
-                    "receipt_metadata contains invalid attributes or values"
+                    f"receipt_metadata contains invalid attributes or values: {e}"
                 )
             elif error_code == "InternalServerError":
                 raise ValueError("internal server error")
@@ -271,7 +272,7 @@ class _ReceiptMetadata:
                     for item in chunk
                 ]
                 response = self._client.transact_write_items(
-                    Items=transact_items
+                    TransactItems=transact_items
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
@@ -581,7 +582,7 @@ class _ReceiptMetadata:
             error_code = e.response["Error"]["Code"]
             if error_code == "ValidationException":
                 raise ValueError(
-                    "receipt_metadata contains invalid attributes or values"
+                    f"receipt_metadata contains invalid attributes or values: {e}"
                 )
             elif error_code == "InternalServerError":
                 raise ValueError("internal server error")

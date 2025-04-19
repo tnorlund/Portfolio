@@ -128,6 +128,30 @@ def validate_match_with_gpt(receipt_fields: dict, google_place: dict) -> dict:
             "reason": str
         }
     """
+    # Early reject Google results with empty name
+    if not google_place.get("name"):
+        return {
+            "decision": "NO",
+            "confidence": 0.0,
+            "matched_fields": [],
+            "reason": "Empty Google Places name; treating as no match",
+        }
+    # Reject address-only place types before GPT validation
+    address_only_types = {
+        "street_address",
+        "postal_code",
+        "subpremise",
+        "premise",
+    }
+    place_types = set(google_place.get("types", []))
+    if place_types & address_only_types:
+        return {
+            "decision": "NO",
+            "confidence": 0.0,
+            "matched_fields": [],
+            "reason": "Rejected address-only place type: "
+            + ", ".join(sorted(place_types & address_only_types)),
+        }
     # Normalize receipt_fields keys to ensure we have 'name', 'address', 'phone'
     normalized_fields = {
         "name": receipt_fields.get("name")
@@ -230,20 +254,38 @@ def validate_match_with_gpt(receipt_fields: dict, google_place: dict) -> dict:
                 field_matches.append("name")
             # Phone match
             google_phone = google_place.get("formatted_phone_number", "") or ""
-            cleaned_receipt_phone = (
-                normalized_fields["phone"].replace(" ", "").replace("-", "")
+
+            # Normalize receipt phone field to a string, handling list inputs
+            phone_field = normalized_fields.get("phone", "")
+            if isinstance(phone_field, list):
+                receipt_phone_str = "".join(str(p) for p in phone_field)
+            else:
+                receipt_phone_str = str(phone_field)
+            # Strip spaces and hyphens
+            receipt_phone_str = receipt_phone_str.replace(" ", "").replace(
+                "-", ""
             )
+
+            # Normalize Google phone
             cleaned_google_phone = google_phone.replace(" ", "").replace(
                 "-", ""
             )
-            if (
-                cleaned_receipt_phone
-                and cleaned_receipt_phone == cleaned_google_phone
-            ):
+
+            # Compare normalized phone strings
+            if receipt_phone_str and receipt_phone_str == cleaned_google_phone:
                 field_matches.append("phone")
             # Address match: ignore numeric differences, focus on street name tokens
             google_addr = google_place.get("formatted_address", "").lower()
-            addr_tokens = normalized_fields["address"].lower().split()
+
+            # Normalize receipt address field to a string, handling list inputs
+            address_field = normalized_fields.get("address", "")
+            if isinstance(address_field, list):
+                address_str = " ".join(str(a) for a in address_field)
+            else:
+                address_str = str(address_field)
+            # Lowercase and tokenize
+            address_str = address_str.lower()
+            addr_tokens = address_str.split()
             alpha_tokens = [
                 tok for tok in addr_tokens if any(c.isalpha() for c in tok)
             ]
@@ -345,6 +387,17 @@ def is_valid_google_match(results, extracted_data):
 
     # Assuming `results` is the place dict itself
     place = results
+
+    # Reject address-only results based on Google Place types
+    address_only_types = {
+        "street_address",
+        "postal_code",
+        "subpremise",
+        "premise",
+    }
+    place_types = set(place.get("types", []))
+    if place_types & address_only_types:
+        return False
 
     # Must have a place_id and an address
     if not place.get("place_id") or not place.get("formatted_address"):
@@ -603,7 +656,10 @@ def build_receipt_metadata_from_result_no_match(
     phone = gpt_result.get("merchant_phone", "") if gpt_result else ""
 
     # Confidence and matched fields default to 0.0 and empty list
-    match_confidence = gpt_result.get("confidence", 0.0) if gpt_result else 0.0
+    # Ensure confidence is always a float
+    match_confidence = (
+        float(gpt_result.get("confidence", 0.0)) if gpt_result else 0.0
+    )
     matched_fields = gpt_result.get("matched_fields", []) if gpt_result else []
 
     # Determine validated_by source

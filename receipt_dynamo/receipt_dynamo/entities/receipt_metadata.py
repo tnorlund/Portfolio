@@ -1,5 +1,5 @@
-from datetime import datetime
-from typing import Any, Generator, Tuple
+from datetime import datetime, timezone
+from typing import Any, Generator, Tuple, Optional
 
 from receipt_dynamo.entities.util import (
     _format_float,
@@ -44,15 +44,16 @@ class ReceiptMetadata:
         receipt_id: int,
         place_id: str,
         merchant_name: str,
-        merchant_category: str,
-        address: str,
-        phone_number: str,
         match_confidence: float,
         matched_fields: list[str],
-        validated_by: str,
         timestamp: datetime,
-        reasoning: str,
+        merchant_category: str = "",
+        address: str = "",
+        phone_number: str = "",
+        validated_by: str = "",
+        reasoning: str = "",
     ):
+
         if not isinstance(receipt_id, int):
             raise ValueError("receipt id must be an integer")
         if receipt_id <= 0:
@@ -163,23 +164,40 @@ class ReceiptMetadata:
         Serializes the ReceiptMetadata object into a DynamoDB-compatible item.
         Includes primary key and both GSI keys, as well as all merchant-related metadata.
         """
-        return {
+        item = {
             **self.key(),
             **self.gsi1_key(),
             **self.gsi2_key(),
+            **self.gsi3_key(),
             "TYPE": {"S": "RECEIPT_METADATA"},
             "place_id": {"S": self.place_id},
+            # Required fields (always present)
             "merchant_name": {"S": self.merchant_name},
-            "merchant_category": {"S": self.merchant_category},
-            "address": {"S": self.address},
-            "phone_number": {"S": self.phone_number},
             "match_confidence": {"N": str(self.match_confidence)},
-            "matched_fields": {"SS": self.matched_fields},
-            "validated_by": {"S": self.validated_by},
-            "timestamp": {"S": self.timestamp.isoformat()},
-            "reasoning": {"S": self.reasoning},
             "validation_status": {"S": self.validation_status},
+            "timestamp": {"S": self.timestamp.isoformat()},
         }
+
+        # Optional string fields: only include if non-empty, else mark as NULL
+        for attr in (
+            "merchant_category",
+            "address",
+            "phone_number",
+            "validated_by",
+            "reasoning",
+        ):
+            value = getattr(self, attr)
+            if isinstance(value, str):
+                if value:
+                    item[attr] = {"S": value}
+                else:
+                    item[attr] = {"NULL": True}
+
+        # matched_fields: only include non-empty list
+        if self.matched_fields:
+            item["matched_fields"] = {"SS": self.matched_fields}
+
+        return item
 
     def __repr__(self) -> str:
         """
@@ -206,6 +224,52 @@ class ReceiptMetadata:
             f")"
         )
 
+    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+        """
+        Returns an iterator over the ReceiptMetadata object's attributes.
+
+        Yields:
+            Tuple[str, Any]: A tuple containing the attribute name and its value.
+        """
+        yield "image_id", self.image_id
+        yield "receipt_id", self.receipt_id
+        yield "place_id", self.place_id
+        yield "merchant_name", self.merchant_name
+        yield "merchant_category", self.merchant_category
+        yield "address", self.address
+        yield "phone_number", self.phone_number
+        yield "match_confidence", self.match_confidence
+        yield "matched_fields", self.matched_fields
+        yield "validated_by", self.validated_by
+        yield "timestamp", self.timestamp
+        yield "reasoning", self.reasoning
+        yield "validation_status", self.validation_status
+
+    def __hash__(self) -> int:
+        """
+        Returns a hash value for the ReceiptMetadata object.
+
+        Returns:
+            int: The hash value for the ReceiptMetadata object.
+        """
+        return hash(
+            (
+                self.image_id,
+                self.receipt_id,
+                self.place_id,
+                self.merchant_name,
+                self.merchant_category,
+                self.address,
+                self.phone_number,
+                self.match_confidence,
+                self.matched_fields,
+                self.validated_by,
+                self.timestamp,
+                self.reasoning,
+                self.validation_status,
+            )
+        )
+
 
 def itemToReceiptMetadata(item: dict) -> ReceiptMetadata:
     required_keys = {
@@ -214,14 +278,8 @@ def itemToReceiptMetadata(item: dict) -> ReceiptMetadata:
         "TYPE",
         "place_id",
         "merchant_name",
-        "merchant_category",
-        "address",
-        "phone_number",
         "match_confidence",
-        "matched_fields",
-        "validated_by",
         "timestamp",
-        "reasoning",
     }
 
     if not required_keys.issubset(item.keys()):
@@ -235,26 +293,28 @@ def itemToReceiptMetadata(item: dict) -> ReceiptMetadata:
         receipt_id = int(item["SK"]["S"].split("#")[1])
         place_id = item["place_id"]["S"]
         merchant_name = item["merchant_name"]["S"]
-        merchant_category = item["merchant_category"]["S"]
-        address = item["address"]["S"]
-        phone_number = item["phone_number"]["S"]
         match_confidence = float(item["match_confidence"]["N"])
-        matched_fields = item["matched_fields"]["SS"]
-        validated_by = item["validated_by"]["S"]
-        timestamp = datetime.fromisoformat(item["timestamp"]["S"])
-        reasoning = item["reasoning"]["S"]
+        matched_fields = item.get("matched_fields", {}).get("SS", [])
+        merchant_category = item.get("merchant_category", {}).get("S") or ""
+        address = item.get("address", {}).get("S") or ""
+        phone_number = item.get("phone_number", {}).get("S") or ""
+        validated_by = item.get("validated_by", {}).get("S") or ""
+        reasoning = item.get("reasoning", {}).get("S") or ""
+        # Required timestamp field
+        timestamp_str = item["timestamp"]["S"]
+        timestamp = datetime.fromisoformat(timestamp_str)
         return ReceiptMetadata(
             image_id=image_id,
             receipt_id=receipt_id,
             place_id=place_id,
             merchant_name=merchant_name,
+            match_confidence=match_confidence,
+            matched_fields=matched_fields,
+            timestamp=timestamp,
             merchant_category=merchant_category,
             address=address,
             phone_number=phone_number,
-            match_confidence=match_confidence,
-            matched_fields=matched_fields,
             validated_by=validated_by,
-            timestamp=timestamp,
             reasoning=reasoning,
         )
     except Exception as e:
