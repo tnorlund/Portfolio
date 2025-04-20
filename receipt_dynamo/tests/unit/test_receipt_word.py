@@ -1,6 +1,7 @@
 import pytest
 
 from receipt_dynamo import ReceiptWord, itemToReceiptWord
+from receipt_dynamo.constants import EmbeddingStatus
 
 
 @pytest.fixture
@@ -397,6 +398,151 @@ def test_receipt_word_init_invalid_extracted_data():
 
 
 @pytest.mark.unit
+def test_receipt_word_init_invalid_embedding_status():
+    with pytest.raises(
+        ValueError,
+        match="embedding_status must be a string or EmbeddingStatus enum",
+    ):
+        ReceiptWord(
+            receipt_id=1,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=1,
+            word_id=1,
+            text="Test",
+            bounding_box={"x": 0.0, "y": 0.0, "width": 1.0, "height": 1.0},
+            top_right={"x": 1.0, "y": 2.0},
+            top_left={"x": 1.0, "y": 2.0},
+            bottom_right={"x": 1.0, "y": 2.0},
+            bottom_left={"x": 1.0, "y": 2.0},
+            angle_degrees=0.0,
+            angle_radians=0.0,
+            confidence=0.9,
+            embedding_status=1,
+        )
+
+
+@pytest.mark.unit
+def test_receipt_word_key():
+    """Test that the key() method returns a properly formatted DynamoDB key."""
+    word = ReceiptWord(
+        receipt_id=1,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=3,
+        word_id=4,
+        text="TestWord",
+        bounding_box={
+            "x": 0.123456789012,
+            "y": 0.2,
+            "width": 0.3,
+            "height": 0.4,
+        },
+        top_right={"x": 1.0001, "y": 2.0001},
+        top_left={"x": 1.0001, "y": 2.0001},
+        bottom_right={"x": 1.0001, "y": 2.0001},
+        bottom_left={"x": 1.0001, "y": 2.0001},
+        angle_degrees=45.0,
+        angle_radians=0.7853981634,
+        confidence=0.95,
+    )
+    assert word.key() == {
+        "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "SK": {"S": "RECEIPT#00001#LINE#00003#WORD#00004"},
+    }
+
+
+@pytest.mark.unit
+def test_receipt_word_gsi1_key():
+    """Test that the gsi1_key() method returns a properly formatted DynamoDB key."""
+    word = ReceiptWord(
+        receipt_id=1,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=3,
+        word_id=4,
+        text="TestWord",
+        bounding_box={
+            "x": 0.123456789012,
+            "y": 0.2,
+            "width": 0.3,
+            "height": 0.4,
+        },
+        top_right={"x": 1.0001, "y": 2.0001},
+        top_left={"x": 1.0001, "y": 2.0001},
+        bottom_right={"x": 1.0001, "y": 2.0001},
+        bottom_left={"x": 1.0001, "y": 2.0001},
+        angle_degrees=45.0,
+        angle_radians=0.7853981634,
+        confidence=0.95,
+        embedding_status="PENDING",
+    )
+    assert word.gsi1_key() == {
+        "GSI1PK": {"S": "EMBEDDING_STATUS#PENDING"},
+        "GSI1SK": {
+            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001#LINE#00003#WORD#00004"
+        },
+    }
+
+
+@pytest.mark.unit
+def test_receipt_word_gsi2_key():
+    """Test that the gsi2_key() method returns a properly formatted DynamoDB key."""
+    word = ReceiptWord(
+        receipt_id=1,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=3,
+        word_id=4,
+        text="TestWord",
+        bounding_box={
+            "x": 0.123456789012,
+            "y": 0.2,
+            "width": 0.3,
+            "height": 0.4,
+        },
+        top_right={"x": 1.0001, "y": 2.0001},
+        top_left={"x": 1.0001, "y": 2.0001},
+        bottom_right={"x": 1.0001, "y": 2.0001},
+        bottom_left={"x": 1.0001, "y": 2.0001},
+        angle_degrees=45.0,
+        angle_radians=0.7853981634,
+        confidence=0.95,
+    )
+    assert word.gsi2_key() == {
+        "GSI2PK": {"S": "RECEIPT"},
+        "GSI2SK": {
+            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001#LINE#00003#WORD#00004"
+        },
+    }
+
+
+@pytest.mark.unit
+def test_receipt_word_gsi3_key():
+    """Test that the gsi3_key() method returns a properly formatted DynamoDB key."""
+    word = ReceiptWord(
+        receipt_id=1,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=3,
+        word_id=4,
+        text="TestWord",
+        bounding_box={
+            "x": 0.123456789012,
+            "y": 0.2,
+            "width": 0.3,
+            "height": 0.4,
+        },
+        top_right={"x": 1.0001, "y": 2.0001},
+        top_left={"x": 1.0001, "y": 2.0001},
+        bottom_right={"x": 1.0001, "y": 2.0001},
+        bottom_left={"x": 1.0001, "y": 2.0001},
+        angle_degrees=45.0,
+        angle_radians=0.7853981634,
+        confidence=0.95,
+    )
+    assert word.gsi3_key() == {
+        "GSI3PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "GSI3SK": {"S": "RECEIPT#00001#LINE#00003#WORD#00004"},
+    }
+
+
+@pytest.mark.unit
 def test_receipt_word_to_item():
     """Test that to_item() returns a properly formatted DynamoDB item."""
     bounding_box = {"x": 0.123456789012, "y": 0.2, "width": 0.3, "height": 0.4}
@@ -442,7 +588,8 @@ def test_repr(example_receipt_word):
         "bottom_left={'x': 1.0, 'y': 1.0}, "
         "angle_degrees=1.0, "
         "angle_radians=5.0, "
-        "confidence=0.9"
+        "confidence=0.9, "
+        "embedding_status='NONE'"
         ")"
     )
     assert repr(example_receipt_word) == expected_repr
@@ -508,6 +655,7 @@ def test_receipt_word_iter(example_receipt_word):
         "histogram",
         "num_chars",
         "extracted_data",
+        "embedding_status",
     }
     assert set(receipt_word_dict.keys()) == expected_keys
     assert receipt_word_dict["receipt_id"] == 1
@@ -530,6 +678,7 @@ def test_receipt_word_iter(example_receipt_word):
     assert receipt_word_dict["angle_degrees"] == 1.0
     assert receipt_word_dict["angle_radians"] == 5.0
     assert receipt_word_dict["confidence"] == 0.9
+    assert receipt_word_dict["embedding_status"] == "NONE"
     assert ReceiptWord(**receipt_word_dict) == example_receipt_word
 
 

@@ -1,6 +1,7 @@
 from botocore.exceptions import ClientError
 
 from receipt_dynamo import ReceiptWord, itemToReceiptWord
+from receipt_dynamo.constants import EmbeddingStatus
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 CHUNK_SIZE = 25
@@ -494,3 +495,57 @@ class _ReceiptWord:
                 raise Exception(f"Internal server error: {e}") from e
             else:
                 raise Exception(f"Error listing receipt words: {e}") from e
+
+    def listReceiptWordsByEmbeddingStatus(
+        self, embedding_status: EmbeddingStatus
+    ) -> list[ReceiptWord]:
+        """Returns all ReceiptWords that match the given embedding status."""
+        receipt_words: list[ReceiptWord] = []
+        # Validate and normalize embedding_status argument
+        if isinstance(embedding_status, EmbeddingStatus):
+            status_str = embedding_status.value
+        elif isinstance(embedding_status, str):
+            status_str = embedding_status
+        else:
+            raise ValueError(
+                "embedding_status must be a string or EmbeddingStatus enum"
+            )
+        # Ensure the status_str is a valid EmbeddingStatus value
+        valid_values = [s.value for s in EmbeddingStatus]
+        if status_str not in valid_values:
+            raise ValueError(
+                f"embedding_status must be one of: {', '.join(valid_values)}; Got: {status_str}"
+            )
+        try:
+            # Query the GSI1 index on embedding status
+            response = self._client.query(
+                TableName=self.table_name,
+                IndexName="GSI1",
+                KeyConditionExpression="#gsi1pk = :status",
+                ExpressionAttributeNames={"#gsi1pk": "GSI1PK"},
+                ExpressionAttributeValues={
+                    ":status": {"S": f"EMBEDDING_STATUS#{status_str}"}
+                },
+            )
+            # First page
+            for item in response.get("Items", []):
+                receipt_words.append(itemToReceiptWord(item))
+            # Handle pagination
+            while "LastEvaluatedKey" in response:
+                response = self._client.query(
+                    TableName=self.table_name,
+                    IndexName="GSI1",
+                    KeyConditionExpression="#gsi1pk = :status",
+                    ExpressionAttributeNames={"#gsi1pk": "GSI1PK"},
+                    ExpressionAttributeValues={
+                        ":status": {"S": f"EMBEDDING_STATUS#{status_str}"}
+                    },
+                    ExclusiveStartKey=response["LastEvaluatedKey"],
+                )
+                for item in response.get("Items", []):
+                    receipt_words.append(itemToReceiptWord(item))
+            return receipt_words
+        except ClientError as e:
+            raise ValueError(
+                f"Could not list receipt words by embedding status: {e}"
+            ) from e

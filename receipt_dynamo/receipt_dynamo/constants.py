@@ -41,6 +41,8 @@ class LabelStatus(str, Enum):
 class EmbeddingStatus(str, Enum):
     """Tracking the outcome of OpenAI embedding jobs."""
 
+    NONE = "NONE"
+    PENDING = "PENDING"
     SUCCESS = "SUCCESS"
     FAILED = "FAILED"
 

@@ -8,6 +8,7 @@ from receipt_dynamo.entities.util import (
     assert_valid_uuid,
     compute_histogram,
 )
+from receipt_dynamo.constants import EmbeddingStatus
 
 
 class ReceiptWord:
@@ -34,6 +35,7 @@ class ReceiptWord:
         angle_radians (float): The angle of the receipt word in radians.
         confidence (float): The confidence level of the receipt word (between 0 and 1).
         extracted_data (dict): The extracted data of the receipt word provided by Apple's NL API.
+        embedding_status (str): The status of the embedding for the receipt word.
         histogram (dict): A histogram representing character frequencies in the text.
         num_chars (int): The number of characters in the receipt word.
     """
@@ -56,6 +58,7 @@ class ReceiptWord:
         extracted_data: dict = None,
         histogram: dict = None,
         num_chars: int = None,
+        embedding_status: EmbeddingStatus | str = EmbeddingStatus.NONE,
     ):
         """
         Initializes a new ReceiptWord object for DynamoDB.
@@ -74,6 +77,7 @@ class ReceiptWord:
             angle_degrees (float): The angle of the receipt word in degrees.
             angle_radians (float): The angle of the receipt word in radians.
             confidence (float): The confidence level of the receipt word (between 0 and 1).
+            embedding_status (EmbeddingStatus | str): The status of the embedding for the receipt word.
             histogram (dict, optional): A histogram representing character frequencies in the text.
             num_chars (int, optional): The number of characters in the receipt word.
 
@@ -141,6 +145,22 @@ class ReceiptWord:
         )
         self.num_chars = len(text) if num_chars is None else num_chars
 
+        # Normalize and validate embedding_status (allow enum or string)
+        if isinstance(embedding_status, EmbeddingStatus):
+            status_value = embedding_status.value
+        elif isinstance(embedding_status, str):
+            status_value = embedding_status
+        else:
+            raise ValueError(
+                "embedding_status must be a string or EmbeddingStatus enum"
+            )
+        valid_values = [s.value for s in EmbeddingStatus]
+        if status_value not in valid_values:
+            raise ValueError(
+                f"embedding_status must be one of: {', '.join(valid_values)}\nGot: {status_value}"
+            )
+        self.embedding_status = status_value
+
     def key(self) -> dict:
         """
         Generates the primary key for the receipt word.
@@ -152,6 +172,22 @@ class ReceiptWord:
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {
                 "S": (
+                    f"RECEIPT#{self.receipt_id:05d}#"
+                    f"LINE#{self.line_id:05d}#"
+                    f"WORD#{self.word_id:05d}"
+                )
+            },
+        }
+
+    def gsi1_key(self) -> dict:
+        """
+        Generates the secondary index key for the receipt word.
+        """
+        return {
+            "GSI1PK": {"S": f"EMBEDDING_STATUS#{self.embedding_status}"},
+            "GSI1SK": {
+                "S": (
+                    f"IMAGE#{self.image_id}#"
                     f"RECEIPT#{self.receipt_id:05d}#"
                     f"LINE#{self.line_id:05d}#"
                     f"WORD#{self.word_id:05d}"
@@ -203,8 +239,9 @@ class ReceiptWord:
         Returns:
             dict: A dictionary representing the ReceiptWord object as a DynamoDB item.
         """
-        item = {
+        return {
             **self.key(),
+            **self.gsi1_key(),
             **self.gsi2_key(),
             **self.gsi3_key(),
             "TYPE": {"S": "RECEIPT_WORD"},
@@ -262,8 +299,8 @@ class ReceiptWord:
                 "M": {k: {"N": str(v)} for k, v in self.histogram.items()}
             },
             "num_chars": {"N": str(self.num_chars)},
+            "embedding_status": {"S": self.embedding_status},
         }
-        return item
 
     def warp_transform(
         self,
@@ -396,7 +433,8 @@ class ReceiptWord:
             f"bottom_left={self.bottom_left}, "
             f"angle_degrees={self.angle_degrees}, "
             f"angle_radians={self.angle_radians}, "
-            f"confidence={self.confidence}"
+            f"confidence={self.confidence}, "
+            f"embedding_status='{self.embedding_status}'"
             f")"
         )
 
@@ -427,6 +465,7 @@ class ReceiptWord:
             and self.angle_radians == other.angle_radians
             and self.confidence == other.confidence
             and self.extracted_data == other.extracted_data
+            and self.embedding_status == other.embedding_status
         )
 
     def __iter__(self) -> Generator[Tuple[str, any], None, None]:
@@ -452,6 +491,7 @@ class ReceiptWord:
         yield "confidence", self.confidence
         yield "histogram", self.histogram
         yield "num_chars", self.num_chars
+        yield "embedding_status", self.embedding_status
 
     def calculate_centroid(self) -> Tuple[float, float]:
         """
@@ -515,6 +555,7 @@ class ReceiptWord:
                 self.angle_radians,
                 self.confidence,
                 self.extracted_data,
+                self.embedding_status,
             )
         )
 
@@ -617,6 +658,13 @@ def itemToReceiptWord(item: dict) -> ReceiptWord:
         missing_keys = required_keys - set(item.keys())
         raise ValueError(f"Item is missing required keys: {missing_keys}")
     try:
+        # Safely extract embedding_status string from DynamoDB item (default to NONE)
+        es_attr = item.get("embedding_status")
+        if isinstance(es_attr, dict):
+            es_val = es_attr.get("S", EmbeddingStatus.NONE.value)
+        else:
+            es_val = EmbeddingStatus.NONE.value
+
         return ReceiptWord(
             receipt_id=int(item["SK"]["S"].split("#")[1]),
             image_id=item["PK"]["S"].split("#")[1],
@@ -660,6 +708,7 @@ def itemToReceiptWord(item: dict) -> ReceiptWord:
                     .get("S"),
                 }
             ),
+            embedding_status=es_val,
         )
     except (KeyError, ValueError) as e:
         raise ValueError("Error converting item to ReceiptWord") from e
