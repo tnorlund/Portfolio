@@ -5,7 +5,7 @@ from receipt_label.data.places_api import PlacesAPI, BatchPlacesProcessor
 
 
 @pytest.fixture
-def dynamodb_table():
+def dynamodb_table_and_s3_bucket():
     """
     Spins up a mock DynamoDB instance, creates a table (with GSIs: GSI1, GSI2,
     and GSITYPE), waits until both the table and the GSIs are active, then
@@ -28,6 +28,8 @@ def dynamodb_table():
                 {"AttributeName": "GSI1SK", "AttributeType": "S"},
                 {"AttributeName": "GSI2PK", "AttributeType": "S"},
                 {"AttributeName": "GSI2SK", "AttributeType": "S"},
+                {"AttributeName": "GSI3PK", "AttributeType": "S"},
+                {"AttributeName": "GSI3SK", "AttributeType": "S"},
                 {"AttributeName": "TYPE", "AttributeType": "S"},
             ],
             ProvisionedThroughput={
@@ -60,8 +62,18 @@ def dynamodb_table():
                     },
                 },
                 {
+                    "IndexName": "GSI3",
+                    "KeySchema": [
+                        {"AttributeName": "GSI3PK", "KeyType": "HASH"},
+                        {"AttributeName": "GSI3SK", "KeyType": "RANGE"},
+                    ],
+                    "Projection": {"ProjectionType": "ALL"},
+                },
+                {
                     "IndexName": "GSITYPE",
-                    "KeySchema": [{"AttributeName": "TYPE", "KeyType": "HASH"}],
+                    "KeySchema": [
+                        {"AttributeName": "TYPE", "KeyType": "HASH"}
+                    ],
                     "Projection": {"ProjectionType": "ALL"},
                     "ProvisionedThroughput": {
                         "ReadCapacityUnits": 5,
@@ -72,9 +84,16 @@ def dynamodb_table():
         )
 
         # Wait for the table to be created
-        dynamodb.meta.client.get_waiter("table_exists").wait(TableName=table_name)
+        dynamodb.meta.client.get_waiter("table_exists").wait(
+            TableName=table_name
+        )
 
-        yield table_name
+        # Create a mock S3 bucket for uploads
+        s3 = boto3.client("s3", region_name="us-east-1")
+        bucket_name = "test-bucket"
+        s3.create_bucket(Bucket=bucket_name)
+
+        yield table_name, bucket_name
 
 
 @pytest.fixture

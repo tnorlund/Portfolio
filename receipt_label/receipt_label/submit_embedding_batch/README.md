@@ -12,29 +12,29 @@ This is typically the first step in a two-phase Step Function pipeline, followed
 
 Fetches all ReceiptWords items with `embedding_status = "NONE"`.
 
-### `serialize_receipt_words()`
-
-Creates an NDJSON file with each line being a JSON representation of a ReceiptWord.
-
-### `deserialize_receipt_words()`
-
-Deserializes an NDJSON file where each line is a JSON representation of a Receipt word.
-
-### `query_receipt_words(image_id, receipt_id)`
-
-Gets all Receipt Words from a receipt by using the Receipt and Image IDs.
-
-### `chunk_into_embedding_batches(receipt_words)`
+### `chunk_into_embedding_batches(words: list[ReceiptWord]) -> dict[str, dict[int, list[ReceiptWord]]]`
 
 Splits the list of ReceiptWords into chunks based on the combination of Receipt ID and Image ID.
 
-### `generate_batch_id()`
+### `serialize_receipt_words(word_receipt_dict: dict[str, dict[int, list[ReceiptWord]]]) -> List[dict]`
+
+Creates an NDJSON file with each line being a JSON representation of a ReceiptWord. This function returns a list of dictionaries, each describing the Receipt ID, the Image ID, and the path of the NDJSON.
+
+### `deserialize_receipt_words(filepath: Path) -> list[ReceiptWord]`
+
+Deserializes an NDJSON file where each line is a JSON representation of a Receipt word.
+
+### `query_receipt_words(image_id: str, receipt_id: int) -> list[ReceiptWord]`
+
+Gets all Receipt Words from a receipt by using the Receipt and Image IDs.
+
+### `generate_batch_id() -> str`
 
 Generates a unique UUID for each embedding batch.
 
-### `format_word_context_embedding()`
+### `format_word_context_embedding(word: ReceiptWord, words: List[ReceiptWord]) -> str`
 
-Prepares OpenAI-compliant embedding payload that contains the words to the left and right.
+Prepares the embedding that contains the target word, where the word is in the 3x3 top/middle/bottom, left/center/right grid, and the words to the left and right of the target word.
 
 ### `format_spatial_embedding()`
 
@@ -52,7 +52,7 @@ Generate a local file for the embeddings provided.
 
 Writes OpenAI batch payload to a newline-delimited JSON file.
 
-### `upload_serialized_words()`
+### `upload_serialized_words(serialized_words: List[dict], s3_bucket: str, prefix="embeddings") -> List[dict]`
 
 Uploads the NDJSON file containing serialized Receipt Words to S3.
 
@@ -118,8 +118,7 @@ flowchart TD
         deserialize_receipt_words --> query_receipt_words["Get all words from Receipt"]
         query_receipt_words --> generate_batch_id["Generate Batch ID"]
         generate_batch_id --> format_word_context_embedding["Format Word Context Embedding"]
-        format_word_context_embedding --> generate_ndjson["Generate NDJSON"]
-        generate_ndjson --> write_ndjson["Write NDJSON"]
+        format_word_context_embedding --> write_ndjson["Write NDJSON"]
         write_ndjson --> upload_to_openai["Upload NDJSON to OpenAI"]
         upload_to_openai --> submit_batch_to_openai["Submit Batch to OpenAI"]
         submit_batch_to_openai --> create_batch_summary["Create Batch Summary"]

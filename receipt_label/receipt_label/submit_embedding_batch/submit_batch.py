@@ -3,9 +3,13 @@ from uuid import uuid4
 from datetime import datetime, timezone
 import json
 import os
+import math
 import boto3
 from openai.resources.batches import Batch
 from openai.types import FileObject
+from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
+from receipt_dynamo.constants import EmbeddingStatus
+from pathlib import Path
 
 """
 submit_batch.py
@@ -24,10 +28,117 @@ This script supports agentic document labeling and validation pipelines
 by facilitating scalable embedding of labeled receipt tokens.
 """
 
-from receipt_dynamo.entities import ReceiptWordLabel, ReceiptWord, BatchSummary
+from receipt_dynamo.entities import ReceiptWord, BatchSummary
 from receipt_label.utils import get_clients
 
 dynamo_client, openai_client, _ = get_clients()
+
+
+def serialize_receipt_words(
+    word_receipt_dict: dict[str, dict[int, list[ReceiptWord]]],
+) -> List[dict]:
+    """
+    Serialize ReceiptWords into per-receipt NDJSON files.
+
+    Args:
+        word_receipt_dict: mapping image_id -> receipt_id -> list of ReceiptWord.
+
+    Returns:
+        A list of dicts, each containing:
+            - image_id (str)
+            - receipt_id (int)
+            - ndjson_path (Path to the NDJSON file)
+    """
+    results: List[dict] = []
+    for image_id, receipts in word_receipt_dict.items():
+        for receipt_id, words in receipts.items():
+            # Serialize each word as JSON (using its __dict__)
+            ndjson_lines = [json.dumps(word.__dict__) for word in words]
+            ndjson_content = "\n".join(ndjson_lines)
+            # Write to a unique NDJSON file
+            filepath = Path(f"/tmp/{image_id}_{receipt_id}_{uuid4()}.ndjson")
+            with filepath.open("w") as f:
+                f.write(ndjson_content)
+            # Keep metadata about which receipt this file represents
+            results.append(
+                {
+                    "image_id": image_id,
+                    "receipt_id": receipt_id,
+                    "ndjson_path": filepath,
+                }
+            )
+    return results
+
+
+def upload_serialized_words(
+    serialized_words: List[dict], s3_bucket: str, prefix="embeddings"
+) -> List[dict]:
+    """Upload the serialized words to S3."""
+    s3 = boto3.client("s3")
+    for receipt_dict in serialized_words:
+        key = f"{prefix}/{Path(receipt_dict['ndjson_path']).name}"
+        s3.upload_file(
+            str(receipt_dict["ndjson_path"]),
+            s3_bucket,
+            key,
+        )
+        receipt_dict["s3_key"] = key
+        receipt_dict["s3_bucket"] = s3_bucket
+    return serialized_words
+
+
+def download_serialized_words(serialized_word: dict) -> Path:
+    """Download the serialized word from S3."""
+    s3 = boto3.client("s3")
+    s3.download_file(
+        serialized_word["s3_bucket"],
+        serialized_word["s3_key"],
+        serialized_word["ndjson_path"],
+    )
+    return Path(serialized_word["ndjson_path"])
+
+
+def deserialize_receipt_words(filepath: Path) -> list[ReceiptWord]:
+    """Deserialize an NDJSON file containing serialized ReceiptWords."""
+    words = []
+    with open(filepath, "r") as f:
+        for line in f:
+            word = json.loads(line)
+            words.append(ReceiptWord(**word))
+    return words
+
+
+def query_receipt_words(image_id: str, receipt_id: int) -> list[ReceiptWord]:
+    """Query the ReceiptWords from DynamoDB."""
+    (
+        _,
+        _,
+        words,
+        _,
+        _,
+        _,
+    ) = dynamo_client.getReceiptDetails(image_id, receipt_id)
+    return words
+
+
+def chunk_into_embedding_batches(
+    words: list[ReceiptWord],
+) -> dict[str, dict[int, list[ReceiptWord]]]:
+    """Chunk the words into embedding batches by image and receipt.
+
+    Returns:
+        dict mapping image_id (str) to dict mapping receipt_id (int) to list of ReceiptWord.
+    """
+    # Make a dictionary of words by image_id and receipt_id
+    words_by_image = {}
+    for word in words:
+        # Get or create the sub-dictionary for this image_id
+        image_dict = words_by_image.setdefault(word.image_id, {})
+        # Get or create the list for this receipt_id within that image
+        receipt_list = image_dict.setdefault(word.receipt_id, [])
+        # Append the word to the list
+        receipt_list.append(word)
+    return words_by_image
 
 
 def get_hybrid_context(
@@ -38,7 +149,7 @@ def get_hybrid_context(
 ) -> list[ReceiptWord]:
     """
     Returns a mix of all words on the same line (if that line is short enough),
-    plus any off‑line words whose vertical position is within y_thresh of the target.
+    plus any off-line words whose vertical position is within y_thresh of the target.
 
     - max_words_line: if the line has <= this many words, include the whole line.
     - y_thresh: fraction of page height (or normalized coords) to capture near‑by rows.
@@ -80,166 +191,121 @@ def generate_batch_id() -> str:
     return str(uuid4())
 
 
-def list_receipt_word_labels() -> List[ReceiptWordLabel]:
-    """Fetch ReceiptWordLabel items with validation_status == 'NONE'."""
-    all_labels = []
-    lek = None
-    while True:
-        labels, lek = dynamo_client.getReceiptWordLabelsByValidationStatus(
-            validation_status="NONE",
-            limit=25,
-            lastEvaluatedKey=lek,
-        )
-        all_labels.extend(labels)
-        if not lek:
-            break
-    return list(set(all_labels))
+def list_receipt_words_with_no_embeddings() -> List[ReceiptWord]:
+    """Fetch all ReceiptWord items with embedding_status == NONE."""
+    return dynamo_client.listReceiptWordsByEmbeddingStatus(
+        EmbeddingStatus.NONE
+    )
 
 
-def fetch_receipt_words(labels: List[ReceiptWordLabel]) -> List[ReceiptWord]:
-    """Batch fetch ReceiptWord entities that match the given labels."""
-    keys = [rwl.to_ReceiptWord_key() for rwl in labels]
-    keys = list({json.dumps(k, sort_keys=True): k for k in keys}.values())
-    results = []
-    for i in range(0, len(keys), 25):
-        chunk = keys[i : i + 25]
-        results.extend(dynamo_client.getReceiptWordsByKeys(chunk))
-    return results
-
-
-def join_labels_with_words(
-    labels: List[ReceiptWordLabel], words: List[ReceiptWord]
-) -> List[Tuple[ReceiptWordLabel, ReceiptWord]]:
-    """Join each ReceiptWordLabel with its corresponding ReceiptWord."""
-    word_map = {
-        (w.image_id, w.receipt_id, w.line_id, w.word_id): w for w in words
-    }
-    joined = []
-    for rwl in labels:
-        key = (rwl.image_id, rwl.receipt_id, rwl.line_id, rwl.word_id)
-        if key in word_map:
-            joined.append((rwl, word_map[key]))
-    return joined
-
-
-def fetch_original_receipt_word_labels(
-    filepath: str,
-) -> List[ReceiptWordLabel]:
-    """Extract ReceiptWordLabel entities from NDJSON based on Pinecone IDs."""
-    with open(filepath, "r") as f:
-        pinecone_ids = [json.loads(line)["custom_id"] for line in f]
-
-    keys = []
-    for pinecone_id in pinecone_ids:
-        if pinecone_id.startswith("WORD#"):
-            suffix = pinecone_id[len("WORD#") :]
-        elif pinecone_id.startswith("CTX#"):
-            suffix = pinecone_id[len("CTX#") :]
-        else:
-            suffix = pinecone_id
-
-        parts = suffix.split("#")
-        image_id = parts[1]
-        receipt_id = int(parts[3])
-        line_id = int(parts[5])
-        word_id = int(parts[7])
-        label = parts[-1]
-        keys.append(
-            {
-                "PK": {"S": f"IMAGE#{image_id}"},
-                "SK": {
-                    "S": (
-                        f"RECEIPT#{receipt_id:05d}#"
-                        f"LINE#{line_id:05d}#"
-                        f"WORD#{word_id:05d}#"
-                        f"LABEL#{label}"
-                    )
-                },
-            }
-        )
-
-    # Deduplicate by serializing to JSON, then back to dicts
-    keys = list({json.dumps(k, sort_keys=True): k for k in keys}.values())
-    results = []
-    for i in range(0, len(keys), 25):
-        chunk = keys[i : i + 25]
-        results.extend(dynamo_client.getReceiptWordLabelsByKeys(chunk))
-    return results
-
-
-def chunk_joined_pairs(
-    joined: List[Tuple[ReceiptWordLabel, ReceiptWord]], batch_size: int = 500
-) -> List[List[Tuple[ReceiptWordLabel, ReceiptWord]]]:
-    """Chunk the joined list into batches of a given size."""
+def chunk_receipt_words(
+    words: List[ReceiptWord], batch_size: int = 500
+) -> List[List[ReceiptWord]]:
+    """Chunk ReceiptWord list into batches of given size."""
     return [
-        joined[i : i + batch_size] for i in range(0, len(joined), batch_size)
+        words[i : i + batch_size] for i in range(0, len(words), batch_size)
     ]
 
 
-def format_openai_input(
-    joined_batch: List[Tuple[ReceiptWordLabel, ReceiptWord]],
-) -> List[dict]:
-    """
-    Format (ReceiptWordLabel, ReceiptWord) pairs into OpenAI-compatible
-    embedding inputs.
-    """
-    inputs = []
-    for rwl, word in joined_batch:
-        centroid = word.calculate_centroid()
-        x_center = centroid[0]
-        y_center = centroid[1]
-        pinecone_id = (
-            "WORD#"
-            f"IMAGE#{rwl.image_id}#"
-            f"RECEIPT#{rwl.receipt_id:05d}#"
-            f"LINE#{rwl.line_id:05d}#"
-            f"WORD#{rwl.word_id:05d}#"
-            f"LABEL#{rwl.label}"
-        )
-        entry = {
-            "custom_id": pinecone_id,
-            "method": "POST",
-            "url": "/v1/embeddings",
-            "body": {
-                "input": (
-                    f"{word.text} [label={rwl.label}] "
-                    f"(pos={x_center:.4f},{y_center:.4f}) "
-                    f"angle={word.angle_degrees:.2f} "
-                    f"conf={word.confidence:.2f}"
-                ),
-                "model": "text-embedding-3-small",
-            },
-        }
-        inputs.append(entry)
-    return inputs
+def format_word_context_embedding_input(
+    word: ReceiptWord, words: List[ReceiptWord]
+) -> str:
+    # 1) Compute the target word’s vertical span (accounting for origin at bottom)
+    # Use bounding_box for consistent span
+    target_bottom = word.bounding_box["y"]
+    target_top = word.bounding_box["y"] + word.bounding_box["height"]
+    line_height = target_top - target_bottom
+
+    # 2) Sort everything by X so we can walk left/right
+    sorted_all = sorted(words, key=lambda w: w.calculate_centroid()[0])
+    x0, _ = word.calculate_centroid()
+    idx = next(
+        i
+        for i, w in enumerate(sorted_all)
+        if (w.image_id, w.receipt_id, w.line_id, w.word_id)
+        == (word.image_id, word.receipt_id, word.line_id, word.word_id)
+    )
+
+    # 3) Filter to only those words whose vertical span lies within the same line height
+    candidates = []
+    for w in sorted_all:
+        if w is word:
+            continue
+        w_top = w.top_left["y"]
+        w_bottom = w.bottom_left["y"]
+        # they “fit” if their top isn’t below the target bottom,
+        # and their bottom isn’t above the target top,
+        # within a small epsilon if you like
+        if w_bottom >= target_bottom and w_top <= target_top:
+            candidates.append(w)
+
+    # 4) Walk left
+    left_text = "<EDGE>"
+    for w in reversed(sorted_all[:idx]):
+        if w in candidates:
+            left_text = w.text
+            break
+
+    # 5) Walk right
+    right_text = "<EDGE>"
+    for w in sorted_all[idx + 1 :]:
+        if w in candidates:
+            right_text = w.text
+            break
+
+    return f"<TARGET>{word.text}</TARGET> <POS>{get_word_position(word)}</POS> <CONTEXT>{left_text} {right_text}</CONTEXT>"
 
 
-def format_context_openai_input(
-    joined_batch: List[Tuple[ReceiptWordLabel, ReceiptWord]],
+def get_word_position(word: ReceiptWord) -> str:
+    """
+    Define a human-readable position tag for the word based on its centroid.
+    Buckets the word into one of nine zones: top/middle/bottom x left/center/right.
+    """
+    # Calculate centroid coordinates (normalized 0.0–1.0)
+    x_center, y_center = word.calculate_centroid()
+    # Determine vertical bucket (y=0 at bottom)
+    if y_center > 0.66:
+        vert = "top"
+    elif y_center > 0.33:
+        vert = "middle"
+    else:
+        vert = "bottom"
+    # Determine horizontal bucket
+    if x_center < 0.33:
+        horiz = "left"
+    elif x_center < 0.66:
+        horiz = "center"
+    else:
+        horiz = "right"
+    return f"{vert}-{horiz}"
+
+
+def format_word_context_embedding(
+    words_to_embed: List[ReceiptWord],
+    all_words_in_receipt: List[ReceiptWord],
 ) -> List[dict]:
     """
     Format each (ReceiptWordLabel, ReceiptWord) pair into a context-level entry
     for OpenAI embeddings, using a hybrid line+spatial window.
     """
     inputs = []
-    for rwl, word in joined_batch:
+    for word in words_to_embed:
         # Build hybrid context around this word
-        context_words = get_hybrid_context(word, [w for _, w in joined_batch])
-        context_text = " ".join(w.text for w in context_words)
         pinecone_id = (
-            "CTX#"
-            f"IMAGE#{rwl.image_id}#"
-            f"RECEIPT#{rwl.receipt_id:05d}#"
-            f"LINE#{rwl.line_id:05d}#"
-            f"WORD#{rwl.word_id:05d}#"
-            f"LABEL#{rwl.label}"
+            f"IMAGE#{word.image_id}#"
+            f"RECEIPT#{word.receipt_id:05d}#"
+            f"LINE#{word.line_id:05d}#"
+            f"WORD#{word.word_id:05d}"
+        )
+        body_input = format_word_context_embedding_input(
+            word, all_words_in_receipt
         )
         entry = {
             "custom_id": pinecone_id,
             "method": "POST",
             "url": "/v1/embeddings",
             "body": {
-                "input": context_text + f" [label={rwl.label}]",
+                "input": body_input,
                 "model": "text-embedding-3-small",
             },
         }
@@ -247,10 +313,10 @@ def format_context_openai_input(
     return inputs
 
 
-def write_ndjson(batch_id: str, input_data: List[dict]) -> str:
+def write_ndjson(batch_id: str, input_data: List[dict]) -> Path:
     """Write the OpenAI embedding input to an NDJSON file."""
-    filepath = f"/tmp/{batch_id}.ndjson"
-    with open(filepath, "w") as f:
+    filepath = Path(f"/tmp/{batch_id}.ndjson")
+    with filepath.open("w") as f:
         for row in input_data:
             f.write(json.dumps(row) + "\n")
     return filepath
@@ -269,10 +335,10 @@ def upload_to_s3(
     return key
 
 
-def upload_ndjson_file(filepath: str) -> FileObject:
+def upload_to_openai(filepath: Path) -> FileObject:
     """Upload the NDJSON file to OpenAI."""
     return openai_client.files.create(
-        file=open(filepath, "rb"), purpose="batch"
+        file=filepath.open("rb"), purpose="batch"
     )
 
 
