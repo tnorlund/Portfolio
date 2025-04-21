@@ -8,7 +8,7 @@ This is typically the first step in a two-phase Step Function pipeline, followed
 
 ## 📦 Functions
 
-### `list_receipt_words_with_no_embeddings()`
+### `list_receipt_words_with_no_embeddings() -> list[ReceiptWord]`
 
 Fetches all ReceiptWords items with `embedding_status = "NONE"`.
 
@@ -16,7 +16,7 @@ Fetches all ReceiptWords items with `embedding_status = "NONE"`.
 
 Splits the list of ReceiptWords into chunks based on the combination of Receipt ID and Image ID.
 
-### `serialize_receipt_words(word_receipt_dict: dict[str, dict[int, list[ReceiptWord]]]) -> List[dict]`
+### `serialize_receipt_words(word_receipt_dict: dict[str, dict[int, list[ReceiptWord]]]) -> list[dict]`
 
 Creates an NDJSON file with each line being a JSON representation of a ReceiptWord. This function returns a list of dictionaries, each describing the Receipt ID, the Image ID, and the path of the NDJSON.
 
@@ -32,49 +32,41 @@ Gets all Receipt Words from a receipt by using the Receipt and Image IDs.
 
 Generates a unique UUID for each embedding batch.
 
-### `format_word_context_embedding(word: ReceiptWord, words: List[ReceiptWord]) -> str`
+### `format_word_context_embedding(words_to_embed: list[ReceiptWord], all_words_in_receipt: list[ReceiptWord]) -> list[dict]`
 
 Prepares the embedding that contains the target word, where the word is in the 3x3 top/middle/bottom, left/center/right grid, and the words to the left and right of the target word.
 
-### `format_spatial_embedding()`
-
-Prepares OpenAI-compliant embedding payload that contains the word and its semantically descriptive description of the word's position on the page.
-
-### `combine_embeddings()`
-
-Combine the different embeddings to a single list.
-
-### `generate_ndjson()`
-
-Generate a local file for the embeddings provided.
-
-### `write_ndjson(batch_id, input_data)`
+### `write_ndjson(batch_id: str, input_data: list[dict]) -> Path`
 
 Writes OpenAI batch payload to a newline-delimited JSON file.
 
-### `upload_serialized_words(serialized_words: List[dict], s3_bucket: str, prefix="embeddings") -> List[dict]`
+### `upload_serialized_words(serialized_words: list[dict], s3_bucket: str, prefix="embeddings") -> list[dict]`
 
 Uploads the NDJSON file containing serialized Receipt Words to S3.
 
-### `download_serialized_words()`
+### `download_serialized_words(serialized_word: dict) -> Path`
 
 Downloads the NDJSON file containing serialized Receipt Words from S3.
 
-### `upload_to_openai(filepath)`
+### `upload_to_openai(filepath: Path) -> FileObject`
 
 Uploads the NDJSON file to OpenAI's file endpoint for batch use.
 
-### `submit_batch_to_openai(file_id)`
+### `submit_openai_batch(file_id: str) -> Batch`
 
 Submits the embedding job to OpenAI using the uploaded file ID.
 
-### `create_batch_summary(batch_id, joined)`
+### `create_batch_summary(batch_id: str, open_ai_batch_id: str, file_path: str) -> BatchSummary`
 
 Builds a BatchSummary entity with "PENDING" status.
 
-### `add_batch_summary(batch_summary)`
+### `add_batch_summary(summary: BatchSummary) -> None`
 
 Adds the batch summary to DynamoDB.
+
+### `update_word_embedding_status(words: list[ReceiptWord]) -> None`
+
+Updates the list of Receipt Words in DynamoDB to have an embedding status of "PENDING".
 
 ---
 
@@ -92,13 +84,16 @@ This module is split across two phases in a Step Function workflow:
 ### Phase 2: Submit to OpenAI
 
 1. Download serialized words that need to be embedded
-2. Generate Batch ID
-3. Format the word context embeddings for each word
-4. Generate the NDJSON file for all embeddings
-5. Upload the NDJSON to OpenAI
-6. Submit the batch to OpenAI
-7. Create the Batch Summary
-8. Add the Batch Summary to DynamoDB
+2. Deserialize back into ReceiptWord
+3. Query all ReceiptWords from the receipt
+4. Generate Batch ID
+5. Format the word context embeddings for each word
+6. Write the embedding NDJSON file
+7. Upload the NDJSON to OpenAI
+8. Submit the batch to OpenAI
+9. Create the Batch Summary
+10. Update words's embedding statuses
+11. Add the Batch Summary to DynamoDB
 
 ---
 
@@ -110,9 +105,9 @@ flowchart TD
     list_receipt_words_with_no_embeddings --> chunk_into_embedding_batches["Chunk Into Embedding Batches"]
     chunk_into_embedding_batches --> serialize_receipt_words["Serialize Words that need to be Embedded"]
     serialize_receipt_words --> upload_serialized_words["Upload Serialized Words to S3"]
-    upload_serialized_words --> batch_embed["Batch Embed"]
+    upload_serialized_words --> batch_embed
 
-    subgraph map_chunks["Batch Embed"]
+    subgraph batch_embed["Batch Embed"]
         direction TB
         download_serialized_words["Download Serialized Words from S3"] --> deserialize_receipt_words["Deserialize Words"]
         deserialize_receipt_words --> query_receipt_words["Get all words from Receipt"]
@@ -120,11 +115,12 @@ flowchart TD
         generate_batch_id --> format_word_context_embedding["Format Word Context Embedding"]
         format_word_context_embedding --> write_ndjson["Write NDJSON"]
         write_ndjson --> upload_to_openai["Upload NDJSON to OpenAI"]
-        upload_to_openai --> submit_batch_to_openai["Submit Batch to OpenAI"]
-        submit_batch_to_openai --> create_batch_summary["Create Batch Summary"]
-        create_batch_summary --> add_batch_summary["Add Batch Summary"]
+        upload_to_openai --> submit_openai_batch["Submit Batch to OpenAI"]
+        submit_openai_batch --> create_batch_summary["Create Batch Summary"]
+        create_batch_summary --> update_word_embedding_status["Update the Embedding Status of the Words"]
+        update_word_embedding_status --> add_batch_summary["Add Batch Summary"]
     end
 
-    map_chunks --> END([End])
+    batch_embed --> END([End])
 
 ```

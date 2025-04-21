@@ -1,32 +1,12 @@
+import json
 from typing import Literal
 import pytest
 import boto3
 from types import SimpleNamespace
 from receipt_label.submit_embedding_batch import submit_batch
 from receipt_dynamo import DynamoClient
+from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities import ReceiptWord
-
-
-@pytest.fixture(autouse=True)
-def mock_openai_client(mocker):
-    """
-    Monkey-patch submit_batch.openai_client so that:
-      - files.create(...) returns an object with .id
-      - batches.create(...) returns an object with .id
-    """
-    # Create fake return objects
-    fake_file = SimpleNamespace(id="fake-file-id")
-    fake_batch = SimpleNamespace(id="fake-batch-id")
-
-    # Build a fake client
-    fake_client = mocker.MagicMock()
-    fake_client.files.create.return_value = fake_file
-    fake_client.batches.create.return_value = fake_batch
-
-    # Patch the module-level openai_client
-    mocker.patch.object(submit_batch, "openai_client", fake_client)
-
-    return fake_client
 
 
 @pytest.fixture
@@ -609,6 +589,7 @@ def test_embedding_batch(
     batch_summary = submit_batch.create_batch_summary(
         batch_id, openai_batch.id, input_file
     )
+    submit_batch.update_word_embedding_status(deserialized_words)
     submit_batch.add_batch_summary(batch_summary)
 
     assert len(words_without_embeddings) == 25
@@ -646,3 +627,76 @@ def test_embedding_batch(
     for word in deserialized_words:
         assert word.receipt_id == 1
         assert word.image_id == "29c1d8af-035c-431f-9d80-e4053cf28a00"
+    # Verify the file is formatted correctly for OpenAI batches
+    with open(input_file, "r") as f:
+        for line in f:
+            obj = json.loads(line)
+            assert set(obj.keys()) == {"custom_id", "method", "url", "body"}
+            assert obj["method"] == "POST"
+            assert obj["url"] == "/v1/embeddings"
+            assert "input" in obj["body"] and "model" in obj["body"]
+    # Verify the OpenAI client is called correctly
+    fake = submit_batch.openai_client  # get the patched OpenAI client
+    fake.files.create.assert_called_once()
+    fake.batches.create.assert_called_once_with(
+        input_file_id="fake-file-id",
+        endpoint="/v1/embeddings",
+        completion_window="24h",
+        metadata={"model": "text-embedding-3-small"},
+    )
+    # Verify the batch summary is created correctly
+    stored = moto_client.getBatchSummary(batch_summary.batch_id)
+    assert stored.status == "PENDING"
+    assert stored.word_count == 5  # or whatever your test case is
+    assert set(stored.receipt_refs) == {
+        (event["image_id"], event["receipt_id"])
+    }
+    assert stored.batch_type == "EMBEDDING"
+    assert stored.openai_batch_id == "fake-batch-id"
+    assert stored.submitted_at is not None
+    assert stored.result_file_id == "N/A"
+    assert stored.receipt_refs == [(event["image_id"], event["receipt_id"])]
+    # Verify serialized NDJSON content matches the original ReceiptWord objects
+    for evt in serialized_words:
+        with open(evt["ndjson_path"]) as f:
+            lines = [json.loads(l) for l in f]
+        original = batches[evt["image_id"]][evt["receipt_id"]]
+        for obj, word in zip(lines, original):
+            assert obj == word.__dict__
+
+    # Verify download_serialized_words returns the correct path
+    local = submit_batch.download_serialized_words(event)
+    assert local == event["ndjson_path"]
+
+    # Verify deserialize_receipt_words returns the correct ReceiptWord objects
+    expected = batches[event["image_id"]][event["receipt_id"]]
+    deserialized = submit_batch.deserialize_receipt_words(local)
+    assert deserialized == expected
+
+    # Verify format_word_context_embedding returns the correct formatted input string
+    sample = formatted_words[0]["body"]["input"]
+    first_txt = deserialized_words[0].text
+    assert sample.startswith(f"<TARGET>{first_txt}</TARGET>")
+    assert sample.count("<CONTEXT>") == 1
+
+    # Verify that the 5 Receipt's words still exist
+    all_words, _ = moto_client.listReceiptWords()
+    assert len(all_words) == 5 * 5, "The words still exist in the table"
+
+    # Verify the word embedding statuses have not been updated for the 4 receipts that were not embedded
+    assert (
+        len(
+            moto_client.listReceiptWordsByEmbeddingStatus(EmbeddingStatus.NONE)
+        )
+        == 5 * 4
+    ), "The words that have not been embedded have the correct status"
+
+    # Verify the word embedding statuses have been updated
+    assert (
+        len(
+            moto_client.listReceiptWordsByEmbeddingStatus(
+                EmbeddingStatus.PENDING
+            )
+        )
+        == 5
+    ), "The words that have been embedded have the correct status"

@@ -2,6 +2,9 @@ import pytest
 import boto3
 from moto import mock_aws
 from receipt_label.data.places_api import PlacesAPI, BatchPlacesProcessor
+import receipt_label.utils.clients as clients
+from receipt_dynamo.data.dynamo_client import DynamoClient
+from types import SimpleNamespace
 
 
 @pytest.fixture
@@ -110,3 +113,34 @@ def batch_processor(dynamodb_table):
     Creates a BatchPlacesProcessor instance with a mock DynamoDB table.
     """
     return BatchPlacesProcessor("test_api_key", dynamodb_table)
+
+
+@pytest.fixture(autouse=True)
+def patch_clients(mocker, dynamodb_table_and_s3_bucket):
+    """
+    Autouse fixture that:
+    1) Patches receipt_label.utils.clients.get_clients to return the Moto DynamoClient
+       AND
+    2) Patches submit_batch.openai_client to a simple mock with the right methods.
+    """
+    table_name, bucket = dynamodb_table_and_s3_bucket
+
+    # 1) Fake Dynamo + OpenAI in get_clients()
+    fake_openai = mocker.Mock()
+    # set up methods your code uses:
+    fake_openai.files.create.return_value = SimpleNamespace(id="fake-file-id")
+    fake_openai.batches.create.return_value = SimpleNamespace(
+        id="fake-batch-id"
+    )
+
+    def fake_get_clients():
+        return DynamoClient(table_name), fake_openai, None
+
+    mocker.patch.object(clients, "get_clients", fake_get_clients)
+
+    # 2) Also patch the module‐level openai_client in submit_batch
+    import receipt_label.submit_embedding_batch.submit_batch as sb
+
+    mocker.patch.object(sb, "openai_client", fake_openai)
+
+    return fake_openai  # so tests can inspect calls if they want
