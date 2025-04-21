@@ -104,7 +104,8 @@ flowchart TD
         direction TB
         download_serialized_words["Download Serialized Words from S3"] --> deserialize_words["Deserialize Words"]
         deserialize_words --> query_receipt_words["Get all words from Receipt"]
-        generate_batch_id["Generate Batch ID"] --> format_word_context_embedding["Format Word Context Embedding"]
+        query_receipt_words --> generate_batch_id["Generate Batch ID"]
+        generate_batch_id --> format_word_context_embedding["Format Word Context Embedding"]
         format_word_context_embedding --> generate_ndjson["Generate NDJSON"]
         generate_ndjson --> write_ndjson["Write NDJSON"]
         write_ndjson --> upload_ndjson_to_openai["Upload NDJSON to OpenAI"]
