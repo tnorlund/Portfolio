@@ -70,23 +70,23 @@ Adds the batch summary to DynamoDB.
 
 This module is split across two phases in a Step Function workflow:
 
-### Phase 1: Prepare Batches
+### Phase 1: List Words That Need To Be Embedded
 
 1. List all receipt words with `embedding_status = "NONE"`
 2. Chunk the data into batches (by receipt)
-   1. Generate Batch ID
-   2. Formate the word context embedding
-   3. Generate the NDJSON file for all embeddings
-   4. Upload each NDJSON file to S3
-3. Return metadata for each batch (including `batch_id`, `s3_bucket`, and `s3_key`)
+   1. Serialize Receipt Words without embeddings per Receipt
+   2. Store serialized words as NDJSON in S3
 
 ### Phase 2: Submit to OpenAI
 
-1. Download the NDJSON from S3
-2. Upload the NDJSON to OpenAI
-3. Submit the batch to OpenAI
-4. Create the Batch Summary
-5. Add the Batch Summary to DynamoDB
+1. Download serialized words that need to be embedded
+2. Generate Batch ID
+3. Format the word context embeddings for each word
+4. Generate the NDJSON file for all embeddings
+5. Upload the NDJSON to OpenAI
+6. Submit the batch to OpenAI
+7. Create the Batch Summary
+8. Add the Batch Summary to DynamoDB
 
 ---
 
@@ -96,26 +96,23 @@ This module is split across two phases in a Step Function workflow:
 flowchart TD
     start([Start]) --> list_receipt_words_with_no_embeddings["List Receipt Words With No Embeddings"]
     list_receipt_words_with_no_embeddings --> chunk_into_embedding_batches["Chunk Into Embedding Batches"]
-    chunk_into_embedding_batches --> format_chunk["Format Chunk"]
-    format_chunk --> map_chunks_node["Map Chunks"]
+    chunk_into_embedding_batches --> serialize_receipt_words["Serialize Words that need to be Embedded"]
+    serialize_receipt_words --> upload_serialized_words["Upload Serialized Words to S3"]
+    upload_serialized_words --> upload_to_openai["Upload to OpenAI"]
 
-    subgraph map_chunks["Map Chunks"]
+    subgraph map_chunks["Upload to OpenAI"]
         direction TB
+        download_serialized_words["Download Serialized Words from S3"] --> deserialize_words["Deserialize Words"]
+        deserialize_words --> query_receipt_words["Get all words from Receipt"]
         generate_batch_id["Generate Batch ID"] --> format_word_context_embedding["Format Word Context Embedding"]
         format_word_context_embedding --> generate_ndjson["Generate NDJSON"]
         generate_ndjson --> write_ndjson["Write NDJSON"]
-        write_ndjson --> upload_ndjson_to_s3["Upload to S3"]
-        upload_ndjson_to_s3 --> submit_embedding_node["Submit Embedding"]
-    end
-
-    subgraph submit_embedding["Submit Embedding"]
-        direction TB
-        download_from_s3["Download From S3"] --> upload_ndjson_to_openai["Upload NDJSON to OpenAI"]
+        write_ndjson --> upload_ndjson_to_openai["Upload NDJSON to OpenAI"]
         upload_ndjson_to_openai --> submit_batch_to_openai["Submit Batch to OpenAI"]
         submit_batch_to_openai --> create_batch_summary["Create Batch Summary"]
         create_batch_summary --> add_batch_summary["Add Batch Summary"]
     end
 
-    submit_embedding --> END([End])
+    map_chunks --> END([End])
 
 ```
