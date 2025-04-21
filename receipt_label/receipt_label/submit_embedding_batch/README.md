@@ -99,22 +99,23 @@ flowchart TD
     chunk_into_embedding_batches --> format_chunk["Format Chunk"]
     format_chunk --> map_chunks_node["Map Chunks"]
 
-    subgraph map_chunks_node
-        direction TD
+    subgraph map_chunks["Map Chunks"]
+        direction TB
         generate_batch_id["Generate Batch ID"] --> format_word_context_embedding["Format Word Context Embedding"]
         format_word_context_embedding --> generate_ndjson["Generate NDJSON"]
         generate_ndjson --> write_ndjson["Write NDJSON"]
         write_ndjson --> upload_ndjson_to_s3["Upload to S3"]
-        upload_ndjson_to_s3 --> submit_embedding["Submit Embedding"]
+        upload_ndjson_to_s3 --> submit_embedding_node["Submit Embedding"]
     end
 
-    subgraph submit_embedding
-        direction TD
+    subgraph submit_embedding["Submit Embedding"]
+        direction TB
         download_from_s3["Download From S3"] --> upload_ndjson_to_openai["Upload NDJSON to OpenAI"]
         upload_ndjson_to_openai --> submit_batch_to_openai["Submit Batch to OpenAI"]
         submit_batch_to_openai --> create_batch_summary["Create Batch Summary"]
         create_batch_summary --> add_batch_summary["Add Batch Summary"]
     end
 
-    add_batch_summary --> end([End])
+    submit_embedding --> END([End])
+
 ```
