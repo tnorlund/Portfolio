@@ -8,45 +8,61 @@ This is typically the first step in a two-phase Step Function pipeline, followed
 
 ## 📦 Functions
 
+### `list_receipt_words_with_no_embeddings()`
+
+Fetches all ReceiptWords items with `embedding_status = "NONE"`.
+
+### `chunk_into_embedding_batches(receipt_words)`
+
+Splits the list of ReceiptWords into chunks based on the combination of Receipt ID and Image ID.
+
 ### `generate_batch_id()`
 
 Generates a unique UUID for each embedding batch.
 
-### `list_receipt_word_labels()`
+### `format_word_context_embedding()`
 
-Fetches all ReceiptWordLabel items with `validation_status = "NONE"`.
+Prepares OpenAI-compliant embedding payload that contains the words to the left and right.
 
-### `fetch_receipt_words(labels)`
+### `format_spatial_embedding()`
 
-Batch fetches ReceiptWord entities based on label coordinates.
+Prepares OpenAI-compliant embedding payload that contains the word and its semantically descriptive description of the word's position on the page.
 
-### `join_labels_with_words(labels, words)`
+### `combine_embeddings()`
 
-Joins ReceiptWordLabels with corresponding ReceiptWords using composite keys.
+Combine the different embeddings to a single list.
 
-### `chunk_joined_pairs(joined, batch_size)`
+### `generate_ndjson()`
 
-Splits the joined list into safe-size chunks for embedding.
-
-### `format_openai_input(joined_batch)`
-
-Prepares OpenAI-compliant embedding payload from (label, word) pairs.
+Generate a local file for the embeddings provided.
 
 ### `write_ndjson(batch_id, input_data)`
 
 Writes OpenAI batch payload to a newline-delimited JSON file.
 
-### `upload_ndjson_file(filepath)`
+### `upload_ndjson_to_s3`
+
+Uploads the NDJSON file to S3.
+
+### `download_ndjson_from_s3`
+
+Download the NDJSON from S3.
+
+### `upload_ndjson_to_openai(filepath)`
 
 Uploads the NDJSON file to OpenAI's file endpoint for batch use.
 
-### `submit_openai_batch(file_id)`
+### `submit_batch_to_openai(file_id)`
 
 Submits the embedding job to OpenAI using the uploaded file ID.
 
 ### `create_batch_summary(batch_id, joined)`
 
-Builds a BatchSummary entity to track the submitted batch.
+Builds a BatchSummary entity with "PENDING" status.
+
+### `add_batch_summary(batch_summary)`
+
+Adds the batch summary to DynamoDB.
 
 ---
 
@@ -56,20 +72,21 @@ This module is split across two phases in a Step Function workflow:
 
 ### Phase 1: Prepare Batches
 
-1. List all receipt word labels with `validation_status = "NONE"`
-2. Retrieve corresponding receipt word OCR data
-3. Join each label with its matching word via composite key
-4. Chunk the data into batches (e.g., 500 items each)
-5. Format each chunk into OpenAI-compatible NDJSON
-6. Upload each NDJSON file to S3
-7. Return metadata for each batch (including `batch_id`, `s3_bucket`, and `s3_key`)
+1. List all receipt words with `embedding_status = "NONE"`
+2. Chunk the data into batches (by receipt)
+   1. Generate Batch ID
+   2. Formate the word context embedding
+   3. Generate the NDJSON file for all embeddings
+   4. Upload each NDJSON file to S3
+3. Return metadata for each batch (including `batch_id`, `s3_bucket`, and `s3_key`)
 
-### Phase 2: Submit Batches (fanned out by Step Function `Map`)
+### Phase 2: Submit to OpenAI
 
-1. Each fanned-out Lambda reads its NDJSON batch from S3
-2. Uploads it to OpenAI's file endpoint
-3. Submits the embedding batch job
-4. Stores a `BatchSummary` entity in DynamoDB to track the job
+1. Download the NDJSON from S3
+2. Upload the NDJSON to OpenAI
+3. Submit the batch to OpenAI
+4. Create the Batch Summary
+5. Add the Batch Summary to DynamoDB
 
 ---
 
@@ -77,23 +94,27 @@ This module is split across two phases in a Step Function workflow:
 
 ```mermaid
 flowchart TD
-    Start([Start]) --> ListReceiptWordLabels["List Receipt Word Labels"]
-    ListReceiptWordLabels --> FetchReceiptWords["Fetch Receipt Word OCR"]
-    FetchReceiptWords --> JoinWordsAndLabels["Merge Words and Labels"]
-    JoinWordsAndLabels --> ChunkIntoEmbeddingBatches["Chunk into Batches"]
-    ChunkIntoEmbeddingBatches --> FormatChunk["Format Chunk into NDJSON"]
-    FormatChunk --> UploadChunk["Upload Chunk to S3"]
+    start([Start]) --> list_receipt_words_with_no_embeddings["List Receipt Words With No Embeddings"]
+    list_receipt_words_with_no_embeddings --> chunk_into_embedding_batches["Chunk Into Embedding Batches"]
+    chunk_into_embedding_batches --> format_chunk["Format Chunk"]
+    format_chunk --> map_chunks["Map Chunks"]
 
-    UploadChunk --> EachEmbeddingBatch["Batch Embedding Job"]
-    UploadChunk --> EachEmbeddingBatch1["Batch Embedding Job"]
-    UploadChunk --> EachEmbeddingBatchEllipsis["..."]
-
-    subgraph "Batch Embedding Job"
-        direction TB
-        ReadNDJSON["Read NDJSON from S3"] --> UploadToOpenAI["Upload to OpenAI"]
-        UploadToOpenAI --> SubmitEmbeddingBatchJob["Submit Embedding job to OpenAI"]
-        SubmitEmbeddingBatchJob --> CreateBatchJobDynamo["Create Batch Job in Dynamo"]
+    subgraph map_chunks
+        direction TD
+        generate_batch_id["Generate Batch ID"] --> format_word_context_embedding["Format Word Context Embedding"]
+        format_word_context_embedding --> generate_ndjson["Generate NDJSON"]
+        generate_ndjson --> write_ndjson["Write NDJSON"]
+        write_ndjson --> upload_ndjson_to_s3["Upload to S3"]
+        upload_ndjson_to_s3 --> submit_embedding["Submit Embedding"]
     end
 
-    CreateBatchJobDynamo --> End([End])
+    subgraph submit_embedding
+        direction TD
+        download_from_s3["Download From S3"] --> upload_ndjson_to_openai["Upload NDJSON to OpenAI"]
+        upload_ndjson_to_openai --> submit_batch_to_openai["Submit Batch to OpenAI"]
+        submit_batch_to_openai --> create_batch_summary["Create Batch Summary"]
+        create_batch_summary --> add_batch_summary["Add Batch Summary"]
+    end
+
+    add_batch_summary --> end([End])
 ```
