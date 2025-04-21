@@ -12,6 +12,18 @@ This is typically the first step in a two-phase Step Function pipeline, followed
 
 Fetches all ReceiptWords items with `embedding_status = "NONE"`.
 
+### `serialize_receipt_words()`
+
+Creates an NDJSON file with each line being a JSON representation of a ReceiptWord.
+
+### `deserialize_receipt_words()`
+
+Deserializes an NDJSON file where each line is a JSON representation of a Receipt word.
+
+### `query_receipt_words(image_id, receipt_id)`
+
+Gets all Receipt Words from a receipt by using the Receipt and Image IDs.
+
 ### `chunk_into_embedding_batches(receipt_words)`
 
 Splits the list of ReceiptWords into chunks based on the combination of Receipt ID and Image ID.
@@ -40,15 +52,15 @@ Generate a local file for the embeddings provided.
 
 Writes OpenAI batch payload to a newline-delimited JSON file.
 
-### `upload_ndjson_to_s3`
+### `upload_serialized_words()`
 
-Uploads the NDJSON file to S3.
+Uploads the NDJSON file containing serialized Receipt Words to S3.
 
-### `download_ndjson_from_s3`
+### `download_serialized_words()`
 
-Download the NDJSON from S3.
+Downloads the NDJSON file containing serialized Receipt Words from S3.
 
-### `upload_ndjson_to_openai(filepath)`
+### `upload_to_openai(filepath)`
 
 Uploads the NDJSON file to OpenAI's file endpoint for batch use.
 
@@ -98,18 +110,18 @@ flowchart TD
     list_receipt_words_with_no_embeddings --> chunk_into_embedding_batches["Chunk Into Embedding Batches"]
     chunk_into_embedding_batches --> serialize_receipt_words["Serialize Words that need to be Embedded"]
     serialize_receipt_words --> upload_serialized_words["Upload Serialized Words to S3"]
-    upload_serialized_words --> upload_to_openai["Upload to OpenAI"]
+    upload_serialized_words --> batch_embed["Batch Embed"]
 
-    subgraph map_chunks["Upload to OpenAI"]
+    subgraph map_chunks["Batch Embed"]
         direction TB
-        download_serialized_words["Download Serialized Words from S3"] --> deserialize_words["Deserialize Words"]
-        deserialize_words --> query_receipt_words["Get all words from Receipt"]
+        download_serialized_words["Download Serialized Words from S3"] --> deserialize_receipt_words["Deserialize Words"]
+        deserialize_receipt_words --> query_receipt_words["Get all words from Receipt"]
         query_receipt_words --> generate_batch_id["Generate Batch ID"]
         generate_batch_id --> format_word_context_embedding["Format Word Context Embedding"]
         format_word_context_embedding --> generate_ndjson["Generate NDJSON"]
         generate_ndjson --> write_ndjson["Write NDJSON"]
-        write_ndjson --> upload_ndjson_to_openai["Upload NDJSON to OpenAI"]
-        upload_ndjson_to_openai --> submit_batch_to_openai["Submit Batch to OpenAI"]
+        write_ndjson --> upload_to_openai["Upload NDJSON to OpenAI"]
+        upload_to_openai --> submit_batch_to_openai["Submit Batch to OpenAI"]
         submit_batch_to_openai --> create_batch_summary["Create Batch Summary"]
         create_batch_summary --> add_batch_summary["Add Batch Summary"]
     end
