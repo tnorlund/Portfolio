@@ -101,6 +101,7 @@ flowchart TD
 
     subgraph map_chunks
         direction TD
+
         generate_batch_id["Generate Batch ID"] --> format_word_context_embedding["Format Word Context Embedding"]
         format_word_context_embedding --> generate_ndjson["Generate NDJSON"]
         generate_ndjson --> write_ndjson["Write NDJSON"]
