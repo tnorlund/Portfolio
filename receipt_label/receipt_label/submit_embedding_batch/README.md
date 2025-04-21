@@ -100,12 +100,12 @@ flowchart TD
     format_chunk --> map_chunks["Map Chunks"]
 
     subgraph map_chunks
-      direction TD
-      generate_batch_id["Generate Batch ID"] --> format_word_context_embedding["Format Word Context Embedding"]
-      format_word_context_embedding --> generate_ndjson["Generate NDJSON"]
-      generate_ndjson --> write_ndjson["Write NDJSON"]
-      write_ndjson --> upload_ndjson_to_s3["Upload to S3"]
-      upload_ndjson_to_s3 --> submit_embedding["Submit Embedding"]
+        direction TD
+        generate_batch_id["Generate Batch ID"] --> format_word_context_embedding["Format Word Context Embedding"]
+        format_word_context_embedding --> generate_ndjson["Generate NDJSON"]
+        generate_ndjson --> write_ndjson["Write NDJSON"]
+        write_ndjson --> upload_ndjson_to_s3["Upload to S3"]
+        upload_ndjson_to_s3 --> submit_embedding["Submit Embedding"]
     end
 
     subgraph submit_embedding
