@@ -97,9 +97,9 @@ flowchart TD
     start([Start]) --> list_receipt_words_with_no_embeddings["List Receipt Words With No Embeddings"]
     list_receipt_words_with_no_embeddings --> chunk_into_embedding_batches["Chunk Into Embedding Batches"]
     chunk_into_embedding_batches --> format_chunk["Format Chunk"]
-    format_chunk --> map_chunks["Map Chunks"]
+    format_chunk --> map_chunks_node["Map Chunks"]
 
-    subgraph map_chunks
+    subgraph map_chunks_node
         direction TD
         generate_batch_id["Generate Batch ID"] --> format_word_context_embedding["Format Word Context Embedding"]
         format_word_context_embedding --> generate_ndjson["Generate NDJSON"]
