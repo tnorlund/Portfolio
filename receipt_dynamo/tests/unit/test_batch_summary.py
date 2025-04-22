@@ -165,7 +165,10 @@ def test_batch_summary_invalid_status():
 
 @pytest.mark.unit
 def test_batch_summary_status_not_string():
-    with pytest.raises(ValueError, match="status must be a string"):
+    with pytest.raises(
+        ValueError,
+        match="status must be either a BatchStatus enum or a string; got int",
+    ):
         BatchSummary(
             batch_id="abc123",
             batch_type=BatchType.EMBEDDING.value,
