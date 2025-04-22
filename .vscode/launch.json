@@ -2,16 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Python: Current File",
-      "type": "python",
-      "request": "launch",
-      "program": "${file}",
-      "console": "integratedTerminal",
-      "justMyCode": false
-    },
-    {
       "name": "Python: All Tests",
-      "type": "python",
       "request": "launch",
       "module": "pytest",
       "args": [
@@ -21,11 +12,11 @@
         "--cov-report=xml:receipt_dynamo/tests/coverage.xml"
       ],
       "console": "integratedTerminal",
-      "justMyCode": false
+      "justMyCode": false,
+      "purpose": ["debug-test"]
     },
     {
       "name": "Python: Unit Tests",
-      "type": "python",
       "request": "launch",
       "module": "pytest",
       "args": [
@@ -35,11 +26,11 @@
         "--cov-report=xml:receipt_dynamo/tests/coverage.xml"
       ],
       "console": "integratedTerminal",
-      "justMyCode": false
+      "justMyCode": false,
+      "purpose": ["debug-test"]
     },
     {
       "name": "Python: Integration Tests",
-      "type": "python",
       "request": "launch",
       "module": "pytest",
       "args": [
@@ -49,11 +40,11 @@
         "--cov-report=xml:receipt_dynamo/tests/coverage.xml"
       ],
       "console": "integratedTerminal",
-      "justMyCode": false
+      "justMyCode": false,
+      "purpose": ["debug-test"]
     },
     {
       "name": "Python: Receipt Trainer Tests",
-      "type": "python",
       "request": "launch",
       "module": "pytest",
       "args": [
@@ -63,11 +54,11 @@
         "--cov-report=xml:receipt_trainer/tests/coverage.xml"
       ],
       "console": "integratedTerminal",
-      "justMyCode": false
+      "justMyCode": false,
+      "purpose": ["debug-test"]
     },
     {
       "name": "Python: Receipt Label Tests",
-      "type": "python",
       "request": "launch",
       "module": "pytest",
       "args": [
@@ -77,7 +68,8 @@
         "--cov-report=xml:receipt_label/tests/coverage.xml"
       ],
       "console": "integratedTerminal",
-      "justMyCode": false
+      "justMyCode": false,
+      "purpose": ["debug-test"]
     }
   ]
 }

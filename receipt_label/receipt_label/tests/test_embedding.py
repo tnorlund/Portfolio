@@ -1,12 +1,19 @@
 import json
+from datetime import datetime
 from typing import Literal
 import pytest
 import boto3
 from types import SimpleNamespace
 from receipt_label.submit_embedding_batch import submit_batch
+from receipt_label.poll_embedding_batch import poll_batch
 from receipt_dynamo import DynamoClient
-from receipt_dynamo.constants import EmbeddingStatus
-from receipt_dynamo.entities import ReceiptWord
+from receipt_dynamo.constants import EmbeddingStatus, BatchStatus, BatchType
+from receipt_dynamo.entities import (
+    ReceiptWord,
+    BatchSummary,
+    Receipt,
+    ReceiptMetadata,
+)
 
 
 @pytest.fixture
@@ -377,8 +384,8 @@ def receipt_words():
         ReceiptWord(
             receipt_id=1,
             image_id="29c1d8af-035c-431f-9d80-e4053cf28a00",
-            line_id=2,
-            word_id=1,
+            line_id=1,
+            word_id=3,
             text="QUALITY",
             bounding_box={
                 "x": 0.09513074193233559,
@@ -545,8 +552,140 @@ def receipt_words():
     ]
 
 
+@pytest.fixture
+def receipt_word_labels():
+    return [
+        ReceiptWordLabel(
+            image_id="29c1d8af-035c-431f-9d80-e4053cf28a00",
+            receipt_id=1,
+            line_id=1,
+            word_id=1,
+            label="MERCHANT_NAME",
+            validation_status=ValidationStatus.VALID,
+            timestamp_added=datetime.now(),
+        ),
+        ReceiptWordLabel(
+            image_id="29c1d8af-035c-431f-9d80-e4053cf28a00",
+            receipt_id=1,
+            line_id=1,
+            word_id=1,
+            label="ADDRESS",
+            validation_status=ValidationStatus.PENDING,
+            timestamp_added=datetime.now(),
+        ),
+        ReceiptWordLabel(
+            image_id="29c1d8af-035c-431f-9d80-e4053cf28a00",
+            receipt_id=1,
+            line_id=1,
+            word_id=1,
+            label="ADDRESS_LINE",
+            validation_status=ValidationStatus.PENDING,
+            timestamp_added=datetime.now(),
+        ),
+    ]
+
+
+@pytest.fixture
+def receipt_and_metadata():
+    receipts = [
+        Receipt(
+            image_id="29c1d8af-035c-431f-9d80-e4053cf28a00",
+            receipt_id=1,
+            width=100,
+            height=100,
+            timestamp_added=datetime.now(),
+            raw_s3_bucket="test_bucket",
+            raw_s3_key="test_key",
+            top_left={"x": 0, "y": 0},
+            top_right={"x": 100, "y": 0},
+            bottom_left={"x": 0, "y": 100},
+            bottom_right={"x": 100, "y": 100},
+            sha256="test_sha256",
+            cdn_s3_bucket="test_cdn_bucket",
+            cdn_s3_key="test_cdn_key",
+        ),
+        Receipt(
+            image_id="29c1d8af-035c-431f-9d80-e4053cf28a00",
+            receipt_id=2,
+            width=100,
+            height=100,
+            timestamp_added=datetime.now(),
+            raw_s3_bucket="test_bucket",
+            raw_s3_key="test_key",
+            top_left={"x": 0, "y": 0},
+            top_right={"x": 100, "y": 0},
+            bottom_left={"x": 0, "y": 100},
+            bottom_right={"x": 100, "y": 100},
+            sha256="test_sha256",
+            cdn_s3_bucket="test_cdn_bucket",
+            cdn_s3_key="test_cdn_key",
+        ),
+        Receipt(
+            image_id="29c1d8af-035c-431f-9d80-e4053cf28a00",
+            receipt_id=3,
+            width=100,
+            height=100,
+            timestamp_added=datetime.now(),
+            raw_s3_bucket="test_bucket",
+            raw_s3_key="test_key",
+            top_left={"x": 0, "y": 0},
+            top_right={"x": 100, "y": 0},
+            bottom_left={"x": 0, "y": 100},
+            bottom_right={"x": 100, "y": 100},
+            sha256="test_sha256",
+            cdn_s3_bucket="test_cdn_bucket",
+            cdn_s3_key="test_cdn_key",
+        ),
+    ]
+    metadatas = [
+        ReceiptMetadata(
+            image_id="29c1d8af-035c-431f-9d80-e4053cf28a00",
+            receipt_id=1,
+            place_id="test_place_id",
+            merchant_name="test_merchant_name",
+            match_confidence=0.5,
+            matched_fields=["test_field1", "test_field2"],
+            timestamp=datetime.now(),
+            merchant_category="test_merchant_category",
+            address="test_address",
+            phone_number="test_phone_number",
+            validated_by="test_validated_by",
+            reasoning="test_reasoning",
+        ),
+        ReceiptMetadata(
+            image_id="29c1d8af-035c-431f-9d80-e4053cf28a00",
+            receipt_id=2,
+            place_id="test_place_id",
+            merchant_name="test_merchant_name",
+            match_confidence=0.5,
+            matched_fields=["test_field1", "test_field2"],
+            timestamp=datetime.now(),
+            merchant_category="test_merchant_category",
+            address="test_address",
+            phone_number="test_phone_number",
+            validated_by="test_validated_by",
+            reasoning="test_reasoning",
+        ),
+        ReceiptMetadata(
+            image_id="29c1d8af-035c-431f-9d80-e4053cf28a00",
+            receipt_id=3,
+            place_id="test_place_id",
+            merchant_name="test_merchant_name",
+            match_confidence=0.5,
+            matched_fields=["test_field1", "test_field2"],
+            timestamp=datetime.now(),
+            merchant_category="test_merchant_category",
+            address="test_address",
+            phone_number="test_phone_number",
+            validated_by="test_validated_by",
+            reasoning="test_reasoning",
+        ),
+    ]
+    return receipts, metadatas
+
+
 @pytest.mark.integration
-def test_embedding_batch(
+def test_embedding_batch_submit(
     dynamodb_table_and_s3_bucket: tuple[str, str],
     receipt_words: list[ReceiptWord],
     mocker,
@@ -700,3 +839,137 @@ def test_embedding_batch(
         )
         == 5
     ), "The words that have been embedded have the correct status"
+
+
+@pytest.mark.integration
+def test_embedding_batch_poll(
+    dynamodb_table_and_s3_bucket: tuple[str, str],
+    receipt_words: list[ReceiptWord],
+    receipt_and_metadata: tuple[Receipt, ReceiptMetadata],
+    mocker,
+    patch_clients,
+):
+    # Arrange: point the handler at your Moto table
+    # Get our mocked clients
+    fake_openai, fake_index = patch_clients
+    dynamo_table, s3_bucket = dynamodb_table_and_s3_bucket
+    moto_client = DynamoClient(dynamo_table)
+    # Monkey‑patch the global in the submit_batch module
+    mocker.patch.object(poll_batch, "dynamo_client", moto_client)
+
+    for word in receipt_words:
+        word.embedding_status = EmbeddingStatus.PENDING
+    moto_client.addWords(receipt_words)
+    batch_id = submit_batch.generate_batch_id()
+    moto_client.addBatchSummary(
+        BatchSummary(
+            batch_id=batch_id,
+            batch_type=BatchType.EMBEDDING,
+            word_count=5,
+            result_file_id="fake-result-file-id",
+            openai_batch_id="fake-batch-id",
+            submitted_at=datetime.now(),
+            status=BatchStatus.PENDING,
+            receipt_refs=[
+                ("29c1d8af-035c-431f-9d80-e4053cf28a00", 1),
+                ("29c1d8af-035c-431f-9d80-e4053cf28a00", 2),
+                ("29c1d8af-035c-431f-9d80-e4053cf28a00", 3),
+            ],
+        )
+    )
+    moto_client.addReceipts(receipt_and_metadata[0])
+    moto_client.addReceiptMetadatas(receipt_and_metadata[1])
+    test_metadata = moto_client.getReceiptMetadata(
+        "29c1d8af-035c-431f-9d80-e4053cf28a00", 1
+    )
+    assert test_metadata.merchant_name == "test_merchant_name"
+
+    # Act
+    pending_batches = poll_batch.list_pending_embedding_batches()
+    batch_status = poll_batch.get_openai_batch_status(
+        pending_batches[0].openai_batch_id
+    )
+    downloaded_results = poll_batch.download_openai_batch_result(
+        pending_batches[0].openai_batch_id
+    )
+    receipt_descriptions = poll_batch.get_receipt_descriptions(
+        downloaded_results
+    )
+    upserted_vectors_count = poll_batch.upsert_embeddings_to_pinecone(
+        downloaded_results, receipt_descriptions
+    )
+    embedding_results_count = poll_batch.write_embedding_results_to_dynamo(
+        downloaded_results, receipt_descriptions, pending_batches[0].batch_id
+    )
+    poll_batch.mark_batch_complete(pending_batches[0].batch_id)
+
+    # Verify the pending batch is pulled from DynamoDB
+    assert len(pending_batches) == 1
+
+    # Verify Pinecone index is called twice. Once to get teh completion status and then again to get the file ID
+    fake_openai.batches.retrieve.assert_has_calls(
+        [
+            mocker.call("fake-batch-id"),
+            mocker.call("fake-batch-id"),
+        ]
+    )
+
+    # Verify the returned upserted_vectors_count matches the number of vectors
+    assert upserted_vectors_count == len(downloaded_results)
+    assert (
+        downloaded_results[0]["custom_id"]
+        == "IMAGE#29c1d8af-035c-431f-9d80-e4053cf28a00#RECEIPT#00001#LINE#00001#WORD#00001"
+    )
+
+    # Verify upsert was called with vectors matching downloaded_results and correct metadata
+    called_args, called_kwargs = fake_index.upsert.call_args
+    # Extract the vectors argument safely
+    if "vectors" in called_kwargs:
+        vectors_arg = called_kwargs["vectors"]
+    else:
+        vectors_arg = called_args[0]
+    assert isinstance(vectors_arg, list)
+    assert len(vectors_arg) == len(downloaded_results)
+    # Unpack the receipt_and_metadata fixture
+    receipts, metadatas = receipt_and_metadata
+    for vec, result in zip(vectors_arg, downloaded_results):
+        # ID and values check
+        assert vec["id"] == result["custom_id"]
+        assert vec["values"] == result["embedding"]
+        # Metadata structure
+        meta = vec["metadata"]
+        parts = result["custom_id"].split("#")
+        assert meta["image_id"] == parts[1]
+        assert meta["receipt_id"] == int(parts[3])
+        assert meta["line_id"] == int(parts[5])
+        assert meta["word_id"] == int(parts[7])
+        assert meta["source"] == "openai_embedding_batch"
+        # Merchant name from ReceiptMetadata fixture
+        matching_meta = next(
+            (m for m in metadatas if m.receipt_id == meta["receipt_id"]), None
+        )
+        assert matching_meta is not None
+        assert meta["merchant_name"] == matching_meta.merchant_name
+
+    # Verify the batch summary is updated to completed
+    assert (
+        moto_client.getBatchSummary(batch_id).status
+        == BatchStatus.COMPLETED.value
+    )
+
+    # Verify the EmbeddingBatchResult objects are created and added to DynamoDB
+    assert embedding_results_count == len(downloaded_results)
+    for result in downloaded_results:
+        parts = result["custom_id"].split("#")
+        image_id = parts[1]
+        receipt_id = int(parts[3])
+        line_id = int(parts[5])
+        word_id = int(parts[7])
+        embedding_result = moto_client.getEmbeddingBatchResult(
+            batch_id=batch_id,
+            image_id=image_id,
+            receipt_id=receipt_id,
+            line_id=line_id,
+            word_id=word_id,
+        )
+        assert embedding_result is not None

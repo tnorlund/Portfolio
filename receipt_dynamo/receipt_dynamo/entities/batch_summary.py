@@ -12,7 +12,7 @@ class BatchSummary:
         batch_type: str,
         openai_batch_id: str,
         submitted_at: datetime,
-        status: str,
+        status: str | BatchStatus,
         word_count: int,
         result_file_id: str,
         receipt_refs: list[tuple[str, int]] = None,
@@ -21,11 +21,23 @@ class BatchSummary:
             raise ValueError("batch_id must be a string")
         self.batch_id = batch_id
 
-        if batch_type not in [t.value for t in BatchType]:
+        # Accept batch_type as either BatchType or str
+        if isinstance(batch_type, BatchType):
+            batch_type_str = batch_type.value
+        elif isinstance(batch_type, str):
+            batch_type_str = batch_type
+        else:
             raise ValueError(
-                f"Invalid batch type: {batch_type} must be one of {', '.join([t.value for t in BatchType])}"
+                f"batch_type must be either a BatchType enum or a string; got {type(batch_type).__name__}"
             )
-        self.batch_type = batch_type
+
+        # Validate batch_type_str against allowed values
+        valid_types = [t.value for t in BatchType]
+        if batch_type_str not in valid_types:
+            raise ValueError(
+                f"Invalid batch type: {batch_type_str} must be one of {', '.join(valid_types)}"
+            )
+        self.batch_type = batch_type_str
 
         if not isinstance(openai_batch_id, str):
             raise ValueError("openai_batch_id must be a string")
@@ -35,13 +47,23 @@ class BatchSummary:
             raise ValueError("submitted_at must be a datetime object")
         self.submitted_at = submitted_at
 
-        if not isinstance(status, str):
-            raise ValueError("status must be a string")
-        if not status in [s.value for s in BatchStatus]:
+        # Accept status as either a BatchStatus enum or a string
+        if isinstance(status, BatchStatus):
+            status_str = status.value
+        elif isinstance(status, str):
+            status_str = status
+        else:
             raise ValueError(
-                f"Invalid status: {status} must be one of {', '.join([s.value for s in BatchStatus])}"
+                f"status must be either a BatchStatus enum or a string; got {type(status).__name__}"
             )
-        self.status = status
+
+        # Validate the string against allowed values
+        valid_statuses = [s.value for s in BatchStatus]
+        if status_str not in valid_statuses:
+            raise ValueError(
+                f"Invalid status: {status_str} must be one of {', '.join(valid_statuses)}"
+            )
+        self.status = status_str
 
         if not isinstance(word_count, int):
             raise ValueError("word_count must be an integer")

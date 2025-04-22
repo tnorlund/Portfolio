@@ -107,7 +107,7 @@ class ReceiptWordLabel:
             raise ValueError("validation_status cannot be empty")
         if status not in [s.value for s in ValidationStatus]:
             raise ValueError(
-                f"validation_status must be one of: {', '.join(s.value for s in ValidationStatus)}"
+                f"validation_status must be one of: {', '.join(s.value for s in ValidationStatus)}\nGot: {status}"
             )
         self.validation_status = status
 

@@ -13,7 +13,6 @@ class ValidationStatus(str, Enum):
     PENDING = "PENDING"  # Validation has been queued
     VALID = "VALID"  # Validation succeeded
     INVALID = "INVALID"  # Validation rejected
-    REJECTED = "REJECTED"  # Explicitly discarded (deprecated)
 
 
 class BatchStatus(str, Enum):

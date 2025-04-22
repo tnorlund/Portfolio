@@ -14,12 +14,10 @@ def example_embedding_batch_result():
         receipt_id=1,
         line_id=27,
         word_id=3,
-        pinecone_id="WORD#IMAGE#1d5ab3e0-7d81-4de4-b23d-1f490f85d89c#RECEIPT#00001#LINE#00027#WORD#00003#LABEL#PAYMENT_DETAILS",
+        pinecone_id="IMAGE#1d5ab3e0-7d81-4de4-b23d-1f490f85d89c#RECEIPT#00001#LINE#00027#WORD#00003",
         status=EmbeddingStatus.SUCCESS.value,
         text="Organic Bananas",
-        label="PAYMENT_DETAILS",
         error_message=None,
-        view="WORD",
     )
 
 
@@ -28,7 +26,10 @@ def example_embedding_batch_result():
 
 @pytest.mark.unit
 def test_embedding_batch_result_valid(example_embedding_batch_result):
-    assert example_embedding_batch_result.label == "PAYMENT_DETAILS"
+    assert (
+        example_embedding_batch_result.batch_id
+        == "dc7e61ba-5722-43a2-8e99-9df9f54287a9"
+    )
 
 
 @pytest.mark.unit
@@ -47,7 +48,6 @@ def test_embedding_batch_result_to_item_and_back(
 def test_embedding_batch_result_repr(example_embedding_batch_result):
     s = repr(example_embedding_batch_result)
     assert "EmbeddingBatchResult(" in s
-    assert f"label='PAYMENT_DETAILS'" in s
     assert f"status='SUCCESS'" in s
     assert f"receipt_id='1'" in s
     assert f"line_id='27'" in s
@@ -75,13 +75,11 @@ def test_embedding_batch_result_iter(example_embedding_batch_result):
         "word_id",
         "pinecone_id",
         "text",
-        "label",
         "error_message",
         "status",
     }
     assert set(result_dict.keys()) == expected_keys
     assert result_dict["receipt_id"] == 1
-    assert result_dict["label"] == "PAYMENT_DETAILS"
     assert result_dict["status"] == EmbeddingStatus.SUCCESS.value
 
 
@@ -98,7 +96,6 @@ def test_embedding_batch_result_iter(example_embedding_batch_result):
         ("pinecone_id", "invalid", "pinecone_id must be in the format"),
         ("status", 123, "status must be a string"),
         ("text", 456, "text must be a string"),
-        ("label", 789, "label must be a string"),
         ("error_message", 999, "error_message must be a string"),
     ],
 )
@@ -112,7 +109,6 @@ def test_embedding_batch_result_invalid_field(field, value, expected_error):
         pinecone_id="WORD#RECEIPT#00101#LINE#00002#WORD#00003#LABEL#ITEM",
         status=EmbeddingStatus.SUCCESS.value,
         text="OK",
-        label="LABEL",
         error_message=None,
     )
     kwargs[field] = value
@@ -134,7 +130,6 @@ def test_receipt_id_must_be_positive():
             pinecone_id="WORD#RECEIPT#00000#LINE#00001#WORD#00001#LABEL#ITEM",
             status=EmbeddingStatus.SUCCESS.value,
             text="txt",
-            label="LBL",
             error_message=None,
         )
 
@@ -153,7 +148,6 @@ def test_line_id_must_be_positive():
             pinecone_id="WORD#RECEIPT#00001#LINE#-00001#WORD#00001#LABEL#ITEM",
             status=EmbeddingStatus.SUCCESS.value,
             text="txt",
-            label="LBL",
             error_message=None,
         )
 
@@ -172,7 +166,6 @@ def test_word_id_must_be_positive():
             pinecone_id="WORD#RECEIPT#00001#LINE#00001#WORD#-00001#LABEL#ITEM",
             status=EmbeddingStatus.SUCCESS.value,
             text="txt",
-            label="LBL",
             error_message=None,
         )
 
@@ -189,7 +182,6 @@ def test_invalid_embedding_status_enum():
             pinecone_id="WORD#RECEIPT#00101#LINE#00002#WORD#00003#LABEL#ITEM",
             status="BAD",
             text="txt",
-            label="LBL",
             error_message=None,
         )
 
@@ -206,7 +198,6 @@ def test_pinecone_id_must_be_in_expected_format():
             pinecone_id="BAD",
             status=EmbeddingStatus.SUCCESS.value,
             text="txt",
-            label="LBL",
             error_message=None,
         )
 
@@ -256,7 +247,6 @@ def test_embedding_batch_result_missing_status_key():
                 "image_id": {"S": "3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
                 "pinecone_id": {"S": "RECEIPT#1#LINE#1#WORD#1"},
                 "text": {"S": "Bananas"},
-                "label": {"S": "ITEM"},
                 "error_message": {"NULL": True},
                 "view": {"S": "WORD"},
             }
@@ -283,7 +273,6 @@ def test_embedding_batch_result_deserialization_raises():
         "image_id": {"S": "3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "pinecone_id": {"S": "RECEIPT#1#LINE#2#WORD#3"},
         "text": {"S": "Bananas"},
-        "label": {"S": "ITEM"},
         "status": {"S": "SUCCESS"},
         "error_message": {"NULL": True},
         "view": {"S": "WORD"},
@@ -307,7 +296,6 @@ def test_embedding_batch_result_malformed_sk_parsing():
                 "pinecone_id": "INVALID",
                 "status": EmbeddingStatus.SUCCESS.value,
                 "text": "Bananas",
-                "label": "ITEM",
                 "error_message": {"S": "Malformed SK"},
                 "view": {"S": "WORD"},
             }
@@ -323,10 +311,9 @@ def test_embedding_batch_result_deserialization_without_error_message():
         },
         "image_id": {"S": "3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "pinecone_id": {
-            "S": "WORD#RECEIPT#00101#LINE#00002#WORD#00003#LABEL#ITEM"
+            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00101#LINE#00002#WORD#00003"
         },
         "text": {"S": "Bananas"},
-        "label": {"S": "ITEM"},
         "status": {"S": "SUCCESS"},
         "error_message": {"NULL": True},
         "view": {"S": "WORD"},
@@ -344,10 +331,9 @@ def test_embedding_batch_result_deserialization_with_error_message():
         },
         "image_id": {"S": "3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "pinecone_id": {
-            "S": "WORD#RECEIPT#00101#LINE#00002#WORD#00003#LABEL#ITEM"
+            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00101#LINE#00002#WORD#00003"
         },
         "text": {"S": "Bananas"},
-        "label": {"S": "ITEM"},
         "status": {"S": "SUCCESS"},
         "error_message": {"S": "Here is an error message"},
         "view": {"S": "WORD"},

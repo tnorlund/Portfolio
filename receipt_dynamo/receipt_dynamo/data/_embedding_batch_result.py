@@ -256,23 +256,22 @@ class _EmbeddingBatchResult:
     def getEmbeddingBatchResult(
         self,
         batch_id: str,
+        image_id: str,
         receipt_id: int,
         line_id: int,
         word_id: int,
-        label: str,
     ) -> EmbeddingBatchResult:
         """
         Gets an EmbeddingBatchResult from DynamoDB by primary key.
         """
         assert_valid_uuid(batch_id)
+        assert_valid_uuid(image_id)
         if not isinstance(receipt_id, int) or receipt_id <= 0:
             raise ValueError("receipt_id must be a positive integer")
         if not isinstance(line_id, int) or line_id < 0:
             raise ValueError("line_id must be zero or positive integer")
         if not isinstance(word_id, int) or word_id < 0:
             raise ValueError("word_id must be zero or positive integer")
-        if not isinstance(label, str) or not label:
-            raise ValueError("label must be a non-empty string")
 
         try:
             response = self._client.get_item(
@@ -280,7 +279,7 @@ class _EmbeddingBatchResult:
                 Key={
                     "PK": {"S": f"BATCH#{batch_id}"},
                     "SK": {
-                        "S": f"RESULT#RECEIPT#{receipt_id}#LINE#{line_id}#WORD#{word_id}#LABEL#{label}"
+                        "S": f"RESULT#IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:03d}#WORD#{word_id:03d}"
                     },
                 },
             )
@@ -288,7 +287,7 @@ class _EmbeddingBatchResult:
                 return itemToEmbeddingBatchResult(response["Item"])
             else:
                 raise ValueError(
-                    f"Embedding batch result for Batch ID '{batch_id}', Receipt ID {receipt_id}, Line ID {line_id}, Word ID {word_id}, Label '{label}' does not exist."
+                    f"Embedding batch result for Batch ID '{batch_id}', Image ID {image_id}, Receipt ID {receipt_id}, Line ID {line_id}, Word ID {word_id} does not exist."
                 )
         except ClientError as e:
             raise Exception(
