@@ -5,6 +5,7 @@ from .poll_batch import (
     upsert_embeddings_to_pinecone,
     write_embedding_results_to_dynamo,
     mark_batch_complete,
+    get_receipt_descriptions,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "upsert_embeddings_to_pinecone",
     "write_embedding_results_to_dynamo",
     "mark_batch_complete",
+    "get_receipt_descriptions",
 ]

@@ -1,6 +1,6 @@
+import re
 from typing import List
 import json
-import logging
 
 """
 poll_batch.py
@@ -23,55 +23,45 @@ distributed receipt labeling and validation workflow.
 """
 
 from receipt_dynamo.entities import EmbeddingBatchResult, BatchSummary
-from receipt_dynamo.constants import BatchType
+from receipt_dynamo.constants import (
+    BatchType,
+    EmbeddingStatus,
+    ValidationStatus,
+)
+from receipt_label.submit_embedding_batch.submit_batch import (
+    _format_word_context_embedding_input,
+)
 from receipt_label.utils import get_clients
 
 dynamo_client, openai_client, pinecone_index = get_clients()
 
 
-def parse_metadata_from_custom_id(custom_id: str, body: dict) -> dict:
-    # Detect view from custom_id prefix ("WORD" or "CTX")
-    if custom_id.startswith("WORD#"):
-        view = "word"
-        suffix = custom_id[len("WORD#") :]
-    elif custom_id.startswith("CTX#"):
-        view = "context"
-        suffix = custom_id[len("CTX#") :]
-    else:
-        view = "unknown"
-        suffix = custom_id
+def _parse_left_right_from_formatted(fmt: str) -> tuple[str, str]:
+    """
+    Given a string like
+      "<TARGET>WORD</TARGET> <POS>…</POS> <CONTEXT>LEFT RIGHT</CONTEXT>"
+    return ("LEFT", "RIGHT").
+    """
+    m = re.search(r"<CONTEXT>(.*?)</CONTEXT>", fmt)
+    if not m:
+        raise ValueError(f"No <CONTEXT>…</CONTEXT> in {fmt!r}")
+    cont = m.group(1).strip()
+    # Assuming exactly two tokens separated by whitespace
+    parts = cont.split(maxsplit=1)
+    left = parts[0] if parts else "<EDGE>"
+    right = parts[1] if len(parts) > 1 else "<EDGE>"
+    return left, right
 
-    parts = suffix.split("#")
-    label = parts[-1]
 
-    # Parse position and angle from input text (if you want to reuse it from there)
-    meta = {
+def _parse_metadata_from_custom_id(custom_id: str) -> dict:
+    parts = custom_id.split("#")
+    return {
         "image_id": parts[1],
         "receipt_id": int(parts[3]),
         "line_id": int(parts[5]),
         "word_id": int(parts[7]),
-        "label": label,
         "source": "openai_embedding_batch",
     }
-    # Attach view metadata
-    meta["view"] = view
-
-    try:
-        # extract raw input text
-        input_text = body.get("input", "")
-        if "(pos=" in input_text:
-            pos_part = input_text.split("pos=")[1].split(")")[0]
-            x, y = map(float, pos_part.split(","))
-            meta["x_center"] = x
-            meta["y_center"] = y
-        if "angle=" in input_text:
-            meta["angle"] = float(input_text.split("angle=")[1].split()[0])
-        if "conf=" in input_text:
-            meta["confidence"] = float(input_text.split("conf=")[1])
-    except Exception:
-        pass
-
-    return meta
 
 
 def list_pending_embedding_batches() -> List[BatchSummary]:
@@ -125,88 +115,259 @@ def download_openai_batch_result(openai_batch_id: str) -> List[dict]:
     else:
         raise ValueError("Unexpected OpenAI file content type")
 
-    return [json.loads(line) for line in lines if line.strip()]
-
-
-def upsert_embeddings_to_pinecone(results: List[dict]):
-    """
-    Upsert the embedding results to Pinecone.
-    Args:
-        results (List[dict]): The list of embedding results.
-    """
-    keys = []
-    for r in results:
-        custom_id = r["custom_id"]
-        meta = parse_metadata_from_custom_id(custom_id, r.get("body", {}))
-        keys.append(
+    results: list[dict] = []
+    for line in lines:
+        if not line.strip():
+            continue
+        record = json.loads(line)
+        embedding = (
+            record.get("response", {})
+            .get("body", {})
+            .get("data", [{}])[0]
+            .get("embedding")
+        )
+        results.append(
             {
-                "PK": {"S": f"IMAGE#{meta['image_id']}"},
-                "SK": {
-                    "S": f"RECEIPT#{meta['receipt_id']:05d}#LINE#{meta['line_id']:05d}#WORD#{meta['word_id']:05d}"
-                },
+                "custom_id": record.get("custom_id"),
+                "embedding": embedding,
             }
         )
+    return results
 
-    # Remove duplicate keys to avoid BatchGetItem errors when both word and context views exist
-    unique = {}
-    for key in keys:
-        pk = key["PK"]["S"]
-        sk = key["SK"]["S"]
-        unique[(pk, sk)] = key
-    keys = list(unique.values())
 
-    receipt_words = dynamo_client.getReceiptWordsByKeys(keys)
-    unique_pairs = {(w.image_id, w.receipt_id) for w in receipt_words}
-    meta_keys = [
-        {
-            "PK": {"S": f"IMAGE#{image_id}"},
-            "SK": {"S": f"RECEIPT#{receipt_id:05d}#METADATA"},
+def get_receipt_descriptions(
+    results: List[dict],
+) -> dict[str, dict[int, dict]]:
+    """
+    Get the receipt descriptions from the embedding results, grouped by image and receipt.
+
+    Returns:
+        A dict mapping each image_id (str) to a dict that maps each receipt_id (int) to a dict containing:
+            - receipt
+            - lines
+            - words
+            - letters
+            - tags
+            - labels
+            - metadata
+    """
+    descriptions: dict[str, dict[int, dict]] = {}
+    for receipt_id, image_id in _get_unique_receipt_and_image_ids(results):
+        receipt, lines, words, letters, tags, labels = (
+            dynamo_client.getReceiptDetails(
+                image_id=image_id,
+                receipt_id=receipt_id,
+            )
+        )
+        receipt_metadata = dynamo_client.getReceiptMetadata(
+            image_id=image_id,
+            receipt_id=receipt_id,
+        )
+        descriptions.setdefault(image_id, {})[receipt_id] = {
+            "receipt": receipt,
+            "lines": lines,
+            "words": words,
+            "letters": letters,
+            "tags": tags,
+            "labels": labels,
+            "metadata": receipt_metadata,
         }
-        for image_id, receipt_id in unique_pairs
-    ]
-    metadata_items = dynamo_client.getReceiptMetadatas(meta_keys)
-    merchant_map = {
-        (m.image_id, m.receipt_id): m.merchant_name for m in metadata_items
-    }
+    return descriptions
 
-    text_by_key = {}
-    for word in receipt_words:
-        key = (word.image_id, word.receipt_id, word.line_id, word.word_id)
-        text_by_key[key] = word.text
 
+def _get_unique_receipt_and_image_ids(
+    results: List[dict],
+) -> List[tuple[int, str]]:
+    """
+    Get the unique receipt ids and image ids from the embedding results.
+
+    Returns a list of tuples, each containing a receipt id and image id.
+    """
+    return list(
+        set(
+            (int(r["custom_id"].split("#")[3]), r["custom_id"].split("#")[1])
+            for r in results
+        )
+    )
+
+
+def upsert_embeddings_to_pinecone(
+    results: List[dict], descriptions: dict[str, dict[int, dict]]
+):
+    """
+    Upsert embedding results to Pinecone with rich metadata.
+
+    Each result entry in `results` is transformed into a Pinecone vector with:
+      - id: the original custom_id string (e.g. "IMAGE#...#RECEIPT#...#LINE#...#WORD#...").
+      - values: the embedding array for that word.
+
+    The metadata dict for each vector includes:
+      - image_id (str): the UUID of the source image.
+      - receipt_id (int): the numeric ID of the receipt within that image.
+      - line_id (int): the line number from the OCR output.
+      - word_id (int): the position of the word in the line.
+      - source (str): fixed value "openai_embedding_batch" to track provenance.
+      - text (str): the OCR-extracted word string.
+      - confidence (float): OCR confidence score for the word.
+      - left (str): the adjacent word to the left (or "<EDGE>" if none).
+      - right (str): the adjacent word to the right (or "<EDGE>" if none).
+      - merchant_name (str, optional): the merchant name for this receipt, if available.
+
+    Args:
+        results (List[dict]): The list of embedding results, each containing:
+            - custom_id (str)
+            - embedding (List[float])
+        descriptions (dict): A nested dict of receipt details keyed by image_id and receipt_id.
+
+    Returns:
+        int: The total number of vectors successfully upserted to Pinecone.
+    """
     vectors = []
-    for r in results:
-        resp_data = r.get("response", {}).get("body", {}).get("data")
-        if not resp_data:
-            continue
+    for result in results:
+
         # parse our metadata fields
-        meta = parse_metadata_from_custom_id(r["custom_id"], r.get("body", {}))
-        # build the text field
-        key = (
-            meta["image_id"],
-            meta["receipt_id"],
-            meta["line_id"],
-            meta["word_id"],
+        _meta = _parse_metadata_from_custom_id(result["custom_id"])
+        image_id = _meta["image_id"]
+        receipt_id = _meta["receipt_id"]
+        line_id = _meta["line_id"]
+        word_id = _meta["word_id"]
+        source = "openai_embedding_batch"
+        # From the descriptions, get the receipt details for this result
+        receipt_details = descriptions[image_id][receipt_id]
+        receipt = receipt_details["receipt"]
+        lines = receipt_details["lines"]
+        words = receipt_details["words"]
+        letters = receipt_details["letters"]
+        tags = receipt_details["tags"]
+        labels = receipt_details["labels"]
+        metadata = receipt_details["metadata"]
+        # Get the target word from the list of words
+        target_word = next(
+            (
+                w
+                for w in words
+                if w.line_id == line_id and w.word_id == word_id
+            ),
+            None,
         )
-        combined_text = text_by_key.get(key, "")
-        # fetch merchant name for this receipt
-        merchant_name = merchant_map.get(
-            (meta["image_id"], meta["receipt_id"]), ""
+        if target_word is None:
+            raise ValueError(
+                f"No ReceiptWord found for image_id={image_id}, "
+                f"receipt_id={receipt_id}, line_id={line_id}, word_id={word_id}"
+            )
+        target_word_labels = [
+            label
+            for label in labels
+            if label.image_id == image_id
+            and label.receipt_id == receipt_id
+            and label.line_id == line_id
+            and label.word_id == word_id
+        ]
+        # label_status — overall state for this word:
+        #    “unvalidated” if none VALID,
+        #    “auto_suggested” if ANY PENDING and none VALID,
+        #    “validated” if at least one VALID
+        if any(
+            lbl.validation_status == ValidationStatus.VALID.value
+            for lbl in labels
+        ):
+            label_status = "validated"
+        elif any(
+            lbl.validation_status == ValidationStatus.PENDING.value
+            for lbl in labels
+        ):
+            label_status = "auto_suggested"
+        else:
+            label_status = "unvalidated"
+        auto_suggestions = [
+            lbl
+            for lbl in labels
+            if lbl.validation_status == ValidationStatus.PENDING.value
+        ]
+        # label_confidence & label_proposed_by — pick from the most recent auto‑suggestion:
+        if auto_suggestions:
+            # assume the last‑added pending label is the one your LLM just suggested
+            last = sorted(auto_suggestions, key=lambda l: l.timestamp_added)[
+                -1
+            ]
+            label_confidence = getattr(
+                last, "confidence", None
+            )  # if you store it on the label
+            label_proposed_by = last.label_proposed_by
+        else:
+            label_confidence = None
+            label_proposed_by = None
+        # validated_labels — all labels with status VALID
+        validated_labels = [
+            lbl.label
+            for lbl in labels
+            if lbl.validation_status == ValidationStatus.VALID.value
+        ]
+        # label_validated_at — timestamp of the most recent VALID
+        valids = [
+            lbl
+            for lbl in labels
+            if lbl.validation_status == ValidationStatus.VALID.value
+        ]
+        label_validated_at = (
+            sorted(valids, key=lambda l: l.timestamp_added)[-1].timestamp_added
+            if valids
+            else None
         )
-        # assemble metadata dict
-        vec_meta = {
-            **meta,
-            "text": combined_text,
-        }
-        # attach merchant_name without dropping existing keys
-        if merchant_name:
-            vec_meta["merchant_name"] = merchant_name
+
+        # Re format the embedding to get the words left and right of the target word
+        text = target_word.text
+        _word_centroid = target_word.calculate_centroid()
+        x_center, y_center = _word_centroid
+        width = target_word.bounding_box["width"]
+        height = target_word.bounding_box["height"]
+        confidence = target_word.confidence
+        _embedding = _format_word_context_embedding_input(target_word, words)
+        left_text, right_text = _parse_left_right_from_formatted(_embedding)
+        merchant_name = metadata.merchant_name
+
         # build the vector entry
         vectors.append(
             {
-                "id": r["custom_id"],
-                "values": resp_data[0]["embedding"],
-                "metadata": vec_meta,
+                "id": result["custom_id"],
+                "values": result["embedding"],
+                "metadata": {
+                    "image_id": image_id,
+                    "receipt_id": receipt_id,
+                    "line_id": line_id,
+                    "word_id": word_id,
+                    "source": source,
+                    "text": text,
+                    "x": x_center,
+                    "y": y_center,
+                    "width": width,
+                    "height": height,
+                    "confidence": confidence,
+                    "left": left_text,
+                    "right": right_text,
+                    "merchant_name": merchant_name,
+                    "label_status": label_status,
+                    **(
+                        {"label_confidence": label_confidence}
+                        if label_confidence is not None
+                        else {}
+                    ),
+                    **(
+                        {"label_proposed_by": label_proposed_by}
+                        if label_proposed_by is not None
+                        else {}
+                    ),
+                    **(
+                        {"validated_labels": validated_labels}
+                        if validated_labels
+                        else {}
+                    ),
+                    **(
+                        {"label_validated_at": label_validated_at}
+                        if label_validated_at is not None
+                        else {}
+                    ),
+                },
             }
         )
 
@@ -215,7 +376,7 @@ def upsert_embeddings_to_pinecone(results: List[dict]):
     for i in range(0, len(vectors), batch_size):
         chunk = vectors[i : i + batch_size]
         try:
-            response = pinecone_index.upsert(vectors=chunk)
+            response = pinecone_index.upsert(vectors=chunk, namespace="words")
             upserted_count += response.get("upserted_count", 0)
         except Exception as e:
             print(f"Failed to upsert chunk to Pinecone: {e}")
@@ -223,95 +384,66 @@ def upsert_embeddings_to_pinecone(results: List[dict]):
     return upserted_count
 
 
-def write_embedding_results_to_dynamo(results: List[dict], batch_id: str):
+def write_embedding_results_to_dynamo(
+    results: List[dict],
+    descriptions: dict[str, dict[int, dict]],
+    batch_id: str,
+) -> int:
     """
-    Write the embedding results to DynamoDB.
+    Write the embedding results to DynamoDB using pre-fetched descriptions.
+
     Args:
-        results (List[dict]): The list of embedding results.
+        results (List[dict]): The list of embedding results containing:
+            - custom_id (str)
+            - embedding (List[float])
+        descriptions (dict): Nested dict from get_receipt_descriptions, keyed by image_id then receipt_id.
+        batch_id (str): The identifier of the batch for EmbeddingBatchResult.
+
+    Returns:
+        int: Number of embedding results written to DynamoDB.
     """
-
-    keys = []
-    meta_by_custom_id = {}
-    for result in results:
-        custom_id = result["custom_id"]
-        meta = parse_metadata_from_custom_id(custom_id, result.get("body", {}))
-        meta_by_custom_id[custom_id] = meta
+    embedding_results: list[EmbeddingBatchResult] = []
+    for record in results:
+        custom_id = record["custom_id"]
+        # Parse metadata from custom_id
+        meta = _parse_metadata_from_custom_id(custom_id)
         image_id = meta["image_id"]
         receipt_id = meta["receipt_id"]
         line_id = meta["line_id"]
         word_id = meta["word_id"]
-        key = {
-            "PK": {"S": f"IMAGE#{image_id}"},
-            "SK": {
-                "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}"
-            },
-        }
-        keys.append(key)
-
-    # Deduplicate keys to avoid BatchGetItem ValidationException
-    unique = {}
-    for key in keys:
-        pk = key["PK"]["S"]
-        sk = key["SK"]["S"]
-        unique[(pk, sk)] = key
-    keys = list(unique.values())
-
-    receipt_words = dynamo_client.getReceiptWordsByKeys(keys)
-    text_by_key = {}
-    for word in receipt_words:
-        key = (word.image_id, word.receipt_id, word.line_id, word.word_id)
-        text_by_key[key] = word.text
-
-    embedding_results = []
-    for result in results:
-        custom_id = result["custom_id"]
-        meta = meta_by_custom_id[custom_id]
-        image_id = meta["image_id"]
-        receipt_id = meta["receipt_id"]
-        line_id = meta["line_id"]
-        word_id = meta["word_id"]
-        label = meta["label"]
-        # Use the original custom_id (which includes view prefix) as the Pinecone ID
-        pinecone_id = result["custom_id"]
-        key = (image_id, receipt_id, line_id, word_id)
-        text = text_by_key.get(key)
-        if not text:
-            raise Exception(f"No text found for {custom_id}")
-        status = "SUCCESS"
-        embedding_result = EmbeddingBatchResult(
-            batch_id=batch_id,
-            image_id=image_id,
-            receipt_id=receipt_id,
-            line_id=line_id,
-            word_id=word_id,
-            pinecone_id=pinecone_id,
-            status=status,
-            text=text,
-            label=label,
-            view=meta.get("view", "word"),
+        # Find the ReceiptWord object to get text
+        words = descriptions[image_id][receipt_id]["words"]
+        target_word = next(
+            (
+                w
+                for w in words
+                if w.line_id == line_id and w.word_id == word_id
+            ),
+            None,
         )
-        embedding_results.append(embedding_result)
-
-    # Check for duplicate SK values in embedding_results
-    sk_counts = {}
-    for er in embedding_results:
-        sk = er.key()["SK"]["S"]
-        sk_counts[sk] = sk_counts.get(sk, 0) + 1
-    duplicates = {sk: count for sk, count in sk_counts.items() if count > 1}
-    if duplicates:
-        for sk, count in duplicates.items():
-            print(f"Duplicate SK found: {sk} appears {count} times")
-        raise Exception(
-            f"Found {len(duplicates)} duplicate SK values in embedding results"
+        if target_word is None:
+            raise ValueError(f"No ReceiptWord found for {custom_id}")
+        # Build EmbeddingBatchResult
+        embedding_results.append(
+            EmbeddingBatchResult(
+                batch_id=batch_id,
+                image_id=image_id,
+                receipt_id=receipt_id,
+                line_id=line_id,
+                word_id=word_id,
+                pinecone_id=custom_id,
+                status="SUCCESS",
+                text=target_word.text,
+            )
         )
 
-    num_results = 0
-    # Batch embedding_results into chunks of 25 and process each chunk separately
+    # Write results in chunks
+    written = 0
     for i in range(0, len(embedding_results), 25):
         chunk = embedding_results[i : i + 25]
         dynamo_client.addEmbeddingBatchResults(chunk)
-        num_results += len(chunk)
-    return num_results
+        written += len(chunk)
+    return written
 
 
 def mark_batch_complete(batch_id: str):
