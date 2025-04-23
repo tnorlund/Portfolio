@@ -86,6 +86,16 @@ This module is designed to be run inside a Step Function dedicated to receipt-le
    - **Retry Google Places query** with `retry_google_search_with_inferred_data(...)`
    - If still no match, call `write_no_match_receipt_metadata(...)`
 5. **The output of this module is a ReceiptMetadata entity**, saved in DynamoDB, which supports future word label validation and Pinecone scoping.
+6. **Consolidate merchant metadata for this run**:
+   1. Receive the list of validated receipts (with `place_id`, `merchant_name`, `match_confidence`, etc.).
+   2. **Google clusters**: Group receipts by non-empty `place_id`, default the canonical name to Google’s official label.
+   3. **Orphan clusters**: Collect receipts without a `place_id` and fuzzy-cluster them by `merchant_name`.
+   4. **GPT canonicalization**: For each orphan cluster with multiple variants, call ChatGPT to choose an initial canonical name (or return null).
+   5. **Alignment phase**:
+      - Normalize the GPT-chosen canonical name and match against existing Google cluster names (ignoring case/punctuation); merge into that Google cluster if matched.
+      - Otherwise, perform a Google Places lookup using the GPT canonical name; if valid, merge into that `place_id` cluster with Google’s official label.
+      - For names still unmatched, assign `canonical_merchant_name` = GPT name and tag `manual_review = true`.
+   6. **Persist results**: Batch-update each `ReceiptMetadata` in DynamoDB to set `canonical_merchant_name`, update `place_id` if newly assigned, and add `manual_review` flag.
 
 ## 📊 Step Function Architecture
 
@@ -93,6 +103,8 @@ This module is designed to be run inside a Step Function dedicated to receipt-le
 flowchart TD
     Start([Start]) --> list_receipts["List receipts needing merchant validation"]
     list_receipts --> ValidateMerchant["Validate Merchant"]
+    ValidateMerchant --> ConsolidateMerchants["Consolidate Merchants"]
+    ConsolidateMerchants --> End([End])
 
     subgraph "Validate Merchant"
         direction TB
@@ -115,7 +127,12 @@ flowchart TD
         build_receipt_metadata_from_result_no_match --> write_receipt_metadata_to_dynamo
     end
 
-    write_receipt_metadata_to_dynamo --> End([End])
+    subgraph "Consolidate Merchants"
+        group_by_place_id["Group by Place ID"] --> group_no_place_ids["Group all without Place ID"]
+        group_no_place_ids --> chatgpt_variant_choice["Ask ChatGPT for Merchant Name"]
+
+    end
+
 ```
 
 ## 🛠️ Remaining Work

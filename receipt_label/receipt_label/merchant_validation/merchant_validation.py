@@ -358,14 +358,33 @@ def query_google_places(
 
 def is_match_found(results: Optional[dict]) -> bool:
     """
-    Checks whether the Google Places API query returned any match data.
-
-    Args:
-        results (dict or None): The output from `query_google_places`.
-    Returns:
-        bool: True if a place dict was returned (even if later deemed invalid), False if `None`.
+    Checks whether the Google Places API query returned a valid business match.
+    Returns True only if:
+      - results is not None,
+      - contains a non-empty 'name' and 'place_id',
+      - and its types do not indicate an address-only result.
     """
-    return results is not None
+    if not results:
+        return False
+
+    # Must have both a name and a place_id
+    name = results.get("name")
+    pid = results.get("place_id")
+    if not name or not pid:
+        return False
+
+    # Exclude address-only place types
+    address_only_types = {
+        "street_address",
+        "postal_code",
+        "subpremise",
+        "premise",
+    }
+    types = set(results.get("types", []))
+    if types & address_only_types:
+        return False
+
+    return True
 
 
 def is_valid_google_match(results, extracted_data):
@@ -524,29 +543,78 @@ def retry_google_search_with_inferred_data(
     gpt_merchant_data: dict, google_places_api_key: str
 ) -> Optional[dict]:
     """
-    Re-attempts a Google Places API search using GPT-inferred address or phone.
+    Re-attempt the Google Places API search using GPT-inferred data with strict validation.
+
+    The search steps are:
+      1. Phone-based lookup: if a phone is provided, search by phone and return the first result
+         that passes both `is_match_found` and `is_valid_google_match`.
+      2. Nearby business search: if an address is provided, geocode to lat/lng and perform a
+         nearby search (radius 50m), returning the first candidate that validates.
+      3. Text-based search: if a merchant name is provided, perform a text search with optional
+         location bias, returning the first result that validates.
+
+    Each candidate is validated using `is_match_found` (requiring non-empty name/place_id
+    and not an address-only type) and `is_valid_google_match` (comparing extracted fields).
 
     Args:
-        gpt_merchant_data (dict): Output from `infer_merchant_with_gpt(...)`, must include address and phone.
-        google_places_api_key (str): API key for accessing Google Places.
+        gpt_merchant_data (dict): GPT inference output, containing keys
+            "merchant_phone", "merchant_address", and "merchant_name".
+        google_places_api_key (str): API key for Google Places access.
 
     Returns:
-        dict or None: Google match result or None.
+        dict or None: The validated Google Places result, or None if no valid match is found.
     """
     places_api = PlacesAPI(google_places_api_key)
 
+    # 1) Phone-based retry, validate the match
     phone = gpt_merchant_data.get("merchant_phone")
     if phone:
         match = places_api.search_by_phone(phone)
-        if match and match.get("status") != "NO_RESULTS":
+        if (
+            match
+            and is_match_found(match)
+            and is_valid_google_match(match, gpt_merchant_data)
+        ):
             return match
 
+    # 2) Geocode address and nearby search
     address = gpt_merchant_data.get("merchant_address")
+    lat_lng = None
     if address:
-        match = places_api.search_by_address(address)
-        if match:
-            return match
+        try:
+            geo = places_api.geocode(address)
+            if geo and "lat" in geo and "lng" in geo:
+                lat_lng = (geo["lat"], geo["lng"])
+                nearby_results = places_api.search_nearby(
+                    location=lat_lng, radius=50
+                )
+                for candidate in nearby_results:
+                    if is_match_found(candidate) and is_valid_google_match(
+                        candidate, gpt_merchant_data
+                    ):
+                        return candidate
+        except Exception:
+            pass
 
+    # 3) Text-search on inferred merchant name
+    name = gpt_merchant_data.get("merchant_name")
+    if name:
+        try:
+            # include location bias if available
+            if lat_lng:
+                text_match = places_api.search_by_text(name, location=lat_lng)
+            else:
+                text_match = places_api.search_by_text(name)
+            if (
+                text_match
+                and is_match_found(text_match)
+                and is_valid_google_match(text_match, gpt_merchant_data)
+            ):
+                return text_match
+        except Exception:
+            pass
+
+    # No valid retry found
     return None
 
 

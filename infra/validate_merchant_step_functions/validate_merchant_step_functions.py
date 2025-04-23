@@ -122,6 +122,7 @@ class ValidateMerchantStepFunctions(ComponentResource):
                 }
             ),
             timeout=900,
+            memory_size=512,
             layers=[dynamo_layer.arn, label_layer.arn],
             environment=FunctionEnvironmentArgs(
                 variables={
@@ -207,7 +208,7 @@ class ValidateMerchantStepFunctions(ComponentResource):
                             "ForEachReceipt": {
                                 "Type": "Map",
                                 "ItemsPath": "$.receipts",
-                                "MaxConcurrency": 25,
+                                "MaxConcurrency": 5,
                                 "Parameters": {
                                     "image_id.$": "$$.Map.Item.Value.image_id",
                                     "receipt_id.$": "$$.Map.Item.Value.receipt_id",

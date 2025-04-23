@@ -714,6 +714,32 @@ class PlacesAPI:
             logger.error(f"Error getting place details: {e}")
             return None
 
+    def search_by_text(
+        self,
+        query: str,
+        lat: Optional[float] = None,
+        lng: Optional[float] = None,
+    ) -> Optional[Dict]:
+        """
+        Public text search for a business by free-form query, with optional lat/lng bias.
+        """
+        url = f"{self.BASE_URL}/textsearch/json"
+        params = {
+            "query": query,
+            "key": self.api_key,
+            "fields": "place_id,formatted_address,name,formatted_phone_number,types,business_status",
+        }
+        # Add location bias if provided
+        if lat is not None and lng is not None:
+            params["location"] = f"{lat},{lng}"
+            params["radius"] = 1000  # meters; adjust as needed
+        response = requests.get(url, params=params)
+        response.raise_for_status()
+        data = response.json()
+        if data.get("status") == "OK" and data.get("results"):
+            return data["results"][0]
+        return None
+
 
 class ConfidenceLevel(Enum):
     HIGH = "high"  # 3+ matching data points
@@ -1193,21 +1219,3 @@ class BatchPlacesProcessor:
             validation_score=0.0,
             requires_manual_review=True,
         )
-
-    def _text_search(self, query: str) -> Optional[Dict]:
-        """
-        Searches for a business by free‑form text (e.g. “Costco Wholesale Westlake Village”).
-        Uses the Text Search endpoint to return an establishment, not just a route.
-        """
-        url = f"{self.BASE_URL}/textsearch/json"
-        params = {
-            "query": query,
-            "fields": "place_id,formatted_address,name,formatted_phone_number,types,business_status",
-            "key": self.api_key,
-        }
-        resp = requests.get(url, params=params)
-        resp.raise_for_status()
-        data = resp.json()
-        if data.get("status") == "OK" and data.get("results"):
-            return data["results"][0]
-        return None

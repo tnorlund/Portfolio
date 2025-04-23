@@ -52,3 +52,11 @@ class MerchantValidationStatus(str, Enum):
     MATCHED = "MATCHED"
     NO_MATCH = "NO_MATCH"
     UNSURE = "UNSURE"
+
+
+class ValidationMethod(Enum):
+    PHONE_LOOKUP = "PHONE_LOOKUP"
+    ADDRESS_LOOKUP = "ADDRESS_LOOKUP"
+    NEARBY_LOOKUP = "NEARBY_LOOKUP"
+    TEXT_SEARCH = "TEXT_SEARCH"
+    INFERENCE = "INFERENCE"

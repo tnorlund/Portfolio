@@ -1,6 +1,9 @@
 from datetime import datetime, timezone
 from typing import Any, Generator, Tuple, Optional
 
+from receipt_dynamo.constants import ValidationMethod, MerchantValidationStatus
+
+
 from receipt_dynamo.entities.util import (
     _format_float,
     _repr_str,
@@ -84,7 +87,9 @@ class ReceiptMetadata:
         self.phone_number = phone_number
 
         if not isinstance(match_confidence, float):
-            raise ValueError("match confidence must be a float")
+            raise ValueError(
+                f"match confidence must be a float\nGot a {type(match_confidence)}"
+            )
         if match_confidence < 0 or match_confidence > 1:
             raise ValueError("match confidence must be between 0 and 1")
         self.match_confidence = match_confidence
@@ -99,9 +104,20 @@ class ReceiptMetadata:
             raise ValueError("matched fields must be unique")
         self.matched_fields = matched_fields
 
-        if not isinstance(validated_by, str):
-            raise ValueError("validated by must be a string")
-        self.validated_by = validated_by
+        if isinstance(validated_by, ValidationMethod):
+            validated_by_value = validated_by.value
+        elif isinstance(validated_by, str):
+            validated_by_value = validated_by
+        else:
+            raise ValueError(
+                f"validated_by must be a string or ValidationMethod enum\nGot: {type(validated_by)}"
+            )
+        valid_values = [s.value for s in ValidationMethod]
+        if validated_by_value not in valid_values:
+            raise ValueError(
+                f"validated_by must be one of: {', '.join(valid_values)}\nGot: {validated_by_value}"
+            )
+        self.validated_by = validated_by_value
 
         if not isinstance(timestamp, datetime):
             raise ValueError("timestamp must be a datetime")
@@ -111,12 +127,19 @@ class ReceiptMetadata:
             raise ValueError("reasoning must be a string")
         self.reasoning = reasoning
 
-        if self.match_confidence >= 0.85:
-            self.validation_status = MerchantValidationStatus.MATCHED
-        elif self.match_confidence >= 0.5:
-            self.validation_status = MerchantValidationStatus.UNSURE
+        num_fields = len(self.matched_fields)
+
+        # 1. If you’ve got at least two independent signals _and_ high confidence → MATCHED
+        if self.match_confidence >= 0.80 and num_fields >= 2:
+            self.validation_status = MerchantValidationStatus.MATCHED.value
+
+        # 2. If you’ve got moderate confidence but fewer signals → UNSURE
+        elif self.match_confidence >= 0.50 and num_fields >= 1:
+            self.validation_status = MerchantValidationStatus.UNSURE.value
+
+        # 3. Otherwise it’s a hard NO
         else:
-            self.validation_status = MerchantValidationStatus.NO_MATCH
+            self.validation_status = MerchantValidationStatus.NO_MATCH.value
 
     def key(self) -> dict:
         """Returns the primary key used to store this record in DynamoDB."""

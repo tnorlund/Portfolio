@@ -520,6 +520,71 @@ class _ReceiptMetadata:
             else:
                 raise ValueError(f"Error getting receipt metadata: {e}")
 
+    def listReceiptMetadatasWithPlaceId(
+        self,
+        limit: int = None,
+        lastEvaluatedKey: dict | None = None,
+    ) -> Tuple[List[ReceiptMetadata], dict | None]:
+        """
+        Retrieves ReceiptMetadata records from DynamoDB that have a place_id with optional pagination.
+
+        Args:
+            place_id (str): The place_id to filter by.
+            limit (int, optional): Maximum number of records to retrieve.
+            lastEvaluatedKey (dict, optional): The key to start pagination from.
+
+        Returns:
+            Tuple[List[ReceiptMetadata], dict | None]: A tuple containing the list of ReceiptMetadata records and the last evaluated key.
+        """
+        if limit is not None and not isinstance(limit, int):
+            raise ValueError("limit must be an integer")
+        if limit is not None and limit <= 0:
+            raise ValueError("limit must be positive")
+        if lastEvaluatedKey is not None and not isinstance(
+            lastEvaluatedKey, dict
+        ):
+            raise ValueError("lastEvaluatedKey must be a dictionary")
+
+        metadatas = []
+        try:
+            query_params = {
+                "TableName": self.table_name,
+                "IndexName": "GSITYPE",
+                "KeyConditionExpression": "#t = :val",
+                "FilterExpression": "attribute_exists(#p) AND #p <> :empty",
+                "ExpressionAttributeNames": {"#t": "TYPE", "#p": "place_id"},
+                "ExpressionAttributeValues": {
+                    ":val": {"S": "RECEIPT_METADATA"},
+                    ":empty": {"S": ""},
+                },
+            }
+            if lastEvaluatedKey is not None:
+                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if limit is not None:
+                query_params["Limit"] = limit
+
+            response = self._client.query(**query_params)
+            metadatas.extend(
+                itemToReceiptMetadata(item)
+                for item in response.get("Items", [])
+            )
+            last_evaluated_key = response.get("LastEvaluatedKey")
+            return metadatas, last_evaluated_key
+        except ClientError as e:
+            error_code = e.response["Error"]["Code"]
+            if error_code == "ValidationException":
+                raise ValueError(
+                    "receipt_metadata contains invalid attributes or values"
+                )
+            elif error_code == "InternalServerError":
+                raise ValueError("internal server error")
+            elif error_code == "ProvisionedThroughputExceededException":
+                raise ValueError("provisioned throughput exceeded")
+            elif error_code == "ResourceNotFoundException":
+                raise ValueError("table not found")
+            else:
+                raise ValueError(f"Error listing receipt metadata: {e}")
+
     def getReceiptMetadatasByConfidence(
         self,
         confidence: float,
