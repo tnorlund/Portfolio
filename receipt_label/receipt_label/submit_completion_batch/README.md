@@ -12,17 +12,23 @@ This is typically the second step in a two-phase Step Function pipeline, followi
 
 Generates a unique UUID for each completion batch.
 
-### `list_validation_targets()`
+### `list_labels_that_need_validation() -> list[ReceiptWordLabel]`
 
 Fetches all `ReceiptWordLabel` items with `validation_status = "PENDING"` (or the flag indicating they need validation).
 
-### `chunk_validation_targets(targets, batch_size)`
+### `chunk_into_completion_batches(labels: list[ReceiptWordLabel]) -> dict[str, dict[int, list[ReceiptWordLabel]]]`
 
-Splits the list of pending `ReceiptWordLabel` records into chunks of size `batch_size` for parallel Map processing.
+Splits the list of pending `ReceiptWordLabel` records into chunks based on image ID and receipt ID.
 
-### `fetch_receipt_word_embeddings(labels)`
+### `get_receipt_metadatas(labels)`
 
-Retrieves receipt word embeddings and associated metadata (including OCR spatial data) for the given labels from DynamoDB or Pinecone.
+Fetches the metadatas for all unique receipts in the chunk.
+
+### `fetch_receipt_word_embeddings(labels, metadata)`
+
+Retrieves receipt word embeddings based on the metadata for the given labels from DynamoDB or Pinecone.
+
+### `form_prompts(vectors, labels, metadata)`
 
 ### `join_labels_with_embeddings(labels, embeddings)`
 
@@ -68,7 +74,7 @@ Creates a `CompletionBatchSummary` record in DynamoDB to track the job submissio
 
 ---
 
-1. List all receipt words that need validation.
+1. List all receipt word labels that need validation.
 2. Split them into manageable chunks.
 3. For each chunk:
    1. Fetch the word embeddings.
@@ -84,13 +90,18 @@ Creates a `CompletionBatchSummary` record in DynamoDB to track the job submissio
 
 ```mermaid
 flowchart TB
-    Start([Start]) --> ListValidationTargets["List Validation Targets"]
-    ListValidationTargets --> ChunkTargets["Chunk Validation Targets"]
-    ChunkTargets --> MapChunks{"Map over chunks"}
+    Start([Start]) --> list_labels_that_need_validation["List Validation Targets"]
+    list_labels_that_need_validation --> chunk_labels["Chunk Validation Targets"]
+    chunk_labels --> serialize_labels["Serialize Labels that need to be Validated"]
+    serialize_labels --> upload_serialized_labels["Upload Serialized Labels to S3"]
+    upload_serialized_labels --> batch_complete
 
-    subgraph MapChunks Branch
+    subgraph batch_complete["Batch Complete"]
         direction TB
-        FetchEmbeddings["Fetch Receipt Word Embeddings"] --> JoinEmbeddingsAndLabels["Merge Embeddings and Labels"]
+        download_serialized_labels["Download Serialized Labels from S3"] --> deserialize_labels["Deserialize Labels"]
+        deserialize_labels --> get_receipt_metadatas["Get Metadata for all unique Receipts"]
+        get_receipt_metadatas --> fetch_receipt_word_embeddings["Fetch Receipt Word Embeddings"]
+        fetch_receipt_word_embeddings --> JoinEmbeddingsAndLabels["Merge Embeddings and Labels"]
         JoinEmbeddingsAndLabels --> BuildPrompts["Build Completion Prompts"]
         BuildPrompts --> FormatChunk["Format Chunk into NDJSON"]
         FormatChunk --> UploadChunk["Upload NDJSON to S3"]
@@ -98,4 +109,6 @@ flowchart TB
         SubmitCompletionJob --> CreateCompletionBatchSummary["Create CompletionBatchSummary in DynamoDB"]
         CreateCompletionBatchSummary --> End([End])
     end
+
+    batch_complete --> END([End])
 ```
