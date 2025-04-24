@@ -128,16 +128,24 @@ def chunk_into_embedding_batches(
     Returns:
         dict mapping image_id (str) to dict mapping receipt_id (int) to list of ReceiptWord.
     """
-    # Make a dictionary of words by image_id and receipt_id
-    words_by_image = {}
+    # Build a mapping image_id -> receipt_id -> dict[(line_id, word_id) -> ReceiptWord] for uniqueness
+    words_by_image: dict[
+        str, dict[int, dict[tuple[int, int], ReceiptWord]]
+    ] = {}
     for word in words:
-        # Get or create the sub-dictionary for this image_id
         image_dict = words_by_image.setdefault(word.image_id, {})
-        # Get or create the list for this receipt_id within that image
-        receipt_list = image_dict.setdefault(word.receipt_id, [])
-        # Append the word to the list
-        receipt_list.append(word)
-    return words_by_image
+        receipt_dict = image_dict.setdefault(word.receipt_id, {})
+        # Use (line_id, word_id) as key to dedupe
+        key = (word.line_id, word.word_id)
+        receipt_dict[key] = word
+
+    # Convert inner dicts back to lists
+    result: dict[str, dict[int, list[ReceiptWord]]] = {}
+    for image_id, receipt_map in words_by_image.items():
+        result[image_id] = {}
+        for receipt_id, word_map in receipt_map.items():
+            result[image_id][receipt_id] = list(word_map.values())
+    return result
 
 
 def generate_batch_id() -> str:

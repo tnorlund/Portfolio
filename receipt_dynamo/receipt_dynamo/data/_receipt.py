@@ -432,42 +432,39 @@ class _Receipt:
             - list[ReceiptWordLabel]: List of receipt word labels
         """
         try:
-            response = self._client.query(
-                TableName=self.table_name,
-                KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
-                ExpressionAttributeValues={
+            query_params = {
+                "TableName": self.table_name,
+                "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
+                "ExpressionAttributeValues": {
                     ":pk": {"S": f"IMAGE#{image_id}"},
                     ":sk": {"S": f"RECEIPT#{receipt_id:05d}"},
                 },
-            )
+            }
             receipt = None
-            lines = []
-            words = []
-            letters = []
-            tags = []
-            labels = []
-            for item in response["Items"]:
-                if item["TYPE"]["S"] == "RECEIPT":
-                    receipt = itemToReceipt(item)
-                elif item["TYPE"]["S"] == "RECEIPT_LINE":
-                    lines.append(itemToReceiptLine(item))
-                elif item["TYPE"]["S"] == "RECEIPT_WORD":
-                    words.append(itemToReceiptWord(item))
-                elif item["TYPE"]["S"] == "RECEIPT_LETTER":
-                    letters.append(itemToReceiptLetter(item))
-                elif item["TYPE"]["S"] == "RECEIPT_WORD_TAG":
-                    tags.append(itemToReceiptWordTag(item))
-                elif item["TYPE"]["S"] == "RECEIPT_WORD_LABEL":
-                    labels.append(itemToReceiptWordLabel(item))
-
-            return (
-                receipt,
-                lines,
-                words,
-                letters,
-                tags,
-                labels,
-            )
+            lines, words, letters, tags, labels = [], [], [], [], []
+            while True:
+                response = self._client.query(**query_params)
+                for item in response.get("Items", []):
+                    if item["TYPE"]["S"] == "RECEIPT":
+                        receipt = itemToReceipt(item)
+                    elif item["TYPE"]["S"] == "RECEIPT_LINE":
+                        lines.append(itemToReceiptLine(item))
+                    elif item["TYPE"]["S"] == "RECEIPT_WORD":
+                        words.append(itemToReceiptWord(item))
+                    elif item["TYPE"]["S"] == "RECEIPT_LETTER":
+                        letters.append(itemToReceiptLetter(item))
+                    elif item["TYPE"]["S"] == "RECEIPT_WORD_TAG":
+                        tags.append(itemToReceiptWordTag(item))
+                    elif item["TYPE"]["S"] == "RECEIPT_WORD_LABEL":
+                        labels.append(itemToReceiptWordLabel(item))
+                # paginate
+                if "LastEvaluatedKey" in response:
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
+                else:
+                    break
+            return receipt, lines, words, letters, tags, labels
         except ClientError as e:
             raise ValueError(f"Error getting receipt details: {e}")
 

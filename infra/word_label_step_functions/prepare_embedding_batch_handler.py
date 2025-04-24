@@ -1,15 +1,11 @@
 import os
 from logging import getLogger, StreamHandler, Formatter, INFO
-from receipt_label.submit_embedding_batch import (
-    list_receipt_word_labels,
-    fetch_receipt_words,
-    join_labels_with_words,
-    chunk_joined_pairs,
-    format_openai_input,
-    format_context_openai_input,
-    write_ndjson,
+from receipt_label.submit_embedding_batch.submit_batch import (
+    serialize_receipt_words,
+    upload_serialized_words,
+    list_receipt_words_with_no_embeddings,
+    chunk_into_embedding_batches,
     generate_batch_id,
-    upload_to_s3,
 )
 
 logger = getLogger()
@@ -41,24 +37,32 @@ def submit_handler(event, context):
         A dictionary containing the status code and the batches.
     """
     logger.info("Starting prepare_embedding_batch_handler")
-    labels = list_receipt_word_labels()
-    logger.info(f"Found {len(labels)} labels")
-    words = fetch_receipt_words(labels)
-    logger.info(f"Found {len(words)} words")
-    joined = join_labels_with_words(labels, words)
-    logger.info(f"Joined {len(joined)} pairs")
-    batches = chunk_joined_pairs(joined, batch_size=500)
-    logger.info(f"Chunks {len(batches)} batches")
-
-    output = []
-    for batch in batches:
-        batch_id = generate_batch_id()
-        # Prepare both word- and context-level embeddings
-        word_inputs = format_openai_input(batch)
-        context_inputs = format_context_openai_input(batch)
-        formatted = word_inputs + context_inputs
-        filepath = write_ndjson(batch_id, formatted)
-        s3_key = upload_to_s3(filepath, batch_id, bucket=bucket)
-        output.append({"batch_id": batch_id, "s3_key": s3_key, "s3_bucket": bucket})
-
-    return {"statusCode": 200, "batches": output}
+    words_without_embeddings = list_receipt_words_with_no_embeddings()
+    logger.info(f"Found {len(words_without_embeddings)} words without embeddings")
+    batches = chunk_into_embedding_batches(words_without_embeddings)
+    logger.info(f"Chunked into {len(batches)} batches")
+    # Debugging logs for chunked batches
+    for image_id, receipts in batches.items():
+        for receipt_id, words in receipts.items():
+            total = len(words)
+            unique = len({(w.line_id, w.word_id) for w in words})
+            if total != unique:
+                logger.warning(
+                    f"Duplicate words in image {image_id}, receipt {receipt_id}: total {total}, unique {unique}"
+                )
+            else:
+                logger.info(
+                    f"Words count OK for image {image_id}, receipt {receipt_id}: {total} words"
+                )
+    uploaded = upload_serialized_words(serialize_receipt_words(batches), bucket)
+    logger.info(f"Uploaded {len(uploaded)} files")
+    cleaned = [
+        {
+            "s3_key": e["s3_key"],
+            "s3_bucket": e["s3_bucket"],
+            "image_id": e["image_id"],
+            "receipt_id": e["receipt_id"],
+        }
+        for e in uploaded
+    ]
+    return {"statusCode": 200, "batches": cleaned}

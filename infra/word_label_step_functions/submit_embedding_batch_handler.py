@@ -1,13 +1,19 @@
 from logging import getLogger, StreamHandler, Formatter, INFO
+from pathlib import Path
 from receipt_label.submit_embedding_batch import (
-    upload_ndjson_file,
+    download_serialized_words,
+    deserialize_receipt_words,
+    format_word_context_embedding,
+    write_ndjson,
+    upload_to_openai,
     submit_openai_batch,
     create_batch_summary,
+    update_word_embedding_status,
     add_batch_summary,
-    update_receipt_word_labels,
-    fetch_original_receipt_word_labels,
-    download_from_s3,
+    query_receipt_words,
+    generate_batch_id,
 )
+
 
 logger = getLogger()
 logger.setLevel(INFO)
@@ -24,47 +30,70 @@ if len(logger.handlers) == 0:
 
 
 def submit_handler(event, context):
+    """
+    This function is used to submit an embedding batch for the word labeling
+    step function.
 
+    Args:
+        event: The event object from the step function.
+        context: The context object from the step function.
+
+    Returns:
+        A dictionary containing the status code and the batch ID.
+    """
     logger.info("Starting submit_embedding_batch_handler")
-    if "batch_id" not in event:
-        raise ValueError("batch_id is required")
-    if "s3_bucket" not in event:
-        raise ValueError("s3_bucket is required")
-    if "s3_key" not in event:
-        raise ValueError("s3_key is required")
-    batch_id = event["batch_id"]
+    logger.info(f"Event: {event}")
     s3_bucket = event["s3_bucket"]
     s3_key = event["s3_key"]
+    image_id = event["image_id"]
+    receipt_id = event["receipt_id"]
+    batch_id = generate_batch_id()
 
-    local_path = download_from_s3(s3_key, s3_bucket)
+    # download the NDJSON from S3 back to local via serialized helper
+    local_path = download_serialized_words(
+        {
+            "s3_bucket": s3_bucket,
+            "s3_key": s3_key,
+            # include the original ndjson path so the helper can write to it
+            "ndjson_path": f"/tmp/{Path(s3_key).name}",
+        }
+    )
     logger.info(f"Downloaded file to {local_path}")
 
-    file_object = upload_ndjson_file(local_path)
-    logger.info("Uploaded file to OpenAI")
+    deserialized_words = deserialize_receipt_words(local_path)
+    logger.info(f"Deserialized {len(deserialized_words)} words")
 
-    batch = submit_openai_batch(file_object.id)
-    logger.info("Submitted batch to OpenAI")
-
-    batch_summary = create_batch_summary(
-        batch_id=batch_id,
-        open_ai_batch_id=batch.id,
-        file_path=local_path,
+    all_words_in_receipt = query_receipt_words(image_id, receipt_id)
+    logger.info(
+        f"Found {len(all_words_in_receipt)} words in receipt {receipt_id} of image {image_id}"
     )
-    logger.info(f"Batch summary: {batch_summary}")
+
+    formatted_words = format_word_context_embedding(
+        deserialized_words, all_words_in_receipt
+    )
+    logger.info(f"Formatted {len(formatted_words)} words")
+
+    input_file = write_ndjson(batch_id, formatted_words)
+    logger.info(f"Wrote input file to {input_file}")
+
+    openai_file = upload_to_openai(input_file)
+    logger.info(f"Uploaded input file to OpenAI")
+
+    openai_batch = submit_openai_batch(openai_file.id)
+    logger.info(f"Submitted OpenAI batch {openai_batch.id}")
+
+    batch_summary = create_batch_summary(batch_id, openai_batch.id, input_file)
+    logger.info(f"Created batch summary with ID {batch_summary.batch_id}")
+
+    update_word_embedding_status(deserialized_words)
+    logger.info(f"Updated word embedding status")
 
     add_batch_summary(batch_summary)
-    logger.info("Added batch summary to DynamoDB")
-
-    original_receipt_word_labels = fetch_original_receipt_word_labels(
-        local_path
-    )
-    logger.info(
-        f"Original receipt word labels: {original_receipt_word_labels}"
-    )
-
-    for rwl in original_receipt_word_labels:
-        rwl.validation_status = "PENDING"
-    update_receipt_word_labels(original_receipt_word_labels)
-    logger.info("Updated receipt word labels in DynamoDB")
-
-    return {"statusCode": 200, "batch_id": batch_id}
+    logger.info(f"Added batch summary with ID {batch_summary.batch_id}")
+    return {
+        "statusCode": 200,
+        "batch_id": batch_id,
+        "openai_batch_id": openai_batch.id,
+        "input_file": str(input_file),
+        "openai_file_id": openai_file.id,
+    }

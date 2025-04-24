@@ -7,6 +7,7 @@ from receipt_label.poll_embedding_batch import (
     upsert_embeddings_to_pinecone,
     write_embedding_results_to_dynamo,
     mark_batch_complete,
+    get_receipt_descriptions,
 )
 
 logger = getLogger()
@@ -34,17 +35,24 @@ def poll_handler(event, context):
     if batch_status == "completed":
         logger.info(f"Batch {batch_id} is completed")
 
-        embeddings = download_openai_batch_result(openai_batch_id)
-        logger.info(f"Downloaded {len(embeddings)} embeddings from OpenAI")
+        downloaded_results = download_openai_batch_result(openai_batch_id)
+        print(f"Got {len(downloaded_results)} results")
 
-        upserted_count = upsert_embeddings_to_pinecone(embeddings)
-        logger.info(f"Upserted {upserted_count} embeddings to Pinecone")
+        receipt_descriptions = get_receipt_descriptions(downloaded_results)
+        print(f"Got {len(receipt_descriptions)} receipt descriptions")
 
-        num_results = write_embedding_results_to_dynamo(embeddings, batch_id)
-        logger.info(f"Wrote {num_results} embeddings to DynamoDB")
+        upserted_vectors_count = upsert_embeddings_to_pinecone(
+            downloaded_results, receipt_descriptions
+        )
+        print(f"Upserted {upserted_vectors_count} vectors to Pinecone")
+
+        embedding_results_count = write_embedding_results_to_dynamo(
+            downloaded_results, receipt_descriptions, batch_id
+        )
+        print(f"Wrote {embedding_results_count} embedding results to DynamoDB")
 
         mark_batch_complete(batch_id)
-        logger.info(f"Marked batch {batch_id} as complete")
+        print(f"Marked batch {batch_id} as complete")
 
         return {
             "statusCode": 200,

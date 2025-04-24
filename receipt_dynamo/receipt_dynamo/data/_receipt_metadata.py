@@ -481,17 +481,16 @@ class _ReceiptMetadata:
         if not isinstance(merchant_name, str):
             raise ValueError("merchant_name must be a string")
         normalized_merchant_name = merchant_name.upper().replace(" ", "_")
+        gsi1_pk = f"MERCHANT#{normalized_merchant_name}"
 
         metadatas = []
         try:
             query_params = {
                 "TableName": self.table_name,
                 "IndexName": "GSI1",
-                "KeyConditionExpression": "#t = :val",
-                "ExpressionAttributeNames": {"#t": "merchant_name"},
-                "ExpressionAttributeValues": {
-                    ":val": {"S": normalized_merchant_name}
-                },
+                "KeyConditionExpression": "#pk = :pk",
+                "ExpressionAttributeNames": {"#pk": "GSI1PK"},
+                "ExpressionAttributeValues": {":pk": {"S": gsi1_pk}},
             }
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
