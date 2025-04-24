@@ -90,9 +90,9 @@ Creates a `CompletionBatchSummary` record in DynamoDB to track the job submissio
 
 ```mermaid
 flowchart TB
-    Start([Start]) --> list_labels_that_need_validation["List Validation Targets"]
-    list_labels_that_need_validation --> chunk_labels["Chunk Validation Targets"]
-    chunk_labels --> serialize_labels["Serialize Labels that need to be Validated"]
+    Start([Start]) --> list_labels_that_need_validation["List Labels that need Validation"]
+    list_labels_that_need_validation --> chunk_labels["Chunk Labels by Receipt"]
+    chunk_labels --> serialize_labels["Serialize Labels"]
     serialize_labels --> upload_serialized_labels["Upload Serialized Labels to S3"]
     upload_serialized_labels --> batch_complete
 
