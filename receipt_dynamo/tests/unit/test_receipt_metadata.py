@@ -19,7 +19,7 @@ def example_receipt_metadata():
         phone_number="(123) 456-7890",
         match_confidence=0.9,
         matched_fields=["name", "address"],
-        validated_by="GPT+GooglePlaces",
+        validated_by="NEARBY_LOOKUP",
         timestamp=datetime(2025, 1, 1, 12, 0, 0),
         reasoning="Matches known Starbucks location",
     )
@@ -37,7 +37,7 @@ def test_basic_construction_and_status(example_receipt_metadata):
     assert m.phone_number == "(123) 456-7890"
     assert pytest.approx(m.match_confidence) == 0.9
     assert m.matched_fields == ["name", "address"]
-    assert m.validated_by == "GPT+GooglePlaces"
+    assert m.validated_by == "NEARBY_LOOKUP"
     assert m.timestamp == datetime(2025, 1, 1, 12, 0, 0)
     assert m.reasoning == "Matches known Starbucks location"
     assert m.validation_status == MerchantValidationStatus.MATCHED
@@ -53,6 +53,13 @@ def test_basic_construction_and_status(example_receipt_metadata):
     ],
 )
 def test_validation_status_buckets(confidence, expected_status):
+    # Choose the minimum number of matched fields required for each confidence bucket
+    if confidence >= 0.80:
+        matched_fields = ["name", "address"]  # ≥2 fields  →  MATCHED
+    elif confidence >= 0.50:
+        matched_fields = ["name"]  # ≥1 field  →  UNSURE
+    else:
+        matched_fields = []  # 0 fields  →  NO_MATCH
     m = ReceiptMetadata(
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         receipt_id=1,
@@ -62,8 +69,8 @@ def test_validation_status_buckets(confidence, expected_status):
         address="Address",
         phone_number="Phone",
         match_confidence=confidence,
-        matched_fields=[],
-        validated_by="Test",
+        matched_fields=matched_fields,
+        validated_by="NEARBY_LOOKUP",
         timestamp=datetime.now(),
         reasoning="testing",
     )
@@ -127,7 +134,11 @@ def test_to_item_and_back(example_receipt_metadata):
         ("matched_fields", "notalist", "matched fields must be a list"),
         ("matched_fields", [1, 2], "matched fields must be a list of strings"),
         ("matched_fields", ["dup", "dup"], "matched fields must be unique"),
-        ("validated_by", 123, "validated by must be a string"),
+        (
+            "validated_by",
+            123,
+            "validated_by must be a string or ValidationMethod enum",
+        ),
         ("timestamp", "2025-01-01", "timestamp must be a datetime"),
         ("reasoning", 456, "reasoning must be a string"),
     ],
@@ -143,7 +154,7 @@ def test_invalid_field_validation(field, value, error):
         phone_number="Phone",
         match_confidence=0.5,
         matched_fields=[],
-        validated_by="Test",
+        validated_by="NEARBY_LOOKUP",
         timestamp=datetime.now(),
         reasoning="Reason",
     )

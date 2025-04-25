@@ -13,7 +13,7 @@ from receipt_dynamo.entities.batch_summary import (
     itemToBatchSummary,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
-from receipt_dynamo.constants import BatchType
+from receipt_dynamo.constants import BatchType, BatchStatus
 
 
 def validate_last_evaluated_key(lek: dict) -> None:
@@ -393,8 +393,8 @@ class _BatchSummary:
 
     def getBatchSummariesByStatus(
         self,
-        status: str,
-        batch_type: str = "EMBEDDING",
+        status: str | BatchStatus,
+        batch_type: str | BatchType = "EMBEDDING",
         limit: int = None,
         lastEvaluatedKey: dict | None = None,
     ) -> Tuple[List[BatchSummary], dict | None]:
@@ -412,14 +412,36 @@ class _BatchSummary:
         Raises:
             ValueError: If status is invalid or if pagination parameters are invalid.
         """
-        if not isinstance(status, str) or not status:
-            raise ValueError("Status must be a non-empty string")
-        if not isinstance(batch_type, str) or not batch_type:
-            raise ValueError("Type must be a non-empty string")
-        if batch_type not in [t.value for t in BatchType]:
+        if isinstance(status, BatchStatus):
+            status_str = status.value
+        elif isinstance(status, str):
+            status_str = status
+        else:
             raise ValueError(
-                f"Invalid batch type: {batch_type} must be one of {', '.join([t.value for t in BatchType])}"
+                f"status must be either a BatchStatus enum or a string; got {type(status).__name__}"
             )
+        valid_statuses = [s.value for s in BatchStatus]
+        if status_str not in valid_statuses:
+            raise ValueError(
+                f"Invalid status: {status_str} must be one of {', '.join(valid_statuses)}"
+            )
+
+        if isinstance(batch_type, BatchType):
+            batch_type_str = batch_type.value
+        elif isinstance(batch_type, str):
+            batch_type_str = batch_type
+        else:
+            raise ValueError(
+                f"batch_type must be either a BatchType enum or a string; got {type(batch_type).__name__}"
+            )
+
+        # Validate batch_type_str against allowed values
+        valid_types = [t.value for t in BatchType]
+        if batch_type_str not in valid_types:
+            raise ValueError(
+                f"Invalid batch type: {batch_type_str} must be one of {', '.join(valid_types)}"
+            )
+
         if limit is not None and (not isinstance(limit, int) or limit <= 0):
             raise ValueError("Limit must be a positive integer")
         if lastEvaluatedKey is not None:
@@ -429,12 +451,13 @@ class _BatchSummary:
 
         summaries = []
         try:
-            query_params = {
+            query_params = query_params = {
                 "TableName": self.table_name,
                 "IndexName": "GSI1",
-                "KeyConditionExpression": "GSI1PK = :pk",
+                "KeyConditionExpression": "GSI1PK = :pk AND begins_with(GSI1SK, :prefix)",
                 "ExpressionAttributeValues": {
-                    ":pk": {"S": f"STATUS#{status}"}
+                    ":pk": {"S": f"STATUS#{status_str}"},
+                    ":prefix": {"S": f"BATCH_TYPE#{batch_type_str}"},
                 },
             }
             if lastEvaluatedKey is not None:

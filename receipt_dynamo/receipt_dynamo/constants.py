@@ -60,3 +60,10 @@ class ValidationMethod(Enum):
     NEARBY_LOOKUP = "NEARBY_LOOKUP"
     TEXT_SEARCH = "TEXT_SEARCH"
     INFERENCE = "INFERENCE"
+
+
+class PassNumber(Enum):
+    """The pass number for a completion batch result."""
+
+    FIRST = "FIRST_PASS"
+    SECOND = "SECOND_PASS"

@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any, Generator, Optional, Tuple
 
 from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
-from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.constants import ValidationStatus, PassNumber
 
 
 class CompletionBatchResult:
@@ -24,6 +24,9 @@ class CompletionBatchResult:
         reasoning: str,
         raw_prompt: str,
         raw_response: str,
+        is_valid: bool,
+        vector_id: str,
+        pass_number: PassNumber | str,
     ):
         assert_valid_uuid(batch_id)
         self.batch_id = batch_id
@@ -74,6 +77,28 @@ class CompletionBatchResult:
         if not isinstance(raw_response, str):
             raise ValueError("raw_response must be a string")
         self.raw_response = raw_response
+
+        if not isinstance(is_valid, bool):
+            raise ValueError("is_valid must be a boolean")
+        self.is_valid = is_valid
+
+        if not isinstance(vector_id, str):
+            raise ValueError("vector_id must be a string")
+        self.vector_id = vector_id
+
+        if isinstance(pass_number, PassNumber):
+            pass_number_str = pass_number.value
+        elif isinstance(pass_number, str):
+            pass_number_str = pass_number
+        else:
+            raise ValueError("pass_number must be a PassNumber or a string")
+        valid_pass_numbers = [p.value for p in PassNumber]
+        if pass_number_str not in valid_pass_numbers:
+            raise ValueError(
+                f"pass_number must be one of: {', '.join(valid_pass_numbers)}\n"
+                f"got: {pass_number_str}"
+            )
+        self.pass_number = pass_number_str
 
     def key(self) -> dict:
         """
@@ -129,6 +154,9 @@ class CompletionBatchResult:
             "reasoning": {"S": self.reasoning},
             "raw_prompt": {"S": self.raw_prompt},
             "raw_response": {"S": self.raw_response},
+            "is_valid": {"BOOL": self.is_valid},
+            "vector_id": {"S": self.vector_id},
+            "pass_number": {"S": self.pass_number},
         }
 
     def __repr__(self) -> str:
@@ -148,7 +176,10 @@ class CompletionBatchResult:
             f"validated_at={_repr_str(self.validated_at)}, "
             f"reasoning={_repr_str(self.reasoning)}, "
             f"raw_prompt={_repr_str(self.raw_prompt)}, "
-            f"raw_response={_repr_str(self.raw_response)}"
+            f"raw_response={_repr_str(self.raw_response)}, "
+            f"is_valid={_repr_str(self.is_valid)}, "
+            f"vector_id={_repr_str(self.vector_id)}, "
+            f"pass_number={_repr_str(self.pass_number)}"
             ")"
         )
 
@@ -168,6 +199,9 @@ class CompletionBatchResult:
         yield "reasoning", self.reasoning
         yield "raw_prompt", self.raw_prompt
         yield "raw_response", self.raw_response
+        yield "is_valid", self.is_valid
+        yield "vector_id", self.vector_id
+        yield "pass_number", self.pass_number
 
     def __eq__(self, other) -> bool:
         """
@@ -188,6 +222,9 @@ class CompletionBatchResult:
             and self.reasoning == other.reasoning
             and self.raw_prompt == other.raw_prompt
             and self.raw_response == other.raw_response
+            and self.is_valid == other.is_valid
+            and self.vector_id == other.vector_id
+            and self.pass_number == other.pass_number
         )
 
     def __hash__(self) -> int:
@@ -205,6 +242,9 @@ class CompletionBatchResult:
                 self.reasoning,
                 self.raw_prompt,
                 self.raw_response,
+                self.is_valid,
+                self.vector_id,
+                self.pass_number,
             )
         )
 
@@ -223,6 +263,9 @@ def itemToCompletionBatchResult(item: dict) -> CompletionBatchResult:
         "reasoning",
         "raw_prompt",
         "raw_response",
+        "is_valid",
+        "vector_id",
+        "pass_number",
     }
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - item.keys()
@@ -243,6 +286,9 @@ def itemToCompletionBatchResult(item: dict) -> CompletionBatchResult:
         reasoning = item["reasoning"]["S"]
         raw_prompt = item["raw_prompt"]["S"]
         raw_response = item["raw_response"]["S"]
+        is_valid = item["is_valid"]["BOOL"]
+        vector_id = item["vector_id"]["S"]
+        pass_number = item["pass_number"]["S"]
         image_id = item["GSI3PK"]["S"].split("#")[1]
         return CompletionBatchResult(
             batch_id=batch_id,
@@ -257,6 +303,9 @@ def itemToCompletionBatchResult(item: dict) -> CompletionBatchResult:
             reasoning=reasoning,
             raw_prompt=raw_prompt,
             raw_response=raw_response,
+            is_valid=is_valid,
+            vector_id=vector_id,
+            pass_number=pass_number,
         )
     except Exception as e:
         raise ValueError(

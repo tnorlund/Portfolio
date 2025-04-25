@@ -428,6 +428,46 @@ class _ReceiptWordLabel:
                     f"Error getting receipt word label: {e}"
                 ) from e
 
+    def getReceiptWordLabelsByIndices(
+        self, indices: list[tuple[str, int, int, int, str]]
+    ) -> list[ReceiptWordLabel]:
+        """Retrieves multiple receipt word labels by their indices."""
+        if indices is None:
+            raise ValueError("Indices is required and cannot be None.")
+        if not isinstance(indices, list):
+            raise ValueError("Indices must be a list.")
+        if not all(isinstance(index, tuple) for index in indices):
+            raise ValueError("Indices must be a list of tuples.")
+        for index in indices:
+            if len(index) != 5:
+                raise ValueError(
+                    "Indices must be a list of tuples with 5 elements."
+                )
+            if not isinstance(index[0], str):
+                raise ValueError("First element of tuple must be a string.")
+            assert_valid_uuid(index[0])
+            if not isinstance(index[1], int):
+                raise ValueError("Second element of tuple must be an integer.")
+            if not isinstance(index[2], int):
+                raise ValueError("Third element of tuple must be an integer.")
+            if not isinstance(index[3], int):
+                raise ValueError("Fourth element of tuple must be an integer.")
+            if not isinstance(index[4], str):
+                raise ValueError("Fifth element of tuple must be a string.")
+
+        # Assemble the keys
+        keys = []
+        for index in indices:
+            keys.append(
+                {
+                    "PK": {"S": f"IMAGE#{index[0]}"},
+                    "SK": {
+                        "S": f"RECEIPT#{index[1]:05d}#LINE#{index[2]:05d}#WORD#{index[3]:05d}#LABEL#{index[4]}"
+                    },
+                }
+            )
+        return self.getReceiptWordLabelsByKeys(keys)
+
     def getReceiptWordLabelsByKeys(
         self, keys: list[dict]
     ) -> list[ReceiptWordLabel]:

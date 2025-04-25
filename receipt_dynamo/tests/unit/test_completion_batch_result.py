@@ -4,7 +4,7 @@ from receipt_dynamo.entities.completion_batch_result import (
     CompletionBatchResult,
     itemToCompletionBatchResult,
 )
-from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.constants import ValidationStatus, PassNumber
 
 
 @pytest.fixture
@@ -22,6 +22,9 @@ def example_completion_batch_result():
         reasoning="GPT agreed with the label.",
         raw_prompt="Prompt example here...",
         raw_response="Response example here...",
+        is_valid=True,
+        vector_id="vector-id-123",
+        pass_number=PassNumber.FIRST.value,
     )
 
 
@@ -112,6 +115,9 @@ def test_completion_batch_result_field_type_errors(field, bad_value, err_msg):
         reasoning="Reasonable",
         raw_prompt="Prompt here",
         raw_response="Response here",
+        is_valid=True,
+        vector_id="vector-id-123",
+        pass_number=PassNumber.FIRST.value,
     )
     kwargs[field] = bad_value
     with pytest.raises(ValueError, match=err_msg):
@@ -134,6 +140,9 @@ def test_completion_batch_result_invalid_status_value():
             reasoning="reasoning",
             raw_prompt="prompt",
             raw_response="response",
+            is_valid=True,
+            vector_id="vector-id-123",
+            pass_number=PassNumber.FIRST.value,
         )
 
 
@@ -158,6 +167,9 @@ def test_completion_batch_result_invalid_date_format():
         "reasoning": {"S": "reasoning"},
         "raw_prompt": {"S": "prompt"},
         "raw_response": {"S": "response"},
+        "is_valid": {"BOOL": True},
+        "vector_id": {"S": "vector-id-123"},
+        "pass_number": {"S": "FIRST_PASS"},
     }
     with pytest.raises(
         ValueError, match="Error converting item to CompletionBatchResult"

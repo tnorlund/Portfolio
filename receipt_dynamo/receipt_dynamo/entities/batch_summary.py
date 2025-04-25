@@ -9,7 +9,7 @@ class BatchSummary:
     def __init__(
         self,
         batch_id: str,
-        batch_type: str,
+        batch_type: str | BatchType,
         openai_batch_id: str,
         submitted_at: datetime,
         status: str | BatchStatus,
@@ -88,7 +88,9 @@ class BatchSummary:
     def gsi1_key(self) -> dict:
         return {
             "GSI1PK": {"S": f"STATUS#{self.status}"},
-            "GSI1SK": {"S": f"BATCH#{self.batch_id}"},
+            "GSI1SK": {
+                "S": f"BATCH_TYPE#{self.batch_type}#BATCH_ID#{self.batch_id}"
+            },
         }
 
     def to_item(self) -> dict:
