@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 from uuid import uuid4
+import boto3
 
 from receipt_dynamo.entities import (
     ReceiptWordLabel,
@@ -11,7 +12,12 @@ from receipt_dynamo.entities import (
 )
 from openai.types import FileObject
 from openai.resources.batches import Batch
-from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.constants import (
+    ValidationStatus,
+    PassNumber,
+    BatchType,
+    BatchStatus,
+)
 from datetime import datetime, timezone
 
 from receipt_label.utils import get_clients
@@ -87,21 +93,40 @@ def chunk_into_completion_batches(
     labels: list[ReceiptWordLabel],
 ) -> dict[str, dict[int, list[ReceiptWordLabel]]]:
     """
-    Chunk the labels into completion batches by image and receipt.
-    """
-    labels_by_image: dict[str, list[ReceiptWordLabel]] = {}
-    for label in labels:
-        image_dict = labels_by_image.setdefault(label.image_id, {})
-        receipt_dict = image_dict.setdefault(label.receipt_id, [])
-        # Use (line_id, word_id) as key to dedupe
-        key = (label.line_id, label.word_id)
-        receipt_dict[key] = label
+    Group labels by ``image_id`` -> ``receipt_id`` while **deduplicating**
+    on the triple ``(line_id, word_id, label)`` for each receipt.
 
-    # Convert inner dicts back to lists
-    result: dict[str, dict[int, list[ReceiptWordLabel]]] = {}
-    for image_id, receipt_map in labels_by_image.items():
-        result[image_id] = {}
-    return result
+    Returned structure::
+
+        {
+            "IMAGE_UUID": {
+                1: [ReceiptWordLabel, ReceiptWordLabel, ...],
+                2: [...],
+            },
+            ...
+        }
+    """
+    # First pass – nest dictionaries so we can easily dedupe
+    nested: dict[
+        str, dict[int, dict[tuple[int, int, str], ReceiptWordLabel]]
+    ] = {}
+
+    for label in labels:
+        image_map = nested.setdefault(label.image_id, {})
+        receipt_map = image_map.setdefault(label.receipt_id, {})
+        # Use (line_id, word_id, label) as key to keep each label per word
+        dedupe_key = (label.line_id, label.word_id, label.label)
+        receipt_map[dedupe_key] = label  # later entries overwrite duplicates
+
+    # Second pass – convert inner dicts (where values are ReceiptWordLabel) to lists
+    grouped: dict[str, dict[int, list[ReceiptWordLabel]]] = {}
+    for image_id, receipt_dict in nested.items():
+        grouped[image_id] = {
+            receipt_id: list(label_map.values())
+            for receipt_id, label_map in receipt_dict.items()
+        }
+
+    return grouped
 
 
 def serialize_labels(
@@ -151,12 +176,15 @@ def upload_serialized_labels(
 def download_serialized_labels(serialized_label: dict) -> Path:
     """Download the serialized label from S3."""
     s3 = boto3.client("s3")
+    s3_bucket = serialized_label["s3_bucket"]
+    s3_key = serialized_label["s3_key"]
+    filepath = serialized_label["ndjson_path"]
     s3.download_file(
-        serialized_label["s3_bucket"],
-        serialized_label["s3_key"],
-        serialized_label["ndjson_path"],
+        s3_bucket,
+        s3_key,
+        str(filepath),
     )
-    return Path(serialized_label["ndjson_path"])
+    return Path(filepath)
 
 
 def deserialize_labels(filepath: Path) -> list[ReceiptWordLabel]:
@@ -259,7 +287,8 @@ def format_batch_completion_file(
                 f"LINE#{label.line_id:05d}#"
                 f"WORD#{label.word_id:05d}#"
                 f"LABEL#{label.label}#"
-                f"VALIDATION_STATUS#{label.validation_status}"
+                f"VALIDATION_STATUS#{label.validation_status}#"
+                f"PASS#{PassNumber.FIRST.value}"
             ),
             "url": "/v1/chat/completions",
             "body": {
@@ -364,10 +393,10 @@ def create_batch_summary(
     # 3) Build and return the BatchSummary
     return BatchSummary(
         batch_id=batch_id,
-        batch_type="VALIDATION",
+        batch_type=BatchType.COMPLETION.value,
         openai_batch_id=open_ai_batch_id,
         submitted_at=datetime.now(timezone.utc),
-        status="PENDING",
+        status=BatchStatus.PENDING.value,
         word_count=word_count,
         result_file_id="N/A",
         receipt_refs=list(receipt_refs),

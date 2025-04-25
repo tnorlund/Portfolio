@@ -9,6 +9,13 @@ from .submit_completion import (
     upload_to_openai,
     submit_openai_batch,
     get_receipt_details,
+    generate_completion_batch_id,
+    format_batch_completion_file,
+    upload_to_openai,
+    submit_openai_batch,
+    create_batch_summary,
+    add_batch_summary,
+    update_label_validation_status,
 )
 
 __all__ = [
@@ -22,4 +29,8 @@ __all__ = [
     "upload_to_openai",
     "submit_openai_batch",
     "get_receipt_details",
+    "generate_completion_batch_id",
+    "create_batch_summary",
+    "add_batch_summary",
+    "update_label_validation_status",
 ]
