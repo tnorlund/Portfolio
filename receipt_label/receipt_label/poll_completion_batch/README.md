@@ -16,17 +16,16 @@ This module manages the asynchronous polling of OpenAI completion jobs submitted
 
 ```mermaid
     flowchart TB
-        Start([Start]) --> ListPending["List Pending CompletionBatchSummaries"]
-        ListPending --> ChunkPending["Chunk Pending CompletionBatchSummaries"]
-        ChunkPending --> MapChunks{"Map over chunks"}
+        Start([Start]) --> list_pending_completion_batches["List Pending Batches"]
+        list_pending_completion_batches --> map_batches("Map over Pending Batches")
 
         subgraph MapChunks Branch
             direction TB
-            CheckStatus{"Check Job Status via OpenAI"}
-            CheckStatus -- No --> End([End])
-            CheckStatus -- Yes --> Download["Download NDJSON result file"]
-            Download --> ParseResults["Parse NDJSON into CompletionBatchResult entries"]
-            ParseResults --> ForEachResult{"Check if Valid"}
+            get_openai_batch_status["Poll OpenAI Status"]
+            get_openai_batch_status --> End([End])
+            get_openai_batch_status -- |complete| --> download_openai_batch_result["Download Results"]
+            Download --> parse_results["Parse NDJSON into CompletionBatchResult entries"]
+            parse_results --> map_results{"Check if Valid"}
 
             subgraph DynamoSync
                 direction TB

@@ -28,3 +28,34 @@ For each receipt word, we generate two embeddings to capture both semantic and s
 - We reuse the same vector IDs so we never duplicate embeddings—only metadata changes.
 
 This approach allows agentic, data‑driven validation and label proposal, while keeping Pinecone storage efficient and easy to query.
+
+## Label Validation Strategy
+
+## 🧪 Label Validation Strategy
+
+This project uses a layered, multi-pass approach to label validation in order to combine efficiency, semantic similarity, and multi-hop reasoning.
+
+### 🔹 Pass 1: Batch Label Validation with GPT
+
+All `ReceiptWordLabel` entries are processed via batch completions using OpenAI’s function calling. GPT evaluates each label in context and flags whether it is valid. If the label is deemed incorrect, it may suggest a corrected label and provide a rationale. This step is fully parallelizable using the OpenAI Batch API.
+
+### 🔹 Pass 2: Embedding-Based Refinement
+
+For any labels marked as invalid in the first pass, a second evaluation is conducted using Pinecone. The model is provided with:
+
+- The word and its receipt context
+- The original and GPT-suggested labels
+- A list of nearby Pinecone embeddings with known correct labels
+
+GPT uses this expanded semantic context to reconsider its earlier assessment. This step improves precision on edge cases like numbers, prepositions, or ambiguous merchant terms.
+
+## 🔹 Pass 3: Agentic Label Resolution
+
+The final pass uses the OpenAI Agents SDK to resolve remaining ambiguous or inconsistent labels. The agent can:
+
+- Call Pinecone to compare embeddings across receipts
+- Query DynamoDB for past receipt structure
+- Apply logical rules (e.g., label propagation across lines)
+- Chain multiple reasoning steps before finalizing a label
+
+This stage is ideal for advanced logic, correction propagation, and multi-hop validation workflows.
