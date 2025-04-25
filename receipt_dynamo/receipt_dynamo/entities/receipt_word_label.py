@@ -84,9 +84,9 @@ class ReceiptWordLabel:
             raise ValueError("label cannot be empty")
         self.label = label.upper()  # Store labels in uppercase for consistency
 
-        if not isinstance(reasoning, str):
-            raise ValueError("reasoning must be a string")
-        if not reasoning:
+        if not isinstance(reasoning, str | None):
+            raise ValueError("reasoning must be a string or None")
+        if reasoning is not None and not reasoning:
             raise ValueError("reasoning cannot be empty")
         self.reasoning = reasoning
 
@@ -201,7 +201,11 @@ class ReceiptWordLabel:
             **self.gsi2_key(),
             **self.gsi3_key(),
             "TYPE": {"S": "RECEIPT_WORD_LABEL"},
-            "reasoning": {"S": self.reasoning},
+            "reasoning": (
+                {"S": self.reasoning}
+                if self.reasoning is not None
+                else {"NULL": True}
+            ),
             "timestamp_added": {"S": self.timestamp_added},
             "validation_status": {"S": self.validation_status},
             "label_consolidated_from": (
@@ -351,7 +355,9 @@ def itemToReceiptWordLabel(item: dict) -> ReceiptWordLabel:
         line_id = int(sk_parts[3])
         word_id = int(sk_parts[5])
         label = sk_parts[7]
-        reasoning = item["reasoning"]["S"]
+        reasoning = (
+            item["reasoning"]["S"] if "S" in item["reasoning"] else None
+        )
         timestamp_added = item["timestamp_added"]["S"]
         validation_status = None
         if "validation_status" in item:

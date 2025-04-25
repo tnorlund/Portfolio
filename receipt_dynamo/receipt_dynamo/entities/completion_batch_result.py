@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any, Generator, Optional, Tuple
 
 from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
-from receipt_dynamo.constants import ValidationStatus, PassNumber
+from receipt_dynamo.constants import ValidationStatus, PassNumber, BatchStatus
 
 
 class CompletionBatchResult:
@@ -18,12 +18,10 @@ class CompletionBatchResult:
         line_id: int,
         word_id: int,
         original_label: str,
-        gpt_suggested_label: str,
-        status: str,
+        gpt_suggested_label: str | None,
+        status: str | BatchStatus,
         validated_at: datetime,
-        reasoning: str,
-        raw_prompt: str,
-        raw_response: str,
+        reasoning: str | None,
         is_valid: bool,
         vector_id: str,
         pass_number: PassNumber | str,
@@ -50,33 +48,31 @@ class CompletionBatchResult:
             raise ValueError("original_label must be a string")
         self.original_label = original_label
 
-        if not isinstance(gpt_suggested_label, str):
-            raise ValueError("gpt_suggested_label must be a string")
+        if not isinstance(gpt_suggested_label, str | None):
+            raise ValueError("gpt_suggested_label must be a string or None")
         self.gpt_suggested_label = gpt_suggested_label
 
-        if not isinstance(status, str):
-            raise ValueError("status must be a string")
-        if not status in [s.value for s in ValidationStatus]:
+        if not isinstance(status, str | BatchStatus):
+            raise ValueError("status must be a string or BatchStatus")
+        if isinstance(status, str) and not status in [
+            s.value for s in BatchStatus
+        ]:
             raise ValueError(
-                f"status must be one of: {', '.join(status.value for status in ValidationStatus)}"
+                f"status must be one of: {', '.join(status.value for status in BatchStatus)}"
             )
-        self.status = status
+        if isinstance(status, BatchStatus):
+            status_str = status.value
+        else:
+            status_str = status
+        self.status = status_str
 
         if not isinstance(validated_at, datetime):
             raise ValueError("validated_at must be a datetime object")
         self.validated_at = validated_at
 
-        if not isinstance(reasoning, str):
-            raise ValueError("reasoning must be a string")
+        if not isinstance(reasoning, str | None):
+            raise ValueError("reasoning must be a string or None")
         self.reasoning = reasoning
-
-        if not isinstance(raw_prompt, str):
-            raise ValueError("raw_prompt must be a string")
-        self.raw_prompt = raw_prompt
-
-        if not isinstance(raw_response, str):
-            raise ValueError("raw_response must be a string")
-        self.raw_response = raw_response
 
         if not isinstance(is_valid, bool):
             raise ValueError("is_valid must be a boolean")
@@ -148,12 +144,16 @@ class CompletionBatchResult:
             **self.gsi3_key(),
             "TYPE": {"S": "COMPLETION_BATCH_RESULT"},
             "original_label": {"S": self.original_label},
-            "gpt_suggested_label": {"S": self.gpt_suggested_label},
+            "gpt_suggested_label": (
+                {"S": self.gpt_suggested_label}
+                if self.gpt_suggested_label
+                else {"NULL": True}
+            ),
             "status": {"S": self.status},
             "validated_at": {"S": self.validated_at.isoformat()},
-            "reasoning": {"S": self.reasoning},
-            "raw_prompt": {"S": self.raw_prompt},
-            "raw_response": {"S": self.raw_response},
+            "reasoning": (
+                {"S": self.reasoning} if self.reasoning else {"NULL": True}
+            ),
             "is_valid": {"BOOL": self.is_valid},
             "vector_id": {"S": self.vector_id},
             "pass_number": {"S": self.pass_number},
@@ -175,8 +175,6 @@ class CompletionBatchResult:
             f"status={_repr_str(self.status)}, "
             f"validated_at={_repr_str(self.validated_at)}, "
             f"reasoning={_repr_str(self.reasoning)}, "
-            f"raw_prompt={_repr_str(self.raw_prompt)}, "
-            f"raw_response={_repr_str(self.raw_response)}, "
             f"is_valid={_repr_str(self.is_valid)}, "
             f"vector_id={_repr_str(self.vector_id)}, "
             f"pass_number={_repr_str(self.pass_number)}"
@@ -197,8 +195,6 @@ class CompletionBatchResult:
         yield "status", self.status
         yield "validated_at", self.validated_at
         yield "reasoning", self.reasoning
-        yield "raw_prompt", self.raw_prompt
-        yield "raw_response", self.raw_response
         yield "is_valid", self.is_valid
         yield "vector_id", self.vector_id
         yield "pass_number", self.pass_number
@@ -220,8 +216,6 @@ class CompletionBatchResult:
             and self.status == other.status
             and self.validated_at == other.validated_at
             and self.reasoning == other.reasoning
-            and self.raw_prompt == other.raw_prompt
-            and self.raw_response == other.raw_response
             and self.is_valid == other.is_valid
             and self.vector_id == other.vector_id
             and self.pass_number == other.pass_number
@@ -240,8 +234,6 @@ class CompletionBatchResult:
                 self.status,
                 self.validated_at,
                 self.reasoning,
-                self.raw_prompt,
-                self.raw_response,
                 self.is_valid,
                 self.vector_id,
                 self.pass_number,
@@ -261,8 +253,6 @@ def itemToCompletionBatchResult(item: dict) -> CompletionBatchResult:
         "status",
         "validated_at",
         "reasoning",
-        "raw_prompt",
-        "raw_response",
         "is_valid",
         "vector_id",
         "pass_number",
@@ -280,12 +270,14 @@ def itemToCompletionBatchResult(item: dict) -> CompletionBatchResult:
         line_id = int(sk_parts[4])
         word_id = int(sk_parts[6])
         original_label = sk_parts[8]
-        gpt_suggested_label = item["gpt_suggested_label"]["S"]
+        gpt_suggested_label = (
+            item["gpt_suggested_label"]["S"]
+            if item["gpt_suggested_label"]["S"]
+            else None
+        )
         status = item["status"]["S"]
         validated_at = datetime.fromisoformat(item["validated_at"]["S"])
-        reasoning = item["reasoning"]["S"]
-        raw_prompt = item["raw_prompt"]["S"]
-        raw_response = item["raw_response"]["S"]
+        reasoning = item["reasoning"]["S"] if item["reasoning"]["S"] else None
         is_valid = item["is_valid"]["BOOL"]
         vector_id = item["vector_id"]["S"]
         pass_number = item["pass_number"]["S"]
@@ -301,8 +293,6 @@ def itemToCompletionBatchResult(item: dict) -> CompletionBatchResult:
             status=status,
             validated_at=validated_at,
             reasoning=reasoning,
-            raw_prompt=raw_prompt,
-            raw_response=raw_response,
             is_valid=is_valid,
             vector_id=vector_id,
             pass_number=pass_number,
