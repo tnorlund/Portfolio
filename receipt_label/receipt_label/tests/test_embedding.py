@@ -649,7 +649,7 @@ def receipt_and_metadata():
             merchant_category="test_merchant_category",
             address="test_address",
             phone_number="test_phone_number",
-            validated_by="test_validated_by",
+            validated_by="NEARBY_LOOKUP",
             reasoning="test_reasoning",
         ),
         ReceiptMetadata(
@@ -663,7 +663,7 @@ def receipt_and_metadata():
             merchant_category="test_merchant_category",
             address="test_address",
             phone_number="test_phone_number",
-            validated_by="test_validated_by",
+            validated_by="NEARBY_LOOKUP",
             reasoning="test_reasoning",
         ),
         ReceiptMetadata(
@@ -677,7 +677,7 @@ def receipt_and_metadata():
             merchant_category="test_merchant_category",
             address="test_address",
             phone_number="test_phone_number",
-            validated_by="test_validated_by",
+            validated_by="NEARBY_LOOKUP",
             reasoning="test_reasoning",
         ),
     ]
