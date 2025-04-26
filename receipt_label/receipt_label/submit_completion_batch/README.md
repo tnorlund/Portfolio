@@ -105,7 +105,7 @@ flowchart TB
     serialize_labels --> upload_serialized_labels["Upload Serialized Labels to S3"]
     upload_serialized_labels --> format_ndjsons
 
-    subgraph format_ndjsons["Format the different Completions"]
+    subgraph format_ndjsons["Format Completions"]
         direction TB
         generate_completion_batch_id --> download_serialized_labels["Download Serialized Labels from S3"]
         download_serialized_labels --> deserialize_labels["Deserialize Labels"]
