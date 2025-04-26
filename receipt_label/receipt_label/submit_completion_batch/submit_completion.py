@@ -1,7 +1,11 @@
 import json
+import os
 from pathlib import Path
+import tempfile
 from uuid import uuid4
 import boto3
+from typing import List, Tuple
+
 
 from receipt_dynamo.entities import (
     ReceiptWordLabel,
@@ -150,7 +154,7 @@ def serialize_labels(
                 {
                     "image_id": image_id,
                     "receipt_id": receipt_id,
-                    "ndjson_path": filepath,
+                    "ndjson_path": str(filepath),
                 }
             )
     return results
@@ -351,6 +355,16 @@ def format_batch_completion_file(
     return filepath
 
 
+def upload_completion_batch_file(
+    filepath: Path, s3_bucket: str, prefix: str = "completion_batches"
+) -> str:
+    """Upload the completion batch file to S3 and return its S3 key."""
+    s3 = boto3.client("s3")
+    s3_key = f"{prefix}/{filepath.name}"
+    s3.upload_file(str(filepath), s3_bucket, s3_key)
+    return s3_key
+
+
 def upload_to_openai(filepath: Path) -> FileObject:
     """Upload the NDJSON file to OpenAI."""
     return openai_client.files.create(
@@ -413,3 +427,75 @@ def update_label_validation_status(labels: list[ReceiptWordLabel]) -> None:
     for label in labels:
         label.validation_status = ValidationStatus.PENDING.value
     dynamo_client.updateReceiptWordLabels(labels)
+
+
+def merge_ndjsons(
+    s3_bucket: str,
+    s3_keys: list[str],
+    max_lines: int = 50_000,
+    max_size_bytes: int = 100 * 1024 * 1024,
+) -> list[tuple[Path, list[str]]]:
+    """
+    Merge multiple NDJSON files from S3 into one or more temporary NDJSON files.
+    Stops adding lines when max_lines or max_size_bytes is reached.
+    Returns a list of (merged_path, consumed_keys) for each merged file.
+    """
+    s3 = boto3.client("s3")
+    merged_files: list[tuple[Path, list[str]]] = []
+
+    # Helper to start a new temp file
+    def start_file():
+        tmp = tempfile.NamedTemporaryFile(
+            prefix="merged_", suffix=".ndjson", delete=False
+        )
+        return Path(tmp.name), tmp
+
+    merged_path, tmp_file = start_file()
+    total_lines = 0
+    total_bytes = 0
+    consumed_keys: List[str] = []
+
+    for key in s3_keys:
+        stream = s3.get_object(Bucket=s3_bucket, Key=key)["Body"].iter_lines()
+        key_line_count = 0
+        key_byte_count = 0
+
+        # First pass through stream to decide if we need a rollover
+        for line in stream:
+            key_line_count += 1
+            key_byte_count += len(line) + 1  # newline
+
+            if (
+                total_lines + key_line_count > max_lines
+                or total_bytes + key_byte_count > max_size_bytes
+            ):
+                # rollover: finalize current file
+                tmp_file.close()
+                merged_files.append((merged_path, consumed_keys.copy()))
+                # start a new merged file
+                merged_path, tmp_file = start_file()
+                total_lines = 0
+                total_bytes = 0
+                consumed_keys.clear()
+                break
+
+        # re-open the stream and write lines
+        stream = s3.get_object(Bucket=s3_bucket, Key=key)["Body"].iter_lines()
+        for line in stream:
+            line_bytes = line + b"\n"
+            if (
+                total_lines + 1 > max_lines
+                or total_bytes + len(line_bytes) > max_size_bytes
+            ):
+                break
+            tmp_file.write(line_bytes)
+            total_lines += 1
+            total_bytes += len(line_bytes)
+        consumed_keys.append(key)
+
+    # finalize last file
+    tmp_file.close()
+    if consumed_keys:
+        merged_files.append((merged_path, consumed_keys.copy()))
+
+    return merged_files

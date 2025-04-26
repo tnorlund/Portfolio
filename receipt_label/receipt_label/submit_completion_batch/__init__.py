@@ -16,6 +16,8 @@ from .submit_completion import (
     create_batch_summary,
     add_batch_summary,
     update_label_validation_status,
+    upload_completion_batch_file,
+    merge_ndjsons,
 )
 
 __all__ = [
@@ -33,4 +35,6 @@ __all__ = [
     "create_batch_summary",
     "add_batch_summary",
     "update_label_validation_status",
+    "upload_completion_batch_file",
+    "merge_ndjsons",
 ]

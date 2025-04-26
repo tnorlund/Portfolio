@@ -48,6 +48,10 @@ Generates the NDJSON file for batch completions with OpenAI.
 
 Uploads the file to OpenAI.
 
+### `upload_completion_batch_file(filepath: Path, s3_bucket: str, prefix: str) -> str`
+
+Uploads the formatted NDJSON completion file to S3.
+
 ### `submit_openai_batch(file_id: str) -> Batch`
 
 Submits the batch completion job to OpenAI.
@@ -63,6 +67,10 @@ Updates the validation status of the list of labels.
 ### `add_batch_summary(summary: BatchSummary) -> None`
 
 Adds a batch summary to DynamoDB.
+
+### `merge_ndjsons(s3_bucket: str, s3_keys: list[str], max_lines: int, max_size_bytes: int) -> list[tuple[Path, list[str]]]`
+
+Merges NDJSON files from S3 into a single batch for OpenAI.
 
 ---
 
@@ -95,20 +103,23 @@ flowchart TB
     list_labels_that_need_validation --> chunk_into_completion_batches["Chunk Labels by Receipt"]
     chunk_into_completion_batches --> serialize_labels["Serialize Labels"]
     serialize_labels --> upload_serialized_labels["Upload Serialized Labels to S3"]
-    upload_serialized_labels --> batch_complete
+    upload_serialized_labels --> format_ndjsons
 
-    subgraph batch_complete["Batch Complete"]
+    subgraph format_ndjsons["Format the different Completions"]
         direction TB
         generate_completion_batch_id --> download_serialized_labels["Download Serialized Labels from S3"]
         download_serialized_labels --> deserialize_labels["Deserialize Labels"]
         deserialize_labels --> get_receipt_details["Get the Receipt Details"]
         get_receipt_details --> format_batch_completion_file["Create the file for Open AI"]
-        format_batch_completion_file --> upload_to_openai["Upload the file to Open AI"]
-        upload_to_openai --> submit_openai_batch["Submit the batch to Open AI"]
-        submit_openai_batch --> create_batch_summary["Create Batch Summary"]
-        create_batch_summary --> update_label_validation_status["Update the Validation Status of the labels"]
-        update_label_validation_status --> add_batch_summary["Add Batch Summary"]
+        format_batch_completion_file --> upload_completion_batch_file["Upload the Formatted Completion to S3"]
+        upload_completion_batch_file --> merge_ndjsons
     end
 
-    batch_complete --> END([End])
+    merge_ndjsons["Merge Batch Completions"] --> upload_to_openai["Upload the file to Open AI"]
+    upload_to_openai --> submit_openai_batch["Submit the batch to Open AI"]
+    submit_openai_batch --> create_batch_summary["Create Batch Summary"]
+    create_batch_summary --> update_label_validation_status["Update the Validation Status of the labels"]
+    update_label_validation_status --> add_batch_summary["Add Batch Summary"]
+
+    add_batch_summary --> END([End])
 ```

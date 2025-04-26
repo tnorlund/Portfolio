@@ -53,23 +53,23 @@ def list_pending_completion_batches() -> list[BatchSummary]:
     return pending_completion_batches
 
 
-def get_openai_batch_status(openai_batch_id: str) -> str:
+def get_openai_batch_status(batch_summary: BatchSummary) -> str:
     """
     Retrieve the status of an OpenAI embedding batch job.
     Args:
-        openai_batch_id (str): The identifier of the batch.
+        batch_summary (BatchSummary): The batch summary.
     Returns the current status of the batch.
     """
-    return openai_client.batches.retrieve(openai_batch_id).status
+    return openai_client.batches.retrieve(batch_summary.openai_batch_id).status
 
 
 def download_openai_batch_result(
-    openai_batch_id: str, batch_summary: BatchSummary
+    batch_summary: BatchSummary,
 ) -> list[ParsedResult]:
     """
     Download and parse the results of an OpenAI embedding batch job.
     """
-    batch = openai_client.batches.retrieve(openai_batch_id)
+    batch = openai_client.batches.retrieve(batch_summary.openai_batch_id)
     output_file_id = batch.output_file_id
     response = openai_client.files.content(output_file_id)
 
@@ -166,7 +166,7 @@ def download_openai_batch_result(
     return parsed_results
 
 
-def update_valid_labels(parsed_results: list[ParsedResult]):
+def update_valid_labels(parsed_results: list[ParsedResult]) -> None:
     """
     Update the valid labels in the database and Pinecone index.
     """
@@ -229,7 +229,7 @@ def update_valid_labels(parsed_results: list[ParsedResult]):
         dynamo_client.updateReceiptWordLabels(labels)
 
 
-def update_invalid_labels(parsed_results: list[ParsedResult]):
+def update_invalid_labels(parsed_results: list[ParsedResult]) -> None:
     """
     Update invalid labels in DynamoDB and Pinecone index based on batch parsing results.
     """
@@ -323,7 +323,7 @@ def update_invalid_labels(parsed_results: list[ParsedResult]):
             )
 
 
-def write_completion_batch_results(parsed_results: list[ParsedResult]):
+def write_completion_batch_results(parsed_results: list[ParsedResult]) -> None:
     """
     Write the completion batch results to DynamoDB.
     """
@@ -349,3 +349,11 @@ def write_completion_batch_results(parsed_results: list[ParsedResult]):
             )
         )
     dynamo_client.addCompletionBatchResults(completion_batch_results)
+
+
+def update_batch_summary(batch_summary: BatchSummary) -> None:
+    """
+    Update the batch summary in DynamoDB.
+    """
+    batch_summary.status = BatchStatus.COMPLETED.value
+    dynamo_client.updateBatchSummary(batch_summary)
