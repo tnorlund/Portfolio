@@ -134,14 +134,21 @@ Queries the words from a batch completion request NDJSON file.
 flowchart TB
     %% ───────── Stage 1  ─────────
     Start([Start]) --> list_labels_that_need_validation
-    list_labels_that_need_validation --> chunk_into_completion_batches
-    chunk_into_completion_batches --> serialize_labels
-    serialize_labels --> upload_serialized_labels
+    list_labels_that_need_validation --> split_for_passes["split_for_passes<br/>(decide pass & mark agent)"]
+
+    %% pass-1 path
+    split_for_passes --> chunk_p1["chunk_into_completion_batches (P1)"]
+    chunk_p1 --> serialize_p1["serialize_labels (P1)"]
+    serialize_p1 --> upload_p1["upload_serialized_labels (P1)"]
+
+    %% pass-2 path
+    split_for_passes --> chunk_p2["chunk_into_completion_batches (P2)"]
+    chunk_p2 --> serialize_p2["serialize_labels (P2)"]
+    serialize_p2 --> upload_p2["upload_serialized_labels (P2)"]
 
     %% ───────── Stage 2 : Map  ─────────
-    upload_serialized_labels --> PerReceiptMap
-
-    subgraph PerReceiptMap["For **each** file"]
+    upload_p1 & upload_p2 --> PerReceiptMap
+    subgraph PerReceiptMap["For each file (pass number carried in metadata)"]
         direction TB
         download_serialized_labels --> deserialize_labels
         deserialize_labels --> get_receipt_details
