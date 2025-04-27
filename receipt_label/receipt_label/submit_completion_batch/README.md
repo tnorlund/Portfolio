@@ -132,31 +132,24 @@ Queries the words from a batch completion request NDJSON file.
 
 ```mermaid
 flowchart TB
-    %% ───────── Stage 1  ─────────
-    Start([Start]) --> list_labels_that_need_validation
-    list_labels_that_need_validation --> split_for_passes["split_for_passes<br/>(decide pass & mark agent)"]
+    %% ───────── Stage 1 : List Labels that need Validation ─────────
+    Start([Start]) --> list_labels_that_need_validation["List Labels that have **not** been validated"]
+    list_labels_that_need_validation --> chunk_into_completion_batches["Chunk by Receipt"]
+    chunk_into_completion_batches --> serialize_labels["Serialize Labels"]
+    serialize_labels --> upload_serialized_labels["Upload Labels to S3"]
+    upload_serialized_labels --> PerReceiptMap
 
-    %% pass-1 path
-    split_for_passes --> chunk_p1["chunk_into_completion_batches (P1)"]
-    chunk_p1 --> serialize_p1["serialize_labels (P1)"]
-    serialize_p1 --> upload_p1["upload_serialized_labels (P1)"]
-
-    %% pass-2 path
-    split_for_passes --> chunk_p2["chunk_into_completion_batches (P2)"]
-    chunk_p2 --> serialize_p2["serialize_labels (P2)"]
-    serialize_p2 --> upload_p2["upload_serialized_labels (P2)"]
-
-    %% ───────── Stage 2 : Map  ─────────
-    upload_p1 & upload_p2 --> PerReceiptMap
-    subgraph PerReceiptMap["For each file (pass number carried in metadata)"]
+    %% ───────── Stage 2 : Format Completions ─────────
+    subgraph PerReceiptMap["For each Receipt-file"]
         direction TB
-        download_serialized_labels --> deserialize_labels
-        deserialize_labels --> get_receipt_details
-        get_receipt_details --> format_batch_completion_file
-        format_batch_completion_file --> upload_completion_batch_file
+        download_serialized_labels["Download Labels from S3"] --> deserialize_labels
+        deserialize_labels --> split_first_and_second_pass["Split the labels based on Validations"]
+        split_first_and_second_pass --> get_receipt_details["Get Receipt Details"]
+        get_receipt_details --> format_batch_completion_file["Format file for OpenAI"]
+        format_batch_completion_file --> upload_completion_batch_file["Upload Completion file to S3"]
     end
 
-    %% ───────── Stage 3  ─────────
+    %% ───────── Stage 3 : Batch for OpenAI ─────────
     PerReceiptMap --> merge_ndjsons
     merge_ndjsons --> upload_to_openai
     upload_to_openai --> submit_openai_batch

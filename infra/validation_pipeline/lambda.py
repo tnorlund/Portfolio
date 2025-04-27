@@ -82,7 +82,7 @@ def submit_format_handler(event, context):
     logger.info(f"Processing image_id: {image_id}, receipt_id: {receipt_id}")
     # batch_id = generate_completion_batch_id()
     labels_need_validation = deserialize_labels(download_serialized_labels(event))
-    lines, words, metadata = get_receipt_details(image_id, receipt_id)
+    lines, words, metadata, labels = get_receipt_details(image_id, receipt_id)
     filepath = format_batch_completion_file(
         lines, words, labels_need_validation, metadata
     )
