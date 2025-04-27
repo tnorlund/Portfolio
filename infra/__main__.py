@@ -21,6 +21,7 @@ from dynamo_db import (
 # from networking import VpcForCodeBuild  # Import the new VPC component
 from word_label_step_functions import WordLabelStepFunctions
 from validate_merchant_step_functions import ValidateMerchantStepFunctions
+from validation_pipeline import ValidationPipeline
 
 # Import other necessary components
 try:
@@ -49,7 +50,7 @@ word_label_step_functions = WordLabelStepFunctions("word-label-step-functions")
 validate_merchant_step_functions = ValidateMerchantStepFunctions(
     "validate-merchant-step-functions"
 )
-
+validation_pipeline = ValidationPipeline("validation-pipeline")
 # ML Training Infrastructure
 # -------------------------
 

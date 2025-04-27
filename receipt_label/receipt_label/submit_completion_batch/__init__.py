@@ -18,6 +18,7 @@ from .submit_completion import (
     update_label_validation_status,
     upload_completion_batch_file,
     merge_ndjsons,
+    get_labels_from_ndjson,
 )
 
 __all__ = [
@@ -37,4 +38,5 @@ __all__ = [
     "update_label_validation_status",
     "upload_completion_batch_file",
     "merge_ndjsons",
+    "get_labels_from_ndjson",
 ]

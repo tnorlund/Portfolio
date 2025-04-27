@@ -245,3 +245,5 @@ def test_batch_summary_iter(example_batch_summary):
     keys = dict(example_batch_summary)
     assert keys["batch_id"] == example_batch_summary.batch_id
     assert keys["receipt_refs"] == example_batch_summary.receipt_refs
+    # Test end to end serialization and deserialization
+    example_batch_summary_item = BatchSummary(**dict(example_batch_summary))

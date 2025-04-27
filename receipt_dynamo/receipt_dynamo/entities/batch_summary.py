@@ -11,7 +11,7 @@ class BatchSummary:
         batch_id: str,
         batch_type: str | BatchType,
         openai_batch_id: str,
-        submitted_at: datetime,
+        submitted_at: str | datetime,
         status: str | BatchStatus,
         word_count: int,
         result_file_id: str,
@@ -43,8 +43,17 @@ class BatchSummary:
             raise ValueError("openai_batch_id must be a string")
         self.openai_batch_id = openai_batch_id
 
-        if not isinstance(submitted_at, datetime):
-            raise ValueError("submitted_at must be a datetime object")
+        if isinstance(submitted_at, str):
+            try:
+                submitted_at = datetime.fromisoformat(submitted_at)
+            except ValueError:
+                raise ValueError(
+                    f"submitted_at must be a datetime object or a string in ISO format; got {submitted_at}"
+                )
+        elif not isinstance(submitted_at, datetime):
+            raise ValueError(
+                "submitted_at must be a datetime object or a string"
+            )
         self.submitted_at = submitted_at
 
         # Accept status as either a BatchStatus enum or a string
@@ -143,7 +152,7 @@ class BatchSummary:
         yield "batch_id", self.batch_id
         yield "batch_type", self.batch_type
         yield "openai_batch_id", self.openai_batch_id
-        yield "submitted_at", self.submitted_at
+        yield "submitted_at", self.submitted_at.isoformat()
         yield "status", self.status
         yield "word_count", self.word_count
         yield "result_file_id", self.result_file_id

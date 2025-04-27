@@ -89,8 +89,10 @@ def list_pending_embedding_batches() -> List[BatchSummary]:
 def get_openai_batch_status(openai_batch_id: str) -> str:
     """
     Retrieve the status of an OpenAI embedding batch job.
+
     Args:
         openai_batch_id (str): The identifier of the batch.
+
     Returns the current status of the batch.
     """
     return openai_client.batches.retrieve(openai_batch_id).status

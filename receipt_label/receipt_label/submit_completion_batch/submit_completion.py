@@ -296,7 +296,7 @@ def format_batch_completion_file(
             ),
             "url": "/v1/chat/completions",
             "body": {
-                "model": "gpt-3.5-turbo",
+                "model": "gpt-4.1-nano",
                 "messages": [
                     {
                         "role": "system",
@@ -499,3 +499,23 @@ def merge_ndjsons(
         merged_files.append((merged_path, consumed_keys.copy()))
 
     return merged_files
+
+
+def get_labels_from_ndjson(filepath: Path) -> list[ReceiptWordLabel]:
+    """Get the labels from an NDJSON file."""
+    label_indices = []
+    with filepath.open("r") as f:
+        for line in f:
+            data = json.loads(line)
+            custom_id = data["custom_id"]
+            split = custom_id.split("#")
+            image_id = split[1]
+            receipt_id = int(split[3])
+            line_id = int(split[5])
+            word_id = int(split[7])
+            label = split[9]
+            label_indices.append(
+                (image_id, receipt_id, line_id, word_id, label)
+            )
+
+    return dynamo_client.getReceiptWordLabelsByIndices(label_indices)

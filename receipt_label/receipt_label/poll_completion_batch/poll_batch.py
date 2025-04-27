@@ -3,7 +3,11 @@ import json
 from dataclasses import dataclass, asdict
 from receipt_label.utils import get_clients
 from receipt_dynamo.constants import BatchStatus, BatchType, ValidationStatus
-from receipt_dynamo.entities import CompletionBatchResult, BatchSummary
+from receipt_dynamo.entities import (
+    CompletionBatchResult,
+    BatchSummary,
+    ReceiptWordLabel,
+)
 from datetime import datetime, timezone
 from itertools import islice
 
@@ -53,14 +57,14 @@ def list_pending_completion_batches() -> list[BatchSummary]:
     return pending_completion_batches
 
 
-def get_openai_batch_status(batch_summary: BatchSummary) -> str:
+def get_openai_batch_status(openai_batch_id: str) -> str:
     """
     Retrieve the status of an OpenAI embedding batch job.
     Args:
         batch_summary (BatchSummary): The batch summary.
     Returns the current status of the batch.
     """
-    return openai_client.batches.retrieve(batch_summary.openai_batch_id).status
+    return openai_client.batches.retrieve(openai_batch_id).status
 
 
 def download_openai_batch_result(
@@ -246,6 +250,12 @@ def update_invalid_labels(parsed_results: list[ParsedResult]) -> None:
     labels = dynamo_client.getReceiptWordLabelsByIndices(indices)
     labels_to_update = []
     new_labels_to_create = []
+    # ------------------------------------------------------------------
+    # Guard against duplicate “new label” insertions for the *same*
+    # (image, receipt, line, word, proposed_label) key.
+    # We’ll keep only the first instance that appears in `invalid_results`.
+    seen_new_label_keys: set[tuple] = set()
+    # ------------------------------------------------------------------
 
     for result in invalid_results:
         label = next(
@@ -266,7 +276,17 @@ def update_invalid_labels(parsed_results: list[ParsedResult]) -> None:
             labels_to_update.append(label)
 
         if result.correct_label:
-            from receipt_dynamo.entities import ReceiptWordLabel
+            key = (
+                result.image_id,
+                result.receipt_id,
+                result.line_id,
+                result.word_id,
+                result.correct_label,
+            )
+            if key in seen_new_label_keys:
+                # Duplicate – skip to avoid writing the same label twice
+                continue
+            seen_new_label_keys.add(key)
 
             new_label = ReceiptWordLabel(
                 image_id=result.image_id,
