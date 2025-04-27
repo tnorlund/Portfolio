@@ -108,7 +108,7 @@ flowchart TB
     %% ───────── Stage 2 : Map  ─────────
     upload_serialized_labels --> PerReceiptMap
 
-    subgraph PerReceiptMap["For **each** (image_id, receipt_id) file"]
+    subgraph PerReceiptMap["For **each** file"]
         direction TB
         download_serialized_labels --> deserialize_labels
         deserialize_labels --> get_receipt_details
