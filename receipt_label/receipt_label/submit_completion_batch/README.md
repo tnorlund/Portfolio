@@ -72,6 +72,14 @@ Adds a batch summary to DynamoDB.
 
 Merges NDJSON files from S3 into a single batch for OpenAI.
 
+### `query_receipt_words(image_id: str, receipt_id: int) -> list[ReceiptWord]`
+
+Get all the words from the receipt.
+
+### `get_labels_from_ndjson(filepath: Path) -> list[ReceiptWordLabel]`
+
+Queries the words from a batch completion request NDJSON file.
+
 ---
 
 ## 🧠 Usage
