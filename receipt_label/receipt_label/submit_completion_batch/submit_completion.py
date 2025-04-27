@@ -22,12 +22,17 @@ from receipt_dynamo.constants import (
     BatchType,
     BatchStatus,
 )
+from receipt_label.submit_completion_batch._format_prompt import (
+    _format_first_pass_prompt,
+    _format_second_pass_prompt,
+    functions,
+)
 from datetime import datetime, timezone
 
 from receipt_label.utils import get_clients
 from receipt_label.constants import CORE_LABELS
 
-dynamo_client, openai_client, _ = get_clients()
+dynamo_client, openai_client = get_clients()[:2]
 
 
 def generate_completion_batch_id() -> str:
@@ -212,35 +217,38 @@ def _prompt_receipt_text(word: ReceiptWord, lines: list[ReceiptLine]) -> str:
     return prompt_receipt
 
 
-def _validation_prompt(
-    word: ReceiptWord,
-    lines: list[ReceiptLine],
-    label: ReceiptWordLabel,
-    metadata: ReceiptMetadata,
-) -> str:
-    prompt = f'You are confirming the label for the word: {word.text} on the receipt from "{metadata.merchant_name}"'
-    prompt += f'\nThis "{metadata.merchant_name}" location is located at {metadata.address}'
-    prompt += f"\nI've marked the word with <TARGET>...</TARGET>"
-    prompt += f"\nThe receipt is as follows:"
-    prompt += f"\n--------------------------------"
-    prompt += _prompt_receipt_text(word, lines)
-    prompt += f"\n--------------------------------"
-    prompt += f"\nThe label you are confirming is: {label.label}"
-    # ----- Allowed labels glossary -----------------------------------
-    allowed_labels_glossary = "\n".join(
-        f"- {lbl}: {desc}" for lbl, desc in CORE_LABELS.items()
-    )
-    prompt += "\nAllowed labels:\n" + allowed_labels_glossary + "\n"
-    prompt += f"\nIf the label is correct, return is_valid = true."
-    prompt += f"\nIf it is incorrect and you are confident in a better label from the allowed list, return is_valid = false and return correct_label and rationale."
-    prompt += f"\nIf you are not confident in any better label from the allowed list, return is_valid = false only. Do not guess. Leave correct_label and rationale blank."
-    return prompt
+def split_first_and_second_pass(
+    invalid_labels: list[ReceiptWordLabel], all_labels: list[ReceiptWordLabel]
+) -> tuple[list[ReceiptWordLabel], list[ReceiptWordLabel]]:
+    """
+    Split the labels into first and second pass labels
+
+    The first pass labels are those that have all labels with a validation_status of NONE
+    The second pass labels are those that have at least one label with a validation_status of INVALID
+    """
+    first_pass_labels = []
+    second_pass_labels = []
+    for label in invalid_labels:
+        other_labels = [
+            l
+            for l in all_labels
+            if l.word_id == label.word_id and l.line_id == label.line_id
+        ]
+        if all(
+            l.validation_status == ValidationStatus.NONE.value
+            for l in other_labels
+        ):
+            first_pass_labels.append(label)
+        else:
+            second_pass_labels.append(label)
+    return first_pass_labels, second_pass_labels
 
 
 def format_batch_completion_file(
     lines: list[ReceiptLine],
     words: list[ReceiptWord],
-    labels: list[ReceiptWordLabel],
+    first_pass_labels: list[ReceiptWordLabel],
+    second_pass_labels: list[ReceiptWordLabel],
     metadata: ReceiptMetadata,
 ) -> Path:
     """Format the batch completion file name."""
@@ -248,7 +256,7 @@ def format_batch_completion_file(
         f"/tmp/{metadata.image_id}_{metadata.receipt_id}_{uuid4()}.ndjson"
     )
     batch_lines: list[dict] = []
-    for label in labels:
+    for label in first_pass_labels:
         word = next(
             w
             for w in words
@@ -256,70 +264,105 @@ def format_batch_completion_file(
         )
         if word is None:
             raise ValueError(f"Word not found for label: {label}")
-        prompt = _validation_prompt(word, lines, label, metadata)
+        custom_id = (
+            f"IMAGE#{metadata.image_id}#"
+            f"RECEIPT#{metadata.receipt_id:05d}#"
+            f"LINE#{label.line_id:05d}#"
+            f"WORD#{label.word_id:05d}#"
+            f"LABEL#{label.label}#"
+            f"VALIDATION_STATUS#{label.validation_status}#"
+            f"PASS#{PassNumber.FIRST.value}"
+        )
+        messages = [
+            {
+                "role": "system",
+                "content": _format_first_pass_prompt(
+                    word, label, lines, metadata
+                ),
+            },
+            {"role": "user", "content": "Here is the receipt text:"},
+            # {
+            #     "role": "user",
+            #     "content": _prompt_receipt_text(
+            #         word,
+            #         lines,
+            #     ),
+            # },
+        ]
         batch_line = {
             "method": "POST",
-            "custom_id": (
-                f"IMAGE#{metadata.image_id}#"
-                f"RECEIPT#{metadata.receipt_id:05d}#"
-                f"LINE#{label.line_id:05d}#"
-                f"WORD#{label.word_id:05d}#"
-                f"LABEL#{label.label}#"
-                f"VALIDATION_STATUS#{label.validation_status}#"
-                f"PASS#{PassNumber.FIRST.value}"
-            ),
+            "custom_id": custom_id,
             "url": "/v1/chat/completions",
             "body": {
                 "model": "gpt-4.1-nano",
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": "You are validating OCR labels from receipts.",
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-                "functions": [
-                    {
-                        "name": "validate_label",
-                        "description": (
-                            "Decide whether a token's proposed label is "
-                            "correct, and if not, suggest the correct label "
-                            "with a brief rationale."
-                        ),
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "is_valid": {
-                                    "type": "boolean",
-                                    "description": (
-                                        "True if the proposed label is "
-                                        "correct for the token, else False."
-                                    ),
-                                },
-                                "correct_label": {
-                                    "type": "string",
-                                    "description": (
-                                        "Only return if is_valid is false and "
-                                        "you are confident the word should be "
-                                        "labeled with one of the allowed labels. "
-                                        "Do not return this if unsure."
-                                    ),
-                                    "enum": list(CORE_LABELS.keys()),
-                                },
-                                "rationale": {
-                                    "type": "string",
-                                    "description": (
-                                        "Only return if is_valid is false and "
-                                        "you are confident in the correct label. "
-                                        "Explain briefly why the word fits the "
-                                        "suggested label."
-                                    ),
-                                },
-                            },
-                            "required": ["is_valid"],
-                        },
-                    }
-                ],
+                "messages": messages,
+                "functions": functions,
+            },
+        }
+        batch_lines.append(batch_line)
+
+    for invalid_label in second_pass_labels:
+        word = next(
+            w
+            for w in words
+            if w.line_id == invalid_label.line_id
+            and w.word_id == invalid_label.word_id
+        )
+        if word is None:
+            raise ValueError(f"Word not found for label: {invalid_label}")
+
+        similar_labels, _ = dynamo_client.getReceiptWordLabelsByLabel(
+            label=invalid_label.label,
+            limit=100,
+        )
+        similar_words = dynamo_client.getReceiptWordsByIndices(
+            indices=[
+                (
+                    similar_label.image_id,
+                    similar_label.receipt_id,
+                    similar_label.line_id,
+                    similar_label.word_id,
+                )
+                for similar_label in similar_labels
+            ]
+        )
+        custom_id = (
+            f"IMAGE#{metadata.image_id}#"
+            f"RECEIPT#{metadata.receipt_id:05d}#"
+            f"LINE#{invalid_label.line_id:05d}#"
+            f"WORD#{invalid_label.word_id:05d}#"
+            f"LABEL#{invalid_label.label}#"
+            f"VALIDATION_STATUS#{invalid_label.validation_status}#"
+            f"PASS#{PassNumber.SECOND.value}"
+        )
+        messages = [
+            {
+                "role": "system",
+                "content": _format_second_pass_prompt(
+                    word,
+                    invalid_label,
+                    similar_words,
+                    similar_labels,
+                    metadata,
+                ),
+            },
+            {"role": "user", "content": "Here is the receipt text:"},
+            # {
+            #     "role": "user",
+            #     "content": _prompt_receipt_text(
+            #         word,
+            #         lines,
+            #     ),
+            # },
+        ]
+        batch_line = {
+            "method": "POST",
+            "custom_id": custom_id,
+            "url": "/v1/chat/completions",
+            "body": {
+                "model": "gpt-4.1-nano",
+                "messages": messages,
+                "functions": functions,
             },
         }
         batch_lines.append(batch_line)

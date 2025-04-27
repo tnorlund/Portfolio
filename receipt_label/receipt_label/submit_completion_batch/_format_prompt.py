@@ -1,17 +1,18 @@
-import json
-
-from receipt_dynamo.constants import ValidationStatus
-from receipt_label.constants import CORE_LABELS
-from receipt_label.submit_completion_batch.submit_completion import (
-    chunk_into_completion_batches,
-    list_labels_that_need_validation,
-    get_receipt_details,
-    _prompt_receipt_text,
-)
-from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel, ReceiptMetadata
+import os
 from receipt_label.utils import get_clients
+from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.entities import (
+    ReceiptLine,
+    ReceiptWord,
+    ReceiptWordLabel,
+    ReceiptMetadata,
+)
+from receipt_label.constants import CORE_LABELS
 
-dynamo_client, openai_client, pinecone_index = get_clients()
+
+dynamo_client, _, pinecone_index = get_clients()
+EXAMPLE_CAP = int(os.getenv("EXAMPLE_CAP", 4))
+LINE_WINDOW = int(os.getenv("LINE_WINDOW", 5))
 
 functions = [
     {
@@ -56,11 +57,10 @@ functions = [
     }
 ]
 
-EXAMPLE_CAP = 4
-LINE_WINDOW = 5
 
-
-def _make_tagged_example(word: ReceiptWord, label: ReceiptWordLabel, window=2) -> str:
+def _make_tagged_example(
+    word: ReceiptWord, label: ReceiptWordLabel, window=2
+) -> str:
     """Return a short, receipt-style string with <LABEL>…</LABEL> around the word."""
     # Fetch ±window lines around the word
     lines = dynamo_client.getReceiptLinesByIndices(
@@ -80,7 +80,75 @@ def _make_tagged_example(word: ReceiptWord, label: ReceiptWordLabel, window=2) -
     return tagged
 
 
-def _second_pass_prompt(
+def _prompt_receipt_text(word: ReceiptWord, lines: list[ReceiptLine]) -> str:
+    """Format the receipt text for the prompt."""
+    if word.line_id == lines[0].line_id:
+        prompt_receipt = lines[0].text
+        prompt_receipt = prompt_receipt.replace(
+            word.text, f"<TARGET>{word.text}</TARGET>"
+        )
+    else:
+        prompt_receipt = lines[0].text
+
+    for index in range(1, len(lines)):
+        previous_line = lines[index - 1]
+        current_line = lines[index]
+        if current_line.line_id == word.line_id:
+            # Replace the word in the line text with <TARGET>text</TARGET>
+            line_text = current_line.text
+            line_text = line_text.replace(
+                word.text, f"<TARGET>{word.text}</TARGET>"
+            )
+        else:
+            line_text = current_line.text
+        current_line_centroid = current_line.calculate_centroid()
+        if (
+            current_line_centroid[1] < previous_line.top_left["y"]
+            and current_line_centroid[1] > previous_line.bottom_left["y"]
+        ):
+            prompt_receipt += f" {line_text}"
+        else:
+            prompt_receipt += f"\n{line_text}"
+    return prompt_receipt
+
+
+def _format_first_pass_prompt(
+    word: ReceiptWord,
+    label: ReceiptWordLabel,
+    lines: list[ReceiptLine],
+    metadata: ReceiptMetadata,
+) -> str:
+    prompt_lines: list[str] = []
+    prompt_lines.append(
+        f"You are confirming the label for the word: {word.text} on the "
+        f'"{metadata.merchant_name}" receipt'
+    )
+    prompt_lines.append(
+        f'This "{metadata.merchant_name}" location is located at {metadata.address}'
+    )
+    prompt_lines.append(f"I've marked the word with <TARGET>...</TARGET>")
+    prompt_lines.append(f"The receipt is as follows:")
+    prompt_lines.append(f"--------------------------------")
+    prompt_lines.append(_prompt_receipt_text(word, lines))
+    prompt_lines.append(f"--------------------------------")
+    prompt_lines.append(f"The label you are confirming is: {label.label}")
+    # ----- Allowed labels glossary -----------------------------------
+    # allowed_labels_glossary = "\n".join(
+    #     f"- {lbl}: {desc}" for lbl, desc in CORE_LABELS.items()
+    # )
+    # prompt_lines.append("\nAllowed labels:\n" + allowed_labels_glossary + "\n")
+    prompt_lines.append("Allowed labels: " + ", ".join(CORE_LABELS.keys()))
+    prompt_lines.append(f"If the label is correct, return is_valid = true.")
+    prompt_lines.append(
+        f"If it is incorrect and you are confident in a better label from the allowed list, return is_valid = false and return correct_label and rationale."
+    )
+    prompt_lines.append(
+        f"If you are not confident in any better label from the allowed list, return is_valid = false only. Do not guess. Leave correct_label and rationale blank."
+    )
+    return "\n".join(prompt_lines)
+
+
+def _format_second_pass_prompt(
     word: ReceiptWord,
     invalid_label: ReceiptWordLabel,
     similar_words: list[ReceiptWord],
@@ -174,7 +242,6 @@ def _second_pass_prompt(
     if not fetch_response.vectors:
         raise ValueError(f"Vector {vector_id} not found in Pinecone.")
     query_vector = list(fetch_response.vectors.values())[0].values
-    query_vector = list(fetch_response.vectors.values())[0].values
 
     # metadata_filter = {"valid_labels": {"$exists": True}}
     metadata_filter = {"valid_labels": {"$in": [invalid_label.label]}}
@@ -195,7 +262,9 @@ def _second_pass_prompt(
         word_id=invalid_label.word_id,
     )
     invalid_labels_for_word = [
-        l.label for l in labels if l.validation_status == ValidationStatus.INVALID.value
+        l.label
+        for l in labels
+        if l.validation_status == ValidationStatus.INVALID.value
     ]
     prompt_lines.append(f"### Similar words")
     # Filter matches to only those sharing the target label and excluding invalid or OOV labels
@@ -211,7 +280,6 @@ def _second_pass_prompt(
             continue
         filtered_matches.append(vector)
 
-    prompt_lines.append(f"Similar words after pruning: {len(filtered_matches)}")
     for vector in filtered_matches:
         metadata = vector.metadata
         text = metadata.get("text", "").strip()
@@ -224,146 +292,3 @@ def _second_pass_prompt(
     prompt_lines.append("### END PROMPT — reply with JSON only ###")
 
     return "\n".join(prompt_lines)
-
-
-def split_first_and_second_pass(
-    invalid_labels: list[ReceiptWordLabel], all_labels: list[ReceiptWordLabel]
-) -> tuple[list[ReceiptWordLabel], list[ReceiptWordLabel]]:
-    """
-    Split the labels into first and second pass labels
-
-    The first pass labels are those that have all labels with a validation_status of NONE
-    The second pass labels are those that have at least one label with a validation_status of INVALID
-    """
-    first_pass_labels = []
-    second_pass_labels = []
-    for label in invalid_labels:
-        other_labels = [
-            l
-            for l in all_labels
-            if l.word_id == label.word_id and l.line_id == label.line_id
-        ]
-        if all(
-            l.validation_status == ValidationStatus.NONE.value for l in other_labels
-        ):
-            first_pass_labels.append(label)
-        else:
-            second_pass_labels.append(label)
-    return first_pass_labels, second_pass_labels
-
-
-chunks = chunk_into_completion_batches(list_labels_that_need_validation())
-
-image_id = list(chunks.keys())[0]
-receipt_id = list(chunks[image_id].keys())[0]
-labels_need_validation = chunks[image_id][receipt_id]
-print(f"labels_need_validation: {len(labels_need_validation)}")
-
-lines, words, metadata, all_labels = get_receipt_details(image_id, receipt_id)
-first_pass_labels, second_pass_labels = split_first_and_second_pass(
-    labels_need_validation, all_labels
-)
-print(f"first_pass_labels: {len(first_pass_labels)}")
-print(f"second_pass_labels: {len(second_pass_labels)}")
-
-for label in labels_need_validation:
-    if len(first_pass_labels) > 0:
-        continue
-    line_id = label.line_id
-    word_id = label.word_id
-    word = next(
-        (w for w in words if w.word_id == word_id and w.line_id == line_id), None
-    )
-    if word is None:
-        print(f"word not found for label: {label}")
-        continue
-    # Get all labels for this word
-    other_word_labels = [
-        l
-        for l in all_labels
-        if l.word_id == word_id and l.line_id == line_id and l.label != label.label
-    ]
-    # If all word labels have a validation_status of NONE we do the first pass
-    if all(
-        l.validation_status == ValidationStatus.NONE.value for l in other_word_labels
-    ):
-        continue
-        print("First pass")
-        print(f"{word.text}: {label.label}")
-        print(f"other_word_labels: {[l.label for l in other_word_labels]}")
-
-    # If there are any labels with a validation_status of INVALID we do the second pass
-    elif any(
-        l.validation_status == ValidationStatus.INVALID.value for l in other_word_labels
-    ):
-        print("Second pass")
-        print(f"{word.text}: {label.label}")
-        print(f"other_word_labels: {[l.label for l in other_word_labels]}")
-        similar_labels, _ = dynamo_client.getReceiptWordLabelsByLabel(
-            label=label.label,
-            limit=100,
-        )
-        similar_words = dynamo_client.getReceiptWordsByIndices(
-            indices=[
-                (
-                    label.image_id,
-                    label.receipt_id,
-                    label.line_id,
-                    label.word_id,
-                )
-                for label in similar_labels
-            ]
-        )
-        messages = [
-            {
-                "role": "system",
-                "content": _second_pass_prompt(
-                    word, label, similar_words, similar_labels, metadata
-                ),
-            },
-            {"role": "user", "content": "Here is the receipt text:"},
-            {
-                "role": "user",
-                "content": _prompt_receipt_text(
-                    word,
-                    lines,
-                ),
-            },
-        ]
-        response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=messages,
-            functions=functions,
-        )
-        # Grab the first choice’s function call
-        func_call = response.choices[0].message.function_call
-
-        # The raw JSON is in .arguments
-        raw_json = (
-            func_call.arguments
-        )  # e.g. '{"is_valid":true}' or '{"is_valid":false,"correct_label":"ADDRESS_LINE"}'
-
-        # Parse it into a dict
-        result: dict = json.loads(raw_json)
-        if not result.get("is_valid"):
-            if label.label == result.get("correct_label"):
-                # False negative marked as correct
-                print("VALID")
-                print(f"Correct label: {result.get('correct_label')}")
-
-            else:
-                print("INVALID")
-                print(f"Invalid label: {label.label}")
-                print(f"Correct label: {result.get('correct_label')}")
-                print(f"Rationale: {result.get('rationale')}")
-        else:
-            print("VALID")
-            print(f"Correct label: {label.label}")
-
-    # Otherwise we update the validation status to NEEDS_REVIEW
-    else:
-        continue
-        print("Final pass")
-        print("Need to Update to Needs Review")
-        print(f"{word.text}: {label.label}")
-    print()

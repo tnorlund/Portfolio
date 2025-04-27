@@ -20,6 +20,7 @@ from receipt_label.submit_completion_batch import (
     upload_completion_batch_file,
     merge_ndjsons,
     get_labels_from_ndjson,
+    split_first_and_second_pass,
 )
 
 from receipt_label.poll_completion_batch import (
@@ -80,11 +81,13 @@ def submit_format_handler(event, context):
     s3_bucket = event["s3_bucket"]
     receipt_id = int(event["receipt_id"])
     logger.info(f"Processing image_id: {image_id}, receipt_id: {receipt_id}")
-    # batch_id = generate_completion_batch_id()
     labels_need_validation = deserialize_labels(download_serialized_labels(event))
     lines, words, metadata, labels = get_receipt_details(image_id, receipt_id)
+    first_pass_labels, second_pass_labels = split_first_and_second_pass(
+        labels_need_validation, labels
+    )
     filepath = format_batch_completion_file(
-        lines, words, labels_need_validation, metadata
+        lines, words, first_pass_labels, second_pass_labels, metadata
     )
     s3_key = upload_completion_batch_file(filepath, s3_bucket)
     return {

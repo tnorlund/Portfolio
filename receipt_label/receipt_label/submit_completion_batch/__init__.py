@@ -19,6 +19,7 @@ from .submit_completion import (
     upload_completion_batch_file,
     merge_ndjsons,
     get_labels_from_ndjson,
+    split_first_and_second_pass,
 )
 
 __all__ = [
@@ -39,4 +40,5 @@ __all__ = [
     "upload_completion_batch_file",
     "merge_ndjsons",
     "get_labels_from_ndjson",
+    "split_first_and_second_pass",
 ]
