@@ -28,36 +28,37 @@ from receipt_label.utils import get_clients
 
 dynamo_client, openai_client, _ = get_clients()
 
-CORE_LABELS = [
-    # Merchant & store info
-    "MERCHANT_NAME",
-    "STORE_HOURS",
-    "PHONE_NUMBER",
-    "WEBSITE",
-    "LOYALTY_ID",
-    # Location/address (either as one line or broken out)
-    "ADDRESS_LINE",  # or, for finer breakdown:
-    # "ADDRESS_NUMBER",
-    # "STREET_NAME",
-    # "CITY",
-    # "STATE",
-    # "POSTAL_CODE",
-    # Transaction info
-    "DATE",
-    "TIME",
-    "PAYMENT_METHOD",
-    "COUPON",
-    "DISCOUNT",  # if you want to distinguish coupons vs. generic discounts
-    # Line‑item fields
-    "PRODUCT_NAME",  # or ITEM_NAME
-    "QUANTITY",  # or ITEM_QUANTITY
-    "UNIT_PRICE",  # or ITEM_PRICE
-    "LINE_TOTAL",  # or ITEM_TOTAL
-    # Totals & taxes
-    "SUBTOTAL",
-    "TAX",
-    "GRAND_TOTAL",  # or TOTAL
-]
+CORE_LABELS: dict[str, str] = {
+    # ── Merchant & store info ───────────────────────────────────
+    "MERCHANT_NAME": "Trading name or brand of the store issuing the receipt.",
+    "STORE_HOURS": "Printed business hours or opening times for the merchant.",
+    "PHONE_NUMBER": "Telephone number printed on the receipt (store's main line).",
+    "WEBSITE": "Web or email address printed on the receipt (e.g., sprouts.com).",
+    "LOYALTY_ID": "Customer loyalty / rewards / membership identifier.",
+    # ── Location / address ──────────────────────────────────────
+    "ADDRESS_LINE": "Full address line (street + city etc.) printed on the receipt.",
+    # If you later break it down, add:
+    # "ADDRESS_NUMBER": "Street/building number.",
+    # "STREET_NAME":    "Street name.",
+    # "CITY":           "City name.",
+    # "STATE":          "State / province abbreviation.",
+    # "POSTAL_CODE":    "ZIP or postal code.",
+    # ── Transaction info ───────────────────────────────────────
+    "DATE": "Calendar date of the transaction.",
+    "TIME": "Time of the transaction.",
+    "PAYMENT_METHOD": "Payment instrument summary (e.g., VISA ••••1234, CASH).",
+    "COUPON": "Coupon code or description that reduces price.",
+    "DISCOUNT": "Any non-coupon discount line item (e.g., 10% member discount).",
+    # ── Line-item fields ───────────────────────────────────────
+    "PRODUCT_NAME": "Descriptive text of a purchased product (item name).",
+    "QUANTITY": "Numeric count or weight of the item (e.g., 2, 1.31 lb).",
+    "UNIT_PRICE": "Price per single unit / weight before tax.",
+    "LINE_TOTAL": "Extended price for that line (quantity x unit price).",
+    # ── Totals & taxes ─────────────────────────────────────────
+    "SUBTOTAL": "Sum of all line totals before tax and discounts.",
+    "TAX": "Any tax line (sales tax, VAT, bottle deposit).",
+    "GRAND_TOTAL": "Final amount due after all discounts, taxes and fees.",
+}
 
 
 def generate_completion_batch_id() -> str:
@@ -256,7 +257,11 @@ def _validation_prompt(
     prompt += _prompt_receipt_text(word, lines)
     prompt += f"\n--------------------------------"
     prompt += f"\nThe label you are confirming is: {label.label}"
-    prompt += f'\nThe allowed labels are: {", ".join(CORE_LABELS)}'
+    # ----- Allowed labels glossary -----------------------------------
+    allowed_labels_glossary = "\n".join(
+        f"- {lbl}: {desc}" for lbl, desc in CORE_LABELS.items()
+    )
+    prompt += "\nAllowed labels:\n" + allowed_labels_glossary + "\n"
     prompt += f"\nIf the label is correct, return is_valid = true."
     prompt += f"\nIf it is incorrect and you are confident in a better label from the allowed list, return is_valid = false and return correct_label and rationale."
     prompt += f"\nIf you are not confident in any better label from the allowed list, return is_valid = false only. Do not guess. Leave correct_label and rationale blank."
@@ -330,7 +335,7 @@ def format_batch_completion_file(
                                         "labeled with one of the allowed labels. "
                                         "Do not return this if unsure."
                                     ),
-                                    "enum": CORE_LABELS,
+                                    "enum": list(CORE_LABELS.keys()),
                                 },
                                 "rationale": {
                                     "type": "string",

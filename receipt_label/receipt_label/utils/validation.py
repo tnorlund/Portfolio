@@ -9,7 +9,9 @@ from ..models.receipt import ReceiptLine
 logger = logging.getLogger(__name__)
 
 
-def validate_business_name(receipt_name: str, api_name: str) -> Tuple[bool, str, float]:
+def validate_business_name(
+    receipt_name: str, api_name: str
+) -> Tuple[bool, str, float]:
     """Validate business name against Places API data.
 
     Args:
@@ -39,7 +41,9 @@ def validate_business_name(receipt_name: str, api_name: str) -> Tuple[bool, str,
         "corp",
         "corporation",
     }
-    receipt_words = set(w for w in receipt_name.split() if w not in common_words)
+    receipt_words = set(
+        w for w in receipt_name.split() if w not in common_words
+    )
     api_words = set(w for w in api_name.split() if w not in common_words)
 
     # Calculate word overlap
@@ -90,12 +94,16 @@ def validate_phone_number(
 
     is_valid = receipt_digits == api_digits
     confidence = 1.0 if is_valid else 0.0
-    message = "Phone numbers match" if is_valid else "Phone numbers do not match"
+    message = (
+        "Phone numbers match" if is_valid else "Phone numbers do not match"
+    )
 
     return is_valid, message, confidence
 
 
-def validate_address(receipt_addr: str, api_addr: str) -> Tuple[bool, str, float]:
+def validate_address(
+    receipt_addr: str, api_addr: str
+) -> Tuple[bool, str, float]:
     """Validate address against Places API data.
 
     Args:
@@ -110,13 +118,19 @@ def validate_address(receipt_addr: str, api_addr: str) -> Tuple[bool, str, float
 
     confidence = compare_addresses(receipt_addr, api_addr)
     is_valid = confidence >= 0.8
-    message = "Addresses match" if is_valid else "Addresses do not match sufficiently"
+    message = (
+        "Addresses match"
+        if is_valid
+        else "Addresses do not match sufficiently"
+    )
 
     return is_valid, message, confidence
 
 
 def validate_datetime(
-    date_str: str, time_str: Optional[str] = None, max_age_days: Optional[int] = None
+    date_str: str,
+    time_str: Optional[str] = None,
+    max_age_days: Optional[int] = None,
 ) -> Tuple[bool, str, float]:
     """Validate date and time.
 

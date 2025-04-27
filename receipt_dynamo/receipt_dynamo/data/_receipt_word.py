@@ -2,6 +2,7 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo import ReceiptWord, itemToReceiptWord
 from receipt_dynamo.constants import EmbeddingStatus
+from receipt_dynamo.entities.util import assert_valid_uuid
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 CHUNK_SIZE = 25
@@ -245,8 +246,51 @@ class _ReceiptWord:
         except KeyError:
             raise ValueError(f"ReceiptWord with ID {word_id} not found")
 
+    def getReceiptWordsByIndices(
+        self, indices: list[tuple[str, int, int, int]]
+    ) -> list[ReceiptWord]:
+        """Retrieves multiple ReceiptWords by their indices."""
+        if indices is None:
+            raise ValueError(
+                "indices parameter is required and cannot be None."
+            )
+        if not isinstance(indices, list):
+            raise ValueError("indices must be a list of tuples.")
+        if not all(isinstance(index, tuple) for index in indices):
+            raise ValueError("indices must be a list of tuples.")
+        for index in indices:
+            if len(index) != 4:
+                raise ValueError(
+                    "indices must be a list of tuples with 4 elements."
+                )
+            if not isinstance(index[0], str):
+                raise ValueError("First element of tuple must be a string.")
+            assert_valid_uuid(index[0])
+            if not isinstance(index[1], int):
+                raise ValueError("Second element of tuple must be an integer.")
+            if index[1] <= 0:
+                raise ValueError("Second element of tuple must be positive.")
+            if not isinstance(index[2], int):
+                raise ValueError("Third element of tuple must be an integer.")
+            if index[2] <= 0:
+                raise ValueError("Third element of tuple must be positive.")
+            if not isinstance(index[3], int):
+                raise ValueError("Fourth element of tuple must be an integer.")
+            if index[3] <= 0:
+                raise ValueError("Fourth element of tuple must be positive.")
+
+        keys = [
+            {
+                "PK": {"S": f"IMAGE#{index[0]}"},
+                "SK": {
+                    "S": f"RECEIPT#{index[1]:05d}#LINE#{index[2]:05d}#WORD#{index[3]:05d}"
+                },
+            }
+            for index in indices
+        ]
+        return self.getReceiptWordsByKeys(keys)
+
     def getReceiptWordsByKeys(self, keys: list[dict]) -> list[ReceiptWord]:
-        """Retrieves multiple ReceiptWords by their keys."""
         # Check the validity of the keys
         for key in keys:
             if not {"PK", "SK"}.issubset(key.keys()):

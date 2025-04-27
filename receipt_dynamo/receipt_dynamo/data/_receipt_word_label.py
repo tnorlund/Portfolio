@@ -717,6 +717,72 @@ class _ReceiptWordLabel:
                     f"Could not list receipt word labels by label type: {e}"
                 ) from e
 
+    def getReceiptWordLabelsForWord(
+        self,
+        image_id: str,
+        receipt_id: int,
+        line_id: int,
+        word_id: int,
+        limit: int | None = None,
+        lastEvaluatedKey: dict | None = None,
+    ) -> tuple[list[ReceiptWordLabel], dict | None]:
+        """
+        Fetch every ReceiptWordLabel attached to a single word.
+
+        Returns (labels, lastEvaluatedKey) so you can page through results.
+        """
+        # ---------- validation ----------
+        assert_valid_uuid(image_id)
+        for val, name in [
+            (receipt_id, "receipt_id"),
+            (line_id, "line_id"),
+            (word_id, "word_id"),
+        ]:
+            if not isinstance(val, int) or val <= 0:
+                raise ValueError(f"{name} must be a positive int")
+
+        if limit is not None and (not isinstance(limit, int) or limit <= 0):
+            raise ValueError("limit must be a positive integer")
+        if lastEvaluatedKey is not None:
+            if not isinstance(lastEvaluatedKey, dict):
+                raise ValueError("lastEvaluatedKey must be a dict")
+            validate_last_evaluated_key(lastEvaluatedKey)
+
+        # ---------- DynamoDB query ----------
+        pk = f"IMAGE#{image_id}"
+        sk_prefix = (
+            f"RECEIPT#{receipt_id:05d}"
+            f"#LINE#{line_id:05d}"
+            f"#WORD#{word_id:05d}"
+            "#LABEL#"
+        )
+
+        items: list[ReceiptWordLabel] = []
+        params = {
+            "TableName": self.table_name,
+            "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
+            "ExpressionAttributeValues": {
+                ":pk": {"S": pk},
+                ":sk": {"S": sk_prefix},
+            },
+        }
+        if lastEvaluatedKey:
+            params["ExclusiveStartKey"] = lastEvaluatedKey
+
+        while True:
+            if limit is not None:
+                params["Limit"] = limit - len(items)
+            resp = self._client.query(**params)
+            items.extend(itemToReceiptWordLabel(i) for i in resp["Items"])
+
+            if limit is not None and len(items) >= limit:
+                return items[:limit], resp.get("LastEvaluatedKey")
+
+            if "LastEvaluatedKey" in resp:
+                params["ExclusiveStartKey"] = resp["LastEvaluatedKey"]
+            else:
+                return items, None
+
     def getReceiptWordLabelsByValidationStatus(
         self,
         validation_status: str,

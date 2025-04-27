@@ -99,27 +99,29 @@ Merges NDJSON files from S3 into a single batch for OpenAI.
 
 ```mermaid
 flowchart TB
-    Start([Start]) --> list_labels_that_need_validation["List Labels that need Validation"]
-    list_labels_that_need_validation --> chunk_into_completion_batches["Chunk Labels by Receipt"]
-    chunk_into_completion_batches --> serialize_labels["Serialize Labels"]
-    serialize_labels --> upload_serialized_labels["Upload Serialized Labels to S3"]
-    upload_serialized_labels --> format_ndjsons
+    %% ───────── Stage 1  ─────────
+    Start([Start]) --> list_labels_that_need_validation
+    list_labels_that_need_validation --> chunk_into_completion_batches
+    chunk_into_completion_batches --> serialize_labels
+    serialize_labels --> upload_serialized_labels
 
-    subgraph format_ndjsons["Format Completions"]
+    %% ───────── Stage 2 : Map  ─────────
+    upload_serialized_labels --> PerReceiptMap
+
+    subgraph PerReceiptMap["For **each** (image_id, receipt_id) file"]
         direction TB
-        generate_completion_batch_id --> download_serialized_labels["Download Serialized Labels from S3"]
-        download_serialized_labels --> deserialize_labels["Deserialize Labels"]
-        deserialize_labels --> get_receipt_details["Get the Receipt Details"]
-        get_receipt_details --> format_batch_completion_file["Create the file for Open AI"]
-        format_batch_completion_file --> upload_completion_batch_file["Upload the Formatted Completion to S3"]
-        upload_completion_batch_file --> merge_ndjsons
+        download_serialized_labels --> deserialize_labels
+        deserialize_labels --> get_receipt_details
+        get_receipt_details --> format_batch_completion_file
+        format_batch_completion_file --> upload_completion_batch_file
     end
 
-    merge_ndjsons["Merge Batch Completions"] --> upload_to_openai["Upload the file to Open AI"]
-    upload_to_openai --> submit_openai_batch["Submit the batch to Open AI"]
-    submit_openai_batch --> create_batch_summary["Create Batch Summary"]
-    create_batch_summary --> update_label_validation_status["Update the Validation Status of the labels"]
-    update_label_validation_status --> add_batch_summary["Add Batch Summary"]
-
-    add_batch_summary --> END([End])
+    %% ───────── Stage 3  ─────────
+    PerReceiptMap --> merge_ndjsons
+    merge_ndjsons --> upload_to_openai
+    upload_to_openai --> submit_openai_batch
+    submit_openai_batch --> update_label_validation_status
+    update_label_validation_status --> create_batch_summary
+    create_batch_summary --> add_batch_summary
+    add_batch_summary --> End([End])
 ```
