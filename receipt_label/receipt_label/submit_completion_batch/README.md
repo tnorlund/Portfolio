@@ -142,9 +142,10 @@ flowchart TB
     %% ───────── Stage 2 : Format Completions ─────────
     subgraph PerReceiptMap["For each Receipt-file"]
         direction TB
-        download_serialized_labels["Download Labels from S3"] --> deserialize_labels
+        download_serialized_labels["Download Labels from S3"] --> deserialize_labels["Deserialize Labels"]
         deserialize_labels --> split_first_and_second_pass["Split the labels based on Validations"]
-        split_first_and_second_pass --> get_receipt_details["Get Receipt Details"]
+        split_first_and_second_pass -- |first pass| --> get_receipt_details["Get Receipt Details"]
+        split_first_and_second_pass -- |second pass| --> get_receipt_details
         get_receipt_details --> format_batch_completion_file["Format file for OpenAI"]
         format_batch_completion_file --> upload_completion_batch_file["Upload Completion file to S3"]
     end
