@@ -87,7 +87,7 @@ def submit_format_handler(event, context):
         labels_need_validation, labels
     )
     filepath = format_batch_completion_file(
-        lines, words, first_pass_labels, second_pass_labels, metadata
+        lines, words, labels, first_pass_labels, second_pass_labels, metadata
     )
     s3_key = upload_completion_batch_file(filepath, s3_bucket)
     return {
@@ -137,11 +137,11 @@ def submit_openai_handler(event, context):
                 )
             time.sleep(WAIT_INTERVAL)
         # Update labels and store summary
-        update_label_validation_status(get_labels_from_ndjson(merged_file))
-        batch_summary = create_batch_summary(
-            batch_id, open_ai_batch_id, str(merged_file)
+        labels, receipt_refs = get_labels_from_ndjson(merged_file)
+        update_label_validation_status(labels)
+        add_batch_summary(
+            create_batch_summary(batch_id, open_ai_batch_id, receipt_refs)
         )
-        add_batch_summary(batch_summary)
         batch_ids.append(batch_id)
     return {
         "statusCode": 200,

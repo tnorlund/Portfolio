@@ -1,5 +1,5 @@
+import re
 import json
-import os
 from pathlib import Path
 import tempfile
 from uuid import uuid4
@@ -30,7 +30,6 @@ from receipt_label.submit_completion_batch._format_prompt import (
 from datetime import datetime, timezone
 
 from receipt_label.utils import get_clients
-from receipt_label.constants import CORE_LABELS
 
 dynamo_client, openai_client = get_clients()[:2]
 
@@ -94,10 +93,11 @@ def chunk_into_completion_batches(
         image_map = nested.setdefault(label.image_id, {})
         receipt_map = image_map.setdefault(label.receipt_id, {})
         # Use (line_id, word_id, label) as key to keep each label per word
-        dedupe_key = (label.line_id, label.word_id, label.label)
-        receipt_map[dedupe_key] = label  # later entries overwrite duplicates
+        deduplicate_key = (label.line_id, label.word_id, label.label)
+        receipt_map[deduplicate_key] = (
+            label  # later entries overwrite duplicates
+        )
 
-    # Second pass – convert inner dicts (where values are ReceiptWordLabel) to lists
     grouped: dict[str, dict[int, list[ReceiptWordLabel]]] = {}
     for image_id, receipt_dict in nested.items():
         grouped[image_id] = {
@@ -223,30 +223,35 @@ def split_first_and_second_pass(
     """
     Split the labels into first and second pass labels
 
-    The first pass labels are those that have all labels with a validation_status of NONE
-    The second pass labels are those that have at least one label with a validation_status of INVALID
+    The first pass labels are those that have all labels with a
+    validation_status of NONE.
+
+    The second pass labels are those that have at least one label with a
+    validation_status of INVALID.
     """
     first_pass_labels = []
     second_pass_labels = []
-    for label in invalid_labels:
+    for invalid_label in invalid_labels:
         other_labels = [
-            l
-            for l in all_labels
-            if l.word_id == label.word_id and l.line_id == label.line_id
+            label
+            for label in all_labels
+            if label.word_id == invalid_label.word_id
+            and label.line_id == invalid_label.line_id
         ]
         if all(
-            l.validation_status == ValidationStatus.NONE.value
-            for l in other_labels
+            label.validation_status == ValidationStatus.NONE.value
+            for label in other_labels
         ):
-            first_pass_labels.append(label)
+            first_pass_labels.append(invalid_label)
         else:
-            second_pass_labels.append(label)
+            second_pass_labels.append(invalid_label)
     return first_pass_labels, second_pass_labels
 
 
 def format_batch_completion_file(
     lines: list[ReceiptLine],
     words: list[ReceiptWord],
+    labels: list[ReceiptWordLabel],
     first_pass_labels: list[ReceiptWordLabel],
     second_pass_labels: list[ReceiptWordLabel],
     metadata: ReceiptMetadata,
@@ -256,116 +261,70 @@ def format_batch_completion_file(
         f"/tmp/{metadata.image_id}_{metadata.receipt_id}_{uuid4()}.ndjson"
     )
     batch_lines: list[dict] = []
-    for label in first_pass_labels:
-        word = next(
-            w
-            for w in words
-            if w.line_id == label.line_id and w.word_id == label.word_id
+
+    if len(first_pass_labels) > 0:
+        first_pass_prompt = _format_first_pass_prompt(
+            words,
+            first_pass_labels,
+            lines,
+            metadata,
         )
-        if word is None:
-            raise ValueError(f"Word not found for label: {label}")
-        custom_id = (
+        first_pass_custom_id = (
             f"IMAGE#{metadata.image_id}#"
             f"RECEIPT#{metadata.receipt_id:05d}#"
-            f"LINE#{label.line_id:05d}#"
-            f"WORD#{label.word_id:05d}#"
-            f"LABEL#{label.label}#"
-            f"VALIDATION_STATUS#{label.validation_status}#"
             f"PASS#{PassNumber.FIRST.value}"
         )
-        messages = [
+        first_pass_messages = [
             {
                 "role": "system",
-                "content": _format_first_pass_prompt(
-                    word, label, lines, metadata
-                ),
+                "content": first_pass_prompt,
             },
-            {"role": "user", "content": "Here is the receipt text:"},
-            # {
-            #     "role": "user",
-            #     "content": _prompt_receipt_text(
-            #         word,
-            #         lines,
-            #     ),
-            # },
         ]
-        batch_line = {
-            "method": "POST",
-            "custom_id": custom_id,
-            "url": "/v1/chat/completions",
-            "body": {
-                "model": "gpt-4.1-nano",
-                "messages": messages,
-                "functions": functions,
-            },
-        }
-        batch_lines.append(batch_line)
+        batch_lines.append(
+            {
+                "method": "POST",
+                "custom_id": first_pass_custom_id,
+                "url": "/v1/chat/completions",
+                "body": {
+                    "model": "gpt-4.1-nano",
+                    "messages": first_pass_messages,
+                    "functions": functions,
+                },
+            }
+        )
 
-    for invalid_label in second_pass_labels:
-        word = next(
-            w
-            for w in words
-            if w.line_id == invalid_label.line_id
-            and w.word_id == invalid_label.word_id
+    if len(second_pass_labels) > 0:
+        second_pass_prompt = _format_second_pass_prompt(
+            second_pass_labels,
+            words,
+            lines,
+            metadata,
+            labels,
         )
-        if word is None:
-            raise ValueError(f"Word not found for label: {invalid_label}")
-
-        similar_labels, _ = dynamo_client.getReceiptWordLabelsByLabel(
-            label=invalid_label.label,
-            limit=100,
-        )
-        similar_words = dynamo_client.getReceiptWordsByIndices(
-            indices=[
-                (
-                    similar_label.image_id,
-                    similar_label.receipt_id,
-                    similar_label.line_id,
-                    similar_label.word_id,
-                )
-                for similar_label in similar_labels
-            ]
-        )
-        custom_id = (
+        second_pass_custom_id = (
             f"IMAGE#{metadata.image_id}#"
             f"RECEIPT#{metadata.receipt_id:05d}#"
-            f"LINE#{invalid_label.line_id:05d}#"
-            f"WORD#{invalid_label.word_id:05d}#"
-            f"LABEL#{invalid_label.label}#"
-            f"VALIDATION_STATUS#{invalid_label.validation_status}#"
             f"PASS#{PassNumber.SECOND.value}"
         )
-        messages = [
+        second_pass_messages = [
             {
                 "role": "system",
-                "content": _format_second_pass_prompt(
-                    word,
-                    invalid_label,
-                    similar_words,
-                    similar_labels,
-                    metadata,
-                ),
+                "content": second_pass_prompt,
             },
-            {"role": "user", "content": "Here is the receipt text:"},
-            # {
-            #     "role": "user",
-            #     "content": _prompt_receipt_text(
-            #         word,
-            #         lines,
-            #     ),
-            # },
         ]
-        batch_line = {
-            "method": "POST",
-            "custom_id": custom_id,
-            "url": "/v1/chat/completions",
-            "body": {
-                "model": "gpt-4.1-nano",
-                "messages": messages,
-                "functions": functions,
-            },
-        }
-        batch_lines.append(batch_line)
+        batch_lines.append(
+            {
+                "method": "POST",
+                "custom_id": second_pass_custom_id,
+                "url": "/v1/chat/completions",
+                "body": {
+                    "model": "gpt-4.1-nano",
+                    "messages": second_pass_messages,
+                    "functions": functions,
+                },
+            }
+        )
+
     with filepath.open("w") as f:
         for batch_line in batch_lines:
             f.write(json.dumps(batch_line) + "\n")
@@ -399,38 +358,18 @@ def submit_openai_batch(file_id: str) -> Batch:
 
 
 def create_batch_summary(
-    batch_id: str, open_ai_batch_id: str, file_path: str
+    batch_id: str, open_ai_batch_id: str, receipt_refs: list[tuple[str, int]]
 ) -> BatchSummary:
     """Create a summary of the batch."""
-    # 1) Initialize counters and refs
-    receipt_refs: set[tuple[str, int]] = set()
-    word_count = 0
-
-    # 2) Read and parse each line of the NDJSON file
-    with open(file_path, "r") as f:
-        for line in f:
-            word_count += 1
-            try:
-                obj = json.loads(line)
-                custom_id = obj.get("custom_id", "")
-                parts = custom_id.split("#")
-                # parts: ["IMAGE", image_id, "RECEIPT", receipt_id, ...]
-                image_id = parts[1]
-                receipt_id = int(parts[3])
-                receipt_refs.add((image_id, receipt_id))
-            except Exception:
-                continue
-
-    # 3) Build and return the BatchSummary
     return BatchSummary(
         batch_id=batch_id,
         batch_type=BatchType.COMPLETION.value,
         openai_batch_id=open_ai_batch_id,
         submitted_at=datetime.now(timezone.utc),
         status=BatchStatus.PENDING.value,
-        word_count=word_count,
+        word_count=0,
         result_file_id="N/A",
-        receipt_refs=list(receipt_refs),
+        receipt_refs=receipt_refs,
     )
 
 
@@ -453,8 +392,8 @@ def merge_ndjsons(
     max_size_bytes: int = 100 * 1024 * 1024,
 ) -> list[tuple[Path, list[str]]]:
     """
-    Merge multiple NDJSON files from S3 into one or more temporary NDJSON files.
-    Stops adding lines when max_lines or max_size_bytes is reached.
+    Merge multiple NDJSON files from S3 into one or more temporary NDJSON
+    files. Stops adding lines when max_lines or max_size_bytes is reached.
     Returns a list of (merged_path, consumed_keys) for each merged file.
     """
     s3 = boto3.client("s3")
@@ -518,21 +457,58 @@ def merge_ndjsons(
     return merged_files
 
 
-def get_labels_from_ndjson(filepath: Path) -> list[ReceiptWordLabel]:
-    """Get the labels from an NDJSON file."""
+def get_labels_from_ndjson(
+    filepath: Path,
+) -> Tuple[list[ReceiptWordLabel], list[tuple[str, int]]]:
+    """
+    Get the labels from an NDJSON file by parsing custom_id key-value pairs,
+    and return unique (image_id, receipt_id) pairs.
+    """
     label_indices = []
+    ids = []
     with filepath.open("r") as f:
         for line in f:
             data = json.loads(line)
-            custom_id = data["custom_id"]
-            split = custom_id.split("#")
-            image_id = split[1]
-            receipt_id = int(split[3])
-            line_id = int(split[5])
-            word_id = int(split[7])
-            label = split[9]
-            label_indices.append(
-                (image_id, receipt_id, line_id, word_id, label)
+            messages = data["body"]["messages"]
+            if len(messages) != 1:
+                raise ValueError(f"Expected 1 message, got {len(messages)}")
+            message = messages[0]
+            match = re.search(
+                r"### Targets\s*\n(\[.*?\])\s*(?:\n###|\Z)",
+                message["content"],
+                flags=re.DOTALL,
             )
-
-    return dynamo_client.getReceiptWordLabelsByIndices(label_indices)
+            if not match:
+                raise ValueError("Could not find ### Targets array in prompt")
+            array_text = match.group(1)
+            try:
+                targets = json.loads(array_text)
+                for target in targets:
+                    ids.append(target["id"])
+            except json.JSONDecodeError as e:
+                raise ValueError(f"Failed to parse Targets JSON: {e.msg}")
+    for custom_id in ids:
+        parts = custom_id.split("#")
+        kv = {parts[i]: parts[i + 1] for i in range(0, len(parts) - 1, 2)}
+        required_keys = {"IMAGE", "RECEIPT", "LINE", "WORD", "LABEL"}
+        if not required_keys.issubset(kv):
+            raise ValueError(f"Invalid custom_id format: {custom_id}")
+        image_id = kv["IMAGE"]
+        receipt_id = int(kv["RECEIPT"])
+        line_id = int(kv["LINE"])
+        word_id = int(kv["WORD"])
+        label_str = kv["LABEL"]
+        label_indices.append(
+            (image_id, receipt_id, line_id, word_id, label_str)
+        )
+    # Collect unique (image_id, receipt_id) pairs
+    receipt_refs = list(
+        {
+            (image_id, receipt_id)
+            for image_id, receipt_id, _, _, _ in label_indices
+        }
+    )
+    # Call Dynamo to fetch labels
+    labels = dynamo_client.getReceiptWordLabelsByIndices(label_indices)
+    # Return both labels and receipt_refs
+    return labels, receipt_refs

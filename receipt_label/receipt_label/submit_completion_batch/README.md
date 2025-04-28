@@ -151,11 +151,12 @@ flowchart TB
     end
 
     %% ───────── Stage 3 : Batch for OpenAI ─────────
-    PerReceiptMap --> merge_ndjsons
-    merge_ndjsons --> upload_to_openai
-    upload_to_openai --> submit_openai_batch
-    submit_openai_batch --> update_label_validation_status
-    update_label_validation_status --> create_batch_summary
-    create_batch_summary --> add_batch_summary
+    PerReceiptMap --> merge_ndjsons["Merge the Completions"]
+    merge_ndjsons --> upload_to_openai["Upload Completions to OpenAI"]
+    upload_to_openai --> submit_openai_batch["Submit Batch Completion"]
+    submit_openai_batch --> get_labels_from_ndjson["Get the Labels and Receipts from the Batch"]
+    get_labels_from_ndjson --> update_label_validation_status["Update each Labels Validation Status"]
+    update_label_validation_status --> create_batch_summary["Create a Batch Summary with `Pending` Status"]
+    create_batch_summary --> add_batch_summary["Add Batch Summary to DynamoDB"]
     add_batch_summary --> End([End])
 ```
