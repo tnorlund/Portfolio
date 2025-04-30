@@ -240,3 +240,11 @@ li {
   user-select: none;          /* Standard */
   -webkit-touch-callout: none; /* iOS Safari */
 }
+
+svg text {
+  font-size: 1rem;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  fill: var(--text-color);
+  font-weight: bold;
+}

@@ -352,6 +352,37 @@ class _ReceiptMetadata:
             else:
                 raise ValueError(f"Error getting receipt metadata: {e}")
 
+    def getReceiptMetadatasByIndices(
+        self, indices: list[tuple[str, int]]
+    ) -> list[ReceiptMetadata]:
+        """
+        Retrieves a list of ReceiptMetadata records from DynamoDB by image_id and receipt_id.
+        """
+        if indices is None:
+            raise ValueError("indices cannot be None")
+        if not isinstance(indices, list):
+            raise ValueError("indices must be a list")
+        if not all(isinstance(index, tuple) for index in indices):
+            raise ValueError("indices must be a list of tuples")
+        if not all(
+            isinstance(index[0], str) and isinstance(index[1], int)
+            for index in indices
+        ):
+            raise ValueError(
+                "indices must be a list of tuples of (image_id, receipt_id)"
+            )
+        if not all(index[1] > 0 for index in indices):
+            raise ValueError("receipt_id must be positive")
+
+        keys = [
+            {
+                "PK": {"S": f"IMAGE#{index[0]}"},
+                "SK": {"S": f"RECEIPT#{index[1]:05d}#METADATA"},
+            }
+            for index in indices
+        ]
+        return self.getReceiptMetadatas(keys)
+
     def getReceiptMetadatas(self, keys: list[dict]) -> list[ReceiptMetadata]:
         """
         Retrieves a list of ReceiptMetadata records from DynamoDB using a list of keys.
