@@ -21,6 +21,15 @@ def _chunk(iterable, n):
         yield chunk
 
 
+def _build_vector_id(label: ReceiptWordLabel) -> str:
+    return (
+        f"IMAGE#{label.image_id}#"
+        f"RECEIPT#{label.receipt_id:05d}#"
+        f"LINE#{label.line_id:05d}#"
+        f"WORD#{label.word_id:05d}"
+    )
+
+
 dynamo_client, openai_client, pinecone_index = get_clients()
 
 # ---- Pinecone namespace used by this pipeline ------------------------------
@@ -28,23 +37,10 @@ PINECONE_NS = "words"
 
 
 @dataclass
-class ParsedResult:
-    """
-    A parsed result from an OpenAI completion batch.
-    """
-
-    batch_id: str
-    custom_id: str
-    is_valid: bool
-    correct_label: str | None
-    rationale: str | None
-    image_id: str
-    receipt_id: str
-    line_id: str
-    word_id: str
-    label: str
-    pass_number: str
-    vector_id: str
+class LabelResult:
+    label_from_dynamo: ReceiptWordLabel
+    result: dict
+    other_labels: list[ReceiptWordLabel]
 
 
 def list_pending_completion_batches() -> list[BatchSummary]:
@@ -67,17 +63,57 @@ def get_openai_batch_status(openai_batch_id: str) -> str:
     return openai_client.batches.retrieve(openai_batch_id).status
 
 
+def _parse_result_id(result_id: str) -> tuple[str, int, int, int, str]:
+    """
+    Parse the result ID from the OpenAI batch result.
+    """
+    id_split = result_id.split("#")
+    if len(id_split) != 12:
+        raise ValueError(f"Invalid ID: {result_id}")
+    image_id = id_split[1]
+    receipt_id = int(id_split[3])
+    line_id = int(id_split[5])
+    word_id = int(id_split[7])
+    label = id_split[9]
+    return image_id, receipt_id, line_id, word_id, label
+
+
+def _extract_results(data: dict) -> list[dict]:
+    """
+    Extract the results from the OpenAI batch result.
+    """
+    response = data["response"]
+    body = response["body"]
+    choices = body["choices"]
+    if len(choices) != 1:
+        raise ValueError(f"Expected 1 choice, got {len(choices)}")
+    message = choices[0]["message"]
+    if "function_call" in message:
+        arguments = message["function_call"].get("arguments")
+        if not arguments:
+            raise ValueError(f"Missing arguments in function_call: {message}")
+        try:
+            return json.loads(arguments)["results"]
+        except (json.JSONDecodeError, KeyError) as e:
+            raise ValueError(f"Could not parse function_call arguments: {e}")
+    elif message["content"] is not None:
+        return json.loads(message["content"])["results"]
+    else:
+        raise ValueError(f"No usable result found in message: {message}")
+
+
 def download_openai_batch_result(
     batch_summary: BatchSummary,
-) -> list[ParsedResult]:
+) -> tuple[list[ReceiptWordLabel], list[LabelResult], list[LabelResult]]:
     """
-    Download and parse the results of an OpenAI embedding batch job.
+    Returns:
+        pending_labels_to_update: ReceiptWordLabel objects to set back to NONE
+        valid_labels:   List[LabelResult] with result.is_valid == True
+        invalid_labels: List[LabelResult] with result.is_valid == False
     """
     batch = openai_client.batches.retrieve(batch_summary.openai_batch_id)
     output_file_id = batch.output_file_id
     response = openai_client.files.content(output_file_id)
-
-    # If the content is raw bytes, decode it:
     if hasattr(response, "read"):
         lines = response.read().decode("utf-8").splitlines()
     elif isinstance(response, bytes):
@@ -87,115 +123,161 @@ def download_openai_batch_result(
     else:
         raise ValueError("Unexpected OpenAI file content type")
 
-    parsed_results: list[ParsedResult] = []
+    # --- Caching getReceiptDetails per (image_id, receipt_id) ---
+    receipt_details_cache = {}
+    pending_labels_to_update: list[ReceiptWordLabel] = []
+    valid_labels: list[LabelResult] = []
+    invalid_labels: list[LabelResult] = []
+
     for line in lines:
         try:
             data = json.loads(line)
             custom_id = data["custom_id"]
-            split_custom_id = custom_id.split("#")
-            image_id = split_custom_id[1]
-            receipt_id = int(split_custom_id[3])
-            line_id = int(split_custom_id[5])
-            word_id = int(split_custom_id[7])
-            label = split_custom_id[9]
-            validation_status = split_custom_id[11]
-            pass_number = split_custom_id[13]
-
-            # --- Navigate into the nested `body` field that OpenAI returns -----
-            response_payload = data.get("response", {})
-            body = response_payload.get(
-                "body", {}
-            )  # <-- real content lives here
-
-            # Skip rows that returned an error
-            if "error" in body:
-                continue
-
-            choices = body.get("choices", [])
-            if not choices:
-                # Some items (e.g. file‑upload errors) genuinely have no choices
-                continue
-
-            message = choices[0].get("message", {})
-            function_call = message.get("function_call")
-
-            if function_call:
-                # Tool/function‑call style response – arguments is JSON string
-                raw_response = function_call.get("arguments", "")
-                try:
-                    response_obj = json.loads(raw_response)
-                except json.JSONDecodeError:
-                    response_obj = {}
-            else:
-                # Standard assistant message
-                raw_response = message.get("content", "")
-                try:
-                    response_obj = (
-                        json.loads(raw_response) if raw_response else {}
-                    )
-                except json.JSONDecodeError:
-                    response_obj = {}
-
-            is_valid = response_obj.get("is_valid")
-            correct_label = response_obj.get("correct_label")
-            rationale = response_obj.get("rationale")
-            if isinstance(rationale, str):
-                rationale = rationale.strip()
-
-            vector_id = (
-                f"IMAGE#{image_id}#"
-                f"RECEIPT#{receipt_id:05d}#"
-                f"LINE#{line_id:05d}#"
-                f"WORD#{word_id:05d}"
-            )
-            parsed_results.append(
-                ParsedResult(
-                    batch_id=batch_summary.batch_id,
-                    custom_id=custom_id,
-                    is_valid=is_valid,
-                    correct_label=correct_label,
-                    rationale=rationale,
-                    image_id=image_id,
-                    receipt_id=receipt_id,
-                    line_id=line_id,
-                    word_id=word_id,
-                    label=label,
-                    pass_number=pass_number,
-                    vector_id=vector_id,
+            image_id = custom_id.split("#")[1]
+            receipt_id = int(custom_id.split("#")[3])
+            cache_key = (image_id, receipt_id)
+            if cache_key not in receipt_details_cache:
+                (
+                    _,
+                    all_lines_from_receipt,
+                    all_words_from_receipt,
+                    all_letters_from_receipt,
+                    all_tags_from_receipt,
+                    all_labels_from_receipt,
+                ) = dynamo_client.getReceiptDetails(
+                    image_id=image_id, receipt_id=receipt_id
                 )
-            )
-        except (KeyError, json.JSONDecodeError) as e:
-            raise Exception(f"Error parsing line: {line}") from e
+                receipt_details_cache[cache_key] = all_labels_from_receipt
+            else:
+                all_labels_from_receipt = receipt_details_cache[cache_key]
 
-    return parsed_results
+            # Build pending_labels for this receipt
+            pending_labels = [
+                label
+                for label in all_labels_from_receipt
+                if label.validation_status == ValidationStatus.PENDING.value
+            ]
+            try:
+                results = _extract_results(data)
+            except Exception as e:
+                continue
+            if results is None:
+
+                continue
+            for result in results:
+                (
+                    result_image_id,
+                    result_receipt_id,
+                    result_line_id,
+                    result_word_id,
+                    result_label,
+                ) = _parse_result_id(result["id"])
+                label_from_dynamo = next(
+                    (
+                        label
+                        for label in all_labels_from_receipt
+                        if label.image_id == result_image_id
+                        and label.receipt_id == result_receipt_id
+                        and label.line_id == result_line_id
+                        and label.word_id == result_word_id
+                        and label.label == result_label
+                    ),
+                    None,
+                )
+                if label_from_dynamo is None:
+                    continue
+                else:
+                    # Remove from pending_labels if present
+                    pending_labels = [
+                        label
+                        for label in pending_labels
+                        if not (
+                            label.image_id == label_from_dynamo.image_id
+                            and label.receipt_id
+                            == label_from_dynamo.receipt_id
+                            and label.line_id == label_from_dynamo.line_id
+                            and label.word_id == label_from_dynamo.word_id
+                            and label.label == label_from_dynamo.label
+                        )
+                    ]
+                if (
+                    label_from_dynamo.validation_status
+                    == ValidationStatus.VALID.value
+                ):
+                    continue
+                # Build other_labels for this word/line except this label
+                other_labels = [
+                    label
+                    for label in all_labels_from_receipt
+                    if label.image_id == label_from_dynamo.image_id
+                    and label.receipt_id == label_from_dynamo.receipt_id
+                    and label.line_id == label_from_dynamo.line_id
+                    and label.word_id == label_from_dynamo.word_id
+                    and label.label != label_from_dynamo.label
+                ]
+                if result.get("is_valid"):
+                    valid_labels.append(
+                        LabelResult(
+                            label_from_dynamo=label_from_dynamo,
+                            result=result,
+                            other_labels=other_labels,
+                        )
+                    )
+                else:
+                    invalid_labels.append(
+                        LabelResult(
+                            label_from_dynamo=label_from_dynamo,
+                            result=result,
+                            other_labels=other_labels,
+                        )
+                    )
+            # After all results, any leftover pending_labels for this receipt should be reset to NONE
+            if pending_labels:
+                for label in pending_labels:
+                    label.validation_status = ValidationStatus.NONE.value
+                    pending_labels_to_update.append(label)
+        except Exception as e:
+            # Could not parse line as JSON, skip
+            continue
+
+    return pending_labels_to_update, valid_labels, invalid_labels
 
 
-def update_valid_labels(parsed_results: list[ParsedResult]) -> None:
+def update_pending_labels(
+    pending_labels_to_update: list[ReceiptWordLabel],
+) -> None:
+    """
+    Update the pending labels in the database.
+    """
+    for pending_label in pending_labels_to_update:
+        pending_label.validation_status = ValidationStatus.NONE.value
+        pending_label.label_proposed_by = "COMPLETION_BATCH"
+
+    # Chunk into 25 items and update
+    for chunk in _chunk(pending_labels_to_update, 25):
+        dynamo_client.updateReceiptWordLabels(chunk)
+
+
+def update_valid_labels(valid_labels_results: list[LabelResult]) -> None:
     """
     Update the valid labels in the database and Pinecone index.
     """
-    # 1. Build mapping: vector_id -> valid label
-    valid_labels_by_vector_id = {}
+    # ------------------------------------------------------------------ #
+    # 1. Build mapping:  vector_id -> list[str] (new valid labels)       #
+    # ------------------------------------------------------------------ #
+    valid_by_vector: dict[str, list[str]] = {}
+    for res in valid_labels_results:
+        res.label_from_dynamo.validation_status = ValidationStatus.VALID.value
+        res.label_from_dynamo.label_proposed_by = "COMPLETION_BATCH"
+        vid = _build_vector_id(res.label_from_dynamo)
+        valid_by_vector.setdefault(vid, []).append(res.label_from_dynamo.label)
 
-    for result in parsed_results:
-        label_to_add = None
-        if result.is_valid:
-            label_to_add = result.label
-        elif result.correct_label:
-            label_to_add = result.correct_label
+    # ------------------------------------------------------------------ #
+    # 2. Fetch existing metadata in chunks, decide which ones need write #
+    # ------------------------------------------------------------------ #
+    vectors_needing_update: list[tuple[str, dict]] = []  # (id, merged_meta)
 
-        if label_to_add:
-            valid_labels_by_vector_id.setdefault(result.vector_id, []).append(
-                label_to_add
-            )
-
-    vector_ids = list(valid_labels_by_vector_id.keys())
-
-    if not vector_ids:
-        return
-
-    # 2 & 3. Fetch in chunks (Pinecone limit = 100) and update metadata
-    for id_batch in _chunk(vector_ids, 100):
+    for id_batch in _chunk(valid_by_vector.keys(), 100):
         fetched = pinecone_index.fetch(
             ids=id_batch, namespace=PINECONE_NS
         ).vectors
@@ -204,171 +286,204 @@ def update_valid_labels(parsed_results: list[ParsedResult]) -> None:
             existing = meta.get("valid_labels", [])
             if isinstance(existing, str):
                 existing = [existing]
-            new_labels = valid_labels_by_vector_id.get(vid, [])
-            meta["valid_labels"] = list(set(existing + new_labels))
 
-            # Pinecone update is one‑vector‑at‑a‑time
-            pinecone_index.update(
-                id=vid, set_metadata=meta, namespace=PINECONE_NS
-            )
+            new_labels = valid_by_vector[vid]
+            merged = list(set(existing + new_labels))
 
-    # 4. Update DynamoDB ReceiptWordLabels too (optional but usually important)
-    indices = [
-        (
-            result.image_id,
-            result.receipt_id,
-            result.line_id,
-            result.word_id,
-            result.label,
-        )
-        for result in parsed_results
-        if result.is_valid  # Only updating records that were validated as correct
-    ]
+            # Skip if nothing would change
+            if set(merged) == set(existing):
+                continue
 
-    if indices:
-        labels = dynamo_client.getReceiptWordLabelsByIndices(indices)
-        for label in labels:
-            label.validation_status = ValidationStatus.VALID.value
-            label.label_proposed_by = "COMPLETION_BATCH"
-        dynamo_client.updateReceiptWordLabels(labels)
+            meta["valid_labels"] = merged
+            vectors_needing_update.append((vid, meta))
+
+    # ------------------------------------------------------------------ #
+    # 3. Write only vectors whose metadata changed                       #
+    # ------------------------------------------------------------------ #
+    for vid, meta in vectors_needing_update:
+        pinecone_index.update(id=vid, set_metadata=meta, namespace=PINECONE_NS)
+
+    # Chunk into 25 items and update
+    for chunk in _chunk(
+        [r.label_from_dynamo for r in valid_labels_results], 25
+    ):
+        dynamo_client.updateReceiptWordLabels(chunk)
 
 
-def update_invalid_labels(parsed_results: list[ParsedResult]) -> None:
+def update_invalid_labels(invalid_labels_results: list[LabelResult]) -> None:
     """
     Update invalid labels in DynamoDB and Pinecone index based on batch parsing results.
     """
-    invalid_results = [r for r in parsed_results if not r.is_valid]
 
-    if not invalid_results:
-        return
-
-    # Update original ReceiptWordLabels to INVALID
-    indices = [
-        (r.image_id, r.receipt_id, r.line_id, r.word_id, r.label)
-        for r in invalid_results
-    ]
-    labels = dynamo_client.getReceiptWordLabelsByIndices(indices)
-    labels_to_update = []
-    new_labels_to_create = []
-    # ------------------------------------------------------------------
-    # Guard against duplicate “new label” insertions for the *same*
-    # (image, receipt, line, word, proposed_label) key.
-    # We’ll keep only the first instance that appears in `invalid_results`.
+    labels_to_update: list[ReceiptWordLabel] = []
+    labels_to_add: list[ReceiptWordLabel] = []
     seen_new_label_keys: set[tuple] = set()
-    # ------------------------------------------------------------------
 
-    for result in invalid_results:
-        label = next(
-            (
-                l
-                for l in labels
-                if l.image_id == result.image_id
-                and l.receipt_id == result.receipt_id
-                and l.line_id == result.line_id
-                and l.word_id == result.word_id
-                and l.label == result.label
-            ),
-            None,
+    # Maps for Pinecone merge
+    invalid_by_vector: dict[str, list[str]] = {}
+    proposed_by_vector: dict[str, str] = {}
+
+    # ------------------------------------------------------------------ #
+    # 1.  Walk through each invalid result                                #
+    # ------------------------------------------------------------------ #
+    for res in invalid_labels_results:
+
+        # Decide INVALID vs NEEDS_REVIEW
+        if any(
+            other.validation_status == ValidationStatus.INVALID.value
+            for other in res.other_labels
+        ):
+            res.label_from_dynamo.validation_status = (
+                ValidationStatus.NEEDS_REVIEW.value
+            )
+        else:
+            res.label_from_dynamo.validation_status = (
+                ValidationStatus.INVALID.value
+            )
+
+        res.label_from_dynamo.label_proposed_by = "COMPLETION_BATCH"
+        labels_to_update.append(res.label_from_dynamo)
+
+        # Track metadata for Pinecone
+        vid = _build_vector_id(res.label_from_dynamo)
+        invalid_by_vector.setdefault(vid, []).append(
+            res.label_from_dynamo.label
         )
-        if label:
-            label.validation_status = ValidationStatus.INVALID.value
-            label.label_proposed_by = "COMPLETION_BATCH"
-            labels_to_update.append(label)
 
-        if result.correct_label:
+        # Handle a correct_label suggestion
+        correct = res.result.get("correct_label")
+        if correct:
+            proposed_by_vector[vid] = correct  # last one wins ― fine
+
             key = (
-                result.image_id,
-                result.receipt_id,
-                result.line_id,
-                result.word_id,
-                result.correct_label,
+                res.label_from_dynamo.image_id,
+                res.label_from_dynamo.receipt_id,
+                res.label_from_dynamo.line_id,
+                res.label_from_dynamo.word_id,
+                correct,
             )
-            if key in seen_new_label_keys:
-                # Duplicate – skip to avoid writing the same label twice
-                continue
-            seen_new_label_keys.add(key)
+            if key not in seen_new_label_keys:
+                seen_new_label_keys.add(key)
+                labels_to_add.append(
+                    ReceiptWordLabel(
+                        image_id=res.label_from_dynamo.image_id,
+                        receipt_id=res.label_from_dynamo.receipt_id,
+                        line_id=res.label_from_dynamo.line_id,
+                        word_id=res.label_from_dynamo.word_id,
+                        label=correct,
+                        reasoning=None,
+                        timestamp_added=datetime.now(timezone.utc),
+                        validation_status=ValidationStatus.NONE.value,
+                        label_proposed_by="COMPLETION_BATCH",
+                        label_consolidated_from=res.label_from_dynamo.label,
+                    )
+                )
 
-            new_label = ReceiptWordLabel(
-                image_id=result.image_id,
-                receipt_id=result.receipt_id,
-                line_id=result.line_id,
-                word_id=result.word_id,
-                label=result.correct_label,
-                validation_status=ValidationStatus.NONE.value,
-                reasoning=None,
-                label_proposed_by="COMPLETION_BATCH",
-                label_consolidated_from=result.label,
-                timestamp_added=datetime.now(timezone.utc),
-            )
-            new_labels_to_create.append(new_label)
+    # ------------------------------------------------------------------ #
+    # 2.  Merge metadata in Pinecone, skipping no‑op writes               #
+    # ------------------------------------------------------------------ #
+    vectors_needing_update: list[tuple[str, dict]] = []
 
-    if labels_to_update:
-        dynamo_client.updateReceiptWordLabels(labels_to_update)
-
-    if new_labels_to_create:
-        dynamo_client.addReceiptWordLabels(new_labels_to_create)
-
-    vector_ids = list({r.vector_id for r in invalid_results})
-
-    for id_batch in _chunk(vector_ids, 100):
+    for id_batch in _chunk(invalid_by_vector.keys(), 100):
         fetched = pinecone_index.fetch(
             ids=id_batch, namespace=PINECONE_NS
         ).vectors
-
         for vid in id_batch:
             meta = (fetched[vid].metadata if vid in fetched else {}) or {}
-            related = [r for r in invalid_results if r.vector_id == vid]
-
             existing_invalid = meta.get("invalid_labels", [])
             if isinstance(existing_invalid, str):
                 existing_invalid = [existing_invalid]
 
-            new_invalid = [r.label for r in related]
-            meta["invalid_labels"] = list(set(existing_invalid + new_invalid))
-
-            # If any have a proposed label, keep the last one
-            proposed = next(
-                (
-                    r.correct_label
-                    for r in reversed(related)
-                    if r.correct_label
-                ),
-                None,
+            merged_invalid = list(
+                set(existing_invalid + invalid_by_vector.get(vid, []))
             )
-            if proposed:
-                meta["proposed_label"] = proposed
+            changed = False
+            if set(merged_invalid) != set(existing_invalid):
+                meta["invalid_labels"] = merged_invalid
+                changed = True
 
-            pinecone_index.update(
-                id=vid, set_metadata=meta, namespace=PINECONE_NS
-            )
+            if vid in proposed_by_vector:
+                if meta.get("proposed_label") != proposed_by_vector[vid]:
+                    meta["proposed_label"] = proposed_by_vector[vid]
+                    changed = True
+
+            if changed:
+                vectors_needing_update.append((vid, meta))
+
+    for vid, meta in vectors_needing_update:
+        pinecone_index.update(id=vid, set_metadata=meta, namespace=PINECONE_NS)
+
+    # ------------------------------------------------------------------ #
+    # 3.  DynamoDB writes                                                 #
+    # ------------------------------------------------------------------ #
+    for chunk in _chunk(labels_to_update, 25):
+        dynamo_client.updateReceiptWordLabels(chunk)
+
+    if labels_to_add:
+        for chunk in _chunk(labels_to_add, 25):
+            dynamo_client.addReceiptWordLabels(chunk)
 
 
-def write_completion_batch_results(parsed_results: list[ParsedResult]) -> None:
+def write_completion_batch_results(
+    batch_summary: BatchSummary,
+    valid_results: list[LabelResult],
+    invalid_results: list[LabelResult],
+) -> None:
     """
-    Write the completion batch results to DynamoDB.
+    Persist the OpenAI batch outcomes to the CompletionBatchResult table.
+
+    Args:
+        batch_summary:  The BatchSummary object for this batch (provides batch_id).
+        valid_results:   Results where `is_valid` is True.
+        invalid_results: Results where `is_valid` is False.
+
+    Note: We recompute receipt/line/word IDs from result["id"] rather than
+    storing a separate ParsedResult dataclass.
     """
-    completion_batch_results = []
-    for result in parsed_results:
-        completion_batch_results.append(
-            CompletionBatchResult(
-                batch_id=result.batch_id,
-                image_id=result.image_id,
-                receipt_id=result.receipt_id,
-                line_id=result.line_id,
-                word_id=result.word_id,
-                original_label=result.label,
-                gpt_suggested_label=(
-                    result.correct_label if result.correct_label else None
-                ),
-                status=BatchStatus.COMPLETED,
-                validated_at=datetime.now(timezone.utc),
-                reasoning=(result.rationale if result.rationale else None),
-                is_valid=result.is_valid,
-                vector_id=result.vector_id,
-                pass_number=result.pass_number,
-            )
+    all_results = valid_results + invalid_results
+    if not all_results:
+        return
+
+    # ------------------------------------------------------------------
+    # De‑duplicate using the DynamoDB key itself (PK+SK) so we never
+    # send two items with the same composite key in the same batch.
+    # ------------------------------------------------------------------
+    unique_by_key: dict[tuple[str, str], CompletionBatchResult] = {}
+
+    for res in all_results:
+        res_id = res.result["id"]
+        (
+            image_id,
+            receipt_id,
+            line_id,
+            word_id,
+            original_label,
+        ) = _parse_result_id(res_id)
+
+        correct_label = res.result.get("correct_label")
+
+        item = CompletionBatchResult(
+            batch_id=batch_summary.batch_id,
+            image_id=image_id,
+            receipt_id=receipt_id,
+            line_id=line_id,
+            word_id=word_id,
+            original_label=original_label,
+            gpt_suggested_label=correct_label if correct_label else None,
+            status=BatchStatus.COMPLETED.value,
+            validated_at=datetime.now(timezone.utc),
         )
-    dynamo_client.addCompletionBatchResults(completion_batch_results)
+
+        key_dict = item.key()  # {'PK':{'S':...}, 'SK':{'S':...}}
+        pk = key_dict["PK"]["S"]
+        sk = key_dict["SK"]["S"]
+        unique_by_key[(pk, sk)] = item  # last one wins – that’s fine
+
+    completion_records = list(unique_by_key.values())
+
+    # Dynamo batch‑write (25 items per call)
+    for chunk in _chunk(completion_records, 25):
+        dynamo_client.addCompletionBatchResults(chunk)
 
 
 def update_batch_summary(batch_summary: BatchSummary) -> None:

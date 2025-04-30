@@ -37,7 +37,7 @@ class ReceiptWordLabel:
         line_id: int,
         word_id: int,
         label: str,
-        reasoning: str,
+        reasoning: str | None,
         timestamp_added: datetime,
         validation_status: Optional[str] = None,
         label_proposed_by: Optional[str] = None,

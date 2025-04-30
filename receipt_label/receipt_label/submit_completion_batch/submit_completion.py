@@ -1,5 +1,6 @@
 import re
 import json
+import os
 from pathlib import Path
 import tempfile
 from uuid import uuid4
@@ -23,8 +24,7 @@ from receipt_dynamo.constants import (
     BatchStatus,
 )
 from receipt_label.submit_completion_batch._format_prompt import (
-    _format_first_pass_prompt,
-    _format_second_pass_prompt,
+    _format_prompt,
     functions,
 )
 from datetime import datetime, timezone
@@ -261,70 +261,31 @@ def format_batch_completion_file(
         f"/tmp/{metadata.image_id}_{metadata.receipt_id}_{uuid4()}.ndjson"
     )
     batch_lines: list[dict] = []
-
-    if len(first_pass_labels) > 0:
-        first_pass_prompt = _format_first_pass_prompt(
-            words,
-            first_pass_labels,
-            lines,
-            metadata,
-        )
-        first_pass_custom_id = (
-            f"IMAGE#{metadata.image_id}#"
-            f"RECEIPT#{metadata.receipt_id:05d}#"
-            f"PASS#{PassNumber.FIRST.value}"
-        )
-        first_pass_messages = [
-            {
-                "role": "system",
-                "content": first_pass_prompt,
-            },
-        ]
+    if len(first_pass_labels) + len(second_pass_labels) > 0:
         batch_lines.append(
             {
                 "method": "POST",
-                "custom_id": first_pass_custom_id,
+                "custom_id": f"IMAGE#{metadata.image_id}#RECEIPT#{metadata.receipt_id:05d}",
                 "url": "/v1/chat/completions",
                 "body": {
-                    "model": "gpt-4.1-nano",
-                    "messages": first_pass_messages,
+                    "model": "gpt-4.1-mini",
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": _format_prompt(
+                                first_pass_labels,
+                                second_pass_labels,
+                                words,
+                                lines,
+                                labels,
+                                metadata,
+                            ),
+                        },
+                    ],
                     "functions": functions,
                 },
             }
         )
-
-    if len(second_pass_labels) > 0:
-        second_pass_prompt = _format_second_pass_prompt(
-            second_pass_labels,
-            words,
-            lines,
-            metadata,
-            labels,
-        )
-        second_pass_custom_id = (
-            f"IMAGE#{metadata.image_id}#"
-            f"RECEIPT#{metadata.receipt_id:05d}#"
-            f"PASS#{PassNumber.SECOND.value}"
-        )
-        second_pass_messages = [
-            {
-                "role": "system",
-                "content": second_pass_prompt,
-            },
-        ]
-        batch_lines.append(
-            {
-                "method": "POST",
-                "custom_id": second_pass_custom_id,
-                "url": "/v1/chat/completions",
-                "body": {
-                    "model": "gpt-4.1-nano",
-                    "messages": second_pass_messages,
-                    "functions": functions,
-                },
-            }
-        )
-
     with filepath.open("w") as f:
         for batch_line in batch_lines:
             f.write(json.dumps(batch_line) + "\n")

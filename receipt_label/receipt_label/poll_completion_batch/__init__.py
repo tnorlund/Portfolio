@@ -6,6 +6,7 @@ from .poll_batch import (
     update_invalid_labels,
     write_completion_batch_results,
     update_batch_summary,
+    update_pending_labels,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "update_invalid_labels",
     "write_completion_batch_results",
     "update_batch_summary",
+    "update_pending_labels",
 ]

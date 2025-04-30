@@ -2,6 +2,7 @@ import os
 import time
 from logging import getLogger, StreamHandler, Formatter, INFO
 from receipt_dynamo.entities import ReceiptWordLabel, BatchSummary
+from receipt_dynamo.constants import BatchStatus, BatchType
 from receipt_label.submit_completion_batch import (
     list_labels_that_need_validation,
     chunk_into_completion_batches,
@@ -31,6 +32,7 @@ from receipt_label.poll_completion_batch import (
     update_invalid_labels,
     write_completion_batch_results,
     update_batch_summary,
+    update_pending_labels,
 )
 from receipt_label.utils import get_clients
 
@@ -103,7 +105,7 @@ def submit_openai_handler(event, context):
     logger.info("Starting submit_openai_handler")
     s3_keys = event["s3_keys"]
     merged_files = merge_ndjsons(
-        S3_BUCKET, s3_keys, max_size_bytes=2.5 * 1024 * 1024  # 2.5 MB
+        S3_BUCKET, s3_keys, max_size_bytes=0.5 * 1024 * 1024  # 0.5 MB
     )
     batch_ids = []
     for merged_file, consumed_keys in merged_files:
@@ -167,13 +169,19 @@ def poll_download_handler(event, context):
     logger.info("Starting poll_download_handler")
     batch = BatchSummary(**event)
     if get_openai_batch_status(batch.openai_batch_id) == "completed":
-        parsed_results = download_openai_batch_result(batch)
-        valid_labels = [result for result in parsed_results if result.is_valid]
-        invalid_labels = [result for result in parsed_results if not result.is_valid]
+        pending_labels_to_update, valid_labels, invalid_labels = (
+            download_openai_batch_result(batch)
+        )
+        logger.info(f"Pending labels to update: {len(pending_labels_to_update)}")
+        update_pending_labels(pending_labels_to_update)
+        logger.info(f"Valid labels: {len(valid_labels)}")
         update_valid_labels(valid_labels)
+        logger.info(f"Invalid labels: {len(invalid_labels)}")
         update_invalid_labels(invalid_labels)
-        write_completion_batch_results(parsed_results)
+        write_completion_batch_results(batch, valid_labels, invalid_labels)
+        batch.status = BatchStatus.COMPLETED.value
         update_batch_summary(batch)
     return {
         "statusCode": 200,
+        "batch_id": batch.batch_id,
     }

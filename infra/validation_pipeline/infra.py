@@ -126,6 +126,7 @@ class ValidationPipeline(ComponentResource):
             code=code,
             environment=env_vars,
             opts=ResourceOptions(parent=self),
+            tags={"environment": stack},
         )
 
         # Define the POLL download lambda
