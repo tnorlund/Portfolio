@@ -416,6 +416,12 @@ def update_invalid_labels(invalid_labels_results: list[LabelResult]) -> None:
     # ------------------------------------------------------------------ #
     # 3.  DynamoDB writes                                                 #
     # ------------------------------------------------------------------ #
+    unique_labels_by_key = {}
+    for label in labels_to_update:
+        key = (label.key()["PK"]["S"], label.key()["SK"]["S"])
+        unique_labels_by_key[key] = label  # Last one wins, that's fine
+
+    labels_to_update = list(unique_labels_by_key.values())
     for chunk in _chunk(labels_to_update, 25):
         dynamo_client.updateReceiptWordLabels(chunk)
 
