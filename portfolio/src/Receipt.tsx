@@ -12,6 +12,7 @@ import GooglePlaces from "./GooglePlaces";
 import EmbeddingDiagram from "./embedding_diagram";
 import { ReceiptCounts, ImageCounts } from "./DataCounts";
 import TagValidationChart from "./components/TagValidationChart";
+import LabelValidationChart from "./LabelValidationCount";
 import "./Receipt.css";
 
 function Receipt() {
@@ -164,7 +165,7 @@ function Receipt() {
         valid and invalid examples, ChatGPT either validates that the label is a
         part of the corpus or that it needs manual review.
       </p>
-
+      <LabelValidationChart />
       <h2>The Feedback Loop</h2>
       <p>
         This process is repeated to continuously improve the accuracy of the

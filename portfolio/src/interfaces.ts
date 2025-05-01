@@ -63,7 +63,7 @@ export interface Word {
 }
 
 export interface ReceiptWord {
-  image_id: string;  // UUID string
+  image_id: string; // UUID string
   receipt_id: number;
   line_id: number;
   word_id: number;
@@ -76,9 +76,9 @@ export interface ReceiptWord {
   angle_degrees: number;
   angle_radians: number;
   confidence: number;
-  tags: string[];  // Required array, might be empty
-  histogram: Record<string, number>;  // Required
-  num_chars: number;  // Required
+  tags: string[]; // Required array, might be empty
+  histogram: Record<string, number>; // Required
+  num_chars: number; // Required
 }
 
 export interface ReceiptWordTag {
@@ -264,4 +264,10 @@ export type ReceiptWordTagAction = {
   action: "validate" | "change_tag" | "add_tag";
   new_tag?: string;
   validation_value?: boolean;
-}
+};
+
+export type LabelValidationCountResponse = {
+  [key: string]: {
+    [key: string]: number;
+  };
+};
