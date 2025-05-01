@@ -11,8 +11,8 @@ import Pinecone from "./Pinecone";
 import GooglePlaces from "./GooglePlaces";
 import EmbeddingDiagram from "./embedding_diagram";
 import { ReceiptCounts, ImageCounts } from "./DataCounts";
-import TagValidationChart from "./components/TagValidationChart";
 import LabelValidationChart from "./LabelValidationCount";
+import HuggingFace from "./HuggingFace";
 import "./Receipt.css";
 
 function Receipt() {
@@ -126,11 +126,11 @@ function Receipt() {
 
       <h2>Embedding and Retrieval</h2>
       <p>
-        I used OpenAI's embedding API to convert receipt words into high-
-        dimensional vectors that capture semantic meaning. I used the batch API
-        to embed large chunks of words at once, which significantly reduced cost
-        and request overhead. These embeddings are stored in Pinecone, a vector
-        database.
+        I used OpenAI's embedding API to convert receipt words into
+        high-dimensional vectors that capture semantic meaning. I used the batch
+        API to embed large chunks of words at once, which significantly reduced
+        cost and request overhead. These embeddings are stored in Pinecone, a
+        vector database.
       </p>
       <Pinecone />
       <p>
@@ -175,6 +175,27 @@ function Receipt() {
         relevant the model’s responses are to the retrieved context. This gives
         me a structured way to identify blind spots and quantify improvements as
         I embed newly validated examples back into the retrieval system.
+      </p>
+      <h1>Training My Own Model</h1>
+      <p>
+        To push the limits of automated receipt understanding, I've been
+        experimenting with transformer-based models available on{" "}
+        <strong>Hugging Face</strong>, a platform that hosts a vast library of
+        pre-trained models for tasks like token classification, document layout
+        understanding, and more. The most promising model I've found is
+        <strong>LayoutLM</strong>.
+      </p>
+      <HuggingFace />
+      <p>
+        LayoutLM is specifically designed for visually rich documents like
+        receipts and invoices. It uses the text and how it relates to the text
+        around it to make predictions.
+      </p>
+      <p>
+        I ended up writing some infrastructure to spin up spot instances on AWS
+        to train the model. I was able to train a model at 10% the cost, but my
+        dataset isn't large enough to get good results. I'll update my results
+        here as I continue to work on this project.
       </p>
 
       <h1>Frontend</h1>

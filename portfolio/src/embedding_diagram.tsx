@@ -4,10 +4,6 @@ import { useInView } from "react-intersection-observer";
 
 const EmbeddingDiagram = () => {
   const [ref, inView] = useInView({ threshold: 0.3, triggerOnce: true });
-  const [styles, api] = useSpring(() => ({
-    opacity: 0,
-    config: { tension: 120, friction: 14 },
-  }));
 
   const [isMobile, setIsMobile] = useState(false);
 
@@ -43,7 +39,7 @@ const EmbeddingDiagram = () => {
         config: { tension: 80, friction: 20 },
       });
     }
-  }, [inView]);
+  }, [inView, ocrApi, embedApi, similarApi, labelApi]);
 
   const HorizontalEmbeddingDiagram = () => (
     <svg
