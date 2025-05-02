@@ -1,1 +1,0 @@
-# Instance Coordination System Documentation
