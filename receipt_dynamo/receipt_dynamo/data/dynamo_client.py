@@ -52,6 +52,7 @@ from receipt_dynamo.data._receipt_metadata import (
 from receipt_dynamo.data._completion_batch_result import (
     _CompletionBatchResult,
 )
+from receipt_dynamo.data._refinement_job import _RefinementJob
 
 
 class DynamoClient(
@@ -88,6 +89,7 @@ class DynamoClient(
     _EmbeddingBatchResult,
     _ReceiptMetadata,
     _CompletionBatchResult,
+    _RefinementJob,
 ):
     """A class used to represent a DynamoDB client."""
 

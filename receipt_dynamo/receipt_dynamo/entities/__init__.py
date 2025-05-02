@@ -119,3 +119,7 @@ from receipt_dynamo.entities.receipt_metadata import (
     ReceiptMetadata,
     itemToReceiptMetadata,
 )  # noqa: F401
+from receipt_dynamo.entities.refinement_job import (
+    RefinementJob,
+    itemToRefinementJob,
+)  # noqa: F401

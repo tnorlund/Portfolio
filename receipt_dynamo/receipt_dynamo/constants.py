@@ -68,3 +68,11 @@ class PassNumber(Enum):
 
     FIRST = "FIRST_PASS"
     SECOND = "SECOND_PASS"
+
+
+class RefinementStatus(Enum):
+    """The status of a refinement batch."""
+
+    PENDING = "PENDING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
