@@ -11,7 +11,7 @@ from pulumi import (
 from pulumi_aws.iam import Role, RolePolicy, RolePolicyAttachment
 from pulumi_aws.lambda_ import Function, FunctionEnvironmentArgs
 from pulumi_aws.sfn import StateMachine
-
+from pulumi_aws.cloudwatch import EventRule, EventTarget
 
 from dynamo_db import dynamodb_table
 from lambda_layer import dynamo_layer, label_layer
@@ -68,6 +68,42 @@ class ValidateMerchantStepFunctions(ComponentResource):
             f"{name}-lambda-basic-execution",
             role=lambda_exec_role.name,
             policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+        )
+
+        # Define Lambda: batch_clean_merchants (manual run)
+        batch_clean_merchants_lambda = Function(
+            f"{name}-batch-clean-merchants",
+            role=lambda_exec_role.arn,
+            runtime="python3.12",
+            handler="batch_clean_merchants_handler.batch_handler",
+            code=AssetArchive(
+                {
+                    "batch_clean_merchants_handler.py": FileAsset(
+                        os.path.join(
+                            os.path.dirname(__file__),
+                            "batch_clean_merchants_handler.py",
+                        )
+                    )
+                }
+            ),
+            timeout=900,
+            memory_size=512,
+            layers=[dynamo_layer.arn, label_layer.arn],
+            tags={"environment": stack},
+            environment=FunctionEnvironmentArgs(
+                variables={
+                    "DYNAMO_TABLE_NAME": dynamodb_table.name,
+                    "GOOGLE_PLACES_API_KEY": google_places_api_key,
+                    "OPENAI_API_KEY": openai_api_key,
+                    "PINECONE_API_KEY": pinecone_api_key,
+                    "PINECONE_INDEX_NAME": pinecone_index_name,
+                    "PINECONE_HOST": pinecone_host,
+                }
+            ),
+            opts=ResourceOptions(
+                parent=self,
+                ignore_changes=["layers"],
+            ),
         )
 
         # Define Lambda: list_receipts
@@ -141,6 +177,42 @@ class ValidateMerchantStepFunctions(ComponentResource):
             ),
         )
 
+        # Define Lambda: consolidate_new_metadata (Phase 2)
+        consolidate_new_metadata_lambda = Function(
+            f"{name}-consolidate",
+            role=lambda_exec_role.arn,
+            runtime="python3.12",
+            handler="consolidate_new_metadata_handler.consolidate_handler",
+            code=AssetArchive(
+                {
+                    "consolidate_new_metadata_handler.py": FileAsset(
+                        os.path.join(
+                            os.path.dirname(__file__),
+                            "consolidate_new_metadata_handler.py",
+                        )
+                    )
+                }
+            ),
+            timeout=300,
+            memory_size=512,
+            layers=[dynamo_layer.arn, label_layer.arn],
+            environment=FunctionEnvironmentArgs(
+                variables={
+                    "DYNAMO_TABLE_NAME": dynamodb_table.name,
+                    "GOOGLE_PLACES_API_KEY": google_places_api_key,
+                    "OPENAI_API_KEY": openai_api_key,
+                    "PINECONE_API_KEY": pinecone_api_key,
+                    "PINECONE_INDEX_NAME": pinecone_index_name,
+                    "PINECONE_HOST": pinecone_host,
+                }
+            ),
+            tags={"environment": stack},
+            opts=ResourceOptions(
+                parent=self,
+                ignore_changes=["layers"],
+            ),
+        )
+
         # Allow Step Function to invoke Lambdas
         RolePolicy(
             f"{name}-invoke-policy",
@@ -194,7 +266,9 @@ class ValidateMerchantStepFunctions(ComponentResource):
             f"{name}-merchant-validation-sm",
             role_arn=sfn_role.arn,
             definition=Output.all(
-                list_receipts_lambda.arn, validate_receipt_lambda.arn
+                list_receipts_lambda.arn,
+                validate_receipt_lambda.arn,
+                consolidate_new_metadata_lambda.arn,
             ).apply(
                 lambda arns: json.dumps(
                     {
@@ -225,6 +299,15 @@ class ValidateMerchantStepFunctions(ComponentResource):
                                         }
                                     },
                                 },
+                                "ResultPath": "$.validationResults",
+                                "Next": "ConsolidateMetadata",
+                            },
+                            "ConsolidateMetadata": {
+                                "Type": "Task",
+                                "Resource": arns[
+                                    2
+                                ],  # consolidate_new_metadata_lambda.arn
+                                "InputPath": "$",  # Pass the entire state including both original receipts and validation results
                                 "End": True,
                             },
                         },
@@ -233,3 +316,56 @@ class ValidateMerchantStepFunctions(ComponentResource):
             ),
             opts=ResourceOptions(parent=self),
         )
+
+        # Set up weekly scheduled cleaning (Phase 3)
+        # Create the CloudWatch Event rule for Wednesday at midnight (cron expression)
+        # Cron format: minute hour day-of-month month day-of-week year
+        # 0 0 ? * WED * = At 00:00 (midnight) on Wednesday
+        scheduled_cleaning_rule = EventRule(
+            f"{name}-weekly-cleaning-schedule",
+            description="Trigger weekly merchant data cleaning process every Wednesday at midnight",
+            schedule_expression="cron(0 0 ? * WED *)",
+            state="ENABLED",
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Define the input to pass to the Lambda function
+        event_input = {
+            "max_records": None,  # Process all records (no limit)
+            "geographic_validation": True,  # Enable geographic validation
+            "schedule_info": "Weekly run on Wednesday at midnight",
+        }
+
+        # Define the event target (the batch cleaning Lambda)
+        scheduled_cleaning_target = EventTarget(
+            f"{name}-lambda-target",
+            rule=scheduled_cleaning_rule.name,
+            arn=batch_clean_merchants_lambda.arn,
+            input=json.dumps(event_input),
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Add additional permission to the Lambda role to allow CloudWatch Events to invoke it
+        RolePolicy(
+            f"{name}-cloudwatch-invoke-policy",
+            role=lambda_exec_role.name,
+            policy=batch_clean_merchants_lambda.arn.apply(
+                lambda arn: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": ["lambda:InvokeFunction"],
+                                "Resource": arn,
+                            }
+                        ],
+                    }
+                )
+            ),
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Export the scheduled cleaning resources
+        self.scheduled_cleaning_rule = scheduled_cleaning_rule
+        self.scheduled_cleaning_target = scheduled_cleaning_target

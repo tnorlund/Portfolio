@@ -170,7 +170,7 @@ You are ReceiptMerchantAgent. Your goal is to assign the correct merchant to thi
 You may call the following tools in any order:
 
 1. **search_by_phone**: to look up a business by phone.
-2. **search_by_address**: to geocode the receipt’s address.
+2. **search_by_address**: to geocode the receipt's address.
 3. **search_nearby**: to find businesses near a lat/lng.
 4. **search_by_text**: to text‐search for a business name, biased by location.
 
@@ -238,7 +238,8 @@ def validate_handler(event, context):
             image_id, receipt_id, user_input["raw_text"]
         )
         write_receipt_metadata_to_dynamo(no_match_meta)
-        return
+        # Return the receipt info for the next step even in the no-match case
+        return {"image_id": image_id, "receipt_id": receipt_id, "status": "no_match"}
 
     # Right after parsing `metadata` and before you build the ReceiptMetadata:
     raw_vb = metadata.get("validated_by", "").upper().replace(" ", "_")
@@ -271,3 +272,12 @@ def validate_handler(event, context):
     logger.info(f"Writing metadata to DynamoDB for {image_id} {receipt_id}")
 
     write_receipt_metadata_to_dynamo(meta)
+
+    # Return the receipt information for the next step in the workflow
+    return {
+        "image_id": image_id,
+        "receipt_id": receipt_id,
+        "status": "processed",
+        "place_id": metadata["place_id"],
+        "merchant_name": metadata["merchant_name"].strip('"').strip(),
+    }

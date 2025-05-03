@@ -2,6 +2,9 @@ from typing import Tuple, List, Optional
 import json
 from json import JSONDecodeError
 from datetime import datetime, timezone
+import re
+from collections import defaultdict
+from fuzzywuzzy import fuzz
 
 from receipt_dynamo.entities import (
     ReceiptWordLabel,
@@ -17,6 +20,13 @@ from receipt_label.data.places_api import PlacesAPI
 from receipt_label.utils import get_clients
 
 dynamo_client, openai_client, _ = get_clients()
+
+
+def list_receipt_metadatas() -> List[ReceiptMetadata]:
+    """
+    Lists all receipt metadata entities from the DynamoDB table.
+    """
+    return dynamo_client.listReceiptMetadatas()[0]
 
 
 def list_receipts_for_merchant_validation() -> List[Tuple[str, int]]:
@@ -762,3 +772,351 @@ def build_receipt_metadata_from_result_no_match(
         timestamp=datetime.now(timezone.utc),
         reasoning=reasoning,
     )
+
+
+# --- Normalization Functions (from merchant_clustering.py) ---
+
+
+def normalize_text(text):
+    """Applies standard normalization for canonical display."""
+    if not isinstance(text, str):
+        return ""
+    text = text.lower()
+    # Remove redundant whitespace
+    text = " ".join(text.split())
+    return text
+
+
+def normalize_address(address):
+    """Applies more specific normalization for addresses."""
+    if not isinstance(address, str):
+        return ""
+    address = address.lower()
+    # Standardize street types
+    address = re.sub(r"\bst\.?\b", "street", address)
+    address = re.sub(r"\bave\.?\b", "avenue", address)
+    address = re.sub(r"\bblvd\.?\b", "boulevard", address)
+    address = re.sub(r"\brd\.?\b", "road", address)
+    address = re.sub(r"\bdr\.?\b", "drive", address)
+    address = re.sub(r"\bln\.?\b", "lane", address)
+    address = re.sub(r"\bct\.?\b", "court", address)
+    address = re.sub(r"\bsq\.?\b", "square", address)
+    # Standardize state abbreviations (add more as needed)
+    address = re.sub(
+        r"\bca\b", "ca", address
+    )  # Keep lowercase for consistency
+    address = re.sub(r"\bmd\b", "md", address)
+    address = re.sub(r"\bmn\b", "mn", address)
+    # Remove punctuation
+    address = re.sub(r'[.,!?;:\'"()]', "", address)
+    # Standardize country
+    address = re.sub(r"\busa\b", "usa", address)
+    address = re.sub(r"\bunited states\b", "usa", address)
+    # Remove extra whitespace
+    address = " ".join(address.split())
+    return address
+
+
+def preprocess_for_comparison(text):
+    """Minimal preprocessing used only for similarity checks."""
+    if not isinstance(text, str):
+        return ""
+    text = text.lower()
+    text = re.sub(r'[.,!?;:\'"()]', "", text)
+    text = " ".join(text.split())
+    return text
+
+
+# --- Similarity Functions (from merchant_clustering.py) ---
+
+
+def get_name_similarity(name1, name2):
+    p_name1 = preprocess_for_comparison(name1)
+    p_name2 = preprocess_for_comparison(name2)
+    if not p_name1 or not p_name2:
+        return 0
+    return fuzz.token_set_ratio(p_name1, p_name2)
+
+
+def get_address_similarity(addr1, addr2):
+    p_addr1 = normalize_address(addr1)
+    p_addr2 = normalize_address(addr2)
+    if not p_addr1 or not p_addr2:
+        return 0
+    return fuzz.token_set_ratio(p_addr1, p_addr2)
+
+
+def get_phone_similarity(ph1, ph2):
+    p_ph1 = re.sub(r"\D", "", ph1) if ph1 else ""
+    p_ph2 = re.sub(r"\D", "", ph2) if ph2 else ""
+    if not p_ph1 or not p_ph2 or len(p_ph1) < 7 or len(p_ph2) < 7:
+        return 0
+    return 100 if p_ph1 == p_ph2 else 0
+
+
+# --- Clustering Logic (from merchant_clustering.py) ---
+
+
+def cluster_by_metadata(metadata_list: List[ReceiptMetadata]):
+    # (Copy the exact implementation of cluster_by_metadata here)
+    clusters_by_place_id = defaultdict(list)
+    records_without_place_id = []
+
+    # Pass 1: Group by place_id
+    for record in metadata_list:
+        place_id = getattr(record, "place_id", None)
+        if place_id and isinstance(place_id, str) and place_id.strip():
+            clusters_by_place_id[place_id.strip()].append(record)
+        else:
+            records_without_place_id.append(record)
+
+    final_clusters = list(clusters_by_place_id.values())
+
+    # Pass 2: Cluster remaining records by name + address/phone
+    processed_indices = set()
+    remaining_clusters = []
+    for i in range(len(records_without_place_id)):
+        if i in processed_indices:
+            continue
+        current_cluster = [records_without_place_id[i]]
+        processed_indices.add(i)
+        for j in range(i + 1, len(records_without_place_id)):
+            if j in processed_indices:
+                continue
+            record1 = records_without_place_id[i]
+            record2 = records_without_place_id[j]
+            name_sim = get_name_similarity(
+                record1.merchant_name, record2.merchant_name
+            )
+            if name_sim < 90:
+                continue
+            addr_sim = get_address_similarity(record1.address, record2.address)
+            phone_sim = get_phone_similarity(
+                record1.phone_number, record2.phone_number
+            )
+            if addr_sim >= 85 or phone_sim == 100:
+                current_cluster.append(record2)
+                processed_indices.add(j)
+        remaining_clusters.append(current_cluster)
+
+    final_clusters.extend(remaining_clusters)
+    return final_clusters
+
+
+# Source validation priority scoring for canonical record selection
+SOURCE_PRIORITY = {
+    "ADDRESS_LOOKUP": 5,
+    "NEARBY_LOOKUP": 4,
+    "TEXT_SEARCH": 3,
+    "PHONE_LOOKUP": 2,
+    "": 0,  # Handle empty string
+    None: 0,  # Handle None
+}
+DEFAULT_PRIORITY = 1  # For any other source
+
+
+def get_score(record):
+    """
+    Calculate a priority score for a ReceiptMetadata record to determine which should be
+    the canonical representation in a cluster.
+
+    Scoring is based on:
+    1. Source validation method (ADDRESS_LOOKUP > NEARBY_LOOKUP > TEXT_SEARCH > PHONE_LOOKUP)
+    2. Match confidence score
+    3. Presence of address
+    4. Presence of phone number
+    5. Shorter merchant names preferred (less likely to have extra information)
+
+    Returns:
+        tuple: A tuple of scores for sorting, with higher values being preferred
+    """
+    validated_by = getattr(record, "validated_by", None)
+    source_score = SOURCE_PRIORITY.get(validated_by, DEFAULT_PRIORITY)
+    confidence_score = getattr(record, "match_confidence", 0.0)
+    has_address = bool(getattr(record, "address", ""))
+    has_phone = bool(getattr(record, "phone_number", ""))
+    name_len_score = -len(normalize_text(getattr(record, "merchant_name", "")))
+    return (
+        source_score,
+        confidence_score,
+        has_address,
+        has_phone,
+        name_len_score,
+    )
+
+
+def choose_canonical_metadata(cluster_members: List[ReceiptMetadata]):
+    """
+    Choose the best record from a cluster to use as the canonical representation.
+
+    Args:
+        cluster_members: List of ReceiptMetadata records in the cluster
+
+    Returns:
+        ReceiptMetadata: The best record to use as canonical, or None if cluster is empty
+    """
+    if not cluster_members:
+        return None
+
+    # Prefer records with place_id
+    with_place_id = [
+        m for m in cluster_members if getattr(m, "place_id", None)
+    ]
+    without_place_id = [
+        m for m in cluster_members if not getattr(m, "place_id", None)
+    ]
+    candidates = with_place_id if with_place_id else without_place_id
+
+    if not candidates:
+        return None
+
+    # Use get_score function to find best record
+    best_record = max(candidates, key=get_score)
+    return best_record
+
+
+# --- DynamoDB Interaction ---
+
+
+def list_all_receipt_metadatas() -> (
+    List[ReceiptMetadata]
+):  # Renamed and updated
+    """Lists ALL receipt metadata entities from DynamoDB, handling pagination."""
+    all_metadatas = []
+    lek = None
+    while True:
+        metadatas_page, lek = dynamo_client.listReceiptMetadatas(
+            limit=1000, lastEvaluatedKey=lek
+        )  # Use limit=1000 for efficiency
+        all_metadatas.extend(metadatas_page)
+        if not lek:
+            break
+    return all_metadatas
+
+
+def update_items_with_canonical(
+    cluster_members: List[ReceiptMetadata], canonical_details: dict
+):
+    """
+    Updates all items in a cluster with the canonical details using ReceiptMetadata
+    methods and dynamo_client update functions.
+
+    Args:
+        cluster_members: List of ReceiptMetadata records to update
+        canonical_details: Dictionary with canonical values to set
+                          ('canonical_place_id', 'canonical_merchant_name',
+                           'canonical_address', 'canonical_phone_number')
+
+    Returns:
+        int: Count of successfully updated records
+    """
+    # Validate the canonical_details dictionary contains required fields
+    required_keys = [
+        "canonical_place_id",
+        "canonical_merchant_name",
+        "canonical_address",
+        "canonical_phone_number",
+    ]
+
+    for key in required_keys:
+        if key not in canonical_details:
+            print(f"Warning: Missing required key in canonical_details: {key}")
+            canonical_details[key] = ""
+
+    updated_count = 0
+    failed_count = 0
+    updated_records = []
+
+    # First update in-memory objects
+    for record in cluster_members:
+        try:
+            # Update the in-memory ReceiptMetadata object
+            record.canonical_place_id = canonical_details.get(
+                "canonical_place_id", ""
+            )
+            record.canonical_merchant_name = canonical_details.get(
+                "canonical_merchant_name", ""
+            )
+            record.canonical_address = canonical_details.get(
+                "canonical_address", ""
+            )
+            record.canonical_phone_number = canonical_details.get(
+                "canonical_phone_number", ""
+            )
+
+            if "cluster_id" in canonical_details:
+                record.cluster_id = canonical_details["cluster_id"]
+
+            updated_records.append(record)
+
+        except Exception as e:
+            failed_count += 1
+            print(
+                f"Error preparing record {record.image_id}/{record.receipt_id} for update: {e}"
+            )
+
+    # Now update in DynamoDB in batches
+    if updated_records:
+        try:
+            # Use the batch update method for efficiency
+            if len(updated_records) > 1:
+                dynamo_client.updateReceiptMetadatas(updated_records)
+            else:
+                # Use single update for just one record
+                dynamo_client.updateReceiptMetadata(updated_records[0])
+
+            updated_count = len(updated_records)
+
+        except Exception as e:
+            print(f"Error batch updating records in DynamoDB: {e}")
+
+            # Fall back to individual updates if batch update fails
+            for record in updated_records:
+                try:
+                    dynamo_client.updateReceiptMetadata(record)
+                    updated_count += 1
+                except Exception as inner_e:
+                    failed_count += 1
+                    print(
+                        f"Error updating item {record.image_id}/{record.receipt_id}: {inner_e}"
+                    )
+
+    if failed_count > 0:
+        print(
+            f"Warning: Failed to update {failed_count} out of {len(cluster_members)} items"
+        )
+
+    return updated_count
+
+
+def query_records_by_place_id(place_id: str) -> list[ReceiptMetadata]:
+    """
+    Query DynamoDB for records with the given place_id that have been
+    previously canonicalized (have canonical_* fields filled).
+
+    Uses dynamo_client.listReceiptMetadatasWithPlaceId which leverages GSI2 for efficient place_id queries.
+
+    Args:
+        place_id (str): The Google Places ID to search for
+
+    Returns:
+        List[ReceiptMetadata]: List of matching records with canonical fields
+    """
+    if not place_id or not isinstance(place_id, str):
+        return []
+
+    try:
+        # Use the listReceiptMetadatasWithPlaceId function which uses GSI2 internally
+        metadatas, _ = dynamo_client.listReceiptMetadatasWithPlaceId(
+            place_id=place_id,
+            limit=10,  # Reasonable limit - we just need one with canonical fields
+        )
+
+        # Filter to only include records that have canonical fields
+        return [
+            metadata for metadata in metadatas if metadata.canonical_place_id
+        ]
+
+    except Exception as e:
+        logger.error(f"Error querying by place_id {place_id}: {e}")
+        return []

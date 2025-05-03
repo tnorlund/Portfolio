@@ -39,6 +39,10 @@ class ReceiptMetadata:
         validated_by (str): Source of validation (e.g., "GPT+GooglePlaces").
         timestamp (datetime): ISO timestamp when this record was created.
         reasoning (str): GPT or system-generated justification for the match.
+        canonical_place_id (str): Canonical place ID from the most representative business in the cluster.
+        canonical_merchant_name (str): Canonical merchant name from the most representative business in the cluster.
+        canonical_address (str): Normalized canonical address from the most representative business in the cluster.
+        canonical_phone_number (str): Canonical phone number from the most representative business in the cluster.
     """
 
     def __init__(
@@ -55,6 +59,10 @@ class ReceiptMetadata:
         phone_number: str = "",
         validated_by: str = "",
         reasoning: str = "",
+        canonical_place_id: str = "",
+        canonical_merchant_name: str = "",
+        canonical_address: str = "",
+        canonical_phone_number: str = "",
     ):
 
         if not isinstance(receipt_id, int):
@@ -127,17 +135,34 @@ class ReceiptMetadata:
             raise ValueError("reasoning must be a string")
         self.reasoning = reasoning
 
+        # Initialize canonical fields
+        if not isinstance(canonical_place_id, str):
+            raise ValueError("canonical place id must be a string")
+        self.canonical_place_id = canonical_place_id
+
+        if not isinstance(canonical_merchant_name, str):
+            raise ValueError("canonical merchant name must be a string")
+        self.canonical_merchant_name = canonical_merchant_name
+
+        if not isinstance(canonical_address, str):
+            raise ValueError("canonical address must be a string")
+        self.canonical_address = canonical_address
+
+        if not isinstance(canonical_phone_number, str):
+            raise ValueError("canonical phone number must be a string")
+        self.canonical_phone_number = canonical_phone_number
+
         num_fields = len(self.matched_fields)
 
-        # 1. If you’ve got at least two independent signals _and_ high confidence → MATCHED
+        # 1. If you've got at least two independent signals _and_ high confidence → MATCHED
         if self.match_confidence >= 0.80 and num_fields >= 2:
             self.validation_status = MerchantValidationStatus.MATCHED.value
 
-        # 2. If you’ve got moderate confidence but fewer signals → UNSURE
+        # 2. If you've got moderate confidence but fewer signals → UNSURE
         elif self.match_confidence >= 0.50 and num_fields >= 1:
             self.validation_status = MerchantValidationStatus.UNSURE.value
 
-        # 3. Otherwise it’s a hard NO
+        # 3. Otherwise it's a hard NO
         else:
             self.validation_status = MerchantValidationStatus.NO_MATCH.value
 
@@ -151,9 +176,23 @@ class ReceiptMetadata:
     def gsi1_key(self) -> dict:
         """
         Returns the key for GSI1: used to index all receipts associated with a given merchant.
-        Normalizes merchant_name by uppercasing and replacing spaces with underscores.
+
+        Uses canonical_merchant_name if available (preferred), otherwise falls back to merchant_name.
+        The merchant name is normalized by uppercasing and replacing spaces with underscores.
+
+        This enables efficient querying of all receipts for a canonical merchant, regardless of
+        the original merchant name variations.
         """
-        normalized_merchant_name = self.merchant_name.upper().replace(" ", "_")
+        # Prioritize canonical_merchant_name if it exists, otherwise use merchant_name
+        merchant_name_to_use = (
+            self.canonical_merchant_name
+            if self.canonical_merchant_name
+            else self.merchant_name
+        )
+        normalized_merchant_name = merchant_name_to_use.upper().replace(
+            " ", "_"
+        )
+
         return {
             "GSI1PK": {"S": f"MERCHANT#{normalized_merchant_name}"},
             "GSI1SK": {
@@ -163,13 +202,20 @@ class ReceiptMetadata:
 
     def gsi2_key(self) -> dict:
         """
-        Returns the key for GSI2: used to sort ReceiptMetadata entries by confidence score.
-        Supports filtering low/high-confidence merchant matches across receipts.
+        Returns the key for GSI2: used to query records by place_id.
+        This index supports the incremental consolidation process by enabling efficient
+        lookup of records with the same place_id.
+
+        Only includes non-empty place_ids to avoid cluttering the index.
         """
-        formatted_match_confidence = f"{self.match_confidence:.2f}"
+        if not self.place_id:
+            return {}
+
         return {
-            "GSI2PK": {"S": f"MERCHANT_VALIDATION"},
-            "GSI2SK": {"S": f"CONFIDENCE#{formatted_match_confidence}"},
+            "GSI2PK": {"S": f"PLACE#{self.place_id}"},
+            "GSI2SK": {
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#METADATA"
+            },
         }
 
     def gsi3_key(self) -> dict:
@@ -185,12 +231,11 @@ class ReceiptMetadata:
     def to_item(self) -> dict:
         """
         Serializes the ReceiptMetadata object into a DynamoDB-compatible item.
-        Includes primary key and both GSI keys, as well as all merchant-related metadata.
+        Includes primary key and GSI keys, as well as all merchant-related metadata.
         """
         item = {
             **self.key(),
             **self.gsi1_key(),
-            **self.gsi2_key(),
             **self.gsi3_key(),
             "TYPE": {"S": "RECEIPT_METADATA"},
             "place_id": {"S": self.place_id},
@@ -201,6 +246,11 @@ class ReceiptMetadata:
             "timestamp": {"S": self.timestamp.isoformat()},
         }
 
+        # Add GSI2 keys if place_id exists
+        gsi2_keys = self.gsi2_key()
+        if gsi2_keys:
+            item.update(gsi2_keys)
+
         # Optional string fields: only include if non-empty, else mark as NULL
         for attr in (
             "merchant_category",
@@ -208,6 +258,10 @@ class ReceiptMetadata:
             "phone_number",
             "validated_by",
             "reasoning",
+            "canonical_place_id",
+            "canonical_merchant_name",
+            "canonical_address",
+            "canonical_phone_number",
         ):
             value = getattr(self, attr)
             if isinstance(value, str):
@@ -243,7 +297,11 @@ class ReceiptMetadata:
             f"validated_by={_repr_str(self.validated_by)}, "
             f"timestamp={_repr_str(self.timestamp)}, "
             f"reasoning={_repr_str(self.reasoning)}, "
-            f"validation_status={_repr_str(self.validation_status)}"
+            f"validation_status={_repr_str(self.validation_status)}, "
+            f"canonical_place_id={_repr_str(self.canonical_place_id)}, "
+            f"canonical_merchant_name={_repr_str(self.canonical_merchant_name)}, "
+            f"canonical_address={_repr_str(self.canonical_address)}, "
+            f"canonical_phone_number={_repr_str(self.canonical_phone_number)}"
             f")"
         )
 
@@ -264,9 +322,13 @@ class ReceiptMetadata:
         yield "match_confidence", self.match_confidence
         yield "matched_fields", self.matched_fields
         yield "validated_by", self.validated_by
-        yield "timestamp", self.timestamp
+        yield "timestamp", self.timestamp.isoformat()
         yield "reasoning", self.reasoning
         yield "validation_status", self.validation_status
+        yield "canonical_place_id", self.canonical_place_id
+        yield "canonical_merchant_name", self.canonical_merchant_name
+        yield "canonical_address", self.canonical_address
+        yield "canonical_phone_number", self.canonical_phone_number
 
     def __hash__(self) -> int:
         """
@@ -290,6 +352,10 @@ class ReceiptMetadata:
                 self.timestamp,
                 self.reasoning,
                 self.validation_status,
+                self.canonical_place_id,
+                self.canonical_merchant_name,
+                self.canonical_address,
+                self.canonical_phone_number,
             )
         )
 
@@ -323,6 +389,14 @@ def itemToReceiptMetadata(item: dict) -> ReceiptMetadata:
         phone_number = item.get("phone_number", {}).get("S") or ""
         validated_by = item.get("validated_by", {}).get("S") or ""
         reasoning = item.get("reasoning", {}).get("S") or ""
+        canonical_place_id = item.get("canonical_place_id", {}).get("S") or ""
+        canonical_merchant_name = (
+            item.get("canonical_merchant_name", {}).get("S") or ""
+        )
+        canonical_address = item.get("canonical_address", {}).get("S") or ""
+        canonical_phone_number = (
+            item.get("canonical_phone_number", {}).get("S") or ""
+        )
         # Required timestamp field
         timestamp_str = item["timestamp"]["S"]
         timestamp = datetime.fromisoformat(timestamp_str)
@@ -339,6 +413,10 @@ def itemToReceiptMetadata(item: dict) -> ReceiptMetadata:
             phone_number=phone_number,
             validated_by=validated_by,
             reasoning=reasoning,
+            canonical_place_id=canonical_place_id,
+            canonical_merchant_name=canonical_merchant_name,
+            canonical_address=canonical_address,
+            canonical_phone_number=canonical_phone_number,
         )
     except Exception as e:
         raise ValueError(f"Error parsing receipt metadata: {e}")

@@ -47,9 +47,7 @@ except FileNotFoundError:
     pulumi.export("readme", "README file not found")
 
 word_label_step_functions = WordLabelStepFunctions("word-label-step-functions")
-validate_merchant_step_functions = ValidateMerchantStepFunctions(
-    "validate-merchant-step-functions"
-)
+validate_merchant_step_functions = ValidateMerchantStepFunctions("validate-merchant")
 validation_pipeline = ValidationPipeline("validation-pipeline")
 # ML Training Infrastructure
 # -------------------------

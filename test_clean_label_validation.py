@@ -43,6 +43,9 @@ with open("receipt_word_labels.ndjson", "r") as f:
 with open("receipt_lines.ndjson", "r") as f:
     receipt_lines = [ReceiptLine(**json.loads(line)) for line in f]
 
+with open("receipt_metadatas.ndjson", "r") as f:
+    receipt_metadatas = [ReceiptMetadata(**json.loads(line)) for line in f]
+
 # Group together labels by receipt_id, image_id, line_id, and word_id
 labels_by_word: dict[tuple[int, str, int, int], list[ReceiptWordLabel]] = {}
 for label in receipt_word_labels:

@@ -173,14 +173,15 @@ class _ReceiptMetadata:
                             "ConditionExpression": "attribute_exists(PK) and attribute_exists(SK)",
                         }
                     }
+                    for item in chunk
                 ]
                 response = self._client.transact_write_items(
-                    Items=transact_items
+                    TransactItems=transact_items
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
                     response = self._client.transact_write_items(
-                        Items=unprocessed[self.table_name]
+                        TransactItems=unprocessed[self.table_name]
                     )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
@@ -552,20 +553,27 @@ class _ReceiptMetadata:
 
     def listReceiptMetadatasWithPlaceId(
         self,
+        place_id: str,
         limit: int = None,
         lastEvaluatedKey: dict | None = None,
     ) -> Tuple[List[ReceiptMetadata], dict | None]:
         """
-        Retrieves ReceiptMetadata records from DynamoDB that have a place_id with optional pagination.
+        Retrieves ReceiptMetadata records from DynamoDB that have a specific place_id.
+
+        Uses GSI2 for efficient direct querying by place_id.
 
         Args:
-            place_id (str): The place_id to filter by.
+            place_id (str): The place_id to query for.
             limit (int, optional): Maximum number of records to retrieve.
             lastEvaluatedKey (dict, optional): The key to start pagination from.
 
         Returns:
             Tuple[List[ReceiptMetadata], dict | None]: A tuple containing the list of ReceiptMetadata records and the last evaluated key.
         """
+        if not place_id:
+            raise ValueError("place_id cannot be empty")
+        if not isinstance(place_id, str):
+            raise ValueError("place_id must be a string")
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer")
         if limit is not None and limit <= 0:
@@ -579,13 +587,10 @@ class _ReceiptMetadata:
         try:
             query_params = {
                 "TableName": self.table_name,
-                "IndexName": "GSITYPE",
-                "KeyConditionExpression": "#t = :val",
-                "FilterExpression": "attribute_exists(#p) AND #p <> :empty",
-                "ExpressionAttributeNames": {"#t": "TYPE", "#p": "place_id"},
+                "IndexName": "GSI2",
+                "KeyConditionExpression": "GSI2PK = :pk",
                 "ExpressionAttributeValues": {
-                    ":val": {"S": "RECEIPT_METADATA"},
-                    ":empty": {"S": ""},
+                    ":pk": {"S": f"PLACE#{place_id}"}
                 },
             }
             if lastEvaluatedKey is not None:
