@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState, Fragment } from "react";
 import { fetchLabelValidationCount } from "../api";
 import { LabelValidationCountResponse } from "../interfaces";
 
@@ -55,31 +55,26 @@ export default function LabelValidationChart() {
       <div style={{ display: "flex", justifyContent: "center" }}>
         <h2>Label Validation Count</h2>
       </div>
-      {rows.map(([label, data]) => {
-        const total = statuses.reduce((sum, s) => sum + (data[s] || 0), 0);
-        return (
-          <div
-            key={label}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              marginBottom: "6px",
-            }}
-          >
-            <div
-              style={{
-                width: 160,
-                textAlign: "right",
-                marginRight: 16,
-                fontWeight: 500,
-              }}
-            >
-              {label.toLowerCase().replace(/_/g, " ")}
-            </div>
-            <div style={{ flex: 1 }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "max-content auto max-content",
+          columnGap: "8px",
+          rowGap: "6px",
+          alignItems: "center",
+        }}
+      >
+        {rows.map(([label, data]) => {
+          const total = statuses.reduce((sum, s) => sum + (data[s] || 0), 0);
+          const rowWidthPercent = (total / maxTotal) * 100;
+          return (
+            <Fragment key={label}>
+              <div style={{ fontWeight: 500, textAlign: "right" }}>
+                {label.toLowerCase().replace(/_/g, " ")}
+              </div>
               <div
                 style={{
-                  width: `${(total / maxTotal) * 100}%`,
+                  width: `${rowWidthPercent}%`,
                   display: "flex",
                   height: 20,
                   borderRadius: 6,
@@ -101,14 +96,16 @@ export default function LabelValidationChart() {
                   );
                 })}
               </div>
-            </div>
-          </div>
-        );
-      })}
+              <div style={{ textAlign: "right" }}>{total.toLocaleString()}</div>
+            </Fragment>
+          );
+        })}
+      </div>
       <div
         style={{
           display: "flex",
-          gap: "16px",
+          flexWrap: "wrap",
+          gap: "24px",
           marginBottom: "1rem",
           //   fontSize: "0.9rem",
           justifyContent: "center",

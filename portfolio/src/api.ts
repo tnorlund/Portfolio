@@ -16,6 +16,7 @@ import {
   WordTag,
   ReceiptWordTagAction,
   LabelValidationCountResponse,
+  MerchantCountsResponse,
 } from "./interfaces";
 
 const isDevelopment = process.env.NODE_ENV === "development";
@@ -27,6 +28,19 @@ const fetchConfig = {
     "Content-Type": "application/json",
   },
 };
+
+export async function fetchMerchantCounts(): Promise<MerchantCountsResponse> {
+  const apiUrl = isDevelopment
+    ? `https://dev-api.tylernorlund.com/merchant_counts`
+    : `https://api.tylernorlund.com/merchant_counts`;
+  const response = await fetch(apiUrl, fetchConfig);
+
+  if (!response.ok) {
+    throw new Error(`Network response was not ok (status: ${response.status})`);
+  }
+
+  return await response.json();
+}
 
 export async function fetchLabelValidationCount(): Promise<LabelValidationCountResponse> {
   const apiUrl = isDevelopment

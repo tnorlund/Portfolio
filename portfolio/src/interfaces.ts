@@ -271,3 +271,6 @@ export type LabelValidationCountResponse = {
     [key: string]: number;
   };
 };
+
+// The API returns an array of single-key objects, e.g. [{ "Merchant A": 10 }, ...]
+export type MerchantCountsResponse = Array<Record<string, number>>;

@@ -13,6 +13,7 @@ import EmbeddingDiagram from "./embedding_diagram";
 import { ReceiptCounts, ImageCounts } from "./DataCounts";
 import LabelValidationChart from "./LabelValidationCount";
 import HuggingFace from "./HuggingFace";
+import MerchantCount from "./MerchantCount";
 import "./Receipt.css";
 
 function Receipt() {
@@ -123,6 +124,7 @@ function Receipt() {
         process and reduce the number of false positives.
       </p>
       <GooglePlaces />
+      <MerchantCount />
 
       <h2>Embedding and Retrieval</h2>
       <p>
@@ -182,20 +184,18 @@ function Receipt() {
         experimenting with transformer-based models available on{" "}
         <strong>Hugging Face</strong>, a platform that hosts a vast library of
         pre-trained models for tasks like token classification, document layout
-        understanding, and more. The most promising model I've found is
+        understanding, and more. The most promising model I've found is{" "}
         <strong>LayoutLM</strong>.
       </p>
       <HuggingFace />
       <p>
         LayoutLM is specifically designed for visually rich documents like
         receipts and invoices. It uses the text and how it relates to the text
-        around it to make predictions.
-      </p>
-      <p>
-        I ended up writing some infrastructure to spin up spot instances on AWS
-        to train the model. I was able to train a model at 10% the cost, but my
-        dataset isn't large enough to get good results. I'll update my results
-        here as I continue to work on this project.
+        around it to make predictions. I ended up writing some infrastructure to
+        spin up spot instances on AWS to train the model. I was able to train a
+        model at 10% the cost, but my dataset isn't large enough to get good
+        results. I'll update my results here as I continue to work on this
+        project.
       </p>
 
       <h1>Frontend</h1>
@@ -253,7 +253,7 @@ function Receipt() {
       </div>
 
       <ReceiptStack />
-      <ReceiptWords />
+      {/* <ReceiptWords /> */}
     </div>
   );
 }

@@ -84,6 +84,8 @@ def handler(event, _):
                 label, counts = future.result()
                 core_label_counts[label] = counts
 
+        # Order the by the key in alphabetical order
+        core_label_counts = dict(sorted(core_label_counts.items()))
         return {
             "statusCode": 200,
             "body": json.dumps(core_label_counts),
