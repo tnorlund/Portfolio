@@ -24,6 +24,9 @@ from .merchant_validation import (
     get_address_similarity,
     get_phone_similarity,
     query_records_by_place_id,
+    collapse_canonical_aliases,
+    persist_alias_updates,
+    merge_place_id_aliases_by_address,
 )
 
 __all__ = [
@@ -52,4 +55,7 @@ __all__ = [
     "get_address_similarity",
     "get_phone_similarity",
     "query_records_by_place_id",
+    "collapse_canonical_aliases",
+    "persist_alias_updates",
+    "merge_place_id_aliases_by_address",
 ]

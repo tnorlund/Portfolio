@@ -266,9 +266,9 @@ def upsert_embeddings_to_pinecone(
             and label.word_id == word_id
         ]
         # label_status — overall state for this word:
-        #    “unvalidated” if none VALID,
-        #    “auto_suggested” if ANY PENDING and none VALID,
-        #    “validated” if at least one VALID
+        #    "unvalidated" if none VALID,
+        #    "auto_suggested" if ANY PENDING and none VALID,
+        #    "validated" if at least one VALID
         if any(
             lbl.validation_status == ValidationStatus.VALID.value
             for lbl in labels
@@ -326,7 +326,19 @@ def upsert_embeddings_to_pinecone(
         confidence = target_word.confidence
         _embedding = _format_word_context_embedding_input(target_word, words)
         left_text, right_text = _parse_left_right_from_formatted(_embedding)
-        merchant_name = metadata.merchant_name
+
+        # Priority: canonical name > regular merchant name
+        if (
+            hasattr(metadata, "canonical_merchant_name")
+            and metadata.canonical_merchant_name
+        ):
+            merchant_name = metadata.canonical_merchant_name
+        else:
+            merchant_name = metadata.merchant_name
+
+        # Standardize the merchant name format
+        if merchant_name:
+            merchant_name = merchant_name.strip().title()
 
         # build the vector entry
         vectors.append(

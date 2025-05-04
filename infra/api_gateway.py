@@ -18,6 +18,7 @@ from routes.receipt_word_tag.infra import receipt_word_tag_lambda
 from routes.word_tag_list.infra import word_tag_list_lambda
 from routes.receipt_word_tags.infra import receipt_word_tags_lambda
 from routes.label_validation_count.infra import label_validation_count_lambda
+from routes.merchant_counts.infra import merchant_counts_lambda
 
 # Detect the current Pulumi stack
 stack = pulumi.get_stack()
@@ -190,6 +191,32 @@ lambda_permission_label_validation_count = aws.lambda_.Permission(
     source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
 )
 
+# /merchant_counts
+integration_merchant_counts = aws.apigatewayv2.Integration(
+    "merchant_counts_lambda_integration",
+    api_id=api.id,
+    integration_type="AWS_PROXY",
+    integration_uri=merchant_counts_lambda.invoke_arn,
+    integration_method="POST",
+    payload_format_version="2.0",
+)
+route_merchant_counts = aws.apigatewayv2.Route(
+    "merchant_counts_route",
+    api_id=api.id,
+    route_key="GET /merchant_counts",
+    target=integration_merchant_counts.id.apply(lambda id: f"integrations/{id}"),
+    opts=pulumi.ResourceOptions(
+        replace_on_changes=["route_key", "target"],
+        delete_before_replace=True,
+    ),
+)
+lambda_permission_merchant_counts = aws.lambda_.Permission(
+    "merchant_counts_lambda_permission",
+    action="lambda:InvokeFunction",
+    function=merchant_counts_lambda.name,
+    principal="apigateway.amazonaws.com",
+    source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
+)
 
 # /receipt_count
 integration_receipt_count = aws.apigatewayv2.Integration(

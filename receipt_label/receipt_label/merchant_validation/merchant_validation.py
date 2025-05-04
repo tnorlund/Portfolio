@@ -3,7 +3,7 @@ import json
 from json import JSONDecodeError
 from datetime import datetime, timezone
 import re
-from collections import defaultdict
+from collections import defaultdict, Counter
 from fuzzywuzzy import fuzz
 
 from receipt_dynamo.entities import (
@@ -830,6 +830,13 @@ def preprocess_for_comparison(text):
 # --- Similarity Functions (from merchant_clustering.py) ---
 
 
+def format_canonical_merchant_name(name: str) -> str:
+    name = name.strip().title()
+    name = re.sub(r"\s*-\s*", " ", name)  # Remove dashes surrounded by space
+    name = re.sub(r"\s+", " ", name)
+    return name
+
+
 def get_name_similarity(name1, name2):
     p_name1 = preprocess_for_comparison(name1)
     p_name2 = preprocess_for_comparison(name2)
@@ -886,7 +893,8 @@ def cluster_by_metadata(metadata_list: List[ReceiptMetadata]):
             record1 = records_without_place_id[i]
             record2 = records_without_place_id[j]
             name_sim = get_name_similarity(
-                record1.merchant_name, record2.merchant_name
+                normalize_text(record1.merchant_name),
+                normalize_text(record2.merchant_name),
             )
             if name_sim < 90:
                 continue
@@ -1120,3 +1128,118 @@ def query_records_by_place_id(place_id: str) -> list[ReceiptMetadata]:
     except Exception as e:
         logger.error(f"Error querying by place_id {place_id}: {e}")
         return []
+
+
+def collapse_canonical_aliases(
+    records: List[ReceiptMetadata],
+) -> List[ReceiptMetadata]:
+    """
+    Collapses near-duplicate canonical merchant names within the same place_id.
+
+    Args:
+        records: List of ReceiptMetadata records already canonicalized
+
+    Returns:
+        List[ReceiptMetadata]: Records whose canonical names were modified
+    """
+
+    updated_records = []
+    grouped = defaultdict(list)
+    for rec in records:
+        pid = getattr(rec, "canonical_place_id", "")
+        if pid:
+            grouped[pid].append(rec)
+
+    for pid, group in grouped.items():
+        name_counter = Counter()
+        name_map = {}
+        for rec in group:
+            name = getattr(rec, "canonical_merchant_name", "").strip()
+            if name:
+                key = (rec.image_id, rec.receipt_id)
+                name_map[key] = (rec, name)
+                name_counter[name] += 1
+
+        if not name_counter:
+            continue
+
+        # Pick the most common name, or shortest if tied
+        preferred = sorted(
+            name_counter.items(), key=lambda x: (-x[1], len(x[0]))
+        )[0][0]
+
+        for _, (rec, current_name) in name_map.items():
+            if current_name != preferred:
+                rec.canonical_merchant_name = preferred
+                updated_records.append(rec)
+
+    return updated_records
+
+
+# --- Alias and Clustering Utilities ---
+
+
+def merge_place_id_aliases_by_address(records: List[ReceiptMetadata]) -> int:
+    """
+    Merges place_ids that point to the same canonical address and similar merchant names.
+
+    Args:
+        records: List of ReceiptMetadata records
+
+    Returns:
+        int: Number of records that had their canonical place_id and name updated
+    """
+    updates = 0
+    grouped_by_address = defaultdict(list)
+
+    # Group by normalized canonical address
+    for rec in records:
+        addr = getattr(rec, "canonical_address", "").strip().lower()
+        if addr:
+            grouped_by_address[addr].append(rec)
+
+    for group in grouped_by_address.values():
+        if len(group) < 2:
+            continue
+
+        place_ids = [
+            r.canonical_place_id for r in group if r.canonical_place_id
+        ]
+        names = [
+            r.canonical_merchant_name
+            for r in group
+            if r.canonical_merchant_name
+        ]
+
+        if not place_ids or not names:
+            continue
+
+        preferred_pid = Counter(place_ids).most_common(1)[0][0]
+        preferred_name = Counter(names).most_common(1)[0][0]
+
+        for rec in group:
+            if rec.canonical_place_id != preferred_pid:
+                rec.canonical_place_id = preferred_pid
+                updates += 1
+            if rec.canonical_merchant_name != preferred_name:
+                rec.canonical_merchant_name = preferred_name
+                updates += 1
+
+    return updates
+
+
+def persist_alias_updates(records: List[ReceiptMetadata]):
+    """
+    Persists alias updates to DynamoDB.
+
+    Args:
+        records: List of ReceiptMetadata records with updated canonical merchant names
+    """
+    if not records:
+        return
+
+    try:
+        # Use the batch update method for efficiency
+        dynamo_client.updateReceiptMetadatas(records)
+    except Exception as e:
+        logger.error(f"Error persisting alias updates: {e}")

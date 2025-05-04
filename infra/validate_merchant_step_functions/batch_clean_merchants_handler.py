@@ -9,6 +9,9 @@ from receipt_label.merchant_validation import (
     choose_canonical_metadata,
     normalize_address,
     update_items_with_canonical,
+    collapse_canonical_aliases,
+    persist_alias_updates,
+    merge_place_id_aliases_by_address,
 )
 
 logger = getLogger()
@@ -68,6 +71,10 @@ def batch_handler(event, context):
     if not all_metadata:
         logger.info("No metadata found to clean.")
         return {"statusCode": 200, "body": json.dumps("No metadata to clean")}
+
+    # Pre-merge place IDs that have the same canonical address
+    merged_count = merge_place_id_aliases_by_address(all_metadata)
+    logger.info(f"Merged {merged_count} alias place_ids based on address.")
 
     # Apply max_records limit if specified
     if max_records and isinstance(max_records, int) and max_records > 0:
@@ -147,6 +154,13 @@ def batch_handler(event, context):
             logger.error(f"Failed processing cluster {i+1}: {e}")
             skipped_clusters += 1
             # Continue with the next cluster
+
+    # 7. Collapse duplicate canonical names within the same place_id
+    updated_aliases = collapse_canonical_aliases(all_metadata)
+    logger.info(f"Collapsed {len(updated_aliases)} canonical alias inconsistencies.")
+    # 8. Persist alias updates to DynamoDB
+    persist_alias_updates(updated_aliases)
+    logger.info(f"Persisted {len(updated_aliases)} alias updates to DynamoDB.")
 
     execution_time = time.time() - start_time
     logger.info(

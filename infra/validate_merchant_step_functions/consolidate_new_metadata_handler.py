@@ -8,6 +8,8 @@ from receipt_label.merchant_validation import (
     normalize_address,
     query_records_by_place_id,
     update_items_with_canonical,
+    query_records_by_canonical_address,
+    merge_place_id_aliases_by_address,
 )
 from receipt_label.utils import get_clients
 
@@ -141,16 +143,56 @@ def consolidate_handler(event, context):
                         "canonical_phone_number": canonical_record.canonical_phone_number
                         or canonical_record.phone_number,
                     }
-
                     logger.info(
                         f"Found existing canonical record for place_id {place_id}"
                     )
                 else:
-                    # Self-canonize
-                    canonical_details = self_canonize_record(metadata)
-                    logger.info(
-                        f"No existing canonical record for place_id {place_id}, self-canonizing"
+                    # Fallback: try matching records by canonical address
+                    normalized_address = normalize_address(metadata.address)
+                    address_matches = query_records_by_canonical_address(
+                        normalized_address
                     )
+
+                    if address_matches:
+                        # Choose the most common canonical name and place_id
+                        from collections import Counter
+
+                        place_id_counter = Counter(
+                            r.canonical_place_id
+                            for r in address_matches
+                            if r.canonical_place_id
+                        )
+                        name_counter = Counter(
+                            r.canonical_merchant_name
+                            for r in address_matches
+                            if r.canonical_merchant_name
+                        )
+
+                        preferred_place_id = (
+                            place_id_counter.most_common(1)[0][0]
+                            if place_id_counter
+                            else metadata.place_id
+                        )
+                        preferred_name = (
+                            name_counter.most_common(1)[0][0]
+                            if name_counter
+                            else metadata.merchant_name
+                        )
+
+                        canonical_details = {
+                            "canonical_place_id": preferred_place_id,
+                            "canonical_merchant_name": preferred_name,
+                            "canonical_address": normalized_address,
+                            "canonical_phone_number": metadata.phone_number,
+                        }
+                        logger.info(
+                            f"Using fallback canonical values from address match"
+                        )
+                    else:
+                        canonical_details = self_canonize_record(metadata)
+                        logger.info(
+                            f"No existing canonical match by address. Self-canonizing."
+                        )
             else:
                 # No place_id, self-canonize
                 canonical_details = self_canonize_record(metadata)
