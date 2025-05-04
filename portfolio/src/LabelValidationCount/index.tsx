@@ -105,7 +105,8 @@ export default function LabelValidationChart() {
         style={{
           display: "flex",
           flexWrap: "wrap",
-          gap: "24px",
+          // rowGap: "2px",
+          columnGap: "24px",
           marginBottom: "1rem",
           //   fontSize: "0.9rem",
           justifyContent: "center",
@@ -115,6 +116,7 @@ export default function LabelValidationChart() {
           <div
             key={status}
             style={{
+              marginTop: "1rem",
               display: "flex",
               alignItems: "center",
               gap: "6px",

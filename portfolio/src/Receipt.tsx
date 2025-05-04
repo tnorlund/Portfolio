@@ -253,7 +253,6 @@ function Receipt() {
       </div>
 
       <ReceiptStack />
-      {/* <ReceiptWords /> */}
     </div>
   );
 }
