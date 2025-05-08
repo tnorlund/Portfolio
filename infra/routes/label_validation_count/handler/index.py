@@ -85,7 +85,7 @@ def handler(event, _):
                 core_label_counts[label] = counts
 
         # Order the by the key in alphabetical order
-        core_label_counts = dict(sorted(core_label_counts.items()))
+        core_label_counts = dict(sorted(core_label_counts.items(), key=lambda x: x[0]))
         return {
             "statusCode": 200,
             "body": json.dumps(core_label_counts),
