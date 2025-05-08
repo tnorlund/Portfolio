@@ -1606,7 +1606,7 @@ def test_listReceiptLineItemAnalyses_with_pagination(
     client = DynamoClient(table_name=dynamodb_table)
 
     # Create a non-mocked client to add real items
-    real_client = boto3.client("dynamodb")
+    real_client = boto3.client("dynamodb", region_name="us-east-1")
 
     # Using valid UUIDs with a common prefix
     uuid_base = "3f52804b-2fad-4e00-92c8-b593da3a8e"
