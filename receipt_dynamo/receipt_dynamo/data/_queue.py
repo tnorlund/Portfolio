@@ -1,6 +1,6 @@
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.entities.queue import Queue, itemToQueue
+from receipt_dynamo.entities.rwl_queue import Queue, itemToQueue
 from receipt_dynamo.entities.queue_job import QueueJob, itemToQueueJob
 
 

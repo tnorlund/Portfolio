@@ -2,7 +2,7 @@ from datetime import datetime
 
 import pytest
 
-from receipt_dynamo.entities.queue import Queue, itemToQueue
+from receipt_dynamo.entities import Queue, itemToQueue
 
 
 @pytest.fixture

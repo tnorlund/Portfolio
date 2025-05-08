@@ -37,8 +37,8 @@ def handler(event, _):
 
             # Initialize DynamoDB client and get receipt details
             client = DynamoClient(dynamodb_table_name)
-            receipt, lines, words, letters, tags, validations, initial_taggings = (
-                client.getReceiptDetails(image_id, receipt_id)
+            receipt, lines, words, letters, tags, labels = client.getReceiptDetails(
+                image_id, receipt_id
             )
 
             # Convert objects to dictionaries and structure the response

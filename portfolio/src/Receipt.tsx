@@ -3,12 +3,16 @@ import Diagram from "./Diagram";
 import Pulumi from "./Pulumi";
 import OpenAI from "./OpenAI";
 import ReceiptStack from "./ReceiptStack";
-import ReceiptWords from "./ReceiptWords";
 import ImageBoundingBox from "./ImageBoundingBox";
 import TypeScriptLogo from "./TypeScriptLogo";
 import ReactLogo from "./ReactLogo";
+import Pinecone from "./Pinecone";
+import GooglePlaces from "./GooglePlaces";
+import EmbeddingDiagram from "./embedding_diagram";
 import { ReceiptCounts, ImageCounts } from "./DataCounts";
-import TagValidationChart from "./components/TagValidationChart";
+import LabelValidationChart from "./LabelValidationCount";
+import HuggingFace from "./HuggingFace";
+import MerchantCount from "./MerchantCount";
 import "./Receipt.css";
 
 function Receipt() {
@@ -102,24 +106,95 @@ function Receipt() {
       </ul>
       <Diagram />
 
-      <h1>ChatGPT</h1>
+      <h1>Semantic Labeling</h1>
 
-      <h2>Automated Labeling</h2>
       <p>
-        One major time-saver in this project was using ChatGPT's API to label
-        the words on each receipt automatically. I refined how the prompts were
-        written and the data sent to ChatGPT. This automation reduces the need
-        for obvious inconsistencies and speeds up the labeling process.
+        I used ChatGPT to automate the assigning and validation of labels for
+        receipt text using a combination of OpenAI's embedding API, batch
+        completion API, and aa multipass validation workflow. This pipeline
+        minimizes costs, maximizes label accuracy, and reduces the need for
+        manual review.
       </p>
-
-      <TagValidationChart />
-
-      <h2>Manual Labeling</h2>
+      <h2>Finding the Merchant</h2>
       <p>
-        ChatGPT drastically reduces the time I spend on labeling, but it's not
-        good enough to replace human oversight entirely. I still need to
-        manually verify the labels to catch any mistakes. See the chart above
-        for a breakdown of the labels and their accuracy.
+        After using Apple's OCR to extract words, I used a combination of the
+        Google Places API and OpenAI's Agents SDK to find the merchant behind
+        the receipt. The is allows me to add more context to the labelling
+        process and reduce the number of false positives.
+      </p>
+      <GooglePlaces />
+      <MerchantCount />
+
+      <h2>Embedding and Retrieval</h2>
+      <p>
+        I used OpenAI's embedding API to convert receipt words into
+        high-dimensional vectors that capture semantic meaning. I used the batch
+        API to embed large chunks of words at once, which significantly reduced
+        cost and request overhead. These embeddings are stored in Pinecone, a
+        vector database.
+      </p>
+      <Pinecone />
+      <p>
+        Vector databases are a type of database that store data in a
+        high-dimensional space. They are used to store embeddings and retrieve
+        similar items. This allows me to retrieve similar words and see how
+        they're used.
+      </p>
+      <EmbeddingDiagram />
+
+      <h2>Batch Validation with OpenAI</h2>
+
+      <p>
+        After labels were applied, I used OpenAI's batch API to validate them.
+        The batch process is done in three passes:
+      </p>
+      <h3>First Pass</h3>
+      <p>
+        The first pass is a simple validation of the labels. Given the word and
+        the proposed label, the model will either approve or reject the label.
+        If rejected, it provides a recommendation for the correct label.
+      </p>
+      <h3>Second Pass</h3>
+      <p>
+        The second pass uses the list of invalid labels from the first pass to
+        retrieve examples of the correct label. It then uses the retrieved
+        examples to generate a new label for the word.
+      </p>
+      <h3>Third Pass</h3>
+      <p>
+        The third pass compares similar words and their labels. After providing
+        valid and invalid examples, ChatGPT either validates that the label is a
+        part of the corpus or that it needs manual review.
+      </p>
+      <LabelValidationChart />
+      <h2>The Feedback Loop</h2>
+      <p>
+        This process is repeated to continuously improve the accuracy of the
+        labels. I'm able to copy all labels that require manual review to ask
+        ChatGPT for common errors. As part of this loop, I use{" "}
+        <strong>RAGAS</strong> to automatically evaluate how faithful and
+        relevant the model’s responses are to the retrieved context. This gives
+        me a structured way to identify blind spots and quantify improvements as
+        I embed newly validated examples back into the retrieval system.
+      </p>
+      <h1>Training My Own Model</h1>
+      <p>
+        To push the limits of automated receipt understanding, I've been
+        experimenting with transformer-based models available on{" "}
+        <strong>Hugging Face</strong>, a platform that hosts a vast library of
+        pre-trained models for tasks like token classification, document layout
+        understanding, and more. The most promising model I've found is{" "}
+        <strong>LayoutLM</strong>.
+      </p>
+      <HuggingFace />
+      <p>
+        LayoutLM is specifically designed for visually rich documents like
+        receipts and invoices. It uses the text and how it relates to the text
+        around it to make predictions. I ended up writing some infrastructure to
+        spin up spot instances on AWS to train the model. I was able to train a
+        model at 10% the cost, but my dataset isn't large enough to get good
+        results. I'll update my results here as I continue to work on this
+        project.
       </p>
 
       <h1>Frontend</h1>
@@ -156,9 +231,10 @@ function Receipt() {
       <p>
         I am currently labeling the outliers manually to catch any inaccuracies.
         At the same time, I'm developing a custom classifier to replace both
-        ChatGPT's automated labeling and Apple's OCR system. By reducing reliance on
-        external tools, this approach will streamline the validation process and
-        deliver faster, more reliable performance across any platform.
+        ChatGPT's automated labeling and Apple's OCR system. By reducing
+        reliance on external tools, this approach will streamline the validation
+        process and deliver faster, more reliable performance across any
+        platform.
       </p>
       <h2>A New Era of Coding</h2>
       <p>
@@ -176,7 +252,6 @@ function Receipt() {
       </div>
 
       <ReceiptStack />
-      <ReceiptWords />
     </div>
   );
 }

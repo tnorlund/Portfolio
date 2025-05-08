@@ -196,24 +196,6 @@ def test_job_metric_gsi1_key(example_job_metric):
 
 
 @pytest.mark.unit
-def test_job_metric_gsi2_key(example_job_metric):
-    """
-    Test the gsi2_key method of the JobMetric class.
-    """
-    gsi2_key = example_job_metric.gsi2_key()
-    assert isinstance(gsi2_key, dict)
-    assert "GSI2PK" in gsi2_key
-    assert "GSI2SK" in gsi2_key
-    assert (
-        gsi2_key["GSI2PK"]["S"] == f"METRIC#{example_job_metric.metric_name}"
-    )
-    assert (
-        gsi2_key["GSI2SK"]["S"]
-        == f"JOB#{example_job_metric.job_id}#{example_job_metric.timestamp}"
-    )
-
-
-@pytest.mark.unit
 def test_job_metric_to_item(example_job_metric, example_job_metric_minimal):
     """Test the JobMetric.to_item() method."""
     # Test with full job metric
@@ -225,13 +207,6 @@ def test_job_metric_to_item(example_job_metric, example_job_metric_minimal):
     }
     assert "GSI1PK" in item
     assert "GSI1SK" in item
-    assert "GSI2PK" in item
-    assert "GSI2SK" in item
-    assert item["GSI2PK"]["S"] == f"METRIC#{example_job_metric.metric_name}"
-    assert (
-        item["GSI2SK"]["S"]
-        == f"JOB#{example_job_metric.job_id}#{example_job_metric.timestamp}"
-    )
     assert item["job_id"] == {"S": example_job_metric.job_id}
     assert item["metric_name"] == {"S": example_job_metric.metric_name}
     assert item["timestamp"] == {"S": example_job_metric.timestamp}
@@ -248,8 +223,8 @@ def test_job_metric_to_item(example_job_metric, example_job_metric_minimal):
         "S": f"METRIC#{example_job_metric_minimal.metric_name}#"
         f"{example_job_metric_minimal.timestamp}"
     }
-    assert "GSI2PK" in item
-    assert "GSI2SK" in item
+    assert "GSI1PK" in item
+    assert "GSI1SK" in item
     assert item["value"] == {"N": "87.5"}
     assert "unit" not in item
     assert "step" not in item

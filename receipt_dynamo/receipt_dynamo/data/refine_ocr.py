@@ -6,8 +6,8 @@ This module provides functionality to refine OCR results by:
 2. Mapping tags from old OCR results to new OCR results
 3. Preserving human-validated tags
 
-The approach uses a delete-and-recreate strategy where all old OCR entities 
-(lines, words, letters) are deleted and replaced with new ones, while 
+The approach uses a delete-and-recreate strategy where all old OCR entities
+(lines, words, letters) are deleted and replaced with new ones, while
 maintaining tag information.
 """
 
@@ -117,8 +117,7 @@ def refine_receipt_ocr(
             old_receipt_words,
             old_receipt_letters,
             old_receipt_word_tags,
-            old_gpt_validations,
-            old_gpt_initial_taggings,
+            old_receipt_word_labels,
         ) = client.getReceiptDetails(image_id, receipt_id)
     except Exception as e:
         if debug:

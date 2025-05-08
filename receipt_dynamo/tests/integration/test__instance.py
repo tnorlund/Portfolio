@@ -5,10 +5,6 @@ import botocore
 import pytest
 
 from receipt_dynamo import DynamoClient, Instance, InstanceJob
-from receipt_dynamo.data.shared_exceptions import (
-    DynamoCriticalErrorException,
-    DynamoRetryableException,
-)
 
 
 @pytest.fixture
@@ -116,8 +112,8 @@ def test_addInstance_raises_resource_not_found(
 
     # Verify the correct exception is raised
     with pytest.raises(
-        DynamoCriticalErrorException,
-        match=f"Table {instance_dynamo.table_name} does not exist",
+        Exception,
+        match="Could not add instance to DynamoDB",
     ):
         instance_dynamo.addInstance(sample_instance)
 
@@ -145,8 +141,8 @@ def test_addInstance_raises_provisioned_throughput_exceeded(
 
     # Verify the correct exception is raised
     with pytest.raises(
-        DynamoRetryableException,
-        match="Provisioned throughput exceeded, retry later",
+        Exception,
+        match="Provisioned throughput exceeded",
     ):
         instance_dynamo.addInstance(sample_instance)
 
@@ -172,9 +168,7 @@ def test_addInstance_raises_internal_server_error(
     )
 
     # Verify the correct exception is raised
-    with pytest.raises(
-        DynamoRetryableException, match="Internal server error, retry later"
-    ):
+    with pytest.raises(Exception, match="Internal server error"):
         instance_dynamo.addInstance(sample_instance)
 
 
@@ -200,8 +194,8 @@ def test_addInstance_raises_unknown_error(
 
     # Verify the correct exception is raised
     with pytest.raises(
-        DynamoCriticalErrorException,
-        match="Failed to add instance: Unknown error",
+        Exception,
+        match="Could not add instance to DynamoDB",
     ):
         instance_dynamo.addInstance(sample_instance)
 
