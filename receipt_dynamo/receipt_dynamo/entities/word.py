@@ -18,7 +18,7 @@ class Word:
 
     This class encapsulates word-related information such as its unique
     identifiers, text content, geometric properties (bounding box and corner
-    coordinates), rotation angles, detection confidence, tags, character
+    coordinates), rotation angles, detection confidence, character
     histogram, and character count. It supports operations such as generating
     DynamoDB keys and applying geometric transformations including translation,
     scaling, rotation, shear, and affine warping.
@@ -36,7 +36,6 @@ class Word:
         angle_degrees (float): The angle of the word in degrees.
         angle_radians (float): The angle of the word in radians.
         confidence (float): The confidence level of the word (between 0 and 1).
-        tags (list[str]): A list of tags associated with the word.
         histogram (dict): A histogram representing character frequencies in the word.
         num_chars (int): The number of characters in the word.
     """
@@ -56,7 +55,6 @@ class Word:
         angle_radians: float,
         confidence: float,
         extracted_data: dict = None,
-        tags: list[str] = None,
         histogram: dict = None,
         num_chars: int = None,
     ):
@@ -76,7 +74,6 @@ class Word:
             angle_radians (float): The angle of the word in radians.
             confidence (float): The confidence of the word (0 < confidence <= 1).
             extracted_data (dict, optional): The extracted data of the word provided by Apple's NL API.
-            tags (list[str], optional): The tags of the word. Defaults to None.
         Raises:
             ValueError: If any parameter is of an invalid type or has an invalid value.
         """
@@ -133,10 +130,6 @@ class Word:
         if extracted_data is not None and not isinstance(extracted_data, dict):
             raise ValueError("extracted_data must be a dict")
         self.extracted_data = extracted_data
-
-        if tags is not None and not isinstance(tags, list):
-            raise ValueError("tags must be a list")
-        self.tags = tags if tags is not None else []
 
         if histogram is None:
             self.histogram = compute_histogram(self.text)
@@ -240,9 +233,6 @@ class Word:
             },
             "num_chars": {"N": str(self.num_chars)},
         }
-
-        if self.tags:
-            item["tags"] = {"SS": self.tags}
 
         return item
 
@@ -816,7 +806,6 @@ class Word:
         yield "angle_radians", self.angle_radians
         yield "confidence", self.confidence
         yield "extracted_data", self.extracted_data
-        yield "tags", self.tags
         yield "histogram", self.histogram
         yield "num_chars", self.num_chars
 
@@ -844,7 +833,6 @@ class Word:
             and self.angle_degrees == other.angle_degrees
             and self.angle_radians == other.angle_radians
             and self.confidence == other.confidence
-            and self.tags == other.tags
             and self.extracted_data == other.extracted_data
         )
 
@@ -868,8 +856,11 @@ class Word:
                 self.angle_degrees,
                 self.angle_radians,
                 self.confidence,
-                tuple(self.tags),
-                tuple(self.extracted_data.items()) if self.extracted_data else None,
+                (
+                    tuple(self.extracted_data.items())
+                    if self.extracted_data
+                    else None
+                ),
             )
         )
 
@@ -933,13 +924,18 @@ def itemToWord(item: dict) -> Word:
             angle_degrees=float(item["angle_degrees"]["N"]),
             angle_radians=float(item["angle_radians"]["N"]),
             confidence=float(item["confidence"]["N"]),
-            tags=item.get("tags", {}).get("SS", []),
             extracted_data=(
                 None
                 if "NULL" in item.get("extracted_data", {})
                 else {
-                    "type": item.get("extracted_data", {}).get("M", {}).get("type", {}).get("S"),
-                    "value": item.get("extracted_data", {}).get("M", {}).get("value", {}).get("S")
+                    "type": item.get("extracted_data", {})
+                    .get("M", {})
+                    .get("type", {})
+                    .get("S"),
+                    "value": item.get("extracted_data", {})
+                    .get("M", {})
+                    .get("value", {})
+                    .get("S"),
                 }
             ),
         )

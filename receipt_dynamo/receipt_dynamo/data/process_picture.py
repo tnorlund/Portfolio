@@ -5,7 +5,7 @@ import os
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Tuple
 
 import boto3
 from botocore.exceptions import ClientError
@@ -28,7 +28,6 @@ from receipt_dynamo.entities import (
     Receipt,
     ReceiptLetter,
     ReceiptLine,
-    ReceiptWindow,
     ReceiptWord,
 )
 
@@ -65,7 +64,6 @@ def process_picture(
     dynamo_receipt_lines = []
     dynamo_receipt_words = []
     dynamo_receipt_letters = []
-    dynamo_receipt_windows = []
     print(f"Processing {len(image_paths)} images: ", end="", flush=True)
     for image_path in image_paths:
         (
@@ -77,7 +75,6 @@ def process_picture(
             refined_lines,
             refined_words,
             refined_letters,
-            windows,
         ) = _get_ocr_and_windows(image_path)
         image_id = refined_lines[0].image_id
         image = PIL_Image.open(image_path)
@@ -230,77 +227,6 @@ def process_picture(
                     cdn_s3_key=f"{cdn_prefix}/{image_id}_RECEIPT_{i:05d}.jpg",
                 )
             )
-
-        # Get the matching receipt window.
-        receipt_window = next(
-            (window for window in windows if window["receipt_id"] == i), None
-        )
-        if receipt_window is None:
-            raise ValueError(f"Receipt window not found for receipt {i}")
-        # Build each receipt window object
-        for corner_name in [
-            "top_left",
-            "top_right",
-            "bottom_left",
-            "bottom_right",
-        ]:
-            window = receipt_window[corner_name]
-            # Upload the window image to the raw bucket
-            try:
-                s3.put_object(
-                    Bucket=raw_bucket_name,
-                    Key=f"{raw_prefix}/{image_id}_RECEIPT_{i:05d}_RECEIPT_WINDOW_{corner_name.upper()}.png",
-                    Body=window["image"].tobytes(),
-                    ContentType="image/png",
-                )
-            except ClientError as e:
-                error_code = e.response["Error"]["Code"]
-                if error_code == "NoSuchBucket":
-                    raise ValueError(f"Bucket {raw_bucket_name} not found")
-                elif error_code == "AccessDenied":
-                    raise ValueError(
-                        f"Access denied to s3://{raw_bucket_name}/{raw_prefix}"
-                    )
-                else:
-                    raise
-
-            # Upload the window image to the cdn bucket as a JPEG
-            buffer = BytesIO()
-            window["image"].save(buffer, format="JPEG", quality=85)
-            buffer.seek(0)
-            jpeg_data = buffer.getvalue()
-            try:
-                s3.put_object(
-                    Bucket=cdn_bucket_name,
-                    Key=f"{cdn_prefix}/{image_id}_RECEIPT_{i:05d}_RECEIPT_WINDOW_{corner_name.upper()}.jpg",
-                    Body=jpeg_data,
-                    ContentType="image/jpeg",
-                )
-            except ClientError as e:
-                error_code = e.response["Error"]["Code"]
-                if error_code == "NoSuchBucket":
-                    raise ValueError(f"Bucket {cdn_bucket_name} not found")
-                elif error_code == "AccessDenied":
-                    raise ValueError(
-                        f"Access denied to s3://{cdn_bucket_name}/{cdn_prefix}"
-                    )
-                else:
-                    raise
-
-            # Build the receipt window object
-            dynamo_receipt_windows.append(
-                ReceiptWindow(
-                    image_id=image_id,
-                    receipt_id=i,
-                    cdn_s3_bucket=cdn_bucket_name,
-                    cdn_s3_key=f"{cdn_prefix}/{image_id}_RECEIPT_{i:05d}_RECEIPT_WINDOW_{corner_name.upper()}.jpg",
-                    corner_name=corner_name,
-                    width=window["width"],
-                    height=window["height"],
-                    inner_corner_coordinates=window["inner_corner"],
-                    gpt_guess=None,
-                )
-            )
         print(".", end="", flush=True)
     print()  # End the line after all chunks are processed.
 
@@ -327,11 +253,6 @@ def process_picture(
         dynamo_receipt_letters,
         "ReceiptLetters",
     )
-    _upload_entities_in_chunks(
-        dynamo_client.addReceiptWindows,
-        dynamo_receipt_windows,
-        "ReceiptWindows",
-    )
 
 
 def _upload_entities_in_chunks(upload_method, entities, entity_name):
@@ -348,7 +269,16 @@ def _upload_entities_in_chunks(upload_method, entities, entity_name):
 
 def _get_ocr_and_windows(
     image_path: Path,
-) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+) -> Tuple[
+    list[PIL_Image.Image],
+    list[dict],
+    list[ReceiptLine],
+    list[ReceiptWord],
+    list[ReceiptLetter],
+    list[ReceiptLine],
+    list[ReceiptWord],
+    list[ReceiptLetter],
+]:
     """ """
     # Raise an error if the image path does not exist.
     if not image_path.exists():
@@ -383,8 +313,6 @@ def _get_ocr_and_windows(
     refined_lines = []
     refined_words = []
     refined_letters = []
-    # The cluster will also have it's own windows.
-    windows = []
     for cluster_id, cluster in clusters.items():
         warp_image_path = image_path.with_suffix("").with_name(
             f"{image_path.stem}_RECEIPT_{cluster_id}.png"
@@ -536,20 +464,6 @@ def _get_ocr_and_windows(
             )
             letter.image_id = image_id
 
-        # Crop each region from the original image.
-        windows.append(
-            {
-                **extract_and_save_corner_windows(
-                    image=image,
-                    receipt_box_corners=receipt_box_corners,
-                    offset_distance=300,
-                    max_dim=512,
-                ),
-                "image_id": image_id,
-                "receipt_id": cluster_id + 1,
-            }
-        )
-
     return (
         receipt_images,
         receipt_boxes,
@@ -559,7 +473,6 @@ def _get_ocr_and_windows(
         refined_lines,
         refined_words,
         refined_letters,
-        windows,
     )
 
 

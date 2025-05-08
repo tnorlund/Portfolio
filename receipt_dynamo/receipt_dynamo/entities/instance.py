@@ -40,7 +40,7 @@ class Instance:
         """Initializes a new Instance object for DynamoDB.
 
         Args:
-            instance_id (str): UUID identifying the instance.
+            instance_id (str): Amazon EC2 instance ID.
             instance_type (str): The EC2 instance type.
             gpu_count (int): Number of GPUs on the instance.
             status (str): The current status of the instance.
@@ -53,7 +53,8 @@ class Instance:
         Raises:
             ValueError: If any parameter is of an invalid type or has an invalid value.
         """
-        assert_valid_uuid(instance_id)
+        if not isinstance(instance_id, str) or not instance_id:
+            raise ValueError("instance_id must be a non-empty string")
         self.instance_id = instance_id
 
         if not isinstance(instance_type, str) or not instance_type:

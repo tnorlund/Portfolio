@@ -1,0 +1,4 @@
+# Prevent git operations
+git commit
+git push
+git add 

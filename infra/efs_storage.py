@@ -85,17 +85,26 @@ class EFSStorage:
             opts=opts,
         )
 
-        # Create mount targets in each subnet
-        self.mount_targets = []
-        for i, subnet_id in enumerate(subnet_ids):
-            mount_target = aws.efs.MountTarget(
-                f"{name}-efs-mount-target-{i}",
-                file_system_id=self.file_system.id,
-                subnet_id=subnet_id,
-                security_groups=[self.security_group.id],
-                opts=opts,
-            )
-            self.mount_targets.append(mount_target)
+        # Create mount targets in each subnet using apply
+        def create_mount_targets(resolved_subnet_ids):
+            mount_targets = []
+            for i, subnet_id in enumerate(resolved_subnet_ids):
+                mt = aws.efs.MountTarget(
+                    f"{name}-efs-mount-target-{i}",
+                    file_system_id=self.file_system.id,
+                    subnet_id=subnet_id,
+                    security_groups=[self.security_group.id],
+                    opts=ResourceOptions(
+                        parent=self.file_system
+                    ),  # Ensure parent is set correctly
+                )
+                mount_targets.append(mt)
+            return mount_targets
+
+        # Apply the function to the subnet_ids Output
+        # Note: This Output won't be directly iterable,
+        # but we can pass it to other resources that accept Output[List[MountTarget]] if needed.
+        self.mount_targets_output = subnet_ids.apply(create_mount_targets)
 
         # Create an access point for shared training data
         self.training_access_point = aws.efs.AccessPoint(
@@ -195,5 +204,9 @@ class EFSStorage:
 
         pulumi.export(f"{name}_efs_file_system_id", self.file_system_id)
         pulumi.export(f"{name}_efs_dns_name", self.file_system_dns_name)
-        pulumi.export(f"{name}_efs_training_ap_id", self.training_access_point_id)
-        pulumi.export(f"{name}_efs_checkpoints_ap_id", self.checkpoints_access_point_id)
+        pulumi.export(
+            f"{name}_efs_training_ap_id", self.training_access_point_id
+        )
+        pulumi.export(
+            f"{name}_efs_checkpoints_ap_id", self.checkpoints_access_point_id
+        )

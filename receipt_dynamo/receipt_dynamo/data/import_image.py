@@ -4,15 +4,12 @@ import os
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import (
-    GPTInitialTagging,
-    GPTValidation,
     Image,
     Letter,
     Line,
     Receipt,
     ReceiptLetter,
     ReceiptLine,
-    ReceiptWindow,
     ReceiptWord,
     ReceiptWordTag,
     Word,
@@ -56,9 +53,6 @@ def import_image(table_name: str, json_path: str) -> None:
         "word_tags": [WordTag(**item) for item in data["word_tags"]],
         "letters": [Letter(**item) for item in data["letters"]],
         "receipts": [Receipt(**item) for item in data["receipts"]],
-        "receipt_windows": [
-            ReceiptWindow(**item) for item in data["receipt_windows"]
-        ],
         "receipt_lines": [
             ReceiptLine(**item) for item in data["receipt_lines"]
         ],
@@ -70,12 +64,6 @@ def import_image(table_name: str, json_path: str) -> None:
         ],
         "receipt_letters": [
             ReceiptLetter(**item) for item in data["receipt_letters"]
-        ],
-        "gpt_initial_taggings": [
-            GPTInitialTagging(**item) for item in data["gpt_initial_taggings"]
-        ],
-        "gpt_validations": [
-            GPTValidation(**item) for item in data["gpt_validations"]
         ],
     }
 
@@ -98,9 +86,6 @@ def import_image(table_name: str, json_path: str) -> None:
     if entities["receipts"]:
         dynamo_client.addReceipts(entities["receipts"])
 
-    if entities["receipt_windows"]:
-        dynamo_client.addReceiptWindows(entities["receipt_windows"])
-
     if entities["receipt_lines"]:
         dynamo_client.addReceiptLines(entities["receipt_lines"])
 
@@ -112,9 +97,3 @@ def import_image(table_name: str, json_path: str) -> None:
 
     if entities["receipt_letters"]:
         dynamo_client.addReceiptLetters(entities["receipt_letters"])
-
-    if entities["gpt_initial_taggings"]:
-        dynamo_client.addGPTInitialTaggings(entities["gpt_initial_taggings"])
-
-    if entities["gpt_validations"]:
-        dynamo_client.addGPTValidations(entities["gpt_validations"])

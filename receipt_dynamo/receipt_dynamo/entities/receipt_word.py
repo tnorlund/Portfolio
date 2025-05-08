@@ -8,6 +8,7 @@ from receipt_dynamo.entities.util import (
     assert_valid_uuid,
     compute_histogram,
 )
+from receipt_dynamo.constants import EmbeddingStatus
 
 
 class ReceiptWord:
@@ -16,7 +17,7 @@ class ReceiptWord:
 
     This class encapsulates receipt word-related information such as the receipt identifier,
     image UUID, line identifier, word identifier, text content, geometric properties, rotation angles,
-    detection confidence, and optional tags. It is designed to support operations such as generating
+    detection confidence, and character statistics. It is designed to support operations such as generating
     DynamoDB keys (including secondary indexes) and converting the receipt word to a DynamoDB item.
 
     Attributes:
@@ -34,7 +35,7 @@ class ReceiptWord:
         angle_radians (float): The angle of the receipt word in radians.
         confidence (float): The confidence level of the receipt word (between 0 and 1).
         extracted_data (dict): The extracted data of the receipt word provided by Apple's NL API.
-        tags (list[str]): Optional tags associated with the receipt word.
+        embedding_status (str): The status of the embedding for the receipt word.
         histogram (dict): A histogram representing character frequencies in the text.
         num_chars (int): The number of characters in the receipt word.
     """
@@ -55,9 +56,9 @@ class ReceiptWord:
         angle_radians: float,
         confidence: float,
         extracted_data: dict = None,
-        tags: list[str] = None,
         histogram: dict = None,
         num_chars: int = None,
+        embedding_status: EmbeddingStatus | str = EmbeddingStatus.NONE,
     ):
         """
         Initializes a new ReceiptWord object for DynamoDB.
@@ -76,7 +77,7 @@ class ReceiptWord:
             angle_degrees (float): The angle of the receipt word in degrees.
             angle_radians (float): The angle of the receipt word in radians.
             confidence (float): The confidence level of the receipt word (between 0 and 1).
-            tags (list[str], optional): A list of tags associated with the receipt word.
+            embedding_status (EmbeddingStatus | str): The status of the embedding for the receipt word.
             histogram (dict, optional): A histogram representing character frequencies in the text.
             num_chars (int, optional): The number of characters in the receipt word.
 
@@ -139,14 +140,26 @@ class ReceiptWord:
             raise ValueError("extracted_data must be a dict")
         self.extracted_data = extracted_data
 
-        if tags is not None and not isinstance(tags, list):
-            raise ValueError("tags must be a list")
-        self.tags = tags if tags is not None else []
-
         self.histogram = (
             compute_histogram(self.text) if histogram is None else histogram
         )
         self.num_chars = len(text) if num_chars is None else num_chars
+
+        # Normalize and validate embedding_status (allow enum or string)
+        if isinstance(embedding_status, EmbeddingStatus):
+            status_value = embedding_status.value
+        elif isinstance(embedding_status, str):
+            status_value = embedding_status
+        else:
+            raise ValueError(
+                "embedding_status must be a string or EmbeddingStatus enum"
+            )
+        valid_values = [s.value for s in EmbeddingStatus]
+        if status_value not in valid_values:
+            raise ValueError(
+                f"embedding_status must be one of: {', '.join(valid_values)}\nGot: {status_value}"
+            )
+        self.embedding_status = status_value
 
     def key(self) -> dict:
         """
@@ -159,6 +172,22 @@ class ReceiptWord:
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {
                 "S": (
+                    f"RECEIPT#{self.receipt_id:05d}#"
+                    f"LINE#{self.line_id:05d}#"
+                    f"WORD#{self.word_id:05d}"
+                )
+            },
+        }
+
+    def gsi1_key(self) -> dict:
+        """
+        Generates the secondary index key for the receipt word.
+        """
+        return {
+            "GSI1PK": {"S": f"EMBEDDING_STATUS#{self.embedding_status}"},
+            "GSI1SK": {
+                "S": (
+                    f"IMAGE#{self.image_id}#"
                     f"RECEIPT#{self.receipt_id:05d}#"
                     f"LINE#{self.line_id:05d}#"
                     f"WORD#{self.word_id:05d}"
@@ -185,6 +214,24 @@ class ReceiptWord:
             },
         }
 
+    def gsi3_key(self) -> dict:
+        """
+        Generates the secondary index key for the receipt word.
+
+        Returns:
+            dict: The secondary index key for the receipt word.
+        """
+        return {
+            "GSI3PK": {"S": f"IMAGE#{self.image_id}"},
+            "GSI3SK": {
+                "S": (
+                    f"RECEIPT#{self.receipt_id:05d}#"
+                    f"LINE#{self.line_id:05d}#"
+                    f"WORD#{self.word_id:05d}"
+                )
+            },
+        }
+
     def to_item(self) -> dict:
         """
         Converts the ReceiptWord object to a DynamoDB item.
@@ -192,9 +239,11 @@ class ReceiptWord:
         Returns:
             dict: A dictionary representing the ReceiptWord object as a DynamoDB item.
         """
-        item = {
+        return {
             **self.key(),
+            **self.gsi1_key(),
             **self.gsi2_key(),
+            **self.gsi3_key(),
             "TYPE": {"S": "RECEIPT_WORD"},
             "text": {"S": self.text},
             "bounding_box": {
@@ -237,10 +286,12 @@ class ReceiptWord:
             "angle_radians": {"N": _format_float(self.angle_radians, 18, 20)},
             "confidence": {"N": _format_float(self.confidence, 2, 2)},
             "extracted_data": (
-                {"M": {
-                    "type": {"S": self.extracted_data["type"]},
-                    "value": {"S": self.extracted_data["value"]},
-                }}
+                {
+                    "M": {
+                        "type": {"S": self.extracted_data["type"]},
+                        "value": {"S": self.extracted_data["value"]},
+                    }
+                }
                 if self.extracted_data
                 else {"NULL": True}
             ),
@@ -248,10 +299,8 @@ class ReceiptWord:
                 "M": {k: {"N": str(v)} for k, v in self.histogram.items()}
             },
             "num_chars": {"N": str(self.num_chars)},
+            "embedding_status": {"S": self.embedding_status},
         }
-        if self.tags:
-            item["tags"] = {"SS": self.tags}
-        return item
 
     def warp_transform(
         self,
@@ -384,7 +433,8 @@ class ReceiptWord:
             f"bottom_left={self.bottom_left}, "
             f"angle_degrees={self.angle_degrees}, "
             f"angle_radians={self.angle_radians}, "
-            f"confidence={self.confidence}"
+            f"confidence={self.confidence}, "
+            f"embedding_status='{self.embedding_status}'"
             f")"
         )
 
@@ -413,9 +463,9 @@ class ReceiptWord:
             and self.bottom_left == other.bottom_left
             and self.angle_degrees == other.angle_degrees
             and self.angle_radians == other.angle_radians
-            and self.tags == other.tags
             and self.confidence == other.confidence
             and self.extracted_data == other.extracted_data
+            and self.embedding_status == other.embedding_status
         )
 
     def __iter__(self) -> Generator[Tuple[str, any], None, None]:
@@ -437,11 +487,11 @@ class ReceiptWord:
         yield "bottom_left", self.bottom_left
         yield "angle_degrees", self.angle_degrees
         yield "angle_radians", self.angle_radians
-        yield "tags", self.tags
         yield "extracted_data", self.extracted_data
         yield "confidence", self.confidence
         yield "histogram", self.histogram
         yield "num_chars", self.num_chars
+        yield "embedding_status", self.embedding_status
 
     def calculate_centroid(self) -> Tuple[float, float]:
         """
@@ -504,8 +554,8 @@ class ReceiptWord:
                 self.angle_degrees,
                 self.angle_radians,
                 self.confidence,
-                tuple(self.tags),
                 self.extracted_data,
+                self.embedding_status,
             )
         )
 
@@ -548,7 +598,7 @@ class ReceiptWord:
             <= self.bounding_box["y"] + self.bounding_box["height"]
         )
 
-    def diff(self, other: 'ReceiptWord') -> dict:
+    def diff(self, other: "ReceiptWord") -> dict:
         """
         Compare this ReceiptWord with another and return their differences.
 
@@ -568,16 +618,13 @@ class ReceiptWord:
                     for k in all_keys:
                         if value.get(k) != other_value.get(k):
                             diff[k] = {
-                                'self': value.get(k),
-                                'other': other_value.get(k)
+                                "self": value.get(k),
+                                "other": other_value.get(k),
                             }
                     if diff:
                         differences[attr] = dict(sorted(diff.items()))
                 else:
-                    differences[attr] = {
-                        'self': value,
-                        'other': other_value
-                    }
+                    differences[attr] = {"self": value, "other": other_value}
         return differences
 
 
@@ -611,6 +658,13 @@ def itemToReceiptWord(item: dict) -> ReceiptWord:
         missing_keys = required_keys - set(item.keys())
         raise ValueError(f"Item is missing required keys: {missing_keys}")
     try:
+        # Safely extract embedding_status string from DynamoDB item (default to NONE)
+        es_attr = item.get("embedding_status")
+        if isinstance(es_attr, dict):
+            es_val = es_attr.get("S", EmbeddingStatus.NONE.value)
+        else:
+            es_val = EmbeddingStatus.NONE.value
+
         return ReceiptWord(
             receipt_id=int(item["SK"]["S"].split("#")[1]),
             image_id=item["PK"]["S"].split("#")[1],
@@ -640,15 +694,21 @@ def itemToReceiptWord(item: dict) -> ReceiptWord:
             angle_degrees=float(item["angle_degrees"]["N"]),
             angle_radians=float(item["angle_radians"]["N"]),
             confidence=float(item["confidence"]["N"]),
-            tags=item.get("tags", {}).get("SS", []),
             extracted_data=(
                 None
                 if "NULL" in item.get("extracted_data", {})
                 else {
-                    "type": item.get("extracted_data", {}).get("M", {}).get("type", {}).get("S"),
-                    "value": item.get("extracted_data", {}).get("M", {}).get("value", {}).get("S")
+                    "type": item.get("extracted_data", {})
+                    .get("M", {})
+                    .get("type", {})
+                    .get("S"),
+                    "value": item.get("extracted_data", {})
+                    .get("M", {})
+                    .get("value", {})
+                    .get("S"),
                 }
             ),
+            embedding_status=es_val,
         )
     except (KeyError, ValueError) as e:
         raise ValueError("Error converting item to ReceiptWord") from e
