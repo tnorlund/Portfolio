@@ -63,7 +63,7 @@ def test_addReceiptLineItemAnalysis_success(
 
     # Assert
     # Verify the item was added by retrieving it
-    response = boto3.client("dynamodb").get_item(
+    response = boto3.client("dynamodb", region_name="us-east-1").get_item(
         TableName=dynamodb_table,
         Key={
             "PK": {"S": f"IMAGE#{sample_receipt_line_item_analysis.image_id}"},
@@ -234,7 +234,7 @@ def test_addReceiptLineItemAnalyses_success(
     # Assert
     # Verify the items were added by retrieving them
     for analysis in analyses:
-        response = boto3.client("dynamodb").get_item(
+        response = boto3.client("dynamodb", region_name="us-east-1").get_item(
             TableName=dynamodb_table,
             Key={
                 "PK": {"S": f"IMAGE#{analysis.image_id}"},
@@ -276,7 +276,7 @@ def test_addReceiptLineItemAnalyses_with_large_batch(
     # Assert
     # Verify the first, middle, and last items were added
     for receipt_id in [1, 15, 30]:
-        response = boto3.client("dynamodb").get_item(
+        response = boto3.client("dynamodb", region_name="us-east-1").get_item(
             TableName=dynamodb_table,
             Key={
                 "PK": {
@@ -458,7 +458,7 @@ def test_updateReceiptLineItemAnalysis_success(
 
     # Assert
     # Verify the item was updated
-    response = boto3.client("dynamodb").get_item(
+    response = boto3.client("dynamodb", region_name="us-east-1").get_item(
         TableName=dynamodb_table,
         Key={
             "PK": {"S": f"IMAGE#{updated_analysis.image_id}"},
@@ -636,7 +636,7 @@ def test_updateReceiptLineItemAnalyses_success(
     # Assert
     # Verify the items were updated
     for analysis in [updated_analysis1, updated_analysis2]:
-        response = boto3.client("dynamodb").get_item(
+        response = boto3.client("dynamodb", region_name="us-east-1").get_item(
             TableName=dynamodb_table,
             Key={
                 "PK": {"S": f"IMAGE#{analysis.image_id}"},
@@ -698,7 +698,7 @@ def test_updateReceiptLineItemAnalyses_with_large_batch(
 
     # Assert - check a few of the updated items
     for receipt_id in [1, 15, 30]:
-        response = boto3.client("dynamodb").get_item(
+        response = boto3.client("dynamodb", region_name="us-east-1").get_item(
             TableName=dynamodb_table,
             Key={
                 "PK": {
@@ -850,7 +850,7 @@ def test_deleteReceiptLineItemAnalysis_success(
     client.addReceiptLineItemAnalysis(sample_receipt_line_item_analysis)
 
     # Verify the analysis exists
-    response = boto3.client("dynamodb").get_item(
+    response = boto3.client("dynamodb", region_name="us-east-1").get_item(
         TableName=dynamodb_table,
         Key={
             "PK": {"S": f"IMAGE#{sample_receipt_line_item_analysis.image_id}"},
@@ -868,7 +868,7 @@ def test_deleteReceiptLineItemAnalysis_success(
 
     # Assert
     # Verify the analysis was deleted
-    response = boto3.client("dynamodb").get_item(
+    response = boto3.client("dynamodb", region_name="us-east-1").get_item(
         TableName=dynamodb_table,
         Key={
             "PK": {"S": f"IMAGE#{sample_receipt_line_item_analysis.image_id}"},
@@ -1044,7 +1044,7 @@ def test_deleteReceiptLineItemAnalyses_success(
 
     # Verify the analyses exist
     for analysis in analyses:
-        response = boto3.client("dynamodb").get_item(
+        response = boto3.client("dynamodb", region_name="us-east-1").get_item(
             TableName=dynamodb_table,
             Key={
                 "PK": {"S": f"IMAGE#{analysis.image_id}"},
@@ -1061,7 +1061,7 @@ def test_deleteReceiptLineItemAnalyses_success(
     # Assert
     # Verify the analyses were deleted
     for analysis in analyses:
-        response = boto3.client("dynamodb").get_item(
+        response = boto3.client("dynamodb", region_name="us-east-1").get_item(
             TableName=dynamodb_table,
             Key={
                 "PK": {"S": f"IMAGE#{analysis.image_id}"},
@@ -1102,7 +1102,7 @@ def test_deleteReceiptLineItemAnalyses_with_large_batch(
 
     # Verify a sample of analyses exist
     for receipt_id in [1, 15, 30]:
-        response = boto3.client("dynamodb").get_item(
+        response = boto3.client("dynamodb", region_name="us-east-1").get_item(
             TableName=dynamodb_table,
             Key={
                 "PK": {
@@ -1118,7 +1118,7 @@ def test_deleteReceiptLineItemAnalyses_with_large_batch(
 
     # Assert - check a sample of the deleted items
     for receipt_id in [1, 15, 30]:
-        response = boto3.client("dynamodb").get_item(
+        response = boto3.client("dynamodb", region_name="us-east-1").get_item(
             TableName=dynamodb_table,
             Key={
                 "PK": {
