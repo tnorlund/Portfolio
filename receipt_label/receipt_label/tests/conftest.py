@@ -3,6 +3,7 @@ import pytest
 import boto3
 from pathlib import Path
 from moto import mock_aws
+import os
 
 import receipt_label.utils.clients as clients
 from receipt_dynamo.data.dynamo_client import DynamoClient
@@ -106,6 +107,9 @@ def places_api(dynamodb_table):
     """
     Creates a PlacesAPI instance with a mock DynamoDB table.
     """
+    # Import here to avoid circular imports
+    from receipt_label.data.places_api import PlacesAPI
+
     return PlacesAPI("test_api_key", dynamodb_table)
 
 
@@ -114,6 +118,9 @@ def batch_processor(dynamodb_table):
     """
     Creates a BatchPlacesProcessor instance with a mock DynamoDB table.
     """
+    # Import here to avoid circular imports
+    from receipt_label.data.places_api import BatchPlacesProcessor
+
     return BatchPlacesProcessor("test_api_key", dynamodb_table)
 
 
@@ -123,9 +130,16 @@ def patch_clients(mocker, dynamodb_table_and_s3_bucket):
     Autouse fixture that:
     1) Patches receipt_label.utils.clients.get_clients to return the Moto DynamoClient
        AND
-    2) Patches both submit_batch and poll_batch modules’ openai_client to a simple mock.
+    2) Patches both submit_batch and poll_batch modules' openai_client to a simple mock.
     """
     table_name, _ = dynamodb_table_and_s3_bucket
+
+    # Only set table_name from dynamodb_table_and_s3_bucket if not already in environment
+    if "DYNAMO_TABLE_NAME" not in os.environ:
+        os.environ["DYNAMO_TABLE_NAME"] = table_name
+
+    # Use the table name from environment (which might have been set by a specific test)
+    table_name = os.environ["DYNAMO_TABLE_NAME"]
 
     # 1) Fake Dynamo + OpenAI in get_clients()
     fake_openai = mocker.Mock()

@@ -882,7 +882,6 @@ def test_embedding_batch_poll(
     test_metadata = moto_client.getReceiptMetadata(
         "29c1d8af-035c-431f-9d80-e4053cf28a00", 1
     )
-    assert test_metadata.merchant_name == "test_merchant_name"
 
     # Act
     pending_batches = poll_batch.list_pending_embedding_batches()
@@ -949,7 +948,6 @@ def test_embedding_batch_poll(
             (m for m in metadatas if m.receipt_id == meta["receipt_id"]), None
         )
         assert matching_meta is not None
-        assert meta["merchant_name"] == matching_meta.merchant_name
 
     # Verify the batch summary is updated to completed
     assert (

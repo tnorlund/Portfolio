@@ -302,7 +302,7 @@ class PlacesAPI:
                 logger.info(
                     "Phone lookup did not yield an establishment, trying text search fallback"
                 )
-                text_res = self._text_search(clean_phone)
+                text_res = self.search_by_text(clean_phone)
                 if text_res:
                     return text_res
 
@@ -391,7 +391,7 @@ class PlacesAPI:
                 logger.debug(
                     f"Attempting text search for business: {business_name} {address}"
                 )
-                text_res = self._text_search(f"{business_name} {address}")
+                text_res = self.search_by_text(f"{business_name} {address}")
                 if text_res:
                     return text_res
 

@@ -1,5 +1,6 @@
 """Tests for the Places API functionality."""
 
+import os
 import pytest
 from receipt_label.data.places_api import (
     PlacesAPI,
@@ -7,6 +8,21 @@ from receipt_label.data.places_api import (
     ConfidenceLevel,
     ValidationResult,
 )
+
+
+@pytest.fixture
+def dynamodb_table(dynamodb_table_and_s3_bucket, monkeypatch):
+    """
+    Set up environment variables and return the test table name.
+    This ensures the DYNAMO_TABLE_NAME is set before any imports happen.
+    """
+    table_name, _ = dynamodb_table_and_s3_bucket
+    monkeypatch.setenv("DYNAMO_TABLE_NAME", table_name)
+    monkeypatch.setenv("OPENAI_API_KEY", "test_api_key")
+    monkeypatch.setenv("PINECONE_API_KEY", "test_pinecone_key")
+    monkeypatch.setenv("PINECONE_INDEX_NAME", "test_index")
+    monkeypatch.setenv("PINECONE_HOST", "test_host")
+    return table_name
 
 
 @pytest.fixture
@@ -47,7 +63,7 @@ def sample_places_response():
 def test_places_api_initialization(dynamodb_table):
     """Test Places API client initialization."""
     api_key = "test_api_key"
-    api = PlacesAPI(api_key, dynamodb_table)
+    api = PlacesAPI(api_key)
     assert api is not None
 
 
@@ -138,7 +154,8 @@ def test_process_low_priority_receipt(mocker, sample_receipt, dynamodb_table):
     mocker.patch("receipt_label.data.places_api.PlacesAPI")
     processor = BatchPlacesProcessor("test_api_key", dynamodb_table)
     result = processor._process_low_priority_receipt(
-        sample_receipt, {"address": ["123 Main St"], "phone": [], "url": [], "date": []}
+        sample_receipt,
+        {"address": ["123 Main St"], "phone": [], "url": [], "date": []},
     )
 
     assert isinstance(result, ValidationResult)
@@ -193,7 +210,9 @@ def test_validate_business_name(mocker, dynamodb_table):
     assert score == 0.5
 
     # Test no match
-    is_valid, message, score = processor._validate_business_name("Walmart", "Target")
+    is_valid, message, score = processor._validate_business_name(
+        "Walmart", "Target"
+    )
     assert not is_valid
     assert "mismatch" in message
     assert score == 0.7
@@ -233,7 +252,7 @@ def test_places_api_search_by_phone(mocker, dynamodb_table):
     mock_response.raise_for_status.return_value = None
 
     mocker.patch("requests.get", return_value=mock_response)
-    api = PlacesAPI("test_api_key", dynamodb_table)
+    api = PlacesAPI("test_api_key")
     api.get_place_details = mocker.Mock(return_value={"name": "Test Place"})
 
     result = api.search_by_phone("(555) 123-4567")
