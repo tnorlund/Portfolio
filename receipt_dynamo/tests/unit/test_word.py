@@ -6,33 +6,17 @@ from receipt_dynamo import Word, itemToWord
 
 @pytest.fixture
 def example_word():
-    # fmt: off
     return Word(
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=2,
         word_id=3,
         text="test_string",
-        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, },
-        top_right={"x": 15.0, "y": 20.0},
-        top_left={"x": 10.0, "y": 20.0},
-        bottom_right={"x": 15.0, "y": 22.0},
-        bottom_left={"x": 10.0, "y": 22.0},
-        angle_degrees=1.0,
-        angle_radians=5.0,
-        confidence=0.90
-    )
-    # fmt: on
-
-
-@pytest.fixture
-def example_word_with_tags():
-    # fmt: off
-    return Word(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        line_id=2,
-        word_id=3,
-        text="test_string",
-        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, },
+        bounding_box={
+            "x": 10.0,
+            "y": 20.0,
+            "width": 5.0,
+            "height": 2.0,
+        },
         top_right={"x": 15.0, "y": 20.0},
         top_left={"x": 10.0, "y": 20.0},
         bottom_right={"x": 15.0, "y": 22.0},
@@ -40,9 +24,7 @@ def example_word_with_tags():
         angle_degrees=1.0,
         angle_radians=5.0,
         confidence=0.90,
-        tags=["tag1", "tag2"]
     )
-    # fmt: on
 
 
 def create_test_word() -> Word:
@@ -50,19 +32,12 @@ def create_test_word() -> Word:
     A helper function that returns a Word object
     with easily verifiable points for testing.
     """
-    # fmt: off
     return Word(
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         word_id=1,
         text="Hello",
-        tags=["example"],
         line_id=1,
-        bounding_box={
-            "x": 10.0,
-            "y": 20.0,
-            "width": 5.0,
-            "height": 2.0
-        },
+        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
         top_right={"x": 15.0, "y": 20.0},
         top_left={"x": 10.0, "y": 20.0},
         bottom_right={"x": 15.0, "y": 22.0},
@@ -71,11 +46,10 @@ def create_test_word() -> Word:
         angle_radians=0.0,
         confidence=1.0,
     )
-    # fmt: on
 
 
 @pytest.mark.unit
-def test_word_init_valid(example_word, example_word_with_tags):
+def test_word_init_valid(example_word):
     assert example_word.image_id == ("3f52804b-2fad-4e00-92c8-b593da3a8ed3")
     assert example_word.line_id == 2
     assert example_word.word_id == 3
@@ -93,14 +67,11 @@ def test_word_init_valid(example_word, example_word_with_tags):
     assert example_word.angle_degrees == 1
     assert example_word.angle_radians == 5
     assert example_word.confidence == 0.90
-    assert example_word.tags == []
-    assert example_word_with_tags.tags == ["tag1", "tag2"]
 
 
 @pytest.mark.unit
 def test_word_init_invalid_uuid():
     """Test that Word raises a ValueError if the image_id is not a string"""
-    # fmt: off
     with pytest.raises(ValueError, match="uuid must be a string"):
         Word(
             1,
@@ -114,7 +85,7 @@ def test_word_init_invalid_uuid():
             {"x": 10.0, "y": 22.0},
             1.0,
             5.0,
-            0.90
+            0.90,
         )
     with pytest.raises(ValueError, match="uuid must be a valid UUID"):
         Word(
@@ -129,15 +100,13 @@ def test_word_init_invalid_uuid():
             {"x": 10.0, "y": 22.0},
             1.0,
             5.0,
-            0.90
+            0.90,
         )
-    # fmt: on
 
 
 @pytest.mark.unit
 def test_word_init_invalid_line_id():
     """Test that Word raises a ValueError if the line_id is not an integer"""
-    # fmt: off
     with pytest.raises(ValueError, match="line_id must be an integer"):
         Word(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -151,7 +120,7 @@ def test_word_init_invalid_line_id():
             {"x": 10.0, "y": 22.0},
             1.0,
             5.0,
-            0.90
+            0.90,
         )
     with pytest.raises(ValueError, match="line_id must be positive"):
         Word(
@@ -166,15 +135,13 @@ def test_word_init_invalid_line_id():
             {"x": 10.0, "y": 22.0},
             1.0,
             5.0,
-            0.90
+            0.90,
         )
-    # fmt: on
 
 
 @pytest.mark.unit
 def test_word_init_invalid_id():
     """Test that Word raises a ValueError if the id is not an integer"""
-    # fmt: off
     with pytest.raises(ValueError, match="id must be an integer"):
         Word(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -188,7 +155,7 @@ def test_word_init_invalid_id():
             {"x": 10.0, "y": 22.0},
             1.0,
             5.0,
-            0.90
+            0.90,
         )
     with pytest.raises(ValueError, match="id must be positive"):
         Word(
@@ -203,15 +170,13 @@ def test_word_init_invalid_id():
             {"x": 10.0, "y": 22.0},
             1.0,
             5.0,
-            0.90
+            0.90,
         )
-    # fmt: on
 
 
 @pytest.mark.unit
 def test_word_init_invalid_text():
     """Test that Word raises a ValueError if the text is not a string"""
-    # fmt: off
     with pytest.raises(ValueError, match="text must be a string"):
         Word(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -225,15 +190,13 @@ def test_word_init_invalid_text():
             {"x": 10.0, "y": 22.0},
             1.0,
             5.0,
-            0.90
+            0.90,
         )
-    # fmt: on
 
 
 @pytest.mark.unit
 def test_word_init_invalid_bounding_box():
     """Test that Word raises a ValueError if the bounding_box is not a dict"""
-    # fmt: off
     with pytest.raises(ValueError, match="bounding_box must be a dict"):
         Word(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -247,11 +210,10 @@ def test_word_init_invalid_bounding_box():
             {"x": 10.0, "y": 22.0},
             1.0,
             5.0,
-            0.90
+            0.90,
         )
     with pytest.raises(
-        ValueError,
-        match="bounding_box must contain the key 'x'"
+        ValueError, match="bounding_box must contain the key 'x'"
     ):
         Word(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -265,15 +227,13 @@ def test_word_init_invalid_bounding_box():
             {"x": 10.0, "y": 22.0},
             1.0,
             5.0,
-            0.90
+            0.90,
         )
-    # fmt: on
 
 
 @pytest.mark.unit
 def test_word_init_invalid_corners():
     """Test that Word raises a ValueError if the corners are not dicts"""
-    # fmt: off
     with pytest.raises(ValueError, match="point must be a dictionary"):
         Word(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -287,7 +247,7 @@ def test_word_init_invalid_corners():
             {"x": 10.0, "y": 22.0},
             1.0,
             5.0,
-            0.90
+            0.90,
         )
     with pytest.raises(ValueError, match="point must contain the key 'x'"):
         Word(
@@ -302,18 +262,15 @@ def test_word_init_invalid_corners():
             {"x": 10.0, "y": 22.0},
             1.0,
             5.0,
-            0.90
+            0.90,
         )
-    # fmt: on
 
 
 @pytest.mark.unit
 def test_word_init_invalid_angle():
     """Test that Word raises a ValueError if the angle is not a float"""
-    # fmt: off
     with pytest.raises(
-        ValueError,
-        match="angle_degrees must be a float or int"
+        ValueError, match="angle_degrees must be a float or int"
     ):
         Word(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -327,11 +284,10 @@ def test_word_init_invalid_angle():
             {"x": 10.0, "y": 22.0},
             "bad",
             5.0,
-            0.90
+            0.90,
         )
     with pytest.raises(
-        ValueError,
-        match="angle_radians must be a float or int"
+        ValueError, match="angle_radians must be a float or int"
     ):
         Word(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -345,9 +301,8 @@ def test_word_init_invalid_angle():
             {"x": 10.0, "y": 22.0},
             1.0,
             "bad",
-            0.90
+            0.90,
         )
-    # fmt: on
 
 
 @pytest.mark.unit
@@ -436,26 +391,6 @@ def test_word_init_invalid_extracted_data():
     )
     assert word.extracted_data == {"type": "test_type", "value": "test_value"}
 
-@pytest.mark.unit
-def test_init_bad_tags():
-    """Test that Word raises a ValueError if the tags is not a list"""
-    with pytest.raises(ValueError, match="tags must be a list"):
-        Word(
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=2,
-            word_id=3,
-            text="test_string",
-            bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-            top_right={"x": 15.0, "y": 20.0},
-            top_left={"x": 10.0, "y": 20.0},
-            bottom_right={"x": 15.0, "y": 22.0},
-            bottom_left={"x": 10.0, "y": 22.0},
-            angle_degrees=1.0,
-            angle_radians=5.0,
-            confidence=0.90,
-            tags="bad",
-        )
-
 
 @pytest.mark.unit
 def test_word_key(example_word):
@@ -467,9 +402,8 @@ def test_word_key(example_word):
 
 
 @pytest.mark.unit
-def test_word_to_item(example_word, example_word_with_tags):
+def test_word_to_item(example_word):
     """Test the Word to_item method"""
-    # Test with no tags
     item = example_word.to_item()
     assert item["PK"] == {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"}
     assert item["SK"] == {"S": "LINE#00002#WORD#00003"}
@@ -512,8 +446,6 @@ def test_word_to_item(example_word, example_word_with_tags):
     assert item["confidence"] == {"N": "0.90"}
     assert "histogram" in item
     assert "num_chars" in item
-    # Test with tags
-    assert example_word_with_tags.to_item()["tags"] == {"SS": ["tag1", "tag2"]}
 
 
 @pytest.mark.unit
@@ -1028,7 +960,7 @@ def test_word_repr(example_word):
 
 
 @pytest.mark.unit
-def test_word_iter(example_word, example_word_with_tags):
+def test_word_iter(example_word):
     """Test the Word __iter__ method"""
     word_dict = dict(example_word)
     expected_keys = {
@@ -1046,7 +978,6 @@ def test_word_iter(example_word, example_word_with_tags):
         "confidence",
         "histogram",
         "num_chars",
-        "tags",
         "extracted_data",
     }
     assert set(word_dict.keys()) == expected_keys
@@ -1067,9 +998,7 @@ def test_word_iter(example_word, example_word_with_tags):
     assert word_dict["angle_degrees"] == 1
     assert word_dict["angle_radians"] == 5
     assert word_dict["confidence"] == 0.90
-    assert dict(example_word_with_tags)["tags"] == ["tag1", "tag2"]
     assert Word(**dict(example_word)) == example_word
-    assert Word(**dict(example_word_with_tags)) == example_word_with_tags
 
 
 @pytest.mark.unit
@@ -1088,7 +1017,6 @@ def test_word_eq():
         angle_degrees=1.0,
         angle_radians=5.0,
         confidence=0.90,
-        tags=["tag1", "tag2"],
     )
     w2 = Word(
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -1103,7 +1031,6 @@ def test_word_eq():
         angle_degrees=1.0,
         angle_radians=5.0,
         confidence=0.90,
-        tags=["tag1", "tag2"],
     )
     w3 = Word(
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed4",
@@ -1118,7 +1045,6 @@ def test_word_eq():
         angle_degrees=1.0,
         angle_radians=5.0,
         confidence=0.90,
-        tags=["tag1", "tag2"],
     )
     w4 = Word(
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -1133,7 +1059,6 @@ def test_word_eq():
         angle_degrees=1.0,
         angle_radians=5.0,
         confidence=0.90,
-        tags=["tag1", "tag2"],
     )
     w5 = Word(
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -1148,7 +1073,6 @@ def test_word_eq():
         angle_degrees=1.0,
         angle_radians=5.0,
         confidence=0.90,
-        tags=["tag1", "tag2"],
     )
     w6 = Word(
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -1163,7 +1087,6 @@ def test_word_eq():
         angle_degrees=1.0,
         angle_radians=5.0,
         confidence=0.90,
-        tags=["tag1", "tag2"],
     )
     w7 = Word(
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -1183,7 +1106,6 @@ def test_word_eq():
         angle_degrees=1.0,
         angle_radians=5.0,
         confidence=0.90,
-        tags=["tag1", "tag2"],
     )
     w8 = Word(
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -1198,7 +1120,6 @@ def test_word_eq():
         angle_degrees=1.0,
         angle_radians=5.0,
         confidence=0.90,
-        tags=["tag1", "tag2"],
     )
     w9 = Word(
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -1213,7 +1134,6 @@ def test_word_eq():
         angle_degrees=1.0,
         angle_radians=5.0,
         confidence=0.90,
-        tags=["tag1", "tag2"],
     )
     w10 = Word(
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -1228,7 +1148,6 @@ def test_word_eq():
         angle_degrees=1.0,
         angle_radians=5.0,
         confidence=0.90,
-        tags=["tag1", "tag2"],
     )
     w11 = Word(
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -1243,7 +1162,6 @@ def test_word_eq():
         angle_degrees=1.0,
         angle_radians=5.0,
         confidence=0.90,
-        tags=["tag1", "tag2"],
     )
     w12 = Word(
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -1258,7 +1176,6 @@ def test_word_eq():
         angle_degrees=2.0,  # Different Angle Degrees
         angle_radians=5.0,
         confidence=0.90,
-        tags=["tag1", "tag2"],
     )
     w13 = Word(
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -1273,7 +1190,6 @@ def test_word_eq():
         angle_degrees=1.0,
         angle_radians=6.0,  # Different Angle Radians
         confidence=0.90,
-        tags=["tag1", "tag2"],
     )
     w14 = Word(
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -1288,22 +1204,6 @@ def test_word_eq():
         angle_degrees=1.0,
         angle_radians=5.0,
         confidence=0.91,  # Different Confidence
-        tags=["tag1", "tag2"],
-    )
-    w15 = Word(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        line_id=2,
-        word_id=3,
-        text="test_string",
-        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
-        top_right={"x": 15.0, "y": 20.0},
-        top_left={"x": 10.0, "y": 20.0},
-        bottom_right={"x": 15.0, "y": 22.0},
-        bottom_left={"x": 10.0, "y": 22.0},
-        angle_degrees=1.0,
-        angle_radians=5.0,
-        confidence=0.90,
-        tags=["tag1"],  # Different Tags
     )
 
     assert w1 == w2
@@ -1319,7 +1219,6 @@ def test_word_eq():
     assert w1 != w12
     assert w1 != w13
     assert w1 != w14
-    assert w1 != w15
     assert w1 != "test_string"
 
 
@@ -1349,10 +1248,9 @@ def test_word_hash(example_word):
 
 
 @pytest.mark.unit
-def test_item_to_word(example_word, example_word_with_tags):
+def test_item_to_word(example_word):
     """Test the itemToWord function"""
     itemToWord(example_word.to_item()) == example_word
-    itemToWord(example_word_with_tags.to_item()) == example_word_with_tags
     with pytest.raises(ValueError, match="^Item is missing required keys: "):
         itemToWord({})
     with pytest.raises(ValueError, match="^Error converting item to Word: "):

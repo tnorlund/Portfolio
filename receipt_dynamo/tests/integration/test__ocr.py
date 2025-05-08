@@ -216,7 +216,8 @@ def test_apple_vision_ocr_subprocess_error(mocker):
         side_effect=subprocess.CalledProcessError(1, "cmd"),
     )
 
-    result = apple_vision_ocr(["some_image_path.png"])
-    assert (
-        result is False
-    ), "Should return False when subprocess raises an error."
+    with pytest.raises(
+        ValueError,
+        match="Error running Swift script:",
+    ):
+        apple_vision_ocr(["some_image_path.png"])

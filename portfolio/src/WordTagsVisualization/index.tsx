@@ -7,8 +7,8 @@ import { ReceiptWord } from "../interfaces";
  * --------------------------------------------------
  */
 
-/** 
- * Props for components in this file. 
+/**
+ * Props for components in this file.
  * Expects an array of ReceiptWord objects.
  */
 interface Props {
@@ -106,7 +106,7 @@ const WordsSvgContainer: React.FC<Props> = ({ words }) => {
     <div
       style={{
         width: "100%",
-        height: "100%",     // Fill any available height
+        height: "100%", // Fill any available height
         minHeight: "300px", // Prevent collapse when there's little content
         position: "relative",
       }}

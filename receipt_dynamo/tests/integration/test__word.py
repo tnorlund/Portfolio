@@ -46,24 +46,6 @@ def test_word_add_no_tags(dynamodb_table: Literal["MyMockedTable"]):
 
 
 @pytest.mark.integration
-def test_word_add_with_tags(dynamodb_table: Literal["MyMockedTable"]):
-    # Arrange
-    client = DynamoClient(dynamodb_table)
-    word = Word(**correct_word_params, tags=["tag1", "tag2"])
-
-    # Act
-    client.addWord(word)
-
-    # Assert
-    response = boto3.client("dynamodb", region_name="us-east-1").get_item(
-        TableName=dynamodb_table,
-        Key=word.key(),
-    )
-    assert "Item" in response, f"Item not found. response: {response}"
-    assert response["Item"] == word.to_item()
-
-
-@pytest.mark.integration
 def test_word_add_error(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
@@ -293,24 +275,6 @@ def test_updateWords_success(dynamodb_table):
 
 
 @pytest.mark.integration
-def test_updateWords_with_tags_success(dynamodb_table):
-    """
-    Tests updating words with tags.
-    """
-    client = DynamoClient(dynamodb_table)
-    word = Word(**correct_word_params, tags=["tag1"])
-    client.addWord(word)
-
-    # Update with new tags
-    word.tags = ["tag2", "tag3"]
-    client.updateWords([word])
-
-    # Verify update
-    retrieved_word = client.getWord(word.image_id, word.line_id, word.word_id)
-    assert retrieved_word.tags == ["tag2", "tag3"]
-
-
-@pytest.mark.integration
 def test_updateWords_raises_value_error_words_none(dynamodb_table):
     """
     Tests that updateWords raises ValueError when the words parameter is None.
@@ -349,17 +313,6 @@ def test_updateWords_raises_value_error_words_not_list_of_words(
         "class.",
     ):
         client.updateWords([word, "not-a-word"])  # type: ignore
-
-
-@pytest.mark.integration
-def test_updateWords_raises_value_error_duplicate_tags(dynamodb_table):
-    """
-    Tests that updateWords raises ValueError when a word has duplicate tags.
-    """
-    client = DynamoClient(dynamodb_table)
-    word = Word(**correct_word_params, tags=["tag1", "tag1"])
-    with pytest.raises(ValueError, match="Word tags must be unique"):
-        client.updateWords([word])
 
 
 @pytest.mark.integration

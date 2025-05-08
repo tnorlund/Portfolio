@@ -3,6 +3,7 @@ from typing import Literal
 import pytest
 from botocore.exceptions import ClientError, ParamValidationError
 from receipt_dynamo import DynamoClient, ReceiptWord
+from receipt_dynamo.constants import EmbeddingStatus
 
 # -------------------------------------------------------------------
 #                        FIXTURES
@@ -25,7 +26,6 @@ def sample_receipt_word():
         angle_degrees=2.0,
         angle_radians=0.0349066,
         confidence=0.95,
-        tags=["tag1", "tag2"],
     )
 
 
@@ -216,7 +216,6 @@ def test_addReceiptWords_large_batch(
             angle_degrees=2.0,
             angle_radians=0.0349066,
             confidence=0.95,
-            tags=["tag1", "tag2"],
         )
         words.append(word)
 
@@ -507,3 +506,45 @@ def test_receipt_word_list_from_line(dynamodb_table: Literal["MyMockedTable"]):
     for w in words_same_line:
         assert w in found_words
     assert another_word not in found_words
+
+
+# -------------------------------------------------------------------
+#                        listReceiptWordsByEmbeddingStatus
+# -------------------------------------------------------------------
+
+
+@pytest.mark.integration
+def test_list_receipt_words_by_embedding_status(
+    dynamodb_table: Literal["MyMockedTable"], sample_receipt_word: ReceiptWord
+):
+    # Arrange
+    client = DynamoClient(dynamodb_table)
+    # Add a word with NONE status
+    word_none = sample_receipt_word
+    client.addReceiptWord(word_none)
+    # Create and add a separate word with PENDING status
+    word_pending = ReceiptWord(
+        receipt_id=sample_receipt_word.receipt_id,
+        image_id=sample_receipt_word.image_id,
+        line_id=99,
+        word_id=sample_receipt_word.word_id,
+        text=sample_receipt_word.text,
+        bounding_box=sample_receipt_word.bounding_box,
+        top_left=sample_receipt_word.top_left,
+        top_right=sample_receipt_word.top_right,
+        bottom_left=sample_receipt_word.bottom_left,
+        bottom_right=sample_receipt_word.bottom_right,
+        angle_degrees=sample_receipt_word.angle_degrees,
+        angle_radians=sample_receipt_word.angle_radians,
+        confidence=sample_receipt_word.confidence,
+        embedding_status=EmbeddingStatus.PENDING,
+    )
+    client.addReceiptWord(word_pending)
+    # Act
+    found_words = client.listReceiptWordsByEmbeddingStatus(
+        EmbeddingStatus.NONE
+    )
+
+    # Assert
+    assert len(found_words) == 1
+    assert found_words[0] == word_none

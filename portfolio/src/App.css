@@ -13,8 +13,8 @@
   --button-background-hover: #ffffff;
   --button-text-hover: #1a1a1a;
 
-  --safari-icon-top: #e8e8e8;
-  --safari-icon-bottom: #dcdcdc;
+  --safari-icon-top: #fdfdfe;
+  --safari-icon-bottom: #f3f3f3;
 
   --react-logo: #087ea4;
 
@@ -239,4 +239,12 @@ li {
   -ms-user-select: none;      /* IE10+/Edge */
   user-select: none;          /* Standard */
   -webkit-touch-callout: none; /* iOS Safari */
+}
+
+svg text {
+  font-size: 1rem;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  fill: var(--text-color);
+  font-weight: bold;
 }

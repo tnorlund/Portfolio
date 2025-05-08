@@ -14,6 +14,7 @@ from receipt_dynamo import (
     ReceiptWordTag,
     Word,
     WordTag,
+    ReceiptWordLabel,
 )
 
 CURRENT_DIR = os.path.dirname(__file__)
@@ -118,3 +119,82 @@ def sample_gpt_receipt_1():
             },
         },
     )
+
+
+@pytest.fixture
+def sample_receipt_details():
+    """
+    Provides a sample receipt with its associated words and word labels for testing.
+    """
+    receipt = Receipt(
+        image_id="test_image",
+        receipt_id=1,
+        confidence=0.95,
+        store_name="Test Store",
+        date="2024-03-19",
+        time="13:29",
+        total_amount=3.6,
+        taxes=0.0,
+        address="123 Test St, Test City, CA 12345",
+        phone_number="123-456-7890",
+        items=[
+            {
+                "item_name": "Test Item",
+                "price": 3.6,
+                "quantity": 1,
+                "total": 3.6,
+            }
+        ],
+    )
+
+    receipt_words = [
+        ReceiptWord(
+            image_id="test_image",
+            receipt_id=1,
+            line_id=1,
+            word_id=1,
+            text="Test",
+            confidence=0.95,
+            x1=0.1,
+            y1=0.1,
+            x2=0.2,
+            y2=0.2,
+        ),
+        ReceiptWord(
+            image_id="test_image",
+            receipt_id=1,
+            line_id=1,
+            word_id=2,
+            text="Store",
+            confidence=0.95,
+            x1=0.3,
+            y1=0.1,
+            x2=0.4,
+            y2=0.2,
+        ),
+    ]
+
+    word_labels = [
+        ReceiptWordLabel(
+            image_id="test_image",
+            receipt_id=1,
+            line_id=1,
+            word_id=1,
+            label="store_name",
+            confidence=0.95,
+        ),
+        ReceiptWordLabel(
+            image_id="test_image",
+            receipt_id=1,
+            line_id=1,
+            word_id=2,
+            label="store_name",
+            confidence=0.95,
+        ),
+    ]
+
+    return {
+        "receipt": receipt,
+        "words": receipt_words,
+        "word_labels": word_labels,
+    }

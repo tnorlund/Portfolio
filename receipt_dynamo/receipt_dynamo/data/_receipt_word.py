@@ -1,6 +1,8 @@
 from botocore.exceptions import ClientError
 
 from receipt_dynamo import ReceiptWord, itemToReceiptWord
+from receipt_dynamo.constants import EmbeddingStatus
+from receipt_dynamo.entities.util import assert_valid_uuid
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 CHUNK_SIZE = 25
@@ -30,6 +32,8 @@ class _ReceiptWord:
         Returns all ReceiptWords from the table.
     listReceiptWordsFromLine(receipt_id: int, image_id: str, line_id: int) -> list[ReceiptWord]
         Returns all ReceiptWords that match the given receipt/image/line IDs.
+    listReceiptWordsFromReceipt(image_id: str, receipt_id: int) -> list[ReceiptWord]
+        Returns all ReceiptWords that match the given receipt/image IDs.
     """
 
     def addReceiptWord(self, word: ReceiptWord):
@@ -37,7 +41,9 @@ class _ReceiptWord:
         if word is None:
             raise ValueError("word parameter is required and cannot be None.")
         if not isinstance(word, ReceiptWord):
-            raise ValueError("word must be an instance of the ReceiptWord class.")
+            raise ValueError(
+                "word must be an instance of the ReceiptWord class."
+            )
         try:
             self._client.put_item(
                 TableName=self.table_name,
@@ -133,7 +139,9 @@ class _ReceiptWord:
         if not isinstance(words, list):
             raise ValueError("words must be a list of ReceiptWord instances.")
         if not all(isinstance(w, ReceiptWord) for w in words):
-            raise ValueError("All words must be instances of the ReceiptWord class.")
+            raise ValueError(
+                "All words must be instances of the ReceiptWord class."
+            )
         for i in range(0, len(words), 25):
             chunk = words[i : i + 25]
             transact_items = [
@@ -157,7 +165,9 @@ class _ReceiptWord:
                 elif error_code == "InternalServerError":
                     raise Exception("Internal server error")
                 elif error_code == "ValidationException":
-                    raise Exception("One or more parameters given were invalid")
+                    raise Exception(
+                        "One or more parameters given were invalid"
+                    )
                 elif error_code == "AccessDeniedException":
                     raise Exception("Access denied")
                 else:
@@ -236,8 +246,51 @@ class _ReceiptWord:
         except KeyError:
             raise ValueError(f"ReceiptWord with ID {word_id} not found")
 
+    def getReceiptWordsByIndices(
+        self, indices: list[tuple[str, int, int, int]]
+    ) -> list[ReceiptWord]:
+        """Retrieves multiple ReceiptWords by their indices."""
+        if indices is None:
+            raise ValueError(
+                "indices parameter is required and cannot be None."
+            )
+        if not isinstance(indices, list):
+            raise ValueError("indices must be a list of tuples.")
+        if not all(isinstance(index, tuple) for index in indices):
+            raise ValueError("indices must be a list of tuples.")
+        for index in indices:
+            if len(index) != 4:
+                raise ValueError(
+                    "indices must be a list of tuples with 4 elements."
+                )
+            if not isinstance(index[0], str):
+                raise ValueError("First element of tuple must be a string.")
+            assert_valid_uuid(index[0])
+            if not isinstance(index[1], int):
+                raise ValueError("Second element of tuple must be an integer.")
+            if index[1] <= 0:
+                raise ValueError("Second element of tuple must be positive.")
+            if not isinstance(index[2], int):
+                raise ValueError("Third element of tuple must be an integer.")
+            if index[2] <= 0:
+                raise ValueError("Third element of tuple must be positive.")
+            if not isinstance(index[3], int):
+                raise ValueError("Fourth element of tuple must be an integer.")
+            if index[3] <= 0:
+                raise ValueError("Fourth element of tuple must be positive.")
+
+        keys = [
+            {
+                "PK": {"S": f"IMAGE#{index[0]}"},
+                "SK": {
+                    "S": f"RECEIPT#{index[1]:05d}#LINE#{index[2]:05d}#WORD#{index[3]:05d}"
+                },
+            }
+            for index in indices
+        ]
+        return self.getReceiptWordsByKeys(keys)
+
     def getReceiptWordsByKeys(self, keys: list[dict]) -> list[ReceiptWord]:
-        """Retrieves multiple ReceiptWords by their keys."""
         # Check the validity of the keys
         for key in keys:
             if not {"PK", "SK"}.issubset(key.keys()):
@@ -289,7 +342,7 @@ class _ReceiptWord:
 
         except ClientError as e:
             raise ValueError(
-                f"Could not delete ReceiptWords from the database: {e}"
+                f"Could not get ReceiptWords from the database: {e}"
             )
 
     def listReceiptWords(
@@ -395,3 +448,148 @@ class _ReceiptWord:
             raise ValueError(
                 f"Could not list ReceiptWords from the database: {e}"
             )
+
+    def listReceiptWordsFromReceipt(
+        self, image_id: str, receipt_id: int
+    ) -> list[ReceiptWord]:
+        """Returns all ReceiptWords that match the given receipt/image IDs.
+
+        Args:
+            image_id (str): The ID of the image
+            receipt_id (int): The ID of the receipt
+
+        Returns:
+            list[ReceiptWord]: List of ReceiptWord entities for the given receipt
+
+        Raises:
+            ValueError: If the parameters are invalid or if there's an error querying DynamoDB
+        """
+        if image_id is None:
+            raise ValueError(
+                "image_id parameter is required and cannot be None."
+            )
+        if receipt_id is None:
+            raise ValueError(
+                "receipt_id parameter is required and cannot be None."
+            )
+        if not isinstance(image_id, str):
+            raise ValueError("image_id must be a string.")
+        if not isinstance(receipt_id, int):
+            raise ValueError("receipt_id must be an integer.")
+
+        receipt_words = []
+        try:
+            # Query parameters using BETWEEN to get only WORD items
+            query_params = {
+                "TableName": self.table_name,
+                "KeyConditionExpression": "#pk = :pk_val AND #sk BETWEEN :sk_start AND :sk_end",
+                "ExpressionAttributeNames": {"#pk": "PK", "#sk": "SK"},
+                "ExpressionAttributeValues": {
+                    ":pk_val": {"S": f"IMAGE#{image_id}"},
+                    ":sk_start": {"S": f"RECEIPT#{receipt_id:05d}#LINE#"},
+                    ":sk_end": {
+                        "S": f"RECEIPT#{receipt_id:05d}#LINE#\uffff#WORD#\uffff"
+                    },
+                },
+            }
+
+            # Initial query
+            response = self._client.query(**query_params)
+            receipt_words.extend(
+                [
+                    itemToReceiptWord(item)
+                    for item in response["Items"]
+                    if "#WORD#" in item["SK"]["S"]
+                    and not item["SK"]["S"].endswith("#TAG#")
+                    and not item["SK"]["S"].endswith("#LETTER#")
+                ]
+            )
+
+            # Handle pagination
+            while "LastEvaluatedKey" in response:
+                query_params["ExclusiveStartKey"] = response[
+                    "LastEvaluatedKey"
+                ]
+                response = self._client.query(**query_params)
+                receipt_words.extend(
+                    [
+                        itemToReceiptWord(item)
+                        for item in response["Items"]
+                        if "#WORD#" in item["SK"]["S"]
+                        and not item["SK"]["S"].endswith("#TAG#")
+                        and not item["SK"]["S"].endswith("#LETTER#")
+                    ]
+                )
+
+            return receipt_words
+
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ResourceNotFoundException":
+                raise Exception(
+                    f"Could not list receipt words from DynamoDB: {e}"
+                ) from e
+            elif error_code == "ProvisionedThroughputExceededException":
+                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+            elif error_code == "ValidationException":
+                raise ValueError(
+                    f"One or more parameters given were invalid: {e}"
+                ) from e
+            elif error_code == "InternalServerError":
+                raise Exception(f"Internal server error: {e}") from e
+            else:
+                raise Exception(f"Error listing receipt words: {e}") from e
+
+    def listReceiptWordsByEmbeddingStatus(
+        self, embedding_status: EmbeddingStatus
+    ) -> list[ReceiptWord]:
+        """Returns all ReceiptWords that match the given embedding status."""
+        receipt_words: list[ReceiptWord] = []
+        # Validate and normalize embedding_status argument
+        if isinstance(embedding_status, EmbeddingStatus):
+            status_str = embedding_status.value
+        elif isinstance(embedding_status, str):
+            status_str = embedding_status
+        else:
+            raise ValueError(
+                "embedding_status must be a string or EmbeddingStatus enum"
+            )
+        # Ensure the status_str is a valid EmbeddingStatus value
+        valid_values = [s.value for s in EmbeddingStatus]
+        if status_str not in valid_values:
+            raise ValueError(
+                f"embedding_status must be one of: {', '.join(valid_values)}; Got: {status_str}"
+            )
+        try:
+            # Query the GSI1 index on embedding status
+            response = self._client.query(
+                TableName=self.table_name,
+                IndexName="GSI1",
+                KeyConditionExpression="#gsi1pk = :status",
+                ExpressionAttributeNames={"#gsi1pk": "GSI1PK"},
+                ExpressionAttributeValues={
+                    ":status": {"S": f"EMBEDDING_STATUS#{status_str}"}
+                },
+            )
+            # First page
+            for item in response.get("Items", []):
+                receipt_words.append(itemToReceiptWord(item))
+            # Handle pagination
+            while "LastEvaluatedKey" in response:
+                response = self._client.query(
+                    TableName=self.table_name,
+                    IndexName="GSI1",
+                    KeyConditionExpression="#gsi1pk = :status",
+                    ExpressionAttributeNames={"#gsi1pk": "GSI1PK"},
+                    ExpressionAttributeValues={
+                        ":status": {"S": f"EMBEDDING_STATUS#{status_str}"}
+                    },
+                    ExclusiveStartKey=response["LastEvaluatedKey"],
+                )
+                for item in response.get("Items", []):
+                    receipt_words.append(itemToReceiptWord(item))
+            return receipt_words
+        except ClientError as e:
+            raise ValueError(
+                f"Could not list receipt words by embedding status: {e}"
+            ) from e

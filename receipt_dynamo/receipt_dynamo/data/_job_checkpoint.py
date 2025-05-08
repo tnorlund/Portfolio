@@ -77,6 +77,7 @@ class _JobCheckpoint:
 
         Raises:
             ValueError: If the job checkpoint does not exist
+            Exception: If the request failed due to an unknown error.
         """
         if job_id is None:
             raise ValueError("Job ID is required and cannot be None.")
@@ -123,6 +124,7 @@ class _JobCheckpoint:
 
         Raises:
             ValueError: If parameters are invalid or the checkpoint doesn't exist
+            Exception: If the request failed due to an unknown error.
         """
         if job_id is None:
             raise ValueError("Job ID is required and cannot be None.")

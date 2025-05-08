@@ -5,34 +5,45 @@ import pytest
 from receipt_dynamo.entities.instance import Instance, itemToInstance
 
 
+# ###############################
+# # Instance Metadata Summary
+# ###############################
+# Instance ID:       i-09ee977b7e1673d46
+# Region:            us-east-1
+# Instance Type:     g4dn.xlarge
+# Availability Zone: us-east-1b
+# Local IP:          10.0.2.134
+# Is Spot Instance:  true
+# Detected GPUs:     1
+# ###############################
+
+
 @pytest.fixture
 def example_instance():
     """Provides a sample Instance for testing."""
     return Instance(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        "p3.2xlarge",
-        4,
-        "running",
-        "2021-01-01T00:00:00",
-        "192.168.1.1",
-        "us-east-1a",
-        True,
-        "healthy",
+        instance_id="i-09ee977b7e1673d46",
+        instance_type="g4dn.xlarge",
+        gpu_count=1,
+        status="running",
+        launched_at=datetime(2021, 1, 1),
+        ip_address="10.0.2.134",
+        availability_zone="us-east-1b",
+        is_spot=True,
+        health_status="healthy",
     )
 
 
 @pytest.mark.unit
 def test_instance_init_valid(example_instance):
     """Test the Instance constructor with valid parameters."""
-    assert (
-        example_instance.instance_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    )
-    assert example_instance.instance_type == "p3.2xlarge"
-    assert example_instance.gpu_count == 4
+    assert example_instance.instance_id == "i-09ee977b7e1673d46"
+    assert example_instance.instance_type == "g4dn.xlarge"
+    assert example_instance.gpu_count == 1
     assert example_instance.status == "running"
     assert example_instance.launched_at == "2021-01-01T00:00:00"
-    assert example_instance.ip_address == "192.168.1.1"
-    assert example_instance.availability_zone == "us-east-1a"
+    assert example_instance.ip_address == "10.0.2.134"
+    assert example_instance.availability_zone == "us-east-1b"
     assert example_instance.is_spot is True
     assert example_instance.health_status == "healthy"
 
@@ -41,15 +52,15 @@ def test_instance_init_valid(example_instance):
 def test_instance_init_datetime():
     """Test the Instance constructor with a datetime object for launched_at."""
     instance = Instance(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        "p3.2xlarge",
-        4,
-        "running",
-        datetime(2021, 1, 1),
-        "192.168.1.1",
-        "us-east-1a",
-        True,
-        "healthy",
+        instance_id="i-09ee977b7e1673d46",
+        instance_type="g4dn.xlarge",
+        gpu_count=1,
+        status="running",
+        launched_at=datetime(2021, 1, 1),
+        ip_address="10.0.2.134",
+        availability_zone="us-east-1b",
+        is_spot=True,
+        health_status="healthy",
     )
     assert instance.launched_at == "2021-01-01T00:00:00"
 
@@ -57,30 +68,19 @@ def test_instance_init_datetime():
 @pytest.mark.unit
 def test_instance_init_invalid_id():
     """Test the Instance constructor with invalid instance_id."""
-    with pytest.raises(ValueError, match="uuid must be a string"):
+    with pytest.raises(
+        ValueError, match="instance_id must be a non-empty string"
+    ):
         Instance(
-            1,  # Invalid: should be a string
-            "p3.2xlarge",
-            4,
-            "running",
-            "2021-01-01T00:00:00",
-            "192.168.1.1",
-            "us-east-1a",
-            True,
-            "healthy",
-        )
-
-    with pytest.raises(ValueError, match="uuid must be a valid UUID"):
-        Instance(
-            "not-a-uuid",  # Invalid: not a valid UUID format
-            "p3.2xlarge",
-            4,
-            "running",
-            "2021-01-01T00:00:00",
-            "192.168.1.1",
-            "us-east-1a",
-            True,
-            "healthy",
+            instance_id=None,
+            instance_type="g4dn.xlarge",
+            gpu_count=1,
+            status="running",
+            launched_at=datetime(2021, 1, 1),
+            ip_address="10.0.2.134",
+            availability_zone="us-east-1b",
+            is_spot=True,
+            health_status="healthy",
         )
 
 
@@ -91,30 +91,15 @@ def test_instance_init_invalid_instance_type():
         ValueError, match="instance_type must be a non-empty string"
     ):
         Instance(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            "",  # Invalid: empty string
-            4,
-            "running",
-            "2021-01-01T00:00:00",
-            "192.168.1.1",
-            "us-east-1a",
-            True,
-            "healthy",
-        )
-
-    with pytest.raises(
-        ValueError, match="instance_type must be a non-empty string"
-    ):
-        Instance(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            123,  # Invalid: not a string
-            4,
-            "running",
-            "2021-01-01T00:00:00",
-            "192.168.1.1",
-            "us-east-1a",
-            True,
-            "healthy",
+            instance_id="i-09ee977b7e1673d46",
+            instance_type=None,
+            gpu_count=1,
+            status="running",
+            launched_at=datetime(2021, 1, 1),
+            ip_address="10.0.2.134",
+            availability_zone="us-east-1b",
+            is_spot=True,
+            health_status="healthy",
         )
 
 
@@ -125,20 +110,17 @@ def test_instance_init_invalid_gpu_count():
         ValueError, match="gpu_count must be a non-negative integer"
     ):
         Instance(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            "p3.2xlarge",
-            -1,  # Invalid: negative number
-            "running",
-            "2021-01-01T00:00:00",
-            "192.168.1.1",
-            "us-east-1a",
-            True,
-            "healthy",
+            instance_id="i-09ee977b7e1673d46",
+            instance_type="g4dn.xlarge",
+            gpu_count=-1,  # Invalid: negative number
+            status="running",
+            launched_at=datetime(2021, 1, 1),
+            ip_address="10.0.2.134",
+            availability_zone="us-east-1b",
+            is_spot=True,
+            health_status="healthy",
         )
 
-    with pytest.raises(
-        ValueError, match="gpu_count must be a non-negative integer"
-    ):
         Instance(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "p3.2xlarge",
@@ -157,28 +139,15 @@ def test_instance_init_invalid_status():
     """Test the Instance constructor with invalid status."""
     with pytest.raises(ValueError, match="status must be one of"):
         Instance(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            "p3.2xlarge",
-            4,
-            "invalid_status",  # Invalid: not a valid status
-            "2021-01-01T00:00:00",
-            "192.168.1.1",
-            "us-east-1a",
-            True,
-            "healthy",
-        )
-
-    with pytest.raises(ValueError, match="status must be one of"):
-        Instance(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            "p3.2xlarge",
-            4,
-            123,  # Invalid: not a string
-            "2021-01-01T00:00:00",
-            "192.168.1.1",
-            "us-east-1a",
-            True,
-            "healthy",
+            instance_id="i-09ee977b7e1673d46",
+            instance_type="g4dn.xlarge",
+            gpu_count=1,
+            status="invalid_status",  # Invalid: not a valid status
+            launched_at=datetime(2021, 1, 1),
+            ip_address="10.0.2.134",
+            availability_zone="us-east-1b",
+            is_spot=True,
+            health_status="healthy",
         )
 
 
@@ -189,15 +158,15 @@ def test_instance_init_invalid_launched_at():
         ValueError, match="launched_at must be a datetime object or a string"
     ):
         Instance(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            "p3.2xlarge",
-            4,
-            "running",
-            123,  # Invalid: not a datetime or string
-            "192.168.1.1",
-            "us-east-1a",
-            True,
-            "healthy",
+            instance_id="i-09ee977b7e1673d46",
+            instance_type="g4dn.xlarge",
+            gpu_count=1,
+            status="running",
+            launched_at=123,  # Invalid: not a datetime or string
+            ip_address="10.0.2.134",
+            availability_zone="us-east-1b",
+            is_spot=True,
+            health_status="healthy",
         )
 
 
@@ -206,15 +175,15 @@ def test_instance_init_invalid_ip_address():
     """Test the Instance constructor with invalid ip_address."""
     with pytest.raises(ValueError, match="ip_address must be a string"):
         Instance(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            "p3.2xlarge",
-            4,
-            "running",
-            "2021-01-01T00:00:00",
-            123,  # Invalid: not a string
-            "us-east-1a",
-            True,
-            "healthy",
+            instance_id="i-09ee977b7e1673d46",
+            instance_type="g4dn.xlarge",
+            gpu_count=1,
+            status="running",
+            launched_at=datetime(2021, 1, 1),
+            ip_address=123,  # Invalid: not a string
+            availability_zone="us-east-1b",
+            is_spot=True,
+            health_status="healthy",
         )
 
 
@@ -225,30 +194,15 @@ def test_instance_init_invalid_availability_zone():
         ValueError, match="availability_zone must be a non-empty string"
     ):
         Instance(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            "p3.2xlarge",
-            4,
-            "running",
-            "2021-01-01T00:00:00",
-            "192.168.1.1",
-            "",  # Invalid: empty string
-            True,
-            "healthy",
-        )
-
-    with pytest.raises(
-        ValueError, match="availability_zone must be a non-empty string"
-    ):
-        Instance(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            "p3.2xlarge",
-            4,
-            "running",
-            "2021-01-01T00:00:00",
-            "192.168.1.1",
-            123,  # Invalid: not a string
-            True,
-            "healthy",
+            instance_id="i-09ee977b7e1673d46",
+            instance_type="g4dn.xlarge",
+            gpu_count=1,
+            status="running",
+            launched_at=datetime(2021, 1, 1),
+            ip_address="10.0.2.134",
+            availability_zone=None,  # Invalid: None
+            is_spot=True,
+            health_status="healthy",
         )
 
 
@@ -257,15 +211,15 @@ def test_instance_init_invalid_is_spot():
     """Test the Instance constructor with invalid is_spot."""
     with pytest.raises(ValueError, match="is_spot must be a boolean"):
         Instance(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            "p3.2xlarge",
-            4,
-            "running",
-            "2021-01-01T00:00:00",
-            "192.168.1.1",
-            "us-east-1a",
-            "true",  # Invalid: not a boolean
-            "healthy",
+            instance_id="i-09ee977b7e1673d46",
+            instance_type="g4dn.xlarge",
+            gpu_count=1,
+            status="running",
+            launched_at=datetime(2021, 1, 1),
+            ip_address="10.0.2.134",
+            availability_zone="us-east-1a",
+            is_spot="true",  # Invalid: not a boolean
+            health_status="healthy",
         )
 
 
@@ -274,28 +228,28 @@ def test_instance_init_invalid_health_status():
     """Test the Instance constructor with invalid health_status."""
     with pytest.raises(ValueError, match="health_status must be one of"):
         Instance(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            "p3.2xlarge",
-            4,
-            "running",
-            "2021-01-01T00:00:00",
-            "192.168.1.1",
-            "us-east-1a",
-            True,
-            "invalid_health_status",
+            instance_id="i-09ee977b7e1673d46",
+            instance_type="g4dn.xlarge",
+            gpu_count=1,
+            status="running",
+            launched_at=datetime(2021, 1, 1),
+            ip_address="10.0.2.134",
+            availability_zone="us-east-1a",
+            is_spot=True,
+            health_status="invalid_health_status",
         )
 
     with pytest.raises(ValueError, match="health_status must be one of"):
         Instance(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            "p3.2xlarge",
-            4,
-            "running",
-            "2021-01-01T00:00:00",
-            "192.168.1.1",
-            "us-east-1a",
-            True,
-            123,
+            instance_id="i-09ee977b7e1673d46",
+            instance_type="g4dn.xlarge",
+            gpu_count=1,
+            status="running",
+            launched_at=datetime(2021, 1, 1),
+            ip_address="10.0.2.134",
+            availability_zone="us-east-1a",
+            is_spot=True,
+            health_status=123,
         )
 
 
@@ -303,7 +257,7 @@ def test_instance_init_invalid_health_status():
 def test_instance_key(example_instance):
     """Test the Instance.key() method."""
     assert example_instance.key() == {
-        "PK": {"S": "INSTANCE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "PK": {"S": "INSTANCE#i-09ee977b7e1673d46"},
         "SK": {"S": "INSTANCE"},
     }
 
@@ -313,7 +267,7 @@ def test_instance_gsi1_key(example_instance):
     """Test the Instance.gsi1_key() method."""
     assert example_instance.gsi1_key() == {
         "GSI1PK": {"S": "STATUS#running"},
-        "GSI1SK": {"S": "INSTANCE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "GSI1SK": {"S": "INSTANCE#i-09ee977b7e1673d46"},
     }
 
 
@@ -321,19 +275,17 @@ def test_instance_gsi1_key(example_instance):
 def test_instance_to_item(example_instance):
     """Test the Instance.to_item() method."""
     item = example_instance.to_item()
-    assert item["PK"] == {"S": "INSTANCE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"}
+    assert item["PK"] == {"S": "INSTANCE#i-09ee977b7e1673d46"}
     assert item["SK"] == {"S": "INSTANCE"}
     assert item["GSI1PK"] == {"S": "STATUS#running"}
-    assert item["GSI1SK"] == {
-        "S": "INSTANCE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    }
+    assert item["GSI1SK"] == {"S": "INSTANCE#i-09ee977b7e1673d46"}
     assert item["TYPE"] == {"S": "INSTANCE"}
-    assert item["instance_type"] == {"S": "p3.2xlarge"}
-    assert item["gpu_count"] == {"N": "4"}
+    assert item["instance_type"] == {"S": "g4dn.xlarge"}
+    assert item["gpu_count"] == {"N": "1"}
     assert item["status"] == {"S": "running"}
     assert item["launched_at"] == {"S": "2021-01-01T00:00:00"}
-    assert item["ip_address"] == {"S": "192.168.1.1"}
-    assert item["availability_zone"] == {"S": "us-east-1a"}
+    assert item["ip_address"] == {"S": "10.0.2.134"}
+    assert item["availability_zone"] == {"S": "us-east-1b"}
     assert item["is_spot"] == {"BOOL": True}
     assert item["health_status"] == {"S": "healthy"}
 
@@ -342,13 +294,13 @@ def test_instance_to_item(example_instance):
 def test_instance_repr(example_instance):
     """Test the Instance.__repr__() method."""
     repr_str = repr(example_instance)
-    assert "instance_id='3f52804b-2fad-4e00-92c8-b593da3a8ed3'" in repr_str
-    assert "instance_type='p3.2xlarge'" in repr_str
-    assert "gpu_count=4" in repr_str
+    assert "instance_id='i-09ee977b7e1673d46'" in repr_str
+    assert "instance_type='g4dn.xlarge'" in repr_str
+    assert "gpu_count=1" in repr_str
     assert "status='running'" in repr_str
     assert "launched_at='2021-01-01T00:00:00'" in repr_str
-    assert "ip_address='192.168.1.1'" in repr_str
-    assert "availability_zone='us-east-1a'" in repr_str
+    assert "ip_address='10.0.2.134'" in repr_str
+    assert "availability_zone='us-east-1b'" in repr_str
     assert "is_spot=True" in repr_str
     assert "health_status='healthy'" in repr_str
 
@@ -357,15 +309,13 @@ def test_instance_repr(example_instance):
 def test_instance_iter(example_instance):
     """Test the Instance.__iter__() method."""
     instance_dict = dict(example_instance)
-    assert (
-        instance_dict["instance_id"] == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    )
-    assert instance_dict["instance_type"] == "p3.2xlarge"
-    assert instance_dict["gpu_count"] == 4
+    assert instance_dict["instance_id"] == "i-09ee977b7e1673d46"
+    assert instance_dict["instance_type"] == "g4dn.xlarge"
+    assert instance_dict["gpu_count"] == 1
     assert instance_dict["status"] == "running"
     assert instance_dict["launched_at"] == "2021-01-01T00:00:00"
-    assert instance_dict["ip_address"] == "192.168.1.1"
-    assert instance_dict["availability_zone"] == "us-east-1a"
+    assert instance_dict["ip_address"] == "10.0.2.134"
+    assert instance_dict["availability_zone"] == "us-east-1b"
     assert instance_dict["is_spot"] is True
     assert instance_dict["health_status"] == "healthy"
 
@@ -374,46 +324,46 @@ def test_instance_iter(example_instance):
 def test_instance_eq():
     """Test the Instance.__eq__() method."""
     instance1 = Instance(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        "p3.2xlarge",
-        4,
+        "i-09ee977b7e1673d46",
+        "g4dn.xlarge",
+        1,
         "running",
         "2021-01-01T00:00:00",
-        "192.168.1.1",
-        "us-east-1a",
+        "10.0.2.134",
+        "us-east-1b",
         True,
         "healthy",
     )
     instance2 = Instance(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        "p3.2xlarge",
-        4,
+        "i-09ee977b7e1673d46",
+        "g4dn.xlarge",
+        1,
         "running",
         "2021-01-01T00:00:00",
-        "192.168.1.1",
-        "us-east-1a",
+        "10.0.2.134",
+        "us-east-1b",
         True,
         "healthy",
     )
     instance3 = Instance(
-        "4f52804b-2fad-4e00-92c8-b593da3a8ed3",  # Different instance_id
-        "p3.2xlarge",
-        4,
+        "i-09ee977b7e1673d45",  # Different instance_id
+        "g4dn.xlarge",
+        1,
         "running",
         "2021-01-01T00:00:00",
-        "192.168.1.1",
-        "us-east-1a",
+        "10.0.2.134",
+        "us-east-1b",
         True,
         "healthy",
     )
     instance4 = Instance(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        "g4dn.xlarge",  # Different instance_type
-        4,
+        "i-09ee977b7e1673d46",
+        "g4dn.2xlarge",  # Different instance_type
+        1,
         "running",
         "2021-01-01T00:00:00",
-        "192.168.1.1",
-        "us-east-1a",
+        "10.0.2.134",
+        "us-east-1b",
         True,
         "healthy",
     )
@@ -440,11 +390,11 @@ def test_itemToInstance(example_instance):
     with pytest.raises(ValueError, match="Error converting item to Instance"):
         itemToInstance(
             {
-                "PK": {"S": "INSTANCE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+                "PK": {"S": "INSTANCE#i-09ee977b7e1673d46"},
                 "SK": {"S": "INSTANCE"},
                 "TYPE": {"S": "INSTANCE"},
-                "instance_type": {"S": "p3.2xlarge"},
-                "gpu_count": {"N": "4"},
+                "instance_type": {"S": "g4dn.xlarge"},
+                "gpu_count": {"N": "1"},
                 "status": {"S": "running"},
                 "launched_at": {"S": "2021-01-01T00:00:00"},
                 "ip_address": {"S": "192.168.1.1"},

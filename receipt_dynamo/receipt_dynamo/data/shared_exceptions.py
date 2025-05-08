@@ -6,6 +6,8 @@ class DynamoRetryableException(Exception):
     such as a provisioned throughput exceeded error, which could succeed if retried later.
     """
 
+    # TODO: REMOVE THIS
+
 
 class DynamoCriticalErrorException(Exception):
     """
@@ -13,5 +15,7 @@ class DynamoCriticalErrorException(Exception):
 
     This exception should be raised when an operation fails due to a permanent issue
     such as a resource not found or permission denied error, which would not succeed
-    if retried without addressing the underlying issue.
+    if retried without addressing the underlying issue. ugly
     """
+
+    # TODO: REMOVE THIS

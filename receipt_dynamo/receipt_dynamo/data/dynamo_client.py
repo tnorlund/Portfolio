@@ -1,8 +1,6 @@
 import boto3
 
 # Import all the modules needed for multiple inheritance
-from receipt_dynamo.data._gpt_initial_tagging import _GPTInitialTagging
-from receipt_dynamo.data._gpt_validation import _GPTValidation
 from receipt_dynamo.data._image import _Image
 from receipt_dynamo.data._instance import _Instance
 from receipt_dynamo.data._job import _Job
@@ -14,15 +12,47 @@ from receipt_dynamo.data._job_resource import _JobResource
 from receipt_dynamo.data._job_status import _JobStatus
 from receipt_dynamo.data._letter import _Letter
 from receipt_dynamo.data._line import _Line
+from receipt_dynamo.data._places_cache import _PlacesCache
 from receipt_dynamo.data._queue import _Queue
 from receipt_dynamo.data._receipt import _Receipt
 from receipt_dynamo.data._receipt_letter import _ReceiptLetter
 from receipt_dynamo.data._receipt_line import _ReceiptLine
-from receipt_dynamo.data._receipt_window import _ReceiptWindow
 from receipt_dynamo.data._receipt_word import _ReceiptWord
 from receipt_dynamo.data._receipt_word_tag import _ReceiptWordTag
 from receipt_dynamo.data._word import _Word
 from receipt_dynamo.data._word_tag import _WordTag
+from receipt_dynamo.data._receipt_word_label import _ReceiptWordLabel
+from receipt_dynamo.data._receipt_field import _ReceiptField
+from receipt_dynamo.data._receipt_label_analysis import _ReceiptLabelAnalysis
+from receipt_dynamo.data._receipt_structure_analysis import (
+    _ReceiptStructureAnalysis,
+)
+from receipt_dynamo.data._receipt_line_item_analysis import (
+    _ReceiptLineItemAnalysis,
+)
+from receipt_dynamo.data._receipt_validation_result import (
+    _ReceiptValidationResult,
+)
+from receipt_dynamo.data._receipt_validation_category import (
+    _ReceiptValidationCategory,
+)
+from receipt_dynamo.data._receipt_validation_summary import (
+    _ReceiptValidationSummary,
+)
+from receipt_dynamo.data._receipt_chatgpt_validation import (
+    _ReceiptChatGPTValidation,
+)
+from receipt_dynamo.data._batch_summary import _BatchSummary
+from receipt_dynamo.data._embedding_batch_result import (
+    _EmbeddingBatchResult,
+)
+from receipt_dynamo.data._receipt_metadata import (
+    _ReceiptMetadata,
+)
+from receipt_dynamo.data._completion_batch_result import (
+    _CompletionBatchResult,
+)
+from receipt_dynamo.data._refinement_job import _RefinementJob
 
 
 class DynamoClient(
@@ -36,9 +66,6 @@ class DynamoClient(
     _ReceiptLetter,
     _WordTag,
     _ReceiptWordTag,
-    _GPTValidation,
-    _GPTInitialTagging,
-    _ReceiptWindow,
     _Job,
     _JobStatus,
     _JobResource,
@@ -48,6 +75,21 @@ class DynamoClient(
     _JobDependency,
     _Queue,
     _Instance,
+    _PlacesCache,
+    _ReceiptWordLabel,
+    _ReceiptField,
+    _ReceiptLabelAnalysis,
+    _ReceiptStructureAnalysis,
+    _ReceiptLineItemAnalysis,
+    _ReceiptValidationResult,
+    _ReceiptValidationCategory,
+    _ReceiptValidationSummary,
+    _ReceiptChatGPTValidation,
+    _BatchSummary,
+    _EmbeddingBatchResult,
+    _ReceiptMetadata,
+    _CompletionBatchResult,
+    _RefinementJob,
 ):
     """A class used to represent a DynamoDB client."""
 

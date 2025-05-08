@@ -53,11 +53,8 @@ def handler(event, context):
                 receipts,
                 receipt_lines,
                 receipt_words,
-                receipt_word_tags,
                 receipt_letters,
                 gpt_validations,
-                gpt_initial_taggings,
-                receipt_windows,
             ) = image_details
             return {
                 "statusCode": 200,

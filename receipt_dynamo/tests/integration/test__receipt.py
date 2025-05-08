@@ -13,6 +13,7 @@ from receipt_dynamo import (
     Receipt,
     ReceiptLetter,
     ReceiptWord,
+    ReceiptWordLabel,
     ReceiptWordTag,
 )
 
@@ -61,6 +62,57 @@ def sample_receipt_word():
         angle_radians=0,
         confidence=1,
     )
+
+
+@pytest.fixture
+def sample_receipt_words():
+    return [
+        ReceiptWord(
+            image_id=image_id,
+            receipt_id=1,
+            line_id=1,
+            word_id=1,
+            text="example-word",
+            bounding_box={"x": 0, "y": 0, "width": 10, "height": 20},
+            top_left={"x": 0, "y": 0},
+            top_right={"x": 10, "y": 0},
+            bottom_left={"x": 0, "y": 20},
+            bottom_right={"x": 10, "y": 20},
+            angle_degrees=0,
+            angle_radians=0,
+            confidence=1,
+        ),
+        ReceiptWord(
+            image_id=image_id,
+            receipt_id=1,
+            line_id=1,
+            word_id=2,
+            text="Store",
+            bounding_box={"x": 0, "y": 0, "width": 10, "height": 20},
+            top_left={"x": 0, "y": 0},
+            top_right={"x": 10, "y": 0},
+            bottom_left={"x": 0, "y": 20},
+            bottom_right={"x": 10, "y": 20},
+            angle_degrees=0,
+            angle_radians=0,
+            confidence=1,
+        ),
+    ]
+
+
+@pytest.fixture
+def sample_receipt_word_labels():
+    return [
+        ReceiptWordLabel(
+            image_id=image_id,
+            receipt_id=1,
+            line_id=1,
+            word_id=2,
+            label="store_name",
+            reasoning="This is a store name",
+            timestamp_added=datetime.now().isoformat(),
+        ),
+    ]
 
 
 @pytest.fixture
@@ -1733,8 +1785,7 @@ def test_getReceiptDetails_success(
         words,
         letters,
         tags,
-        validations,
-        initial_taggings,
+        labels,
     ) = client.getReceiptDetails(
         sample_receipt.image_id, sample_receipt.receipt_id
     )
@@ -1746,8 +1797,6 @@ def test_getReceiptDetails_success(
     assert (
         lines == []
     ), "No lines were added in this test, so expect an empty list."
-    assert validations == []
-    assert initial_taggings == []
 
 
 # -------------------------------------------------------------------
@@ -2045,3 +2094,41 @@ def test_listReceipts_raises_unknown_error(
     ):
         client.listReceipts()
     mock_query.assert_called_once()
+
+
+@pytest.mark.integration
+def test_listReceiptDetails_success(
+    dynamodb_table,
+    sample_receipt,
+    sample_receipt_words,
+    sample_receipt_word_labels,
+):
+    """
+    Tests listing receipt details for a single receipt.
+    """
+    receipt = sample_receipt
+    receipt_words = sample_receipt_words
+    word_labels = sample_receipt_word_labels
+
+    client = DynamoClient(dynamodb_table)
+    client.addReceipt(receipt)
+    client.addReceiptWords(receipt_words)
+    client.addReceiptWordLabels(word_labels)
+
+    receipt_details, last_evaluated_key = client.listReceiptDetails()
+
+    # Verify the structure of the returned data
+    assert isinstance(receipt_details, dict)
+    print(receipt_details)
+    key = f"{receipt.image_id}_{receipt.receipt_id}"
+    assert key in receipt_details
+
+    # Verify the contents of the receipt details
+    details = receipt_details[key]
+    print(details)
+    assert details["receipt"] == receipt
+    assert details["words"] == receipt_words
+    assert details["word_labels"] == word_labels
+
+    # Verify pagination key
+    assert last_evaluated_key is None  # Since we only have one receipt

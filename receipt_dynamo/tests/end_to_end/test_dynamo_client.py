@@ -93,23 +93,3 @@ def test_dynamo_client_list_receipt_letters(dynamodb_table: str):
     client = DynamoClient(dynamodb_table)
     receipt_letters, _ = client.listReceiptLetters(10)
     assert len(receipt_letters) == 10
-
-
-@pytest.mark.end_to_end
-def test_dynamo_client_list_initial_taggings(dynamodb_table: str):
-    """
-    Tests that DynamoClient can list initial taggings from the table.
-    """
-    client = DynamoClient(dynamodb_table)
-    initial_taggings, _ = client.listGPTInitialTaggings(10)
-    assert len(initial_taggings) == 10
-
-
-@pytest.mark.end_to_end
-def test_dynamo_client_list_gpt_validations(dynamodb_table: str):
-    """
-    Tests that DynamoClient can list gpt validations from the table.
-    """
-    client = DynamoClient(dynamodb_table)
-    gpt_validations, _ = client.listGPTValidations(10)
-    assert len(gpt_validations) == 10

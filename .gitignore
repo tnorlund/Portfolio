@@ -190,3 +190,9 @@ dev.*
 # Update with new location for test failures
 receipt_dynamo/tests/integration/FAIL*
 receipt_dynamo/coverage.lcov
+
+# Temp files for Pulumi
+infra/temp/*
+
+# Zips in Build
+infra/*.zip

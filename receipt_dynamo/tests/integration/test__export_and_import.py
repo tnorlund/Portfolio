@@ -13,7 +13,6 @@ from receipt_dynamo import (
     Receipt,
     ReceiptLetter,
     ReceiptLine,
-    ReceiptWindow,
     ReceiptWord,
     ReceiptWordTag,
     Word,
@@ -194,18 +193,6 @@ def test_export_and_import_image(dynamodb_table, export_dir):
             },
         )
     ]
-    receipt_windows = [
-        ReceiptWindow(
-            image_id=image.image_id,
-            receipt_id=receipts[0].receipt_id,
-            cdn_s3_bucket="test_cdn_bucket",
-            cdn_s3_key="test_cdn_key",
-            corner_name="TOP_LEFT",
-            width=100,
-            height=100,
-            inner_corner_coordinates=(0, 0),
-        )
-    ]
     receipt_lines = [
         ReceiptLine(
             receipt_id=receipts[0].receipt_id,
@@ -325,7 +312,6 @@ def test_export_and_import_image(dynamodb_table, export_dir):
     client.addWordTags(word_tags)
     client.addLetters(letters)
     client.addReceipts(receipts)
-    client.addReceiptWindows(receipt_windows)
     client.addReceiptLines(receipt_lines)
     client.addReceiptWords(receipt_words)
     client.addReceiptWordTags(receipt_word_tags)
@@ -343,7 +329,6 @@ def test_export_and_import_image(dynamodb_table, export_dir):
     client.deleteWordTags(word_tags)
     client.deleteLetters(letters)
     client.deleteReceipts(receipts)
-    client.deleteReceiptWindows(receipt_windows)
     client.deleteReceiptLines(receipt_lines)
     client.deleteReceiptWords(receipt_words)
     client.deleteReceiptWordTags(receipt_word_tags)
@@ -355,7 +340,6 @@ def test_export_and_import_image(dynamodb_table, export_dir):
     assert len(client.listWords()[0]) == 0
     assert len(client.listLetters()[0]) == 0
     assert len(client.listReceipts()[0]) == 0
-    assert len(client.listReceiptWindows()[0]) == 0
     assert len(client.listReceiptLines()[0]) == 0
     assert len(client.listReceiptWords()[0]) == 0
     assert len(client.listReceiptWordTags()[0]) == 0
@@ -380,8 +364,6 @@ def test_export_and_import_image(dynamodb_table, export_dir):
     assert client.listLetters()[0][0].text == "H"
     assert len(client.listReceipts()[0]) == 1
     assert client.listReceipts()[0][0].receipt_id == 1
-    assert len(client.listReceiptWindows()[0]) == 1
-    assert client.listReceiptWindows()[0][0].receipt_id == 1
     assert len(client.listReceiptLines()[0]) == 1
     assert client.listReceiptLines()[0][0].receipt_id == 1
     assert len(client.listReceiptWords()[0]) == 1

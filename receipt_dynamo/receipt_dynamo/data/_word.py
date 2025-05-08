@@ -77,10 +77,6 @@ class _Word:
             ValueError: When a word with the same ID does not exist
         """
         try:
-            # Check to see if there a duplicates in the word tags
-            tags = word.tags
-            if len(tags) != len(set(tags)):
-                raise ValueError("Word tags must be unique")
             self._client.put_item(
                 TableName=self.table_name,
                 Item=word.to_item(),
@@ -132,9 +128,6 @@ class _Word:
             chunk = words[i : i + CHUNK_SIZE]
             transact_items = []
             for word in chunk:
-                # Check for duplicate tags
-                if len(word.tags) != len(set(word.tags)):
-                    raise ValueError("Word tags must be unique")
                 transact_items.append(
                     {
                         "Put": {
@@ -274,7 +267,7 @@ class _Word:
     def listWords(
         self,
         limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
+        lastEvaluatedKey: Optional[Dict] = None,
     ) -> list[Word]:
         words = []
         try:
@@ -285,8 +278,8 @@ class _Word:
                 "ExpressionAttributeNames": {"#t": "TYPE"},
                 "ExpressionAttributeValues": {":val": {"S": "WORD"}},
             }
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
+            if lastEvaluatedKey is not None:
+                query_params["ExclusiveStartKey"] = lastEvaluatedKey
             if limit is not None:
                 query_params["Limit"] = limit
             response = self._client.query(**query_params)
@@ -300,10 +293,10 @@ class _Word:
                     words.extend(
                         [itemToWord(item) for item in response["Items"]]
                     )
-                last_evaluated_key = None
+                lastEvaluatedKey = None
             else:
-                last_evaluated_key = response.get("LastEvaluatedKey", None)
-            return words, last_evaluated_key
+                lastEvaluatedKey = response.get("LastEvaluatedKey", None)
+            return words, lastEvaluatedKey
         except ClientError as e:
             raise ValueError("Could not list words from the database") from e
 

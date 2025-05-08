@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.entities.queue import Queue
+from receipt_dynamo.entities.rwl_queue import Queue
 from receipt_dynamo.entities.queue_job import QueueJob
 
 

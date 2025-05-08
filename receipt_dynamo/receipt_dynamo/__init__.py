@@ -5,31 +5,38 @@ DynamoDB utility package for receipt data.
 __version__ = "0.1.0"
 
 # Define public API - this tells both users and linters what's intentionally exported
-__all__ = [  # Entity classes
+__all__ = [
     "Image",
-    "itemToImage",
     "Letter",
-    "itemToLetter",
     "Line",
-    "itemToLine",
     "Receipt",
-    "itemToReceipt",
     "ReceiptLetter",
-    "itemToReceiptLetter",
     "ReceiptLine",
-    "itemToReceiptLine",
     "ReceiptWord",
+    "Word",
+    "itemToImage",
+    "itemToLetter",
+    "itemToLine",
+    "itemToReceipt",
+    "itemToReceiptLetter",
+    "itemToReceiptLine",
     "itemToReceiptWord",
+    "itemToWord",
     "ReceiptWordTag",
     "itemToReceiptWordTag",
-    "Word",
-    "itemToWord",
+    "ReceiptWordLabel",
+    "itemToReceiptWordLabel",
+    "ReceiptField",
+    "itemToReceiptField",
+    "ReceiptLabelAnalysis",
+    "itemToReceiptLabelAnalysis",
+    "ReceiptStructureAnalysis",
+    "itemToReceiptStructureAnalysis",
+    "ReceiptLineItemAnalysis",
+    "itemToReceiptLineItemAnalysis",
+    "ReceiptAnalysis",
     "WordTag",
     "itemToWordTag",
-    "GPTValidation",
-    "itemToGPTValidation",
-    "GPTInitialTagging",
-    "itemToGPTInitialTagging",
     "Job",
     "itemToJob",
     "JobMetric",
@@ -38,58 +45,82 @@ __all__ = [  # Entity classes
     "itemToJobResource",
     "JobStatus",
     "itemToJobStatus",
-    "ReceiptWindow",
-    "itemToReceiptWindow",
     "Instance",
     "itemToInstance",
     "InstanceJob",
     "itemToInstanceJob",
-    # Data operations
     "DynamoClient",
     "process",
     "export_image",
     "import_image",
-    # Service layer
     "JobService",
     "QueueService",
     "InstanceService",
+    "ReceiptValidationSummary",
+    "itemToReceiptValidationSummary",
+    "ReceiptValidationResult",
+    "itemToReceiptValidationResult",
+    "ReceiptValidationCategory",
+    "itemToReceiptValidationCategory",
+    "ReceiptChatGPTValidation",
 ]
 
 # Entities must be imported first to avoid circular imports
-from receipt_dynamo.entities.image import Image, itemToImage
-from receipt_dynamo.entities.letter import Letter, itemToLetter
-from receipt_dynamo.entities.line import Line, itemToLine
-from receipt_dynamo.entities.receipt import Receipt, itemToReceipt
-from receipt_dynamo.entities.receipt_letter import (
+from receipt_dynamo.entities import (
+    Image,
+    Letter,
+    Line,
+    Receipt,
     ReceiptLetter,
+    ReceiptLine,
+    ReceiptWord,
+    Word,
+    itemToImage,
+    itemToLetter,
+    itemToLine,
+    itemToReceipt,
     itemToReceiptLetter,
+    itemToReceiptLine,
+    itemToReceiptWord,
+    itemToWord,
+    ReceiptWordLabel,
+    itemToReceiptWordLabel,
+    ReceiptField,
+    itemToReceiptField,
+    ReceiptLabelAnalysis,
+    itemToReceiptLabelAnalysis,
+    ReceiptStructureAnalysis,
+    itemToReceiptStructureAnalysis,
+    ReceiptLineItemAnalysis,
+    itemToReceiptLineItemAnalysis,
+    ReceiptValidationSummary,
+    itemToReceiptValidationSummary,
+    ReceiptValidationResult,
+    itemToReceiptValidationResult,
+    ReceiptValidationCategory,
+    itemToReceiptValidationCategory,
+    ReceiptChatGPTValidation,
+    itemToReceiptChatGPTValidation,
+    ReceiptAnalysis,
 )
-from receipt_dynamo.entities.receipt_line import ReceiptLine, itemToReceiptLine
-from receipt_dynamo.entities.receipt_word import ReceiptWord, itemToReceiptWord
 from receipt_dynamo.entities.receipt_word_tag import (
     ReceiptWordTag,
     itemToReceiptWordTag,
 )
-from receipt_dynamo.entities.word import Word, itemToWord
 from receipt_dynamo.entities.word_tag import WordTag, itemToWordTag
-from receipt_dynamo.entities.gpt_validation import (
-    GPTValidation,
-    itemToGPTValidation,
-)
-from receipt_dynamo.entities.gpt_initial_tagging import (
-    GPTInitialTagging,
-    itemToGPTInitialTagging,
-)
 from receipt_dynamo.entities.job import Job, itemToJob
 from receipt_dynamo.entities.job_metric import JobMetric, itemToJobMetric
 from receipt_dynamo.entities.job_resource import JobResource, itemToJobResource
 from receipt_dynamo.entities.job_status import JobStatus, itemToJobStatus
-from receipt_dynamo.entities.receipt_window import (
-    ReceiptWindow,
-    itemToReceiptWindow,
-)
 from receipt_dynamo.entities.instance import Instance, itemToInstance
 from receipt_dynamo.entities.instance_job import InstanceJob, itemToInstanceJob
+from receipt_dynamo.entities.receipt_structure_analysis import (
+    ReceiptStructureAnalysis,
+    itemToReceiptStructureAnalysis,
+    SpatialPattern,
+    ContentPattern,
+    ReceiptSection,
+)
 
 # Only import what's actually used elsewhere in the package
 from receipt_dynamo.data.dynamo_client import DynamoClient

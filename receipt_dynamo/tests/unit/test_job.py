@@ -334,15 +334,6 @@ def test_job_gsi1_key(example_job):
 
 
 @pytest.mark.unit
-def test_job_gsi2_key(example_job):
-    """Test the Job.gsi2_key() method."""
-    assert example_job.gsi2_key() == {
-        "GSI2PK": {"S": "USER#user123"},
-        "GSI2SK": {"S": "CREATED#2021-01-01T00:00:00"},
-    }
-
-
-@pytest.mark.unit
 def test_job_to_item(example_job, example_job_minimal):
     """Test the Job.to_item() method."""
     # Test with full job
@@ -351,8 +342,6 @@ def test_job_to_item(example_job, example_job_minimal):
     assert item["SK"] == {"S": "JOB"}
     assert item["GSI1PK"] == {"S": "STATUS#pending"}
     assert item["GSI1SK"] == {"S": "CREATED#2021-01-01T00:00:00"}
-    assert item["GSI2PK"] == {"S": "USER#user123"}
-    assert item["GSI2SK"] == {"S": "CREATED#2021-01-01T00:00:00"}
     assert item["TYPE"] == {"S": "JOB"}
     assert item["name"] == {"S": "Training Job"}
     assert item["description"] == {"S": "Example training job description"}
