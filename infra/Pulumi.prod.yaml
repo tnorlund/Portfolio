@@ -1,19 +1,24 @@
 config:
   aws:region: us-east-1
-  vpcCidr: "10.20.0.0/16"
-  publicSubnetCidrs:
-    - "10.20.0.0/24"
-    - "10.20.1.0/24"
-    - "10.20.2.0/24"
-    - "10.20.3.0/24"
-  privateSubnetCidrs:
-    - "10.20.10.0/24"
-    - "10.20.11.0/24"
-    - "10.20.12.0/24"
-    - "10.20.13.0/24"
   portfolio:OPENAI_API_KEY:
     secure: AAABALe0NIAr8rMxpYRRdx6BWX8J+bzJr49JLe1J2++tT73yTWw07XWdJP9Bvkp8Qki45BypvZGByqBcvkxjx4l83C/mJ+NYXwwoSnQ3vhzop+NuWKQ+SXnvtz/4cNj7EsnNo2uy16ZZ536x/dBH/sNSf64rbUnU/2zlAHtaVQKds4t3VAffvy8Cmo/4dMfW/PYpUG1ZpyXPwLv9XTPA/AL1F+dA6/V8uSOFwmI7Hu+ox654+HuKy4QdK8TqLczJQ97WPw==
+  lambda-layer:force-rebuild: "false"
   portfolio:environment: prod
-  portfolio:GOOGLE_PLACES_API_KEY:
-    secure: AAABAAK8xGIKbSJImf3isrPRyJRt+P7pDXSUshC3r34OoDik3KWknQmYuu0q+/KfLXLReYCPe4IXmWFDEpFNnE4kEnOl7SM=
   ml-training:force-rebuild: "true"
+  portfolio:PINECONE_INDEX_NAME: "receipt-validation-dev"
+  portfolio:PINECONE_HOST: "https://receipt-validation-dev-sy23fax.svc.aped-4627-b74a.pinecone.io"
+  portfolio:GOOGLE_PLACES_API_KEY:
+    secure: AAABAOR1JU1yZSzCX3CN1pjvb+kB+in6KUyAk12uk11aX9ui5FcOCVt9QR4lT3gBSQmxpO8IAhGAoolejWYLVNO8cfS0nIg=
+  portfolio:privateSubnetCidrs:
+    - 10.20.10.0/24
+    - 10.20.11.0/24
+    - 10.20.12.0/24
+    - 10.20.13.0/24
+  portfolio:publicSubnetCidrs:
+    - 10.20.0.0/24
+    - 10.20.1.0/24
+    - 10.20.2.0/24
+    - 10.20.3.0/24
+  portfolio:vpcCidr: 10.20.0.0/16
+  portfolio:PINECONE_API_KEY:
+    secure: AAABAELs7t2e65dc4f7nmXA6nB4vmludtPihROyJUQG9TtlMN0eX+1YbfnYHaTRARQzdp9Zm5TFywA+oXXjpxymh66SaZbu7zxCmMEWJ8Yl1dmTF7lqR7m8NVvjauALqBDSlQum+s1APPhM=
