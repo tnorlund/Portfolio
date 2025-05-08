@@ -4,8 +4,6 @@ from typing import Dict, List, Optional, Tuple, Union
 from botocore.exceptions import ClientError
 
 from receipt_dynamo import (
-    GPTInitialTagging,
-    GPTValidation,
     Image,
     Letter,
     Line,
@@ -16,8 +14,6 @@ from receipt_dynamo import (
     ReceiptWordTag,
     Word,
     WordTag,
-    itemToGPTInitialTagging,
-    itemToGPTValidation,
     itemToImage,
     itemToLetter,
     itemToLine,
@@ -30,7 +26,6 @@ from receipt_dynamo import (
     itemToWordTag,
 )
 from receipt_dynamo.entities import assert_valid_uuid
-from receipt_dynamo.entities.receipt_window import itemToReceiptWindow
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 # So we chunk the items in groups of 25 for bulk operations.
@@ -357,8 +352,6 @@ class _Image:
         list[ReceiptWord],
         list[ReceiptWordTag],
         list[ReceiptLetter],
-        list[GPTInitialTagging],
-        list[GPTValidation],
     ]:
         """
         Retrieves detailed information about an Image from the database,
@@ -396,13 +389,10 @@ class _Image:
         word_tags = []
         letters = []
         receipts = []
-        receipt_windows = []
         receipt_lines = []
         receipt_words = []
         receipt_word_tags = []
         receipt_letters = []
-        gpt_initial_taggings = []
-        gpt_validations = []
         try:
             response = self._client.query(
                 TableName=self.table_name,
@@ -444,8 +434,6 @@ class _Image:
                     letters.append(itemToLetter(item))
                 elif item["TYPE"]["S"] == "RECEIPT":
                     receipts.append(itemToReceipt(item))
-                elif item["TYPE"]["S"] == "RECEIPT_WINDOW":
-                    receipt_windows.append(itemToReceiptWindow(item))
                 elif item["TYPE"]["S"] == "RECEIPT_LINE":
                     receipt_lines.append(itemToReceiptLine(item))
                 elif item["TYPE"]["S"] == "RECEIPT_WORD":
@@ -454,10 +442,6 @@ class _Image:
                     receipt_word_tags.append(itemToReceiptWordTag(item))
                 elif item["TYPE"]["S"] == "RECEIPT_LETTER":
                     receipt_letters.append(itemToReceiptLetter(item))
-                elif item["TYPE"]["S"] == "GPT_INITIAL_TAGGING":
-                    gpt_initial_taggings.append(itemToGPTInitialTagging(item))
-                elif item["TYPE"]["S"] == "GPT_VALIDATION":
-                    gpt_validations.append(itemToGPTValidation(item))
 
             return (
                 images,
@@ -466,13 +450,10 @@ class _Image:
                 word_tags,
                 letters,
                 receipts,
-                receipt_windows,
                 receipt_lines,
                 receipt_words,
                 receipt_word_tags,
                 receipt_letters,
-                gpt_initial_taggings,
-                gpt_validations,
             )
 
         except Exception as e:

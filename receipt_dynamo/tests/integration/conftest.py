@@ -1,5 +1,6 @@
 from json import load
 from os.path import dirname, join
+from datetime import datetime
 
 import boto3
 import pytest
@@ -16,6 +17,7 @@ from receipt_dynamo import (
     ReceiptWordTag,
     Word,
     WordTag,
+    ReceiptWordLabel,
 )
 
 
@@ -45,6 +47,8 @@ def dynamodb_table():
                 {"AttributeName": "GSI1SK", "AttributeType": "S"},
                 {"AttributeName": "GSI2PK", "AttributeType": "S"},
                 {"AttributeName": "GSI2SK", "AttributeType": "S"},
+                {"AttributeName": "GSI3PK", "AttributeType": "S"},
+                {"AttributeName": "GSI3SK", "AttributeType": "S"},
                 {"AttributeName": "TYPE", "AttributeType": "S"},
             ],
             ProvisionedThroughput={
@@ -69,6 +73,18 @@ def dynamodb_table():
                     "KeySchema": [
                         {"AttributeName": "GSI2PK", "KeyType": "HASH"},
                         {"AttributeName": "GSI2SK", "KeyType": "RANGE"},
+                    ],
+                    "Projection": {"ProjectionType": "ALL"},
+                    "ProvisionedThroughput": {
+                        "ReadCapacityUnits": 5,
+                        "WriteCapacityUnits": 5,
+                    },
+                },
+                {
+                    "IndexName": "GSI3",
+                    "KeySchema": [
+                        {"AttributeName": "GSI3PK", "KeyType": "HASH"},
+                        {"AttributeName": "GSI3SK", "KeyType": "RANGE"},
                     ],
                     "Projection": {"ProjectionType": "ALL"},
                     "ProvisionedThroughput": {
@@ -192,3 +208,78 @@ def expected_results(request):
         receipt_word_tags,
         receipt_letters,
     )
+
+
+@pytest.fixture
+def sample_receipt_details():
+    """
+    Provides a sample receipt with its associated words and word labels for testing.
+    """
+    receipt = Receipt(
+        image_id="test_image",
+        receipt_id=1,
+        width=1000,
+        height=2000,
+        timestamp_added=datetime.now().isoformat(),
+        raw_s3_bucket="test-bucket",
+        raw_s3_key="test-key",
+        top_left={"x": 0.1, "y": 0.1},
+        top_right={"x": 0.9, "y": 0.1},
+        bottom_left={"x": 0.1, "y": 0.9},
+        bottom_right={"x": 0.9, "y": 0.9},
+        sha256="test-sha256",
+        cdn_s3_bucket="test-cdn-bucket",
+        cdn_s3_key="test-cdn-key",
+    )
+
+    receipt_words = [
+        ReceiptWord(
+            image_id="test_image",
+            receipt_id=1,
+            line_id=1,
+            word_id=1,
+            text="Test",
+            confidence=0.95,
+            x1=0.1,
+            y1=0.1,
+            x2=0.2,
+            y2=0.2,
+        ),
+        ReceiptWord(
+            image_id="test_image",
+            receipt_id=1,
+            line_id=1,
+            word_id=2,
+            text="Store",
+            confidence=0.95,
+            x1=0.3,
+            y1=0.1,
+            x2=0.4,
+            y2=0.2,
+        ),
+    ]
+
+    word_labels = [
+        ReceiptWordLabel(
+            image_id="test_image",
+            receipt_id=1,
+            line_id=1,
+            word_id=1,
+            label="store_name",
+            confidence=0.95,
+        ),
+        ReceiptWordLabel(
+            image_id="test_image",
+            receipt_id=1,
+            line_id=1,
+            word_id=2,
+            label="store_name",
+            confidence=0.95,
+        ),
+    ]
+
+    return {
+        "receipt": receipt,
+        "words": receipt_words,
+        "word_labels": word_labels,
+    }

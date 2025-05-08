@@ -8,7 +8,7 @@ from pulumi import AssetArchive, FileArchive
 from dynamo_db import dynamodb_table
 
 # Import the Lambda Layer from the lambda_layer module
-from lambda_layer import lambda_layer
+from lambda_layer import dynamo_layer
 
 from raw_bucket import raw_bucket
 from s3_website import site_bucket
@@ -115,22 +115,23 @@ aws.iam.RolePolicyAttachment(
 # Create the Lambda function for the "user" route
 process_lambda = aws.lambda_.Function(
     f"api_{ROUTE_NAME}_GET_lambda",
-    runtime="python3.13",  # or whichever version you prefer
+    runtime="python3.12",
     role=lambda_role.arn,
     code=AssetArchive(
         {
             ".": FileArchive(HANDLER_DIR),
         }
     ),
-    handler="index.handler",  # file_name.function_name
-    layers=[lambda_layer.arn],
+    handler="index.handler",
+    layers=[dynamo_layer.arn],
     environment={
         "variables": {
             "DYNAMODB_TABLE_NAME": DYNAMODB_TABLE_NAME,
         }
     },
-    memory_size=3072,  # Increase RAM to 3 GB
-    timeout=300,  # Increase timeout to 5 minutes
+    memory_size=3072,
+    timeout=300,
+    tags={"environment": pulumi.get_stack()},
 )
 
 # CloudWatch log group for the Lambda function

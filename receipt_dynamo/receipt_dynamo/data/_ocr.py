@@ -72,7 +72,7 @@ def _process_ocr_dict(
     return lines, words, letters
 
 
-def apple_vision_ocr(image_paths: list[str]) -> bool:
+def apple_vision_ocr(image_paths: list[str]) -> Dict[str, Any]:
     """Executes a Swift OCR script on the provided image paths."""
     swift_script = Path(__file__).parent / "OCRSwift.swift"
     # Check to see that the swift script exists
@@ -97,8 +97,7 @@ def apple_vision_ocr(image_paths: list[str]) -> bool:
                 stderr=subprocess.DEVNULL,
             )
         except subprocess.CalledProcessError as e:
-            print(f"Error running Swift script: {e}")
-            return False
+            raise ValueError(f"Error running Swift script: {e}") from e
 
         ocr_dict = {}
         # Iterate over the JSON files in the output directory

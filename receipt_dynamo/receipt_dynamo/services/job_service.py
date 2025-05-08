@@ -217,7 +217,7 @@ class JobService:
         """
         job_status = JobStatus(
             job_id=job_id,
-            timestamp=datetime.now(),
+            updated_at=datetime.now(),
             status=status,
             message=message,
         )

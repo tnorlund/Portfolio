@@ -31,7 +31,7 @@ class InstanceJob:
         """Initializes a new InstanceJob object for DynamoDB.
 
         Args:
-            instance_id (str): UUID identifying the instance.
+            instance_id (str): Amazon EC2 instance ID.
             job_id (str): UUID identifying the job.
             assigned_at (datetime): The timestamp when the job was assigned to the instance.
             status (str): The current status of the job on this instance.
@@ -40,7 +40,8 @@ class InstanceJob:
         Raises:
             ValueError: If any parameter is of an invalid type or has an invalid value.
         """
-        assert_valid_uuid(instance_id)
+        if not isinstance(instance_id, str) or not instance_id:
+            raise ValueError("instance_id must be a non-empty string")
         self.instance_id = instance_id
 
         assert_valid_uuid(job_id)
