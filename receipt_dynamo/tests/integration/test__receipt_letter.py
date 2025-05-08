@@ -172,6 +172,7 @@ def test_addReceiptLetter_client_errors(
         client.addReceiptLetter(sample_receipt_letter)
     mock_put.assert_called_once()
 
+
 # -------------------------------------------------------------------
 #                        addReceiptLetters
 # -------------------------------------------------------------------

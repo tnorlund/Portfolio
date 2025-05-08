@@ -337,10 +337,6 @@ def delete_items_in_table(dynamo_client: DynamoClient) -> None:
     print(f" - Deleting {len(receipt_letters)} receipt letter items")
     dynamo_client.deleteReceiptLetters(receipt_letters)
 
-    gpt_initial_taggings = dynamo_client.listGPTInitialTaggings()
-    print(f" - Deleting {len(gpt_initial_taggings)} GPT initial tagging items")
-    dynamo_client.deleteGPTInitialTaggings(gpt_initial_taggings)
-
     # Pause briefly for eventual consistency
     sleep(1)
 

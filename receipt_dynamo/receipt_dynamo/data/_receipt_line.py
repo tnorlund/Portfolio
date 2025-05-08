@@ -1,6 +1,7 @@
 from botocore.exceptions import ClientError
 
 from receipt_dynamo import ReceiptLine, itemToReceiptLine
+from receipt_dynamo.entities.util import assert_valid_uuid
 
 CHUNK_SIZE = 25
 
@@ -158,6 +159,100 @@ class _ReceiptLine:
             return itemToReceiptLine(response["Item"])
         except KeyError:
             raise ValueError(f"ReceiptLine with ID {line_id} not found")
+
+    def getReceiptLinesByIndices(
+        self, indices: list[tuple[str, int, int]]
+    ) -> list[ReceiptLine]:
+        """Retrieves multiple ReceiptLines by their indices."""
+        if indices is None:
+            raise ValueError(
+                "indices parameter is required and cannot be None."
+            )
+        if not isinstance(indices, list):
+            raise ValueError("indices must be a list of tuples.")
+        if not all(isinstance(index, tuple) for index in indices):
+            raise ValueError("indices must be a list of tuples.")
+
+        for index in indices:
+            if len(index) != 3:
+                raise ValueError(
+                    "indices must be a list of tuples with 3 elements."
+                )
+            if not isinstance(index[0], str):
+                raise ValueError("First element of tuple must be a string.")
+            assert_valid_uuid(index[0])
+            if not isinstance(index[1], int):
+                raise ValueError("Second element of tuple must be an integer.")
+            if not isinstance(index[2], int):
+                raise ValueError("Third element of tuple must be an integer.")
+
+        # Assemble the keys
+        keys = []
+        for index in indices:
+            keys.append(
+                {
+                    "PK": {"S": f"IMAGE#{index[0]}"},
+                    "SK": {"S": f"RECEIPT#{index[1]:05d}#LINE#{index[2]:05d}"},
+                }
+            )
+
+        # Get the receipt lines
+        return self.getReceiptLinesByKeys(keys)
+
+    def getReceiptLinesByKeys(self, keys: list[dict]) -> list[ReceiptLine]:
+        """Retrieves multiple ReceiptLines by their keys."""
+        if keys is None:
+            raise ValueError("keys parameter is required and cannot be None.")
+        if not isinstance(keys, list):
+            raise ValueError("keys must be a list of dictionaries.")
+        for key in keys:
+            if not {"PK", "SK"}.issubset(key.keys()):
+                raise ValueError("keys must contain 'PK' and 'SK'")
+            if not key["PK"]["S"].startswith("IMAGE#"):
+                raise ValueError("PK must start with 'IMAGE#'")
+            if not key["SK"]["S"].startswith("RECEIPT#"):
+                raise ValueError("SK must start with 'RECEIPT#'")
+            if len(key["SK"]["S"].split("#")[1]) != 5:
+                raise ValueError("SK must contain a 5-digit receipt ID")
+            if not key["SK"]["S"].split("#")[2] == "LINE":
+                raise ValueError("SK must contain 'LINE'")
+            if len(key["SK"]["S"].split("#")[3]) != 5:
+                raise ValueError("SK must contain a 5-digit line ID")
+
+        # Get the receipt lines
+        results = []
+        for i in range(0, len(keys), CHUNK_SIZE):
+            chunk = keys[i : i + CHUNK_SIZE]
+            request = {
+                "RequestItems": {
+                    self.table_name: {
+                        "Keys": chunk,
+                    }
+                }
+            }
+            try:
+                response = self._client.batch_get_item(**request)
+                batch_items = response["Responses"].get(self.table_name, [])
+                results.extend(batch_items)
+
+                unprocessed = response.get("UnprocessedKeys", {})
+                while unprocessed.get(self.table_name, {}).get("Keys"):
+                    response = self._client.batch_get_item(
+                        RequestItems=unprocessed
+                    )
+                    batch_items = response["Responses"].get(
+                        self.table_name, []
+                    )
+                    results.extend(batch_items)
+                    unprocessed = response.get("UnprocessedKeys", {})
+            except ClientError as e:
+                raise ValueError(
+                    f"Could not get ReceiptLines from the database: {e}"
+                ) from e
+
+        return [itemToReceiptLine(result) for result in results]
+
+        return receipt_lines
 
     def listReceiptLines(
         self, limit: int = None, lastEvaluatedKey: dict | None = None

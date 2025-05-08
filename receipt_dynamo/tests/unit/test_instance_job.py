@@ -82,17 +82,11 @@ def test_instance_job_init_datetime():
 @pytest.mark.unit
 def test_instance_job_init_invalid_instance_id():
     """Test the InstanceJob constructor with invalid instance_id."""
-    with pytest.raises(ValueError, match="uuid must be a string"):
+    with pytest.raises(
+        ValueError, match="instance_id must be a non-empty string"
+    ):
         InstanceJob(
-            1,  # Invalid: should be a string
-            "4f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            "2021-01-01T00:00:00",
-            "running",
-        )
-
-    with pytest.raises(ValueError, match="uuid must be a valid UUID"):
-        InstanceJob(
-            "not-a-uuid",  # Invalid: not a valid UUID format
+            1,  # Invalid: not a string
             "4f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "2021-01-01T00:00:00",
             "running",

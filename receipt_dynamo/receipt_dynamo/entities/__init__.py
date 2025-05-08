@@ -1,22 +1,12 @@
 """
 Entity classes for the receipt_dynamo package.
-"""
 
-# This file intentionally left empty as these imports
-# should be done directly from their respective modules
+TODO: Make this import work with intellisense
+"""
 
 # Re-export utility functions needed by other modules
 from receipt_dynamo.entities.util import assert_valid_uuid  # noqa: F401
 
-# Re-export entity classes needed by data modules
-from receipt_dynamo.entities.gpt_initial_tagging import (
-    GPTInitialTagging,
-    itemToGPTInitialTagging,
-)  # noqa: F401
-from receipt_dynamo.entities.gpt_validation import (
-    GPTValidation,
-    itemToGPTValidation,
-)  # noqa: F401
 from receipt_dynamo.entities.image import Image, itemToImage  # noqa: F401
 from receipt_dynamo.entities.letter import Letter, itemToLetter  # noqa: F401
 from receipt_dynamo.entities.line import Line, itemToLine  # noqa: F401
@@ -31,10 +21,6 @@ from receipt_dynamo.entities.receipt_letter import (
 from receipt_dynamo.entities.receipt_line import (
     ReceiptLine,
     itemToReceiptLine,
-)  # noqa: F401
-from receipt_dynamo.entities.receipt_window import (
-    ReceiptWindow,
-    itemToReceiptWindow,
 )  # noqa: F401
 from receipt_dynamo.entities.receipt_word import (
     ReceiptWord,
@@ -69,4 +55,76 @@ from receipt_dynamo.entities.instance import (
 from receipt_dynamo.entities.instance_job import (
     InstanceJob,
     itemToInstanceJob,
+)  # noqa: F401
+from receipt_dynamo.entities.receipt_word_label import (
+    ReceiptWordLabel,
+    itemToReceiptWordLabel,
+)  # noqa: F401
+from receipt_dynamo.entities.receipt_field import (
+    ReceiptField,
+    itemToReceiptField,
+)  # noqa: F401
+from receipt_dynamo.entities.receipt_label_analysis import (
+    ReceiptLabelAnalysis,
+    itemToReceiptLabelAnalysis,
+)  # noqa: F401
+from receipt_dynamo.entities.receipt_structure_analysis import (
+    ReceiptStructureAnalysis,
+    itemToReceiptStructureAnalysis,
+)  # noqa: F401
+from receipt_dynamo.entities.receipt_line_item_analysis import (
+    ReceiptLineItemAnalysis,
+    itemToReceiptLineItemAnalysis,
+)  # noqa: F401
+from receipt_dynamo.entities.receipt_validation_summary import (
+    ReceiptValidationSummary,
+    itemToReceiptValidationSummary,
+)  # noqa: F401
+from receipt_dynamo.entities.receipt_validation_result import (
+    ReceiptValidationResult,
+    itemToReceiptValidationResult,
+)  # noqa: F401
+from receipt_dynamo.entities.receipt_validation_category import (
+    ReceiptValidationCategory,
+    itemToReceiptValidationCategory,
+)  # noqa: F401
+from receipt_dynamo.entities.receipt_chatgpt_validation import (
+    ReceiptChatGPTValidation,
+    itemToReceiptChatGPTValidation,
+)  # noqa: F401
+from receipt_dynamo.entities.receipt_analysis import (
+    ReceiptAnalysis,
+)  # noqa: F401
+from receipt_dynamo.entities.embedding_batch_result import (
+    EmbeddingBatchResult,
+    itemToEmbeddingBatchResult,
+)  # noqa: F401
+from receipt_dynamo.entities.batch_summary import (
+    BatchSummary,
+    itemToBatchSummary,
+)  # noqa: F401
+from receipt_dynamo.entities.completion_batch_result import (
+    CompletionBatchResult,
+    itemToCompletionBatchResult,
+)  # noqa: F401
+from receipt_dynamo.entities.label_hygiene_result import (
+    LabelHygieneResult,
+    itemToLabelHygieneResult,
+)  # noqa: F401
+from receipt_dynamo.entities.label_metadata import (
+    LabelMetadata,
+    itemToLabelMetadata,
+)  # noqa: F401
+from receipt_dynamo.entities.receipt_metadata import (
+    ReceiptMetadata,
+    itemToReceiptMetadata,
+)  # noqa: F401
+from receipt_dynamo.entities.refinement_job import (
+    RefinementJob,
+    itemToRefinementJob,
+)  # noqa: F401
+from receipt_dynamo.entities.rwl_queue import Queue, itemToQueue  # noqa: F401
+from receipt_dynamo.entities.queue_job import (
+    QueueJob,
+    itemToQueueJob,
 )  # noqa: F401
