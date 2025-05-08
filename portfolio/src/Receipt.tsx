@@ -3,7 +3,6 @@ import Diagram from "./Diagram";
 import Pulumi from "./Pulumi";
 import OpenAI from "./OpenAI";
 import ReceiptStack from "./ReceiptStack";
-import ReceiptWords from "./ReceiptWords";
 import ImageBoundingBox from "./ImageBoundingBox";
 import TypeScriptLogo from "./TypeScriptLogo";
 import ReactLogo from "./ReactLogo";
