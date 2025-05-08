@@ -4,7 +4,7 @@ from receipt_dynamo.entities.completion_batch_result import (
     CompletionBatchResult,
     itemToCompletionBatchResult,
 )
-from receipt_dynamo.constants import ValidationStatus, PassNumber
+from receipt_dynamo.constants import ValidationStatus, PassNumber, BatchStatus
 
 
 @pytest.fixture
@@ -17,14 +17,8 @@ def example_completion_batch_result():
         word_id=7,
         original_label="TOTAL",
         gpt_suggested_label="TOTAL",
-        status=ValidationStatus.VALID.value,
+        status=BatchStatus.PENDING.value,
         validated_at=datetime(2024, 1, 1, 10, 0, 0),
-        reasoning="GPT agreed with the label.",
-        raw_prompt="Prompt example here...",
-        raw_response="Response example here...",
-        is_valid=True,
-        vector_id="vector-id-123",
-        pass_number=PassNumber.FIRST.value,
     )
 
 
@@ -33,7 +27,7 @@ def example_completion_batch_result():
 
 @pytest.mark.unit
 def test_completion_batch_result_valid(example_completion_batch_result):
-    assert example_completion_batch_result.status == "VALID"
+    assert example_completion_batch_result.status == "PENDING"
 
 
 @pytest.mark.unit
@@ -75,7 +69,6 @@ def test_completion_batch_result_iter(example_completion_batch_result):
     fields = dict(example_completion_batch_result)
     assert fields["receipt_id"] == 1001
     assert fields["original_label"] == "TOTAL"
-    assert fields["raw_prompt"].startswith("Prompt")
 
 
 # === INVALID CONSTRUCTION (TYPE CHECKS) ===
@@ -96,9 +89,6 @@ def test_completion_batch_result_iter(example_completion_batch_result):
             "not-a-datetime",
             "validated_at must be a datetime object",
         ),
-        ("reasoning", 123, "reasoning must be a string"),
-        ("raw_prompt", 123, "raw_prompt must be a string"),
-        ("raw_response", ["array"], "raw_response must be a string"),
     ],
 )
 def test_completion_batch_result_field_type_errors(field, bad_value, err_msg):
@@ -110,14 +100,8 @@ def test_completion_batch_result_field_type_errors(field, bad_value, err_msg):
         word_id=7,
         original_label="TOTAL",
         gpt_suggested_label="TOTAL",
-        status=ValidationStatus.VALID.value,
+        status=BatchStatus.PENDING.value,
         validated_at=datetime.now(),
-        reasoning="Reasonable",
-        raw_prompt="Prompt here",
-        raw_response="Response here",
-        is_valid=True,
-        vector_id="vector-id-123",
-        pass_number=PassNumber.FIRST.value,
     )
     kwargs[field] = bad_value
     with pytest.raises(ValueError, match=err_msg):
@@ -137,12 +121,6 @@ def test_completion_batch_result_invalid_status_value():
             gpt_suggested_label="TOTAL",
             status="UNKNOWN",
             validated_at=datetime.now(),
-            reasoning="reasoning",
-            raw_prompt="prompt",
-            raw_response="response",
-            is_valid=True,
-            vector_id="vector-id-123",
-            pass_number=PassNumber.FIRST.value,
         )
 
 
@@ -162,14 +140,8 @@ def test_completion_batch_result_invalid_date_format():
         "SK": {"S": "RESULT#RECEIPT#1001#LINE#4#WORD#7#LABEL#TOTAL"},
         "original_label": {"S": "TOTAL"},
         "gpt_suggested_label": {"S": "TOTAL"},
-        "status": {"S": "VALID"},
+        "status": {"S": "PENDING"},
         "validated_at": {"S": "not-a-date"},
-        "reasoning": {"S": "reasoning"},
-        "raw_prompt": {"S": "prompt"},
-        "raw_response": {"S": "response"},
-        "is_valid": {"BOOL": True},
-        "vector_id": {"S": "vector-id-123"},
-        "pass_number": {"S": "FIRST_PASS"},
     }
     with pytest.raises(
         ValueError, match="Error converting item to CompletionBatchResult"

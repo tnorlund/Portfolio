@@ -84,8 +84,8 @@ def test_refinement_job_key_generation(example_refinement_job):
 @pytest.mark.unit
 def test_refinement_job_gsi1_key(example_refinement_job):
     assert example_refinement_job.gsi1_key() == {
-        "PK": {"S": "REFINEMENT_JOB_STATUS#PENDING"},
-        "SK": {"S": "REFINEMENT_JOB#4f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "GSI1PK": {"S": "REFINEMENT_JOB_STATUS#PENDING"},
+        "GSI1SK": {"S": "REFINEMENT_JOB#4f52804b-2fad-4e00-92c8-b593da3a8ed3"},
     }
 
 

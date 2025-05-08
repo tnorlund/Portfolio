@@ -123,3 +123,8 @@ from receipt_dynamo.entities.refinement_job import (
     RefinementJob,
     itemToRefinementJob,
 )  # noqa: F401
+from receipt_dynamo.entities.rwl_queue import Queue, itemToQueue  # noqa: F401
+from receipt_dynamo.entities.queue_job import (
+    QueueJob,
+    itemToQueueJob,
+)  # noqa: F401

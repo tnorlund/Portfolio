@@ -85,13 +85,17 @@ def test_key_and_gsi_keys(example_receipt_metadata):
     assert pk["SK"]["S"] == f"RECEIPT#{m.receipt_id:05d}#METADATA"
 
     gsi1 = m.gsi1_key()
-    expected_merchant = m.merchant_name.upper().replace(" ", "_")
-    assert gsi1["GSI1PK"]["S"] == f"MERCHANT#{expected_merchant}"
+    assert (
+        gsi1["GSI1PK"]["S"]
+        == f"MERCHANT#{m.merchant_name.upper().replace(' ', '_')}"
+    )
+    assert "IMAGE#" in gsi1["GSI1SK"]["S"]
     assert "RECEIPT#" in gsi1["GSI1SK"]["S"]
 
     gsi2 = m.gsi2_key()
-    assert gsi2["GSI2PK"]["S"] == "MERCHANT_VALIDATION"
-    assert "CONFIDENCE#" in gsi2["GSI2SK"]["S"]
+    assert gsi2["GSI2PK"]["S"] == f"PLACE#{m.place_id}"
+    assert "IMAGE#" in gsi2["GSI2SK"]["S"]
+    assert "RECEIPT#" in gsi2["GSI2SK"]["S"]
 
     gsi3 = m.gsi3_key()
     assert gsi3["GSI3PK"]["S"] == "MERCHANT_VALIDATION"
