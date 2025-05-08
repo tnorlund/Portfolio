@@ -27,8 +27,6 @@ if __name__ == "__main__":
         receipt_words,
         receipt_word_tags,
         receipt_letters,
-        gpt_initial_taggings,
-        gpt_validations,
     ) = dynamo_client.getImageDetails(IMAGE_ID)
     # There should be only one image
     if len(images) != 1:
@@ -155,12 +153,6 @@ if __name__ == "__main__":
                 ],
                 "receipt_letters": [
                     dict(letter) for letter in receipt_letters
-                ],
-                "gpt_initial_taggings": [
-                    dict(gpt_query) for gpt_query in gpt_initial_taggings
-                ],
-                "gpt_validations": [
-                    dict(gpt_validation) for gpt_validation in gpt_validations
                 ],
             },
             f,

@@ -15,17 +15,45 @@ import {
   Word,
   WordTag,
   ReceiptWordTagAction,
+  LabelValidationCountResponse,
+  MerchantCountsResponse,
 } from "./interfaces";
 
 const isDevelopment = process.env.NODE_ENV === "development";
 
 // Remove the credentials config
 const fetchConfig = {
-  credentials: 'include' as RequestCredentials,
-  headers: { 
-    'Content-Type': 'application/json'
-  }
+  credentials: "include" as RequestCredentials,
+  headers: {
+    "Content-Type": "application/json",
+  },
 };
+
+export async function fetchMerchantCounts(): Promise<MerchantCountsResponse> {
+  const apiUrl = isDevelopment
+    ? `https://dev-api.tylernorlund.com/merchant_counts`
+    : `https://api.tylernorlund.com/merchant_counts`;
+  const response = await fetch(apiUrl, fetchConfig);
+
+  if (!response.ok) {
+    throw new Error(`Network response was not ok (status: ${response.status})`);
+  }
+
+  return await response.json();
+}
+
+export async function fetchLabelValidationCount(): Promise<LabelValidationCountResponse> {
+  const apiUrl = isDevelopment
+    ? `https://dev-api.tylernorlund.com/label_validation_count`
+    : `https://api.tylernorlund.com/label_validation_count`;
+  const response = await fetch(apiUrl, fetchConfig);
+
+  if (!response.ok) {
+    throw new Error(`Network response was not ok (status: ${response.status})`);
+  }
+
+  return await response.json();
+}
 
 export async function fetchTagValidationStats(): Promise<TagValidationStatsResponse> {
   const apiUrl =
@@ -49,24 +77,26 @@ export const postReceiptWordTag = async (params: ReceiptWordTagAction) => {
       : `https://api.tylernorlund.com/receipt_word_tag`;
 
   // Validate required parameters based on action
-  if ((params.action === "change_tag" || params.action === "add_tag") && !params.new_tag) {
+  if (
+    (params.action === "change_tag" || params.action === "add_tag") &&
+    !params.new_tag
+  ) {
     throw new Error(`new_tag is required for ${params.action} action`);
   }
 
   const response = await fetch(apiUrl, {
     ...fetchConfig,
-    method: 'POST',
-    body: JSON.stringify(params)
+    method: "POST",
+    body: JSON.stringify(params),
   });
-  
+
   if (!response.ok) {
     const errorData = await response.json().catch(() => null);
     throw new Error(
-      errorData?.error || 
-      `Failed to update tag (status: ${response.status})`
+      errorData?.error || `Failed to update tag (status: ${response.status})`
     );
   }
-  
+
   return await response.json();
 };
 
@@ -84,21 +114,21 @@ export const postReceiptWordTags = async (params: {
     receipt_word_tag: ReceiptWordTag;
   }>;
 }> => {
-  const apiUrl = process.env.NODE_ENV === "development"
-    ? `https://dev-api.tylernorlund.com/receipt_word_tags`
-    : `https://api.tylernorlund.com/receipt_word_tags`;
+  const apiUrl =
+    process.env.NODE_ENV === "development"
+      ? `https://dev-api.tylernorlund.com/receipt_word_tags`
+      : `https://api.tylernorlund.com/receipt_word_tags`;
 
   const response = await fetch(apiUrl, {
     ...fetchConfig,
-    method: 'POST',
-    body: JSON.stringify(params)
+    method: "POST",
+    body: JSON.stringify(params),
   });
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => null);
     throw new Error(
-      errorData?.error || 
-      `Failed to update tags (status: ${response.status})`
+      errorData?.error || `Failed to update tags (status: ${response.status})`
     );
   }
 
@@ -214,7 +244,9 @@ export async function fetchReceiptDetail(
   try {
     const response = await fetch(url, fetchConfig);
     if (!response.ok) {
-      throw new Error(`Network response was not ok (status: ${response.status})`);
+      throw new Error(
+        `Network response was not ok (status: ${response.status})`
+      );
     }
 
     const data: ReceiptDetailApiResponse = await response.json();
@@ -231,12 +263,12 @@ export async function fetchReceiptDetails(
 ): Promise<ReceiptDetailsApiResponse> {
   const params = new URLSearchParams();
   params.set("limit", limit.toString());
-  
+
   // Only add lastEvaluatedKey to params if it exists
   if (lastEvaluatedKey) {
     params.set("last_evaluated_key", JSON.stringify(lastEvaluatedKey));
   }
-  
+
   const baseUrl = isDevelopment
     ? `https://dev-api.tylernorlund.com/receipt_details`
     : `https://api.tylernorlund.com/receipt_details`;
@@ -246,7 +278,9 @@ export async function fetchReceiptDetails(
   try {
     const response = await fetch(url, fetchConfig);
     if (!response.ok) {
-      throw new Error(`Network response was not ok (status: ${response.status})`);
+      throw new Error(
+        `Network response was not ok (status: ${response.status})`
+      );
     }
 
     const data: ReceiptDetailsApiResponse = await response.json();

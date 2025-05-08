@@ -41,7 +41,7 @@ const ReceiptStack: React.FC = () => {
     if (!inView) return;
 
     const loadAllReceipts = async () => {
-      let lastEvaluatedKey: any | undefined; 
+      let lastEvaluatedKey: any | undefined;
       let totalFetched = 0;
 
       const allReceipts: Receipt[] = [];

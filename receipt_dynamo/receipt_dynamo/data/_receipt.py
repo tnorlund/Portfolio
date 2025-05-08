@@ -3,15 +3,16 @@ from typing import Dict, List, Optional, Tuple, Union
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.entities.gpt_initial_tagging import itemToGPTInitialTagging
-from receipt_dynamo.entities.gpt_validation import itemToGPTValidation
 from receipt_dynamo.entities.receipt import Receipt, itemToReceipt
 from receipt_dynamo.entities.receipt_letter import (
     ReceiptLetter,
     itemToReceiptLetter,
 )
+from receipt_dynamo.entities.receipt_word_label import (
+    ReceiptWordLabel,
+    itemToReceiptWordLabel,
+)
 from receipt_dynamo.entities.receipt_line import ReceiptLine, itemToReceiptLine
-from receipt_dynamo.entities.receipt_window import itemToReceiptWindow
 from receipt_dynamo.entities.receipt_word import ReceiptWord, itemToReceiptWord
 from receipt_dynamo.entities.receipt_word_tag import (
     ReceiptWordTag,
@@ -413,8 +414,7 @@ class _Receipt:
         list[ReceiptWord],
         list[ReceiptLetter],
         list[ReceiptWordTag],
-        list[dict],
-        list[dict],
+        list[ReceiptWordLabel],
     ]:
         """Get a receipt with its details
 
@@ -429,51 +429,42 @@ class _Receipt:
             - list[ReceiptWord]: List of receipt words
             - list[ReceiptLetter]: List of receipt letters
             - list[ReceiptWordTag]: List of receipt word tags
-            - list[dict]: List of GPT validations
-            - list[dict]: List of GPT initial taggings
+            - list[ReceiptWordLabel]: List of receipt word labels
         """
         try:
-            response = self._client.query(
-                TableName=self.table_name,
-                KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
-                ExpressionAttributeValues={
+            query_params = {
+                "TableName": self.table_name,
+                "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
+                "ExpressionAttributeValues": {
                     ":pk": {"S": f"IMAGE#{image_id}"},
                     ":sk": {"S": f"RECEIPT#{receipt_id:05d}"},
                 },
-            )
+            }
             receipt = None
-            lines = []
-            words = []
-            letters = []
-            tags = []
-            validations = []
-            initial_taggings = []
-
-            for item in response["Items"]:
-                if item["TYPE"]["S"] == "RECEIPT":
-                    receipt = itemToReceipt(item)
-                elif item["TYPE"]["S"] == "RECEIPT_LINE":
-                    lines.append(itemToReceiptLine(item))
-                elif item["TYPE"]["S"] == "RECEIPT_WORD":
-                    words.append(itemToReceiptWord(item))
-                elif item["TYPE"]["S"] == "RECEIPT_LETTER":
-                    letters.append(itemToReceiptLetter(item))
-                elif item["TYPE"]["S"] == "RECEIPT_WORD_TAG":
-                    tags.append(itemToReceiptWordTag(item))
-                elif item["TYPE"]["S"] == "GPT_VALIDATION":
-                    validations.append(itemToGPTValidation(item))
-                elif item["TYPE"]["S"] == "GPT_INITIAL_TAGGING":
-                    initial_taggings.append(itemToGPTInitialTagging(item))
-
-            return (
-                receipt,
-                lines,
-                words,
-                letters,
-                tags,
-                validations,
-                initial_taggings,
-            )
+            lines, words, letters, tags, labels = [], [], [], [], []
+            while True:
+                response = self._client.query(**query_params)
+                for item in response.get("Items", []):
+                    if item["TYPE"]["S"] == "RECEIPT":
+                        receipt = itemToReceipt(item)
+                    elif item["TYPE"]["S"] == "RECEIPT_LINE":
+                        lines.append(itemToReceiptLine(item))
+                    elif item["TYPE"]["S"] == "RECEIPT_WORD":
+                        words.append(itemToReceiptWord(item))
+                    elif item["TYPE"]["S"] == "RECEIPT_LETTER":
+                        letters.append(itemToReceiptLetter(item))
+                    elif item["TYPE"]["S"] == "RECEIPT_WORD_TAG":
+                        tags.append(itemToReceiptWordTag(item))
+                    elif item["TYPE"]["S"] == "RECEIPT_WORD_LABEL":
+                        labels.append(itemToReceiptWordLabel(item))
+                # paginate
+                if "LastEvaluatedKey" in response:
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
+                else:
+                    break
+            return receipt, lines, words, letters, tags, labels
         except ClientError as e:
             raise ValueError(f"Error getting receipt details: {e}")
 
@@ -619,94 +610,6 @@ class _Receipt:
         except ClientError as e:
             raise ValueError(f"Error listing receipts from image: {e}")
 
-    def listReceiptWindowDetails(
-        self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[dict] = None,
-    ) -> Tuple[Dict[str, Dict], Optional[Dict]]:
-        """List receipts with their windows from GSI3.
-
-        Returns:
-            Tuple[Dict[str, Dict], Optional[Dict]]:
-            - A dict of {"<image_id>_<receipt_id>": {"receipt": Receipt,
-                    "windows": [ReceiptWindow, ...]},
-                ...}
-            - A LastEvaluatedKey or None if no more pages.
-        """
-
-        try:
-            query_params = {
-                "TableName": self.table_name,
-                "IndexName": "GSI3",
-                "KeyConditionExpression": "#pk = :pk_value",
-                "ExpressionAttributeNames": {"#pk": "GSI3PK"},
-                "ExpressionAttributeValues": {":pk_value": {"S": "RECEIPT"}},
-                "ScanIndexForward": True,
-            }
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
-
-            payload = {}
-            receipt_count = 0
-
-            while True:
-                response = self._client.query(**query_params)
-
-                for item in response["Items"]:
-                    item_type = item["TYPE"]["S"]
-
-                    if item_type == "RECEIPT":
-                        # Convert to our Receipt object
-                        receipt = itemToReceipt(item)
-                        key = f"{receipt.image_id}_{receipt.receipt_id}"
-
-                        # If we've hit our limit, build a LEK and return
-                        # immediately
-                        if limit is not None and receipt_count >= limit:
-                            last_evaluated_key = {
-                                "PK": item["PK"],
-                                "SK": item["SK"],
-                                "GSI3PK": item["GSI3PK"],
-                                "GSI3SK": item["GSI3SK"],
-                            }
-                            return payload, last_evaluated_key
-
-                        # Ensure there's an entry in payload for this key
-                        if key not in payload:
-                            payload[key] = {"receipt": receipt, "windows": []}
-                        else:
-                            # If an entry already exists, we just set the receipt
-                            # (in case we encountered windows first)
-                            payload[key]["receipt"] = receipt
-
-                        receipt_count += 1
-
-                    elif item_type == "RECEIPT_WINDOW":
-                        # Convert to our ReceiptWindow object
-                        window = itemToReceiptWindow(item)
-                        key = f"{window.image_id}_{window.receipt_id}"
-
-                        # If no entry yet for this receipt, create it with a placeholder
-                        # receipt = None, windows = []
-                        if key not in payload:
-                            payload[key] = {"receipt": None, "windows": []}
-
-                        payload[key]["windows"].append(window)
-
-                # If there are no more pages, we return what we have
-                if "LastEvaluatedKey" not in response:
-                    return payload, None
-
-                # Otherwise, continue paginating
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-
-        except ClientError as e:
-            raise ValueError(
-                "Could not list receipt windows from the database"
-            ) from e
-
     def listReceiptDetails(
         self,
         limit: Optional[int] = None,
@@ -714,28 +617,38 @@ class _Receipt:
     ) -> Tuple[
         Dict[
             str,
-            Dict[str, Union[Receipt, List[ReceiptWord], List[ReceiptWordTag]]],
+            Dict[
+                str, Union[Receipt, List[ReceiptWord], List[ReceiptWordLabel]]
+            ],
         ],
         Optional[Dict],
     ]:
-        """List receipts with their words and word tags
+        """List receipts with their words and word labels using GSI2.
+
+        This method queries the database for all receipt items using GSI2 (where GSI2PK = 'RECEIPT')
+        and returns a dictionary containing the receipt details, including associated words and word labels.
 
         Args:
-            limit (Optional[int], optional): The number of receipt details to return. Defaults to None.
-            last_evaluated_key (Optional[dict], optional): The key to start the query from. Defaults to None.
+            limit (Optional[int], optional): The maximum number of receipt details to return. Defaults to None.
+            last_evaluated_key (Optional[dict], optional): The key to start the query from for pagination. Defaults to None.
 
         Returns:
             Tuple[Dict[str, Dict], Optional[Dict]]: A tuple containing:
-                - Dictionary mapping "<image_id>_<receipt_id>" to receipt details
+                - Dictionary mapping "<image_id>_<receipt_id>" to a dictionary with:
+                    - "receipt": The Receipt object
+                    - "words": List of ReceiptWord objects
+                    - "word_labels": List of ReceiptWordLabel objects
                 - Last evaluated key for pagination (None if no more pages)
+
+        Raises:
+            ValueError: If there is an error querying the database
         """
         try:
             query_params = {
                 "TableName": self.table_name,
                 "IndexName": "GSI2",
-                "KeyConditionExpression": "#pk = :pk_value",
-                "ExpressionAttributeNames": {"#pk": "GSI2PK"},
-                "ExpressionAttributeValues": {":pk_value": {"S": "RECEIPT"}},
+                "KeyConditionExpression": "GSI2PK = :pk",
+                "ExpressionAttributeValues": {":pk": {"S": "RECEIPT"}},
                 "ScanIndexForward": True,
             }
 
@@ -772,7 +685,7 @@ class _Receipt:
                         payload[current_key] = {
                             "receipt": receipt,
                             "words": [],
-                            "word_tags": [],
+                            "word_labels": [],
                         }
                         current_receipt = receipt
                         receipt_count += 1
@@ -785,13 +698,13 @@ class _Receipt:
                         ):
                             payload[current_key]["words"].append(word)
 
-                    elif item_type == "RECEIPT_WORD_TAG" and current_receipt:
-                        tag = itemToReceiptWordTag(item)
+                    elif item_type == "RECEIPT_WORD_LABEL" and current_receipt:
+                        label = itemToReceiptWordLabel(item)
                         if (
-                            tag.image_id == current_receipt.image_id
-                            and tag.receipt_id == current_receipt.receipt_id
+                            label.image_id == current_receipt.image_id
+                            and label.receipt_id == current_receipt.receipt_id
                         ):
-                            payload[current_key]["word_tags"].append(tag)
+                            payload[current_key]["word_labels"].append(label)
 
                 # If no more pages
                 if "LastEvaluatedKey" not in response:
@@ -805,3 +718,82 @@ class _Receipt:
             raise ValueError(
                 "Could not list receipt details from the database"
             ) from e
+
+    def listReceiptAndWords(
+        self, image_id: str, receipt_id: int
+    ) -> tuple[Receipt, list[ReceiptWord]]:
+        """List a receipt and its words using GSI3
+
+        Args:
+            image_id (str): The ID of the image to list receipts from
+            receipt_id (int): The ID of the receipt to list words from
+
+        Returns:
+            tuple[Receipt, list[ReceiptWord]]: A tuple containing:
+                - The receipt object
+                - List of receipt words sorted by line_id and word_id
+
+        Raises:
+            ValueError: When input parameters are invalid or if the receipt doesn't exist
+            Exception: For underlying DynamoDB errors
+        """
+        if image_id is None:
+            raise ValueError("Image ID is required")
+        if receipt_id is None:
+            raise ValueError("Receipt ID is required")
+        assert_valid_uuid(image_id)
+        if not isinstance(receipt_id, int):
+            raise ValueError("Receipt ID must be an integer")
+        if receipt_id < 0:
+            raise ValueError("Receipt ID must be positive")
+
+        try:
+            # Use GSI3 to get both receipt and words in a single query
+            response = self._client.query(
+                TableName=self.table_name,
+                IndexName="GSI3",
+                KeyConditionExpression="GSI3PK = :pk AND begins_with(GSI3SK, :sk)",
+                ExpressionAttributeValues={
+                    ":pk": {"S": f"IMAGE#{image_id}"},
+                    ":sk": {"S": f"RECEIPT#{receipt_id:05d}"},
+                },
+            )
+
+            receipt = None
+            words = []
+
+            # Process items
+            for item in response.get("Items", []):
+                item_type = item.get("TYPE", {}).get("S")
+                if item_type == "RECEIPT":
+                    receipt = itemToReceipt(item)
+                elif item_type == "RECEIPT_WORD":
+                    try:
+                        word = itemToReceiptWord(item)
+                        words.append(word)
+                    except ValueError as e:
+                        print(f"Error processing word item: {e}")
+                        continue
+
+            if not receipt:
+                raise ValueError(
+                    f"Receipt with ID {receipt_id} and Image ID '{image_id}' does not exist"
+                )
+
+            # Sort words by line_id and word_id
+            words.sort(key=lambda w: (w.line_id, w.word_id))
+
+            return receipt, words
+
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ResourceNotFoundException":
+                raise ValueError(f"Receipt not found: {e}") from e
+            elif error_code == "ProvisionedThroughputExceededException":
+                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+            elif error_code == "InternalServerError":
+                raise Exception(f"Internal server error: {e}") from e
+            elif error_code == "ValidationException":
+                raise Exception(f"Validation exception: {e}") from e
+            else:
+                raise Exception(f"Error listing receipt and words: {e}") from e

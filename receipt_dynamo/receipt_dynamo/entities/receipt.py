@@ -172,7 +172,7 @@ class Receipt:
             dict: The GSI3 key for the receipt.
         """
         return {
-            "GSI3PK": {"S": "RECEIPT"},
+            "GSI3PK": {"S": f"IMAGE#{self.image_id}"},
             "GSI3SK": {"S": f"RECEIPT#{self.receipt_id:05d}"},
         }
 
