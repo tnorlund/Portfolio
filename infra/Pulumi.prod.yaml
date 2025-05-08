@@ -8,7 +8,7 @@ config:
   portfolio:PINECONE_INDEX_NAME: "receipt-validation-dev"
   portfolio:PINECONE_HOST: "https://receipt-validation-dev-sy23fax.svc.aped-4627-b74a.pinecone.io"
   portfolio:GOOGLE_PLACES_API_KEY:
-    secure: AAABAOR1JU1yZSzCX3CN1pjvb+kB+in6KUyAk12uk11aX9ui5FcOCVt9QR4lT3gBSQmxpO8IAhGAoolejWYLVNO8cfS0nIg=
+    secure: AAABAG21XFfSVfLqKg5xKf3aVfIBBtwBqMwA5CAZmR6fXvIuxOkzRbsV+dfKbemBRuALY6HRLJro1f9KeNVWUC5oxkv3as0=
   portfolio:privateSubnetCidrs:
     - 10.20.10.0/24
     - 10.20.11.0/24
@@ -21,4 +21,4 @@ config:
     - 10.20.3.0/24
   portfolio:vpcCidr: 10.20.0.0/16
   portfolio:PINECONE_API_KEY:
-    secure: AAABAELs7t2e65dc4f7nmXA6nB4vmludtPihROyJUQG9TtlMN0eX+1YbfnYHaTRARQzdp9Zm5TFywA+oXXjpxymh66SaZbu7zxCmMEWJ8Yl1dmTF7lqR7m8NVvjauALqBDSlQum+s1APPhM=
+    secure: AAABANdW1oCKVnvnDvAqcO2g53fAPtzYXWNfnFQF9xIe8WDFZ3QKHfjcCoC6c5fLFRikzt9yQepRE4/lb+dBi/S62g5jRWozGWsYUuBGc2Kh6eYcWUQBZ8QHsopksZW3iEqZxvfxlcVOyp8=
