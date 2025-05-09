@@ -117,9 +117,7 @@ class LambdaLayer(ComponentResource):
         self.name = name
         self.package_dir = package_dir
         self.python_version = python_version
-        self.description = (
-            description or f"Automatically built Lambda layer for {name}"
-        )
+        self.description = description or f"Automatically built Lambda layer for {name}"
         self.opts = opts
 
         # Validate package directory
@@ -137,9 +135,7 @@ class LambdaLayer(ComponentResource):
 
         # Check if directory exists
         if not os.path.exists(package_path):
-            raise ValueError(
-                f"Package directory {package_path} does not exist"
-            )
+            raise ValueError(f"Package directory {package_path} does not exist")
 
         # Check for required files
         required_files = ["pyproject.toml"]
@@ -154,9 +150,7 @@ class LambdaLayer(ComponentResource):
             )
 
         # Check for Python files
-        python_files = glob.glob(
-            os.path.join(package_path, "**/*.py"), recursive=True
-        )
+        python_files = glob.glob(os.path.join(package_path, "**/*.py"), recursive=True)
         if not python_files:
             raise ValueError(
                 f"Package directory {package_path} contains no Python files"
@@ -226,9 +220,7 @@ class LambdaLayer(ComponentResource):
                     "Statement": [
                         {
                             "Effect": "Allow",
-                            "Principal": {
-                                "Service": "codebuild.amazonaws.com"
-                            },
+                            "Principal": {"Service": "codebuild.amazonaws.com"},
                             "Action": "sts:AssumeRole",
                         }
                     ],
@@ -287,9 +279,7 @@ class LambdaLayer(ComponentResource):
                             },
                             {
                                 "Effect": "Allow",
-                                "Action": [
-                                    "lambda:UpdateFunctionConfiguration"
-                                ],
+                                "Action": ["lambda:UpdateFunctionConfiguration"],
                                 "Resource": f"arn:aws:lambda:*:*:function:*",
                             },
                         ],
@@ -301,17 +291,16 @@ class LambdaLayer(ComponentResource):
 
         # Create the CodeBuild project
         codebuild_project = aws.codebuild.Project(
-            f"{self.name}-layer-build",
-            name=f"{self.name}-layer-build",
+            resource_name=f"{self.name}-layer-build",
             service_role=codebuild_role.arn,
             source=aws.codebuild.ProjectSourceArgs(
                 type="S3",
                 location=pulumi.Output.concat(
                     build_bucket.bucket, f"/{self.name}/source.zip"
                 ),
-                buildspec=pulumi.Output.from_input(
-                    self._get_buildspec()
-                ).apply(lambda spec: json.dumps(spec)),
+                buildspec=pulumi.Output.from_input(self._get_buildspec()).apply(
+                    lambda spec: json.dumps(spec)
+                ),
             ),
             source_version=None,
             artifacts=aws.codebuild.ProjectArtifactsArgs(
@@ -360,9 +349,7 @@ class LambdaLayer(ComponentResource):
         # Check if the .zip file already exists
         initial_sync_build = command.local.Command(
             f"{self.name}-initial-sync-build",
-            create=pulumi.Output.all(
-                build_bucket.bucket, codebuild_project.name
-            ).apply(
+            create=pulumi.Output.all(build_bucket.bucket, codebuild_project.name).apply(
                 lambda args: f"""
                 BUCKET_NAME="{args[0]}"
                 PROJECT_NAME="{args[1]}"
@@ -418,9 +405,7 @@ class LambdaLayer(ComponentResource):
             description=self.description,
             s3_bucket=build_bucket.bucket,
             s3_key=f"{self.name}/layer.zip",
-            opts=pulumi.ResourceOptions(
-                depends_on=[initial_sync_build], parent=self
-            ),
+            opts=pulumi.ResourceOptions(depends_on=[initial_sync_build], parent=self),
         )
 
         self.arn = self.layer_version.arn
@@ -520,9 +505,7 @@ class LambdaLayer(ComponentResource):
                     data_resources=[
                         aws.cloudtrail.TrailEventSelectorDataResourceArgs(
                             type="AWS::S3::Object",
-                            values=[
-                                build_bucket.arn.apply(lambda arn: f"{arn}/")
-                            ],
+                            values=[build_bucket.arn.apply(lambda arn: f"{arn}/")],
                         ),
                     ],
                 ),
@@ -541,18 +524,14 @@ class LambdaLayer(ComponentResource):
                             {
                                 "Sid": "AWSCloudTrailAclCheck",
                                 "Effect": "Allow",
-                                "Principal": {
-                                    "Service": "cloudtrail.amazonaws.com"
-                                },
+                                "Principal": {"Service": "cloudtrail.amazonaws.com"},
                                 "Action": "s3:GetBucketAcl",
                                 "Resource": f"arn:aws:s3:::{args[0]}",
                             },
                             {
                                 "Sid": "AWSCloudTrailWrite",
                                 "Effect": "Allow",
-                                "Principal": {
-                                    "Service": "cloudtrail.amazonaws.com"
-                                },
+                                "Principal": {"Service": "cloudtrail.amazonaws.com"},
                                 "Action": "s3:PutObject",
                                 "Resource": f"arn:aws:s3:::{args[0]}/AWSLogs/{aws.get_caller_identity().account_id}/*",
                                 "Condition": {
@@ -772,9 +751,7 @@ class LambdaLayer(ComponentResource):
             code=pulumi.AssetArchive(
                 {
                     ".": pulumi.FileArchive(
-                        os.path.join(
-                            PROJECT_DIR, "infra", "update_lambda_functions"
-                        )
+                        os.path.join(PROJECT_DIR, "infra", "update_lambda_functions")
                     )
                 }
             ),
@@ -893,9 +870,7 @@ class LambdaLayer(ComponentResource):
                         "CheckBuildStatus": {
                             "Type": "Task",
                             "Resource": "arn:aws:states:::aws-sdk:codebuild:batchGetBuilds",
-                            "Parameters": {
-                                "Ids.$": "States.Array($.Build.Id)"
-                            },
+                            "Parameters": {"Ids.$": "States.Array($.Build.Id)"},
                             "Next": "BuildSucceeded?",
                         },
                         "BuildSucceeded?": {
@@ -918,9 +893,7 @@ class LambdaLayer(ComponentResource):
                             "Type": "Task",
                             "Resource": "arn:aws:states:::lambda:invoke",
                             "Parameters": {
-                                "FunctionName": args[
-                                    "publish_layer_lambda_name"
-                                ],
+                                "FunctionName": args["publish_layer_lambda_name"],
                                 "Payload": {},
                             },
                             "Next": "UpdateLambdaFunctions",
@@ -929,12 +902,8 @@ class LambdaLayer(ComponentResource):
                             "Type": "Task",
                             "Resource": "arn:aws:states:::lambda:invoke",
                             "Parameters": {
-                                "FunctionName": args[
-                                    "update_lambda_function_name"
-                                ],
-                                "Payload": {
-                                    "layer_arn.$": "$.Payload.LayerVersionArn"
-                                },
+                                "FunctionName": args["update_lambda_function_name"],
+                                "Payload": {"layer_arn.$": "$.Payload.LayerVersionArn"},
                             },
                             "End": True,
                         },
@@ -960,9 +929,7 @@ class LambdaLayer(ComponentResource):
         aws.iam.RolePolicy(
             f"{self.name}-eventbridge-policy",
             role=self.eventbridge_role.id,
-            policy=pulumi.Output.all(
-                codebuild_project.arn, state_machine.arn
-            ).apply(
+            policy=pulumi.Output.all(codebuild_project.arn, state_machine.arn).apply(
                 lambda arns: json.dumps(
                     {
                         "Version": "2012-10-17",
