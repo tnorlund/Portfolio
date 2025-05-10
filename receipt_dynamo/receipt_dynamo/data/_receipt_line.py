@@ -98,6 +98,49 @@ class _ReceiptLine:
             else:
                 raise
 
+    def updateReceiptLines(self, lines: list[ReceiptLine]):
+        """Updates multiple existing ReceiptLines in DynamoDB."""
+        if lines is None:
+            raise ValueError("lines parameter is required and cannot be None.")
+        if not isinstance(lines, list):
+            raise ValueError("lines must be a list of ReceiptLine instances.")
+        if not all(isinstance(ln, ReceiptLine) for ln in lines):
+            raise ValueError(
+                "All lines must be instances of the ReceiptLine class."
+            )
+        for i in range(0, len(lines), CHUNK_SIZE):
+            chunk = lines[i : i + CHUNK_SIZE]
+            transact_items = [
+                {
+                    "Put": {
+                        "TableName": self.table_name,
+                        "Item": ln.to_item(),
+                        "ConditionExpression": "attribute_exists(PK)",
+                    }
+                }
+                for ln in chunk
+            ]
+            try:
+                self._client.transact_write_items(TransactItems=transact_items)
+            except ClientError as e:
+                error_code = e.response["Error"]["Code"]
+                if error_code == "ConditionalCheckFailedException":
+                    raise ValueError("One or more ReceiptLines do not exist")
+                elif error_code == "ProvisionedThroughputExceededException":
+                    raise ValueError("Provisioned throughput exceeded")
+                elif error_code == "InternalServerError":
+                    raise ValueError("Internal server error")
+                elif error_code == "ValidationException":
+                    raise ValueError(
+                        "One or more parameters given were invalid"
+                    )
+                elif error_code == "AccessDeniedException":
+                    raise ValueError("Access denied")
+                else:
+                    raise ValueError(
+                        f"Could not update ReceiptLines in the database: {e}"
+                    )
+
     def deleteReceiptLine(self, receipt_id: int, image_id: str, line_id: int):
         """Deletes a single ReceiptLine by IDs."""
         try:

@@ -29,6 +29,8 @@ class BatchType(str, Enum):
 
     COMPLETION = "COMPLETION"
     EMBEDDING = "EMBEDDING"
+    LINE_EMBEDDING = "LINE_EMBEDDING"
+    SECTION_EMBEDDING = "SECTION_EMBEDDING"
 
 
 class LabelStatus(str, Enum):
@@ -45,6 +47,15 @@ class EmbeddingStatus(str, Enum):
     PENDING = "PENDING"
     SUCCESS = "SUCCESS"
     FAILED = "FAILED"
+
+
+class SectionType(str, Enum):
+    """Types of receipt sections for classification."""
+
+    HEADER = "HEADER"  # Contains merchant info, date, receipt number
+    FOOTER = "FOOTER"  # Contains totals, payment info, thank you notes
+    ITEMS_VALUE = "ITEMS_VALUE"  # The number that the item is worth
+    ITEMS_DESCRIPTION = "ITEMS_DESCRIPTION"  # The description of the item
 
 
 class MerchantValidationStatus(str, Enum):
