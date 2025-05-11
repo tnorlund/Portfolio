@@ -30,6 +30,8 @@ class _ReceiptWord:
         Retrieves a single ReceiptWord by IDs.
     listReceiptWords() -> list[ReceiptWord]
         Returns all ReceiptWords from the table.
+    listReceiptWordsByEmbeddingStatus(embedding_status: EmbeddingStatus) -> list[ReceiptWord]
+        Returns all ReceiptWords from the table with a given embedding status.
     listReceiptWordsFromLine(receipt_id: int, image_id: str, line_id: int) -> list[ReceiptWord]
         Returns all ReceiptWords that match the given receipt/image/line IDs.
     listReceiptWordsFromReceipt(image_id: str, receipt_id: int) -> list[ReceiptWord]
