@@ -13,7 +13,6 @@ class BatchSummary:
         openai_batch_id: str,
         submitted_at: str | datetime,
         status: str | BatchStatus,
-        word_count: int,
         result_file_id: str,
         receipt_refs: list[tuple[str, int]] = None,
     ):
@@ -74,10 +73,6 @@ class BatchSummary:
             )
         self.status = status_str
 
-        if not isinstance(word_count, int):
-            raise ValueError("word_count must be an integer")
-        self.word_count = word_count
-
         if not isinstance(result_file_id, str):
             raise ValueError("result_file_id must be a string")
         self.result_file_id = result_file_id
@@ -111,7 +106,6 @@ class BatchSummary:
             "openai_batch_id": {"S": self.openai_batch_id},
             "submitted_at": {"S": self.submitted_at.isoformat()},
             "status": {"S": self.status},
-            "word_count": {"N": str(self.word_count)},
             "result_file_id": {"S": self.result_file_id},
             "receipt_refs": {
                 "L": [
@@ -139,7 +133,6 @@ class BatchSummary:
             f"openai_batch_id={_repr_str(self.openai_batch_id)}, "
             f"submitted_at={_repr_str(self.submitted_at)}, "
             f"status={_repr_str(self.status)}, "
-            f"word_count={self.word_count}, "
             f"result_file_id={_repr_str(self.result_file_id)}, "
             f"receipt_refs={self.receipt_refs}"
             ")"
@@ -154,7 +147,6 @@ class BatchSummary:
         yield "openai_batch_id", self.openai_batch_id
         yield "submitted_at", self.submitted_at.isoformat()
         yield "status", self.status
-        yield "word_count", self.word_count
         yield "result_file_id", self.result_file_id
         yield "receipt_refs", self.receipt_refs
 
@@ -175,7 +167,6 @@ class BatchSummary:
             and self.openai_batch_id == other.openai_batch_id
             and self.submitted_at == other.submitted_at
             and self.status == other.status
-            and self.word_count == other.word_count
             and self.result_file_id == other.result_file_id
             and self.receipt_refs == other.receipt_refs
         )
@@ -188,7 +179,6 @@ class BatchSummary:
                 self.openai_batch_id,
                 self.submitted_at,
                 self.status,
-                self.word_count,
                 self.result_file_id,
                 tuple(self.receipt_refs),
             )
@@ -214,7 +204,6 @@ def itemToBatchSummary(item: dict) -> BatchSummary:
         "openai_batch_id",
         "submitted_at",
         "status",
-        "word_count",
         "result_file_id",
         "receipt_refs",
     }
@@ -230,7 +219,6 @@ def itemToBatchSummary(item: dict) -> BatchSummary:
         openai_batch_id = item["openai_batch_id"]["S"]
         submitted_at = datetime.fromisoformat(item["submitted_at"]["S"])
         status = item["status"]["S"]
-        word_count = int(item["word_count"]["N"])
         result_file_id = item["result_file_id"]["S"]
         receipt_refs = [
             (ref["M"]["image_id"]["S"], int(ref["M"]["receipt_id"]["N"]))
@@ -242,7 +230,6 @@ def itemToBatchSummary(item: dict) -> BatchSummary:
             openai_batch_id=openai_batch_id,
             submitted_at=submitted_at,
             status=status,
-            word_count=word_count,
             result_file_id=result_file_id,
             receipt_refs=receipt_refs,
         )

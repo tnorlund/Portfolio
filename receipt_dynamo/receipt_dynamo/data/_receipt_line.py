@@ -2,6 +2,7 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo import ReceiptLine, itemToReceiptLine
 from receipt_dynamo.entities.util import assert_valid_uuid
+from receipt_dynamo.constants import EmbeddingStatus
 
 CHUNK_SIZE = 25
 
@@ -97,6 +98,49 @@ class _ReceiptLine:
                 )
             else:
                 raise
+
+    def updateReceiptLines(self, lines: list[ReceiptLine]):
+        """Updates multiple existing ReceiptLines in DynamoDB."""
+        if lines is None:
+            raise ValueError("lines parameter is required and cannot be None.")
+        if not isinstance(lines, list):
+            raise ValueError("lines must be a list of ReceiptLine instances.")
+        if not all(isinstance(ln, ReceiptLine) for ln in lines):
+            raise ValueError(
+                "All lines must be instances of the ReceiptLine class."
+            )
+        for i in range(0, len(lines), CHUNK_SIZE):
+            chunk = lines[i : i + CHUNK_SIZE]
+            transact_items = [
+                {
+                    "Put": {
+                        "TableName": self.table_name,
+                        "Item": ln.to_item(),
+                        "ConditionExpression": "attribute_exists(PK)",
+                    }
+                }
+                for ln in chunk
+            ]
+            try:
+                self._client.transact_write_items(TransactItems=transact_items)
+            except ClientError as e:
+                error_code = e.response["Error"]["Code"]
+                if error_code == "ConditionalCheckFailedException":
+                    raise ValueError("One or more ReceiptLines do not exist")
+                elif error_code == "ProvisionedThroughputExceededException":
+                    raise ValueError("Provisioned throughput exceeded")
+                elif error_code == "InternalServerError":
+                    raise ValueError("Internal server error")
+                elif error_code == "ValidationException":
+                    raise ValueError(
+                        "One or more parameters given were invalid"
+                    )
+                elif error_code == "AccessDeniedException":
+                    raise ValueError("Access denied")
+                else:
+                    raise ValueError(
+                        f"Could not update ReceiptLines in the database: {e}"
+                    )
 
     def deleteReceiptLine(self, receipt_id: int, image_id: str, line_id: int):
         """Deletes a single ReceiptLine by IDs."""
@@ -315,6 +359,73 @@ class _ReceiptLine:
                 raise Exception(f"Internal server error: {e}") from e
             else:
                 raise Exception(f"Error listing receipt lines: {e}") from e
+
+    def listReceiptLinesByEmbeddingStatus(
+        self, embedding_status: EmbeddingStatus | str
+    ) -> list[ReceiptLine]:
+        """Returns all ReceiptLines from the table with a given embedding status."""
+        receipt_lines: list[ReceiptLine] = []
+
+        if isinstance(embedding_status, EmbeddingStatus):
+            status_str = embedding_status.value
+        elif isinstance(embedding_status, str):
+            status_str = embedding_status
+        else:
+            raise ValueError(
+                "embedding_status must be an instance of EmbeddingStatus or a string"
+            )
+
+        if status_str not in [status.value for status in EmbeddingStatus]:
+            raise ValueError(
+                "embedding_status must be a valid EmbeddingStatus"
+            )
+
+        try:
+            response = self._client.query(
+                TableName=self.table_name,
+                IndexName="GSI1",
+                KeyConditionExpression="#gsi1pk = :status",
+                ExpressionAttributeNames={"#gsi1pk": "GSI1PK"},
+                ExpressionAttributeValues={
+                    ":status": {"S": f"EMBEDDING_STATUS#{status_str}"}
+                },
+            )
+            # First page
+            for item in response.get("Items", []):
+                receipt_lines.append(itemToReceiptLine(item))
+            # Handle pagination
+            while "LastEvaluatedKey" in response:
+                response = self._client.query(
+                    TableName=self.table_name,
+                    IndexName="GSI1",
+                    KeyConditionExpression="#gsi1pk = :status",
+                    ExpressionAttributeNames={"#gsi1pk": "GSI1PK"},
+                    ExpressionAttributeValues={
+                        ":status": {"S": f"EMBEDDING_STATUS#{status_str}"}
+                    },
+                    ExclusiveStartKey=response["LastEvaluatedKey"],
+                )
+                for item in response.get("Items", []):
+                    receipt_lines.append(itemToReceiptLine(item))
+            return receipt_lines
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ResourceNotFoundException":
+                raise Exception(
+                    f"Could not list receipt lines from DynamoDB: {e}"
+                ) from e
+            elif error_code == "ProvisionedThroughputExceededException":
+                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+            elif error_code == "ValidationException":
+                raise ValueError(
+                    f"One or more parameters given were invalid: {e}"
+                ) from e
+            elif error_code == "InternalServerError":
+                raise Exception(f"Internal server error: {e}") from e
+            else:
+                raise ValueError(
+                    f"Could not list ReceiptLines from the database: {e}"
+                ) from e
 
     def listReceiptLinesFromReceipt(
         self, receipt_id: int, image_id: str

@@ -1,5 +1,5 @@
 import pytest
-
+import json
 from receipt_dynamo import ReceiptLine, itemToReceiptLine
 
 
@@ -313,8 +313,6 @@ def test_receipt_line_to_item(example_receipt_line):
     assert item["angle_degrees"] == {"N": "0.000000000000000000"}
     assert item["angle_radians"] == {"N": "0.000000000000000000"}
     assert item["confidence"] == {"N": "0.95"}
-    assert "histogram" in item
-    assert "num_chars" in item
 
 
 @pytest.mark.unit
@@ -366,7 +364,8 @@ def test_receipt_line_repr(example_receipt_line):
         "bottom_left={'x': 0.1, 'y': 0.4}, "
         "angle_degrees=0.0, "
         "angle_radians=0.0, "
-        "confidence=0.95"
+        "confidence=0.95, "
+        "embedding_status=NONE"
         ")"
     )
 
@@ -387,8 +386,7 @@ def test_receipt_line_iter(example_receipt_line):
         "angle_degrees",
         "angle_radians",
         "confidence",
-        "histogram",
-        "num_chars",
+        "embedding_status",
     }
     assert set(receipt_line_dict.keys()) == expected_keys
     assert receipt_line_dict["receipt_id"] == 1
@@ -411,6 +409,13 @@ def test_receipt_line_iter(example_receipt_line):
     assert receipt_line_dict["angle_radians"] == 0.0
     assert receipt_line_dict["confidence"] == 0.95
     assert ReceiptLine(**receipt_line_dict) == example_receipt_line
+
+
+@pytest.mark.unit
+def test_receipt_line_serialize(example_receipt_line):
+    assert example_receipt_line == ReceiptLine(
+        **json.loads(json.dumps(dict(example_receipt_line)))
+    )
 
 
 @pytest.mark.unit
@@ -473,7 +478,6 @@ def test_item_to_receipt_line(example_receipt_line):
                 "angle_degrees": {"N": "0.0000000000"},
                 "angle_radians": {"N": "0.0000000000"},
                 "confidence": {"N": "0.95"},
-                "histogram": {"M": {}},
-                "num_chars": {"N": "0"},
+                "embedding_status": {"S": "NONE"},
             }
         )
