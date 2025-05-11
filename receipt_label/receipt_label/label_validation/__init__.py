@@ -1,4 +1,8 @@
-from .data import LabelValidationResult, get_unique_merchants_and_data
+from .data import (
+    LabelValidationResult,
+    get_unique_merchants_and_data,
+    update_labels,
+)
 from .validate_address import validate_address
 from .validate_currency import validate_currency
 from .validate_merchant_name import (
@@ -20,4 +24,5 @@ __all__ = [
     "validate_date",
     "validate_time",
     "get_unique_merchants_and_data",
+    "update_labels",
 ]

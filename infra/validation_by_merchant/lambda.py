@@ -16,6 +16,7 @@ from receipt_label.label_validation import (
     validate_date,
     validate_time,
     get_unique_merchants_and_data,
+    update_labels,
 )
 
 
@@ -105,7 +106,7 @@ def validate_handler(event, context):
         ]
     )
     logger.info(f"Got {len(labels_and_words)} labels and words to validate")
-    label_validation_results: list[LabelValidationResult] = []
+    label_validation_results: list[tuple[LabelValidationResult, ReceiptWordLabel]] = []
     for label, word in labels_and_words:
         if label.label in [
             "LINE_TOTAL",
@@ -114,26 +115,40 @@ def validate_handler(event, context):
             "SUBTOTAL",
             "GRAND_TOTAL",
         ]:
-            label_validation_results.append(validate_currency(word, label))
+            label_validation_results.append((validate_currency(word, label), label))
         elif label.label == "MERCHANT_NAME":
             if receipt_count > 4:
                 label_validation_results.append(
-                    validate_merchant_name_pinecone(word, label, merchant_name)
+                    (
+                        validate_merchant_name_pinecone(word, label, merchant_name),
+                        label,
+                    )
                 )
             else:
                 label_validation_results.append(
-                    validate_merchant_name_google(word, label, receipt_metadata)
+                    (
+                        validate_merchant_name_google(word, label, receipt_metadata),
+                        label,
+                    )
                 )
         elif label.label == "PHONE_NUMBER":
-            label_validation_results.append(validate_phone_number(word, label))
+            label_validation_results.append((validate_phone_number(word, label), label))
         elif label.label == "DATE":
-            label_validation_results.append(validate_date(word, label))
+            label_validation_results.append((validate_date(word, label), label))
         elif label.label == "TIME":
-            label_validation_results.append(validate_time(word, label))
+            label_validation_results.append((validate_time(word, label), label))
         elif label.label == "ADDRESS_LINE":
             label_validation_results.append(
-                validate_address(word, label, receipt_metadata)
+                (validate_address(word, label, receipt_metadata), label)
             )
         else:
             raise ValueError(f"Unknown label type: {label.label}")
+
+    if len(label_validation_results) > 0:
+        update_labels(label_validation_results)
+
     logger.info(f"Validated {len(label_validation_results)} labels")
+    return {
+        "statusCode": 200,
+        "message": f"Validated {len(label_validation_results)} labels",
+    }
