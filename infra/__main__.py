@@ -22,6 +22,7 @@ from dynamo_db import (
 from word_label_step_functions import WordLabelStepFunctions
 from validate_merchant_step_functions import ValidateMerchantStepFunctions
 from validation_pipeline import ValidationPipeline
+from embedding_step_functions import LineEmbeddingStepFunction
 
 # Import other necessary components
 try:
@@ -49,6 +50,8 @@ except FileNotFoundError:
 word_label_step_functions = WordLabelStepFunctions("word-label-step-functions")
 validate_merchant_step_functions = ValidateMerchantStepFunctions("validate-merchant")
 validation_pipeline = ValidationPipeline("validation-pipeline")
+line_embedding_step_functions = LineEmbeddingStepFunction("step-func")
+
 # ML Training Infrastructure
 # -------------------------
 

@@ -225,6 +225,42 @@ class _ReceiptSection:
                 f"ReceiptSection with receipt_id {receipt_id}, image_id {image_id}, and section_type {section_type} not found"
             )
 
+    def getReceiptSectionsFromReceipt(
+        self, image_id: str, receipt_id: int
+    ) -> list[ReceiptSection]:
+        """Retrieves all ReceiptSections for a given receipt."""
+        if image_id is None:
+            raise ValueError("image_id is required")
+        if receipt_id is None:
+            raise ValueError("receipt_id is required")
+        try:
+            # Query by the image ID for the PK and
+            expected_pk = f"IMAGE#{image_id}"
+            start_of_sk = f"RECEIPT#{receipt_id:05d}#SECTION#"
+            response = self._client.query(
+                TableName=self.table_name,
+                KeyConditionExpression="PK = :pk and begins_with(SK, :sk)",
+                ExpressionAttributeValues={
+                    ":pk": {"S": expected_pk},
+                    ":sk": {"S": start_of_sk},
+                },
+            )
+            return [itemToReceiptSection(item) for item in response["Items"]]
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ResourceNotFoundException":
+                raise ValueError(
+                    f"Could not get ReceiptSections from DynamoDB: {e}"
+                ) from e
+            elif error_code == "ProvisionedThroughputExceededException":
+                raise ValueError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
+            else:
+                raise ValueError(
+                    f"Could not get ReceiptSections from DynamoDB: {e}"
+                ) from e
+
     def listReceiptSections(
         self, limit: int = None, lastEvaluatedKey: dict | None = None
     ) -> tuple[list[ReceiptSection], dict | None]:

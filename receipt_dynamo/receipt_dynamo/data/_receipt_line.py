@@ -2,6 +2,7 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo import ReceiptLine, itemToReceiptLine
 from receipt_dynamo.entities.util import assert_valid_uuid
+from receipt_dynamo.constants import EmbeddingStatus
 
 CHUNK_SIZE = 25
 
@@ -358,6 +359,73 @@ class _ReceiptLine:
                 raise Exception(f"Internal server error: {e}") from e
             else:
                 raise Exception(f"Error listing receipt lines: {e}") from e
+
+    def listReceiptLinesByEmbeddingStatus(
+        self, embedding_status: EmbeddingStatus | str
+    ) -> list[ReceiptLine]:
+        """Returns all ReceiptLines from the table with a given embedding status."""
+        receipt_lines: list[ReceiptLine] = []
+
+        if isinstance(embedding_status, EmbeddingStatus):
+            status_str = embedding_status.value
+        elif isinstance(embedding_status, str):
+            status_str = embedding_status
+        else:
+            raise ValueError(
+                "embedding_status must be an instance of EmbeddingStatus or a string"
+            )
+
+        if status_str not in [status.value for status in EmbeddingStatus]:
+            raise ValueError(
+                "embedding_status must be a valid EmbeddingStatus"
+            )
+
+        try:
+            response = self._client.query(
+                TableName=self.table_name,
+                IndexName="GSI1",
+                KeyConditionExpression="#gsi1pk = :status",
+                ExpressionAttributeNames={"#gsi1pk": "GSI1PK"},
+                ExpressionAttributeValues={
+                    ":status": {"S": f"EMBEDDING_STATUS#{status_str}"}
+                },
+            )
+            # First page
+            for item in response.get("Items", []):
+                receipt_lines.append(itemToReceiptLine(item))
+            # Handle pagination
+            while "LastEvaluatedKey" in response:
+                response = self._client.query(
+                    TableName=self.table_name,
+                    IndexName="GSI1",
+                    KeyConditionExpression="#gsi1pk = :status",
+                    ExpressionAttributeNames={"#gsi1pk": "GSI1PK"},
+                    ExpressionAttributeValues={
+                        ":status": {"S": f"EMBEDDING_STATUS#{status_str}"}
+                    },
+                    ExclusiveStartKey=response["LastEvaluatedKey"],
+                )
+                for item in response.get("Items", []):
+                    receipt_lines.append(itemToReceiptLine(item))
+            return receipt_lines
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ResourceNotFoundException":
+                raise Exception(
+                    f"Could not list receipt lines from DynamoDB: {e}"
+                ) from e
+            elif error_code == "ProvisionedThroughputExceededException":
+                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+            elif error_code == "ValidationException":
+                raise ValueError(
+                    f"One or more parameters given were invalid: {e}"
+                ) from e
+            elif error_code == "InternalServerError":
+                raise Exception(f"Internal server error: {e}") from e
+            else:
+                raise ValueError(
+                    f"Could not list ReceiptLines from the database: {e}"
+                ) from e
 
     def listReceiptLinesFromReceipt(
         self, receipt_id: int, image_id: str

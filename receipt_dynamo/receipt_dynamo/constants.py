@@ -30,7 +30,6 @@ class BatchType(str, Enum):
     COMPLETION = "COMPLETION"
     EMBEDDING = "EMBEDDING"
     LINE_EMBEDDING = "LINE_EMBEDDING"
-    SECTION_EMBEDDING = "SECTION_EMBEDDING"
 
 
 class LabelStatus(str, Enum):
