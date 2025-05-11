@@ -7,8 +7,8 @@ from receipt_dynamo.entities.util import (
     assert_valid_bounding_box,
     assert_valid_point,
     assert_valid_uuid,
-    compute_histogram,
 )
+from receipt_dynamo.entities.receipt_word import EmbeddingStatus
 
 
 class ReceiptLine:
@@ -33,8 +33,7 @@ class ReceiptLine:
         angle_degrees (float): The angle of the receipt line in degrees.
         angle_radians (float): The angle of the receipt line in radians.
         confidence (float): The confidence level of the receipt line (between 0 and 1).
-        histogram (dict): A histogram representing character frequencies in the text.
-        num_chars (int): The number of characters in the receipt line.
+        embedding_status (EmbeddingStatus): The status of the embedding for the receipt line.
     """
 
     def __init__(
@@ -51,8 +50,7 @@ class ReceiptLine:
         angle_degrees: float,
         angle_radians: float,
         confidence: float,
-        histogram: dict = None,
-        num_chars: int = None,
+        embedding_status: EmbeddingStatus | str = EmbeddingStatus.NONE,
     ):
         """
         Initializes a new ReceiptLine object for DynamoDB.
@@ -121,10 +119,21 @@ class ReceiptLine:
             raise ValueError("confidence must be between 0 and 1")
         self.confidence = confidence
 
-        self.histogram = (
-            compute_histogram(self.text) if histogram is None else histogram
-        )
-        self.num_chars = len(self.text) if num_chars is None else num_chars
+        # Normalize and validate embedding_status (allow enum or string)
+        if isinstance(embedding_status, EmbeddingStatus):
+            status_value = embedding_status.value
+        elif isinstance(embedding_status, str):
+            status_value = embedding_status
+        else:
+            raise ValueError(
+                "embedding_status must be a string or EmbeddingStatus enum"
+            )
+        valid_values = [s.value for s in EmbeddingStatus]
+        if status_value not in valid_values:
+            raise ValueError(
+                f"embedding_status must be one of: {', '.join(valid_values)}\nGot: {status_value}"
+            )
+        self.embedding_status = status_value
 
     def key(self) -> dict:
         """
@@ -140,6 +149,21 @@ class ReceiptLine:
             },
         }
 
+    def gsi1_key(self) -> dict:
+        """
+        Generates the secondary index key for the receipt line.
+        """
+        return {
+            "GSI1PK": {"S": f"EMBEDDING_STATUS#{self.embedding_status}"},
+            "GSI1SK": {
+                "S": (
+                    f"IMAGE#{self.image_id}#"
+                    f"RECEIPT#{self.receipt_id:05d}#"
+                    f"LINE#{self.line_id:05d}"
+                )
+            },
+        }
+
     def to_item(self) -> dict:
         """
         Converts the ReceiptLine object to a DynamoDB item.
@@ -149,6 +173,7 @@ class ReceiptLine:
         """
         return {
             **self.key(),
+            **self.gsi1_key(),
             "TYPE": {"S": "RECEIPT_LINE"},
             "text": {"S": self.text},
             "bounding_box": {
@@ -190,10 +215,7 @@ class ReceiptLine:
             "angle_degrees": {"N": _format_float(self.angle_degrees, 18, 20)},
             "angle_radians": {"N": _format_float(self.angle_radians, 18, 20)},
             "confidence": {"N": _format_float(self.confidence, 2, 2)},
-            "histogram": {
-                "M": {k: {"N": str(v)} for k, v in self.histogram.items()}
-            },
-            "num_chars": {"N": str(self.num_chars)},
+            "embedding_status": {"S": self.embedding_status},
         }
 
     def __eq__(self, other: object) -> bool:
@@ -224,6 +246,7 @@ class ReceiptLine:
             and self.angle_degrees == other.angle_degrees
             and self.angle_radians == other.angle_radians
             and self.confidence == other.confidence
+            and self.embedding_status == other.embedding_status
         )
 
     def __repr__(self) -> str:
@@ -246,7 +269,8 @@ class ReceiptLine:
             f"bottom_left={self.bottom_left}, "
             f"angle_degrees={self.angle_degrees}, "
             f"angle_radians={self.angle_radians}, "
-            f"confidence={self.confidence}"
+            f"confidence={self.confidence}, "
+            f"embedding_status={self.embedding_status}"
             f")"
         )
 
@@ -269,8 +293,7 @@ class ReceiptLine:
         yield "angle_degrees", self.angle_degrees
         yield "angle_radians", self.angle_radians
         yield "confidence", self.confidence
-        yield "histogram", self.histogram
-        yield "num_chars", self.num_chars
+        yield "embedding_status", self.embedding_status
 
     def __hash__(self):
         """Returns a hash value for the ReceiptLine object.
@@ -292,6 +315,7 @@ class ReceiptLine:
                 self.angle_degrees,
                 self.angle_radians,
                 self.confidence,
+                self.embedding_status,
             )
         )
 
@@ -469,6 +493,7 @@ def itemToReceiptLine(item: dict) -> ReceiptLine:
         "angle_degrees",
         "angle_radians",
         "confidence",
+        # "embedding_status",
     }
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - set(item.keys())
@@ -502,6 +527,7 @@ def itemToReceiptLine(item: dict) -> ReceiptLine:
             angle_degrees=float(item["angle_degrees"]["N"]),
             angle_radians=float(item["angle_radians"]["N"]),
             confidence=float(item["confidence"]["N"]),
+            # embedding_status=item["embedding_status"]["S"],
         )
     except (KeyError, IndexError) as e:
         raise ValueError("Error converting item to ReceiptLine") from e
