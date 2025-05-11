@@ -36,6 +36,7 @@ dependencies = [
   "openai-agents>=0.0.12",
   "pinecone>=3.0",
   "fuzzywuzzy>=0.18.0",
+  "RapidFuzz>=3.13.0",
 ]
 keywords = ["llm", "labeling", "validation"]
 

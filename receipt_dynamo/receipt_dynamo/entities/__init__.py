@@ -128,3 +128,7 @@ from receipt_dynamo.entities.queue_job import (
     QueueJob,
     itemToQueueJob,
 )  # noqa: F401
+from receipt_dynamo.entities.receipt_section import (
+    ReceiptSection,
+    itemToReceiptSection,
+)  # noqa: F401

@@ -252,7 +252,7 @@ class LambdaLayer(ComponentResource):
                                     "logs:PutLogEvents",
                                 ],
                                 "Resource": [
-                                    f"arn:aws:logs:*:*:log-group:/aws/codebuild/{self.name}-layer-build:*"
+                                    f"arn:aws:logs:{aws.config.region}:{aws.get_caller_identity().account_id}:log-group:/aws/codebuild/*"
                                 ],
                             },
                             {
