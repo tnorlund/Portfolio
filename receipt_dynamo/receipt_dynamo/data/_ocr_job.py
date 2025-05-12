@@ -1,45 +1,42 @@
-from receipt_dynamo.entities.refinement_job import (
-    RefinementJob,
-    itemToRefinementJob,
-)
 from receipt_dynamo.entities.util import assert_valid_uuid
-from receipt_dynamo.constants import RefinementStatus
+from receipt_dynamo.constants import OCRStatus
+from receipt_dynamo.entities.ocr_job import OCRJob, itemToOCRJob
 from botocore.exceptions import ClientError
 
 
-class _RefinementJob:
-    def addRefinementJob(self, refinement_job: RefinementJob):
-        """Adds a refinement job to the database
+class _OCRJob:
+    def addOCRJob(self, ocr_job: OCRJob):
+        """Adds an OCR job to the database
 
         Args:
-            refinement_job (RefinementJob): The refinement job to add to the database
+            ocr_job (OCRJob): The OCR job to add to the database
 
         Raises:
-            ValueError: When a refinement job with the same ID already exists
+            ValueError: When a OCR job with the same ID already exists
         """
-        if refinement_job is None:
+        if ocr_job is None:
             raise ValueError(
-                "refinement_job parameter is required and cannot be None."
+                "ocr_job parameter is required and cannot be None."
             )
-        if not isinstance(refinement_job, RefinementJob):
+        if not isinstance(ocr_job, OCRJob):
             raise ValueError(
-                "refinement_job must be an instance of the RefinementJob class."
+                "ocr_job must be an instance of the OCRJob class."
             )
         try:
             self._client.put_item(
                 TableName=self.table_name,
-                Item=refinement_job.to_item(),
+                Item=ocr_job.to_item(),
                 ConditionExpression="attribute_not_exists(PK) AND attribute_not_exists(SK)",
             )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    f"Refinement job for Image ID '{refinement_job.image_id}' already exists"
+                    f"OCR job for Image ID '{ocr_job.image_id}' already exists"
                 ) from e
             elif error_code == "ResourceNotFoundException":
                 raise Exception(
-                    f"Could not add refinement job to DynamoDB: {e}"
+                    f"Could not add OCR job to DynamoDB: {e}"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
@@ -47,32 +44,30 @@ class _RefinementJob:
                 raise Exception(f"Internal server error: {e}") from e
             else:
                 raise Exception(
-                    f"Could not add refinement job to DynamoDB: {e}"
+                    f"Could not add OCR job to DynamoDB: {e}"
                 ) from e
 
-    def addRefinementJobs(self, refinement_jobs: list[RefinementJob]):
-        """Adds a list of refinement jobs to the database
+    def addOCRJobs(self, ocr_jobs: list[OCRJob]):
+        """Adds a list of OCR jobs to the database
 
         Args:
-            refinement_jobs (list[RefinementJob]): The list of refinement jobs to add to the database
+            ocr_jobs (list[OCRJob]): The list of OCR jobs to add to the database
 
         Raises:
-            ValueError: When a refinement job with the same ID already exists
+            ValueError: When a OCR job with the same ID already exists
         """
-        if refinement_jobs is None:
+        if ocr_jobs is None:
             raise ValueError(
-                "refinement_jobs parameter is required and cannot be None."
+                "ocr_jobs parameter is required and cannot be None."
             )
-        if not isinstance(refinement_jobs, list):
+        if not isinstance(ocr_jobs, list):
+            raise ValueError("ocr_jobs must be a list of OCRJob instances.")
+        if not all(isinstance(job, OCRJob) for job in ocr_jobs):
             raise ValueError(
-                "refinement_jobs must be a list of RefinementJob instances."
+                "All OCR jobs must be instances of the OCRJob class."
             )
-        if not all(isinstance(job, RefinementJob) for job in refinement_jobs):
-            raise ValueError(
-                "All refinement jobs must be instances of the RefinementJob class."
-            )
-        for i in range(0, len(refinement_jobs), 25):
-            chunk = refinement_jobs[i : i + 25]
+        for i in range(0, len(ocr_jobs), 25):
+            chunk = ocr_jobs[i : i + 25]
             request_items = [
                 {"PutRequest": {"Item": job.to_item()}} for job in chunk
             ]
@@ -105,21 +100,21 @@ class _RefinementJob:
                         raise Exception(f"Internal server error: {e}") from e
                     else:
                         raise Exception(
-                            f"Could not add refinement jobs to DynamoDB: {e}"
+                            f"Could not add OCR jobs to DynamoDB: {e}"
                         ) from e
 
-    def getRefinementJob(self, image_id: str, job_id: str) -> RefinementJob:
-        """Gets a refinement job from the database
+    def getOCRJob(self, image_id: str, job_id: str) -> OCRJob:
+        """Gets an OCR job from the database
 
         Args:
-            image_id (str): The image ID of the refinement job
-            job_id (str): The job ID of the refinement job
+            image_id (str): The image ID of the OCR job
+            job_id (str): The job ID of the OCR job
 
         Returns:
-            RefinementJob: The refinement job
+            OCRJob: The OCR job
 
         Raises:
-            ValueError: When the refinement job is not found
+            ValueError: When the OCR job is not found
         """
         if image_id is None:
             raise ValueError("Image ID is required and cannot be None.")
@@ -132,14 +127,14 @@ class _RefinementJob:
                 TableName=self.table_name,
                 Key={
                     "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"REFINEMENT_JOB#{job_id}"},
+                    "SK": {"S": f"OCR_JOB#{job_id}"},
                 },
             )
             if "Item" in response:
-                return itemToRefinementJob(response["Item"])
+                return itemToOCRJob(response["Item"])
             else:
                 raise ValueError(
-                    f"Refinement job for Image ID '{image_id}' and Job ID '{job_id}' does not exist."
+                    f"OCR job for Image ID '{image_id}' and Job ID '{job_id}' does not exist."
                 )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
@@ -150,19 +145,19 @@ class _RefinementJob:
             elif error_code == "AccessDeniedException":
                 raise Exception(f"Access denied: {e}") from e
             else:
-                raise Exception(f"Error getting refinement job: {e}") from e
+                raise Exception(f"Error getting OCR job: {e}") from e
 
-    def listRefinementJobs(
+    def listOCRJobs(
         self, limit: int = None, lastEvaluatedKey: dict | None = None
-    ) -> tuple[list[RefinementJob], dict | None]:
-        """Lists all refinement jobs from the database
+    ) -> tuple[list[OCRJob], dict | None]:
+        """Lists all OCR jobs from the database
 
         Args:
-            limit (int, optional): The maximum number of refinement jobs to return. Defaults to None.
+            limit (int, optional): The maximum number of OCR jobs to return. Defaults to None.
             lastEvaluatedKey (dict | None, optional): The last evaluated key from the previous query. Defaults to None.
 
         Returns:
-            tuple[list[RefinementJob], dict | None]: A tuple containing a list of refinement jobs and the last evaluated key
+            tuple[list[OCRJob], dict | None]: A tuple containing a list of OCR jobs and the last evaluated key
         """
         if limit is not None and not isinstance(limit, int):
             raise ValueError("Limit must be an integer")
@@ -180,7 +175,7 @@ class _RefinementJob:
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "REFINEMENT_JOB"}},
+                "ExpressionAttributeValues": {":val": {"S": "OCR_JOB"}},
             }
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
@@ -191,9 +186,7 @@ class _RefinementJob:
                     query_params["Limit"] = remaining
 
                 response = self._client.query(**query_params)
-                jobs.extend(
-                    [itemToRefinementJob(item) for item in response["Items"]]
-                )
+                jobs.extend([itemToOCRJob(item) for item in response["Items"]])
 
                 if limit is not None and len(jobs) >= limit:
                     jobs = jobs[:limit]
@@ -218,28 +211,28 @@ class _RefinementJob:
             elif error_code == "AccessDeniedException":
                 raise Exception(f"Access denied: {e}") from e
             else:
-                raise Exception(f"Error listing refinement jobs: {e}") from e
+                raise Exception(f"Error listing OCR jobs: {e}") from e
 
-    def getRefinementJobsByStatus(
+    def getOCRJobsByStatus(
         self,
-        status: RefinementStatus,
+        status: OCRStatus,
         limit: int = None,
         lastEvaluatedKey: dict | None = None,
-    ) -> tuple[list[RefinementJob], dict | None]:
-        """Gets refinement jobs by status from the database
+    ) -> tuple[list[OCRJob], dict | None]:
+        """Gets OCR jobs by status from the database
 
         Args:
-            status (RefinementStatus): The status of the refinement jobs to get
-            limit (int, optional): The maximum number of refinement jobs to return. Defaults to None.
+            status (OCRStatus): The status of the OCR jobs to get
+            limit (int, optional): The maximum number of OCR jobs to return. Defaults to None.
             lastEvaluatedKey (dict | None, optional): The last evaluated key from the previous query. Defaults to None.
 
         Returns:
-            tuple[list[RefinementJob], dict | None]: A tuple containing a list of refinement jobs and the last evaluated key
+            tuple[list[OCRJob], dict | None]: A tuple containing a list of OCR jobs and the last evaluated key
         """
         if status is None:
             raise ValueError("Status is required and cannot be None.")
-        if not isinstance(status, RefinementStatus):
-            raise ValueError("Status must be a RefinementStatus instance.")
+        if not isinstance(status, OCRStatus):
+            raise ValueError("Status must be a OCRStatus instance.")
         if limit is not None and not isinstance(limit, int):
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
@@ -257,7 +250,7 @@ class _RefinementJob:
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "GSI1PK"},
                 "ExpressionAttributeValues": {
-                    ":val": {"S": f"REFINEMENT_JOB_STATUS#{status.value}"}
+                    ":val": {"S": f"OCR_JOB_STATUS#{status.value}"}
                 },
             }
             if lastEvaluatedKey is not None:
@@ -269,9 +262,7 @@ class _RefinementJob:
                     query_params["Limit"] = remaining
 
                 response = self._client.query(**query_params)
-                jobs.extend(
-                    [itemToRefinementJob(item) for item in response["Items"]]
-                )
+                jobs.extend([itemToOCRJob(item) for item in response["Items"]])
 
                 if limit is not None and len(jobs) >= limit:
                     jobs = jobs[:limit]
@@ -297,5 +288,5 @@ class _RefinementJob:
                 raise Exception(f"Access denied: {e}") from e
             else:
                 raise Exception(
-                    f"Error getting refinement jobs by status: {e}"
+                    f"Error getting OCR jobs by status: {e}"
                 ) from e

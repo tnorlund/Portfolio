@@ -80,9 +80,16 @@ class PassNumber(Enum):
     SECOND = "SECOND_PASS"
 
 
-class RefinementStatus(Enum):
-    """The status of a refinement batch."""
+class OCRStatus(Enum):
+    """The status of an OCR job."""
 
     PENDING = "PENDING"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
+
+
+class OCRJobType(Enum):
+    """The type of OCR job."""
+
+    REFINEMENT = "REFINEMENT"
+    FIRST_PASS = "FIRST_PASS"
