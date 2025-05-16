@@ -8,7 +8,8 @@ import base64
 # Import our infrastructure components
 import s3_website  # noqa: F401
 import api_gateway  # noqa: F401
-import raw_bucket  # Import raw bucket module
+from raw_bucket import raw_bucket  # Import the actual bucket instance
+from s3_website import site_bucket  # Import the site bucket instance
 from dynamo_db import (
     dynamodb_table,
 )  # Import DynamoDB table from original code
@@ -24,6 +25,7 @@ from validate_merchant_step_functions import ValidateMerchantStepFunctions
 from validation_pipeline import ValidationPipeline
 from embedding_step_functions import LineEmbeddingStepFunction
 from validation_by_merchant import ValidationByMerchantStepFunction
+from upload_images import UploadImages
 
 # Import other necessary components
 try:
@@ -55,7 +57,12 @@ line_embedding_step_functions = LineEmbeddingStepFunction("step-func")
 validation_by_merchant_step_functions = ValidationByMerchantStepFunction(
     "validation-by-merchant"
 )
+upload_images = UploadImages(
+    "upload-images", raw_bucket=raw_bucket, site_bucket=site_bucket
+)
 
+pulumi.export("ocr_job_queue_url", upload_images.ocr_queue.url)
+pulumi.export("ocr_results_queue_url", upload_images.ocr_results_queue.url)
 # ML Training Infrastructure
 # -------------------------
 

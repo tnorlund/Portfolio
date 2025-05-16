@@ -212,13 +212,15 @@ def itemToOCRJob(item: dict) -> OCRJob:
         created_at = datetime.fromisoformat(item["created_at"]["S"])
         updated_at = (
             datetime.fromisoformat(item["updated_at"]["S"])
-            if "updated_at" in item
+            if "updated_at" in item and "S" in item["updated_at"]
             else None
         )
         status = item["status"]["S"]
         job_type = item["job_type"]["S"]
         receipt_id = (
-            int(item["receipt_id"]["N"]) if "receipt_id" in item else None
+            int(item["receipt_id"]["N"])
+            if "receipt_id" in item and "N" in item["receipt_id"]
+            else None
         )
         return OCRJob(
             image_id=image_id,

@@ -132,3 +132,7 @@ from receipt_dynamo.entities.receipt_section import (
     ReceiptSection,
     itemToReceiptSection,
 )  # noqa: F401
+from receipt_dynamo.entities.ocr_routing_decision import (
+    OCRRoutingDecision,
+    itemToOCRRoutingDecision,
+)  # noqa: F401

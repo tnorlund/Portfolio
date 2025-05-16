@@ -93,3 +93,11 @@ class OCRJobType(Enum):
 
     REFINEMENT = "REFINEMENT"
     FIRST_PASS = "FIRST_PASS"
+
+
+class ImageType(Enum):
+    """The type of image."""
+
+    SCAN = "SCAN"
+    PHOTO = "PHOTO"
+    NATIVE = "NATIVE"
