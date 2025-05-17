@@ -1,7 +1,12 @@
 from datetime import datetime
 from typing import Any, Generator, Optional, Tuple
 
-from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
+from receipt_dynamo.entities.util import (
+    _repr_str,
+    assert_valid_uuid,
+    assert_type,
+    format_type_error,
+)
 from receipt_dynamo.constants import ValidationStatus, PassNumber, BatchStatus
 
 
@@ -28,28 +33,32 @@ class CompletionBatchResult:
         assert_valid_uuid(image_id)
         self.image_id = image_id
 
-        if not isinstance(receipt_id, int):
-            raise ValueError("receipt_id must be an integer")
+        assert_type("receipt_id", receipt_id, int, ValueError)
         self.receipt_id = receipt_id
 
-        if not isinstance(line_id, int):
-            raise ValueError("line_id must be an integer")
+        assert_type("line_id", line_id, int, ValueError)
         self.line_id = line_id
 
-        if not isinstance(word_id, int):
-            raise ValueError("word_id must be an integer")
+        assert_type("word_id", word_id, int, ValueError)
         self.word_id = word_id
 
-        if not isinstance(original_label, str):
-            raise ValueError("original_label must be a string")
+        assert_type("original_label", original_label, str, ValueError)
         self.original_label = original_label
 
         if not isinstance(gpt_suggested_label, str | None):
-            raise ValueError("gpt_suggested_label must be a string or None")
+            raise ValueError(
+                format_type_error(
+                    "gpt_suggested_label",
+                    gpt_suggested_label,
+                    (str, type(None)),
+                )
+            )
         self.gpt_suggested_label = gpt_suggested_label
 
         if not isinstance(status, str | BatchStatus):
-            raise ValueError("status must be a string or BatchStatus")
+            raise ValueError(
+                format_type_error("status", status, (str, BatchStatus))
+            )
         if isinstance(status, str) and not status in [
             s.value for s in BatchStatus
         ]:
@@ -62,8 +71,7 @@ class CompletionBatchResult:
             status_str = status
         self.status = status_str
 
-        if not isinstance(validated_at, datetime):
-            raise ValueError("validated_at must be a datetime object")
+        assert_type("validated_at", validated_at, datetime, ValueError)
         self.validated_at = validated_at
 
     def key(self) -> dict:

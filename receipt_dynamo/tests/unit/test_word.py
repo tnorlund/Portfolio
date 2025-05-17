@@ -107,7 +107,7 @@ def test_word_init_invalid_uuid():
 @pytest.mark.unit
 def test_word_init_invalid_line_id():
     """Test that Word raises a ValueError if the line_id is not an integer"""
-    with pytest.raises(ValueError, match="line_id must be an integer"):
+    with pytest.raises(ValueError, match="line_id must be int, got"):
         Word(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "bad-line-id",
@@ -142,7 +142,7 @@ def test_word_init_invalid_line_id():
 @pytest.mark.unit
 def test_word_init_invalid_id():
     """Test that Word raises a ValueError if the id is not an integer"""
-    with pytest.raises(ValueError, match="id must be an integer"):
+    with pytest.raises(ValueError, match="word_id must be int, got"):
         Word(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             2,
@@ -177,7 +177,7 @@ def test_word_init_invalid_id():
 @pytest.mark.unit
 def test_word_init_invalid_text():
     """Test that Word raises a ValueError if the text is not a string"""
-    with pytest.raises(ValueError, match="text must be a string"):
+    with pytest.raises(ValueError, match="text must be str, got"):
         Word(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             2,
@@ -270,7 +270,7 @@ def test_word_init_invalid_corners():
 def test_word_init_invalid_angle():
     """Test that Word raises a ValueError if the angle is not a float"""
     with pytest.raises(
-        ValueError, match="angle_degrees must be a float or int"
+        ValueError, match="angle_degrees must be float, int, got"
     ):
         Word(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -287,7 +287,7 @@ def test_word_init_invalid_angle():
             0.90,
         )
     with pytest.raises(
-        ValueError, match="angle_radians must be a float or int"
+        ValueError, match="angle_radians must be float, int, got"
     ):
         Word(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -308,7 +308,7 @@ def test_word_init_invalid_angle():
 @pytest.mark.unit
 def test_word_init_invalid_confidence():
     """Test that Word raises a ValueError if the confidence is not a float"""
-    with pytest.raises(ValueError, match="confidence must be a float"):
+    with pytest.raises(ValueError, match="confidence must be float, got"):
         Word(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             2,
@@ -358,7 +358,7 @@ def test_word_init_invalid_confidence():
 @pytest.mark.unit
 def test_word_init_invalid_extracted_data():
     """Test that Word raises a ValueError if the extracted_data is not a dict"""
-    with pytest.raises(ValueError, match="extracted_data must be a dict"):
+    with pytest.raises(ValueError, match="extracted_data must be dict, got"):
         Word(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id=2,

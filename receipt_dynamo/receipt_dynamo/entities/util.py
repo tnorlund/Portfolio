@@ -1,5 +1,6 @@
 import re
 from decimal import ROUND_HALF_UP, Decimal
+from typing import Any, Iterable
 
 
 def _repr_str(value: str) -> str:
@@ -8,6 +9,30 @@ def _repr_str(value: str) -> str:
     is None.
     """
     return "None" if value is None else f"'{value}'"
+
+
+def format_type_error(
+    name: str, value: Any, expected: Iterable[type] | type
+) -> str:
+    """Return a standardized type error message."""
+    if isinstance(expected, Iterable) and not isinstance(expected, type):
+        expected_names = ", ".join(t.__name__ for t in expected)
+    else:
+        expected_names = (
+            expected.__name__ if isinstance(expected, type) else str(expected)
+        )
+    return f"{name} must be {expected_names}, got {type(value).__name__}"
+
+
+def assert_type(
+    name: str,
+    value: Any,
+    expected: Iterable[type] | type,
+    exc_type: type[Exception] = TypeError,
+) -> None:
+    """Raise an exception if ``value`` is not an instance of ``expected``."""
+    if not isinstance(value, expected):
+        raise exc_type(format_type_error(name, value, expected))
 
 
 # Regex for UUID version 4 (case-insensitive, enforcing the '4' and the

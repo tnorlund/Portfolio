@@ -36,7 +36,7 @@ def test_word_tag_init_invalid_image_id():
 @pytest.mark.unit
 def test_word_tag_init_invalid_line_id():
     """Test that WordTag raises ValueError if line_id is invalid."""
-    with pytest.raises(ValueError, match="line_id must be an integer"):
+    with pytest.raises(ValueError, match="line_id must be int, got"):
         WordTag(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "2",
@@ -57,7 +57,7 @@ def test_word_tag_init_invalid_line_id():
 @pytest.mark.unit
 def test_word_tag_init_invalid_word_id():
     """Test that WordTag raises ValueError if word_id is invalid."""
-    with pytest.raises(ValueError, match="word_id must be an integer"):
+    with pytest.raises(ValueError, match="word_id must be int, got"):
         WordTag(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             2,
@@ -86,7 +86,7 @@ def test_word_tag_init_invalid_tag():
             "",
             "2021-01-01T00:00:00",
         )
-    with pytest.raises(ValueError, match="tag must be a string"):
+    with pytest.raises(ValueError, match="tag must be str, got"):
         WordTag(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             2,
@@ -120,7 +120,7 @@ def test_word_tag_init_invalid_timestamp_added():
     """Test that WordTag raises ValueError if timestamp_added is invalid."""
     with pytest.raises(
         ValueError,
-        match="timestamp_added must be a datetime object or a string",
+        match="timestamp_added must be datetime, str, got",
     ):
         WordTag(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "example", 1234567890

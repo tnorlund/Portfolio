@@ -53,7 +53,7 @@ def test_batch_summary_to_item_and_back(example_batch_summary):
 @pytest.mark.unit
 @pytest.mark.parametrize("bad_value", [123, None])
 def test_batch_summary_invalid_batch_id_type(bad_value):
-    with pytest.raises(ValueError, match="batch_id must be a string"):
+    with pytest.raises(ValueError, match="batch_id must be str, got"):
         BatchSummary(
             batch_id=bad_value,
             batch_type=BatchType.EMBEDDING.value,
@@ -68,7 +68,7 @@ def test_batch_summary_invalid_batch_id_type(bad_value):
 @pytest.mark.unit
 @pytest.mark.parametrize("bad_value", [123, None])
 def test_batch_summary_invalid_openai_batch_id_type(bad_value):
-    with pytest.raises(ValueError, match="openai_batch_id must be a string"):
+    with pytest.raises(ValueError, match="openai_batch_id must be str, got"):
         BatchSummary(
             batch_id="abc",
             batch_type=BatchType.EMBEDDING.value,
@@ -82,9 +82,7 @@ def test_batch_summary_invalid_openai_batch_id_type(bad_value):
 
 @pytest.mark.unit
 def test_batch_summary_invalid_submitted_at_type():
-    with pytest.raises(
-        ValueError, match="submitted_at must be a datetime object"
-    ):
+    with pytest.raises(ValueError, match="submitted_at must be datetime, got"):
         BatchSummary(
             batch_id="abc",
             batch_type=BatchType.EMBEDDING.value,
@@ -99,7 +97,7 @@ def test_batch_summary_invalid_submitted_at_type():
 @pytest.mark.unit
 @pytest.mark.parametrize("bad_value", [123, None])
 def test_batch_summary_invalid_result_file_id_type(bad_value):
-    with pytest.raises(ValueError, match="result_file_id must be a string"):
+    with pytest.raises(ValueError, match="result_file_id must be str, got"):
         BatchSummary(
             batch_id="abc",
             batch_type=BatchType.EMBEDDING.value,
@@ -143,7 +141,7 @@ def test_batch_summary_invalid_status():
 def test_batch_summary_status_not_string():
     with pytest.raises(
         ValueError,
-        match="status must be either a BatchStatus enum or a string; got int",
+        match="status must be BatchStatus, str, got int",
     ):
         BatchSummary(
             batch_id="abc123",
