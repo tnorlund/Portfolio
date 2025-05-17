@@ -50,6 +50,8 @@ dev = [
     "pulumi-command>=0.9.0",
     "black==24.10.0",
     "flake8",
+    "mypy",
+    "isort",
 ]
 
 [tool.hatch.build.targets.wheel]
