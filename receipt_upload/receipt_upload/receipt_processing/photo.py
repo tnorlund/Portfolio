@@ -3,11 +3,10 @@ from datetime import datetime, timezone
 from PIL import Image as PIL_Image
 import json
 import uuid
-import boto3
+import math
 
 from receipt_upload.utils import (
     download_image_from_s3,
-    upload_file_to_s3,
     upload_jpeg_to_s3,
     upload_png_to_s3,
     calculate_sha256_from_bytes,
@@ -21,16 +20,15 @@ from receipt_upload.geometry import (
     find_hull_extents_relative_to_centroid,
     find_perspective_coeffs,
 )
-from receipt_upload.ocr import process_ocr_dict
+from receipt_upload.cluster import dbscan_lines
+from receipt_upload.ocr import process_ocr_dict_as_image
 from receipt_dynamo.entities import (
     Image,
     Receipt,
-    ReceiptLine,
-    ReceiptWord,
-    ReceiptLetter,
     OCRJob,
+    OCRRoutingDecision,
 )
-from receipt_dynamo.constants import OCRStatus, OCRJobType
+from receipt_dynamo.constants import OCRStatus, OCRJobType, ImageType
 from receipt_dynamo import DynamoClient
 
 
@@ -39,27 +37,22 @@ def process_photo(
     site_bucket: str,
     dynamo_table_name: str,
     ocr_job_queue_url: str,
-    ocr_json_s3_key: str,
-    ocr_json_s3_bucket: str,
-    job_id: str,
-    image_id: str,
+    ocr_routing_decision: OCRRoutingDecision,
+    ocr_job: OCRJob,
 ) -> None:
     """
     Process a photo of a receipt.
 
-    This function takes the OCR JSON file and the image file, and processes the photo
-    to extract the receipt lines and words. It uploads the raw image to the raw and
-    site buckets. It then clusters the OCR lines into receipts, and submits another
-    OCR job for each receipt.
+    This function takes the OCR JSON file and the image file, and processes
+    the photo to extract the receipt lines and words. It uploads the raw image
+    to the raw and site buckets. It then clusters the OCR lines into receipts,
+    and submits another OCR job for each receipt. It also updates the OCR
+    routing decision with the number of receipts found.
     """
     dynamo_client = DynamoClient(dynamo_table_name)
-    sqs = boto3.client("sqs")
+    image_id = ocr_job.image_id
 
     # Download the OCR JSON
-    ocr_routing_decision = dynamo_client.getOCRRoutingDecision(
-        image_id=image_id,
-        job_id=job_id,
-    )
     json_s3_key = ocr_routing_decision.s3_key
     json_s3_bucket = ocr_routing_decision.s3_bucket
     ocr_json_path = download_file_from_s3(
@@ -67,10 +60,11 @@ def process_photo(
     )
     with open(ocr_json_path, "r") as f:
         ocr_json = json.load(f)
-    ocr_lines, ocr_words, ocr_letters = process_ocr_dict(ocr_json, image_id)
+    ocr_lines, ocr_words, ocr_letters = process_ocr_dict_as_image(
+        ocr_json, image_id
+    )
 
     # Download the raw image
-    ocr_job = dynamo_client.getOCRJob(image_id=image_id, job_id=job_id)
     raw_image_s3_key = ocr_job.s3_key
     raw_image_s3_bucket = ocr_job.s3_bucket
     raw_image_path = download_image_from_s3(
@@ -95,6 +89,7 @@ def process_photo(
         cdn_s3_bucket=site_bucket,
         cdn_s3_key=f"assets/{image_id}.jpg",
         sha256=calculate_sha256_from_bytes(image.tobytes()),
+        image_type=ImageType.PHOTO,
     )
     # Add the image and OCR data to the database
     dynamo_client.addImage(ocr_image)
@@ -184,8 +179,8 @@ def process_photo(
             f"assets/{image_id}_RECEIPT_{cluster_id:05d}.jpg",
         )
 
-        # Convert the receipt_box_corners from pixel coordinates to normalized coordinates
-        # and format them as dictionaries
+        # Convert the receipt_box_corners from pixel coordinates to normalized
+        # coordinates and format them as dictionaries
         top_left = {
             "x": receipt_box_corners[0][0] / image.width,
             "y": 1

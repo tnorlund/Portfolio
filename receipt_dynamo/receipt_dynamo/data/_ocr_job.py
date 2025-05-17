@@ -103,6 +103,31 @@ class _OCRJob:
                             f"Could not add OCR jobs to DynamoDB: {e}"
                         ) from e
 
+    def updateOCRJob(self, ocr_job: OCRJob):
+        """Updates an OCR job in the database"""
+        if ocr_job is None:
+            raise ValueError("OCR job is required and cannot be None.")
+        if not isinstance(ocr_job, OCRJob):
+            raise ValueError(
+                "OCR job must be an instance of the OCRJob class."
+            )
+        try:
+            self._client.put_item(
+                TableName=self.table_name,
+                Item=ocr_job.to_item(),
+                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
+            )
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ProvisionedThroughputExceededException":
+                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+            elif error_code == "InternalServerError":
+                raise Exception(f"Internal server error: {e}") from e
+            elif error_code == "AccessDeniedException":
+                raise Exception(f"Access denied: {e}") from e
+            else:
+                raise Exception(f"Error updating OCR job: {e}") from e
+
     def getOCRJob(self, image_id: str, job_id: str) -> OCRJob:
         """Gets an OCR job from the database
 

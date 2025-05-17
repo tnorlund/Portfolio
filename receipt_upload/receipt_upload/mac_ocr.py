@@ -9,7 +9,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import json
 from datetime import datetime, timezone
-from receipt_dynamo.constants import OCRStatus
+from receipt_dynamo.constants import OCRStatus, OCRJobType
+from receipt_dynamo.entities import OCRJob
 from receipt_upload.utils import download_image_from_s3, upload_file_to_s3
 
 
@@ -54,6 +55,11 @@ def main():
             ocr_job = dynamo_client.getOCRJob(image_id=image_id, job_id=job_id)
             image_s3_key = ocr_job.s3_key
             image_s3_bucket = ocr_job.s3_bucket
+            ocr_job_type = ocr_job.job_type
+            if ocr_job_type == OCRJobType.REFINEMENT:
+                receipt_id = ocr_job.receipt_id
+            else:
+                receipt_id = None
 
             # Download the image from the S3 bucket
             image_path = download_image_from_s3(
@@ -77,6 +83,18 @@ def main():
             upload_file_to_s3(
                 ocr_json_file, image_s3_bucket, ocr_json_file_s3_key
             )
+            dynamo_client.addOCRRoutingDecision(
+                OCRRoutingDecision(
+                    image_id=image_id,
+                    job_id=job_id,
+                    s3_bucket=image_s3_bucket,
+                    s3_key=ocr_json_file_s3_key,
+                    created_at=datetime.now(timezone.utc),
+                    updated_at=datetime.now(timezone.utc),
+                    receipt_count=0,
+                    status=OCRStatus.PENDING,
+                )
+            )
             sqs_client.send_message(
                 QueueUrl=ocr_results_queue_url,
                 MessageBody=json.dumps(
@@ -93,18 +111,10 @@ def main():
                 f"s3_bucket {image_s3_bucket}\n"
                 f"s3_key {ocr_json_file_s3_key}"
             )
-            dynamo_client.addOCRRoutingDecision(
-                OCRRoutingDecision(
-                    image_id=image_id,
-                    job_id=job_id,
-                    s3_bucket=image_s3_bucket,
-                    s3_key=ocr_json_file_s3_key,
-                    created_at=datetime.now(timezone.utc),
-                    updated_at=datetime.now(timezone.utc),
-                    receipt_count=0,
-                    status=OCRStatus.PENDING,
-                )
-            )
+            ocr_job = dynamo_client.getOCRJob(image_id=image_id, job_id=job_id)
+            ocr_job.updated_at = datetime.now(timezone.utc)
+            ocr_job.status = OCRStatus.COMPLETED.value
+            dynamo_client.updateOCRJob(ocr_job)
     sqs_client.delete_message_batch(
         QueueUrl=sqs_queue_url,
         Entries=[

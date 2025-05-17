@@ -4,6 +4,8 @@ from pathlib import Path
 from PIL import Image as PIL_Image
 from io import BytesIO
 from hashlib import sha256
+from receipt_dynamo import DynamoClient
+from receipt_dynamo.entities import OCRJob, OCRRoutingDecision
 
 
 def download_file_from_s3(s3_bucket: str, s3_key: str, temp_dir: Path) -> Path:
@@ -95,3 +97,23 @@ def send_message_to_sqs(queue_url: str, message_body: str) -> None:
     """
     sqs_client = client("sqs")
     sqs_client.send_message(QueueUrl=queue_url, MessageBody=message_body)
+
+
+def get_ocr_job(dynamo_table_name: str, image_id: str, job_id: str) -> OCRJob:
+    """
+    Get an OCR job from the DynamoDB table.
+    """
+    dynamo_client = DynamoClient(dynamo_table_name)
+    return dynamo_client.getOCRJob(image_id=image_id, job_id=job_id)
+
+
+def get_ocr_routing_decision(
+    dynamo_table_name: str, image_id: str, job_id: str
+) -> OCRRoutingDecision:
+    """
+    Get an OCR routing decision from the DynamoDB table.
+    """
+    dynamo_client = DynamoClient(dynamo_table_name)
+    return dynamo_client.getOCRRoutingDecision(
+        image_id=image_id, job_id=job_id
+    )
