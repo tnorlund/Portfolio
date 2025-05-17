@@ -2,7 +2,11 @@ from datetime import datetime
 from typing import Optional, Generator, Tuple, Any
 
 from receipt_dynamo.constants import BatchStatus, BatchType
-from receipt_dynamo.entities.util import _repr_str
+from receipt_dynamo.entities.util import (
+    _repr_str,
+    assert_type,
+    format_type_error,
+)
 
 
 class BatchSummary:
@@ -16,8 +20,7 @@ class BatchSummary:
         result_file_id: str,
         receipt_refs: list[tuple[str, int]] = None,
     ):
-        if not isinstance(batch_id, str):
-            raise ValueError("batch_id must be a string")
+        assert_type("batch_id", batch_id, str, ValueError)
         self.batch_id = batch_id
 
         # Accept batch_type as either BatchType or str
@@ -27,7 +30,7 @@ class BatchSummary:
             batch_type_str = batch_type
         else:
             raise ValueError(
-                f"batch_type must be either a BatchType enum or a string; got {type(batch_type).__name__}"
+                format_type_error("batch_type", batch_type, (BatchType, str))
             )
 
         # Validate batch_type_str against allowed values
@@ -38,8 +41,7 @@ class BatchSummary:
             )
         self.batch_type = batch_type_str
 
-        if not isinstance(openai_batch_id, str):
-            raise ValueError("openai_batch_id must be a string")
+        assert_type("openai_batch_id", openai_batch_id, str, ValueError)
         self.openai_batch_id = openai_batch_id
 
         if isinstance(submitted_at, str):
@@ -51,7 +53,9 @@ class BatchSummary:
                 )
         elif not isinstance(submitted_at, datetime):
             raise ValueError(
-                "submitted_at must be a datetime object or a string"
+                format_type_error(
+                    "submitted_at", submitted_at, (datetime, str)
+                )
             )
         self.submitted_at = submitted_at
 
@@ -62,7 +66,7 @@ class BatchSummary:
             status_str = status
         else:
             raise ValueError(
-                f"status must be either a BatchStatus enum or a string; got {type(status).__name__}"
+                format_type_error("status", status, (BatchStatus, str))
             )
 
         # Validate the string against allowed values
@@ -73,8 +77,7 @@ class BatchSummary:
             )
         self.status = status_str
 
-        if not isinstance(result_file_id, str):
-            raise ValueError("result_file_id must be a string")
+        assert_type("result_file_id", result_file_id, str, ValueError)
         self.result_file_id = result_file_id
 
         if not isinstance(receipt_refs, list):

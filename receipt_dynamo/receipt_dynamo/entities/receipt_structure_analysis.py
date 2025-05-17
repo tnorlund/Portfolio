@@ -8,6 +8,7 @@ import json
 import hashlib
 import decimal
 from datetime import datetime
+from receipt_dynamo.entities.util import assert_type, format_type_error
 
 
 class SpatialPattern:
@@ -36,18 +37,10 @@ class SpatialPattern:
             TypeError: If the input types are not as expected
             ValueError: If required values are missing or invalid
         """
-        if not isinstance(pattern_type, str):
-            raise TypeError(
-                f"pattern_type must be str, got {type(pattern_type).__name__}"
-            )
-        if not isinstance(description, str):
-            raise TypeError(
-                f"description must be str, got {type(description).__name__}"
-            )
-        if metadata is not None and not isinstance(metadata, dict):
-            raise TypeError(
-                f"metadata must be dict or None, got {type(metadata).__name__}"
-            )
+        assert_type("pattern_type", pattern_type, str)
+        assert_type("description", description, str)
+        if metadata is not None:
+            assert_type("metadata", metadata, dict)
 
         self.pattern_type = pattern_type
         self.description = description
@@ -76,8 +69,7 @@ class SpatialPattern:
             TypeError: If data is not a dictionary
             KeyError: If required keys are missing
         """
-        if not isinstance(data, dict):
-            raise TypeError(f"data must be dict, got {type(data).__name__}")
+        assert_type("data", data, dict)
 
         return cls(
             pattern_type=str(
@@ -130,22 +122,12 @@ class ContentPattern:
             TypeError: If the input types are not as expected
             ValueError: If required values are missing or invalid
         """
-        if not isinstance(pattern_type, str):
-            raise TypeError(
-                f"pattern_type must be str, got {type(pattern_type).__name__}"
-            )
-        if not isinstance(description, str):
-            raise TypeError(
-                f"description must be str, got {type(description).__name__}"
-            )
-        if examples is not None and not isinstance(examples, list):
-            raise TypeError(
-                f"examples must be list or None, got {type(examples).__name__}"
-            )
-        if metadata is not None and not isinstance(metadata, dict):
-            raise TypeError(
-                f"metadata must be dict or None, got {type(metadata).__name__}"
-            )
+        assert_type("pattern_type", pattern_type, str)
+        assert_type("description", description, str)
+        if examples is not None:
+            assert_type("examples", examples, list)
+        if metadata is not None:
+            assert_type("metadata", metadata, dict)
 
         self.pattern_type = pattern_type
         self.description = description
@@ -154,10 +136,7 @@ class ContentPattern:
 
         # Validate that all examples are strings
         for i, example in enumerate(self.examples):
-            if not isinstance(example, str):
-                raise TypeError(
-                    f"examples[{i}] must be str, got {type(example).__name__}"
-                )
+            assert_type(f"examples[{i}]", example, str)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert the ContentPattern to a dictionary."""
@@ -183,8 +162,7 @@ class ContentPattern:
             TypeError: If data is not a dictionary
             KeyError: If required keys are missing
         """
-        if not isinstance(data, dict):
-            raise TypeError(f"data must be dict, got {type(data).__name__}")
+        assert_type("data", data, dict)
 
         examples = data.get("examples", [])
         if examples and not isinstance(examples, list):
@@ -255,42 +233,27 @@ class ReceiptSection:
             TypeError: If the input types are not as expected
             ValueError: If required values are missing or invalid
         """
-        if not isinstance(name, str):
-            raise TypeError(f"name must be str, got {type(name).__name__}")
-        if not isinstance(line_ids, list):
-            raise TypeError(
-                f"line_ids must be list, got {type(line_ids).__name__}"
-            )
-        if not isinstance(spatial_patterns, list):
-            raise TypeError(
-                f"spatial_patterns must be list, got {type(spatial_patterns).__name__}"
-            )
-        if not isinstance(content_patterns, list):
-            raise TypeError(
-                f"content_patterns must be list, got {type(content_patterns).__name__}"
-            )
-        if not isinstance(reasoning, str):
-            raise TypeError(
-                f"reasoning must be str, got {type(reasoning).__name__}"
-            )
-        if start_line is not None and not isinstance(start_line, int):
-            raise TypeError(
-                f"start_line must be int or None, got {type(start_line).__name__}"
-            )
-        if end_line is not None and not isinstance(end_line, int):
-            raise TypeError(
-                f"end_line must be int or None, got {type(end_line).__name__}"
-            )
-        if metadata is not None and not isinstance(metadata, dict):
-            raise TypeError(
-                f"metadata must be dict or None, got {type(metadata).__name__}"
-            )
+        assert_type("name", name, str)
+        assert_type("line_ids", line_ids, list)
+        assert_type("spatial_patterns", spatial_patterns, list)
+        assert_type("content_patterns", content_patterns, list)
+        assert_type("reasoning", reasoning, str)
+        if start_line is not None:
+            assert_type("start_line", start_line, int)
+        if end_line is not None:
+            assert_type("end_line", end_line, int)
+        if metadata is not None:
+            assert_type("metadata", metadata, dict)
 
         # Validate line_ids are integers
         for i, line_id in enumerate(line_ids):
             if not isinstance(line_id, (int, float, decimal.Decimal)):
                 raise TypeError(
-                    f"line_ids[{i}] must be numeric, got {type(line_id).__name__}"
+                    format_type_error(
+                        f"line_ids[{i}]",
+                        line_id,
+                        (int, float, decimal.Decimal),
+                    )
                 )
             if isinstance(line_id, (float, decimal.Decimal)):
                 line_ids[i] = int(line_id)
@@ -306,7 +269,11 @@ class ReceiptSection:
                     )
                 else:
                     raise TypeError(
-                        f"spatial_patterns[{i}] must be SpatialPattern or dict, got {type(pattern).__name__}"
+                        format_type_error(
+                            f"spatial_patterns[{i}]",
+                            pattern,
+                            (SpatialPattern, dict),
+                        )
                     )
 
         for i, pattern in enumerate(content_patterns):
@@ -319,7 +286,11 @@ class ReceiptSection:
                     )
                 else:
                     raise TypeError(
-                        f"content_patterns[{i}] must be ContentPattern or dict, got {type(pattern).__name__}"
+                        format_type_error(
+                            f"content_patterns[{i}]",
+                            pattern,
+                            (ContentPattern, dict),
+                        )
                     )
 
         self.name = name
@@ -374,8 +345,7 @@ class ReceiptSection:
             TypeError: If data is not a dictionary
             KeyError: If required keys are missing
         """
-        if not isinstance(data, dict):
-            raise TypeError(f"data must be dict, got {type(data).__name__}")
+        assert_type("data", data, dict)
 
         # Convert content patterns from dict to ContentPattern objects if needed
         content_patterns = []
@@ -393,7 +363,9 @@ class ReceiptSection:
                 content_patterns.append(pattern)
             else:
                 raise TypeError(
-                    f"content_pattern must be dict, str, or ContentPattern, got {type(pattern).__name__}"
+                    format_type_error(
+                        "content_pattern", pattern, (dict, str, ContentPattern)
+                    )
                 )
 
         # Convert spatial patterns from dict to SpatialPattern objects if needed
@@ -412,7 +384,9 @@ class ReceiptSection:
                 spatial_patterns.append(pattern)
             else:
                 raise TypeError(
-                    f"spatial_pattern must be dict, str, or SpatialPattern, got {type(pattern).__name__}"
+                    format_type_error(
+                        "spatial_pattern", pattern, (dict, str, SpatialPattern)
+                    )
                 )
 
         # Ensure line_ids are integers
@@ -424,9 +398,7 @@ class ReceiptSection:
                 try:
                     line_ids.append(int(line_id))
                 except (ValueError, TypeError):
-                    raise TypeError(
-                        f"line_id must be numeric, got {type(line_id).__name__}"
-                    )
+                    raise TypeError(format_type_error("line_id", line_id, int))
 
         # Handle start_line and end_line
         start_line = data.get("start_line")
@@ -521,7 +493,11 @@ class ReceiptStructureAnalysis:
         # Type checking for each parameter
         if not isinstance(receipt_id, (int, float, decimal.Decimal, str)):
             raise TypeError(
-                f"receipt_id must be numeric or string, got {type(receipt_id).__name__}"
+                format_type_error(
+                    "receipt_id",
+                    receipt_id,
+                    (int, float, decimal.Decimal, str),
+                )
             )
         try:
             receipt_id = int(receipt_id)
@@ -530,54 +506,22 @@ class ReceiptStructureAnalysis:
                 f"receipt_id must be convertible to int, got {receipt_id}"
             )
 
-        if not isinstance(image_id, str):
-            raise TypeError(
-                f"image_id must be str, got {type(image_id).__name__}"
-            )
-        if not isinstance(sections, list):
-            raise TypeError(
-                f"sections must be list, got {type(sections).__name__}"
-            )
-        if not isinstance(overall_reasoning, str):
-            raise TypeError(
-                f"overall_reasoning must be str, got {type(overall_reasoning).__name__}"
-            )
-        if not isinstance(version, str):
-            raise TypeError(
-                f"version must be str, got {type(version).__name__}"
-            )
-        if metadata is not None and not isinstance(metadata, dict):
-            raise TypeError(
-                f"metadata must be dict or None, got {type(metadata).__name__}"
-            )
-        if timestamp_added is not None and not isinstance(
-            timestamp_added, datetime
-        ):
-            raise TypeError(
-                f"timestamp_added must be datetime or None, got {type(timestamp_added).__name__}"
-            )
-        if timestamp_updated is not None and not isinstance(
-            timestamp_updated, datetime
-        ):
-            raise TypeError(
-                f"timestamp_updated must be datetime or None, got {type(timestamp_updated).__name__}"
-            )
-        if processing_metrics is not None and not isinstance(
-            processing_metrics, dict
-        ):
-            raise TypeError(
-                f"processing_metrics must be dict or None, got {type(processing_metrics).__name__}"
-            )
-        if source_info is not None and not isinstance(source_info, dict):
-            raise TypeError(
-                f"source_info must be dict or None, got {type(source_info).__name__}"
-            )
-        if processing_history is not None and not isinstance(
-            processing_history, list
-        ):
-            raise TypeError(
-                f"processing_history must be list or None, got {type(processing_history).__name__}"
-            )
+        assert_type("image_id", image_id, str)
+        assert_type("sections", sections, list)
+        assert_type("overall_reasoning", overall_reasoning, str)
+        assert_type("version", version, str)
+        if metadata is not None:
+            assert_type("metadata", metadata, dict)
+        if timestamp_added is not None:
+            assert_type("timestamp_added", timestamp_added, datetime)
+        if timestamp_updated is not None:
+            assert_type("timestamp_updated", timestamp_updated, datetime)
+        if processing_metrics is not None:
+            assert_type("processing_metrics", processing_metrics, dict)
+        if source_info is not None:
+            assert_type("source_info", source_info, dict)
+        if processing_history is not None:
+            assert_type("processing_history", processing_history, list)
 
         # Validate each section is a ReceiptSection or can be converted to one
         validated_sections = []
@@ -588,7 +532,9 @@ class ReceiptStructureAnalysis:
                 validated_sections.append(ReceiptSection.from_dict(section))
             else:
                 raise TypeError(
-                    f"sections[{i}] must be ReceiptSection or dict, got {type(section).__name__}"
+                    format_type_error(
+                        f"sections[{i}]", section, (ReceiptSection, dict)
+                    )
                 )
 
         self.receipt_id = receipt_id
