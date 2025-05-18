@@ -39,6 +39,7 @@ def process_photo(
     ocr_job_queue_url: str,
     ocr_routing_decision: OCRRoutingDecision,
     ocr_job: OCRJob,
+    image: PIL_Image.Image,
 ) -> None:
     """
     Process a photo of a receipt.

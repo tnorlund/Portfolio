@@ -5,7 +5,17 @@ from PIL import Image as PIL_Image
 from io import BytesIO
 from hashlib import sha256
 from receipt_dynamo import DynamoClient
-from receipt_dynamo.entities import OCRJob, OCRRoutingDecision
+from receipt_dynamo.entities import (
+    OCRJob,
+    OCRRoutingDecision,
+    Line,
+    Word,
+    Letter,
+    ReceiptLine,
+    ReceiptWord,
+    ReceiptLetter,
+)
+from typing import List, Tuple
 
 
 def download_file_from_s3(s3_bucket: str, s3_key: str, temp_dir: Path) -> Path:
@@ -117,3 +127,88 @@ def get_ocr_routing_decision(
     return dynamo_client.getOCRRoutingDecision(
         image_id=image_id, job_id=job_id
     )
+
+
+def image_ocr_to_receipt_ocr(
+    lines: List[Line],
+    words: List[Word],
+    letters: List[Letter],
+    receipt_id: int,
+) -> Tuple[List[ReceiptLine], List[ReceiptWord], List[ReceiptLetter]]:
+    """
+    Convert image OCR to receipt OCR.
+
+    This function takes OCR results from an image and associates them with a specific
+    receipt ID by creating receipt-specific versions of the Line, Word, and Letter objects.
+
+    Args:
+        lines: List of Line objects from image OCR
+        words: List of Word objects from image OCR
+        letters: List of Letter objects from image OCR
+        receipt_id: ID of the receipt these OCR results belong to
+
+    Returns:
+        Tuple containing:
+        - List of ReceiptLine objects
+        - List of ReceiptWord objects
+        - List of ReceiptLetter objects
+    """
+    receipt_lines = []
+    receipt_words = []
+    receipt_letters = []
+
+    for line in lines:
+        receipt_line = ReceiptLine(
+            image_id=line.image_id,
+            line_id=line.line_id,
+            text=line.text,
+            bounding_box=line.bounding_box,
+            top_right=line.top_right,
+            top_left=line.top_left,
+            bottom_right=line.bottom_right,
+            bottom_left=line.bottom_left,
+            angle_degrees=line.angle_degrees,
+            angle_radians=line.angle_radians,
+            confidence=line.confidence,
+            receipt_id=receipt_id,
+        )
+        receipt_lines.append(receipt_line)
+
+    for word in words:
+        receipt_word = ReceiptWord(
+            image_id=word.image_id,
+            line_id=word.line_id,
+            word_id=word.word_id,
+            text=word.text,
+            bounding_box=word.bounding_box,
+            top_right=word.top_right,
+            top_left=word.top_left,
+            bottom_right=word.bottom_right,
+            bottom_left=word.bottom_left,
+            angle_degrees=word.angle_degrees,
+            angle_radians=word.angle_radians,
+            confidence=word.confidence,
+            receipt_id=receipt_id,
+        )
+        receipt_words.append(receipt_word)
+
+    for letter in letters:
+        receipt_letter = ReceiptLetter(
+            image_id=letter.image_id,
+            line_id=letter.line_id,
+            word_id=letter.word_id,
+            letter_id=letter.letter_id,
+            text=letter.text,
+            bounding_box=letter.bounding_box,
+            top_right=letter.top_right,
+            top_left=letter.top_left,
+            bottom_right=letter.bottom_right,
+            bottom_left=letter.bottom_left,
+            angle_degrees=letter.angle_degrees,
+            angle_radians=letter.angle_radians,
+            confidence=letter.confidence,
+            receipt_id=receipt_id,
+        )
+        receipt_letters.append(receipt_letter)
+
+    return receipt_lines, receipt_words, receipt_letters

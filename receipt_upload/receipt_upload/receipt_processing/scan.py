@@ -40,6 +40,7 @@ def process_scan(
     ocr_job_queue_url: str,
     ocr_routing_decision: OCRRoutingDecision,
     ocr_job: OCRJob,
+    image: PIL_Image.Image,
 ):
     dynamo_client = DynamoClient(dynamo_table_name)
     image_id = ocr_job.image_id

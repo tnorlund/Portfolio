@@ -42,6 +42,7 @@ def process_ocr_dict_as_receipt(
         for word_idx, word_data in enumerate(
             line_data.get("words", []), start=1
         ):
+            extracted_data = word_data.get("extracted_data", None)
             word_obj = ReceiptWord(
                 image_id=image_id,
                 receipt_id=receipt_id,
@@ -56,7 +57,7 @@ def process_ocr_dict_as_receipt(
                 angle_degrees=word_data["angle_degrees"],
                 angle_radians=word_data["angle_radians"],
                 confidence=word_data["confidence"],
-                extracted_data=word_data.get("extracted_data", None),
+                extracted_data=extracted_data,
             )
             words.append(word_obj)
 
@@ -107,6 +108,8 @@ def process_ocr_dict_as_image(
         for word_idx, word_data in enumerate(
             line_data.get("words", []), start=1
         ):
+            # Check to see if the word has extracted data
+            extracted_data = word_data.get("extracted_data", None)
             word_obj = Word(
                 image_id=image_id,
                 line_id=line_idx,
@@ -120,7 +123,7 @@ def process_ocr_dict_as_image(
                 angle_degrees=word_data["angle_degrees"],
                 angle_radians=word_data["angle_radians"],
                 confidence=word_data["confidence"],
-                extracted_data=word_data.get("extracted_data", None),
+                extracted_data=extracted_data,
             )
             words.append(word_obj)
 

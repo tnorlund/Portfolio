@@ -2,6 +2,8 @@ import os
 import json
 import uuid
 import boto3
+import logging
+from logging import StreamHandler, Formatter
 from datetime import datetime
 
 from receipt_dynamo import DynamoClient
@@ -20,6 +22,19 @@ if S3_BUCKET is None:
 sqs = boto3.client("sqs")
 ocr_job_queue_url = os.environ["OCR_JOB_QUEUE_URL"]
 
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+if len(logger.handlers) == 0:
+    handler = StreamHandler()
+    handler.setFormatter(
+        Formatter(
+            "[%(levelname)s] %(asctime)s.%(msecs)dZ %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+    )
+    logger.addHandler(handler)
+
 
 def handler(event, context):
     try:
@@ -27,6 +42,7 @@ def handler(event, context):
         s3_key = body["s3_key"]
         original_filename = body["original_filename"]
         content_type = body.get("content_type", "image/jpeg")
+        logger.info(f"Received request to submit job for {s3_key}")
 
         # Add the OCR job to the database
         dynamo_client = DynamoClient(TABLE_NAME)
@@ -42,6 +58,7 @@ def handler(event, context):
             receipt_id=None,
         )
         dynamo_client.addOCRJob(job)
+        logger.info(f"Added OCR job for image {job.image_id}")
 
         # Send a message to the OCR job queue
         send_message_to_sqs(
@@ -53,7 +70,7 @@ def handler(event, context):
                 }
             ),
         )
-
+        logger.info(f"Sent message to OCR job queue: {job.job_id}")
         return {
             "statusCode": 200,
             "headers": {"Content-Type": "application/json"},
@@ -61,6 +78,7 @@ def handler(event, context):
         }
 
     except Exception as e:
+        logger.error(f"Error submitting job: {e}")
         return {
             "statusCode": 500,
             "body": json.dumps({"error": str(e)}),
