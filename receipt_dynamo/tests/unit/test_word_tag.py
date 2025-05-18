@@ -36,7 +36,7 @@ def test_word_tag_init_invalid_image_id():
 @pytest.mark.unit
 def test_word_tag_init_invalid_line_id():
     """Test that WordTag raises ValueError if line_id is invalid."""
-    with pytest.raises(ValueError, match="line_id must be int, got"):
+    with pytest.raises(ValueError, match="line_id must be an integer"):
         WordTag(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "2",
@@ -57,7 +57,7 @@ def test_word_tag_init_invalid_line_id():
 @pytest.mark.unit
 def test_word_tag_init_invalid_word_id():
     """Test that WordTag raises ValueError if word_id is invalid."""
-    with pytest.raises(ValueError, match="word_id must be int, got"):
+    with pytest.raises(ValueError, match="word_id must be an integer"):
         WordTag(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             2,
@@ -86,7 +86,7 @@ def test_word_tag_init_invalid_tag():
             "",
             "2021-01-01T00:00:00",
         )
-    with pytest.raises(ValueError, match="tag must be str, got"):
+    with pytest.raises(ValueError, match="tag must be a string"):
         WordTag(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             2,
@@ -148,7 +148,7 @@ def test_word_tag_eq(sample_word_tag):
 @pytest.mark.unit
 def test_word_tag_iter(sample_word_tag):
     """Test __iter__ method yields correct name/value pairs."""
-    as_dict = dict(sample_word_tag)
+    as_dict = sample_word_tag.to_dict()
     assert as_dict["image_id"] == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert as_dict["line_id"] == 7
     assert as_dict["word_id"] == 101

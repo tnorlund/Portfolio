@@ -1,9 +1,9 @@
 import re
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Any, Iterable
+from typing import Any, Iterable, Optional
 
 
-def _repr_str(value: str) -> str:
+def _repr_str(value: Optional[str]) -> str:
     """
     Return a string wrapped in single quotes, or the literal 'None' if value
     is None.

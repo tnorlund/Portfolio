@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, Generator, Tuple, Any
+from typing import Any, Generator, Optional, Tuple
 
 from receipt_dynamo.constants import BatchStatus, BatchType
 from receipt_dynamo.entities.util import (
@@ -18,7 +18,7 @@ class BatchSummary:
         submitted_at: str | datetime,
         status: str | BatchStatus,
         result_file_id: str,
-        receipt_refs: list[tuple[str, int]] = None,
+        receipt_refs: Optional[list[tuple[str, int]]] = None,
     ):
         assert_type("batch_id", batch_id, str, ValueError)
         self.batch_id = batch_id
@@ -89,7 +89,7 @@ class BatchSummary:
     def key(self) -> dict:
         return {
             "PK": {"S": f"BATCH#{self.batch_id}"},
-            "SK": {"S": f"STATUS"},
+            "SK": {"S": "STATUS"},
         }
 
     def gsi1_key(self) -> dict:
@@ -134,7 +134,7 @@ class BatchSummary:
             f"batch_id={_repr_str(self.batch_id)}, "
             f"batch_type={_repr_str(self.batch_type)}, "
             f"openai_batch_id={_repr_str(self.openai_batch_id)}, "
-            f"submitted_at={_repr_str(self.submitted_at)}, "
+            f"submitted_at={_repr_str(self.submitted_at.isoformat())}, "
             f"status={_repr_str(self.status)}, "
             f"result_file_id={_repr_str(self.result_file_id)}, "
             f"receipt_refs={self.receipt_refs}"
@@ -152,6 +152,10 @@ class BatchSummary:
         yield "status", self.status
         yield "result_file_id", self.result_file_id
         yield "receipt_refs", self.receipt_refs
+
+    def to_dict(self) -> dict:
+        """Return a dictionary representation of the BatchSummary."""
+        return {k: v for k, v in self}
 
     def __eq__(self, other) -> bool:
         """Determines whether two BatchSummary objects are equal.
