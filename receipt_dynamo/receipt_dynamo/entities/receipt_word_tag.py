@@ -1,10 +1,10 @@
 from datetime import datetime
-from typing import Generator, Optional, Tuple, Union
+from typing import Any, Generator, Optional, Tuple, Union
 
 from receipt_dynamo.entities.util import (
     _repr_str,
-    assert_valid_uuid,
     assert_type,
+    assert_valid_uuid,
     format_type_error,
 )
 
@@ -107,7 +107,7 @@ class ReceiptWordTag:
             self.timestamp_added = timestamp_added
         else:
             raise ValueError(
-                format_type_error("timestamp_added", timestamp_added, (datetime, str))
+                "timestamp_added must be a datetime object or a string"
             )
 
         if validated not in (True, False, None):
@@ -120,7 +120,9 @@ class ReceiptWordTag:
         elif not isinstance(timestamp_validated, (str, type(None))):
             raise ValueError(
                 format_type_error(
-                    "timestamp_validated", timestamp_validated, (datetime, str, type(None))
+                    "timestamp_validated",
+                    timestamp_validated,
+                    (datetime, str, type(None)),
                 )
             )
         else:
@@ -186,7 +188,7 @@ class ReceiptWordTag:
             == other.timestamp_human_validated
         )
 
-    def __iter__(self) -> Generator[Tuple[str, str], None, None]:
+    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
         """Yields the attributes of the ReceiptWordTag as key-value pairs.
 
         Yields:
@@ -205,6 +207,10 @@ class ReceiptWordTag:
         yield "revised_tag", self.revised_tag
         yield "human_validated", self.human_validated
         yield "timestamp_human_validated", self.timestamp_human_validated
+
+    def to_dict(self) -> dict:
+        """Return a dictionary representation of the ReceiptWordTag."""
+        return {k: v for k, v in self}
 
     def __repr__(self) -> str:
         """Returns a string representation of the ReceiptWordTag.

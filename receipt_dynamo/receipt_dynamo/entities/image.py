@@ -1,10 +1,9 @@
 # infra/lambda_layer/python/dynamo/entities/image.py
 from datetime import datetime
-from typing import Any, Generator, Tuple
-from enum import Enum
+from typing import Any, Generator, Optional, Tuple
 
-from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 from receipt_dynamo.constants import ImageType
+from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
 
 class Image:
@@ -36,9 +35,9 @@ class Image:
         timestamp_added: datetime,
         raw_s3_bucket: str,
         raw_s3_key: str,
-        sha256: str = None,
-        cdn_s3_bucket: str = None,
-        cdn_s3_key: str = None,
+        sha256: Optional[str] = None,
+        cdn_s3_bucket: Optional[str] = None,
+        cdn_s3_key: Optional[str] = None,
         image_type: ImageType | str = ImageType.SCAN,
     ):
         """Initializes a new Image object for DynamoDB.
@@ -205,6 +204,10 @@ class Image:
         yield "cdn_s3_bucket", self.cdn_s3_bucket
         yield "cdn_s3_key", self.cdn_s3_key
         yield "image_type", self.image_type
+
+    def to_dict(self) -> dict:
+        """Return a dictionary representation of the Image."""
+        return {k: v for k, v in self}
 
     def __eq__(self, other) -> bool:
         """Determines whether two Image objects are equal.
