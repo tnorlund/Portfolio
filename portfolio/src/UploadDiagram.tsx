@@ -25,6 +25,59 @@ const UploadDiagram = () => {
   const TILT = 30; // ±30°
   const FADE = (p: number) => 1 - Math.abs((p % 100) - 50) / 50; // 0→1→0
 
+  /* ─── Global animation knobs ────────────────────────────── */
+  const PHASE_LEN = 700; // default travel time per leg
+  const STAGGER = 50; // pause between legs
+  const CYCLE_PAUSE = 150; // extra pause between storyboard loops (ms)
+  const LAUNCH_STEP = 75; // per‑glyph trail spacing
+
+  /**
+   * Effective length of a phase = travel time + time for the last bit to launch.
+   * (BIT_COUNT - 1) × launch accounts for the per‑glyph trail.
+   */
+  const phaseLength = (p: Phase) =>
+    (p.duration ?? PHASE_LEN) + (BIT_COUNT - 1) * (p.launch ?? LAUNCH_STEP);
+
+  /* One logical “leg” in the choreography */
+  type Phase = {
+    paths: (keyof typeof PATH_REFS)[];
+    dir: 1 | -1;
+    duration?: number;
+    launch?: number;
+  };
+
+  /* Storyboard (edit order, timing, or direction here) */
+  const TIMELINE: Phase[] = [
+    { paths: ["TopMiddle"], dir: 1 }, // 1  SQS → Mac
+    { paths: ["TopLeft", "TopRight"], dir: 1 }, // 2  L/R → Mac
+    { paths: ["TopLeft", "TopRight"], dir: -1 }, // 3  Mac → L/R
+    { paths: ["TopMiddle"], dir: -1 }, // 4  Mac → SQS
+    { paths: ["BottomMiddle"], dir: -1 }, // 5  SQS → Lambda
+    { paths: ["BottomLeft", "BottomRight"], dir: 1 }, // 6  L/R → Lambda
+    { paths: ["BottomLeft", "BottomRight"], dir: -1 }, // 7  Lambda → L/R
+    { paths: ["BottomMiddle"], dir: 1 }, // 8  Lambda → SQS
+  ];
+
+  /* ─── Auto‑restart after one full storyboard ───────────── */
+  const [cycle, setCycle] = React.useState(0);
+
+  React.useEffect(() => {
+    // total storyboard duration = sum(durations) + STAGGER between phases + CYCLE_PAUSE after last
+    const totalMs =
+      TIMELINE.reduce((acc, p) => acc + phaseLength(p) + STAGGER, 0) +
+      CYCLE_PAUSE;
+
+    const id = setTimeout(() => setCycle((c) => c + 1), totalMs);
+    return () => clearTimeout(id);
+  }, [cycle]);
+
+  /* Compute cumulative delay for a phase index */
+  const delayFor = (idx: number) =>
+    TIMELINE.slice(0, idx).reduce(
+      (acc, p) => acc + phaseLength(p) + STAGGER,
+      0
+    );
+
   type Bit = { char: "0" | "1"; rot: number; pathIdx: number };
 
   // create 5 refs for a fan‑out group
@@ -55,12 +108,14 @@ const UploadDiagram = () => {
     duration = 5000,
     dir = -1,
     launch = 250,
+    initialDelay = 0,
   }: {
     pathRefs: React.RefObject<SVGPathElement>[];
     count?: number;
     duration?: number;
     dir?: 1 | -1;
     launch?: number;
+    initialDelay?: number;
   }) {
     const bits = React.useMemo<Bit[]>(
       () =>
@@ -72,16 +127,13 @@ const UploadDiagram = () => {
       [count, pathRefs.length]
     );
 
-    const springs = useSprings(
-      bits.length,
-      bits.map((_, i) => ({
-        from: { offset: 100 },
-        to: { offset: 0 },
-        loop: true,
-        config: { duration },
-        delay: i * launch,
-      }))
-    );
+    const springs = useSprings(bits.length, (i) => ({
+      from: { offset: dir === -1 ? 100 : 0 },
+      to: { offset: dir === -1 ? 0 : 100 },
+      //   loop: true,
+      config: { duration },
+      delay: initialDelay + i * launch,
+    }))[0];
 
     return (
       <>
@@ -545,40 +597,22 @@ const UploadDiagram = () => {
               {/* --- animated 1/0 streams (per‑bit) --- */}
               <g
                 id="bit-streams"
+                key={cycle}
                 fontFamily="monospace"
                 fontSize="12"
-                // fill="white"
               >
-                <BitStream
-                  pathRefs={PATH_REFS.BottomMiddle}
-                  duration={5000}
-                  dir={-1}
-                />
-                <BitStream
-                  pathRefs={PATH_REFS.BottomLeft}
-                  duration={5500}
-                  dir={-1}
-                />
-                <BitStream
-                  pathRefs={PATH_REFS.BottomRight}
-                  duration={5500}
-                  dir={-1}
-                />
-                <BitStream
-                  pathRefs={PATH_REFS.TopMiddle}
-                  duration={5000}
-                  dir={1}
-                />
-                <BitStream
-                  pathRefs={PATH_REFS.TopLeft}
-                  duration={5500}
-                  dir={1}
-                />
-                <BitStream
-                  pathRefs={PATH_REFS.TopRight}
-                  duration={5500}
-                  dir={1}
-                />
+                {TIMELINE.map((phase, phaseIdx) =>
+                  phase.paths.map((name) => (
+                    <BitStream
+                      key={`${phaseIdx}-${name}`}
+                      pathRefs={PATH_REFS[name]}
+                      dir={phase.dir}
+                      duration={phase.duration ?? PHASE_LEN}
+                      launch={phase.launch ?? LAUNCH_STEP}
+                      initialDelay={delayFor(phaseIdx)}
+                    />
+                  ))
+                )}
               </g>
             </svg>
           </div>
