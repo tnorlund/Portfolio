@@ -1,9 +1,6 @@
 import React from "react";
 import { useSpring, useSprings, animated } from "@react-spring/web";
 import { useInView } from "react-intersection-observer";
-// react‑spring doesn't auto‑proxy the <textPath> SVG tag, so create one manually
-const AnimatedTextPath = animated("textPath");
-const AnimatedText = animated("text");
 
 const UploadDiagram = () => {
   const [ref, inView] = useInView({ threshold: 0.3 });
@@ -21,7 +18,7 @@ const UploadDiagram = () => {
   }, [inView, api]);
 
   // ═══ Shared helpers ════════════════════════════════════════
-  const BIT_COUNT = 20;
+  const BIT_COUNT = 30;
   const TILT = 30; // ±30°
   const FADE = (p: number) => 1 - Math.abs((p % 100) - 50) / 50; // 0→1→0
 
@@ -35,10 +32,13 @@ const UploadDiagram = () => {
    * Effective length of a phase = travel time + time for the last bit to launch.
    * (BIT_COUNT - 1) × launch accounts for the per‑glyph trail.
    */
-  const phaseLength = (p: Phase) =>
-    (p.duration ?? PHASE_LEN) + (BIT_COUNT - 1) * (p.launch ?? LAUNCH_STEP);
+  const phaseLength = React.useCallback(
+    (p: Phase) =>
+      (p.duration ?? PHASE_LEN) + (BIT_COUNT - 1) * (p.launch ?? LAUNCH_STEP),
+    [PHASE_LEN, BIT_COUNT, LAUNCH_STEP]
+  );
 
-  /* One logical “leg” in the choreography */
+  /* One logical "leg" in the choreography */
   type Phase = {
     paths: (keyof typeof PATH_REFS)[];
     dir: 1 | -1;
@@ -47,16 +47,19 @@ const UploadDiagram = () => {
   };
 
   /* Storyboard (edit order, timing, or direction here) */
-  const TIMELINE: Phase[] = [
-    { paths: ["TopMiddle"], dir: 1 }, // 1  SQS → Mac
-    { paths: ["TopLeft", "TopRight"], dir: 1 }, // 2  L/R → Mac
-    { paths: ["TopLeft", "TopRight"], dir: -1 }, // 3  Mac → L/R
-    { paths: ["TopMiddle"], dir: -1 }, // 4  Mac → SQS
-    { paths: ["BottomMiddle"], dir: -1 }, // 5  SQS → Lambda
-    { paths: ["BottomLeft", "BottomRight"], dir: 1 }, // 6  L/R → Lambda
-    { paths: ["BottomLeft", "BottomRight"], dir: -1 }, // 7  Lambda → L/R
-    { paths: ["BottomMiddle"], dir: 1 }, // 8  Lambda → SQS
-  ];
+  const TIMELINE = React.useMemo<Phase[]>(
+    () => [
+      { paths: ["TopMiddle"], dir: 1 }, // 1  SQS → Mac
+      { paths: ["TopLeft", "TopRight"], dir: 1 }, // 2  L/R → Mac
+      { paths: ["TopLeft", "TopRight"], dir: -1 }, // 3  Mac → L/R
+      { paths: ["TopMiddle"], dir: -1 }, // 4  Mac → SQS
+      { paths: ["BottomMiddle"], dir: -1 }, // 5  SQS → Lambda
+      { paths: ["BottomLeft", "BottomRight"], dir: 1 }, // 6  L/R → Lambda
+      { paths: ["BottomLeft", "BottomRight"], dir: -1 }, // 7  Lambda → L/R
+      { paths: ["BottomMiddle"], dir: 1 }, // 8  Lambda → SQS
+    ],
+    []
+  ); // Empty dependency array since TIMELINE is static
 
   /* ─── Auto‑restart after one full storyboard ───────────── */
   const [cycle, setCycle] = React.useState(0);
@@ -69,7 +72,7 @@ const UploadDiagram = () => {
 
     const id = setTimeout(() => setCycle((c) => c + 1), totalMs);
     return () => clearTimeout(id);
-  }, [cycle]);
+  }, [TIMELINE, cycle, phaseLength]);
 
   /* Compute cumulative delay for a phase index */
   const delayFor = (idx: number) =>
@@ -131,7 +134,7 @@ const UploadDiagram = () => {
       from: { offset: dir === -1 ? 100 : 0 },
       to: { offset: dir === -1 ? 0 : 100 },
       //   loop: true,
-      config: { duration },
+      config: { duration, precision: 0.5 },
       delay: initialDelay + i * launch,
     }))[0];
 
@@ -166,7 +169,14 @@ const UploadDiagram = () => {
     );
   }
   return (
-    <div style={{ display: "flex", justifyContent: "center" }}>
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "center",
+        marginTop: "1em",
+        marginBottom: "1em",
+      }}
+    >
       <div ref={ref}>
         <animated.div style={styles}>
           <div>
