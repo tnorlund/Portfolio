@@ -1,8 +1,12 @@
 from datetime import datetime
-from typing import Optional, Generator, Tuple, Any
+from typing import Any, Generator, Optional, Tuple
 
 from receipt_dynamo.constants import BatchStatus, BatchType
-from receipt_dynamo.entities.util import _repr_str
+from receipt_dynamo.entities.util import (
+    _repr_str,
+    assert_type,
+    format_type_error,
+)
 
 
 class BatchSummary:
@@ -14,10 +18,9 @@ class BatchSummary:
         submitted_at: str | datetime,
         status: str | BatchStatus,
         result_file_id: str,
-        receipt_refs: list[tuple[str, int]] = None,
+        receipt_refs: Optional[list[tuple[str, int]]] = None,
     ):
-        if not isinstance(batch_id, str):
-            raise ValueError("batch_id must be a string")
+        assert_type("batch_id", batch_id, str, ValueError)
         self.batch_id = batch_id
 
         # Accept batch_type as either BatchType or str
@@ -27,7 +30,7 @@ class BatchSummary:
             batch_type_str = batch_type
         else:
             raise ValueError(
-                f"batch_type must be either a BatchType enum or a string; got {type(batch_type).__name__}"
+                format_type_error("batch_type", batch_type, (BatchType, str))
             )
 
         # Validate batch_type_str against allowed values
@@ -38,8 +41,7 @@ class BatchSummary:
             )
         self.batch_type = batch_type_str
 
-        if not isinstance(openai_batch_id, str):
-            raise ValueError("openai_batch_id must be a string")
+        assert_type("openai_batch_id", openai_batch_id, str, ValueError)
         self.openai_batch_id = openai_batch_id
 
         if isinstance(submitted_at, str):
@@ -51,7 +53,9 @@ class BatchSummary:
                 )
         elif not isinstance(submitted_at, datetime):
             raise ValueError(
-                "submitted_at must be a datetime object or a string"
+                format_type_error(
+                    "submitted_at", submitted_at, (datetime, str)
+                )
             )
         self.submitted_at = submitted_at
 
@@ -62,7 +66,7 @@ class BatchSummary:
             status_str = status
         else:
             raise ValueError(
-                f"status must be either a BatchStatus enum or a string; got {type(status).__name__}"
+                format_type_error("status", status, (BatchStatus, str))
             )
 
         # Validate the string against allowed values
@@ -73,8 +77,7 @@ class BatchSummary:
             )
         self.status = status_str
 
-        if not isinstance(result_file_id, str):
-            raise ValueError("result_file_id must be a string")
+        assert_type("result_file_id", result_file_id, str, ValueError)
         self.result_file_id = result_file_id
 
         if not isinstance(receipt_refs, list):
@@ -86,7 +89,7 @@ class BatchSummary:
     def key(self) -> dict:
         return {
             "PK": {"S": f"BATCH#{self.batch_id}"},
-            "SK": {"S": f"STATUS"},
+            "SK": {"S": "STATUS"},
         }
 
     def gsi1_key(self) -> dict:
@@ -131,7 +134,7 @@ class BatchSummary:
             f"batch_id={_repr_str(self.batch_id)}, "
             f"batch_type={_repr_str(self.batch_type)}, "
             f"openai_batch_id={_repr_str(self.openai_batch_id)}, "
-            f"submitted_at={_repr_str(self.submitted_at)}, "
+            f"submitted_at={_repr_str(self.submitted_at.isoformat())}, "
             f"status={_repr_str(self.status)}, "
             f"result_file_id={_repr_str(self.result_file_id)}, "
             f"receipt_refs={self.receipt_refs}"
@@ -149,6 +152,10 @@ class BatchSummary:
         yield "status", self.status
         yield "result_file_id", self.result_file_id
         yield "receipt_refs", self.receipt_refs
+
+    def to_dict(self) -> dict:
+        """Return a dictionary representation of the BatchSummary."""
+        return {k: v for k, v in self}
 
     def __eq__(self, other) -> bool:
         """Determines whether two BatchSummary objects are equal.

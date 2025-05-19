@@ -1,8 +1,12 @@
 # infra/lambda_layer/python/dynamo/entities/word_tag.py
 from datetime import datetime
-from typing import Generator, Optional, Tuple, Union
+from typing import Any, Generator, Optional, Tuple, Union
 
-from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
+from receipt_dynamo.entities.util import (
+    _repr_str,
+    assert_valid_uuid,
+    format_type_error,
+)
 
 
 class WordTag:
@@ -98,7 +102,9 @@ class WordTag:
             self.timestamp_added = timestamp_added
         else:
             raise ValueError(
-                "timestamp_added must be a datetime object or a string"
+                format_type_error(
+                    "timestamp_added", timestamp_added, (datetime, str)
+                )
             )
 
         if validated not in (True, False, None):
@@ -192,7 +198,7 @@ class WordTag:
             )
         )
 
-    def __iter__(self) -> Generator[Tuple[str, str], None, None]:
+    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
         """Yields the attributes of the WordTag as key-value pairs.
 
         Yields:
@@ -210,6 +216,10 @@ class WordTag:
         yield "revised_tag", self.revised_tag
         yield "human_validated", self.human_validated
         yield "timestamp_human_validated", self.timestamp_human_validated
+
+    def to_dict(self) -> dict:
+        """Return a dictionary representation of the WordTag."""
+        return {k: v for k, v in self}
 
     def __repr__(self) -> str:
         """Returns a string representation of the WordTag.
