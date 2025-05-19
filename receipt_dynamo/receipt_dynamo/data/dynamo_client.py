@@ -52,8 +52,9 @@ from receipt_dynamo.data._receipt_metadata import (
 from receipt_dynamo.data._completion_batch_result import (
     _CompletionBatchResult,
 )
-from receipt_dynamo.data._refinement_job import _RefinementJob
+from receipt_dynamo.data._ocr_job import _OCRJob
 from receipt_dynamo.data._receipt_section import _ReceiptSection
+from receipt_dynamo.data._ocr_routing_decision import _OCRRoutingDecision
 
 
 class DynamoClient(
@@ -90,8 +91,9 @@ class DynamoClient(
     _EmbeddingBatchResult,
     _ReceiptMetadata,
     _CompletionBatchResult,
-    _RefinementJob,
+    _OCRJob,
     _ReceiptSection,
+    _OCRRoutingDecision,
 ):
     """A class used to represent a DynamoDB client."""
 

@@ -99,6 +99,22 @@ p {
   margin: 0;
 }
 
+em {
+  font-style: italic;
+  margin-left: 1rem;
+  border-left: 2px solid var(--text-color);
+  padding-left: 0.5rem;
+}
+
+/* Block‑level quote with a vertical rule that spans all wrapped lines */
+blockquote {
+  margin-left: 1rem;
+  border-left: 2px solid var(--text-color);
+  padding-left: 0.5rem;
+  font-style: italic;
+}
+
+
 body {
   font-size: 16px;         /* or 17px, depending on taste */
   line-height: 1.6;        /* adds breathing room between lines */
@@ -142,7 +158,7 @@ hr {
 }
 
 ul {
-  margin: 0 0 1rem;
+  margin: 1rem 0 1rem;
   padding-left: 1.5rem; /* increase indentation to separate bullet text from edges */
 }
 

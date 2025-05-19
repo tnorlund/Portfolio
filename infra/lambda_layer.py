@@ -29,7 +29,7 @@ Key features:
     Step Functions state machine, which publishes a new Lambda layer version from a built artifact stored in S3.
     The publish handler reads the layer name, description, and compatible architectures from its environment variables.
 
-  - **Automated Updates of Dependent Lambda Functions:** Once a new layer version is published, the component’s
+  - **Automated Updates of Dependent Lambda Functions:** Once a new layer version is published, the component's
     orchestration automatically updates all Lambda functions (filtered by environment tags) to use the newest
     layer version.
 
@@ -516,27 +516,31 @@ class LambdaLayer(ComponentResource):
         cloudtrail_bucket_policy = aws.s3.BucketPolicy(
             f"{self.name}-cloudtrail-logs-policy",
             bucket=cloudtrail_bucket.id,
-            policy=pulumi.Output.all(cloudtrail_bucket.bucket).apply(
+            policy=pulumi.Output.all(cloudtrail_bucket.bucket, trail.arn).apply(
                 lambda args: json.dumps(
                     {
                         "Version": "2012-10-17",
                         "Statement": [
                             {
-                                "Sid": "AWSCloudTrailAclCheck",
+                                "Sid": "AWSCloudTrailAclCheck20150319",
                                 "Effect": "Allow",
                                 "Principal": {"Service": "cloudtrail.amazonaws.com"},
                                 "Action": "s3:GetBucketAcl",
                                 "Resource": f"arn:aws:s3:::{args[0]}",
+                                "Condition": {
+                                    "StringEquals": {"aws:SourceArn": args[1]}
+                                },
                             },
                             {
-                                "Sid": "AWSCloudTrailWrite",
+                                "Sid": "AWSCloudTrailWrite20150319",
                                 "Effect": "Allow",
                                 "Principal": {"Service": "cloudtrail.amazonaws.com"},
                                 "Action": "s3:PutObject",
                                 "Resource": f"arn:aws:s3:::{args[0]}/AWSLogs/{aws.get_caller_identity().account_id}/*",
                                 "Condition": {
                                     "StringEquals": {
-                                        "s3:x-amz-acl": "bucket-owner-full-control"
+                                        "s3:x-amz-acl": "bucket-owner-full-control",
+                                        "aws:SourceArn": args[1],
                                     }
                                 },
                             },
@@ -1004,6 +1008,12 @@ layers_to_build = [
         "description": "Label layer for receipt-label",
         "python_version": ["3.12"],
     },
+    {
+        "package_dir": "receipt_upload",
+        "name": "receipt-upload",
+        "description": "Upload layer for receipt-upload",
+        "python_version": ["3.12"],
+    },
     # Add more layers here as needed
 ]
 
@@ -1027,7 +1037,9 @@ for layer_config in layers_to_build:
 # Access the built layers by name
 dynamo_layer = lambda_layers["receipt-dynamo"]
 label_layer = lambda_layers["receipt-label"]
+upload_layer = lambda_layers["receipt-upload"]
 
 # Export the layer ARNs for reference
 pulumi.export("dynamo_layer_arn", dynamo_layer.arn)
 pulumi.export("label_layer_arn", label_layer.arn)
+pulumi.export("upload_layer_arn", upload_layer.arn)

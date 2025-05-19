@@ -1,6 +1,11 @@
 from typing import Any, Generator, Optional, Tuple
 
-from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
+from receipt_dynamo.entities.util import (
+    _repr_str,
+    assert_valid_uuid,
+    assert_type,
+    format_type_error,
+)
 from receipt_dynamo.constants import EmbeddingStatus
 import re
 
@@ -55,38 +60,33 @@ class EmbeddingBatchResult:
         assert_valid_uuid(image_id)
         self.image_id = image_id
 
-        if not isinstance(receipt_id, int):
-            raise ValueError("receipt_id must be an integer")
+        assert_type("receipt_id", receipt_id, int, ValueError)
         if receipt_id <= 0:
             raise ValueError("receipt_id must be greater than zero")
         self.receipt_id = receipt_id
 
-        if not isinstance(line_id, int):
-            raise ValueError("line_id must be an integer")
+        assert_type("line_id", line_id, int, ValueError)
         if line_id < 0:
             raise ValueError("line_id must be greater than or equal to zero")
         self.line_id = line_id
 
-        if not isinstance(word_id, int):
-            raise ValueError("word_id must be an integer")
+        assert_type("word_id", word_id, int, ValueError)
         if word_id < 0:
             raise ValueError("word_id must be greater than or equal to zero")
         self.word_id = word_id
 
-        if not isinstance(status, str):
-            raise ValueError("status must be a string")
+        assert_type("status", status, str, ValueError)
         if status not in [s.value for s in EmbeddingStatus]:
             raise ValueError(
                 f"status must be one of: {', '.join(s.value for s in EmbeddingStatus)}"
             )
         self.status = status
 
-        if not isinstance(text, str):
-            raise ValueError("text must be a string")
+        assert_type("text", text, str, ValueError)
         self.text = text
 
-        if error_message is not None and not isinstance(error_message, str):
-            raise ValueError("error_message must be a string")
+        if error_message is not None:
+            assert_type("error_message", error_message, str, ValueError)
         self.error_message = error_message
 
         # validate pinecone_id format

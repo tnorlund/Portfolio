@@ -26,13 +26,13 @@ def example_label_metadata():
 @pytest.mark.parametrize(
     "field,value,message",
     [
-        ("label", 123, "label must be a string"),
-        ("status", 456, "status must be a string"),
-        ("aliases", "not-a-list", "aliases must be a list"),
-        ("description", 789, "description must be a string"),
-        ("schema_version", "1", "schema_version must be an integer"),
-        ("last_updated", "now", "last_updated must be a datetime object"),
-        ("label_target", 123, "label_target must be a string or None"),
+        ("label", 123, "label must be str, got int"),
+        ("status", 456, "status must be str, got int"),
+        ("aliases", "not-a-list", "aliases must be list, got str"),
+        ("description", 789, "description must be str, got int"),
+        ("schema_version", "1", "schema_version must be int, got str"),
+        ("last_updated", "now", "last_updated must be datetime, got str"),
+        ("label_target", 123, "label_target must be str, got int"),
         (
             "receipt_refs",
             [("img", "not-an-int")],
