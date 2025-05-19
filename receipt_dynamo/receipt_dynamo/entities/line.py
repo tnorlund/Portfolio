@@ -652,6 +652,22 @@ class Line:
         yield "histogram", self.histogram
         yield "num_chars", self.num_chars
 
+    def to_dict(self) -> dict:
+        """Returns a dictionary representation of the Line object."""
+        return {
+            "image_id": self.image_id,
+            "line_id": self.line_id,
+            "text": self.text,
+            "bounding_box": self.bounding_box,
+            "top_right": self.top_right,
+            "top_left": self.top_left,
+            "bottom_right": self.bottom_right,
+            "bottom_left": self.bottom_left,
+            "angle_degrees": self.angle_degrees,
+            "angle_radians": self.angle_radians,
+            "confidence": self.confidence,
+        }
+
     def __eq__(self, other: object) -> bool:
         """Determines whether two Line objects are equal.
 

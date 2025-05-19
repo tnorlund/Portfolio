@@ -1,7 +1,12 @@
 from datetime import datetime
-from typing import Generator, Optional, Tuple, Union
+from typing import Any, Generator, Optional, Tuple, Union
 
-from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
+from receipt_dynamo.entities.util import (
+    _repr_str,
+    assert_type,
+    assert_valid_uuid,
+    format_type_error,
+)
 
 
 class ReceiptWordTag:
@@ -72,28 +77,24 @@ class ReceiptWordTag:
         assert_valid_uuid(image_id)
         self.image_id = image_id
 
-        if not isinstance(receipt_id, int):
-            raise ValueError("receipt_id must be an integer")
+        assert_type("receipt_id", receipt_id, int, ValueError)
         if receipt_id < 0:
             raise ValueError("receipt_id must be positive")
         self.receipt_id = receipt_id
 
-        if not isinstance(line_id, int):
-            raise ValueError("line_id must be an integer")
+        assert_type("line_id", line_id, int, ValueError)
         if line_id < 0:
             raise ValueError("line_id must be positive")
         self.line_id = line_id
 
-        if not isinstance(word_id, int):
-            raise ValueError("word_id must be an integer")
+        assert_type("word_id", word_id, int, ValueError)
         if word_id < 0:
             raise ValueError("word_id must be positive")
         self.word_id = word_id
 
         if not tag:
             raise ValueError("tag must not be empty")
-        if not isinstance(tag, str):
-            raise ValueError("tag must be a string")
+        assert_type("tag", tag, str, ValueError)
         if len(tag) > 40:
             raise ValueError("tag must not exceed 40 characters")
         if tag.startswith("_"):
@@ -117,24 +118,27 @@ class ReceiptWordTag:
             # Convert datetime to an ISO-formatted string.
             self.timestamp_validated = timestamp_validated.isoformat()
         elif not isinstance(timestamp_validated, (str, type(None))):
-            # Raise an error if it's neither a string nor None.
             raise ValueError(
-                "timestamp_validated must be a datetime object, a string, or None"
+                format_type_error(
+                    "timestamp_validated",
+                    timestamp_validated,
+                    (datetime, str, type(None)),
+                )
             )
         else:
             # If it's already a string or None, just assign it.
             self.timestamp_validated = timestamp_validated
 
-        if gpt_confidence is not None and not isinstance(gpt_confidence, int):
-            raise ValueError("gpt_confidence must be an integer")
+        if gpt_confidence is not None:
+            assert_type("gpt_confidence", gpt_confidence, int, ValueError)
         self.gpt_confidence = gpt_confidence
 
-        if flag is not None and not isinstance(flag, str):
-            raise ValueError("flag must be a string")
+        if flag is not None:
+            assert_type("flag", flag, str, ValueError)
         self.flag = flag
 
-        if revised_tag is not None and not isinstance(revised_tag, str):
-            raise ValueError("revised_tag must be a string")
+        if revised_tag is not None:
+            assert_type("revised_tag", revised_tag, str, ValueError)
         self.revised_tag = revised_tag
 
         if human_validated not in (True, False, None):
@@ -147,7 +151,11 @@ class ReceiptWordTag:
             )
         elif not isinstance(timestamp_human_validated, (str, type(None))):
             raise ValueError(
-                "timestamp_human_validated must be a datetime object, a string, or None"
+                format_type_error(
+                    "timestamp_human_validated",
+                    timestamp_human_validated,
+                    (datetime, str, type(None)),
+                )
             )
         else:
             self.timestamp_human_validated = timestamp_human_validated
@@ -180,7 +188,7 @@ class ReceiptWordTag:
             == other.timestamp_human_validated
         )
 
-    def __iter__(self) -> Generator[Tuple[str, str], None, None]:
+    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
         """Yields the attributes of the ReceiptWordTag as key-value pairs.
 
         Yields:
@@ -199,6 +207,10 @@ class ReceiptWordTag:
         yield "revised_tag", self.revised_tag
         yield "human_validated", self.human_validated
         yield "timestamp_human_validated", self.timestamp_human_validated
+
+    def to_dict(self) -> dict:
+        """Return a dictionary representation of the ReceiptWordTag."""
+        return {k: v for k, v in self}
 
     def __repr__(self) -> str:
         """Returns a string representation of the ReceiptWordTag.
