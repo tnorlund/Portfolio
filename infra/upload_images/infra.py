@@ -90,8 +90,10 @@ class UploadImages(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        get_presigned_url_role = Role(
-            f"{name}-get-presigned-url-role",
+        # --- Combined upload_receipt Lambda (presign + job record) ---
+
+        upload_receipt_role = Role(
+            f"{name}-upload-receipt-role",
             assume_role_policy=json.dumps(
                 {
                     "Version": "2012-10-17",
@@ -107,93 +109,30 @@ class UploadImages(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
+        # S3 access for presign
         RolePolicyAttachment(
-            f"{name}-get-presigned-url-policy",
-            role=get_presigned_url_role.name,
+            f"{name}-upload-receipt-s3-policy",
+            role=upload_receipt_role.name,
             policy_arn="arn:aws:iam::aws:policy/AmazonS3FullAccess",
             opts=ResourceOptions(parent=self),
         )
 
+        # Basic execution
         RolePolicyAttachment(
-            f"{name}-get-presigned-url-basic-exec",
-            role=get_presigned_url_role.name,
+            f"{name}-upload-receipt-basic-exec",
+            role=upload_receipt_role.name,
             policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
             opts=ResourceOptions(parent=self),
         )
 
-        get_presigned_url_lambda = Function(
-            f"{name}-get-presigned-url-lambda",
-            role=get_presigned_url_role.arn,
-            runtime="python3.12",
-            handler="get_presigned_url.handler",
-            code=AssetArchive(
-                {
-                    "get_presigned_url.py": FileAsset(
-                        os.path.join(os.path.dirname(__file__), "get_presigned_url.py")
-                    ),
-                }
-            ),
-            environment=FunctionEnvironmentArgs(
-                variables={
-                    "BUCKET_NAME": image_bucket.bucket,
-                }
-            ),
-            opts=ResourceOptions(parent=self, ignore_changes=["layers"]),
-        )
-
-        # Define the environment variables for the lambda
-        env_vars = FunctionEnvironmentArgs(
-            variables={
-                "DYNAMO_TABLE_NAME": dynamodb_table.name,
-                "OPENAI_API_KEY": openai_api_key,
-                "PINECONE_API_KEY": pinecone_api_key,
-                "PINECONE_INDEX_NAME": pinecone_index_name,
-                "PINECONE_HOST": pinecone_host,
-                "S3_BUCKET": image_bucket.bucket,
-                "RAW_BUCKET": raw_bucket.bucket,
-                "SITE_BUCKET": site_bucket.bucket,
-                "OCR_JOB_QUEUE_URL": self.ocr_queue.url,
-                "OCR_RESULTS_QUEUE_URL": self.ocr_results_queue.url,
-                "MAX_BATCH_TIMEOUT": 60,
-            },
-        )
-
-        submit_job_lambda_role = Role(
-            f"{name}-submit-job-lambda-role",
-            assume_role_policy=json.dumps(
-                {
-                    "Version": "2012-10-17",
-                    "Statement": [
-                        {
-                            "Effect": "Allow",
-                            "Principal": {"Service": "lambda.amazonaws.com"},
-                            "Action": "sts:AssumeRole",
-                        }
-                    ],
-                }
-            ),
-            opts=ResourceOptions(parent=self),
-        )
-
-        RolePolicyAttachment(
-            f"{name}-lambda-basic-execution",
-            role=submit_job_lambda_role.name,
-            policy_arn=(
-                "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-            ),
-        )
-
-        # Custom inline policy for DynamoDB access, SQS SendMessage, and S3 HeadObject, PutObject, and GetObject
+        # Inline policy for DynamoDB + SQS (mirrors previous submit_job perms)
         RolePolicy(
-            f"{name}-lambda-dynamo-policy",
-            role=submit_job_lambda_role.id,
+            f"{name}-upload-receipt-inline",
+            role=upload_receipt_role.id,
             policy=Output.all(
                 dynamodb_table.name,
                 self.ocr_queue.arn,
-                self.ocr_results_queue.arn,
                 image_bucket.arn,
-                raw_bucket.arn,
-                site_bucket.arn,
             ).apply(
                 lambda args: json.dumps(
                     {
@@ -215,16 +154,7 @@ class UploadImages(ComponentResource):
                             {
                                 "Effect": "Allow",
                                 "Action": "sqs:SendMessage",
-                                "Resource": args[1],  # OCR job queue
-                            },
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "sqs:ReceiveMessage",
-                                    "sqs:DeleteMessage",
-                                    "sqs:GetQueueAttributes",
-                                ],
-                                "Resource": args[2],  # OCR results queue
+                                "Resource": args[1],
                             },
                             {
                                 "Effect": "Allow",
@@ -233,14 +163,7 @@ class UploadImages(ComponentResource):
                                     "s3:PutObject",
                                     "s3:GetObject",
                                 ],
-                                "Resource": [
-                                    args[3],  # image bucket
-                                    args[3] + "/*",
-                                    args[4],  # raw bucket
-                                    args[4] + "/*",
-                                    args[5],  # site bucket
-                                    args[5] + "/*",
-                                ],
+                                "Resource": [args[2], args[2] + "/*"],
                             },
                         ],
                     }
@@ -248,21 +171,27 @@ class UploadImages(ComponentResource):
             ),
         )
 
-        submit_job_lambda = Function(
-            f"{name}-submit-job-lambda",
-            role=submit_job_lambda_role.arn,
+        upload_receipt_lambda = Function(
+            f"{name}-upload-receipt-lambda",
+            role=upload_receipt_role.arn,
             runtime="python3.12",
-            handler="submit_job.handler",
+            handler="upload_receipt.handler",
             code=AssetArchive(
                 {
-                    "submit_job.py": FileAsset(
-                        os.path.join(os.path.dirname(__file__), "submit_job.py")
+                    "upload_receipt.py": FileAsset(
+                        os.path.join(os.path.dirname(__file__), "upload_receipt.py")
                     )
                 }
             ),
             layers=[dynamo_layer.arn, label_layer.arn, upload_layer.arn],
             tags={"environment": stack},
-            environment=env_vars,
+            environment=FunctionEnvironmentArgs(
+                variables={
+                    "BUCKET_NAME": image_bucket.bucket,
+                    "DYNAMO_TABLE_NAME": dynamodb_table.name,
+                    "OCR_JOB_QUEUE_URL": self.ocr_queue.url,
+                }
+            ),
             opts=ResourceOptions(parent=self, ignore_changes=["layers"]),
         )
 
@@ -287,56 +216,28 @@ class UploadImages(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        integration = aws.apigatewayv2.Integration(
-            f"{name}-http-integration",
+        upload_int = aws.apigatewayv2.Integration(
+            f"{name}-upload-integration",
             api_id=api.id,
             integration_type="AWS_PROXY",
-            integration_uri=get_presigned_url_lambda.invoke_arn,
+            integration_uri=upload_receipt_lambda.invoke_arn,
             integration_method="POST",
             payload_format_version="2.0",
             opts=ResourceOptions(parent=self),
         )
 
-        route = aws.apigatewayv2.Route(
-            f"{name}-http-route",
+        upload_route = aws.apigatewayv2.Route(
+            f"{name}-upload-route",
             api_id=api.id,
-            route_key="GET /get-presigned-url",
-            target=integration.id.apply(lambda id: f"integrations/{id}"),
+            route_key="POST /upload-receipt",
+            target=upload_int.id.apply(lambda id: f"integrations/{id}"),
             opts=ResourceOptions(parent=self),
         )
 
-        lambda_permission = aws.lambda_.Permission(
-            f"{name}-http-lambda-permission",
+        upload_permission = aws.lambda_.Permission(
+            f"{name}-upload-permission",
             action="lambda:InvokeFunction",
-            function=get_presigned_url_lambda.name,
-            principal="apigateway.amazonaws.com",
-            source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
-            opts=ResourceOptions(parent=self),
-        )
-
-        # --- Add POST /submit-job integration, route, and permission ---
-        submit_job_integration = aws.apigatewayv2.Integration(
-            f"{name}-submit-job-integration",
-            api_id=api.id,
-            integration_type="AWS_PROXY",
-            integration_uri=submit_job_lambda.invoke_arn,
-            integration_method="POST",
-            payload_format_version="2.0",
-            opts=ResourceOptions(parent=self),
-        )
-
-        submit_job_route = aws.apigatewayv2.Route(
-            f"{name}-submit-job-route",
-            api_id=api.id,
-            route_key="POST /submit-job",
-            target=submit_job_integration.id.apply(lambda id: f"integrations/{id}"),
-            opts=ResourceOptions(parent=self),
-        )
-
-        submit_job_lambda_permission = aws.lambda_.Permission(
-            f"{name}-submit-job-lambda-permission",
-            action="lambda:InvokeFunction",
-            function=submit_job_lambda.name,
+            function=upload_receipt_lambda.name,
             principal="apigateway.amazonaws.com",
             source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
             opts=ResourceOptions(parent=self),
@@ -344,7 +245,7 @@ class UploadImages(ComponentResource):
 
         process_ocr_lambda = Function(
             f"{name}-process-ocr-results-lambda",
-            role=submit_job_lambda_role.arn,
+            role=upload_receipt_role.arn,
             runtime="python3.12",
             handler="process_ocr_results.handler",
             code=AssetArchive(
@@ -356,7 +257,14 @@ class UploadImages(ComponentResource):
                     )
                 }
             ),
-            environment=env_vars,
+            environment=FunctionEnvironmentArgs(
+                variables={
+                    "BUCKET_NAME": image_bucket.bucket,
+                    "DYNAMO_TABLE_NAME": dynamodb_table.name,
+                    "OCR_JOB_QUEUE_URL": self.ocr_queue.url,
+                    "OCR_RESULTS_QUEUE_URL": self.ocr_results_queue.url,
+                }
+            ),
             tags={"environment": stack},
             timeout=300,  # 5 minutes
             memory_size=1024,  # 1GB
