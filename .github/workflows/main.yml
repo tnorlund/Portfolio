@@ -82,11 +82,7 @@ jobs:
         with:
           node-version: 20
           cache: "yarn"
-
-      - name: Enable Corepack & activate Yarn 4
-        run: |
-          corepack enable
-          corepack prepare yarn@4.7.0 --activate
+          cache-dependency-path: "portfolio/yarn.lock"
 
       - name: Set up Docker
         uses: docker/setup-buildx-action@v3
