@@ -210,11 +210,12 @@ class _Line:
         try:
             response = self._client.query(
                 TableName=self.table_name,
+                IndexName="GSI1",
                 KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
-                ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
+                ExpressionAttributeNames={"#pk": "GSI1PK", "#sk": "GSI1SK"},
                 ExpressionAttributeValues={
-                    ":pk_val": {"S": f"IMAGE#{image_id}"},
-                    ":sk_val": {"S": "LINE#"},
+                    ":pk_val": {"S": "IMAGE"},
+                    ":sk_val": {"S": f"IMAGE#{image_id}#LINE#"},
                 },
             )
             lines.extend([itemToLine(item) for item in response["Items"]])
@@ -222,13 +223,17 @@ class _Line:
             while "LastEvaluatedKey" in response:
                 response = self._client.query(
                     TableName=self.table_name,
+                    IndexName="GSI1",
                     KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
-                    ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
-                    ExpressionAttributeValues={
-                        ":pk_val": {"S": f"IMAGE#{image_id}"},
-                        ":sk_val": {"S": "LINE#"},
+                    ExpressionAttributeNames={
+                        "#pk": "GSI1PK",
+                        "#sk": "GSI1SK",
                     },
-                    ExclusiveStartKey=response["LastEvaluatedKey"],
+                    ExpressionAttributeValues={
+                        ":pk_val": {"S": "IMAGE"},
+                        ":sk_val": {"S": f"IMAGE#{image_id}#LINE#"},
+                    },
+                    ExclusiveStartKey=response.get("LastEvaluatedKey", None),
                 )
                 lines.extend([itemToLine(item) for item in response["Items"]])
             return lines

@@ -1,10 +1,12 @@
-import pytest
 from datetime import datetime
+
+import pytest
+
+from receipt_dynamo.constants import BatchStatus, BatchType
 from receipt_dynamo.entities.batch_summary import (
     BatchSummary,
     itemToBatchSummary,
 )
-from receipt_dynamo.constants import BatchStatus, BatchType
 
 
 @pytest.fixture
@@ -53,7 +55,7 @@ def test_batch_summary_to_item_and_back(example_batch_summary):
 @pytest.mark.unit
 @pytest.mark.parametrize("bad_value", [123, None])
 def test_batch_summary_invalid_batch_id_type(bad_value):
-    with pytest.raises(ValueError, match="batch_id must be a string"):
+    with pytest.raises(ValueError, match="batch_id must be str, got"):
         BatchSummary(
             batch_id=bad_value,
             batch_type=BatchType.EMBEDDING.value,
@@ -68,7 +70,7 @@ def test_batch_summary_invalid_batch_id_type(bad_value):
 @pytest.mark.unit
 @pytest.mark.parametrize("bad_value", [123, None])
 def test_batch_summary_invalid_openai_batch_id_type(bad_value):
-    with pytest.raises(ValueError, match="openai_batch_id must be a string"):
+    with pytest.raises(ValueError, match="openai_batch_id must be str, got"):
         BatchSummary(
             batch_id="abc",
             batch_type=BatchType.EMBEDDING.value,
@@ -83,7 +85,7 @@ def test_batch_summary_invalid_openai_batch_id_type(bad_value):
 @pytest.mark.unit
 def test_batch_summary_invalid_submitted_at_type():
     with pytest.raises(
-        ValueError, match="submitted_at must be a datetime object"
+        ValueError, match="submitted_at must be a datetime object or a string"
     ):
         BatchSummary(
             batch_id="abc",
@@ -99,7 +101,7 @@ def test_batch_summary_invalid_submitted_at_type():
 @pytest.mark.unit
 @pytest.mark.parametrize("bad_value", [123, None])
 def test_batch_summary_invalid_result_file_id_type(bad_value):
-    with pytest.raises(ValueError, match="result_file_id must be a string"):
+    with pytest.raises(ValueError, match="result_file_id must be str, got"):
         BatchSummary(
             batch_id="abc",
             batch_type=BatchType.EMBEDDING.value,
@@ -143,7 +145,7 @@ def test_batch_summary_invalid_status():
 def test_batch_summary_status_not_string():
     with pytest.raises(
         ValueError,
-        match="status must be either a BatchStatus enum or a string; got int",
+        match="status must be BatchStatus, str, got int",
     ):
         BatchSummary(
             batch_id="abc123",
@@ -215,8 +217,10 @@ def test_batch_summary_str(example_batch_summary):
 
 @pytest.mark.unit
 def test_batch_summary_iter(example_batch_summary):
-    keys = dict(example_batch_summary)
+    keys = example_batch_summary.to_dict()
     assert keys["batch_id"] == example_batch_summary.batch_id
     assert keys["receipt_refs"] == example_batch_summary.receipt_refs
     # Test end to end serialization and deserialization
-    example_batch_summary_item = BatchSummary(**dict(example_batch_summary))
+    example_batch_summary_item = BatchSummary(
+        **example_batch_summary.to_dict()
+    )

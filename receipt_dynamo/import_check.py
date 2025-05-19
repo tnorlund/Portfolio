@@ -19,16 +19,13 @@ try:
         f"\nSuccessfully imported receipt_dynamo package from: {receipt_dynamo.__file__}"
     )
 
-    # Try importing a few key modules
-    from receipt_dynamo import DynamoClient
-
-    print("Successfully imported DynamoClient")
-
     # Print package version
-    print(
-        f"Package version: {receipt_dynamo.__version__ if hasattr(receipt_dynamo,
-                '__version__') else 'Not defined'}"
+    version = (
+        receipt_dynamo.__version__
+        if hasattr(receipt_dynamo, "__version__")
+        else "Not defined"
     )
+    print(f"Package version: {version}")
 
     print("\nImport test successful!")
 except ImportError as e:

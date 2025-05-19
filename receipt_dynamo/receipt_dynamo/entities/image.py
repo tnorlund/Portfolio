@@ -1,7 +1,8 @@
 # infra/lambda_layer/python/dynamo/entities/image.py
 from datetime import datetime
-from typing import Any, Generator, Tuple
+from typing import Any, Generator, Optional, Tuple
 
+from receipt_dynamo.constants import ImageType
 from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
 
@@ -34,9 +35,10 @@ class Image:
         timestamp_added: datetime,
         raw_s3_bucket: str,
         raw_s3_key: str,
-        sha256: str = None,
-        cdn_s3_bucket: str = None,
-        cdn_s3_key: str = None,
+        sha256: Optional[str] = None,
+        cdn_s3_bucket: Optional[str] = None,
+        cdn_s3_key: Optional[str] = None,
+        image_type: ImageType | str = ImageType.SCAN,
     ):
         """Initializes a new Image object for DynamoDB.
 
@@ -95,6 +97,18 @@ class Image:
             raise ValueError("cdn_s3_key must be a string")
         self.cdn_s3_key = cdn_s3_key
 
+        if not isinstance(image_type, ImageType):
+            if not isinstance(image_type, str):
+                raise ValueError("image_type must be a ImageType or a string")
+            if image_type not in [t.value for t in ImageType]:
+                raise ValueError(
+                    f"image_type must be one of: {', '.join(t.value for t in ImageType)}\nGot: {image_type}"
+                )
+        if isinstance(image_type, ImageType):
+            self.image_type = image_type.value
+        else:
+            self.image_type = image_type
+
     def key(self) -> dict:
         """Generates the primary key for the image.
 
@@ -150,6 +164,7 @@ class Image:
             "cdn_s3_key": (
                 {"S": self.cdn_s3_key} if self.cdn_s3_key else {"NULL": True}
             ),
+            "image_type": {"S": self.image_type},
         }
 
     def __repr__(self) -> str:
@@ -168,7 +183,8 @@ class Image:
             f"raw_s3_key={_repr_str(self.raw_s3_key)}, "
             f"sha256={_repr_str(self.sha256)}, "
             f"cdn_s3_bucket={_repr_str(self.cdn_s3_bucket)}, "
-            f"cdn_s3_key={_repr_str(self.cdn_s3_key)}"
+            f"cdn_s3_key={_repr_str(self.cdn_s3_key)}, "
+            f"image_type={_repr_str(self.image_type)}"
             ")"
         )
 
@@ -187,6 +203,11 @@ class Image:
         yield "sha256", self.sha256
         yield "cdn_s3_bucket", self.cdn_s3_bucket
         yield "cdn_s3_key", self.cdn_s3_key
+        yield "image_type", self.image_type
+
+    def to_dict(self) -> dict:
+        """Return a dictionary representation of the Image."""
+        return {k: v for k, v in self}
 
     def __eq__(self, other) -> bool:
         """Determines whether two Image objects are equal.
@@ -212,6 +233,7 @@ class Image:
             and self.sha256 == other.sha256
             and self.cdn_s3_bucket == other.cdn_s3_bucket
             and self.cdn_s3_key == other.cdn_s3_key
+            and self.image_type == other.image_type
         )
 
     def __hash__(self) -> int:
@@ -231,6 +253,7 @@ class Image:
                 self.sha256,
                 self.cdn_s3_bucket,
                 self.cdn_s3_key,
+                self.image_type,
             )
         )
 
@@ -256,6 +279,7 @@ def itemToImage(item: dict) -> Image:
         "timestamp_added",
         "raw_s3_bucket",
         "raw_s3_key",
+        "image_type",
     }
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - item.keys()
@@ -267,6 +291,7 @@ def itemToImage(item: dict) -> Image:
         sha256 = item.get("sha256", {}).get("S")
         cdn_s3_bucket = item.get("cdn_s3_bucket", {}).get("S")
         cdn_s3_key = item.get("cdn_s3_key", {}).get("S")
+        image_type = item.get("image_type", {}).get("S")
         return Image(
             image_id=item["PK"]["S"].split("#")[1],
             width=int(item["width"]["N"]),
@@ -279,6 +304,7 @@ def itemToImage(item: dict) -> Image:
             sha256=sha256 if sha256 else None,
             cdn_s3_bucket=cdn_s3_bucket if cdn_s3_bucket else None,
             cdn_s3_key=cdn_s3_key if cdn_s3_key else None,
+            image_type=image_type if image_type else ImageType.SCAN.value,
         )
     except KeyError as e:
         raise ValueError(f"Error converting item to Image: {e}")

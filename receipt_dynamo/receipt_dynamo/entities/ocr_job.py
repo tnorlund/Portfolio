@@ -1,18 +1,16 @@
 from datetime import datetime
 from typing import Any, Generator, Tuple
 
-from receipt_dynamo.constants import RefinementStatus
+from receipt_dynamo.constants import OCRStatus, OCRJobType
 from receipt_dynamo.entities.util import (
-    _format_float,
     _repr_str,
-    assert_valid_point,
     assert_valid_uuid,
 )
 
 
-class RefinementJob:
+class OCRJob:
     """
-    Represents a refinement job in DynamoDB.
+    Represents an OCR job in DynamoDB.
     """
 
     def __init__(
@@ -23,7 +21,9 @@ class RefinementJob:
         s3_key: str,
         created_at: datetime,
         updated_at: datetime | None = None,
-        status: RefinementStatus | str = RefinementStatus.PENDING,
+        status: OCRStatus | str = OCRStatus.PENDING,
+        job_type: OCRJobType | str = OCRJobType.FIRST_PASS,
+        receipt_id: int | None = None,
     ):
         assert_valid_uuid(image_id)
         self.image_id = image_id
@@ -47,36 +47,50 @@ class RefinementJob:
             raise ValueError("updated_at must be a datetime or None")
         self.updated_at = updated_at
 
-        if not isinstance(status, RefinementStatus):
+        if not isinstance(status, OCRStatus):
             if not isinstance(status, str):
+                raise ValueError("status must be a OCRStatus or a string")
+            if status not in [s.value for s in OCRStatus]:
                 raise ValueError(
-                    "status must be a RefinementStatus or a string"
+                    f"status must be one of: {', '.join(s.value for s in OCRStatus)}\nGot: {status}"
                 )
-            if status not in [s.value for s in RefinementStatus]:
-                raise ValueError(
-                    f"status must be one of: {', '.join(s.value for s in RefinementStatus)}\nGot: {status}"
-                )
-        if isinstance(status, RefinementStatus):
+        if isinstance(status, OCRStatus):
             self.status = status.value
         else:
             self.status = status
 
+        if not isinstance(job_type, OCRJobType):
+            if not isinstance(job_type, str):
+                raise ValueError("job_type must be a OCRJobType or a string")
+            if job_type not in [t.value for t in OCRJobType]:
+                raise ValueError(
+                    f"job_type must be one of: {', '.join(t.value for t in OCRJobType)}\nGot: {job_type}"
+                )
+        if isinstance(job_type, OCRJobType):
+            self.job_type = job_type.value
+        else:
+            self.job_type = job_type
+
+        if receipt_id is not None and not isinstance(receipt_id, int):
+            raise ValueError("receipt_id must be an integer or None")
+        self.receipt_id = receipt_id
+
     def key(self) -> dict:
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {"S": f"REFINEMENT_JOB#{self.job_id}"},
+            "SK": {"S": f"OCR_JOB#{self.job_id}"},
         }
 
     def gsi1_key(self) -> dict:
         return {
-            "GSI1PK": {"S": f"REFINEMENT_JOB_STATUS#{self.status}"},
-            "GSI1SK": {"S": f"REFINEMENT_JOB#{self.job_id}"},
+            "GSI1PK": {"S": f"OCR_JOB_STATUS#{self.status}"},
+            "GSI1SK": {"S": f"OCR_JOB#{self.job_id}"},
         }
 
     def gsi2_key(self) -> dict:
         return {
-            "GSI2PK": {"S": f"REFINEMENT_JOB_STATUS#{self.status}"},
-            "GSI2SK": {"S": f"REFINEMENT_JOB#{self.job_id}"},
+            "GSI2PK": {"S": f"OCR_JOB_STATUS#{self.status}"},
+            "GSI2SK": {"S": f"OCR_JOB#{self.job_id}"},
         }
 
     def to_item(self) -> dict:
@@ -84,7 +98,7 @@ class RefinementJob:
             **self.key(),
             **self.gsi1_key(),
             **self.gsi2_key(),
-            "TYPE": {"S": "REFINEMENT_JOB"},
+            "TYPE": {"S": "OCR_JOB"},
             "s3_bucket": {"S": self.s3_bucket},
             "s3_key": {"S": self.s3_key},
             "created_at": {"S": self.created_at.isoformat()},
@@ -94,18 +108,26 @@ class RefinementJob:
                 else {"NULL": True}
             ),
             "status": {"S": self.status},
+            "job_type": {"S": self.job_type},
+            "receipt_id": (
+                {"N": str(self.receipt_id)}
+                if self.receipt_id is not None
+                else {"NULL": True}
+            ),
         }
 
     def __repr__(self) -> str:
         return (
-            "RefinementJob("
+            "OCRJob("
             f"image_id={_repr_str(self.image_id)}, "
             f"job_id={_repr_str(self.job_id)}, "
             f"s3_bucket={_repr_str(self.s3_bucket)}, "
             f"s3_key={_repr_str(self.s3_key)}, "
             f"created_at={self.created_at}, "
             f"updated_at={self.updated_at}, "
-            f"status={_repr_str(self.status)}"
+            f"status={_repr_str(self.status)}, "
+            f"job_type={_repr_str(self.job_type)}, "
+            f"receipt_id={self.receipt_id}"
             ")"
         )
 
@@ -117,9 +139,11 @@ class RefinementJob:
         yield "created_at", self.created_at
         yield "updated_at", self.updated_at
         yield "status", self.status
+        yield "job_type", self.job_type
+        yield "receipt_id", self.receipt_id
 
     def __eq__(self, other) -> bool:
-        if not isinstance(other, RefinementJob):
+        if not isinstance(other, OCRJob):
             return False
         return (
             self.image_id == other.image_id
@@ -129,6 +153,8 @@ class RefinementJob:
             and self.created_at == other.created_at
             and self.updated_at == other.updated_at
             and self.status == other.status
+            and self.job_type == other.job_type
+            and self.receipt_id == other.receipt_id
         )
 
     def __hash__(self) -> int:
@@ -141,18 +167,20 @@ class RefinementJob:
                 self.created_at,
                 self.updated_at,
                 self.status,
+                self.job_type,
+                self.receipt_id,
             )
         )
 
 
-def itemToRefinementJob(item: dict) -> RefinementJob:
-    """Converts a DynamoDB item to a RefinementJob object.
+def itemToOCRJob(item: dict) -> OCRJob:
+    """Converts a DynamoDB item to a OCRJob object.
 
     Args:
         item (dict): The DynamoDB item to convert.
 
     Returns:
-        RefinementJob: The RefinementJob object.
+        OCRJob: The OCRJob object.
 
     Raises:
         ValueError: When the item format is invalid.
@@ -165,6 +193,8 @@ def itemToRefinementJob(item: dict) -> RefinementJob:
         "s3_key",
         "created_at",
         "status",
+        "job_type",
+        "receipt_id",
     }
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - item.keys()
@@ -182,11 +212,17 @@ def itemToRefinementJob(item: dict) -> RefinementJob:
         created_at = datetime.fromisoformat(item["created_at"]["S"])
         updated_at = (
             datetime.fromisoformat(item["updated_at"]["S"])
-            if "updated_at" in item
+            if "updated_at" in item and "S" in item["updated_at"]
             else None
         )
         status = item["status"]["S"]
-        return RefinementJob(
+        job_type = item["job_type"]["S"]
+        receipt_id = (
+            int(item["receipt_id"]["N"])
+            if "receipt_id" in item and "N" in item["receipt_id"]
+            else None
+        )
+        return OCRJob(
             image_id=image_id,
             job_id=job_id,
             s3_bucket=s3_bucket,
@@ -194,6 +230,8 @@ def itemToRefinementJob(item: dict) -> RefinementJob:
             created_at=created_at,
             updated_at=updated_at,
             status=status,
+            job_type=job_type,
+            receipt_id=receipt_id,
         )
     except Exception as e:
-        raise ValueError(f"Error converting item to RefinementJob: {e}") from e
+        raise ValueError(f"Error converting item to OCRJob: {e}") from e

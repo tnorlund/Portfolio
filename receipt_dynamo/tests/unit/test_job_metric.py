@@ -86,9 +86,7 @@ def test_job_metric_init_invalid_metric_name():
             0.15,
         )
 
-    with pytest.raises(
-        ValueError, match="metric_name must be a non-empty string"
-    ):
+    with pytest.raises(ValueError, match="metric_name must be str, got int"):
         JobMetric(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             123,  # Invalid: not a string
@@ -116,7 +114,7 @@ def test_job_metric_init_invalid_value():
 def test_job_metric_init_invalid_timestamp():
     """Test the JobMetric constructor with invalid timestamp."""
     with pytest.raises(
-        ValueError, match="timestamp must be a datetime object or a string"
+        ValueError, match="timestamp must be datetime, str, got"
     ):
         JobMetric(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",

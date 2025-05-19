@@ -53,7 +53,7 @@ def test_receipt_word_tag_init_invalid_receipt_id():
     Test constructor raises ValueError if receipt_id is not an integer or is
     negative.
     """
-    with pytest.raises(ValueError, match="receipt_id must be an integer"):
+    with pytest.raises(ValueError, match="receipt_id must be int, got"):
         ReceiptWordTag(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "bad",
@@ -79,7 +79,7 @@ def test_receipt_word_tag_init_invalid_line_id():
     Test constructor raises ValueError if line_id is not an integer or is
     negative.
     """
-    with pytest.raises(ValueError, match="line_id must be an integer"):
+    with pytest.raises(ValueError, match="line_id must be int, got"):
         ReceiptWordTag(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             2,
@@ -105,7 +105,7 @@ def test_receipt_word_tag_init_invalid_word_id():
     Test constructor raises ValueError if word_id is not an integer or is
     negative.
     """
-    with pytest.raises(ValueError, match="word_id must be an integer"):
+    with pytest.raises(ValueError, match="word_id must be int, got"):
         ReceiptWordTag(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             2,
@@ -137,7 +137,7 @@ def test_receipt_word_tag_init_invalid_tag():
             "",
             "2021-01-01T00:00:00",
         )
-    with pytest.raises(ValueError, match="tag must be a string"):
+    with pytest.raises(ValueError, match="tag must be str, got"):
         ReceiptWordTag(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             2,
@@ -262,7 +262,7 @@ def test_receipt_word_tag_eq():
 @pytest.mark.unit
 def test_receipt_word_tag_iter(example_receipt_word_tag):
     """Test __iter__ provides a dict-like iteration over fields."""
-    as_dict = dict(example_receipt_word_tag)
+    as_dict = example_receipt_word_tag.to_dict()
     assert as_dict["image_id"] == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert as_dict["receipt_id"] == 45
     assert as_dict["line_id"] == 6

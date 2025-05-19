@@ -119,9 +119,9 @@ from receipt_dynamo.entities.receipt_metadata import (
     ReceiptMetadata,
     itemToReceiptMetadata,
 )  # noqa: F401
-from receipt_dynamo.entities.refinement_job import (
-    RefinementJob,
-    itemToRefinementJob,
+from receipt_dynamo.entities.ocr_job import (
+    OCRJob,
+    itemToOCRJob,
 )  # noqa: F401
 from receipt_dynamo.entities.rwl_queue import Queue, itemToQueue  # noqa: F401
 from receipt_dynamo.entities.queue_job import (
@@ -131,4 +131,8 @@ from receipt_dynamo.entities.queue_job import (
 from receipt_dynamo.entities.receipt_section import (
     ReceiptSection,
     itemToReceiptSection,
+)  # noqa: F401
+from receipt_dynamo.entities.ocr_routing_decision import (
+    OCRRoutingDecision,
+    itemToOCRRoutingDecision,
 )  # noqa: F401

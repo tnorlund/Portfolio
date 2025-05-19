@@ -15,7 +15,6 @@ def sample_batch_summary():
         openai_batch_id="openai-xyz",
         submitted_at=datetime(2024, 1, 1, 12, 0, 0),
         status=BatchStatus.PENDING.value,
-        word_count=10,
         result_file_id="file-456",
         receipt_refs=[(str(uuid4()), 101)],
     )

@@ -78,16 +78,20 @@ def test_completion_batch_result_iter(example_completion_batch_result):
 @pytest.mark.parametrize(
     "field, bad_value, err_msg",
     [
-        ("receipt_id", "1001", "receipt_id must be an integer"),
-        ("line_id", "4", "line_id must be an integer"),
-        ("word_id", "7", "word_id must be an integer"),
-        ("original_label", 123, "original_label must be a string"),
-        ("gpt_suggested_label", 123, "gpt_suggested_label must be a string"),
-        ("status", 1.5, "status must be a string"),
+        ("receipt_id", "1001", "receipt_id must be int, got str"),
+        ("line_id", "4", "line_id must be int, got str"),
+        ("word_id", "7", "word_id must be int, got str"),
+        ("original_label", 123, "original_label must be str, got int"),
+        (
+            "gpt_suggested_label",
+            123,
+            "gpt_suggested_label must be str, NoneType, got int",
+        ),
+        ("status", 1.5, "status must be str, BatchStatus, got float"),
         (
             "validated_at",
             "not-a-datetime",
-            "validated_at must be a datetime object",
+            "validated_at must be datetime, got str",
         ),
     ],
 )

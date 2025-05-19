@@ -90,13 +90,13 @@ def test_embedding_batch_result_iter(example_embedding_batch_result):
 @pytest.mark.parametrize(
     "field, value, expected_error",
     [
-        ("receipt_id", "not-an-int", "receipt_id must be an integer"),
-        ("line_id", "nope", "line_id must be an integer"),
-        ("word_id", "fail", "word_id must be an integer"),
+        ("receipt_id", "not-an-int", "receipt_id must be int, got str"),
+        ("line_id", "nope", "line_id must be int, got str"),
+        ("word_id", "fail", "word_id must be int, got str"),
         ("pinecone_id", "invalid", "pinecone_id must be in the format"),
-        ("status", 123, "status must be a string"),
-        ("text", 456, "text must be a string"),
-        ("error_message", 999, "error_message must be a string"),
+        ("status", 123, "status must be str, got int"),
+        ("text", 456, "text must be str, got int"),
+        ("error_message", 999, "error_message must be str, got int"),
     ],
 )
 def test_embedding_batch_result_invalid_field(field, value, expected_error):

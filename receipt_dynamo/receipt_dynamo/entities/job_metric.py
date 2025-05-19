@@ -2,7 +2,12 @@ import json
 from datetime import datetime
 from typing import Any, Dict, Generator, Optional, Tuple, Union
 
-from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
+from receipt_dynamo.entities.util import (
+    _repr_str,
+    assert_valid_uuid,
+    assert_type,
+    format_type_error,
+)
 
 
 class JobMetric:
@@ -49,7 +54,8 @@ class JobMetric:
         assert_valid_uuid(job_id)
         self.job_id = job_id
 
-        if not isinstance(metric_name, str) or not metric_name:
+        assert_type("metric_name", metric_name, str, ValueError)
+        if not metric_name:
             raise ValueError("metric_name must be a non-empty string")
         self.metric_name = metric_name
 
@@ -58,7 +64,9 @@ class JobMetric:
         elif isinstance(timestamp, str):
             self.timestamp = timestamp
         else:
-            raise ValueError("timestamp must be a datetime object or a string")
+            raise ValueError(
+                format_type_error("timestamp", timestamp, (datetime, str))
+            )
 
         if not isinstance(value, (float, int, dict)):
             try:

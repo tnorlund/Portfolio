@@ -1,7 +1,12 @@
 from datetime import datetime
 from typing import Optional, List, Tuple
 
-from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
+from receipt_dynamo.entities.util import (
+    _repr_str,
+    assert_valid_uuid,
+    assert_type,
+    format_type_error,
+)
 from receipt_dynamo.constants import LabelStatus
 
 
@@ -17,40 +22,35 @@ class LabelMetadata:
         label_target: Optional[str] = None,
         receipt_refs: list[tuple[str, int]] = None,
     ):
-        if not isinstance(label, str):
-            raise ValueError("label must be a string")
+        assert_type("label", label, str, ValueError)
         self.label = label
 
-        if not isinstance(status, str):
-            raise ValueError("status must be a string")
+        assert_type("status", status, str, ValueError)
         if not status in [s.value for s in LabelStatus]:
             raise ValueError(
                 f"status must be one of: {', '.join([s.value for s in LabelStatus])}"
             )
         self.status = status
 
-        if not isinstance(aliases, list):
-            raise ValueError("aliases must be a list")
+        assert_type("aliases", aliases, list, ValueError)
         self.aliases = aliases
 
-        if not isinstance(description, str):
-            raise ValueError("description must be a string")
+        assert_type("description", description, str, ValueError)
         self.description = description
 
-        if not isinstance(schema_version, int):
-            raise ValueError("schema_version must be an integer")
+        assert_type("schema_version", schema_version, int, ValueError)
         self.schema_version = schema_version
 
-        if not isinstance(last_updated, datetime):
-            raise ValueError("last_updated must be a datetime object")
+        assert_type("last_updated", last_updated, datetime, ValueError)
         self.last_updated = last_updated
 
-        if label_target is not None and not isinstance(label_target, str):
-            raise ValueError("label_target must be a string or None")
+        if label_target is not None:
+            assert_type("label_target", label_target, str, ValueError)
         self.label_target = label_target
 
         if receipt_refs is not None:
-            if not isinstance(receipt_refs, list) or not all(
+            assert_type("receipt_refs", receipt_refs, list, ValueError)
+            if not all(
                 isinstance(ref, tuple)
                 and len(ref) == 2
                 and isinstance(ref[0], str)

@@ -8,6 +8,8 @@ from receipt_dynamo.entities.util import (
     assert_valid_bounding_box,
     assert_valid_point,
     assert_valid_uuid,
+    assert_type,
+    format_type_error,
     compute_histogram,
     shear_point,
 )
@@ -80,20 +82,17 @@ class Word:
         assert_valid_uuid(image_id)
         self.image_id = image_id
 
-        if not isinstance(line_id, int):
-            raise ValueError("line_id must be an integer")
+        assert_type("line_id", line_id, int, ValueError)
         if line_id < 0:
             raise ValueError("line_id must be positive")
         self.line_id = line_id
 
-        if not isinstance(word_id, int):
-            raise ValueError("id must be an integer")
+        assert_type("word_id", word_id, int, ValueError)
         if word_id < 0:
             raise ValueError("id must be positive")
         self.word_id = word_id
 
-        if not isinstance(text, str):
-            raise ValueError("text must be a string")
+        assert_type("text", text, str, ValueError)
         self.text = text
 
         assert_valid_bounding_box(bounding_box)
@@ -111,24 +110,21 @@ class Word:
         assert_valid_point(bottom_left)
         self.bottom_left = bottom_left
 
-        if not isinstance(angle_degrees, (float, int)):
-            raise ValueError("angle_degrees must be a float or int")
+        assert_type("angle_degrees", angle_degrees, (float, int), ValueError)
         self.angle_degrees = angle_degrees
 
-        if not isinstance(angle_radians, (float, int)):
-            raise ValueError("angle_radians must be a float or int")
+        assert_type("angle_radians", angle_radians, (float, int), ValueError)
         self.angle_radians = angle_radians
 
         if isinstance(confidence, int):
             confidence = float(confidence)
-        if not isinstance(confidence, float):
-            raise ValueError("confidence must be a float")
+        assert_type("confidence", confidence, float, ValueError)
         if confidence <= 0.0 or confidence > 1.0:
             raise ValueError("confidence must be between 0 and 1")
         self.confidence = confidence
 
-        if extracted_data is not None and not isinstance(extracted_data, dict):
-            raise ValueError("extracted_data must be a dict")
+        if extracted_data is not None:
+            assert_type("extracted_data", extracted_data, dict, ValueError)
         self.extracted_data = extracted_data
 
         if histogram is None:
@@ -808,6 +804,24 @@ class Word:
         yield "extracted_data", self.extracted_data
         yield "histogram", self.histogram
         yield "num_chars", self.num_chars
+
+    def to_dict(self) -> dict:
+        """Returns a dictionary representation of the Word object."""
+        return {
+            "image_id": self.image_id,
+            "line_id": self.line_id,
+            "word_id": self.word_id,
+            "text": self.text,
+            "bounding_box": self.bounding_box,
+            "top_right": self.top_right,
+            "top_left": self.top_left,
+            "bottom_right": self.bottom_right,
+            "bottom_left": self.bottom_left,
+            "angle_degrees": self.angle_degrees,
+            "angle_radians": self.angle_radians,
+            "confidence": self.confidence,
+            "extracted_data": self.extracted_data,
+        }
 
     def __eq__(self, other: object) -> bool:
         """Determines whether two Word objects are equal.

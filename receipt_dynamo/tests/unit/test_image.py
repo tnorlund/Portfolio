@@ -284,6 +284,7 @@ def test_image_to_item(example_image):
         "sha256": {"S": "abc123"},
         "cdn_s3_bucket": {"S": "cdn_bucket"},
         "cdn_s3_key": {"S": "cdn_key"},
+        "image_type": {"S": "SCAN"},
     }
 
 
@@ -307,6 +308,7 @@ def test_image_to_item_no_sha(example_image_no_sha):
         "sha256": {"NULL": True},
         "cdn_s3_bucket": {"S": "cdn_bucket"},
         "cdn_s3_key": {"S": "cdn_key"},
+        "image_type": {"S": "SCAN"},
     }
 
 
@@ -330,6 +332,7 @@ def test_image_to_item_no_cdn_bucket(example_image_no_cdn_bucket):
         "sha256": {"S": "abc123"},
         "cdn_s3_bucket": {"NULL": True},
         "cdn_s3_key": {"S": "cdn_key"},
+        "image_type": {"S": "SCAN"},
     }
 
 
@@ -353,6 +356,7 @@ def test_image_to_item_no_cdn_key(example_image_no_cdn_key):
         "sha256": {"S": "abc123"},
         "cdn_s3_bucket": {"S": "cdn_bucket"},
         "cdn_s3_key": {"NULL": True},
+        "image_type": {"S": "SCAN"},
     }
 
 
@@ -369,7 +373,8 @@ def test_image_repr(example_image):
         "raw_s3_key='key', "
         "sha256='abc123', "
         "cdn_s3_bucket='cdn_bucket', "
-        "cdn_s3_key='cdn_key'"
+        "cdn_s3_key='cdn_key', "
+        "image_type='SCAN'"
         ")"
     )
 
@@ -378,7 +383,7 @@ def test_image_repr(example_image):
 def test_image_iter(example_image):
     """Test the Image.__iter__() method"""
     # If you include sha256 in iteration, test that:
-    assert dict(example_image) == {
+    assert example_image.to_dict() == {
         "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         "width": 10,
         "height": 20,
@@ -388,6 +393,7 @@ def test_image_iter(example_image):
         "sha256": "abc123",
         "cdn_s3_bucket": "cdn_bucket",
         "cdn_s3_key": "cdn_key",
+        "image_type": "SCAN",
     }
 
 
@@ -578,5 +584,6 @@ def test_itemToImage(
                 "raw_s3_key": {"S": "key"},
                 "sha256": {"S": "abc123"},
                 "cdn_s3_bucket": {"S": "cdn_bucket"},
+                "image_type": {"S": "SCAN"},
             }
         )
