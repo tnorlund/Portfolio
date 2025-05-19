@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 
 function ReceiptUpload() {
   const [files, setFiles] = useState<File[]>([]);
@@ -6,42 +6,21 @@ function ReceiptUpload() {
   const [message, setMessage] = useState("");
   const [dragging, setDragging] = useState(false);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setFiles((prevFiles) => [...prevFiles, ...Array.from(e.target.files!)]);
-    }
-  };
+  const isDevelopment = process.env.NODE_ENV === "development";
+  const apiUrl = isDevelopment
+    ? "https://dev-upload.tylernorlund.com"
+    : "https://upload.tylernorlund.com";
 
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setDragging(false);
-    if (e.dataTransfer.files) {
-      setFiles((prevFiles) => [
-        ...prevFiles,
-        ...Array.from(e.dataTransfer.files),
-      ]);
-    }
-  };
-
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setDragging(true);
-  };
-
-  const handleDragLeave = () => {
-    setDragging(false);
-  };
-
-  const uploadToS3 = async () => {
-    if (files.length === 0) return;
+  const uploadToS3Internal = async (selectedFiles: File[]) => {
+    if (selectedFiles.length === 0) return;
     setUploading(true);
     setMessage("");
 
     try {
-      for (const file of files) {
+      for (const file of selectedFiles) {
         const filename = encodeURIComponent(file.name);
         const res = await fetch(
-          `https://dev-upload.tylernorlund.com/get-presigned-url?filename=${filename}&contentType=${encodeURIComponent(
+          `${apiUrl}/get-presigned-url?filename=${filename}&contentType=${encodeURIComponent(
             file.type
           )}`
         );
@@ -56,20 +35,17 @@ function ReceiptUpload() {
         });
 
         if (upload.ok) {
-          const submit = await fetch(
-            "https://dev-upload.tylernorlund.com/submit-job",
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                s3_key: key,
-                original_filename: file.name,
-                content_type: file.type,
-              }),
-            }
-          );
+          const submit = await fetch(`${apiUrl}/submit-job`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              s3_key: key,
+              original_filename: file.name,
+              content_type: file.type,
+            }),
+          });
 
           if (!submit.ok) {
             throw new Error(`Job submission failed for file ${file.name}`);
@@ -78,8 +54,9 @@ function ReceiptUpload() {
           throw new Error(`Upload failed for file ${file.name}`);
         }
       }
-      setMessage(`Upload successful: ${files.map((f) => f.name).join(", ")}`);
-      setFiles([]);
+      setMessage(
+        `Upload successful: ${selectedFiles.map((f) => f.name).join(", ")}`
+      );
     } catch (err) {
       console.error(err);
       setMessage("Upload failed");
@@ -87,6 +64,37 @@ function ReceiptUpload() {
       setUploading(false);
     }
   };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      setFiles((prevFiles) => [...prevFiles, ...Array.from(e.target.files!)]);
+    }
+  };
+
+  const handleDrop = useCallback(async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setDragging(false);
+    const dt = e.dataTransfer;
+    if (dt && dt.files) {
+      const newFiles = Array.from(dt.files);
+      setFiles((prevFiles) => [...prevFiles, ...newFiles]);
+      await uploadToS3Internal(newFiles);
+    }
+  }, []);
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setDragging(false);
+  };
+
+  const uploadToS3 = useCallback(() => {
+    uploadToS3Internal(files);
+    setFiles([]);
+  }, [files]);
 
   return (
     <div>

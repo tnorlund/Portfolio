@@ -5,6 +5,7 @@ import OpenAI from "./OpenAI";
 import ReceiptStack from "./ReceiptStack";
 import ImageBoundingBox from "./ImageBoundingBox";
 import TypeScriptLogo from "./TypeScriptLogo";
+import React, { useState, useEffect, useCallback } from "react";
 import ReactLogo from "./ReactLogo";
 import Pinecone from "./Pinecone";
 import GooglePlaces from "./GooglePlaces";
@@ -13,238 +14,411 @@ import { ReceiptCounts, ImageCounts } from "./DataCounts";
 import LabelValidationChart from "./LabelValidationCount";
 import HuggingFace from "./HuggingFace";
 import MerchantCount from "./MerchantCount";
+import { ZDepthConstrained, ZDepthUnconstrained } from "./ZDepth";
+import UploadDiagram from "./UploadDiagram";
+import EmbeddingExample from "./EmbeddingExample";
+import EmbeddingCoordinate from "./EmbeddingCoordinate";
+import GithubLogo from "./GithubLogo";
 import "./Receipt.css";
 
 function Receipt() {
+  // --- Receipt Upload State & Handlers ---
+  const [files, setFiles] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [dragging, setDragging] = useState(false);
+
+  const isDevelopment = process.env.NODE_ENV === "development";
+  const apiUrl = isDevelopment
+    ? "https://dev-upload.tylernorlund.com"
+    : "https://upload.tylernorlund.com";
+
+  const uploadToS3Internal = async (selectedFiles: File[]) => {
+    if (selectedFiles.length === 0) return;
+    setUploading(true);
+    setMessage("");
+
+    try {
+      for (const file of selectedFiles) {
+        const filename = encodeURIComponent(file.name);
+        const res = await fetch(
+          `${apiUrl}/get-presigned-url?filename=${filename}&contentType=${encodeURIComponent(
+            file.type
+          )}`
+        );
+        const { url, key } = await res.json();
+
+        const upload = await fetch(url, {
+          method: "PUT",
+          headers: {
+            "Content-Type": file.type,
+          },
+          body: file,
+        });
+
+        if (upload.ok) {
+          const submit = await fetch(`${apiUrl}/submit-job`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              s3_key: key,
+              original_filename: file.name,
+              content_type: file.type,
+            }),
+          });
+
+          if (!submit.ok) {
+            throw new Error(`Job submission failed for file ${file.name}`);
+          }
+        } else {
+          throw new Error(`Upload failed for file ${file.name}`);
+        }
+      }
+      setMessage(
+        `Upload successful: ${selectedFiles.map((f) => f.name).join(", ")}`
+      );
+      setFiles([]);
+    } catch (err) {
+      console.error(err);
+      setMessage("Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDrop = useCallback(async (e: DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+    const dt = e.dataTransfer;
+    if (dt && dt.files) {
+      const newFiles = Array.from(dt.files);
+      setFiles((prev) => [...prev, ...newFiles]);
+      await uploadToS3Internal(newFiles);
+    }
+  }, []);
+
+  const handleDragOver = useCallback((e: DragEvent) => {
+    e.preventDefault();
+    setDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback(() => {
+    setDragging(false);
+  }, []);
+
+  const uploadToS3 = useCallback(() => {
+    uploadToS3Internal(files);
+    setFiles([]);
+  }, [files]);
+
+  useEffect(() => {
+    window.addEventListener("dragover", handleDragOver);
+    window.addEventListener("drop", handleDrop);
+    window.addEventListener("dragleave", handleDragLeave);
+    return () => {
+      window.removeEventListener("dragover", handleDragOver);
+      window.removeEventListener("drop", handleDrop);
+      window.removeEventListener("dragleave", handleDragLeave);
+    };
+  }, [handleDrop, handleDragOver, handleDragLeave]);
+
   return (
     <div>
       <h1>Introduction</h1>
-      <h2>The Inspiration</h2>
       <p>
-        In middle school, I spent a summer sorting my dad's receipts for his
-        taxes. It was tedious work, but I saved enough for a few Xbox games.
-        Back then, automation wasn't an option. Today, thanks to a ChatGPT Pro
-        subscription, my programming skills have grown rapidly. Now I'm
-        automating not just the organizing of receipts, but also parts of my own
-        coding process.
+        I wanted to get better at using AI to automate tasks. I already use
+        ChatGPT for everyday chores, but I wanted to use it on something more
+        challenging: receipts. They may look deceptively simple, but each
+        squeezes a lot of information into a tiny space, making it surprisingly
+        difficult to decode.
       </p>
 
-      <h1>Strategy</h1>
-      <h2>Bridging Skills With New Tools</h2>
-      <p>
-        I came into this project comfortable with AWS and a bit of React, but
-        Swift was new territory. ChatGPT's advanced “reasoning” mode helped me
-        lay out a plan that linked my familiar skill set to fresh challenges
-        like integrating Optical Character Recognition (OCR). This head start
-        let me quickly put together the project's core components.
-      </p>
-      <h2>Constant Iteration</h2>
-      <p>
-        My initial plan gave me a decent roadmap, but the real work required
-        continuous updates. I used feedback and rigorous testing at every step.
-        My background in AWS system design, React, and QA testing helped me spot
-        and fix issues early on, keeping the project on track.
-      </p>
+      <h2>Why Receipts?</h2>
 
-      <h1>OCR and Image Processing</h1>
-
-      <h2>Choosing the Right OCR</h2>
       <p>
-        I first tried Tesseract for OCR, but it wasn't capturing the details I
-        needed. Switching to Apple's Vision OCR gave me better data, including
-        bounding boxes and confidence scores. From there, I grouped and
-        standardized the OCR results so every receipt would be labeled
-        consistently.
+        Receipts are a difficult problem to solve. To turn a crumpled piece of
+        paper into structured data, you have to read three layers of data:
       </p>
-      <h2>Clustering Receipts</h2>
-      <p>
-        To figure out which words belonged on the same receipt, I used a method
-        called DBSCAN clustering. It groups nearby text elements along the
-        X-axis, handy for tall receipts. After grouping, I normalized all OCR
-        coordinates to fit inside a standard 1x1 square, making the data easier
-        to handle later on.
-      </p>
-      <ImageBoundingBox />
-
-      <h1>Infrastructure</h1>
-      <h2>Pulumi and AWS</h2>
-      <p>
-        I was familiar with AWS and Terraform, but Pulumi was new. ChatGPT
-        helped me quickly set up consistent cloud services for both
-        “development” and “production” environments, so I could test changes
-        without risk and optimize my cloud usage.
-      </p>
-      <div className="logos-container">
-        <Pulumi />
-        <OpenAI />
-      </div>
-      <h2>AWS Services</h2>
-      <p>
-        These AWS services form the backbone of the backend, ensuring fast image
-        processing, secure storage, and reliable data management.
-      </p>
-      <ul style={{ marginTop: "1rem" }}>
+      <ul>
         <li>
-          <strong>AWS Lambda</strong>: Manages image processing and workflow
-          orchestration.
+          <strong>Text</strong>: The words on the receipt
         </li>
         <li>
-          <strong>AWS S3</strong>: Stores receipt images securely.
+          <strong>Layout</strong>: The layout of the receipt
         </li>
         <li>
-          <strong>AWS DynamoDB</strong>: Maintains receipt metadata with quick
-          read/write capabilities.
-        </li>
-        <li>
-          <strong>AWS API Gateway</strong>: Exposes the backend API to client
-          requests.
-        </li>
-        <li>
-          <strong>AWS CloudFront</strong>: Delivers content quickly and securely
-          as a CDN.
+          <strong>Meaning</strong>: The meaning of the words
         </li>
       </ul>
-      <Diagram />
+      <p>
+        Since these layers arrive in messy, mixed formats, receipts are an ideal
+        test case for learning how to use AI to automate real-world tasks. The
+        rest of this post describes how I disentangle those three layers and
+        stitch the answers back together.
+      </p>
+
+      <h1>From Images to Words and Coordinates</h1>
+
+      <p>
+        Every receipt image arrives as either a flat scan or a photo. I treat
+        them differently because each format comes with its own shortcuts and
+        challenges.
+      </p>
+
+      <h2>Scans</h2>
+      <p>
+        Scanned receipts are easiest to work with. They are as flat as the
+        sensors used to pick up the pixel data.
+      </p>
+      <ZDepthConstrained />
+      <p>
+        With this constraint, we can say that all the text is on the same plane.
+        This means that the text has the same depth. We can also say that the
+        receipt is taller than it is wide. With all this information, we can
+        determine which words belong to which receipt based on the X position.
+      </p>
+      <ImageBoundingBox />
+      <h2>Photos</h2>
+      <p>
+        Photos are slightly more difficult to work with. The camera sensor is
+        not always facing the receipt.
+      </p>
+
+      <ZDepthUnconstrained />
+      <p>
+        This requires a more complex algorithm to determine which words belong
+        to which receipt. I used a combination of DBSCAN clustering and convex
+        hull calculations to determine a warp to get the cleanest image.
+      </p>
+
+      <h2>Piping It Together</h2>
+      <p>
+        My Macbook has proven to be the best at determining words and
+        coordinates. I developed a way to pipe my laptop to the cloud so that I
+        can efficiently and cost-effectively structure the data.
+      </p>
+
+      <UploadDiagram />
+
+      <p>
+        This architecture allows me to scale horizontally by adding another Mac.
+        I can scale vertically by paying for more cloud compute. The current
+        architecture allows me to operate for free!
+      </p>
 
       <h1>Semantic Labeling</h1>
-
       <p>
-        I used ChatGPT to automate the assigning and validation of labels for
-        receipt text using a combination of OpenAI's embedding API, batch
-        completion API, and aa multipass validation workflow. This pipeline
-        minimizes costs, maximizes label accuracy, and reduces the need for
-        manual review.
+        In order to explain the text on the receipt, I needed to explain how the
+        words semantically relate to one another. But before I can explain, we
+        have to understand what embedding is.
       </p>
-      <h2>Finding the Merchant</h2>
+      <h2>Embedding</h2>
       <p>
-        After using Apple's OCR to extract words, I used a combination of the
-        Google Places API and OpenAI's Agents SDK to find the merchant behind
-        the receipt. The is allows me to add more context to the labelling
-        process and reduce the number of false positives.
+        I had never used embeddings before. They are not exactly new, but they
+        have become widely available in the last few years. What embeddings
+        offer is{" "}
+        <i>
+          the ability to discover connections between things at previously
+          impossible scales.
+        </i>{" "}
       </p>
-      <GooglePlaces />
-      <MerchantCount />
-
-      <h2>Embedding and Retrieval</h2>
       <p>
-        I used OpenAI's embedding API to convert receipt words into
-        high-dimensional vectors that capture semantic meaning. I used the batch
-        API to embed large chunks of words at once, which significantly reduced
-        cost and request overhead. These embeddings are stored in Pinecone, a
-        vector database.
+        If someone were to ask you to embed something, what do you need? You
+        start with textual representation of the thing they're asking to embed.
+      </p>
+
+      <p>What do you get back? You get a structure of numbers.</p>
+      <EmbeddingExample />
+      <p>
+        While each input might be different, we get the same structure of
+        numbers back. Here's the magic. Because we get the same structure, we
+        have a way to mathematically compare two pieces of text together. But
+        what do the numbers mean?
+      </p>
+      <h3>How To Literally Embed</h3>
+      <p>
+        There are many services that offer to generate embeddings, but I ended
+        up going with OpenAI.
+      </p>
+      <OpenAI />
+      <h3>Is It Expensive?</h3>
+      <p>
+        No. I experimented <i>a lot</i>. I developed a way to batch embeddings
+        to cut costs further. This part is also free.
+      </p>
+      <h3>But What Do The Numbers Actually Mean?</h3>
+      <p>
+        So back to the question: what do the numbers mean? Let's think about
+        coordinates on a map. Suppose I give you three points:
+      </p>
+      <table style={{ margin: "0 auto", borderCollapse: "collapse" }}>
+        <thead>
+          <tr>
+            <th style={{ padding: "8px 16px", borderBottom: "1px solid #ddd" }}>
+              Point
+            </th>
+            <th
+              style={{
+                padding: "8px 16px",
+                borderBottom: "1px solid #ddd",
+                textAlign: "right",
+              }}
+            >
+              X
+            </th>
+            <th
+              style={{
+                padding: "8px 16px",
+                borderBottom: "1px solid #ddd",
+                textAlign: "right",
+              }}
+            >
+              Y
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style={{ padding: "8px 16px" }}>A</td>
+            <td style={{ padding: "8px 16px", textAlign: "right" }}>3</td>
+            <td style={{ padding: "8px 16px", textAlign: "right" }}>2</td>
+          </tr>
+          <tr>
+            <td style={{ padding: "8px 16px" }}>B</td>
+            <td style={{ padding: "8px 16px", textAlign: "right" }}>1</td>
+            <td style={{ padding: "8px 16px", textAlign: "right" }}>1</td>
+          </tr>
+          <tr>
+            <td style={{ padding: "8px 16px" }}>C</td>
+            <td style={{ padding: "8px 16px", textAlign: "right" }}>-2</td>
+            <td style={{ padding: "8px 16px", textAlign: "right" }}>-2</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        There are 2 dimensions to this map: X and Y. Each point lives at the
+        intersection of an X and Y coordinate.
+      </p>
+      <p>Is A closer to B or C?</p>
+      <EmbeddingCoordinate />
+      <p>A is closer to B.</p>
+      <p>
+        Here's the mental leap.{" "}
+        <i>Embeddings are similar to points on a map.</i> Each number in the
+        embedding is a coordinate in a complicated map. When OpenAI sends a list
+        of numbers, it's telling you where that text <i>semantically</i> lives
+        in that map. When we ask what the distance between two embeddings are,
+        what we're really doing is asking how semantically close or far apart
+        two pieces of text are.
+      </p>
+      <p>
+        This concept of positioning items in multi-dimensional space like this,
+        where related items are clustered near each other, goes by the name of{" "}
+        <strong>latent space</strong>.
+      </p>
+      <p>
+        Latent space is a powerful concept. It allows us to discover connections
+        between things at previously impossible scales.
+      </p>
+      <h2>Scaling and Optimizing Latent Space</h2>
+      <p>
+        Writing and reading these lists of numbers get's complicated fast. After
+        some research, I found Pinecone, a vector database that allows me to
+        store and retrieve embeddings.
       </p>
       <Pinecone />
       <p>
-        Vector databases are a type of database that store data in a
-        high-dimensional space. They are used to store embeddings and retrieve
-        similar items. This allows me to retrieve similar words and see how
-        they're used.
+        Pinecone's real strength shows when you attach <i>meaningful</i>
+        information to each embedding. The embedding by itself can telling you
+        which words are similar, but adding context, store name, location, or
+        even category, let's you find the semantically similar words you're
+        looking for.
       </p>
-      <EmbeddingDiagram />
 
-      <h2>Batch Validation with OpenAI</h2>
+      <h2>Meaningful Metadata</h2>
+      <p>
+        Imagine looking for the word "latte" across 10,000 receipts. Without
+        context, you'll get results from latte flavored cereal at grocery
+        stores, expensive drinks at coffee shops, and even brown colored paint
+        from hardware stores.
+      </p>
+      <p>With context, you can filter out the results that don't make sense.</p>
+      <p>
+        I used OpenAI's Agents SDK with the Google Places API to get the context
+        needed for rich, semantic search.
+      </p>
+
+      <GooglePlaces />
+      <MerchantCount />
+
+      <h2>Turning Semantic Search into Autonomous Labeling</h2>
+      <p>
+        Pinecone doesn't just help me <i>find</i> similar words, it allows me to
+        act on them. After every receipt is embedded, an OpenAI agent retrieves
+        the "nearest neighbors" of each unlabeled word, filtered by the
+        receipt's merchant-specific metadata.
+      </p>
+      <p>
+        For the token "latte" on a Starbucks receipt, an agent pulls
+        semantically similar words from other Starbucks receipts and asks:
+      </p>
+      <blockquote>
+        "Given these examples and surrounding words, what label would best
+        describe <strong>latte</strong>?"
+      </blockquote>
 
       <p>
-        After labels were applied, I used OpenAI's batch API to validate them.
-        The batch process is done in three passes:
+        The agent then validates the proposed label using custom rules, similar
+        examples where the word is correctly labeled with that label, and
+        examples where the word is incorrectly labeled.
       </p>
-      <h3>First Pass</h3>
-      <p>
-        The first pass is a simple validation of the labels. Given the word and
-        the proposed label, the model will either approve or reject the label.
-        If rejected, it provides a recommendation for the correct label.
-      </p>
-      <h3>Second Pass</h3>
-      <p>
-        The second pass uses the list of invalid labels from the first pass to
-        retrieve examples of the correct label. It then uses the retrieved
-        examples to generate a new label for the word.
-      </p>
-      <h3>Third Pass</h3>
-      <p>
-        The third pass compares similar words and their labels. After providing
-        valid and invalid examples, ChatGPT either validates that the label is a
-        part of the corpus or that it needs manual review.
-      </p>
+
       <LabelValidationChart />
       <h2>The Feedback Loop</h2>
       <p>
         This process is repeated to continuously improve the accuracy of the
-        labels. I'm able to copy all labels that require manual review to ask
-        ChatGPT for common errors. As part of this loop, I use{" "}
-        <strong>RAGAS</strong> to automatically evaluate how faithful and
-        relevant the model’s responses are to the retrieved context. This gives
-        me a structured way to identify blind spots and quantify improvements as
-        I embed newly validated examples back into the retrieval system.
-      </p>
-      <h1>Training My Own Model</h1>
-      <p>
-        To push the limits of automated receipt understanding, I've been
-        experimenting with transformer-based models available on{" "}
-        <strong>Hugging Face</strong>, a platform that hosts a vast library of
-        pre-trained models for tasks like token classification, document layout
-        understanding, and more. The most promising model I've found is{" "}
-        <strong>LayoutLM</strong>.
-      </p>
-      <HuggingFace />
-      <p>
-        LayoutLM is specifically designed for visually rich documents like
-        receipts and invoices. It uses the text and how it relates to the text
-        around it to make predictions. I ended up writing some infrastructure to
-        spin up spot instances on AWS to train the model. I was able to train a
-        model at 10% the cost, but my dataset isn't large enough to get good
-        results. I'll update my results here as I continue to work on this
-        project.
-      </p>
-
-      <h1>Frontend</h1>
-      <h2>TypeScript + React</h2>
-      <p>
-        I chose React with TypeScript for the frontend. TypeScript's type system
-        gave ChatGPT helpful context about the data, making it easier to handle
-        the code. As the backend and infrastructure evolved, I kept the frontend
-        in sync, ensuring smooth, up-to-date functionality.
-      </p>
-      <div className="logos-container">
-        <ReactLogo />
-        <TypeScriptLogo />
-      </div>
-      <h2>Continuous Testing</h2>
-      <p>
-        A continuous integration and delivery (CICD) pipeline allowed me to
-        apply and test every improvement right away. This kept the frontend
-        aligned with the latest changes, preventing any major issues from
-        slipping through.
+        labels. As part of this loop, I use <strong>RAGAS</strong> to evaluate
+        how faithful and relevant the model's responses are to the retrieved
+        context.
       </p>
 
       <h1>Conclusion</h1>
-      <h2>Lessons Learned</h2>
+      <h2>Moving Fast and Breaking Things</h2>
       <p>
-        From picking the right OCR tools to refining ChatGPT prompts and fixing
-        early issues like duplicate uploads, this project was an exercise in
-        constant improvement. In the end, I built a solid system for
-        automatically extracting data from receipts. The same tagging approach
-        could work for many other types of data or media, offering broader
-        possibilities for cleaning and training.
+        This project was a great learning experience. The best way for me to
+        learn is by actually doing. Experimenting with different tools and
+        techniques allowed me to reflect on what worked and what didn't.
       </p>
-      <h2>Validation and Future Plans</h2>
+      <p>I used Github and Pulumi to manage the cloud and code.</p>
+      <div className="logos-container">
+        <GithubLogo />
+        <Pulumi />
+      </div>
       <p>
-        I am currently labeling the outliers manually to catch any inaccuracies.
-        At the same time, I'm developing a custom classifier to replace both
-        ChatGPT's automated labeling and Apple's OCR system. By reducing
-        reliance on external tools, this approach will streamline the validation
-        process and deliver faster, more reliable performance across any
-        platform.
+        I got my build time down to ~10 seconds. This allows me to make a change
+        locally and get feedback in seconds. Github allows me to track my
+        changes and deploy to production.
       </p>
+
+      <h2>Training a Custom Model</h2>
+      <p>
+        I'm currently training a custom model to improve the process of getting
+        an image and structuring the data. Having to query a database of similar
+        words works for large datasets, but there's room here for a simple model
+        that can run on my laptop. I've been playing with a few models on
+        Hugging Face.
+      </p>
+      <HuggingFace />
+
       <h2>A New Era of Coding</h2>
       <p>
         Artificial intelligence is advancing quickly and changing how we write
         software. However, no matter how smart computers become, we still need
         solid engineering practices, clever problem-solving, and expert
-        knowledge. This project showed that ChatGPT is not just a
-        spellchecker—it's a helpful partner that brings new ideas to software
-        development. I'm excited to see a future where people and AI work
-        together to make programming faster, smarter, and easier for everyone.
+        knowledge. I'm excited to see a future where people and AI work together
+        to make programming faster, smarter, and easier for everyone.
       </p>
       <div className="logos-container">
         <ImageCounts />
@@ -252,6 +426,50 @@ function Receipt() {
       </div>
 
       <ReceiptStack />
+      {/* --- Drag and Drop Overlay and Upload UI --- */}
+      {dragging && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            backgroundColor: "rgba(0,0,0,0.2)",
+            zIndex: 1000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            pointerEvents: "none",
+          }}
+        >
+          <h2 style={{ color: "white" }}>Drop files to upload</h2>
+        </div>
+      )}
+      {files.length > 0 && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 0,
+            left: 0,
+            width: "100%",
+            background: "#fff",
+            padding: "1rem",
+            boxShadow: "0 -2px 6px rgba(0,0,0,0.2)",
+          }}
+        >
+          <h4>Files to upload:</h4>
+          <ul>
+            {files.map((f, i) => (
+              <li key={i}>{f.name}</li>
+            ))}
+          </ul>
+          <button onClick={uploadToS3} disabled={uploading}>
+            {uploading ? "Uploading..." : "Upload to S3"}
+          </button>
+          <p>{message}</p>
+        </div>
+      )}
     </div>
   );
 }
