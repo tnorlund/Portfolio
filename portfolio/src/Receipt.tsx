@@ -39,42 +39,36 @@ function Receipt() {
 
       try {
         for (const file of selectedFiles) {
-          const filename = encodeURIComponent(file.name);
-          const res = await fetch(
-            `${apiUrl}/get-presigned-url?filename=${filename}&contentType=${encodeURIComponent(
-              file.type
-            )}`
-          );
-          const { url, key } = await res.json();
+          // 1. Ask backend for a presigned PUT URL (and create the job)
+          const presignRes = await fetch(`${apiUrl}/upload-receipt`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              filename: file.name,
+              content_type: file.type,
+            }),
+          });
 
-          const upload = await fetch(url, {
+          if (!presignRes.ok) {
+            throw new Error(
+              `Failed to request upload URL for ${file.name} (status ${presignRes.status})`
+            );
+          }
+
+          const { upload_url } = await presignRes.json();
+
+          // 2. Upload the file directly to S3
+          const putRes = await fetch(upload_url, {
             method: "PUT",
-            headers: {
-              "Content-Type": file.type,
-            },
+            headers: { "Content-Type": file.type },
             body: file,
           });
 
-          if (upload.ok) {
-            const submit = await fetch(`${apiUrl}/submit-job`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                s3_key: key,
-                original_filename: file.name,
-                content_type: file.type,
-              }),
-            });
-
-            if (!submit.ok) {
-              throw new Error(`Job submission failed for file ${file.name}`);
-            }
-          } else {
+          if (!putRes.ok) {
             throw new Error(`Upload failed for file ${file.name}`);
           }
         }
+
         setMessage(
           `Upload successful: ${selectedFiles.map((f) => f.name).join(", ")}`
         );
@@ -88,7 +82,6 @@ function Receipt() {
     },
     [apiUrl]
   );
-
   const handleDrop = useCallback(
     async (e: DragEvent) => {
       e.preventDefault();
