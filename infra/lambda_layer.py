@@ -484,72 +484,7 @@ class LambdaLayer(ComponentResource):
             opts=pulumi.ResourceOptions(parent=self),
         )
 
-        # Setup CloudTrail for logging PutObject events
-        cloudtrail_bucket = aws.s3.Bucket(
-            f"{self.name}-cloudtrail-logs",
-            bucket=f"{self.name}-cloudtrail-logs",
-            force_destroy=True,
-            opts=pulumi.ResourceOptions(parent=self),
-        )
-
-        trail = aws.cloudtrail.Trail(
-            f"{self.name}-trail",
-            s3_bucket_name=cloudtrail_bucket.id,
-            include_global_service_events=False,
-            is_multi_region_trail=False,
-            enable_logging=True,
-            event_selectors=[
-                aws.cloudtrail.TrailEventSelectorArgs(
-                    read_write_type="WriteOnly",
-                    include_management_events=True,
-                    data_resources=[
-                        aws.cloudtrail.TrailEventSelectorDataResourceArgs(
-                            type="AWS::S3::Object",
-                            values=[build_bucket.arn.apply(lambda arn: f"{arn}/")],
-                        ),
-                    ],
-                ),
-            ],
-            opts=pulumi.ResourceOptions(parent=self),
-        )
-
-        cloudtrail_bucket_policy = aws.s3.BucketPolicy(
-            f"{self.name}-cloudtrail-logs-policy",
-            bucket=cloudtrail_bucket.id,
-            policy=pulumi.Output.all(cloudtrail_bucket.bucket, trail.arn).apply(
-                lambda args: json.dumps(
-                    {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            {
-                                "Sid": "AWSCloudTrailAclCheck20150319",
-                                "Effect": "Allow",
-                                "Principal": {"Service": "cloudtrail.amazonaws.com"},
-                                "Action": "s3:GetBucketAcl",
-                                "Resource": f"arn:aws:s3:::{args[0]}",
-                                "Condition": {
-                                    "StringEquals": {"aws:SourceArn": args[1]}
-                                },
-                            },
-                            {
-                                "Sid": "AWSCloudTrailWrite20150319",
-                                "Effect": "Allow",
-                                "Principal": {"Service": "cloudtrail.amazonaws.com"},
-                                "Action": "s3:PutObject",
-                                "Resource": f"arn:aws:s3:::{args[0]}/AWSLogs/{aws.get_caller_identity().account_id}/*",
-                                "Condition": {
-                                    "StringEquals": {
-                                        "s3:x-amz-acl": "bucket-owner-full-control",
-                                        "aws:SourceArn": args[1],
-                                    }
-                                },
-                            },
-                        ],
-                    }
-                )
-            ),
-            opts=pulumi.ResourceOptions(parent=self),
-        )
+        # (EventBridge integration removed)
 
         # Set up Step Functions for orchestration
         self._setup_step_functions(codebuild_project, build_bucket)
@@ -929,6 +864,167 @@ class LambdaLayer(ComponentResource):
             opts=pulumi.ResourceOptions(parent=self),
         )
 
+        # ------------------------------------------------------------------
+        # S3 -> SQS notification (no CloudTrail needed in provider v6.78)
+        # ------------------------------------------------------------------
+        event_queue = aws.sqs.Queue(
+            f"{self.name}-source-upload-queue",
+            visibility_timeout_seconds=60,
+            opts=pulumi.ResourceOptions(parent=self),
+        )
+
+        # Allow S3 bucket to send messages to the SQS queue
+        aws.sqs.QueuePolicy(
+            f"{self.name}-queue-policy",
+            queue_url=event_queue.id,
+            policy=pulumi.Output.all(event_queue.arn, build_bucket.arn).apply(
+                lambda arns: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Sid": "AllowS3SendMessage",
+                                "Effect": "Allow",
+                                "Principal": {"Service": "s3.amazonaws.com"},
+                                "Action": "SQS:SendMessage",
+                                "Resource": arns[0],
+                                "Condition": {"ArnEquals": {"aws:SourceArn": arns[1]}},
+                            }
+                        ],
+                    }
+                )
+            ),
+            opts=pulumi.ResourceOptions(parent=self),
+        )
+
+        # Add bucket notification to send ObjectCreated events to SQS
+        aws.s3.BucketNotification(
+            f"{self.name}-sqs-notification",
+            bucket=build_bucket.id,
+            queues=[
+                aws.s3.BucketNotificationQueueArgs(
+                    queue_arn=event_queue.arn,
+                    events=["s3:ObjectCreated:*"],
+                    filter_prefix=f"{self.name}/",
+                    filter_suffix="source.zip",
+                )
+            ],
+            opts=pulumi.ResourceOptions(parent=self, depends_on=[event_queue]),
+        )
+
+        # ------------------------------------------------------------------
+        # Lambda that reads SQS messages and starts the Step Function
+        # ------------------------------------------------------------------
+        trigger_lambda_role = aws.iam.Role(
+            f"{self.name}-trigger-role",
+            assume_role_policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"Service": "lambda.amazonaws.com"},
+                            "Action": "sts:AssumeRole",
+                        }
+                    ],
+                }
+            ),
+            opts=pulumi.ResourceOptions(parent=self),
+        )
+
+        aws.iam.RolePolicyAttachment(
+            f"{self.name}-trigger-basic-exec",
+            role=trigger_lambda_role.name,
+            policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+            opts=pulumi.ResourceOptions(parent=self),
+        )
+
+        # Allow Lambda to start executions of the state machine
+        aws.iam.RolePolicy(
+            f"{self.name}-trigger-start-exec",
+            role=trigger_lambda_role.id,
+            policy=state_machine.arn.apply(
+                lambda sm_arn: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": ["states:StartExecution"],
+                                "Resource": sm_arn,
+                            }
+                        ],
+                    }
+                )
+            ),
+            opts=pulumi.ResourceOptions(parent=self),
+        )
+
+        # Allow the trigger Lambda to receive and delete messages from the queue
+        aws.iam.RolePolicy(
+            f"{self.name}-trigger-sqs-access",
+            role=trigger_lambda_role.id,
+            policy=event_queue.arn.apply(
+                lambda qarn: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "sqs:ReceiveMessage",
+                                    "sqs:DeleteMessage",
+                                    "sqs:GetQueueAttributes",
+                                ],
+                                "Resource": qarn,
+                            }
+                        ],
+                    }
+                )
+            ),
+            opts=pulumi.ResourceOptions(parent=self),
+        )
+
+        trigger_lambda = aws.lambda_.Function(
+            f"{self.name}-sqs-trigger",
+            runtime="python3.13",
+            role=trigger_lambda_role.arn,
+            handler="index.handler",
+            code=pulumi.AssetArchive(
+                {
+                    "index.py": pulumi.StringAsset(
+                        """
+import os, json, boto3
+
+sf = boto3.client("stepfunctions")
+SM_ARN = os.environ["STATE_MACHINE_ARN"]
+
+def handler(event, _):
+    for record in event["Records"]:
+        body = json.loads(record["body"])
+        sf.start_execution(stateMachineArn=SM_ARN, input=json.dumps(body))
+    return {"status": "started"}
+"""
+                    )
+                }
+            ),
+            timeout=60,
+            memory_size=128,
+            environment=aws.lambda_.FunctionEnvironmentArgs(
+                variables={"STATE_MACHINE_ARN": state_machine.arn}
+            ),
+            opts=pulumi.ResourceOptions(parent=self),
+        )
+
+        # SQS event source mapping to the Lambda
+        aws.lambda_.EventSourceMapping(
+            f"{self.name}-sqs-event-source",
+            event_source_arn=event_queue.arn,
+            function_name=trigger_lambda.name,
+            batch_size=1,
+            opts=pulumi.ResourceOptions(parent=self),
+        )
+
         # Attach policy allowing EventBridge to start CodeBuild project
         aws.iam.RolePolicy(
             f"{self.name}-eventbridge-policy",
@@ -958,40 +1054,7 @@ class LambdaLayer(ComponentResource):
         # Export the state machine ARN
         pulumi.export(f"{self.name}_state_machine_arn", state_machine.arn)
 
-        # Add EventBridge rule to trigger the Step Function on successful CodeBuild completion
-        event_rule = aws.cloudwatch.EventRule(
-            f"{self.name}-source-upload-trigger",
-            description=f"Trigger Step Function for {self.name} on source upload",
-            event_pattern=pulumi.Output.all(build_bucket.bucket).apply(
-                lambda bucket: json.dumps(
-                    {
-                        "source": ["aws.s3"],
-                        "detail-type": ["AWS API Call via CloudTrail"],
-                        "detail": {
-                            "eventSource": ["s3.amazonaws.com"],
-                            "eventName": [
-                                "PutObject",
-                                "CompleteMultipartUpload",
-                            ],
-                            "requestParameters": {
-                                "bucketName": bucket,
-                                "key": [f"{self.name}/source.zip"],
-                            },
-                        },
-                    }
-                )
-            ),
-            opts=pulumi.ResourceOptions(parent=self),
-        )
-
-        # EventBridge rule to trigger the Step Functions state machine after successful build
-        aws.cloudwatch.EventTarget(
-            f"{self.name}-state-machine-trigger",
-            rule=event_rule.name,
-            arn=state_machine.arn,
-            role_arn=self.eventbridge_role.arn,
-            opts=pulumi.ResourceOptions(parent=self),
-        )
+        # NOTE: EventBridge rule removed – S3 -> SQS -> Lambda now handles triggering.
 
 
 # Define the layers to build
