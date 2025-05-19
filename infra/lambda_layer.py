@@ -108,15 +108,21 @@ class LambdaLayer(ComponentResource):
         self,
         name: str,
         package_dir: str,
-        python_version: str,
+        python_versions,
         description: str = None,
         opts: pulumi.ResourceOptions = None,
     ):
         super().__init__(f"lambda-layer:{name}", name, {}, opts)
 
         self.name = name
+        # Use a stack‑qualified name for the actual AWS Lambda layer
+        self.layer_name = f"{name}-{pulumi.get_stack()}"
         self.package_dir = package_dir
-        self.python_version = python_version
+        # Accept either a single version string or a list
+        if isinstance(python_versions, str):
+            self.python_versions = [python_versions]
+        else:
+            self.python_versions = list(python_versions)
         self.description = description or f"Automatically built Lambda layer for {name}"
         self.opts = opts
 
@@ -232,7 +238,7 @@ class LambdaLayer(ComponentResource):
         # Create the bucket ARN and layer ARN variables to use in policies
         bucket_arn = build_bucket.arn
         layer_arn_pattern = Output.all().apply(
-            lambda _: f"arn:aws:lambda:*:*:layer:{self.name}:*"
+            lambda _: f"arn:aws:lambda:*:*:layer:{self.layer_name}:*"
         )
 
         # Attach more specific policies to the role
@@ -318,19 +324,15 @@ class LambdaLayer(ComponentResource):
                 image="aws/codebuild/amazonlinux2-x86_64-standard:5.0",
                 environment_variables=[
                     aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
-                        name="LAYER_NAME", value=self.name
+                        name="LAYER_NAME", value=self.layer_name
                     ),
                     aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
                         name="PACKAGE_DIR",
-                        value=".",  # build from current workspace root
+                        value=".",  # workspace root
                     ),
                     aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
-                        name="PYTHON_VERSION",
-                        value=(
-                            self.python_version[0]
-                            if isinstance(self.python_version, list)
-                            else self.python_version
-                        ),
+                        name="PYTHON_VERSIONS",
+                        value=",".join(self.python_versions),
                     ),
                 ],
             ),
@@ -401,8 +403,8 @@ class LambdaLayer(ComponentResource):
         # Trigger the initial synchronous build explicitly
         self.layer_version = aws.lambda_.LayerVersion(
             f"{self.name}-lambda-layer",
-            layer_name=self.name,
-            compatible_runtimes=[f"python{self.python_version[0]}"],
+            layer_name=self.layer_name,
+            compatible_runtimes=[f"python{v}" for v in self.python_versions],
             compatible_architectures=["x86_64", "arm64"],
             description=self.description,
             s3_bucket=build_bucket.bucket,
@@ -493,49 +495,37 @@ class LambdaLayer(ComponentResource):
 
     def _get_buildspec(self):
         """Generate the buildspec.yml content for CodeBuild."""
-        primary_python_version = (
-            self.python_version[0]
-            if isinstance(self.python_version, list)
-            else self.python_version
-        )
-
+        primary = self.python_versions[0]
+        versions_csv = ",".join(self.python_versions)
         return {
             "version": 0.2,
             "phases": {
                 "install": {
-                    "runtime-versions": {"python": primary_python_version},
+                    "runtime-versions": {"python": primary},
                     "commands": [
-                        "echo Installing dependencies...",
-                        "yum install -y libjpeg-devel zlib-devel",
-                        "pip install --upgrade pip",
-                        "pip install build",
+                        "echo Installing build tooling ...",
+                        "pip install --upgrade pip build",
                     ],
                 },
                 "build": {
                     "commands": [
-                        "echo Cleaning build directory...",
+                        "echo Build directory prep",
                         "rm -rf build dist",
-                        "mkdir -p build/python/lib/python${PYTHON_VERSION}/site-packages",
-                        "echo Build directory created. Listing build/:",
-                        "find build -maxdepth 2",
-                        "echo Building the package wheel from $PACKAGE_DIR...",
+                        "mkdir -p build",
+                        'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do '
+                        "mkdir -p build/python/lib/python${v}/site-packages; "
+                        "done",
+                        'echo "Building wheel from $PACKAGE_DIR"',
                         "python -m build $PACKAGE_DIR --wheel --outdir dist/",
-                        "echo Wheel built. Listing contents of dist/:",
-                        "ls -l dist/",
-                        "echo Installing the built wheel into the correct directory...",
-                        "pip install dist/*.whl -t build/python/lib/python${PYTHON_VERSION}/site-packages",
-                        "echo Installation complete. Listing installed files:",
-                        "find build/python -type f | head -20",
+                        'echo "Installing wheel into layer structure"',
+                        'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do '
+                        "pip install dist/*.whl -t build/python/lib/python${v}/site-packages; "
+                        "done",
                         "chmod -R 755 build/python",
-                        "echo Listing build directory:",
-                        "ls -la build | head",
                     ],
                 },
             },
-            "artifacts": {
-                "files": ["python/**/*"],
-                "base-directory": "build",
-            },
+            "artifacts": {"files": ["python/**/*"], "base-directory": "build"},
         }
 
     def _generate_upload_script(self, bucket, package_path, package_hash):
@@ -736,7 +726,7 @@ class LambdaLayer(ComponentResource):
         aws.iam.RolePolicy(
             f"{self.name}-publish-layer-policy",
             role=publish_layer_function_role.id,
-            policy=pulumi.Output.all(build_bucket.bucket, self.name).apply(
+            policy=pulumi.Output.all(build_bucket.bucket, self.layer_name).apply(
                 lambda args: json.dumps(
                     {
                         "Version": "2012-10-17",
@@ -776,7 +766,7 @@ class LambdaLayer(ComponentResource):
             environment=aws.lambda_.FunctionEnvironmentArgs(
                 variables={
                     "BUCKET_NAME": build_bucket.bucket,
-                    "LAYER_NAME": self.name,
+                    "LAYER_NAME": self.layer_name,
                     "LAYER_DESCRIPTION": self.description,
                     "COMPATIBLE_ARCHITECTURES": "x86_64,arm64",
                 },
@@ -1067,19 +1057,19 @@ layers_to_build = [
         "package_dir": "receipt_dynamo",
         "name": "receipt-dynamo",
         "description": "DynamoDB layer for receipt-dynamo",
-        "python_version": ["3.12"],
+        "python_versions": ["3.11", "3.12"],
     },
     {
         "package_dir": "receipt_label",
         "name": "receipt-label",
         "description": "Label layer for receipt-label",
-        "python_version": ["3.12"],
+        "python_versions": ["3.11", "3.12"],
     },
     {
         "package_dir": "receipt_upload",
         "name": "receipt-upload",
         "description": "Upload layer for receipt-upload",
-        "python_version": ["3.12"],
+        "python_versions": ["3.11", "3.12"],
     },
     # Add more layers here as needed
 ]
@@ -1094,7 +1084,7 @@ for layer_config in layers_to_build:
     lambda_layer = LambdaLayer(
         name=layer_config["name"],
         package_dir=layer_config["package_dir"],
-        python_version=layer_config["python_version"],
+        python_versions=layer_config["python_versions"],
         description=layer_config["description"],
     )
 
