@@ -120,7 +120,7 @@ def test_word_tag_init_invalid_timestamp_added():
     """Test that WordTag raises ValueError if timestamp_added is invalid."""
     with pytest.raises(
         ValueError,
-        match="timestamp_added must be a datetime object or a string",
+        match="timestamp_added must be datetime, str, got",
     ):
         WordTag(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "example", 1234567890
@@ -148,7 +148,7 @@ def test_word_tag_eq(sample_word_tag):
 @pytest.mark.unit
 def test_word_tag_iter(sample_word_tag):
     """Test __iter__ method yields correct name/value pairs."""
-    as_dict = dict(sample_word_tag)
+    as_dict = sample_word_tag.to_dict()
     assert as_dict["image_id"] == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert as_dict["line_id"] == 7
     assert as_dict["word_id"] == 101
