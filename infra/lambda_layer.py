@@ -321,7 +321,8 @@ class LambdaLayer(ComponentResource):
                         name="LAYER_NAME", value=self.name
                     ),
                     aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
-                        name="PACKAGE_DIR", value="source"
+                        name="PACKAGE_DIR",
+                        value=".",  # build from current workspace root
                     ),
                     aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
                         name="PYTHON_VERSION",
@@ -513,21 +514,21 @@ class LambdaLayer(ComponentResource):
                 "build": {
                     "commands": [
                         "echo Cleaning build directory...",
-                        "rm -rf build",
+                        "rm -rf build dist",
                         "mkdir -p build/python/lib/python${PYTHON_VERSION}/site-packages",
                         "echo Build directory created. Listing build/:",
                         "find build -maxdepth 2",
-                        "echo Building the package wheel...",
-                        "python -m build --wheel --outdir dist/",
+                        "echo Building the package wheel from $PACKAGE_DIR...",
+                        "python -m build $PACKAGE_DIR --wheel --outdir dist/",
                         "echo Wheel built. Listing contents of dist/:",
                         "ls -l dist/",
                         "echo Installing the built wheel into the correct directory...",
                         "pip install dist/*.whl -t build/python/lib/python${PYTHON_VERSION}/site-packages",
                         "echo Installation complete. Listing installed files:",
-                        "find build/python -type f",
+                        "find build/python -type f | head -20",
                         "chmod -R 755 build/python",
                         "echo Listing build directory:",
-                        "ls -la build",
+                        "ls -la build | head",
                     ],
                 },
             },
