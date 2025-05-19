@@ -2,7 +2,6 @@ import { Routes, Route, Link } from "react-router-dom";
 import "./App.css";
 import Resume from "./Resume"; // import the Resume component
 import Receipt from "./Receipt";
-import ReceiptUpload from "./ReceiptUpload";
 
 function App() {
   return (
@@ -36,17 +35,11 @@ function App() {
                 <button onClick={() => (window.location.href = "/receipt")}>
                   Receipt
                 </button>
-                <button
-                  onClick={() => (window.location.href = "/receipt-upload")}
-                >
-                  Receipt Upload
-                </button>
               </main>
             }
           />
           <Route path="/resume" element={<Resume />} />
           <Route path="/receipt" element={<Receipt />} />
-          <Route path="/receipt-upload" element={<ReceiptUpload />} />
         </Routes>
       </div>
     </div>

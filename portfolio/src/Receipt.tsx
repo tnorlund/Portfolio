@@ -1,15 +1,13 @@
-// import ReceiptGrid from "./ReceiptGrid";
-import Diagram from "./Diagram";
 import Pulumi from "./Pulumi";
 import OpenAI from "./OpenAI";
 import ReceiptStack from "./ReceiptStack";
 import ImageBoundingBox from "./ImageBoundingBox";
-import TypeScriptLogo from "./TypeScriptLogo";
+
 import React, { useState, useEffect, useCallback } from "react";
-import ReactLogo from "./ReactLogo";
+
 import Pinecone from "./Pinecone";
 import GooglePlaces from "./GooglePlaces";
-import EmbeddingDiagram from "./embedding_diagram";
+
 import { ReceiptCounts, ImageCounts } from "./DataCounts";
 import LabelValidationChart from "./LabelValidationCount";
 import HuggingFace from "./HuggingFace";
@@ -33,71 +31,77 @@ function Receipt() {
     ? "https://dev-upload.tylernorlund.com"
     : "https://upload.tylernorlund.com";
 
-  const uploadToS3Internal = async (selectedFiles: File[]) => {
-    if (selectedFiles.length === 0) return;
-    setUploading(true);
-    setMessage("");
+  const uploadToS3Internal = useCallback(
+    async (selectedFiles: File[]) => {
+      if (selectedFiles.length === 0) return;
+      setUploading(true);
+      setMessage("");
 
-    try {
-      for (const file of selectedFiles) {
-        const filename = encodeURIComponent(file.name);
-        const res = await fetch(
-          `${apiUrl}/get-presigned-url?filename=${filename}&contentType=${encodeURIComponent(
-            file.type
-          )}`
-        );
-        const { url, key } = await res.json();
+      try {
+        for (const file of selectedFiles) {
+          const filename = encodeURIComponent(file.name);
+          const res = await fetch(
+            `${apiUrl}/get-presigned-url?filename=${filename}&contentType=${encodeURIComponent(
+              file.type
+            )}`
+          );
+          const { url, key } = await res.json();
 
-        const upload = await fetch(url, {
-          method: "PUT",
-          headers: {
-            "Content-Type": file.type,
-          },
-          body: file,
-        });
-
-        if (upload.ok) {
-          const submit = await fetch(`${apiUrl}/submit-job`, {
-            method: "POST",
+          const upload = await fetch(url, {
+            method: "PUT",
             headers: {
-              "Content-Type": "application/json",
+              "Content-Type": file.type,
             },
-            body: JSON.stringify({
-              s3_key: key,
-              original_filename: file.name,
-              content_type: file.type,
-            }),
+            body: file,
           });
 
-          if (!submit.ok) {
-            throw new Error(`Job submission failed for file ${file.name}`);
-          }
-        } else {
-          throw new Error(`Upload failed for file ${file.name}`);
-        }
-      }
-      setMessage(
-        `Upload successful: ${selectedFiles.map((f) => f.name).join(", ")}`
-      );
-      setFiles([]);
-    } catch (err) {
-      console.error(err);
-      setMessage("Upload failed");
-    } finally {
-      setUploading(false);
-    }
-  };
+          if (upload.ok) {
+            const submit = await fetch(`${apiUrl}/submit-job`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                s3_key: key,
+                original_filename: file.name,
+                content_type: file.type,
+              }),
+            });
 
-  const handleDrop = useCallback(async (e: DragEvent) => {
-    e.preventDefault();
-    setDragging(false);
-    const dt = e.dataTransfer;
-    if (dt && dt.files) {
-      const newFiles = Array.from(dt.files);
-      setFiles((prev) => [...prev, ...newFiles]);
-      await uploadToS3Internal(newFiles);
-    }
-  }, []);
+            if (!submit.ok) {
+              throw new Error(`Job submission failed for file ${file.name}`);
+            }
+          } else {
+            throw new Error(`Upload failed for file ${file.name}`);
+          }
+        }
+        setMessage(
+          `Upload successful: ${selectedFiles.map((f) => f.name).join(", ")}`
+        );
+        setFiles([]);
+      } catch (err) {
+        console.error(err);
+        setMessage("Upload failed");
+      } finally {
+        setUploading(false);
+      }
+    },
+    [apiUrl]
+  );
+
+  const handleDrop = useCallback(
+    async (e: DragEvent) => {
+      e.preventDefault();
+      setDragging(false);
+      const dt = e.dataTransfer;
+      if (dt && dt.files) {
+        const newFiles = Array.from(dt.files);
+        setFiles((prev) => [...prev, ...newFiles]);
+        await uploadToS3Internal(newFiles);
+      }
+    },
+    [uploadToS3Internal]
+  );
 
   const handleDragOver = useCallback((e: DragEvent) => {
     e.preventDefault();
@@ -111,7 +115,7 @@ function Receipt() {
   const uploadToS3 = useCallback(() => {
     uploadToS3Internal(files);
     setFiles([]);
-  }, [files]);
+  }, [files, uploadToS3Internal]);
 
   useEffect(() => {
     window.addEventListener("dragover", handleDragOver);
