@@ -188,8 +188,8 @@ class LambdaLayer(ComponentResource):
         }
         # Create an S3 bucket for source code and build artifacts
         build_bucket = aws.s3.Bucket(
-            f"{self.name}-build-artifacts",
-            bucket=f"lambda-layer-{self.name}-artifacts",
+            resource_name=f"lambda-layer-{self.name}-artifacts-{pulumi.get_stack()}",
+            bucket=f"lambda-layer-{self.name}-artifacts-{pulumi.get_stack()}",
             force_destroy=True,
             opts=pulumi.ResourceOptions(parent=self),
         )
@@ -292,6 +292,7 @@ class LambdaLayer(ComponentResource):
         # Create the CodeBuild project
         codebuild_project = aws.codebuild.Project(
             resource_name=f"{self.name}-layer-build",
+            name=f"{self.name}-layer-build-{pulumi.get_stack()}",
             service_role=codebuild_role.arn,
             source=aws.codebuild.ProjectSourceArgs(
                 type="S3",
@@ -874,7 +875,7 @@ class LambdaLayer(ComponentResource):
         )
 
         # Allow S3 bucket to send messages to the SQS queue
-        aws.sqs.QueuePolicy(
+        queue_policy = aws.sqs.QueuePolicy(
             f"{self.name}-queue-policy",
             queue_url=event_queue.id,
             policy=pulumi.Output.all(event_queue.arn, build_bucket.arn).apply(
@@ -909,7 +910,9 @@ class LambdaLayer(ComponentResource):
                     filter_suffix="source.zip",
                 )
             ],
-            opts=pulumi.ResourceOptions(parent=self, depends_on=[event_queue]),
+            opts=pulumi.ResourceOptions(
+                parent=self, depends_on=[event_queue, queue_policy]
+            ),
         )
 
         # ------------------------------------------------------------------
