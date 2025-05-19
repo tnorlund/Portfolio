@@ -58,8 +58,8 @@ jobs:
         run: |
           echo "Running tests for ${{ matrix.test-type }}"
           export COVERAGE_FILE="$PWD/.coverage.${{ matrix.test-type }}"
-          python -m pytest -m ${{ matrix.test-type }} --cov=receipt_dynamo --cov-report=term
-          
+          python -m pytest -m ${{ matrix.test-type }} -n auto --cov=receipt_dynamo --cov-report=term
+
       - name: Upload test coverage
         uses: actions/upload-artifact@v4
         with:
@@ -84,7 +84,7 @@ jobs:
 
       - name: Set up Docker
         uses: docker/setup-buildx-action@v3
-      
+
       - name: Set up AWS CLI
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -101,11 +101,11 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: 3.13
-      
+
       - name: Install package with all dependencies
         run: |
           pip install -e "${{ github.workspace }}/receipt_dynamo[test,dev]"
-      
+
       - name: Setup Pulumi
         uses: pulumi/setup-pulumi@v2
 
@@ -134,7 +134,7 @@ jobs:
           BUCKET_NAME=$(pulumi stack output cdn_bucket_name --stack tnorlund/portfolio/prod)
           AWS_REGION_FROM_PULUMI=$(pulumi stack output region --stack tnorlund/portfolio/prod)
           DISTRIBUTION_ID=$(pulumi stack output cdn_distribution_id --stack tnorlund/portfolio/prod)
-          
+
           echo "bucket_name=$BUCKET_NAME" >> $GITHUB_OUTPUT
           echo "aws_region=$AWS_REGION_FROM_PULUMI" >> $GITHUB_OUTPUT
           echo "distribution_id=$DISTRIBUTION_ID" >> $GITHUB_OUTPUT
@@ -183,7 +183,7 @@ jobs:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          
+
       - name: Upload end-to-end test coverage
         uses: actions/upload-artifact@v4
         with:
@@ -222,16 +222,16 @@ jobs:
         run: |
           echo "Contents of coverage-data directory:"
           ls -la coverage-data/
-          
+
       - name: Combine coverage
         working-directory: receipt_dynamo
         run: |
           # Create a directory for collecting all coverage files
           mkdir -p coverage-files
-          
+
           # Find and copy all coverage files from various possible locations
           find ../coverage-data -name ".coverage*" -type f -exec cp {} coverage-files/ \;
-          
+
           if [ "$(ls -A coverage-files 2>/dev/null)" ]; then
             echo "Copying coverage files to current directory..."
             cp coverage-files/.* . 2>/dev/null || true  # Use .* to copy hidden files
