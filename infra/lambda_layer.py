@@ -516,7 +516,7 @@ class LambdaLayer(ComponentResource):
                         "mkdir -p build/python/lib/python${v}/site-packages; "
                         "done",
                         'echo "Building wheel"',
-                        "python -m build --wheel --outdir dist/",
+                        "python -m build source --wheel --outdir dist/",
                         'echo "Installing wheel into layer structure"',
                         'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do '
                         "pip install dist/*.whl -t build/python/lib/python${v}/site-packages; "
