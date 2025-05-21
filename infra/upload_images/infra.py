@@ -195,6 +195,40 @@ class UploadImages(ComponentResource):
             opts=ResourceOptions(parent=self, ignore_changes=["layers"]),
         )
 
+        # Create a dedicated role for the OCR processing Lambda
+        process_ocr_role = Role(
+            f"{name}-process-ocr-role",
+            assume_role_policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"Service": "lambda.amazonaws.com"},
+                            "Action": "sts:AssumeRole",
+                        }
+                    ],
+                }
+            ),
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Attach the basic execution policy
+        RolePolicyAttachment(
+            f"{name}-process-ocr-basic-exec",
+            role=process_ocr_role.name,
+            policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Attach the SQS queue execution policy for event mapping
+        RolePolicyAttachment(
+            f"{name}-process-ocr-sqs-exec",
+            role=process_ocr_role.name,
+            policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole",
+            opts=ResourceOptions(parent=self),
+        )
+
         # Begin: HTTP API Gateway v2 (replaces API Gateway v1)
         api = aws.apigatewayv2.Api(
             f"{name}-http-api",
@@ -245,7 +279,7 @@ class UploadImages(ComponentResource):
 
         process_ocr_lambda = Function(
             f"{name}-process-ocr-results-lambda",
-            role=upload_receipt_role.arn,
+            role=process_ocr_role.arn,
             runtime="python3.12",
             handler="process_ocr_results.handler",
             code=AssetArchive(

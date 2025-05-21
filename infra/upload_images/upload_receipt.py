@@ -1,4 +1,3 @@
-# upload_receipt.py  (new single Lambda)
 import os, json, uuid, boto3, urllib.parse
 from datetime import datetime
 from receipt_dynamo import DynamoClient
