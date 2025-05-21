@@ -197,4 +197,4 @@ infra/temp/*
 infra/*.zip
 
 # Yarn
-portfolio/.yarn
+portfolio/.yarn/*
