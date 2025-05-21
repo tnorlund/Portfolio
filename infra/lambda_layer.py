@@ -65,18 +65,18 @@ with AWS Lambda.
 
 """
 
+import glob
+import hashlib
+import json
 import os
+import shutil
+import sys
+import tempfile
+import time
+
 import pulumi
 import pulumi_aws as aws
 import pulumi_command as command
-import json
-import hashlib
-import glob
-import sys
-import time
-import tempfile
-import shutil
-
 from pulumi import ComponentResource, Output
 
 # Constants
@@ -328,7 +328,7 @@ class LambdaLayer(ComponentResource):
                     ),
                     aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
                         name="PACKAGE_DIR",
-                        value=self.package_dir,
+                        value="source",
                     ),
                     aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
                         name="PYTHON_VERSIONS",
@@ -516,7 +516,7 @@ class LambdaLayer(ComponentResource):
                         "mkdir -p build/python/lib/python${v}/site-packages; "
                         "done",
                         'echo "Building wheel"',
-                        "python -m build --wheel --outdir dist/",
+                        "python -m build source --wheel --outdir dist/",
                         'echo "Installing wheel into layer structure"',
                         'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do '
                         "pip install dist/*.whl -t build/python/lib/python${v}/site-packages; "
@@ -537,13 +537,14 @@ class LambdaLayer(ComponentResource):
         # Ensure cleanup on exit
         trap 'rm -rf "$TMP_DIR"' EXIT
         
-        # Copy the package files
-        cp -r {package_path}/* "$TMP_DIR/"
-        
-        # Create the zip file
-        pushd "$TMP_DIR" > /dev/null
-        zip -r "$TMP_DIR/source.zip" .
-        popd > /dev/null
+        # Create source directory and copy package files
+        mkdir -p "$TMP_DIR/source"
+        cp -r {package_path}/* "$TMP_DIR/source/"
+
+        # Create the zip file with the source directory
+        pushd "$TMP_DIR" >/dev/null
+        zip -r "$TMP_DIR/source.zip" source
+        popd >/dev/null
         
         # Define retries and delay between retries
         MAX_RETRIES=3
