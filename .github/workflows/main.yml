@@ -104,10 +104,6 @@ jobs:
         with:
           python-version: 3.13
 
-      - name: Install package with all dependencies
-        run: |
-          pip install -e "${{ github.workspace }}/receipt_dynamo[test,dev]"
-
       - name: Setup Pulumi
         uses: pulumi/setup-pulumi@v2
 
