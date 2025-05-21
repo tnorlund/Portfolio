@@ -195,3 +195,6 @@ infra/temp/*
 
 # Zips in Build
 infra/*.zip
+
+# Yarn
+portfolio/.yarn
