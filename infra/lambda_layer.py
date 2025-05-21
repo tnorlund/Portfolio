@@ -328,7 +328,7 @@ class LambdaLayer(ComponentResource):
                     ),
                     aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
                         name="PACKAGE_DIR",
-                        value=".",  # workspace root
+                        value="source",  # workspace root
                     ),
                     aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
                         name="PYTHON_VERSIONS",
@@ -515,8 +515,8 @@ class LambdaLayer(ComponentResource):
                         'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do '
                         "mkdir -p build/python/lib/python${v}/site-packages; "
                         "done",
-                        'echo "Building wheel from $PACKAGE_DIR"',
-                        "python -m build $PACKAGE_DIR --wheel --outdir dist/",
+                        'echo "Building wheel"',
+                        "python -m build  --wheel --outdir dist/",
                         'echo "Installing wheel into layer structure"',
                         'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do '
                         "pip install dist/*.whl -t build/python/lib/python${v}/site-packages; "
