@@ -104,6 +104,10 @@ jobs:
         with:
           python-version: 3.13
 
+      - name: Install Pulumi Python dependencies
+        run: |
+          pip install -e "${{ github.workspace }}/infra[dev]"
+
       - name: Setup Pulumi
         uses: pulumi/setup-pulumi@v2
 
