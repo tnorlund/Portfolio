@@ -328,7 +328,7 @@ class LambdaLayer(ComponentResource):
                     ),
                     aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
                         name="PACKAGE_DIR",
-                        value="source",  # workspace root
+                        value=self.package_dir,
                     ),
                     aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
                         name="PYTHON_VERSIONS",
@@ -510,13 +510,13 @@ class LambdaLayer(ComponentResource):
                 "build": {
                     "commands": [
                         "echo Build directory prep",
-                        "rm -rf build dist",
+                        "rm -rf build",
                         "mkdir -p build",
                         'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do '
                         "mkdir -p build/python/lib/python${v}/site-packages; "
                         "done",
                         'echo "Building wheel"',
-                        "python -m build  --wheel --outdir dist/",
+                        "python -m build --wheel --outdir dist/",
                         'echo "Installing wheel into layer structure"',
                         'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do '
                         "pip install dist/*.whl -t build/python/lib/python${v}/site-packages; "
@@ -1078,8 +1078,6 @@ layers_to_build = [
 lambda_layers = {}
 
 for layer_config in layers_to_build:
-    print(f"Creating Lambda Layer using CodeBuild: {layer_config['name']}")
-
     # Create the Lambda Layer resource using the enhanced component
     lambda_layer = LambdaLayer(
         name=layer_config["name"],
@@ -1089,7 +1087,6 @@ for layer_config in layers_to_build:
     )
 
     lambda_layers[layer_config["name"]] = lambda_layer
-    print(f"Lambda Layer resource created for: {layer_config['name']}")
 
 # Access the built layers by name
 dynamo_layer = lambda_layers["receipt-dynamo"]
