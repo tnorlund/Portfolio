@@ -176,6 +176,16 @@ pulumi config set ml-training:force-rebuild true --stack <stack>
 pulumi up --stack <stack>
 ```
 
+### Lambda Layer Rebuilds
+
+To force a rebuild of the Lambda layer (for example in CI):
+
+```bash
+pulumi config set lambda-layer:force-rebuild true --stack <stack>
+pulumi up --stack <stack>
+pulumi config set lambda-layer:force-rebuild false --stack <stack>
+```
+
 ### Stack Management
 
 To create a new stack:
