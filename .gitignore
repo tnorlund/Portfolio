@@ -198,4 +198,3 @@ infra/*.zip
 
 # Yarn
 portfolio/.yarn/*
-portfolio/node_modules/
