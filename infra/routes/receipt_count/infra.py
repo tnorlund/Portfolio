@@ -87,6 +87,7 @@ receipt_count_lambda = aws.lambda_.Function(
         }
     },
     memory_size=1024,
+    architectures=["arm64"],
     tags={"environment": pulumi.get_stack()},
 )
 

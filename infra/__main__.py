@@ -29,7 +29,8 @@ from upload_images import UploadImages
 
 # Import other necessary components
 try:
-    import lambda_layer  # noqa: F401
+    # import lambda_layer  # noqa: F401
+    import fast_lambda_layer  # noqa: F401
     from routes.health_check.infra import health_check_lambda  # noqa: F401
 except ImportError:
     # These may not be available in all environments
@@ -51,7 +52,9 @@ except FileNotFoundError:
     pulumi.export("readme", "README file not found")
 
 word_label_step_functions = WordLabelStepFunctions("word-label-step-functions")
-validate_merchant_step_functions = ValidateMerchantStepFunctions("validate-merchant")
+validate_merchant_step_functions = ValidateMerchantStepFunctions(
+    "validate-merchant"
+)
 validation_pipeline = ValidationPipeline("validation-pipeline")
 line_embedding_step_functions = LineEmbeddingStepFunction("step-func")
 validation_by_merchant_step_functions = ValidationByMerchantStepFunction(
@@ -68,9 +71,7 @@ pulumi.export("ocr_results_queue_url", upload_images.ocr_results_queue.url)
 
 # Use stack-specific existing key pair from AWS console
 stack = pulumi.get_stack()
-key_pair_name = (
-    f"portfolio-receipt-{stack}"  # Use existing key pairs created in AWS console
-)
+key_pair_name = f"portfolio-receipt-{stack}"  # Use existing key pairs created in AWS console
 
 # Create EC2 Instance Profile for ML training instances
 ml_training_role = aws.iam.Role(
