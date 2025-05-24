@@ -2,6 +2,34 @@
 
 This project is managed using Pulumi. It creates a static website hosted on S3 and served through CloudFront. The website is a portfolio of projects and is built using React.
 
+## Running Pulumi
+
+The Pulumi infrastructure code is located in the `infra/` directory. You can run Pulumi commands from either:
+
+1. **From the `infra/` directory (Recommended):**
+
+   ```bash
+   cd infra/
+   pulumi up
+   ```
+
+2. **From the repository root:**
+   ```bash
+   pulumi -C infra up
+   ```
+
+The code automatically detects the correct project root directory regardless of where you run it from, making it work seamlessly in both local development and CI environments.
+
+### Path Resolution
+
+The Lambda Layer builder automatically resolves paths to find the correct package directories (`receipt_dynamo`, `receipt_label`, `receipt_upload`) whether you're running:
+
+- Locally from the `infra/` directory
+- Locally from the repository root
+- In CI/CD environments (using `GITHUB_WORKSPACE`)
+
+This is handled by the `_find_project_root()` function in `lambda_layer.py`.
+
 ## Project Structure
 
 ### Core Infrastructure Files
@@ -200,3 +228,16 @@ To switch between stacks:
 ```bash
 pulumi stack select <stack-name>
 ```
+
+## Outputs
+
+| Name                           | Description                                              | Value                                   | File             |
+| ------------------------------ | -------------------------------------------------------- | --------------------------------------- | ---------------- |
+| `domains`                      | The URL of the website.                                  | ${outputs.domains}                      | `s3_website.py`  |
+| `cdn_bucket_name`              | The S3 bucket where the website is hosted.               | ${outputs.cdn_bucket_name}              | `s3_website.py`  |
+| `cdn_distribution_id`          | The CloudFront distribution ID.                          | ${outputs.cdn_distribution_id}          | `s3_website.py`  |
+| `raw_bucket_name`              | The S3 bucket where the raw data is stored.              | ${outputs.raw_bucket_name}              | `process_ocr.py` |
+| `cluster_lambda_function_name` | The name of the Lambda function that processes the data. | ${outputs.cluster_lambda_function_name} | `process_ocr.py` |
+| `api_domain`                   | The URL of the API Gateway.                              | ${outputs.api_domain}                   | `api_gateway.py` |
+| `dynamo_table_name`            | The name of the DynamoDB table.                          | ${outputs.dynamodb_table_name}          | `dynamo_db.py`   |
+| `region`                       | The region where the infrastructure is deployed.         | ${outputs.region}                       | `__main__.py`    |
