@@ -129,15 +129,19 @@ class FastLambdaLayer(ComponentResource):
 
         # Show build mode and change detection info
         if self.sync_mode:
-            print(
+            pulumi.log.info(
                 f"🔄 Building layer '{self.name}' in SYNC mode (will wait for completion)"
             )
         else:
-            print(f"⚡ Layer '{self.name}' in ASYNC mode (fast pulumi up)")
+            pulumi.log.info(
+                f"⚡ Layer '{self.name}' in ASYNC mode (fast pulumi up)"
+            )
             if self.force_rebuild:
-                print(f"   🔨 Force rebuild enabled - will trigger build")
+                pulumi.log.info(
+                    "   🔨 Force rebuild enabled - will trigger build"
+                )
             else:
-                print(
+                pulumi.log.info(
                     f"   📦 Hash: {package_hash[:12]}... - will build only if changed"
                 )
 
