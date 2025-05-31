@@ -1,13 +1,15 @@
 import json
-from logging import getLogger, StreamHandler, Formatter, INFO
+from logging import INFO, Formatter, StreamHandler, getLogger
+
+import pulumi
 from receipt_label.poll_embedding_batch import (
-    list_pending_embedding_batches,
-    get_openai_batch_status,
     download_openai_batch_result,
+    get_openai_batch_status,
+    get_receipt_descriptions,
+    list_pending_embedding_batches,
+    mark_batch_complete,
     upsert_embeddings_to_pinecone,
     write_embedding_results_to_dynamo,
-    mark_batch_complete,
-    get_receipt_descriptions,
 )
 
 logger = getLogger()
@@ -36,23 +38,29 @@ def poll_handler(event, context):
         logger.info(f"Batch {batch_id} is completed")
 
         downloaded_results = download_openai_batch_result(openai_batch_id)
-        print(f"Got {len(downloaded_results)} results")
+        pulumi.log.info(f"Got {len(downloaded_results)} results")
 
         receipt_descriptions = get_receipt_descriptions(downloaded_results)
-        print(f"Got {len(receipt_descriptions)} receipt descriptions")
+        pulumi.log.info(
+            f"Got {len(receipt_descriptions)} receipt descriptions"
+        )
 
         upserted_vectors_count = upsert_embeddings_to_pinecone(
             downloaded_results, receipt_descriptions
         )
-        print(f"Upserted {upserted_vectors_count} vectors to Pinecone")
+        pulumi.log.info(
+            f"Upserted {upserted_vectors_count} vectors to Pinecone"
+        )
 
         embedding_results_count = write_embedding_results_to_dynamo(
             downloaded_results, receipt_descriptions, batch_id
         )
-        print(f"Wrote {embedding_results_count} embedding results to DynamoDB")
+        pulumi.log.info(
+            f"Wrote {embedding_results_count} embedding results to DynamoDB"
+        )
 
         mark_batch_complete(batch_id)
-        print(f"Marked batch {batch_id} as complete")
+        pulumi.log.info(f"Marked batch {batch_id} as complete")
 
         return {
             "statusCode": 200,
