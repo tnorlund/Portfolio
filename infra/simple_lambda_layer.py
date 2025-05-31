@@ -409,9 +409,10 @@ if [ "$NEEDS_REBUILD" = "true" ]; then
     mkdir -p "$TMP_DIR/source"
     cp -r "$PACKAGE_PATH"/* "$TMP_DIR/source/"
     
-    pushd "$TMP_DIR" >/dev/null
+    # Use cd instead of pushd/popd for better shell compatibility
+    cd "$TMP_DIR"
     zip -r source.zip source
-    popd >/dev/null
+    cd - >/dev/null
     
     aws s3 cp "$TMP_DIR/source.zip" "s3://$BUCKET/{self.name}/source.zip"
     

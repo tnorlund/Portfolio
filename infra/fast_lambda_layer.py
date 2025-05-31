@@ -671,7 +671,7 @@ echo "🎉 Parallel function updates completed!"'''
             # Step 1: Prepare merged directory
             commands.append('echo "Preparing merged layer directory..."')
             commands.append("rm -rf merged && mkdir -p merged")
-            # Step 2: Merge each version’s unpacked artifact into python/lib/python<ver>/site-packages
+            # Step 2: Merge each version's unpacked artifact into python/lib/python<ver>/site-packages
             commands.append('echo "Setting up merged python/lib directory..."')
             commands.append(
                 "rm -rf merged/python && mkdir -p merged/python/lib"
@@ -989,9 +989,10 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 mkdir -p "$TMP_DIR/source"
 cp -r "$PACKAGE_PATH"/* "$TMP_DIR/source/"
 
-pushd "$TMP_DIR" >/dev/null
+# Use cd instead of pushd/popd for better shell compatibility
+cd "$TMP_DIR"
 zip -r source.zip source
-popd >/dev/null
+cd - >/dev/null
 
 aws s3 cp "$TMP_DIR/source.zip" "s3://$BUCKET/{self.name}/source.zip"
 echo "$HASH" | aws s3 cp - "s3://$BUCKET/{self.name}/hash.txt"
@@ -1119,9 +1120,10 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 mkdir -p "$TMP_DIR/source"
 cp -r "$PACKAGE_PATH"/* "$TMP_DIR/source/"
 
-pushd "$TMP_DIR" >/dev/null
+# Use cd instead of pushd/popd for better shell compatibility
+cd "$TMP_DIR"
 zip -r source.zip source
-popd >/dev/null
+cd - >/dev/null
 
 aws s3 cp "$TMP_DIR/source.zip" "s3://$BUCKET/{self.name}/source.zip"
 
