@@ -6,12 +6,13 @@ import json
 import shutil
 import subprocess
 import tempfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from time import sleep
 from typing import Generator, List
 from uuid import uuid4
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import pulumi
 import pulumi.automation as auto
 from receipt_dynamo import DynamoClient, process, validate
 
@@ -79,7 +80,11 @@ def run_swift_script(output_directory: Path, image_paths: list[str]) -> bool:
     """
     swift_script = Path(__file__).parent / "OCRSwift.swift"
     try:
-        swift_args = ["swift", str(swift_script), str(output_directory)] + image_paths
+        swift_args = [
+            "swift",
+            str(swift_script),
+            str(output_directory),
+        ] + image_paths
         subprocess.run(
             swift_args,
             check=True,
@@ -87,7 +92,7 @@ def run_swift_script(output_directory: Path, image_paths: list[str]) -> bool:
             stderr=subprocess.DEVNULL,
         )
     except subprocess.CalledProcessError as e:
-        print(f"Error running Swift script: {e}")
+        pulumi.log.warn(f"Error running Swift script: {e}")
         return False
     return True
 
@@ -118,7 +123,7 @@ def compare_local_files_with_dynamo(
             new_files.append(local_file)
 
     duplicates_found = len(local_files) - len(new_files)
-    print(f"Found {duplicates_found} duplicates in DynamoDB.")
+    pulumi.log.info(f"Found {duplicates_found} duplicates in DynamoDB.")
     return new_files
 
 
@@ -159,17 +164,23 @@ def upload_files_with_uuid_in_batches(
     Returns:
         None
     """
-    all_png_files = sorted(p for p in directory.iterdir() if p.suffix.lower() == ".png")
+    all_png_files = sorted(
+        p for p in directory.iterdir() if p.suffix.lower() == ".png"
+    )
     files_to_upload = compare_local_files_with_dynamo(
         all_png_files, dynamodb_table_name
     )
-    print(f"Found {len(files_to_upload)} files to upload.")
+    pulumi.log.info(f"Found {len(files_to_upload)} files to upload.")
     if not files_to_upload:
-        print("No new files to upload.")
+        pulumi.log.info("No new files to upload.")
         return
 
-    for batch_index, batch in enumerate(chunked(files_to_upload, batch_size), start=1):
-        print(f"\nProcessing batch #{batch_index} with up to {batch_size} files...")
+    for batch_index, batch in enumerate(
+        chunked(files_to_upload, batch_size), start=1
+    ):
+        pulumi.log.info(
+            f"\nProcessing batch #{batch_index} with up to {batch_size} files..."
+        )
 
         with tempfile.TemporaryDirectory() as tmp_dir_str:
             tmp_dir = Path(tmp_dir_str)
@@ -200,7 +211,9 @@ def upload_files_with_uuid_in_batches(
                     json_path = tmp_dir / f"{new_uuid}.json"
 
                     if not png_path.exists():
-                        raise FileNotFoundError(f"Swift OCR did not produce {png_path}")
+                        raise FileNotFoundError(
+                            f"Swift OCR did not produce {png_path}"
+                        )
                     with open(png_path, "rb") as pf:
                         png_data = pf.read()
 
@@ -211,7 +224,7 @@ def upload_files_with_uuid_in_batches(
                     with open(json_path, "r", encoding="utf-8") as jf:
                         ocr_dict = json.load(jf)
 
-                    print(f"Processing UUID: {new_uuid}")
+                    pulumi.log.info(f"Processing UUID: {new_uuid}")
                     process(
                         table_name=dynamodb_table_name,
                         raw_bucket_name=bucket_name,
@@ -223,33 +236,36 @@ def upload_files_with_uuid_in_batches(
                         png_data=png_data,
                     )
                 except Exception as e:
-                    print(f"Error processing {new_uuid}: {e}")
+                    pulumi.log.warn(f"Error processing {new_uuid}: {e}")
                     failed_uuids.append(new_uuid)
 
             # Process files concurrently without artificial delays
             with ThreadPoolExecutor(max_workers=sub_batch_size) as executor:
                 futures = [
-                    executor.submit(process_single_uuid, uuid) for uuid in mapped_uuids
+                    executor.submit(process_single_uuid, uuid)
+                    for uuid in mapped_uuids
                 ]
                 for future in as_completed(futures):
                     future.result()
 
             # If any process() call failed, retry those UUIDs.
             if failed_uuids:
-                print("Retrying failed UUIDs:", failed_uuids)
+                pulumi.log.info(f"Retrying failed UUIDs: {failed_uuids}")
                 retry_list = failed_uuids.copy()
                 failed_uuids.clear()
                 for uuid in retry_list:
                     process_single_uuid(uuid)
                 if failed_uuids:
-                    print("The following UUIDs still failed after retry:", failed_uuids)
+                    pulumi.log.warn(
+                        f"The following UUIDs still failed after retry: {failed_uuids}"
+                    )
 
             # Remove failed UUIDs from the mapped_uuids list before validation
             successful_uuids = [
                 uuid for uuid in mapped_uuids if uuid not in failed_uuids
             ]
             if successful_uuids:
-                print(
+                pulumi.log.info(
                     f"\nValidating {len(successful_uuids)} successfully processed images..."
                 )
                 validation_failed_uuids: list[str] = []
@@ -257,14 +273,16 @@ def upload_files_with_uuid_in_batches(
                 def validate_single_uuid(uuid: str) -> None:
                     """Validates a single image's OCR results using GPT."""
                     try:
-                        print(f"Validating UUID: {uuid}")
+                        pulumi.log.info(f"Validating UUID: {uuid}")
                         validate(table_name=dynamodb_table_name, image_id=uuid)
                     except Exception as e:
-                        print(f"Error validating {uuid}: {e}")
+                        pulumi.log.warn(f"Error validating {uuid}: {e}")
                         validation_failed_uuids.append(uuid)
 
                 # Validate files concurrently without artificial delays
-                with ThreadPoolExecutor(max_workers=sub_batch_size) as executor:
+                with ThreadPoolExecutor(
+                    max_workers=sub_batch_size
+                ) as executor:
                     futures = [
                         executor.submit(validate_single_uuid, uuid)
                         for uuid in successful_uuids
@@ -274,18 +292,19 @@ def upload_files_with_uuid_in_batches(
 
                 # If any validations failed, retry them
                 if validation_failed_uuids:
-                    print("Retrying failed validations:", validation_failed_uuids)
+                    pulumi.log.info(
+                        f"Retrying failed validations: {validation_failed_uuids}"
+                    )
                     retry_list = validation_failed_uuids.copy()
                     validation_failed_uuids.clear()
                     for uuid in retry_list:
                         validate_single_uuid(uuid)
                     if validation_failed_uuids:
-                        print(
-                            "The following validations still failed after retry:",
-                            validation_failed_uuids,
+                        pulumi.log.warn(
+                            f"The following validations still failed after retry: {validation_failed_uuids}"
                         )
 
-            print(f"Finished batch #{batch_index}.\n")
+            pulumi.log.info(f"Finished batch #{batch_index}.\n")
 
 
 def delete_items_in_table(dynamo_client: DynamoClient) -> None:
@@ -298,43 +317,45 @@ def delete_items_in_table(dynamo_client: DynamoClient) -> None:
         dynamo_client (DynamoClient): The DynamoClient instance pointing to the correct table.
     """
     images, _ = dynamo_client.listImages()
-    print(f" - Deleting {len(images)} image items")
+    pulumi.log.info(f" - Deleting {len(images)} image items")
     dynamo_client.deleteImages(images)
 
     lines = dynamo_client.listLines()
-    print(f" - Deleting {len(lines)} line items")
+    pulumi.log.info(f" - Deleting {len(lines)} line items")
     dynamo_client.deleteLines(lines)
 
     words = dynamo_client.listWords()
-    print(f" - Deleting {len(words)} word items")
+    pulumi.log.info(f" - Deleting {len(words)} word items")
     dynamo_client.deleteWords(words)
 
     word_tags, _ = dynamo_client.listWordTags()
-    print(f" - Deleting {len(word_tags)} word tag items")
+    pulumi.log.info(f" - Deleting {len(word_tags)} word tag items")
     dynamo_client.deleteWordTags(word_tags)
 
     letters = dynamo_client.listLetters()
-    print(f" - Deleting {len(letters)} letter items")
+    pulumi.log.info(f" - Deleting {len(letters)} letter items")
     dynamo_client.deleteLetters(letters)
 
     receipts, _ = dynamo_client.listReceipts()
-    print(f" - Deleting {len(receipts)} receipt items")
+    pulumi.log.info(f" - Deleting {len(receipts)} receipt items")
     dynamo_client.deleteReceipts(receipts)
 
     receipt_lines = dynamo_client.listReceiptLines()
-    print(f" - Deleting {len(receipt_lines)} receipt line items")
+    pulumi.log.info(f" - Deleting {len(receipt_lines)} receipt line items")
     dynamo_client.deleteReceiptLines(receipt_lines)
 
     receipt_words = dynamo_client.listReceiptWords()
-    print(f" - Deleting {len(receipt_words)} receipt word items")
+    pulumi.log.info(f" - Deleting {len(receipt_words)} receipt word items")
     dynamo_client.deleteReceiptWords(receipt_words)
 
     receipt_word_tags, _ = dynamo_client.listReceiptWordTags()
-    print(f" - Deleting {len(receipt_word_tags)} receipt word tag items")
+    pulumi.log.info(
+        f" - Deleting {len(receipt_word_tags)} receipt word tag items"
+    )
     dynamo_client.deleteReceiptWordTags(receipt_word_tags)
 
     receipt_letters = dynamo_client.listReceiptLetters()
-    print(f" - Deleting {len(receipt_letters)} receipt letter items")
+    pulumi.log.info(f" - Deleting {len(receipt_letters)} receipt letter items")
     dynamo_client.deleteReceiptLetters(receipt_letters)
 
     # Pause briefly for eventual consistency
@@ -356,7 +377,9 @@ def main() -> None:
         help="Directory containing images (PNGs) to upload.",
     )
     parser.add_argument(
-        "--env", default="dev", help="Pulumi environment name (e.g. 'dev' or 'prod')."
+        "--env",
+        default="dev",
+        help="Pulumi environment name (e.g. 'dev' or 'prod').",
     )
     parser.add_argument(
         "--debug",
@@ -375,7 +398,7 @@ def main() -> None:
 
     # (Optional) Clear the entire table if --debug is set
     if args.debug:
-        print("Deleting all items from DynamoDB tables...")
+        pulumi.log.info("Deleting all items from DynamoDB tables...")
         dynamo_client = DynamoClient(dynamo_db_table)
         delete_items_in_table(dynamo_client)
 
