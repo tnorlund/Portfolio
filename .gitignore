@@ -198,3 +198,13 @@ infra/*.zip
 
 # Yarn
 portfolio/.yarn/*
+
+# Portfolio Next.js specific
+portfolio/node_modules/
+portfolio/.next/
+portfolio/out/
+portfolio/.env*
+portfolio/*.tsbuildinfo
+portfolio/next-env.d.ts
+portfolio/.eslintcache
+portfolio/.stylelintcache
