@@ -124,7 +124,6 @@ from receipt_dynamo.entities.receipt_structure_analysis import (
 
 # Only import what's actually used elsewhere in the package
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.data.process import process
 from receipt_dynamo.data.export_image import export_image
 from receipt_dynamo.data.import_image import import_image
 

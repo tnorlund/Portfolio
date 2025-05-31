@@ -17,7 +17,6 @@ import UploadDiagram from "./UploadDiagram";
 import EmbeddingExample from "./EmbeddingExample";
 import EmbeddingCoordinate from "./EmbeddingCoordinate";
 import GithubLogo from "./GithubLogo";
-import "./Receipt.css";
 
 function Receipt() {
   // --- Receipt Upload State & Handlers ---
@@ -25,11 +24,16 @@ function Receipt() {
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState("");
   const [dragging, setDragging] = useState(false);
+  const [apiUrl, setApiUrl] = useState("");
 
-  const isDevelopment = process.env.NODE_ENV === "development";
-  const apiUrl = isDevelopment
-    ? "https://dev-upload.tylernorlund.com"
-    : "https://upload.tylernorlund.com";
+  useEffect(() => {
+    const isDevelopment = process.env.NODE_ENV === "development";
+    setApiUrl(
+      isDevelopment
+        ? "https://dev-upload.tylernorlund.com"
+        : "https://upload.tylernorlund.com"
+    );
+  }, []);
 
   const uploadToS3Internal = useCallback(
     async (selectedFiles: File[]) => {
@@ -279,18 +283,18 @@ function Receipt() {
         <tbody>
           <tr>
             <td style={{ padding: "8px 16px" }}>A</td>
-            <td style={{ padding: "8px 16px", textAlign: "right" }}>3</td>
-            <td style={{ padding: "8px 16px", textAlign: "right" }}>2</td>
+            <td style={{ padding: "8px 16px", textAlign: "right" }}>{"3"}</td>
+            <td style={{ padding: "8px 16px", textAlign: "right" }}>{"2"}</td>
           </tr>
           <tr>
             <td style={{ padding: "8px 16px" }}>B</td>
-            <td style={{ padding: "8px 16px", textAlign: "right" }}>1</td>
-            <td style={{ padding: "8px 16px", textAlign: "right" }}>1</td>
+            <td style={{ padding: "8px 16px", textAlign: "right" }}>{"1"}</td>
+            <td style={{ padding: "8px 16px", textAlign: "right" }}>{"1"}</td>
           </tr>
           <tr>
             <td style={{ padding: "8px 16px" }}>C</td>
-            <td style={{ padding: "8px 16px", textAlign: "right" }}>-2</td>
-            <td style={{ padding: "8px 16px", textAlign: "right" }}>-2</td>
+            <td style={{ padding: "8px 16px", textAlign: "right" }}>{"-2"}</td>
+            <td style={{ padding: "8px 16px", textAlign: "right" }}>{"-2"}</td>
           </tr>
         </tbody>
       </table>
