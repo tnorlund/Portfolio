@@ -1,9 +1,7 @@
 import type { AppProps } from "next/app";
 import Link from "next/link";
 import React, { Suspense } from "react";
-import "../src/index.css";
-import "../src/App.css";
-import "../src/Receipt.css";
+import "../styles/globals.css";
 
 // Error boundary component
 class ErrorBoundary extends React.Component<
