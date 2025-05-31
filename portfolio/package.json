@@ -27,11 +27,6 @@
     "monitor": "node monitor-project.js",
     "monitor:watch": "node monitor-project.js --watch"
   },
-  "eslintConfig": {
-    "extends": [
-      "next/core-web-vitals"
-    ]
-  },
   "browserslist": {
     "production": [
       ">0.2%",
@@ -47,6 +42,7 @@
   "devDependencies": {
     "@babel/plugin-syntax-flow": "^7.26.0",
     "@testing-library/dom": "^10.4.0",
+    "@eslint/eslintrc": "^3.1.0",
     "eslint": "^9.27.0"
   }
 }
