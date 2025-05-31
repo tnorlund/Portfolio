@@ -190,8 +190,8 @@ const UploadDiagram = () => {
                   y2="240.15"
                   gradientUnits="userSpaceOnUse"
                 >
-                  <stop offset="0" stop-color="#c85428" />
-                  <stop offset="1" stop-color="#f8981d" />
+                  <stop offset="0" stopColor="#c85428" />
+                  <stop offset="1" stopColor="#f8981d" />
                 </linearGradient>
                 <linearGradient
                   id="sqs-gradient"
@@ -201,8 +201,8 @@ const UploadDiagram = () => {
                   y2="132.65"
                   gradientUnits="userSpaceOnUse"
                 >
-                  <stop offset="0" stop-color="#b01e50" />
-                  <stop offset="1" stop-color="#ef518a" />
+                  <stop offset="0" stopColor="#b01e50" />
+                  <stop offset="1" stopColor="#ef518a" />
                 </linearGradient>
                 <linearGradient
                   id="dynamo-gradient"
@@ -212,8 +212,8 @@ const UploadDiagram = () => {
                   y2="132.65"
                   gradientUnits="userSpaceOnUse"
                 >
-                  <stop offset="0" stop-color="#3b3f99" />
-                  <stop offset="1" stop-color="#5c76ba" />
+                  <stop offset="0" stopColor="#3b3f99" />
+                  <stop offset="1" stopColor="#5c76ba" />
                 </linearGradient>
                 <linearGradient
                   id="linear-gradient-4"
@@ -223,8 +223,8 @@ const UploadDiagram = () => {
                   y2="132.65"
                   gradientUnits="userSpaceOnUse"
                 >
-                  <stop offset="0" stop-color="#1f6835" />
-                  <stop offset="1" stop-color="#6bad44" />
+                  <stop offset="0" stopColor="#1f6835" />
+                  <stop offset="1" stopColor="#6bad44" />
                 </linearGradient>
               </defs>
 
