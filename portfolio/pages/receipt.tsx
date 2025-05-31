@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import styles from "../styles/Receipt.module.css";
 import { GetStaticProps } from "next";
 import {
   ZDepthConstrained,
@@ -490,7 +491,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         techniques allowed me to reflect on what worked and what didn't.
       </p>
       <p>I used Github and Pulumi to manage the cloud and code.</p>
-      <div className="logos-container">
+      <div className={styles.logosContainer}>
         <GithubLogo />
         <PulumiLogo />
       </div>
@@ -551,7 +552,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         </p>
       </div>
 
-      <div className="logos-container">
+      <div className={styles.logosContainer}>
         <ClientImageCounts />
         <ClientReceiptCounts />
       </div>
