@@ -17,6 +17,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+from typing import Optional
 
 import pulumi
 import pulumi_aws as aws
@@ -254,47 +255,98 @@ aws lambda list-functions --query "Functions[*].[FunctionName,FunctionArn]" --ou
 
 echo "🎉 Parallel function updates completed!"'''
 
-    def _get_buildspec(self):
-        """Generate the buildspec.yml content for CodeBuild."""
-        primary = self.python_versions[0]
-        # Compose the install commands using CodeBuild runtime-versions for Python and pip included
+    def _get_buildspec(self, version: str | None = None):
+        """Return a buildspec dict for CodeBuild.
+
+        If ``version`` is provided, the buildspec targets a single Python
+        version. Otherwise, it handles all versions listed in
+        ``self.python_versions``.
+        """
+
+        versions = [version] if version else self.python_versions
+        primary = versions[0]
+
         install_commands = [
             "echo Installing native libraries for Pillow…",
             "dnf install -y libjpeg-turbo libpng libtiff libwebp freetype lcms2 zlib",
             "pip install build",
         ]
-        # Compose the build commands
-        build_commands = [
-            "echo Build directory prep",
-            "pwd",
-            "ls -la",
-            "echo Checking source structure:",
-            "ls -la source/ || echo 'source directory not found'",
-            "ls -la source/pyproject.toml || echo 'pyproject.toml not found in source'",
-            "rm -rf build && mkdir -p build",
-            'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do mkdir -p build/python/lib/python${v}/site-packages; done',
-            'echo "Building wheel"',
-            "cd source && python3 -m build --wheel --outdir ../dist/ && cd ..",
-            'echo "Installing wheel and Pillow for each runtime"',
-            'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do python${v} -m pip install --no-cache-dir dist/*.whl Pillow -t build/python/lib/python${v}/site-packages; done',
-            'echo "Copying native libraries"',
-            "mkdir -p build/lib && cp /usr/lib64/libjpeg*.so* /usr/lib64/libpng*.so* /usr/lib64/libtiff*.so* /usr/lib64/libwebp*.so* /usr/lib64/liblcms2*.so* /usr/lib64/libfreetype*.so* build/lib || true",
-            'echo "Flattening site-packages to root python directory"',
-            "cp -r build/python/lib/python*/site-packages/. build/python/ || true",
-            "chmod -R 755 build",
-        ]
-        # Pre-build: bundle static Pillow in CodeBuild if needed (single-command block)
-        pre_build_phase = {
-            "commands": [
-                'if [ "$NEEDS_PILLOW" = "True" ]; then '
-                'echo "Pre-build: generating Pillow bundle"; '
-                'echo "Installing Pillow for each runtime for static bundle"; '
-                'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do cd source && python${v} -m pip install --no-cache-dir Pillow -t ../build/pillow && cd ..; done; '
-                "mkdir -p build/lib && cp -r build/pillow/. build/lib/; "
-                'echo "Static Pillow bundle added"; '
-                "fi"
+
+        if version:
+            build_commands = [
+                "echo Build directory prep",
+                "pwd",
+                "ls -la",
+                "echo Checking source structure:",
+                "ls -la source/ || echo 'source directory not found'",
+                "ls -la source/pyproject.toml || echo 'pyproject.toml not found in source'",
+                "rm -rf build && mkdir -p build",
+                f"mkdir -p build/python/lib/python{version}/site-packages",
+                'echo "Building wheel"',
+                "cd source && python3 -m build --wheel --outdir ../dist/ && cd ..",
+                'echo "Installing wheel"',
+                f"python{version} -m pip install --no-cache-dir dist/*.whl -t build/python/lib/python{version}/site-packages",
+                'echo "Copying native libraries"',
+                "mkdir -p build/lib && cp /usr/lib64/libjpeg*.so* /usr/lib64/libpng*.so* /usr/lib64/libtiff*.so* /usr/lib64/libwebp*.so* /usr/lib64/liblcms2*.so* /usr/lib64/libfreetype*.so* build/lib || true",
+                'echo "Flattening site-packages to root python directory"',
+                "cp -r build/python/lib/python*/site-packages/. build/python/ || true",
+                "chmod -R 755 build",
             ]
-        }
+            if self.needs_pillow:
+                build_commands.append('echo "Installing Pillow"')
+                build_commands.append(
+                    f"python{version} -m pip install --no-cache-dir Pillow -t build/python/lib/python{version}/site-packages"
+                )
+            pre_build_phase = {
+                "commands": [
+                    'if [ "$NEEDS_PILLOW" = "True" ]; then '
+                    'echo "Pre-build: generating Pillow bundle"; '
+                    f"cd source && python{version} -m pip install --no-cache-dir Pillow -t ../build/pillow && cd ..; "
+                    "mkdir -p build/lib && cp -r build/pillow/. build/lib/; "
+                    'echo "Static Pillow bundle added"; '
+                    "fi"
+                ]
+            }
+            artifacts = {
+                "files": ["python/**/*", "lib/**/*"],
+                "base-directory": "build",
+            }
+        else:
+            build_commands = [
+                "echo Build directory prep",
+                "pwd",
+                "ls -la",
+                "echo Checking source structure:",
+                "ls -la source/ || echo 'source directory not found'",
+                "ls -la source/pyproject.toml || echo 'pyproject.toml not found in source'",
+                "rm -rf build && mkdir -p build",
+                'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do mkdir -p build/python/lib/python${v}/site-packages; done',
+                'echo "Building wheel"',
+                "cd source && python3 -m build --wheel --outdir ../dist/ && cd ..",
+                'echo "Installing wheel and Pillow for each runtime"',
+                'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do python${v} -m pip install --no-cache-dir dist/*.whl Pillow -t build/python/lib/python${v}/site-packages; done',
+                'echo "Copying native libraries"',
+                "mkdir -p build/lib && cp /usr/lib64/libjpeg*.so* /usr/lib64/libpng*.so* /usr/lib64/libtiff*.so* /usr/lib64/libwebp*.so* /usr/lib64/liblcms2*.so* /usr/lib64/libfreetype*.so* build/lib || true",
+                'echo "Flattening site-packages to root python directory"',
+                "cp -r build/python/lib/python*/site-packages/. build/python/ || true",
+                "chmod -R 755 build",
+            ]
+            pre_build_phase = {
+                "commands": [
+                    'if [ "$NEEDS_PILLOW" = "True" ]; then '
+                    'echo "Pre-build: generating Pillow bundle"; '
+                    'echo "Installing Pillow for each runtime for static bundle"; '
+                    'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do cd source && python${v} -m pip install --no-cache-dir Pillow -t ../build/pillow && cd ..; done; '
+                    "mkdir -p build/lib && cp -r build/pillow/. build/lib/; "
+                    'echo "Static Pillow bundle added"; '
+                    "fi"
+                ]
+            }
+            artifacts = {
+                "files": ["python/**/*"],
+                "base-directory": "build",
+            }
+
         return {
             "version": 0.2,
             "phases": {
@@ -303,39 +355,9 @@ echo "🎉 Parallel function updates completed!"'''
                     "runtime-versions": {"python": primary},
                     "commands": install_commands,
                 },
-                "build": {
-                    "commands": build_commands,
-                },
-                "post_build": {
-                    "commands": [
-                        # Auto-publish layer version after successful build
-                        'echo "Publishing new layer version..."',
-                        "NEW_LAYER_ARN=$(aws lambda publish-layer-version "
-                        '--layer-name "$LAYER_NAME" '
-                        '--content S3Bucket="$BUCKET_NAME",S3Key="$PACKAGE_NAME/layer.zip" '
-                        f'--compatible-runtimes {" ".join([f"python{v}" for v in self.python_versions])} '
-                        '--compatible-architectures "arm64" '
-                        f'--description "{self.description}" '
-                        '--query "LayerVersionArn" --output text)',
-                        'echo "New layer ARN: $NEW_LAYER_ARN"',
-                        # Update Lambda functions
-                        'echo "Updating Lambda functions..."',
-                        'LAYER_BASE_ARN=$(echo "$NEW_LAYER_ARN" | sed "s/:[^:]*$//")',
-                        'echo "Layer base ARN: $LAYER_BASE_ARN"',
-                        'echo "Stack name: $STACK_NAME"',
-                        "",
-                        "# Create and run update script using base64 encoding to avoid buildspec parsing issues",
-                        f'echo "{self._encode_shell_script(self._get_update_functions_script())}" | base64 -d > update_layers.sh',
-                        "chmod +x update_layers.sh",
-                        "./update_layers.sh",
-                        'echo "Layer update process completed!"',
-                    ],
-                },
+                "build": {"commands": build_commands},
             },
-            "artifacts": {
-                "files": ["python/**/*"],
-                "base-directory": "build",
-            },
+            "artifacts": artifacts,
         }
 
     def _setup_fast_build(self, package_hash, package_path):
@@ -588,7 +610,7 @@ echo "🎉 Parallel function updates completed!"'''
                     location=build_bucket.bucket.apply(
                         lambda b: f"{b}/{self.name}/source.zip"
                     ),
-                    buildspec=json.dumps(self._get_buildspec_for_version(v)),
+                    buildspec=json.dumps(self._get_buildspec(version=v)),
                 ),
                 artifacts=aws.codebuild.ProjectArtifactsArgs(
                     type="S3",
@@ -872,67 +894,6 @@ done
 
         # Pulumi no longer manages the LayerVersion resource; layer publication is handled by CodePipeline.
         self.arn = None  # Placeholder: Pulumi does not manage or export the layer ARN directly.
-
-    def _get_buildspec_for_version(self, version):
-        """Return a buildspec dict for a single Python version."""
-        install_commands = [
-            "echo Installing native libraries for Pillow…",
-            "dnf install -y libjpeg-turbo libpng libtiff libwebp freetype lcms2 zlib",
-            "pip install build",
-        ]
-        build_commands = [
-            "echo Build directory prep",
-            "pwd",
-            "ls -la",
-            "echo Checking source structure:",
-            "ls -la source/ || echo 'source directory not found'",
-            "ls -la source/pyproject.toml || echo 'pyproject.toml not found in source'",
-            "rm -rf build && mkdir -p build",
-            f"mkdir -p build/python/lib/python{version}/site-packages",
-            'echo "Building wheel"',
-            "cd source && python3 -m build --wheel --outdir ../dist/ && cd ..",
-            'echo "Installing wheel"',
-            f"python{version} -m pip install --no-cache-dir dist/*.whl -t build/python/lib/python{version}/site-packages",
-            'echo "Copying native libraries"',
-            "mkdir -p build/lib && cp /usr/lib64/libjpeg*.so* /usr/lib64/libpng*.so* /usr/lib64/libtiff*.so* /usr/lib64/libwebp*.so* /usr/lib64/liblcms2*.so* /usr/lib64/libfreetype*.so* build/lib || true",
-            'echo "Flattening site-packages to root python directory"',
-            "cp -r build/python/lib/python*/site-packages/. build/python/ || true",
-            "chmod -R 755 build",
-        ]
-        # Conditionally add Pillow installation if needed
-        if self.needs_pillow:
-            build_commands.append('echo "Installing Pillow"')
-            build_commands.append(
-                f"python{version} -m pip install --no-cache-dir Pillow "
-                f"-t build/python/lib/python{version}/site-packages"
-            )
-        pre_build_phase = {
-            "commands": [
-                'if [ "$NEEDS_PILLOW" = "True" ]; then '
-                'echo "Pre-build: generating Pillow bundle"; '
-                f"cd source && python{version} -m pip install --no-cache-dir Pillow -t ../build/pillow && cd ..; "
-                "mkdir -p build/lib && cp -r build/pillow/. build/lib/; "
-                'echo "Static Pillow bundle added"; '
-                "fi"
-            ]
-        }
-        return {
-            "version": 0.2,
-            "phases": {
-                "pre_build": pre_build_phase,
-                "install": {
-                    "runtime-versions": {"python": version},
-                    "commands": install_commands,
-                },
-                "build": {
-                    "commands": build_commands,
-                },
-            },
-            "artifacts": {
-                "files": ["python/**/*", "lib/**/*"],
-                "base-directory": "build",
-            },
-        }
 
     def _generate_upload_script(self, bucket, package_path, package_hash):
         """Generate script to upload source package."""
