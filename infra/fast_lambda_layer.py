@@ -986,7 +986,8 @@ ls -la "$PACKAGE_PATH/pyproject.toml" || echo "pyproject.toml not found in $PACK
 # Check if we need to upload
 STORED_HASH=$(aws s3 cp s3://$BUCKET/{self.name}/hash.txt - 2>/dev/null || echo '')
 if [ "$STORED_HASH" = "$HASH" ] && [ "{self.force_rebuild}" != "True" ]; then
-    echo "✅ Source already up-to-date (hash: ${{HASH:0:12}}...). Skipping upload."
+    HASH_SHORT=$(echo "$HASH" | cut -c1-12)
+    echo "✅ Source already up-to-date (hash: $HASH_SHORT...). Skipping upload."
     exit 0
 fi
 
@@ -1045,15 +1046,18 @@ echo "🚀 Checking if build needed for layer '{self.name}'..."
 # Check if we need to build
 STORED_HASH=$(aws s3 cp s3://$BUCKET/{self.name}/hash.txt - 2>/dev/null || echo '')
 if [ "$STORED_HASH" = "$HASH" ] && [ "{self.force_rebuild}" != "True" ]; then
-    echo "✅ No changes detected (hash: ${{HASH:0:12}}...). Skipping build."
+    HASH_SHORT=$(echo "$HASH" | cut -c1-12)
+    echo "✅ No changes detected (hash: $HASH_SHORT...). Skipping build."
     echo "💡 To force rebuild: pulumi up --config lambda-layer:force-rebuild=true"
     exit 0
 fi
 
 if [ "$STORED_HASH" != "$HASH" ]; then
     echo "📝 Code changes detected:"
-    echo "   Old hash: ${{STORED_HASH:0:12}}..."
-    echo "   New hash: ${{HASH:0:12}}..."
+    STORED_HASH_SHORT=$(echo "$STORED_HASH" | cut -c1-12)
+    HASH_SHORT=$(echo "$HASH" | cut -c1-12)
+    echo "   Old hash: $STORED_HASH_SHORT..."
+    echo "   New hash: $HASH_SHORT..."
 fi
 
 if [ "{self.force_rebuild}" = "True" ]; then
