@@ -16,7 +16,6 @@ import glob
 import hashlib
 import json
 import os
-import time
 from pathlib import Path
 
 import pulumi
@@ -24,7 +23,6 @@ import pulumi_aws as aws
 import pulumi_aws.codepipeline as codepipeline
 import pulumi_command as command
 from pulumi import ComponentResource, Output
-import json
 
 
 def _find_project_root():
