@@ -16,7 +16,6 @@ import glob
 import hashlib
 import json
 import os
-import time
 from pathlib import Path
 from typing import Optional
 
@@ -25,43 +24,7 @@ import pulumi_aws as aws
 import pulumi_aws.codepipeline as codepipeline
 import pulumi_command as command
 from pulumi import ComponentResource, Output
-
-
-def _find_project_root():
-    """Find the project root directory by looking for common markers."""
-    # In CI, use GITHUB_WORKSPACE if available
-    if os.getenv("GITHUB_WORKSPACE"):
-        return Path(os.getenv("GITHUB_WORKSPACE")).resolve()
-
-    # Start from current directory and walk up to find repository root
-    current_dir = Path(os.getcwd()).resolve()
-
-    # Look for common repository root indicators
-    root_markers = [".git", "README.md", "pyproject.toml", ".gitignore"]
-
-    for parent in [current_dir] + list(current_dir.parents):
-        # Check if this directory contains any root markers
-        if any((parent / marker).exists() for marker in root_markers):
-            # Additional check: make sure we have the expected directories
-            expected_dirs = [
-                "receipt_dynamo",
-                "receipt_label",
-                "receipt_upload",
-                "infra",
-            ]
-            if all((parent / dir_name).is_dir() for dir_name in expected_dirs):
-                return parent
-
-    # Fallback: if we're in infra/ directory, go up one level
-    if current_dir.name == "infra":
-        parent = current_dir.parent
-        # Verify this looks like the right directory
-        expected_dirs = ["receipt_dynamo", "receipt_label", "receipt_upload"]
-        if all((parent / dir_name).is_dir() for dir_name in expected_dirs):
-            return parent
-
-    # Final fallback: use current directory
-    return current_dir
+from .utils import _find_project_root
 
 
 PROJECT_DIR = _find_project_root()
@@ -130,15 +93,19 @@ class FastLambdaLayer(ComponentResource):
 
         # Show build mode and change detection info
         if self.sync_mode:
-            print(
+            pulumi.log.info(
                 f"🔄 Building layer '{self.name}' in SYNC mode (will wait for completion)"
             )
         else:
-            print(f"⚡ Layer '{self.name}' in ASYNC mode (fast pulumi up)")
+            pulumi.log.info(
+                f"⚡ Layer '{self.name}' in ASYNC mode (fast pulumi up)"
+            )
             if self.force_rebuild:
-                print(f"   🔨 Force rebuild enabled - will trigger build")
+                pulumi.log.info(
+                    "   🔨 Force rebuild enabled - will trigger build"
+                )
             else:
-                print(
+                pulumi.log.info(
                     f"   📦 Hash: {package_hash[:12]}... - will build only if changed"
                 )
 
@@ -1187,3 +1154,11 @@ for layer_config in layers_to_build:
     fast_lambda_layers[layer_config["name"]] = fast_layer
 
 # Access the built layers by name
+fast_dynamo_layer = fast_lambda_layers["receipt-dynamo"]
+fast_label_layer = fast_lambda_layers["receipt-label"]
+fast_upload_layer = fast_lambda_layers["receipt-upload"]
+
+# Export the layer ARNs for reference
+pulumi.export("fast_dynamo_layer_arn", fast_dynamo_layer.arn)
+pulumi.export("fast_label_layer_arn", fast_label_layer.arn)
+pulumi.export("fast_upload_layer_arn", fast_upload_layer.arn)
