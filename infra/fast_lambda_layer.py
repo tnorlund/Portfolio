@@ -300,10 +300,15 @@ echo "🎉 Parallel function updates completed!"'''
         # Compose the build commands
         build_commands = [
             "echo Build directory prep",
+            "pwd",
+            "ls -la",
+            "echo Checking source structure:",
+            "ls -la source/ || echo 'source directory not found'",
+            "ls -la source/pyproject.toml || echo 'pyproject.toml not found in source'",
             "rm -rf build && mkdir -p build",
             'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do mkdir -p build/python/lib/python${v}/site-packages; done',
             'echo "Building wheel"',
-            "python3 -m build source --wheel --outdir dist/",
+            "cd source && python3 -m build --wheel --outdir ../dist/ && cd ..",
             'echo "Installing wheel and Pillow for each runtime"',
             'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do python${v} -m pip install --no-cache-dir dist/*.whl Pillow -t build/python/lib/python${v}/site-packages; done',
             'echo "Copying native libraries"',
@@ -318,7 +323,7 @@ echo "🎉 Parallel function updates completed!"'''
                 'if [ "$NEEDS_PILLOW" = "True" ]; then '
                 'echo "Pre-build: generating Pillow bundle"; '
                 'echo "Installing Pillow for each runtime for static bundle"; '
-                'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do python${v} -m pip install --no-cache-dir Pillow -t build/pillow; done; '
+                'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do cd source && python${v} -m pip install --no-cache-dir Pillow -t ../build/pillow && cd ..; done; '
                 "mkdir -p build/lib && cp -r build/pillow/. build/lib/; "
                 'echo "Static Pillow bundle added"; '
                 "fi"
@@ -911,10 +916,15 @@ done
         ]
         build_commands = [
             "echo Build directory prep",
+            "pwd",
+            "ls -la",
+            "echo Checking source structure:",
+            "ls -la source/ || echo 'source directory not found'",
+            "ls -la source/pyproject.toml || echo 'pyproject.toml not found in source'",
             "rm -rf build && mkdir -p build",
             f"mkdir -p build/python/lib/python{version}/site-packages",
             'echo "Building wheel"',
-            "python3 -m build source --wheel --outdir dist/",
+            "cd source && python3 -m build --wheel --outdir ../dist/ && cd ..",
             'echo "Installing wheel"',
             f"python{version} -m pip install --no-cache-dir dist/*.whl -t build/python/lib/python{version}/site-packages",
             'echo "Copying native libraries"',
@@ -934,7 +944,7 @@ done
             "commands": [
                 'if [ "$NEEDS_PILLOW" = "True" ]; then '
                 'echo "Pre-build: generating Pillow bundle"; '
-                f"python{version} -m pip install --no-cache-dir Pillow -t build/pillow; "
+                f"cd source && python{version} -m pip install --no-cache-dir Pillow -t ../build/pillow && cd ..; "
                 "mkdir -p build/lib && cp -r build/pillow/. build/lib/; "
                 'echo "Static Pillow bundle added"; '
                 "fi"
@@ -968,6 +978,10 @@ PACKAGE_PATH="{package_path}"
 HASH="{package_hash}"
 
 echo "📦 Checking if source upload needed for layer '{self.name}'..."
+echo "Package path: $PACKAGE_PATH"
+echo "Checking package structure..."
+ls -la "$PACKAGE_PATH" || echo "Package path not found: $PACKAGE_PATH"
+ls -la "$PACKAGE_PATH/pyproject.toml" || echo "pyproject.toml not found in $PACKAGE_PATH"
 
 # Check if we need to upload
 STORED_HASH=$(aws s3 cp s3://$BUCKET/{self.name}/hash.txt - 2>/dev/null || echo '')
@@ -982,18 +996,35 @@ elif [ "{self.force_rebuild}" = "True" ]; then
     echo "🔨 Force rebuild enabled, re-uploading source..."
 fi
 
+# Validate package structure before upload
+if [ ! -f "$PACKAGE_PATH/pyproject.toml" ]; then
+    echo "❌ Error: pyproject.toml not found in $PACKAGE_PATH"
+    echo "Package contents:"
+    ls -la "$PACKAGE_PATH"
+    exit 1
+fi
+
 # Upload source
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
 
+echo "Creating source package structure..."
 mkdir -p "$TMP_DIR/source"
+
+# Copy the entire package directory structure, not just contents
 cp -r "$PACKAGE_PATH"/* "$TMP_DIR/source/"
+
+echo "Verifying created structure..."
+ls -la "$TMP_DIR"
+ls -la "$TMP_DIR/source"
+ls -la "$TMP_DIR/source/pyproject.toml" || echo "❌ pyproject.toml missing in created structure"
 
 # Use cd instead of pushd/popd for better shell compatibility
 cd "$TMP_DIR"
 zip -r source.zip source
 cd - >/dev/null
 
+echo "Uploading to S3..."
 aws s3 cp "$TMP_DIR/source.zip" "s3://$BUCKET/{self.name}/source.zip"
 echo "$HASH" | aws s3 cp - "s3://$BUCKET/{self.name}/hash.txt"
 
