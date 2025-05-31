@@ -13,6 +13,8 @@ const ReceiptStack: React.FC = () => {
     triggerOnce: true,
   });
 
+  const [prefetchedReceipts, setPrefetchedReceipts] = useState<Receipt[]>([]);
+  const [prefetchedRotations, setPrefetchedRotations] = useState<number[]>([]);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [rotations, setRotations] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
@@ -46,11 +48,6 @@ const ReceiptStack: React.FC = () => {
   });
 
   useEffect(() => {
-    // Only load when the component is in view
-    if (!inView) return;
-
-    console.log("Loading receipts...");
-
     const loadAllReceipts = async () => {
       setLoading(true);
       setError(null);
@@ -96,27 +93,36 @@ const ReceiptStack: React.FC = () => {
           lastEvaluatedKey = response.lastEvaluatedKey;
         }
 
-        console.log("Setting receipts:", allReceipts.length);
-        setReceipts(allReceipts.slice(0, maxReceipts));
-        setRotations(allRotations.slice(0, maxReceipts));
+        console.log("Prefetched receipts:", allReceipts.length);
+        setPrefetchedReceipts(allReceipts.slice(0, maxReceipts));
+        setPrefetchedRotations(allRotations.slice(0, maxReceipts));
       } catch (error) {
         console.error("Error loading receipts:", error);
         setError(
           error instanceof Error ? error.message : "Failed to load receipts"
         );
         // Set empty arrays to prevent rendering issues
-        setReceipts([]);
-        setRotations([]);
+        setPrefetchedReceipts([]);
+        setPrefetchedRotations([]);
       } finally {
         setLoading(false);
       }
     };
 
     loadAllReceipts();
-  }, [inView, maxReceipts, pageSize]);
+  }, [maxReceipts, pageSize]);
 
-  // Show loading state
-  if (loading) {
+  // When the user scrolls to this component, start the animation using the
+  // prefetched data
+  useEffect(() => {
+    if (inView && receipts.length === 0 && prefetchedReceipts.length) {
+      setReceipts(prefetchedReceipts);
+      setRotations(prefetchedRotations);
+    }
+  }, [inView, prefetchedReceipts, prefetchedRotations, receipts.length]);
+
+  // Show loading state once in view
+  if (inView && loading) {
     return (
       <div
         ref={ref}
@@ -133,8 +139,8 @@ const ReceiptStack: React.FC = () => {
     );
   }
 
-  // Show error state
-  if (error) {
+  // Show error state once in view
+  if (inView && error) {
     return (
       <div
         ref={ref}
@@ -152,8 +158,8 @@ const ReceiptStack: React.FC = () => {
     );
   }
 
-  // Show empty state
-  if (!loading && receipts.length === 0) {
+  // Show empty state if data loaded but there are no receipts
+  if (inView && !loading && receipts.length === 0) {
     return (
       <div
         ref={ref}
