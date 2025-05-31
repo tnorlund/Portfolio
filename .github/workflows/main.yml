@@ -91,7 +91,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      - name: Install and build React app
+      - name: Install and build Next.js app
         working-directory: portfolio
         run: |
           npm install && npm run build
@@ -144,7 +144,7 @@ jobs:
 
       - name: Sync files to S3
         run: |
-          aws s3 sync portfolio/build "s3://${{ steps.pulumi-outputs.outputs.bucket_name }}"
+          aws s3 sync portfolio/out "s3://${{ steps.pulumi-outputs.outputs.bucket_name }}"
 
       - name: Invalidate CloudFront
         run: |
