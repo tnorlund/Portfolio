@@ -16,51 +16,42 @@ const ImageCounts = () => {
     threshold: 0,
   });
 
+  // Prefetch the count as soon as the component mounts
   useEffect(() => {
-    console.log("ImageCounts component mounted");
     setMounted(true);
+    setLoading(true);
+    api
+      .fetchImageCount()
+      .then((fetchedCount: ImageCountApiResponse) => {
+        setCount(fetchedCount.count);
+        setError(null);
+      })
+      .catch((err: Error) => {
+        console.error("ImageCounts - Error:", err);
+        setError(err.message || "Failed to load image count");
+      })
+      .finally(() => setLoading(false));
   }, []);
 
+  // Start the animation once the element scrolls into view
   useEffect(() => {
-    console.log("ImageCounts state:", {
-      mounted,
-      inView,
-      loading,
-      count,
-      error,
-    });
-    if (mounted && inView && !loading && count === null && !error) {
-      console.log("ImageCounts - Starting fetch...");
-      setLoading(true);
-      api
-        .fetchImageCount()
-        .then((fetchedCount: ImageCountApiResponse) => {
-          console.log("ImageCounts - Success:", fetchedCount);
-          setCount(fetchedCount.count);
-          setError(null);
-          // Start simple counter animation
-          let current = 0;
-          const target = fetchedCount.count;
-          const increment = Math.ceil(target / 50); // 50 steps
-          const timer = setInterval(() => {
-            current += increment;
-            if (current >= target) {
-              setAnimatedCount(target);
-              clearInterval(timer);
-            } else {
-              setAnimatedCount(current);
-            }
-          }, 20);
-        })
-        .catch((error: Error) => {
-          console.error("ImageCounts - Error:", error);
-          setError(error.message || "Failed to load image count");
-        })
-        .finally(() => {
-          setLoading(false);
-        });
-    }
-  }, [mounted, inView, loading, count, error]);
+    if (!inView || count === null) return;
+
+    let current = 0;
+    const target = count;
+    const increment = Math.ceil(target / 50); // 50 steps
+    const timer = setInterval(() => {
+      current += increment;
+      if (current >= target) {
+        setAnimatedCount(target);
+        clearInterval(timer);
+      } else {
+        setAnimatedCount(current);
+      }
+    }, 20);
+
+    return () => clearInterval(timer);
+  }, [inView, count]);
 
   // Always render the container with ref attached
   return (
@@ -128,51 +119,42 @@ const ReceiptCounts = () => {
     threshold: 0,
   });
 
+  // Prefetch the count on mount
   useEffect(() => {
-    console.log("ReceiptCounts component mounted");
     setMounted(true);
+    setLoading(true);
+    api
+      .fetchReceiptCount()
+      .then((fetchedCount: number) => {
+        setCount(fetchedCount);
+        setError(null);
+      })
+      .catch((err: Error) => {
+        console.error("ReceiptCounts - Error:", err);
+        setError(err.message || "Failed to load receipt count");
+      })
+      .finally(() => setLoading(false));
   }, []);
 
+  // Start the animation when visible
   useEffect(() => {
-    console.log("ReceiptCounts state:", {
-      mounted,
-      inView,
-      loading,
-      count,
-      error,
-    });
-    if (mounted && inView && !loading && count === null && !error) {
-      console.log("ReceiptCounts - Starting fetch...");
-      setLoading(true);
-      api
-        .fetchReceiptCount()
-        .then((fetchedCount: number) => {
-          console.log("ReceiptCounts - Success:", fetchedCount);
-          setCount(fetchedCount);
-          setError(null);
-          // Start simple counter animation
-          let current = 0;
-          const target = fetchedCount;
-          const increment = Math.ceil(target / 50); // 50 steps
-          const timer = setInterval(() => {
-            current += increment;
-            if (current >= target) {
-              setAnimatedCount(target);
-              clearInterval(timer);
-            } else {
-              setAnimatedCount(current);
-            }
-          }, 20);
-        })
-        .catch((error: Error) => {
-          console.error("ReceiptCounts - Error:", error);
-          setError(error.message || "Failed to load receipt count");
-        })
-        .finally(() => {
-          setLoading(false);
-        });
-    }
-  }, [mounted, inView, loading, count, error]);
+    if (!inView || count === null) return;
+
+    let current = 0;
+    const target = count;
+    const increment = Math.ceil(target / 50); // 50 steps
+    const timer = setInterval(() => {
+      current += increment;
+      if (current >= target) {
+        setAnimatedCount(target);
+        clearInterval(timer);
+      } else {
+        setAnimatedCount(current);
+      }
+    }, 20);
+
+    return () => clearInterval(timer);
+  }, [inView, count]);
 
   // Always render the container with ref attached
   return (
