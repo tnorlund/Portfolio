@@ -80,43 +80,9 @@ import pulumi_aws as aws
 import pulumi_command as command
 from pulumi import ComponentResource, Output
 
+from .utils import _find_project_root
 
 # Constants
-def _find_project_root():
-    """Find the project root directory by looking for common markers."""
-    # In CI, use GITHUB_WORKSPACE if available
-    if os.getenv("GITHUB_WORKSPACE"):
-        return Path(os.getenv("GITHUB_WORKSPACE")).resolve()
-
-    # Start from current directory and walk up to find repository root
-    current_dir = Path(os.getcwd()).resolve()
-
-    # Look for common repository root indicators
-    root_markers = [".git", "README.md", "pyproject.toml", ".gitignore"]
-
-    for parent in [current_dir] + list(current_dir.parents):
-        # Check if this directory contains any root markers
-        if any((parent / marker).exists() for marker in root_markers):
-            # Additional check: make sure we have the expected directories
-            expected_dirs = [
-                "receipt_dynamo",
-                "receipt_label",
-                "receipt_upload",
-                "infra",
-            ]
-            if all((parent / dir_name).is_dir() for dir_name in expected_dirs):
-                return parent
-
-    # Fallback: if we're in infra/ directory, go up one level
-    if current_dir.name == "infra":
-        parent = current_dir.parent
-        # Verify this looks like the right directory
-        expected_dirs = ["receipt_dynamo", "receipt_label", "receipt_upload"]
-        if all((parent / dir_name).is_dir() for dir_name in expected_dirs):
-            return parent
-
-    # Final fallback: use current directory
-    return current_dir
 
 
 PROJECT_DIR = _find_project_root()

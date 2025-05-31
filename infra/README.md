@@ -28,7 +28,7 @@ The Lambda Layer builder automatically resolves paths to find the correct packag
 - Locally from the repository root
 - In CI/CD environments (using `GITHUB_WORKSPACE`)
 
-This is handled by the `_find_project_root()` function in `lambda_layer.py`.
+This is handled by the `_find_project_root()` function in `utils.py`.
 
 ## Project Structure
 
