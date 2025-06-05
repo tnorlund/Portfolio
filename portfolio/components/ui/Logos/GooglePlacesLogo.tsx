@@ -1,35 +1,14 @@
-import React from "react";
-import { useSpring, animated } from "@react-spring/web";
-import { useInView } from "react-intersection-observer";
-
 const GooglePlacesLogo = () => {
-  // Set up Intersection Observer
-  const [ref, inView] = useInView({ threshold: 0.3 });
-
-  // Set up react-spring for opacity
-  const [styles, api] = useSpring(() => ({
-    opacity: 0, // Start fully transparent
-    config: { tension: 120, friction: 14 },
-  }));
-
-  // Trigger the fade-in once the GooglePlaces component is in view
-  React.useEffect(() => {
-    if (inView) {
-      api.start({ opacity: 1 }); // Animate from 0 to 1
-    }
-  }, [inView, api]);
-
   return (
     <div style={{ display: "flex", justifyContent: "center" }}>
-      <div ref={ref}>
-        <svg
-          id="GooglePlaces"
-          xmlns="http://www.w3.org/2000/svg"
-          width="300"
-          height="150"
-          viewBox="0 0 300 150"
-        >
-          <animated.g style={styles}>
+      <svg
+        id="GooglePlaces"
+        xmlns="http://www.w3.org/2000/svg"
+        width="300"
+        height="150"
+        viewBox="0 0 300 150"
+      >
+        <g>
             <path
               d="M67.95,86.86c-2.07,0-4.02-.38-5.85-1.13-1.83-.75-3.44-1.8-4.84-3.15-1.37-1.37-2.46-2.97-3.27-4.8-.78-1.86-1.17-3.86-1.17-6.01s.39-4.14,1.17-5.97c.81-1.86,1.9-3.46,3.27-4.8,1.4-1.37,3.01-2.44,4.84-3.19,1.83-.75,3.78-1.13,5.85-1.13,2.21,0,4.24.39,6.1,1.17,1.88.78,3.46,1.87,4.72,3.27l-3.07,3.03c-.62-.7-1.33-1.29-2.14-1.78-.78-.48-1.64-.85-2.58-1.09-.94-.27-1.95-.4-3.03-.4-1.43,0-2.79.26-4.08.77-1.29.51-2.44,1.25-3.43,2.22-.97.94-1.74,2.09-2.3,3.43-.57,1.32-.85,2.81-.85,4.48s.28,3.18.85,4.52c.59,1.32,1.37,2.46,2.34,3.43,1,.94,2.14,1.67,3.43,2.18,1.29.51,2.65.77,4.08.77,1.32,0,2.54-.19,3.67-.57,1.16-.38,2.17-.91,3.03-1.61s1.56-1.55,2.1-2.54c.54-1.02.87-2.17,1.01-3.43h-9.89v-3.92h14.05c.05.32.11.7.16,1.13.05.4.08.79.08,1.17v.04c0,2.07-.36,3.97-1.09,5.69-.7,1.72-1.68,3.2-2.95,4.44-1.26,1.21-2.77,2.15-4.52,2.83-1.72.65-3.62.97-5.69.97Z"
               fill="var(--text-color)"
@@ -103,9 +82,8 @@ const GooglePlacesLogo = () => {
               d="M20.97,63.49l-5.68-4.77c-1.75,2.09-2.82,4.79-2.82,7.72,0,2.26.44,4.1,1.2,5.75l7.3-8.7Z"
               fill="#ea4535"
             />
-          </animated.g>
+          </g>
         </svg>
-      </div>
     </div>
   );
 };
