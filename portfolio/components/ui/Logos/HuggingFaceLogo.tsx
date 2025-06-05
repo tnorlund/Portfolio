@@ -1,35 +1,14 @@
-import React from "react";
-import { useSpring, animated } from "@react-spring/web";
-import { useInView } from "react-intersection-observer";
-
 const HuggingFaceLogo: React.FC = () => {
-  // Set up Intersection Observer
-  const [ref, inView] = useInView({ threshold: 0.3 });
-
-  // Set up react-spring for opacity
-  const [styles, api] = useSpring(() => ({
-    opacity: 0, // Start fully transparent
-    config: { tension: 120, friction: 14 },
-  }));
-
-  // Trigger the fade-in once the Pulumi component is in view
-  React.useEffect(() => {
-    if (inView) {
-      api.start({ opacity: 1 }); // Animate from 0 to 1
-    }
-  }, [inView, api]);
-
   return (
     <div style={{ display: "flex", justifyContent: "center" }}>
-      <div ref={ref}>
-        <svg
-          id="OpenAI"
-          xmlns="http://www.w3.org/2000/svg"
-          width="300"
-          height="150"
-          viewBox="0 0 300 150"
-        >
-          <animated.g style={styles}>
+      <svg
+        id="OpenAI"
+        xmlns="http://www.w3.org/2000/svg"
+        width="300"
+        height="150"
+        viewBox="0 0 300 150"
+      >
+        <g>
             <g>
               <path
                 d="M71.51,87.93c-.15-.58-.41-1.14-.74-1.64.07-.26.13-.53.16-.8.24-1.72-.36-3.29-1.48-4.51-.61-.67-1.26-1.1-1.95-1.37.45-1.94.68-3.92.68-5.92,0-.91-.05-1.8-.14-2.68-.04-.44-.1-.88-.16-1.31-.2-1.29-.49-2.56-.88-3.8-.25-.82-.55-1.62-.88-2.41-.5-1.17-1.08-2.3-1.74-3.38-.43-.72-.9-1.42-1.41-2.09-.25-.34-.51-.67-.78-.99-.8-.97-1.67-1.88-2.6-2.73-.31-.28-.63-.56-.95-.82-.32-.27-.65-.53-.98-.78-.67-.5-1.37-.97-2.09-1.41-3.96-2.41-8.61-3.79-13.58-3.79-14.47,0-26.19,11.73-26.19,26.19,0,2.02.23,4.03.7,5.99-.62.27-1.22.69-1.77,1.3-1.12,1.22-1.72,2.79-1.48,4.5.04.27.09.54.16.81-.34.5-.59,1.05-.74,1.64-.35,1.31-.23,2.5.21,3.53-.48,1.35-.36,2.8.26,4.05.45.92,1.1,1.62,1.89,2.26.95.75,2.13,1.39,3.56,2.01,1.71.73,3.79,1.41,4.74,1.66,2.45.63,4.79,1.03,7.17,1.05,3.39.03,6.31-.77,8.39-2.8,1.03.13,2.06.19,3.09.19,1.09,0,2.18-.07,3.27-.21,2.08,2.05,5.01,2.86,8.41,2.82,2.38-.02,4.72-.42,7.16-1.05.95-.25,3.04-.93,4.74-1.66,1.43-.61,2.62-1.25,3.57-2.01.79-.63,1.44-1.34,1.89-2.26.63-1.25.74-2.7.27-4.05.43-1.04.55-2.22.2-3.53Z"
@@ -105,9 +84,8 @@ const HuggingFaceLogo: React.FC = () => {
                 fill="var(--text-color)"
               />
             </g>
-          </animated.g>
-        </svg>
-      </div>
+        </g>
+      </svg>
     </div>
   );
 };
