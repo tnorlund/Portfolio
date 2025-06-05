@@ -6,3 +6,4 @@ export { default as GooglePlacesLogo } from "./GooglePlacesLogo";
 export { default as GithubLogo } from "./GithubLogo";
 export { default as PulumiLogo } from "./PulumiLogo";
 export { default as HuggingFaceLogo } from "./HuggingFaceLogo";
+export { default as NextJSLogo } from "./NextJSLogo";
