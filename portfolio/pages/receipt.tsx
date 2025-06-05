@@ -14,6 +14,7 @@ import {
   LabelValidationCount,
   ReceiptBoundingBox,
 } from "../components/ui/Figures";
+import AnimatedInView from "../components/ui/AnimatedInView";
 import {
   OpenAILogo,
   PineconeLogo,
@@ -21,6 +22,8 @@ import {
   GithubLogo,
   HuggingFaceLogo,
   PulumiLogo,
+  ReactLogo,
+  NextJSLogo,
 } from "../components/ui/Logos";
 
 interface ReceiptPageProps {
@@ -499,6 +502,19 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         I got my build time down to ~10 seconds. This allows me to make a change
         locally and get feedback in seconds. Github allows me to track my
         changes and deploy to production.
+      </p>
+      <p>
+        I'm using React to build the frontend. It's a great way to get started,
+        but I wanted to continue to increase my tech stack. I ended up porting
+        to NextJS.
+      </p>
+      <AnimatedInView replacement={<NextJSLogo />} replaceAfterMs={1000}>
+        <ReactLogo />
+      </AnimatedInView>
+      <p>
+        Moving to NextJS was really easy. Using a combination of Cursor and
+        OpenAI's Codex allowed me to move this from one framework to another
+        with minimal effort.
       </p>
 
       <h2>Training a Custom Model</h2>
