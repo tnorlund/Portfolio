@@ -1,35 +1,14 @@
-import React from "react";
-import { useSpring, animated } from "@react-spring/web";
-import { useInView } from "react-intersection-observer";
-
 const PineconeLogo = () => {
-  // Set up Intersection Observer
-  const [ref, inView] = useInView({ threshold: 0.3 });
-
-  // Set up react-spring for opacity
-  const [styles, api] = useSpring(() => ({
-    opacity: 0, // Start fully transparent
-    config: { tension: 120, friction: 14 },
-  }));
-
-  // Trigger the fade-in once the Pulumi component is in view
-  React.useEffect(() => {
-    if (inView) {
-      api.start({ opacity: 1 }); // Animate from 0 to 1
-    }
-  }, [inView, api]);
-
   return (
     <div style={{ display: "flex", justifyContent: "center" }}>
-      <div ref={ref}>
-        <svg
-          id="Pinecone"
-          xmlns="http://www.w3.org/2000/svg"
-          width="300"
-          height="150"
-          viewBox="0 0 300 150"
-        >
-          <animated.g style={styles}>
+      <svg
+        id="Pinecone"
+        xmlns="http://www.w3.org/2000/svg"
+        width="300"
+        height="150"
+        viewBox="0 0 300 150"
+      >
+        <g>
             <path
               d="M73.24,59.92h14.46c10.46,0,13.13,6.16,13.13,11.16s-2.7,11.16-13.13,11.16h-8.94v17.61h-5.53v-39.94ZM78.79,77.53h7.31c4.4,0,8.78-1,8.78-6.42s-4.4-6.42-8.78-6.42h-7.31v12.84Z"
               fill="var(--text-color)"
@@ -75,9 +54,8 @@ const PineconeLogo = () => {
               fill="var(--text-color)"
               fillRule="evenodd"
             />
-          </animated.g>
-        </svg>
-      </div>
+        </g>
+      </svg>
     </div>
   );
 };

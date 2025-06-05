@@ -1,35 +1,14 @@
-import { useSpring, animated } from "@react-spring/web";
-import { useInView } from "react-intersection-observer";
-import { useEffect } from "react";
-
 const PulumiLogo = () => {
-  // Set up Intersection Observer
-  const [ref, inView] = useInView({ threshold: 0.3 });
-
-  // Set up react-spring for opacity
-  const [styles, api] = useSpring(() => ({
-    opacity: 0, // Start fully transparent
-    config: { tension: 120, friction: 14 },
-  }));
-
-  // Trigger the fade-in once the Pulumi component is in view
-  useEffect(() => {
-    if (inView) {
-      api.start({ opacity: 1 }); // Animate from 0 to 1
-    }
-  }, [inView, api]);
-
   return (
     <div style={{ display: "flex", justifyContent: "center" }}>
-      <div ref={ref}>
-        <svg
-          id="Pulumi"
-          xmlns="http://www.w3.org/2000/svg"
-          width="300"
-          height="150"
-          viewBox="0 0 300 150"
-        >
-          <animated.g style={styles}>
+      <svg
+        id="Pulumi"
+        xmlns="http://www.w3.org/2000/svg"
+        width="300"
+        height="150"
+        viewBox="0 0 300 150"
+      >
+        <g>
             <path
               d="M23.55,78.88c2.53-1.46,2.53-6.19,0-10.57-2.53-4.37-6.62-6.74-9.16-5.27-2.53,1.46-2.53,6.19,0,10.57,2.53,4.37,6.62,6.74,9.16,5.27ZM23.56,88.24c2.53,4.37,2.52,9.1,0,10.57-2.53,1.46-6.63-.9-9.16-5.27-2.53-4.37-2.52-9.1,0-10.57,2.53-1.46,6.63.9,9.16,5.27ZM40.81,98.22c2.53,4.37,2.52,9.1,0,10.57-2.53,1.46-6.63-.9-9.16-5.28-2.53-4.37-2.52-9.1,0-10.57,2.53-1.46,6.63.9,9.16,5.27ZM40.8,78.28c2.53,4.37,2.52,9.1,0,10.57-2.53,1.46-6.63-.9-9.16-5.27-2.53-4.37-2.52-9.1,0-10.57,2.53-1.46,6.63.9,9.16,5.27Z"
               fill="#f2707e"
@@ -50,9 +29,8 @@ const PulumiLogo = () => {
               fill="var(--text-color)"
               fillRule="evenodd"
             />
-          </animated.g>
-        </svg>
-      </div>
+        </g>
+      </svg>
     </div>
   );
 };

@@ -344,7 +344,9 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         There are many services that offer to generate embeddings, but I ended
         up going with OpenAI.
       </p>
-      <OpenAILogo />
+      <AnimatedInView>
+        <OpenAILogo />
+      </AnimatedInView>
       <h3>Is It Expensive?</h3>
       <p>
         No. I experimented <i>a lot</i>. I developed a way to batch embeddings
@@ -430,7 +432,9 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         some research, I found Pinecone, a vector database that allows me to
         store and retrieve embeddings.
       </p>
-      <PineconeLogo />
+      <AnimatedInView>
+        <PineconeLogo />
+      </AnimatedInView>
       <p>
         Pinecone's real strength shows when you attach <i>meaningful</i>
         information to each embedding. The embedding by itself can telling you
@@ -452,7 +456,9 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         needed for rich, semantic search.
       </p>
 
-      <GooglePlacesLogo />
+      <AnimatedInView>
+        <GooglePlacesLogo />
+      </AnimatedInView>
       <MerchantCount />
 
       <h2>Turning Semantic Search into Autonomous Labeling</h2>
@@ -495,8 +501,12 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       </p>
       <p>I used Github and Pulumi to manage the cloud and code.</p>
       <div className={styles.logosContainer}>
-        <GithubLogo />
-        <PulumiLogo />
+        <AnimatedInView>
+          <GithubLogo />
+        </AnimatedInView>
+        <AnimatedInView>
+          <PulumiLogo />
+        </AnimatedInView>
       </div>
       <p>
         I got my build time down to ~10 seconds. This allows me to make a change
@@ -525,7 +535,9 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         that can run on my laptop. I've been playing with a few models on
         Hugging Face.
       </p>
-      <HuggingFaceLogo />
+      <AnimatedInView>
+        <HuggingFaceLogo />
+      </AnimatedInView>
 
       <h2>A New Era of Coding</h2>
       <p>
