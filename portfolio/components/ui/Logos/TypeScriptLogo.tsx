@@ -1,35 +1,14 @@
-import React from "react";
-import { useSpring, animated } from "@react-spring/web";
-import { useInView } from "react-intersection-observer";
-
 const TypeScriptLogo = () => {
-  // Set up Intersection Observer
-  const [ref, inView] = useInView({ threshold: 0.3 });
-
-  // Set up react-spring for opacity
-  const [styles, api] = useSpring(() => ({
-    opacity: 0, // Start fully transparent
-    config: { tension: 120, friction: 14 },
-  }));
-
-  // Trigger the fade-in once the TypeScript component is in view
-  React.useEffect(() => {
-    if (inView) {
-      api.start({ opacity: 1 }); // Animate from 0 to 1
-    }
-  }, [inView, api]);
-
   return (
     <div style={{ display: "flex", justifyContent: "center" }}>
-      <div ref={ref}>
-        <svg
-          id="TypeScript"
-          xmlns="http://www.w3.org/2000/svg"
-          width="300"
-          height="150"
-          viewBox="0 0 300 150"
-        >
-          <animated.g style={styles}>
+      <svg
+        id="TypeScript"
+        xmlns="http://www.w3.org/2000/svg"
+        width="300"
+        height="150"
+        viewBox="0 0 300 150"
+      >
+        <g>
             <g>
               <rect
                 x="19.35"
@@ -100,9 +79,8 @@ const TypeScriptLogo = () => {
                 fill="#3978bd"
               />
             </g>
-          </animated.g>
-        </svg>
-      </div>
+        </g>
+      </svg>
     </div>
   );
 };
