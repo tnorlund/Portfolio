@@ -259,8 +259,8 @@ def test_image_key(example_image):
 def test_image_gsi1_key(example_image):
     """Test the Image.gsi1_key() method"""
     assert example_image.gsi1_key() == {
-        "GSI1PK": {"S": "IMAGE"},
-        "GSI1SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "GSI1PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "GSI1SK": {"S": "IMAGE"},
     }
 
 
@@ -271,8 +271,8 @@ def test_image_to_item(example_image):
     assert example_image.to_item() == {
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {"S": "IMAGE"},
-        "GSI1PK": {"S": "IMAGE"},
-        "GSI1SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "GSI1PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "GSI1SK": {"S": "IMAGE"},
         "GSI2PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "GSI2SK": {"S": "IMAGE"},
         "TYPE": {"S": "IMAGE"},
@@ -295,8 +295,8 @@ def test_image_to_item_no_sha(example_image_no_sha):
     assert example_image_no_sha.to_item() == {
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {"S": "IMAGE"},
-        "GSI1PK": {"S": "IMAGE"},
-        "GSI1SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "GSI1PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "GSI1SK": {"S": "IMAGE"},
         "GSI2PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "GSI2SK": {"S": "IMAGE"},
         "TYPE": {"S": "IMAGE"},
@@ -319,8 +319,8 @@ def test_image_to_item_no_cdn_bucket(example_image_no_cdn_bucket):
     assert example_image_no_cdn_bucket.to_item() == {
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {"S": "IMAGE"},
-        "GSI1PK": {"S": "IMAGE"},
-        "GSI1SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "GSI1PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "GSI1SK": {"S": "IMAGE"},
         "GSI2PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "GSI2SK": {"S": "IMAGE"},
         "TYPE": {"S": "IMAGE"},
@@ -343,8 +343,8 @@ def test_image_to_item_no_cdn_key(example_image_no_cdn_key):
     assert example_image_no_cdn_key.to_item() == {
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {"S": "IMAGE"},
-        "GSI1PK": {"S": "IMAGE"},
-        "GSI1SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "GSI1PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "GSI1SK": {"S": "IMAGE"},
         "GSI2PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "GSI2SK": {"S": "IMAGE"},
         "TYPE": {"S": "IMAGE"},

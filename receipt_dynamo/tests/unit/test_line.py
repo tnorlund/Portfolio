@@ -496,10 +496,8 @@ def test_line_key(example_line):
 def test_line_gsi1_key(example_line):
     """Test the Line.gsi1_key() method"""
     assert example_line.gsi1_key() == {
-        "GSI1PK": {"S": "IMAGE"},
-        "GSI1SK": {
-            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#LINE#00001"
-        },
+        "GSI1PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "GSI1SK": {"S": "LINE#00001"},
     }
 
 
@@ -509,10 +507,10 @@ def test_line_to_item(example_line):
     item = example_line.to_item()
     assert item["PK"] == {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"}
     assert item["SK"] == {"S": "LINE#00001"}
-    assert item["GSI1PK"] == {"S": "IMAGE"}
-    assert item["GSI1SK"] == {
-        "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#LINE#00001"
+    assert item["GSI1PK"] == {
+        "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     }
+    assert item["GSI1SK"] == {"S": "LINE#00001"}
     assert item["TYPE"] == {"S": "LINE"}
     assert item["text"] == {"S": "Test"}
     assert item["bounding_box"] == {
@@ -550,8 +548,6 @@ def test_line_to_item(example_line):
     assert item["angle_degrees"] == {"N": "1.000000000000000000"}
     assert item["angle_radians"] == {"N": "5.000000000000000000"}
     assert item["confidence"] == {"N": "0.90"}
-    assert "histogram" in item
-    assert "num_chars" in item
 
 
 @pytest.mark.unit
@@ -1186,8 +1182,6 @@ def test_line_iter(example_line):
         "angle_degrees",
         "angle_radians",
         "confidence",
-        "histogram",
-        "num_chars",
     }
     assert set(line_dict.keys()) == expected_keys
     assert line_dict["image_id"] == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"

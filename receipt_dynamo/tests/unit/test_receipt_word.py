@@ -652,8 +652,6 @@ def test_receipt_word_iter(example_receipt_word):
         "angle_degrees",
         "angle_radians",
         "confidence",
-        "histogram",
-        "num_chars",
         "extracted_data",
         "embedding_status",
     }
