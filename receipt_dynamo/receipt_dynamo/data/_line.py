@@ -88,6 +88,41 @@ class _Line:
             else:
                 raise Exception(f"Error updating line: {e}")
 
+    def updateLines(self, lines: list[Line]):
+        """Updates a list of lines in the database
+
+        Args:
+            lines (list[Line]): The lines to update in the database
+        """
+        if lines is None:
+            raise ValueError("lines parameter is required and cannot be None.")
+        if not isinstance(lines, list):
+            raise ValueError("lines must be a list of Line instances.")
+        if not all(isinstance(line, Line) for line in lines):
+            raise ValueError("All lines must be instances of the Line class.")
+        for i in range(0, len(lines), CHUNK_SIZE):
+            chunk = lines[i : i + CHUNK_SIZE]
+            transact_items = [
+                {
+                    "Put": {
+                        "TableName": self.table_name,
+                        "Item": line.to_item(),
+                        "ConditionExpression": "attribute_exists(PK)",
+                    }
+                }
+                for line in chunk
+            ]
+            try:
+                self._client.transact_write_items(TransactItems=transact_items)
+            except ClientError as e:
+                error_code = e.response["Error"]["Code"]
+                if error_code == "ConditionalCheckFailedException":
+                    raise ValueError("One or more lines do not exist")
+                elif error_code == "ProvisionedThroughputExceededException":
+                    raise Exception("Provisioned throughput exceeded")
+                else:
+                    raise Exception(f"Error updating lines: {e}")
+
     def deleteLine(self, image_id: str, line_id: int):
         """Deletes a line from the database
 
