@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import Head from "next/head";
 import styles from "../styles/Receipt.module.css";
 import { GetStaticProps } from "next";
 import {
@@ -190,6 +191,9 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         transition: "background-color 0.3s ease",
       }}
     >
+      <Head>
+        <title>Receipt | Tyler Norlund</title>
+      </Head>
       {/* Upload area overlay when dragging */}
       {dragging && (
         <div

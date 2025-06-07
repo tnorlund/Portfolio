@@ -1,3 +1,6 @@
+import React from "react";
+import Head from "next/head";
+
 export interface ResumeRoleProps {
   title: string;
   business?: string;
@@ -109,6 +112,9 @@ export const ResumeRole: React.FC<ResumeRoleProps> = ({
 export default function ResumePage() {
   return (
     <div className="container">
+      <Head>
+        <title>Résumé | Tyler Norlund</title>
+      </Head>
       <h1>Education</h1>
       <div className="resume-box">
         <div>

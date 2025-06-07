@@ -1,9 +1,13 @@
 import React from "react";
+import Head from "next/head";
 import Link from "next/link";
 
 export default function Home() {
   return (
     <div className="container">
+      <Head>
+        <title>Home | Tyler Norlund</title>
+      </Head>
       <main>
         <img
           src="/face.png"
