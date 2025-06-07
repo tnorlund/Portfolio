@@ -9,6 +9,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 dynamodb_table_name = os.environ["DYNAMODB_TABLE_NAME"]
+QUERY_LIMIT = 500
 
 
 def handler(event, context):
@@ -21,9 +22,9 @@ def handler(event, context):
             client = DynamoClient(dynamodb_table_name)
 
             # Paginate through all images to get the final count
-            images, lek = client.listImages(50)
+            images, lek = client.listImages(QUERY_LIMIT)
             while lek:
-                next_images, lek = client.listImages(50, lek)
+                next_images, lek = client.listImages(QUERY_LIMIT, lek)
                 images.extend(next_images)
 
             return {
@@ -31,7 +32,10 @@ def handler(event, context):
                 "body": len(images),
             }
         except Exception as e:
-            return {"statusCode": 500, "body": f"Internal server error: {str(e)}"}
+            return {
+                "statusCode": 500,
+                "body": f"Internal server error: {str(e)}",
+            }
     elif http_method == "POST":
         return {"statusCode": 405, "body": "Method not allowed"}
     else:
