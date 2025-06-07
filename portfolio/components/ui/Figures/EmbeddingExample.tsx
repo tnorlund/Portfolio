@@ -1,6 +1,6 @@
 import React from "react";
 import { useSpring, animated } from "@react-spring/web";
-import { useInView } from "react-intersection-observer";
+import useOptimizedInView from "../../../hooks/useOptimizedInView";
 import dynamic from "next/dynamic";
 
 /** Helper that produces an array of 5 random numbers in the range [0, 1]. */
@@ -89,7 +89,7 @@ const EmbeddingExampleComponent: React.FC = () => {
   const [wrapperSpring, wrapperApi] = useSpring(() => ({ opacity: 1 }));
 
   // IntersectionObserver to trigger the sequence when visible
-  const [ref, inView] = useInView({ threshold: 0.3 });
+  const [ref, inView] = useOptimizedInView({ threshold: 0.3 });
 
   // Track per‑row embedding (null until generated)
   const [embeddings, setEmbeddings] = React.useState<Array<number[] | null>>(
