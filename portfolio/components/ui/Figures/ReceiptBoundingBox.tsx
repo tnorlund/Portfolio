@@ -8,28 +8,28 @@ const isDevelopment = process.env.NODE_ENV === "development";
 
 // ----------------------------------------------------
 // AnimatedWordBox: already defined for words (unchanged)
-interface AnimatedWordBoxProps {
-  word: any; // Adjust type as needed
+interface AnimatedLineBoxProps {
+  line: any; // Adjust type as needed
   svgWidth: number;
   svgHeight: number;
   delay: number;
 }
 
-const AnimatedWordBox: React.FC<AnimatedWordBoxProps> = ({
-  word,
+const AnimatedLineBox: React.FC<AnimatedLineBoxProps> = ({
+  line,
   svgWidth,
   svgHeight,
   delay,
 }) => {
   // Convert normalized coordinates to absolute pixel values.
-  const x1 = word.top_left.x * svgWidth;
-  const y1 = (1 - word.top_left.y) * svgHeight;
-  const x2 = word.top_right.x * svgWidth;
-  const y2 = (1 - word.top_right.y) * svgHeight;
-  const x3 = word.bottom_right.x * svgWidth;
-  const y3 = (1 - word.bottom_right.y) * svgHeight;
-  const x4 = word.bottom_left.x * svgWidth;
-  const y4 = (1 - word.bottom_left.y) * svgHeight;
+  const x1 = line.top_left.x * svgWidth;
+  const y1 = (1 - line.top_left.y) * svgHeight;
+  const x2 = line.top_right.x * svgWidth;
+  const y2 = (1 - line.top_right.y) * svgHeight;
+  const x3 = line.bottom_right.x * svgWidth;
+  const y3 = (1 - line.bottom_right.y) * svgHeight;
+  const x4 = line.bottom_left.x * svgWidth;
+  const y4 = (1 - line.bottom_left.y) * svgHeight;
   const points = `${x1},${y1} ${x2},${y2} ${x3},${y3} ${x4},${y4}`;
 
   // Compute the polygon's centroid.
@@ -178,13 +178,13 @@ const ImageBoundingBox: React.FC = () => {
   const defaultSvgHeight = 565.806;
 
   // Unconditionally extract words and receipts.
-  const words = imageDetails?.words ?? [];
+  const lines = imageDetails?.lines ?? [];
   const receipts = imageDetails?.receipts ?? [];
 
   // Animate word bounding boxes using a transition.
-  const wordTransitions = useTransition(words, {
+  const lineTransitions = useTransition(lines, {
     // Include resetKey in the key so that each item gets a new key on reset.
-    keys: (word) => `${resetKey}-${word.line_id}-${word.word_id}`,
+    keys: (line) => `${resetKey}-${line.line_id}`,
     from: { opacity: 0, transform: "scale(0.8)" },
     enter: (item, index) => ({
       opacity: 1,
@@ -195,11 +195,11 @@ const ImageBoundingBox: React.FC = () => {
   });
 
   // Compute the total delay for word animations.
-  const totalDelayForWords =
-    words.length > 0 ? (words.length - 1) * 30 + 1130 : 0;
+  const totalDelayForLines =
+    lines.length > 0 ? (lines.length - 1) * 30 + 1130 : 0;
 
   // Use the first image from the API.
-  const firstImage = imageDetails?.images[0];
+  const firstImage = imageDetails?.image;
   const cdnUrl = firstImage
     ? isDevelopment
       ? `https://dev.tylernorlund.com/${firstImage.cdn_s3_key}`
@@ -272,19 +272,19 @@ const ImageBoundingBox: React.FC = () => {
               />
 
               {/* Render animated word bounding boxes (via transition) */}
-              {wordTransitions((style, word) => {
-                const x1 = word.top_left.x * svgWidth;
-                const y1 = (1 - word.top_left.y) * svgHeight;
-                const x2 = word.top_right.x * svgWidth;
-                const y2 = (1 - word.top_right.y) * svgHeight;
-                const x3 = word.bottom_right.x * svgWidth;
-                const y3 = (1 - word.bottom_right.y) * svgHeight;
-                const x4 = word.bottom_left.x * svgWidth;
-                const y4 = (1 - word.bottom_left.y) * svgHeight;
+              {lineTransitions((style, line) => {
+                const x1 = line.top_left.x * svgWidth;
+                const y1 = (1 - line.top_left.y) * svgHeight;
+                const x2 = line.top_right.x * svgWidth;
+                const y2 = (1 - line.top_right.y) * svgHeight;
+                const x3 = line.bottom_right.x * svgWidth;
+                const y3 = (1 - line.bottom_right.y) * svgHeight;
+                const x4 = line.bottom_left.x * svgWidth;
+                const y4 = (1 - line.bottom_left.y) * svgHeight;
                 const points = `${x1},${y1} ${x2},${y2} ${x3},${y3} ${x4},${y4}`;
                 return (
                   <animated.polygon
-                    key={`${word.line_id}-${word.word_id}`}
+                    key={`${line.line_id}`}
                     style={style}
                     points={points}
                     fill="none"
@@ -295,10 +295,10 @@ const ImageBoundingBox: React.FC = () => {
               })}
 
               {/* Render animated word centroids */}
-              {words.map((word, index) => (
-                <AnimatedWordBox
-                  key={`${word.line_id}-${word.word_id}`}
-                  word={word}
+              {lines.map((line, index) => (
+                <AnimatedLineBox
+                  key={`${line.line_id}`}
+                  line={line}
                   svgWidth={svgWidth}
                   svgHeight={svgHeight}
                   delay={index * 30}
@@ -312,7 +312,7 @@ const ImageBoundingBox: React.FC = () => {
                   receipt={receipt}
                   svgWidth={svgWidth}
                   svgHeight={svgHeight}
-                  delay={totalDelayForWords + index * 100}
+                  delay={totalDelayForLines + index * 100}
                 />
               ))}
             </svg>
