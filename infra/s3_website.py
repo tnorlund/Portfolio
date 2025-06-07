@@ -1,6 +1,7 @@
+import json
+
 import pulumi
 import pulumi_aws as aws
-import json
 
 # Detect the current Pulumi stack
 stack = pulumi.get_stack()
@@ -28,7 +29,8 @@ else:
 # 2) Request ACM Certificate
 ########################
 # We set domain_name = primary_domain
-# And if we are in prod, we also set subject_alternative_names for the "www" domain
+# And if we are in prod, we also set subject_alternative_names for the
+# "www" domain
 certificate = aws.acm.Certificate(
     "siteCertificate",
     domain_name=primary_domain,
@@ -111,7 +113,33 @@ public_access_block = aws.s3.BucketPublicAccessBlock(
 )
 
 ########################
-# 6) Create CloudFront Distribution
+# 6) CloudFront Function
+########################
+redirect_function = aws.cloudfront.Function(
+    "redirectFunction",
+    runtime="cloudfront-js-1.0",
+    comment="Handle clean URLs and trailing slashes",
+    publish=True,
+    code="""
+function handler(event) {
+  var req = event.request;
+  var uri = req.uri;
+  if (uri !== '/' && uri.endsWith('/')) {
+    return {
+      statusCode: 301,
+      statusDescription: 'Moved Permanently',
+      headers: { location: { value: uri.slice(0, -1) } }
+    };
+  }
+  if (!uri.includes('.') && uri !== '/') {
+    req.uri = uri + '.html';
+  }
+  return req;
+}
+""",
+)
+
+# 7) Create CloudFront Distribution
 ########################
 # If prod, we set 'aliases' = [tylernorlund.com, www.tylernorlund.com]
 # Otherwise, it's just [<stack>.tylernorlund.com]
@@ -137,6 +165,12 @@ cdn = aws.cloudfront.Distribution(
         "minTtl": 0,
         "defaultTtl": 3600,
         "maxTtl": 86400,
+        "functionAssociations": [
+            {
+                "eventType": "viewer-request",
+                "functionArn": redirect_function.arn,
+            }
+        ],
     },
     price_class="PriceClass_100",
     restrictions={"geoRestriction": {"restrictionType": "none"}},
@@ -166,7 +200,7 @@ cdn = aws.cloudfront.Distribution(
 pulumi.export("cdn_distribution_id", cdn.id)
 
 ########################
-# 7) Route53 Alias Records
+# 8) Route53 Alias Records
 ########################
 # We create an Alias A record for each domain in 'site_domains'.
 # Each domain needs an ALIAS that points to the CloudFront distribution.
@@ -188,7 +222,7 @@ for domain in site_domains:
     )
 
 ########################
-# 8) Exports
+# 9) Exports
 ########################
 pulumi.export("cdn_bucket_name", site_bucket.bucket)
 pulumi.export("domains", site_domains)
