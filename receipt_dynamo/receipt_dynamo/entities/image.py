@@ -124,8 +124,8 @@ class Image:
             dict: The GSI1 key for the image.
         """
         return {
-            "GSI1PK": {"S": "IMAGE"},
-            "GSI1SK": {"S": f"IMAGE#{self.image_id}"},
+            "GSI1PK": {"S": f"IMAGE#{self.image_id}"},
+            "GSI1SK": {"S": f"IMAGE"},
         }
 
     def gsi2_key(self) -> dict:

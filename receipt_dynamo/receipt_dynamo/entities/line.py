@@ -128,8 +128,8 @@ class Line:
             dict: The GSI1 key for the line.
         """
         return {
-            "GSI1PK": {"S": "IMAGE"},
-            "GSI1SK": {"S": f"IMAGE#{self.image_id}#LINE#{self.line_id:05d}"},
+            "GSI1PK": {"S": f"IMAGE#{self.image_id}"},
+            "GSI1SK": {"S": f"LINE#{self.line_id:05d}"},
         }
 
     def to_item(self) -> dict:

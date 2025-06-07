@@ -146,10 +146,8 @@ class Receipt:
             dict: The GSI1 key for the receipt.
         """
         return {
-            "GSI1PK": {"S": "IMAGE"},
-            "GSI1SK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
-            },
+            "GSI1PK": {"S": f"IMAGE#{self.image_id}"},
+            "GSI1SK": {"S": f"RECEIPT#{self.receipt_id:05d}"},
         }
 
     def gsi2_key(self) -> dict:
