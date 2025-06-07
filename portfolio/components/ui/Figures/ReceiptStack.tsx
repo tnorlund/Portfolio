@@ -2,13 +2,13 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../../../services/api";
 import { Receipt, ReceiptApiResponse } from "../../../types/api";
-import { useInView } from "react-intersection-observer";
+import useOptimizedInView from "../../../hooks/useOptimizedInView";
 import { useTransition, animated } from "@react-spring/web";
 
 const isDevelopment = process.env.NODE_ENV === "development";
 
 const ReceiptStack: React.FC = () => {
-  const [ref, inView] = useInView({
+  const [ref, inView] = useOptimizedInView({
     threshold: 0.1,
     triggerOnce: true,
   });

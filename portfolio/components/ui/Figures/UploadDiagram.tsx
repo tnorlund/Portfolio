@@ -10,15 +10,15 @@ interface UploadDiagramProps {
 
 const UploadDiagram: React.FC<UploadDiagramProps> = ({ chars }) => {
   // ═══ Shared helpers ════════════════════════════════════════
-  const BIT_COUNT = 30;
+  const BIT_COUNT = 15;
   const TILT = 30; // ±30°
   const FADE = (p: number) => 1 - Math.abs((p % 100) - 50) / 50; // 0→1→0
 
   /* ─── Global animation knobs ────────────────────────────── */
-  const PHASE_LEN = 700; // default travel time per leg
+  const PHASE_LEN = 500; // default travel time per leg (reduced from 700)
   const STAGGER = 50; // pause between legs
-  const CYCLE_PAUSE = 150; // extra pause between storyboard loops (ms)
-  const LAUNCH_STEP = 75; // per‑glyph trail spacing
+  const CYCLE_PAUSE = 200; // extra pause between storyboard loops (ms)
+  const LAUNCH_STEP = 50; // per‑glyph trail spacing (reduced from 75)
 
   /**
    * Effective length of a phase = travel time + time for the last bit to launch.
@@ -133,7 +133,7 @@ const UploadDiagram: React.FC<UploadDiagramProps> = ({ chars }) => {
     const springs = useSprings(bits.length, (i) => ({
       from: { offset: dir === -1 ? 100 : 0 },
       to: { offset: dir === -1 ? 0 : 100 },
-      config: { duration, precision: 0.5 },
+      config: { duration, precision: 1, easing: (t: number) => t },
       delay: initialDelay + i * launch,
     }))[0];
 
