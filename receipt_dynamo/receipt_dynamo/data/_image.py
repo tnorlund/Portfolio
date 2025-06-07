@@ -68,6 +68,12 @@ class _Image:
                                                                  list[Letter]]]]]:
         Retrieves comprehensive details for an Image, including lines, words, letters,
         and receipt data (if any) associated with the Image.
+    getImageClusterDetails(image_id: str) -> tuple[Image,
+                                                  list[Line],
+                                                  list[Receipt]]:
+        Retrieves comprehensive details for an Image, including lines and receipts
+        associated with the Image.
+
     deleteImage(image_id: str):
         Deletes a single Image item from the database by its ID.
     deleteImages(images: list[Image]):
@@ -458,6 +464,68 @@ class _Image:
 
         except Exception as e:
             raise Exception(f"Error getting image details: {e}")
+
+    def getImageClusterDetails(
+        self, image_id: str
+    ) -> tuple[Image, list[Line], list[Receipt]]:
+        """
+        Retrieves comprehensive details for an Image, including lines and receipts
+        associated with the Image.
+        """
+        if image_id is None:
+            raise ValueError("Image ID is required and cannot be None.")
+        assert_valid_uuid(image_id)
+
+        try:
+            response = self._client.query(
+                TableName=self.table_name,
+                IndexName="GSI1",
+                KeyConditionExpression="#pk = :pk_value",
+                ExpressionAttributeNames={"#pk": "GSI1PK"},
+                ExpressionAttributeValues={
+                    ":pk_value": {"S": f"IMAGE#{image_id}"}
+                },
+                ScanIndexForward=True,
+            )
+            items = response["Items"]
+            while (
+                "LastEvaluatedKey" in response and response["LastEvaluatedKey"]
+            ):
+                response = self._client.query(
+                    TableName=self.table_name,
+                    IndexName="GSI1",
+                    KeyConditionExpression="#pk = :pk_value",
+                    ExpressionAttributeNames={"#pk": "GSI1PK"},
+                    ExpressionAttributeValues={
+                        ":pk_value": {"S": f"IMAGE#{image_id}"}
+                    },
+                    ExclusiveStartKey=response["LastEvaluatedKey"],
+                    ScanIndexForward=True,
+                )
+                items += response["Items"]
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ResourceNotFoundException":
+                raise Exception(
+                    f"Table {self.table_name} not found: {e}"
+                ) from e
+            if error_code == "ValidationException":
+                raise Exception(f"Validation exception: {e}") from e
+            else:
+                raise Exception(f"Error getting image cluster details: {e}")
+        except Exception as e:
+            raise Exception(f"Error getting image cluster details: {e}")
+        image = None
+        lines = []
+        receipts = []
+        for item in items:
+            if item["TYPE"]["S"] == "IMAGE":
+                image = itemToImage(item)
+            elif item["TYPE"]["S"] == "LINE":
+                lines.append(itemToLine(item))
+            elif item["TYPE"]["S"] == "RECEIPT":
+                receipts.append(itemToReceipt(item))
+        return image, lines, receipts
 
     def deleteImage(self, image_id: str):
         """

@@ -49,30 +49,19 @@ def handler(event, context):
 
             image_id = random.choice(list(receipts_by_image_id.keys()))
 
-            image_details = client.getImageDetails(image_id)
+            image_details = client.getImageClusterDetails(image_id)
             (
-                images,
+                image,
                 lines,
-                words,
-                letters,
-                word_tags,
                 receipts,
-                receipt_lines,
-                receipt_words,
-                receipt_letters,
-                gpt_validations,
             ) = image_details
             return {
                 "statusCode": 200,
                 "body": json.dumps(
                     {
-                        "images": [dict(image) for image in images],
-                        "words": [dict(word) for word in words],
+                        "image": dict(image),
+                        "lines": [dict(line) for line in lines],
                         "receipts": [dict(receipt) for receipt in receipts],
-                        "receipt_words": [
-                            dict(receipt_word)
-                            for receipt_word in receipt_words
-                        ],
                     }
                 ),
             }
