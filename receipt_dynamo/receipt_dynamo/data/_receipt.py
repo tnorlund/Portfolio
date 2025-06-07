@@ -8,12 +8,12 @@ from receipt_dynamo.entities.receipt_letter import (
     ReceiptLetter,
     itemToReceiptLetter,
 )
+from receipt_dynamo.entities.receipt_line import ReceiptLine, itemToReceiptLine
+from receipt_dynamo.entities.receipt_word import ReceiptWord, itemToReceiptWord
 from receipt_dynamo.entities.receipt_word_label import (
     ReceiptWordLabel,
     itemToReceiptWordLabel,
 )
-from receipt_dynamo.entities.receipt_line import ReceiptLine, itemToReceiptLine
-from receipt_dynamo.entities.receipt_word import ReceiptWord, itemToReceiptWord
 from receipt_dynamo.entities.receipt_word_tag import (
     ReceiptWordTag,
     itemToReceiptWordTag,
@@ -613,7 +613,7 @@ class _Receipt:
     def listReceiptDetails(
         self,
         limit: Optional[int] = None,
-        last_evaluated_key: Optional[dict] = None,
+        lastEvaluatedKey: Optional[dict] = None,
     ) -> Tuple[
         Dict[
             str,
@@ -630,7 +630,7 @@ class _Receipt:
 
         Args:
             limit (Optional[int], optional): The maximum number of receipt details to return. Defaults to None.
-            last_evaluated_key (Optional[dict], optional): The key to start the query from for pagination. Defaults to None.
+            lastEvaluatedKey (Optional[dict], optional): The key to start the query from for pagination. Defaults to None.
 
         Returns:
             Tuple[Dict[str, Dict], Optional[Dict]]: A tuple containing:
@@ -652,8 +652,8 @@ class _Receipt:
                 "ScanIndexForward": True,
             }
 
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
+            if lastEvaluatedKey is not None:
+                query_params["ExclusiveStartKey"] = lastEvaluatedKey
 
             payload = {}
             current_receipt = None

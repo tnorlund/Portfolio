@@ -470,10 +470,10 @@ def test_listImageDetails_pagination_uses_lastEvaluatedKey(dynamodb_table):
         images_created.append(img)
     page_1_payload, lek_1 = client.listImageDetails(limit=2)
     page_2_payload, lek_2 = client.listImageDetails(
-        limit=2, last_evaluated_key=lek_1
+        limit=2, lastEvaluatedKey=lek_1
     )
     page_3_payload, lek_3 = client.listImageDetails(
-        limit=2, last_evaluated_key=lek_2
+        limit=2, lastEvaluatedKey=lek_2
     )
 
     def extract_images(payload_dict):
@@ -613,15 +613,11 @@ def test_listImageDetails_lek_structure_and_usage(dynamodb_table):
     for key in ("PK", "SK", "GSI1PK", "GSI1SK"):
         assert key in lek_1, f"LEK dictionary should contain {key}"
 
-    payload_2, lek_2 = client.listImageDetails(
-        limit=2, last_evaluated_key=lek_1
-    )
+    payload_2, lek_2 = client.listImageDetails(limit=2, lastEvaluatedKey=lek_1)
     assert len(payload_2) == 2, "Page 2 should return the next 2 images"
     assert lek_2 is not None, "We still have a third image left"
 
-    payload_3, lek_3 = client.listImageDetails(
-        limit=2, last_evaluated_key=lek_2
-    )
+    payload_3, lek_3 = client.listImageDetails(limit=2, lastEvaluatedKey=lek_2)
     assert len(payload_3) == 1, "Page 3 should have the last remaining image"
     assert lek_3 is None, "No more pages expected"
 
