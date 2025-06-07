@@ -156,7 +156,7 @@ class _Letter:
     def listLetters(
         self,
         limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
+        lastEvaluatedKey: Optional[Dict] = None,
     ) -> Tuple[list[Letter], Optional[Dict]]:
         """Lists all letters in the database"""
         letters = []
@@ -169,8 +169,8 @@ class _Letter:
                 "ExpressionAttributeValues": {":val": {"S": "LETTER"}},
                 "ScanIndexForward": True,
             }
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
+            if lastEvaluatedKey is not None:
+                query_params["ExclusiveStartKey"] = lastEvaluatedKey
             if limit is not None:
                 query_params["Limit"] = limit
             response = self._client.query(**query_params)

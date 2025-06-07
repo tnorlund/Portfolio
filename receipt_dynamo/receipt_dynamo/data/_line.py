@@ -193,7 +193,7 @@ class _Line:
     def listLines(
         self,
         limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
+        lastEvaluatedKey: Optional[Dict] = None,
     ) -> Tuple[list[Line], Optional[Dict]]:
         """Lists all lines in the database"""
         lines = []
@@ -206,8 +206,8 @@ class _Line:
                 "ExpressionAttributeValues": {":val": {"S": "LINE"}},
                 "ScanIndexForward": True,  # Sorts the results in ascending order by PK
             }
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
+            if lastEvaluatedKey is not None:
+                query_params["ExclusiveStartKey"] = lastEvaluatedKey
 
             if limit is not None:
                 query_params["Limit"] = limit
