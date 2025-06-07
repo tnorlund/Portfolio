@@ -24,13 +24,6 @@ const ReceiptStack: React.FC = () => {
   const maxReceipts = 40;
   const pageSize = 20;
 
-  console.log(
-    "ReceiptStack rendered, inView:",
-    inView,
-    "receipts:",
-    receipts.length
-  );
-
   // Animate new items as they are added to `receipts`
   const transitions = useTransition(receipts, {
     from: { opacity: 0, transform: "translate(0px, -50px) rotate(0deg)" },
@@ -60,13 +53,10 @@ const ReceiptStack: React.FC = () => {
 
       try {
         while (totalFetched < maxReceipts) {
-          console.log("Fetching page, totalFetched:", totalFetched);
           const response: ReceiptApiResponse = await api.fetchReceipts(
             pageSize,
             lastEvaluatedKey
           );
-
-          console.log("Response:", response);
 
           // Check if response has the expected structure
           if (!response || typeof response !== "object") {
@@ -75,7 +65,6 @@ const ReceiptStack: React.FC = () => {
           }
 
           const newReceipts = response.receipts || [];
-          console.log("New receipts count:", newReceipts.length);
 
           if (!Array.isArray(newReceipts)) {
             console.error("Response receipts is not an array:", newReceipts);
@@ -93,7 +82,6 @@ const ReceiptStack: React.FC = () => {
           lastEvaluatedKey = response.lastEvaluatedKey;
         }
 
-        console.log("Prefetched receipts:", allReceipts.length);
         setPrefetchedReceipts(allReceipts.slice(0, maxReceipts));
         setPrefetchedRotations(allRotations.slice(0, maxReceipts));
       } catch (error) {
