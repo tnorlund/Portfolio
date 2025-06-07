@@ -2,15 +2,18 @@ import React, { useState, useEffect, useCallback } from "react";
 import Head from "next/head";
 import styles from "../styles/Receipt.module.css";
 import { GetStaticProps } from "next";
+import ClientOnly from "../components/ClientOnly";
+
+// Import components normally - they'll be wrapped in ClientOnly
 import {
+  ClientImageCounts,
+  ClientReceiptCounts,
+  MerchantCount,
   ZDepthConstrained,
   ZDepthUnconstrained,
   UploadDiagram,
   EmbeddingExample,
   EmbeddingCoordinate,
-  ClientImageCounts,
-  ClientReceiptCounts,
-  MerchantCount,
   ReceiptStack,
   LabelValidationCount,
   ReceiptBoundingBox,
@@ -36,7 +39,7 @@ export const getStaticProps: GetStaticProps<ReceiptPageProps> = async () => {
   // Generate random chars at build time (deterministic for each build)
   // We need 30 bits per stream, and there are up to 8 phases with multiple paths
   // Generate 240 to ensure we have enough for all possible bit streams
-  const uploadDiagramChars = Array.from({ length: 240 }, () =>
+  const uploadDiagramChars = Array.from({ length: 120 }, () =>
     Math.random() > 0.5 ? "1" : "0"
   );
 
@@ -278,13 +281,18 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         Scanned receipts are easiest to work with. They are as flat as the
         sensors used to pick up the pixel data.
       </p>
-      <ZDepthConstrained />
+
+      <ClientOnly>
+        <ZDepthConstrained />
+      </ClientOnly>
+
       <p>
         With this constraint, we can say that all the text is on the same plane.
         This means that the text has the same depth. We can also say that the
         receipt is taller than it is wide. With all this information, we can
         determine which words belong to which receipt based on the X position.
       </p>
+
       <ReceiptBoundingBox />
       <h2>Photos</h2>
       <p>
@@ -292,7 +300,10 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         not always facing the receipt.
       </p>
 
-      <ZDepthUnconstrained />
+      <ClientOnly>
+        <ZDepthUnconstrained />
+      </ClientOnly>
+
       <p>
         This requires a more complex algorithm to determine which words belong
         to which receipt. I used a combination of DBSCAN clustering and convex
@@ -306,7 +317,9 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         can efficiently and cost-effectively structure the data.
       </p>
 
-      <UploadDiagram chars={uploadDiagramChars} />
+      <ClientOnly>
+        <UploadDiagram chars={uploadDiagramChars} />
+      </ClientOnly>
 
       <p>
         This architecture allows me to scale horizontally by adding another Mac.
@@ -336,7 +349,11 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       </p>
 
       <p>What do you get back? You get a structure of numbers.</p>
-      <EmbeddingExample />
+
+      <ClientOnly>
+        <EmbeddingExample />
+      </ClientOnly>
+
       <p>
         While each input might be different, we get the same structure of
         numbers back. Here's the magic. Because we get the same structure, we
@@ -348,9 +365,11 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         There are many services that offer to generate embeddings, but I ended
         up going with OpenAI.
       </p>
-      <AnimatedInView>
-        <OpenAILogo />
-      </AnimatedInView>
+      <ClientOnly>
+        <AnimatedInView>
+          <OpenAILogo />
+        </AnimatedInView>
+      </ClientOnly>
       <h3>Is It Expensive?</h3>
       <p>
         No. I experimented <i>a lot</i>. I developed a way to batch embeddings
@@ -410,7 +429,9 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         intersection of an X and Y coordinate.
       </p>
       <p>Is A closer to B or C?</p>
+
       <EmbeddingCoordinate />
+
       <p>A is closer to B.</p>
       <p>
         Here's the mental leap.{" "}
@@ -436,9 +457,11 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         some research, I found Pinecone, a vector database that allows me to
         store and retrieve embeddings.
       </p>
-      <AnimatedInView>
-        <PineconeLogo />
-      </AnimatedInView>
+      <ClientOnly>
+        <AnimatedInView>
+          <PineconeLogo />
+        </AnimatedInView>
+      </ClientOnly>
       <p>
         Pinecone's real strength shows when you attach <i>meaningful</i>
         information to each embedding. The embedding by itself can telling you
@@ -460,9 +483,12 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         needed for rich, semantic search.
       </p>
 
-      <AnimatedInView>
-        <GooglePlacesLogo />
-      </AnimatedInView>
+      <ClientOnly>
+        <AnimatedInView>
+          <GooglePlacesLogo />
+        </AnimatedInView>
+      </ClientOnly>
+
       <MerchantCount />
 
       <h2>Turning Semantic Search into Autonomous Labeling</h2>
@@ -488,6 +514,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       </p>
 
       <LabelValidationCount />
+
       <h2>The Feedback Loop</h2>
       <p>
         This process is repeated to continuously improve the accuracy of the
@@ -505,12 +532,16 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       </p>
       <p>I used Github and Pulumi to manage the cloud and code.</p>
       <div className={styles.logosContainer}>
-        <AnimatedInView>
-          <GithubLogo />
-        </AnimatedInView>
-        <AnimatedInView>
-          <PulumiLogo />
-        </AnimatedInView>
+        <ClientOnly>
+          <AnimatedInView>
+            <GithubLogo />
+          </AnimatedInView>
+        </ClientOnly>
+        <ClientOnly>
+          <AnimatedInView>
+            <PulumiLogo />
+          </AnimatedInView>
+        </ClientOnly>
       </div>
       <p>
         I got my build time down to ~10 seconds. This allows me to make a change
@@ -522,9 +553,11 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         but I wanted to continue to increase my tech stack. I ended up porting
         to NextJS.
       </p>
-      <AnimatedInView replacement={<NextJSLogo />} replaceAfterMs={1000}>
-        <ReactLogo />
-      </AnimatedInView>
+      <ClientOnly>
+        <AnimatedInView replacement={<NextJSLogo />} replaceAfterMs={1000}>
+          <ReactLogo />
+        </AnimatedInView>
+      </ClientOnly>
       <p>
         Moving to NextJS was really easy. Using a combination of Cursor and
         OpenAI's Codex allowed me to move this from one framework to another
@@ -539,9 +572,11 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         that can run on my laptop. I've been playing with a few models on
         Hugging Face.
       </p>
-      <AnimatedInView>
-        <HuggingFaceLogo />
-      </AnimatedInView>
+      <ClientOnly>
+        <AnimatedInView>
+          <HuggingFaceLogo />
+        </AnimatedInView>
+      </ClientOnly>
 
       <h2>A New Era of Coding</h2>
       <p>

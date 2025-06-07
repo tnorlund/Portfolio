@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useInView } from "react-intersection-observer";
+import useOptimizedInView from "../../../hooks/useOptimizedInView";
 import { ImageCountApiResponse } from "../../../types/api";
 import { api } from "../../../services/api";
 import dynamic from "next/dynamic";
@@ -11,7 +11,7 @@ const ImageCounts = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [animatedCount, setAnimatedCount] = useState<number>(0);
-  const { ref, inView } = useInView({
+  const { ref, inView } = useOptimizedInView({
     triggerOnce: true,
     threshold: 0,
   });
@@ -114,7 +114,7 @@ const ReceiptCounts = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [animatedCount, setAnimatedCount] = useState<number>(0);
-  const { ref, inView } = useInView({
+  const { ref, inView } = useOptimizedInView({
     triggerOnce: true,
     threshold: 0,
   });

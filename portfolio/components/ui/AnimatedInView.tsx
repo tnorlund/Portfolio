@@ -1,4 +1,4 @@
-import { useInView } from "react-intersection-observer";
+import useOptimizedInView from "../../hooks/useOptimizedInView";
 import { useSpring, animated } from "@react-spring/web";
 import { ReactNode, useEffect, useState } from "react";
 
@@ -27,7 +27,7 @@ const AnimatedInView = ({
   replaceAfterMs = 0,
   className,
 }: AnimatedInViewProps) => {
-  const [ref, inView] = useInView({ threshold: 0.3 });
+  const [ref, inView] = useOptimizedInView({ threshold: 0.3 });
   const [style, api] = useSpring(() => ({
     opacity: 0,
     config: { tension: 120, friction: 14 },
