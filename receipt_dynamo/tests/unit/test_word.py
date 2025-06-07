@@ -444,8 +444,6 @@ def test_word_to_item(example_word):
     assert item["angle_degrees"] == {"N": "1.000000000000000000"}
     assert item["angle_radians"] == {"N": "5.000000000000000000"}
     assert item["confidence"] == {"N": "0.90"}
-    assert "histogram" in item
-    assert "num_chars" in item
 
 
 @pytest.mark.unit
@@ -976,8 +974,6 @@ def test_word_iter(example_word):
         "angle_degrees",
         "angle_radians",
         "confidence",
-        "histogram",
-        "num_chars",
         "extracted_data",
     }
     assert set(word_dict.keys()) == expected_keys
