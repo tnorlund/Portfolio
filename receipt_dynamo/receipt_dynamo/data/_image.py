@@ -73,7 +73,7 @@ class _Image:
     deleteImages(images: list[Image]):
         Deletes multiple Image items in chunks of up to 25 items.
     listImageDetails(limit: Optional[int] = None,
-                     last_evaluated_key: Optional[Dict] = None)
+                     lastEvaluatedKey: Optional[Dict] = None)
                      -> Tuple[Dict[int, Dict[str, Union[Image, List[Receipt], List[Line]]]],
                               Optional[Dict]]:
         Lists images (via GSI) with optional pagination and returns their basic details.
@@ -531,7 +531,7 @@ class _Image:
     def listImageDetails(
         self,
         limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
+        lastEvaluatedKey: Optional[Dict] = None,
     ) -> Tuple[
         Dict[int, Dict[str, Union[Image, List[Receipt], List[Line]]]],
         Optional[Dict],
@@ -545,7 +545,7 @@ class _Image:
         limit : int, optional
             The maximum number of images to return in this call.
             If None, all images are returned (paginating until exhausted).
-        last_evaluated_key : dict, optional
+        lastEvaluatedKey : dict, optional
             The DynamoDB key from where the next page should start (for pagination).
 
         Returns
@@ -558,7 +558,7 @@ class _Image:
                    "receipts": List[Receipt], }
             2) The LastEvaluatedKey dict if more items remain, otherwise None.
         """
-        if limit is None and last_evaluated_key is None:
+        if limit is None and lastEvaluatedKey is None:
             # CASE 1: Return *all* images
             all_items = []
             response = None
@@ -621,7 +621,7 @@ class _Image:
         images_found = 0
         lek_to_return = None
 
-        next_key = last_evaluated_key
+        next_key = lastEvaluatedKey
 
         while True:
             query_params = {
