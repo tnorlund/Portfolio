@@ -21,23 +21,31 @@ const EmbeddingRow: React.FC<EmbeddingRowProps> = ({ initial, embedding }) => {
 
   // Fade‑in spring that re‑triggers whenever the displayed text changes.
   const [rowSpring, api] = useSpring(() => ({
-    opacity: 0,
+    opacity: 1, // Start visible
     config: { tension: 120, friction: 14 },
   }));
 
+  // Handle initial display and embedding transitions
   React.useEffect(() => {
     if (embedding === null) {
       // Back to the original text at the start of each cycle
       setDisplay(initial);
+      api.start({ opacity: 1 });
     } else {
-      // Show the mock vector once it's generated
-      setDisplay(`[${embedding.map((n) => n.toFixed(2)).join(", ")}]`);
+      // When embedding is received, fade out → smoothly fade in vector
+      api.start({
+        opacity: 0,
+        config: { tension: 200, friction: 20 }, // Fade out timing
+        onRest: () => {
+          setDisplay(`[${embedding.map((n) => n.toFixed(2)).join(", ")}]`);
+          api.start({
+            opacity: 1,
+            config: { tension: 200, friction: 20 }, // Same timing for fade in
+          });
+        },
+      });
     }
-  }, [embedding, initial]);
-
-  React.useEffect(() => {
-    api.start({ opacity: 1 });
-  }, [display, api]);
+  }, [embedding, initial, api]);
 
   return (
     <animated.div
@@ -45,6 +53,7 @@ const EmbeddingRow: React.FC<EmbeddingRowProps> = ({ initial, embedding }) => {
         marginBottom: 4,
         fontFamily: "monospace",
         whiteSpace: "pre",
+        padding: "2px 4px",
         ...rowSpring,
       }}
     >
@@ -76,8 +85,7 @@ const EmbeddingExampleComponent: React.FC = () => {
   // Cycle counter to allow the animation to restart
   const [cycle, setCycle] = React.useState(0);
 
-  // Spring that controls the overall opacity of the block so we can
-  // fade everything out (to 0) and back in (to 1) between cycles.
+  // Spring that controls the overall opacity for smooth cycle transitions
   const [wrapperSpring, wrapperApi] = useSpring(() => ({ opacity: 1 }));
 
   // IntersectionObserver to trigger the sequence when visible
@@ -111,26 +119,27 @@ const EmbeddingExampleComponent: React.FC = () => {
     return () => timers.forEach(clearTimeout);
   }, [inView, strings, cycle, mounted]);
 
-  // Once every row has received an embedding, start the fade‑out,
-  // reset state, and kick off the next cycle.
+  // Once every row has received an embedding, fade out and restart cycle
   React.useEffect(() => {
     if (embeddings.every((e) => e !== null)) {
       // Give the user a brief moment to see the completed vectors
       const delay = setTimeout(() => {
+        // Fade out entire component
         wrapperApi.start({
           opacity: 0,
           onRest: () => {
-            // Reset and restart
+            // Reset embeddings and restart cycle
             setEmbeddings(Array(strings.length).fill(null));
             setCycle((c) => c + 1);
+            // Fade back in with original words
             wrapperApi.start({ opacity: 1 });
           },
         });
-      }, 1000); // 1 s pause before fading out
+      }, 2000); // 2 s pause before fading out
 
       return () => clearTimeout(delay);
     }
-  }, [embeddings, wrapperApi, strings]);
+  }, [embeddings, strings, wrapperApi]);
 
   if (!mounted) {
     return (
@@ -149,7 +158,14 @@ const EmbeddingExampleComponent: React.FC = () => {
           }}
         >
           {strings.map((str, idx) => (
-            <div key={idx} style={{ marginBottom: 4, fontFamily: "monospace" }}>
+            <div
+              key={idx}
+              style={{
+                marginBottom: 4,
+                fontFamily: "monospace",
+                padding: "2px 4px",
+              }}
+            >
               {str}
             </div>
           ))}
@@ -170,7 +186,11 @@ const EmbeddingExampleComponent: React.FC = () => {
         }}
       >
         {strings.map((str, idx) => (
-          <EmbeddingRow key={idx} initial={str} embedding={embeddings[idx]} />
+          <EmbeddingRow
+            key={`${cycle}-${idx}`}
+            initial={str}
+            embedding={embeddings[idx]}
+          />
         ))}
       </animated.div>
     </div>
