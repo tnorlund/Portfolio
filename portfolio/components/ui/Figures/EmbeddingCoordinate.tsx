@@ -1,6 +1,6 @@
 import React from "react";
 import { useSpring, animated } from "@react-spring/web";
-import { useInView } from "react-intersection-observer";
+import useOptimizedInView from "../../../hooks/useOptimizedInView";
 
 /**
  * Simple SVG coordinate system that plots points A, B, and C.
@@ -32,7 +32,7 @@ const EmbeddingCoordinate: React.FC = () => {
     height - padding - ((y - minY) / (maxY - minY)) * (height - 2 * padding);
 
   // Fade / scale animation when in view
-  const [ref, inView] = useInView({ threshold: 0.3 });
+  const [ref, inView] = useOptimizedInView({ threshold: 0.3 });
   const [spring, api] = useSpring(() => ({
     opacity: 0,
     transform: "scale(0.8)",

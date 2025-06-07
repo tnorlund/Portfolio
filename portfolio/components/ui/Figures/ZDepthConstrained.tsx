@@ -1,10 +1,10 @@
 import { useSpring, animated, to } from "@react-spring/web";
-import { useInView } from "react-intersection-observer";
+import useOptimizedInView from "../../../hooks/useOptimizedInView";
 import React, { useEffect } from "react";
 
 const ZDepthConstrained: React.FC = () => {
   // Set up Intersection Observer
-  const [ref, inView] = useInView({ threshold: 0.3 });
+  const [ref, inView] = useOptimizedInView({ threshold: 0.3 });
 
   // Set up react-spring for opacity
   const [fadeStyles, fadeApi] = useSpring(() => ({
