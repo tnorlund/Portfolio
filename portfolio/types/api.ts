@@ -5,10 +5,9 @@ export interface LabelValidationCountResponse {
 }
 
 export interface ImageDetailsApiResponse {
-  images: Image[];
-  words: Word[];
+  image: Image;
+  lines: Line[];
   receipts: Receipt[];
-  receipt_words: ReceiptWord[];
 }
 
 export interface ImageCountApiResponse {
@@ -44,6 +43,20 @@ export interface Image {
   sha256: string;
   cdn_s3_bucket: string;
   cdn_s3_key: string;
+}
+
+export interface Line {
+  image_id: string;
+  line_id: number;
+  text: string;
+  bounding_box: BoundingBox;
+  top_left: Point;
+  top_right: Point;
+  bottom_left: Point;
+  bottom_right: Point;
+  angle_degrees: number;
+  angle_radians: number;
+  confidence: number;
 }
 
 export interface Word {
