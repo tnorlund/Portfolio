@@ -249,8 +249,8 @@ class _Line:
                 KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
                 ExpressionAttributeNames={"#pk": "GSI1PK", "#sk": "GSI1SK"},
                 ExpressionAttributeValues={
-                    ":pk_val": {"S": "IMAGE"},
-                    ":sk_val": {"S": f"IMAGE#{image_id}#LINE#"},
+                    ":pk_val": {"S": f"IMAGE#{image_id}"},
+                    ":sk_val": {"S": f"LINE#"},
                 },
             )
             lines.extend([itemToLine(item) for item in response["Items"]])
@@ -265,8 +265,8 @@ class _Line:
                         "#sk": "GSI1SK",
                     },
                     ExpressionAttributeValues={
-                        ":pk_val": {"S": "IMAGE"},
-                        ":sk_val": {"S": f"IMAGE#{image_id}#LINE#"},
+                        ":pk_val": {"S": f"IMAGE#{image_id}"},
+                        ":sk_val": {"S": f"LINE#"},
                     },
                     ExclusiveStartKey=response.get("LastEvaluatedKey", None),
                 )
