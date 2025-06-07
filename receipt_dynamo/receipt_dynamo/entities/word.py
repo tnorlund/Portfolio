@@ -10,7 +10,6 @@ from receipt_dynamo.entities.util import (
     assert_valid_uuid,
     assert_type,
     format_type_error,
-    compute_histogram,
     shear_point,
 )
 
@@ -57,8 +56,6 @@ class Word:
         angle_radians: float,
         confidence: float,
         extracted_data: dict = None,
-        histogram: dict = None,
-        num_chars: int = None,
     ):
         """Initializes a new Word object for DynamoDB.
 
@@ -126,16 +123,6 @@ class Word:
         if extracted_data is not None:
             assert_type("extracted_data", extracted_data, dict, ValueError)
         self.extracted_data = extracted_data
-
-        if histogram is None:
-            self.histogram = compute_histogram(self.text)
-        else:
-            self.histogram = histogram
-
-        if num_chars is None:
-            self.num_chars = len(text)
-        else:
-            self.num_chars = num_chars
 
     def key(self) -> dict:
         """Generates the primary key for the Word.
@@ -221,13 +208,6 @@ class Word:
                 if self.extracted_data
                 else {"NULL": True}
             ),
-            "histogram": {
-                "M": {
-                    k: {"N": _format_float(v, 10, 12)}
-                    for k, v in self.histogram.items()
-                }
-            },
-            "num_chars": {"N": str(self.num_chars)},
         }
 
         return item
@@ -802,8 +782,6 @@ class Word:
         yield "angle_radians", self.angle_radians
         yield "confidence", self.confidence
         yield "extracted_data", self.extracted_data
-        yield "histogram", self.histogram
-        yield "num_chars", self.num_chars
 
     def to_dict(self) -> dict:
         """Returns a dictionary representation of the Word object."""
