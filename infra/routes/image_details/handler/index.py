@@ -9,6 +9,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 dynamodb_table_name = os.environ["DYNAMODB_TABLE_NAME"]
+QUERY_LIMIT = 500
 
 
 def handler(event, context):
@@ -19,9 +20,9 @@ def handler(event, context):
         try:
             # Use the client to list the first 50 images
             client = DynamoClient(dynamodb_table_name)
-            receipts, lek = client.listReceipts(500)
+            receipts, lek = client.listReceipts(QUERY_LIMIT)
             while lek:
-                next_receipts, lek = client.listReceipts(500, lek)
+                next_receipts, lek = client.listReceipts(QUERY_LIMIT, lek)
                 receipts.extend(next_receipts)
 
             # Group all receipts by their image_id
@@ -34,12 +35,17 @@ def handler(event, context):
 
             # Only use images with 2 receipts
             receipts_by_image_id = {
-                key: value for key, value in receipts_by_image_id.items() if value == 2
+                key: value
+                for key, value in receipts_by_image_id.items()
+                if value == 2
             }
 
             # Randomly chose an image_id of the images with 2 receipts
             if len(receipts_by_image_id) == 0:
-                return {"statusCode": 404, "body": "No images with 2 receipts found"}
+                return {
+                    "statusCode": 404,
+                    "body": "No images with 2 receipts found",
+                }
 
             image_id = random.choice(list(receipts_by_image_id.keys()))
 
@@ -64,13 +70,17 @@ def handler(event, context):
                         "words": [dict(word) for word in words],
                         "receipts": [dict(receipt) for receipt in receipts],
                         "receipt_words": [
-                            dict(receipt_word) for receipt_word in receipt_words
+                            dict(receipt_word)
+                            for receipt_word in receipt_words
                         ],
                     }
                 ),
             }
         except Exception as e:
-            return {"statusCode": 500, "body": f"Internal server error: {str(e)}"}
+            return {
+                "statusCode": 500,
+                "body": f"Internal server error: {str(e)}",
+            }
     elif http_method == "POST":
         return {"statusCode": 405, "body": "Method not allowed"}
     else:

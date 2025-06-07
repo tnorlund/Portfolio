@@ -6,7 +6,6 @@ from receipt_dynamo.entities.util import (
     assert_valid_bounding_box,
     assert_valid_point,
     assert_valid_uuid,
-    compute_histogram,
 )
 from receipt_dynamo.constants import EmbeddingStatus
 
@@ -36,8 +35,6 @@ class ReceiptWord:
         confidence (float): The confidence level of the receipt word (between 0 and 1).
         extracted_data (dict): The extracted data of the receipt word provided by Apple's NL API.
         embedding_status (str): The status of the embedding for the receipt word.
-        histogram (dict): A histogram representing character frequencies in the text.
-        num_chars (int): The number of characters in the receipt word.
     """
 
     def __init__(
@@ -56,8 +53,6 @@ class ReceiptWord:
         angle_radians: float,
         confidence: float,
         extracted_data: dict = None,
-        histogram: dict = None,
-        num_chars: int = None,
         embedding_status: EmbeddingStatus | str = EmbeddingStatus.NONE,
     ):
         """
@@ -139,11 +134,6 @@ class ReceiptWord:
         if extracted_data is not None and not isinstance(extracted_data, dict):
             raise ValueError("extracted_data must be a dict")
         self.extracted_data = extracted_data
-
-        self.histogram = (
-            compute_histogram(self.text) if histogram is None else histogram
-        )
-        self.num_chars = len(text) if num_chars is None else num_chars
 
         # Normalize and validate embedding_status (allow enum or string)
         if isinstance(embedding_status, EmbeddingStatus):
@@ -295,10 +285,6 @@ class ReceiptWord:
                 if self.extracted_data
                 else {"NULL": True}
             ),
-            "histogram": {
-                "M": {k: {"N": str(v)} for k, v in self.histogram.items()}
-            },
-            "num_chars": {"N": str(self.num_chars)},
             "embedding_status": {"S": self.embedding_status},
         }
 
@@ -489,8 +475,6 @@ class ReceiptWord:
         yield "angle_radians", self.angle_radians
         yield "extracted_data", self.extracted_data
         yield "confidence", self.confidence
-        yield "histogram", self.histogram
-        yield "num_chars", self.num_chars
         yield "embedding_status", self.embedding_status
 
     def calculate_centroid(self) -> Tuple[float, float]:

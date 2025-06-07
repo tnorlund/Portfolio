@@ -7,7 +7,6 @@ from receipt_dynamo.entities.util import (
     assert_valid_bounding_box,
     assert_valid_point,
     assert_valid_uuid,
-    compute_histogram,
     shear_point,
 )
 
@@ -50,8 +49,6 @@ class Line:
         angle_degrees: float,
         angle_radians: float,
         confidence: float,
-        histogram: dict = None,
-        num_chars: int = None,
     ):
         """Initializes a new Line object for DynamoDB.
 
@@ -67,8 +64,6 @@ class Line:
             angle_degrees (float): The angle of the line in degrees.
             angle_radians (float): The angle of the line in radians.
             confidence (float): The confidence level of the line (between 0 and 1).
-            histogram (dict, optional): A histogram representing character frequencies in the text.
-            num_chars (int, optional): The number of characters in the line.
 
         Raises:
             ValueError: If any parameter is of an invalid type or has an invalid value.
@@ -114,11 +109,6 @@ class Line:
         if not isinstance(confidence, float) or not (0 < confidence <= 1):
             raise ValueError("confidence must be a float between 0 and 1")
         self.confidence = confidence
-
-        self.histogram = (
-            compute_histogram(text) if histogram is None else histogram
-        )
-        self.num_chars = len(text) if num_chars is None else num_chars
 
     def key(self) -> dict:
         """Generates the primary key for the line.
@@ -192,10 +182,6 @@ class Line:
             "angle_degrees": {"N": _format_float(self.angle_degrees, 18, 20)},
             "angle_radians": {"N": _format_float(self.angle_radians, 18, 20)},
             "confidence": {"N": _format_float(self.confidence, 2, 2)},
-            "histogram": {
-                "M": {k: {"N": str(v)} for k, v in self.histogram.items()}
-            },
-            "num_chars": {"N": str(self.num_chars)},
         }
 
     def calculate_diagonal_length(self) -> float:
@@ -649,8 +635,6 @@ class Line:
         yield "angle_degrees", self.angle_degrees
         yield "angle_radians", self.angle_radians
         yield "confidence", self.confidence
-        yield "histogram", self.histogram
-        yield "num_chars", self.num_chars
 
     def to_dict(self) -> dict:
         """Returns a dictionary representation of the Line object."""
