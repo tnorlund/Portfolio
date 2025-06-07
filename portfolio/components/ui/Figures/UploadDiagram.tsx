@@ -1,6 +1,5 @@
 import React from "react";
-import { useSpring, useSprings, animated } from "@react-spring/web";
-import { useInView } from "react-intersection-observer";
+import { useSprings, animated } from "@react-spring/web";
 
 interface UploadDiagramProps {
   /** Optional deterministic sequence of characters (e.g., ['0','1','1',…]).
@@ -10,20 +9,6 @@ interface UploadDiagramProps {
 }
 
 const UploadDiagram: React.FC<UploadDiagramProps> = ({ chars }) => {
-  const [ref, inView] = useInView({ threshold: 0.3 });
-
-  // Set up react-spring for opacity
-  const [styles, api] = useSpring(() => ({
-    opacity: 0, // Start fully transparent
-    config: { tension: 120, friction: 14 },
-  }));
-
-  React.useEffect(() => {
-    if (inView) {
-      api.start({ opacity: 1 }); // Animate from 0 to 1
-    }
-  }, [inView, api]);
-
   // ═══ Shared helpers ════════════════════════════════════════
   const BIT_COUNT = 30;
   const TILT = 30; // ±30°
@@ -82,11 +67,13 @@ const UploadDiagram: React.FC<UploadDiagramProps> = ({ chars }) => {
   }, [TIMELINE, cycle, phaseLength]);
 
   /* Compute cumulative delay for a phase index */
-  const delayFor = (idx: number) =>
-    TIMELINE.slice(0, idx).reduce(
+  const delayFor = (idx: number) => {
+    const delay = TIMELINE.slice(0, idx).reduce(
       (acc, p) => acc + phaseLength(p) + STAGGER,
       0
     );
+    return delay;
+  };
 
   type Bit = { char: "0" | "1"; rot: number; pathIdx: number };
 
@@ -94,14 +81,16 @@ const UploadDiagram: React.FC<UploadDiagramProps> = ({ chars }) => {
   const makeRefs = () =>
     Array.from({ length: 5 }, () => React.createRef<SVGPathElement>());
 
-  const PATH_REFS = {
-    BottomMiddle: makeRefs(),
-    BottomLeft: makeRefs(),
-    BottomRight: makeRefs(),
-    TopMiddle: makeRefs(),
-    TopLeft: makeRefs(),
-    TopRight: makeRefs(),
-  };
+  const PATH_REFS = React.useMemo(() => {
+    return {
+      BottomMiddle: makeRefs(),
+      BottomLeft: makeRefs(),
+      BottomRight: makeRefs(),
+      TopMiddle: makeRefs(),
+      TopLeft: makeRefs(),
+      TopRight: makeRefs(),
+    };
+  }, []); // Empty dependency - refs should never change
 
   // get (x,y) point on path at pct%
   const pointAt = (ref: React.RefObject<SVGPathElement>, pct: number) => {
@@ -132,8 +121,9 @@ const UploadDiagram: React.FC<UploadDiagramProps> = ({ chars }) => {
     const bits = React.useMemo<Bit[]>(
       () =>
         Array.from({ length: count }, (_, idx) => ({
-          char: (chars?.[idx % chars.length] ??
-            (Math.random() > 0.5 ? "1" : "0")) as "0" | "1",
+          char: (chars?.[idx % chars.length] ?? (idx % 2 === 0 ? "1" : "0")) as
+            | "0"
+            | "1",
           rot: ((idx * 7.3) % TILT) - TILT / 2,
           pathIdx: idx % pathRefs.length,
         })),
@@ -143,7 +133,6 @@ const UploadDiagram: React.FC<UploadDiagramProps> = ({ chars }) => {
     const springs = useSprings(bits.length, (i) => ({
       from: { offset: dir === -1 ? 100 : 0 },
       to: { offset: dir === -1 ? 0 : 100 },
-      //   loop: true,
       config: { duration, precision: 0.5 },
       delay: initialDelay + i * launch,
     }))[0];
@@ -178,6 +167,7 @@ const UploadDiagram: React.FC<UploadDiagramProps> = ({ chars }) => {
       </>
     );
   }
+
   return (
     <div
       style={{
@@ -187,8 +177,8 @@ const UploadDiagram: React.FC<UploadDiagramProps> = ({ chars }) => {
         marginBottom: "1em",
       }}
     >
-      <div ref={ref}>
-        <animated.div style={styles}>
+      <div>
+        <div>
           <div>
             <svg height="300" width="300" viewBox="0 0 300 300">
               <defs>
@@ -637,7 +627,7 @@ const UploadDiagram: React.FC<UploadDiagramProps> = ({ chars }) => {
               </g>
             </svg>
           </div>
-        </animated.div>
+        </div>
       </div>
     </div>
   );
