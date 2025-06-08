@@ -7,19 +7,28 @@ export default function Home() {
     <div className="container">
       <Head>
         <title>Home | Tyler Norlund</title>
+        {/* Preload critical above-the-fold image */}
+        <link rel="preload" as="image" href="/face.avif" type="image/avif" />
+        <link rel="preload" as="image" href="/face.webp" type="image/webp" />
       </Head>
       <main>
-        <img
-          src="/face.png"
-          alt="Tyler Norlund"
-          style={{
-            borderRadius: "50%",
-            width: "200px",
-            height: "200px",
-            objectFit: "cover",
-            marginTop: "1rem",
-          }}
-        />
+        <picture>
+          <source srcSet="/face.avif" type="image/avif" />
+          <source srcSet="/face.webp" type="image/webp" />
+          <img
+            src="/face.png"
+            alt="Tyler Norlund"
+            style={{
+              borderRadius: "50%",
+              width: "200px",
+              height: "200px",
+              objectFit: "cover",
+              marginTop: "1rem",
+            }}
+            loading="eager"
+            decoding="async"
+          />
+        </picture>
 
         <Link href="/resume">
           <button>Résumé</button>
