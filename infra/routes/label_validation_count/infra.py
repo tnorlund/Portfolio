@@ -63,6 +63,7 @@ lambda_policy = aws.iam.Policy(
                         "Resource": [
                             arns[0],  # dynamo_arn
                             f"{arns[0]}/index/GSI1",
+                            f"{arns[0]}/index/GSITYPE",
                         ],
                     },
                     {
