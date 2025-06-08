@@ -136,3 +136,7 @@ from receipt_dynamo.entities.ocr_routing_decision import (
     OCRRoutingDecision,
     itemToOCRRoutingDecision,
 )  # noqa: F401
+from receipt_dynamo.entities.label_count_cache import (
+    LabelCountCache,
+    itemToLabelCountCache,
+)  # noqa: F401
