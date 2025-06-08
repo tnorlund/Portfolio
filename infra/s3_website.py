@@ -113,33 +113,58 @@ public_access_block = aws.s3.BucketPublicAccessBlock(
 )
 
 ########################
-# 6) CloudFront Function
+# 6) CloudFront Function (Enhanced for Performance)
 ########################
-redirect_function = aws.cloudfront.Function(
-    "redirectFunction",
-    runtime="cloudfront-js-1.0",
-    comment="Handle clean URLs and trailing slashes",
+js_optimization_function = aws.cloudfront.Function(
+    "jsOptimizationFunction",
+    runtime="cloudfront-js-2.0",  # Use latest runtime for better performance
+    comment="Optimize JavaScript delivery, handle clean URLs and add performance headers",
     publish=True,
     code="""
 function handler(event) {
-  var req = event.request;
-  var uri = req.uri;
-  if (uri !== '/' && uri.endsWith('/')) {
-    return {
-      statusCode: 301,
-      statusDescription: 'Moved Permanently',
-      headers: { location: { value: uri.slice(0, -1) } }
-    };
-  }
-  if (!uri.includes('.') && uri !== '/') {
-    req.uri = uri + '.html';
-  }
-  return req;
+    var request = event.request;
+    var uri = request.uri;
+    var headers = request.headers;
+    
+    // Handle clean URLs and trailing slashes (existing logic)
+    if (uri !== '/' && uri.endsWith('/')) {
+        return {
+            statusCode: 301,
+            statusDescription: 'Moved Permanently',
+            headers: { location: { value: uri.slice(0, -1) } }
+        };
+    }
+    
+    // Add preload hints for critical JavaScript chunks based on route
+    if (uri === '/' || uri === '/receipt' || uri === '/receipt.html') {
+        if (!headers['cloudfront-viewer-country']) {
+            headers['cloudfront-viewer-country'] = { value: 'US' };
+        }
+        
+        // Add early hints for critical resources
+        headers['x-preload-hint'] = { 
+            value: 'vendor.js,main.js,common.js'
+        };
+    }
+    
+    // Optimize caching for Next.js static chunks
+    if (uri.includes('/_next/static/chunks/') && uri.endsWith('.js')) {
+        headers['x-cache-control-override'] = { 
+            value: 'public,max-age=31536000,immutable'
+        };
+    }
+    
+    // Handle SPA routing
+    if (!uri.includes('.') && uri !== '/') {
+        request.uri = uri + '.html';
+    }
+    
+    return request;
 }
 """,
 )
 
-# 7) Create CloudFront Distribution
+# 7) Create CloudFront Distribution (Optimized for Performance)
 ########################
 # If prod, we set 'aliases' = [tylernorlund.com, www.tylernorlund.com]
 # Otherwise, it's just [<stack>.tylernorlund.com]
@@ -153,6 +178,60 @@ cdn = aws.cloudfront.Distribution(
     ],
     enabled=True,
     default_root_object="index.html",
+    # HTTP/3 support for faster connection establishment
+    http_version="http2and3",
+    # Optimized cache behaviors for different content types
+    ordered_cache_behaviors=[
+        {
+            # Cache behavior for Next.js JavaScript chunks - Maximum caching
+            "pathPattern": "/_next/static/chunks/*",
+            "targetOriginId": site_bucket.id,
+            "viewerProtocolPolicy": "redirect-to-https",
+            "allowedMethods": ["GET", "HEAD"],
+            "cachedMethods": ["GET", "HEAD"],
+            "forwardedValues": {
+                "queryString": False,
+                "cookies": {"forward": "none"},
+            },
+            "minTtl": 31536000,  # 1 year - immutable chunks
+            "defaultTtl": 31536000,  # 1 year
+            "maxTtl": 31536000,  # 1 year
+            "compress": True,  # Enable gzip/brotli compression
+        },
+        {
+            # Cache behavior for other Next.js static assets
+            "pathPattern": "/_next/static/*",
+            "targetOriginId": site_bucket.id,
+            "viewerProtocolPolicy": "redirect-to-https",
+            "allowedMethods": ["GET", "HEAD"],
+            "cachedMethods": ["GET", "HEAD"],
+            "forwardedValues": {
+                "queryString": False,
+                "cookies": {"forward": "none"},
+            },
+            "minTtl": 86400,  # 24 hours
+            "defaultTtl": 31536000,  # 1 year
+            "maxTtl": 31536000,  # 1 year
+            "compress": True,
+        },
+        {
+            # Cache behavior for other static assets (images, fonts, etc.)
+            "pathPattern": "/static/*",
+            "targetOriginId": site_bucket.id,
+            "viewerProtocolPolicy": "redirect-to-https",
+            "allowedMethods": ["GET", "HEAD"],
+            "cachedMethods": ["GET", "HEAD"],
+            "forwardedValues": {
+                "queryString": False,
+                "cookies": {"forward": "none"},
+            },
+            "minTtl": 86400,  # 24 hours
+            "defaultTtl": 2592000,  # 30 days
+            "maxTtl": 31536000,  # 1 year
+            "compress": True,
+        },
+    ],
+    # Default cache behavior for HTML and other content
     default_cache_behavior={
         "allowedMethods": ["GET", "HEAD"],
         "cachedMethods": ["GET", "HEAD"],
@@ -163,21 +242,24 @@ cdn = aws.cloudfront.Distribution(
             "queryString": False,
         },
         "minTtl": 0,
-        "defaultTtl": 3600,
-        "maxTtl": 86400,
+        "defaultTtl": 3600,  # 1 hour for HTML
+        "maxTtl": 86400,  # 24 hours max
+        "compress": True,  # Enable compression
         "functionAssociations": [
             {
                 "eventType": "viewer-request",
-                "functionArn": redirect_function.arn,
+                "functionArn": js_optimization_function.arn,
             }
         ],
     },
-    price_class="PriceClass_100",
+    # Upgrade to better edge locations for improved performance
+    price_class="PriceClass_200",  # US, Canada, Europe, Asia
     restrictions={"geoRestriction": {"restrictionType": "none"}},
+    # Enhanced TLS configuration
     viewer_certificate={
         "acmCertificateArn": certificate_validation.certificate_arn,
         "sslSupportMethod": "sni-only",
-        "minimumProtocolVersion": "TLSv1.2_2019",
+        "minimumProtocolVersion": "TLSv1.2_2021",  # Latest TLS version
     },
     custom_error_responses=[
         {
