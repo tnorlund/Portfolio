@@ -32,6 +32,9 @@ try:
     # import lambda_layer  # noqa: F401
     import fast_lambda_layer  # noqa: F401
     from routes.health_check.infra import health_check_lambda  # noqa: F401
+    from lambda_functions.label_count_cache_updater.infra import (
+        label_count_cache_updater_lambda,
+    )  # noqa: F401
 except ImportError:
     # These may not be available in all environments
     pass
