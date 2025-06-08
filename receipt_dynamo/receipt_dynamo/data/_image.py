@@ -26,6 +26,7 @@ from receipt_dynamo import (
     itemToWordTag,
 )
 from receipt_dynamo.entities import assert_valid_uuid
+from receipt_dynamo.constants import ImageType
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 # So we chunk the items in groups of 25 for bulk operations.
@@ -741,3 +742,74 @@ class _Image:
 
         except ClientError as e:
             raise ValueError(f"Could not list images from the database: {e}")
+
+    def listImagesByType(
+        self,
+        image_type: str,
+        limit: Optional[int] = None,
+        lastEvaluatedKey: Optional[Dict] = None,
+    ) -> Tuple[List[Image], Optional[Dict]]:
+        """
+        Lists images from the database by type.
+        """
+        if not isinstance(image_type, ImageType):
+            if not isinstance(image_type, str):
+                raise ValueError("image_type must be a ImageType or a string")
+            if image_type not in [t.value for t in ImageType]:
+                raise ValueError(
+                    f"image_type must be one of: {', '.join(t.value for t in ImageType)}\nGot: {image_type}"
+                )
+        if isinstance(image_type, ImageType):
+            image_type = image_type.value
+        images = []
+        try:
+            query_params = {
+                "TableName": self.table_name,
+                "IndexName": "GSI3",
+                "KeyConditionExpression": "#t = :val",
+                "ExpressionAttributeNames": {"#t": "GSI3PK"},
+                "ExpressionAttributeValues": {
+                    ":val": {"S": f"IMAGE#{image_type}"}
+                },
+            }
+
+            if lastEvaluatedKey is not None:
+                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+
+            if limit is not None:
+                query_params["Limit"] = limit
+
+            response = self._client.query(**query_params)
+            images.extend([itemToImage(item) for item in response["Items"]])
+
+            if limit is None:
+                # If no limit is provided, paginate until all items are
+                # retrieved
+                while (
+                    "LastEvaluatedKey" in response
+                    and response["LastEvaluatedKey"]
+                ):
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
+                    response = self._client.query(**query_params)
+                    images.extend(
+                        [itemToImage(item) for item in response["Items"]]
+                    )
+                last_evaluated_key = None
+            else:
+                # If a limit is provided, capture the LastEvaluatedKey (if any)
+                last_evaluated_key = response.get("LastEvaluatedKey", None)
+
+            return images, last_evaluated_key
+
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ResourceNotFoundException":
+                raise Exception(
+                    f"Table {self.table_name} not found: {e}"
+                ) from e
+            if error_code == "ValidationException":
+                raise Exception(f"Validation exception: {e}") from e
+            else:
+                raise Exception(f"Error getting image cluster details: {e}")
