@@ -25,6 +25,8 @@ class Image:
         sha256 (str): The SHA256 hash of the image.
         cdn_s3_bucket (str): The S3 bucket where the image is stored in the CDN.
         cdn_s3_key (str): The S3 key where the image is stored in the CDN.
+        cdn_webp_s3_key (str, optional): The S3 key for the WebP version in the CDN.
+        cdn_avif_s3_key (str, optional): The S3 key for the AVIF version in the CDN.
     """
 
     def __init__(
@@ -38,6 +40,8 @@ class Image:
         sha256: Optional[str] = None,
         cdn_s3_bucket: Optional[str] = None,
         cdn_s3_key: Optional[str] = None,
+        cdn_webp_s3_key: Optional[str] = None,
+        cdn_avif_s3_key: Optional[str] = None,
         image_type: ImageType | str = ImageType.SCAN,
     ):
         """Initializes a new Image object for DynamoDB.
@@ -52,6 +56,8 @@ class Image:
             sha256 (str, optional): The SHA256 hash of the image.
             cdn_s3_bucket (str, optional): The S3 bucket where the image is stored in the CDN.
             cdn_s3_key (str, optional): The S3 key where the image is stored in the CDN.
+            cdn_webp_s3_key (str, optional): The S3 key for the WebP version in the CDN.
+            cdn_avif_s3_key (str, optional): The S3 key for the AVIF version in the CDN.
 
         Raises:
             ValueError: If any parameter is of an invalid type or has an invalid value.
@@ -96,6 +102,14 @@ class Image:
         if cdn_s3_key and not isinstance(cdn_s3_key, str):
             raise ValueError("cdn_s3_key must be a string")
         self.cdn_s3_key = cdn_s3_key
+
+        if cdn_webp_s3_key and not isinstance(cdn_webp_s3_key, str):
+            raise ValueError("cdn_webp_s3_key must be a string")
+        self.cdn_webp_s3_key = cdn_webp_s3_key
+
+        if cdn_avif_s3_key and not isinstance(cdn_avif_s3_key, str):
+            raise ValueError("cdn_avif_s3_key must be a string")
+        self.cdn_avif_s3_key = cdn_avif_s3_key
 
         if not isinstance(image_type, ImageType):
             if not isinstance(image_type, str):
@@ -164,6 +178,16 @@ class Image:
             "cdn_s3_key": (
                 {"S": self.cdn_s3_key} if self.cdn_s3_key else {"NULL": True}
             ),
+            "cdn_webp_s3_key": (
+                {"S": self.cdn_webp_s3_key}
+                if self.cdn_webp_s3_key
+                else {"NULL": True}
+            ),
+            "cdn_avif_s3_key": (
+                {"S": self.cdn_avif_s3_key}
+                if self.cdn_avif_s3_key
+                else {"NULL": True}
+            ),
             "image_type": {"S": self.image_type},
         }
 
@@ -184,6 +208,8 @@ class Image:
             f"sha256={_repr_str(self.sha256)}, "
             f"cdn_s3_bucket={_repr_str(self.cdn_s3_bucket)}, "
             f"cdn_s3_key={_repr_str(self.cdn_s3_key)}, "
+            f"cdn_webp_s3_key={_repr_str(self.cdn_webp_s3_key) if self.cdn_webp_s3_key else None}, "
+            f"cdn_avif_s3_key={_repr_str(self.cdn_avif_s3_key) if self.cdn_avif_s3_key else None}, "
             f"image_type={_repr_str(self.image_type)}"
             ")"
         )
@@ -203,6 +229,8 @@ class Image:
         yield "sha256", self.sha256
         yield "cdn_s3_bucket", self.cdn_s3_bucket
         yield "cdn_s3_key", self.cdn_s3_key
+        yield "cdn_webp_s3_key", self.cdn_webp_s3_key
+        yield "cdn_avif_s3_key", self.cdn_avif_s3_key
         yield "image_type", self.image_type
 
     def to_dict(self) -> dict:
@@ -233,6 +261,8 @@ class Image:
             and self.sha256 == other.sha256
             and self.cdn_s3_bucket == other.cdn_s3_bucket
             and self.cdn_s3_key == other.cdn_s3_key
+            and self.cdn_webp_s3_key == other.cdn_webp_s3_key
+            and self.cdn_avif_s3_key == other.cdn_avif_s3_key
             and self.image_type == other.image_type
         )
 
@@ -253,6 +283,8 @@ class Image:
                 self.sha256,
                 self.cdn_s3_bucket,
                 self.cdn_s3_key,
+                self.cdn_webp_s3_key,
+                self.cdn_avif_s3_key,
                 self.image_type,
             )
         )
@@ -291,6 +323,8 @@ def itemToImage(item: dict) -> Image:
         sha256 = item.get("sha256", {}).get("S")
         cdn_s3_bucket = item.get("cdn_s3_bucket", {}).get("S")
         cdn_s3_key = item.get("cdn_s3_key", {}).get("S")
+        cdn_webp_s3_key = item.get("cdn_webp_s3_key", {}).get("S")
+        cdn_avif_s3_key = item.get("cdn_avif_s3_key", {}).get("S")
         image_type = item.get("image_type", {}).get("S")
         return Image(
             image_id=item["PK"]["S"].split("#")[1],
@@ -304,6 +338,8 @@ def itemToImage(item: dict) -> Image:
             sha256=sha256 if sha256 else None,
             cdn_s3_bucket=cdn_s3_bucket if cdn_s3_bucket else None,
             cdn_s3_key=cdn_s3_key if cdn_s3_key else None,
+            cdn_webp_s3_key=cdn_webp_s3_key if cdn_webp_s3_key else None,
+            cdn_avif_s3_key=cdn_avif_s3_key if cdn_avif_s3_key else None,
             image_type=image_type if image_type else ImageType.SCAN.value,
         )
     except KeyError as e:

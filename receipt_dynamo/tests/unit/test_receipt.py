@@ -381,6 +381,8 @@ def test_receipt_to_item(example_receipt):
         "sha256": {"S": "abc123"},
         "cdn_s3_bucket": {"NULL": True},
         "cdn_s3_key": {"NULL": True},
+        "cdn_webp_s3_key": {"NULL": True},
+        "cdn_avif_s3_key": {"NULL": True},
     }
 
 
@@ -402,7 +404,9 @@ def test_receipt_repr(example_receipt):
         "bottom_right={'x': 200.0, 'y': 100.0}, "
         "sha256='abc123', "
         "cdn_s3_bucket=None, "
-        "cdn_s3_key=None"
+        "cdn_s3_key=None, "
+        "cdn_webp_s3_key=None, "
+        "cdn_avif_s3_key=None"
         ")"
     )
 
@@ -425,6 +429,8 @@ def test_receipt_iter(example_receipt):
         "sha256": "abc123",
         "cdn_s3_bucket": None,
         "cdn_s3_key": None,
+        "cdn_webp_s3_key": None,
+        "cdn_avif_s3_key": None,
     }
     assert Receipt(**dict(example_receipt)) == example_receipt
 

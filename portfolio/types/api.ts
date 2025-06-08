@@ -43,6 +43,9 @@ export interface Image {
   sha256: string;
   cdn_s3_bucket: string;
   cdn_s3_key: string;
+  cdn_webp_s3_key?: string;
+  cdn_avif_s3_key?: string;
+  image_type: string;
 }
 
 export interface Line {
@@ -111,4 +114,6 @@ export interface Receipt {
   sha256: string;
   cdn_s3_bucket: string;
   cdn_s3_key: string;
+  cdn_webp_s3_key?: string;
+  cdn_avif_s3_key?: string;
 }

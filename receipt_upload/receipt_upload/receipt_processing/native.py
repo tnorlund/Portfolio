@@ -17,6 +17,7 @@ from receipt_dynamo import DynamoClient
 from receipt_upload.utils import (
     upload_png_to_s3,
     upload_jpeg_to_s3,
+    upload_all_cdn_formats,
     calculate_sha256_from_bytes,
     image_ocr_to_receipt_ocr,
 )
@@ -61,11 +62,12 @@ def process_native(
 
     # Generate S3 keys
     raw_image_s3_key = f"raw/{ocr_job.image_id}.png"
-    cdn_image_s3_key = f"assets/{ocr_job.image_id}.jpg"
 
     # Upload images to S3
     upload_png_to_s3(image, raw_bucket, raw_image_s3_key)
-    upload_jpeg_to_s3(image, site_bucket, cdn_image_s3_key)
+    cdn_keys = upload_all_cdn_formats(
+        image, site_bucket, f"assets/{ocr_job.image_id}"
+    )
 
     # Calculate image hash once
     image_hash = calculate_sha256_from_bytes(image.tobytes())
@@ -80,7 +82,9 @@ def process_native(
         raw_s3_bucket=raw_bucket,
         raw_s3_key=raw_image_s3_key,
         cdn_s3_bucket=site_bucket,
-        cdn_s3_key=cdn_image_s3_key,
+        cdn_s3_key=cdn_keys["jpeg"],
+        cdn_webp_s3_key=cdn_keys["webp"],
+        cdn_avif_s3_key=cdn_keys["avif"],
         sha256=image_hash,
         image_type=ImageType.NATIVE,
     )
@@ -99,8 +103,14 @@ def process_native(
         raw_s3_bucket=raw_bucket,
         raw_s3_key=raw_image_s3_key,
         cdn_s3_bucket=site_bucket,
-        cdn_s3_key=cdn_image_s3_key,
+        cdn_s3_key=cdn_keys["jpeg"],
+        cdn_webp_s3_key=cdn_keys["webp"],
+        cdn_avif_s3_key=cdn_keys["avif"],
         sha256=image_hash,
+        top_left={"x": 0.0, "y": 1.0},
+        top_right={"x": 1.0, "y": 1.0},
+        bottom_left={"x": 0.0, "y": 0.0},
+        bottom_right={"x": 1.0, "y": 0.0},
     )
     dynamo_client.addReceipt(receipt)
     dynamo_client.addReceiptLines(receipt_lines)

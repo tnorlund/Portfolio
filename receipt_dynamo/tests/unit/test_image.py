@@ -285,6 +285,8 @@ def test_image_to_item(example_image):
         "cdn_s3_bucket": {"S": "cdn_bucket"},
         "cdn_s3_key": {"S": "cdn_key"},
         "image_type": {"S": "SCAN"},
+        "cdn_webp_s3_key": {"NULL": True},
+        "cdn_avif_s3_key": {"NULL": True},
     }
 
 
@@ -309,6 +311,8 @@ def test_image_to_item_no_sha(example_image_no_sha):
         "cdn_s3_bucket": {"S": "cdn_bucket"},
         "cdn_s3_key": {"S": "cdn_key"},
         "image_type": {"S": "SCAN"},
+        "cdn_webp_s3_key": {"NULL": True},
+        "cdn_avif_s3_key": {"NULL": True},
     }
 
 
@@ -333,6 +337,8 @@ def test_image_to_item_no_cdn_bucket(example_image_no_cdn_bucket):
         "cdn_s3_bucket": {"NULL": True},
         "cdn_s3_key": {"S": "cdn_key"},
         "image_type": {"S": "SCAN"},
+        "cdn_webp_s3_key": {"NULL": True},
+        "cdn_avif_s3_key": {"NULL": True},
     }
 
 
@@ -357,6 +363,8 @@ def test_image_to_item_no_cdn_key(example_image_no_cdn_key):
         "cdn_s3_bucket": {"S": "cdn_bucket"},
         "cdn_s3_key": {"NULL": True},
         "image_type": {"S": "SCAN"},
+        "cdn_webp_s3_key": {"NULL": True},
+        "cdn_avif_s3_key": {"NULL": True},
     }
 
 
@@ -374,6 +382,8 @@ def test_image_repr(example_image):
         "sha256='abc123', "
         "cdn_s3_bucket='cdn_bucket', "
         "cdn_s3_key='cdn_key', "
+        "cdn_webp_s3_key=None, "
+        "cdn_avif_s3_key=None, "
         "image_type='SCAN'"
         ")"
     )
@@ -394,6 +404,8 @@ def test_image_iter(example_image):
         "cdn_s3_bucket": "cdn_bucket",
         "cdn_s3_key": "cdn_key",
         "image_type": "SCAN",
+        "cdn_webp_s3_key": None,
+        "cdn_avif_s3_key": None,
     }
 
 

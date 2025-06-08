@@ -9,6 +9,7 @@ from receipt_upload.utils import (
     download_image_from_s3,
     upload_jpeg_to_s3,
     upload_png_to_s3,
+    upload_all_cdn_formats,
     calculate_sha256_from_bytes,
     send_message_to_sqs,
     download_file_from_s3,
@@ -73,12 +74,12 @@ def process_photo(
     )
     image = PIL_Image.open(raw_image_path)
 
-    # Upload the raw image to the raw and site buckets
+    # Upload the raw image to the raw bucket
     raw_image_s3_key = f"raw/{image_id}.png"
     upload_png_to_s3(image, raw_bucket, raw_image_s3_key)
 
-    # Upload JPEG version to site bucket
-    upload_jpeg_to_s3(image, site_bucket, f"assets/{image_id}.jpg")
+    # Upload all CDN formats to site bucket
+    cdn_keys = upload_all_cdn_formats(image, site_bucket, f"assets/{image_id}")
 
     ocr_image = Image(
         image_id=image_id,
@@ -88,7 +89,9 @@ def process_photo(
         raw_s3_bucket=raw_bucket,
         raw_s3_key=f"raw/{image_id}.png",
         cdn_s3_bucket=site_bucket,
-        cdn_s3_key=f"assets/{image_id}.jpg",
+        cdn_s3_key=cdn_keys["jpeg"],
+        cdn_webp_s3_key=cdn_keys["webp"],
+        cdn_avif_s3_key=cdn_keys["avif"],
         sha256=calculate_sha256_from_bytes(image.tobytes()),
         image_type=ImageType.PHOTO,
     )
@@ -166,18 +169,18 @@ def process_photo(
             resample=PIL_Image.BICUBIC,
         )
 
-        # Upload the warped image to the raw and site buckets
+        # Upload the warped image to the raw bucket
         upload_png_to_s3(
             warped_img,
             raw_bucket,
             f"raw/{image_id}_RECEIPT_{cluster_id:05d}.png",
         )
 
-        # Upload the JPEG version to the site bucket
-        upload_jpeg_to_s3(
+        # Upload all CDN formats to site bucket
+        receipt_cdn_keys = upload_all_cdn_formats(
             warped_img,
             site_bucket,
-            f"assets/{image_id}_RECEIPT_{cluster_id:05d}.jpg",
+            f"assets/{image_id}_RECEIPT_{cluster_id:05d}",
         )
 
         # Convert the receipt_box_corners from pixel coordinates to normalized
@@ -214,7 +217,9 @@ def process_photo(
             bottom_right=bottom_right,
             sha256=calculate_sha256_from_bytes(warped_img.tobytes()),
             cdn_s3_bucket=site_bucket,
-            cdn_s3_key=f"assets/{image_id}_RECEIPT_{cluster_id:05d}.jpg",
+            cdn_s3_key=receipt_cdn_keys["jpeg"],
+            cdn_webp_s3_key=receipt_cdn_keys["webp"],
+            cdn_avif_s3_key=receipt_cdn_keys["avif"],
         )
 
         # Add the receipt to DynamoDB

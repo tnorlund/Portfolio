@@ -7,6 +7,191 @@ import { useTransition, animated } from "@react-spring/web";
 
 const isDevelopment = process.env.NODE_ENV === "development";
 
+// Browser format detection utilities
+const detectImageFormatSupport = (): Promise<{
+  supportsAVIF: boolean;
+  supportsWebP: boolean;
+}> => {
+  return new Promise((resolve) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1;
+    canvas.height = 1;
+    const ctx = canvas.getContext("2d");
+
+    if (!ctx) {
+      resolve({ supportsAVIF: false, supportsWebP: false });
+      return;
+    }
+
+    // Test WebP support
+    let supportsWebP = false;
+    try {
+      const webpDataUrl = canvas.toDataURL("image/webp", 0.5);
+      supportsWebP = webpDataUrl.indexOf("data:image/webp") === 0;
+
+      // Fallback to browser detection if canvas test fails
+      if (!supportsWebP) {
+        const userAgent = navigator.userAgent;
+        supportsWebP = !!(
+          userAgent.includes("Chrome") ||
+          userAgent.includes("Firefox") ||
+          (userAgent.includes("Safari") && !userAgent.includes("Chrome"))
+        );
+      }
+    } catch (error) {
+      supportsWebP = false;
+    }
+
+    // Test AVIF support
+    const testAVIF = () => {
+      return new Promise<boolean>((resolveAVIF) => {
+        const img = new Image();
+        img.onload = () => resolveAVIF(true);
+        img.onerror = () => resolveAVIF(false);
+        img.src =
+          "data:image/avif;base64,AAAAIGZ0eXBhdmlmAAAAAGF2aWZtaWYxbWlhZk1BMUIAAADybWV0YQAAAAAAAAAoaGRscgAAAAAAAAAAcGljdAAAAAAAAAAAAAAAAGxpYmF2aWYAAAAADnBpdG0AAAAAAAEAAAAeaWxvYwAAAABEAAABAAEAAAABAAABGgAAAB0AAAAoaWluZgAAAAAAAQAAABppbmZlAgAAAAABAABhdjAxQ29sb3IAAAAAamlwcnAAAABLaXBjbwAAABRpc3BlAAAAAAAAAAEAAAABAAAAEHBpeGkAAAAAAwgICAAAAAxhdjFDgQ0MAAAAABNjb2xybmNseAACAAIAAYAAAAAXaXBtYQAAAAAAAAABAAEEAQKDBAAAACVtZGF0EgAKCBgABogQEAwgMg8f8D///8WfhwB8+ErK42A=";
+      });
+    };
+
+    testAVIF().then((supportsAVIF) => {
+      resolve({ supportsAVIF, supportsWebP });
+    });
+  });
+};
+
+// Get the best available image URL based on browser support and available formats
+const getBestReceiptUrl = (
+  receipt: Receipt,
+  formatSupport: { supportsAVIF: boolean; supportsWebP: boolean }
+): string => {
+  const baseUrl = isDevelopment
+    ? "https://dev.tylernorlund.com"
+    : "https://www.tylernorlund.com";
+
+  // Try AVIF first (best compression)
+  if (formatSupport.supportsAVIF && receipt.cdn_avif_s3_key) {
+    return `${baseUrl}/${receipt.cdn_avif_s3_key}`;
+  }
+
+  // Try WebP second (good compression, wide support)
+  if (formatSupport.supportsWebP && receipt.cdn_webp_s3_key) {
+    return `${baseUrl}/${receipt.cdn_webp_s3_key}`;
+  }
+
+  // Fallback to JPEG (universal support)
+  return `${baseUrl}/${receipt.cdn_s3_key}`;
+};
+
+// Component with automatic fallback handling
+interface ReceiptImageProps {
+  receipt: Receipt;
+  formatSupport: { supportsAVIF: boolean; supportsWebP: boolean } | null;
+  isClient: boolean;
+  style: any;
+}
+
+const ReceiptImage: React.FC<ReceiptImageProps> = ({
+  receipt,
+  formatSupport,
+  isClient,
+  style,
+}) => {
+  const [currentSrc, setCurrentSrc] = useState<string>("");
+  const [hasErrored, setHasErrored] = useState<boolean>(false);
+
+  // Set initial URL using the same logic as pre-loading
+  useEffect(() => {
+    if (formatSupport && !currentSrc) {
+      const bestUrl = getBestReceiptUrl(receipt, formatSupport);
+      setCurrentSrc(bestUrl);
+      setHasErrored(false);
+    }
+  }, [formatSupport, receipt, currentSrc]);
+
+  const handleError = () => {
+    const baseUrl = isDevelopment
+      ? "https://dev.tylernorlund.com"
+      : "https://www.tylernorlund.com";
+
+    let fallbackUrl = "";
+
+    if (currentSrc.includes(".avif")) {
+      // AVIF failed, try WebP
+      if (formatSupport?.supportsWebP && receipt.cdn_webp_s3_key) {
+        fallbackUrl = `${baseUrl}/${receipt.cdn_webp_s3_key}`;
+      } else {
+        // No WebP, go to JPEG
+        fallbackUrl = `${baseUrl}/${receipt.cdn_s3_key}`;
+      }
+    } else if (currentSrc.includes(".webp")) {
+      // WebP failed, try JPEG
+      fallbackUrl = `${baseUrl}/${receipt.cdn_s3_key}`;
+    } else {
+      // JPEG failed, nothing else to try
+      setHasErrored(true);
+      return;
+    }
+
+    if (fallbackUrl && fallbackUrl !== currentSrc) {
+      setCurrentSrc(fallbackUrl);
+    } else {
+      setHasErrored(true);
+    }
+  };
+
+  if (hasErrored) {
+    return (
+      <animated.div
+        style={{
+          position: "absolute",
+          width: "100px",
+          border: "1px solid #ccc",
+          backgroundColor: "var(--background-color)",
+          boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "#999",
+          fontSize: "12px",
+          ...style,
+        }}
+      >
+        Failed
+      </animated.div>
+    );
+  }
+
+  // Don't render if no valid src
+  if (!currentSrc) {
+    return null;
+  }
+
+  return (
+    <animated.div
+      style={{
+        position: "absolute",
+        width: "100px",
+        border: "1px solid #ccc",
+        backgroundColor: "var(--background-color)",
+        boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
+        ...style,
+      }}
+    >
+      <img
+        src={currentSrc}
+        alt={`Receipt ${receipt.receipt_id}`}
+        crossOrigin="anonymous"
+        style={{
+          width: "100%",
+          height: "auto",
+          display: "block",
+        }}
+        onError={handleError}
+      />
+    </animated.div>
+  );
+};
+
 const ReceiptStack: React.FC = () => {
   const [ref, inView] = useOptimizedInView({
     threshold: 0.1,
@@ -19,8 +204,21 @@ const ReceiptStack: React.FC = () => {
   const [rotations, setRotations] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [formatSupport, setFormatSupport] = useState<{
+    supportsAVIF: boolean;
+    supportsWebP: boolean;
+  } | null>(null);
+  const [isClient, setIsClient] = useState(false);
 
-  // Customize these to your needs
+  // States for image pre-loading
+  const [imagesLoading, setImagesLoading] = useState(false);
+  const [imagesLoaded, setImagesLoaded] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState({
+    loaded: 0,
+    total: 0,
+  });
+
+  // Configuration
   const maxReceipts = 40;
   const pageSize = 20;
 
@@ -40,6 +238,20 @@ const ReceiptStack: React.FC = () => {
     keys: (item) => `${item.receipt_id}-${item.image_id}`,
   });
 
+  // Ensure client-side hydration consistency
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  // Detect format support on component mount (only client-side)
+  useEffect(() => {
+    if (!isClient) return;
+
+    detectImageFormatSupport().then((support) => {
+      setFormatSupport(support);
+    });
+  }, [isClient]);
+
   useEffect(() => {
     const loadAllReceipts = async () => {
       setLoading(true);
@@ -58,7 +270,6 @@ const ReceiptStack: React.FC = () => {
             lastEvaluatedKey
           );
 
-          // Check if response has the expected structure
           if (!response || typeof response !== "object") {
             console.error("Invalid response structure:", response);
             break;
@@ -89,7 +300,6 @@ const ReceiptStack: React.FC = () => {
         setError(
           error instanceof Error ? error.message : "Failed to load receipts"
         );
-        // Set empty arrays to prevent rendering issues
         setPrefetchedReceipts([]);
         setPrefetchedRotations([]);
       } finally {
@@ -100,17 +310,90 @@ const ReceiptStack: React.FC = () => {
     loadAllReceipts();
   }, [maxReceipts, pageSize]);
 
-  // When the user scrolls to this component, start the animation using the
-  // prefetched data
+  // When the user scrolls to this component, pre-load images first, then start animation
   useEffect(() => {
-    if (inView && receipts.length === 0 && prefetchedReceipts.length) {
+    if (
+      inView &&
+      receipts.length === 0 &&
+      prefetchedReceipts.length &&
+      formatSupport !== null &&
+      !imagesLoading &&
+      !imagesLoaded
+    ) {
+      preloadAllImages(prefetchedReceipts);
+    }
+  }, [
+    inView,
+    prefetchedReceipts,
+    receipts.length,
+    formatSupport,
+    imagesLoading,
+    imagesLoaded,
+  ]);
+
+  // Start animation only after images are pre-loaded
+  useEffect(() => {
+    if (imagesLoaded && receipts.length === 0 && prefetchedReceipts.length) {
       setReceipts(prefetchedReceipts);
       setRotations(prefetchedRotations);
     }
-  }, [inView, prefetchedReceipts, prefetchedRotations, receipts.length]);
+  }, [imagesLoaded, receipts.length, prefetchedReceipts, prefetchedRotations]);
+
+  // Pre-load all images before starting animation
+  const preloadAllImages = async (receiptsToLoad: Receipt[]) => {
+    if (!formatSupport || receiptsToLoad.length === 0) return;
+
+    setImagesLoading(true);
+    setImagesLoaded(false);
+    setLoadingProgress({ loaded: 0, total: receiptsToLoad.length });
+
+    const imagePromises = receiptsToLoad.map((receipt, index) => {
+      return new Promise<void>((resolve) => {
+        const imageUrl = getBestReceiptUrl(receipt, formatSupport);
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+
+        const handleLoad = () => {
+          setLoadingProgress((prev) => ({
+            loaded: prev.loaded + 1,
+            total: prev.total,
+          }));
+          resolve();
+        };
+
+        const handleError = () => {
+          setLoadingProgress((prev) => ({
+            loaded: prev.loaded + 1,
+            total: prev.total,
+          }));
+          resolve(); // Still resolve to not block other images
+        };
+
+        img.onload = handleLoad;
+        img.onerror = handleError;
+        img.src = imageUrl;
+      });
+    });
+
+    try {
+      await Promise.all(imagePromises);
+      setImagesLoaded(true);
+    } catch (error) {
+      console.warn("Some images failed to pre-load:", error);
+      setImagesLoaded(true); // Still start animation even if some images failed
+    } finally {
+      setImagesLoading(false);
+    }
+  };
 
   // Show loading state once in view
-  if (inView && loading) {
+  if (inView && (loading || imagesLoading)) {
+    const loadingMessage = loading
+      ? "Loading receipts..."
+      : imagesLoading
+      ? `Loading images... (${loadingProgress.loaded}/${loadingProgress.total})`
+      : "Loading receipts...";
+
     return (
       <div
         ref={ref}
@@ -122,7 +405,7 @@ const ReceiptStack: React.FC = () => {
           padding: "2rem",
         }}
       >
-        <p>Loading receipts...</p>
+        <p>{loadingMessage}</p>
       </div>
     );
   }
@@ -170,7 +453,8 @@ const ReceiptStack: React.FC = () => {
       style={{
         width: "100%",
         display: "flex",
-        justifyContent: "center",
+        flexDirection: "column",
+        alignItems: "center",
         marginTop: "6rem",
       }}
     >
@@ -183,31 +467,15 @@ const ReceiptStack: React.FC = () => {
       >
         {transitions((style, receipt) => {
           if (!receipt) return null;
-          const cdnUrl = isDevelopment
-            ? `https://dev.tylernorlund.com/${receipt.cdn_s3_key}`
-            : `https://www.tylernorlund.com/${receipt.cdn_s3_key}`;
 
           return (
-            <animated.div
-              style={{
-                position: "absolute",
-                width: "100px",
-                border: "1px solid #ccc",
-                backgroundColor: "var(--background-color)",
-                boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
-                ...style,
-              }}
-            >
-              <img
-                src={cdnUrl}
-                alt={`Receipt ${receipt.receipt_id}`}
-                style={{
-                  width: "100%",
-                  height: "auto",
-                  display: "block",
-                }}
-              />
-            </animated.div>
+            <ReceiptImage
+              key={`${receipt.receipt_id}-${receipt.image_id}`}
+              receipt={receipt}
+              formatSupport={formatSupport}
+              isClient={isClient}
+              style={style}
+            />
           );
         })}
       </div>

@@ -89,6 +89,184 @@ def upload_png_to_s3(image: PIL_Image, s3_bucket: str, s3_key: str) -> None:
         )
 
 
+def upload_webp_to_s3(
+    image: PIL_Image, s3_bucket: str, s3_key: str, quality: int = 85
+) -> None:
+    """
+    Upload a WebP image to S3.
+    """
+    s3_client = client("s3")
+    with BytesIO() as buffer:
+        image.convert("RGB").save(
+            buffer, format="WEBP", quality=quality, method=6
+        )
+        buffer.seek(0)
+        s3_client.put_object(
+            Bucket=s3_bucket,
+            Key=s3_key,
+            Body=buffer.getvalue(),
+            ContentType="image/webp",
+        )
+
+
+def upload_avif_to_s3(
+    image: PIL_Image, s3_bucket: str, s3_key: str, quality: int = 85
+) -> None:
+    """
+    Upload an AVIF image to S3.
+    Note: Requires pillow-avif-plugin to be installed.
+    """
+    s3_client = client("s3")
+
+    try:
+        # Try to import and register the AVIF plugin
+        try:
+            import pillow_avif
+
+            # The import should auto-register the plugin
+        except ImportError as import_error:
+            raise Exception(
+                f"pillow-avif-plugin is not installed: {import_error}"
+            )
+
+        # Check if AVIF is supported
+        from PIL import Image as PIL_Image_module
+
+        if ".avif" not in PIL_Image_module.registered_extensions():
+            available_formats = list(
+                PIL_Image_module.registered_extensions().keys()
+            )
+            raise Exception(
+                f"AVIF format is not supported. Available formats: {available_formats}"
+            )
+
+        with BytesIO() as buffer:
+            try:
+                # Convert to RGB mode for AVIF (it doesn't support transparency)
+                if image.mode not in ("RGB", "L"):
+                    rgb_image = image.convert("RGB")
+                else:
+                    rgb_image = image
+
+                # Use more compatible AVIF encoding parameters
+                rgb_image.save(
+                    buffer,
+                    format="AVIF",
+                    quality=quality,
+                    # Safari AVIF compatibility: Force 8-bit 420 subset
+                    speed=6,  # Balance between encoding speed and compression
+                    chroma_subsampling="4:2:0",  # Standard chroma subsampling (420 subset)
+                    range="limited",  # Use limited range for better compatibility
+                    codec="aom",  # Use AOM codec explicitly for compatibility
+                    # Force 8-bit depth for Safari compatibility
+                    bit_depth=8,  # Explicitly force 8-bit (Safari requirement)
+                    # Avoid advanced features that may not be supported
+                    alpha_premultiplied=False,
+                    # Use baseline profile for maximum Safari compatibility
+                    avif_options={
+                        "advanced": 0,  # Disable advanced features
+                        "autotiling": False,  # Disable auto-tiling
+                        "tiling": "1x1",  # Use single tile
+                        "min_quantizer": 0,  # Disable min quantizer limits
+                        "max_quantizer": 63,  # Use standard max quantizer
+                    },
+                )
+                buffer.seek(0)
+                avif_data = buffer.getvalue()
+
+                if len(avif_data) == 0:
+                    raise Exception("AVIF encoding produced empty data")
+
+            except Exception as save_error:
+                # If advanced options fail, fall back to basic encoding
+                try:
+                    buffer.seek(0)
+                    buffer.truncate()
+
+                    # Basic AVIF encoding without advanced options
+                    rgb_image.save(
+                        buffer,
+                        format="AVIF",
+                        quality=quality,
+                        speed=6,  # Keep speed setting for reasonable encoding time
+                    )
+                    buffer.seek(0)
+                    avif_data = buffer.getvalue()
+
+                    if len(avif_data) == 0:
+                        raise Exception(
+                            "Basic AVIF encoding also produced empty data"
+                        )
+
+                except Exception as fallback_error:
+                    raise Exception(
+                        f"Both advanced and basic AVIF encoding failed. "
+                        f"Advanced: {save_error}, Basic: {fallback_error}"
+                    )
+
+            try:
+                # Upload to S3
+                s3_client.put_object(
+                    Bucket=s3_bucket,
+                    Key=s3_key,
+                    Body=avif_data,
+                    ContentType="image/avif",
+                )
+            except Exception as s3_error:
+                raise Exception(f"Failed to upload AVIF to S3: {s3_error}")
+
+    except Exception as e:
+        # Re-raise with more context
+        raise Exception(f"AVIF upload failed for {s3_key}: {e}")
+
+
+def upload_all_cdn_formats(
+    image: PIL_Image,
+    s3_bucket: str,
+    base_key: str,
+    jpeg_quality: int = 85,
+    webp_quality: int = 85,
+    avif_quality: int = 85,
+) -> dict[str, str]:
+    """
+    Upload an image in all CDN formats (JPEG, WebP, AVIF) to S3.
+
+    Args:
+        image: PIL Image object
+        s3_bucket: S3 bucket name
+        base_key: Base S3 key without extension (e.g., "assets/image_id")
+        jpeg_quality: JPEG compression quality (1-100)
+        webp_quality: WebP compression quality (1-100)
+        avif_quality: AVIF compression quality (1-100)
+
+    Returns:
+        Dictionary with format names as keys and S3 keys as values
+    """
+    keys = {}
+
+    # Upload JPEG version
+    jpeg_key = f"{base_key}.jpg"
+    upload_jpeg_to_s3(image, s3_bucket, jpeg_key)
+    keys["jpeg"] = jpeg_key
+
+    # Upload WebP version
+    webp_key = f"{base_key}.webp"
+    upload_webp_to_s3(image, s3_bucket, webp_key, webp_quality)
+    keys["webp"] = webp_key
+
+    # Try to upload AVIF version
+    try:
+        avif_key = f"{base_key}.avif"
+        upload_avif_to_s3(image, s3_bucket, avif_key, avif_quality)
+        keys["avif"] = avif_key
+    except Exception as e:
+        print(f"Warning: Could not upload AVIF format for {base_key}: {e}")
+        # Store None to indicate AVIF failed but don't crash the upload
+        keys["avif"] = None
+
+    return keys
+
+
 def upload_file_to_s3(file_path: Path, s3_bucket: str, s3_key: str) -> None:
     """
     Upload a file to S3.
