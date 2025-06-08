@@ -77,39 +77,34 @@ certificate_validation = pulumi.Output.all(
 ########################
 site_bucket = aws.s3.Bucket(
     "siteBucket",
-    website={
-        "indexDocument": "index.html",
-        "errorDocument": "index.html",  # Serve index.html on 404
-    },
+    # Remove website configuration - using REST API endpoint instead
+    cors_rules=[
+        {
+            "allowedHeaders": ["*"],
+            "allowedMethods": ["GET", "HEAD"],
+            "allowedOrigins": [
+                "https://tylernorlund.com",
+                "https://www.tylernorlund.com",
+                "https://dev.tylernorlund.com",
+                "http://localhost:3000",  # For development
+                "http://localhost:3001",  # Alternative dev port
+            ],
+            "exposeHeaders": ["ETag"],
+            "maxAgeSeconds": 3000,
+        }
+    ],
 )
 
-bucket_policy = aws.s3.BucketPolicy(
-    "bucketPolicy",
-    bucket=site_bucket.bucket,
-    policy=site_bucket.bucket.apply(
-        lambda bucket_name: json.dumps(
-            {
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Effect": "Allow",
-                        "Principal": "*",
-                        "Action": "s3:GetObject",
-                        "Resource": f"arn:aws:s3:::{bucket_name}/*",
-                    }
-                ],
-            }
-        )
-    ),
-)
+# Note: Bucket policy will be created after CDN to avoid circular dependency
 
+# Keep S3 bucket private (no public access)
 public_access_block = aws.s3.BucketPublicAccessBlock(
     "publicAccessBlock",
     bucket=site_bucket.id,
-    block_public_acls=False,
-    ignore_public_acls=False,
-    block_public_policy=False,
-    restrict_public_buckets=False,
+    block_public_acls=True,
+    ignore_public_acls=True,
+    block_public_policy=True,
+    restrict_public_buckets=True,
 )
 
 ########################
@@ -118,7 +113,7 @@ public_access_block = aws.s3.BucketPublicAccessBlock(
 js_optimization_function = aws.cloudfront.Function(
     "jsOptimizationFunction",
     runtime="cloudfront-js-2.0",  # Use latest runtime for better performance
-    comment="Optimize JavaScript delivery, handle clean URLs and add performance headers",
+    comment="Optimize delivery, handle clean URLs, and add performance headers for images and JS",
     publish=True,
     code="""
 function handler(event) {
@@ -133,6 +128,22 @@ function handler(event) {
             statusDescription: 'Moved Permanently',
             headers: { location: { value: uri.slice(0, -1) } }
         };
+    }
+    
+    // Handle image requests - ensure proper headers for AVIF/WebP
+    if (uri.startsWith('/assets/') && (uri.endsWith('.avif') || uri.endsWith('.webp') || uri.endsWith('.jpg'))) {
+        // Ensure Accept header is preserved for content negotiation
+        if (!headers.accept) {
+            headers.accept = { value: 'image/avif,image/webp,image/jpeg,image/*,*/*;q=0.8' };
+        }
+        
+        // Add cache-control hint for images
+        headers['x-image-request'] = { value: 'true' };
+        
+        // Log AVIF requests for debugging (will appear in CloudWatch)
+        if (uri.endsWith('.avif')) {
+            console.log('AVIF request: ' + uri);
+        }
     }
     
     // Add preload hints for critical JavaScript chunks based on route
@@ -154,9 +165,9 @@ function handler(event) {
         };
     }
     
-    // Handle SPA routing
-    if (!uri.includes('.') && uri !== '/') {
-        request.uri = uri + '.html';
+    // Handle SPA routing - serve index.html for non-asset requests
+    if (!uri.includes('.') && uri !== '/' && !uri.startsWith('/assets/')) {
+        request.uri = '/index.html';
     }
     
     return request;
@@ -168,12 +179,55 @@ function handler(event) {
 ########################
 # If prod, we set 'aliases' = [tylernorlund.com, www.tylernorlund.com]
 # Otherwise, it's just [<stack>.tylernorlund.com]
+
+# Create Origin Access Control for secure S3 access
+origin_access_control = aws.cloudfront.OriginAccessControl(
+    "originAccessControl",
+    name=f"OAC-{stack}",  # Use stack name instead of bucket ID
+    origin_access_control_origin_type="s3",
+    signing_behavior="always",
+    signing_protocol="sigv4",
+    description="Origin Access Control for S3 bucket",
+)
+
+# Create a response headers policy for CORS
+cors_response_headers_policy = aws.cloudfront.ResponseHeadersPolicy(
+    "corsResponseHeadersPolicy",
+    name=f"CORS-Policy-{stack}",
+    comment="CORS policy for image assets",
+    cors_config={
+        "access_control_allow_credentials": False,
+        "access_control_allow_headers": {
+            "items": ["*"],
+        },
+        "access_control_allow_methods": {
+            "items": ["GET", "HEAD"],
+        },
+        "access_control_allow_origins": {
+            "items": [
+                "https://tylernorlund.com",
+                "https://www.tylernorlund.com",
+                "https://dev.tylernorlund.com",
+                "http://localhost:3000",
+                "http://localhost:3001",
+            ],
+        },
+        "access_control_max_age_sec": 86400,
+        "origin_override": False,
+    },
+)
+
 cdn = aws.cloudfront.Distribution(
     "cdn",
     origins=[
         {
-            "domainName": site_bucket.bucket_regional_domain_name,
+            # Use S3 REST API endpoint instead of website hosting for better AVIF support
+            "domainName": site_bucket.bucket_domain_name,
             "originId": site_bucket.id,
+            "originAccessControlId": origin_access_control.id,
+            "s3OriginConfig": {
+                "originAccessIdentity": "",  # Required but empty when using OAC
+            },
         }
     ],
     enabled=True,
@@ -182,6 +236,30 @@ cdn = aws.cloudfront.Distribution(
     http_version="http2and3",
     # Optimized cache behaviors for different content types
     ordered_cache_behaviors=[
+        {
+            # Cache behavior for receipt images (AVIF, WebP, JPEG) - With CORS support
+            "pathPattern": "/assets/*",
+            "targetOriginId": site_bucket.id,
+            "viewerProtocolPolicy": "redirect-to-https",
+            "allowedMethods": ["GET", "HEAD"],
+            "cachedMethods": ["GET", "HEAD"],
+            "forwardedValues": {
+                "queryString": False,
+                "cookies": {"forward": "none"},
+                "headers": [
+                    "Accept",
+                    "Accept-Encoding",
+                    "Origin",  # Required for CORS
+                    "Access-Control-Request-Method",
+                    "Access-Control-Request-Headers",
+                ],
+            },
+            "responseHeadersPolicyId": cors_response_headers_policy.id,  # Add CORS headers
+            "minTtl": 86400,  # 24 hours
+            "defaultTtl": 2592000,  # 30 days for images
+            "maxTtl": 31536000,  # 1 year max
+            "compress": False,  # Don't compress images (they're already compressed)
+        },
         {
             # Cache behavior for Next.js JavaScript chunks - Maximum caching
             "pathPattern": "/_next/static/chunks/*",
@@ -280,6 +358,36 @@ cdn = aws.cloudfront.Distribution(
 )
 
 pulumi.export("cdn_distribution_id", cdn.id)
+
+# S3 bucket policy for Origin Access Control (now that CDN is defined)
+bucket_policy = aws.s3.BucketPolicy(
+    "bucketPolicy",
+    bucket=site_bucket.bucket,
+    policy=pulumi.Output.all(
+        bucket_name=site_bucket.bucket,
+        distribution_id=cdn.id,
+    ).apply(
+        lambda args: json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"Service": "cloudfront.amazonaws.com"},
+                        "Action": "s3:GetObject",
+                        "Resource": f"arn:aws:s3:::{args['bucket_name']}/*",
+                        "Condition": {
+                            "StringEquals": {
+                                "AWS:SourceArn": f"arn:aws:cloudfront::{aws.get_caller_identity().account_id}:distribution/{args['distribution_id']}"
+                            }
+                        },
+                    }
+                ],
+            }
+        )
+    ),
+    opts=pulumi.ResourceOptions(depends_on=[cdn]),
+)
 
 ########################
 # 8) Route53 Alias Records
