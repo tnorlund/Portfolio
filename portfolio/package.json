@@ -15,7 +15,8 @@
     "start": "next start",
     "lint": "next lint",
     "monitor": "node monitor-project.js",
-    "monitor:watch": "node monitor-project.js --watch"
+    "monitor:watch": "node monitor-project.js --watch",
+    "optimize-image": "node scripts/optimize-images.js"
   },
   "browserslist": {
     "production": [
