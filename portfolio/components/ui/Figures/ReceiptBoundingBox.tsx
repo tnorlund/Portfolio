@@ -1,13 +1,127 @@
 import React, { useEffect, useState, Fragment } from "react";
 
 import { api } from "../../../services/api";
-import { ImageDetailsApiResponse } from "../../../types/api";
+import {
+  ImageDetailsApiResponse,
+  type Image as ImageType,
+} from "../../../types/api";
 import { useSpring, useTransition, animated } from "@react-spring/web";
 
 const isDevelopment = process.env.NODE_ENV === "development";
 
-// ----------------------------------------------------
-// AnimatedWordBox: already defined for words (unchanged)
+// Browser format detection utilities
+const detectImageFormatSupport = (): Promise<{
+  supportsAVIF: boolean;
+  supportsWebP: boolean;
+}> => {
+  return new Promise((resolve) => {
+    const userAgent = navigator.userAgent;
+
+    // Safari version detection
+    const getSafariVersion = (): number | null => {
+      if (userAgent.includes("Chrome")) return null; // Chrome has Safari in UA, exclude it
+
+      const safariMatch = userAgent.match(/Version\/([0-9.]+).*Safari/);
+      if (safariMatch) {
+        return parseFloat(safariMatch[1]);
+      }
+      return null;
+    };
+
+    const isChrome =
+      userAgent.includes("Chrome") && userAgent.includes("Google Chrome");
+    const isFirefox = userAgent.includes("Firefox");
+    const safariVersion = getSafariVersion();
+    const isSafari = safariVersion !== null;
+
+    // WebP support detection
+    let supportsWebP = false;
+
+    if (isChrome || isFirefox) {
+      // Chrome and Firefox have excellent WebP support
+      supportsWebP = true;
+    } else if (isSafari && safariVersion && safariVersion >= 14) {
+      // Safari 14+ supports WebP (macOS Big Sur, iOS 14)
+      supportsWebP = true;
+    } else {
+      // Try canvas test as fallback
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = 1;
+        canvas.height = 1;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          const webpDataUrl = canvas.toDataURL("image/webp", 0.5);
+          supportsWebP = webpDataUrl.indexOf("data:image/webp") === 0;
+        }
+      } catch (error) {
+        supportsWebP = false;
+      }
+    }
+
+    // AVIF support detection
+    const detectAVIF = (): Promise<boolean> => {
+      if (isChrome) {
+        // Chrome 85+ supports AVIF (September 2020)
+        const chromeMatch = userAgent.match(/Chrome\/([0-9]+)/);
+        if (chromeMatch && parseInt(chromeMatch[1]) >= 85) {
+          return Promise.resolve(true);
+        }
+      }
+
+      if (isFirefox) {
+        // Firefox 93+ supports AVIF (October 2021)
+        const firefoxMatch = userAgent.match(/Firefox\/([0-9]+)/);
+        if (firefoxMatch && parseInt(firefoxMatch[1]) >= 93) {
+          return Promise.resolve(true);
+        }
+      }
+
+      if (isSafari && safariVersion && safariVersion >= 16.4) {
+        // Safari 16.4+ supports AVIF (March 2023)
+        return Promise.resolve(true);
+      }
+
+      // Fallback to image test for unknown browsers or older versions
+      return new Promise<boolean>((resolveAVIF) => {
+        const img = new Image();
+        img.onload = () => resolveAVIF(true);
+        img.onerror = () => resolveAVIF(false);
+        img.src =
+          "data:image/avif;base64,AAAAIGZ0eXBhdmlmAAAAAGF2aWZtaWYxbWlhZk1BMUIAAADybWV0YQAAAAAAAAAoaGRscgAAAAAAAAAAcGljdAAAAAAAAAAAAAAAAGxpYmF2aWYAAAAADnBpdG0AAAAAAAEAAAAeaWxvYwAAAABEAAABAAEAAAABAAABGgAAAB0AAAAoaWluZgAAAAAAAQAAABppbmZlAgAAAAABAABhdjAxQ29sb3IAAAAAamlwcnAAAABLaXBjbwAAABRpc3BlAAAAAAAAAAEAAAABAAAAEHBpeGkAAAAAAwgICAAAAAxhdjFDgQ0MAAAAABNjb2xybmNseAACAAIAAYAAAAAXaXBtYQAAAAAAAAABAAEEAQKDBAAAACVtZGF0EgAKCBgABogQEAwgMg8f8D///8WfhwB8+ErK42A=";
+      });
+    };
+
+    detectAVIF().then((supportsAVIF) => {
+      resolve({ supportsAVIF, supportsWebP });
+    });
+  });
+};
+
+// Get the best available image URL based on browser support and available formats
+const getBestImageUrl = (
+  image: ImageType,
+  formatSupport: { supportsAVIF: boolean; supportsWebP: boolean }
+): string => {
+  const baseUrl = isDevelopment
+    ? "https://dev.tylernorlund.com"
+    : "https://www.tylernorlund.com";
+
+  // Try AVIF first (best compression)
+  if (formatSupport.supportsAVIF && image.cdn_avif_s3_key) {
+    return `${baseUrl}/${image.cdn_avif_s3_key}`;
+  }
+
+  // Try WebP second (good compression, wide support)
+  if (formatSupport.supportsWebP && image.cdn_webp_s3_key) {
+    return `${baseUrl}/${image.cdn_webp_s3_key}`;
+  }
+
+  // Fallback to JPEG (universal support)
+  return `${baseUrl}/${image.cdn_s3_key}`;
+};
+
+// AnimatedLineBox: already defined for words
 interface AnimatedLineBoxProps {
   line: any; // Adjust type as needed
   svgWidth: number;
@@ -80,8 +194,7 @@ const AnimatedLineBox: React.FC<AnimatedLineBoxProps> = ({
   );
 };
 
-// ----------------------------------------------------
-// AnimatedReceipt: new component for receipt bounding box and centroid animation.
+// AnimatedReceipt: component for receipt bounding box and centroid animation
 interface AnimatedReceiptProps {
   receipt: any; // Adjust type accordingly
   svgWidth: number;
@@ -150,34 +263,50 @@ const AnimatedReceipt: React.FC<AnimatedReceiptProps> = ({
   );
 };
 
-// ----------------------------------------------------
 // Main ImageBoundingBox component
 const ImageBoundingBox: React.FC = () => {
   const [imageDetails, setImageDetails] =
     useState<ImageDetailsApiResponse | null>(null);
   const [error, setError] = useState<Error | null>(null);
-
+  const [formatSupport, setFormatSupport] = useState<{
+    supportsAVIF: boolean;
+    supportsWebP: boolean;
+  } | null>(null);
+  const [isClient, setIsClient] = useState(false);
   const [resetKey, setResetKey] = useState(0);
 
+  // Ensure client-side hydration consistency
   useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isClient) return; // Only run on client-side
+
     const loadImageDetails = async () => {
       try {
-        const details = await api.fetchImageDetails();
+        // Run format detection and API call in parallel
+        const [details, support] = await Promise.all([
+          api.fetchImageDetails(),
+          detectImageFormatSupport(),
+        ]);
+
         setImageDetails(details);
+        setFormatSupport(support);
       } catch (err) {
+        console.error("Error loading image details:", err);
         setError(err as Error);
       }
     };
 
     loadImageDetails();
-  }, []);
+  }, [isClient]);
 
   // Reserve default dimensions while waiting for the API.
-  // Adjust these numbers to match your typical final image size.
   const defaultSvgWidth = 400;
   const defaultSvgHeight = 565.806;
 
-  // Unconditionally extract words and receipts.
+  // Extract lines and receipts
   const lines = imageDetails?.lines ?? [];
   const receipts = imageDetails?.receipts ?? [];
 
@@ -200,11 +329,19 @@ const ImageBoundingBox: React.FC = () => {
 
   // Use the first image from the API.
   const firstImage = imageDetails?.image;
-  const cdnUrl = firstImage
-    ? isDevelopment
-      ? `https://dev.tylernorlund.com/${firstImage.cdn_s3_key}`
-      : `https://www.tylernorlund.com/${firstImage.cdn_s3_key}`
-    : "";
+
+  // Get the optimal image URL based on browser support and available formats
+  // Use fallback URL during SSR/initial render to prevent hydration mismatch
+  const cdnUrl =
+    firstImage && formatSupport && isClient
+      ? getBestImageUrl(firstImage, formatSupport)
+      : firstImage
+      ? `${
+          isDevelopment
+            ? "https://dev.tylernorlund.com"
+            : "https://www.tylernorlund.com"
+        }/${firstImage.cdn_s3_key}`
+      : "";
 
   // When imageDetails is loaded, compute these values;
   // otherwise, fall back on default dimensions.
@@ -223,7 +360,7 @@ const ImageBoundingBox: React.FC = () => {
         style={{
           display: "flex",
           justifyContent: "center",
-          minHeight: displayHeight, // this remains constant when API loads
+          minHeight: displayHeight,
           alignItems: "center",
         }}
       >
@@ -234,16 +371,11 @@ const ImageBoundingBox: React.FC = () => {
 
   return (
     <div>
-      {/* 
-        The outer container always reserves the same vertical space.
-        We use a minHeight (or height) equal to the final display height.
-        While the API is loading, this container keeps its size.
-      */}
       <div
         style={{
           display: "flex",
           justifyContent: "center",
-          minHeight: displayHeight, // this remains constant when API loads
+          minHeight: displayHeight,
           alignItems: "center",
         }}
       >
@@ -255,7 +387,7 @@ const ImageBoundingBox: React.FC = () => {
             overflow: "hidden",
           }}
         >
-          {imageDetails ? (
+          {imageDetails && formatSupport ? (
             <svg
               key={resetKey}
               onClick={() => setResetKey((k) => k + 1)}

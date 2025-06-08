@@ -33,6 +33,8 @@ class Receipt:
         sha256 (str, optional): SHA256 hash of the receipt image, if available.
         cdn_s3_bucket (str, optional): S3 bucket name for the CDN-hosted receipt image, if available.
         cdn_s3_key (str, optional): S3 key for the CDN-hosted receipt image, if available.
+        cdn_webp_s3_key (str, optional): S3 key for the WebP version of the CDN-hosted receipt image.
+        cdn_avif_s3_key (str, optional): S3 key for the AVIF version of the CDN-hosted receipt image.
     """
 
     def __init__(
@@ -51,6 +53,8 @@ class Receipt:
         sha256: str = None,
         cdn_s3_bucket: str = None,
         cdn_s3_key: str = None,
+        cdn_webp_s3_key: str = None,
+        cdn_avif_s3_key: str = None,
     ):
         """Initializes a new Receipt object for DynamoDB.
 
@@ -69,6 +73,8 @@ class Receipt:
             sha256 (str): The SHA256 hash of the receipt.
             cdn_s3_bucket (str, optional): The S3 bucket for the CDN version of the receipt.
             cdn_s3_key (str, optional): The S3 key for the CDN version of the receipt.
+            cdn_webp_s3_key (str, optional): The S3 key for the WebP version of the receipt.
+            cdn_avif_s3_key (str, optional): The S3 key for the AVIF version of the receipt.
 
         Raises:
             ValueError: If any parameter is of an invalid type or has an invalid value.
@@ -127,6 +133,14 @@ class Receipt:
         if cdn_s3_key and not isinstance(cdn_s3_key, str):
             raise ValueError("cdn_s3_key must be a string")
         self.cdn_s3_key = cdn_s3_key
+
+        if cdn_webp_s3_key and not isinstance(cdn_webp_s3_key, str):
+            raise ValueError("cdn_webp_s3_key must be a string")
+        self.cdn_webp_s3_key = cdn_webp_s3_key
+
+        if cdn_avif_s3_key and not isinstance(cdn_avif_s3_key, str):
+            raise ValueError("cdn_avif_s3_key must be a string")
+        self.cdn_avif_s3_key = cdn_avif_s3_key
 
     def key(self) -> dict:
         """Generates the primary key for the receipt.
@@ -224,6 +238,16 @@ class Receipt:
             "cdn_s3_key": (
                 {"S": self.cdn_s3_key} if self.cdn_s3_key else {"NULL": True}
             ),
+            "cdn_webp_s3_key": (
+                {"S": self.cdn_webp_s3_key}
+                if self.cdn_webp_s3_key
+                else {"NULL": True}
+            ),
+            "cdn_avif_s3_key": (
+                {"S": self.cdn_avif_s3_key}
+                if self.cdn_avif_s3_key
+                else {"NULL": True}
+            ),
         }
 
     def __repr__(self) -> str:
@@ -247,7 +271,9 @@ class Receipt:
             f"bottom_right={self.bottom_right}, "
             f"sha256={_repr_str(self.sha256)}, "
             f"cdn_s3_bucket={_repr_str(self.cdn_s3_bucket)}, "
-            f"cdn_s3_key={_repr_str(self.cdn_s3_key)}"
+            f"cdn_s3_key={_repr_str(self.cdn_s3_key)}, "
+            f"cdn_webp_s3_key={_repr_str(self.cdn_webp_s3_key)}, "
+            f"cdn_avif_s3_key={_repr_str(self.cdn_avif_s3_key)}"
             ")"
         )
 
@@ -271,6 +297,8 @@ class Receipt:
         yield "sha256", self.sha256
         yield "cdn_s3_bucket", self.cdn_s3_bucket
         yield "cdn_s3_key", self.cdn_s3_key
+        yield "cdn_webp_s3_key", self.cdn_webp_s3_key
+        yield "cdn_avif_s3_key", self.cdn_avif_s3_key
 
     def __eq__(self, other) -> bool:
         """Determines whether two Receipt objects are equal.
@@ -301,6 +329,8 @@ class Receipt:
             and self.sha256 == other.sha256
             and self.cdn_s3_bucket == other.cdn_s3_bucket
             and self.cdn_s3_key == other.cdn_s3_key
+            and self.cdn_webp_s3_key == other.cdn_webp_s3_key
+            and self.cdn_avif_s3_key == other.cdn_avif_s3_key
         )
 
     def __hash__(self) -> int:
@@ -325,6 +355,8 @@ class Receipt:
                 self.sha256,
                 self.cdn_s3_bucket,
                 self.cdn_s3_key,
+                self.cdn_webp_s3_key,
+                self.cdn_avif_s3_key,
             )
         )
 
@@ -398,6 +430,16 @@ def itemToReceipt(item: dict) -> Receipt:
             cdn_s3_key=(
                 item["cdn_s3_key"]["S"]
                 if "cdn_s3_key" in item and "S" in item["cdn_s3_key"]
+                else None
+            ),
+            cdn_webp_s3_key=(
+                item["cdn_webp_s3_key"]["S"]
+                if "cdn_webp_s3_key" in item and "S" in item["cdn_webp_s3_key"]
+                else None
+            ),
+            cdn_avif_s3_key=(
+                item["cdn_avif_s3_key"]["S"]
+                if "cdn_avif_s3_key" in item and "S" in item["cdn_avif_s3_key"]
                 else None
             ),
         )
