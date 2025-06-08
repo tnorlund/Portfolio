@@ -165,9 +165,14 @@ function handler(event) {
         };
     }
     
-    // Handle SPA routing - serve index.html for non-asset requests
+    // Handle static pages and SPA fallback
     if (!uri.includes('.') && uri !== '/' && !uri.startsWith('/assets/')) {
-        request.uri = '/index.html';
+        var staticPages = ['/receipt', '/resume'];
+        if (staticPages.indexOf(uri) > -1) {
+            request.uri = uri + '.html';
+        } else {
+            request.uri = '/index.html';
+        }
     }
     
     return request;
