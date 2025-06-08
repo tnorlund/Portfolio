@@ -153,6 +153,17 @@ class Image:
             "GSI2SK": {"S": "IMAGE"},
         }
 
+    def gsi3_key(self) -> dict:
+        """Generates the GSI3 key for the image.
+
+        Returns:
+            dict: The GSI3 key for the image.
+        """
+        return {
+            "GSI3PK": {"S": f"IMAGE#{self.image_type}"},
+            "GSI3SK": {"S": f"IMAGE#{self.image_id}"},
+        }
+
     def to_item(self) -> dict:
         """Converts the Image object to a DynamoDB item.
 
@@ -163,6 +174,7 @@ class Image:
             **self.key(),
             **self.gsi1_key(),
             **self.gsi2_key(),
+            **self.gsi3_key(),
             "TYPE": {"S": "IMAGE"},
             "width": {"N": str(self.width)},
             "height": {"N": str(self.height)},

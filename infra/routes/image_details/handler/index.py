@@ -2,6 +2,7 @@ import os
 import logging
 import json
 from receipt_dynamo import DynamoClient
+from receipt_dynamo.constants import ImageType
 import random
 
 
@@ -40,14 +41,24 @@ def handler(event, context):
                 if value == 2
             }
 
+            # List all images that are scans
+            images, last_evaluated_key = client.listImagesByType(
+                ImageType.SCAN
+            )
+            images = [
+                image
+                for image in images
+                if image.image_id in receipts_by_image_id
+            ]
+
             # Randomly chose an image_id of the images with 2 receipts
-            if len(receipts_by_image_id) == 0:
+            if len(images) == 0:
                 return {
                     "statusCode": 404,
                     "body": "No images with 2 receipts found",
                 }
 
-            image_id = random.choice(list(receipts_by_image_id.keys()))
+            image_id = random.choice([image.image_id for image in images])
 
             image_details = client.getImageClusterDetails(image_id)
             (
