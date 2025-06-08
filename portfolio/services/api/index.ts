@@ -4,6 +4,7 @@ import {
   MerchantCountsResponse,
   ReceiptApiResponse,
   ImageCountApiResponse,
+  ImagesApiResponse,
 } from "../../types/api";
 
 // Helper function to get the API URL based on environment
@@ -47,7 +48,7 @@ export const api = {
     const response = await fetch(`${apiUrl}/merchant_counts`, fetchConfig);
     if (!response.ok) {
       throw new Error(
-        `Network response was not ok (status: ${response.status})`
+        `Network response was not ok (status: ${response.status})`,
       );
     }
     return response.json();
@@ -57,11 +58,11 @@ export const api = {
     const apiUrl = getAPIUrl();
     const response = await fetch(
       `${apiUrl}/label_validation_count`,
-      fetchConfig
+      fetchConfig,
     );
     if (!response.ok) {
       throw new Error(
-        `Network response was not ok (status: ${response.status})`
+        `Network response was not ok (status: ${response.status})`,
       );
     }
     return response.json();
@@ -72,7 +73,7 @@ export const api = {
     const response = await fetch(`${apiUrl}/image_details`, fetchConfig);
     if (!response.ok) {
       throw new Error(
-        `Network response was not ok (status: ${response.status})`
+        `Network response was not ok (status: ${response.status})`,
       );
     }
     return response.json();
@@ -80,7 +81,7 @@ export const api = {
 
   async fetchReceipts(
     limit: number,
-    lastEvaluatedKey?: any
+    lastEvaluatedKey?: any,
   ): Promise<ReceiptApiResponse> {
     const params = new URLSearchParams();
     params.set("limit", limit.toString());
@@ -91,7 +92,32 @@ export const api = {
     const apiUrl = getAPIUrl();
     const response = await fetch(
       `${apiUrl}/receipts?${params.toString()}`,
-      fetchConfig
+      fetchConfig,
+    );
+    if (!response.ok) {
+      throw new Error(`Error: ${response.status}`);
+    }
+    return response.json();
+  },
+
+  async fetchImagesByType(
+    imageType: string,
+    limit?: number,
+    lastEvaluatedKey?: any,
+  ): Promise<ImagesApiResponse> {
+    const params = new URLSearchParams();
+    params.set("image_type", imageType);
+    if (limit !== undefined) {
+      params.set("limit", limit.toString());
+    }
+    if (lastEvaluatedKey) {
+      params.set("lastEvaluatedKey", JSON.stringify(lastEvaluatedKey));
+    }
+
+    const apiUrl = getAPIUrl();
+    const response = await fetch(
+      `${apiUrl}/images?${params.toString()}`,
+      fetchConfig,
     );
     if (!response.ok) {
       throw new Error(`Error: ${response.status}`);

@@ -28,6 +28,11 @@ export interface ReceiptsApiResponse {
   lastEvaluatedKey?: any;
 }
 
+export interface ImagesApiResponse {
+  images: Image[];
+  lastEvaluatedKey?: any;
+}
+
 export interface Point {
   x: number;
   y: number;

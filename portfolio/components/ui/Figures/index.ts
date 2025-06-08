@@ -9,7 +9,7 @@ const ClientLabelValidationCount = dynamic(
   () => import("./LabelValidationCount"),
   {
     ssr: false,
-  }
+  },
 );
 
 export { default as ZDepthConstrained } from "./ZDepthConstrained";
@@ -22,3 +22,7 @@ export { ClientMerchantCount as MerchantCount };
 export { default as ReceiptStack } from "./ReceiptStack";
 export { ClientLabelValidationCount as LabelValidationCount };
 export { default as ReceiptBoundingBox } from "./ReceiptBoundingBox";
+export const ReceiptPhotoClustering = dynamic(
+  () => import("./ReceiptPhotoClustering"),
+  { ssr: false },
+);

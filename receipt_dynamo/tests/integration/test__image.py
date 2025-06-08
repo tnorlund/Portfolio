@@ -1,12 +1,11 @@
 # infra/lambda_layer/python/test/integration/test__image.py
-from datetime import datetime
 from uuid import uuid4
 
 import boto3
 import pytest
 from botocore.exceptions import ClientError
 
-from receipt_dynamo import DynamoClient, Image, Letter, Line, Receipt, Word
+from receipt_dynamo import DynamoClient, Image, Letter, Line, Word
 
 
 @pytest.fixture
@@ -589,3 +588,46 @@ def test_updateImages_raises_client_error(
         client.updateImages([example_image])
 
     mock_transact.assert_called_once()
+
+
+@pytest.mark.integration
+def test_listImagesByType_no_limit(dynamodb_table, example_image):
+    client = DynamoClient(dynamodb_table)
+    client.addImage(example_image)
+
+    images, lek = client.listImagesByType(example_image.image_type)
+
+    assert images == [example_image]
+    assert lek is None
+
+
+@pytest.mark.integration
+def test_listImagesByType_invalid_type(dynamodb_table, example_image):
+    client = DynamoClient(dynamodb_table)
+    client.addImage(example_image)
+
+    with pytest.raises(ValueError):
+        client.listImagesByType("INVALID")
+
+
+@pytest.mark.integration
+def test_listImagesByType_with_pagination(
+    dynamodb_table, example_image, mocker
+):
+    client = DynamoClient(dynamodb_table)
+
+    first_page = {
+        "Items": [example_image.to_item()],
+        "LastEvaluatedKey": {"d": "k"},
+    }
+    second_page = {"Items": [example_image.to_item()]}
+
+    mock_query = mocker.patch.object(
+        client._client, "query", side_effect=[first_page, second_page]
+    )
+
+    images, lek = client.listImagesByType(example_image.image_type, limit=10)
+
+    assert len(images) == 1
+    assert lek == first_page["LastEvaluatedKey"]
+    assert mock_query.call_count == 1

@@ -5,6 +5,7 @@ import pulumi_aws as aws
 from routes.health_check.infra import health_check_lambda
 from routes.image_count.infra import image_count_lambda
 from routes.image_details.infra import image_details_lambda
+from routes.images.infra import images_lambda
 from routes.label_validation_count.infra import label_validation_count_lambda
 from routes.merchant_counts.infra import merchant_counts_lambda
 from routes.process.infra import process_lambda
@@ -124,6 +125,33 @@ lambda_permission_image_count = aws.lambda_.Permission(
     "image_count_lambda_permission",
     action="lambda:InvokeFunction",
     function=image_count_lambda.name,
+    principal="apigateway.amazonaws.com",
+    source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
+)
+
+# /images
+integration_images = aws.apigatewayv2.Integration(
+    "images_lambda_integration",
+    api_id=api.id,
+    integration_type="AWS_PROXY",
+    integration_uri=images_lambda.invoke_arn,
+    integration_method="POST",
+    payload_format_version="2.0",
+)
+route_images = aws.apigatewayv2.Route(
+    "images_route",
+    api_id=api.id,
+    route_key="GET /images",
+    target=integration_images.id.apply(lambda id: f"integrations/{id}"),
+    opts=pulumi.ResourceOptions(
+        replace_on_changes=["route_key", "target"],
+        delete_before_replace=True,
+    ),
+)
+lambda_permission_images = aws.lambda_.Permission(
+    "images_lambda_permission",
+    action="lambda:InvokeFunction",
+    function=images_lambda.name,
     principal="apigateway.amazonaws.com",
     source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
 )

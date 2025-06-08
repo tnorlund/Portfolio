@@ -17,6 +17,7 @@ import {
   ReceiptStack,
   LabelValidationCount,
   ReceiptBoundingBox,
+  ReceiptPhotoClustering,
 } from "../components/ui/Figures";
 import AnimatedInView from "../components/ui/AnimatedInView";
 import {
@@ -40,7 +41,7 @@ export const getStaticProps: GetStaticProps<ReceiptPageProps> = async () => {
   // We need 30 bits per stream, and there are up to 8 phases with multiple paths
   // Generate 240 to ensure we have enough for all possible bit streams
   const uploadDiagramChars = Array.from({ length: 120 }, () =>
-    Math.random() > 0.5 ? "1" : "0"
+    Math.random() > 0.5 ? "1" : "0",
   );
 
   return {
@@ -76,7 +77,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
     setApiUrl(
       isDevelopment
         ? "https://dev-upload.tylernorlund.com"
-        : "https://upload.tylernorlund.com"
+        : "https://upload.tylernorlund.com",
     );
   }, []);
 
@@ -100,7 +101,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
 
           if (!presignRes.ok) {
             throw new Error(
-              `Failed to request upload URL for ${file.name} (status ${presignRes.status})`
+              `Failed to request upload URL for ${file.name} (status ${presignRes.status})`,
             );
           }
 
@@ -119,7 +120,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         }
 
         setMessage(
-          `Upload successful: ${selectedFiles.map((f) => f.name).join(", ")}`
+          `Upload successful: ${selectedFiles.map((f) => f.name).join(", ")}`,
         );
         setFiles([]);
       } catch (err) {
@@ -129,7 +130,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         setUploading(false);
       }
     },
-    [apiUrl]
+    [apiUrl],
   );
 
   const handleDrop = useCallback(
@@ -143,7 +144,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         await uploadToS3Internal(newFiles);
       }
     },
-    [uploadToS3Internal]
+    [uploadToS3Internal],
   );
 
   const handleDragOver = useCallback((e: DragEvent) => {
@@ -168,7 +169,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         uploadToS3Internal(newFiles);
       }
     },
-    [uploadToS3Internal]
+    [uploadToS3Internal],
   );
 
   useEffect(() => {
@@ -309,6 +310,10 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         to which receipt. I used a combination of DBSCAN clustering and convex
         hull calculations to determine a warp to get the cleanest image.
       </p>
+
+      <ClientOnly>
+        <ReceiptPhotoClustering />
+      </ClientOnly>
 
       <h2>Piping It Together</h2>
       <p>
