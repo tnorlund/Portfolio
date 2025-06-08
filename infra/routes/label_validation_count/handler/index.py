@@ -46,9 +46,11 @@ dynamo_client = DynamoClient(dynamodb_table_name)
 
 
 def fetch_label_counts(core_label):
-    receipt_word_labels, last_evaluated_key = dynamo_client.getReceiptWordLabelsByLabel(
-        label=core_label,
-        limit=1000,
+    receipt_word_labels, last_evaluated_key = (
+        dynamo_client.getReceiptWordLabelsByLabel(
+            label=core_label,
+            limit=1000,
+        )
     )
     while last_evaluated_key is not None:
         next_receipt_word_labels, last_evaluated_key = (
@@ -69,23 +71,75 @@ def fetch_label_counts(core_label):
     return core_label, label_counts
 
 
+def get_cached_label_counts():
+    """Try to get label counts from cache first using efficient list query."""
+    cached_counts = {}
+    missing_labels = list(CORE_LABELS)  # Start with all labels as missing
+
+    try:
+        # Get all cached label counts in a single efficient query
+        cached_entries, _ = dynamo_client.listLabelCountCaches()
+
+        # Convert to dictionary for quick lookup
+        cached_by_label = {entry.label: entry for entry in cached_entries}
+
+        # Process each core label
+        for label in CORE_LABELS:
+            if label in cached_by_label:
+                cached_entry = cached_by_label[label]
+                cached_counts[label] = {
+                    "VALID": cached_entry.valid_count,
+                    "INVALID": cached_entry.invalid_count,
+                    "PENDING": cached_entry.pending_count,
+                    "NEEDS_REVIEW": cached_entry.needs_review_count,
+                    "NONE": cached_entry.none_count,
+                }
+                missing_labels.remove(label)
+                logger.info(f"Cache hit for label: {label}")
+            else:
+                logger.info(f"Cache miss for label: {label}")
+
+        logger.info(
+            f"Cache performance: {len(cached_counts)} hits, {len(missing_labels)} misses"
+        )
+
+    except Exception as e:
+        logger.error(f"Error listing cached label counts: {e}")
+        # Fall back to treating all labels as missing
+        missing_labels = list(CORE_LABELS)
+        cached_counts = {}
+
+    return cached_counts, missing_labels
+
+
 def handler(event, _):
     logger.info("Received event: %s", event)
     http_method = event["requestContext"]["http"]["method"].upper()
 
     if http_method == "GET":
-        core_label_counts = {}
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            futures = {
-                executor.submit(fetch_label_counts, label): label
-                for label in CORE_LABELS
-            }
-            for future in as_completed(futures):
-                label, counts = future.result()
-                core_label_counts[label] = counts
+        # Try to get cached counts first
+        core_label_counts, missing_labels = get_cached_label_counts()
+
+        # If we have missing labels, fetch them in real-time
+        if missing_labels:
+            logger.info(
+                f"Fetching real-time counts for {len(missing_labels)} labels: {missing_labels}"
+            )
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                futures = {
+                    executor.submit(fetch_label_counts, label): label
+                    for label in missing_labels
+                }
+                for future in as_completed(futures):
+                    label, counts = future.result()
+                    core_label_counts[label] = counts
+        else:
+            logger.info("All label counts retrieved from cache")
 
         # Order the by the key in alphabetical order
-        core_label_counts = dict(sorted(core_label_counts.items(), key=lambda x: x[0]))
+        core_label_counts = dict(
+            sorted(core_label_counts.items(), key=lambda x: x[0])
+        )
         return {
             "statusCode": 200,
             "body": json.dumps(core_label_counts),
