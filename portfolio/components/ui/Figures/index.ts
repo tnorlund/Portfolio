@@ -9,7 +9,7 @@ const ClientLabelValidationCount = dynamic(
   () => import("./LabelValidationCount"),
   {
     ssr: false,
-  },
+  }
 );
 
 export { default as ZDepthConstrained } from "./ZDepthConstrained";
@@ -21,8 +21,9 @@ export { ClientImageCounts, ClientReceiptCounts } from "./DataCounts";
 export { ClientMerchantCount as MerchantCount };
 export { default as ReceiptStack } from "./ReceiptStack";
 export { ClientLabelValidationCount as LabelValidationCount };
-export { default as ReceiptBoundingBox } from "./ReceiptBoundingBox";
+export { default as ScanReceiptBoundingBox } from "./ScanReceiptBoundingBox";
+export { default as PhotoReceiptBoundingBox } from "./PhotoReceiptBoundingBox";
 export const ReceiptPhotoClustering = dynamic(
   () => import("./ReceiptPhotoClustering"),
-  { ssr: false },
+  { ssr: false }
 );

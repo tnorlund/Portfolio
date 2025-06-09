@@ -48,7 +48,7 @@ export const api = {
     const response = await fetch(`${apiUrl}/merchant_counts`, fetchConfig);
     if (!response.ok) {
       throw new Error(
-        `Network response was not ok (status: ${response.status})`,
+        `Network response was not ok (status: ${response.status})`
       );
     }
     return response.json();
@@ -58,22 +58,33 @@ export const api = {
     const apiUrl = getAPIUrl();
     const response = await fetch(
       `${apiUrl}/label_validation_count`,
-      fetchConfig,
+      fetchConfig
     );
     if (!response.ok) {
       throw new Error(
-        `Network response was not ok (status: ${response.status})`,
+        `Network response was not ok (status: ${response.status})`
       );
     }
     return response.json();
   },
 
-  async fetchImageDetails(): Promise<ImageDetailsApiResponse> {
+  async fetchRandomImageDetails(
+    imageType?: string
+  ): Promise<ImageDetailsApiResponse> {
+    const params = new URLSearchParams();
+    if (imageType) {
+      params.set("image_type", imageType);
+    }
+
     const apiUrl = getAPIUrl();
-    const response = await fetch(`${apiUrl}/image_details`, fetchConfig);
+    const queryString = params.toString();
+    const url = queryString
+      ? `${apiUrl}/random_image_details?${queryString}`
+      : `${apiUrl}/random_image_details`;
+    const response = await fetch(url, fetchConfig);
     if (!response.ok) {
       throw new Error(
-        `Network response was not ok (status: ${response.status})`,
+        `Network response was not ok (status: ${response.status})`
       );
     }
     return response.json();
@@ -81,7 +92,7 @@ export const api = {
 
   async fetchReceipts(
     limit: number,
-    lastEvaluatedKey?: any,
+    lastEvaluatedKey?: any
   ): Promise<ReceiptApiResponse> {
     const params = new URLSearchParams();
     params.set("limit", limit.toString());
@@ -92,7 +103,7 @@ export const api = {
     const apiUrl = getAPIUrl();
     const response = await fetch(
       `${apiUrl}/receipts?${params.toString()}`,
-      fetchConfig,
+      fetchConfig
     );
     if (!response.ok) {
       throw new Error(`Error: ${response.status}`);
@@ -103,7 +114,7 @@ export const api = {
   async fetchImagesByType(
     imageType: string,
     limit?: number,
-    lastEvaluatedKey?: any,
+    lastEvaluatedKey?: any
   ): Promise<ImagesApiResponse> {
     const params = new URLSearchParams();
     params.set("image_type", imageType);
@@ -117,7 +128,7 @@ export const api = {
     const apiUrl = getAPIUrl();
     const response = await fetch(
       `${apiUrl}/images?${params.toString()}`,
-      fetchConfig,
+      fetchConfig
     );
     if (!response.ok) {
       throw new Error(`Error: ${response.status}`);

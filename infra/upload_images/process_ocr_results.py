@@ -66,15 +66,22 @@ def handler(event, context):
         body = json.loads(record["body"])
         job_id = body["job_id"]
         image_id = body["image_id"]
+        logger.info(
+            f"Processing OCR results for image {image_id} with job {job_id}"
+        )
         # Get the OCR job and routing decision
         ocr_job = get_ocr_job(TABLE_NAME, image_id, job_id)
-        ocr_routing_decision = get_ocr_routing_decision(TABLE_NAME, image_id, job_id)
-        logger.info(f"Processing OCR results for image {image_id} with job {job_id}")
+        ocr_routing_decision = get_ocr_routing_decision(
+            TABLE_NAME, image_id, job_id
+        )
+        logger.info(f"Got OCR routing decision {ocr_routing_decision}")
 
         # Download the OCR JSON
         json_s3_key = ocr_routing_decision.s3_key
         json_s3_bucket = ocr_routing_decision.s3_bucket
-        ocr_json_path = download_file_from_s3(json_s3_bucket, json_s3_key, Path("/tmp"))
+        ocr_json_path = download_file_from_s3(
+            json_s3_bucket, json_s3_key, Path("/tmp")
+        )
         with open(ocr_json_path, "r") as f:
             ocr_json = json.load(f)
         ocr_lines, ocr_words, ocr_letters = process_ocr_dict_as_image(
@@ -92,11 +99,13 @@ def handler(event, context):
         image = PIL_Image.open(raw_image_path)
         if ocr_job.job_type == OCRJobType.REFINEMENT.value:
             logger.info(f"Refining receipt {ocr_job.image_id}")
-            receipt_lines, receipt_words, receipt_letters = image_ocr_to_receipt_ocr(
-                lines=ocr_lines,
-                words=ocr_words,
-                letters=ocr_letters,
-                receipt_id=ocr_job.receipt_id,
+            receipt_lines, receipt_words, receipt_letters = (
+                image_ocr_to_receipt_ocr(
+                    lines=ocr_lines,
+                    words=ocr_words,
+                    letters=ocr_letters,
+                    receipt_id=ocr_job.receipt_id,
+                )
             )
             refine_receipt(
                 dynamo_table_name=TABLE_NAME,
@@ -145,6 +154,7 @@ def handler(event, context):
                 ocr_job_queue_url=ocr_job_queue_url,
                 ocr_routing_decision=ocr_routing_decision,
                 ocr_job=ocr_job,
+                image=image,
             )
         elif image_type == ImageType.SCAN:
             logger.info(f"Processing scan {ocr_job.image_id}")

@@ -287,7 +287,7 @@ const ImageBoundingBox: React.FC = () => {
       try {
         // Run format detection and API call in parallel
         const [details, support] = await Promise.all([
-          api.fetchImageDetails(),
+          api.fetchRandomImageDetails(),
           detectImageFormatSupport(),
         ]);
 

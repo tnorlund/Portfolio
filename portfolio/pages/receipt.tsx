@@ -16,8 +16,9 @@ import {
   EmbeddingCoordinate,
   ReceiptStack,
   LabelValidationCount,
-  ReceiptBoundingBox,
+  ScanReceiptBoundingBox,
   ReceiptPhotoClustering,
+  PhotoReceiptBoundingBox,
 } from "../components/ui/Figures";
 import AnimatedInView from "../components/ui/AnimatedInView";
 import {
@@ -41,7 +42,7 @@ export const getStaticProps: GetStaticProps<ReceiptPageProps> = async () => {
   // We need 30 bits per stream, and there are up to 8 phases with multiple paths
   // Generate 240 to ensure we have enough for all possible bit streams
   const uploadDiagramChars = Array.from({ length: 120 }, () =>
-    Math.random() > 0.5 ? "1" : "0",
+    Math.random() > 0.5 ? "1" : "0"
   );
 
   return {
@@ -77,7 +78,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
     setApiUrl(
       isDevelopment
         ? "https://dev-upload.tylernorlund.com"
-        : "https://upload.tylernorlund.com",
+        : "https://upload.tylernorlund.com"
     );
   }, []);
 
@@ -101,7 +102,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
 
           if (!presignRes.ok) {
             throw new Error(
-              `Failed to request upload URL for ${file.name} (status ${presignRes.status})`,
+              `Failed to request upload URL for ${file.name} (status ${presignRes.status})`
             );
           }
 
@@ -120,7 +121,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         }
 
         setMessage(
-          `Upload successful: ${selectedFiles.map((f) => f.name).join(", ")}`,
+          `Upload successful: ${selectedFiles.map((f) => f.name).join(", ")}`
         );
         setFiles([]);
       } catch (err) {
@@ -130,7 +131,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         setUploading(false);
       }
     },
-    [apiUrl],
+    [apiUrl]
   );
 
   const handleDrop = useCallback(
@@ -144,7 +145,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         await uploadToS3Internal(newFiles);
       }
     },
-    [uploadToS3Internal],
+    [uploadToS3Internal]
   );
 
   const handleDragOver = useCallback((e: DragEvent) => {
@@ -169,7 +170,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         uploadToS3Internal(newFiles);
       }
     },
-    [uploadToS3Internal],
+    [uploadToS3Internal]
   );
 
   useEffect(() => {
@@ -294,7 +295,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         determine which words belong to which receipt based on the X position.
       </p>
 
-      <ReceiptBoundingBox />
+      <ScanReceiptBoundingBox />
       <h2>Photos</h2>
       <p>
         Photos are slightly more difficult to work with. The camera sensor is
@@ -311,9 +312,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         hull calculations to determine a warp to get the cleanest image.
       </p>
 
-      <ClientOnly>
-        <ReceiptPhotoClustering />
-      </ClientOnly>
+      <PhotoReceiptBoundingBox />
 
       <h2>Piping It Together</h2>
       <p>

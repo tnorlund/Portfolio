@@ -20,6 +20,9 @@ def main():
     args = parser.parse_args()
     env = args.env
     pulumi_outputs = load_env(env)
+    # raise an error if the pulumi_outputs is empty
+    if not pulumi_outputs:
+        raise ValueError("Pulumi outputs are empty")
     sqs_queue_url = pulumi_outputs["ocr_job_queue_url"]
     dynamo_table_name = pulumi_outputs["dynamodb_table_name"]
     ocr_results_queue_url = pulumi_outputs["ocr_results_queue_url"]

@@ -765,7 +765,8 @@ echo "🎉 Parallel function updates completed!"'''
 
         # Define CodePipeline to run all builds in parallel and then publish layer versions
         pipeline = aws.codepipeline.Pipeline(
-            resource_name=f"{self.name}-pipeline",
+            resource_name=f"{self.name}-pipeline-{pulumi.get_stack()}",
+            name=f"{self.name}-pipeline-{pulumi.get_stack()}",
             role_arn=pipeline_role.arn,
             artifact_stores=[
                 aws.codepipeline.PipelineArtifactStoreArgs(
@@ -1121,7 +1122,7 @@ layers_to_build = [
         "package_dir": "receipt_dynamo",
         "name": "receipt-dynamo",
         "description": "DynamoDB layer for receipt-dynamo",
-        "python_versions": ["3.11", "3.12"],
+        "python_versions": ["3.12"],
         "needs_pillow": False,
     },
     {
@@ -1135,7 +1136,7 @@ layers_to_build = [
         "package_dir": "receipt_upload",
         "name": "receipt-upload",
         "description": "Upload layer for receipt-upload",
-        "python_versions": ["3.11", "3.12"],
+        "python_versions": ["3.12"],
         "needs_pillow": True,
     },
 ]
