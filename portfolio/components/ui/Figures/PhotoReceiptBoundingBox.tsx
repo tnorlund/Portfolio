@@ -7,6 +7,16 @@ import {
 } from "../../../types/api";
 import { useSpring, useTransition, animated } from "@react-spring/web";
 
+// Define simple point and line-segment shapes
+type Point = { x: number; y: number };
+type LineSegment = {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  key: string;
+};
+
 const isDevelopment = process.env.NODE_ENV === "development";
 
 // Browser format detection utilities
@@ -728,7 +738,7 @@ const computeReceiptBoxFromLineEdges = (
  * Robust Theil–Sen estimator for a line x = m·y + b.
  */
 const theilSen = (pts: { x: number; y: number }[]) => {
-  if (pts.length < 2) return { slope: 0, intercept: pts[0] ? pts[0].x : 0 };
+  if (pts.length < 2) return { slope: 0, intercept: pts[0] ? pts[0].y : 0 };
 
   // Collect all pair‑wise slopes.
   const slopes: number[] = [];
@@ -737,6 +747,10 @@ const theilSen = (pts: { x: number; y: number }[]) => {
       if (pts[i].y === pts[j].y) continue; // avoid div‑by‑zero
       slopes.push((pts[j].x - pts[i].x) / (pts[j].y - pts[i].y));
     }
+  }
+  if (slopes.length === 0) {
+    // All points share the same y => true horizontal line
+    return { slope: 0, intercept: pts[0].y };
   }
   slopes.sort((a, b) => a - b);
   const slope = slopes[Math.floor(slopes.length / 2)];
@@ -1203,7 +1217,7 @@ const AnimatedOrientedAxes: React.FC<AnimatedOrientedAxesProps> = ({
   ];
 
   // Remove duplicates from secondary points (in case closest point is same as extreme)
-  const uniqueSecondaryPoints = secondaryPoints.filter(
+  const uniqueSecondaryPoints: Point[] = secondaryPoints.filter(
     (point, index, arr) =>
       arr.findIndex(
         (p) => Math.abs(p.x - point.x) < 1 && Math.abs(p.y - point.y) < 1
@@ -1378,10 +1392,10 @@ const AnimatedSecondaryBoundaryLines: React.FC<
 
   // Find the closest neighbors to create line segments
   const findClosestNeighbor = (
-    targetPoint: { x: number; y: number },
+    targetPoint: Point,
     targetProjection: number
-  ) => {
-    let closestPoint = null;
+  ): Point | null => {
+    let closestPoint: Point | null = null;
     let minDistance = Infinity;
 
     hull.forEach((point) => {
@@ -1394,8 +1408,7 @@ const AnimatedSecondaryBoundaryLines: React.FC<
         relY * Math.sin(secondaryAxisAngle);
       const distance = Math.abs(projection - targetProjection);
 
-      if (distance < minDistance && distance < 0.05) {
-        // 5% tolerance
+      if (distance < minDistance) {
         minDistance = distance;
         closestPoint = point;
       }
@@ -1408,42 +1421,96 @@ const AnimatedSecondaryBoundaryLines: React.FC<
   const bottomNeighbor = findClosestNeighbor(bottomHullPoint, minSecondary);
 
   // Create line segments through yellow hull points
-  const lineSegments = [];
+  const lineSegments: LineSegment[] = [];
 
+  // Always create top boundary line (with fallback if no neighbor found)
   if (topNeighbor) {
-    // Fit line through top hull points and extend it
+    // Top boundary: if perfectly horizontal, draw full-width line
+    const yTop = topHullPoint.y;
+    const yNeighbor = topNeighbor.y;
     const topPoints = [topHullPoint, topNeighbor];
     const topLine = theilSen(topPoints);
-
-    const topY1 = 0;
-    const topX1 = topLine.slope * topY1 + topLine.intercept;
-    const topY2 = 1;
-    const topX2 = topLine.slope * topY2 + topLine.intercept;
-
+    if (Math.abs(yTop - yNeighbor) < 1e-6) {
+      // perfect horizontal: extend across canvas
+      const yPixel = (1 - yTop) * svgHeight;
+      lineSegments.push({
+        x1: 0,
+        y1: yPixel,
+        x2: svgWidth,
+        y2: yPixel,
+        key: "top-hull-boundary",
+      });
+    } else {
+      // angled case: draw between extended hull points
+      const xStart = topLine.slope * yTop + topLine.intercept;
+      const xEnd = topLine.slope * yNeighbor + topLine.intercept;
+      lineSegments.push({
+        x1: xStart * svgWidth,
+        y1: (1 - yTop) * svgHeight,
+        x2: xEnd * svgWidth,
+        y2: (1 - yNeighbor) * svgHeight,
+        key: "top-hull-boundary",
+      });
+    }
+  } else {
+    // Fallback: use average text angle for horizontal line through top point
+    // Horizontal case as y = m·x + b
+    const slope = Math.tan(angleRad);
+    const intercept = topHullPoint.y - slope * topHullPoint.x;
+    const x1 = 0;
+    const y1 = slope * x1 + intercept;
+    const x2 = 1;
+    const y2 = slope * x2 + intercept;
     lineSegments.push({
-      x1: topX1 * svgWidth,
-      y1: (1 - topY1) * svgHeight,
-      x2: topX2 * svgWidth,
-      y2: (1 - topY2) * svgHeight,
+      x1: x1 * svgWidth,
+      y1: (1 - y1) * svgHeight,
+      x2: x2 * svgWidth,
+      y2: (1 - y2) * svgHeight,
       key: "top-hull-boundary",
     });
   }
 
+  // Always create bottom boundary line (with fallback if no neighbor found)
   if (bottomNeighbor) {
-    // Fit line through bottom hull points and extend it
+    // Bottom boundary: if perfectly horizontal, draw full-width line
+    const yBottomTop = bottomHullPoint.y;
+    const yBottomNeighbor = bottomNeighbor.y;
     const bottomPoints = [bottomHullPoint, bottomNeighbor];
     const bottomLine = theilSen(bottomPoints);
-
-    const bottomY1 = 0;
-    const bottomX1 = bottomLine.slope * bottomY1 + bottomLine.intercept;
-    const bottomY2 = 1;
-    const bottomX2 = bottomLine.slope * bottomY2 + bottomLine.intercept;
-
+    if (Math.abs(yBottomTop - yBottomNeighbor) < 1e-6) {
+      const yPixel = (1 - yBottomTop) * svgHeight;
+      lineSegments.push({
+        x1: 0,
+        y1: yPixel,
+        x2: svgWidth,
+        y2: yPixel,
+        key: "bottom-hull-boundary",
+      });
+    } else {
+      const xStart = bottomLine.slope * yBottomTop + bottomLine.intercept;
+      const xEnd = bottomLine.slope * yBottomNeighbor + bottomLine.intercept;
+      lineSegments.push({
+        x1: xStart * svgWidth,
+        y1: (1 - yBottomTop) * svgHeight,
+        x2: xEnd * svgWidth,
+        y2: (1 - yBottomNeighbor) * svgHeight,
+        key: "bottom-hull-boundary",
+      });
+    }
+  } else {
+    // Fallback: use average text angle for horizontal line through bottom point
+    // Horizontal case as y = m·x + b
+    const slope = Math.tan(angleRad);
+    const intercept = bottomHullPoint.y - slope * bottomHullPoint.x;
+    const x1 = 0;
+    const y1 = slope * x1 + intercept;
+    const x2 = 1;
+    const y2 = slope * x2 + intercept;
     lineSegments.push({
-      x1: bottomX1 * svgWidth,
-      y1: (1 - bottomY1) * svgHeight,
-      x2: bottomX2 * svgWidth,
-      y2: (1 - bottomY2) * svgHeight,
+      x1: x1 * svgWidth,
+      y1: (1 - y1) * svgHeight,
+      x2: x2 * svgWidth,
+      y2: (1 - y2) * svgHeight,
       key: "bottom-hull-boundary",
     });
   }
@@ -1470,8 +1537,149 @@ const AnimatedSecondaryBoundaryLines: React.FC<
           x2={line.x2}
           y2={line.y2}
           stroke="var(--color-yellow)"
-          strokeWidth="3"
+          strokeWidth="5"
           strokeDasharray="10,10"
+        />
+      ))}
+    </g>
+  );
+};
+
+// AnimatedPrimaryBoundaryLines: draw left/right boundaries using perpendicular projection
+interface AnimatedPrimaryBoundaryLinesProps {
+  lines: any[];
+  hull: { x: number; y: number }[];
+  centroid: { x: number; y: number };
+  avgAngle: number;
+  svgWidth: number;
+  svgHeight: number;
+  delay: number;
+}
+
+const AnimatedPrimaryBoundaryLines: React.FC<
+  AnimatedPrimaryBoundaryLinesProps
+> = ({ lines, hull, centroid, avgAngle, svgWidth, svgHeight, delay }) => {
+  if (lines.length < 2) return null;
+
+  // Step 1: Find the green hull points (primary axis extremes - leftmost/rightmost)
+  const angleRad = (avgAngle * Math.PI) / 180;
+  const primaryAxisAngle = angleRad;
+
+  let minPrimary = Infinity,
+    maxPrimary = -Infinity;
+  let leftHullPoint = hull[0],
+    rightHullPoint = hull[0];
+
+  hull.forEach((point) => {
+    const relX = point.x - centroid.x;
+    const relY = point.y - centroid.y;
+    const primaryProjection =
+      relX * Math.cos(primaryAxisAngle) + relY * Math.sin(primaryAxisAngle);
+
+    if (primaryProjection < minPrimary) {
+      minPrimary = primaryProjection;
+      leftHullPoint = point;
+    }
+    if (primaryProjection > maxPrimary) {
+      maxPrimary = primaryProjection;
+      rightHullPoint = point;
+    }
+  });
+
+  // Step 2: Find the leftmost and rightmost TEXT LINES for their angles
+  const secondaryAxisAngle = angleRad + Math.PI / 2;
+  const lineProjections = lines.map((line) => {
+    const lineCenterX =
+      (line.top_left.x +
+        line.top_right.x +
+        line.bottom_left.x +
+        line.bottom_right.x) /
+      4;
+    const lineCenterY =
+      (line.top_left.y +
+        line.top_right.y +
+        line.bottom_left.y +
+        line.bottom_right.y) /
+      4;
+
+    const relX = lineCenterX - centroid.x;
+    const relY = lineCenterY - centroid.y;
+    const secondaryProjection =
+      relX * Math.cos(secondaryAxisAngle) + relY * Math.sin(secondaryAxisAngle);
+
+    return {
+      line,
+      projection: secondaryProjection,
+    };
+  });
+
+  lineProjections.sort((a, b) => a.projection - b.projection);
+  const leftmostLine = lineProjections[0].line;
+  const rightmostLine = lineProjections[lineProjections.length - 1].line;
+
+  // Step 3: Create boundary lines that pass through the GREEN hull points using boundary line angles
+  const lineSegments = [];
+
+  // Left boundary: pass through leftHullPoint with leftmost line's angle
+  const leftAngleRad = (leftmostLine.angle_degrees * Math.PI) / 180;
+  const leftSlope = Math.tan(leftAngleRad);
+  const leftIntercept = leftHullPoint.x - leftSlope * leftHullPoint.y;
+
+  const leftY1 = 0;
+  const leftX1 = leftSlope * leftY1 + leftIntercept;
+  const leftY2 = 1;
+  const leftX2 = leftSlope * leftY2 + leftIntercept;
+
+  lineSegments.push({
+    x1: leftX1 * svgWidth,
+    y1: (1 - leftY1) * svgHeight,
+    x2: leftX2 * svgWidth,
+    y2: (1 - leftY2) * svgHeight,
+    key: "left-boundary",
+  });
+
+  // Right boundary: pass through rightHullPoint with rightmost line's angle
+  const rightAngleRad = (rightmostLine.angle_degrees * Math.PI) / 180;
+  const rightSlope = Math.tan(rightAngleRad);
+  const rightIntercept = rightHullPoint.x - rightSlope * rightHullPoint.y;
+
+  const rightY1 = 0;
+  const rightX1 = rightSlope * rightY1 + rightIntercept;
+  const rightY2 = 1;
+  const rightX2 = rightSlope * rightY2 + rightIntercept;
+
+  lineSegments.push({
+    x1: rightX1 * svgWidth,
+    y1: (1 - rightY1) * svgHeight,
+    x2: rightX2 * svgWidth,
+    y2: (1 - rightY2) * svgHeight,
+    key: "right-boundary",
+  });
+
+  const lineTransitions = useTransition(lineSegments, {
+    keys: (line) => line.key,
+    from: { opacity: 0, strokeDasharray: "12,8", strokeDashoffset: 20 },
+    enter: (item, index) => ({
+      opacity: 1,
+      strokeDashoffset: 0,
+      delay: delay + index * 300,
+    }),
+    config: { duration: 800 },
+  });
+
+  return (
+    <g>
+      {lineTransitions((style, line) => (
+        <animated.line
+          key={line.key}
+          style={style}
+          x1={line.x1}
+          y1={line.y1}
+          x2={line.x2}
+          y2={line.y2}
+          stroke="var(--color-green)"
+          strokeWidth="5"
+          strokeDasharray="12,8"
         />
       ))}
     </g>
@@ -1820,8 +2028,25 @@ const PhotoReceiptBoundingBox: React.FC = () => {
                 />
               )}
 
+              {/* Render green left/right boundary lines using perpendicular projection */}
+              {convexHull.length > 0 && hullCentroid && lines.length > 0 && (
+                <AnimatedPrimaryBoundaryLines
+                  key={`primary-boundary-lines-${resetKey}`}
+                  lines={lines}
+                  hull={convexHull}
+                  centroid={hullCentroid}
+                  avgAngle={
+                    lines.reduce((sum, line) => sum + line.angle_degrees, 0) /
+                    lines.length
+                  }
+                  svgWidth={svgWidth}
+                  svgHeight={svgHeight}
+                  delay={extentsDelay + 2000}
+                />
+              )}
+
               {/* Render animated receipt using proper algorithm */}
-              {convexHull.length > 0 && lines.length > 0 && (
+              {/* {convexHull.length > 0 && lines.length > 0 && (
                 <AnimatedReceiptFromHull
                   key={`receipt-from-hull-${resetKey}`}
                   hull={convexHull}
@@ -1830,7 +2055,7 @@ const PhotoReceiptBoundingBox: React.FC = () => {
                   svgHeight={svgHeight}
                   delay={receiptDelay}
                 />
-              )}
+              )} */}
             </svg>
           ) : (
             // While loading, show a "Loading" message centered in the reserved space.
