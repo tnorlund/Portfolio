@@ -199,6 +199,65 @@ const computeHullCentroid = (
 };
 
 /**
+ * Find hull extents relative to centroid (matching Python implementation)
+ */
+const findHullExtentsRelativeToCentroid = (
+  hull: { x: number; y: number }[],
+  centroid: { x: number; y: number }
+): {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+  leftPoint: { x: number; y: number };
+  rightPoint: { x: number; y: number };
+  topPoint: { x: number; y: number };
+  bottomPoint: { x: number; y: number };
+} => {
+  let minX = Infinity,
+    maxX = -Infinity;
+  let minY = Infinity,
+    maxY = -Infinity;
+  let leftPoint = hull[0],
+    rightPoint = hull[0];
+  let topPoint = hull[0],
+    bottomPoint = hull[0];
+
+  hull.forEach((point) => {
+    const relX = point.x - centroid.x;
+    const relY = point.y - centroid.y;
+
+    if (relX < minX) {
+      minX = relX;
+      leftPoint = point;
+    }
+    if (relX > maxX) {
+      maxX = relX;
+      rightPoint = point;
+    }
+    if (relY < minY) {
+      minY = relY;
+      bottomPoint = point;
+    }
+    if (relY > maxY) {
+      maxY = relY;
+      topPoint = point;
+    }
+  });
+
+  return {
+    minX,
+    maxX,
+    minY,
+    maxY,
+    leftPoint,
+    rightPoint,
+    topPoint,
+    bottomPoint,
+  };
+};
+
+/**
  * Compute receipt box from hull using the same algorithm as Python
  */
 const computeReceiptBoxFromHull = (
@@ -251,6 +310,185 @@ const computeReceiptBoxFromHull = (
     x: corner.x * cosRA - corner.y * sinRA + centroid.x,
     y: corner.x * sinRA + corner.y * cosRA + centroid.y,
   }));
+};
+
+/**
+ * Find the top and bottom edges of lines at the secondary axis extremes
+ */
+const findLineEdgesAtSecondaryExtremes = (
+  lines: any[],
+  hull: { x: number; y: number }[],
+  centroid: { x: number; y: number },
+  avgAngle: number
+): {
+  topEdge: { x: number; y: number }[];
+  bottomEdge: { x: number; y: number }[];
+} => {
+  const angleRad = (avgAngle * Math.PI) / 180;
+  const secondaryAxisAngle = angleRad + Math.PI / 2;
+
+  // Find secondary axis extremes (yellow circles)
+  let minSecondary = Infinity,
+    maxSecondary = -Infinity;
+  let topExtremeX = 0,
+    bottomExtremeX = 0;
+
+  hull.forEach((point) => {
+    const relX = point.x - centroid.x;
+    const relY = point.y - centroid.y;
+    const secondaryProjection =
+      relX * Math.cos(secondaryAxisAngle) + relY * Math.sin(secondaryAxisAngle);
+
+    if (secondaryProjection < minSecondary) {
+      minSecondary = secondaryProjection;
+      bottomExtremeX = point.x;
+    }
+    if (secondaryProjection > maxSecondary) {
+      maxSecondary = secondaryProjection;
+      topExtremeX = point.x;
+    }
+  });
+
+  // Find lines near the top and bottom extremes
+  const tolerance = 0.1; // 10% tolerance for finding nearby lines
+  const topLines = lines.filter((line) => {
+    const lineCenterX =
+      (line.top_left.x +
+        line.top_right.x +
+        line.bottom_left.x +
+        line.bottom_right.x) /
+      4;
+    return Math.abs(lineCenterX - topExtremeX) < tolerance;
+  });
+
+  const bottomLines = lines.filter((line) => {
+    const lineCenterX =
+      (line.top_left.x +
+        line.top_right.x +
+        line.bottom_left.x +
+        line.bottom_right.x) /
+      4;
+    return Math.abs(lineCenterX - bottomExtremeX) < tolerance;
+  });
+
+  // Find the actual top edge (highest Y values) and bottom edge (lowest Y values)
+  let topEdgePoints: { x: number; y: number }[] = [];
+  let bottomEdgePoints: { x: number; y: number }[] = [];
+
+  if (topLines.length > 0) {
+    // Get the topmost edges of lines near the top extreme
+    topLines.forEach((line) => {
+      const topY = Math.max(line.top_left.y, line.top_right.y);
+      topEdgePoints.push(
+        { x: line.top_left.x, y: topY },
+        { x: line.top_right.x, y: topY }
+      );
+    });
+  }
+
+  if (bottomLines.length > 0) {
+    // Get the bottommost edges of lines near the bottom extreme
+    bottomLines.forEach((line) => {
+      const bottomY = Math.min(line.bottom_left.y, line.bottom_right.y);
+      bottomEdgePoints.push(
+        { x: line.bottom_left.x, y: bottomY },
+        { x: line.bottom_right.x, y: bottomY }
+      );
+    });
+  }
+
+  // Fallback to hull points if no lines found
+  if (topEdgePoints.length === 0) {
+    const topHullPoint = hull.find((point) => {
+      const relX = point.x - centroid.x;
+      const relY = point.y - centroid.y;
+      const projection =
+        relX * Math.cos(secondaryAxisAngle) +
+        relY * Math.sin(secondaryAxisAngle);
+      return Math.abs(projection - maxSecondary) < 0.001;
+    });
+    if (topHullPoint) topEdgePoints = [topHullPoint];
+  }
+
+  if (bottomEdgePoints.length === 0) {
+    const bottomHullPoint = hull.find((point) => {
+      const relX = point.x - centroid.x;
+      const relY = point.y - centroid.y;
+      const projection =
+        relX * Math.cos(secondaryAxisAngle) +
+        relY * Math.sin(secondaryAxisAngle);
+      return Math.abs(projection - minSecondary) < 0.001;
+    });
+    if (bottomHullPoint) bottomEdgePoints = [bottomHullPoint];
+  }
+
+  return {
+    topEdge: topEdgePoints,
+    bottomEdge: bottomEdgePoints,
+  };
+};
+
+/**
+ * Compute receipt box using line edges at secondary extremes
+ */
+const computeReceiptBoxFromLineEdges = (
+  lines: any[],
+  hull: { x: number; y: number }[],
+  centroid: { x: number; y: number },
+  avgAngle: number
+): { x: number; y: number }[] => {
+  if (hull.length < 3 || lines.length === 0) return [];
+
+  const angleRad = (avgAngle * Math.PI) / 180;
+  const primaryAxisAngle = angleRad;
+
+  // Find primary axis extremes (left and right boundaries)
+  let minPrimary = Infinity,
+    maxPrimary = -Infinity;
+  let leftPoint = hull[0],
+    rightPoint = hull[0];
+
+  hull.forEach((point) => {
+    const relX = point.x - centroid.x;
+    const relY = point.y - centroid.y;
+    const primaryProjection =
+      relX * Math.cos(primaryAxisAngle) + relY * Math.sin(primaryAxisAngle);
+
+    if (primaryProjection < minPrimary) {
+      minPrimary = primaryProjection;
+      leftPoint = point;
+    }
+    if (primaryProjection > maxPrimary) {
+      maxPrimary = primaryProjection;
+      rightPoint = point;
+    }
+  });
+
+  // Find line edges at secondary extremes
+  const { topEdge, bottomEdge } = findLineEdgesAtSecondaryExtremes(
+    lines,
+    hull,
+    centroid,
+    avgAngle
+  );
+
+  // Use the average positions for top and bottom boundaries
+  const topY =
+    topEdge.length > 0
+      ? topEdge.reduce((sum, p) => sum + p.y, 0) / topEdge.length
+      : centroid.y + 0.1;
+  const bottomY =
+    bottomEdge.length > 0
+      ? bottomEdge.reduce((sum, p) => sum + p.y, 0) / bottomEdge.length
+      : centroid.y - 0.1;
+
+  // Create receipt corners using line edges for top/bottom and hull extremes for left/right
+  return [
+    { x: leftPoint.x, y: topY }, // top-left
+    { x: rightPoint.x, y: topY }, // top-right
+    { x: rightPoint.x, y: bottomY }, // bottom-right
+    { x: leftPoint.x, y: bottomY }, // bottom-left
+  ];
 };
 
 /**
@@ -560,6 +798,248 @@ const AnimatedHullCentroid: React.FC<AnimatedHullCentroidProps> = ({
   );
 };
 
+// AnimatedOrientedAxes: component for visualizing oriented axes based on average line angle
+interface AnimatedOrientedAxesProps {
+  hull: { x: number; y: number }[];
+  centroid: { x: number; y: number };
+  lines: any[];
+  svgWidth: number;
+  svgHeight: number;
+  delay: number;
+}
+
+const AnimatedOrientedAxes: React.FC<AnimatedOrientedAxesProps> = ({
+  hull,
+  centroid,
+  lines,
+  svgWidth,
+  svgHeight,
+  delay,
+}) => {
+  const [visibleElements, setVisibleElements] = useState(0);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const interval = setInterval(() => {
+        setVisibleElements((prev) => {
+          if (prev >= 3) {
+            // 0: primary axis, 1: secondary axis, 2: extent points
+            clearInterval(interval);
+            return prev;
+          }
+          return prev + 1;
+        });
+      }, 400); // Show each element every 400ms
+
+      return () => clearInterval(interval);
+    }, delay);
+
+    return () => clearTimeout(timer);
+  }, [delay]);
+
+  // Reset when hull changes
+  useEffect(() => {
+    setVisibleElements(0);
+  }, [hull, lines]);
+
+  if (hull.length === 0 || lines.length === 0) return null;
+
+  // Use the actual angle data from OCR API (more accurate than manual calculation)
+  const avgAngle =
+    lines.reduce((sum, line) => sum + line.angle_degrees, 0) / lines.length;
+
+  const centroidX = centroid.x * svgWidth;
+  const centroidY = (1 - centroid.y) * svgHeight;
+
+  // Convert angle to radians for calculations
+  const angleRad = (avgAngle * Math.PI) / 180;
+  const primaryAxisAngle = angleRad;
+  const secondaryAxisAngle = angleRad + Math.PI / 2; // Perpendicular axis
+
+  // Calculate axis endpoints (extend across the SVG canvas)
+  const axisLength = Math.max(svgWidth, svgHeight);
+
+  // Primary axis (along average line direction)
+  const primaryAxis = {
+    x1: centroidX - (axisLength / 2) * Math.cos(primaryAxisAngle),
+    y1: centroidY - (axisLength / 2) * Math.sin(primaryAxisAngle),
+    x2: centroidX + (axisLength / 2) * Math.cos(primaryAxisAngle),
+    y2: centroidY + (axisLength / 2) * Math.sin(primaryAxisAngle),
+  };
+
+  // Secondary axis (perpendicular to average line direction)
+  const secondaryAxis = {
+    x1: centroidX - (axisLength / 2) * Math.cos(secondaryAxisAngle),
+    y1: centroidY - (axisLength / 2) * Math.sin(secondaryAxisAngle),
+    x2: centroidX + (axisLength / 2) * Math.cos(secondaryAxisAngle),
+    y2: centroidY + (axisLength / 2) * Math.sin(secondaryAxisAngle),
+  };
+
+  // Find extent points along each axis
+  let minPrimary = Infinity,
+    maxPrimary = -Infinity;
+  let minSecondary = Infinity,
+    maxSecondary = -Infinity;
+  let primaryMinPoint = hull[0],
+    primaryMaxPoint = hull[0];
+  let secondaryMinPoint = hull[0],
+    secondaryMaxPoint = hull[0];
+
+  // Calculate projections for all hull points
+  const hullProjections = hull.map((point) => {
+    const px = point.x * svgWidth;
+    const py = (1 - point.y) * svgHeight;
+    const relX = px - centroidX;
+    const relY = py - centroidY;
+    const primaryProjection =
+      relX * Math.cos(primaryAxisAngle) + relY * Math.sin(primaryAxisAngle);
+    const secondaryProjection =
+      relX * Math.cos(secondaryAxisAngle) + relY * Math.sin(secondaryAxisAngle);
+
+    return {
+      point: { x: px, y: py },
+      primaryProjection,
+      secondaryProjection,
+      originalPoint: point,
+    };
+  });
+
+  // Find the extreme projections
+  hullProjections.forEach(
+    ({ point, primaryProjection, secondaryProjection }) => {
+      if (primaryProjection < minPrimary) {
+        minPrimary = primaryProjection;
+        primaryMinPoint = point;
+      }
+      if (primaryProjection > maxPrimary) {
+        maxPrimary = primaryProjection;
+        primaryMaxPoint = point;
+      }
+      if (secondaryProjection < minSecondary) {
+        minSecondary = secondaryProjection;
+        secondaryMinPoint = point;
+      }
+      if (secondaryProjection > maxSecondary) {
+        maxSecondary = secondaryProjection;
+        secondaryMaxPoint = point;
+      }
+    }
+  );
+
+  // Find the single closest hull point to each secondary extreme
+  let topExtremeClosest = secondaryMaxPoint;
+  let bottomExtremeClosest = secondaryMinPoint;
+  let minTopDistance = Infinity;
+  let minBottomDistance = Infinity;
+
+  hullProjections.forEach(({ point, secondaryProjection }) => {
+    // Skip if this is already the extreme point itself
+    if (
+      Math.abs(point.x - secondaryMaxPoint.x) < 1 &&
+      Math.abs(point.y - secondaryMaxPoint.y) < 1
+    )
+      return;
+    if (
+      Math.abs(point.x - secondaryMinPoint.x) < 1 &&
+      Math.abs(point.y - secondaryMinPoint.y) < 1
+    )
+      return;
+
+    // Find closest to top extreme
+    const topDistance = Math.abs(secondaryProjection - maxSecondary);
+    if (topDistance < minTopDistance) {
+      minTopDistance = topDistance;
+      topExtremeClosest = point;
+    }
+
+    // Find closest to bottom extreme
+    const bottomDistance = Math.abs(secondaryProjection - minSecondary);
+    if (bottomDistance < minBottomDistance) {
+      minBottomDistance = bottomDistance;
+      bottomExtremeClosest = point;
+    }
+  });
+
+  // Combine primary extremes (green) and secondary points (yellow)
+  const primaryPoints = [primaryMinPoint, primaryMaxPoint];
+  const secondaryPoints = [
+    secondaryMinPoint, // original bottom extreme
+    secondaryMaxPoint, // original top extreme
+    bottomExtremeClosest, // closest to bottom extreme
+    topExtremeClosest, // closest to top extreme
+  ];
+
+  // Remove duplicates from secondary points (in case closest point is same as extreme)
+  const uniqueSecondaryPoints = secondaryPoints.filter(
+    (point, index, arr) =>
+      arr.findIndex(
+        (p) => Math.abs(p.x - point.x) < 1 && Math.abs(p.y - point.y) < 1
+      ) === index
+  );
+
+  return (
+    <>
+      {/* Primary axis (along average line direction) */}
+      {visibleElements >= 1 && (
+        <line
+          x1={primaryAxis.x1}
+          y1={primaryAxis.y1}
+          x2={primaryAxis.x2}
+          y2={primaryAxis.y2}
+          stroke="var(--color-green)"
+          strokeWidth="3"
+          strokeDasharray="8,4"
+          opacity={0.8}
+        />
+      )}
+
+      {/* Secondary axis (perpendicular to average line direction) */}
+      {visibleElements >= 2 && (
+        <line
+          x1={secondaryAxis.x1}
+          y1={secondaryAxis.y1}
+          x2={secondaryAxis.x2}
+          y2={secondaryAxis.y2}
+          stroke="var(--color-yellow)"
+          strokeWidth="3"
+          strokeDasharray="8,4"
+          opacity={0.8}
+        />
+      )}
+
+      {/* Primary extent points (green) */}
+      {visibleElements >= 3 &&
+        primaryPoints.map((point, index) => (
+          <circle
+            key={`primary-${index}`}
+            cx={point.x}
+            cy={point.y}
+            r={10}
+            fill="var(--color-green)"
+            stroke="white"
+            strokeWidth="2"
+            opacity={0.9}
+          />
+        ))}
+
+      {/* Secondary edge points (yellow) - all points along top/bottom edges */}
+      {visibleElements >= 3 &&
+        uniqueSecondaryPoints.map((point, index) => (
+          <circle
+            key={`secondary-${index}`}
+            cx={point.x}
+            cy={point.y}
+            r={10}
+            fill="var(--color-yellow)"
+            stroke="white"
+            strokeWidth="2"
+            opacity={0.9}
+          />
+        ))}
+    </>
+  );
+};
+
 // AnimatedReceiptFromHull: component using the proper Python algorithm
 interface AnimatedReceiptFromHullProps {
   hull: { x: number; y: number }[];
@@ -581,18 +1061,13 @@ const AnimatedReceiptFromHull: React.FC<AnimatedReceiptFromHullProps> = ({
   // Compute hull centroid
   const hullCentroid = computeHullCentroid(hull);
 
-  // Compute average angle from lines (matching Python implementation)
+  // Use the actual angle data from OCR API (more accurate than manual calculation)
   const avgAngle =
-    lines.reduce((sum, line) => {
-      // Calculate angle from line geometry - approximating from bounding box
-      const dx = line.top_right.x - line.top_left.x;
-      const dy = line.top_right.y - line.top_left.y;
-      const angle = Math.atan2(dy, dx) * (180 / Math.PI);
-      return sum + angle;
-    }, 0) / lines.length;
+    lines.reduce((sum, line) => sum + line.angle_degrees, 0) / lines.length;
 
-  // Compute receipt box using the same algorithm as Python
-  const receiptCorners = computeReceiptBoxFromHull(
+  // Compute receipt box using line edges at secondary extremes
+  const receiptCorners = computeReceiptBoxFromLineEdges(
+    lines,
     hull,
     hullCentroid,
     avgAngle
@@ -735,7 +1210,9 @@ const PhotoReceiptBoundingBox: React.FC = () => {
   const convexHullDelay = totalDelayForLines + 300; // Start convex hull after lines
   const convexHullDuration = convexHull.length * 200 + 500;
   const centroidDelay = convexHullDelay + convexHullDuration + 200; // Hull centroid after convex hull
-  const receiptDelay = centroidDelay + 800; // Receipt after centroid
+  const extentsDelay = centroidDelay + 600; // Extents after centroid
+  const extentsDuration = 4 * 300 + 500; // 4 extent lines * 300ms + buffer
+  const receiptDelay = extentsDelay + extentsDuration + 300; // Receipt after extents
 
   // Use the first image from the API.
   const firstImage = imageDetails?.image;
@@ -855,6 +1332,19 @@ const PhotoReceiptBoundingBox: React.FC = () => {
                   svgWidth={svgWidth}
                   svgHeight={svgHeight}
                   delay={centroidDelay}
+                />
+              )}
+
+              {/* Render animated oriented axes */}
+              {convexHull.length > 0 && hullCentroid && (
+                <AnimatedOrientedAxes
+                  key={`oriented-axes-${resetKey}`}
+                  hull={convexHull}
+                  centroid={hullCentroid}
+                  lines={lines}
+                  svgWidth={svgWidth}
+                  svgHeight={svgHeight}
+                  delay={extentsDelay}
                 />
               )}
 
