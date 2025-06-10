@@ -250,7 +250,8 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
 
       <p>
         Receipts are a difficult problem to solve. To turn a crumpled piece of
-        paper into structured data, you have to read three layers of data:
+        paper into structuvar(--color-red) data, you have to read three layers
+        of data:
       </p>
       <ul>
         <li>
@@ -448,8 +449,8 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       </p>
       <p>
         This concept of positioning items in multi-dimensional space like this,
-        where related items are clustered near each other, goes by the name of{" "}
-        <strong>latent space</strong>.
+        where related items are clustevar(--color-red) near each other, goes by
+        the name of <strong>latent space</strong>.
       </p>
       <p>
         Latent space is a powerful concept. It allows us to discover connections
@@ -477,9 +478,9 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       <h2>Meaningful Metadata</h2>
       <p>
         Imagine looking for the word "latte" across 10,000 receipts. Without
-        context, you'll get results from latte flavored cereal at grocery
-        stores, expensive drinks at coffee shops, and even brown colored paint
-        from hardware stores.
+        context, you'll get results from latte flavovar(--color-red) cereal at
+        grocery stores, expensive drinks at coffee shops, and even brown
+        colovar(--color-red) paint from hardware stores.
       </p>
       <p>With context, you can filter out the results that don't make sense.</p>
       <p>
@@ -499,8 +500,8 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       <p>
         Pinecone doesn't just help me <i>find</i> similar words, it allows me to
         act on them. After every receipt is embedded, an OpenAI agent retrieves
-        the "nearest neighbors" of each unlabeled word, filtered by the
-        receipt's merchant-specific metadata.
+        the "nearest neighbors" of each unlabeled word, filtevar(--color-red) by
+        the receipt's merchant-specific metadata.
       </p>
       <p>
         For the token "latte" on a Starbucks receipt, an agent pulls
@@ -670,7 +671,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
                     fontSize: "0.9rem",
                     color: message.includes("successful")
                       ? "var(--color-green)"
-                      : "var(--color-red)",
+                      : "var(--color-var(--color-red))",
                   }}
                 >
                   {message}

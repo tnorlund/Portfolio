@@ -180,14 +180,14 @@ const AnimatedLineBox: React.FC<AnimatedLineBoxProps> = ({
         }}
         points={points}
         fill="none"
-        stroke="red"
+        stroke="var(--color-red)"
         strokeWidth="2"
       />
       <animated.circle
         cx={centroidX}
         cy={centroidSpring.cy}
         r={10}
-        fill="red"
+        fill="var(--color-red)"
         style={{ opacity: centroidSpring.opacity }}
       />
     </>
@@ -249,14 +249,14 @@ const AnimatedReceipt: React.FC<AnimatedReceiptProps> = ({
         style={boxSpring}
         points={points}
         fill="none"
-        stroke="blue"
+        stroke="var(--color-blue)"
         strokeWidth="4"
       />
       <animated.circle
         cx={centroidX}
         cy={centroidSpring.cy}
         r={10}
-        fill="blue"
+        fill="var(--color-blue)"
         style={{ opacity: centroidSpring.opacity }}
       />
     </>
@@ -420,7 +420,7 @@ const ImageBoundingBox: React.FC = () => {
                     style={style}
                     points={points}
                     fill="none"
-                    stroke="red"
+                    stroke="var(--color-red)"
                     strokeWidth="2"
                   />
                 );
