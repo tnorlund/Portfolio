@@ -313,6 +313,195 @@ const computeReceiptBoxFromHull = (
 };
 
 /**
+ * Find the left and right boundary lines using perpendicular projection
+ */
+const findLineEdgesAtPrimaryExtremes = (
+  lines: any[],
+  hull: { x: number; y: number }[],
+  centroid: { x: number; y: number },
+  avgAngle: number
+): {
+  leftEdge: { x: number; y: number }[];
+  rightEdge: { x: number; y: number }[];
+} => {
+  const angleRad = (avgAngle * Math.PI) / 180;
+  const primaryAxisAngle = angleRad;
+
+  const secondaryAxisAngle = primaryAxisAngle + Math.PI / 2; // Perpendicular to text direction
+
+  // Step 1: Find boundary lines using perpendicular projection
+  // Project each line's center onto the secondary axis (perpendicular to text direction)
+  const lineProjections = lines.map((line) => {
+    const lineCenterX =
+      (line.top_left.x +
+        line.top_right.x +
+        line.bottom_left.x +
+        line.bottom_right.x) /
+      4;
+    const lineCenterY =
+      (line.top_left.y +
+        line.top_right.y +
+        line.bottom_left.y +
+        line.bottom_right.y) /
+      4;
+
+    const relX = lineCenterX - centroid.x;
+    const relY = lineCenterY - centroid.y;
+    const secondaryProjection =
+      relX * Math.cos(secondaryAxisAngle) + relY * Math.sin(secondaryAxisAngle);
+
+    return {
+      line,
+      projection: secondaryProjection,
+      centerX: lineCenterX,
+      centerY: lineCenterY,
+    };
+  });
+
+  // Sort by projection to find extremes
+  lineProjections.sort((a, b) => a.projection - b.projection);
+
+  // Get boundary lines (use top 20% for each boundary to handle noise)
+  const boundaryCount = Math.max(1, Math.ceil(lines.length * 0.2));
+  const leftBoundaryLines = lineProjections
+    .slice(0, boundaryCount)
+    .map((p) => p.line);
+  const rightBoundaryLines = lineProjections
+    .slice(-boundaryCount)
+    .map((p) => p.line);
+
+  // Step 2: Get edge points from boundary lines
+  let leftEdgePoints: { x: number; y: number }[] = [];
+  let rightEdgePoints: { x: number; y: number }[] = [];
+
+  // For left boundary lines, get their leftmost edges
+  leftBoundaryLines.forEach((line) => {
+    const leftX = Math.min(line.top_left.x, line.bottom_left.x);
+    leftEdgePoints.push(
+      { x: leftX, y: line.top_left.y },
+      { x: leftX, y: line.bottom_left.y }
+    );
+  });
+
+  // For right boundary lines, get their rightmost edges
+  rightBoundaryLines.forEach((line) => {
+    const rightX = Math.max(line.top_right.x, line.bottom_right.x);
+    rightEdgePoints.push(
+      { x: rightX, y: line.top_right.y },
+      { x: rightX, y: line.bottom_right.y }
+    );
+  });
+
+  return {
+    leftEdge: leftEdgePoints,
+    rightEdge: rightEdgePoints,
+  };
+};
+
+/**
+ * Enhanced version that returns both edge points and boundary angles
+ */
+const findBoundaryLinesWithSkew = (
+  lines: any[],
+  hull: { x: number; y: number }[],
+  centroid: { x: number; y: number },
+  avgAngle: number
+): {
+  leftEdgePoints: { x: number; y: number }[];
+  rightEdgePoints: { x: number; y: number }[];
+  leftBoundaryAngle: number;
+  rightBoundaryAngle: number;
+} => {
+  if (lines.length === 0) {
+    return {
+      leftEdgePoints: [],
+      rightEdgePoints: [],
+      leftBoundaryAngle: avgAngle,
+      rightBoundaryAngle: avgAngle,
+    };
+  }
+
+  const angleRad = (avgAngle * Math.PI) / 180;
+  const primaryAxisAngle = angleRad;
+  const secondaryAxisAngle = primaryAxisAngle + Math.PI / 2; // Perpendicular to text direction
+
+  // Step 1: Find boundary lines using perpendicular projection
+  const lineProjections = lines.map((line) => {
+    const lineCenterX =
+      (line.top_left.x +
+        line.top_right.x +
+        line.bottom_left.x +
+        line.bottom_right.x) /
+      4;
+    const lineCenterY =
+      (line.top_left.y +
+        line.top_right.y +
+        line.bottom_left.y +
+        line.bottom_right.y) /
+      4;
+
+    const relX = lineCenterX - centroid.x;
+    const relY = lineCenterY - centroid.y;
+    const secondaryProjection =
+      relX * Math.cos(secondaryAxisAngle) + relY * Math.sin(secondaryAxisAngle);
+
+    return {
+      line,
+      projection: secondaryProjection,
+    };
+  });
+
+  // Sort by projection to find extremes
+  lineProjections.sort((a, b) => a.projection - b.projection);
+
+  // Get boundary lines (use top 20% for each boundary to handle noise)
+  const boundaryCount = Math.max(1, Math.ceil(lines.length * 0.2));
+  const leftBoundaryLines = lineProjections
+    .slice(0, boundaryCount)
+    .map((p) => p.line);
+  const rightBoundaryLines = lineProjections
+    .slice(-boundaryCount)
+    .map((p) => p.line);
+
+  // Step 2: Extract angles from boundary lines
+  const leftBoundaryAngle =
+    leftBoundaryLines.reduce((sum, line) => sum + line.angle_degrees, 0) /
+    leftBoundaryLines.length;
+  const rightBoundaryAngle =
+    rightBoundaryLines.reduce((sum, line) => sum + line.angle_degrees, 0) /
+    rightBoundaryLines.length;
+
+  // Step 3: Get edge points from boundary lines
+  let leftEdgePoints: { x: number; y: number }[] = [];
+  let rightEdgePoints: { x: number; y: number }[] = [];
+
+  // For left boundary lines, get their leftmost edges
+  leftBoundaryLines.forEach((line) => {
+    const leftX = Math.min(line.top_left.x, line.bottom_left.x);
+    leftEdgePoints.push(
+      { x: leftX, y: line.top_left.y },
+      { x: leftX, y: line.bottom_left.y }
+    );
+  });
+
+  // For right boundary lines, get their rightmost edges
+  rightBoundaryLines.forEach((line) => {
+    const rightX = Math.max(line.top_right.x, line.bottom_right.x);
+    rightEdgePoints.push(
+      { x: rightX, y: line.top_right.y },
+      { x: rightX, y: line.bottom_right.y }
+    );
+  });
+
+  return {
+    leftEdgePoints,
+    rightEdgePoints,
+    leftBoundaryAngle,
+    rightBoundaryAngle,
+  };
+};
+
+/**
  * Find the top and bottom edges of lines at the secondary axis extremes
  */
 const findLineEdgesAtSecondaryExtremes = (
@@ -429,7 +618,7 @@ const findLineEdgesAtSecondaryExtremes = (
 };
 
 /**
- * Compute receipt box using line edges at secondary extremes
+ * Compute receipt box using skewed boundaries from all four edge analyses
  */
 const computeReceiptBoxFromLineEdges = (
   lines: any[],
@@ -437,34 +626,23 @@ const computeReceiptBoxFromLineEdges = (
   centroid: { x: number; y: number },
   avgAngle: number
 ): { x: number; y: number }[] => {
-  if (hull.length < 3 || lines.length === 0) return [];
+  if (lines.length === 0) return [];
 
-  const angleRad = (avgAngle * Math.PI) / 180;
-  const primaryAxisAngle = angleRad;
+  // Use the existing robust edge computation instead of our experimental approach
+  const leftEdge = computeEdge(lines, "left");
+  const rightEdge = computeEdge(lines, "right");
 
-  // Find primary axis extremes (left and right boundaries)
-  let minPrimary = Infinity,
-    maxPrimary = -Infinity;
-  let leftPoint = hull[0],
-    rightPoint = hull[0];
+  if (!leftEdge || !rightEdge) {
+    // Fallback to simple hull-based rectangle
+    return [
+      { x: centroid.x - 0.1, y: centroid.y + 0.1 }, // top-left
+      { x: centroid.x + 0.1, y: centroid.y + 0.1 }, // top-right
+      { x: centroid.x + 0.1, y: centroid.y - 0.1 }, // bottom-right
+      { x: centroid.x - 0.1, y: centroid.y - 0.1 }, // bottom-left
+    ];
+  }
 
-  hull.forEach((point) => {
-    const relX = point.x - centroid.x;
-    const relY = point.y - centroid.y;
-    const primaryProjection =
-      relX * Math.cos(primaryAxisAngle) + relY * Math.sin(primaryAxisAngle);
-
-    if (primaryProjection < minPrimary) {
-      minPrimary = primaryProjection;
-      leftPoint = point;
-    }
-    if (primaryProjection > maxPrimary) {
-      maxPrimary = primaryProjection;
-      rightPoint = point;
-    }
-  });
-
-  // Find line edges at secondary extremes
+  // Find actual top and bottom boundaries using secondary axis extremes (yellow circles)
   const { topEdge, bottomEdge } = findLineEdgesAtSecondaryExtremes(
     lines,
     hull,
@@ -472,22 +650,77 @@ const computeReceiptBoxFromLineEdges = (
     avgAngle
   );
 
-  // Use the average positions for top and bottom boundaries
-  const topY =
-    topEdge.length > 0
-      ? topEdge.reduce((sum, p) => sum + p.y, 0) / topEdge.length
-      : centroid.y + 0.1;
-  const bottomY =
-    bottomEdge.length > 0
-      ? bottomEdge.reduce((sum, p) => sum + p.y, 0) / bottomEdge.length
-      : centroid.y - 0.1;
+  // Fit lines through the top and bottom edge points (yellow circles)
+  const topEdgeLine = topEdge.length >= 2 ? theilSen(topEdge) : null;
+  const bottomEdgeLine = bottomEdge.length >= 2 ? theilSen(bottomEdge) : null;
 
-  // Create receipt corners using line edges for top/bottom and hull extremes for left/right
+  // Get left and right edge line parameters
+  const leftSlope =
+    (leftEdge.top.x - leftEdge.bottom.x) / (leftEdge.top.y - leftEdge.bottom.y);
+  const leftIntercept = leftEdge.top.x - leftSlope * leftEdge.top.y;
+
+  const rightSlope =
+    (rightEdge.top.x - rightEdge.bottom.x) /
+    (rightEdge.top.y - rightEdge.bottom.y);
+  const rightIntercept = rightEdge.top.x - rightSlope * rightEdge.top.y;
+
+  // Calculate intersections of skewed boundary lines
+  let topLeft, topRight, bottomLeft, bottomRight;
+
+  if (topEdgeLine) {
+    // Top edge: x = topSlope * y + topIntercept
+    // Left edge: x = leftSlope * y + leftIntercept
+    // Intersection: topSlope * y + topIntercept = leftSlope * y + leftIntercept
+    const topLeftY =
+      (leftIntercept - topEdgeLine.intercept) / (topEdgeLine.slope - leftSlope);
+    const topLeftX = leftSlope * topLeftY + leftIntercept;
+    topLeft = { x: topLeftX, y: topLeftY };
+
+    // Top edge intersect with right edge
+    const topRightY =
+      (rightIntercept - topEdgeLine.intercept) /
+      (topEdgeLine.slope - rightSlope);
+    const topRightX = rightSlope * topRightY + rightIntercept;
+    topRight = { x: topRightX, y: topRightY };
+  } else {
+    // Fallback to horizontal line at average Y
+    const avgTopY =
+      topEdge.reduce((sum, p) => sum + p.y, 0) / Math.max(topEdge.length, 1);
+    topLeft = { x: leftSlope * avgTopY + leftIntercept, y: avgTopY };
+    topRight = { x: rightSlope * avgTopY + rightIntercept, y: avgTopY };
+  }
+
+  if (bottomEdgeLine) {
+    // Bottom edge intersect with left edge
+    const bottomLeftY =
+      (leftIntercept - bottomEdgeLine.intercept) /
+      (bottomEdgeLine.slope - leftSlope);
+    const bottomLeftX = leftSlope * bottomLeftY + leftIntercept;
+    bottomLeft = { x: bottomLeftX, y: bottomLeftY };
+
+    // Bottom edge intersect with right edge
+    const bottomRightY =
+      (rightIntercept - bottomEdgeLine.intercept) /
+      (bottomEdgeLine.slope - rightSlope);
+    const bottomRightX = rightSlope * bottomRightY + rightIntercept;
+    bottomRight = { x: bottomRightX, y: bottomRightY };
+  } else {
+    // Fallback to horizontal line at average Y
+    const avgBottomY =
+      bottomEdge.reduce((sum, p) => sum + p.y, 0) /
+      Math.max(bottomEdge.length, 1);
+    bottomLeft = { x: leftSlope * avgBottomY + leftIntercept, y: avgBottomY };
+    bottomRight = {
+      x: rightSlope * avgBottomY + rightIntercept,
+      y: avgBottomY,
+    };
+  }
+
   return [
-    { x: leftPoint.x, y: topY }, // top-left
-    { x: rightPoint.x, y: topY }, // top-right
-    { x: rightPoint.x, y: bottomY }, // bottom-right
-    { x: leftPoint.x, y: bottomY }, // bottom-left
+    topLeft, // top-left
+    topRight, // top-right
+    bottomRight, // bottom-right
+    bottomLeft, // bottom-left
   ];
 };
 
@@ -1040,6 +1273,211 @@ const AnimatedOrientedAxes: React.FC<AnimatedOrientedAxesProps> = ({
   );
 };
 
+// AnimatedPrimaryEdges: show line edges at primary extremes
+interface AnimatedPrimaryEdgesProps {
+  lines: any[];
+  hull: { x: number; y: number }[];
+  centroid: { x: number; y: number };
+  avgAngle: number;
+  svgWidth: number;
+  svgHeight: number;
+  delay: number;
+}
+
+const AnimatedPrimaryEdges: React.FC<AnimatedPrimaryEdgesProps> = ({
+  lines,
+  hull,
+  centroid,
+  avgAngle,
+  svgWidth,
+  svgHeight,
+  delay,
+}) => {
+  const { leftEdgePoints, rightEdgePoints } = findBoundaryLinesWithSkew(
+    lines,
+    hull,
+    centroid,
+    avgAngle
+  );
+
+  const allEdgePoints = [...leftEdgePoints, ...rightEdgePoints];
+
+  const edgeTransitions = useTransition(allEdgePoints, {
+    keys: (point) => `edge-${point.x}-${point.y}`,
+    from: { opacity: 0, scale: 0 },
+    enter: (item, index) => ({
+      opacity: 1,
+      scale: 1,
+      delay: delay + index * 100,
+    }),
+    config: { duration: 400 },
+  });
+
+  return (
+    <g>
+      {edgeTransitions((style, edgePoint) => {
+        const isLeftEdge = leftEdgePoints.some(
+          (p) => p.x === edgePoint.x && p.y === edgePoint.y
+        );
+        return (
+          <animated.circle
+            style={style}
+            cx={edgePoint.x * svgWidth}
+            cy={(1 - edgePoint.y) * svgHeight}
+            r="6"
+            fill={isLeftEdge ? "var(--color-blue)" : "var(--color-red)"}
+            stroke="white"
+            strokeWidth="1"
+          />
+        );
+      })}
+    </g>
+  );
+};
+
+// AnimatedSecondaryBoundaryLines: draw lines through yellow circles (secondary extremes)
+interface AnimatedSecondaryBoundaryLinesProps {
+  lines: any[];
+  hull: { x: number; y: number }[];
+  centroid: { x: number; y: number };
+  avgAngle: number;
+  svgWidth: number;
+  svgHeight: number;
+  delay: number;
+}
+
+const AnimatedSecondaryBoundaryLines: React.FC<
+  AnimatedSecondaryBoundaryLinesProps
+> = ({ lines, hull, centroid, avgAngle, svgWidth, svgHeight, delay }) => {
+  if (hull.length < 3) return null;
+
+  // Find the yellow points on the hull (secondary axis extremes)
+  const angleRad = (avgAngle * Math.PI) / 180;
+  const secondaryAxisAngle = angleRad + Math.PI / 2;
+
+  let minSecondary = Infinity,
+    maxSecondary = -Infinity;
+  let bottomHullPoint = hull[0],
+    topHullPoint = hull[0];
+
+  hull.forEach((point) => {
+    const relX = point.x - centroid.x;
+    const relY = point.y - centroid.y;
+    const secondaryProjection =
+      relX * Math.cos(secondaryAxisAngle) + relY * Math.sin(secondaryAxisAngle);
+
+    if (secondaryProjection < minSecondary) {
+      minSecondary = secondaryProjection;
+      bottomHullPoint = point;
+    }
+    if (secondaryProjection > maxSecondary) {
+      maxSecondary = secondaryProjection;
+      topHullPoint = point;
+    }
+  });
+
+  // Find the closest neighbors to create line segments
+  const findClosestNeighbor = (
+    targetPoint: { x: number; y: number },
+    targetProjection: number
+  ) => {
+    let closestPoint = null;
+    let minDistance = Infinity;
+
+    hull.forEach((point) => {
+      if (point === targetPoint) return;
+
+      const relX = point.x - centroid.x;
+      const relY = point.y - centroid.y;
+      const projection =
+        relX * Math.cos(secondaryAxisAngle) +
+        relY * Math.sin(secondaryAxisAngle);
+      const distance = Math.abs(projection - targetProjection);
+
+      if (distance < minDistance && distance < 0.05) {
+        // 5% tolerance
+        minDistance = distance;
+        closestPoint = point;
+      }
+    });
+
+    return closestPoint;
+  };
+
+  const topNeighbor = findClosestNeighbor(topHullPoint, maxSecondary);
+  const bottomNeighbor = findClosestNeighbor(bottomHullPoint, minSecondary);
+
+  // Create line segments through yellow hull points
+  const lineSegments = [];
+
+  if (topNeighbor) {
+    // Fit line through top hull points and extend it
+    const topPoints = [topHullPoint, topNeighbor];
+    const topLine = theilSen(topPoints);
+
+    const topY1 = 0;
+    const topX1 = topLine.slope * topY1 + topLine.intercept;
+    const topY2 = 1;
+    const topX2 = topLine.slope * topY2 + topLine.intercept;
+
+    lineSegments.push({
+      x1: topX1 * svgWidth,
+      y1: (1 - topY1) * svgHeight,
+      x2: topX2 * svgWidth,
+      y2: (1 - topY2) * svgHeight,
+      key: "top-hull-boundary",
+    });
+  }
+
+  if (bottomNeighbor) {
+    // Fit line through bottom hull points and extend it
+    const bottomPoints = [bottomHullPoint, bottomNeighbor];
+    const bottomLine = theilSen(bottomPoints);
+
+    const bottomY1 = 0;
+    const bottomX1 = bottomLine.slope * bottomY1 + bottomLine.intercept;
+    const bottomY2 = 1;
+    const bottomX2 = bottomLine.slope * bottomY2 + bottomLine.intercept;
+
+    lineSegments.push({
+      x1: bottomX1 * svgWidth,
+      y1: (1 - bottomY1) * svgHeight,
+      x2: bottomX2 * svgWidth,
+      y2: (1 - bottomY2) * svgHeight,
+      key: "bottom-hull-boundary",
+    });
+  }
+
+  const lineTransitions = useTransition(lineSegments, {
+    keys: (line) => line.key,
+    from: { opacity: 0, strokeDasharray: "10,10", strokeDashoffset: 20 },
+    enter: (item, index) => ({
+      opacity: 1,
+      strokeDashoffset: 0,
+      delay: delay + index * 200,
+    }),
+    config: { duration: 800 },
+  });
+
+  return (
+    <g>
+      {lineTransitions((style, line) => (
+        <animated.line
+          key={line.key}
+          style={style}
+          x1={line.x1}
+          y1={line.y1}
+          x2={line.x2}
+          y2={line.y2}
+          stroke="var(--color-yellow)"
+          strokeWidth="3"
+          strokeDasharray="10,10"
+        />
+      ))}
+    </g>
+  );
+};
+
 // AnimatedReceiptFromHull: component using the proper Python algorithm
 interface AnimatedReceiptFromHullProps {
   hull: { x: number; y: number }[];
@@ -1345,6 +1783,40 @@ const PhotoReceiptBoundingBox: React.FC = () => {
                   svgWidth={svgWidth}
                   svgHeight={svgHeight}
                   delay={extentsDelay}
+                />
+              )}
+
+              {/* Render line edges at primary extremes */}
+              {convexHull.length > 0 && hullCentroid && lines.length > 0 && (
+                <AnimatedPrimaryEdges
+                  key={`primary-edges-${resetKey}`}
+                  lines={lines}
+                  hull={convexHull}
+                  centroid={hullCentroid}
+                  avgAngle={
+                    lines.reduce((sum, line) => sum + line.angle_degrees, 0) /
+                    lines.length
+                  }
+                  svgWidth={svgWidth}
+                  svgHeight={svgHeight}
+                  delay={extentsDelay + 1000}
+                />
+              )}
+
+              {/* Render extended yellow boundary lines */}
+              {convexHull.length > 0 && hullCentroid && lines.length > 0 && (
+                <AnimatedSecondaryBoundaryLines
+                  key={`secondary-boundary-lines-${resetKey}`}
+                  lines={lines}
+                  hull={convexHull}
+                  centroid={hullCentroid}
+                  avgAngle={
+                    lines.reduce((sum, line) => sum + line.angle_degrees, 0) /
+                    lines.length
+                  }
+                  svgWidth={svgWidth}
+                  svgHeight={svgHeight}
+                  delay={extentsDelay + 1500}
                 />
               )}
 
