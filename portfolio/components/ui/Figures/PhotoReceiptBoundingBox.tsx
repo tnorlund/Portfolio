@@ -4,11 +4,13 @@ import { api } from "../../../services/api";
 import {
   ImageDetailsApiResponse,
   type Image as ImageType,
+  type Line,
+  type Point as ApiPoint,
 } from "../../../types/api";
 import { useSpring, useTransition, animated } from "@react-spring/web";
 
 // Define simple point and line-segment shapes
-type Point = { x: number; y: number };
+type Point = ApiPoint;
 type LineSegment = {
   x1: number;
   y1: number;
@@ -135,8 +137,8 @@ const getBestImageUrl = (
  * Compute the convex hull of a set of points using Graham scan algorithm
  */
 const computeConvexHull = (
-  points: { x: number; y: number }[]
-): { x: number; y: number }[] => {
+  points: Point[]
+): Point[] => {
   if (points.length < 3) return points;
 
   // Find the bottom-most point (or left most point in case of tie)
@@ -195,8 +197,8 @@ const computeConvexHull = (
  * Compute the centroid of a convex hull (matching Python implementation)
  */
 const computeHullCentroid = (
-  hull: { x: number; y: number }[]
-): { x: number; y: number } => {
+  hull: Point[]
+): Point => {
   if (hull.length === 0) return { x: 0, y: 0 };
 
   const sumX = hull.reduce((sum, point) => sum + point.x, 0);
@@ -212,17 +214,17 @@ const computeHullCentroid = (
  * Find hull extents relative to centroid (matching Python implementation)
  */
 const findHullExtentsRelativeToCentroid = (
-  hull: { x: number; y: number }[],
-  centroid: { x: number; y: number }
+  hull: Point[],
+  centroid: Point
 ): {
   minX: number;
   maxX: number;
   minY: number;
   maxY: number;
-  leftPoint: { x: number; y: number };
-  rightPoint: { x: number; y: number };
-  topPoint: { x: number; y: number };
-  bottomPoint: { x: number; y: number };
+  leftPoint: Point;
+  rightPoint: Point;
+  topPoint: Point;
+  bottomPoint: Point;
 } => {
   let minX = Infinity,
     maxX = -Infinity;
@@ -271,10 +273,10 @@ const findHullExtentsRelativeToCentroid = (
  * Compute receipt box from hull using the same algorithm as Python
  */
 const computeReceiptBoxFromHull = (
-  hull: { x: number; y: number }[],
-  centroid: { x: number; y: number },
+  hull: Point[],
+  centroid: Point,
   avgAngle: number
-): { x: number; y: number }[] => {
+): Point[] => {
   if (hull.length < 3) return [];
 
   // Find extents of hull relative to centroid
@@ -326,13 +328,13 @@ const computeReceiptBoxFromHull = (
  * Find the left and right boundary lines using perpendicular projection
  */
 const findLineEdgesAtPrimaryExtremes = (
-  lines: any[],
-  hull: { x: number; y: number }[],
-  centroid: { x: number; y: number },
+  lines: Line[],
+  hull: Point[],
+  centroid: Point,
   avgAngle: number
 ): {
-  leftEdge: { x: number; y: number }[];
-  rightEdge: { x: number; y: number }[];
+  leftEdge: Point[];
+  rightEdge: Point[];
 } => {
   const angleRad = (avgAngle * Math.PI) / 180;
   const primaryAxisAngle = angleRad;
@@ -381,8 +383,8 @@ const findLineEdgesAtPrimaryExtremes = (
     .map((p) => p.line);
 
   // Step 2: Get edge points from boundary lines
-  let leftEdgePoints: { x: number; y: number }[] = [];
-  let rightEdgePoints: { x: number; y: number }[] = [];
+  let leftEdgePoints: Point[] = [];
+  let rightEdgePoints: Point[] = [];
 
   // For left boundary lines, get their leftmost edges
   leftBoundaryLines.forEach((line) => {
@@ -412,13 +414,13 @@ const findLineEdgesAtPrimaryExtremes = (
  * Enhanced version that returns both edge points and boundary angles
  */
 const findBoundaryLinesWithSkew = (
-  lines: any[],
-  hull: { x: number; y: number }[],
-  centroid: { x: number; y: number },
+  lines: Line[],
+  hull: Point[],
+  centroid: Point,
   avgAngle: number
 ): {
-  leftEdgePoints: { x: number; y: number }[];
-  rightEdgePoints: { x: number; y: number }[];
+  leftEdgePoints: Point[];
+  rightEdgePoints: Point[];
   leftBoundaryAngle: number;
   rightBoundaryAngle: number;
 } => {
@@ -482,8 +484,8 @@ const findBoundaryLinesWithSkew = (
     rightBoundaryLines.length;
 
   // Step 3: Get edge points from boundary lines
-  let leftEdgePoints: { x: number; y: number }[] = [];
-  let rightEdgePoints: { x: number; y: number }[] = [];
+  let leftEdgePoints: Point[] = [];
+  let rightEdgePoints: Point[] = [];
 
   // For left boundary lines, get their leftmost edges
   leftBoundaryLines.forEach((line) => {
@@ -515,13 +517,13 @@ const findBoundaryLinesWithSkew = (
  * Find the top and bottom edges of lines at the secondary axis extremes
  */
 const findLineEdgesAtSecondaryExtremes = (
-  lines: any[],
-  hull: { x: number; y: number }[],
-  centroid: { x: number; y: number },
+  lines: Line[],
+  hull: Point[],
+  centroid: Point,
   avgAngle: number
 ): {
-  topEdge: { x: number; y: number }[];
-  bottomEdge: { x: number; y: number }[];
+  topEdge: Point[];
+  bottomEdge: Point[];
 } => {
   const angleRad = (avgAngle * Math.PI) / 180;
   const secondaryAxisAngle = angleRad + Math.PI / 2;
@@ -571,8 +573,8 @@ const findLineEdgesAtSecondaryExtremes = (
   });
 
   // Find the actual top edge (highest Y values) and bottom edge (lowest Y values)
-  let topEdgePoints: { x: number; y: number }[] = [];
-  let bottomEdgePoints: { x: number; y: number }[] = [];
+  let topEdgePoints: Point[] = [];
+  let bottomEdgePoints: Point[] = [];
 
   if (topLines.length > 0) {
     // Get the topmost edges of lines near the top extreme
@@ -631,11 +633,11 @@ const findLineEdgesAtSecondaryExtremes = (
  * Compute receipt box using skewed boundaries from all four edge analyses
  */
 const computeReceiptBoxFromLineEdges = (
-  lines: any[],
-  hull: { x: number; y: number }[],
-  centroid: { x: number; y: number },
+  lines: Line[],
+  hull: Point[],
+  centroid: Point,
   avgAngle: number
-): { x: number; y: number }[] => {
+): Point[] => {
   if (lines.length === 0) return [];
 
   // Use the existing robust edge computation instead of our experimental approach
@@ -737,7 +739,7 @@ const computeReceiptBoxFromLineEdges = (
 /**
  * Robust Theil–Sen estimator for a line x = m·y + b.
  */
-const theilSen = (pts: { x: number; y: number }[]) => {
+const theilSen = (pts: Point[]) => {
   if (pts.length < 2) return { slope: 0, intercept: pts[0] ? pts[0].y : 0 };
 
   // Collect all pair‑wise slopes.
@@ -794,15 +796,15 @@ const computeHullEdge = (
  * and fitting a robust line through them.
  */
 const computeEdge = (
-  lines: any[],
+  lines: Line[],
   pick: "left" | "right",
   bins = 6
 ): {
-  top: { x: number; y: number };
-  bottom: { x: number; y: number };
+  top: Point;
+  bottom: Point;
 } | null => {
   // One bucket per y‑range.
-  const binPts: ({ x: number; y: number } | null)[] = Array.from(
+  const binPts: (Point | null)[] = Array.from(
     { length: bins },
     () => null
   );
@@ -825,7 +827,7 @@ const computeEdge = (
     }
   });
 
-  const selected = binPts.filter(Boolean) as { x: number; y: number }[];
+  const selected = binPts.filter(Boolean) as Point[];
   if (selected.length < 2) return null;
 
   const { slope, intercept } = theilSen(selected);
@@ -838,7 +840,7 @@ const computeEdge = (
 /**
  * Estimate the full receipt quadrilateral from OCR word‑level lines.
  */
-const estimateReceiptPolygonFromLines = (lines: any[]) => {
+const estimateReceiptPolygonFromLines = (lines: Line[]) => {
   const left = computeEdge(lines, "left");
   const right = computeEdge(lines, "right");
   if (!left || !right) return null;
@@ -854,7 +856,7 @@ const estimateReceiptPolygonFromLines = (lines: any[]) => {
 
 // AnimatedLineBox: already defined for words
 interface AnimatedLineBoxProps {
-  line: any; // Adjust type as needed
+  line: Line; // Adjust type as needed
   svgWidth: number;
   svgHeight: number;
   delay: number;
@@ -927,7 +929,7 @@ const AnimatedLineBox: React.FC<AnimatedLineBoxProps> = ({
 
 // AnimatedConvexHull: component for animating convex hull calculation
 interface AnimatedConvexHullProps {
-  hullPoints: { x: number; y: number }[];
+  hullPoints: Point[];
   svgWidth: number;
   svgHeight: number;
   delay: number;
@@ -1034,7 +1036,7 @@ const AnimatedConvexHull: React.FC<AnimatedConvexHullProps> = ({
 
 // AnimatedHullCentroid: component for visualizing hull centroid calculation
 interface AnimatedHullCentroidProps {
-  centroid: { x: number; y: number };
+  centroid: Point;
   svgWidth: number;
   svgHeight: number;
   delay: number;
@@ -1074,9 +1076,9 @@ const AnimatedHullCentroid: React.FC<AnimatedHullCentroidProps> = ({
 
 // AnimatedOrientedAxes: component for visualizing oriented axes based on average line angle
 interface AnimatedOrientedAxesProps {
-  hull: { x: number; y: number }[];
-  centroid: { x: number; y: number };
-  lines: any[];
+  hull: Point[];
+  centroid: Point;
+  lines: Line[];
   svgWidth: number;
   svgHeight: number;
   delay: number;
@@ -1306,9 +1308,9 @@ const AnimatedOrientedAxes: React.FC<AnimatedOrientedAxesProps> = ({
 
 // AnimatedPrimaryEdges: show line edges at primary extremes
 interface AnimatedPrimaryEdgesProps {
-  lines: any[];
-  hull: { x: number; y: number }[];
-  centroid: { x: number; y: number };
+  lines: Line[];
+  hull: Point[];
+  centroid: Point;
   avgAngle: number;
   svgWidth: number;
   svgHeight: number;
@@ -1368,9 +1370,9 @@ const AnimatedPrimaryEdges: React.FC<AnimatedPrimaryEdgesProps> = ({
 
 // AnimatedSecondaryBoundaryLines: draw lines through yellow circles (secondary extremes)
 interface AnimatedSecondaryBoundaryLinesProps {
-  lines: any[];
-  hull: { x: number; y: number }[];
-  centroid: { x: number; y: number };
+  lines: Line[];
+  hull: Point[];
+  centroid: Point;
   avgAngle: number;
   svgWidth: number;
   svgHeight: number;
@@ -1454,8 +1456,8 @@ const AnimatedSecondaryBoundaryLines: React.FC<
 
 // AnimatedPrimaryBoundaryLines: draw left/right boundaries using hull edge binning and Theil–Sen fit
 interface AnimatedPrimaryBoundaryLinesProps {
-  hull: { x: number; y: number }[];
-  centroid: { x: number; y: number };
+  hull: Point[];
+  centroid: Point;
   avgAngle: number;
   svgWidth: number;
   svgHeight: number;
@@ -1542,8 +1544,8 @@ const AnimatedPrimaryBoundaryLines: React.FC<
 
 // AnimatedReceiptFromHull: component using the proper Python algorithm
 interface AnimatedReceiptFromHullProps {
-  hull: { x: number; y: number }[];
-  lines: any[];
+  hull: Point[];
+  lines: Line[];
   svgWidth: number;
   svgHeight: number;
   delay: number;
@@ -1623,7 +1625,10 @@ const AnimatedReceiptFromHull: React.FC<AnimatedReceiptFromHullProps> = ({
   );
 };
 
-// Main PhotoReceiptBoundingBox component
+/**
+ * Display a random photo image with animated overlays that illustrate
+ * how the receipt bounding box is derived from OCR line data.
+ */
 const PhotoReceiptBoundingBox: React.FC = () => {
   const [imageDetails, setImageDetails] =
     useState<ImageDetailsApiResponse | null>(null);
@@ -1674,7 +1679,7 @@ const PhotoReceiptBoundingBox: React.FC = () => {
     : imageDetails?.receipts ?? [];
 
   // Compute convex hull from all line corners (matching the backend process_photo function)
-  const allLineCorners: { x: number; y: number }[] = [];
+  const allLineCorners: Point[] = [];
   lines.forEach((line) => {
     // Add all four corners of each line bounding box
     allLineCorners.push(
