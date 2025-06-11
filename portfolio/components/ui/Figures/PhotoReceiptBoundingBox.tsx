@@ -136,9 +136,7 @@ const getBestImageUrl = (
 /**
  * Compute the convex hull of a set of points using Graham scan algorithm
  */
-const computeConvexHull = (
-  points: Point[]
-): Point[] => {
+const computeConvexHull = (points: Point[]): Point[] => {
   if (points.length < 3) return points;
 
   // Find the bottom-most point (or left most point in case of tie)
@@ -196,9 +194,7 @@ const computeConvexHull = (
 /**
  * Compute the centroid of a convex hull (matching Python implementation)
  */
-const computeHullCentroid = (
-  hull: Point[]
-): Point => {
+const computeHullCentroid = (hull: Point[]): Point => {
   if (hull.length === 0) return { x: 0, y: 0 };
 
   const sumX = hull.reduce((sum, point) => sum + point.x, 0);
@@ -804,10 +800,7 @@ const computeEdge = (
   bottom: Point;
 } | null => {
   // One bucket per y‑range.
-  const binPts: (Point | null)[] = Array.from(
-    { length: bins },
-    () => null
-  );
+  const binPts: (Point | null)[] = Array.from({ length: bins }, () => null);
 
   lines.forEach((l) => {
     // Normalised y in [0,1] (0 = bottom, 1 = top).
@@ -1130,25 +1123,25 @@ const AnimatedOrientedAxes: React.FC<AnimatedOrientedAxesProps> = ({
   // Convert angle to radians for calculations
   const angleRad = (avgAngle * Math.PI) / 180;
   const primaryAxisAngle = angleRad;
-  const secondaryAxisAngle = angleRad + Math.PI / 2; // Perpendicular axis
+  const secondaryAxisAngle = angleRad + Math.PI / 2; // Perpendicular axis (no longer used)
 
-  // Calculate axis endpoints (extend across the SVG canvas)
-  const axisLength = Math.max(svgWidth, svgHeight);
+  // Calculate axis endpoints (fixed 200px length for both axes)
+  const axisLength = 200;
 
   // Primary axis (along average line direction)
   const primaryAxis = {
-    x1: centroidX - (axisLength / 2) * Math.cos(primaryAxisAngle),
-    y1: centroidY - (axisLength / 2) * Math.sin(primaryAxisAngle),
-    x2: centroidX + (axisLength / 2) * Math.cos(primaryAxisAngle),
-    y2: centroidY + (axisLength / 2) * Math.sin(primaryAxisAngle),
+    x1: centroidX,
+    y1: centroidY,
+    x2: centroidX + axisLength * Math.cos(primaryAxisAngle),
+    y2: centroidY + axisLength * Math.sin(primaryAxisAngle),
   };
 
-  // Secondary axis (perpendicular to average line direction)
+  // Secondary axis always pointing straight up from the centroid
   const secondaryAxis = {
-    x1: centroidX - (axisLength / 2) * Math.cos(secondaryAxisAngle),
-    y1: centroidY - (axisLength / 2) * Math.sin(secondaryAxisAngle),
-    x2: centroidX + (axisLength / 2) * Math.cos(secondaryAxisAngle),
-    y2: centroidY + (axisLength / 2) * Math.sin(secondaryAxisAngle),
+    x1: centroidX,
+    y1: centroidY,
+    x2: centroidX,
+    y2: centroidY - axisLength,
   };
 
   // Find extent points along each axis
@@ -1242,6 +1235,30 @@ const AnimatedOrientedAxes: React.FC<AnimatedOrientedAxesProps> = ({
 
   return (
     <>
+      <defs>
+        <marker
+          id="axis-arrow-primary"
+          markerWidth="8"
+          markerHeight="8"
+          refX="0"
+          refY="3"
+          orient="auto"
+          markerUnits="strokeWidth"
+        >
+          <path d="M0,0 L0,6 L6,3 Z" fill="var(--color-green)" />
+        </marker>
+        <marker
+          id="axis-arrow-secondary"
+          markerWidth="8"
+          markerHeight="8"
+          refX="0"
+          refY="3"
+          orient="auto"
+          markerUnits="strokeWidth"
+        >
+          <path d="M0,0 L0,6 L6,3 Z" fill="var(--color-yellow)" />
+        </marker>
+      </defs>
       {/* Primary axis (along average line direction) */}
       {visibleElements >= 1 && (
         <line
@@ -1250,9 +1267,9 @@ const AnimatedOrientedAxes: React.FC<AnimatedOrientedAxesProps> = ({
           x2={primaryAxis.x2}
           y2={primaryAxis.y2}
           stroke="var(--color-green)"
-          strokeWidth="3"
-          strokeDasharray="8,4"
+          strokeWidth="10"
           opacity={0.8}
+          markerEnd="url(#axis-arrow-primary)"
         />
       )}
 
@@ -1264,9 +1281,9 @@ const AnimatedOrientedAxes: React.FC<AnimatedOrientedAxesProps> = ({
           x2={secondaryAxis.x2}
           y2={secondaryAxis.y2}
           stroke="var(--color-yellow)"
-          strokeWidth="3"
-          strokeDasharray="8,4"
+          strokeWidth="10"
           opacity={0.8}
+          markerEnd="url(#axis-arrow-secondary)"
         />
       )}
 
@@ -1358,7 +1375,7 @@ const AnimatedPrimaryEdges: React.FC<AnimatedPrimaryEdgesProps> = ({
             cx={edgePoint.x * svgWidth}
             cy={(1 - edgePoint.y) * svgHeight}
             r="6"
-            fill={isLeftEdge ? "var(--color-blue)" : "var(--color-red)"}
+            fill={"var(--color-blue)"}
             stroke="white"
             strokeWidth="1"
           />
@@ -1378,56 +1395,72 @@ interface AnimatedSecondaryBoundaryLinesProps {
   svgHeight: number;
   delay: number;
 }
-
 const AnimatedSecondaryBoundaryLines: React.FC<
   AnimatedSecondaryBoundaryLinesProps
-> = ({ lines, hull, centroid, avgAngle, svgWidth, svgHeight, delay }) => {
+> = ({ hull, centroid, avgAngle, svgWidth, svgHeight, delay }) => {
   if (hull.length < 3) return null;
 
-  // Find the yellow points on the hull (secondary axis extremes)
+  // 1) Compute perpendicular axis
   const angleRad = (avgAngle * Math.PI) / 180;
   const secondaryAxisAngle = angleRad + Math.PI / 2;
+  const cosS = Math.cos(secondaryAxisAngle);
+  const sinS = Math.sin(secondaryAxisAngle);
 
-  let minSecondary = Infinity,
-    maxSecondary = -Infinity;
-  let bottomHullPoint = hull[0],
-    topHullPoint = hull[0];
+  // 2) Project hull points, sort by projection
+  const projHull = hull
+    .map((p) => {
+      const rx = p.x - centroid.x;
+      const ry = p.y - centroid.y;
+      return { point: p, proj: rx * cosS + ry * sinS };
+    })
+    .sort((a, b) => a.proj - b.proj);
 
-  hull.forEach((point) => {
-    const relX = point.x - centroid.x;
-    const relY = point.y - centroid.y;
-    const secondaryProjection =
-      relX * Math.cos(secondaryAxisAngle) + relY * Math.sin(secondaryAxisAngle);
-
-    if (secondaryProjection < minSecondary) {
-      minSecondary = secondaryProjection;
-      bottomHullPoint = point;
-    }
-    if (secondaryProjection > maxSecondary) {
-      maxSecondary = secondaryProjection;
-      topHullPoint = point;
-    }
-  });
-
-  // Draw full-width horizontal boundaries at hull extremes
-  const yTopPx = (1 - topHullPoint.y) * svgHeight;
-  const yBottomPx = (1 - bottomHullPoint.y) * svgHeight;
-
-  const lineSegments: LineSegment[] = [
-    { key: "top-hull-boundary", x1: 0, y1: yTopPx, x2: svgWidth, y2: yTopPx },
-    {
-      key: "bottom-hull-boundary",
-      x1: 0,
-      y1: yBottomPx,
-      x2: svgWidth,
-      y2: yBottomPx,
-    },
+  // 3) Grab the bottom‐two and top‐two extreme points
+  const bottomPts = [projHull[0].point, projHull[1].point];
+  const topPts = [
+    projHull[projHull.length - 2].point,
+    projHull[projHull.length - 1].point,
   ];
 
+  // Helper to extend a segment between two hull points out to full SVG width
+  const extendFullWidth = (pA: Point, pB: Point, key: string): LineSegment => {
+    const xA = pA.x * svgWidth,
+      yA = (1 - pA.y) * svgHeight;
+    const xB = pB.x * svgWidth,
+      yB = (1 - pB.y) * svgHeight;
+    const m = (yB - yA) / (xB - xA);
+    const c = yA - m * xA;
+    return {
+      key,
+      x1: 0,
+      y1: c,
+      x2: svgWidth,
+      y2: m * svgWidth + c,
+    };
+  };
+
+  // 4) Build two yellow line segments between each pair
+  const lineSegments: LineSegment[] = [
+    extendFullWidth(bottomPts[0], bottomPts[1], "bottom-hull-boundary"),
+    extendFullWidth(topPts[0], topPts[1], "top-hull-boundary"),
+  ];
+
+  // Animate yellow dots at the four extreme hull points
+  const dotPoints = [...bottomPts, ...topPts];
+  const dotTransitions = useTransition(dotPoints, {
+    from: { opacity: 0 },
+    enter: (_pt, idx) => ({
+      opacity: 1,
+      delay: delay + idx * 200,
+    }),
+    config: { duration: 400 },
+  });
+
+  // 5) Animate exactly as before
   const lineTransitions = useTransition(lineSegments, {
     keys: (line) => line.key,
     from: { opacity: 0, strokeDasharray: "10,10", strokeDashoffset: 20 },
-    enter: (item, index) => ({
+    enter: (_item, index) => ({
       opacity: 1,
       strokeDashoffset: 0,
       delay: delay + index * 200,
@@ -1437,14 +1470,27 @@ const AnimatedSecondaryBoundaryLines: React.FC<
 
   return (
     <g>
-      {lineTransitions((style, line) => (
-        <animated.line
-          key={line.key}
+      {/* Animated yellow dots */}
+      {dotTransitions((style, pt, _item, idx) => (
+        <animated.circle
+          key={`secondary-extreme-${idx}`}
           style={style}
-          x1={line.x1}
-          y1={line.y1}
-          x2={line.x2}
-          y2={line.y2}
+          cx={pt.x * svgWidth}
+          cy={(1 - pt.y) * svgHeight}
+          r={8}
+          fill="var(--color-yellow)"
+          stroke="white"
+          strokeWidth="2"
+        />
+      ))}
+      {lineTransitions((style, seg) => (
+        <animated.line
+          key={seg.key}
+          style={style}
+          x1={seg.x1}
+          y1={seg.y1}
+          x2={seg.x2}
+          y2={seg.y2}
           stroke="var(--color-yellow)"
           strokeWidth="5"
           strokeDasharray="10,10"
@@ -1453,7 +1499,6 @@ const AnimatedSecondaryBoundaryLines: React.FC<
     </g>
   );
 };
-
 // AnimatedPrimaryBoundaryLines: draw left/right boundaries using hull edge binning and Theil–Sen fit
 interface AnimatedPrimaryBoundaryLinesProps {
   hull: Point[];
