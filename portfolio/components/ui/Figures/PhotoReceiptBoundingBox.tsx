@@ -1113,9 +1113,22 @@ const AnimatedOrientedAxes: React.FC<AnimatedOrientedAxesProps> = ({
 
   if (hull.length === 0 || lines.length === 0) return null;
 
-  // Use the actual angle data from OCR API (more accurate than manual calculation)
+  // 1) Derive raw angles from each line’s bottom edge
+  const computedAngles = lines
+    .map((line) => {
+      const dx = line.bottom_right.x - line.bottom_left.x;
+      const dy = line.bottom_right.y - line.bottom_left.y;
+      // angle in degrees, 0 = perfectly horizontal
+      return (Math.atan2(dy, dx) * 180) / Math.PI;
+    })
+    // 2) Discard anything within ±0.001° of horizontal
+    .filter((angle) => Math.abs(angle) > 1e-3);
+
+  // 3) Average the rest, or fallback to 0 if none remain
   const avgAngle =
-    lines.reduce((sum, line) => sum + line.angle_degrees, 0) / lines.length;
+    computedAngles.length > 0
+      ? computedAngles.reduce((sum, a) => sum + a, 0) / computedAngles.length
+      : 0;
 
   const centroidX = centroid.x * svgWidth;
   const centroidY = (1 - centroid.y) * svgHeight;
@@ -1513,50 +1526,88 @@ const AnimatedPrimaryBoundaryLines: React.FC<
   AnimatedPrimaryBoundaryLinesProps
 > = ({ hull, centroid, avgAngle, svgWidth, svgHeight, delay }) => {
   if (hull.length < 3) return null;
-  const n = hull.length;
 
-  // Find axis-aligned extremes
-  let leftIdx = 0,
-    rightIdx = 0;
-  hull.forEach((p, i) => {
-    if (p.x < hull[leftIdx].x) leftIdx = i;
-    if (p.x > hull[rightIdx].x) rightIdx = i;
-  });
+  // 1) compute receipt tilt axis unit vector
+  const angleRad = (avgAngle * Math.PI) / 180;
+  const ux = Math.cos(angleRad),
+    uy = Math.sin(angleRad);
+
+  // 2) project hull points onto receipt axis
+  const projections = hull.map((p, i) => ({
+    idx: i,
+    proj: p.x * ux + p.y * uy,
+  }));
+  projections.sort((a, b) => a.proj - b.proj);
+
+  // 3) identify extremes along that axis
   const extremes = [
-    { key: "left-boundary", idx: leftIdx },
-    { key: "right-boundary", idx: rightIdx },
+    { key: "left-boundary", idx: projections[0].idx },
+    { key: "right-boundary", idx: projections[projections.length - 1].idx },
   ];
 
-  // Helper to create line and measure mean distance
-  const makeLine = (p1: Point, p2: Point) => {
-    const a = p2.y - p1.y;
-    const b = p1.x - p2.x;
-    const c = p2.x * p1.y - p1.x * p2.y;
-    return { a, b, c };
-  };
-  const meanDist = ({ a, b, c }: { a: number; b: number; c: number }) => {
-    const norm = Math.hypot(a, b);
-    return (
-      hull.reduce((sum, p) => sum + Math.abs(a * p.x + b * p.y + c) / norm, 0) /
-      hull.length
-    );
-  };
+  // 4) build segments using weighted cost comparison
+  const DIST_WEIGHT = 1;
+  const ANGLE_WEIGHT = 1;
+  const span = Math.hypot(svgWidth, svgHeight);
 
-  // Build segments for both sides
-  // Build vertical boundaries at exact hull‐extrema X positions
   const segments: LineSegment[] = extremes.map(({ key, idx }) => {
-    // Always draw a full-height line at the hull extreme’s X
-    const xPx = hull[idx].x * svgWidth;
+    const p0 = hull[idx];
+    const pCW = hull[(idx + 1) % hull.length];
+    const pCCW = hull[(idx - 1 + hull.length) % hull.length];
+
+    // helper to fit line in ax+by+c=0
+    const makeLine = (p1: Point, p2: Point) => {
+      const a = p2.y - p1.y;
+      const b = p1.x - p2.x;
+      const c = p2.x * p1.y - p1.x * p2.y;
+      return { a, b, c };
+    };
+    const lineCW = makeLine(p0, pCW);
+    const lineCCW = makeLine(p0, pCCW);
+
+    // mean perpendicular-distance error
+    const meanDist = ({ a, b, c }: { a: number; b: number; c: number }) => {
+      const norm = Math.hypot(a, b);
+      return (
+        hull.reduce(
+          (sum, p) => sum + Math.abs(a * p.x + b * p.y + c) / norm,
+          0
+        ) / hull.length
+      );
+    };
+    const distCW = meanDist(lineCW);
+    const distCCW = meanDist(lineCCW);
+
+    // compute neighbor angles
+    const diffAngle = (p: Point) => {
+      const theta = Math.atan2(p.y - p0.y, p.x - p0.x);
+      const d = Math.abs(theta - angleRad);
+      return Math.min(d, 2 * Math.PI - d);
+    };
+    const diffCW = diffAngle(pCW);
+    const diffCCW = diffAngle(pCCW);
+
+    // weighted cost and pick
+    const costCW = DIST_WEIGHT * distCW + ANGLE_WEIGHT * diffCW;
+    const costCCW = DIST_WEIGHT * distCCW + ANGLE_WEIGHT * diffCCW;
+    const pB = costCW < costCCW ? pCW : pCCW;
+
+    // extend line full-height through p0->pB
+    const dx = (pB.x - p0.x) * svgWidth;
+    const dy = (pB.y - p0.y) * svgHeight;
+    const m = dx / dy;
+    const c = p0.x * svgWidth - m * (p0.y * svgHeight);
+
     return {
       key,
-      x1: xPx,
+      x1: c,
       y1: 0,
-      x2: xPx,
-      y2: svgHeight,
+      x2: m * span + c,
+      y2: span,
     };
   });
 
-  // Animate both boundaries
+  // animate and render
   const transitions = useTransition(segments, {
     keys: (seg) => seg.key,
     from: { opacity: 0, strokeDasharray: "12,8", strokeDashoffset: 20 },
@@ -1570,6 +1621,26 @@ const AnimatedPrimaryBoundaryLines: React.FC<
 
   return (
     <g>
+      {segments.map((seg) => (
+        <React.Fragment key={`pts-${seg.key}`}>
+          <circle
+            cx={seg.x1}
+            cy={seg.y1}
+            r={8}
+            fill="var(--color-green)"
+            stroke="white"
+            strokeWidth="2"
+          />
+          <circle
+            cx={seg.x2}
+            cy={seg.y2}
+            r={8}
+            fill="var(--color-green)"
+            stroke="white"
+            strokeWidth="2"
+          />
+        </React.Fragment>
+      ))}
       {transitions((style, seg) => (
         <animated.line
           key={seg.key}
@@ -1608,6 +1679,7 @@ const AnimatedReceiptFromHull: React.FC<AnimatedReceiptFromHullProps> = ({
   // Compute hull centroid
   const hullCentroid = computeHullCentroid(hull);
 
+  console.log(`lines[0]`);
   // Use the actual angle data from OCR API (more accurate than manual calculation)
   const avgAngle =
     lines.reduce((sum, line) => sum + line.angle_degrees, 0) / lines.length;
