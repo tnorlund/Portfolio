@@ -54,3 +54,13 @@ This document outlines the step-by-step process used to detect and draw the rece
 ### Alternative Approaches
 
 _(List the other approaches here if desired)_
+### Test Coverage
+
+The accompanying `PhotoReceiptBoundingBox.test.tsx` verifies that each animated overlay receives the expected geometry derived from fixture data. We mock the animation components to plain `<g>` elements so their invocation props can be inspected. By recomputing the convex hull, centroid and receipt tilt, the test ensures the calculations and render sequence match the algorithm described above. This guards against subtle regressions that might otherwise break the visual demonstration.
+
+A separate `receipt.fixture.test.ts` exercises the geometry utilities directly using the same fixture payload. It confirms the hull size, centroid and final tilt match predetermined values so the underlying math remains stable independent of the React component.
+
+An integration test under `__tests__/integration` loads the saved API payload via
+`fetch` and confirms the bounding box overlays render when real data is
+returned. This ensures the demo continues to function when API responses are
+wired through the hooks.
