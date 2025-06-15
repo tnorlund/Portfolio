@@ -2,6 +2,8 @@ import {
   findHullExtentsRelativeToCentroid,
   computeReceiptBoxFromHull,
   findBoundaryLinesWithSkew,
+  computeFinalReceiptTilt,
+  findHullExtremesAlongAngle,
   estimateReceiptPolygonFromLines,
 } from "./receipt";
 import type { Line, Point } from "../types/api";
@@ -73,6 +75,21 @@ describe("receipt utilities", () => {
     expect(Array.isArray(result.rightEdgePoints)).toBe(true);
     expect(typeof result.leftBoundaryAngle).toBe("number");
     expect(typeof result.rightBoundaryAngle).toBe("number");
+  });
+
+  test("computeFinalReceiptTilt returns expected angle", () => {
+    const angle = computeFinalReceiptTilt(lines as any, hull, centroid, 0);
+    expect(angle).toBeCloseTo(0);
+  });
+
+  test("findHullExtremesAlongAngle finds extremes", () => {
+    const { leftPoint, rightPoint } = findHullExtremesAlongAngle(
+      hull,
+      centroid,
+      0,
+    );
+    expect(leftPoint.x).toBeCloseTo(0);
+    expect(rightPoint.x).toBeCloseTo(2);
   });
 });
 

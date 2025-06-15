@@ -27,6 +27,7 @@ import {
   findHullExtentsRelativeToCentroid,
   computeReceiptBoxFromHull,
   findLineEdgesAtPrimaryExtremes,
+  computeFinalReceiptTilt,
 } from "../../../utils/receipt";
 
 // Define simple point and line-segment shapes
@@ -87,6 +88,15 @@ const PhotoReceiptBoundingBox: React.FC = () => {
   // Compute hull centroid for animation
   const hullCentroid =
     convexHullPoints.length > 0 ? computeHullCentroid(convexHullPoints) : null;
+
+  const avgAngle =
+    lines.length > 0
+      ? lines.reduce((sum, l) => sum + l.angle_degrees, 0) / lines.length
+      : 0;
+  const finalAngle =
+    hullCentroid && convexHullPoints.length > 0
+      ? computeFinalReceiptTilt(lines, convexHullPoints, hullCentroid, avgAngle)
+      : avgAngle;
 
   // Animate line bounding boxes using a transition.
   const lineTransitions = useTransition(inView ? lines : [], {
@@ -261,10 +271,7 @@ const PhotoReceiptBoundingBox: React.FC = () => {
                     lines={lines}
                     hull={convexHullPoints}
                     centroid={hullCentroid}
-                    avgAngle={
-                      lines.reduce((sum, line) => sum + line.angle_degrees, 0) /
-                      lines.length
-                    }
+                    avgAngle={finalAngle}
                     svgWidth={svgWidth}
                     svgHeight={svgHeight}
                     delay={extentsDelay + 1000}
@@ -281,10 +288,7 @@ const PhotoReceiptBoundingBox: React.FC = () => {
                     lines={lines}
                     hull={convexHullPoints}
                     centroid={hullCentroid}
-                    avgAngle={
-                      lines.reduce((sum, line) => sum + line.angle_degrees, 0) /
-                      lines.length
-                    }
+                    avgAngle={finalAngle}
                     svgWidth={svgWidth}
                     svgHeight={svgHeight}
                     delay={extentsDelay + 1500}
@@ -300,10 +304,7 @@ const PhotoReceiptBoundingBox: React.FC = () => {
                     key={`primary-boundary-lines-${resetKey}`}
                     hull={convexHullPoints}
                     centroid={hullCentroid}
-                    avgAngle={
-                      lines.reduce((sum, line) => sum + line.angle_degrees, 0) /
-                      lines.length
-                    }
+                    avgAngle={finalAngle}
                     svgWidth={svgWidth}
                     svgHeight={svgHeight}
                     delay={extentsDelay + 2000}

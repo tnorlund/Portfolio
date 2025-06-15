@@ -1,4 +1,6 @@
 import type { Line, Point } from "../../types/api";
+import { theilSen } from "../geometry";
+import { findLineEdgesAtSecondaryExtremes } from "../geometry/receipt";
 
 export const findHullExtentsRelativeToCentroid = (
   hull: Point[],
@@ -173,4 +175,70 @@ export const findLineEdgesAtPrimaryExtremes = (
     leftEdge: leftEdgePoints,
     rightEdge: rightEdgePoints,
   };
+};
+
+export const computeFinalReceiptTilt = (
+  lines: Line[],
+  hull: Point[],
+  centroid: Point,
+  avgAngle: number,
+): number => {
+  if (lines.length === 0 || hull.length < 3) return avgAngle;
+
+  const { topEdge, bottomEdge } = findLineEdgesAtSecondaryExtremes(
+    lines,
+    hull,
+    centroid,
+    avgAngle,
+  );
+
+  const angleFromPoints = (pts: Point[]): number | null => {
+    if (pts.length < 2) return null;
+    const { slope } = theilSen(pts);
+    return (Math.atan2(1, slope) * 180) / Math.PI;
+  };
+
+  const angles: number[] = [];
+  const aTop = angleFromPoints(topEdge);
+  const aBottom = angleFromPoints(bottomEdge);
+  if (aTop !== null) angles.push(aTop);
+  if (aBottom !== null) angles.push(aBottom);
+
+  if (angles.length === 0) return avgAngle;
+  return angles.reduce((s, a) => s + a, 0) / angles.length;
+};
+
+export const findHullExtremesAlongAngle = (
+  hull: Point[],
+  centroid: Point,
+  angleDeg: number,
+): { leftPoint: Point; rightPoint: Point } => {
+  if (hull.length === 0) {
+    return { leftPoint: centroid, rightPoint: centroid };
+  }
+
+  const rad = (angleDeg * Math.PI) / 180;
+  const cosA = Math.cos(rad);
+  const sinA = Math.sin(rad);
+
+  let minProj = Infinity,
+    maxProj = -Infinity;
+  let leftPoint = hull[0],
+    rightPoint = hull[0];
+
+  hull.forEach(p => {
+    const rx = p.x - centroid.x;
+    const ry = p.y - centroid.y;
+    const proj = rx * cosA + ry * sinA;
+    if (proj < minProj) {
+      minProj = proj;
+      leftPoint = p;
+    }
+    if (proj > maxProj) {
+      maxProj = proj;
+      rightPoint = p;
+    }
+  });
+
+  return { leftPoint, rightPoint };
 };
