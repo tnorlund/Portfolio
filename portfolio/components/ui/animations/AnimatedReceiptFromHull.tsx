@@ -52,12 +52,12 @@ const AnimatedReceiptFromHull: React.FC<AnimatedReceiptFromHullProps> = ({
 
   if (receiptCorners.length !== 4) return null;
 
-  const svgCorners = receiptCorners.map(corner => ({
+  const svgCorners = receiptCorners.map((corner) => ({
     x: corner.x * svgWidth,
     y: (1 - corner.y) * svgHeight,
   }));
 
-  const points = svgCorners.map(c => `${c.x},${c.y}`).join(" ");
+  const points = svgCorners.map((c) => `${c.x},${c.y}`).join(" ");
 
   const receiptCentroidX = svgCorners.reduce((sum, c) => sum + c.x, 0) / 4;
   const receiptCentroidY = svgCorners.reduce((sum, c) => sum + c.y, 0) / 4;

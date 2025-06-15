@@ -25,7 +25,7 @@ export const findBoundaryLinesWithSkew = (
   const primaryAxisAngle = angleRad;
   const secondaryAxisAngle = primaryAxisAngle + Math.PI / 2;
 
-  const lineProjections = lines.map(line => {
+  const lineProjections = lines.map((line) => {
     const lineCenterX =
       (line.top_left.x +
         line.top_right.x +
@@ -55,10 +55,10 @@ export const findBoundaryLinesWithSkew = (
   const boundaryCount = Math.max(1, Math.ceil(lines.length * 0.2));
   const leftBoundaryLines = lineProjections
     .slice(0, boundaryCount)
-    .map(p => p.line);
+    .map((p) => p.line);
   const rightBoundaryLines = lineProjections
     .slice(-boundaryCount)
-    .map(p => p.line);
+    .map((p) => p.line);
 
   const leftBoundaryAngle =
     leftBoundaryLines.reduce((sum, line) => sum + line.angle_degrees, 0) /
@@ -69,7 +69,7 @@ export const findBoundaryLinesWithSkew = (
 
   const leftEdgePoints: Point[] = [];
   const rightEdgePoints: Point[] = [];
-  leftBoundaryLines.forEach(line => {
+  leftBoundaryLines.forEach((line) => {
     const leftX = Math.min(line.top_left.x, line.bottom_left.x);
     leftEdgePoints.push(
       { x: leftX, y: line.top_left.y },
@@ -77,7 +77,7 @@ export const findBoundaryLinesWithSkew = (
     );
   });
 
-  rightBoundaryLines.forEach(line => {
+  rightBoundaryLines.forEach((line) => {
     const rightX = Math.max(line.top_right.x, line.bottom_right.x);
     rightEdgePoints.push(
       { x: rightX, y: line.top_right.y },
