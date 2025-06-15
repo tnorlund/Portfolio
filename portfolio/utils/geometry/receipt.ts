@@ -1,6 +1,18 @@
 import type { Line } from "../../types/api";
 import { Point, theilSen } from "./basic";
 
+/**
+ * Determine a bounding box from a skewed hull by estimating the
+ * vertical extents after de-skewing.
+ *
+ * @param hull - Convex hull points of the receipt.
+ * @param cx - X‑coordinate of the hull centroid.
+ * @param cy - Y‑coordinate of the hull centroid.
+ * @param rotationDeg - Rotation angle in degrees used to deskew
+ * the hull.
+ * @returns Four points representing the receipt box in clockwise
+ * order or `null` when the hull is empty.
+ */
 export const computeReceiptBoxFromSkewedExtents = (
   hull: Point[],
   cx: number,
@@ -60,6 +72,18 @@ export const computeReceiptBoxFromSkewedExtents = (
   const corners = [leftTopPoint, rightTopPoint, rightBottomPoint, leftBottomPoint].map(inverse);
   return corners.map(p => ({ x: Math.round(p.x), y: Math.round(p.y) }));
 };
+/**
+ * Sample points from a convex hull to estimate the left or right edge
+ * as a straight line.
+ *
+ * @param hull - Polygon points representing the convex hull.
+ * @param bins - Number of vertical bins used to sample representative
+ * points.
+ * @param pick - Which side of the hull to estimate: `"left"` or
+ * `"right"`.
+ * @returns The line through the sampled points or `null` when not
+ * enough samples are available.
+ */
 export const computeHullEdge = (
   hull: Point[],
   bins = 12,
@@ -83,6 +107,15 @@ export const computeHullEdge = (
   };
 };
 
+/**
+ * Estimate a straight edge from OCR line data.
+ *
+ * @param lines - Detected OCR lines for the image.
+ * @param pick - Whether to compute the `"left"` or `"right"` edge.
+ * @param bins - Number of vertical bins to reduce the point cloud.
+ * @returns The approximated edge or `null` if there are not enough
+ * samples.
+ */
 export const computeEdge = (
   lines: Line[],
   pick: "left" | "right",
@@ -117,6 +150,17 @@ export const computeEdge = (
   };
 };
 
+/**
+ * Locate points along the top and bottom edges of the text lines at the
+ * extreme secondary-axis positions.
+ *
+ * @param lines - OCR lines used to derive the edges.
+ * @param hull - Convex hull of all line points.
+ * @param centroid - Centroid of the hull.
+ * @param avgAngle - Average rotation angle of the text lines in
+ * degrees.
+ * @returns Arrays of points describing the top and bottom edges.
+ */
 export const findLineEdgesAtSecondaryExtremes = (
   lines: Line[],
   hull: Point[],
@@ -216,6 +260,17 @@ export const findLineEdgesAtSecondaryExtremes = (
   return { topEdge: topEdgePoints, bottomEdge: bottomEdgePoints };
 };
 
+/**
+ * Build a four‑point bounding box for a receipt based on estimated
+ * line edges.
+ *
+ * @param lines - OCR lines from which the edges are derived.
+ * @param hull - Convex hull of all line corners.
+ * @param centroid - Centroid of the hull.
+ * @param avgAngle - Average orientation of the lines in degrees.
+ * @returns The receipt polygon defined in clockwise order. Returns an
+ * empty array when no lines are supplied.
+ */
 export const computeReceiptBoxFromLineEdges = (
   lines: Line[],
   hull: Point[],

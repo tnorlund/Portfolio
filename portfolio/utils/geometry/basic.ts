@@ -1,9 +1,22 @@
+/**
+ * Represents a 2D coordinate used by the geometry utilities.
+ */
 export interface Point {
+  /** Horizontal coordinate in normalized [0,1] space. */
   x: number;
+  /** Vertical coordinate in normalized [0,1] space. */
   y: number;
 }
 
 
+/**
+ * Compute the convex hull of a set of points using a monotone chain
+ * algorithm.
+ *
+ * @param points - Points to compute the hull for.
+ * @returns An array of points describing the outer hull in
+ * counter‑clockwise order.
+ */
 export const convexHull = (points: Point[]): Point[] => {
   const sorted = Array.from(new Set(points.map(p => `${p.x},${p.y}`))).map(s => {
     const [x, y] = s.split(',').map(Number);
@@ -37,6 +50,15 @@ export const convexHull = (points: Point[]): Point[] => {
   return lower.concat(upper);
 };
 
+/**
+ * Compute the centroid of a polygon described by its convex hull.
+ *
+ * The function falls back to simple averages for degenerate cases such
+ * as a hull with less than three points.
+ *
+ * @param hull - Polygon vertices in counter‑clockwise order.
+ * @returns The centroid point of the polygon.
+ */
 export const computeHullCentroid = (hull: Point[]): Point => {
   const n = hull.length;
   if (n === 0) return { x: 0, y: 0 };
@@ -64,6 +86,14 @@ export const computeHullCentroid = (hull: Point[]): Point => {
   cy /= 6 * area;
   return { x: cx, y: cy };
 };
+/**
+ * Perform Theil–Sen regression to estimate a line through a set of
+ * points.
+ *
+ * @param pts - Sample points where `x` is the independent variable and
+ * `y` is the dependent variable.
+ * @returns The estimated slope and intercept of the regression line.
+ */
 export const theilSen = (pts: Point[]) => {
   if (pts.length < 2) return { slope: 0, intercept: pts[0] ? pts[0].y : 0 };
 

@@ -1,5 +1,15 @@
 import type { Line, Point } from "../../types/api";
 
+/**
+ * Get the extreme coordinates of a convex hull relative to its centroid.
+ *
+ * The hull is translated so that the centroid is at the origin. The
+ * returned values include both the minimum and maximum offsets as well
+ * as the corresponding hull points.
+ *
+ * @param hull - Convex hull points of the receipt.
+ * @param centroid - Centroid of the hull used for translation.
+ */
 export const findHullExtentsRelativeToCentroid = (
   hull: Point[],
   centroid: Point,
@@ -56,6 +66,18 @@ export const findHullExtentsRelativeToCentroid = (
   };
 };
 
+/**
+ * Compute a bounding box that best fits a skewed receipt hull.
+ *
+ * The hull is rotated so the receipt is axis aligned. After finding the
+ * minimum rectangle in that orientation, the corners are rotated back to
+ * the original space.
+ *
+ * @param hull - Convex hull of receipt points.
+ * @param centroid - Centroid of the hull.
+ * @param avgAngle - Average text angle in degrees used to deskew the hull.
+ * @returns Polygon describing the receipt in clockwise order.
+ */
 export const computeReceiptBoxFromHull = (
   hull: Point[],
   centroid: Point,
@@ -102,6 +124,20 @@ export const computeReceiptBoxFromHull = (
   }));
 };
 
+/**
+ * Gather points along the left and right edges of text lines that sit at
+ * the outermost positions along the primary axis.
+ *
+ * This is used when the receipt is skewed: lines are projected onto the
+ * secondary axis to determine which belong to the extreme left and right
+ * boundaries.
+ *
+ * @param lines - OCR lines detected on the receipt image.
+ * @param _hull - Unused hull points of the receipt.
+ * @param centroid - Centroid of the receipt hull.
+ * @param avgAngle - Average text angle in degrees.
+ * @returns Arrays of points approximating the left and right edges.
+ */
 export const findLineEdgesAtPrimaryExtremes = (
   lines: Line[],
   _hull: Point[],
