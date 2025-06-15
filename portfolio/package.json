@@ -14,6 +14,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:ci": "jest --ci --coverage --watchAll=false",
+    "type-check": "tsc --noEmit",
     "monitor": "node monitor-project.js",
     "monitor:watch": "node monitor-project.js --watch",
     "optimize-image": "node scripts/optimize-images.js"
@@ -33,6 +38,7 @@
   "devDependencies": {
     "@babel/plugin-syntax-flow": "^7.26.0",
     "@eslint/eslintrc": "^3.1.0",
+    "@jest/types": "^30.0.0",
     "@modelcontextprotocol/sdk": "^0.4.0",
     "@next/bundle-analyzer": "^15.3.3",
     "@testing-library/dom": "^10.4.0",
@@ -44,6 +50,9 @@
     "@types/react": "^18.0.0",
     "@types/react-dom": "^18.0.0",
     "eslint": "^9.27.0",
+    "eslint-config-next": "^15.3.3",
+    "jest": "^30.0.0",
+    "jest-environment-jsdom": "^30.0.0",
     "typescript": "^4.4.2",
     "web-vitals": "^2.1.0"
   }

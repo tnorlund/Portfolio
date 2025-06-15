@@ -21,9 +21,14 @@
 
 - Run tests using `jest` and `@testing-library/react`:
   - All tests: `npm test`
-  - Watch mode: `npm test -- --watch`
-  - Coverage: `npm test -- --coverage`
+  - Watch mode: `npm run test:watch`
+  - Coverage: `npm run test:coverage`
+  - CI mode: `npm run test:ci`
   - Specific test file: `npm test -- path/to/test.tsx`
+- Run linting with `next lint`:
+  - Check all files: `npm run lint`
+  - Fix auto-fixable issues: `npm run lint -- --fix`
+- Type checking: `npm run type-check`
 
 #### Test Categories
 
@@ -39,36 +44,44 @@
    - Test pure functions and utilities
    - Located in `portfolio/utils/` and `portfolio/services/`
    - Focus on input/output behavior and edge cases
-   - Example: Testing image format detection utilities
+   - Example: Testing geometry calculations in `utils/geometry.ts`
 
 3. **Integration Tests** (`*.integration.test.tsx`):
    - Test component interactions and API calls
    - Use `msw` for mocking API responses
-   - Located in `portfolio/tests/integration/`
+   - Located in `portfolio/__tests__/integration/`
    - Example: Testing receipt upload flow
 
 #### Testing Guidelines
 
 - Write tests before implementing new features (TDD)
-- Maintain test coverage above 80% for critical paths
+- **Coverage Requirements**: Maintain 70% coverage for statements, branches, functions, and lines
 - Mock external dependencies (API calls, browser APIs)
 - Use snapshot testing sparingly, only for stable UI components
 - Test error states and edge cases
 - Use meaningful test descriptions that explain the behavior being tested
+- Place test files in `__tests__/` directories or alongside source files with `.test.ts/.tsx` extension
+
+#### Common ESLint Issues to Fix
+
+- **React Hooks Rules**: Never call hooks conditionally - always call them at the top level
+- **Unescaped Entities**: Use `&apos;` for apostrophes and `&quot;` for quotes in JSX text
+- **Next.js Image Optimization**: Use `next/image` instead of `<img>` tags for better performance
+- **Missing Dependencies**: Include all dependencies in useEffect dependency arrays
 
 #### When to Run Tests
 
-- **Pre-commit**: Run unit tests and type checking
+- **Pre-commit**: Run unit tests, type checking, and linting
   ```bash
   npm run lint && npm run type-check && npm test
   ```
-- **CI/CD**: Run all tests including integration tests
+- **CI/CD**: Run all tests including integration tests with coverage
   ```bash
   npm run test:ci
   ```
 - **Local Development**: Run tests in watch mode
   ```bash
-  npm test -- --watch
+  npm run test:watch
   ```
 
 ## Commit and PR Guidelines
