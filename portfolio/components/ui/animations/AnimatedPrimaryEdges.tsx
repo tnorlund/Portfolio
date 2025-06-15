@@ -1,7 +1,7 @@
 import React from "react";
 import { useTransition, animated } from "@react-spring/web";
 import type { Line, Point } from "../../../types/api";
-import { findBoundaryLinesWithSkew } from "../../../utils/receiptGeometry";
+import { findBoundaryLinesWithSkew } from "../../../utils/receipt";
 
 interface AnimatedPrimaryEdgesProps {
   lines: Line[];
