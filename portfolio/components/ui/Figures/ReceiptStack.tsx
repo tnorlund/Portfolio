@@ -4,83 +4,14 @@ import { api } from "../../../services/api";
 import { Receipt, ReceiptApiResponse } from "../../../types/api";
 import useOptimizedInView from "../../../hooks/useOptimizedInView";
 import { useTransition, animated } from "@react-spring/web";
+import {
+  detectImageFormatSupport,
+  getBestImageUrl,
+} from "../../../utils/imageFormat";
 
 const isDevelopment = process.env.NODE_ENV === "development";
 
-// Browser format detection utilities
-const detectImageFormatSupport = (): Promise<{
-  supportsAVIF: boolean;
-  supportsWebP: boolean;
-}> => {
-  return new Promise((resolve) => {
-    const canvas = document.createElement("canvas");
-    canvas.width = 1;
-    canvas.height = 1;
-    const ctx = canvas.getContext("2d");
 
-    if (!ctx) {
-      resolve({ supportsAVIF: false, supportsWebP: false });
-      return;
-    }
-
-    // Test WebP support
-    let supportsWebP = false;
-    try {
-      const webpDataUrl = canvas.toDataURL("image/webp", 0.5);
-      supportsWebP = webpDataUrl.indexOf("data:image/webp") === 0;
-
-      // Fallback to browser detection if canvas test fails
-      if (!supportsWebP) {
-        const userAgent = navigator.userAgent;
-        supportsWebP = !!(
-          userAgent.includes("Chrome") ||
-          userAgent.includes("Firefox") ||
-          (userAgent.includes("Safari") && !userAgent.includes("Chrome"))
-        );
-      }
-    } catch (error) {
-      supportsWebP = false;
-    }
-
-    // Test AVIF support
-    const testAVIF = () => {
-      return new Promise<boolean>((resolveAVIF) => {
-        const img = new Image();
-        img.onload = () => resolveAVIF(true);
-        img.onerror = () => resolveAVIF(false);
-        img.src =
-          "data:image/avif;base64,AAAAIGZ0eXBhdmlmAAAAAGF2aWZtaWYxbWlhZk1BMUIAAADybWV0YQAAAAAAAAAoaGRscgAAAAAAAAAAcGljdAAAAAAAAAAAAAAAAGxpYmF2aWYAAAAADnBpdG0AAAAAAAEAAAAeaWxvYwAAAABEAAABAAEAAAABAAABGgAAAB0AAAAoaWluZgAAAAAAAQAAABppbmZlAgAAAAABAABhdjAxQ29sb3IAAAAAamlwcnAAAABLaXBjbwAAABRpc3BlAAAAAAAAAAEAAAABAAAAEHBpeGkAAAAAAwgICAAAAAxhdjFDgQ0MAAAAABNjb2xybmNseAACAAIAAYAAAAAXaXBtYQAAAAAAAAABAAEEAQKDBAAAACVtZGF0EgAKCBgABogQEAwgMg8f8D///8WfhwB8+ErK42A=";
-      });
-    };
-
-    testAVIF().then((supportsAVIF) => {
-      resolve({ supportsAVIF, supportsWebP });
-    });
-  });
-};
-
-// Get the best available image URL based on browser support and available formats
-const getBestReceiptUrl = (
-  receipt: Receipt,
-  formatSupport: { supportsAVIF: boolean; supportsWebP: boolean }
-): string => {
-  const baseUrl = isDevelopment
-    ? "https://dev.tylernorlund.com"
-    : "https://www.tylernorlund.com";
-
-  // Try AVIF first (best compression)
-  if (formatSupport.supportsAVIF && receipt.cdn_avif_s3_key) {
-    return `${baseUrl}/${receipt.cdn_avif_s3_key}`;
-  }
-
-  // Try WebP second (good compression, wide support)
-  if (formatSupport.supportsWebP && receipt.cdn_webp_s3_key) {
-    return `${baseUrl}/${receipt.cdn_webp_s3_key}`;
-  }
-
-  // Fallback to JPEG (universal support)
-  return `${baseUrl}/${receipt.cdn_s3_key}`;
-};
 
 // Component with automatic fallback handling
 interface ReceiptImageProps {
@@ -102,7 +33,7 @@ const ReceiptImage: React.FC<ReceiptImageProps> = ({
   // Set initial URL using the same logic as pre-loading
   useEffect(() => {
     if (formatSupport && !currentSrc) {
-      const bestUrl = getBestReceiptUrl(receipt, formatSupport);
+      const bestUrl = getBestImageUrl(receipt, formatSupport);
       setCurrentSrc(bestUrl);
       setHasErrored(false);
     }
@@ -349,7 +280,7 @@ const ReceiptStack: React.FC = () => {
 
     const imagePromises = receiptsToLoad.map((receipt, index) => {
       return new Promise<void>((resolve) => {
-        const imageUrl = getBestReceiptUrl(receipt, formatSupport);
+        const imageUrl = getBestImageUrl(receipt, formatSupport);
         const img = new Image();
         img.crossOrigin = "anonymous";
 
