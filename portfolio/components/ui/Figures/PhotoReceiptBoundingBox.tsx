@@ -1,11 +1,9 @@
 import React, { useEffect, useState } from "react";
 
-import {
-  type Line,
-  type Point as ApiPoint,
-} from "../../../types/api";
+import { type Line, type Point as ApiPoint } from "../../../types/api";
 import { useTransition, animated } from "@react-spring/web";
 import AnimatedLineBox from "../animations/AnimatedLineBox";
+import useOptimizedInView from "../../../hooks/useOptimizedInView";
 import {
   AnimatedConvexHull,
   AnimatedHullCentroid,
@@ -13,7 +11,7 @@ import {
   AnimatedPrimaryEdges,
   AnimatedSecondaryBoundaryLines,
   AnimatedPrimaryBoundaryLines,
-  AnimatedReceiptFromHull
+  AnimatedReceiptFromHull,
 } from "../animations";
 import { getBestImageUrl } from "../../../utils/imageFormat";
 import useImageDetails from "../../../hooks/useImageDetails";
@@ -44,12 +42,9 @@ type LineSegment = {
   key: string;
 };
 
-
-
 /**
  * Find the top and bottom edges of lines at the secondary axis extremes
  */
-
 
 /**
  * Display a random photo image with animated overlays that illustrate
@@ -59,12 +54,12 @@ const PhotoReceiptBoundingBox: React.FC = () => {
   const { imageDetails, formatSupport, error } = useImageDetails("PHOTO");
   const [isClient, setIsClient] = useState(false);
   const [resetKey, setResetKey] = useState(0);
+  const [ref, inView] = useOptimizedInView({ threshold: 0.3 });
 
   // Ensure client-side hydration consistency
   useEffect(() => {
     setIsClient(true);
   }, []);
-
 
   // Reserve default dimensions while waiting for the API.
   const defaultSvgWidth = 400;
@@ -96,7 +91,7 @@ const PhotoReceiptBoundingBox: React.FC = () => {
     convexHullPoints.length > 0 ? computeHullCentroid(convexHullPoints) : null;
 
   // Animate line bounding boxes using a transition.
-  const lineTransitions = useTransition(lines, {
+  const lineTransitions = useTransition(inView ? lines : [], {
     // Include resetKey in the key so that each item gets a new key on reset.
     keys: (line) => `${resetKey}-${line.line_id}`,
     from: { opacity: 0, transform: "scale(0.8)" },
@@ -145,6 +140,12 @@ const PhotoReceiptBoundingBox: React.FC = () => {
   const displayWidth = svgWidth * scaleFactor;
   const displayHeight = svgHeight * scaleFactor;
 
+  useEffect(() => {
+    if (!inView) {
+      setResetKey((k) => k + 1);
+    }
+  }, [inView]);
+
   if (error) {
     return (
       <div
@@ -161,7 +162,7 @@ const PhotoReceiptBoundingBox: React.FC = () => {
   }
 
   return (
-    <div>
+    <div ref={ref}>
       <div
         style={{
           display: "flex",
@@ -218,7 +219,7 @@ const PhotoReceiptBoundingBox: React.FC = () => {
               })}
 
               {/* Render animated convex hull */}
-              {convexHullPoints.length > 0 && (
+              {inView && convexHullPoints.length > 0 && (
                 <AnimatedConvexHull
                   key={`convex-hull-${resetKey}`}
                   hullPoints={convexHullPoints}
@@ -229,7 +230,7 @@ const PhotoReceiptBoundingBox: React.FC = () => {
               )}
 
               {/* Render animated hull centroid */}
-              {hullCentroid && (
+              {inView && hullCentroid && (
                 <AnimatedHullCentroid
                   key={`hull-centroid-${resetKey}`}
                   centroid={hullCentroid}
@@ -240,7 +241,7 @@ const PhotoReceiptBoundingBox: React.FC = () => {
               )}
 
               {/* Render animated oriented axes */}
-              {convexHullPoints.length > 0 && hullCentroid && (
+              {inView && convexHullPoints.length > 0 && hullCentroid && (
                 <AnimatedOrientedAxes
                   key={`oriented-axes-${resetKey}`}
                   hull={convexHullPoints}
@@ -253,54 +254,63 @@ const PhotoReceiptBoundingBox: React.FC = () => {
               )}
 
               {/* Render line edges at primary extremes */}
-              {convexHullPoints.length > 0 && hullCentroid && lines.length > 0 && (
-                <AnimatedPrimaryEdges
-                  key={`primary-edges-${resetKey}`}
-                  lines={lines}
-                  hull={convexHullPoints}
-                  centroid={hullCentroid}
-                  avgAngle={
-                    lines.reduce((sum, line) => sum + line.angle_degrees, 0) /
-                    lines.length
-                  }
-                  svgWidth={svgWidth}
-                  svgHeight={svgHeight}
-                  delay={extentsDelay + 1000}
-                />
-              )}
+              {inView &&
+                convexHullPoints.length > 0 &&
+                hullCentroid &&
+                lines.length > 0 && (
+                  <AnimatedPrimaryEdges
+                    key={`primary-edges-${resetKey}`}
+                    lines={lines}
+                    hull={convexHullPoints}
+                    centroid={hullCentroid}
+                    avgAngle={
+                      lines.reduce((sum, line) => sum + line.angle_degrees, 0) /
+                      lines.length
+                    }
+                    svgWidth={svgWidth}
+                    svgHeight={svgHeight}
+                    delay={extentsDelay + 1000}
+                  />
+                )}
 
               {/* Render extended yellow boundary lines */}
-              {convexHullPoints.length > 0 && hullCentroid && lines.length > 0 && (
-                <AnimatedSecondaryBoundaryLines
-                  key={`secondary-boundary-lines-${resetKey}`}
-                  lines={lines}
-                  hull={convexHullPoints}
-                  centroid={hullCentroid}
-                  avgAngle={
-                    lines.reduce((sum, line) => sum + line.angle_degrees, 0) /
-                    lines.length
-                  }
-                  svgWidth={svgWidth}
-                  svgHeight={svgHeight}
-                  delay={extentsDelay + 1500}
-                />
-              )}
+              {inView &&
+                convexHullPoints.length > 0 &&
+                hullCentroid &&
+                lines.length > 0 && (
+                  <AnimatedSecondaryBoundaryLines
+                    key={`secondary-boundary-lines-${resetKey}`}
+                    lines={lines}
+                    hull={convexHullPoints}
+                    centroid={hullCentroid}
+                    avgAngle={
+                      lines.reduce((sum, line) => sum + line.angle_degrees, 0) /
+                      lines.length
+                    }
+                    svgWidth={svgWidth}
+                    svgHeight={svgHeight}
+                    delay={extentsDelay + 1500}
+                  />
+                )}
 
               {/* Render green left/right boundary lines using perpendicular projection */}
-              {convexHullPoints.length > 0 && hullCentroid && lines.length > 0 && (
-                <AnimatedPrimaryBoundaryLines
-                  key={`primary-boundary-lines-${resetKey}`}
-                  hull={convexHullPoints}
-                  centroid={hullCentroid}
-                  avgAngle={
-                    lines.reduce((sum, line) => sum + line.angle_degrees, 0) /
-                    lines.length
-                  }
-                  svgWidth={svgWidth}
-                  svgHeight={svgHeight}
-                  delay={extentsDelay + 2000}
-                />
-              )}
+              {inView &&
+                convexHullPoints.length > 0 &&
+                hullCentroid &&
+                lines.length > 0 && (
+                  <AnimatedPrimaryBoundaryLines
+                    key={`primary-boundary-lines-${resetKey}`}
+                    hull={convexHullPoints}
+                    centroid={hullCentroid}
+                    avgAngle={
+                      lines.reduce((sum, line) => sum + line.angle_degrees, 0) /
+                      lines.length
+                    }
+                    svgWidth={svgWidth}
+                    svgHeight={svgHeight}
+                    delay={extentsDelay + 2000}
+                  />
+                )}
 
               {/* Render animated receipt using proper algorithm */}
               {/* {convexHullPoints.length > 0 && lines.length > 0 && (

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 
 import { useSpring, useTransition, animated } from "@react-spring/web";
+import useOptimizedInView from "../../../hooks/useOptimizedInView";
 import AnimatedLineBox from "../animations/AnimatedLineBox";
 import { getBestImageUrl } from "../../../utils/imageFormat";
 import useImageDetails from "../../../hooks/useImageDetails";
@@ -81,6 +82,7 @@ const ImageBoundingBox: React.FC = () => {
   const { imageDetails, formatSupport, error } = useImageDetails();
   const [isClient, setIsClient] = useState(false);
   const [resetKey, setResetKey] = useState(0);
+  const [ref, inView] = useOptimizedInView({ threshold: 0.3 });
 
   // Ensure client-side hydration consistency
   useEffect(() => {
@@ -97,7 +99,7 @@ const ImageBoundingBox: React.FC = () => {
   const receipts = imageDetails?.receipts ?? [];
 
   // Animate word bounding boxes using a transition.
-  const lineTransitions = useTransition(lines, {
+  const lineTransitions = useTransition(inView ? lines : [], {
     // Include resetKey in the key so that each item gets a new key on reset.
     keys: (line) => `${resetKey}-${line.line_id}`,
     from: { opacity: 0, transform: "scale(0.8)" },
@@ -140,6 +142,12 @@ const ImageBoundingBox: React.FC = () => {
   const displayWidth = svgWidth * scaleFactor;
   const displayHeight = svgHeight * scaleFactor;
 
+  useEffect(() => {
+    if (!inView) {
+      setResetKey(k => k + 1);
+    }
+  }, [inView]);
+
   if (error) {
     return (
       <div
@@ -156,7 +164,7 @@ const ImageBoundingBox: React.FC = () => {
   }
 
   return (
-    <div>
+    <div ref={ref}>
       <div
         style={{
           display: "flex",
@@ -213,26 +221,28 @@ const ImageBoundingBox: React.FC = () => {
               })}
 
               {/* Render animated word centroids */}
-              {lines.map((line, index) => (
-                <AnimatedLineBox
-                  key={`${line.line_id}`}
-                  line={line}
-                  svgWidth={svgWidth}
-                  svgHeight={svgHeight}
-                  delay={index * 30}
-                />
-              ))}
+              {inView &&
+                lines.map((line, index) => (
+                  <AnimatedLineBox
+                    key={`${line.line_id}`}
+                    line={line}
+                    svgWidth={svgWidth}
+                    svgHeight={svgHeight}
+                    delay={index * 30}
+                  />
+                ))}
 
               {/* Render animated receipt bounding boxes and centroids */}
-              {receipts.map((receipt, index) => (
-                <AnimatedReceipt
-                  key={`receipt-${receipt.receipt_id}`}
-                  receipt={receipt}
-                  svgWidth={svgWidth}
-                  svgHeight={svgHeight}
-                  delay={totalDelayForLines + index * 100}
-                />
-              ))}
+              {inView &&
+                receipts.map((receipt, index) => (
+                  <AnimatedReceipt
+                    key={`receipt-${receipt.receipt_id}`}
+                    receipt={receipt}
+                    svgWidth={svgWidth}
+                    svgHeight={svgHeight}
+                    delay={totalDelayForLines + index * 100}
+                  />
+                ))}
             </svg>
           ) : (
             // While loading, show a "Loading" message centered in the reserved space.
