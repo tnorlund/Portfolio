@@ -9,6 +9,7 @@ import {
 } from "../../../types/api";
 import { useSpring, useTransition, animated } from "@react-spring/web";
 import AnimatedLineBox from "../animations/AnimatedLineBox";
+import useOptimizedInView from "../../../hooks/useOptimizedInView";
 import {
   detectImageFormatSupport,
   getBestImageUrl,
@@ -1264,6 +1265,7 @@ const PhotoReceiptBoundingBox: React.FC = () => {
   } | null>(null);
   const [isClient, setIsClient] = useState(false);
   const [resetKey, setResetKey] = useState(0);
+  const [ref, inView] = useOptimizedInView({ threshold: 0.3 });
 
   // Ensure client-side hydration consistency
   useEffect(() => {
@@ -1322,7 +1324,7 @@ const PhotoReceiptBoundingBox: React.FC = () => {
     convexHull.length > 0 ? computeHullCentroid(convexHull) : null;
 
   // Animate line bounding boxes using a transition.
-  const lineTransitions = useTransition(lines, {
+  const lineTransitions = useTransition(inView ? lines : [], {
     // Include resetKey in the key so that each item gets a new key on reset.
     keys: (line) => `${resetKey}-${line.line_id}`,
     from: { opacity: 0, transform: "scale(0.8)" },
@@ -1371,6 +1373,12 @@ const PhotoReceiptBoundingBox: React.FC = () => {
   const displayWidth = svgWidth * scaleFactor;
   const displayHeight = svgHeight * scaleFactor;
 
+  useEffect(() => {
+    if (!inView) {
+      setResetKey(k => k + 1);
+    }
+  }, [inView]);
+
   if (error) {
     return (
       <div
@@ -1387,7 +1395,7 @@ const PhotoReceiptBoundingBox: React.FC = () => {
   }
 
   return (
-    <div>
+    <div ref={ref}>
       <div
         style={{
           display: "flex",
@@ -1444,7 +1452,7 @@ const PhotoReceiptBoundingBox: React.FC = () => {
               })}
 
               {/* Render animated convex hull */}
-              {convexHull.length > 0 && (
+              {inView && convexHull.length > 0 && (
                 <AnimatedConvexHull
                   key={`convex-hull-${resetKey}`}
                   hullPoints={convexHull}
@@ -1455,7 +1463,7 @@ const PhotoReceiptBoundingBox: React.FC = () => {
               )}
 
               {/* Render animated hull centroid */}
-              {hullCentroid && (
+              {inView && hullCentroid && (
                 <AnimatedHullCentroid
                   key={`hull-centroid-${resetKey}`}
                   centroid={hullCentroid}
@@ -1466,7 +1474,7 @@ const PhotoReceiptBoundingBox: React.FC = () => {
               )}
 
               {/* Render animated oriented axes */}
-              {convexHull.length > 0 && hullCentroid && (
+              {inView && convexHull.length > 0 && hullCentroid && (
                 <AnimatedOrientedAxes
                   key={`oriented-axes-${resetKey}`}
                   hull={convexHull}
@@ -1479,7 +1487,7 @@ const PhotoReceiptBoundingBox: React.FC = () => {
               )}
 
               {/* Render line edges at primary extremes */}
-              {convexHull.length > 0 && hullCentroid && lines.length > 0 && (
+              {inView && convexHull.length > 0 && hullCentroid && lines.length > 0 && (
                 <AnimatedPrimaryEdges
                   key={`primary-edges-${resetKey}`}
                   lines={lines}
@@ -1496,7 +1504,7 @@ const PhotoReceiptBoundingBox: React.FC = () => {
               )}
 
               {/* Render extended yellow boundary lines */}
-              {convexHull.length > 0 && hullCentroid && lines.length > 0 && (
+              {inView && convexHull.length > 0 && hullCentroid && lines.length > 0 && (
                 <AnimatedSecondaryBoundaryLines
                   key={`secondary-boundary-lines-${resetKey}`}
                   lines={lines}
@@ -1513,7 +1521,7 @@ const PhotoReceiptBoundingBox: React.FC = () => {
               )}
 
               {/* Render green left/right boundary lines using perpendicular projection */}
-              {convexHull.length > 0 && hullCentroid && lines.length > 0 && (
+              {inView && convexHull.length > 0 && hullCentroid && lines.length > 0 && (
                 <AnimatedPrimaryBoundaryLines
                   key={`primary-boundary-lines-${resetKey}`}
                   hull={convexHull}

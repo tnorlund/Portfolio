@@ -1,6 +1,6 @@
 // ReceiptStack.tsx
 import React, { useEffect, useState, useCallback } from "react";
-import Image from "next/image";
+import NextImage from "next/image";
 import { api } from "../../../services/api";
 import { Receipt, ReceiptApiResponse } from "../../../types/api";
 import useOptimizedInView from "../../../hooks/useOptimizedInView";
@@ -107,7 +107,7 @@ const ReceiptImage: React.FC<ReceiptImageProps> = ({
         ...style,
       }}
     >
-      <Image
+      <NextImage
         src={currentSrc}
         alt={`Receipt ${receipt.receipt_id}`}
         width={100}
