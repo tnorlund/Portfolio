@@ -4,22 +4,48 @@ import PhotoReceiptBoundingBox from "./PhotoReceiptBoundingBox";
 import fixtureData from "../../../tests/fixtures/target_receipt.json";
 import useImageDetails from "../../../hooks/useImageDetails";
 
+import * as animations from "../animations";
+import { convexHull, computeHullCentroid } from "../../../utils/geometry";
+import { computeFinalReceiptTilt } from "../../../utils/receipt";
+
 jest.mock("../../../hooks/useImageDetails");
 
-jest.mock("../animations", () => ({
-  AnimatedConvexHull: () => <g data-testid="AnimatedConvexHull" />,
-  AnimatedHullCentroid: () => <g data-testid="AnimatedHullCentroid" />,
-  AnimatedOrientedAxes: () => <g data-testid="AnimatedOrientedAxes" />,
-  AnimatedPrimaryEdges: () => <g data-testid="AnimatedPrimaryEdges" />,
-  AnimatedSecondaryBoundaryLines: () => (
+jest.mock("../animations", () => {
+  const React = require("react");
+  const AnimatedConvexHull = jest.fn(() => (
+    <g data-testid="AnimatedConvexHull" />
+  ));
+  const AnimatedHullCentroid = jest.fn(() => (
+    <g data-testid="AnimatedHullCentroid" />
+  ));
+  const AnimatedOrientedAxes = jest.fn(() => (
+    <g data-testid="AnimatedOrientedAxes" />
+  ));
+  const AnimatedPrimaryEdges = jest.fn(() => (
+    <g data-testid="AnimatedPrimaryEdges" />
+  ));
+  const AnimatedSecondaryBoundaryLines = jest.fn(() => (
     <g data-testid="AnimatedSecondaryBoundaryLines" />
-  ),
-  AnimatedPrimaryBoundaryLines: () => (
+  ));
+  const AnimatedPrimaryBoundaryLines = jest.fn(() => (
     <g data-testid="AnimatedPrimaryBoundaryLines" />
-  ),
-  AnimatedReceiptFromHull: () => <g data-testid="AnimatedReceiptFromHull" />,
-  AnimatedLineBox: () => <g data-testid="AnimatedLineBox" />,
-}));
+  ));
+  const AnimatedReceiptFromHull = jest.fn(() => (
+    <g data-testid="AnimatedReceiptFromHull" />
+  ));
+  const AnimatedLineBox = jest.fn(() => <g data-testid="AnimatedLineBox" />);
+
+  return {
+    AnimatedConvexHull,
+    AnimatedHullCentroid,
+    AnimatedOrientedAxes,
+    AnimatedPrimaryEdges,
+    AnimatedSecondaryBoundaryLines,
+    AnimatedPrimaryBoundaryLines,
+    AnimatedReceiptFromHull,
+    AnimatedLineBox,
+  };
+});
 
 jest.mock("../../../hooks/useOptimizedInView", () => ({
   __esModule: true,
@@ -30,6 +56,7 @@ const mockedUseImageDetails = useImageDetails as jest.Mock;
 
 describe("PhotoReceiptBoundingBox", () => {
   beforeEach(() => {
+    jest.clearAllMocks();
     mockedUseImageDetails.mockReturnValue({
       imageDetails: fixtureData,
       formatSupport: { supportsAVIF: true, supportsWebP: true },
@@ -47,5 +74,122 @@ describe("PhotoReceiptBoundingBox", () => {
   test("shows animated convex hull", () => {
     render(<PhotoReceiptBoundingBox />);
     expect(screen.getByTestId("AnimatedConvexHull")).toBeInTheDocument();
+  });
+
+  test("animated components receive calculated props", async () => {
+    const { rerender } = render(<PhotoReceiptBoundingBox />);
+    await screen.findByTestId("AnimatedHullCentroid");
+    jest.clearAllMocks();
+    rerender(<PhotoReceiptBoundingBox />);
+
+    const lines = fixtureData.lines;
+    const svgWidth = fixtureData.image.width;
+    const svgHeight = fixtureData.image.height;
+
+    const allCorners: { x: number; y: number }[] = [];
+    lines.forEach(line => {
+      allCorners.push(
+        { x: line.top_left.x, y: line.top_left.y },
+        { x: line.top_right.x, y: line.top_right.y },
+        { x: line.bottom_right.x, y: line.bottom_right.y },
+        { x: line.bottom_left.x, y: line.bottom_left.y },
+      );
+    });
+
+    const hullPoints = allCorners.length > 2 ? convexHull([...allCorners]) : [];
+    const hullCentroid =
+      hullPoints.length > 0 ? computeHullCentroid(hullPoints) : null;
+    const avgAngle =
+      lines.reduce((sum, l) => sum + l.angle_degrees, 0) / lines.length;
+    const finalAngle =
+      hullCentroid && hullPoints.length > 0
+        ? computeFinalReceiptTilt(lines as any, hullPoints, hullCentroid, avgAngle)
+        : avgAngle;
+
+    const totalDelayForLines =
+      lines.length > 0 ? (lines.length - 1) * 30 + 800 : 0;
+    const convexHullDelay = totalDelayForLines + 300;
+    const convexHullDuration = hullPoints.length * 200 + 500;
+    const centroidDelay = convexHullDelay + convexHullDuration + 200;
+    const extentsDelay = centroidDelay + 600;
+
+    expect(animations.AnimatedHullCentroid).toHaveBeenCalledTimes(1);
+    expect(
+      (animations.AnimatedHullCentroid as jest.Mock).mock.calls[0][0],
+    ).toEqual(
+      expect.objectContaining({
+        centroid: hullCentroid,
+        svgWidth,
+        svgHeight,
+        delay: centroidDelay,
+      }),
+    );
+    expect(screen.getByTestId("AnimatedHullCentroid")).toBeInTheDocument();
+
+    expect(animations.AnimatedOrientedAxes).toHaveBeenCalledTimes(1);
+    expect(
+      (animations.AnimatedOrientedAxes as jest.Mock).mock.calls[0][0],
+    ).toEqual(
+      expect.objectContaining({
+        hull: hullPoints,
+        centroid: hullCentroid,
+        lines,
+        svgWidth,
+        svgHeight,
+        delay: extentsDelay,
+      }),
+    );
+    expect(screen.getByTestId("AnimatedOrientedAxes")).toBeInTheDocument();
+
+    expect(animations.AnimatedPrimaryEdges).toHaveBeenCalledTimes(1);
+    expect(
+      (animations.AnimatedPrimaryEdges as jest.Mock).mock.calls[0][0],
+    ).toEqual(
+      expect.objectContaining({
+        lines,
+        hull: hullPoints,
+        centroid: hullCentroid,
+        avgAngle: finalAngle,
+        svgWidth,
+        svgHeight,
+        delay: extentsDelay + 1000,
+      }),
+    );
+    expect(screen.getByTestId("AnimatedPrimaryEdges")).toBeInTheDocument();
+
+    expect(animations.AnimatedSecondaryBoundaryLines).toHaveBeenCalledTimes(1);
+    expect(
+      (animations.AnimatedSecondaryBoundaryLines as jest.Mock).mock.calls[0][0],
+    ).toEqual(
+      expect.objectContaining({
+        lines,
+        hull: hullPoints,
+        centroid: hullCentroid,
+        avgAngle: finalAngle,
+        svgWidth,
+        svgHeight,
+        delay: extentsDelay + 1500,
+      }),
+    );
+    expect(
+      screen.getByTestId("AnimatedSecondaryBoundaryLines"),
+    ).toBeInTheDocument();
+
+    expect(animations.AnimatedPrimaryBoundaryLines).toHaveBeenCalledTimes(1);
+    expect(
+      (animations.AnimatedPrimaryBoundaryLines as jest.Mock).mock.calls[0][0],
+    ).toEqual(
+      expect.objectContaining({
+        hull: hullPoints,
+        centroid: hullCentroid,
+        avgAngle: finalAngle,
+        svgWidth,
+        svgHeight,
+        delay: extentsDelay + 2000,
+      }),
+    );
+    expect(
+      screen.getByTestId("AnimatedPrimaryBoundaryLines"),
+    ).toBeInTheDocument();
   });
 });
