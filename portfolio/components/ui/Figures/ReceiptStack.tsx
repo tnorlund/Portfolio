@@ -254,6 +254,7 @@ const ReceiptStack: React.FC = () => {
         return new Promise<void>((resolve) => {
           const imageUrl = getBestImageUrl(receipt, formatSupport);
           const img = new (window as any).Image() as HTMLImageElement;
+
           img.crossOrigin = "anonymous";
 
           const handleLoad = () => {
