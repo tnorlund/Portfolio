@@ -30,8 +30,6 @@ type LineSegment = {
   key: string;
 };
 
-
-
 /**
  * Compute the convex hull of a set of points using Graham scan algorithm
  */
@@ -397,7 +395,6 @@ const findBoundaryLinesWithSkew = (
  * Find the top and bottom edges of lines at the secondary axis extremes
  */
 
-
 /**
  * Estimate the full receipt quadrilateral from OCR word‑level lines.
  */
@@ -414,7 +411,6 @@ const estimateReceiptPolygonFromLines = (lines: Line[]) => {
     bottom_left: left.bottom,
   };
 };
-
 
 // AnimatedConvexHull: component for animating convex hull calculation
 interface AnimatedConvexHullProps {
@@ -1021,89 +1017,92 @@ interface AnimatedPrimaryBoundaryLinesProps {
 const AnimatedPrimaryBoundaryLines: React.FC<
   AnimatedPrimaryBoundaryLinesProps
 > = ({ hull, centroid, avgAngle, svgWidth, svgHeight, delay }) => {
-  if (hull.length < 3) return null;
+  // Calculate segments first for proper hook usage
+  let segments: LineSegment[] = [];
 
-  // 1) compute receipt tilt axis unit vector
-  const angleRad = (avgAngle * Math.PI) / 180;
-  const ux = Math.cos(angleRad),
-    uy = Math.sin(angleRad);
+  if (hull.length >= 3) {
+    // 1) compute receipt tilt axis unit vector
+    const angleRad = (avgAngle * Math.PI) / 180;
+    const ux = Math.cos(angleRad),
+      uy = Math.sin(angleRad);
 
-  // 2) project hull points onto receipt axis
-  const projections = hull.map((p, i) => ({
-    idx: i,
-    proj: p.x * ux + p.y * uy,
-  }));
-  projections.sort((a, b) => a.proj - b.proj);
+    // 2) project hull points onto receipt axis
+    const projections = hull.map((p, i) => ({
+      idx: i,
+      proj: p.x * ux + p.y * uy,
+    }));
+    projections.sort((a, b) => a.proj - b.proj);
 
-  // 3) identify extremes along that axis
-  const extremes = [
-    { key: "left-boundary", idx: projections[0].idx },
-    { key: "right-boundary", idx: projections[projections.length - 1].idx },
-  ];
+    // 3) identify extremes along that axis
+    const extremes = [
+      { key: "left-boundary", idx: projections[0].idx },
+      { key: "right-boundary", idx: projections[projections.length - 1].idx },
+    ];
 
-  // 4) build segments using weighted cost comparison
-  const DIST_WEIGHT = 1;
-  const ANGLE_WEIGHT = 1;
-  const span = Math.hypot(svgWidth, svgHeight);
+    // 4) build segments using weighted cost comparison
+    const DIST_WEIGHT = 1;
+    const ANGLE_WEIGHT = 1;
+    const span = Math.hypot(svgWidth, svgHeight);
 
-  const segments: LineSegment[] = extremes.map(({ key, idx }) => {
-    const p0 = hull[idx];
-    const pCW = hull[(idx + 1) % hull.length];
-    const pCCW = hull[(idx - 1 + hull.length) % hull.length];
+    segments = extremes.map(({ key, idx }) => {
+      const p0 = hull[idx];
+      const pCW = hull[(idx + 1) % hull.length];
+      const pCCW = hull[(idx - 1 + hull.length) % hull.length];
 
-    // helper to fit line in ax+by+c=0
-    const makeLine = (p1: Point, p2: Point) => {
-      const a = p2.y - p1.y;
-      const b = p1.x - p2.x;
-      const c = p2.x * p1.y - p1.x * p2.y;
-      return { a, b, c };
-    };
-    const lineCW = makeLine(p0, pCW);
-    const lineCCW = makeLine(p0, pCCW);
+      // helper to fit line in ax+by+c=0
+      const makeLine = (p1: Point, p2: Point) => {
+        const a = p2.y - p1.y;
+        const b = p1.x - p2.x;
+        const c = p2.x * p1.y - p1.x * p2.y;
+        return { a, b, c };
+      };
+      const lineCW = makeLine(p0, pCW);
+      const lineCCW = makeLine(p0, pCCW);
 
-    // mean perpendicular-distance error
-    const meanDist = ({ a, b, c }: { a: number; b: number; c: number }) => {
-      const norm = Math.hypot(a, b);
-      return (
-        hull.reduce(
-          (sum, p) => sum + Math.abs(a * p.x + b * p.y + c) / norm,
-          0
-        ) / hull.length
-      );
-    };
-    const distCW = meanDist(lineCW);
-    const distCCW = meanDist(lineCCW);
+      // mean perpendicular-distance error
+      const meanDist = ({ a, b, c }: { a: number; b: number; c: number }) => {
+        const norm = Math.hypot(a, b);
+        return (
+          hull.reduce(
+            (sum, p) => sum + Math.abs(a * p.x + b * p.y + c) / norm,
+            0
+          ) / hull.length
+        );
+      };
+      const distCW = meanDist(lineCW);
+      const distCCW = meanDist(lineCCW);
 
-    // compute neighbor angles
-    const diffAngle = (p: Point) => {
-      const theta = Math.atan2(p.y - p0.y, p.x - p0.x);
-      const d = Math.abs(theta - angleRad);
-      return Math.min(d, 2 * Math.PI - d);
-    };
-    const diffCW = diffAngle(pCW);
-    const diffCCW = diffAngle(pCCW);
+      // compute neighbor angles
+      const diffAngle = (p: Point) => {
+        const theta = Math.atan2(p.y - p0.y, p.x - p0.x);
+        const d = Math.abs(theta - angleRad);
+        return Math.min(d, 2 * Math.PI - d);
+      };
+      const diffCW = diffAngle(pCW);
+      const diffCCW = diffAngle(pCCW);
 
-    // weighted cost and pick
-    const costCW = DIST_WEIGHT * distCW + ANGLE_WEIGHT * diffCW;
-    const costCCW = DIST_WEIGHT * distCCW + ANGLE_WEIGHT * diffCCW;
-    const pB = costCW < costCCW ? pCW : pCCW;
+      // weighted cost and pick
+      const costCW = DIST_WEIGHT * distCW + ANGLE_WEIGHT * diffCW;
+      const costCCW = DIST_WEIGHT * distCCW + ANGLE_WEIGHT * diffCCW;
+      const pB = costCW < costCCW ? pCW : pCCW;
 
-    // extend line full-height through p0->pB
-    const dx = (pB.x - p0.x) * svgWidth;
-    const dy = (pB.y - p0.y) * svgHeight;
-    const m = dx / dy;
-    const c = p0.x * svgWidth - m * (p0.y * svgHeight);
+      // extend line full-height through p0->pB
+      const dx = (pB.x - p0.x) * svgWidth;
+      const dy = (pB.y - p0.y) * svgHeight;
+      const m = dx / dy;
+      const c = p0.x * svgWidth - m * (p0.y * svgHeight);
 
-    return {
-      key,
-      x1: c,
-      y1: 0,
-      x2: m * span + c,
-      y2: span,
-    };
-  });
+      return {
+        key,
+        x1: c,
+        y1: 0,
+        x2: m * span + c,
+        y2: span,
+      };
+    });
+  }
 
-  // animate and render
+  // Hook must be called at the top level
   const transitions = useTransition(segments, {
     keys: (seg) => seg.key,
     from: { opacity: 0, strokeDasharray: "12,8", strokeDashoffset: 20 },
@@ -1114,6 +1113,8 @@ const AnimatedPrimaryBoundaryLines: React.FC<
     }),
     config: { duration: 800 },
   });
+
+  if (hull.length < 3) return null;
 
   return (
     <g>
@@ -1170,6 +1171,21 @@ const AnimatedReceiptFromHull: React.FC<AnimatedReceiptFromHullProps> = ({
   svgHeight,
   delay,
 }) => {
+  // Initialize hooks at the top level
+  const boxSpring = useSpring({
+    from: { opacity: 0 },
+    to: { opacity: 1 },
+    delay: delay,
+    config: { duration: 800 },
+  });
+
+  const centroidSpring = useSpring({
+    from: { opacity: 0 },
+    to: { opacity: 1 },
+    delay: delay + 400,
+    config: { duration: 600 },
+  });
+
   if (hull.length === 0 || lines.length === 0) return null;
 
   // Compute hull centroid
@@ -1198,24 +1214,9 @@ const AnimatedReceiptFromHull: React.FC<AnimatedReceiptFromHullProps> = ({
 
   const points = svgCorners.map((c) => `${c.x},${c.y}`).join(" ");
 
-  // Animate the receipt bounding box
-  const boxSpring = useSpring({
-    from: { opacity: 0 },
-    to: { opacity: 1 },
-    delay: delay,
-    config: { duration: 800 },
-  });
-
   // Compute receipt centroid for visualization
   const receiptCentroidX = svgCorners.reduce((sum, c) => sum + c.x, 0) / 4;
   const receiptCentroidY = svgCorners.reduce((sum, c) => sum + c.y, 0) / 4;
-
-  const centroidSpring = useSpring({
-    from: { opacity: 0 },
-    to: { opacity: 1 },
-    delay: delay + 400,
-    config: { duration: 600 },
-  });
 
   return (
     <>

@@ -350,7 +350,8 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       </p>
       <p>
         If someone were to ask you to embed something, what do you need? You
-        start with textual representation of the thing they're asking to embed.
+        start with textual representation of the thing they&apos;re asking to
+        embed.
       </p>
 
       <p>What do you get back? You get a structure of numbers.</p>
@@ -361,8 +362,8 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
 
       <p>
         While each input might be different, we get the same structure of
-        numbers back. Here's the magic. Because we get the same structure, we
-        have a way to mathematically compare two pieces of text together. But
+        numbers back. Here&apos;s the magic. Because we get the same structure,
+        we have a way to mathematically compare two pieces of text together. But
         what do the numbers mean?
       </p>
       <h3>How To Literally Embed</h3>
@@ -442,10 +443,10 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         Here's the mental leap.{" "}
         <i>Embeddings are similar to points on a map.</i> Each number in the
         embedding is a coordinate in a complicated map. When OpenAI sends a list
-        of numbers, it's telling you where that text <i>semantically</i> lives
-        in that map. When we ask what the distance between two embeddings are,
-        what we're really doing is asking how semantically close or far apart
-        two pieces of text are.
+        of numbers, it&apos;s telling you where that text <i>semantically</i>{" "}
+        lives in that map. When we ask what the distance between two embeddings
+        are, what we&apos;re really doing is asking how semantically close or
+        far apart two pieces of text are.
       </p>
       <p>
         This concept of positioning items in multi-dimensional space like this,

@@ -30,6 +30,22 @@
   - Fix auto-fixable issues: `npm run lint -- --fix`
 - Type checking: `npm run type-check`
 
+#### Working Directory Requirements
+
+**CRITICAL**: All npm commands must be run from the `portfolio/` directory, not the workspace root.
+
+- **Correct**: `cd portfolio && npm test`
+- **Incorrect**: `npm test` (from workspace root)
+
+**Why**: Jest and other tools are installed locally in `portfolio/node_modules/`, not globally.
+
+**Troubleshooting "command not found" errors**:
+
+- If you see `sh: 1: jest: not found` or similar errors, you're likely in the wrong directory
+- Always `cd portfolio` before running npm commands
+- Use `pwd` to verify you're in `/path/to/workspace/portfolio`
+- Alternatively, use `npx` for direct tool access: `npx jest` instead of `jest`
+
 #### Test Categories
 
 1. **Component Tests** (`*.test.tsx`):

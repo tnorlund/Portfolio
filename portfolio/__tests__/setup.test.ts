@@ -1,6 +1,10 @@
 /**
  * Basic test to verify Jest setup is working
  */
+
+// Export statement to make this a module
+export {};
+
 describe("Jest Setup", () => {
   it("should be able to run tests", () => {
     expect(true).toBe(true);
