@@ -253,7 +253,8 @@ const ReceiptStack: React.FC = () => {
       const imagePromises = receiptsToLoad.map((receipt, index) => {
         return new Promise<void>((resolve) => {
           const imageUrl = getBestImageUrl(receipt, formatSupport);
-          const img = new window.Image();
+          const img = new (window as any).Image() as HTMLImageElement;
+
           img.crossOrigin = "anonymous";
 
           const handleLoad = () => {

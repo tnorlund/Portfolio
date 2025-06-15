@@ -1,18 +1,13 @@
 import React, { useEffect, useState } from "react";
 
-import { api } from "../../../services/api";
 import {
-  ImageDetailsApiResponse,
-  type Image as ImageType,
   type Line,
   type Point as ApiPoint,
 } from "../../../types/api";
 import { useSpring, useTransition, animated } from "@react-spring/web";
 import AnimatedLineBox from "../animations/AnimatedLineBox";
-import {
-  detectImageFormatSupport,
-  getBestImageUrl,
-} from "../../../utils/imageFormat";
+import { getBestImageUrl } from "../../../utils/imageFormat";
+import useImageDetails from "../../../hooks/useImageDetails";
 import {
   computeHullCentroid,
   computeReceiptBoxFromLineEdges,
@@ -1083,13 +1078,7 @@ const AnimatedReceiptFromHull: React.FC<AnimatedReceiptFromHullProps> = ({
  * how the receipt bounding box is derived from OCR line data.
  */
 const PhotoReceiptBoundingBox: React.FC = () => {
-  const [imageDetails, setImageDetails] =
-    useState<ImageDetailsApiResponse | null>(null);
-  const [error, setError] = useState<Error | null>(null);
-  const [formatSupport, setFormatSupport] = useState<{
-    supportsAVIF: boolean;
-    supportsWebP: boolean;
-  } | null>(null);
+  const { imageDetails, formatSupport, error } = useImageDetails("PHOTO");
   const [isClient, setIsClient] = useState(false);
   const [resetKey, setResetKey] = useState(0);
 
@@ -1098,27 +1087,6 @@ const PhotoReceiptBoundingBox: React.FC = () => {
     setIsClient(true);
   }, []);
 
-  useEffect(() => {
-    if (!isClient) return; // Only run on client-side
-
-    const loadImageDetails = async () => {
-      try {
-        // Run format detection and API call in parallel
-        const [details, support] = await Promise.all([
-          api.fetchRandomImageDetails("PHOTO"),
-          detectImageFormatSupport(),
-        ]);
-
-        setImageDetails(details);
-        setFormatSupport(support);
-      } catch (err) {
-        console.error("Error loading image details:", err);
-        setError(err as Error);
-      }
-    };
-
-    loadImageDetails();
-  }, [isClient]);
 
   // Reserve default dimensions while waiting for the API.
   const defaultSvgWidth = 400;
