@@ -903,52 +903,61 @@ interface AnimatedSecondaryBoundaryLinesProps {
 const AnimatedSecondaryBoundaryLines: React.FC<
   AnimatedSecondaryBoundaryLinesProps
 > = ({ hull, centroid, avgAngle, svgWidth, svgHeight, delay }) => {
-  if (hull.length < 3) return null;
+  // Calculate data first to ensure consistent hook calls
+  let bottomPts: Point[] = [];
+  let topPts: Point[] = [];
+  let lineSegments: LineSegment[] = [];
 
-  // 1) Compute perpendicular axis
-  const angleRad = (avgAngle * Math.PI) / 180;
-  const secondaryAxisAngle = angleRad + Math.PI / 2;
-  const cosS = Math.cos(secondaryAxisAngle);
-  const sinS = Math.sin(secondaryAxisAngle);
+  if (hull.length >= 3) {
+    // 1) Compute perpendicular axis
+    const angleRad = (avgAngle * Math.PI) / 180;
+    const secondaryAxisAngle = angleRad + Math.PI / 2;
+    const cosS = Math.cos(secondaryAxisAngle);
+    const sinS = Math.sin(secondaryAxisAngle);
 
-  // 2) Project hull points, sort by projection
-  const projHull = hull
-    .map((p) => {
-      const rx = p.x - centroid.x;
-      const ry = p.y - centroid.y;
-      return { point: p, proj: rx * cosS + ry * sinS };
-    })
-    .sort((a, b) => a.proj - b.proj);
+    // 2) Project hull points, sort by projection
+    const projHull = hull
+      .map((p) => {
+        const rx = p.x - centroid.x;
+        const ry = p.y - centroid.y;
+        return { point: p, proj: rx * cosS + ry * sinS };
+      })
+      .sort((a, b) => a.proj - b.proj);
 
-  // 3) Grab the bottom‐two and top‐two extreme points
-  const bottomPts = [projHull[0].point, projHull[1].point];
-  const topPts = [
-    projHull[projHull.length - 2].point,
-    projHull[projHull.length - 1].point,
-  ];
+    // 3) Grab the bottom‐two and top‐two extreme points
+    bottomPts = [projHull[0].point, projHull[1].point];
+    topPts = [
+      projHull[projHull.length - 2].point,
+      projHull[projHull.length - 1].point,
+    ];
 
-  // Helper to extend a segment between two hull points out to full SVG width
-  const extendFullWidth = (pA: Point, pB: Point, key: string): LineSegment => {
-    const xA = pA.x * svgWidth,
-      yA = (1 - pA.y) * svgHeight;
-    const xB = pB.x * svgWidth,
-      yB = (1 - pB.y) * svgHeight;
-    const m = (yB - yA) / (xB - xA);
-    const c = yA - m * xA;
-    return {
-      key,
-      x1: 0,
-      y1: c,
-      x2: svgWidth,
-      y2: m * svgWidth + c,
+    // Helper to extend a segment between two hull points out to full SVG width
+    const extendFullWidth = (
+      pA: Point,
+      pB: Point,
+      key: string
+    ): LineSegment => {
+      const xA = pA.x * svgWidth,
+        yA = (1 - pA.y) * svgHeight;
+      const xB = pB.x * svgWidth,
+        yB = (1 - pB.y) * svgHeight;
+      const m = (yB - yA) / (xB - xA);
+      const c = yA - m * xA;
+      return {
+        key,
+        x1: 0,
+        y1: c,
+        x2: svgWidth,
+        y2: m * svgWidth + c,
+      };
     };
-  };
 
-  // 4) Build two yellow line segments between each pair
-  const lineSegments: LineSegment[] = [
-    extendFullWidth(bottomPts[0], bottomPts[1], "bottom-hull-boundary"),
-    extendFullWidth(topPts[0], topPts[1], "top-hull-boundary"),
-  ];
+    // 4) Build two yellow line segments between each pair
+    lineSegments = [
+      extendFullWidth(bottomPts[0], bottomPts[1], "bottom-hull-boundary"),
+      extendFullWidth(topPts[0], topPts[1], "top-hull-boundary"),
+    ];
+  }
 
   // Animate yellow dots at the four extreme hull points
   const dotPoints = [...bottomPts, ...topPts];
@@ -972,6 +981,8 @@ const AnimatedSecondaryBoundaryLines: React.FC<
     }),
     config: { duration: 800 },
   });
+
+  if (hull.length < 3) return null;
 
   return (
     <g>

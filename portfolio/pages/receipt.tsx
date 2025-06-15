@@ -383,8 +383,8 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       </p>
       <h3>But What Do The Numbers Actually Mean?</h3>
       <p>
-        So back to the question: what do the numbers mean? Let's think about
-        coordinates on a map. Suppose I give you three points:
+        So back to the question: what do the numbers mean? Let&apos;s think
+        about coordinates on a map. Suppose I give you three points:
       </p>
       <table style={{ margin: "0 auto", borderCollapse: "collapse" }}>
         <thead>
@@ -440,7 +440,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
 
       <p>A is closer to B.</p>
       <p>
-        Here's the mental leap.{" "}
+        Here&apos;s the mental leap.{" "}
         <i>Embeddings are similar to points on a map.</i> Each number in the
         embedding is a coordinate in a complicated map. When OpenAI sends a list
         of numbers, it&apos;s telling you where that text <i>semantically</i>{" "}
@@ -459,9 +459,9 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       </p>
       <h2>Scaling and Optimizing Latent Space</h2>
       <p>
-        Writing and reading these lists of numbers get's complicated fast. After
-        some research, I found Pinecone, a vector database that allows me to
-        store and retrieve embeddings.
+        Writing and reading these lists of numbers get&apos;s complicated fast.
+        After some research, I found Pinecone, a vector database that allows me
+        to store and retrieve embeddings.
       </p>
       <ClientOnly>
         <AnimatedInView>
@@ -469,24 +469,27 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         </AnimatedInView>
       </ClientOnly>
       <p>
-        Pinecone's real strength shows when you attach <i>meaningful</i>
+        Pinecone&apos;s real strength shows when you attach <i>meaningful</i>
         information to each embedding. The embedding by itself can telling you
         which words are similar, but adding context, store name, location, or
-        even category, let's you find the semantically similar words you're
-        looking for.
+        even category, let&apos;s you find the semantically similar words
+        you&apos;re looking for.
       </p>
 
       <h2>Meaningful Metadata</h2>
       <p>
-        Imagine looking for the word "latte" across 10,000 receipts. Without
-        context, you'll get results from latte flavovar(--color-red) cereal at
-        grocery stores, expensive drinks at coffee shops, and even brown
-        colovar(--color-red) paint from hardware stores.
+        Imagine looking for the word &quot;latte&quot; across 10,000 receipts.
+        Without context, you&apos;ll get results from latte
+        flavovar(--color-red) cereal at grocery stores, expensive drinks at
+        coffee shops, and even brown colovar(--color-red) paint from hardware
+        stores.
       </p>
-      <p>With context, you can filter out the results that don't make sense.</p>
       <p>
-        I used OpenAI's Agents SDK with the Google Places API to get the context
-        needed for rich, semantic search.
+        With context, you can filter out the results that don&apos;t make sense.
+      </p>
+      <p>
+        I used OpenAI&apos;s Agents SDK with the Google Places API to get the
+        context needed for rich, semantic search.
       </p>
 
       <ClientOnly>
@@ -499,18 +502,18 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
 
       <h2>Turning Semantic Search into Autonomous Labeling</h2>
       <p>
-        Pinecone doesn't just help me <i>find</i> similar words, it allows me to
-        act on them. After every receipt is embedded, an OpenAI agent retrieves
-        the "nearest neighbors" of each unlabeled word, filtevar(--color-red) by
-        the receipt's merchant-specific metadata.
+        Pinecone doesn&apos;t just help me <i>find</i> similar words, it allows
+        me to act on them. After every receipt is embedded, an OpenAI agent
+        retrieves the &quot;nearest neighbors&quot; of each unlabeled word,
+        filtevar(--color-red) by the receipt&apos;s merchant-specific metadata.
       </p>
       <p>
-        For the token "latte" on a Starbucks receipt, an agent pulls
+        For the token &quot;latte&quot; on a Starbucks receipt, an agent pulls
         semantically similar words from other Starbucks receipts and asks:
       </p>
       <blockquote>
-        "Given these examples and surrounding words, what label would best
-        describe <strong>latte</strong>?"
+        &quot;Given these examples and surrounding words, what label would best
+        describe <strong>latte</strong>?&quot;
       </blockquote>
 
       <p>
@@ -525,8 +528,8 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       <p>
         This process is repeated to continuously improve the accuracy of the
         labels. As part of this loop, I use <strong>RAGAS</strong> to evaluate
-        how faithful and relevant the model's responses are to the retrieved
-        context.
+        how faithful and relevant the model&apos;s responses are to the
+        retrieved context.
       </p>
 
       <h1>Conclusion</h1>
@@ -534,7 +537,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       <p>
         This project was a great learning experience. The best way for me to
         learn is by actually doing. Experimenting with different tools and
-        techniques allowed me to reflect on what worked and what didn't.
+        techniques allowed me to reflect on what worked and what didn&apos;t.
       </p>
       <p>I used Github and Pulumi to manage the cloud and code.</p>
       <div className={styles.logosContainer}>
@@ -555,9 +558,9 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         changes and deploy to production.
       </p>
       <p>
-        I'm using React to build the frontend. It's a great way to get started,
-        but I wanted to continue to increase my tech stack. I ended up porting
-        to NextJS.
+        I&apos;m using React to build the frontend. It&apos;s a great way to get
+        started, but I wanted to continue to increase my tech stack. I ended up
+        porting to NextJS.
       </p>
       <ClientOnly>
         <AnimatedInView replacement={<NextJSLogo />} replaceAfterMs={1000}>
@@ -566,17 +569,17 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       </ClientOnly>
       <p>
         Moving to NextJS was really easy. Using a combination of Cursor and
-        OpenAI's Codex allowed me to move this from one framework to another
-        with minimal effort.
+        OpenAI&apos;s Codex allowed me to move this from one framework to
+        another with minimal effort.
       </p>
 
       <h2>Training a Custom Model</h2>
       <p>
-        I'm currently training a custom model to improve the process of getting
-        an image and structuring the data. Having to query a database of similar
-        words works for large datasets, but there's room here for a simple model
-        that can run on my laptop. I've been playing with a few models on
-        Hugging Face.
+        I&apos;m currently training a custom model to improve the process of
+        getting an image and structuring the data. Having to query a database of
+        similar words works for large datasets, but there&apos;s room here for a
+        simple model that can run on my laptop. I&apos;ve been playing with a
+        few models on Hugging Face. Hugging Face.
       </p>
       <ClientOnly>
         <AnimatedInView>
@@ -589,8 +592,8 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         Artificial intelligence is advancing quickly and changing how we write
         software. However, no matter how smart computers become, we still need
         solid engineering practices, clever problem-solving, and expert
-        knowledge. I'm excited to see a future where people and AI work together
-        to make programming faster, smarter, and easier for everyone.
+        knowledge. I&apos;m excited to see a future where people and AI work
+        together to make programming faster, smarter, and easier for everyone.
       </p>
 
       <div style={{ marginBottom: "2rem", textAlign: "center" }}>

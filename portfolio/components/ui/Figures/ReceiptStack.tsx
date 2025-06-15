@@ -1,5 +1,6 @@
 // ReceiptStack.tsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
+import Image from "next/image";
 import { api } from "../../../services/api";
 import { Receipt, ReceiptApiResponse } from "../../../types/api";
 import useOptimizedInView from "../../../hooks/useOptimizedInView";
@@ -10,8 +11,6 @@ import {
 } from "../../../utils/imageFormat";
 
 const isDevelopment = process.env.NODE_ENV === "development";
-
-
 
 // Component with automatic fallback handling
 interface ReceiptImageProps {
@@ -108,10 +107,11 @@ const ReceiptImage: React.FC<ReceiptImageProps> = ({
         ...style,
       }}
     >
-      <img
+      <Image
         src={currentSrc}
         alt={`Receipt ${receipt.receipt_id}`}
-        crossOrigin="anonymous"
+        width={100}
+        height={150}
         style={{
           width: "100%",
           height: "auto",
@@ -241,6 +241,56 @@ const ReceiptStack: React.FC = () => {
     loadAllReceipts();
   }, [maxReceipts, pageSize]);
 
+  // Pre-load all images before starting animation
+  const preloadAllImages = useCallback(
+    async (receiptsToLoad: Receipt[]) => {
+      if (!formatSupport || receiptsToLoad.length === 0) return;
+
+      setImagesLoading(true);
+      setImagesLoaded(false);
+      setLoadingProgress({ loaded: 0, total: receiptsToLoad.length });
+
+      const imagePromises = receiptsToLoad.map((receipt, index) => {
+        return new Promise<void>((resolve) => {
+          const imageUrl = getBestImageUrl(receipt, formatSupport);
+          const img = new Image();
+          img.crossOrigin = "anonymous";
+
+          const handleLoad = () => {
+            setLoadingProgress((prev) => ({
+              loaded: prev.loaded + 1,
+              total: prev.total,
+            }));
+            resolve();
+          };
+
+          const handleError = () => {
+            setLoadingProgress((prev) => ({
+              loaded: prev.loaded + 1,
+              total: prev.total,
+            }));
+            resolve(); // Still resolve to not block other images
+          };
+
+          img.onload = handleLoad;
+          img.onerror = handleError;
+          img.src = imageUrl;
+        });
+      });
+
+      try {
+        await Promise.all(imagePromises);
+        setImagesLoaded(true);
+      } catch (error) {
+        console.warn("Some images failed to pre-load:", error);
+        setImagesLoaded(true); // Still start animation even if some images failed
+      } finally {
+        setImagesLoading(false);
+      }
+    },
+    [formatSupport]
+  );
+
   // When the user scrolls to this component, pre-load images first, then start animation
   useEffect(() => {
     if (
@@ -260,6 +310,7 @@ const ReceiptStack: React.FC = () => {
     formatSupport,
     imagesLoading,
     imagesLoaded,
+    preloadAllImages,
   ]);
 
   // Start animation only after images are pre-loaded
@@ -269,53 +320,6 @@ const ReceiptStack: React.FC = () => {
       setRotations(prefetchedRotations);
     }
   }, [imagesLoaded, receipts.length, prefetchedReceipts, prefetchedRotations]);
-
-  // Pre-load all images before starting animation
-  const preloadAllImages = async (receiptsToLoad: Receipt[]) => {
-    if (!formatSupport || receiptsToLoad.length === 0) return;
-
-    setImagesLoading(true);
-    setImagesLoaded(false);
-    setLoadingProgress({ loaded: 0, total: receiptsToLoad.length });
-
-    const imagePromises = receiptsToLoad.map((receipt, index) => {
-      return new Promise<void>((resolve) => {
-        const imageUrl = getBestImageUrl(receipt, formatSupport);
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-
-        const handleLoad = () => {
-          setLoadingProgress((prev) => ({
-            loaded: prev.loaded + 1,
-            total: prev.total,
-          }));
-          resolve();
-        };
-
-        const handleError = () => {
-          setLoadingProgress((prev) => ({
-            loaded: prev.loaded + 1,
-            total: prev.total,
-          }));
-          resolve(); // Still resolve to not block other images
-        };
-
-        img.onload = handleLoad;
-        img.onerror = handleError;
-        img.src = imageUrl;
-      });
-    });
-
-    try {
-      await Promise.all(imagePromises);
-      setImagesLoaded(true);
-    } catch (error) {
-      console.warn("Some images failed to pre-load:", error);
-      setImagesLoaded(true); // Still start animation even if some images failed
-    } finally {
-      setImagesLoading(false);
-    }
-  };
 
   // Show loading state once in view
   if (inView && (loading || imagesLoading)) {
