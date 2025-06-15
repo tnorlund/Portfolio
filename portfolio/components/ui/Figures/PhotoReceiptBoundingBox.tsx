@@ -17,7 +17,12 @@ import {
   computeHullCentroid,
   computeReceiptBoxFromLineEdges,
   computeEdge,
+  convexHull,
 } from "../../../utils/geometry";
+import {
+  findBoundaryLinesWithSkew,
+  estimateReceiptPolygonFromLines,
+} from "../../../utils/receiptGeometry";
 
 // Define simple point and line-segment shapes
 const isDevelopment = process.env.NODE_ENV === "development";
@@ -30,63 +35,6 @@ type LineSegment = {
   key: string;
 };
 
-/**
- * Compute the convex hull of a set of points using Graham scan algorithm
- */
-const computeConvexHull = (points: Point[]): Point[] => {
-  if (points.length < 3) return points;
-
-  // Find the bottom-most point (or left most point in case of tie)
-  let start = 0;
-  for (let i = 1; i < points.length; i++) {
-    if (
-      points[i].y < points[start].y ||
-      (points[i].y === points[start].y && points[i].x < points[start].x)
-    ) {
-      start = i;
-    }
-  }
-
-  // Swap start point to beginning
-  [points[0], points[start]] = [points[start], points[0]];
-  const startPoint = points[0];
-
-  // Sort points by polar angle with respect to start point
-  const sortedPoints = points.slice(1).sort((a, b) => {
-    const angleA = Math.atan2(a.y - startPoint.y, a.x - startPoint.x);
-    const angleB = Math.atan2(b.y - startPoint.y, b.x - startPoint.x);
-    if (angleA === angleB) {
-      // If angles are equal, sort by distance
-      const distA =
-        Math.pow(a.x - startPoint.x, 2) + Math.pow(a.y - startPoint.y, 2);
-      const distB =
-        Math.pow(b.x - startPoint.x, 2) + Math.pow(b.y - startPoint.y, 2);
-      return distA - distB;
-    }
-    return angleA - angleB;
-  });
-
-  // Graham scan
-  const hull = [startPoint, sortedPoints[0]];
-
-  for (let i = 1; i < sortedPoints.length; i++) {
-    // Remove points that make a right turn
-    while (hull.length > 1) {
-      const p1 = hull[hull.length - 2];
-      const p2 = hull[hull.length - 1];
-      const p3 = sortedPoints[i];
-
-      // Cross product to determine turn direction
-      const cross =
-        (p2.x - p1.x) * (p3.y - p1.y) - (p2.y - p1.y) * (p3.x - p1.x);
-      if (cross > 0) break; // Left turn, keep the point
-      hull.pop(); // Right turn, remove the point
-    }
-    hull.push(sortedPoints[i]);
-  }
-
-  return hull;
-};
 
 /**
  * Find hull extents relative to centroid (matching Python implementation)
@@ -289,128 +237,8 @@ const findLineEdgesAtPrimaryExtremes = (
 };
 
 /**
- * Enhanced version that returns both edge points and boundary angles
- */
-const findBoundaryLinesWithSkew = (
-  lines: Line[],
-  hull: Point[],
-  centroid: Point,
-  avgAngle: number
-): {
-  leftEdgePoints: Point[];
-  rightEdgePoints: Point[];
-  leftBoundaryAngle: number;
-  rightBoundaryAngle: number;
-} => {
-  if (lines.length === 0) {
-    return {
-      leftEdgePoints: [],
-      rightEdgePoints: [],
-      leftBoundaryAngle: avgAngle,
-      rightBoundaryAngle: avgAngle,
-    };
-  }
-
-  const angleRad = (avgAngle * Math.PI) / 180;
-  const primaryAxisAngle = angleRad;
-  const secondaryAxisAngle = primaryAxisAngle + Math.PI / 2; // Perpendicular to text direction
-
-  // Step 1: Find boundary lines using perpendicular projection
-  const lineProjections = lines.map((line) => {
-    const lineCenterX =
-      (line.top_left.x +
-        line.top_right.x +
-        line.bottom_left.x +
-        line.bottom_right.x) /
-      4;
-    const lineCenterY =
-      (line.top_left.y +
-        line.top_right.y +
-        line.bottom_left.y +
-        line.bottom_right.y) /
-      4;
-
-    const relX = lineCenterX - centroid.x;
-    const relY = lineCenterY - centroid.y;
-    const secondaryProjection =
-      relX * Math.cos(secondaryAxisAngle) + relY * Math.sin(secondaryAxisAngle);
-
-    return {
-      line,
-      projection: secondaryProjection,
-    };
-  });
-
-  // Sort by projection to find extremes
-  lineProjections.sort((a, b) => a.projection - b.projection);
-
-  // Get boundary lines (use top 20% for each boundary to handle noise)
-  const boundaryCount = Math.max(1, Math.ceil(lines.length * 0.2));
-  const leftBoundaryLines = lineProjections
-    .slice(0, boundaryCount)
-    .map((p) => p.line);
-  const rightBoundaryLines = lineProjections
-    .slice(-boundaryCount)
-    .map((p) => p.line);
-
-  // Step 2: Extract angles from boundary lines
-  const leftBoundaryAngle =
-    leftBoundaryLines.reduce((sum, line) => sum + line.angle_degrees, 0) /
-    leftBoundaryLines.length;
-  const rightBoundaryAngle =
-    rightBoundaryLines.reduce((sum, line) => sum + line.angle_degrees, 0) /
-    rightBoundaryLines.length;
-
-  // Step 3: Get edge points from boundary lines
-  let leftEdgePoints: Point[] = [];
-  let rightEdgePoints: Point[] = [];
-
-  // For left boundary lines, get their leftmost edges
-  leftBoundaryLines.forEach((line) => {
-    const leftX = Math.min(line.top_left.x, line.bottom_left.x);
-    leftEdgePoints.push(
-      { x: leftX, y: line.top_left.y },
-      { x: leftX, y: line.bottom_left.y }
-    );
-  });
-
-  // For right boundary lines, get their rightmost edges
-  rightBoundaryLines.forEach((line) => {
-    const rightX = Math.max(line.top_right.x, line.bottom_right.x);
-    rightEdgePoints.push(
-      { x: rightX, y: line.top_right.y },
-      { x: rightX, y: line.bottom_right.y }
-    );
-  });
-
-  return {
-    leftEdgePoints,
-    rightEdgePoints,
-    leftBoundaryAngle,
-    rightBoundaryAngle,
-  };
-};
-
-/**
  * Find the top and bottom edges of lines at the secondary axis extremes
  */
-
-/**
- * Estimate the full receipt quadrilateral from OCR word‑level lines.
- */
-const estimateReceiptPolygonFromLines = (lines: Line[]) => {
-  const left = computeEdge(lines, "left");
-  const right = computeEdge(lines, "right");
-  if (!left || !right) return null;
-
-  return {
-    receipt_id: "computed",
-    top_left: left.top,
-    top_right: right.top,
-    bottom_right: right.bottom,
-    bottom_left: left.bottom,
-  };
-};
 
 // AnimatedConvexHull: component for animating convex hull calculation
 interface AnimatedConvexHullProps {
@@ -1314,12 +1142,12 @@ const PhotoReceiptBoundingBox: React.FC = () => {
       { x: line.bottom_left.x, y: line.bottom_left.y }
     );
   });
-  const convexHull =
-    allLineCorners.length > 2 ? computeConvexHull([...allLineCorners]) : [];
+  const convexHullPoints =
+    allLineCorners.length > 2 ? convexHull([...allLineCorners]) : [];
 
   // Compute hull centroid for animation
   const hullCentroid =
-    convexHull.length > 0 ? computeHullCentroid(convexHull) : null;
+    convexHullPoints.length > 0 ? computeHullCentroid(convexHullPoints) : null;
 
   // Animate line bounding boxes using a transition.
   const lineTransitions = useTransition(lines, {
@@ -1338,7 +1166,7 @@ const PhotoReceiptBoundingBox: React.FC = () => {
   const totalDelayForLines =
     lines.length > 0 ? (lines.length - 1) * 30 + 800 : 0;
   const convexHullDelay = totalDelayForLines + 300; // Start convex hull after lines
-  const convexHullDuration = convexHull.length * 200 + 500;
+  const convexHullDuration = convexHullPoints.length * 200 + 500;
   const centroidDelay = convexHullDelay + convexHullDuration + 200; // Hull centroid after convex hull
   const extentsDelay = centroidDelay + 600; // Extents after centroid
   const extentsDuration = 4 * 300 + 500; // 4 extent lines * 300ms + buffer
@@ -1444,10 +1272,10 @@ const PhotoReceiptBoundingBox: React.FC = () => {
               })}
 
               {/* Render animated convex hull */}
-              {convexHull.length > 0 && (
+              {convexHullPoints.length > 0 && (
                 <AnimatedConvexHull
                   key={`convex-hull-${resetKey}`}
-                  hullPoints={convexHull}
+                  hullPoints={convexHullPoints}
                   svgWidth={svgWidth}
                   svgHeight={svgHeight}
                   delay={convexHullDelay}
@@ -1466,10 +1294,10 @@ const PhotoReceiptBoundingBox: React.FC = () => {
               )}
 
               {/* Render animated oriented axes */}
-              {convexHull.length > 0 && hullCentroid && (
+              {convexHullPoints.length > 0 && hullCentroid && (
                 <AnimatedOrientedAxes
                   key={`oriented-axes-${resetKey}`}
-                  hull={convexHull}
+                  hull={convexHullPoints}
                   centroid={hullCentroid}
                   lines={lines}
                   svgWidth={svgWidth}
@@ -1479,11 +1307,11 @@ const PhotoReceiptBoundingBox: React.FC = () => {
               )}
 
               {/* Render line edges at primary extremes */}
-              {convexHull.length > 0 && hullCentroid && lines.length > 0 && (
+              {convexHullPoints.length > 0 && hullCentroid && lines.length > 0 && (
                 <AnimatedPrimaryEdges
                   key={`primary-edges-${resetKey}`}
                   lines={lines}
-                  hull={convexHull}
+                  hull={convexHullPoints}
                   centroid={hullCentroid}
                   avgAngle={
                     lines.reduce((sum, line) => sum + line.angle_degrees, 0) /
@@ -1496,11 +1324,11 @@ const PhotoReceiptBoundingBox: React.FC = () => {
               )}
 
               {/* Render extended yellow boundary lines */}
-              {convexHull.length > 0 && hullCentroid && lines.length > 0 && (
+              {convexHullPoints.length > 0 && hullCentroid && lines.length > 0 && (
                 <AnimatedSecondaryBoundaryLines
                   key={`secondary-boundary-lines-${resetKey}`}
                   lines={lines}
-                  hull={convexHull}
+                  hull={convexHullPoints}
                   centroid={hullCentroid}
                   avgAngle={
                     lines.reduce((sum, line) => sum + line.angle_degrees, 0) /
@@ -1513,10 +1341,10 @@ const PhotoReceiptBoundingBox: React.FC = () => {
               )}
 
               {/* Render green left/right boundary lines using perpendicular projection */}
-              {convexHull.length > 0 && hullCentroid && lines.length > 0 && (
+              {convexHullPoints.length > 0 && hullCentroid && lines.length > 0 && (
                 <AnimatedPrimaryBoundaryLines
                   key={`primary-boundary-lines-${resetKey}`}
-                  hull={convexHull}
+                  hull={convexHullPoints}
                   centroid={hullCentroid}
                   avgAngle={
                     lines.reduce((sum, line) => sum + line.angle_degrees, 0) /
@@ -1529,10 +1357,10 @@ const PhotoReceiptBoundingBox: React.FC = () => {
               )}
 
               {/* Render animated receipt using proper algorithm */}
-              {/* {convexHull.length > 0 && lines.length > 0 && (
+              {/* {convexHullPoints.length > 0 && lines.length > 0 && (
                 <AnimatedReceiptFromHull
                   key={`receipt-from-hull-${resetKey}`}
-                  hull={convexHull}
+                  hull={convexHullPoints}
                   lines={lines}
                   svgWidth={svgWidth}
                   svgHeight={svgHeight}
