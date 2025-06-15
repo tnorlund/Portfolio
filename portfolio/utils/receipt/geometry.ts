@@ -1,5 +1,5 @@
-import type { Line } from "../types/api";
-import { computeEdge, Point } from "./geometry";
+import type { Line } from "../../types/api";
+import { computeEdge, Point } from "../geometry";
 
 export const findBoundaryLinesWithSkew = (
   lines: Line[],

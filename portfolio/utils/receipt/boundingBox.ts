@@ -1,4 +1,4 @@
-import type { Line, Point } from "../types/api";
+import type { Line, Point } from "../../types/api";
 
 export const findHullExtentsRelativeToCentroid = (
   hull: Point[],

@@ -24,12 +24,10 @@ import {
 import {
   findBoundaryLinesWithSkew,
   estimateReceiptPolygonFromLines,
-} from "../../../utils/receiptGeometry";
-import {
   findHullExtentsRelativeToCentroid,
   computeReceiptBoxFromHull,
   findLineEdgesAtPrimaryExtremes,
-} from "../../../utils/receiptBoundingBox";
+} from "../../../utils/receipt";
 
 // Define simple point and line-segment shapes
 const isDevelopment = process.env.NODE_ENV === "development";
