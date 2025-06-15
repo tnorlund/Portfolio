@@ -1,17 +1,10 @@
 import React, { useEffect, useState } from "react";
 
-import { api } from "../../../services/api";
-import {
-  ImageDetailsApiResponse,
-  type Image as ImageType,
-} from "../../../types/api";
 import { useSpring, useTransition, animated } from "@react-spring/web";
 import useOptimizedInView from "../../../hooks/useOptimizedInView";
 import AnimatedLineBox from "../animations/AnimatedLineBox";
-import {
-  detectImageFormatSupport,
-  getBestImageUrl,
-} from "../../../utils/imageFormat";
+import { getBestImageUrl } from "../../../utils/imageFormat";
+import useImageDetails from "../../../hooks/useImageDetails";
 
 const isDevelopment = process.env.NODE_ENV === "development";
 
@@ -86,13 +79,7 @@ const AnimatedReceipt: React.FC<AnimatedReceiptProps> = ({
 
 // Main ImageBoundingBox component
 const ImageBoundingBox: React.FC = () => {
-  const [imageDetails, setImageDetails] =
-    useState<ImageDetailsApiResponse | null>(null);
-  const [error, setError] = useState<Error | null>(null);
-  const [formatSupport, setFormatSupport] = useState<{
-    supportsAVIF: boolean;
-    supportsWebP: boolean;
-  } | null>(null);
+  const { imageDetails, formatSupport, error } = useImageDetails();
   const [isClient, setIsClient] = useState(false);
   const [resetKey, setResetKey] = useState(0);
   const [ref, inView] = useOptimizedInView({ threshold: 0.3 });
@@ -102,27 +89,6 @@ const ImageBoundingBox: React.FC = () => {
     setIsClient(true);
   }, []);
 
-  useEffect(() => {
-    if (!isClient) return; // Only run on client-side
-
-    const loadImageDetails = async () => {
-      try {
-        // Run format detection and API call in parallel
-        const [details, support] = await Promise.all([
-          api.fetchRandomImageDetails(),
-          detectImageFormatSupport(),
-        ]);
-
-        setImageDetails(details);
-        setFormatSupport(support);
-      } catch (err) {
-        console.error("Error loading image details:", err);
-        setError(err as Error);
-      }
-    };
-
-    loadImageDetails();
-  }, [isClient]);
 
   // Reserve default dimensions while waiting for the API.
   const defaultSvgWidth = 400;
