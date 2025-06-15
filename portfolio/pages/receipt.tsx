@@ -250,8 +250,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
 
       <p>
         Receipts are a difficult problem to solve. To turn a crumpled piece of
-        paper into structuvar(--color-red) data, you have to read three layers
-        of data:
+        paper into structured data, you have to read three layers of data:
       </p>
       <ul>
         <li>
