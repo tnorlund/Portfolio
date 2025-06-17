@@ -14,7 +14,7 @@ import { findLineEdgesAtSecondaryExtremes } from "../geometry/receipt";
  */
 export const findHullExtentsRelativeToCentroid = (
   hull: Point[],
-  centroid: Point,
+  centroid: Point
 ): {
   minX: number;
   maxX: number;
@@ -34,7 +34,7 @@ export const findHullExtentsRelativeToCentroid = (
   let topPoint = hull[0],
     bottomPoint = hull[0];
 
-  hull.forEach(point => {
+  hull.forEach((point) => {
     const relX = point.x - centroid.x;
     const relY = point.y - centroid.y;
 
@@ -83,7 +83,7 @@ export const findHullExtentsRelativeToCentroid = (
 export const computeReceiptBoxFromHull = (
   hull: Point[],
   centroid: Point,
-  avgAngle: number,
+  avgAngle: number
 ): Point[] => {
   if (hull.length < 3) return [];
 
@@ -96,7 +96,7 @@ export const computeReceiptBoxFromHull = (
   const cosA = Math.cos(angleRad);
   const sinA = Math.sin(angleRad);
 
-  hull.forEach(point => {
+  hull.forEach((point) => {
     const relX = point.x - centroid.x;
     const relY = point.y - centroid.y;
 
@@ -120,7 +120,7 @@ export const computeReceiptBoxFromHull = (
   const cosRA = Math.cos(reverseAngleRad);
   const sinRA = Math.sin(reverseAngleRad);
 
-  return corners.map(corner => ({
+  return corners.map((corner) => ({
     x: corner.x * cosRA - corner.y * sinRA + centroid.x,
     y: corner.x * sinRA + corner.y * cosRA + centroid.y,
   }));
@@ -144,7 +144,7 @@ export const findLineEdgesAtPrimaryExtremes = (
   lines: Line[],
   _hull: Point[],
   centroid: Point,
-  avgAngle: number,
+  avgAngle: number
 ): {
   leftEdge: Point[];
   rightEdge: Point[];
@@ -153,7 +153,7 @@ export const findLineEdgesAtPrimaryExtremes = (
   const primaryAxisAngle = angleRad;
   const secondaryAxisAngle = primaryAxisAngle + Math.PI / 2;
 
-  const lineProjections = lines.map(line => {
+  const lineProjections = lines.map((line) => {
     const lineCenterX =
       (line.top_left.x +
         line.top_right.x +
@@ -183,27 +183,29 @@ export const findLineEdgesAtPrimaryExtremes = (
   lineProjections.sort((a, b) => a.projection - b.projection);
 
   const boundaryCount = Math.max(1, Math.ceil(lines.length * 0.2));
-  const leftBoundaryLines = lineProjections.slice(0, boundaryCount).map(p => p.line);
+  const leftBoundaryLines = lineProjections
+    .slice(0, boundaryCount)
+    .map((p) => p.line);
   const rightBoundaryLines = lineProjections
     .slice(-boundaryCount)
-    .map(p => p.line);
+    .map((p) => p.line);
 
   let leftEdgePoints: Point[] = [];
   let rightEdgePoints: Point[] = [];
 
-  leftBoundaryLines.forEach(line => {
+  leftBoundaryLines.forEach((line) => {
     const leftX = Math.min(line.top_left.x, line.bottom_left.x);
     leftEdgePoints.push(
       { x: leftX, y: line.top_left.y },
-      { x: leftX, y: line.bottom_left.y },
+      { x: leftX, y: line.bottom_left.y }
     );
   });
 
-  rightBoundaryLines.forEach(line => {
+  rightBoundaryLines.forEach((line) => {
     const rightX = Math.max(line.top_right.x, line.bottom_right.x);
     rightEdgePoints.push(
       { x: rightX, y: line.top_right.y },
-      { x: rightX, y: line.bottom_right.y },
+      { x: rightX, y: line.bottom_right.y }
     );
   });
 
@@ -213,11 +215,25 @@ export const findLineEdgesAtPrimaryExtremes = (
   };
 };
 
+/**
+ * Compute the final tilt angle of the receipt by analyzing text line edges.
+ *
+ * This function refines the average text angle by examining the top and bottom
+ * edges of the text lines. It uses the Theil-Sen estimator to compute robust
+ * slope estimates from the edge points and returns the average of the resulting
+ * angles.
+ *
+ * @param lines - OCR lines detected on the receipt image.
+ * @param hull - Convex hull points of the receipt.
+ * @param centroid - Centroid of the receipt hull.
+ * @param avgAngle - Initial average text angle in degrees as fallback.
+ * @returns Refined tilt angle in degrees, or original avgAngle if computation fails.
+ */
 export const computeFinalReceiptTilt = (
   lines: Line[],
   hull: Point[],
   centroid: Point,
-  avgAngle: number,
+  avgAngle: number
 ): number => {
   if (lines.length === 0 || hull.length < 3) return avgAngle;
 
@@ -225,7 +241,7 @@ export const computeFinalReceiptTilt = (
     lines,
     hull,
     centroid,
-    avgAngle,
+    avgAngle
   );
 
   const angleFromPoints = (pts: Point[]): number | null => {
@@ -244,10 +260,23 @@ export const computeFinalReceiptTilt = (
   return angles.reduce((s, a) => s + a, 0) / angles.length;
 };
 
+/**
+ * Find the extreme points of a convex hull when projected along a specific angle.
+ *
+ * This function projects all hull points onto a line oriented at the given angle
+ * and returns the points that fall at the minimum and maximum positions along
+ * that projection. This is useful for finding the boundary points of a rotated
+ * bounding box.
+ *
+ * @param hull - Convex hull points to analyze.
+ * @param centroid - Reference point for computing relative positions.
+ * @param angleDeg - Projection angle in degrees (0° = horizontal right).
+ * @returns Object containing the leftmost and rightmost points along the projection.
+ */
 export const findHullExtremesAlongAngle = (
   hull: Point[],
   centroid: Point,
-  angleDeg: number,
+  angleDeg: number
 ): { leftPoint: Point; rightPoint: Point } => {
   if (hull.length === 0) {
     return { leftPoint: centroid, rightPoint: centroid };
@@ -262,7 +291,7 @@ export const findHullExtremesAlongAngle = (
   let leftPoint = hull[0],
     rightPoint = hull[0];
 
-  hull.forEach(p => {
+  hull.forEach((p) => {
     const rx = p.x - centroid.x;
     const ry = p.y - centroid.y;
     const proj = rx * cosA + ry * sinA;

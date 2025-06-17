@@ -34,7 +34,7 @@ const AnimatedSecondaryBoundaryLines: React.FC<
     const sinS = Math.sin(secondaryAxisAngle);
 
     const projHull = hull
-      .map(p => {
+      .map((p) => {
         const rx = p.x - centroid.x;
         const ry = p.y - centroid.y;
         return { point: p, proj: rx * cosS + ry * sinS };
@@ -51,26 +51,54 @@ const AnimatedSecondaryBoundaryLines: React.FC<
       pA: Point,
       pB: Point,
       key: string
-    ): LineSegment => {
+    ): LineSegment | null => {
       const xA = pA.x * svgWidth,
         yA = (1 - pA.y) * svgHeight;
       const xB = pB.x * svgWidth,
         yB = (1 - pB.y) * svgHeight;
-      const m = (yB - yA) / (xB - xA);
+
+      const dx = xB - xA;
+      const dy = yB - yA;
+
+      // Handle nearly vertical lines (avoid division by zero)
+      if (Math.abs(dx) < 1e-6) {
+        // For vertical lines, extend from top to bottom at average x
+        const avgX = (xA + xB) / 2;
+        return {
+          key,
+          x1: avgX,
+          y1: 0,
+          x2: avgX,
+          y2: svgHeight,
+        };
+      }
+
+      // Handle normal lines
+      const m = dy / dx;
       const c = yA - m * xA;
+
+      // Calculate line endpoints
+      const y1 = c;
+      const y2 = m * svgWidth + c;
+
+      // Validate all values are finite
+      if (!isFinite(m) || !isFinite(c) || !isFinite(y1) || !isFinite(y2)) {
+        return null;
+      }
+
       return {
         key,
         x1: 0,
-        y1: c,
+        y1: y1,
         x2: svgWidth,
-        y2: m * svgWidth + c,
+        y2: y2,
       };
     };
 
     lineSegments = [
       extendFullWidth(bottomPts[0], bottomPts[1], "bottom-hull-boundary"),
       extendFullWidth(topPts[0], topPts[1], "top-hull-boundary"),
-    ];
+    ].filter((seg): seg is LineSegment => seg !== null);
   }
 
   const dotPoints = [...bottomPts, ...topPts];
@@ -84,7 +112,7 @@ const AnimatedSecondaryBoundaryLines: React.FC<
   });
 
   const lineTransitions = useTransition(lineSegments, {
-    keys: line => line.key,
+    keys: (line) => line.key,
     from: { opacity: 0, strokeDasharray: "10,10", strokeDashoffset: 20 },
     enter: (_item, index) => ({
       opacity: 1,

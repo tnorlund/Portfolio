@@ -44,7 +44,7 @@ const AnimatedPrimaryBoundaryLines: React.FC<
     const ANGLE_WEIGHT = 1;
     const span = Math.hypot(svgWidth, svgHeight);
 
-    segments = extremes.map(({ key, idx }) => {
+    const potentialSegments = extremes.map(({ key, idx }) => {
       const p0 = hull[idx];
       const pCW = hull[(idx + 1) % hull.length];
       const pCCW = hull[(idx - 1 + hull.length) % hull.length];
@@ -84,21 +84,52 @@ const AnimatedPrimaryBoundaryLines: React.FC<
 
       const dx = (pB.x - p0.x) * svgWidth;
       const dy = (pB.y - p0.y) * svgHeight;
+
+      // Handle nearly horizontal lines (avoid division by zero)
+      if (Math.abs(dy) < 1e-6) {
+        // For horizontal lines, extend from left to right at average y
+        const avgY = ((1 - p0.y + (1 - pB.y)) * svgHeight) / 2;
+        return {
+          key,
+          x1: 0,
+          y1: avgY,
+          x2: svgWidth,
+          y2: avgY,
+        };
+      }
+
       const m = dx / dy;
-      const c = p0.x * svgWidth - m * (p0.y * svgHeight);
+      const c = p0.x * svgWidth - m * ((1 - p0.y) * svgHeight);
+
+      // Validate that values are finite
+      if (!isFinite(m) || !isFinite(c)) {
+        return null;
+      }
+
+      const x1 = c;
+      const x2 = m * svgHeight + c;
+
+      // Validate final coordinates
+      if (!isFinite(x1) || !isFinite(x2)) {
+        return null;
+      }
 
       return {
         key,
-        x1: c,
+        x1: x1,
         y1: 0,
-        x2: m * span + c,
-        y2: span,
+        x2: x2,
+        y2: svgHeight,
       };
     });
+
+    segments = potentialSegments.filter(
+      (seg): seg is LineSegment => seg !== null
+    );
   }
 
   const transitions = useTransition(segments, {
-    keys: seg => seg.key,
+    keys: (seg) => seg.key,
     from: { opacity: 0, strokeDasharray: "12,8", strokeDashoffset: 20 },
     enter: (_item, idx) => ({
       opacity: 1,
@@ -112,7 +143,7 @@ const AnimatedPrimaryBoundaryLines: React.FC<
 
   return (
     <g>
-      {segments.map(seg => (
+      {segments.map((seg) => (
         <React.Fragment key={`pts-${seg.key}`}>
           <circle
             cx={seg.x1}

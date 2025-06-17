@@ -195,6 +195,16 @@ const PhotoReceiptBoundingBox: React.FC = () => {
               width={displayWidth}
               height={displayHeight}
             >
+              <defs>
+                <style>
+                  {`
+                    @keyframes fadeIn {
+                      from { opacity: 0; transform: scale(0.5); }
+                      to { opacity: 1; transform: scale(1); }
+                    }
+                  `}
+                </style>
+              </defs>
               <image
                 href={cdnUrl}
                 x="0"
@@ -235,6 +245,36 @@ const PhotoReceiptBoundingBox: React.FC = () => {
                   svgHeight={svgHeight}
                   delay={convexHullDelay}
                 />
+              )}
+
+              {/* Render hull point indices */}
+              {inView && convexHullPoints.length > 0 && (
+                <g key={`hull-indices-${resetKey}`}>
+                  {convexHullPoints.map((point, index) => (
+                    <text
+                      key={`hull-index-${index}`}
+                      x={point.x * svgWidth}
+                      y={(1 - point.y) * svgHeight - 15}
+                      fill="white"
+                      stroke="black"
+                      strokeWidth="0.5"
+                      fontSize="14"
+                      fontWeight="bold"
+                      textAnchor="middle"
+                      style={{
+                        opacity: 0,
+                        animation: `fadeIn 400ms ease-in-out ${
+                          convexHullDelay +
+                          convexHullDuration +
+                          300 +
+                          index * 100
+                        }ms forwards`,
+                      }}
+                    >
+                      {index}
+                    </text>
+                  ))}
+                </g>
               )}
 
               {/* Render animated hull centroid */}

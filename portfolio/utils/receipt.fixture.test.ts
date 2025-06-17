@@ -5,47 +5,42 @@ import {
   findLineEdgesAtSecondaryExtremes,
   computeReceiptBoxFromLineEdges,
 } from "./geometry";
-import {
-  computeFinalReceiptTilt,
-  findHullExtremesAlongAngle,
-} from "./receipt";
+import { computeFinalReceiptTilt, findHullExtremesAlongAngle } from "./receipt";
 
 describe("bounding box algorithm with fixture", () => {
   const lines = fixtureData.lines;
   const allCorners: { x: number; y: number }[] = [];
-  lines.forEach(line => {
+  lines.forEach((line) => {
     allCorners.push(
       { x: line.top_left.x, y: line.top_left.y },
       { x: line.top_right.x, y: line.top_right.y },
       { x: line.bottom_right.x, y: line.bottom_right.y },
-      { x: line.bottom_left.x, y: line.bottom_left.y },
+      { x: line.bottom_left.x, y: line.bottom_left.y }
     );
   });
 
   const hull = convexHull([...allCorners]);
   const centroid = computeHullCentroid(hull);
-  const avgAngle = lines.reduce(
-    (s: number, l: any) => s + l.angle_degrees,
-    0,
-  ) / lines.length;
+  const avgAngle =
+    lines.reduce((s: number, l: any) => s + l.angle_degrees, 0) / lines.length;
   const finalAngle = computeFinalReceiptTilt(
     lines as any,
     hull,
     centroid,
-    avgAngle,
+    avgAngle
   );
   const { topEdge, bottomEdge } = findLineEdgesAtSecondaryExtremes(
     lines as any,
     hull,
     centroid,
-    avgAngle,
+    avgAngle
   );
   const extremes = findHullExtremesAlongAngle(hull, centroid, finalAngle);
   const receiptBox = computeReceiptBoxFromLineEdges(
     lines as any,
     hull,
     centroid,
-    avgAngle,
+    avgAngle
   );
 
   test("collects expected number of corners", () => {
@@ -61,13 +56,16 @@ describe("bounding box algorithm with fixture", () => {
     expect(centroid.y).toBeCloseTo(0.47067, 5);
   });
 
-  test("computes expected final angle", () => {
-    expect(finalAngle).toBeCloseTo(78.2377, 4);
-  });
+  // The top edge should be using indices 10 and 9
+  // The bottom edge should be using indices 3 and 4
 
   test("finds top and bottom edge points", () => {
     expect(topEdge.length).toBe(12);
     expect(bottomEdge.length).toBe(10);
+  });
+
+  test("computes expected final angle", () => {
+    expect(finalAngle).toBeCloseTo(78.2377, 4);
   });
 
   test("finds hull extremes along final angle", () => {
