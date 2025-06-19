@@ -12,7 +12,6 @@ import {
   AnimatedSecondaryBoundaryLines,
   AnimatedPrimaryBoundaryLines,
   AnimatedHullEdgeAlignment,
-  AnimatedReceiptFromHull,
 } from "../animations";
 import { getBestImageUrl } from "../../../utils/imageFormat";
 import useImageDetails from "../../../hooks/useImageDetails";
@@ -366,17 +365,6 @@ const PhotoReceiptBoundingBox: React.FC = () => {
                   />
                 )}
 
-              {/* Render animated receipt using proper algorithm */}
-              {/* {convexHullPoints.length > 0 && lines.length > 0 && (
-                <AnimatedReceiptFromHull
-                  key={`receipt-from-hull-${resetKey}`}
-                  hull={convexHullPoints}
-                  lines={lines}
-                  svgWidth={svgWidth}
-                  svgHeight={svgHeight}
-                  delay={receiptDelay}
-                />
-              )} */}
             </svg>
           ) : (
             // While loading, show a "Loading" message centered in the reserved space.
