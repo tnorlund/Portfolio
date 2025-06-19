@@ -18,16 +18,10 @@ import { getBestImageUrl } from "../../../utils/imageFormat";
 import useImageDetails from "../../../hooks/useImageDetails";
 import {
   computeHullCentroid,
-  computeReceiptBoxFromLineEdges,
-  computeEdge,
   convexHull,
 } from "../../../utils/geometry";
 import {
-  findBoundaryLinesWithSkew,
   estimateReceiptPolygonFromLines,
-  findHullExtentsRelativeToCentroid,
-  computeReceiptBoxFromHull,
-  findLineEdgesAtPrimaryExtremes,
   computeFinalReceiptTilt,
 } from "../../../utils/receipt";
 import {
