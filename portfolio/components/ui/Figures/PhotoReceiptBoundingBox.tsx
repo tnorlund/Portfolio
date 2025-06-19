@@ -16,24 +16,8 @@ import {
 } from "../animations";
 import { getBestImageUrl } from "../../../utils/imageFormat";
 import useImageDetails from "../../../hooks/useImageDetails";
-import {
-  computeHullCentroid,
-  computeReceiptBoxFromLineEdges,
-  computeEdge,
-  convexHull,
-} from "../../../utils/geometry";
-import {
-  findBoundaryLinesWithSkew,
-  estimateReceiptPolygonFromLines,
-  findHullExtentsRelativeToCentroid,
-  computeReceiptBoxFromHull,
-  findLineEdgesAtPrimaryExtremes,
-  computeFinalReceiptTilt,
-} from "../../../utils/receipt";
-import {
-  findHullExtremesAlongAngle,
-  refineHullExtremesWithHullEdgeAlignment,
-} from "../../../utils/receipt/boundingBox";
+import { estimateReceiptPolygonFromLines } from "../../../utils/receipt";
+import useReceiptGeometry from "../../../hooks/useReceiptGeometry";
 
 // Define simple point and line-segment shapes
 const isDevelopment = process.env.NODE_ENV === "development";
@@ -80,48 +64,18 @@ const PhotoReceiptBoundingBox: React.FC = () => {
     ? [computedReceipt]
     : imageDetails?.receipts ?? [];
 
-  // Compute convex hull from all line corners (matching the backend process_photo function)
-  const allLineCorners: Point[] = [];
-  lines.forEach((line) => {
-    // Add all four corners of each line bounding box
-    allLineCorners.push(
-      { x: line.top_left.x, y: line.top_left.y },
-      { x: line.top_right.x, y: line.top_right.y },
-      { x: line.bottom_right.x, y: line.bottom_right.y },
-      { x: line.bottom_left.x, y: line.bottom_left.y }
-    );
-  });
-  const convexHullPoints =
-    allLineCorners.length > 2 ? convexHull([...allLineCorners]) : [];
-
-  // Compute hull centroid for animation
-  const hullCentroid =
-    convexHullPoints.length > 0 ? computeHullCentroid(convexHullPoints) : null;
-
   const avgAngle =
     lines.length > 0
       ? lines.reduce((sum, l) => sum + l.angle_degrees, 0) / lines.length
       : 0;
-  const finalAngle =
-    hullCentroid && convexHullPoints.length > 0
-      ? computeFinalReceiptTilt(lines, convexHullPoints, hullCentroid, avgAngle)
-      : avgAngle;
 
-  // Calculate hull extremes and refined segments using the same approach as the test
-  const hullExtremes =
-    hullCentroid && convexHullPoints.length > 0
-      ? findHullExtremesAlongAngle(convexHullPoints, hullCentroid, finalAngle)
-      : null;
-
-  const refinedSegments =
-    hullExtremes && convexHullPoints.length > 0
-      ? refineHullExtremesWithHullEdgeAlignment(
-          convexHullPoints,
-          hullExtremes.leftPoint,
-          hullExtremes.rightPoint,
-          finalAngle
-        )
-      : null;
+  const {
+    convexHullPoints,
+    hullCentroid,
+    finalAngle,
+    hullExtremes,
+    refinedSegments,
+  } = useReceiptGeometry(lines);
 
   // Animate line bounding boxes using a transition.
   const lineTransitions = useTransition(inView ? lines : [], {
