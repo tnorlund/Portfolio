@@ -87,12 +87,12 @@ describe("PhotoReceiptBoundingBox", () => {
     const svgHeight = fixtureData.image.height;
 
     const allCorners: { x: number; y: number }[] = [];
-    lines.forEach(line => {
+    lines.forEach((line) => {
       allCorners.push(
         { x: line.top_left.x, y: line.top_left.y },
         { x: line.top_right.x, y: line.top_right.y },
         { x: line.bottom_right.x, y: line.bottom_right.y },
-        { x: line.bottom_left.x, y: line.bottom_left.y },
+        { x: line.bottom_left.x, y: line.bottom_left.y }
       );
     });
 
@@ -103,7 +103,12 @@ describe("PhotoReceiptBoundingBox", () => {
       lines.reduce((sum, l) => sum + l.angle_degrees, 0) / lines.length;
     const finalAngle =
       hullCentroid && hullPoints.length > 0
-        ? computeFinalReceiptTilt(lines as any, hullPoints, hullCentroid, avgAngle)
+        ? computeFinalReceiptTilt(
+            lines as any,
+            hullPoints,
+            hullCentroid,
+            avgAngle
+          )
         : avgAngle;
 
     const totalDelayForLines =
@@ -115,20 +120,20 @@ describe("PhotoReceiptBoundingBox", () => {
 
     expect(animations.AnimatedHullCentroid).toHaveBeenCalledTimes(1);
     expect(
-      (animations.AnimatedHullCentroid as jest.Mock).mock.calls[0][0],
+      (animations.AnimatedHullCentroid as jest.Mock).mock.calls[0][0]
     ).toEqual(
       expect.objectContaining({
         centroid: hullCentroid,
         svgWidth,
         svgHeight,
         delay: centroidDelay,
-      }),
+      })
     );
     expect(screen.getByTestId("AnimatedHullCentroid")).toBeInTheDocument();
 
     expect(animations.AnimatedOrientedAxes).toHaveBeenCalledTimes(1);
     expect(
-      (animations.AnimatedOrientedAxes as jest.Mock).mock.calls[0][0],
+      (animations.AnimatedOrientedAxes as jest.Mock).mock.calls[0][0]
     ).toEqual(
       expect.objectContaining({
         hull: hullPoints,
@@ -137,13 +142,13 @@ describe("PhotoReceiptBoundingBox", () => {
         svgWidth,
         svgHeight,
         delay: extentsDelay,
-      }),
+      })
     );
     expect(screen.getByTestId("AnimatedOrientedAxes")).toBeInTheDocument();
 
     expect(animations.AnimatedPrimaryEdges).toHaveBeenCalledTimes(1);
     expect(
-      (animations.AnimatedPrimaryEdges as jest.Mock).mock.calls[0][0],
+      (animations.AnimatedPrimaryEdges as jest.Mock).mock.calls[0][0]
     ).toEqual(
       expect.objectContaining({
         lines,
@@ -153,31 +158,31 @@ describe("PhotoReceiptBoundingBox", () => {
         svgWidth,
         svgHeight,
         delay: extentsDelay + 1000,
-      }),
+      })
     );
     expect(screen.getByTestId("AnimatedPrimaryEdges")).toBeInTheDocument();
 
     expect(animations.AnimatedSecondaryBoundaryLines).toHaveBeenCalledTimes(1);
     expect(
-      (animations.AnimatedSecondaryBoundaryLines as jest.Mock).mock.calls[0][0],
+      (animations.AnimatedSecondaryBoundaryLines as jest.Mock).mock.calls[0][0]
     ).toEqual(
       expect.objectContaining({
         lines,
         hull: hullPoints,
         centroid: hullCentroid,
-        avgAngle: finalAngle,
+        avgAngle: avgAngle,
         svgWidth,
         svgHeight,
         delay: extentsDelay + 1500,
-      }),
+      })
     );
     expect(
-      screen.getByTestId("AnimatedSecondaryBoundaryLines"),
+      screen.getByTestId("AnimatedSecondaryBoundaryLines")
     ).toBeInTheDocument();
 
     expect(animations.AnimatedPrimaryBoundaryLines).toHaveBeenCalledTimes(1);
     expect(
-      (animations.AnimatedPrimaryBoundaryLines as jest.Mock).mock.calls[0][0],
+      (animations.AnimatedPrimaryBoundaryLines as jest.Mock).mock.calls[0][0]
     ).toEqual(
       expect.objectContaining({
         hull: hullPoints,
@@ -186,10 +191,10 @@ describe("PhotoReceiptBoundingBox", () => {
         svgWidth,
         svgHeight,
         delay: extentsDelay + 2000,
-      }),
+      })
     );
     expect(
-      screen.getByTestId("AnimatedPrimaryBoundaryLines"),
+      screen.getByTestId("AnimatedPrimaryBoundaryLines")
     ).toBeInTheDocument();
   });
 });

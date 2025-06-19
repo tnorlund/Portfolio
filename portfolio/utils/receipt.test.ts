@@ -79,17 +79,16 @@ describe("receipt utilities", () => {
 
   test("computeFinalReceiptTilt returns expected angle", () => {
     const angle = computeFinalReceiptTilt(lines as any, hull, centroid, 0);
-    expect(angle).toBeCloseTo(0);
+    expect(angle).toBeCloseTo(90);
   });
 
   test("findHullExtremesAlongAngle finds extremes", () => {
     const { leftPoint, rightPoint } = findHullExtremesAlongAngle(
       hull,
       centroid,
-      0,
+      0
     );
     expect(leftPoint.x).toBeCloseTo(0);
     expect(rightPoint.x).toBeCloseTo(2);
   });
 });
-

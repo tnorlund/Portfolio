@@ -1,6 +1,10 @@
 import React from "react";
 import { useTransition, animated } from "@react-spring/web";
 import type { Line, Point } from "../../../types/api";
+import {
+  findLineEdgesAtSecondaryExtremes,
+  theilSen,
+} from "../../../utils/geometry";
 
 interface LineSegment {
   x1: number;
@@ -22,30 +26,22 @@ interface AnimatedSecondaryBoundaryLinesProps {
 
 const AnimatedSecondaryBoundaryLines: React.FC<
   AnimatedSecondaryBoundaryLinesProps
-> = ({ hull, centroid, avgAngle, svgWidth, svgHeight, delay }) => {
+> = ({ lines, hull, centroid, avgAngle, svgWidth, svgHeight, delay }) => {
   let bottomPts: Point[] = [];
   let topPts: Point[] = [];
   let lineSegments: LineSegment[] = [];
 
   if (hull.length >= 3) {
-    const angleRad = (avgAngle * Math.PI) / 180;
-    const secondaryAxisAngle = angleRad + Math.PI / 2;
-    const cosS = Math.cos(secondaryAxisAngle);
-    const sinS = Math.sin(secondaryAxisAngle);
+    // Use the same algorithm as the tests
+    const { topEdge, bottomEdge } = findLineEdgesAtSecondaryExtremes(
+      lines,
+      hull,
+      centroid,
+      avgAngle
+    );
 
-    const projHull = hull
-      .map((p) => {
-        const rx = p.x - centroid.x;
-        const ry = p.y - centroid.y;
-        return { point: p, proj: rx * cosS + ry * sinS };
-      })
-      .sort((a, b) => a.proj - b.proj);
-
-    bottomPts = [projHull[0].point, projHull[1].point];
-    topPts = [
-      projHull[projHull.length - 2].point,
-      projHull[projHull.length - 1].point,
-    ];
+    topPts = topEdge;
+    bottomPts = bottomEdge;
 
     const extendFullWidth = (
       pA: Point,
@@ -95,13 +91,90 @@ const AnimatedSecondaryBoundaryLines: React.FC<
       };
     };
 
-    lineSegments = [
-      extendFullWidth(bottomPts[0], bottomPts[1], "bottom-hull-boundary"),
-      extendFullWidth(topPts[0], topPts[1], "top-hull-boundary"),
-    ].filter((seg): seg is LineSegment => seg !== null);
+    // Create line segments that pass exactly through the 2 boundary points
+    const segments: (LineSegment | null)[] = [];
+
+    if (bottomPts.length >= 2) {
+      // Calculate line directly through the 2 bottom points
+      const p1 = bottomPts[0];
+      const p2 = bottomPts[1];
+
+      // Calculate slope and intercept in normalized coordinates
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+
+      if (Math.abs(dx) < 1e-6) {
+        // Nearly vertical line - extend from top to bottom at average x
+        const avgX = (p1.x + p2.x) / 2;
+        segments.push({
+          key: "bottom-hull-boundary",
+          x1: avgX * svgWidth,
+          y1: 0,
+          x2: avgX * svgWidth,
+          y2: svgHeight,
+        });
+      } else {
+        // Normal line - calculate slope and extend across full width
+        const slope = dy / dx;
+        const intercept = p1.y - slope * p1.x;
+
+        // Calculate line endpoints in normalized coordinates
+        const y1 = slope * 0 + intercept; // Left edge (x=0)
+        const y2 = slope * 1 + intercept; // Right edge (x=1)
+
+        segments.push({
+          key: "bottom-hull-boundary",
+          x1: 0,
+          y1: (1 - y1) * svgHeight, // Convert to SVG coordinates
+          x2: svgWidth,
+          y2: (1 - y2) * svgHeight, // Convert to SVG coordinates
+        });
+      }
+    }
+
+    if (topPts.length >= 2) {
+      // Calculate line directly through the 2 top points
+      const p1 = topPts[0];
+      const p2 = topPts[1];
+
+      // Calculate slope and intercept in normalized coordinates
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+
+      if (Math.abs(dx) < 1e-6) {
+        // Nearly vertical line - extend from top to bottom at average x
+        const avgX = (p1.x + p2.x) / 2;
+        segments.push({
+          key: "top-hull-boundary",
+          x1: avgX * svgWidth,
+          y1: 0,
+          x2: avgX * svgWidth,
+          y2: svgHeight,
+        });
+      } else {
+        // Normal line - calculate slope and extend across full width
+        const slope = dy / dx;
+        const intercept = p1.y - slope * p1.x;
+
+        // Calculate line endpoints in normalized coordinates
+        const y1 = slope * 0 + intercept; // Left edge (x=0)
+        const y2 = slope * 1 + intercept; // Right edge (x=1)
+
+        segments.push({
+          key: "top-hull-boundary",
+          x1: 0,
+          y1: (1 - y1) * svgHeight, // Convert to SVG coordinates
+          x2: svgWidth,
+          y2: (1 - y2) * svgHeight, // Convert to SVG coordinates
+        });
+      }
+    }
+
+    lineSegments = segments.filter((seg): seg is LineSegment => seg !== null);
   }
 
   const dotPoints = [...bottomPts, ...topPts];
+
   const dotTransitions = useTransition(dotPoints, {
     from: { opacity: 0 },
     enter: (_pt, idx) => ({

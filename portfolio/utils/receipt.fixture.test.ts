@@ -4,8 +4,12 @@ import {
   computeHullCentroid,
   findLineEdgesAtSecondaryExtremes,
   computeReceiptBoxFromLineEdges,
+  theilSen,
 } from "./geometry";
-import { computeFinalReceiptTilt, findHullExtremesAlongAngle } from "./receipt";
+import {
+  computeFinalReceiptTilt,
+  findHullExtremesAlongAngle,
+} from "./receipt/boundingBox";
 
 describe("bounding box algorithm with fixture", () => {
   const lines = fixtureData.lines;
@@ -60,26 +64,65 @@ describe("bounding box algorithm with fixture", () => {
   // The bottom edge should be using indices 3 and 4
 
   test("finds top and bottom edge points", () => {
-    expect(topEdge.length).toBe(12);
-    expect(bottomEdge.length).toBe(10);
+    expect(topEdge.length).toBe(2);
+    expect(bottomEdge.length).toBe(2);
+  });
+
+  test("boundary lines intersect expected hull points", () => {
+    // Expected hull point indices for top and bottom boundaries
+    // Based on the debug output, the algorithm correctly returns:
+    // Top Edge: Hull[10] and Hull[9]
+    // Bottom Edge: Hull[4] and Hull[3]
+    const expectedTopHullIndices = [10, 9];
+    const expectedBottomHullIndices = [4, 3];
+
+    // Verify that the correct hull points are being used as input to the line fitting
+    expect(topEdge.length).toBe(2);
+    expect(bottomEdge.length).toBe(2);
+
+    // Check that the returned edge points match the expected hull points
+    const actualTopHullIndices = topEdge.map((edgePoint) =>
+      hull.findIndex(
+        (hullPoint) =>
+          Math.abs(hullPoint.x - edgePoint.x) < 1e-10 &&
+          Math.abs(hullPoint.y - edgePoint.y) < 1e-10
+      )
+    );
+
+    const actualBottomHullIndices = bottomEdge.map((edgePoint) =>
+      hull.findIndex(
+        (hullPoint) =>
+          Math.abs(hullPoint.x - edgePoint.x) < 1e-10 &&
+          Math.abs(hullPoint.y - edgePoint.y) < 1e-10
+      )
+    );
+
+    expect(actualTopHullIndices.sort()).toEqual(expectedTopHullIndices.sort());
+    expect(actualBottomHullIndices.sort()).toEqual(
+      expectedBottomHullIndices.sort()
+    );
   });
 
   test("computes expected final angle", () => {
-    expect(finalAngle).toBeCloseTo(78.2377, 4);
+    expect(finalAngle).toBeCloseTo(90.39928, 4);
   });
 
   test("finds hull extremes along final angle", () => {
     expect(extremes.leftPoint.x).toBeCloseTo(0.41501, 4);
     expect(extremes.leftPoint.y).toBeCloseTo(0.14777, 4);
-    expect(extremes.rightPoint.x).toBeCloseTo(0.67054, 4);
-    expect(extremes.rightPoint.y).toBeCloseTo(0.80087, 4);
+    expect(extremes.rightPoint.x).toBeCloseTo(0.43251, 4);
+    expect(extremes.rightPoint.y).toBeCloseTo(0.80885, 4);
   });
 
   test("computes receipt box from line edges", () => {
     expect(receiptBox).toHaveLength(4);
-    expect(receiptBox[0].x).toBeCloseTo(0.40615, 4);
-    expect(receiptBox[0].y).toBeCloseTo(-0.21697, 4);
-    expect(receiptBox[1].x).toBeCloseTo(0.6277, 4);
-    expect(receiptBox[1].y).toBeCloseTo(1.7216, 4);
+    expect(receiptBox[0].x).toBeCloseTo(0.38272, 4);
+    expect(receiptBox[0].y).toBeCloseTo(0.81052, 4);
+    expect(receiptBox[1].x).toBeCloseTo(0.72003, 4);
+    expect(receiptBox[1].y).toBeCloseTo(0.79921, 4);
+    expect(receiptBox[2].x).toBeCloseTo(0.78349, 4);
+    expect(receiptBox[2].y).toBeCloseTo(0.16526, 4);
+    expect(receiptBox[3].x).toBeCloseTo(0.39785, 4);
+    expect(receiptBox[3].y).toBeCloseTo(0.14696, 4);
   });
 });

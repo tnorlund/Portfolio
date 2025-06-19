@@ -242,8 +242,8 @@ describe("geometry utilities", () => {
         mockCentroid,
         0
       );
-      expect(result.topEdge).toHaveLength(1); // falls back to hull point
-      expect(result.bottomEdge).toHaveLength(1); // falls back to hull point
+      expect(result.topEdge).toHaveLength(2); // uses 2 hull points
+      expect(result.bottomEdge).toHaveLength(2); // uses 2 hull points
     });
   });
 

@@ -31,8 +31,8 @@ export const computeReceiptBoxFromSkewedExtents = (
   };
 
   const deskewed = hull.map(deskew);
-  const top = deskewed.filter(p => p.y < 0);
-  const bottom = deskewed.filter(p => p.y >= 0);
+  const top = deskewed.filter((p) => p.y < 0);
+  const bottom = deskewed.filter((p) => p.y >= 0);
   const topHalf = top.length ? top : deskewed.slice();
   const bottomHalf = bottom.length ? bottom : deskewed.slice();
 
@@ -44,11 +44,15 @@ export const computeReceiptBoxFromSkewedExtents = (
   const leftBottom = minX(bottomHalf);
   const rightBottom = maxX(bottomHalf);
 
-  const allY = deskewed.map(p => p.y);
+  const allY = deskewed.map((p) => p.y);
   const topY = Math.min(...allY);
   const bottomY = Math.max(...allY);
 
-  const interpolate = (vTop: Point, vBottom: Point, desiredY: number): Point => {
+  const interpolate = (
+    vTop: Point,
+    vBottom: Point,
+    desiredY: number
+  ): Point => {
     const dy = vBottom.y - vTop.y;
     if (Math.abs(dy) < 1e-9) return { x: vTop.x, y: desiredY };
     const t = (desiredY - vTop.y) / dy;
@@ -69,8 +73,13 @@ export const computeReceiptBoxFromSkewedExtents = (
     return { x: rx + cx, y: ry + cy };
   };
 
-  const corners = [leftTopPoint, rightTopPoint, rightBottomPoint, leftBottomPoint].map(inverse);
-  return corners.map(p => ({ x: Math.round(p.x), y: Math.round(p.y) }));
+  const corners = [
+    leftTopPoint,
+    rightTopPoint,
+    rightBottomPoint,
+    leftBottomPoint,
+  ].map(inverse);
+  return corners.map((p) => ({ x: Math.round(p.x), y: Math.round(p.y) }));
 };
 /**
  * Sample points from a convex hull to estimate the left or right edge
@@ -91,7 +100,7 @@ export const computeHullEdge = (
 ): { top: Point; bottom: Point } | null => {
   if (hull.length < 4) return null;
   const binPts: (Point | null)[] = Array.from({ length: bins }, () => null);
-  hull.forEach(p => {
+  hull.forEach((p) => {
     const idx = Math.min(bins - 1, Math.floor(p.y * bins));
     const current = binPts[idx];
     if (!current || (pick === "left" ? p.x < current.x : p.x > current.x)) {
@@ -123,7 +132,7 @@ export const computeEdge = (
 ): { top: Point; bottom: Point } | null => {
   const binPts: (Point | null)[] = Array.from({ length: bins }, () => null);
 
-  lines.forEach(l => {
+  lines.forEach((l) => {
     const yMid = (l.top_left.y + l.bottom_left.y) / 2;
     const x =
       pick === "left"
@@ -170,92 +179,25 @@ export const findLineEdgesAtSecondaryExtremes = (
   const angleRad = (avgAngle * Math.PI) / 180;
   const secondaryAxisAngle = angleRad + Math.PI / 2;
 
-  let minSecondary = Infinity,
-    maxSecondary = -Infinity;
-  let topExtremeX = 0,
-    bottomExtremeX = 0;
-
-  hull.forEach(point => {
+  // Project all hull points onto the secondary axis
+  const hullProjections = hull.map((point, index) => {
     const relX = point.x - centroid.x;
     const relY = point.y - centroid.y;
     const secondaryProjection =
       relX * Math.cos(secondaryAxisAngle) + relY * Math.sin(secondaryAxisAngle);
-
-    if (secondaryProjection < minSecondary) {
-      minSecondary = secondaryProjection;
-      bottomExtremeX = point.x;
-    }
-    if (secondaryProjection > maxSecondary) {
-      maxSecondary = secondaryProjection;
-      topExtremeX = point.x;
-    }
+    return { point, projection: secondaryProjection, index };
   });
 
-  const tolerance = 0.1;
-  const topLines = lines.filter(line => {
-    const lineCenterX =
-      (line.top_left.x +
-        line.top_right.x +
-        line.bottom_left.x +
-        line.bottom_right.x) /
-      4;
-    return Math.abs(lineCenterX - topExtremeX) < tolerance;
-  });
+  // Sort by secondary projection
+  hullProjections.sort((a, b) => b.projection - a.projection);
 
-  const bottomLines = lines.filter(line => {
-    const lineCenterX =
-      (line.top_left.x +
-        line.top_right.x +
-        line.bottom_left.x +
-        line.bottom_right.x) /
-      4;
-    return Math.abs(lineCenterX - bottomExtremeX) < tolerance;
-  });
+  // Take the top 2 points (highest projections) and bottom 2 points (lowest projections)
+  const topHullPoints = hullProjections.slice(0, 2).map((hp) => hp.point);
+  const bottomHullPoints = hullProjections.slice(-2).map((hp) => hp.point);
 
-  let topEdgePoints: Point[] = [];
-  let bottomEdgePoints: Point[] = [];
-
-  if (topLines.length > 0) {
-    topLines.forEach(line => {
-      const topY = Math.max(line.top_left.y, line.top_right.y);
-      topEdgePoints.push(
-        { x: line.top_left.x, y: topY },
-        { x: line.top_right.x, y: topY }
-      );
-    });
-  }
-
-  if (bottomLines.length > 0) {
-    bottomLines.forEach(line => {
-      const bottomY = Math.min(line.bottom_left.y, line.bottom_right.y);
-      bottomEdgePoints.push(
-        { x: line.bottom_left.x, y: bottomY },
-        { x: line.bottom_right.x, y: bottomY }
-      );
-    });
-  }
-
-  if (topEdgePoints.length === 0) {
-    const topHullPoint = hull.find(point => {
-      const relX = point.x - centroid.x;
-      const relY = point.y - centroid.y;
-      const projection =
-        relX * Math.cos(secondaryAxisAngle) + relY * Math.sin(secondaryAxisAngle);
-      return Math.abs(projection - maxSecondary) < 0.001;
-    });
-    if (topHullPoint) topEdgePoints = [topHullPoint];
-  }
-
-  if (bottomEdgePoints.length === 0) {
-    const bottomHullPoint = hull.find(point => {
-      const relX = point.x - centroid.x;
-      const relY = point.y - centroid.y;
-      const projection =
-        relX * Math.cos(secondaryAxisAngle) + relY * Math.sin(secondaryAxisAngle);
-      return Math.abs(projection - minSecondary) < 0.001;
-    });
-    if (bottomHullPoint) bottomEdgePoints = [bottomHullPoint];
-  }
+  // Always use exactly the 2 hull points for each boundary - no text line supplementation
+  const topEdgePoints = topHullPoints;
+  const bottomEdgePoints = bottomHullPoints;
 
   return { topEdge: topEdgePoints, bottomEdge: bottomEdgePoints };
 };
@@ -358,4 +300,3 @@ export const computeReceiptBoxFromLineEdges = (
 
   return [topLeft, topRight, bottomRight, bottomLeft];
 };
-
