@@ -12,9 +12,6 @@ jest.mock("../../components/ui/animations", () => ({
   AnimatedSecondaryBoundaryLines: () => (
     <g data-testid="AnimatedSecondaryBoundaryLines" />
   ),
-  AnimatedPrimaryBoundaryLines: () => (
-    <g data-testid="AnimatedPrimaryBoundaryLines" />
-  ),
   AnimatedReceiptFromHull: () => <g data-testid="AnimatedReceiptFromHull" />,
   AnimatedHullEdgeAlignment: () => (
     <g data-testid="AnimatedHullEdgeAlignment" />

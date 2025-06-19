@@ -10,7 +10,6 @@ import {
   AnimatedOrientedAxes,
   AnimatedPrimaryEdges,
   AnimatedSecondaryBoundaryLines,
-  AnimatedPrimaryBoundaryLines,
   AnimatedHullEdgeAlignment,
 } from "../animations";
 import { getBestImageUrl } from "../../../utils/imageFormat";
@@ -346,24 +345,6 @@ const PhotoReceiptBoundingBox: React.FC = () => {
                   />
                 )}
 
-              {/* Step 9 – Compute final receipt quadrilateral */}
-              {/* see components/ui/Figures/PhotoReceiptBoundingBox.md */}
-              {/* Render final refined primary boundary lines */}
-              {inView &&
-                convexHullPoints.length > 0 &&
-                hullCentroid &&
-                refinedSegments && (
-                  <AnimatedPrimaryBoundaryLines
-                    key={`primary-boundary-lines-${resetKey}`}
-                    hull={convexHullPoints}
-                    centroid={hullCentroid}
-                    avgAngle={finalAngle}
-                    refinedSegments={refinedSegments}
-                    svgWidth={svgWidth}
-                    svgHeight={svgHeight}
-                    delay={extentsDelay + 2800}
-                  />
-                )}
 
             </svg>
           ) : (

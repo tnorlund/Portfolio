@@ -8,10 +8,6 @@ import { getAnimationConfig } from "./animationConfig";
 import * as animations from "../animations";
 import { convexHull, computeHullCentroid } from "../../../utils/geometry";
 import { computeFinalReceiptTilt } from "../../../utils/receipt";
-import {
-  findHullExtremesAlongAngle,
-  refineHullExtremesWithHullEdgeAlignment,
-} from "../../../utils/receipt/boundingBox";
 
 jest.mock("../../../hooks/useImageDetails");
 
@@ -32,9 +28,6 @@ jest.mock("../animations", () => {
   const AnimatedSecondaryBoundaryLines = jest.fn(() => (
     <g data-testid="AnimatedSecondaryBoundaryLines" />
   ));
-  const AnimatedPrimaryBoundaryLines = jest.fn(() => (
-    <g data-testid="AnimatedPrimaryBoundaryLines" />
-  ));
   const AnimatedReceiptFromHull = jest.fn(() => (
     <g data-testid="AnimatedReceiptFromHull" />
   ));
@@ -49,7 +42,6 @@ jest.mock("../animations", () => {
     AnimatedOrientedAxes,
     AnimatedPrimaryEdges,
     AnimatedSecondaryBoundaryLines,
-    AnimatedPrimaryBoundaryLines,
     AnimatedReceiptFromHull,
     AnimatedHullEdgeAlignment,
     AnimatedLineBox,
@@ -128,21 +120,6 @@ describe("PhotoReceiptBoundingBox", () => {
       extentsDelay,
     } = getAnimationConfig(lines.length, hullPoints.length);
 
-    // Calculate refined segments for AnimatedPrimaryBoundaryLines test
-    const hullExtremes =
-      hullCentroid && hullPoints.length > 0
-        ? findHullExtremesAlongAngle(hullPoints, hullCentroid, finalAngle)
-        : null;
-
-    const refinedSegments =
-      hullExtremes && hullPoints.length > 0
-        ? refineHullExtremesWithHullEdgeAlignment(
-            hullPoints,
-            hullExtremes.leftPoint,
-            hullExtremes.rightPoint,
-            finalAngle
-          )
-        : null;
 
     expect(animations.AnimatedHullCentroid).toHaveBeenCalledTimes(1);
     expect(
@@ -206,22 +183,5 @@ describe("PhotoReceiptBoundingBox", () => {
       screen.getByTestId("AnimatedSecondaryBoundaryLines")
     ).toBeInTheDocument();
 
-    expect(animations.AnimatedPrimaryBoundaryLines).toHaveBeenCalledTimes(1);
-    expect(
-      (animations.AnimatedPrimaryBoundaryLines as jest.Mock).mock.calls[0][0]
-    ).toEqual(
-      expect.objectContaining({
-        hull: hullPoints,
-        centroid: hullCentroid,
-        avgAngle: finalAngle,
-        refinedSegments: refinedSegments,
-        svgWidth,
-        svgHeight,
-        delay: extentsDelay + 2800,
-      })
-    );
-    expect(
-      screen.getByTestId("AnimatedPrimaryBoundaryLines")
-    ).toBeInTheDocument();
   });
 });
