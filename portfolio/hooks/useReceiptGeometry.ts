@@ -24,7 +24,7 @@ interface ReceiptGeometryResult {
 }
 
 export const useReceiptGeometry = (lines: Line[]): ReceiptGeometryResult => {
-  return useMemo(() => {
+  const convexHullPoints = useMemo(() => {
     const allLineCorners: Point[] = [];
     lines.forEach((line) => {
       allLineCorners.push(
@@ -34,28 +34,41 @@ export const useReceiptGeometry = (lines: Line[]): ReceiptGeometryResult => {
         { x: line.bottom_left.x, y: line.bottom_left.y }
       );
     });
-    const convexHullPoints =
-      allLineCorners.length > 2 ? convexHull([...allLineCorners]) : [];
+    return allLineCorners.length > 2 ? convexHull([...allLineCorners]) : [];
+  }, [lines]);
 
-    const hullCentroid =
-      convexHullPoints.length > 0 ? computeHullCentroid(convexHullPoints) : null;
+  const hullCentroid = useMemo(
+    () =>
+      convexHullPoints.length > 0 ? computeHullCentroid(convexHullPoints) : null,
+    [convexHullPoints]
+  );
 
-    const avgAngle =
+  const avgAngle = useMemo(
+    () =>
       lines.length > 0
         ? lines.reduce((sum, l) => sum + l.angle_degrees, 0) / lines.length
-        : 0;
+        : 0,
+    [lines]
+  );
 
-    const finalAngle =
+  const finalAngle = useMemo(
+    () =>
       hullCentroid && convexHullPoints.length > 0
         ? computeFinalReceiptTilt(lines, convexHullPoints, hullCentroid, avgAngle)
-        : avgAngle;
+        : avgAngle,
+    [lines, convexHullPoints, hullCentroid, avgAngle]
+  );
 
-    const hullExtremes =
+  const hullExtremes = useMemo(
+    () =>
       hullCentroid && convexHullPoints.length > 0
         ? findHullExtremesAlongAngle(convexHullPoints, hullCentroid, finalAngle)
-        : null;
+        : null,
+    [convexHullPoints, hullCentroid, finalAngle]
+  );
 
-    const refinedSegments =
+  const refinedSegments = useMemo(
+    () =>
       hullExtremes && convexHullPoints.length > 0
         ? refineHullExtremesWithHullEdgeAlignment(
             convexHullPoints,
@@ -63,16 +76,20 @@ export const useReceiptGeometry = (lines: Line[]): ReceiptGeometryResult => {
             hullExtremes.rightPoint,
             finalAngle
           )
-        : null;
+        : null,
+    [convexHullPoints, hullExtremes, finalAngle]
+  );
 
-    return {
+  return useMemo(
+    () => ({
       convexHullPoints,
       hullCentroid,
       finalAngle,
       hullExtremes,
       refinedSegments,
-    };
-  }, [lines]);
+    }),
+    [convexHullPoints, hullCentroid, finalAngle, hullExtremes, refinedSegments]
+  );
 };
 
 export default useReceiptGeometry;
