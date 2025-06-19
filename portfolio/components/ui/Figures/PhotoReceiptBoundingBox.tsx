@@ -295,6 +295,7 @@ const PhotoReceiptBoundingBox: React.FC = () => {
                   hull={convexHullPoints}
                   centroid={hullCentroid}
                   lines={lines}
+                  finalAngle={finalAngle}
                   svgWidth={svgWidth}
                   svgHeight={svgHeight}
                   delay={extentsDelay}

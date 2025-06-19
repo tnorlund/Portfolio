@@ -79,7 +79,7 @@ describe("receipt utilities", () => {
 
   test("computeFinalReceiptTilt returns expected angle", () => {
     const angle = computeFinalReceiptTilt(lines as any, hull, centroid, 0);
-    expect(angle).toBeCloseTo(90);
+    expect(angle).toBeCloseTo(0); // With consistent angle calculation, horizontal lines give 0°
   });
 
   test("findHullExtremesAlongAngle finds extremes", () => {

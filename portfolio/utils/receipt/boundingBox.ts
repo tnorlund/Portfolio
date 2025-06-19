@@ -216,6 +216,41 @@ export const findLineEdgesAtPrimaryExtremes = (
 };
 
 /**
+ * Compute angle from points ensuring consistent left-to-right direction.
+ * This eliminates angle direction inconsistencies caused by hull point ordering.
+ * For line orientations, angles are normalized to [0°, 90°] where values near 180°
+ * are treated as being close to 0°.
+ */
+export const consistentAngleFromPoints = (pts: Point[]): number | null => {
+  if (pts.length < 2) return null;
+
+  // Sort points by X coordinate to ensure consistent left-to-right measurement
+  const sortedPts = [...pts].sort((a, b) => a.x - b.x);
+  const leftPoint = sortedPts[0];
+  const rightPoint = sortedPts[sortedPts.length - 1];
+
+  // Calculate angle from leftmost to rightmost point
+  const dx = rightPoint.x - leftPoint.x;
+  const dy = rightPoint.y - leftPoint.y;
+
+  // Convert slope to angle
+  const angleRad = Math.atan2(dy, dx);
+  let angleDeg = (angleRad * 180) / Math.PI;
+
+  // Normalize to [0, 180) first
+  if (angleDeg < 0) angleDeg += 180;
+  if (angleDeg >= 180) angleDeg -= 180;
+
+  // For line orientations, angles > 90° should be treated as their supplement
+  // This maps the range to [0°, 90°] where 0° is horizontal
+  if (angleDeg > 90) {
+    angleDeg = 180 - angleDeg;
+  }
+
+  return angleDeg;
+};
+
+/**
  * Compute the final tilt angle of the receipt by analyzing text line edges.
  *
  * This function refines the average text angle by examining the top and bottom
@@ -244,20 +279,14 @@ export const computeFinalReceiptTilt = (
     avgAngle
   );
 
-  const angleFromPoints = (pts: Point[]): number | null => {
-    if (pts.length < 2) return null;
-    const { slope } = theilSen(pts);
-    return (Math.atan2(1, slope) * 180) / Math.PI;
-  };
+  // Use consistent angle calculation that always measures left-to-right
+  const aTop = consistentAngleFromPoints(topEdge);
+  const aBottom = consistentAngleFromPoints(bottomEdge);
 
-  const angles: number[] = [];
-  const aTop = angleFromPoints(topEdge);
-  const aBottom = angleFromPoints(bottomEdge);
-  if (aTop !== null) angles.push(aTop);
-  if (aBottom !== null) angles.push(aBottom);
+  if (aTop === null || aBottom === null) return avgAngle;
 
-  if (angles.length === 0) return avgAngle;
-  return angles.reduce((s, a) => s + a, 0) / angles.length;
+  // Since both angles are now measured consistently, simple averaging should work
+  return (aTop + aBottom) / 2;
 };
 
 /**

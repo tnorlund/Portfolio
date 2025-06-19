@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from "react";
 import type { Line, Point } from "../../../types/api";
 import { findLineEdgesAtSecondaryExtremes } from "../../../utils/geometry";
+import { findHullExtremesAlongAngle } from "../../../utils/receipt";
 
 interface AnimatedOrientedAxesProps {
   hull: Point[];
   centroid: Point;
   lines: Line[];
+  finalAngle: number;
   svgWidth: number;
   svgHeight: number;
   delay: number;
@@ -15,6 +17,7 @@ const AnimatedOrientedAxes: React.FC<AnimatedOrientedAxesProps> = ({
   hull,
   centroid,
   lines,
+  finalAngle,
   svgWidth,
   svgHeight,
   delay,
@@ -45,18 +48,8 @@ const AnimatedOrientedAxes: React.FC<AnimatedOrientedAxesProps> = ({
 
   if (hull.length === 0 || lines.length === 0) return null;
 
-  const computedAngles = lines
-    .map((line) => {
-      const dx = line.bottom_right.x - line.bottom_left.x;
-      const dy = line.bottom_right.y - line.bottom_left.y;
-      return (Math.atan2(dy, dx) * 180) / Math.PI;
-    })
-    .filter((angle) => Math.abs(angle) > 1e-3);
-
-  const avgAngle =
-    computedAngles.length > 0
-      ? computedAngles.reduce((sum, a) => sum + a, 0) / computedAngles.length
-      : 0;
+  // Use the corrected final angle instead of calculating our own
+  const avgAngle = finalAngle;
 
   const centroidX = centroid.x * svgWidth;
   const centroidY = (1 - centroid.y) * svgHeight;
@@ -85,64 +78,18 @@ const AnimatedOrientedAxes: React.FC<AnimatedOrientedAxesProps> = ({
     y2: centroidY - axisLength * Math.cos(primaryAxisAngle), // Perpendicular Y component (negative = up)
   };
 
-  // Find extremes along each axis using OCR coordinates (not SVG coordinates)
-  let minPrimary = Infinity,
-    maxPrimary = -Infinity;
-  let minSecondary = Infinity,
-    maxSecondary = -Infinity;
-  let primaryMinPoint = hull[0],
-    primaryMaxPoint = hull[0];
-  let secondaryMinPoint = hull[0],
-    secondaryMaxPoint = hull[0];
-
-  const hullProjections = hull.map((point) => {
-    // Work in OCR coordinate space for projections
-    const relX = point.x - centroid.x;
-    const relY = point.y - centroid.y;
-
-    // Project onto primary axis (along text lines)
-    const primaryProjection =
-      relX * Math.cos(primaryAxisAngle) + relY * Math.sin(primaryAxisAngle);
-
-    // Project onto secondary axis (perpendicular to text lines)
-    const secondaryProjection =
-      relX * Math.cos(secondaryAxisAngle) + relY * Math.sin(secondaryAxisAngle);
-
-    return {
-      point: { x: point.x * svgWidth, y: (1 - point.y) * svgHeight }, // Convert to SVG for rendering
-      primaryProjection,
-      secondaryProjection,
-      originalPoint: point,
-    };
-  });
-
-  hullProjections.forEach(
-    ({ point, primaryProjection, secondaryProjection }) => {
-      // Primary extremes: left/right along text line direction
-      if (primaryProjection < minPrimary) {
-        minPrimary = primaryProjection;
-        primaryMinPoint = point; // Leftmost point
-      }
-      if (primaryProjection > maxPrimary) {
-        maxPrimary = primaryProjection;
-        primaryMaxPoint = point; // Rightmost point
-      }
-
-      // Secondary extremes: top/bottom perpendicular to text lines
-      // Higher secondary projection = higher in OCR coords = lower in SVG coords = top
-      if (secondaryProjection < minSecondary) {
-        minSecondary = secondaryProjection;
-        secondaryMinPoint = point; // Bottom point (lower in OCR coords)
-      }
-      if (secondaryProjection > maxSecondary) {
-        maxSecondary = secondaryProjection;
-        secondaryMaxPoint = point; // Top point (higher in OCR coords)
-      }
-    }
+  // Use the consistent hull extremes function for accurate results
+  const { leftPoint, rightPoint } = findHullExtremesAlongAngle(
+    hull,
+    centroid,
+    avgAngle
   );
 
-  // Primary extremes are left/right points along text direction (GREEN)
-  const primaryExtremePoints = [primaryMinPoint, primaryMaxPoint];
+  // Convert to SVG coordinates for rendering
+  const primaryExtremePoints = [
+    { x: leftPoint.x * svgWidth, y: (1 - leftPoint.y) * svgHeight },
+    { x: rightPoint.x * svgWidth, y: (1 - rightPoint.y) * svgHeight },
+  ];
 
   // Get the secondary boundary points to exclude them from any dots
   // (since AnimatedSecondaryBoundaryLines handles top/bottom with YELLOW)
