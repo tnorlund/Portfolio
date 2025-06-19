@@ -69,4 +69,11 @@ _(List the other approaches here if desired)_
 
 ### Test Coverage
 
-The accompanying `
+The accompanying `receipt.fixture.test.ts` exercises the full pipeline with OCR
+fixtures. It verifies hull extremes, centroid, and the final bounding box while
+ensuring Hull Edge Alignment picks the correct clockwise or counter‑clockwise
+neighbor.
+
+React tests (for example `PhotoReceiptBoundingBox.test.tsx`) mount the component
+with mocked animations. They confirm that each animated overlay receives the
+calculated props such as hull points, angles, and delay values.
