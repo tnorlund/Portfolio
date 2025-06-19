@@ -3,6 +3,7 @@ import React from "react";
 import PhotoReceiptBoundingBox from "./PhotoReceiptBoundingBox";
 import fixtureData from "../../../tests/fixtures/target_receipt.json";
 import useImageDetails from "../../../hooks/useImageDetails";
+import { getAnimationConfig } from "./animationConfig";
 
 import * as animations from "../animations";
 import { convexHull, computeHullCentroid } from "../../../utils/geometry";
@@ -119,12 +120,13 @@ describe("PhotoReceiptBoundingBox", () => {
           )
         : avgAngle;
 
-    const totalDelayForLines =
-      lines.length > 0 ? (lines.length - 1) * 30 + 800 : 0;
-    const convexHullDelay = totalDelayForLines + 300;
-    const convexHullDuration = hullPoints.length * 200 + 500;
-    const centroidDelay = convexHullDelay + convexHullDuration + 200;
-    const extentsDelay = centroidDelay + 600;
+    const {
+      totalDelayForLines,
+      convexHullDelay,
+      convexHullDuration,
+      centroidDelay,
+      extentsDelay,
+    } = getAnimationConfig(lines.length, hullPoints.length);
 
     // Calculate refined segments for AnimatedPrimaryBoundaryLines test
     const hullExtremes =
