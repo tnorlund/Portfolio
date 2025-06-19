@@ -336,3 +336,173 @@ export const findHullExtremesAlongAngle = (
 
   return { leftPoint, rightPoint };
 };
+
+/**
+ * Refine hull extreme points by selecting CW/CCW neighbors using Hull Edge Alignment.
+ *
+ * For each extreme point, this function compares the clockwise and counter-clockwise
+ * neighbors to determine which creates a line that best aligns with adjacent hull edges.
+ * This creates boundary lines that "hug" the hull contour more naturally.
+ *
+ * @param hull - Convex hull points (ordered CCW).
+ * @param leftExtreme - Left extreme point from Step 7.
+ * @param rightExtreme - Right extreme point from Step 7.
+ * @param targetAngle - Target orientation angle in degrees.
+ * @returns Refined extreme segments with optimal CW/CCW neighbors.
+ */
+export const refineHullExtremesWithHullEdgeAlignment = (
+  hull: Point[],
+  leftExtreme: Point,
+  rightExtreme: Point,
+  targetAngle: number
+): {
+  leftSegment: { extreme: Point; optimizedNeighbor: Point };
+  rightSegment: { extreme: Point; optimizedNeighbor: Point };
+} => {
+  if (hull.length < 3) {
+    return {
+      leftSegment: { extreme: leftExtreme, optimizedNeighbor: leftExtreme },
+      rightSegment: { extreme: rightExtreme, optimizedNeighbor: rightExtreme },
+    };
+  }
+
+  const targetRad = (targetAngle * Math.PI) / 180;
+
+  /**
+   * Calculate a comprehensive score for CW/CCW neighbor selection.
+   * Uses geometric consistency, hull edge alignment, text proximity, and projection direction.
+   */
+  const calculateNeighborScore = (
+    extreme: Point,
+    neighbor: Point,
+    isLeftExtreme: boolean
+  ): number => {
+    // Find the index of the extreme point in the hull
+    const extremeIndex = hull.findIndex(
+      (p) =>
+        Math.abs(p.x - extreme.x) < 1e-10 && Math.abs(p.y - extreme.y) < 1e-10
+    );
+
+    if (extremeIndex === -1) return 0; // Extreme not found in hull
+
+    // 1. BOUNDARY APPROPRIATENESS SCORE (30% weight)
+    // Enhanced scoring that considers both geometric appropriateness and visual quality
+    const dx = neighbor.x - extreme.x;
+    const dy = neighbor.y - extreme.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    let boundaryAppropriatenessScore: number;
+
+    if (isLeftExtreme) {
+      // For left boundaries: prefer neighbors that extend leftward or create natural left edges
+      if (dx <= 0) {
+        // Leftward extension is ideal for left boundaries
+        boundaryAppropriatenessScore = 1.0 + distance * 2;
+      } else if (dx < 0.03) {
+        // Small rightward movement is acceptable
+        boundaryAppropriatenessScore = 0.8;
+      } else {
+        // Excessive rightward movement is problematic for left boundaries
+        boundaryAppropriatenessScore = 1 / (1 + dx * 20);
+      }
+    } else {
+      // For right boundaries: consider both rightward extension AND vertical alignment
+      // The key insight is that sometimes a neighbor that's slightly leftward
+      // but well-aligned creates a better visual boundary than one that extends rightward
+
+      if (dx >= 0.01) {
+        // Clear rightward extension is generally good for right boundaries
+        boundaryAppropriatenessScore = 1.0 + distance;
+      } else if (dx >= -0.05) {
+        // Small leftward or near-vertical neighbors can be good for text alignment
+        // This handles cases where the CW neighbor is slightly leftward but visually appropriate
+        const verticalAlignment = Math.abs(dy) / (Math.abs(dx) + 0.01); // Prevent extreme values
+        const cappedVerticalBonus = Math.min(verticalAlignment * 0.3, 0.5); // Cap the bonus
+        boundaryAppropriatenessScore = 0.7 + cappedVerticalBonus;
+      } else {
+        // Significant leftward movement gets penalized for right boundaries
+        boundaryAppropriatenessScore = 1 / (1 + Math.abs(dx) * 15);
+      }
+    }
+
+    // 2. HULL EDGE ALIGNMENT SCORE (30% weight)
+    // Get adjacent hull edges around the extreme point
+    const prevIndex = (extremeIndex - 1 + hull.length) % hull.length;
+    const nextIndex = (extremeIndex + 1) % hull.length;
+
+    const prevPoint = hull[prevIndex];
+    const nextPoint = hull[nextIndex];
+
+    // Calculate angles of adjacent hull edges
+    const edge1Angle = Math.atan2(
+      extreme.y - prevPoint.y,
+      extreme.x - prevPoint.x
+    );
+    const edge2Angle = Math.atan2(
+      nextPoint.y - extreme.y,
+      nextPoint.x - extreme.x
+    );
+
+    // Calculate angle of the potential boundary line
+    const lineAngle = Math.atan2(
+      neighbor.y - extreme.y,
+      neighbor.x - extreme.x
+    );
+
+    // Calculate alignment scores (how parallel the line is to each edge)
+    const alignmentScore1 = Math.abs(Math.cos(lineAngle - edge1Angle));
+    const alignmentScore2 = Math.abs(Math.cos(lineAngle - edge2Angle));
+    const hullEdgeAlignment = (alignmentScore1 + alignmentScore2) / 2;
+
+    // 3. TARGET ANGLE ALIGNMENT SCORE (10% weight)
+    const targetAlignment = Math.abs(Math.cos(lineAngle - targetRad));
+
+    // Weighted combination: balanced approach with boundary appropriateness and hull alignment
+    return (
+      boundaryAppropriatenessScore * 0.3 +
+      hullEdgeAlignment * 0.6 +
+      targetAlignment * 0.1
+    );
+  };
+
+  /**
+   * Find the optimal neighbor (CW or CCW) for an extreme point.
+   */
+  const findOptimalNeighbor = (
+    extreme: Point,
+    isLeftExtreme: boolean
+  ): Point => {
+    const extremeIndex = hull.findIndex(
+      (p) =>
+        Math.abs(p.x - extreme.x) < 1e-10 && Math.abs(p.y - extreme.y) < 1e-10
+    );
+
+    if (extremeIndex === -1) return extreme; // Fallback if extreme not found
+
+    const cwIndex = (extremeIndex + 1) % hull.length;
+    const ccwIndex = (extremeIndex - 1 + hull.length) % hull.length;
+
+    const cwNeighbor = hull[cwIndex];
+    const ccwNeighbor = hull[ccwIndex];
+
+    const cwScore = calculateNeighborScore(extreme, cwNeighbor, isLeftExtreme);
+    const ccwScore = calculateNeighborScore(
+      extreme,
+      ccwNeighbor,
+      isLeftExtreme
+    );
+
+    return cwScore > ccwScore ? cwNeighbor : ccwNeighbor;
+  };
+
+  return {
+    leftSegment: {
+      extreme: leftExtreme,
+      optimizedNeighbor: findOptimalNeighbor(leftExtreme, true),
+    },
+    rightSegment: {
+      extreme: rightExtreme,
+      optimizedNeighbor: findOptimalNeighbor(rightExtreme, false),
+    },
+  };
+};

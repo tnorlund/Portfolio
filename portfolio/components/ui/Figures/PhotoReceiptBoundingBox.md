@@ -32,15 +32,20 @@ This document outlines the step-by-step process used to detect and draw the rece
    Project hull vertices onto the axis defined by the final receipt tilt.  
    The minimum and maximum projections yield the raw left and right extreme vertices.
 
-8. **Refine with CW/CCW Neighbor Comparison**  
-   For each extreme vertex, compare the two adjacent hull neighbors (clockwise vs. counter‑clockwise) by a weighted cost:
+8. **Refine with Hull Edge Alignment (CW/CCW Neighbor Comparison)**  
+   For each extreme vertex, compare the two adjacent hull neighbors (clockwise vs. counter‑clockwise) using Hull Edge Alignment scoring:
 
    ```
-   cost = w_distance * mean_perpendicular_distance_to_hull
-        + w_angle * angular_difference_to_receipt_tilt
+   alignment_score = (edge1_alignment + edge2_alignment) * 0.7 + target_alignment * 0.3
    ```
 
-   Pick the neighbor with the lower cost.
+   Where:
+
+   - `edge1_alignment` = how parallel the line is to the incoming hull edge
+   - `edge2_alignment` = how parallel the line is to the outgoing hull edge
+   - `target_alignment` = how aligned the line is with the final receipt tilt
+
+   This approach ensures boundary lines "hug" the hull contour naturally, choosing the neighbor that creates the most parallel line to adjacent hull edges.
 
 9. **Draw Boundary Lines**  
    Through each chosen extreme segment, draw a line oriented at the final receipt tilt, extended across the full SVG height (or diagonal span).
@@ -54,6 +59,7 @@ This document outlines the step-by-step process used to detect and draw the rece
 ### Alternative Approaches
 
 _(List the other approaches here if desired)_
+
 ### Test Coverage
 
 The accompanying `PhotoReceiptBoundingBox.test.tsx` verifies that each animated overlay receives the expected geometry derived from fixture data. We mock the animation components to plain `<g>` elements so their invocation props can be inspected. By recomputing the convex hull, centroid and receipt tilt, the test ensures the calculations and render sequence match the algorithm described above. This guards against subtle regressions that might otherwise break the visual demonstration.

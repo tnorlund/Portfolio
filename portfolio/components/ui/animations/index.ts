@@ -5,4 +5,5 @@ export { default as AnimatedOrientedAxes } from "./AnimatedOrientedAxes";
 export { default as AnimatedPrimaryEdges } from "./AnimatedPrimaryEdges";
 export { default as AnimatedSecondaryBoundaryLines } from "./AnimatedSecondaryBoundaryLines";
 export { default as AnimatedPrimaryBoundaryLines } from "./AnimatedPrimaryBoundaryLines";
+export { default as AnimatedHullEdgeAlignment } from "./AnimatedHullEdgeAlignment";
 export { default as AnimatedReceiptFromHull } from "./AnimatedReceiptFromHull";

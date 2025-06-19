@@ -11,6 +11,7 @@ import {
   AnimatedPrimaryEdges,
   AnimatedSecondaryBoundaryLines,
   AnimatedPrimaryBoundaryLines,
+  AnimatedHullEdgeAlignment,
   AnimatedReceiptFromHull,
 } from "../animations";
 import { getBestImageUrl } from "../../../utils/imageFormat";
@@ -29,6 +30,10 @@ import {
   findLineEdgesAtPrimaryExtremes,
   computeFinalReceiptTilt,
 } from "../../../utils/receipt";
+import {
+  findHullExtremesAlongAngle,
+  refineHullExtremesWithHullEdgeAlignment,
+} from "../../../utils/receipt/boundingBox";
 
 // Define simple point and line-segment shapes
 const isDevelopment = process.env.NODE_ENV === "development";
@@ -48,6 +53,10 @@ type LineSegment = {
 /**
  * Display a random photo image with animated overlays that illustrate
  * how the receipt bounding box is derived from OCR line data.
+ *
+ * Uses the same Hull Edge Alignment geometry calculations as tested in
+ * receipt.fixture.test.ts to ensure accurate CW/CCW neighbor selection
+ * for skewed boundary lines.
  */
 const PhotoReceiptBoundingBox: React.FC = () => {
   const { imageDetails, formatSupport, error } = useImageDetails("PHOTO");
@@ -98,6 +107,22 @@ const PhotoReceiptBoundingBox: React.FC = () => {
       ? computeFinalReceiptTilt(lines, convexHullPoints, hullCentroid, avgAngle)
       : avgAngle;
 
+  // Calculate hull extremes and refined segments using the same approach as the test
+  const hullExtremes =
+    hullCentroid && convexHullPoints.length > 0
+      ? findHullExtremesAlongAngle(convexHullPoints, hullCentroid, finalAngle)
+      : null;
+
+  const refinedSegments =
+    hullExtremes && convexHullPoints.length > 0
+      ? refineHullExtremesWithHullEdgeAlignment(
+          convexHullPoints,
+          hullExtremes.leftPoint,
+          hullExtremes.rightPoint,
+          finalAngle
+        )
+      : null;
+
   // Animate line bounding boxes using a transition.
   const lineTransitions = useTransition(inView ? lines : [], {
     // Include resetKey in the key so that each item gets a new key on reset.
@@ -119,7 +144,9 @@ const PhotoReceiptBoundingBox: React.FC = () => {
   const centroidDelay = convexHullDelay + convexHullDuration + 200; // Hull centroid after convex hull
   const extentsDelay = centroidDelay + 600; // Extents after centroid
   const extentsDuration = 4 * 300 + 500; // 4 extent lines * 300ms + buffer
-  const receiptDelay = extentsDelay + extentsDuration + 300; // Receipt after extents
+  const hullEdgeAlignmentDuration = 800 + 1000; // 2 steps total duration
+  const receiptDelay =
+    extentsDelay + extentsDuration + hullEdgeAlignmentDuration + 300; // Receipt after Hull Edge Alignment
 
   // Use the first image from the API.
   const firstImage = imageDetails?.image;
@@ -336,16 +363,17 @@ const PhotoReceiptBoundingBox: React.FC = () => {
                   />
                 )}
 
-              {/* Render green left/right boundary lines using perpendicular projection */}
+              {/* Render Hull Edge Alignment decision process: Shows extreme points (L[1], R[6]),
+                  then chosen neighbors and boundary lines appear together in green */}
               {inView &&
                 convexHullPoints.length > 0 &&
                 hullCentroid &&
-                lines.length > 0 && (
-                  <AnimatedPrimaryBoundaryLines
-                    key={`primary-boundary-lines-${resetKey}`}
+                lines.length > 0 &&
+                refinedSegments && (
+                  <AnimatedHullEdgeAlignment
+                    key={`hull-edge-alignment-${resetKey}`}
                     hull={convexHullPoints}
-                    centroid={hullCentroid}
-                    avgAngle={finalAngle}
+                    refinedSegments={refinedSegments}
                     svgWidth={svgWidth}
                     svgHeight={svgHeight}
                     delay={extentsDelay + 2000}

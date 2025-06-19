@@ -14,6 +14,10 @@ interface AnimatedPrimaryBoundaryLinesProps {
   hull: Point[];
   centroid: Point;
   avgAngle: number;
+  refinedSegments?: {
+    leftSegment: { extreme: Point; optimizedNeighbor: Point };
+    rightSegment: { extreme: Point; optimizedNeighbor: Point };
+  };
   svgWidth: number;
   svgHeight: number;
   delay: number;
@@ -21,112 +25,186 @@ interface AnimatedPrimaryBoundaryLinesProps {
 
 const AnimatedPrimaryBoundaryLines: React.FC<
   AnimatedPrimaryBoundaryLinesProps
-> = ({ hull, centroid, avgAngle, svgWidth, svgHeight, delay }) => {
+> = ({
+  hull,
+  centroid,
+  avgAngle,
+  refinedSegments,
+  svgWidth,
+  svgHeight,
+  delay,
+}) => {
   let segments: LineSegment[] = [];
 
   if (hull.length >= 3) {
-    const angleRad = (avgAngle * Math.PI) / 180;
-    const ux = Math.cos(angleRad),
-      uy = Math.sin(angleRad);
+    // Use Hull Edge Alignment approach when refinedSegments are provided
+    if (refinedSegments) {
+      const createLineFromSegment = (
+        segmentKey: string,
+        extreme: Point,
+        neighbor: Point
+      ): LineSegment | null => {
+        const dx = (neighbor.x - extreme.x) * svgWidth;
+        const dy = (neighbor.y - extreme.y) * svgHeight;
 
-    const projections = hull.map((p, i) => ({
-      idx: i,
-      proj: p.x * ux + p.y * uy,
-    }));
-    projections.sort((a, b) => a.proj - b.proj);
+        // Handle nearly horizontal lines
+        if (Math.abs(dy) < 1e-6) {
+          const avgY = ((1 - extreme.y + (1 - neighbor.y)) * svgHeight) / 2;
+          return {
+            key: segmentKey,
+            x1: 0,
+            y1: avgY,
+            x2: svgWidth,
+            y2: avgY,
+          };
+        }
 
-    const extremes = [
-      { key: "left-boundary", idx: projections[0].idx },
-      { key: "right-boundary", idx: projections[projections.length - 1].idx },
-    ];
+        const m = dx / dy;
+        const c = extreme.x * svgWidth - m * ((1 - extreme.y) * svgHeight);
 
-    const DIST_WEIGHT = 1;
-    const ANGLE_WEIGHT = 1;
-    const span = Math.hypot(svgWidth, svgHeight);
+        // Validate that values are finite
+        if (!isFinite(m) || !isFinite(c)) {
+          return null;
+        }
 
-    const potentialSegments = extremes.map(({ key, idx }) => {
-      const p0 = hull[idx];
-      const pCW = hull[(idx + 1) % hull.length];
-      const pCCW = hull[(idx - 1 + hull.length) % hull.length];
+        const x1 = c;
+        const x2 = m * svgHeight + c;
 
-      const makeLine = (p1: Point, p2: Point) => {
-        const a = p2.y - p1.y;
-        const b = p1.x - p2.x;
-        const c = p2.x * p1.y - p1.x * p2.y;
-        return { a, b, c };
+        // Validate final coordinates
+        if (!isFinite(x1) || !isFinite(x2)) {
+          return null;
+        }
+
+        return {
+          key: segmentKey,
+          x1: x1,
+          y1: 0,
+          x2: x2,
+          y2: svgHeight,
+        };
       };
-      const lineCW = makeLine(p0, pCW);
-      const lineCCW = makeLine(p0, pCCW);
 
-      const meanDist = ({ a, b, c }: { a: number; b: number; c: number }) => {
-        const norm = Math.hypot(a, b);
-        return (
-          hull.reduce(
-            (sum, p) => sum + Math.abs(a * p.x + b * p.y + c) / norm,
-            0
-          ) / hull.length
-        );
-      };
-      const distCW = meanDist(lineCW);
-      const distCCW = meanDist(lineCCW);
+      // Create segments from refined Hull Edge Alignment results
+      const leftSegment = createLineFromSegment(
+        "left-boundary-refined",
+        refinedSegments.leftSegment.extreme,
+        refinedSegments.leftSegment.optimizedNeighbor
+      );
 
-      const diffAngle = (p: Point) => {
-        const theta = Math.atan2(p.y - p0.y, p.x - p0.x);
-        const d = Math.abs(theta - angleRad);
-        return Math.min(d, 2 * Math.PI - d);
-      };
-      const diffCW = diffAngle(pCW);
-      const diffCCW = diffAngle(pCCW);
+      const rightSegment = createLineFromSegment(
+        "right-boundary-refined",
+        refinedSegments.rightSegment.extreme,
+        refinedSegments.rightSegment.optimizedNeighbor
+      );
 
-      const costCW = DIST_WEIGHT * distCW + ANGLE_WEIGHT * diffCW;
-      const costCCW = DIST_WEIGHT * distCCW + ANGLE_WEIGHT * diffCCW;
-      const pB = costCW < costCCW ? pCW : pCCW;
+      segments = [leftSegment, rightSegment].filter(
+        (seg): seg is LineSegment => seg !== null
+      );
+    } else {
+      // Fallback to original approach when refinedSegments not available
+      const angleRad = (avgAngle * Math.PI) / 180;
+      const ux = Math.cos(angleRad),
+        uy = Math.sin(angleRad);
 
-      const dx = (pB.x - p0.x) * svgWidth;
-      const dy = (pB.y - p0.y) * svgHeight;
+      const projections = hull.map((p, i) => ({
+        idx: i,
+        proj: p.x * ux + p.y * uy,
+      }));
+      projections.sort((a, b) => a.proj - b.proj);
 
-      // Handle nearly horizontal lines (avoid division by zero)
-      if (Math.abs(dy) < 1e-6) {
-        // For horizontal lines, extend from left to right at average y
-        const avgY = ((1 - p0.y + (1 - pB.y)) * svgHeight) / 2;
+      const extremes = [
+        { key: "left-boundary", idx: projections[0].idx },
+        { key: "right-boundary", idx: projections[projections.length - 1].idx },
+      ];
+
+      const DIST_WEIGHT = 1;
+      const ANGLE_WEIGHT = 1;
+      const span = Math.hypot(svgWidth, svgHeight);
+
+      const potentialSegments = extremes.map(({ key, idx }) => {
+        const p0 = hull[idx];
+        const pCW = hull[(idx + 1) % hull.length];
+        const pCCW = hull[(idx - 1 + hull.length) % hull.length];
+
+        const makeLine = (p1: Point, p2: Point) => {
+          const a = p2.y - p1.y;
+          const b = p1.x - p2.x;
+          const c = p2.x * p1.y - p1.x * p2.y;
+          return { a, b, c };
+        };
+        const lineCW = makeLine(p0, pCW);
+        const lineCCW = makeLine(p0, pCCW);
+
+        const meanDist = ({ a, b, c }: { a: number; b: number; c: number }) => {
+          const norm = Math.hypot(a, b);
+          return (
+            hull.reduce(
+              (sum, p) => sum + Math.abs(a * p.x + b * p.y + c) / norm,
+              0
+            ) / hull.length
+          );
+        };
+        const distCW = meanDist(lineCW);
+        const distCCW = meanDist(lineCCW);
+
+        const diffAngle = (p: Point) => {
+          const theta = Math.atan2(p.y - p0.y, p.x - p0.x);
+          const d = Math.abs(theta - angleRad);
+          return Math.min(d, 2 * Math.PI - d);
+        };
+        const diffCW = diffAngle(pCW);
+        const diffCCW = diffAngle(pCCW);
+
+        const costCW = DIST_WEIGHT * distCW + ANGLE_WEIGHT * diffCW;
+        const costCCW = DIST_WEIGHT * distCCW + ANGLE_WEIGHT * diffCCW;
+        const pB = costCW < costCCW ? pCW : pCCW;
+
+        const dx = (pB.x - p0.x) * svgWidth;
+        const dy = (pB.y - p0.y) * svgHeight;
+
+        // Handle nearly horizontal lines (avoid division by zero)
+        if (Math.abs(dy) < 1e-6) {
+          // For horizontal lines, extend from left to right at average y
+          const avgY = ((1 - p0.y + (1 - pB.y)) * svgHeight) / 2;
+          return {
+            key,
+            x1: 0,
+            y1: avgY,
+            x2: svgWidth,
+            y2: avgY,
+          };
+        }
+
+        const m = dx / dy;
+        const c = p0.x * svgWidth - m * ((1 - p0.y) * svgHeight);
+
+        // Validate that values are finite
+        if (!isFinite(m) || !isFinite(c)) {
+          return null;
+        }
+
+        const x1 = c;
+        const x2 = m * svgHeight + c;
+
+        // Validate final coordinates
+        if (!isFinite(x1) || !isFinite(x2)) {
+          return null;
+        }
+
         return {
           key,
-          x1: 0,
-          y1: avgY,
-          x2: svgWidth,
-          y2: avgY,
+          x1: x1,
+          y1: 0,
+          x2: x2,
+          y2: svgHeight,
         };
-      }
+      });
 
-      const m = dx / dy;
-      const c = p0.x * svgWidth - m * ((1 - p0.y) * svgHeight);
-
-      // Validate that values are finite
-      if (!isFinite(m) || !isFinite(c)) {
-        return null;
-      }
-
-      const x1 = c;
-      const x2 = m * svgHeight + c;
-
-      // Validate final coordinates
-      if (!isFinite(x1) || !isFinite(x2)) {
-        return null;
-      }
-
-      return {
-        key,
-        x1: x1,
-        y1: 0,
-        x2: x2,
-        y2: svgHeight,
-      };
-    });
-
-    segments = potentialSegments.filter(
-      (seg): seg is LineSegment => seg !== null
-    );
-  }
+      segments = potentialSegments.filter(
+        (seg): seg is LineSegment => seg !== null
+      );
+    } // End of else block (fallback approach)
+  } // End of main if block (hull.length >= 3)
 
   const transitions = useTransition(segments, {
     keys: (seg) => seg.key,
