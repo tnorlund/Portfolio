@@ -24,6 +24,8 @@ interface ReceiptGeometryResult {
 }
 
 export const useReceiptGeometry = (lines: Line[]): ReceiptGeometryResult => {
+  // Step 1 & 2 – Collect line corners and compute convex hull
+  // See components/ui/Figures/PhotoReceiptBoundingBox.md
   const convexHullPoints = useMemo(() => {
     const allLineCorners: Point[] = [];
     lines.forEach((line) => {
@@ -37,12 +39,16 @@ export const useReceiptGeometry = (lines: Line[]): ReceiptGeometryResult => {
     return allLineCorners.length > 2 ? convexHull([...allLineCorners]) : [];
   }, [lines]);
 
+  // Step 3 – Compute hull centroid
+  // See components/ui/Figures/PhotoReceiptBoundingBox.md
   const hullCentroid = useMemo(
     () =>
       convexHullPoints.length > 0 ? computeHullCentroid(convexHullPoints) : null,
     [convexHullPoints]
   );
 
+  // Step 4 – Estimate initial skew from OCR lines
+  // See components/ui/Figures/PhotoReceiptBoundingBox.md
   const avgAngle = useMemo(
     () =>
       lines.length > 0
@@ -51,22 +57,37 @@ export const useReceiptGeometry = (lines: Line[]): ReceiptGeometryResult => {
     [lines]
   );
 
+  // Steps 5 & 6 – Find top/bottom edges and compute final tilt
+  // See components/ui/Figures/PhotoReceiptBoundingBox.md
   const finalAngle = useMemo(
     () =>
       hullCentroid && convexHullPoints.length > 0
-        ? computeFinalReceiptTilt(lines, convexHullPoints, hullCentroid, avgAngle)
+        ? computeFinalReceiptTilt(
+            lines,
+            convexHullPoints,
+            hullCentroid,
+            avgAngle
+          )
         : avgAngle,
     [lines, convexHullPoints, hullCentroid, avgAngle]
   );
 
+  // Step 7 – Find left/right extremes along receipt tilt
+  // See components/ui/Figures/PhotoReceiptBoundingBox.md
   const hullExtremes = useMemo(
     () =>
       hullCentroid && convexHullPoints.length > 0
-        ? findHullExtremesAlongAngle(convexHullPoints, hullCentroid, finalAngle)
+        ? findHullExtremesAlongAngle(
+            convexHullPoints,
+            hullCentroid,
+            finalAngle
+          )
         : null,
     [convexHullPoints, hullCentroid, finalAngle]
   );
 
+  // Step 8 – Refine extremes using Hull Edge Alignment
+  // See components/ui/Figures/PhotoReceiptBoundingBox.md
   const refinedSegments = useMemo(
     () =>
       hullExtremes && convexHullPoints.length > 0
