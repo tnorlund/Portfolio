@@ -121,6 +121,20 @@ describe("PhotoReceiptBoundingBox", () => {
     } = getAnimationConfig(lines.length, hullPoints.length);
 
 
+    expect(animations.AnimatedConvexHull).toHaveBeenCalledTimes(1);
+    expect(
+      (animations.AnimatedConvexHull as jest.Mock).mock.calls[0][0]
+    ).toEqual(
+      expect.objectContaining({
+        hullPoints,
+        svgWidth,
+        svgHeight,
+        delay: convexHullDelay,
+        showIndices: true,
+      })
+    );
+    expect(screen.getByTestId("AnimatedConvexHull")).toBeInTheDocument();
+
     expect(animations.AnimatedHullCentroid).toHaveBeenCalledTimes(1);
     expect(
       (animations.AnimatedHullCentroid as jest.Mock).mock.calls[0][0]
