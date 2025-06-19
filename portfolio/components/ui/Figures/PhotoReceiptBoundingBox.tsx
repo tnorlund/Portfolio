@@ -380,6 +380,23 @@ const PhotoReceiptBoundingBox: React.FC = () => {
                   />
                 )}
 
+              {/* Render final refined primary boundary lines (Step 9 - Final Bounding Box) */}
+              {inView &&
+                convexHullPoints.length > 0 &&
+                hullCentroid &&
+                refinedSegments && (
+                  <AnimatedPrimaryBoundaryLines
+                    key={`primary-boundary-lines-${resetKey}`}
+                    hull={convexHullPoints}
+                    centroid={hullCentroid}
+                    avgAngle={finalAngle}
+                    refinedSegments={refinedSegments}
+                    svgWidth={svgWidth}
+                    svgHeight={svgHeight}
+                    delay={extentsDelay + 2800}
+                  />
+                )}
+
               {/* Render animated receipt using proper algorithm */}
               {/* {convexHullPoints.length > 0 && lines.length > 0 && (
                 <AnimatedReceiptFromHull

@@ -7,6 +7,10 @@ import useImageDetails from "../../../hooks/useImageDetails";
 import * as animations from "../animations";
 import { convexHull, computeHullCentroid } from "../../../utils/geometry";
 import { computeFinalReceiptTilt } from "../../../utils/receipt";
+import {
+  findHullExtremesAlongAngle,
+  refineHullExtremesWithHullEdgeAlignment,
+} from "../../../utils/receipt/boundingBox";
 
 jest.mock("../../../hooks/useImageDetails");
 
@@ -33,6 +37,9 @@ jest.mock("../animations", () => {
   const AnimatedReceiptFromHull = jest.fn(() => (
     <g data-testid="AnimatedReceiptFromHull" />
   ));
+  const AnimatedHullEdgeAlignment = jest.fn(() => (
+    <g data-testid="AnimatedHullEdgeAlignment" />
+  ));
   const AnimatedLineBox = jest.fn(() => <g data-testid="AnimatedLineBox" />);
 
   return {
@@ -43,6 +50,7 @@ jest.mock("../animations", () => {
     AnimatedSecondaryBoundaryLines,
     AnimatedPrimaryBoundaryLines,
     AnimatedReceiptFromHull,
+    AnimatedHullEdgeAlignment,
     AnimatedLineBox,
   };
 });
@@ -118,6 +126,22 @@ describe("PhotoReceiptBoundingBox", () => {
     const centroidDelay = convexHullDelay + convexHullDuration + 200;
     const extentsDelay = centroidDelay + 600;
 
+    // Calculate refined segments for AnimatedPrimaryBoundaryLines test
+    const hullExtremes =
+      hullCentroid && hullPoints.length > 0
+        ? findHullExtremesAlongAngle(hullPoints, hullCentroid, finalAngle)
+        : null;
+
+    const refinedSegments =
+      hullExtremes && hullPoints.length > 0
+        ? refineHullExtremesWithHullEdgeAlignment(
+            hullPoints,
+            hullExtremes.leftPoint,
+            hullExtremes.rightPoint,
+            finalAngle
+          )
+        : null;
+
     expect(animations.AnimatedHullCentroid).toHaveBeenCalledTimes(1);
     expect(
       (animations.AnimatedHullCentroid as jest.Mock).mock.calls[0][0]
@@ -188,9 +212,10 @@ describe("PhotoReceiptBoundingBox", () => {
         hull: hullPoints,
         centroid: hullCentroid,
         avgAngle: finalAngle,
+        refinedSegments: refinedSegments,
         svgWidth,
         svgHeight,
-        delay: extentsDelay + 2000,
+        delay: extentsDelay + 2800,
       })
     );
     expect(

@@ -9,10 +9,10 @@ This document outlines the step-by-step process used to detect and draw the rece
    Use a Graham-scan algorithm to find the minimal convex polygon enclosing all corners.
 
 3. **Compute Hull Centroid**  
-   Calculate the average of all hull vertices to find the polygon’s center point.
+   Calculate the average of all hull vertices to find the polygon's center point.
 
 4. **Estimate Initial Skew from OCR**  
-   Calculate each line’s bottom-edge angle:
+   Calculate each line's bottom-edge angle:
 
    ```
    angle = atan2(dy, dx) * 180 / Math.PI
@@ -47,12 +47,19 @@ This document outlines the step-by-step process used to detect and draw the rece
 
    This approach ensures boundary lines "hug" the hull contour naturally, choosing the neighbor that creates the most parallel line to adjacent hull edges.
 
-9. **Draw Boundary Lines**  
-   Through each chosen extreme segment, draw a line oriented at the final receipt tilt, extended across the full SVG height (or diagonal span).
+9. **Compute Final Receipt Quadrilateral**
+   Intersect the refined left and right boundary lines (from step 8) with the top and bottom edges (from step 5) to create the final receipt bounding box:
 
-10. **Animate Overlays**  
-    Use react-spring transitions to fade and draw each component in sequence:
-    - Words → Convex Hull → Centroid → Oriented Axes → Top/Bottom Lines → Left/Right Lines.
+   - Use the optimal left and right segments determined by Hull Edge Alignment
+   - Convert segments to line equations (handling vertical lines as special cases)
+   - Find intersections with top and bottom edge lines using Theil-Sen fitted slopes
+   - Return the four corner points in clockwise order: top-left, top-right, bottom-right, bottom-left
+
+   This represents the culmination of the multi-step algorithm, producing a receipt boundary that combines:
+
+   - Robust top/bottom edge fitting from OCR text lines
+   - Optimal left/right boundaries that align with hull geometry
+   - Mathematical precision through line intersection calculations
 
 ---
 
@@ -62,11 +69,4 @@ _(List the other approaches here if desired)_
 
 ### Test Coverage
 
-The accompanying `PhotoReceiptBoundingBox.test.tsx` verifies that each animated overlay receives the expected geometry derived from fixture data. We mock the animation components to plain `<g>` elements so their invocation props can be inspected. By recomputing the convex hull, centroid and receipt tilt, the test ensures the calculations and render sequence match the algorithm described above. This guards against subtle regressions that might otherwise break the visual demonstration.
-
-A separate `receipt.fixture.test.ts` exercises the geometry utilities directly using the same fixture payload. It confirms the hull size, centroid and final tilt match predetermined values so the underlying math remains stable independent of the React component.
-
-An integration test under `__tests__/integration` loads the saved API payload via
-`fetch` and confirms the bounding box overlays render when real data is
-returned. This ensures the demo continues to function when API responses are
-wired through the hooks.
+The accompanying `

@@ -9,9 +9,16 @@ jest.mock("../../components/ui/animations", () => ({
   AnimatedHullCentroid: () => <g data-testid="AnimatedHullCentroid" />,
   AnimatedOrientedAxes: () => <g data-testid="AnimatedOrientedAxes" />,
   AnimatedPrimaryEdges: () => <g data-testid="AnimatedPrimaryEdges" />,
-  AnimatedSecondaryBoundaryLines: () => <g data-testid="AnimatedSecondaryBoundaryLines" />,
-  AnimatedPrimaryBoundaryLines: () => <g data-testid="AnimatedPrimaryBoundaryLines" />,
+  AnimatedSecondaryBoundaryLines: () => (
+    <g data-testid="AnimatedSecondaryBoundaryLines" />
+  ),
+  AnimatedPrimaryBoundaryLines: () => (
+    <g data-testid="AnimatedPrimaryBoundaryLines" />
+  ),
   AnimatedReceiptFromHull: () => <g data-testid="AnimatedReceiptFromHull" />,
+  AnimatedHullEdgeAlignment: () => (
+    <g data-testid="AnimatedHullEdgeAlignment" />
+  ),
   AnimatedLineBox: () => <g data-testid="AnimatedLineBox" />,
 }));
 
@@ -32,8 +39,8 @@ jest.mock("../../utils/image", () => {
 const server = setupServer(
   rest.get(
     "https://api.tylernorlund.com/random_image_details",
-    () => fixtureData,
-  ),
+    () => fixtureData
+  )
 );
 
 beforeAll(() => server.listen());
@@ -43,7 +50,6 @@ afterEach(() => {
 afterAll(() => server.close());
 
 describe("PhotoReceiptBoundingBox integration", () => {
-
   test("fetches image details and displays overlays", async () => {
     const fetchSpy = jest.spyOn(global, "fetch");
     render(<PhotoReceiptBoundingBox />);
@@ -55,7 +61,7 @@ describe("PhotoReceiptBoundingBox integration", () => {
 
     expect(fetchSpy).toHaveBeenCalledWith(
       expect.stringContaining("/random_image_details"),
-      expect.any(Object),
+      expect.any(Object)
     );
   });
 });
