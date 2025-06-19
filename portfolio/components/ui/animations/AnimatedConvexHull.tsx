@@ -6,6 +6,7 @@ interface AnimatedConvexHullProps {
   svgWidth: number;
   svgHeight: number;
   delay: number;
+  showIndices?: boolean;
 }
 
 const AnimatedConvexHull: React.FC<AnimatedConvexHullProps> = ({
@@ -13,6 +14,7 @@ const AnimatedConvexHull: React.FC<AnimatedConvexHullProps> = ({
   svgWidth,
   svgHeight,
   delay,
+  showIndices,
 }) => {
   const [visiblePoints, setVisiblePoints] = useState(0);
 
@@ -76,15 +78,31 @@ const AnimatedConvexHull: React.FC<AnimatedConvexHullProps> = ({
     <>
       {/* Hull vertices */}
       {visibleSvgPoints.map((point, index) => (
-        <circle
-          key={index}
-          cx={point.x}
-          cy={point.y}
-          r={12}
-          fill="var(--color-red)"
-          opacity={1}
-          strokeWidth="2"
-        />
+        <g key={index}>
+          <circle
+            cx={point.x}
+            cy={point.y}
+            r={12}
+            fill="var(--color-red)"
+            opacity={1}
+            strokeWidth="2"
+          />
+          {showIndices && (
+            <text
+              x={point.x}
+              y={point.y - 15}
+              fill="white"
+              stroke="black"
+              strokeWidth="0.5"
+              fontSize="14"
+              fontWeight="bold"
+              textAnchor="middle"
+              style={{ opacity: 0, animation: "fadeIn 200ms ease-in-out forwards" }}
+            >
+              {index}
+            </text>
+          )}
+        </g>
       ))}
       {/* Hull edges */}
       <path
