@@ -742,7 +742,7 @@ class _Image:
 
     def listImagesByType(
         self,
-        image_type: str,
+        image_type: str | ImageType,
         limit: Optional[int] = None,
         lastEvaluatedKey: Optional[Dict] = None,
     ) -> Tuple[List[Image], Optional[Dict]]:
