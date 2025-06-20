@@ -180,41 +180,19 @@ const AnimatedHullEdgeAlignment: React.FC<AnimatedHullEdgeAlignmentProps> = ({
         <circle
           cx={toScreen(refinedSegments.leftSegment.extreme).x}
           cy={toScreen(refinedSegments.leftSegment.extreme).y}
-          r={12}
-          fill="var(--color-yellow)"
-          stroke="var(--color-orange)"
-          strokeWidth="3"
+          r={10}
+          fill="var(--color-green)"
+          strokeWidth="2"
         />
-        <text
-          x={toScreen(refinedSegments.leftSegment.extreme).x}
-          y={toScreen(refinedSegments.leftSegment.extreme).y - 20}
-          fill="var(--color-orange)"
-          fontSize="14"
-          fontWeight="bold"
-          textAnchor="middle"
-        >
-          L[{leftExtremeIndex}]
-        </text>
 
         {/* Right extreme */}
         <circle
           cx={toScreen(refinedSegments.rightSegment.extreme).x}
           cy={toScreen(refinedSegments.rightSegment.extreme).y}
-          r={12}
-          fill="var(--color-yellow)"
-          stroke="var(--color-orange)"
-          strokeWidth="3"
+          r={10}
+          fill="var(--color-green)"
+          strokeWidth="2"
         />
-        <text
-          x={toScreen(refinedSegments.rightSegment.extreme).x}
-          y={toScreen(refinedSegments.rightSegment.extreme).y - 20}
-          fill="var(--color-orange)"
-          fontSize="14"
-          fontWeight="bold"
-          textAnchor="middle"
-        >
-          R[{rightExtremeIndex}]
-        </text>
       </animated.g>
 
       {/* Step 2: Show chosen neighbors with decision indicators and boundary lines */}
@@ -223,41 +201,19 @@ const AnimatedHullEdgeAlignment: React.FC<AnimatedHullEdgeAlignmentProps> = ({
         <circle
           cx={toScreen(refinedSegments.leftSegment.optimizedNeighbor).x}
           cy={toScreen(refinedSegments.leftSegment.optimizedNeighbor).y}
-          r={10}
+          r={8}
           fill="var(--color-green)"
-          stroke="white"
           strokeWidth="2"
         />
-        <text
-          x={toScreen(refinedSegments.leftSegment.optimizedNeighbor).x}
-          y={toScreen(refinedSegments.leftSegment.optimizedNeighbor).y + 25}
-          fill="var(--color-green)"
-          fontSize="12"
-          fontWeight="bold"
-          textAnchor="middle"
-        >
-          ✓ {leftChoseCW ? "CW" : "CCW"}
-        </text>
 
         {/* Right chosen neighbor */}
         <circle
           cx={toScreen(refinedSegments.rightSegment.optimizedNeighbor).x}
           cy={toScreen(refinedSegments.rightSegment.optimizedNeighbor).y}
-          r={10}
+          r={8}
           fill="var(--color-green)"
-          stroke="white"
           strokeWidth="2"
         />
-        <text
-          x={toScreen(refinedSegments.rightSegment.optimizedNeighbor).x}
-          y={toScreen(refinedSegments.rightSegment.optimizedNeighbor).y + 25}
-          fill="var(--color-green)"
-          fontSize="12"
-          fontWeight="bold"
-          textAnchor="middle"
-        >
-          ✓ {rightChoseCW ? "CW" : "CCW"}
-        </text>
 
         {/* Draw final boundary lines */}
         <line
@@ -265,38 +221,18 @@ const AnimatedHullEdgeAlignment: React.FC<AnimatedHullEdgeAlignmentProps> = ({
           y1={leftBoundaryLine.y1}
           x2={leftBoundaryLine.x2}
           y2={leftBoundaryLine.y2}
-          stroke="#00ff00"
-          strokeWidth="6"
-          strokeDasharray="12,8"
+          stroke="var(--color-green)"
+          strokeWidth="5"
+          strokeDasharray="10,10"
         />
         <line
           x1={rightBoundaryLine.x1}
           y1={rightBoundaryLine.y1}
           x2={rightBoundaryLine.x2}
           y2={rightBoundaryLine.y2}
-          stroke="#00ff00"
-          strokeWidth="6"
-          strokeDasharray="12,8"
-        />
-
-        {/* Connection lines from extremes to chosen neighbors */}
-        <line
-          x1={toScreen(refinedSegments.leftSegment.extreme).x}
-          y1={toScreen(refinedSegments.leftSegment.extreme).y}
-          x2={toScreen(refinedSegments.leftSegment.optimizedNeighbor).x}
-          y2={toScreen(refinedSegments.leftSegment.optimizedNeighbor).y}
           stroke="var(--color-green)"
-          strokeWidth="3"
-          strokeOpacity="0.7"
-        />
-        <line
-          x1={toScreen(refinedSegments.rightSegment.extreme).x}
-          y1={toScreen(refinedSegments.rightSegment.extreme).y}
-          x2={toScreen(refinedSegments.rightSegment.optimizedNeighbor).x}
-          y2={toScreen(refinedSegments.rightSegment.optimizedNeighbor).y}
-          stroke="var(--color-green)"
-          strokeWidth="3"
-          strokeOpacity="0.7"
+          strokeWidth="5"
+          strokeDasharray="10,10"
         />
       </animated.g>
     </g>

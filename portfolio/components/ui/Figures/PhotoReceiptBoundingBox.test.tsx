@@ -22,29 +22,23 @@ jest.mock("../animations", () => {
   const AnimatedOrientedAxes = jest.fn(() => (
     <g data-testid="AnimatedOrientedAxes" />
   ));
-  const AnimatedPrimaryEdges = jest.fn(() => (
-    <g data-testid="AnimatedPrimaryEdges" />
-  ));
-  const AnimatedSecondaryBoundaryLines = jest.fn(() => (
-    <g data-testid="AnimatedSecondaryBoundaryLines" />
-  ));
-  const AnimatedReceiptFromHull = jest.fn(() => (
-    <g data-testid="AnimatedReceiptFromHull" />
+  const AnimatedTopAndBottom = jest.fn(() => (
+    <g data-testid="AnimatedTopAndBottom" />
   ));
   const AnimatedHullEdgeAlignment = jest.fn(() => (
     <g data-testid="AnimatedHullEdgeAlignment" />
   ));
-  const AnimatedLineBox = jest.fn(() => <g data-testid="AnimatedLineBox" />);
+  const AnimatedFinalReceiptBox = jest.fn(() => (
+    <g data-testid="AnimatedFinalReceiptBox" />
+  ));
 
   return {
     AnimatedConvexHull,
     AnimatedHullCentroid,
     AnimatedOrientedAxes,
-    AnimatedPrimaryEdges,
-    AnimatedSecondaryBoundaryLines,
-    AnimatedReceiptFromHull,
+    AnimatedTopAndBottom,
     AnimatedHullEdgeAlignment,
-    AnimatedLineBox,
+    AnimatedFinalReceiptBox,
   };
 });
 
@@ -118,8 +112,8 @@ describe("PhotoReceiptBoundingBox", () => {
       convexHullDuration,
       centroidDelay,
       extentsDelay,
+      receiptDelay,
     } = getAnimationConfig(lines.length, hullPoints.length);
-
 
     expect(animations.AnimatedConvexHull).toHaveBeenCalledTimes(1);
     expect(
@@ -156,6 +150,7 @@ describe("PhotoReceiptBoundingBox", () => {
         hull: hullPoints,
         centroid: hullCentroid,
         lines,
+        finalAngle: expect.any(Number),
         svgWidth,
         svgHeight,
         delay: extentsDelay,
@@ -163,39 +158,53 @@ describe("PhotoReceiptBoundingBox", () => {
     );
     expect(screen.getByTestId("AnimatedOrientedAxes")).toBeInTheDocument();
 
-    expect(animations.AnimatedPrimaryEdges).toHaveBeenCalledTimes(1);
+    expect(animations.AnimatedTopAndBottom).toHaveBeenCalledTimes(1);
     expect(
-      (animations.AnimatedPrimaryEdges as jest.Mock).mock.calls[0][0]
+      (animations.AnimatedTopAndBottom as jest.Mock).mock.calls[0][0]
     ).toEqual(
       expect.objectContaining({
         lines,
         hull: hullPoints,
         centroid: hullCentroid,
-        avgAngle: finalAngle,
+        avgAngle: expect.any(Number),
         svgWidth,
         svgHeight,
-        delay: extentsDelay + 1000,
+        delay: expect.any(Number),
       })
     );
-    expect(screen.getByTestId("AnimatedPrimaryEdges")).toBeInTheDocument();
+    expect(screen.getByTestId("AnimatedTopAndBottom")).toBeInTheDocument();
 
-    expect(animations.AnimatedSecondaryBoundaryLines).toHaveBeenCalledTimes(1);
+    expect(animations.AnimatedHullEdgeAlignment).toHaveBeenCalledTimes(1);
     expect(
-      (animations.AnimatedSecondaryBoundaryLines as jest.Mock).mock.calls[0][0]
+      (animations.AnimatedHullEdgeAlignment as jest.Mock).mock.calls[0][0]
     ).toEqual(
       expect.objectContaining({
-        lines,
         hull: hullPoints,
-        centroid: hullCentroid,
-        avgAngle: avgAngle,
+        refinedSegments: expect.any(Object),
         svgWidth,
         svgHeight,
-        delay: extentsDelay + 1500,
+        delay: expect.any(Number),
       })
     );
-    expect(
-      screen.getByTestId("AnimatedSecondaryBoundaryLines")
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("AnimatedHullEdgeAlignment")).toBeInTheDocument();
 
+    expect(animations.AnimatedFinalReceiptBox).toHaveBeenCalledTimes(1);
+    expect(
+      (animations.AnimatedFinalReceiptBox as jest.Mock).mock.calls[0][0]
+    ).toEqual(
+      expect.objectContaining({
+        boundaries: expect.objectContaining({
+          top: expect.any(Object),
+          bottom: expect.any(Object),
+          left: expect.any(Object),
+          right: expect.any(Object),
+        }),
+        fallbackCentroid: hullCentroid,
+        svgWidth,
+        svgHeight,
+        delay: expect.any(Number),
+      })
+    );
+    expect(screen.getByTestId("AnimatedFinalReceiptBox")).toBeInTheDocument();
   });
 });

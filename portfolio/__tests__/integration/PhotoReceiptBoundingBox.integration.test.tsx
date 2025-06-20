@@ -8,15 +8,11 @@ jest.mock("../../components/ui/animations", () => ({
   AnimatedConvexHull: () => <g data-testid="AnimatedConvexHull" />,
   AnimatedHullCentroid: () => <g data-testid="AnimatedHullCentroid" />,
   AnimatedOrientedAxes: () => <g data-testid="AnimatedOrientedAxes" />,
-  AnimatedPrimaryEdges: () => <g data-testid="AnimatedPrimaryEdges" />,
-  AnimatedSecondaryBoundaryLines: () => (
-    <g data-testid="AnimatedSecondaryBoundaryLines" />
-  ),
-  AnimatedReceiptFromHull: () => <g data-testid="AnimatedReceiptFromHull" />,
+  AnimatedTopAndBottom: () => <g data-testid="AnimatedTopAndBottom" />,
   AnimatedHullEdgeAlignment: () => (
     <g data-testid="AnimatedHullEdgeAlignment" />
   ),
-  AnimatedLineBox: () => <g data-testid="AnimatedLineBox" />,
+  AnimatedFinalReceiptBox: () => <g data-testid="AnimatedFinalReceiptBox" />,
 }));
 
 jest.mock("../../hooks/useOptimizedInView", () => ({

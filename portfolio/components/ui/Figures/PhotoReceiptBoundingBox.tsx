@@ -1,16 +1,15 @@
 import React, { useEffect, useState } from "react";
 
-import { type Line, type Point as ApiPoint } from "../../../types/api";
+import { type Point as ApiPoint } from "../../../types/api";
 import { useTransition, animated } from "@react-spring/web";
-import AnimatedLineBox from "../animations/AnimatedLineBox";
 import useOptimizedInView from "../../../hooks/useOptimizedInView";
 import {
   AnimatedConvexHull,
   AnimatedHullCentroid,
   AnimatedOrientedAxes,
-  AnimatedPrimaryEdges,
-  AnimatedSecondaryBoundaryLines,
+  AnimatedTopAndBottom,
   AnimatedHullEdgeAlignment,
+  AnimatedFinalReceiptBox,
 } from "../animations";
 import { getBestImageUrl } from "../../../utils/imageFormat";
 import useImageDetails from "../../../hooks/useImageDetails";
@@ -20,14 +19,6 @@ import { getAnimationConfig } from "./animationConfig";
 
 // Define simple point and line-segment shapes
 const isDevelopment = process.env.NODE_ENV === "development";
-type Point = ApiPoint;
-type LineSegment = {
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
-  key: string;
-};
 
 /**
  * Find the top and bottom edges of lines at the secondary axis extremes
@@ -74,6 +65,8 @@ const PhotoReceiptBoundingBox: React.FC = () => {
     finalAngle,
     hullExtremes,
     refinedSegments,
+    boundaries,
+    finalReceiptBox,
   } = useReceiptGeometry(lines);
 
   // Step 1 – Display OCR line boxes (see components/ui/Figures/PhotoReceiptBoundingBox.md)
@@ -217,9 +210,8 @@ const PhotoReceiptBoundingBox: React.FC = () => {
                 );
               })}
 
-              {/* Step 2 – Compute convex hull of all points */}
-              {/* see components/ui/Figures/PhotoReceiptBoundingBox.md */}
-              {/* Render animated convex hull */}
+              {/* Step 2 – Compute the Convex Hull */}
+              {/* Use Graham-scan algorithm to find minimal convex polygon enclosing all corners */}
               {inView && convexHullPoints.length > 0 && (
                 <AnimatedConvexHull
                   key={`convex-hull-${resetKey}`}
@@ -231,9 +223,8 @@ const PhotoReceiptBoundingBox: React.FC = () => {
                 />
               )}
 
-              {/* Step 3 – Compute hull centroid */}
-              {/* see components/ui/Figures/PhotoReceiptBoundingBox.md */}
-              {/* Render animated hull centroid */}
+              {/* Step 3 – Compute Hull Centroid */}
+              {/* Calculate the average of all hull vertices to find the polygon's center point */}
               {inView && hullCentroid && (
                 <AnimatedHullCentroid
                   key={`hull-centroid-${resetKey}`}
@@ -244,9 +235,8 @@ const PhotoReceiptBoundingBox: React.FC = () => {
                 />
               )}
 
-              {/* Step 4 – Estimate initial skew and axes */}
-              {/* see components/ui/Figures/PhotoReceiptBoundingBox.md */}
-              {/* Render animated oriented axes */}
+              {/* Step 4 – Estimate Initial Skew from OCR */}
+              {/* Calculate each line's bottom-edge angle, filter near-zero angles, and average */}
               {inView && convexHullPoints.length > 0 && hullCentroid && (
                 <AnimatedOrientedAxes
                   key={`oriented-axes-${resetKey}`}
@@ -260,33 +250,15 @@ const PhotoReceiptBoundingBox: React.FC = () => {
                 />
               )}
 
-              {/* Render line edges at primary extremes */}
-              {/* Step 5 – Find top/bottom boundary candidates */}
+              {/* Step 5 – Find Top and Bottom Boundary Candidates */}
+              {/* Project hull vertices onto axis perpendicular to preliminary tilt, */}
+              {/* then take the 2 smallest and 2 largest projections as boundary extremes */}
               {inView &&
                 convexHullPoints.length > 0 &&
                 hullCentroid &&
                 lines.length > 0 && (
-                  <AnimatedPrimaryEdges
-                    key={`primary-edges-${resetKey}`}
-                    lines={lines}
-                    hull={convexHullPoints}
-                    centroid={hullCentroid}
-                    avgAngle={finalAngle}
-                    svgWidth={svgWidth}
-                    svgHeight={svgHeight}
-                    delay={extentsDelay + 1000}
-                  />
-                )}
-
-              {/* Step 6 – Compute final tilt and draw candidate top/bottom lines */}
-              {/* see components/ui/Figures/PhotoReceiptBoundingBox.md */}
-              {/* Render extended yellow boundary lines */}
-              {inView &&
-                convexHullPoints.length > 0 &&
-                hullCentroid &&
-                lines.length > 0 && (
-                  <AnimatedSecondaryBoundaryLines
-                    key={`secondary-boundary-lines-${resetKey}`}
+                  <AnimatedTopAndBottom
+                    key={`top-and-bottom-${resetKey}`}
                     lines={lines}
                     hull={convexHullPoints}
                     centroid={hullCentroid}
@@ -297,10 +269,13 @@ const PhotoReceiptBoundingBox: React.FC = () => {
                   />
                 )}
 
-              {/* Render Hull Edge Alignment decision process: Shows extreme points (L[1], R[6]),
-                  then chosen neighbors and boundary lines appear together in green */}
-              {/* Step 7 – Find left/right extremes and */}
-              {/* Step 8 – Refine edges with Hull Edge Alignment */}
+              {/* Step 5 & 6 – Find Top/Bottom Boundaries and Compute Final Tilt */}
+              {/* Step 5: Project hull vertices onto axis perpendicular to preliminary tilt */}
+              {/* Step 6: Fit lines through extremes, compute angles, and average for final tilt */}
+              {/* Step 7 – Find Left and Right Extremes Along Receipt Tilt */}
+              {/* Project hull vertices onto axis defined by final receipt tilt */}
+              {/* Step 8 – Refine with Hull Edge Alignment (CW/CCW Neighbor Comparison) */}
+              {/* Compare adjacent hull neighbors using Hull Edge Alignment scoring */}
               {inView &&
                 convexHullPoints.length > 0 &&
                 hullCentroid &&
@@ -316,7 +291,22 @@ const PhotoReceiptBoundingBox: React.FC = () => {
                   />
                 )}
 
-
+              {/* Step 9 – Compute Final Receipt Quadrilateral */}
+              {/* Intersect refined left/right boundaries with top/bottom edges */}
+              {inView &&
+                boundaries.top &&
+                boundaries.bottom &&
+                boundaries.left &&
+                boundaries.right && (
+                  <AnimatedFinalReceiptBox
+                    key={`final-receipt-box-${resetKey}`}
+                    boundaries={boundaries}
+                    fallbackCentroid={hullCentroid}
+                    svgWidth={svgWidth}
+                    svgHeight={svgHeight}
+                    delay={receiptDelay}
+                  />
+                )}
             </svg>
           ) : (
             // While loading, show a "Loading" message centered in the reserved space.

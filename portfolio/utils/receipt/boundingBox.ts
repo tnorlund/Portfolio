@@ -508,17 +508,178 @@ export const refineHullExtremesWithHullEdgeAlignment = (
 };
 
 /**
+ * Represents a boundary line in the receipt detection algorithm.
+ */
+export interface BoundaryLine {
+  /** True if the line is vertical (infinite slope) */
+  isVertical: boolean;
+  /** X-coordinate for vertical lines */
+  x?: number;
+  /** Slope for non-vertical lines (y = slope * x + intercept) */
+  slope: number;
+  /** Y-intercept for non-vertical lines (y = slope * x + intercept) */
+  intercept: number;
+}
+
+/**
+ * Compute the final receipt bounding box from four boundary lines (Step 9).
+ *
+ * This simplified function takes the top, bottom, left, and right boundary lines
+ * and computes their four intersection points to form the final receipt quadrilateral.
+ * This is a cleaner, more focused approach that separates boundary computation
+ * from intersection calculation.
+ *
+ * @param topBoundary - Top boundary line of the receipt
+ * @param bottomBoundary - Bottom boundary line of the receipt
+ * @param leftBoundary - Left boundary line of the receipt
+ * @param rightBoundary - Right boundary line of the receipt
+ * @param fallbackCentroid - Fallback point if intersections fail
+ * @returns Four-point quadrilateral representing the final receipt boundary.
+ */
+export const computeReceiptBoxFromBoundaries = (
+  topBoundary: BoundaryLine,
+  bottomBoundary: BoundaryLine,
+  leftBoundary: BoundaryLine,
+  rightBoundary: BoundaryLine,
+  fallbackCentroid?: Point
+): Point[] => {
+  // Function to find intersection of two lines with bounds checking
+  const findIntersection = (
+    line1: BoundaryLine,
+    line2: BoundaryLine
+  ): Point => {
+    let x: number, y: number;
+
+    if (line1.isVertical && line2.isVertical) {
+      // Both vertical - no intersection (or infinite intersections)
+      if (fallbackCentroid) {
+        return fallbackCentroid;
+      }
+      return { x: (line1.x! + line2.x!) / 2, y: 0.5 };
+    }
+
+    if (line1.isVertical) {
+      // line1 is vertical: x = line1.x, y = line2.slope * x + line2.intercept
+      x = line1.x!;
+      y = line2.slope * x + line2.intercept;
+    } else if (line2.isVertical) {
+      // line2 is vertical: x = line2.x, y = line1.slope * x + line1.intercept
+      x = line2.x!;
+      y = line1.slope * x + line1.intercept;
+    } else {
+      // Both non-vertical lines
+      // line1: y = m1*x + b1
+      // line2: y = m2*x + b2
+      // At intersection: m1*x + b1 = m2*x + b2
+      // x = (b2 - b1) / (m1 - m2)
+      const denominator = line1.slope - line2.slope;
+
+      if (Math.abs(denominator) < 1e-6) {
+        // Lines are nearly parallel
+        if (fallbackCentroid) {
+          return fallbackCentroid;
+        }
+        return { x: 0.5, y: 0.5 };
+      }
+
+      x = (line2.intercept - line1.intercept) / denominator;
+      y = line1.slope * x + line1.intercept;
+    }
+
+    // Validate and clamp coordinates to reasonable bounds
+    const clamp = (value: number, min: number, max: number) =>
+      Math.max(min, Math.min(max, value));
+
+    // If coordinates are way out of bounds, use fallback
+    if (Math.abs(x) > 10 || Math.abs(y) > 10 || !isFinite(x) || !isFinite(y)) {
+      if (fallbackCentroid) {
+        return fallbackCentroid;
+      }
+      // Apply reasonable defaults
+      x = clamp(x, -0.5, 1.5);
+      y = clamp(y, -0.5, 1.5);
+    } else {
+      // Apply less restrictive clamping for normal cases
+      x = clamp(x, -0.5, 1.5);
+      y = clamp(y, -0.5, 1.5);
+    }
+
+    return { x, y };
+  };
+
+  // Compute the four corner points by intersecting boundaries
+  const topLeft = findIntersection(topBoundary, leftBoundary);
+  const topRight = findIntersection(topBoundary, rightBoundary);
+  const bottomLeft = findIntersection(bottomBoundary, leftBoundary);
+  const bottomRight = findIntersection(bottomBoundary, rightBoundary);
+
+  // Return in clockwise order: top-left, top-right, bottom-right, bottom-left
+  return [topLeft, topRight, bottomRight, bottomLeft];
+};
+
+/**
+ * Create a boundary line from two points.
+ *
+ * @param point1 - First point on the line
+ * @param point2 - Second point on the line
+ * @returns BoundaryLine representation
+ */
+export const createBoundaryLineFromPoints = (
+  point1: Point,
+  point2: Point
+): BoundaryLine => {
+  const dx = point2.x - point1.x;
+  const dy = point2.y - point1.y;
+
+  // Handle nearly vertical lines (infinite slope)
+  if (Math.abs(dx) < 1e-9) {
+    return {
+      isVertical: true,
+      x: point1.x,
+      slope: 0,
+      intercept: 0,
+    };
+  }
+
+  // Regular line: y = slope * x + intercept
+  const slope = dy / dx;
+  const intercept = point1.y - slope * point1.x;
+
+  return {
+    isVertical: false,
+    slope,
+    intercept,
+  };
+};
+
+/**
+ * Convert a Theil-Sen line result to a BoundaryLine.
+ *
+ * @param theilSenResult - Result from theilSen function
+ * @returns BoundaryLine representation
+ */
+export const createBoundaryLineFromTheilSen = (theilSenResult: {
+  slope: number;
+  intercept: number;
+}): BoundaryLine => {
+  return {
+    isVertical: false,
+    slope: theilSenResult.slope,
+    intercept: theilSenResult.intercept,
+  };
+};
+
+/**
  * Compute the final receipt bounding box from refined hull edge alignment segments (Step 9).
  *
  * This function takes the optimal left and right boundary segments determined by Hull Edge
  * Alignment (step 8) and intersects them with the top and bottom edges to create the final
- * receipt quadrilateral. This represents the culmination of the multi-step bounding box
- * detection algorithm.
+ * receipt quadrilateral. This now delegates to the simpler computeReceiptBoxFromBoundaries.
  *
  * @param lines - OCR lines detected on the receipt image.
  * @param hull - Convex hull points of the receipt.
  * @param centroid - Centroid of the receipt hull.
- * @param avgAngle - Average text angle for fallback calculations.
+ * @param finalAngle - Final refined angle from Step 6.
  * @param refinedSegments - Refined boundary segments from Hull Edge Alignment (step 8).
  * @returns Four-point quadrilateral representing the final receipt boundary.
  */
@@ -526,7 +687,7 @@ export const computeReceiptBoxFromRefinedSegments = (
   lines: Line[],
   hull: Point[],
   centroid: Point,
-  avgAngle: number,
+  finalAngle: number,
   refinedSegments: {
     leftSegment: { extreme: Point; optimizedNeighbor: Point };
     rightSegment: { extreme: Point; optimizedNeighbor: Point };
@@ -534,12 +695,12 @@ export const computeReceiptBoxFromRefinedSegments = (
 ): Point[] => {
   if (lines.length === 0 || hull.length < 3) return [];
 
-  // Get top and bottom edges from secondary extremes (same as steps 5-6)
+  // Get top and bottom edges using the final refined angle (same as computed in Step 6)
   const { topEdge, bottomEdge } = findLineEdgesAtSecondaryExtremes(
     lines,
     hull,
     centroid,
-    avgAngle
+    finalAngle
   );
 
   if (topEdge.length < 2 || bottomEdge.length < 2) {
@@ -552,116 +713,24 @@ export const computeReceiptBoxFromRefinedSegments = (
     ];
   }
 
-  // Fit lines through top and bottom edges using Theil-Sen estimator
-  const topEdgeLine = theilSen(topEdge);
-  const bottomEdgeLine = theilSen(bottomEdge);
-
-  // Create line equations for left and right boundaries from refined segments
-  const createLineFromSegment = (extreme: Point, neighbor: Point) => {
-    const dx = neighbor.x - extreme.x;
-    const dy = neighbor.y - extreme.y;
-
-    // Handle nearly vertical lines (infinite slope)
-    if (Math.abs(dx) < 1e-9) {
-      return {
-        isVertical: true,
-        x: extreme.x, // Vertical line at x = extreme.x
-        slope: 0,
-        intercept: 0,
-      };
-    }
-
-    // Regular line: y = slope * x + intercept
-    const slope = dy / dx;
-    const intercept = extreme.y - slope * extreme.x;
-
-    return {
-      isVertical: false,
-      x: 0,
-      slope,
-      intercept,
-    };
-  };
-
-  const leftBoundaryLine = createLineFromSegment(
+  // Create the four boundary lines
+  const topBoundary = createBoundaryLineFromTheilSen(theilSen(topEdge));
+  const bottomBoundary = createBoundaryLineFromTheilSen(theilSen(bottomEdge));
+  const leftBoundary = createBoundaryLineFromPoints(
     refinedSegments.leftSegment.extreme,
     refinedSegments.leftSegment.optimizedNeighbor
   );
-
-  const rightBoundaryLine = createLineFromSegment(
+  const rightBoundary = createBoundaryLineFromPoints(
     refinedSegments.rightSegment.extreme,
     refinedSegments.rightSegment.optimizedNeighbor
   );
 
-  // Function to find intersection of two lines with bounds checking
-  const findIntersection = (
-    line1: { slope: number; intercept: number },
-    line2: { isVertical: boolean; x?: number; slope: number; intercept: number }
-  ): Point => {
-    let x: number, y: number;
-
-    if (line2.isVertical) {
-      // Intersection with vertical line: x = line2.x, y = line1.slope * x + line1.intercept
-      x = line2.x!;
-      y = line1.slope * x + line1.intercept;
-    } else {
-      // Intersection of two non-vertical lines
-      // line1: y = m1*x + b1
-      // line2: y = m2*x + b2
-      // At intersection: m1*x + b1 = m2*x + b2
-      // x = (b2 - b1) / (m1 - m2)
-      const denominator = line1.slope - line2.slope;
-
-      if (Math.abs(denominator) < 1e-6) {
-        // Lines are nearly parallel, use a reasonable fallback
-        const avgX =
-          (refinedSegments.leftSegment.extreme.x +
-            refinedSegments.rightSegment.extreme.x) /
-          2;
-        const avgY =
-          (refinedSegments.leftSegment.extreme.y +
-            refinedSegments.rightSegment.extreme.y) /
-          2;
-        return { x: avgX, y: avgY };
-      }
-
-      x = (line2.intercept - line1.intercept) / denominator;
-      y = line1.slope * x + line1.intercept;
-    }
-
-    // Validate and clamp coordinates to reasonable bounds
-    // Allow some margin beyond [0,1] but prevent extreme values
-    const clamp = (value: number, min: number, max: number) =>
-      Math.max(min, Math.min(max, value));
-
-    // If coordinates are way out of bounds, use fallback based on hull extent
-    if (Math.abs(x) > 10 || Math.abs(y) > 10 || !isFinite(x) || !isFinite(y)) {
-      // Fallback: use hull-based bounding box
-      const hullXs = hull.map((p) => p.x);
-      const hullYs = hull.map((p) => p.y);
-      const minX = Math.min(...hullXs);
-      const maxX = Math.max(...hullXs);
-      const minY = Math.min(...hullYs);
-      const maxY = Math.max(...hullYs);
-
-      // Return a point within the hull bounds
-      x = clamp(x, minX - 0.1, maxX + 0.1);
-      y = clamp(y, minY - 0.1, maxY + 0.1);
-    } else {
-      // Apply less restrictive clamping for normal cases
-      x = clamp(x, -0.5, 1.5);
-      y = clamp(y, -0.5, 1.5);
-    }
-
-    return { x, y };
-  };
-
-  // Compute the four corner points by intersecting boundaries with top/bottom edges
-  const topLeft = findIntersection(topEdgeLine, leftBoundaryLine);
-  const topRight = findIntersection(topEdgeLine, rightBoundaryLine);
-  const bottomLeft = findIntersection(bottomEdgeLine, leftBoundaryLine);
-  const bottomRight = findIntersection(bottomEdgeLine, rightBoundaryLine);
-
-  // Return in clockwise order: top-left, top-right, bottom-right, bottom-left
-  return [topLeft, topRight, bottomRight, bottomLeft];
+  // Compute intersections using the new simplified function
+  return computeReceiptBoxFromBoundaries(
+    topBoundary,
+    bottomBoundary,
+    leftBoundary,
+    rightBoundary,
+    centroid
+  );
 };
