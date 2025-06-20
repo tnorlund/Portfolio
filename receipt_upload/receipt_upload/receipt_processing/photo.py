@@ -1,36 +1,43 @@
-from pathlib import Path
-from datetime import datetime, timezone
-from PIL import Image as PIL_Image
 import json
-import uuid
 import math
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
 
-from receipt_upload.utils import (
-    download_image_from_s3,
-    upload_jpeg_to_s3,
-    upload_png_to_s3,
-    upload_all_cdn_formats,
-    calculate_sha256_from_bytes,
-    send_message_to_sqs,
-    download_file_from_s3,
-)
-from receipt_upload.geometry import (
-    compute_hull_centroid,
-    compute_receipt_box_from_skewed_extents,
-    convex_hull,
-    find_hull_extents_relative_to_centroid,
-    find_perspective_coeffs,
-)
-from receipt_upload.cluster import dbscan_lines
-from receipt_upload.ocr import process_ocr_dict_as_image
+from PIL import Image as PIL_Image
+from receipt_dynamo import DynamoClient
+from receipt_dynamo.constants import ImageType, OCRJobType, OCRStatus
 from receipt_dynamo.entities import (
     Image,
-    Receipt,
     OCRJob,
     OCRRoutingDecision,
+    Receipt,
 )
-from receipt_dynamo.constants import OCRStatus, OCRJobType, ImageType
-from receipt_dynamo import DynamoClient
+
+from receipt_upload.cluster import dbscan_lines
+from receipt_upload.geometry import (
+    compute_final_receipt_tilt,
+    compute_hull_centroid,
+    compute_receipt_box_from_boundaries,
+    convex_hull,
+    create_boundary_line_from_points,
+    create_boundary_line_from_theil_sen,
+    find_hull_extents_relative_to_centroid,
+    find_hull_extremes_along_angle,
+    find_line_edges_at_secondary_extremes,
+    find_perspective_coeffs,
+    refine_hull_extremes_with_hull_edge_alignment,
+    theil_sen,
+)
+from receipt_upload.ocr import process_ocr_dict_as_image
+from receipt_upload.utils import (
+    calculate_sha256_from_bytes,
+    download_file_from_s3,
+    download_image_from_s3,
+    send_message_to_sqs,
+    upload_all_cdn_formats,
+    upload_png_to_s3,
+)
 
 
 def process_photo(
@@ -136,9 +143,39 @@ def process_photo(
             cluster_lines
         )
 
-        # Compute receipt box corners for perspective transform
-        receipt_box_corners = compute_receipt_box_from_skewed_extents(
-            hull, cx, cy, -avg_angle
+        # Compute receipt box corners using step-by-step geometry utilities
+        final_angle = compute_final_receipt_tilt(
+            cluster_lines, hull, (cx, cy), avg_angle
+        )
+        extremes = find_hull_extremes_along_angle(hull, (cx, cy), final_angle)
+        refined = refine_hull_extremes_with_hull_edge_alignment(
+            hull, extremes["leftPoint"], extremes["rightPoint"], final_angle
+        )
+        edge_points = find_line_edges_at_secondary_extremes(
+            cluster_lines, hull, (cx, cy), final_angle
+        )
+        boundaries = {
+            "top": create_boundary_line_from_theil_sen(
+                theil_sen(edge_points["topEdge"])
+            ),
+            "bottom": create_boundary_line_from_theil_sen(
+                theil_sen(edge_points["bottomEdge"])
+            ),
+            "left": create_boundary_line_from_points(
+                refined["leftSegment"]["extreme"],
+                refined["leftSegment"]["optimizedNeighbor"],
+            ),
+            "right": create_boundary_line_from_points(
+                refined["rightSegment"]["extreme"],
+                refined["rightSegment"]["optimizedNeighbor"],
+            ),
+        }
+        receipt_box_corners = compute_receipt_box_from_boundaries(
+            boundaries["top"],
+            boundaries["bottom"],
+            boundaries["left"],
+            boundaries["right"],
+            (cx, cy),
         )
 
         # Estimate dimensions for warped image
