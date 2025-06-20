@@ -72,6 +72,11 @@ check_untyped_defs = true
 minversion = "7.0"
 addopts = "-ra -q"
 testpaths = [
-    "tests",
+    "test",
 ]
 python_files = ["test_*.py"]
+markers = [
+    "unit: mark test as unit test",
+    "integration: mark test as integration test", 
+    "end_to_end: mark test as end-to-end test",
+]
