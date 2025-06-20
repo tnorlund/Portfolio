@@ -1,9 +1,8 @@
 # receipt_dynamo/receipt_dynamo/entities/receipt_validation_summary.py
-from typing import Dict, List, Optional, Any
 from datetime import datetime
-import json
-from receipt_dynamo.entities import assert_valid_uuid
-from receipt_dynamo.entities.util import _format_float, _repr_str
+from typing import Any, Dict, Optional
+
+from receipt_dynamo.entities.util import assert_valid_uuid
 
 
 class ReceiptValidationSummary:
@@ -446,5 +445,5 @@ def itemToReceiptValidationSummary(
         )
     except (KeyError, IndexError, ValueError) as e:
         raise ValueError(
-            f"Error converting item to ReceiptValidationSummary"
+            "Error converting item to ReceiptValidationSummary"
         ) from e

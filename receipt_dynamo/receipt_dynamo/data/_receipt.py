@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, Tuple, Union
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.entities.receipt import Receipt, itemToReceipt
+from receipt_dynamo.entities.receipt_details import ReceiptDetails
 from receipt_dynamo.entities.receipt_letter import (
     ReceiptLetter,
     itemToReceiptLetter,
@@ -408,14 +409,9 @@ class _Receipt:
             else:
                 raise Exception(f"Error getting receipt: {e}") from e
 
-    def getReceiptDetails(self, image_id: str, receipt_id: int) -> Tuple[
-        Receipt,
-        list[ReceiptLine],
-        list[ReceiptWord],
-        list[ReceiptLetter],
-        list[ReceiptWordTag],
-        list[ReceiptWordLabel],
-    ]:
+    def getReceiptDetails(
+        self, image_id: str, receipt_id: int
+    ) -> ReceiptDetails:
         """Get a receipt with its details
 
         Args:
@@ -423,13 +419,7 @@ class _Receipt:
             receipt_id (int): The ID of the receipt to get
 
         Returns:
-            Tuple containing:
-            - Receipt: The receipt object
-            - list[ReceiptLine]: List of receipt lines
-            - list[ReceiptWord]: List of receipt words
-            - list[ReceiptLetter]: List of receipt letters
-            - list[ReceiptWordTag]: List of receipt word tags
-            - list[ReceiptWordLabel]: List of receipt word labels
+            ReceiptDetails: Dataclass with receipt and related data
         """
         try:
             query_params = {
@@ -464,7 +454,14 @@ class _Receipt:
                     ]
                 else:
                     break
-            return receipt, lines, words, letters, tags, labels
+            return ReceiptDetails(
+                receipt=receipt,
+                lines=lines,
+                words=words,
+                letters=letters,
+                tags=tags,
+                labels=labels,
+            )
         except ClientError as e:
             raise ValueError(f"Error getting receipt details: {e}")
 
