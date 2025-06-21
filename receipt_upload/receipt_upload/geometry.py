@@ -1098,6 +1098,16 @@ def create_boundary_line_from_points(
 def create_boundary_line_from_theil_sen(
     theil_sen_result: Dict[str, float],
 ) -> Dict[str, float]:
+    # Check for degenerate case where slope is 0 (horizontal line in inverted form = vertical line)
+    if abs(theil_sen_result["slope"]) < 1e-9:
+        # This is actually a vertical line: x = intercept
+        return {
+            "isVertical": True,
+            "x": theil_sen_result["intercept"],
+            "slope": 0.0,
+            "intercept": 0.0,
+        }
+
     # Keep theil_sen results in their original x = slope * y + intercept format
     # Mark them as inverted so intersection calculation can handle them properly
     return {
@@ -1105,6 +1115,73 @@ def create_boundary_line_from_theil_sen(
         "isInverted": True,  # Indicates x = slope * y + intercept format
         "slope": theil_sen_result["slope"],
         "intercept": theil_sen_result["intercept"],
+    }
+
+
+def create_horizontal_boundary_line_from_points(
+    edge_points: List[Tuple[float, float]],
+) -> Dict[str, float]:
+    """Create a horizontal boundary line (y = mx + b) from edge points."""
+    if len(edge_points) < 2:
+        # Not enough points, return a horizontal line at the average y
+        avg_y = (
+            sum(p[1] for p in edge_points) / len(edge_points)
+            if edge_points
+            else 0.0
+        )
+        return {
+            "isVertical": False,
+            "slope": 0.0,
+            "intercept": avg_y,
+        }
+
+    # Check if all points have the same y-coordinate (perfect horizontal line)
+    y_coords = [p[1] for p in edge_points]
+    if max(y_coords) - min(y_coords) < 1e-6:
+        # All points have same y -> perfect horizontal line y = constant
+        return {
+            "isVertical": False,
+            "slope": 0.0,
+            "intercept": y_coords[0],
+        }
+
+    # Check if all points have the same x-coordinate (vertical line - degenerate for horizontal boundary)
+    x_coords = [p[0] for p in edge_points]
+    if max(x_coords) - min(x_coords) < 1e-6:
+        # All points have same x -> vertical line (degenerate)
+        # Return a horizontal line at average y
+        avg_y = sum(y_coords) / len(y_coords)
+        return {
+            "isVertical": False,
+            "slope": 0.0,
+            "intercept": avg_y,
+        }
+
+    # Fit y = mx + b directly using least squares
+    n = len(edge_points)
+    sum_x = sum(p[0] for p in edge_points)
+    sum_y = sum(p[1] for p in edge_points)
+    sum_xy = sum(p[0] * p[1] for p in edge_points)
+    sum_x2 = sum(p[0] * p[0] for p in edge_points)
+
+    # Least squares: slope = (n*sum_xy - sum_x*sum_y) / (n*sum_x2 - sum_x^2)
+    denom = n * sum_x2 - sum_x * sum_x
+    if abs(denom) < 1e-9:
+        # Degenerate case - return horizontal line at average y
+        avg_y = sum_y / n
+        return {
+            "isVertical": False,
+            "slope": 0.0,
+            "intercept": avg_y,
+        }
+
+    slope = (n * sum_xy - sum_x * sum_y) / denom
+    intercept = (sum_y - slope * sum_x) / n
+
+    return {
+        "isVertical": False,
+        "slope": slope,
+        "intercept": intercept,
     }
 
 
@@ -1133,15 +1210,15 @@ def compute_receipt_box_from_boundaries(
             if line2.get("isInverted"):
                 # x = slope * y + intercept, solve for y
                 if abs(line2["slope"]) < 1e-9:
-                    # Horizontal line in inverted system: x = intercept
-                    # If x != intercept, no intersection exists, use fallback
+                    # Inverted horizontal line: x = intercept (this is a vertical line!)
+                    # If x != intercept, these are parallel vertical lines - use fallback
                     if abs(x - line2["intercept"]) > 1e-6:
                         return (
                             fallback_centroid
                             if fallback_centroid
                             else (x, 0.5)
                         )
-                    # If x == intercept, any y works, use a reasonable default
+                    # If x == intercept, lines are identical - use a reasonable y
                     y = 0.5
                 else:
                     y = (x - line2["intercept"]) / line2["slope"]
@@ -1155,15 +1232,15 @@ def compute_receipt_box_from_boundaries(
             if line1.get("isInverted"):
                 # x = slope * y + intercept, solve for y
                 if abs(line1["slope"]) < 1e-9:
-                    # Horizontal line in inverted system: x = intercept
-                    # If x != intercept, no intersection exists, use fallback
+                    # Inverted horizontal line: x = intercept (this is a vertical line!)
+                    # If x != intercept, these are parallel vertical lines - use fallback
                     if abs(x - line1["intercept"]) > 1e-6:
                         return (
                             fallback_centroid
                             if fallback_centroid
                             else (x, 0.5)
                         )
-                    # If x == intercept, any y works, use a reasonable default
+                    # If x == intercept, lines are identical - use a reasonable y
                     y = 0.5
                 else:
                     y = (x - line1["intercept"]) / line1["slope"]

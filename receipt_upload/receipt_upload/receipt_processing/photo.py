@@ -23,6 +23,7 @@ from receipt_upload.geometry import (
     convex_hull,
     create_boundary_line_from_points,
     create_boundary_line_from_theil_sen,
+    create_horizontal_boundary_line_from_points,
     find_hull_extents_relative_to_centroid,
     find_hull_extremes_along_angle,
     find_line_edges_at_secondary_extremes,
@@ -205,11 +206,11 @@ def process_photo(
                 cluster_lines, hull, (cx, cy), final_angle
             )
             boundaries = {
-                "top": create_boundary_line_from_theil_sen(
-                    theil_sen(edge_points["topEdge"])
+                "top": create_horizontal_boundary_line_from_points(
+                    edge_points["topEdge"]
                 ),
-                "bottom": create_boundary_line_from_theil_sen(
-                    theil_sen(edge_points["bottomEdge"])
+                "bottom": create_horizontal_boundary_line_from_points(
+                    edge_points["bottomEdge"]
                 ),
                 "left": create_boundary_line_from_points(
                     refined["leftSegment"]["extreme"],
