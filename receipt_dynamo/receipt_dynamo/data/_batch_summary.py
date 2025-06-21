@@ -319,9 +319,11 @@ class _BatchSummary(DynamoClientProtocol):
                 raise ValueError("table not found")
             elif error_code == "ValidationException":
                 raise ValueError("one or more parameters given were invalid")
+            else:
+                raise ValueError(f"Error getting batch summary: {e}")
 
     def listBatchSummaries(
-        self, limit: int = None, lastEvaluatedKey: dict | None = None
+        self, limit: Optional[int] = None, lastEvaluatedKey: dict | None = None
     ) -> Tuple[List[BatchSummary], dict | None]:
         """
         Lists BatchSummary records from DynamoDB with optional pagination.
@@ -398,7 +400,7 @@ class _BatchSummary(DynamoClientProtocol):
         self,
         status: str | BatchStatus,
         batch_type: str | BatchType = "EMBEDDING",
-        limit: int = None,
+        limit: Optional[int] = None,
         lastEvaluatedKey: dict | None = None,
     ) -> Tuple[List[BatchSummary], dict | None]:
         """

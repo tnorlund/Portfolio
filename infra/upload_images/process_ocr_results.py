@@ -1,16 +1,17 @@
 import os
 import json
-import uuid
-import boto3
 import logging
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from logging import StreamHandler, Formatter
+from pathlib import Path
+
+import boto3
+from PIL import Image as PIL_Image
 
 from receipt_dynamo import DynamoClient
-from receipt_dynamo.entities import OCRJob
 from receipt_dynamo.constants import OCRStatus, OCRJobType, ImageType
-from PIL import Image as PIL_Image
-from pathlib import Path
+from receipt_dynamo.entities import Line, Word, Letter
 from receipt_upload.ocr import process_ocr_dict_as_image
 from receipt_upload.route_images import classify_image_layout
 from receipt_upload.receipt_processing.photo import process_photo
@@ -60,97 +61,125 @@ if len(logger.handlers) == 0:
     logger.addHandler(log_handler)
 
 
-def handler(event, context):
-    # SQS can send multiple records
-    for record in event.get("Records", []):
-        # Get the message body
-        body = json.loads(record["body"])
-        job_id = body["job_id"]
-        image_id = body["image_id"]
-        logger.info(
-            f"Processing OCR results for image {image_id} with job {job_id}"
-        )
-        # Get the OCR job and routing decision
-        ocr_job = get_ocr_job(TABLE_NAME, image_id, job_id)
-        ocr_routing_decision = get_ocr_routing_decision(
-            TABLE_NAME, image_id, job_id
-        )
-        logger.info(f"Got OCR routing decision {ocr_routing_decision}")
+@dataclass
+class OCRData:
+    """Container for OCR processing results."""
 
-        # Download the OCR JSON
-        json_s3_key = ocr_routing_decision.s3_key
-        json_s3_bucket = ocr_routing_decision.s3_bucket
-        ocr_json_path = download_file_from_s3(
-            json_s3_bucket, json_s3_key, Path("/tmp")
-        )
-        with open(ocr_json_path, "r") as f:
-            ocr_json = json.load(f)
-        ocr_lines, ocr_words, ocr_letters = process_ocr_dict_as_image(
-            ocr_json, image_id
-        )
-        logger.info(f"Got job with type {ocr_job.job_type}")
+    lines: list[Line]
+    words: list[Word]
+    letters: list[Letter]
 
-        # Download the image from S3
-        raw_image_path = download_image_from_s3(
-            s3_bucket=ocr_job.s3_bucket,
-            s3_key=ocr_job.s3_key,
-            temp_dir=Path("/tmp"),
-            image_id=image_id,
-        )
-        image = PIL_Image.open(raw_image_path)
-        if ocr_job.job_type == OCRJobType.REFINEMENT.value:
-            logger.info(f"Refining receipt {ocr_job.image_id}")
-            if ocr_job.receipt_id is None:
-                logger.error(f"Receipt ID is None for refinement job {job_id}")
-                continue
-            receipt_lines, receipt_words, receipt_letters = (
-                image_ocr_to_receipt_ocr(
-                    lines=ocr_lines,
-                    words=ocr_words,
-                    letters=ocr_letters,
-                    receipt_id=ocr_job.receipt_id,
-                )
-            )
-            refine_receipt(
-                dynamo_table_name=TABLE_NAME,
-                receipt_lines=receipt_lines,
-                receipt_words=receipt_words,
-                receipt_letters=receipt_letters,
-                ocr_routing_decision=ocr_routing_decision,
-            )
-            sqs.delete_message(
-                QueueUrl=ocr_results_queue_url,
-                ReceiptHandle=record["receiptHandle"],
-            )
-            return {
-                "statusCode": 200,
-                "body": json.dumps({"message": "OCR results processed"}),
-            }
 
-        # Classify the image
-        image_type = classify_image_layout(
-            lines=ocr_lines,
-            image_height=image.height,
-            image_width=image.width,
-        )
+def _process_record(record):
+    """Process a single SQS record."""
+    body = json.loads(record["body"])
+    job_id = body["job_id"]
+    image_id = body["image_id"]
+    logger.info(
+        "Processing OCR results for image %s with job %s", image_id, job_id
+    )
 
-        if image_type == ImageType.NATIVE:
-            # The image is of a receipt. The
-            logger.info(f"Refining receipt {ocr_job.image_id}")
+    ocr_job = get_ocr_job(TABLE_NAME, image_id, job_id)
+    ocr_routing_decision = get_ocr_routing_decision(
+        TABLE_NAME, image_id, job_id
+    )
+    logger.info("Got OCR routing decision %s", ocr_routing_decision)
+
+    # Download OCR JSON
+    ocr_json_path = download_file_from_s3(
+        ocr_routing_decision.s3_bucket,
+        ocr_routing_decision.s3_key,
+        Path("/tmp"),
+    )
+    with open(ocr_json_path, "r", encoding="utf-8") as f:
+        ocr_json = json.load(f)
+    ocr_lines, ocr_words, ocr_letters = process_ocr_dict_as_image(
+        ocr_json, image_id
+    )
+    logger.info("Got job with type %s", ocr_job.job_type)
+
+    # Create OCR data container
+    ocr_data = OCRData(lines=ocr_lines, words=ocr_words, letters=ocr_letters)
+
+    # Download image
+    raw_image_path = download_image_from_s3(
+        ocr_job.s3_bucket, ocr_job.s3_key, Path("/tmp"), image_id
+    )
+    image = PIL_Image.open(raw_image_path)
+
+    if ocr_job.job_type == OCRJobType.REFINEMENT.value:
+        return _process_refinement_job(ocr_job, ocr_data, ocr_routing_decision)
+
+    return _process_first_pass_job(
+        image, ocr_data, ocr_job, ocr_routing_decision
+    )
+
+
+def _process_refinement_job(ocr_job, ocr_data, ocr_routing_decision):
+    """Process a refinement OCR job."""
+    logger.info("Refining receipt %s", ocr_job.image_id)
+    if ocr_job.receipt_id is None:
+        logger.error(
+            "Receipt ID is None for refinement job %s", ocr_job.job_id
+        )
+        return False
+
+    receipt_lines, receipt_words, receipt_letters = image_ocr_to_receipt_ocr(
+        lines=ocr_data.lines,
+        words=ocr_data.words,
+        letters=ocr_data.letters,
+        receipt_id=ocr_job.receipt_id,
+    )
+    refine_receipt(
+        dynamo_table_name=TABLE_NAME,
+        receipt_lines=receipt_lines,
+        receipt_words=receipt_words,
+        receipt_letters=receipt_letters,
+        ocr_routing_decision=ocr_routing_decision,
+    )
+    return True
+
+
+def _process_first_pass_job(image, ocr_data, ocr_job, ocr_routing_decision):
+    """Process a first-pass OCR job."""
+    image_type = classify_image_layout(
+        lines=ocr_data.lines,
+        image_height=image.height,
+        image_width=image.width,
+    )
+    logger.info(
+        "Image %s classified as %s (dimensions: %sx%s)",
+        ocr_job.image_id,
+        image_type,
+        image.width,
+        image.height,
+    )
+
+    if image_type == ImageType.NATIVE:
+        logger.info("Refining receipt %s", ocr_job.image_id)
+        try:
             process_native(
                 raw_bucket=RAW_BUCKET,
                 site_bucket=SITE_BUCKET,
                 dynamo_table_name=TABLE_NAME,
                 ocr_job_queue_url=ocr_job_queue_url,
                 image=image,
-                lines=ocr_lines,
-                words=ocr_words,
-                letters=ocr_letters,
+                lines=ocr_data.lines,
+                words=ocr_data.words,
+                letters=ocr_data.letters,
                 ocr_routing_decision=ocr_routing_decision,
                 ocr_job=ocr_job,
             )
-        elif image_type == ImageType.PHOTO:
-            logger.info(f"Processing photo {ocr_job.image_id}")
+        except ValueError as e:
+            logger.error(
+                "Geometry error in process_native for image %s: %s",
+                ocr_job.image_id,
+                e,
+            )
+            _update_routing_decision_with_error(ocr_routing_decision)
+    elif image_type == ImageType.PHOTO:
+        logger.info("Processing photo %s", ocr_job.image_id)
+        try:
             process_photo(
                 raw_bucket=RAW_BUCKET,
                 site_bucket=SITE_BUCKET,
@@ -160,8 +189,16 @@ def handler(event, context):
                 ocr_job=ocr_job,
                 image=image,
             )
-        elif image_type == ImageType.SCAN:
-            logger.info(f"Processing scan {ocr_job.image_id}")
+        except ValueError as e:
+            logger.error(
+                "Geometry error in process_photo for image %s: %s",
+                ocr_job.image_id,
+                e,
+            )
+            _update_routing_decision_with_error(ocr_routing_decision)
+    elif image_type == ImageType.SCAN:
+        logger.info("Processing scan %s", ocr_job.image_id)
+        try:
             process_scan(
                 raw_bucket=RAW_BUCKET,
                 site_bucket=SITE_BUCKET,
@@ -171,8 +208,44 @@ def handler(event, context):
                 ocr_job=ocr_job,
                 image=image,
             )
-        else:
-            logger.info(f"Unknown image type {image_type}")
+        except ValueError as e:
+            logger.error(
+                "Geometry error in process_scan for image %s: %s",
+                ocr_job.image_id,
+                e,
+            )
+            _update_routing_decision_with_error(ocr_routing_decision)
+    else:
+        logger.error(
+            "Unknown image type %s, updating routing decision to completed anyway",
+            image_type,
+        )
+        _update_routing_decision_with_error(ocr_routing_decision)
+
+    return False
+
+
+def _update_routing_decision_with_error(ocr_routing_decision):
+    """Updates the OCR routing decision with an error status."""
+    dynamo_client = DynamoClient(TABLE_NAME)
+    ocr_routing_decision.status = OCRStatus.FAILED.value
+    ocr_routing_decision.receipt_count = 0
+    ocr_routing_decision.updated_at = datetime.now(timezone.utc)
+    dynamo_client.updateOCRRoutingDecision(ocr_routing_decision)
+
+
+def handler(event, _context):
+    """Process OCR results from SQS messages and update routing decisions."""
+    for record in event.get("Records", []):
+        if _process_record(record):
+            sqs.delete_message(
+                QueueUrl=ocr_results_queue_url,
+                ReceiptHandle=record["receiptHandle"],
+            )
+            return {
+                "statusCode": 200,
+                "body": json.dumps({"message": "OCR results processed"}),
+            }
 
         sqs.delete_message(
             QueueUrl=ocr_results_queue_url,

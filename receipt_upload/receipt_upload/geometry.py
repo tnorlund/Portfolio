@@ -182,6 +182,57 @@ def find_perspective_coeffs(
         y_src = d*x_dst + e*y_dst + f
     normalized by (1 + g*x_dst + h*y_dst).
     """
+    # Validate inputs
+    if len(src_points) != 4 or len(dst_points) != 4:
+        raise ValueError(
+            "find_perspective_coeffs requires exactly 4 source and 4 destination points"
+        )
+
+    # Check for degenerate cases: collinear points
+    def are_collinear(p1, p2, p3):
+        """Check if three points are collinear using cross product"""
+        return (
+            abs(
+                (p2[0] - p1[0]) * (p3[1] - p1[1])
+                - (p3[0] - p1[0]) * (p2[1] - p1[1])
+            )
+            < 1e-10
+        )
+
+    # Check if any 3 points in src_points are collinear
+    for i in range(4):
+        for j in range(i + 1, 4):
+            for k in range(j + 1, 4):
+                if are_collinear(src_points[i], src_points[j], src_points[k]):
+                    raise ValueError(
+                        f"Source points {i}, {j}, {k} are collinear - cannot compute perspective transform"
+                    )
+
+    # Check if any 3 points in dst_points are collinear
+    for i in range(4):
+        for j in range(i + 1, 4):
+            for k in range(j + 1, 4):
+                if are_collinear(dst_points[i], dst_points[j], dst_points[k]):
+                    raise ValueError(
+                        f"Destination points {i}, {j}, {k} are collinear - cannot compute perspective transform"
+                    )
+
+    # Check for duplicate points
+    for i in range(4):
+        for j in range(i + 1, 4):
+            if (
+                abs(src_points[i][0] - src_points[j][0]) < 1e-10
+                and abs(src_points[i][1] - src_points[j][1]) < 1e-10
+            ):
+                raise ValueError(f"Source points {i} and {j} are identical")
+            if (
+                abs(dst_points[i][0] - dst_points[j][0]) < 1e-10
+                and abs(dst_points[i][1] - dst_points[j][1]) < 1e-10
+            ):
+                raise ValueError(
+                    f"Destination points {i} and {j} are identical"
+                )
+
     # Each source→destination pair gives 2 linear equations:
     #   sx = a*dx + b*dy + c - g*dx*sx - h*dy*sx  (written in standard form)
     #   sy = d*dx + e*dy + f - g*dx*sy - h*dy*sy
@@ -199,8 +250,14 @@ def find_perspective_coeffs(
     # Make a *copy* of A if you don't want to mutate the original:
     A_copy = [row[:] for row in A]
     B_copy = B[:]
-    solution = solve_8x8_system(A_copy, B_copy)
-    return solution
+
+    try:
+        solution = solve_8x8_system(A_copy, B_copy)
+        return solution
+    except ValueError as e:
+        raise ValueError(
+            f"Failed to compute perspective transform: {e}. Source points may be too close to collinear."
+        )
 
 
 def compute_receipt_box_from_skewed_extents(
@@ -1177,17 +1234,12 @@ def compute_receipt_box_from_boundaries(
             x = (line2["intercept"] - line1["intercept"]) / denom
             y = line1["slope"] * x + line1["intercept"]
 
-        def clamp(val: float, mn: float, mx: float) -> float:
-            return max(mn, min(mx, val))
-
-        if abs(x) > 10 or abs(y) > 10 or not (isfinite(x) and isfinite(y)):
+        # Check for invalid/infinite coordinates before returning
+        if not (isfinite(x) and isfinite(y)):
             if fallback_centroid:
                 return fallback_centroid
-            x = clamp(x, -0.5, 1.5)
-            y = clamp(y, -0.5, 1.5)
-        else:
-            x = clamp(x, -0.5, 1.5)
-            y = clamp(y, -0.5, 1.5)
+            return (0.0, 0.0)
+
         return (x, y)
 
     from math import isfinite
