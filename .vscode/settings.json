@@ -23,14 +23,23 @@
     "PYTHONPATH": "${workspaceFolder}"
   },
   "python.linting.enabled": true,
+  "python.linting.pylintEnabled": true,
+  "python.linting.flake8Enabled": false,
+  "python.linting.mypyEnabled": true,
+  "python.formatting.provider": "none",
+  "python.formatting.blackArgs": ["--line-length=79"],
   "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
-  "python.languageServer": "None",
   "python.analysis.autoImportCompletions": true,
   "python.analysis.completeFunctionParens": true,
   "python.venvPath": "${workspaceFolder}",
   "python.venvFolders": [".venv"],
   "python.analysis.extraPaths": [
-    "${workspaceFolder}/.venv/lib/python3.12/site-packages"
+    "./receipt_dynamo",
+    "./receipt_label",
+    "./receipt_upload",
+    "./receipt_trainer",
+    "./receipt_trainer_1",
+    "./infra"
   ],
   // "python.analysis.packageIndexDepths": [
   //   {
@@ -44,5 +53,20 @@
   "cursorpyright.analysis.autoImportCompletions": true,
   "cursorpyright.analysis.extraPaths": [
     "${workspaceFolder}/.venv/lib/python3.12/site-packages"
-  ]
+  ],
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.black-formatter",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": "explicit"
+    }
+  },
+  "isort.args": ["--profile", "black", "--line-length", "79"],
+  "pylint.args": ["--max-line-length=79"],
+  "python.linting.pylintArgs": ["--max-line-length=79"],
+  "editor.rulers": [79],
+  "files.associations": {
+    "*.toml": "toml"
+  },
+  "python.analysis.autoSearchPaths": true
 }
