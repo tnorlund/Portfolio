@@ -2,9 +2,10 @@
 
 ## Code Style
 
-- Use `black` and then `flake8` with a line length of 79 characters.
+- Use `black` and then `pylint` with a line length of 79 characters.
 - Organize imports using `isort` with the `black` profile.
 - Enforce type annotations and check with `mypy`.
+- Run code quality analysis with `pylint` for comprehensive linting beyond basic style checks.
 
 ## Testing
 

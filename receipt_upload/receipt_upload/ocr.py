@@ -170,7 +170,7 @@ def apple_vision_ocr_job(
         "swift",
         str(swift_script),
         str(temp_dir),
-    ] + image_paths
+    ] + [str(path) for path in image_paths]
     try:
         subprocess.run(
             swift_args,
@@ -180,12 +180,29 @@ def apple_vision_ocr_job(
         )
     except subprocess.CalledProcessError as e:
         raise ValueError(f"Error running Swift script: {e}") from e
-    json_files = list(temp_dir.glob("*.json"))
-    if len(json_files) != len(image_paths):
+
+    # Return JSON files in the same order as input image_paths
+    # Swift script creates JSON files with same base name as images
+    ordered_json_files = []
+    for image_path in image_paths:
+        # Get the base name without extension (e.g., "image_id" from "image_id.jpg")
+        base_name = image_path.stem
+        expected_json_path = temp_dir / f"{base_name}.json"
+        if not expected_json_path.exists():
+            raise FileNotFoundError(
+                f"Expected OCR output file not found: {expected_json_path}"
+            )
+        ordered_json_files.append(expected_json_path)
+
+    # Verify we have the correct number of files
+    all_json_files = list(temp_dir.glob("*.json"))
+    if len(ordered_json_files) != len(all_json_files):
         raise ValueError(
-            f"Expected {len(image_paths)} JSON files, but got {len(json_files)}"
+            f"Expected {len(image_paths)} JSON files, but found {len(all_json_files)} total. "
+            f"Missing files: {set(f.name for f in all_json_files) - set(f.name for f in ordered_json_files)}"
         )
-    return json_files
+
+    return ordered_json_files
 
 
 def _download_image_from_s3(

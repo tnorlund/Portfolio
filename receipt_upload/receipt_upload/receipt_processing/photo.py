@@ -234,6 +234,21 @@ def process_photo(
             for i, corner in enumerate(receipt_box_corners):
                 print(f"  Point {i}: ({corner[0]:.2f}, {corner[1]:.2f})")
 
+            # Reorder corners to match dst_corners order (top-left, top-right, bottom-right, bottom-left)
+            # Current geometry pipeline returns: [bottom-left, bottom-right, top-right, top-left]
+            # We need: [top-left, top-right, bottom-right, bottom-left]
+            # So reorder: [3, 2, 1, 0]
+            receipt_box_corners = [
+                receipt_box_corners[3],  # top-left
+                receipt_box_corners[2],  # top-right
+                receipt_box_corners[1],  # bottom-right
+                receipt_box_corners[0],  # bottom-left
+            ]
+
+            print(f"Cluster {cluster_id} reordered corners:")
+            for i, corner in enumerate(receipt_box_corners):
+                print(f"  Point {i}: ({corner[0]:.2f}, {corner[1]:.2f})")
+
             # Check distances between points and detect duplicates
             print(f"Cluster {cluster_id} distances:")
             has_duplicates = False
@@ -372,24 +387,27 @@ def process_photo(
 
             # Convert the receipt_box_corners from pixel coordinates to normalized
             # coordinates and format them as dictionaries
+            # Note: Y coordinates are already in image coordinate system (Y=0 at top)
+            # after flip_y=True in word.calculate_corners()
             top_left = {
                 "x": receipt_box_corners[0][0] / image.width,
-                "y": 1
-                - (
-                    receipt_box_corners[0][1] / image.height
-                ),  # Flip Y coordinate
+                "y": receipt_box_corners[0][1]
+                / image.height,  # No flip needed
             }
             top_right = {
                 "x": receipt_box_corners[1][0] / image.width,
-                "y": 1 - (receipt_box_corners[1][1] / image.height),
+                "y": receipt_box_corners[1][1]
+                / image.height,  # No flip needed
             }
             bottom_right = {
                 "x": receipt_box_corners[2][0] / image.width,
-                "y": 1 - (receipt_box_corners[2][1] / image.height),
+                "y": receipt_box_corners[2][1]
+                / image.height,  # No flip needed
             }
             bottom_left = {
                 "x": receipt_box_corners[3][0] / image.width,
-                "y": 1 - (receipt_box_corners[3][1] / image.height),
+                "y": receipt_box_corners[3][1]
+                / image.height,  # No flip needed
             }
 
             receipt = Receipt(
