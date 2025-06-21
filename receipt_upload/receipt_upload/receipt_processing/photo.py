@@ -233,14 +233,27 @@ def process_photo(
             for i, corner in enumerate(receipt_box_corners):
                 print(f"  Point {i}: ({corner[0]:.2f}, {corner[1]:.2f})")
 
-            # Check distances between points
+            # Check distances between points and detect duplicates
             print(f"Cluster {cluster_id} distances:")
+            has_duplicates = False
             for i in range(4):
                 for j in range(i + 1, 4):
                     dist = math.dist(
                         receipt_box_corners[i], receipt_box_corners[j]
                     )
                     print(f"  Distance {i}-{j}: {dist:.2f}")
+                    if dist < 1.0:  # Points are essentially identical
+                        has_duplicates = True
+                        print(
+                            f"  ⚠️  Points {i} and {j} are too close together!"
+                        )
+
+            # Skip if we have duplicate corners
+            if has_duplicates:
+                print(
+                    f"Skipping cluster {cluster_id}: detected duplicate/near-duplicate corners"
+                )
+                continue
 
             # Validate receipt box corners are reasonable
             if not all(
