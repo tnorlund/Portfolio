@@ -26,6 +26,7 @@ from receipt_dynamo import (
     itemToWordTag,
 )
 from receipt_dynamo.constants import ImageType
+from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities import (
     ImageDetails,
     assert_valid_uuid,
@@ -38,7 +39,7 @@ from receipt_dynamo.entities import (
 CHUNK_SIZE = 25
 
 
-class _Image:
+class _Image(DynamoClientProtocol):
     """
     A class providing methods to interact with "Image" entities in DynamoDB.
     This class is typically used within a DynamoClient to access and manage

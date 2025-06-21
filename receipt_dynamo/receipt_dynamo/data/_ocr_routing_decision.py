@@ -1,13 +1,15 @@
-from receipt_dynamo.entities.util import assert_valid_uuid
+from botocore.exceptions import ClientError
+
 from receipt_dynamo.constants import OCRStatus
+from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.ocr_routing_decision import (
     OCRRoutingDecision,
     itemToOCRRoutingDecision,
 )
-from botocore.exceptions import ClientError
+from receipt_dynamo.entities.util import assert_valid_uuid
 
 
-class _OCRRoutingDecision:
+class _OCRRoutingDecision(DynamoClientProtocol):
     def addOCRRoutingDecision(self, ocr_routing_decision: OCRRoutingDecision):
         if ocr_routing_decision is None:
             raise ValueError("ocr_routing_decision cannot be None")

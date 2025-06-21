@@ -1,12 +1,9 @@
 import boto3
 
+from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data._batch_summary import _BatchSummary
-from receipt_dynamo.data._completion_batch_result import (
-    _CompletionBatchResult,
-)
-from receipt_dynamo.data._embedding_batch_result import (
-    _EmbeddingBatchResult,
-)
+from receipt_dynamo.data._completion_batch_result import _CompletionBatchResult
+from receipt_dynamo.data._embedding_batch_result import _EmbeddingBatchResult
 
 # Import all the modules needed for multiple inheritance
 from receipt_dynamo.data._image import _Image
@@ -36,9 +33,7 @@ from receipt_dynamo.data._receipt_line import _ReceiptLine
 from receipt_dynamo.data._receipt_line_item_analysis import (
     _ReceiptLineItemAnalysis,
 )
-from receipt_dynamo.data._receipt_metadata import (
-    _ReceiptMetadata,
-)
+from receipt_dynamo.data._receipt_metadata import _ReceiptMetadata
 from receipt_dynamo.data._receipt_section import _ReceiptSection
 from receipt_dynamo.data._receipt_structure_analysis import (
     _ReceiptStructureAnalysis,

@@ -4,6 +4,7 @@ import uuid
 import boto3
 import logging
 from datetime import datetime
+from logging import StreamHandler, Formatter
 
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.entities import OCRJob
@@ -49,14 +50,14 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 if len(logger.handlers) == 0:
-    handler = StreamHandler()
-    handler.setFormatter(
+    log_handler = StreamHandler()
+    log_handler.setFormatter(
         Formatter(
             "[%(levelname)s] %(asctime)s.%(msecs)dZ %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
         )
     )
-    logger.addHandler(handler)
+    logger.addHandler(log_handler)
 
 
 def handler(event, context):
@@ -99,6 +100,9 @@ def handler(event, context):
         image = PIL_Image.open(raw_image_path)
         if ocr_job.job_type == OCRJobType.REFINEMENT.value:
             logger.info(f"Refining receipt {ocr_job.image_id}")
+            if ocr_job.receipt_id is None:
+                logger.error(f"Receipt ID is None for refinement job {job_id}")
+                continue
             receipt_lines, receipt_words, receipt_letters = (
                 image_ocr_to_receipt_ocr(
                     lines=ocr_lines,

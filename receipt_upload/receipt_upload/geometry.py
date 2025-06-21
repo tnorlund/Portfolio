@@ -1075,7 +1075,19 @@ def compute_receipt_box_from_boundaries(
             x = line1["x"]
             if line2.get("isInverted"):
                 # x = slope * y + intercept, solve for y
-                y = (x - line2["intercept"]) / line2["slope"]
+                if abs(line2["slope"]) < 1e-9:
+                    # Horizontal line in inverted system: x = intercept
+                    # If x != intercept, no intersection exists, use fallback
+                    if abs(x - line2["intercept"]) > 1e-6:
+                        return (
+                            fallback_centroid
+                            if fallback_centroid
+                            else (x, 0.5)
+                        )
+                    # If x == intercept, any y works, use a reasonable default
+                    y = 0.5
+                else:
+                    y = (x - line2["intercept"]) / line2["slope"]
             else:
                 # y = slope * x + intercept
                 y = line2["slope"] * x + line2["intercept"]
@@ -1085,7 +1097,19 @@ def compute_receipt_box_from_boundaries(
             x = line2["x"]
             if line1.get("isInverted"):
                 # x = slope * y + intercept, solve for y
-                y = (x - line1["intercept"]) / line1["slope"]
+                if abs(line1["slope"]) < 1e-9:
+                    # Horizontal line in inverted system: x = intercept
+                    # If x != intercept, no intersection exists, use fallback
+                    if abs(x - line1["intercept"]) > 1e-6:
+                        return (
+                            fallback_centroid
+                            if fallback_centroid
+                            else (x, 0.5)
+                        )
+                    # If x == intercept, any y works, use a reasonable default
+                    y = 0.5
+                else:
+                    y = (x - line1["intercept"]) / line1["slope"]
             else:
                 # y = slope * x + intercept
                 y = line1["slope"] * x + line1["intercept"]
@@ -1107,27 +1131,43 @@ def compute_receipt_box_from_boundaries(
 
         elif line1_inverted and not line2_inverted:
             # line1: x = m1*y + b1, line2: y = m2*x + b2
-            # Substitute line2 into line1: x = m1*(m2*x + b2) + b1
-            # x = m1*m2*x + m1*b2 + b1 => x(1 - m1*m2) = m1*b2 + b1
-            denom = 1 - line1["slope"] * line2["slope"]
-            if abs(denom) < 1e-9:
-                return fallback_centroid if fallback_centroid else (0.5, 0.5)
-            x = (
-                line1["slope"] * line2["intercept"] + line1["intercept"]
-            ) / denom
-            y = line2["slope"] * x + line2["intercept"]
+            # Handle special case where line1 has slope = 0 (horizontal line)
+            if abs(line1["slope"]) < 1e-9:
+                # line1 is horizontal: x = b1, so substitute into line2
+                x = line1["intercept"]
+                y = line2["slope"] * x + line2["intercept"]
+            else:
+                # Substitute line2 into line1: x = m1*(m2*x + b2) + b1
+                # x = m1*m2*x + m1*b2 + b1 => x(1 - m1*m2) = m1*b2 + b1
+                denom = 1 - line1["slope"] * line2["slope"]
+                if abs(denom) < 1e-9:
+                    return (
+                        fallback_centroid if fallback_centroid else (0.5, 0.5)
+                    )
+                x = (
+                    line1["slope"] * line2["intercept"] + line1["intercept"]
+                ) / denom
+                y = line2["slope"] * x + line2["intercept"]
 
         elif not line1_inverted and line2_inverted:
             # line1: y = m1*x + b1, line2: x = m2*y + b2
-            # Substitute line1 into line2: x = m2*(m1*x + b1) + b2
-            # x = m2*m1*x + m2*b1 + b2 => x(1 - m2*m1) = m2*b1 + b2
-            denom = 1 - line2["slope"] * line1["slope"]
-            if abs(denom) < 1e-9:
-                return fallback_centroid if fallback_centroid else (0.5, 0.5)
-            x = (
-                line2["slope"] * line1["intercept"] + line2["intercept"]
-            ) / denom
-            y = line1["slope"] * x + line1["intercept"]
+            # Handle special case where line2 has slope = 0 (horizontal line)
+            if abs(line2["slope"]) < 1e-9:
+                # line2 is horizontal: x = b2, so substitute into line1
+                x = line2["intercept"]
+                y = line1["slope"] * x + line1["intercept"]
+            else:
+                # Substitute line1 into line2: x = m2*(m1*x + b1) + b2
+                # x = m2*m1*x + m2*b1 + b2 => x(1 - m2*m1) = m2*b1 + b2
+                denom = 1 - line2["slope"] * line1["slope"]
+                if abs(denom) < 1e-9:
+                    return (
+                        fallback_centroid if fallback_centroid else (0.5, 0.5)
+                    )
+                x = (
+                    line2["slope"] * line1["intercept"] + line2["intercept"]
+                ) / denom
+                y = line1["slope"] * x + line1["intercept"]
 
         else:
             # Both lines: y = slope * x + intercept (standard case)

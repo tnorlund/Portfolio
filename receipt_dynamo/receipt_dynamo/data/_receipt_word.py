@@ -2,13 +2,14 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo import ReceiptWord, itemToReceiptWord
 from receipt_dynamo.constants import EmbeddingStatus
+from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 CHUNK_SIZE = 25
 
 
-class _ReceiptWord:
+class _ReceiptWord(DynamoClientProtocol):
     """
     A class used to represent a ReceiptWord in the database.
 

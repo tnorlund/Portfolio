@@ -3,6 +3,7 @@ from typing import Dict, List, Optional, Tuple, Union
 
 from botocore.exceptions import ClientError
 
+from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.receipt import Receipt, itemToReceipt
 from receipt_dynamo.entities.receipt_details import ReceiptDetails
 from receipt_dynamo.entities.receipt_letter import (
@@ -37,7 +38,7 @@ def validate_last_evaluated_key(lek: dict) -> None:
             )
 
 
-class _Receipt:
+class _Receipt(DynamoClientProtocol):
     def addReceipt(self, receipt: Receipt):
         """Adds a receipt to the database
 

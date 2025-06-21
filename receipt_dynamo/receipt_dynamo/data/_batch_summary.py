@@ -1,5 +1,8 @@
 from typing import Dict, List, Optional, Tuple, Union
+
 from botocore.exceptions import ClientError
+
+from receipt_dynamo.data._base import DynamoClientProtocol
 
 """
 This module provides the _BatchSummary class for managing BatchSummary
@@ -8,12 +11,12 @@ deleting, and querying batch summary data, including support for pagination
 and GSI lookups by status.
 """
 
+from receipt_dynamo.constants import BatchStatus, BatchType
 from receipt_dynamo.entities.batch_summary import (
     BatchSummary,
     itemToBatchSummary,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
-from receipt_dynamo.constants import BatchType, BatchStatus
 
 
 def validate_last_evaluated_key(lek: dict) -> None:
@@ -29,7 +32,7 @@ def validate_last_evaluated_key(lek: dict) -> None:
             )
 
 
-class _BatchSummary:
+class _BatchSummary(DynamoClientProtocol):
 
     def addBatchSummary(self, batch_summary: BatchSummary):
         """

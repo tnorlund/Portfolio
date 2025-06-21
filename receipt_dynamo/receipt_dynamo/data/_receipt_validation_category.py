@@ -4,10 +4,11 @@ from receipt_dynamo import (
     ReceiptValidationCategory,
     itemToReceiptValidationCategory,
 )
+from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
-class _ReceiptValidationCategory:
+class _ReceiptValidationCategory(DynamoClientProtocol):
     """
     A class used to access receipt validation categories in DynamoDB.
 

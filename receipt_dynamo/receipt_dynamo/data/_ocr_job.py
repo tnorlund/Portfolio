@@ -1,10 +1,13 @@
-from receipt_dynamo.entities.util import assert_valid_uuid
-from receipt_dynamo.constants import OCRStatus
-from receipt_dynamo.entities.ocr_job import OCRJob, itemToOCRJob
+from typing import Optional
 from botocore.exceptions import ClientError
 
+from receipt_dynamo.constants import OCRStatus
+from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.entities.ocr_job import OCRJob, itemToOCRJob
+from receipt_dynamo.entities.util import assert_valid_uuid
 
-class _OCRJob:
+
+class _OCRJob(DynamoClientProtocol):
     def addOCRJob(self, ocr_job: OCRJob):
         """Adds an OCR job to the database
 
@@ -264,7 +267,9 @@ class _OCRJob:
                     raise RuntimeError(f"Error deleting OCR jobs: {e}") from e
 
     def listOCRJobs(
-        self, limit: int = None, lastEvaluatedKey: dict | None = None
+        self,
+        limit: Optional[int] = None,
+        lastEvaluatedKey: Optional[dict] = None,
     ) -> tuple[list[OCRJob], dict | None]:
         """Lists all OCR jobs from the database
 
@@ -282,7 +287,6 @@ class _OCRJob:
         if lastEvaluatedKey is not None:
             if not isinstance(lastEvaluatedKey, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
-            validate_last_evaluated_key(lastEvaluatedKey)
 
         jobs = []
         try:
@@ -334,7 +338,7 @@ class _OCRJob:
     def getOCRJobsByStatus(
         self,
         status: OCRStatus,
-        limit: int = None,
+        limit: Optional[int] = None,
         lastEvaluatedKey: dict | None = None,
     ) -> tuple[list[OCRJob], dict | None]:
         """Gets OCR jobs by status from the database
@@ -358,7 +362,6 @@ class _OCRJob:
         if lastEvaluatedKey is not None:
             if not isinstance(lastEvaluatedKey, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
-            validate_last_evaluated_key(lastEvaluatedKey)
 
         jobs = []
         try:
