@@ -513,6 +513,8 @@ export const refineHullExtremesWithHullEdgeAlignment = (
 export interface BoundaryLine {
   /** True if the line is vertical (infinite slope) */
   isVertical: boolean;
+  /** True if the line is stored in x = slope * y + intercept form */
+  isInverted?: boolean;
   /** X-coordinate for vertical lines */
   x?: number;
   /** Slope for non-vertical lines (y = slope * x + intercept) */
@@ -551,38 +553,85 @@ export const computeReceiptBoxFromBoundaries = (
     let x: number, y: number;
 
     if (line1.isVertical && line2.isVertical) {
-      // Both vertical - no intersection (or infinite intersections)
-      if (fallbackCentroid) {
-        return fallbackCentroid;
-      }
-      return { x: (line1.x! + line2.x!) / 2, y: 0.5 };
+      return fallbackCentroid
+        ? fallbackCentroid
+        : { x: (line1.x! + line2.x!) / 2, y: 0.5 };
     }
 
     if (line1.isVertical) {
-      // line1 is vertical: x = line1.x, y = line2.slope * x + line2.intercept
       x = line1.x!;
-      y = line2.slope * x + line2.intercept;
-    } else if (line2.isVertical) {
-      // line2 is vertical: x = line2.x, y = line1.slope * x + line1.intercept
-      x = line2.x!;
-      y = line1.slope * x + line1.intercept;
-    } else {
-      // Both non-vertical lines
-      // line1: y = m1*x + b1
-      // line2: y = m2*x + b2
-      // At intersection: m1*x + b1 = m2*x + b2
-      // x = (b2 - b1) / (m1 - m2)
-      const denominator = line1.slope - line2.slope;
-
-      if (Math.abs(denominator) < 1e-6) {
-        // Lines are nearly parallel
-        if (fallbackCentroid) {
-          return fallbackCentroid;
+      if (line2.isInverted) {
+        if (Math.abs(line2.slope) < 1e-9) {
+          if (Math.abs(x - line2.intercept) > 1e-6) {
+            return fallbackCentroid ? fallbackCentroid : { x, y: 0.5 };
+          }
+          y = 0.5;
+        } else {
+          y = (x - line2.intercept) / line2.slope;
         }
-        return { x: 0.5, y: 0.5 };
+      } else {
+        y = line2.slope * x + line2.intercept;
       }
+      return { x, y };
+    }
 
-      x = (line2.intercept - line1.intercept) / denominator;
+    if (line2.isVertical) {
+      x = line2.x!;
+      if (line1.isInverted) {
+        if (Math.abs(line1.slope) < 1e-9) {
+          if (Math.abs(x - line1.intercept) > 1e-6) {
+            return fallbackCentroid ? fallbackCentroid : { x, y: 0.5 };
+          }
+          y = 0.5;
+        } else {
+          y = (x - line1.intercept) / line1.slope;
+        }
+      } else {
+        y = line1.slope * x + line1.intercept;
+      }
+      return { x, y };
+    }
+
+    const line1Inverted = line1.isInverted ?? false;
+    const line2Inverted = line2.isInverted ?? false;
+
+    if (line1Inverted && line2Inverted) {
+      const denom = line1.slope - line2.slope;
+      if (Math.abs(denom) < 1e-9) {
+        return fallbackCentroid ? fallbackCentroid : { x: 0.5, y: 0.5 };
+      }
+      y = (line2.intercept - line1.intercept) / denom;
+      x = line1.slope * y + line1.intercept;
+    } else if (line1Inverted && !line2Inverted) {
+      if (Math.abs(line1.slope) < 1e-9) {
+        x = line1.intercept;
+        y = line2.slope * x + line2.intercept;
+      } else {
+        const denom = 1 - line1.slope * line2.slope;
+        if (Math.abs(denom) < 1e-9) {
+          return fallbackCentroid ? fallbackCentroid : { x: 0.5, y: 0.5 };
+        }
+        x = (line1.slope * line2.intercept + line1.intercept) / denom;
+        y = line2.slope * x + line2.intercept;
+      }
+    } else if (!line1Inverted && line2Inverted) {
+      if (Math.abs(line2.slope) < 1e-9) {
+        x = line2.intercept;
+        y = line1.slope * x + line1.intercept;
+      } else {
+        const denom = 1 - line2.slope * line1.slope;
+        if (Math.abs(denom) < 1e-9) {
+          return fallbackCentroid ? fallbackCentroid : { x: 0.5, y: 0.5 };
+        }
+        x = (line2.slope * line1.intercept + line2.intercept) / denom;
+        y = line1.slope * x + line1.intercept;
+      }
+    } else {
+      const denom = line1.slope - line2.slope;
+      if (Math.abs(denom) < 1e-6) {
+        return fallbackCentroid ? fallbackCentroid : { x: 0.5, y: 0.5 };
+      }
+      x = (line2.intercept - line1.intercept) / denom;
       y = line1.slope * x + line1.intercept;
     }
 
@@ -662,8 +711,18 @@ export const createBoundaryLineFromTheilSen = (theilSenResult: {
   slope: number;
   intercept: number;
 }): BoundaryLine => {
+  if (Math.abs(theilSenResult.slope) < 1e-9) {
+    return {
+      isVertical: true,
+      x: theilSenResult.intercept,
+      slope: 0,
+      intercept: 0,
+    };
+  }
+
   return {
     isVertical: false,
+    isInverted: true,
     slope: theilSenResult.slope,
     intercept: theilSenResult.intercept,
   };

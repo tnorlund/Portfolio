@@ -77,31 +77,79 @@ const AnimatedFinalReceiptBox: React.FC<AnimatedFinalReceiptBoxProps> = ({
     const margin = 100; // Extension beyond viewport
 
     // Top boundary (yellow)
-    if (top && !top.isVertical) {
-      const y1 = top.slope * -margin + top.intercept;
-      const y2 = top.slope * (svgWidth + margin) + top.intercept;
-      lines.push({
-        x1: -margin,
-        y1: (1 - y1) * svgHeight,
-        x2: svgWidth + margin,
-        y2: (1 - y2) * svgHeight,
-        color: "var(--color-yellow)",
-        key: "top",
-      });
+    if (top) {
+      if (top.isVertical && top.x !== undefined) {
+        lines.push({
+          x1: top.x * svgWidth,
+          y1: -margin,
+          x2: top.x * svgWidth,
+          y2: svgHeight + margin,
+          color: "var(--color-yellow)",
+          key: "top",
+        });
+      } else if (top.isInverted) {
+        const y1 = -margin / svgHeight;
+        const y2 = (svgHeight + margin) / svgHeight;
+        const x1 = top.slope * y1 + top.intercept;
+        const x2 = top.slope * y2 + top.intercept;
+        lines.push({
+          x1: x1 * svgWidth,
+          y1: -margin,
+          x2: x2 * svgWidth,
+          y2: svgHeight + margin,
+          color: "var(--color-yellow)",
+          key: "top",
+        });
+      } else if (!top.isVertical) {
+        const y1 = top.slope * -margin + top.intercept;
+        const y2 = top.slope * (svgWidth + margin) + top.intercept;
+        lines.push({
+          x1: -margin,
+          y1: (1 - y1) * svgHeight,
+          x2: svgWidth + margin,
+          y2: (1 - y2) * svgHeight,
+          color: "var(--color-yellow)",
+          key: "top",
+        });
+      }
     }
 
     // Bottom boundary (yellow)
-    if (bottom && !bottom.isVertical) {
-      const y1 = bottom.slope * -margin + bottom.intercept;
-      const y2 = bottom.slope * (svgWidth + margin) + bottom.intercept;
-      lines.push({
-        x1: -margin,
-        y1: (1 - y1) * svgHeight,
-        x2: svgWidth + margin,
-        y2: (1 - y2) * svgHeight,
-        color: "var(--color-yellow)",
-        key: "bottom",
-      });
+    if (bottom) {
+      if (bottom.isVertical && bottom.x !== undefined) {
+        lines.push({
+          x1: bottom.x * svgWidth,
+          y1: -margin,
+          x2: bottom.x * svgWidth,
+          y2: svgHeight + margin,
+          color: "var(--color-yellow)",
+          key: "bottom",
+        });
+      } else if (bottom.isInverted) {
+        const y1 = -margin / svgHeight;
+        const y2 = (svgHeight + margin) / svgHeight;
+        const x1 = bottom.slope * y1 + bottom.intercept;
+        const x2 = bottom.slope * y2 + bottom.intercept;
+        lines.push({
+          x1: x1 * svgWidth,
+          y1: -margin,
+          x2: x2 * svgWidth,
+          y2: svgHeight + margin,
+          color: "var(--color-yellow)",
+          key: "bottom",
+        });
+      } else if (!bottom.isVertical) {
+        const y1 = bottom.slope * -margin + bottom.intercept;
+        const y2 = bottom.slope * (svgWidth + margin) + bottom.intercept;
+        lines.push({
+          x1: -margin,
+          y1: (1 - y1) * svgHeight,
+          x2: svgWidth + margin,
+          y2: (1 - y2) * svgHeight,
+          color: "var(--color-yellow)",
+          key: "bottom",
+        });
+      }
     }
 
     // Left boundary (green)
