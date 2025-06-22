@@ -134,10 +134,6 @@ const AnimatedConvexHull: React.FC<AnimatedConvexHullProps> = ({
         strokeWidth="4"
         opacity={1}
       />
-      {/* Fill when complete */}
-      {visiblePoints >= hullPoints.length && (
-        <path d={finalPath} fill="var(--color-red)" opacity={0.1} />
-      )}
     </>
   );
 };

@@ -62,9 +62,10 @@ const AnimatedReceipt: React.FC<AnimatedReceiptProps> = ({
       <animated.polygon
         style={boxSpring}
         points={points}
-        fill="none"
+        fill="var(--color-blue)"
+        fillOpacity={0.2}
         stroke="var(--color-blue)"
-        strokeWidth="4"
+        strokeWidth="6"
       />
       <animated.circle
         cx={centroidX}

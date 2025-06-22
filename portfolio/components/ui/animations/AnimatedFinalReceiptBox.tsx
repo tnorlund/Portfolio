@@ -288,7 +288,7 @@ const AnimatedFinalReceiptBox: React.FC<AnimatedFinalReceiptBoxProps> = ({
           x2={line.x2}
           y2={line.y2}
           stroke={line.color}
-          strokeWidth="3"
+          strokeWidth="6"
           strokeDasharray="10,5"
         />
       ))}
@@ -313,9 +313,10 @@ const AnimatedFinalReceiptBox: React.FC<AnimatedFinalReceiptBoxProps> = ({
           key="final-receipt-polygon"
           style={style}
           points={points}
-          fill="none"
+          fill="var(--color-blue)"
+          fillOpacity={0.2}
           stroke="var(--color-blue)"
-          strokeWidth="4"
+          strokeWidth="6"
           opacity={1}
         />
       ))}

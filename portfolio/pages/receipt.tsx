@@ -270,6 +270,47 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         stitch the answers back together.
       </p>
 
+      {/* 
+      TODO: Fix OCR Section Disconnect - Show Visual Mess Before Technical Solution
+      
+      PROBLEM IDENTIFIED:
+      - Text jumps straight into technical solutions ("DBSCAN clustering, convex hull")
+      - Visuals show perfect, clean geometric processing 
+      - Missing the messy visual reality that creates the problem
+      - No clear "why" for non-technical readers about why this clustering matters
+      
+      SOLUTION STRATEGY:
+      Create a new flow that shows the mess first, then the solution:
+      
+      1. START WITH CHAOS: Show ReceiptStack (or similar) to demonstrate real-world receipt images:
+         - Crumpled and wrinkled receipts
+         - Photos taken at angles 
+         - Multiple receipts overlapping in frame
+         - Poor lighting conditions
+         - Mixed with other objects/backgrounds
+      
+      2. EXPLAIN THE CONSEQUENCE: Without proper processing, text recognition gives:
+         - Jumbled words with no grouping
+         - Text from multiple receipts mixed together  
+         - Wrong reading order
+         - Background noise included as "receipt data"
+      
+      3. PRESENT SIMPLE SOLUTION: "The challenge isn't just reading text - it's figuring 
+         out which words belong together"
+      
+      4. SHOW TECHNICAL SOLUTION WORKING: Current ScanReceiptBoundingBox and 
+         PhotoReceiptBoundingBox visualizations now make sense as the "after"
+      
+      IMPLEMENTATION NEEDED:
+      - Move ReceiptStack or create similar component showing messy input images
+      - Rewrite intro text to be accessible (avoid OCR jargon)
+      - Focus on "grouping text that belongs together" rather than geometric algorithms
+      - Position existing visualizations as the successful "clean" result
+      
+      This makes "cleanest, most organized approach" meaningful because readers see 
+      the chaotic starting point first.
+      */}
+
       <h1>From Images to Words and Coordinates</h1>
 
       <p>

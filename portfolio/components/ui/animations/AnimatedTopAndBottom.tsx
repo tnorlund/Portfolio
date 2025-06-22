@@ -175,7 +175,7 @@ const AnimatedTopAndBottom: React.FC<AnimatedTopAndBottomProps> = ({
           x2={seg.x2}
           y2={seg.y2}
           stroke="var(--color-yellow)"
-          strokeWidth="5"
+          strokeWidth="6"
           strokeDasharray="10,10"
         />
       ))}

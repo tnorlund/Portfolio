@@ -222,7 +222,7 @@ const AnimatedHullEdgeAlignment: React.FC<AnimatedHullEdgeAlignmentProps> = ({
           x2={leftBoundaryLine.x2}
           y2={leftBoundaryLine.y2}
           stroke="var(--color-green)"
-          strokeWidth="5"
+          strokeWidth="6"
           strokeDasharray="10,10"
         />
         <line
@@ -231,7 +231,7 @@ const AnimatedHullEdgeAlignment: React.FC<AnimatedHullEdgeAlignmentProps> = ({
           x2={rightBoundaryLine.x2}
           y2={rightBoundaryLine.y2}
           stroke="var(--color-green)"
-          strokeWidth="5"
+          strokeWidth="6"
           strokeDasharray="10,10"
         />
       </animated.g>
