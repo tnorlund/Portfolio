@@ -180,12 +180,17 @@ def apple_vision_ocr_job(
         str(temp_dir),
     ] + [str(path) for path in image_paths]
     try:
-        subprocess.run(
+        result = subprocess.run(
             swift_args,
             check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
         )
+        print("Swift OCR Output:")
+        print(result.stdout)
+        if result.stderr:
+            print("Swift OCR Errors:")
+            print(result.stderr)
     except subprocess.CalledProcessError as e:
         raise ValueError(f"Error running Swift script: {e}") from e
 
@@ -206,12 +211,20 @@ def apple_vision_ocr_job(
     # Verify we have the correct number of files
     all_json_files = list(temp_dir.glob("*.json"))
     if len(ordered_json_files) != len(all_json_files):
-        missing_files = set(f.name for f in all_json_files) - set(
-            f.name for f in ordered_json_files
-        )
+        # Find which images failed to produce JSON output
+        produced_json_names = {f.name for f in all_json_files}
+        expected_json_names = {
+            f"{image_path.stem}.json" for image_path in image_paths
+        }
+        failed_images = expected_json_names - produced_json_names
+
+        print(f"Expected JSON files: {expected_json_names}")
+        print(f"Produced JSON files: {produced_json_names}")
+        print(f"Failed images: {failed_images}")
+
         raise ValueError(
             f"Expected {len(image_paths)} JSON files, but found "
-            f"{len(all_json_files)} total. Missing files: {missing_files}"
+            f"{len(all_json_files)} total. Failed images: {failed_images}"
         )
 
     return ordered_json_files

@@ -40,11 +40,18 @@ def handler(event, _):
 
         if image_type:
             # If image_type is specified, use listImagesByType
-            images, lek = client.listImagesByType(
+            raw_images, lek = client.listImagesByType(
                 image_type=image_type,
                 limit=limit,
                 lastEvaluatedKey=last_evaluated_key,
             )
+            # Remove duplicates
+            seen_ids = set()
+            images = []
+            for img in raw_images:
+                if img.image_id not in seen_ids:
+                    seen_ids.add(img.image_id)
+                    images.append(img)
         else:
             # If no image_type, fetch equal distribution of Photo and Scan
             # types
@@ -82,8 +89,18 @@ def handler(event, _):
                 ),
             )
 
-            # Combine and shuffle the images for a mixed distribution
-            images = photo_images + scan_images
+            # Combine images and remove duplicates
+            # Use a set to track unique image_ids
+            seen_ids = set()
+            unique_images = []
+            
+            for img in photo_images + scan_images:
+                if img.image_id not in seen_ids:
+                    seen_ids.add(img.image_id)
+                    unique_images.append(img)
+            
+            # Shuffle for mixed distribution
+            images = unique_images
             random.shuffle(images)
 
             # Create composite lastEvaluatedKey
