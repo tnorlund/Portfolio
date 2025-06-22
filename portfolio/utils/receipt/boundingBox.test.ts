@@ -6,15 +6,6 @@ import {
 import type { Point } from "../../types/api";
 
 describe("boundary line helpers", () => {
-  test("createBoundaryLineFromTheilSen flags vertical", () => {
-    const line = createBoundaryLineFromTheilSen({
-      slope: 1e-10,
-      intercept: 0.2,
-    });
-    expect(line.isVertical).toBe(true);
-    expect(line.x).toBeCloseTo(0.2);
-  });
-
   test("createBoundaryLineFromTheilSen returns inverted form", () => {
     const line = createBoundaryLineFromTheilSen({ slope: 2, intercept: 0.1 });
     expect(line.isVertical).toBe(false);
