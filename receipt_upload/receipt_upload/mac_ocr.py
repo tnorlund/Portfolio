@@ -63,7 +63,7 @@ def main():
 
             # Download the image from the S3 bucket
             image_path = download_image_from_s3(
-                image_s3_bucket, image_s3_key, Path(temp_dir), image_id
+                image_s3_bucket, image_s3_key, image_id
             )
             image_details.append((image_id, image_path))
 

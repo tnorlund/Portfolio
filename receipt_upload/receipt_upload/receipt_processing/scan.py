@@ -79,7 +79,7 @@ def process_scan(
     raw_image_s3_key = ocr_job.s3_key
     raw_image_s3_bucket = ocr_job.s3_bucket
     raw_image_path = download_image_from_s3(
-        raw_image_s3_bucket, raw_image_s3_key, Path("/tmp"), image_id
+        raw_image_s3_bucket, raw_image_s3_key, image_id
     )
     image = PIL_Image.open(raw_image_path)
 

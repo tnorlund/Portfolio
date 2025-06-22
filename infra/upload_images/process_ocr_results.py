@@ -103,7 +103,7 @@ def _process_record(record):
 
     # Download image
     raw_image_path = download_image_from_s3(
-        ocr_job.s3_bucket, ocr_job.s3_key, Path("/tmp"), image_id
+        ocr_job.s3_bucket, ocr_job.s3_key, image_id
     )
     image = PIL_Image.open(raw_image_path)
 
