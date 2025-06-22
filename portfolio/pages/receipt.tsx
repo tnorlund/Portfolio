@@ -19,6 +19,7 @@ import {
   ScanReceiptBoundingBox,
   ReceiptPhotoClustering,
   PhotoReceiptBoundingBox,
+  ImageStack,
 } from "../components/ui/Figures";
 import AnimatedInView from "../components/ui/AnimatedInView";
 import {
@@ -319,11 +320,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         challenges.
       </p>
 
-      <h2>Scans</h2>
-      <p>
-        Scanned receipts are easiest to work with. They are as flat as the
-        sensors used to pick up the pixel data.
-      </p>
+      <ImageStack />
 
       <ClientOnly>
         <ZDepthConstrained />

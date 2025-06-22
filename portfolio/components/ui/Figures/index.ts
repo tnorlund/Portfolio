@@ -31,3 +31,4 @@ export const PhotoReceiptDBSCAN = dynamic(
   () => import("./PhotoReceiptDBSCAN"),
   { ssr: false }
 );
+export { default as ImageStack } from "./ImageStack";

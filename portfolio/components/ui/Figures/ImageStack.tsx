@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import NextImage from "next/image";
 import { api } from "../../../services/api";
-import { Receipt, ReceiptApiResponse } from "../../../types/api";
+import { Image, ImagesApiResponse } from "../../../types/api";
 import useOptimizedInView from "../../../hooks/useOptimizedInView";
 import {
   detectImageFormatSupport,
@@ -10,8 +10,8 @@ import {
 
 const isDevelopment = process.env.NODE_ENV === "development";
 
-interface ReceiptItemProps {
-  receipt: Receipt;
+interface ImageItemProps {
+  image: Image;
   formatSupport: { supportsAVIF: boolean; supportsWebP: boolean } | null;
   position: { rotation: number; topOffset: number; leftPercent: number };
   index: number;
@@ -20,9 +20,9 @@ interface ReceiptItemProps {
   fadeDelay: number;
 }
 
-const ReceiptItem = React.memo<ReceiptItemProps>(
+const ImageItem = React.memo<ImageItemProps>(
   ({
-    receipt,
+    image,
     formatSupport,
     position,
     index,
@@ -36,10 +36,10 @@ const ReceiptItem = React.memo<ReceiptItemProps>(
 
     useEffect(() => {
       if (formatSupport && !currentSrc) {
-        const bestUrl = getBestImageUrl(receipt, formatSupport);
+        const bestUrl = getBestImageUrl(image, formatSupport);
         setCurrentSrc(bestUrl);
       }
-    }, [formatSupport, receipt, currentSrc]);
+    }, [formatSupport, image, currentSrc]);
 
     const handleImageLoad = useCallback(() => {
       setImageLoaded(true);
@@ -54,16 +54,16 @@ const ReceiptItem = React.memo<ReceiptItemProps>(
       let fallbackUrl = "";
 
       if (currentSrc.includes(".avif")) {
-        if (formatSupport?.supportsWebP && receipt.cdn_webp_s3_key) {
-          fallbackUrl = `${baseUrl}/${receipt.cdn_webp_s3_key}`;
-        } else if (receipt.cdn_s3_key) {
-          fallbackUrl = `${baseUrl}/${receipt.cdn_s3_key}`;
+        if (formatSupport?.supportsWebP && image.cdn_webp_s3_key) {
+          fallbackUrl = `${baseUrl}/${image.cdn_webp_s3_key}`;
+        } else if (image.cdn_s3_key) {
+          fallbackUrl = `${baseUrl}/${image.cdn_s3_key}`;
         }
-      } else if (currentSrc.includes(".webp") && receipt.cdn_s3_key) {
-        fallbackUrl = `${baseUrl}/${receipt.cdn_s3_key}`;
+      } else if (currentSrc.includes(".webp") && image.cdn_s3_key) {
+        fallbackUrl = `${baseUrl}/${image.cdn_s3_key}`;
       } else {
         setHasErrored(true);
-        setImageLoaded(true);
+        setImageLoaded(true); // Consider it "loaded" even on error
         onLoad();
         return;
       }
@@ -128,7 +128,7 @@ const ReceiptItem = React.memo<ReceiptItemProps>(
         {currentSrc && (
           <NextImage
             src={currentSrc}
-            alt={`Receipt ${receipt.receipt_id}`}
+            alt={`Image ${image.image_id}`}
             width={100}
             height={150}
             style={{
@@ -146,25 +146,25 @@ const ReceiptItem = React.memo<ReceiptItemProps>(
   }
 );
 
-ReceiptItem.displayName = "ReceiptItem";
+ImageItem.displayName = "ImageItem";
 
-interface ReceiptStackProps {
-  maxReceipts?: number;
+interface ImageStackProps {
+  maxImages?: number;
   pageSize?: number;
-  fadeDelay?: number;
+  fadeDelay?: number; // Delay between each image fade in (ms)
 }
 
-const ReceiptStack: React.FC<ReceiptStackProps> = ({
-  maxReceipts = 40,
+const ImageStack: React.FC<ImageStackProps> = ({
+  maxImages = 20,
   pageSize = 20,
-  fadeDelay = 25,
+  fadeDelay = 50,
 }) => {
   const [ref, inView] = useOptimizedInView({
     threshold: 0.1,
     triggerOnce: true,
   });
 
-  const [receipts, setReceipts] = useState<Receipt[]>([]);
+  const [images, setImages] = useState<Image[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [formatSupport, setFormatSupport] = useState<{
     supportsAVIF: boolean;
@@ -176,29 +176,37 @@ const ReceiptStack: React.FC<ReceiptStackProps> = ({
   // Pre-calculate positions as percentages for responsive layout
   const positions = useMemo(() => {
     const containerHeight = 475;
-    const imageHeight = 150;
-    const maxTopPx = containerHeight - imageHeight;
-
-    return Array.from({ length: maxReceipts }, (_, index) => {
-      // Rotation between -30 and 30 degrees
-      const rotation = Math.random() * 60 - 30;
-
-      // Distribute receipts across the full width using percentages
+    const imageWidth = 100;
+    const imageHeight = 150; // Approximate height
+    
+    // For percentage-based positioning
+    // Assuming container is roughly 600-800px wide (typical article width)
+    // We'll use percentages to keep images distributed nicely
+    
+    const maxTopPx = containerHeight - imageHeight; // 325px
+    
+    return Array.from({ length: maxImages }, (_, index) => {
+      // More varied rotation for dynamic look
+      const rotation = Math.random() * 50 - 25;
+      
+      // Distribute images across the full width using percentages
+      // Random distribution from 0% to roughly 85% (leaving 15% for image width)
       const leftPercent = Math.random() * 85; // 0 to 85%
       const topOffset = Math.random() * maxTopPx; // 0 to 325px
-
-      // Add depth bias - later receipts tend to be more centered
-      const depthBias = index / maxReceipts;
-      const biasedLeft = leftPercent * (1 - depthBias * 0.4) + 42.5 * (depthBias * 0.4);
+      
+      // Add some bias to create depth - later images tend to be more centered
+      // This creates a natural stacking effect
+      const depthBias = index / maxImages;
+      const biasedLeft = leftPercent * (1 - depthBias * 0.4) + 42.5 * (depthBias * 0.4); // Bias toward center (42.5%)
       const biasedTop = topOffset * (1 - depthBias * 0.3) + (maxTopPx / 2) * (depthBias * 0.3);
-
-      return {
-        rotation,
+      
+      return { 
+        rotation, 
         topOffset: Math.round(biasedTop),
-        leftPercent: biasedLeft,
+        leftPercent: biasedLeft // Store as percentage
       };
     });
-  }, [maxReceipts]);
+  }, [maxImages]);
 
   useEffect(() => {
     detectImageFormatSupport().then((support) => {
@@ -207,57 +215,57 @@ const ReceiptStack: React.FC<ReceiptStackProps> = ({
   }, []);
 
   useEffect(() => {
-    const loadReceipts = async () => {
+    const loadImages = async () => {
       if (!formatSupport) return;
 
       try {
-        let allReceipts: Receipt[] = [];
+        let allImages: Image[] = [];
         let lastEvaluatedKey: any = undefined;
 
-        // Fetch receipts in pages until we have enough
-        while (allReceipts.length < maxReceipts) {
-          const response: ReceiptApiResponse = await api.fetchReceipts(
+        // Fetch images in pages until we have enough
+        while (allImages.length < maxImages) {
+          const response: ImagesApiResponse = await api.fetchImages(
             pageSize,
             lastEvaluatedKey
           );
 
-          if (!response || !response.receipts) {
+          if (!response || !response.images) {
             throw new Error("Invalid response");
           }
 
-          allReceipts = [...allReceipts, ...response.receipts];
+          allImages = [...allImages, ...response.images];
 
-          if (!response.lastEvaluatedKey || allReceipts.length >= maxReceipts) {
+          if (!response.lastEvaluatedKey || allImages.length >= maxImages) {
             break;
           }
           lastEvaluatedKey = response.lastEvaluatedKey;
         }
 
-        setReceipts(allReceipts.slice(0, maxReceipts));
+        setImages(allImages.slice(0, maxImages));
       } catch (error) {
-        console.error("Error loading receipts:", error);
+        console.error("Error loading images:", error);
         setError(
-          error instanceof Error ? error.message : "Failed to load receipts"
+          error instanceof Error ? error.message : "Failed to load images"
         );
       }
     };
 
     if (formatSupport) {
-      loadReceipts();
+      loadImages();
     }
-  }, [formatSupport, maxReceipts, pageSize]);
+  }, [formatSupport, maxImages, pageSize]);
 
   // Handle individual image load
   const handleImageLoad = useCallback((index: number) => {
     setLoadedImages((prev) => new Set(prev).add(index));
   }, []);
 
-  // Start animation when in view and receipts are loaded
+  // Start animation when in view and images are loaded
   useEffect(() => {
-    if (inView && receipts.length > 0 && !startAnimation) {
+    if (inView && images.length > 0 && !startAnimation) {
       setStartAnimation(true);
     }
-  }, [inView, receipts.length, startAnimation]);
+  }, [inView, images.length, startAnimation]);
 
   if (error) {
     return (
@@ -296,10 +304,10 @@ const ReceiptStack: React.FC<ReceiptStackProps> = ({
           overflow: "hidden",
         }}
       >
-        {receipts.map((receipt, index) => (
-          <ReceiptItem
-            key={`${receipt.receipt_id}-${receipt.image_id}`}
-            receipt={receipt}
+        {images.map((image, index) => (
+          <ImageItem
+            key={image.image_id}
+            image={image}
             formatSupport={formatSupport}
             position={positions[index]}
             index={index}
@@ -313,4 +321,4 @@ const ReceiptStack: React.FC<ReceiptStackProps> = ({
   );
 };
 
-export default ReceiptStack;
+export default ImageStack;

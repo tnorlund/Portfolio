@@ -135,4 +135,27 @@ export const api = {
     }
     return response.json();
   },
+
+  async fetchImages(
+    limit?: number,
+    lastEvaluatedKey?: any
+  ): Promise<ImagesApiResponse> {
+    const params = new URLSearchParams();
+    if (limit !== undefined) {
+      params.set("limit", limit.toString());
+    }
+    if (lastEvaluatedKey) {
+      params.set("lastEvaluatedKey", JSON.stringify(lastEvaluatedKey));
+    }
+
+    const apiUrl = getAPIUrl();
+    const response = await fetch(
+      `${apiUrl}/images?${params.toString()}`,
+      fetchConfig
+    );
+    if (!response.ok) {
+      throw new Error(`Error: ${response.status}`);
+    }
+    return response.json();
+  },
 };
