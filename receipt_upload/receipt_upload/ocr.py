@@ -1,13 +1,14 @@
 """OCR processing utilities for receipt image analysis."""
 
 import json
-import boto3
 import platform
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 from uuid import uuid4
+
+import boto3
 
 from receipt_dynamo.entities import (
     Letter,

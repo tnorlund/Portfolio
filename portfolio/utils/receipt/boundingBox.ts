@@ -711,20 +711,26 @@ export const createBoundaryLineFromTheilSen = (theilSenResult: {
   slope: number;
   intercept: number;
 }): BoundaryLine => {
-  if (Math.abs(theilSenResult.slope) < 1e-9) {
+  const { slope, intercept } = theilSenResult;
+
+  // Handle case where all points have the same y-coordinate (horizontal line)
+  // In the inverted Theil-Sen system (x = slope*y + intercept), this produces slope ≈ 0
+  // FIXED: When slope is near 0, it means a HORIZONTAL line, not vertical!
+  if (Math.abs(slope) < 1e-9) {
     return {
-      isVertical: true,
-      x: theilSenResult.intercept,
+      isVertical: false,
+      isInverted: false, // Use standard y = mx + b form
       slope: 0,
-      intercept: 0,
+      intercept: intercept, // This is the Y value of the horizontal line
     };
   }
 
+  // Otherwise, it's a near-vertical line in inverted coordinates
   return {
     isVertical: false,
     isInverted: true,
-    slope: theilSenResult.slope,
-    intercept: theilSenResult.intercept,
+    slope,
+    intercept,
   };
 };
 

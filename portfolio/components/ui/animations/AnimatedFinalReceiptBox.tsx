@@ -88,10 +88,13 @@ const AnimatedFinalReceiptBox: React.FC<AnimatedFinalReceiptBoxProps> = ({
           key: "top",
         });
       } else if (top.isInverted) {
-        const y1 = -margin / svgHeight;
-        const y2 = (svgHeight + margin) / svgHeight;
-        const x1 = top.slope * y1 + top.intercept;
-        const x2 = top.slope * y2 + top.intercept;
+        // Top boundary is inverted: x = slope * y + intercept
+        // We need to calculate X values for Y values at the extended viewport edges
+        // Note: In normalized coords, y increases upward, but in SVG y increases downward
+        const y1_normalized = 1 + margin / svgHeight;  // Above the top (in normalized space)
+        const y2_normalized = -margin / svgHeight;      // Below the bottom (in normalized space)
+        const x1 = top.slope * y1_normalized + top.intercept;
+        const x2 = top.slope * y2_normalized + top.intercept;
         lines.push({
           x1: x1 * svgWidth,
           y1: -margin,
@@ -126,10 +129,13 @@ const AnimatedFinalReceiptBox: React.FC<AnimatedFinalReceiptBoxProps> = ({
           key: "bottom",
         });
       } else if (bottom.isInverted) {
-        const y1 = -margin / svgHeight;
-        const y2 = (svgHeight + margin) / svgHeight;
-        const x1 = bottom.slope * y1 + bottom.intercept;
-        const x2 = bottom.slope * y2 + bottom.intercept;
+        // Bottom boundary is inverted: x = slope * y + intercept
+        // We need to calculate X values for Y values at the extended viewport edges
+        // Note: In normalized coords, y increases upward, but in SVG y increases downward
+        const y1_normalized = 1 + margin / svgHeight;  // Above the top (in normalized space)
+        const y2_normalized = -margin / svgHeight;      // Below the bottom (in normalized space)
+        const x1 = bottom.slope * y1_normalized + bottom.intercept;
+        const x2 = bottom.slope * y2_normalized + bottom.intercept;
         lines.push({
           x1: x1 * svgWidth,
           y1: -margin,
@@ -164,14 +170,17 @@ const AnimatedFinalReceiptBox: React.FC<AnimatedFinalReceiptBoxProps> = ({
           key: "left",
         });
       } else if (!left.isVertical) {
-        const x1 = (-margin / svgHeight - left.intercept + 1) / left.slope;
-        const x2 =
-          ((svgHeight + margin) / svgHeight - left.intercept + 1) / left.slope;
+        // Left boundary is a standard line: y = slope * x + intercept
+        // Calculate Y values at the left and right edges of the extended viewport
+        const x1 = -margin / svgWidth;
+        const x2 = (svgWidth + margin) / svgWidth;
+        const y1 = left.slope * x1 + left.intercept;
+        const y2 = left.slope * x2 + left.intercept;
         lines.push({
-          x1: x1 * svgWidth,
-          y1: -margin,
-          x2: x2 * svgWidth,
-          y2: svgHeight + margin,
+          x1: -margin,
+          y1: (1 - y1) * svgHeight,
+          x2: svgWidth + margin,
+          y2: (1 - y2) * svgHeight,
           color: "var(--color-green)",
           key: "left",
         });
@@ -190,15 +199,17 @@ const AnimatedFinalReceiptBox: React.FC<AnimatedFinalReceiptBoxProps> = ({
           key: "right",
         });
       } else if (!right.isVertical) {
-        const x1 = (-margin / svgHeight - right.intercept + 1) / right.slope;
-        const x2 =
-          ((svgHeight + margin) / svgHeight - right.intercept + 1) /
-          right.slope;
+        // Right boundary is a standard line: y = slope * x + intercept
+        // Calculate Y values at the left and right edges of the extended viewport
+        const x1 = -margin / svgWidth;
+        const x2 = (svgWidth + margin) / svgWidth;
+        const y1 = right.slope * x1 + right.intercept;
+        const y2 = right.slope * x2 + right.intercept;
         lines.push({
-          x1: x1 * svgWidth,
-          y1: -margin,
-          x2: x2 * svgWidth,
-          y2: svgHeight + margin,
+          x1: -margin,
+          y1: (1 - y1) * svgHeight,
+          x2: svgWidth + margin,
+          y2: (1 - y2) * svgHeight,
           color: "var(--color-green)",
           key: "right",
         });
