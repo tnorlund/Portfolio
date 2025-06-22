@@ -84,7 +84,7 @@ const ImageItem = React.memo<ImageItemProps>(
         <div
           style={{
             position: "absolute",
-            width: "100px",
+            width: "150px",
             left: `${leftPercent}%`,
             top: shouldAnimate && imageLoaded ? `${topOffset}px` : `${topOffset - 50}px`,
             border: "1px solid #ccc",
@@ -111,7 +111,7 @@ const ImageItem = React.memo<ImageItemProps>(
       <div
         style={{
           position: "absolute",
-          width: "100px",
+          width: "150px",
           left: `${leftPercent}%`,
           top: shouldAnimate && imageLoaded ? `${topOffset}px` : `${topOffset - 50}px`,
           border: "1px solid #ccc",
@@ -129,8 +129,8 @@ const ImageItem = React.memo<ImageItemProps>(
           <NextImage
             src={currentSrc}
             alt={`Image ${image.image_id}`}
-            width={100}
-            height={150}
+            width={150}
+            height={206}
             style={{
               width: "100%",
               height: "auto",
@@ -159,6 +159,20 @@ const ImageStack: React.FC<ImageStackProps> = ({
   pageSize = 20,
   fadeDelay = 50,
 }) => {
+  // Track window resize to recalculate positions
+  const [windowWidth, setWindowWidth] = useState(
+    typeof window !== 'undefined' ? window.innerWidth : 1024
+  );
+
+  useEffect(() => {
+    const handleResize = () => {
+      setWindowWidth(window.innerWidth);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const [ref, inView] = useOptimizedInView({
     threshold: 0.1,
     triggerOnce: true,
@@ -175,38 +189,63 @@ const ImageStack: React.FC<ImageStackProps> = ({
 
   // Pre-calculate positions as percentages for responsive layout
   const positions = useMemo(() => {
-    const containerHeight = 475;
-    const imageWidth = 100;
-    const imageHeight = 150; // Approximate height
+    const containerHeight = 500; // Height for image container
+    const imageWidth = 150; // Display width
+    // Based on actual dimensions: photos ~1.33 ratio, scans ~1.41 ratio
+    // Average is about 1.37, so at 150px width, height is ~206px
+    const imageHeight = 206;
     
-    // For percentage-based positioning
-    // Assuming container is roughly 600-800px wide (typical article width)
-    // We'll use percentages to keep images distributed nicely
+    // Calculate safe max left percentage based on viewport width
+    // We need to ensure image doesn't exceed container bounds
+    let containerWidth = windowWidth;
+    if (windowWidth <= 480) {
+      containerWidth = windowWidth * 0.9; // 90% max-width on mobile
+    } else if (windowWidth <= 768) {
+      containerWidth = Math.min(windowWidth, 600);
+    } else if (windowWidth <= 834) {
+      containerWidth = Math.min(windowWidth, 700);
+    } else if (windowWidth <= 1024) {
+      containerWidth = Math.min(windowWidth, 900);
+    } else if (windowWidth <= 1440) {
+      containerWidth = Math.min(windowWidth, 1024);
+    } else {
+      containerWidth = Math.min(windowWidth, 1200);
+    }
     
-    const maxTopPx = containerHeight - imageHeight; // 325px
+    // Account for container padding (2rem = ~32px on desktop, 1rem = ~16px on mobile)
+    const containerPadding = windowWidth <= 480 ? 16 : 32;
+    const effectiveWidth = containerWidth - (containerPadding * 2);
+    
+    const imageWidthPercent = (imageWidth / effectiveWidth) * 100;
+    const maxLeftPercent = Math.max(10, 100 - imageWidthPercent - 5); // 5% safety margin
+    
+    const maxTopPx = containerHeight - imageHeight - 50; // 500 - 206 - 50 = 244px (with buffer)
     
     return Array.from({ length: maxImages }, (_, index) => {
-      // More varied rotation for dynamic look
-      const rotation = Math.random() * 50 - 25;
+      // Rotation for dynamic look
+      const rotation = Math.random() * 40 - 20; // Reduced rotation to minimize overflow
       
-      // Distribute images across the full width using percentages
-      // Random distribution from 0% to roughly 85% (leaving 15% for image width)
-      const leftPercent = Math.random() * 85; // 0 to 85%
-      const topOffset = Math.random() * maxTopPx; // 0 to 325px
+      // Distribute images across the width, accounting for image width
+      // Random distribution from 0% to calculated max
+      const leftPercent = Math.random() * maxLeftPercent; // 0 to safe max%
+      const topOffset = Math.random() * maxTopPx; // 0 to 244px
       
       // Add some bias to create depth - later images tend to be more centered
-      // This creates a natural stacking effect
       const depthBias = index / maxImages;
-      const biasedLeft = leftPercent * (1 - depthBias * 0.4) + 42.5 * (depthBias * 0.4); // Bias toward center (42.5%)
+      const centerPoint = maxLeftPercent / 2;
+      const biasedLeft = leftPercent * (1 - depthBias * 0.4) + centerPoint * (depthBias * 0.4); // Bias toward center
       const biasedTop = topOffset * (1 - depthBias * 0.3) + (maxTopPx / 2) * (depthBias * 0.3);
+      
+      // Ensure minimum padding from edges
+      const finalTop = Math.max(20, Math.min(biasedTop, maxTopPx - 20));
       
       return { 
         rotation, 
-        topOffset: Math.round(biasedTop),
-        leftPercent: biasedLeft // Store as percentage
+        topOffset: Math.round(finalTop),
+        leftPercent: Math.min(biasedLeft, maxLeftPercent) // Ensure we don't exceed max
       };
     });
-  }, [maxImages]);
+  }, [maxImages, windowWidth]);
 
   useEffect(() => {
     detectImageFormatSupport().then((support) => {
@@ -300,7 +339,7 @@ const ImageStack: React.FC<ImageStackProps> = ({
         style={{
           position: "relative",
           width: "100%",
-          height: "475px",
+          height: "600px",
           overflow: "hidden",
         }}
       >

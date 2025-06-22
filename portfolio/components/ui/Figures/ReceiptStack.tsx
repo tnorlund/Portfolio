@@ -159,6 +159,20 @@ const ReceiptStack: React.FC<ReceiptStackProps> = ({
   pageSize = 20,
   fadeDelay = 25,
 }) => {
+  // Track window resize to recalculate positions
+  const [windowWidth, setWindowWidth] = useState(
+    typeof window !== 'undefined' ? window.innerWidth : 1024
+  );
+
+  useEffect(() => {
+    const handleResize = () => {
+      setWindowWidth(window.innerWidth);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const [ref, inView] = useOptimizedInView({
     threshold: 0.1,
     triggerOnce: true,
@@ -175,30 +189,63 @@ const ReceiptStack: React.FC<ReceiptStackProps> = ({
 
   // Pre-calculate positions as percentages for responsive layout
   const positions = useMemo(() => {
-    const containerHeight = 475;
-    const imageHeight = 150;
-    const maxTopPx = containerHeight - imageHeight;
+    const containerHeight = 700; // Further increased to prevent clipping
+    const imageWidth = 100;
+    // Receipts are typically 1.5-2x taller than wide, so at 100px width, they're ~150-250px tall
+    const imageHeight = 250; // Conservative estimate for receipt height
+    // Account for rotation and be extra conservative
+    const rotationBuffer = 50;
+    const safetyMargin = 50; // Extra margin to ensure no clipping
+    const maxTopPx = containerHeight - imageHeight - rotationBuffer - safetyMargin; // 700 - 250 - 50 - 50 = 350px
+
+    // Calculate safe max left percentage based on viewport width
+    // Match the CSS media query breakpoints exactly
+    let containerWidth = windowWidth;
+    if (windowWidth <= 480) {
+      containerWidth = windowWidth * 0.9; // 90% max-width on mobile
+    } else if (windowWidth <= 768) {
+      containerWidth = Math.min(windowWidth, 600);
+    } else if (windowWidth <= 834) {
+      containerWidth = Math.min(windowWidth, 700);
+    } else if (windowWidth <= 1024) {
+      containerWidth = Math.min(windowWidth, 900);
+    } else if (windowWidth <= 1440) {
+      containerWidth = Math.min(windowWidth, 1024);
+    } else {
+      containerWidth = Math.min(windowWidth, 1200);
+    }
+    
+    // Account for container padding (2rem = ~32px on desktop, 1rem = ~16px on mobile)
+    const containerPadding = windowWidth <= 480 ? 16 : 32;
+    const effectiveWidth = containerWidth - (containerPadding * 2);
+    
+    const imageWidthPercent = (imageWidth / effectiveWidth) * 100;
+    const maxLeftPercent = Math.max(10, 100 - imageWidthPercent - 5); // 5% safety margin
 
     return Array.from({ length: maxReceipts }, (_, index) => {
-      // Rotation between -30 and 30 degrees
-      const rotation = Math.random() * 60 - 30;
+      // Rotation between -20 and 20 degrees (reduced to minimize height impact)
+      const rotation = Math.random() * 40 - 20;
 
-      // Distribute receipts across the full width using percentages
-      const leftPercent = Math.random() * 85; // 0 to 85%
-      const topOffset = Math.random() * maxTopPx; // 0 to 325px
+      // Distribute receipts across the calculated safe width
+      const leftPercent = Math.random() * maxLeftPercent; // 0 to safe max%
+      const topOffset = Math.random() * maxTopPx; // 0 to 350px
 
       // Add depth bias - later receipts tend to be more centered
       const depthBias = index / maxReceipts;
-      const biasedLeft = leftPercent * (1 - depthBias * 0.4) + 42.5 * (depthBias * 0.4);
+      const centerPoint = maxLeftPercent / 2;
+      const biasedLeft = leftPercent * (1 - depthBias * 0.4) + centerPoint * (depthBias * 0.4);
       const biasedTop = topOffset * (1 - depthBias * 0.3) + (maxTopPx / 2) * (depthBias * 0.3);
+      
+      // Ensure generous padding from edges - more conservative to prevent clipping
+      const finalTop = Math.max(20, Math.min(biasedTop, maxTopPx - 20));
 
       return {
         rotation,
-        topOffset: Math.round(biasedTop),
-        leftPercent: biasedLeft,
+        topOffset: Math.round(finalTop),
+        leftPercent: Math.min(biasedLeft, maxLeftPercent), // Ensure we don't exceed max
       };
     });
-  }, [maxReceipts]);
+  }, [maxReceipts, windowWidth]);
 
   useEffect(() => {
     detectImageFormatSupport().then((support) => {
@@ -292,7 +339,7 @@ const ReceiptStack: React.FC<ReceiptStackProps> = ({
         style={{
           position: "relative",
           width: "100%",
-          height: "475px",
+          height: "700px",
           overflow: "hidden",
         }}
       >

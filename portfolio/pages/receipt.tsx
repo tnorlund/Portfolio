@@ -315,29 +315,57 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       <h1>From Images to Words and Coordinates</h1>
 
       <p>
-        Every receipt image arrives as either a flat scan or a photo. I treat
-        them differently because each format comes with its own shortcuts and
-        challenges.
+        Every receipt&apos;s journey begins as raw pixels, whether a crisp scan
+        or a hastily snapped photo. But hidden within those pixels is structured
+        information waiting to be extracted.
       </p>
 
       <ImageStack />
+
+      <p>
+        Text recognition finds words, but not context. Multiple receipts become
+        one confusing jumble. The critical step: determining{" "}
+        <strong>which words belong together</strong>.
+      </p>
+
+      <h2>Scans vs Photos</h2>
+      <p>
+        This is where the difference between <strong>scanned receipts</strong>{" "}
+        and <strong>photographed receipts</strong> becomes crucial. Scans are
+        the easy case: flat, well-lit, and aligned. But photos? They&apos;re
+        captured at odd angles, under harsh store lighting, with shadows and
+        curves that confuse even the best text recognition. Each type needs its
+        own approach to group related words and separate one receipt from
+        another.
+      </p>
+
+      <h2>Scans</h2>
+
+      <p>
+        With scans being the easier of the two, we can say that the receipt is
+        parallel to the image sensor.
+      </p>
 
       <ClientOnly>
         <ZDepthConstrained />
       </ClientOnly>
 
       <p>
-        With this constraint, we can say that all the text is on the same plane.
-        This means that the text has the same depth. We can also say that the
-        receipt is taller than it is wide. With all this information, we can
-        determine which words belong to which receipt based on the X position.
+        Grouping the scanned words is straightforward. Since the scanner
+        captures everything flat and aligned, we can use simple rules: words
+        that line up horizontally likely belong to the same line item, and
+        everything on the page belongs to the same receipt. It&apos;s like
+        reading a well-organized spreadsheet.
       </p>
 
       <ScanReceiptBoundingBox />
       <h2>Photos</h2>
       <p>
-        Photos are slightly more difficult to work with. The camera sensor is
-        not always facing the receipt.
+        Photos are trickier. When you snap a picture of a receipt on a counter,
+        the camera captures it from an angle. Words at the top might appear
+        smaller than words at the bottom. Lines that should be straight look
+        curved. And if there are multiple receipts in frame? Now you need to
+        figure out which words belong to which piece of paper.
       </p>
 
       <ClientOnly>
@@ -345,18 +373,21 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       </ClientOnly>
 
       <p>
-        This requires a more complex algorithm to determine which words belong
-        to which receipt. I used a combination of DBSCAN clustering and convex
-        hull calculations to determine a warp to get the cleanest image.
+        To solve this puzzle, I look for clusters of words that seem to move
+        together—like finding constellations in a sky full of stars. Words that
+        are close together and follow similar patterns likely belong to the same
+        receipt. Once identified, I can digitally &quot;flatten&quot; each
+        receipt, making it as clean as a scan.
       </p>
 
       <PhotoReceiptBoundingBox />
 
-      <h2>Piping It Together</h2>
+      <h2>Making It Work at Scale</h2>
       <p>
-        My Macbook has proven to be the best at determining words and
-        coordinates. I developed a way to pipe my laptop to the cloud so that I
-        can efficiently and cost-effectively structure the data.
+        Now that we can group words correctly, we face a new challenge:
+        processing thousands of receipts efficiently. My solution? My laptop
+        handles the tricky word orientation while the cloud handles the visual
+        processing (finding and flattening receipts).
       </p>
 
       <ClientOnly>
@@ -364,10 +395,25 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       </ClientOnly>
 
       <p>
-        This architecture allows me to scale horizontally by adding another Mac.
-        I can scale vertically by paying for more cloud compute. The current
-        architecture allows me to operate for free!
+        This hybrid approach has processed hundreds of receipts, transforming
+        messy photos and scans into organized, searchable data:
       </p>
+
+      <ReceiptStack />
+
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-around",
+          marginTop: "3rem",
+          marginBottom: "3rem",
+          flexWrap: "wrap",
+          gap: "2rem",
+        }}
+      >
+        <ClientImageCounts />
+        <ClientReceiptCounts />
+      </div>
 
       <h1>Semantic Labeling</h1>
       <p>
