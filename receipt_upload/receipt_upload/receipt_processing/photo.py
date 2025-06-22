@@ -6,8 +6,8 @@ from pathlib import Path
 
 from PIL import Image as PIL_Image
 from PIL.Image import Resampling, Transform
-from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ImageType, OCRJobType, OCRStatus
+from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import (
     Image,
     OCRJob,
@@ -20,6 +20,7 @@ from receipt_upload.geometry import (
     compute_final_receipt_tilt,
     compute_hull_centroid,
     compute_receipt_box_from_boundaries,
+    compute_receipt_box_from_skewed_extents,
     convex_hull,
     create_boundary_line_from_points,
     create_boundary_line_from_theil_sen,
@@ -38,6 +39,7 @@ from receipt_upload.utils import (
     download_image_from_s3,
     send_message_to_sqs,
     upload_all_cdn_formats,
+    upload_jpeg_to_s3,
     upload_png_to_s3,
 )
 

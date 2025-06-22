@@ -2,21 +2,20 @@ from hashlib import sha256
 from io import BytesIO
 from os.path import join
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from boto3 import client
 from PIL import Image as PIL_Image
-
-from receipt_dynamo import DynamoClient
+from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import (
+    Letter,
+    Line,
     OCRJob,
     OCRRoutingDecision,
-    Line,
-    Word,
-    Letter,
+    ReceiptLetter,
     ReceiptLine,
     ReceiptWord,
-    ReceiptLetter,
+    Word,
 )
 
 
@@ -237,7 +236,7 @@ def upload_all_cdn_formats(
     *,
     webp_quality: int = 85,
     avif_quality: int = 85,
-) -> dict[str, str]:
+) -> dict[str, Optional[str]]:
     """
     Upload an image in all CDN formats (JPEG, WebP, AVIF) to S3.
 
@@ -251,7 +250,7 @@ def upload_all_cdn_formats(
     Returns:
         Dictionary with format names as keys and S3 keys as values
     """
-    keys = {}
+    keys: dict[str, Optional[str]] = {}
 
     # Upload JPEG version (fixed quality for consistency)
     jpeg_key = f"{base_key}.jpg"

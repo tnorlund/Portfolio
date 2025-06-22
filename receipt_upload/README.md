@@ -75,3 +75,9 @@ straightened image.
 
 - [Geometry utilities](receipt_upload/receipt_upload/README.md)
 - [Receipt processing workflow](receipt_upload/receipt_upload/receipt_processing/README.md)
+
+## TODO
+
+- Clarify the coordinate system used for `Point` objects. A deterministic
+  approach should make it obvious whether a point is expressed in OCR or
+  image coordinates.
