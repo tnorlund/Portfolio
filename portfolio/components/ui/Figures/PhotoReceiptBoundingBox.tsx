@@ -15,6 +15,7 @@ import { getBestImageUrl } from "../../../utils/imageFormat";
 import useImageDetails from "../../../hooks/useImageDetails";
 import { estimateReceiptPolygonFromLines } from "../../../utils/receipt";
 import useReceiptGeometry from "../../../hooks/useReceiptGeometry";
+import useReceiptClustering from "../../../hooks/useReceiptClustering";
 import { getAnimationConfig } from "./animationConfig";
 
 // Define simple point and line-segment shapes
@@ -48,7 +49,21 @@ const PhotoReceiptBoundingBox: React.FC = () => {
   const defaultSvgHeight = 565.806;
 
   // Extract lines and receipts
-  const lines = imageDetails?.lines ?? [];
+  const allLines = imageDetails?.lines ?? [];
+  
+  // Use DBSCAN clustering to filter out noise lines
+  // Use pixel-based clustering to match Python implementation
+  const { clusters, noiseLines } = useReceiptClustering(allLines, {
+    minPoints: 10, // Match Python's min_samples=10
+    imageWidth: imageDetails?.image?.width,
+    imageHeight: imageDetails?.image?.height,
+  });
+  
+  // Use only the lines from the largest cluster (main receipt)
+  const lines = clusters.length > 0 
+    ? clusters.sort((a, b) => b.lines.length - a.lines.length)[0].lines
+    : [];
+    
   const computedReceipt = estimateReceiptPolygonFromLines(lines);
   const receipts = computedReceipt
     ? [computedReceipt]
@@ -206,6 +221,30 @@ const PhotoReceiptBoundingBox: React.FC = () => {
                     fill="none"
                     stroke="var(--color-red)"
                     strokeWidth="2"
+                  />
+                );
+              })}
+              
+              {/* Optionally show noise lines in a subtle way */}
+              {inView && noiseLines.map((line) => {
+                const x1 = line.top_left.x * svgWidth;
+                const y1 = (1 - line.top_left.y) * svgHeight;
+                const x2 = line.top_right.x * svgWidth;
+                const y2 = (1 - line.top_right.y) * svgHeight;
+                const x3 = line.bottom_right.x * svgWidth;
+                const y3 = (1 - line.bottom_right.y) * svgHeight;
+                const x4 = line.bottom_left.x * svgWidth;
+                const y4 = (1 - line.bottom_left.y) * svgHeight;
+                const points = `${x1},${y1} ${x2},${y2} ${x3},${y3} ${x4},${y4}`;
+                return (
+                  <polygon
+                    key={`noise-${line.line_id}`}
+                    points={points}
+                    fill="none"
+                    stroke="gray"
+                    strokeWidth="1"
+                    opacity="0.3"
+                    strokeDasharray="2,2"
                   />
                 );
               })}

@@ -27,3 +27,7 @@ export const ReceiptPhotoClustering = dynamic(
   () => import("./ReceiptPhotoClustering"),
   { ssr: false }
 );
+export const PhotoReceiptDBSCAN = dynamic(
+  () => import("./PhotoReceiptDBSCAN"),
+  { ssr: false }
+);
