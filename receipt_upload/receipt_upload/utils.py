@@ -1,21 +1,22 @@
-from boto3 import client
+from hashlib import sha256
+from io import BytesIO
 from os.path import join
 from pathlib import Path
-from PIL import Image as PIL_Image
-from io import BytesIO
-from hashlib import sha256
-from receipt_dynamo import DynamoClient
+from typing import List, Optional, Tuple
+
+from boto3 import client
+from PIL import Image
+from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import (
+    Letter,
+    Line,
     OCRJob,
     OCRRoutingDecision,
-    Line,
-    Word,
-    Letter,
+    ReceiptLetter,
     ReceiptLine,
     ReceiptWord,
-    ReceiptLetter,
+    Word,
 )
-from typing import List, Tuple
 
 
 def download_file_from_s3(s3_bucket: str, s3_key: str, temp_dir: Path) -> Path:
@@ -57,7 +58,7 @@ def download_image_from_s3(
     return Path(image_path)
 
 
-def upload_jpeg_to_s3(image: PIL_Image, s3_bucket: str, s3_key: str) -> None:
+def upload_jpeg_to_s3(image: Image.Image, s3_bucket: str, s3_key: str) -> None:
     """
     Upload an image to S3.
     """
@@ -73,7 +74,7 @@ def upload_jpeg_to_s3(image: PIL_Image, s3_bucket: str, s3_key: str) -> None:
         )
 
 
-def upload_png_to_s3(image: PIL_Image, s3_bucket: str, s3_key: str) -> None:
+def upload_png_to_s3(image: Image.Image, s3_bucket: str, s3_key: str) -> None:
     """
     Upload a PNG image to S3.
     """
@@ -90,7 +91,7 @@ def upload_png_to_s3(image: PIL_Image, s3_bucket: str, s3_key: str) -> None:
 
 
 def upload_webp_to_s3(
-    image: PIL_Image, s3_bucket: str, s3_key: str, quality: int = 85
+    image: Image.Image, s3_bucket: str, s3_key: str, quality: int = 85
 ) -> None:
     """
     Upload a WebP image to S3.
@@ -110,7 +111,7 @@ def upload_webp_to_s3(
 
 
 def upload_avif_to_s3(
-    image: PIL_Image, s3_bucket: str, s3_key: str, quality: int = 85
+    image: Image.Image, s3_bucket: str, s3_key: str, quality: int = 85
 ) -> None:
     """
     Upload an AVIF image to S3.
@@ -221,13 +222,13 @@ def upload_avif_to_s3(
 
 
 def upload_all_cdn_formats(
-    image: PIL_Image,
+    image: Image.Image,
     s3_bucket: str,
     base_key: str,
     jpeg_quality: int = 85,
     webp_quality: int = 85,
     avif_quality: int = 85,
-) -> dict[str, str]:
+) -> dict[str, Optional[str]]:
     """
     Upload an image in all CDN formats (JPEG, WebP, AVIF) to S3.
 
@@ -242,7 +243,7 @@ def upload_all_cdn_formats(
     Returns:
         Dictionary with format names as keys and S3 keys as values
     """
-    keys = {}
+    keys: dict[str, Optional[str]] = {}
 
     # Upload JPEG version
     jpeg_key = f"{base_key}.jpg"

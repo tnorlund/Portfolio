@@ -6,13 +6,15 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 from uuid import uuid4
 
+import boto3
+from receipt_dynamo.data._ocr import _process_ocr_dict
 from receipt_dynamo.entities import (
     Letter,
     Line,
-    Word,
+    ReceiptLetter,
     ReceiptLine,
     ReceiptWord,
-    ReceiptLetter,
+    Word,
 )
 
 
@@ -214,12 +216,12 @@ def apple_vision_ocr(image_paths: list[str]) -> Dict[str, Any]:
         raise ValueError("Apple's Vision Framework can only be run on a Mac")
     # Make a temporary directory
     with tempfile.TemporaryDirectory() as temp_dir:
-        temp_dir = Path(temp_dir)
+        temp_path = Path(temp_dir)
         try:
             swift_args = [
                 "swift",
                 str(swift_script),
-                str(temp_dir),
+                str(temp_path),
             ] + image_paths
             subprocess.run(
                 swift_args,
@@ -232,7 +234,7 @@ def apple_vision_ocr(image_paths: list[str]) -> Dict[str, Any]:
 
         ocr_dict = {}
         # Iterate over the JSON files in the output directory
-        for json_file in temp_dir.glob("*.json"):
+        for json_file in temp_path.glob("*.json"):
             # Get the image ID from the JSON file name
             image_id = str(uuid4())
             # Read the JSON file
