@@ -437,7 +437,7 @@ def find_hull_extents_relative_to_centroid(
         "bottom": v,
     }
 
-    results = {}
+    results: Dict[str, Optional[Tuple[int, int]]] = {}
     for key, direction_vector in directions.items():
         pt = _intersection_point_for_direction(
             hull_pts, cx, cy, direction_vector
@@ -615,7 +615,7 @@ def convex_hull(
     if len(points) <= 1:
         return points
 
-    lower = []
+    lower: List[Tuple[float, float]] = []
     for p in points:
         while (
             len(lower) >= 2
@@ -628,7 +628,7 @@ def convex_hull(
             lower.pop()
         lower.append(p)
 
-    upper = []
+    upper: List[Tuple[float, float]] = []
     for p in reversed(points):
         while (
             len(upper) >= 2
@@ -682,7 +682,11 @@ def min_area_rect(
 
     n = len(hull)
     min_area = float("inf")
-    best_rect = ((0, 0), (0, 0), 0)
+    best_rect: Tuple[Tuple[float, float], Tuple[float, float], float] = (
+        (0.0, 0.0),
+        (0.0, 0.0),
+        0.0,
+    )
 
     def edge_angle(p1, p2):
         return atan2(p2[1] - p1[1], p2[0] - p1[0])
