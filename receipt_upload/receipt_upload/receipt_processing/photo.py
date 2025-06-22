@@ -1,19 +1,20 @@
-from pathlib import Path
-from datetime import datetime, timezone
-from PIL import Image as PIL_Image
 import json
-import uuid
 import math
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
 
-from receipt_upload.utils import (
-    download_image_from_s3,
-    upload_jpeg_to_s3,
-    upload_png_to_s3,
-    upload_all_cdn_formats,
-    calculate_sha256_from_bytes,
-    send_message_to_sqs,
-    download_file_from_s3,
+from PIL import Image as PIL_Image
+from receipt_dynamo.constants import ImageType, OCRJobType, OCRStatus
+from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.entities import (
+    Image,
+    OCRJob,
+    OCRRoutingDecision,
+    Receipt,
 )
+
+from receipt_upload.cluster import dbscan_lines
 from receipt_upload.geometry import (
     compute_hull_centroid,
     compute_receipt_box_from_skewed_extents,
@@ -21,16 +22,16 @@ from receipt_upload.geometry import (
     find_hull_extents_relative_to_centroid,
     find_perspective_coeffs,
 )
-from receipt_upload.cluster import dbscan_lines
 from receipt_upload.ocr import process_ocr_dict_as_image
-from receipt_dynamo.entities import (
-    Image,
-    Receipt,
-    OCRJob,
-    OCRRoutingDecision,
+from receipt_upload.utils import (
+    calculate_sha256_from_bytes,
+    download_file_from_s3,
+    download_image_from_s3,
+    send_message_to_sqs,
+    upload_all_cdn_formats,
+    upload_jpeg_to_s3,
+    upload_png_to_s3,
 )
-from receipt_dynamo.constants import OCRStatus, OCRJobType, ImageType
-from receipt_dynamo import DynamoClient
 
 
 def process_photo(
