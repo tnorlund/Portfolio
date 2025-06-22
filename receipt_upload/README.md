@@ -24,3 +24,9 @@ flowchart TD
   M -->|Submit to Queue| C3[SQS: ocr_queue]
   C3 --> D
 ```
+
+## TODO
+
+- Clarify the coordinate system used for `Point` objects. A deterministic
+  approach should make it obvious whether a point is expressed in OCR or
+  image coordinates.
