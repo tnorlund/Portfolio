@@ -1,13 +1,14 @@
 # infra/lambda_layer/python/dynamo/data/_cluster.py
 import math
-from typing import Dict, List, Tuple, Optional
-from PIL import Image as PIL_Image
-from receipt_upload.geometry import (
-    min_area_rect,
-    box_points,
-)
+from typing import Dict, List, Optional, Tuple
 
+from PIL import Image as PIL_Image
 from receipt_dynamo.entities import Line
+
+from receipt_upload.geometry import (
+    box_points,
+    min_area_rect,
+)
 
 
 def dbscan_lines(
@@ -35,7 +36,7 @@ def dbscan_lines(
 
     # Initialize bookkeeping lists:
     visited = [False] * n  # Tracks if a point has been visited.
-    cluster_labels = [
+    cluster_labels: List[Optional[int]] = [
         None
     ] * n  # None = not assigned; -1 = noise; other integers = cluster ID.
     current_cluster = 1
@@ -84,6 +85,8 @@ def dbscan_lines(
     # Group Line objects by cluster label.
     clusters: Dict[int, List[Line]] = {}
     for idx, label in enumerate(cluster_labels):
+        if label is None:
+            continue
         clusters.setdefault(label, []).append(lines[idx])
 
     return clusters
@@ -105,7 +108,7 @@ def dbscan_lines_x_axis(
 
     # Start with cluster_id 1 (not 0)
     current_cluster_id = 1
-    clusters = [[]]
+    clusters: List[List[Tuple[Line, float]]] = [[]]
     clusters[0].append(lines_with_x[0])
 
     for i in range(1, len(lines_with_x)):
