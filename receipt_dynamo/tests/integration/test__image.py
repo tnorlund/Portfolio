@@ -7,7 +7,7 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo import DynamoClient, Image, Letter, Line, Word
 from receipt_dynamo.constants import OCRJobType, OCRStatus
-from receipt_dynamo.entities import OCRJob, OCRRoutingDecision
+from receipt_dynamo.entities import OCRJob, OCRRoutingDecision, ReceiptMetadata
 
 
 @pytest.fixture
@@ -293,6 +293,17 @@ def test_image_get_details(dynamodb_table, example_image):
     client.addLine(line)
     client.addWord(word)
     client.addLetter(letter)
+    receipt_metadata = ReceiptMetadata(
+        image_id=image.image_id,
+        receipt_id=1,
+        place_id="id",
+        merchant_name="Merchant",
+        match_confidence=0.9,
+        matched_fields=["name"],
+        validated_by="NEARBY_LOOKUP",
+        timestamp=datetime(2025, 1, 1, 0, 0, 0),
+    )
+    client.addReceiptMetadata(receipt_metadata)
     ocr_job = OCRJob(
         image_id=image.image_id,
         job_id="4f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -329,6 +340,7 @@ def test_image_get_details(dynamodb_table, example_image):
         receipt_words,
         receipt_word_tags,
         receipt_letters,
+        receipt_metadatas,
         ocr_jobs,
         routing_decisions,
     ) = details
@@ -337,6 +349,9 @@ def test_image_get_details(dynamodb_table, example_image):
     assert lines == [line]
     assert words == [word]
     assert letters == [letter]
+    retrieved_metadata = receipt_metadatas[0]
+    assert retrieved_metadata.image_id == receipt_metadata.image_id
+    assert retrieved_metadata.receipt_id == receipt_metadata.receipt_id
     assert ocr_jobs == [ocr_job]
     retrieved_decision = routing_decisions[0]
     assert retrieved_decision.image_id == routing_decision.image_id
@@ -347,6 +362,148 @@ def test_image_get_details(dynamodb_table, example_image):
     assert retrieved_decision.updated_at == routing_decision.updated_at
     assert retrieved_decision.receipt_count == routing_decision.receipt_count
     assert retrieved_decision.status == routing_decision.status
+
+
+@pytest.mark.integration
+def test_image_get_details_multiple_receipt_metadatas(dynamodb_table, example_image):
+    """Test that image details correctly handles multiple receipt metadatas."""
+    client = DynamoClient(dynamodb_table)
+    image = example_image
+    
+    # Add the image
+    client.addImage(image)
+    
+    # Create multiple receipt metadatas for the same image
+    receipt_metadata1 = ReceiptMetadata(
+        image_id=image.image_id,
+        receipt_id=1,
+        place_id="place_1",
+        merchant_name="Merchant A",
+        match_confidence=0.95,
+        matched_fields=["name", "address"],
+        validated_by="NEARBY_LOOKUP",
+        timestamp=datetime(2025, 1, 1, 0, 0, 0),
+    )
+    
+    receipt_metadata2 = ReceiptMetadata(
+        image_id=image.image_id,
+        receipt_id=2,
+        place_id="place_2",
+        merchant_name="Merchant B",
+        match_confidence=0.88,
+        matched_fields=["name"],
+        validated_by="FUZZY_MATCH",
+        timestamp=datetime(2025, 1, 1, 1, 0, 0),
+    )
+    
+    receipt_metadata3 = ReceiptMetadata(
+        image_id=image.image_id,
+        receipt_id=3,
+        place_id="place_3",
+        merchant_name="Merchant C",
+        match_confidence=0.92,
+        matched_fields=["name", "phone"],
+        validated_by="EXACT_MATCH",
+        timestamp=datetime(2025, 1, 1, 2, 0, 0),
+    )
+    
+    # Add all receipt metadatas
+    client.addReceiptMetadata(receipt_metadata1)
+    client.addReceiptMetadata(receipt_metadata2)
+    client.addReceiptMetadata(receipt_metadata3)
+    
+    # Get image details
+    details = client.getImageDetails(image.image_id)
+    
+    (
+        images,
+        lines,
+        words,
+        word_tags,
+        letters,
+        receipts,
+        receipt_lines,
+        receipt_words,
+        receipt_word_tags,
+        receipt_letters,
+        receipt_metadatas,
+        ocr_jobs,
+        routing_decisions,
+    ) = details
+    
+    # Verify we got all three receipt metadatas
+    assert len(receipt_metadatas) == 3
+    
+    # Sort by receipt_id for consistent ordering
+    sorted_metadatas = sorted(receipt_metadatas, key=lambda x: x.receipt_id)
+    
+    # Verify each metadata
+    assert sorted_metadatas[0].receipt_id == 1
+    assert sorted_metadatas[0].merchant_name == "Merchant A"
+    assert sorted_metadatas[0].place_id == "place_1"
+    
+    assert sorted_metadatas[1].receipt_id == 2
+    assert sorted_metadatas[1].merchant_name == "Merchant B"
+    assert sorted_metadatas[1].place_id == "place_2"
+    
+    assert sorted_metadatas[2].receipt_id == 3
+    assert sorted_metadatas[2].merchant_name == "Merchant C"
+    assert sorted_metadatas[2].place_id == "place_3"
+
+
+@pytest.mark.integration
+def test_image_get_details_no_receipt_metadata(dynamodb_table, example_image):
+    """Test that image details correctly handles no receipt metadata."""
+    client = DynamoClient(dynamodb_table)
+    image = example_image
+    
+    # Add image with some basic data but no receipt metadata
+    client.addImage(image)
+    
+    # Add a line just to have some data
+    line = Line(
+        image.image_id,
+        1,
+        "test_string",
+        {
+            "x": 0.4454263367632384,
+            "height": 0.022867568134581906,
+            "width": 0.08690182470506236,
+            "y": 0.9167082878750482,
+        },
+        {"y": 0.9307722198001792, "x": 0.5323281614683008},
+        {"y": 0.9395758560096301, "x": 0.44837726658954413},
+        {"x": 0.529377231641995, "y": 0.9167082878750482},
+        {"x": 0.4454263367632384, "y": 0.9255119240844992},
+        -5.986527,
+        -0.10448461,
+        1,
+    )
+    client.addLine(line)
+    
+    # Get image details
+    details = client.getImageDetails(image.image_id)
+    
+    (
+        images,
+        lines,
+        words,
+        word_tags,
+        letters,
+        receipts,
+        receipt_lines,
+        receipt_words,
+        receipt_word_tags,
+        receipt_letters,
+        receipt_metadatas,
+        ocr_jobs,
+        routing_decisions,
+    ) = details
+    
+    # Verify we have the image and line but no receipt metadata
+    assert len(images) == 1
+    assert len(lines) == 1
+    assert len(receipt_metadatas) == 0
 
 
 @pytest.mark.integration
