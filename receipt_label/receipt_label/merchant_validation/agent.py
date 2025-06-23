@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 # Configuration
 MAX_AGENT_ATTEMPTS = int(os.environ.get("MAX_AGENT_ATTEMPTS", 2))
 AGENT_TIMEOUT_SECONDS = int(os.environ.get("AGENT_TIMEOUT_SECONDS", 300))
+MAX_AGENT_TURNS = int(os.environ.get("MAX_AGENT_TURNS", 10))
+LOG_AGENT_FUNCTION_CALLS = os.environ.get("LOG_AGENT_FUNCTION_CALLS", "true").lower() == "true"
 
 
 class MerchantValidationAgent:
@@ -202,7 +204,7 @@ You may call the following tools in any order:
                         Runner.run_sync,
                         self.agent,
                         user_messages,
-                        max_turns=10
+                        max_turns=MAX_AGENT_TURNS
                     )
                     
                     try:
@@ -255,14 +257,15 @@ You may call the following tools in any order:
         partial_results = []
         
         # Log all function calls made by the agent
-        function_calls = []
-        for item in run_result.new_items:
-            raw = getattr(item, "raw_item", None)
-            if hasattr(raw, "name") and raw.name:
-                function_calls.append(raw.name)
-        
-        if function_calls:
-            logger.info(f"Agent made {len(function_calls)} function calls: {', '.join(function_calls)}")
+        if LOG_AGENT_FUNCTION_CALLS:
+            function_calls = []
+            for item in run_result.new_items:
+                raw = getattr(item, "raw_item", None)
+                if hasattr(raw, "name") and raw.name:
+                    function_calls.append(raw.name)
+            
+            if function_calls:
+                logger.info(f"Agent made {len(function_calls)} function calls: {', '.join(function_calls)}")
         
         # Extract results
         for item in run_result.new_items:

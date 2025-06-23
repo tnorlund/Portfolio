@@ -14,6 +14,63 @@ from datetime import datetime, timezone
 logger = logging.getLogger(__name__)
 
 
+def _validate_match_quality(match_data: Dict[str, Any]) -> List[str]:
+    """
+    Validate the quality of matched fields based on the same logic as ReceiptMetadata._get_high_quality_matched_fields.
+    
+    Args:
+        match_data: Dictionary containing merchant data and matched_fields
+        
+    Returns:
+        List of high-quality matched field names
+    """
+    high_quality_fields = []
+    
+    for field in match_data.get("matched_fields", []):
+        if field == "name":
+            # Name must be non-empty and more than just whitespace/punctuation
+            merchant_name = match_data.get("merchant_name", "")
+            if merchant_name and len(merchant_name.strip()) > 2:
+                high_quality_fields.append(field)
+        elif field == "phone":
+            # Phone must have at least 10 digits (for US numbers)
+            phone_number = match_data.get("phone_number", "")
+            phone_digits = ''.join(c for c in phone_number if c.isdigit())
+            if len(phone_digits) >= 10:
+                high_quality_fields.append(field)
+        elif field == "address":
+            # Address must have at least 2 meaningful components
+            address = match_data.get("address", "")
+            tokens = address.split()
+            meaningful_tokens = 0
+            
+            for token in tokens:
+                token_clean = token.rstrip('.,;:')
+                
+                # Count as meaningful if:
+                # 1. It's a number (house/street number)
+                if token_clean.replace('-', '').replace('/', '').isdigit():
+                    meaningful_tokens += 1
+                # 2. It contains digits (1st, 2nd, etc)
+                elif any(c.isdigit() for c in token_clean):
+                    meaningful_tokens += 1
+                # 3. It's a word with 3+ letters
+                elif len(token_clean) >= 3 and token_clean.isalpha():
+                    meaningful_tokens += 1
+                # 4. It's a short token (likely abbreviation) but not the only token
+                elif len(tokens) > 1 and token_clean.isalpha():
+                    meaningful_tokens += 0.5  # Count as half
+            
+            # Require at least 2 full meaningful tokens
+            if meaningful_tokens >= 2:
+                high_quality_fields.append(field)
+        else:
+            # Unknown fields are kept as-is (future-proofing)
+            high_quality_fields.append(field)
+    
+    return high_quality_fields
+
+
 def extract_best_partial_match(
     partial_results: List[Dict[str, Any]], 
     user_input: Dict[str, Any]
@@ -52,7 +109,7 @@ def extract_best_partial_match(
     # Check phone results first (most reliable)
     for result in phone_results:
         if result.get("place_id") and result.get("name"):
-            return {
+            match_data = {
                 "place_id": result.get("place_id", ""),
                 "merchant_name": result.get("name", ""),
                 "address": result.get("formatted_address", ""),
@@ -60,11 +117,16 @@ def extract_best_partial_match(
                 "source": "phone_lookup",
                 "matched_fields": ["phone"]  # We know phone matched
             }
+            # Apply quality validation
+            quality_fields = _validate_match_quality(match_data)
+            match_data["matched_fields"] = quality_fields
+            if quality_fields:  # Only return if quality validation passes
+                return match_data
     
     # Then check address results
     for result in address_results:
         if result.get("place_id") and result.get("name"):
-            return {
+            match_data = {
                 "place_id": result.get("place_id", ""),
                 "merchant_name": result.get("name", ""),
                 "address": result.get("formatted_address", ""),
@@ -72,11 +134,16 @@ def extract_best_partial_match(
                 "source": "address_lookup",
                 "matched_fields": ["address"]  # We know address matched
             }
+            # Apply quality validation
+            quality_fields = _validate_match_quality(match_data)
+            match_data["matched_fields"] = quality_fields
+            if quality_fields:  # Only return if quality validation passes
+                return match_data
     
     # Finally check text search results
     for result in text_results:
         if result.get("place_id") and result.get("name"):
-            return {
+            match_data = {
                 "place_id": result.get("place_id", ""),
                 "merchant_name": result.get("name", ""),
                 "address": result.get("formatted_address", ""),
@@ -84,6 +151,10 @@ def extract_best_partial_match(
                 "source": "text_search",
                 "matched_fields": []  # Text search is less certain
             }
+            # For text search, validate if name is high quality
+            if match_data.get("merchant_name") and len(match_data["merchant_name"].strip()) > 2:
+                match_data["matched_fields"] = ["name"]
+                return match_data
     
     return None
 

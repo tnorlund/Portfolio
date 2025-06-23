@@ -1,8 +1,11 @@
-MAX_AGENT_ATTEMPTS = 2
-AGENT_TIMEOUT_SECONDS = 300  # 5 minutes per agent attempt
 import enum
 import json
 import os
+
+MAX_AGENT_ATTEMPTS = 2
+AGENT_TIMEOUT_SECONDS = 300  # 5 minutes per agent attempt
+MAX_AGENT_TURNS = int(os.environ.get("MAX_AGENT_TURNS", 10))  # Max turns per agent attempt
+LOG_AGENT_FUNCTION_CALLS = os.environ.get("LOG_AGENT_FUNCTION_CALLS", "true").lower() == "true"
 import threading
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from datetime import datetime, timezone
@@ -98,7 +101,7 @@ def tool_search_by_phone(phone: str) -> Dict[str, Any]:
     """
     Search Google Places by a phone number.
     """
-    from receipt_label.merchant_validation.merchant_validation import PlacesAPI
+    from receipt_label.data.places_api import PlacesAPI
 
     return PlacesAPI(GOOGLE_PLACES_API_KEY).search_by_phone(phone)
 
@@ -109,7 +112,7 @@ def tool_search_by_address(address: str) -> Dict[str, Any]:
     """
     Search Google Places by address and return the full place details payload.
     """
-    from receipt_label.merchant_validation.merchant_validation import PlacesAPI
+    from receipt_label.data.places_api import PlacesAPI
 
     # Return the full Places API result for the address search
     result = PlacesAPI(GOOGLE_PLACES_API_KEY).search_by_address(address)
@@ -123,7 +126,7 @@ def tool_search_nearby(
     """
     Find nearby businesses given latitude, longitude, and radius.
     """
-    from receipt_label.merchant_validation.merchant_validation import PlacesAPI
+    from receipt_label.data.places_api import PlacesAPI
 
     return PlacesAPI(GOOGLE_PLACES_API_KEY).search_nearby(
         lat=lat, lng=lng, radius=radius
@@ -198,33 +201,43 @@ def run_agent_with_retries(
     
     for attempt in range(1, max_attempts + 1):
         logger.info(f"Starting agent attempt {attempt}/{max_attempts} for receipt {user_input['image_id']}#{user_input['receipt_id']} with {timeout_seconds}s timeout")
+        future = None
+        executor = None
         try:
             # Run the agent with timeout using ThreadPoolExecutor
-            with ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(
-                    Runner.run_sync,
-                    agent,
-                    user_messages,
-                    max_turns=10  # Also limit max turns to prevent infinite loops
-                )
+            executor = ThreadPoolExecutor(max_workers=1)
+            future = executor.submit(
+                Runner.run_sync,
+                agent,
+                user_messages,
+                max_turns=MAX_AGENT_TURNS  # Also limit max turns to prevent infinite loops
+            )
+            
+            try:
+                run_result = future.result(timeout=timeout_seconds)
                 
-                try:
-                    run_result = future.result(timeout=timeout_seconds)
+                # Process agent results
+                metadata, partial = extract_agent_results(run_result, attempt)
+                partial_results.extend(partial)
+                
+                if metadata is not None:
+                    break
                     
-                    # Process agent results
-                    metadata, partial = extract_agent_results(run_result, attempt)
-                    partial_results.extend(partial)
-                    
-                    if metadata is not None:
-                        break
-                        
-                except FutureTimeoutError:
-                    logger.error(f"Agent attempt {attempt} timed out after {timeout_seconds} seconds")
-                    # Cancel the future to clean up resources
+            except FutureTimeoutError:
+                logger.error(f"Agent attempt {attempt} timed out after {timeout_seconds} seconds")
+                # Cancel the future to clean up resources
+                if future and not future.done():
                     future.cancel()
                     
         except Exception as e:
             logger.error(f"Agent attempt {attempt} failed with error: {type(e).__name__}: {e}")
+            # Ensure future is cancelled if exception occurs
+            if future and not future.done():
+                future.cancel()
+        finally:
+            # Ensure executor is properly shut down
+            if executor:
+                executor.shutdown(wait=True, cancel_futures=True)
             
         logger.warning(
             f"Agent attempt {attempt} did not call tool_return_metadata; retrying." +
@@ -256,14 +269,15 @@ def extract_agent_results(
     partial_results = []
     
     # Log all function calls made by the agent for debugging
-    function_calls = []
-    for item in run_result.new_items:
-        raw = getattr(item, "raw_item", None)
-        if hasattr(raw, "name") and raw.name:
-            function_calls.append(raw.name)
-    
-    if function_calls:
-        logger.info(f"Agent made {len(function_calls)} function calls: {', '.join(function_calls)}")
+    if LOG_AGENT_FUNCTION_CALLS:
+        function_calls = []
+        for item in run_result.new_items:
+            raw = getattr(item, "raw_item", None)
+            if hasattr(raw, "name") and raw.name:
+                function_calls.append(raw.name)
+        
+        if function_calls:
+            logger.info(f"Agent made {len(function_calls)} function calls: {', '.join(function_calls)}")
     
     # Extract structured metadata by parsing the function call arguments
     for item in run_result.new_items:
