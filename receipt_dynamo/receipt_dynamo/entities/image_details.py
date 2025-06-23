@@ -30,9 +30,9 @@ class ImageDetails:
     receipt_words: List[ReceiptWord]
     receipt_word_tags: List[ReceiptWordTag]
     receipt_letters: List[ReceiptLetter]
+    receipt_metadatas: List[ReceiptMetadata]
     ocr_jobs: List[OCRJob]
     ocr_routing_decisions: List[OCRRoutingDecision]
-    receipt_metadatas: List[ReceiptMetadata]
 
     def __iter__(self) -> Generator[List, None, None]:
         yield self.images
@@ -45,6 +45,6 @@ class ImageDetails:
         yield self.receipt_words
         yield self.receipt_word_tags
         yield self.receipt_letters
+        yield self.receipt_metadatas
         yield self.ocr_jobs
         yield self.ocr_routing_decisions
-        yield self.receipt_metadatas
