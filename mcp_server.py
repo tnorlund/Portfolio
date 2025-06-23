@@ -2,7 +2,7 @@
 
 import asyncio
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Sequence
 
 from mcp.server import Server
 from mcp.server.lowlevel.server import NotificationOptions
@@ -49,6 +49,81 @@ async def run_lint(package: str) -> str:
     return "\n".join(output)
 
 
+async def _run_pulumi(
+    action: str, stack: str | None = None, args: Sequence[str] | None = None
+) -> str:
+    """Execute a Pulumi command inside the infra directory."""
+
+    cmd = ["pulumi", action]
+    if stack:
+        cmd.extend(["--stack", stack])
+    if args:
+        cmd.extend(list(args))
+    return await _run_cmd(cmd, ROOT / "infra")
+
+
+async def run_pulumi_preview(
+    stack: str | None = None, args: Sequence[str] | None = None
+) -> str:
+    """Run ``pulumi preview`` in the infra directory."""
+
+    return await _run_pulumi("preview", stack, args)
+
+
+async def run_pulumi_up(
+    stack: str | None = None, args: Sequence[str] | None = None
+) -> str:
+    """Run ``pulumi up`` in the infra directory."""
+
+    return await _run_pulumi("up", stack, args)
+
+
+async def run_pulumi_stack_list() -> str:
+    """List all Pulumi stacks."""
+
+    return await _run_cmd(["pulumi", "stack", "ls"], ROOT / "infra")
+
+
+async def run_pulumi_stack_output(
+    stack: str | None = None, output_name: str | None = None
+) -> str:
+    """Get outputs from a Pulumi stack."""
+
+    cmd = ["pulumi", "stack", "output"]
+    if stack:
+        cmd.extend(["--stack", stack])
+    if output_name:
+        cmd.append(output_name)
+    return await _run_cmd(cmd, ROOT / "infra")
+
+
+async def run_pulumi_refresh(
+    stack: str | None = None, args: Sequence[str] | None = None
+) -> str:
+    """Refresh Pulumi state to match actual infrastructure."""
+
+    return await _run_pulumi("refresh", stack, args)
+
+
+async def run_pulumi_logs(
+    stack: str | None = None, args: Sequence[str] | None = None
+) -> str:
+    """Get logs from the last Pulumi operation."""
+
+    return await _run_pulumi("logs", stack, args)
+
+
+async def run_pulumi_config_get(
+    key: str, stack: str | None = None
+) -> str:
+    """Get a configuration value from Pulumi."""
+
+    cmd = ["pulumi", "config", "get", key]
+    if stack:
+        cmd.extend(["--stack", stack])
+    return await _run_cmd(cmd, ROOT / "infra")
+
+
 async def handle_tool(
     name: str, arguments: dict[str, Any]
 ) -> Iterable[TextContent]:
@@ -58,6 +133,32 @@ async def handle_tool(
         result = await run_tests(str(arguments["package"]))
     elif name == "run_lint":
         result = await run_lint(str(arguments["package"]))
+    elif name == "pulumi_preview":
+        stack = arguments.get("stack")
+        args = arguments.get("args")
+        result = await run_pulumi_preview(stack, args)
+    elif name == "pulumi_up":
+        stack = arguments.get("stack")
+        args = arguments.get("args")
+        result = await run_pulumi_up(stack, args)
+    elif name == "pulumi_stack_list":
+        result = await run_pulumi_stack_list()
+    elif name == "pulumi_stack_output":
+        stack = arguments.get("stack")
+        output_name = arguments.get("output_name")
+        result = await run_pulumi_stack_output(stack, output_name)
+    elif name == "pulumi_refresh":
+        stack = arguments.get("stack")
+        args = arguments.get("args")
+        result = await run_pulumi_refresh(stack, args)
+    elif name == "pulumi_logs":
+        stack = arguments.get("stack")
+        args = arguments.get("args")
+        result = await run_pulumi_logs(stack, args)
+    elif name == "pulumi_config_get":
+        key = str(arguments["key"])
+        stack = arguments.get("stack")
+        result = await run_pulumi_config_get(key, stack)
     else:
         result = f"Unknown tool: {name}"
     return [TextContent(type="text", text=result)]
@@ -71,6 +172,28 @@ def create_tools() -> list[Tool]:
         "properties": {"package": {"type": "string"}},
         "required": ["package"],
     }
+    pulumi_schema = {
+        "type": "object",
+        "properties": {
+            "stack": {"type": "string"},
+            "args": {"type": "array", "items": {"type": "string"}},
+        },
+    }
+    pulumi_output_schema = {
+        "type": "object",
+        "properties": {
+            "stack": {"type": "string"},
+            "output_name": {"type": "string"},
+        },
+    }
+    pulumi_config_schema = {
+        "type": "object",
+        "properties": {
+            "key": {"type": "string"},
+            "stack": {"type": "string"},
+        },
+        "required": ["key"],
+    }
     return [
         Tool(
             name="run_tests",
@@ -81,6 +204,41 @@ def create_tools() -> list[Tool]:
             name="run_lint",
             description="Run linting tools for a package",
             inputSchema=package_schema,
+        ),
+        Tool(
+            name="pulumi_preview",
+            description="Run 'pulumi preview' in the infra directory",
+            inputSchema=pulumi_schema,
+        ),
+        Tool(
+            name="pulumi_up",
+            description="Run 'pulumi up' in the infra directory",
+            inputSchema=pulumi_schema,
+        ),
+        Tool(
+            name="pulumi_stack_list",
+            description="List all Pulumi stacks",
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="pulumi_stack_output",
+            description="Get outputs from a Pulumi stack",
+            inputSchema=pulumi_output_schema,
+        ),
+        Tool(
+            name="pulumi_refresh",
+            description="Refresh Pulumi state to match actual infrastructure",
+            inputSchema=pulumi_schema,
+        ),
+        Tool(
+            name="pulumi_logs",
+            description="Get logs from the last Pulumi operation",
+            inputSchema=pulumi_schema,
+        ),
+        Tool(
+            name="pulumi_config_get",
+            description="Get a configuration value from Pulumi",
+            inputSchema=pulumi_config_schema,
         ),
     ]
 
