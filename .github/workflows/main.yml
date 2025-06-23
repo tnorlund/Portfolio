@@ -89,11 +89,13 @@ jobs:
           retention-days: 1
 
   docs:
-    name: Validate Documentation
+    name: Generate Documentation
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Node
         uses: actions/setup-node@v3
@@ -106,9 +108,29 @@ jobs:
         working-directory: portfolio
         run: npm install
 
-      - name: Generate and validate documentation
+      - name: Generate documentation
         working-directory: portfolio
-        run: npm run ci:docs
+        run: |
+          npm run docs
+          npm run docs:md
+
+      - name: Check for documentation changes
+        id: check_changes
+        run: |
+          if [ -n "$(git status --porcelain portfolio/docs portfolio/docs-md)" ]; then
+            echo "changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Commit documentation changes
+        if: steps.check_changes.outputs.changes == 'true'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add portfolio/docs portfolio/docs-md
+          git commit -m "docs: update generated documentation [skip ci]"
+          git push
 
   test:
     name: Run ${{ matrix.test-type }} Tests
