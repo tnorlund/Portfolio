@@ -208,3 +208,4 @@ portfolio/*.tsbuildinfo
 portfolio/next-env.d.ts
 portfolio/.eslintcache
 portfolio/.stylelintcache
+portfolio/coverage*

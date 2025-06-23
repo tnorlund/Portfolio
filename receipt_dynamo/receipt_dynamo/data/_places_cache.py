@@ -1,13 +1,16 @@
-from typing import Dict, List, Optional, Tuple
-from botocore.exceptions import ClientError
-from receipt_dynamo.entities.places_cache import PlacesCache, itemToPlacesCache
 from datetime import datetime, timezone
+from typing import Dict, List, Optional, Tuple
+
+from botocore.exceptions import ClientError
+
+from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.entities.places_cache import PlacesCache, itemToPlacesCache
 
 # DynamoDB batch_write_item can handle up to 25 items per call
 CHUNK_SIZE = 25
 
 
-class _PlacesCache:
+class _PlacesCache(DynamoClientProtocol):
     """
     Provides methods for accessing PlacesCache items in DynamoDB.
 

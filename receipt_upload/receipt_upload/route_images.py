@@ -1,10 +1,9 @@
-import json
 import math
-from uuid import uuid4
 from dataclasses import dataclass
-from PIL import Image as PIL_Image
 from pathlib import Path
-from tempfile import TemporaryDirectory
+
+from PIL import Image as PIL_Image
+
 from receipt_dynamo.constants import ImageType
 from receipt_dynamo.entities import Line, Word, Letter, ReceiptLine
 
@@ -18,8 +17,8 @@ def _dimension_distance(
     width: int, height: int, reference_width: int, reference_height: int
 ) -> float:
     """
-    Calculate Euclidean distance between given dimensions and a reference format.
-    Handles both normal and rotated (90°) orientations.
+    Calculate Euclidean distance between given dimensions and a reference
+    format. Handles both normal and rotated (90°) orientations.
 
     Args:
         width: Image width to check
@@ -28,7 +27,8 @@ def _dimension_distance(
         reference_height: Reference format height
 
     Returns:
-        float: The smaller of the normalized distances between normal and rotated orientations
+        float: The smaller of the normalized distances between normal and
+               rotated orientations
     """
     # Calculate distance for normal orientation
     dx1 = (width - reference_width) / reference_width
@@ -102,7 +102,7 @@ class ImageOCRInfo:
     letters: list[Letter]
 
 
-def find_margins(lines: list[Line | ReceiptLine]) -> dict[str, float]:
+def find_margins(lines: list[Line] | list[ReceiptLine]) -> dict[str, float]:
     """Find the margins between text boundaries and image edges.
 
     Args:

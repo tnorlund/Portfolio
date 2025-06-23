@@ -16,6 +16,8 @@ if __name__ == "__main__":
     )  # Adjust as needed
 
     # For example, get an image and lines from your DB:
+    details = dynamo_client.getImageDetails(IMAGE_ID)
+
     (
         images,
         lines,
@@ -27,7 +29,9 @@ if __name__ == "__main__":
         receipt_words,
         receipt_word_tags,
         receipt_letters,
-    ) = dynamo_client.getImageDetails(IMAGE_ID)
+        _ocr_jobs,
+        _ocr_routing_decisions,
+    ) = details
     # There should be only one image
     if len(images) != 1:
         raise Exception(f"Expected one image, got {len(images)}")

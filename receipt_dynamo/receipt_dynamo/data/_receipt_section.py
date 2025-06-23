@@ -1,18 +1,20 @@
 from botocore.exceptions import ClientError
 
+from receipt_dynamo.constants import EmbeddingStatus, SectionType
+from receipt_dynamo.data._base import DynamoClientProtocol
+
 # Fix circular import by importing directly from the entity module
 from receipt_dynamo.entities.receipt_section import (
     ReceiptSection,
     itemToReceiptSection,
 )
-from receipt_dynamo.constants import EmbeddingStatus, SectionType
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 CHUNK_SIZE = 25
 
 
-class _ReceiptSection:
+class _ReceiptSection(DynamoClientProtocol):
     """
     A class used to represent a ReceiptSection in the database.
 

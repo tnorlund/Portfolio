@@ -1,0 +1,111 @@
+export interface FormatSupport {
+  supportsAVIF: boolean;
+  supportsWebP: boolean;
+}
+
+/**
+ * Detect browser support for AVIF and WebP image formats.
+ */
+export const detectImageFormatSupport = (): Promise<FormatSupport> => {
+  return new Promise(resolve => {
+    const userAgent = navigator.userAgent;
+
+    const getSafariVersion = (): number | null => {
+      if (userAgent.includes("Chrome")) return null;
+      const safariMatch = userAgent.match(/Version\/([0-9.]+).*Safari/);
+      return safariMatch ? parseFloat(safariMatch[1]) : null;
+    };
+
+    const isChrome = userAgent.includes("Chrome") && userAgent.includes("Google Chrome");
+    const isFirefox = userAgent.includes("Firefox");
+    const safariVersion = getSafariVersion();
+    const isSafari = safariVersion !== null;
+
+    let supportsWebP = false;
+
+    if (isChrome || isFirefox) {
+      supportsWebP = true;
+    } else if (isSafari && safariVersion && safariVersion >= 14) {
+      supportsWebP = true;
+    } else {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = 1;
+        canvas.height = 1;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          const webpDataUrl = canvas.toDataURL("image/webp", 0.5);
+          supportsWebP = webpDataUrl.indexOf("data:image/webp") === 0;
+        }
+      } catch {
+        supportsWebP = false;
+      }
+    }
+
+    const detectAVIF = (): Promise<boolean> => {
+      if (isChrome) {
+        const chromeMatch = userAgent.match(/Chrome\/([0-9]+)/);
+        if (chromeMatch && parseInt(chromeMatch[1]) >= 85) {
+          return Promise.resolve(true);
+        }
+      }
+
+      if (isFirefox) {
+        const firefoxMatch = userAgent.match(/Firefox\/([0-9]+)/);
+        if (firefoxMatch && parseInt(firefoxMatch[1]) >= 93) {
+          return Promise.resolve(true);
+        }
+      }
+
+      if (isSafari && safariVersion && safariVersion >= 16.4) {
+        return Promise.resolve(true);
+      }
+
+      return new Promise(resolveAVIF => {
+        const img = new Image();
+        img.onload = () => resolveAVIF(true);
+        img.onerror = () => resolveAVIF(false);
+        img.src =
+          "data:image/avif;base64,AAAAIGZ0eXBhdmlmAAAAAGF2aWZtaWYxbWlhZk1BMUIAAA" +
+          "DybWV0YQAAAAAAAAAoaGRscgAAAAAAAAAAcGljdAAAAAAAAAAAAAAAAGxpYmF2aWYAAAAADnBpdG0AAA" +
+          "AAAAEAAAAeaWxvYwAAAABEAAABAAEAAAABAAABGgAAAB0AAAAoaWluZgAAAAAAAQAAABppbmZlAgAAAA" +
+          "ABAABhdjAxQ29sb3IAAAAAamlwcnAAAABLaXBjbwAAABRpc3BlAAAAAAAAAAEAAAABAAAAEHBpeGkAAA" +
+          "AAAwgICAAAAAxhdjFDgQ0MAAAAABNjb2xybmNseAACAAIAAYAAAAAXaXBtYQAAAAAAAAABAAEEAQKDBA" +
+          "AAACVtZGF0EgAKCBgABogQEAwgMg8f8D///8WfhwB8+ErK42A=";
+      });
+    };
+
+    detectAVIF().then(supportsAVIF => {
+      resolve({ supportsAVIF, supportsWebP });
+    });
+  });
+};
+
+export interface ImageFormats {
+  cdn_s3_key: string;
+  cdn_webp_s3_key?: string;
+  cdn_avif_s3_key?: string;
+}
+
+/**
+ * Choose the optimal image URL given supported formats and available keys.
+ */
+export const getBestImageUrl = (
+  image: ImageFormats,
+  formatSupport: FormatSupport,
+): string => {
+  const baseUrl =
+    process.env.NODE_ENV === "development"
+      ? "https://dev.tylernorlund.com"
+      : "https://www.tylernorlund.com";
+
+  if (formatSupport.supportsAVIF && image.cdn_avif_s3_key) {
+    return `${baseUrl}/${image.cdn_avif_s3_key}`;
+  }
+
+  if (formatSupport.supportsWebP && image.cdn_webp_s3_key) {
+    return `${baseUrl}/${image.cdn_webp_s3_key}`;
+  }
+
+  return `${baseUrl}/${image.cdn_s3_key}`;
+};
