@@ -1,7 +1,10 @@
 MAX_AGENT_ATTEMPTS = 2
+AGENT_TIMEOUT_SECONDS = 300  # 5 minutes per agent attempt
 import enum
 import json
 import os
+import threading
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from datetime import datetime, timezone
 from logging import INFO, Formatter, StreamHandler, getLogger
 from typing import Any, Dict, List, Literal, Optional
@@ -171,6 +174,168 @@ You may call the following tools in any order:
 )
 
 
+def run_agent_with_retries(
+    agent: Agent,
+    user_input: Dict[str, Any],
+    max_attempts: int = MAX_AGENT_ATTEMPTS,
+    timeout_seconds: int = AGENT_TIMEOUT_SECONDS
+) -> tuple[Optional[Dict[str, Any]], List[Dict[str, Any]]]:
+    """
+    Run the agent with retry logic, timeout, and collect partial results.
+    
+    Args:
+        agent: The Agent instance to run
+        user_input: The user input dictionary
+        max_attempts: Maximum number of retry attempts
+        timeout_seconds: Timeout in seconds for each agent attempt
+        
+    Returns:
+        tuple: (metadata dict or None, list of partial results)
+    """
+    metadata = None
+    partial_results = []
+    user_messages = [{"role": "user", "content": json.dumps(user_input)}]
+    
+    for attempt in range(1, max_attempts + 1):
+        logger.info(f"Starting agent attempt {attempt}/{max_attempts} for receipt {user_input['image_id']}#{user_input['receipt_id']} with {timeout_seconds}s timeout")
+        try:
+            # Run the agent with timeout using ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(
+                    Runner.run_sync,
+                    agent,
+                    user_messages,
+                    max_turns=10  # Also limit max turns to prevent infinite loops
+                )
+                
+                try:
+                    run_result = future.result(timeout=timeout_seconds)
+                    
+                    # Process agent results
+                    metadata, partial = extract_agent_results(run_result, attempt)
+                    partial_results.extend(partial)
+                    
+                    if metadata is not None:
+                        break
+                        
+                except FutureTimeoutError:
+                    logger.error(f"Agent attempt {attempt} timed out after {timeout_seconds} seconds")
+                    # Cancel the future to clean up resources
+                    future.cancel()
+                    
+        except Exception as e:
+            logger.error(f"Agent attempt {attempt} failed with error: {type(e).__name__}: {e}")
+            
+        logger.warning(
+            f"Agent attempt {attempt} did not call tool_return_metadata; retrying." +
+            (f" Partial results collected: {len(partial_results)}" if partial_results else "")
+        )
+    
+    return metadata, partial_results
+
+
+def sanitize_string(value: str) -> str:
+    """
+    Safely sanitize string values by removing quotes and extra whitespace.
+    Handles edge cases like nested quotes, malformed JSON strings, etc.
+    
+    Args:
+        value: The string to sanitize
+        
+    Returns:
+        str: Sanitized string
+    """
+    if not isinstance(value, str):
+        return str(value) if value is not None else ""
+    
+    # First, handle potential JSON escaping
+    try:
+        # If the string looks like it might be JSON-encoded, try to decode it
+        if value.startswith('"') and value.endswith('"') and len(value) > 1:
+            # Try to parse as JSON string
+            decoded = json.loads(value)
+            if isinstance(decoded, str):
+                value = decoded
+    except (json.JSONDecodeError, ValueError):
+        # Not valid JSON, continue with manual cleaning
+        pass
+    
+    # Remove leading/trailing quotes (both single and double)
+    # But preserve quotes that are part of the actual content
+    if len(value) >= 2:
+        if (value.startswith('"') and value.endswith('"')) or \
+           (value.startswith("'") and value.endswith("'")):
+            # Check if there are matching quotes inside that would be broken
+            inner = value[1:-1]
+            quote_char = value[0]
+            # Only strip if the inner content doesn't have unescaped quotes
+            if quote_char not in inner.replace(f'\\{quote_char}', ''):
+                value = inner
+    
+    # Strip whitespace and return
+    return value.strip()
+
+
+def extract_agent_results(
+    run_result,
+    attempt: int
+) -> tuple[Optional[Dict[str, Any]], List[Dict[str, Any]]]:
+    """
+    Extract metadata and partial results from agent run result.
+    
+    Args:
+        run_result: The agent run result
+        attempt: Current attempt number for logging
+        
+    Returns:
+        tuple: (metadata dict or None, list of partial results)
+    """
+    metadata = None
+    partial_results = []
+    
+    # Log all function calls made by the agent for debugging
+    function_calls = []
+    for item in run_result.new_items:
+        raw = getattr(item, "raw_item", None)
+        if hasattr(raw, "name") and raw.name:
+            function_calls.append(raw.name)
+    
+    if function_calls:
+        logger.info(f"Agent made {len(function_calls)} function calls: {', '.join(function_calls)}")
+    
+    # Extract structured metadata by parsing the function call arguments
+    for item in run_result.new_items:
+        raw = getattr(item, "raw_item", None)
+        if hasattr(raw, "name") and raw.name == "tool_return_metadata":
+            try:
+                metadata = json.loads(raw.arguments)
+                logger.info(f"Successfully parsed metadata on attempt {attempt}")
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse metadata JSON on attempt {attempt}: {e}")
+                # Try to get output as fallback
+                metadata = getattr(item, "output", None)
+                if metadata:
+                    logger.info(f"Retrieved metadata from output on attempt {attempt}")
+            except Exception as e:
+                logger.error(f"Unexpected error parsing metadata on attempt {attempt}: {type(e).__name__}: {e}")
+                metadata = getattr(item, "output", None)
+            break
+        
+        # Collect partial results from other function calls
+        elif hasattr(raw, "name") and raw.name in ["tool_search_by_phone", "tool_search_by_address", "tool_search_by_text"]:
+            try:
+                partial_result = {
+                    "function": raw.name,
+                    "result": getattr(item, "output", None)
+                }
+                partial_results.append(partial_result)
+                logger.info(f"Captured partial result from {raw.name}")
+            except Exception as e:
+                logger.warning(f"Failed to capture partial result: {e}")
+    
+    return metadata, partial_results
+
+
 def validate_handler(event, context):
     logger.info("Starting validate_single_receipt_handler")
     image_id = event["image_id"]
@@ -198,63 +363,58 @@ def validate_handler(event, context):
         },
     }
 
-    # Run the agent with retries
-    metadata = None
-    user_messages = [{"role": "user", "content": json.dumps(user_input)}]
-    for attempt in range(1, MAX_AGENT_ATTEMPTS + 1):
-        run_result = Runner.run_sync(agent, user_messages)
-        # Extract structured metadata by parsing the function call arguments
-        for item in run_result.new_items:
-            raw = getattr(item, "raw_item", None)
-            if hasattr(raw, "name") and raw.name == "tool_return_metadata":
-                try:
-                    metadata = json.loads(raw.arguments)
-                except Exception:
-                    metadata = getattr(item, "output", None)
-                break
-        if metadata is not None:
-            break
-        logger.warning(
-            f"Agent attempt {attempt} did not call tool_return_metadata; retrying."
-        )
-    # If still no metadata, fallback to no match
+    # Run the agent with retries using the helper function
+    metadata, partial_results = run_agent_with_retries(agent, user_input)
+    
+    # If still no metadata, try to use partial results or fallback to no match
     if metadata is None:
-        logger.error("All agent attempts failed; using no-match fallback.")
+        logger.error(f"All {MAX_AGENT_ATTEMPTS} agent attempts failed for receipt {image_id}#{receipt_id}")
+        
+        # Log partial results for debugging
+        if partial_results:
+            logger.info(f"Partial results available: {[r['function'] for r in partial_results]}")
+        
+        # Use build_receipt_metadata_from_result_no_match as fallback
         no_match_meta = build_receipt_metadata_from_result_no_match(
             image_id, receipt_id, user_input["raw_text"]
         )
+        
+        # Add context about the failure to the reasoning
+        failure_context = f"Agent validation failed after {MAX_AGENT_ATTEMPTS} attempts."
+        if partial_results:
+            failure_context += f" Partial results were collected from: {', '.join([r['function'] for r in partial_results])}"
+        no_match_meta.reasoning = f"{failure_context} {no_match_meta.reasoning}"
+        
         write_receipt_metadata_to_dynamo(no_match_meta)
+        
         # Return the receipt info for the next step even in the no-match case
         return {
             "image_id": image_id,
             "receipt_id": receipt_id,
             "status": "no_match",
+            "failure_reason": "agent_attempts_exhausted"
         }
 
-    # Right after parsing `metadata` and before you build the ReceiptMetadata:
-    raw_vb = metadata.get("validated_by", "").upper().replace(" ", "_")
-    if raw_vb in ValidationMethod.__members__:
-        vb_enum = ValidationMethod[raw_vb]
-    else:
-        vb_enum = ValidationMethod.INFERENCE
+    # The validated_by field has already been validated by tool_return_metadata
+    # so we can directly use it as a ValidationMethod enum
+    vb_enum = ValidationMethod(metadata.get("validated_by", ValidationMethod.INFERENCE.value))
     matched_fields = list(
         {f.strip() for f in metadata["matched_fields"] if f.strip()}
     )
     logger.info(f"matched_fields: {matched_fields}")
-    merchant_category = metadata.get("merchant_category", "")
 
     meta = ReceiptMetadata(
         image_id=image_id,
         receipt_id=receipt_id,
-        place_id=metadata["place_id"],
-        merchant_name=metadata["merchant_name"].strip('"').strip(),
-        address=metadata["address"].strip('"').strip(),
-        phone_number=metadata["phone_number"].strip('"').strip(),
-        merchant_category=merchant_category.strip('"').strip(),
+        place_id=sanitize_string(metadata.get("place_id", "")),
+        merchant_name=sanitize_string(metadata.get("merchant_name", "")),
+        address=sanitize_string(metadata.get("address", "")),
+        phone_number=sanitize_string(metadata.get("phone_number", "")),
+        merchant_category=sanitize_string(metadata.get("merchant_category", "")),
         matched_fields=matched_fields,
         timestamp=datetime.now(timezone.utc),
         validated_by=vb_enum,
-        reasoning=metadata["reasoning"].strip('"').strip(),
+        reasoning=sanitize_string(metadata.get("reasoning", "")),
     )
     logger.info(f"Got metadata for {image_id} {receipt_id}\n{dict(meta)}")
 
@@ -267,6 +427,6 @@ def validate_handler(event, context):
         "image_id": image_id,
         "receipt_id": receipt_id,
         "status": "processed",
-        "place_id": metadata["place_id"],
-        "merchant_name": metadata["merchant_name"].strip('"').strip(),
+        "place_id": sanitize_string(metadata.get("place_id", "")),
+        "merchant_name": sanitize_string(metadata.get("merchant_name", "")),
     }

@@ -139,7 +139,9 @@ class ReceiptMetadata:
             raise ValueError("canonical phone number must be a string")
         self.canonical_phone_number = canonical_phone_number
 
-        num_fields = len(self.matched_fields)
+        # Validate field quality before determining validation status
+        high_quality_fields = self._get_high_quality_matched_fields()
+        num_fields = len(high_quality_fields)
 
         if num_fields >= 2:
             self.validation_status = MerchantValidationStatus.MATCHED.value
@@ -147,6 +149,41 @@ class ReceiptMetadata:
             self.validation_status = MerchantValidationStatus.UNSURE.value
         else:
             self.validation_status = MerchantValidationStatus.NO_MATCH.value
+
+    def _get_high_quality_matched_fields(self) -> list[str]:
+        """
+        Validates the quality of matched fields and returns only high-quality matches.
+        
+        This method filters out potentially false positive field matches by checking:
+        - Name fields are not empty and have meaningful content
+        - Phone fields have sufficient digits
+        - Address fields have sufficient components
+        
+        Returns:
+            list[str]: List of high-quality matched field names
+        """
+        high_quality_fields = []
+        
+        for field in self.matched_fields:
+            if field == "name":
+                # Name must be non-empty and more than just whitespace/punctuation
+                if self.merchant_name and len(self.merchant_name.strip()) > 2:
+                    high_quality_fields.append(field)
+            elif field == "phone":
+                # Phone must have at least 10 digits (for US numbers)
+                phone_digits = ''.join(c for c in self.phone_number if c.isdigit())
+                if len(phone_digits) >= 10:
+                    high_quality_fields.append(field)
+            elif field == "address":
+                # Address must have at least 2 meaningful components
+                address_tokens = [t for t in self.address.split() if len(t) > 2 and t.isalpha()]
+                if len(address_tokens) >= 2:
+                    high_quality_fields.append(field)
+            else:
+                # Unknown fields are kept as-is (future-proofing)
+                high_quality_fields.append(field)
+        
+        return high_quality_fields
 
     def key(self) -> dict:
         """Returns the primary key used to store this record in DynamoDB."""
