@@ -123,14 +123,16 @@ const ReceiptItem = React.memo<ReceiptItemProps>(
             shouldAnimate ? index * fadeDelay : 0
           }ms`,
           willChange: "top, opacity, transform",
+          overflow: "hidden",
         }}
       >
         {currentSrc && (
           <NextImage
             src={currentSrc}
             alt={`Receipt ${receipt.receipt_id}`}
-            width={100}
-            height={150}
+            width={receipt.width}
+            height={receipt.height}
+            sizes="100px"
             style={{
               width: "100%",
               height: "auto",
@@ -139,6 +141,7 @@ const ReceiptItem = React.memo<ReceiptItemProps>(
             onLoad={handleImageLoad}
             onError={handleError}
             priority={index < 5}
+            unoptimized={receipt.width > 3000 || receipt.height > 3000}
           />
         )}
       </div>
