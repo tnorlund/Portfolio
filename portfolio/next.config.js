@@ -11,6 +11,9 @@ const nextConfig = {
   },
   compress: true,
   poweredByHeader: false,
+  
+  // Only consider these file extensions as pages (excludes .test.tsx, .test.ts, etc.)
+  pageExtensions: ['page.tsx', 'page.ts', 'page.jsx', 'page.js', 'tsx', 'ts', 'jsx', 'js'],
 
   webpack: (config, { dev, isServer }) => {
     // Optimize bundle splitting and tree shaking
