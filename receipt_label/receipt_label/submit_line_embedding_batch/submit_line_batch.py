@@ -323,7 +323,6 @@ def create_batch_summary(
         openai_batch_id=open_ai_batch_id,
         submitted_at=datetime.now(timezone.utc),
         status="PENDING",
-        word_count=line_count,  # Reusing the word_count field for line count
         result_file_id="N/A",
         receipt_refs=list(receipt_refs),
     )

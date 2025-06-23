@@ -786,10 +786,7 @@ def test_embedding_batch_submit(
     # Verify the batch summary is created correctly
     stored = moto_client.getBatchSummary(batch_summary.batch_id)
     assert stored.status == "PENDING"
-    assert stored.word_count == 5  # or whatever your test case is
-    assert set(stored.receipt_refs) == {
-        (event["image_id"], event["receipt_id"])
-    }
+    assert stored.receipt_refs == [(event["image_id"], event["receipt_id"])]
     assert stored.batch_type == "EMBEDDING"
     assert stored.openai_batch_id == "fake-batch-id"
     assert stored.submitted_at is not None
@@ -865,7 +862,6 @@ def test_embedding_batch_poll(
         BatchSummary(
             batch_id=batch_id,
             batch_type=BatchType.EMBEDDING,
-            word_count=5,
             result_file_id="fake-result-file-id",
             openai_batch_id="fake-batch-id",
             submitted_at=datetime.now(),

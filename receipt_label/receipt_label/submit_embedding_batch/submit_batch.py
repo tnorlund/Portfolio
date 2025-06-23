@@ -163,7 +163,7 @@ def list_receipt_words_with_no_embeddings() -> list[ReceiptWord]:
 def _format_word_context_embedding_input(
     word: ReceiptWord, words: list[ReceiptWord]
 ) -> str:
-    # 1) Compute the target word’s vertical span (accounting for origin at bottom)
+    # 1) Compute the target word's vertical span (accounting for origin at bottom)
     # Use bounding_box for consistent span
     target_bottom = word.bounding_box["y"]
     target_top = word.bounding_box["y"] + word.bounding_box["height"]
@@ -186,8 +186,8 @@ def _format_word_context_embedding_input(
             continue
         w_top = w.top_left["y"]
         w_bottom = w.bottom_left["y"]
-        # they “fit” if their top isn’t below the target bottom,
-        # and their bottom isn’t above the target top,
+        # they "fit" if their top isn't below the target bottom,
+        # and their bottom isn't above the target top,
         # within a small epsilon if you like
         if w_bottom >= target_bottom and w_top <= target_top:
             candidates.append(w)
@@ -327,7 +327,6 @@ def create_batch_summary(
         openai_batch_id=open_ai_batch_id,
         submitted_at=datetime.now(timezone.utc),
         status="PENDING",
-        word_count=word_count,
         result_file_id="N/A",
         receipt_refs=list(receipt_refs),
     )
