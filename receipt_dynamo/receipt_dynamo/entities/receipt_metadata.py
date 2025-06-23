@@ -1,16 +1,13 @@
 from datetime import datetime, timezone
-from typing import Any, Generator, Tuple, Optional
+from typing import Any, Generator, Optional, Tuple
 
-from receipt_dynamo.constants import ValidationMethod, MerchantValidationStatus
-
-
+from receipt_dynamo.constants import MerchantValidationStatus, ValidationMethod
 from receipt_dynamo.entities.util import (
     _format_float,
     _repr_str,
     assert_valid_point,
     assert_valid_uuid,
 )
-from receipt_dynamo.constants import MerchantValidationStatus
 
 
 class ReceiptMetadata:
@@ -24,7 +21,7 @@ class ReceiptMetadata:
     - Enable clustering and quality control across receipts
 
     Each ReceiptMetadata record is stored in DynamoDB using the image_id and receipt_id,
-    and indexed by merchant name and match confidence via GSIs.
+    and indexed by merchant name via GSIs.
 
     Attributes:
         image_id (str): UUID of the image the receipt belongs to.
@@ -34,7 +31,6 @@ class ReceiptMetadata:
         merchant_category (str): Optional business type/category (e.g., "Coffee Shop").
         address (str): Normalized address returned from Google.
         phone_number (str): Formatted phone number.
-        match_confidence (float): Confidence (0-1) from GPT or heuristics on the match quality.
         matched_fields (list[str]): List of fields that matched (e.g., ["name", "phone"]).
         validated_by (str): Source of validation (e.g., "GPT+GooglePlaces").
         timestamp (datetime): ISO timestamp when this record was created.
@@ -51,7 +47,6 @@ class ReceiptMetadata:
         receipt_id: int,
         place_id: str,
         merchant_name: str,
-        match_confidence: float,
         matched_fields: list[str],
         timestamp: datetime,
         merchant_category: str = "",
@@ -93,14 +88,6 @@ class ReceiptMetadata:
         if not isinstance(phone_number, str):
             raise ValueError("phone number must be a string")
         self.phone_number = phone_number
-
-        if not isinstance(match_confidence, float):
-            raise ValueError(
-                f"match confidence must be a float\nGot a {type(match_confidence)}"
-            )
-        if match_confidence < 0 or match_confidence > 1:
-            raise ValueError("match confidence must be between 0 and 1")
-        self.match_confidence = match_confidence
 
         if not isinstance(matched_fields, list):
             raise ValueError("matched fields must be a list")
@@ -154,15 +141,10 @@ class ReceiptMetadata:
 
         num_fields = len(self.matched_fields)
 
-        # 1. If you've got at least two independent signals _and_ high confidence → MATCHED
-        if self.match_confidence >= 0.80 and num_fields >= 2:
+        if num_fields >= 2:
             self.validation_status = MerchantValidationStatus.MATCHED.value
-
-        # 2. If you've got moderate confidence but fewer signals → UNSURE
-        elif self.match_confidence >= 0.50 and num_fields >= 1:
+        elif num_fields == 1:
             self.validation_status = MerchantValidationStatus.UNSURE.value
-
-        # 3. Otherwise it's a hard NO
         else:
             self.validation_status = MerchantValidationStatus.NO_MATCH.value
 
@@ -241,7 +223,6 @@ class ReceiptMetadata:
             "place_id": {"S": self.place_id},
             # Required fields (always present)
             "merchant_name": {"S": self.merchant_name},
-            "match_confidence": {"N": str(self.match_confidence)},
             "validation_status": {"S": self.validation_status},
             "timestamp": {"S": self.timestamp.isoformat()},
         }
@@ -292,7 +273,6 @@ class ReceiptMetadata:
             f"merchant_category={_repr_str(self.merchant_category)}, "
             f"address={_repr_str(self.address)}, "
             f"phone_number={_repr_str(self.phone_number)}, "
-            f"match_confidence={_format_float(self.match_confidence)}, "
             f"matched_fields={self.matched_fields}, "
             f"validated_by={_repr_str(self.validated_by)}, "
             f"timestamp={_repr_str(self.timestamp)}, "
@@ -319,7 +299,6 @@ class ReceiptMetadata:
         yield "merchant_category", self.merchant_category
         yield "address", self.address
         yield "phone_number", self.phone_number
-        yield "match_confidence", self.match_confidence
         yield "matched_fields", self.matched_fields
         yield "validated_by", self.validated_by
         yield "timestamp", self.timestamp.isoformat()
@@ -346,7 +325,6 @@ class ReceiptMetadata:
                 self.merchant_category,
                 self.address,
                 self.phone_number,
-                self.match_confidence,
                 self.matched_fields,
                 self.validated_by,
                 self.timestamp,
@@ -367,7 +345,6 @@ def itemToReceiptMetadata(item: dict) -> ReceiptMetadata:
         "TYPE",
         "place_id",
         "merchant_name",
-        "match_confidence",
         "timestamp",
     }
 
@@ -382,7 +359,6 @@ def itemToReceiptMetadata(item: dict) -> ReceiptMetadata:
         receipt_id = int(item["SK"]["S"].split("#")[1])
         place_id = item["place_id"]["S"]
         merchant_name = item["merchant_name"]["S"]
-        match_confidence = float(item["match_confidence"]["N"])
         matched_fields = item.get("matched_fields", {}).get("SS", [])
         merchant_category = item.get("merchant_category", {}).get("S") or ""
         address = item.get("address", {}).get("S") or ""
@@ -405,7 +381,6 @@ def itemToReceiptMetadata(item: dict) -> ReceiptMetadata:
             receipt_id=receipt_id,
             place_id=place_id,
             merchant_name=merchant_name,
-            match_confidence=match_confidence,
             matched_fields=matched_fields,
             timestamp=timestamp,
             merchant_category=merchant_category,

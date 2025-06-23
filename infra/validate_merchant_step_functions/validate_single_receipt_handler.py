@@ -1,25 +1,26 @@
 MAX_AGENT_ATTEMPTS = 2
-import os
-import json
-from typing import List, Optional, Dict, Any, Literal
 import enum
+import json
+import os
 from datetime import datetime, timezone
-from logging import getLogger, StreamHandler, Formatter, INFO
+from logging import INFO, Formatter, StreamHandler, getLogger
+from typing import Any, Dict, List, Literal, Optional
+
 from agents import Agent, Runner, function_tool
-from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
 from receipt_dynamo.constants import ValidationMethod
+from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
 from receipt_label.merchant_validation import (
-    get_receipt_details,
-    write_receipt_metadata_to_dynamo,
-    extract_candidate_merchant_fields,
-    query_google_places,
-    is_match_found,
-    is_valid_google_match,
-    validate_match_with_gpt,
-    infer_merchant_with_gpt,
-    retry_google_search_with_inferred_data,
     build_receipt_metadata_from_result,
     build_receipt_metadata_from_result_no_match,
+    extract_candidate_merchant_fields,
+    get_receipt_details,
+    infer_merchant_with_gpt,
+    is_match_found,
+    is_valid_google_match,
+    query_google_places,
+    retry_google_search_with_inferred_data,
+    validate_match_with_gpt,
+    write_receipt_metadata_to_dynamo,
 )
 
 # Build a Literal type from the ValidationMethod enum values
@@ -41,22 +42,6 @@ if len(logger.handlers) == 0:
     logger.addHandler(handler)
 
 
-def calculate_final_confidence(
-    base_confidence: float, num_matched_fields: int
-) -> float:
-    """
-    Compute final confidence by bumping the base confidence
-    according to number of matched fields.
-    """
-    if not 0.0 <= base_confidence <= 1.0:
-        raise ValueError(
-            f"base_confidence must be between 0 and 1, got {base_confidence}"
-        )
-    # Bump: 0.1 for each field above 2, cap at 1.0
-    extra = max(0, (num_matched_fields - 2) * 0.1)
-    return min(1.0, base_confidence + extra)
-
-
 # Final metadata return tool
 @function_tool
 def tool_return_metadata(
@@ -64,7 +49,6 @@ def tool_return_metadata(
     merchant_name: str,
     address: str,
     phone_number: str,
-    match_confidence: float,
     merchant_category: str,
     matched_fields: List[str],
     validated_by: ValidatedBy,
@@ -78,7 +62,6 @@ def tool_return_metadata(
         merchant_name (str): The canonical merchant name.
         address (str): The merchant's address.
         phone_number (str): The merchant's phone number.
-        match_confidence (float): Confidence score for the match (0.0-1.0).
         merchant_category (str): The merchant's category.
         matched_fields (List[str]): List of receipt fields that were used to validate the match (e.g., ["name", "phone"]).
         validated_by (ValidatedBy): The method used for validation; one of the defined ValidationMethod enum values.
@@ -99,7 +82,6 @@ def tool_return_metadata(
         "merchant_name": merchant_name,
         "address": address,
         "phone_number": phone_number,
-        "match_confidence": match_confidence,
         "merchant_category": merchant_category,
         "matched_fields": matched_fields,
         "validated_by": validated_by,
@@ -132,7 +114,9 @@ def tool_search_by_address(address: str) -> Dict[str, Any]:
 
 
 @function_tool
-def tool_search_nearby(lat: float, lng: float, radius: float) -> List[Dict[str, Any]]:
+def tool_search_nearby(
+    lat: float, lng: float, radius: float
+) -> List[Dict[str, Any]]:
     """
     Find nearby businesses given latitude, longitude, and radius.
     """
@@ -208,7 +192,9 @@ def validate_handler(event, context):
         "raw_text": [line.text for line in receipt_lines],
         "extracted_data": {
             key: [w.text for w in words]
-            for key, words in extract_candidate_merchant_fields(receipt_words).items()
+            for key, words in extract_candidate_merchant_fields(
+                receipt_words
+            ).items()
         },
     }
 
@@ -239,7 +225,11 @@ def validate_handler(event, context):
         )
         write_receipt_metadata_to_dynamo(no_match_meta)
         # Return the receipt info for the next step even in the no-match case
-        return {"image_id": image_id, "receipt_id": receipt_id, "status": "no_match"}
+        return {
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "status": "no_match",
+        }
 
     # Right after parsing `metadata` and before you build the ReceiptMetadata:
     raw_vb = metadata.get("validated_by", "").upper().replace(" ", "_")
@@ -247,10 +237,10 @@ def validate_handler(event, context):
         vb_enum = ValidationMethod[raw_vb]
     else:
         vb_enum = ValidationMethod.INFERENCE
-    matched_fields = list({f.strip() for f in metadata["matched_fields"] if f.strip()})
+    matched_fields = list(
+        {f.strip() for f in metadata["matched_fields"] if f.strip()}
+    )
     logger.info(f"matched_fields: {matched_fields}")
-    base = float(metadata["match_confidence"])
-    final_score = calculate_final_confidence(base, len(matched_fields))
     merchant_category = metadata.get("merchant_category", "")
 
     meta = ReceiptMetadata(
@@ -261,7 +251,6 @@ def validate_handler(event, context):
         address=metadata["address"].strip('"').strip(),
         phone_number=metadata["phone_number"].strip('"').strip(),
         merchant_category=merchant_category.strip('"').strip(),
-        match_confidence=final_score,
         matched_fields=matched_fields,
         timestamp=datetime.now(timezone.utc),
         validated_by=vb_enum,

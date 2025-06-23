@@ -1,10 +1,12 @@
-import pytest
 from datetime import datetime
+
+import pytest
+
+from receipt_dynamo.constants import MerchantValidationStatus
 from receipt_dynamo.entities.receipt_metadata import (
     ReceiptMetadata,
     itemToReceiptMetadata,
 )
-from receipt_dynamo.constants import MerchantValidationStatus
 
 
 @pytest.fixture
@@ -17,7 +19,6 @@ def example_receipt_metadata():
         merchant_category="Coffee Shop",
         address="123 Main St, Anytown, USA",
         phone_number="(123) 456-7890",
-        match_confidence=0.9,
         matched_fields=["name", "address"],
         validated_by="NEARBY_LOOKUP",
         timestamp=datetime(2025, 1, 1, 12, 0, 0),
@@ -35,7 +36,6 @@ def test_basic_construction_and_status(example_receipt_metadata):
     assert m.merchant_category == "Coffee Shop"
     assert m.address == "123 Main St, Anytown, USA"
     assert m.phone_number == "(123) 456-7890"
-    assert pytest.approx(m.match_confidence) == 0.9
     assert m.matched_fields == ["name", "address"]
     assert m.validated_by == "NEARBY_LOOKUP"
     assert m.timestamp == datetime(2025, 1, 1, 12, 0, 0)
@@ -45,21 +45,14 @@ def test_basic_construction_and_status(example_receipt_metadata):
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    "confidence, expected_status",
+    "matched_fields, expected_status",
     [
-        (0.9, MerchantValidationStatus.MATCHED),
-        (0.75, MerchantValidationStatus.UNSURE),
-        (0.4, MerchantValidationStatus.NO_MATCH),
+        (["name", "address"], MerchantValidationStatus.MATCHED),
+        (["name"], MerchantValidationStatus.UNSURE),
+        ([], MerchantValidationStatus.NO_MATCH),
     ],
 )
-def test_validation_status_buckets(confidence, expected_status):
-    # Choose the minimum number of matched fields required for each confidence bucket
-    if confidence >= 0.80:
-        matched_fields = ["name", "address"]  # ≥2 fields  →  MATCHED
-    elif confidence >= 0.50:
-        matched_fields = ["name"]  # ≥1 field  →  UNSURE
-    else:
-        matched_fields = []  # 0 fields  →  NO_MATCH
+def test_validation_status_buckets(matched_fields, expected_status):
     m = ReceiptMetadata(
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         receipt_id=1,
@@ -68,7 +61,6 @@ def test_validation_status_buckets(confidence, expected_status):
         merchant_category="Category",
         address="Address",
         phone_number="Phone",
-        match_confidence=confidence,
         matched_fields=matched_fields,
         validated_by="NEARBY_LOOKUP",
         timestamp=datetime.now(),
@@ -115,7 +107,6 @@ def test_to_item_and_back(example_receipt_metadata):
     assert restored.merchant_category == m.merchant_category
     assert restored.address == m.address
     assert restored.phone_number == m.phone_number
-    assert pytest.approx(restored.match_confidence) == m.match_confidence
     assert restored.matched_fields == m.matched_fields
     assert restored.validated_by == m.validated_by
     assert restored.timestamp == m.timestamp
@@ -133,8 +124,6 @@ def test_to_item_and_back(example_receipt_metadata):
         ("merchant_category", 789, "merchant category must be a string"),
         ("address", None, "address must be a string"),
         ("phone_number", 12345, "phone number must be a string"),
-        ("match_confidence", "high", "match confidence must be a float"),
-        ("match_confidence", -0.1, "match confidence must be between 0 and 1"),
         ("matched_fields", "notalist", "matched fields must be a list"),
         ("matched_fields", [1, 2], "matched fields must be a list of strings"),
         ("matched_fields", ["dup", "dup"], "matched fields must be unique"),
@@ -156,7 +145,6 @@ def test_invalid_field_validation(field, value, error):
         merchant_category="Cat",
         address="Addr",
         phone_number="Phone",
-        match_confidence=0.5,
         matched_fields=[],
         validated_by="NEARBY_LOOKUP",
         timestamp=datetime.now(),
