@@ -25,15 +25,21 @@ from receipt_dynamo import (
     itemToWord,
     itemToWordTag,
 )
-from receipt_dynamo.entities import assert_valid_uuid
 from receipt_dynamo.constants import ImageType
+from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.entities import (
+    ImageDetails,
+    assert_valid_uuid,
+    itemToOCRJob,
+    itemToOCRRoutingDecision,
+)
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 # So we chunk the items in groups of 25 for bulk operations.
 CHUNK_SIZE = 25
 
 
-class _Image:
+class _Image(DynamoClientProtocol):
     """
     A class providing methods to interact with "Image" entities in DynamoDB.
     This class is typically used within a DynamoClient to access and manage
@@ -348,18 +354,7 @@ class _Image:
                 else:
                     raise ValueError(f"Error updating images: {e}") from e
 
-    def getImageDetails(self, image_id: str) -> tuple[
-        list[Image],
-        list[Line],
-        list[Word],
-        list[WordTag],
-        list[Letter],
-        list[Receipt],
-        list[ReceiptLine],
-        list[ReceiptWord],
-        list[ReceiptWordTag],
-        list[ReceiptLetter],
-    ]:
+    def getImageDetails(self, image_id: str) -> ImageDetails:
         """
         Retrieves detailed information about an Image from the database,
         including its lines, words, letters, and any associated receipts.
@@ -375,15 +370,8 @@ class _Image:
 
         Returns
         -------
-        tuple
-            A tuple containing:
-            1) The Image object.
-            2) A list of Line objects.
-            3) A list of Word objects.
-            4) A list of WordTag objects.
-            5) A list of Letter objects.
-            6) A list of dictionaries, each representing a Receipt and its associated
-               lines, words, word_tags, and letters.
+        ImageDetails
+            Dataclass containing lists of all related items.
 
         Raises
         ------
@@ -400,6 +388,8 @@ class _Image:
         receipt_words = []
         receipt_word_tags = []
         receipt_letters = []
+        ocr_jobs = []
+        ocr_routing_decisions = []
         try:
             response = self._client.query(
                 TableName=self.table_name,
@@ -449,18 +439,26 @@ class _Image:
                     receipt_word_tags.append(itemToReceiptWordTag(item))
                 elif item["TYPE"]["S"] == "RECEIPT_LETTER":
                     receipt_letters.append(itemToReceiptLetter(item))
+                elif item["TYPE"]["S"] == "OCR_JOB":
+                    ocr_jobs.append(itemToOCRJob(item))
+                elif item["TYPE"]["S"] == "OCR_ROUTING_DECISION":
+                    ocr_routing_decisions.append(
+                        itemToOCRRoutingDecision(item)
+                    )
 
-            return (
-                images,
-                lines,
-                words,
-                word_tags,
-                letters,
-                receipts,
-                receipt_lines,
-                receipt_words,
-                receipt_word_tags,
-                receipt_letters,
+            return ImageDetails(
+                images=images,
+                lines=lines,
+                words=words,
+                word_tags=word_tags,
+                letters=letters,
+                receipts=receipts,
+                receipt_lines=receipt_lines,
+                receipt_words=receipt_words,
+                receipt_word_tags=receipt_word_tags,
+                receipt_letters=receipt_letters,
+                ocr_jobs=ocr_jobs,
+                ocr_routing_decisions=ocr_routing_decisions,
             )
 
         except Exception as e:
@@ -745,7 +743,7 @@ class _Image:
 
     def listImagesByType(
         self,
-        image_type: str,
+        image_type: str | ImageType,
         limit: Optional[int] = None,
         lastEvaluatedKey: Optional[Dict] = None,
     ) -> Tuple[List[Image], Optional[Dict]]:

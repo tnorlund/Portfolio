@@ -80,6 +80,7 @@ def image_lines_words_letters():
     ]
 
 
+@pytest.mark.unit
 def test_image_ocr_to_receipt_ocr(image_lines_words_letters):
     receipt_lines, receipt_words, receipt_letters = image_ocr_to_receipt_ocr(
         image_lines_words_letters[0],

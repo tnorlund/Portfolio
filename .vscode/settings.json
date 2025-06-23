@@ -11,11 +11,11 @@
   ],
   "python.testing.unittestEnabled": false,
   "python.testing.pytestEnabled": true,
-  "python.analysis.extraPaths": [
-    "${workspaceFolder}/receipt_label",
-    "${workspaceFolder}/receipt_dynamo",
-    "${workspaceFolder}/receipt_trainer"
-  ],
+  // "python.analysis.extraPaths": [
+  //   "${workspaceFolder}/receipt_label",
+  //   "${workspaceFolder}/receipt_dynamo",
+  //   "${workspaceFolder}/receipt_trainer"
+  // ],
   "python.testing.pytestPath": "pytest",
   "python.testing.cwd": "${workspaceFolder}",
   "python.envFile": "${workspaceFolder}/.env",
@@ -23,7 +23,24 @@
     "PYTHONPATH": "${workspaceFolder}"
   },
   "python.linting.enabled": true,
+  "python.linting.pylintEnabled": true,
+  "python.linting.flake8Enabled": false,
+  "python.linting.mypyEnabled": true,
+  "python.formatting.provider": "none",
+  "python.formatting.blackArgs": ["--line-length=79"],
   "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  "python.analysis.autoImportCompletions": true,
+  "python.analysis.completeFunctionParens": true,
+  "python.venvPath": "${workspaceFolder}",
+  "python.venvFolders": [".venv"],
+  "python.analysis.extraPaths": [
+    "./receipt_dynamo",
+    "./receipt_label",
+    "./receipt_upload",
+    "./receipt_trainer",
+    "./receipt_trainer_1",
+    "./infra"
+  ],
   // "python.analysis.packageIndexDepths": [
   //   {
   //     "name": "pixi",
@@ -32,5 +49,24 @@
   // ],
   // "python.analysis.extraPaths": ["${workspaceFolder}/receipt_label"],
   "editor.formatOnSave": true,
-  "cSpell.words": ["stepfunctions"]
+  "cSpell.words": ["stepfunctions"],
+  "cursorpyright.analysis.autoImportCompletions": true,
+  "cursorpyright.analysis.extraPaths": [
+    "${workspaceFolder}/.venv/lib/python3.12/site-packages"
+  ],
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.black-formatter",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": "explicit"
+    }
+  },
+  "isort.args": ["--profile", "black", "--line-length", "79"],
+  "pylint.args": ["--max-line-length=79"],
+  "python.linting.pylintArgs": ["--max-line-length=79"],
+  "editor.rulers": [79],
+  "files.associations": {
+    "*.toml": "toml"
+  },
+  "python.analysis.autoSearchPaths": true
 }

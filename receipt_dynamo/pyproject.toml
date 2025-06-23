@@ -37,21 +37,21 @@ keywords = ["dynamo", "dynamodb", "receipts", "aws", "database"]
 
 [project.optional-dependencies]
 test = [
-    "pytest",
-    "pytest-mock",
-    "pytest-cov",
-    "pytest-xdist",
-    "moto",
-    "freezegun",
+    "pytest>=8.3.0,<9.0.0",
+    "pytest-mock>=3.14.0,<4.0.0",
+    "pytest-cov>=6.1.0,<7.0.0",
+    "pytest-xdist>=3.6.0,<4.0.0",
+    "moto>=5.1.0,<6.0.0",
+    "freezegun>=1.5.0,<2.0.0",
 ]
 dev = [
     "pulumi>=3.0.0",
     "pulumi-aws>=6.0.0",
     "pulumi-command>=0.9.0",
     "black==24.10.0",
-    "flake8",
-    "mypy",
-    "isort",
+    "pylint>=3.0.0,<4.0.0",
+    "mypy>=1.0",
+    "isort>=5.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -98,3 +98,25 @@ exclude = '''
   | dist
 )/
 ''' 
+
+[tool.pylint.format]
+max-line-length = 79
+
+[tool.pylint.messages_control]
+disable = [
+    "too-few-public-methods",
+    "too-many-arguments",
+    "too-many-locals", 
+    "too-many-instance-attributes",
+    "too-many-branches",
+    "missing-module-docstring",
+    "missing-class-docstring", 
+    "missing-function-docstring",
+]
+
+[tool.pylint.basic]
+good-names = ["i", "j", "k", "ex", "Run", "_", "id", "pk", "sk"]
+
+[tool.pylint.design]
+max-args = 10
+max-locals = 20 

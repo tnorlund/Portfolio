@@ -1,0 +1,25 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+
+  /* Tell TypeDoc to use the same compiler options as the app */
+  "tsconfig": "tsconfig.json",
+
+  /* Let TypeDoc start from every .ts/.tsx file under /app           *
+   * (If your code lives in /src or somewhere else, change this.)    */
+  "entryPoints": ["utils", "types"],
+  "entryPointStrategy": "expand",
+
+  /* Where the HTML docs go */
+  "out": "docs",
+
+  /* Plugins / theme */
+  "plugin": ["typedoc-plugin-markdown"],
+  "theme": "default",
+
+  /* Hygiene flags */
+  "excludePrivate": true,
+  "excludeProtected": true,
+  "excludeInternal": true,
+  "sort": ["required-first", "alphabetical"],
+  "treatWarningsAsErrors": true
+}

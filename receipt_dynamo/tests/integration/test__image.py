@@ -1,4 +1,3 @@
-# infra/lambda_layer/python/test/integration/test__image.py
 from datetime import datetime
 from uuid import uuid4
 
@@ -6,7 +5,9 @@ import boto3
 import pytest
 from botocore.exceptions import ClientError
 
-from receipt_dynamo import DynamoClient, Image, Letter, Line, Receipt, Word
+from receipt_dynamo import DynamoClient, Image, Letter, Line, Word
+from receipt_dynamo.constants import OCRJobType, OCRStatus
+from receipt_dynamo.entities import OCRJob, OCRRoutingDecision
 
 
 @pytest.fixture
@@ -292,6 +293,30 @@ def test_image_get_details(dynamodb_table, example_image):
     client.addLine(line)
     client.addWord(word)
     client.addLetter(letter)
+    ocr_job = OCRJob(
+        image_id=image.image_id,
+        job_id="4f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        s3_bucket="bucket",
+        s3_key="key",
+        created_at=datetime(2025, 1, 1, 0, 0, 0),
+        updated_at=datetime(2025, 1, 1, 0, 0, 0),
+        status=OCRStatus.PENDING,
+        job_type=OCRJobType.FIRST_PASS,
+    )
+    routing_decision = OCRRoutingDecision(
+        image_id=image.image_id,
+        job_id=ocr_job.job_id,
+        s3_bucket="bucket",
+        s3_key="key",
+        created_at=datetime(2025, 1, 1, 0, 0, 0),
+        updated_at=datetime(2025, 1, 1, 0, 0, 0),
+        receipt_count=1,
+        status=OCRStatus.PENDING,
+    )
+    client.addOCRJob(ocr_job)
+    client.addOCRRoutingDecision(routing_decision)
+
+    details = client.getImageDetails(image.image_id)
 
     (
         images,
@@ -304,12 +329,24 @@ def test_image_get_details(dynamodb_table, example_image):
         receipt_words,
         receipt_word_tags,
         receipt_letters,
-    ) = client.getImageDetails(image.image_id)
+        ocr_jobs,
+        routing_decisions,
+    ) = details
     retrieved_image = images[0]
     assert retrieved_image == image
     assert lines == [line]
     assert words == [word]
     assert letters == [letter]
+    assert ocr_jobs == [ocr_job]
+    retrieved_decision = routing_decisions[0]
+    assert retrieved_decision.image_id == routing_decision.image_id
+    assert retrieved_decision.job_id == routing_decision.job_id
+    assert retrieved_decision.s3_bucket == routing_decision.s3_bucket
+    assert retrieved_decision.s3_key == routing_decision.s3_key
+    assert retrieved_decision.created_at == routing_decision.created_at
+    assert retrieved_decision.updated_at == routing_decision.updated_at
+    assert retrieved_decision.receipt_count == routing_decision.receipt_count
+    assert retrieved_decision.status == routing_decision.status
 
 
 @pytest.mark.integration
@@ -589,3 +626,46 @@ def test_updateImages_raises_client_error(
         client.updateImages([example_image])
 
     mock_transact.assert_called_once()
+
+
+@pytest.mark.integration
+def test_listImagesByType_no_limit(dynamodb_table, example_image):
+    client = DynamoClient(dynamodb_table)
+    client.addImage(example_image)
+
+    images, lek = client.listImagesByType(example_image.image_type)
+
+    assert images == [example_image]
+    assert lek is None
+
+
+@pytest.mark.integration
+def test_listImagesByType_invalid_type(dynamodb_table, example_image):
+    client = DynamoClient(dynamodb_table)
+    client.addImage(example_image)
+
+    with pytest.raises(ValueError):
+        client.listImagesByType("INVALID")
+
+
+@pytest.mark.integration
+def test_listImagesByType_with_pagination(
+    dynamodb_table, example_image, mocker
+):
+    client = DynamoClient(dynamodb_table)
+
+    first_page = {
+        "Items": [example_image.to_item()],
+        "LastEvaluatedKey": {"d": "k"},
+    }
+    second_page = {"Items": [example_image.to_item()]}
+
+    mock_query = mocker.patch.object(
+        client._client, "query", side_effect=[first_page, second_page]
+    )
+
+    images, lek = client.listImagesByType(example_image.image_type, limit=10)
+
+    assert len(images) == 1
+    assert lek == first_page["LastEvaluatedKey"]
+    assert mock_query.call_count == 1

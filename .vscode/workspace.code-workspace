@@ -1,0 +1,51 @@
+{
+  "folders": [
+    {
+      "name": "🗂️ Root",
+      "path": "."
+    },
+    {
+      "name": "📊 receipt_dynamo",
+      "path": "./receipt_dynamo"
+    },
+    {
+      "name": "🏷️ receipt_label",
+      "path": "./receipt_label"
+    },
+    {
+      "name": "📤 receipt_upload",
+      "path": "./receipt_upload"
+    },
+    {
+      "name": "🤖 receipt_trainer",
+      "path": "./receipt_trainer"
+    },
+    {
+      "name": "🤖 receipt_trainer_1",
+      "path": "./receipt_trainer_1"
+    },
+    {
+      "name": "🏗️ infra",
+      "path": "./infra"
+    },
+    {
+      "name": "🎨 portfolio",
+      "path": "./portfolio"
+    }
+  ],
+  "settings": {
+    "python.defaultInterpreterPath": "./.venv/bin/python",
+    "python.linting.enabled": true,
+    "python.linting.pylintEnabled": true,
+    "python.linting.flake8Enabled": false,
+    "python.linting.pylintArgs": ["--load-plugins=pylint.extensions.docparams"]
+  },
+  "extensions": {
+    "recommendations": [
+      "ms-python.python",
+      "ms-python.pylint",
+      "ms-python.black-formatter",
+      "ms-python.isort"
+    ]
+  }
+}
