@@ -181,8 +181,30 @@ class ReceiptMetadata:
                     high_quality_fields.append(field)
             elif field == "address":
                 # Address must have at least 2 meaningful components
-                address_tokens = [t for t in self.address.split() if len(t) > 2 and t.isalpha()]
-                if len(address_tokens) >= 2:
+                tokens = self.address.split()
+                meaningful_tokens = 0
+                has_number = False
+                
+                for i, token in enumerate(tokens):
+                    token_clean = token.rstrip('.,;:')
+                    
+                    # Count as meaningful if:
+                    # 1. It's a number (house/street number)
+                    if token_clean.replace('-', '').replace('/', '').isdigit():
+                        meaningful_tokens += 1
+                        has_number = True
+                    # 2. It contains digits (1st, 2nd, etc)
+                    elif any(c.isdigit() for c in token_clean):
+                        meaningful_tokens += 1
+                    # 3. It's a word with 3+ letters
+                    elif len(token_clean) >= 3 and token_clean.isalpha():
+                        meaningful_tokens += 1
+                    # 4. It's a short token (likely abbreviation) but not the only token
+                    elif len(tokens) > 1 and token_clean.isalpha():
+                        meaningful_tokens += 0.5  # Count as half
+                
+                # Require at least 2 full meaningful tokens
+                if meaningful_tokens >= 2:
                     high_quality_fields.append(field)
             else:
                 # Unknown fields are kept as-is (future-proofing)

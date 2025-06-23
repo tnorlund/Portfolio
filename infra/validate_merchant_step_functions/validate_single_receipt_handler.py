@@ -234,46 +234,8 @@ def run_agent_with_retries(
     return metadata, partial_results
 
 
-def sanitize_string(value: str) -> str:
-    """
-    Safely sanitize string values by removing quotes and extra whitespace.
-    Handles edge cases like nested quotes, malformed JSON strings, etc.
-    
-    Args:
-        value: The string to sanitize
-        
-    Returns:
-        str: Sanitized string
-    """
-    if not isinstance(value, str):
-        return str(value) if value is not None else ""
-    
-    # First, handle potential JSON escaping
-    try:
-        # If the string looks like it might be JSON-encoded, try to decode it
-        if value.startswith('"') and value.endswith('"') and len(value) > 1:
-            # Try to parse as JSON string
-            decoded = json.loads(value)
-            if isinstance(decoded, str):
-                value = decoded
-    except (json.JSONDecodeError, ValueError):
-        # Not valid JSON, continue with manual cleaning
-        pass
-    
-    # Remove leading/trailing quotes (both single and double)
-    # But preserve quotes that are part of the actual content
-    if len(value) >= 2:
-        if (value.startswith('"') and value.endswith('"')) or \
-           (value.startswith("'") and value.endswith("'")):
-            # Check if there are matching quotes inside that would be broken
-            inner = value[1:-1]
-            quote_char = value[0]
-            # Only strip if the inner content doesn't have unescaped quotes
-            if quote_char not in inner.replace(f'\\{quote_char}', ''):
-                value = inner
-    
-    # Strip whitespace and return
-    return value.strip()
+# Import the improved sanitize_string from result_processor
+from receipt_label.merchant_validation.result_processor import sanitize_string
 
 
 def extract_agent_results(
@@ -484,7 +446,18 @@ def validate_handler(event, context):
     
     # If still no metadata, try to use partial results or fallback to no match
     if metadata is None:
-        logger.error(f"All {MAX_AGENT_ATTEMPTS} agent attempts failed for receipt {image_id}#{receipt_id}")
+        logger.error(
+            "Agent validation failed",
+            extra={
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "attempts": MAX_AGENT_ATTEMPTS,
+                "partial_results_count": len(partial_results),
+                "partial_result_types": [r.get("function") for r in partial_results] if partial_results else [],
+                "user_input_keys": list(user_input.keys()),
+                "extracted_data_types": list(user_input.get("extracted_data", {}).keys())
+            }
+        )
         
         # Try to extract useful data from partial results
         best_partial_match = extract_best_partial_match(partial_results, user_input)
@@ -519,10 +492,10 @@ def validate_handler(event, context):
         }
 
     # The validated_by field has already been validated by tool_return_metadata
-    # so we can directly use it as a ValidationMethod enum
-    vb_enum = ValidationMethod(metadata.get("validated_by", ValidationMethod.INFERENCE.value))
+    # so we can use it directly (defaulting to INFERENCE if missing)
+    validated_by = metadata.get("validated_by", ValidationMethod.INFERENCE.value)
     matched_fields = list(
-        {f.strip() for f in metadata["matched_fields"] if f.strip()}
+        {f.strip() for f in metadata.get("matched_fields", []) if f.strip()}
     )
     logger.info(f"matched_fields: {matched_fields}")
 
@@ -536,7 +509,7 @@ def validate_handler(event, context):
         merchant_category=sanitize_string(metadata.get("merchant_category", "")),
         matched_fields=matched_fields,
         timestamp=datetime.now(timezone.utc),
-        validated_by=vb_enum,
+        validated_by=validated_by,
         reasoning=sanitize_string(metadata.get("reasoning", "")),
     )
     logger.info(f"Got metadata for {image_id} {receipt_id}\n{dict(meta)}")

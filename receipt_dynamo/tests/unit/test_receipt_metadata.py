@@ -222,3 +222,48 @@ def test_configurable_validation_thresholds(monkeypatch):
         reasoning="testing"
     )
     assert m3.validation_status == MerchantValidationStatus.NO_MATCH.value
+
+
+@pytest.mark.unit
+def test_address_validation_quality():
+    """Test that address validation properly handles various address formats."""
+    test_cases = [
+        # (address, should_pass, description)
+        ("123 Main St", True, "Common format with abbreviation"),
+        ("456 Broadway Avenue", True, "Full street name"),
+        ("1st Ave", True, "Alphanumeric street number with abbreviation"),
+        ("42 E 23rd Street", True, "Multiple components with direction"),
+        ("5678 Highway 101", True, "Highway address"),
+        ("100-200 Park Ln", True, "Range format"),
+        ("10 Downing Street, London", True, "International format"),
+        ("Suite 500, Oak Tower", True, "Suite address"),
+        ("St", False, "Just abbreviation - not enough"),
+        ("123", False, "Just number - not enough"),
+        ("", False, "Empty address"),
+        ("X Y", False, "Too short tokens"),
+        ("The Mall", True, "Named location (3+ char tokens)"),
+        ("5th & Main", True, "Intersection format"),
+    ]
+    
+    for address, should_pass, description in test_cases:
+        m = ReceiptMetadata(
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            receipt_id=1,
+            place_id="test",
+            merchant_name="Test Store",
+            address=address,
+            phone_number="555-555-5555",
+            matched_fields=["address", "phone"],  # Claims to match address
+            validated_by="ADDRESS_LOOKUP",
+            timestamp=datetime.now(),
+            reasoning="testing address validation"
+        )
+        
+        # With default thresholds, 2 fields = MATCHED, but only if quality passes
+        if should_pass:
+            assert m.validation_status == MerchantValidationStatus.MATCHED.value, \
+                f"{description}: Address '{address}' should have passed validation"
+        else:
+            # If address quality fails, it's effectively only 1 field (phone)
+            assert m.validation_status == MerchantValidationStatus.UNSURE.value, \
+                f"{description}: Address '{address}' should have failed quality validation"

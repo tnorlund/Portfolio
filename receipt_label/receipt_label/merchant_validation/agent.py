@@ -216,11 +216,29 @@ You may call the following tools in any order:
                             break
                             
                     except FutureTimeoutError:
-                        logger.error(f"Agent attempt {attempt} timed out after {timeout_seconds} seconds")
+                        logger.error(
+                            "Agent attempt timed out",
+                            extra={
+                                "attempt": attempt,
+                                "timeout_seconds": timeout_seconds,
+                                "image_id": user_input.get("image_id"),
+                                "receipt_id": user_input.get("receipt_id"),
+                                "partial_results_so_far": len(partial_results)
+                            }
+                        )
                         future.cancel()
                         
             except Exception as e:
-                logger.error(f"Agent attempt {attempt} failed with error: {type(e).__name__}: {e}")
+                logger.error(
+                    "Agent attempt failed with exception",
+                    extra={
+                        "attempt": attempt,
+                        "error_type": type(e).__name__,
+                        "error_message": str(e),
+                        "image_id": user_input.get("image_id"),
+                        "receipt_id": user_input.get("receipt_id")
+                    }
+                )
                 
             logger.warning(
                 f"Agent attempt {attempt} did not call tool_return_metadata; retrying." +

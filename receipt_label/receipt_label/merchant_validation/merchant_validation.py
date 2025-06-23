@@ -1,4 +1,5 @@
 import json
+import os
 import re
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
@@ -20,6 +21,9 @@ from receipt_label.data.places_api import PlacesAPI
 from receipt_label.utils import get_clients
 
 dynamo_client, openai_client, _ = get_clients()
+
+# Configurable timeout for OpenAI API calls
+OPENAI_TIMEOUT_SECONDS = int(os.environ.get("OPENAI_TIMEOUT_SECONDS", 30))
 
 
 def list_receipt_metadatas() -> List[ReceiptMetadata]:
@@ -239,6 +243,7 @@ def validate_match_with_gpt(receipt_fields: dict, google_place: dict) -> dict:
         ],
         functions=functions,
         function_call={"name": "validateMatch"},
+        timeout=OPENAI_TIMEOUT_SECONDS
     )
 
     result = {
@@ -528,6 +533,7 @@ def infer_merchant_with_gpt(raw_text: List[str], extracted_dict: dict) -> dict:
         ],
         functions=functions,
         function_call={"name": "inferMerchant"},
+        timeout=OPENAI_TIMEOUT_SECONDS
     )
 
     # Parse function call result
