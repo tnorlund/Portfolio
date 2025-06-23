@@ -29,9 +29,11 @@ from receipt_dynamo.constants import ImageType
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities import (
     ImageDetails,
+    ReceiptMetadata,
     assert_valid_uuid,
     itemToOCRJob,
     itemToOCRRoutingDecision,
+    itemToReceiptMetadata,
 )
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
@@ -73,8 +75,9 @@ class _Image(DynamoClientProtocol):
                                                                  list[ReceiptLine],
                                                                  list[Word],
                                                                  list[Letter]]]]]:
-        Retrieves comprehensive details for an Image, including lines, words, letters,
-        and receipt data (if any) associated with the Image.
+        Retrieves comprehensive details for an Image, including lines, words,
+        letters, and receipt data (including metadata) associated with the
+        Image.
     getImageClusterDetails(image_id: str) -> tuple[Image,
                                                   list[Line],
                                                   list[Receipt]]:
@@ -357,7 +360,8 @@ class _Image(DynamoClientProtocol):
     def getImageDetails(self, image_id: str) -> ImageDetails:
         """
         Retrieves detailed information about an Image from the database,
-        including its lines, words, letters, and any associated receipts.
+        including its lines, words, letters, receipts, and receipt
+        metadata.
 
         This method queries all items matching the partition key ("IMAGE#{image_id}")
         and then groups items by their type to build a comprehensive view of the
@@ -388,6 +392,7 @@ class _Image(DynamoClientProtocol):
         receipt_words = []
         receipt_word_tags = []
         receipt_letters = []
+        receipt_metadatas = []
         ocr_jobs = []
         ocr_routing_decisions = []
         try:
@@ -439,6 +444,8 @@ class _Image(DynamoClientProtocol):
                     receipt_word_tags.append(itemToReceiptWordTag(item))
                 elif item["TYPE"]["S"] == "RECEIPT_LETTER":
                     receipt_letters.append(itemToReceiptLetter(item))
+                elif item["TYPE"]["S"] == "RECEIPT_METADATA":
+                    receipt_metadatas.append(itemToReceiptMetadata(item))
                 elif item["TYPE"]["S"] == "OCR_JOB":
                     ocr_jobs.append(itemToOCRJob(item))
                 elif item["TYPE"]["S"] == "OCR_ROUTING_DECISION":
@@ -457,6 +464,7 @@ class _Image(DynamoClientProtocol):
                 receipt_words=receipt_words,
                 receipt_word_tags=receipt_word_tags,
                 receipt_letters=receipt_letters,
+                receipt_metadatas=receipt_metadatas,
                 ocr_jobs=ocr_jobs,
                 ocr_routing_decisions=ocr_routing_decisions,
             )
