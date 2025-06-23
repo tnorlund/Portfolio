@@ -29,7 +29,18 @@ from .merchant_validation import (
     merge_place_id_aliases_by_address,
 )
 
+# New modular components
+from .agent import MerchantValidationAgent
+from .handler import MerchantValidationHandler, create_validation_handler
+from .result_processor import (
+    extract_best_partial_match,
+    build_receipt_metadata_from_partial_result,
+    sanitize_metadata_strings,
+    sanitize_string,
+)
+
 __all__ = [
+    # Original functions
     "list_receipts_for_merchant_validation",
     "get_receipt_details",
     "extract_candidate_merchant_fields",
@@ -58,4 +69,12 @@ __all__ = [
     "collapse_canonical_aliases",
     "persist_alias_updates",
     "merge_place_id_aliases_by_address",
+    # New modular components
+    "MerchantValidationAgent",
+    "MerchantValidationHandler",
+    "create_validation_handler",
+    "extract_best_partial_match",
+    "build_receipt_metadata_from_partial_result",
+    "sanitize_metadata_strings",
+    "sanitize_string",
 ]

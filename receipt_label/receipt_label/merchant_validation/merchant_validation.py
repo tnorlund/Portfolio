@@ -1,25 +1,29 @@
-from typing import Tuple, List, Optional
 import json
-from json import JSONDecodeError
-from datetime import datetime, timezone
+import os
 import re
-from collections import defaultdict, Counter
-from fuzzywuzzy import fuzz
+from collections import Counter, defaultdict
+from datetime import datetime, timezone
+from json import JSONDecodeError
+from typing import List, Optional, Tuple
 
+from fuzzywuzzy import fuzz
 from receipt_dynamo.entities import (
-    ReceiptWordLabel,
-    ReceiptWord,
     Receipt,
-    ReceiptLine,
-    ReceiptWord,
     ReceiptLetter,
-    ReceiptWordTag,
+    ReceiptLine,
     ReceiptMetadata,
+    ReceiptWord,
+    ReceiptWordLabel,
+    ReceiptWordTag,
 )
+
 from receipt_label.data.places_api import PlacesAPI
 from receipt_label.utils import get_clients
 
 dynamo_client, openai_client, _ = get_clients()
+
+# Configurable timeout for OpenAI API calls
+OPENAI_TIMEOUT_SECONDS = int(os.environ.get("OPENAI_TIMEOUT_SECONDS", 30))
 
 
 def list_receipt_metadatas() -> List[ReceiptMetadata]:
@@ -239,6 +243,7 @@ def validate_match_with_gpt(receipt_fields: dict, google_place: dict) -> dict:
         ],
         functions=functions,
         function_call={"name": "validateMatch"},
+        timeout=OPENAI_TIMEOUT_SECONDS
     )
 
     result = {
@@ -528,6 +533,7 @@ def infer_merchant_with_gpt(raw_text: List[str], extracted_dict: dict) -> dict:
         ],
         functions=functions,
         function_call={"name": "inferMerchant"},
+        timeout=OPENAI_TIMEOUT_SECONDS
     )
 
     # Parse function call result
@@ -669,14 +675,6 @@ def build_receipt_metadata_from_result(
         "merchant_phone", ""
     )
 
-    # Confidence: prefer GPT confidence if provided, else default to 1.0
-    match_confidence = (
-        gpt_result.get("confidence")
-        if gpt_result and "confidence" in gpt_result
-        else 1.0
-    )
-
-    # Matched fields: from GPT validation result if present
     matched_fields = (
         gpt_result.get("matched_fields", [])
         if gpt_result and "matched_fields" in gpt_result
@@ -704,7 +702,6 @@ def build_receipt_metadata_from_result(
         merchant_category=merchant_category,
         address=address,
         phone_number=phone,
-        match_confidence=match_confidence,
         matched_fields=matched_fields,
         validated_by=validated_by,
         timestamp=datetime.now(timezone.utc),
@@ -733,11 +730,6 @@ def build_receipt_metadata_from_result_no_match(
     address = gpt_result.get("merchant_address", "") if gpt_result else ""
     phone = gpt_result.get("merchant_phone", "") if gpt_result else ""
 
-    # Confidence and matched fields default to 0.0 and empty list
-    # Ensure confidence is always a float
-    match_confidence = (
-        float(gpt_result.get("confidence", 0.0)) if gpt_result else 0.0
-    )
     matched_fields = gpt_result.get("matched_fields", []) if gpt_result else []
 
     # Determine validated_by source
@@ -745,10 +737,7 @@ def build_receipt_metadata_from_result_no_match(
 
     # Reasoning message
     if gpt_result:
-        reasoning = (
-            f"No valid Google Places match; used GPT inference with confidence "
-            f"{match_confidence:.2f}"
-        )
+        reasoning = "No valid Google Places match; used GPT inference"
     else:
         reasoning = (
             "No valid Google Places match and no GPT inference was performed"
@@ -766,7 +755,6 @@ def build_receipt_metadata_from_result_no_match(
         merchant_category=merchant_category,
         address=address,
         phone_number=phone,
-        match_confidence=match_confidence,
         matched_fields=matched_fields,
         validated_by=validated_by,
         timestamp=datetime.now(timezone.utc),

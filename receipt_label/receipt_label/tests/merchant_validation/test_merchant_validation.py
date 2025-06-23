@@ -1,14 +1,14 @@
 # stdlib
 import json
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
-from datetime import datetime, timezone, timedelta
 
 # third‑party
 import pytest
+from receipt_dynamo.entities import ReceiptMetadata
 
 # local modules under test
 import receipt_label.merchant_validation.merchant_validation as mv
-from receipt_dynamo.entities import ReceiptMetadata
 
 
 # Fixtures
@@ -411,7 +411,6 @@ def test_build_receipt_metadata_from_result_no_match_defaults(mocker):
     mock_metadata = mocker.Mock()
     mock_metadata.image_id = "test-id"
     mock_metadata.receipt_id = 1
-    mock_metadata.match_confidence = 0.0
     mock_metadata.matched_fields = []
     mock_metadata.validated_by = "INFERENCE"
     mock_metadata.reasoning = "no valid google places match"
@@ -427,7 +426,6 @@ def test_build_receipt_metadata_from_result_no_match_defaults(mocker):
     result = mv.build_receipt_metadata_from_result_no_match(1, image_id, {})
 
     assert result.receipt_id == 1
-    assert result.match_confidence == 0.0
     assert result.matched_fields == []
     assert result.validated_by == "INFERENCE"
     assert "no valid google places match" in result.reasoning
@@ -439,7 +437,6 @@ def test_build_receipt_metadata_from_result_integrity(mocker):
     mock_metadata.receipt_id = 42
     mock_metadata.image_id = "test-id"
     mock_metadata.phone_number = "555-2222"
-    mock_metadata.match_confidence = 0.8
     mock_metadata.validated_by = "TEXT_SEARCH"
 
     # Mock the function
@@ -468,7 +465,6 @@ def test_build_receipt_metadata_from_result_integrity(mocker):
 
     assert result.receipt_id == 42
     assert result.phone_number == "555-2222"
-    assert result.match_confidence == 0.8
     assert result.validated_by == "TEXT_SEARCH"
 
 
@@ -570,7 +566,6 @@ def test_write_receipt_metadata_to_dynamo_success(mock_dynamo):
         merchant_category="Cat",
         address="123 X St",
         phone_number="555",
-        match_confidence=1.0,
         matched_fields=[],
         validated_by="TEXT_SEARCH",
         timestamp=datetime.now(timezone.utc),

@@ -1,25 +1,32 @@
-MAX_AGENT_ATTEMPTS = 2
-import os
-import json
-from typing import List, Optional, Dict, Any, Literal
 import enum
+import json
+import os
+
+MAX_AGENT_ATTEMPTS = 2
+AGENT_TIMEOUT_SECONDS = 300  # 5 minutes per agent attempt
+MAX_AGENT_TURNS = int(os.environ.get("MAX_AGENT_TURNS", 10))  # Max turns per agent attempt
+LOG_AGENT_FUNCTION_CALLS = os.environ.get("LOG_AGENT_FUNCTION_CALLS", "true").lower() == "true"
+import threading
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from datetime import datetime, timezone
-from logging import getLogger, StreamHandler, Formatter, INFO
+from logging import INFO, Formatter, StreamHandler, getLogger
+from typing import Any, Dict, List, Literal, Optional
+
 from agents import Agent, Runner, function_tool
-from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
 from receipt_dynamo.constants import ValidationMethod
+from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
 from receipt_label.merchant_validation import (
-    get_receipt_details,
-    write_receipt_metadata_to_dynamo,
-    extract_candidate_merchant_fields,
-    query_google_places,
-    is_match_found,
-    is_valid_google_match,
-    validate_match_with_gpt,
-    infer_merchant_with_gpt,
-    retry_google_search_with_inferred_data,
     build_receipt_metadata_from_result,
     build_receipt_metadata_from_result_no_match,
+    extract_candidate_merchant_fields,
+    get_receipt_details,
+    infer_merchant_with_gpt,
+    is_match_found,
+    is_valid_google_match,
+    query_google_places,
+    retry_google_search_with_inferred_data,
+    validate_match_with_gpt,
+    write_receipt_metadata_to_dynamo,
 )
 
 # Build a Literal type from the ValidationMethod enum values
@@ -41,22 +48,6 @@ if len(logger.handlers) == 0:
     logger.addHandler(handler)
 
 
-def calculate_final_confidence(
-    base_confidence: float, num_matched_fields: int
-) -> float:
-    """
-    Compute final confidence by bumping the base confidence
-    according to number of matched fields.
-    """
-    if not 0.0 <= base_confidence <= 1.0:
-        raise ValueError(
-            f"base_confidence must be between 0 and 1, got {base_confidence}"
-        )
-    # Bump: 0.1 for each field above 2, cap at 1.0
-    extra = max(0, (num_matched_fields - 2) * 0.1)
-    return min(1.0, base_confidence + extra)
-
-
 # Final metadata return tool
 @function_tool
 def tool_return_metadata(
@@ -64,7 +55,6 @@ def tool_return_metadata(
     merchant_name: str,
     address: str,
     phone_number: str,
-    match_confidence: float,
     merchant_category: str,
     matched_fields: List[str],
     validated_by: ValidatedBy,
@@ -78,7 +68,6 @@ def tool_return_metadata(
         merchant_name (str): The canonical merchant name.
         address (str): The merchant's address.
         phone_number (str): The merchant's phone number.
-        match_confidence (float): Confidence score for the match (0.0-1.0).
         merchant_category (str): The merchant's category.
         matched_fields (List[str]): List of receipt fields that were used to validate the match (e.g., ["name", "phone"]).
         validated_by (ValidatedBy): The method used for validation; one of the defined ValidationMethod enum values.
@@ -99,7 +88,6 @@ def tool_return_metadata(
         "merchant_name": merchant_name,
         "address": address,
         "phone_number": phone_number,
-        "match_confidence": match_confidence,
         "merchant_category": merchant_category,
         "matched_fields": matched_fields,
         "validated_by": validated_by,
@@ -113,7 +101,7 @@ def tool_search_by_phone(phone: str) -> Dict[str, Any]:
     """
     Search Google Places by a phone number.
     """
-    from receipt_label.merchant_validation.merchant_validation import PlacesAPI
+    from receipt_label.data.places_api import PlacesAPI
 
     return PlacesAPI(GOOGLE_PLACES_API_KEY).search_by_phone(phone)
 
@@ -124,7 +112,7 @@ def tool_search_by_address(address: str) -> Dict[str, Any]:
     """
     Search Google Places by address and return the full place details payload.
     """
-    from receipt_label.merchant_validation.merchant_validation import PlacesAPI
+    from receipt_label.data.places_api import PlacesAPI
 
     # Return the full Places API result for the address search
     result = PlacesAPI(GOOGLE_PLACES_API_KEY).search_by_address(address)
@@ -132,11 +120,13 @@ def tool_search_by_address(address: str) -> Dict[str, Any]:
 
 
 @function_tool
-def tool_search_nearby(lat: float, lng: float, radius: float) -> List[Dict[str, Any]]:
+def tool_search_nearby(
+    lat: float, lng: float, radius: float
+) -> List[Dict[str, Any]]:
     """
     Find nearby businesses given latitude, longitude, and radius.
     """
-    from receipt_label.merchant_validation.merchant_validation import PlacesAPI
+    from receipt_label.data.places_api import PlacesAPI
 
     return PlacesAPI(GOOGLE_PLACES_API_KEY).search_nearby(
         lat=lat, lng=lng, radius=radius
@@ -187,6 +177,257 @@ You may call the following tools in any order:
 )
 
 
+def run_agent_with_retries(
+    agent: Agent,
+    user_input: Dict[str, Any],
+    max_attempts: int = MAX_AGENT_ATTEMPTS,
+    timeout_seconds: int = AGENT_TIMEOUT_SECONDS
+) -> tuple[Optional[Dict[str, Any]], List[Dict[str, Any]]]:
+    """
+    Run the agent with retry logic, timeout, and collect partial results.
+    
+    Args:
+        agent: The Agent instance to run
+        user_input: The user input dictionary
+        max_attempts: Maximum number of retry attempts
+        timeout_seconds: Timeout in seconds for each agent attempt
+        
+    Returns:
+        tuple: (metadata dict or None, list of partial results)
+    """
+    metadata = None
+    partial_results = []
+    user_messages = [{"role": "user", "content": json.dumps(user_input)}]
+    
+    for attempt in range(1, max_attempts + 1):
+        logger.info(f"Starting agent attempt {attempt}/{max_attempts} for receipt {user_input['image_id']}#{user_input['receipt_id']} with {timeout_seconds}s timeout")
+        future = None
+        executor = None
+        try:
+            # Run the agent with timeout using ThreadPoolExecutor
+            executor = ThreadPoolExecutor(max_workers=1)
+            future = executor.submit(
+                Runner.run_sync,
+                agent,
+                user_messages,
+                max_turns=MAX_AGENT_TURNS  # Also limit max turns to prevent infinite loops
+            )
+            
+            try:
+                run_result = future.result(timeout=timeout_seconds)
+                
+                # Process agent results
+                metadata, partial = extract_agent_results(run_result, attempt)
+                partial_results.extend(partial)
+                
+                if metadata is not None:
+                    break
+                    
+            except FutureTimeoutError:
+                logger.error(f"Agent attempt {attempt} timed out after {timeout_seconds} seconds")
+                # Cancel the future to clean up resources
+                if future and not future.done():
+                    future.cancel()
+                    
+        except Exception as e:
+            logger.error(f"Agent attempt {attempt} failed with error: {type(e).__name__}: {e}")
+            # Ensure future is cancelled if exception occurs
+            if future and not future.done():
+                future.cancel()
+        finally:
+            # Ensure executor is properly shut down
+            if executor:
+                executor.shutdown(wait=True, cancel_futures=True)
+            
+        logger.warning(
+            f"Agent attempt {attempt} did not call tool_return_metadata; retrying." +
+            (f" Partial results collected: {len(partial_results)}" if partial_results else "")
+        )
+    
+    return metadata, partial_results
+
+
+# Import the improved sanitize_string from result_processor
+from receipt_label.merchant_validation.result_processor import sanitize_string
+
+
+def extract_agent_results(
+    run_result,
+    attempt: int
+) -> tuple[Optional[Dict[str, Any]], List[Dict[str, Any]]]:
+    """
+    Extract metadata and partial results from agent run result.
+    
+    Args:
+        run_result: The agent run result
+        attempt: Current attempt number for logging
+        
+    Returns:
+        tuple: (metadata dict or None, list of partial results)
+    """
+    metadata = None
+    partial_results = []
+    
+    # Log all function calls made by the agent for debugging
+    if LOG_AGENT_FUNCTION_CALLS:
+        function_calls = []
+        for item in run_result.new_items:
+            raw = getattr(item, "raw_item", None)
+            if hasattr(raw, "name") and raw.name:
+                function_calls.append(raw.name)
+        
+        if function_calls:
+            logger.info(f"Agent made {len(function_calls)} function calls: {', '.join(function_calls)}")
+    
+    # Extract structured metadata by parsing the function call arguments
+    for item in run_result.new_items:
+        raw = getattr(item, "raw_item", None)
+        if hasattr(raw, "name") and raw.name == "tool_return_metadata":
+            try:
+                metadata = json.loads(raw.arguments)
+                logger.info(f"Successfully parsed metadata on attempt {attempt}")
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse metadata JSON on attempt {attempt}: {e}")
+                # Try to get output as fallback
+                metadata = getattr(item, "output", None)
+                if metadata:
+                    logger.info(f"Retrieved metadata from output on attempt {attempt}")
+            except Exception as e:
+                logger.error(f"Unexpected error parsing metadata on attempt {attempt}: {type(e).__name__}: {e}")
+                metadata = getattr(item, "output", None)
+            break
+        
+        # Collect partial results from other function calls
+        elif hasattr(raw, "name") and raw.name in ["tool_search_by_phone", "tool_search_by_address", "tool_search_by_text"]:
+            try:
+                partial_result = {
+                    "function": raw.name,
+                    "result": getattr(item, "output", None)
+                }
+                partial_results.append(partial_result)
+                logger.info(f"Captured partial result from {raw.name}")
+            except Exception as e:
+                logger.warning(f"Failed to capture partial result: {e}")
+    
+    return metadata, partial_results
+
+
+def extract_best_partial_match(partial_results: List[Dict[str, Any]], user_input: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Extract the best match from partial results when agent fails.
+    
+    Prioritizes results in order:
+    1. Phone lookup results (most reliable)
+    2. Address lookup results  
+    3. Text search results
+    
+    Args:
+        partial_results: List of partial results from failed agent attempts
+        user_input: The original user input with extracted data
+        
+    Returns:
+        Dict with best match data or None if no usable results
+    """
+    if not partial_results:
+        return None
+    
+    # Group results by function type
+    phone_results = []
+    address_results = []
+    text_results = []
+    
+    for result in partial_results:
+        if result.get("function") == "tool_search_by_phone" and result.get("result"):
+            phone_results.append(result["result"])
+        elif result.get("function") == "tool_search_by_address" and result.get("result"):
+            address_results.append(result["result"])
+        elif result.get("function") == "tool_search_by_text" and result.get("result"):
+            text_results.append(result["result"])
+    
+    # Check phone results first (most reliable)
+    for result in phone_results:
+        if result.get("place_id") and result.get("name"):
+            return {
+                "place_id": result.get("place_id", ""),
+                "merchant_name": result.get("name", ""),
+                "address": result.get("formatted_address", ""),
+                "phone_number": result.get("formatted_phone_number", ""),
+                "source": "phone_lookup",
+                "matched_fields": ["phone"]  # We know phone matched
+            }
+    
+    # Then check address results
+    for result in address_results:
+        if result.get("place_id") and result.get("name"):
+            return {
+                "place_id": result.get("place_id", ""),
+                "merchant_name": result.get("name", ""),
+                "address": result.get("formatted_address", ""),
+                "phone_number": result.get("formatted_phone_number", ""),
+                "source": "address_lookup",
+                "matched_fields": ["address"]  # We know address matched
+            }
+    
+    # Finally check text search results
+    for result in text_results:
+        if result.get("place_id") and result.get("name"):
+            return {
+                "place_id": result.get("place_id", ""),
+                "merchant_name": result.get("name", ""),
+                "address": result.get("formatted_address", ""),
+                "phone_number": result.get("formatted_phone_number", ""),
+                "source": "text_search",
+                "matched_fields": []  # Text search is less certain
+            }
+    
+    return None
+
+
+def build_receipt_metadata_from_partial_result(
+    image_id: str,
+    receipt_id: int, 
+    partial_match: Dict[str, Any],
+    raw_text: List[str]
+) -> ReceiptMetadata:
+    """
+    Build ReceiptMetadata from a partial result when agent fails.
+    
+    Args:
+        image_id: Image UUID
+        receipt_id: Receipt ID
+        partial_match: Best partial match extracted from failed attempts
+        raw_text: Original receipt text
+        
+    Returns:
+        ReceiptMetadata object with partial data
+    """
+    # Map source to ValidationMethod
+    source_to_method = {
+        "phone_lookup": ValidationMethod.PHONE_LOOKUP,
+        "address_lookup": ValidationMethod.ADDRESS_LOOKUP,
+        "text_search": ValidationMethod.TEXT_SEARCH
+    }
+    
+    validated_by = source_to_method.get(
+        partial_match.get("source", ""), 
+        ValidationMethod.INFERENCE
+    )
+    
+    return ReceiptMetadata(
+        image_id=image_id,
+        receipt_id=receipt_id,
+        place_id=partial_match.get("place_id", ""),
+        merchant_name=partial_match.get("merchant_name", ""),
+        address=partial_match.get("address", ""),
+        phone_number=partial_match.get("phone_number", ""),
+        merchant_category="",  # Not available in partial results
+        matched_fields=partial_match.get("matched_fields", []),
+        timestamp=datetime.now(timezone.utc),
+        validated_by=validated_by,
+        reasoning=f"Extracted from partial {partial_match.get('source', 'unknown')} results after agent failure"
+    )
+
+
 def validate_handler(event, context):
     logger.info("Starting validate_single_receipt_handler")
     image_id = event["image_id"]
@@ -208,64 +449,82 @@ def validate_handler(event, context):
         "raw_text": [line.text for line in receipt_lines],
         "extracted_data": {
             key: [w.text for w in words]
-            for key, words in extract_candidate_merchant_fields(receipt_words).items()
+            for key, words in extract_candidate_merchant_fields(
+                receipt_words
+            ).items()
         },
     }
 
-    # Run the agent with retries
-    metadata = None
-    user_messages = [{"role": "user", "content": json.dumps(user_input)}]
-    for attempt in range(1, MAX_AGENT_ATTEMPTS + 1):
-        run_result = Runner.run_sync(agent, user_messages)
-        # Extract structured metadata by parsing the function call arguments
-        for item in run_result.new_items:
-            raw = getattr(item, "raw_item", None)
-            if hasattr(raw, "name") and raw.name == "tool_return_metadata":
-                try:
-                    metadata = json.loads(raw.arguments)
-                except Exception:
-                    metadata = getattr(item, "output", None)
-                break
-        if metadata is not None:
-            break
-        logger.warning(
-            f"Agent attempt {attempt} did not call tool_return_metadata; retrying."
-        )
-    # If still no metadata, fallback to no match
+    # Run the agent with retries using the helper function
+    metadata, partial_results = run_agent_with_retries(agent, user_input)
+    
+    # If still no metadata, try to use partial results or fallback to no match
     if metadata is None:
-        logger.error("All agent attempts failed; using no-match fallback.")
-        no_match_meta = build_receipt_metadata_from_result_no_match(
-            image_id, receipt_id, user_input["raw_text"]
+        logger.error(
+            "Agent validation failed",
+            extra={
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "attempts": MAX_AGENT_ATTEMPTS,
+                "partial_results_count": len(partial_results),
+                "partial_result_types": [r.get("function") for r in partial_results] if partial_results else [],
+                "user_input_keys": list(user_input.keys()),
+                "extracted_data_types": list(user_input.get("extracted_data", {}).keys())
+            }
         )
+        
+        # Try to extract useful data from partial results
+        best_partial_match = extract_best_partial_match(partial_results, user_input)
+        
+        if best_partial_match:
+            logger.info(f"Using best partial match from {best_partial_match.get('source', 'unknown')}")
+            # Build metadata from the best partial result
+            no_match_meta = build_receipt_metadata_from_partial_result(
+                image_id, receipt_id, best_partial_match, user_input["raw_text"]
+            )
+        else:
+            # Use build_receipt_metadata_from_result_no_match as fallback
+            no_match_meta = build_receipt_metadata_from_result_no_match(
+                image_id, receipt_id, user_input["raw_text"]
+            )
+        
+        # Add context about the failure to the reasoning
+        failure_context = f"Agent validation failed after {MAX_AGENT_ATTEMPTS} attempts."
+        if partial_results:
+            failure_context += f" Partial results were collected from: {', '.join([r['function'] for r in partial_results])}"
+        no_match_meta.reasoning = f"{failure_context} {no_match_meta.reasoning}"
+        
         write_receipt_metadata_to_dynamo(no_match_meta)
+        
         # Return the receipt info for the next step even in the no-match case
-        return {"image_id": image_id, "receipt_id": receipt_id, "status": "no_match"}
+        return {
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "status": "no_match",
+            "failure_reason": "agent_attempts_exhausted",
+            "partial_data_used": bool(best_partial_match)
+        }
 
-    # Right after parsing `metadata` and before you build the ReceiptMetadata:
-    raw_vb = metadata.get("validated_by", "").upper().replace(" ", "_")
-    if raw_vb in ValidationMethod.__members__:
-        vb_enum = ValidationMethod[raw_vb]
-    else:
-        vb_enum = ValidationMethod.INFERENCE
-    matched_fields = list({f.strip() for f in metadata["matched_fields"] if f.strip()})
+    # The validated_by field has already been validated by tool_return_metadata
+    # so we can use it directly (defaulting to INFERENCE if missing)
+    validated_by = metadata.get("validated_by", ValidationMethod.INFERENCE.value)
+    matched_fields = list(
+        {f.strip() for f in metadata.get("matched_fields", []) if f.strip()}
+    )
     logger.info(f"matched_fields: {matched_fields}")
-    base = float(metadata["match_confidence"])
-    final_score = calculate_final_confidence(base, len(matched_fields))
-    merchant_category = metadata.get("merchant_category", "")
 
     meta = ReceiptMetadata(
         image_id=image_id,
         receipt_id=receipt_id,
-        place_id=metadata["place_id"],
-        merchant_name=metadata["merchant_name"].strip('"').strip(),
-        address=metadata["address"].strip('"').strip(),
-        phone_number=metadata["phone_number"].strip('"').strip(),
-        merchant_category=merchant_category.strip('"').strip(),
-        match_confidence=final_score,
+        place_id=sanitize_string(metadata.get("place_id", "")),
+        merchant_name=sanitize_string(metadata.get("merchant_name", "")),
+        address=sanitize_string(metadata.get("address", "")),
+        phone_number=sanitize_string(metadata.get("phone_number", "")),
+        merchant_category=sanitize_string(metadata.get("merchant_category", "")),
         matched_fields=matched_fields,
         timestamp=datetime.now(timezone.utc),
-        validated_by=vb_enum,
-        reasoning=metadata["reasoning"].strip('"').strip(),
+        validated_by=validated_by,
+        reasoning=sanitize_string(metadata.get("reasoning", "")),
     )
     logger.info(f"Got metadata for {image_id} {receipt_id}\n{dict(meta)}")
 
@@ -278,6 +537,6 @@ def validate_handler(event, context):
         "image_id": image_id,
         "receipt_id": receipt_id,
         "status": "processed",
-        "place_id": metadata["place_id"],
-        "merchant_name": metadata["merchant_name"].strip('"').strip(),
+        "place_id": sanitize_string(metadata.get("place_id", "")),
+        "merchant_name": sanitize_string(metadata.get("merchant_name", "")),
     }
