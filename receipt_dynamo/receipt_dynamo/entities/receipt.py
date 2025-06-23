@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Generator, Tuple
+from typing import Any, Generator, Optional, Tuple
 
 from receipt_dynamo.entities.util import (
     _format_float,
@@ -50,11 +50,11 @@ class Receipt:
         top_right: dict,
         bottom_left: dict,
         bottom_right: dict,
-        sha256: str = None,
-        cdn_s3_bucket: str = None,
-        cdn_s3_key: str = None,
-        cdn_webp_s3_key: str = None,
-        cdn_avif_s3_key: str = None,
+        sha256: Optional[str] = None,
+        cdn_s3_bucket: Optional[str] = None,
+        cdn_s3_key: Optional[str] = None,
+        cdn_webp_s3_key: Optional[str] = None,
+        cdn_avif_s3_key: Optional[str] = None,
     ):
         """Initializes a new Receipt object for DynamoDB.
 

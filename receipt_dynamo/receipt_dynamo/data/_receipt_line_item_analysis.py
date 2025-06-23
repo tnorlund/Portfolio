@@ -4,10 +4,11 @@ from receipt_dynamo import (
     ReceiptLineItemAnalysis,
     itemToReceiptLineItemAnalysis,
 )
+from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
-class _ReceiptLineItemAnalysis:
+class _ReceiptLineItemAnalysis(DynamoClientProtocol):
     """
     A class used to access receipt line item analyses in DynamoDB.
 

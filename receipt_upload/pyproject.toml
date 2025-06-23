@@ -32,20 +32,23 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-  "Pillow",
+  "Pillow>=11.2.1",
   "pillow-avif-plugin>=1.3.0",
   "boto3>=1.26.0",
 ]
 keywords = ["dynamo", "dynamodb", "receipts", "aws", "database"]
 
 [project.optional-dependencies]
-dev = [
+test = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
+    "pytest-mock>=3.13.0",
+]
+dev = [
     "black>=23.0",
     "isort>=5.0",
     "mypy>=1.0",
-    "flake8>=6.0",
+    "pylint>=3.0.0,<4.0.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -74,6 +77,33 @@ ignore_errors = true
 minversion = "7.0"
 addopts = "-ra -q"
 testpaths = [
-    "tests",
+    "test",
 ]
 python_files = ["test_*.py"]
+markers = [
+    "unit: mark test as unit test",
+    "integration: mark test as integration test", 
+    "end_to_end: mark test as end-to-end test",
+]
+
+[tool.pylint.format]
+max-line-length = 79
+
+[tool.pylint.messages_control]
+disable = [
+    "too-few-public-methods",
+    "too-many-arguments",
+    "too-many-locals", 
+    "too-many-instance-attributes",
+    "too-many-branches",
+    "missing-module-docstring",
+    "missing-class-docstring", 
+    "missing-function-docstring",
+]
+
+[tool.pylint.basic]
+good-names = ["i", "j", "k", "ex", "Run", "_", "id", "pk", "sk"]
+
+[tool.pylint.design]
+max-args = 10
+max-locals = 20 

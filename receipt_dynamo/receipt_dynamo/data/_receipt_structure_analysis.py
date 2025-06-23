@@ -1,14 +1,16 @@
+from typing import Any, Dict, List, Optional, Tuple
+
 from botocore.exceptions import ClientError
-from typing import List, Optional, Dict, Tuple, Any
 
 from receipt_dynamo import (
     ReceiptStructureAnalysis,
     itemToReceiptStructureAnalysis,
 )
+from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
-class _ReceiptStructureAnalysis:
+class _ReceiptStructureAnalysis(DynamoClientProtocol):
     """
     A class used to access receipt structure analyses in DynamoDB.
 

@@ -1,10 +1,13 @@
-from receipt_dynamo.entities.util import assert_valid_uuid
-from receipt_dynamo.constants import OCRStatus
-from receipt_dynamo.entities.ocr_job import OCRJob, itemToOCRJob
+from typing import Optional
 from botocore.exceptions import ClientError
 
+from receipt_dynamo.constants import OCRStatus
+from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.entities.ocr_job import OCRJob, itemToOCRJob
+from receipt_dynamo.entities.util import assert_valid_uuid
 
-class _OCRJob:
+
+class _OCRJob(DynamoClientProtocol):
     def addOCRJob(self, ocr_job: OCRJob):
         """Adds an OCR job to the database
 
@@ -35,15 +38,17 @@ class _OCRJob:
                     f"OCR job for Image ID '{ocr_job.image_id}' already exists"
                 ) from e
             elif error_code == "ResourceNotFoundException":
-                raise Exception(
+                raise RuntimeError(
                     f"Could not add OCR job to DynamoDB: {e}"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise RuntimeError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise RuntimeError(f"Internal server error: {e}") from e
             else:
-                raise Exception(
+                raise RuntimeError(
                     f"Could not add OCR job to DynamoDB: {e}"
                 ) from e
 
@@ -78,11 +83,11 @@ class _OCRJob:
             except ClientError as e:
                 error_code = e.response.get("Error", {}).get("Code", "")
                 if error_code == "ProvisionedThroughputExceededException":
-                    raise Exception(
+                    raise RuntimeError(
                         f"Provisioned throughput exceeded: {e}"
                     ) from e
                 elif error_code == "InternalServerError":
-                    raise Exception(f"Internal server error: {e}") from e
+                    raise RuntimeError(f"Internal server error: {e}") from e
             unprocessed = response.get("UnprocessedItems", {})
             while unprocessed.get(self.table_name):
                 try:
@@ -93,13 +98,15 @@ class _OCRJob:
                 except ClientError as e:
                     error_code = e.response.get("Error", {}).get("Code", "")
                     if error_code == "ProvisionedThroughputExceededException":
-                        raise Exception(
+                        raise RuntimeError(
                             f"Provisioned throughput exceeded: {e}"
                         ) from e
                     elif error_code == "InternalServerError":
-                        raise Exception(f"Internal server error: {e}") from e
+                        raise RuntimeError(
+                            f"Internal server error: {e}"
+                        ) from e
                     else:
-                        raise Exception(
+                        raise RuntimeError(
                             f"Could not add OCR jobs to DynamoDB: {e}"
                         ) from e
 
@@ -120,13 +127,15 @@ class _OCRJob:
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise RuntimeError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise RuntimeError(f"Internal server error: {e}") from e
             elif error_code == "AccessDeniedException":
-                raise Exception(f"Access denied: {e}") from e
+                raise RuntimeError(f"Access denied: {e}") from e
             else:
-                raise Exception(f"Error updating OCR job: {e}") from e
+                raise RuntimeError(f"Error updating OCR job: {e}") from e
 
     def getOCRJob(self, image_id: str, job_id: str) -> OCRJob:
         """Gets an OCR job from the database
@@ -164,16 +173,103 @@ class _OCRJob:
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise RuntimeError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise RuntimeError(f"Internal server error: {e}") from e
             elif error_code == "AccessDeniedException":
-                raise Exception(f"Access denied: {e}") from e
+                raise RuntimeError(f"Access denied: {e}") from e
             else:
-                raise Exception(f"Error getting OCR job: {e}") from e
+                raise RuntimeError(f"Error getting OCR job: {e}") from e
+
+    def deleteOCRJob(self, ocr_job: OCRJob):
+        """Deletes an OCR job from the database
+
+        Args:
+            image_id (str): The image ID of the OCR job
+            job_id (str): The job ID of the OCR job
+        """
+        if ocr_job is None:
+            raise ValueError("OCR job is required and cannot be None.")
+        if not isinstance(ocr_job, OCRJob):
+            raise ValueError(
+                "OCR job must be an instance of the OCRJob class."
+            )
+        try:
+            self._client.delete_item(
+                TableName=self.table_name,
+                Key={
+                    "PK": {"S": f"IMAGE#{ocr_job.image_id}"},
+                    "SK": {"S": f"OCR_JOB#{ocr_job.job_id}"},
+                },
+                ConditionExpression="attribute_exists(PK)",
+            )
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ConditionalCheckFailedException":
+                raise ValueError(
+                    f"OCR job for Image ID '{ocr_job.image_id}' and Job ID '{ocr_job.job_id}' does not exist."
+                ) from e
+            elif error_code == "ProvisionedThroughputExceededException":
+                raise RuntimeError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
+            elif error_code == "InternalServerError":
+                raise RuntimeError(f"Internal server error: {e}") from e
+            elif error_code == "AccessDeniedException":
+                raise RuntimeError(f"Access denied: {e}") from e
+            else:
+                raise RuntimeError(f"Error deleting OCR job: {e}") from e
+
+    def deleteOCRJobs(self, ocr_jobs: list[OCRJob]):
+        """Deletes a list of OCR jobs from the database
+
+        Args:
+            ocr_jobs (list[OCRJob]): The list of OCR jobs to delete
+        """
+        if ocr_jobs is None:
+            raise ValueError("ocr_jobs is required and cannot be None.")
+        if not isinstance(ocr_jobs, list):
+            raise ValueError("ocr_jobs must be a list of OCRJob instances.")
+        if not all(isinstance(job, OCRJob) for job in ocr_jobs):
+            raise ValueError(
+                "All ocr_jobs must be instances of the OCRJob class."
+            )
+        for i in range(0, len(ocr_jobs), 25):
+            chunk = ocr_jobs[i : i + 25]
+            transact_items = []
+            for item in chunk:
+                transact_items.append(
+                    {
+                        "Delete": {
+                            "TableName": self.table_name,
+                            "Key": item.key(),
+                            "ConditionExpression": "attribute_exists(PK) AND attribute_exists(SK)",
+                        }
+                    }
+                )
+            try:
+                self._client.transact_write_items(TransactItems=transact_items)
+            except ClientError as e:
+                error_code = e.response.get("Error", {}).get("Code", "")
+                if error_code == "ConditionalCheckFailedException":
+                    raise ValueError("OCR job does not exist") from e
+                elif error_code == "ProvisionedThroughputExceededException":
+                    raise RuntimeError(
+                        f"Provisioned throughput exceeded: {e}"
+                    ) from e
+                elif error_code == "InternalServerError":
+                    raise RuntimeError(f"Internal server error: {e}") from e
+                elif error_code == "AccessDeniedException":
+                    raise RuntimeError(f"Access denied: {e}") from e
+                else:
+                    raise RuntimeError(f"Error deleting OCR jobs: {e}") from e
 
     def listOCRJobs(
-        self, limit: int = None, lastEvaluatedKey: dict | None = None
+        self,
+        limit: Optional[int] = None,
+        lastEvaluatedKey: Optional[dict] = None,
     ) -> tuple[list[OCRJob], dict | None]:
         """Lists all OCR jobs from the database
 
@@ -191,7 +287,6 @@ class _OCRJob:
         if lastEvaluatedKey is not None:
             if not isinstance(lastEvaluatedKey, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
-            validate_last_evaluated_key(lastEvaluatedKey)
 
         jobs = []
         try:
@@ -230,18 +325,20 @@ class _OCRJob:
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise RuntimeError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise RuntimeError(f"Internal server error: {e}") from e
             elif error_code == "AccessDeniedException":
-                raise Exception(f"Access denied: {e}") from e
+                raise RuntimeError(f"Access denied: {e}") from e
             else:
-                raise Exception(f"Error listing OCR jobs: {e}") from e
+                raise RuntimeError(f"Error listing OCR jobs: {e}") from e
 
     def getOCRJobsByStatus(
         self,
         status: OCRStatus,
-        limit: int = None,
+        limit: Optional[int] = None,
         lastEvaluatedKey: dict | None = None,
     ) -> tuple[list[OCRJob], dict | None]:
         """Gets OCR jobs by status from the database
@@ -265,7 +362,6 @@ class _OCRJob:
         if lastEvaluatedKey is not None:
             if not isinstance(lastEvaluatedKey, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
-            validate_last_evaluated_key(lastEvaluatedKey)
 
         jobs = []
         try:
@@ -306,12 +402,14 @@ class _OCRJob:
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise RuntimeError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise RuntimeError(f"Internal server error: {e}") from e
             elif error_code == "AccessDeniedException":
-                raise Exception(f"Access denied: {e}") from e
+                raise RuntimeError(f"Access denied: {e}") from e
             else:
-                raise Exception(
+                raise RuntimeError(
                     f"Error getting OCR jobs by status: {e}"
                 ) from e
