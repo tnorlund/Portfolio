@@ -1,16 +1,16 @@
 # _word_tag.py
-
 from typing import Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo import WordTag, itemToWordTag
+from receipt_dynamo.data._base import DynamoClientProtocol
 
 # DynamoDB batch_write_item can handle up to 25 items per call
 CHUNK_SIZE = 25
 
 
-class _WordTag:
+class _WordTag(DynamoClientProtocol):
     """
     Provides methods for accessing WordTag items in DynamoDB.
 

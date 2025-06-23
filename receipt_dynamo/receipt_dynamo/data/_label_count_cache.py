@@ -2,13 +2,14 @@ from typing import Dict, List, Optional
 
 from botocore.exceptions import ClientError
 
+from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.label_count_cache import (
     LabelCountCache,
     itemToLabelCountCache,
 )
 
 
-class _LabelCountCache:
+class _LabelCountCache(DynamoClientProtocol):
     """Accessor methods for LabelCountCache items in DynamoDB."""
 
     def addLabelCountCache(self, item: LabelCountCache) -> None:

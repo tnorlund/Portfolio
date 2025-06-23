@@ -2,6 +2,7 @@ from typing import Optional
 
 from botocore.exceptions import ClientError
 
+from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.job_metric import JobMetric, itemToJobMetric
 from receipt_dynamo.entities.util import assert_valid_uuid
 
@@ -19,7 +20,7 @@ def validate_last_evaluated_key(lek: dict) -> None:
             )
 
 
-class _JobMetric:
+class _JobMetric(DynamoClientProtocol):
     def addJobMetric(self, job_metric: JobMetric):
         """Adds a job metric to the database
 

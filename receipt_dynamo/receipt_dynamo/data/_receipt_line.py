@@ -1,13 +1,14 @@
 from botocore.exceptions import ClientError
 
 from receipt_dynamo import ReceiptLine, itemToReceiptLine
-from receipt_dynamo.entities.util import assert_valid_uuid
 from receipt_dynamo.constants import EmbeddingStatus
+from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.entities.util import assert_valid_uuid
 
 CHUNK_SIZE = 25
 
 
-class _ReceiptLine:
+class _ReceiptLine(DynamoClientProtocol):
     """
     A class used to represent a ReceiptLine in the database (similar to _line.py).
 

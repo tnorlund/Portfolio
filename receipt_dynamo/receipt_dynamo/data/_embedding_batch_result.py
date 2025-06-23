@@ -1,14 +1,15 @@
-from typing import List, Optional, Tuple, Dict
+from typing import Dict, List, Optional, Tuple
 from uuid import uuid4
 
 from botocore.exceptions import ClientError
 
+from receipt_dynamo.constants import EmbeddingStatus
+from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.embedding_batch_result import (
     EmbeddingBatchResult,
     itemToEmbeddingBatchResult,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
-from receipt_dynamo.constants import EmbeddingStatus
 
 
 def validate_last_evaluated_key(lek: dict) -> None:
@@ -24,7 +25,7 @@ def validate_last_evaluated_key(lek: dict) -> None:
             )
 
 
-class _EmbeddingBatchResult:
+class _EmbeddingBatchResult(DynamoClientProtocol):
     """DynamoDB accessor for EmbeddingBatchResult items."""
 
     def addEmbeddingBatchResult(

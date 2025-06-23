@@ -1,13 +1,15 @@
-from receipt_dynamo.entities.util import assert_valid_uuid
+from botocore.exceptions import ClientError
+
 from receipt_dynamo.constants import OCRStatus
+from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.ocr_routing_decision import (
     OCRRoutingDecision,
     itemToOCRRoutingDecision,
 )
-from botocore.exceptions import ClientError
+from receipt_dynamo.entities.util import assert_valid_uuid
 
 
-class _OCRRoutingDecision:
+class _OCRRoutingDecision(DynamoClientProtocol):
     def addOCRRoutingDecision(self, ocr_routing_decision: OCRRoutingDecision):
         if ocr_routing_decision is None:
             raise ValueError("ocr_routing_decision cannot be None")
@@ -159,3 +161,80 @@ class _OCRRoutingDecision:
                 raise Exception(
                     f"Error getting OCR routing decision: {e}"
                 ) from e
+
+    def deleteOCRRoutingDecision(
+        self, ocr_routing_decision: OCRRoutingDecision
+    ):
+        if ocr_routing_decision is None:
+            raise ValueError("ocr_routing_decision cannot be None")
+        if not isinstance(ocr_routing_decision, OCRRoutingDecision):
+            raise ValueError(
+                "ocr_routing_decision must be an instance of OCRRoutingDecision"
+            )
+        try:
+            self._client.delete_item(
+                TableName=self.table_name,
+                Key={
+                    "PK": {"S": f"IMAGE#{ocr_routing_decision.image_id}"},
+                    "SK": {"S": f"ROUTING#{ocr_routing_decision.job_id}"},
+                },
+                ConditionExpression="attribute_exists(PK)",
+            )
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ConditionalCheckFailedException":
+                raise ValueError(
+                    f"OCR routing decision for Image ID '{ocr_routing_decision.image_id}' and Job ID '{ocr_routing_decision.job_id}' does not exist."
+                ) from e
+            else:
+                raise Exception(
+                    f"Error deleting OCR routing decision: {e}"
+                ) from e
+
+    def deleteOCRRoutingDecisions(
+        self, ocr_routing_decisions: list[OCRRoutingDecision]
+    ):
+        if ocr_routing_decisions is None:
+            raise ValueError("ocr_routing_decisions cannot be None")
+        if not isinstance(ocr_routing_decisions, list):
+            raise ValueError("ocr_routing_decisions must be a list")
+        if not all(
+            isinstance(decision, OCRRoutingDecision)
+            for decision in ocr_routing_decisions
+        ):
+            raise ValueError(
+                "All ocr_routing_decisions must be instances of OCRRoutingDecision"
+            )
+        for i in range(0, len(ocr_routing_decisions), 25):
+            chunk = ocr_routing_decisions[i : i + 25]
+            transact_items = []
+            for item in chunk:
+                transact_items.append(
+                    {
+                        "Delete": {
+                            "TableName": self.table_name,
+                            "Key": item.key(),
+                            "ConditionExpression": "attribute_exists(PK) AND attribute_exists(SK)",
+                        }
+                    }
+                )
+            try:
+                self._client.transact_write_items(TransactItems=transact_items)
+            except ClientError as e:
+                error_code = e.response.get("Error", {}).get("Code", "")
+                if error_code == "ConditionalCheckFailedException":
+                    raise ValueError(
+                        "OCR routing decision does not exist"
+                    ) from e
+                elif error_code == "ProvisionedThroughputExceededException":
+                    raise RuntimeError(
+                        f"Provisioned throughput exceeded: {e}"
+                    ) from e
+                elif error_code == "InternalServerError":
+                    raise RuntimeError(f"Internal server error: {e}") from e
+                elif error_code == "AccessDeniedException":
+                    raise RuntimeError(f"Access denied: {e}") from e
+                else:
+                    raise RuntimeError(
+                        f"Error deleting OCR routing decisions: {e}"
+                    ) from e

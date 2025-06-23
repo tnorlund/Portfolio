@@ -1,14 +1,14 @@
 # _receipt_word_tag.py
-
 from botocore.exceptions import ClientError
 
 from receipt_dynamo import ReceiptWordTag, itemToReceiptWordTag
+from receipt_dynamo.data._base import DynamoClientProtocol
 
 # DynamoDB batch_write_item can handle up to 25 items per call
 CHUNK_SIZE = 25
 
 
-class _ReceiptWordTag:
+class _ReceiptWordTag(DynamoClientProtocol):
     """
     Provides methods for accessing ReceiptWordTag items in DynamoDB.
 

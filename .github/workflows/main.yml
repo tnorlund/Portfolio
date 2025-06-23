@@ -32,6 +32,84 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
+  lint-portfolio:
+    name: Lint TypeScript/Next.js
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: "portfolio/package-lock.json"
+
+      - name: Install dependencies
+        working-directory: portfolio
+        run: npm install
+
+      - name: Run ESLint
+        working-directory: portfolio
+        run: npm run lint
+
+      - name: Run TypeScript type check
+        working-directory: portfolio
+        run: npm run type-check
+
+  test-portfolio:
+    name: Test TypeScript/Next.js
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: "portfolio/package-lock.json"
+
+      - name: Install dependencies
+        working-directory: portfolio
+        run: npm install
+
+      - name: Run Jest tests with coverage
+        working-directory: portfolio
+        run: npm run test:ci
+
+      - name: Upload test coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-portfolio
+          path: portfolio/coverage
+          if-no-files-found: warn
+          retention-days: 1
+
+  docs:
+    name: Validate Documentation
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: "portfolio/package-lock.json"
+
+      - name: Install dependencies
+        working-directory: portfolio
+        run: npm install
+
+      - name: Generate and validate documentation
+        working-directory: portfolio
+        run: npm run ci:docs
+
   test:
     name: Run ${{ matrix.test-type }} Tests
     needs: lint
@@ -71,7 +149,7 @@ jobs:
 
   deploy:
     name: Build and Deploy
-    needs: test
+    needs: [test, lint-portfolio, test-portfolio, docs]
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout Repository

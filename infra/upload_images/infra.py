@@ -25,7 +25,11 @@ pinecone_index_name = config.require("PINECONE_INDEX_NAME")
 pinecone_host = config.require("PINECONE_HOST")
 
 code = AssetArchive(
-    {"lambda.py": FileAsset(os.path.join(os.path.dirname(__file__), "lambda.py"))}
+    {
+        "lambda.py": FileAsset(
+            os.path.join(os.path.dirname(__file__), "lambda.py")
+        )
+    }
 )
 stack = pulumi.get_stack()
 
@@ -179,11 +183,14 @@ class UploadImages(ComponentResource):
             code=AssetArchive(
                 {
                     "upload_receipt.py": FileAsset(
-                        os.path.join(os.path.dirname(__file__), "upload_receipt.py")
+                        os.path.join(
+                            os.path.dirname(__file__), "upload_receipt.py"
+                        )
                     )
                 }
             ),
-            layers=[dynamo_layer.arn, label_layer.arn, upload_layer.arn],
+            architectures=["arm64"],
+            layers=[dynamo_layer.arn, upload_layer.arn],
             tags={"environment": stack},
             environment=FunctionEnvironmentArgs(
                 variables={
@@ -226,6 +233,61 @@ class UploadImages(ComponentResource):
             f"{name}-process-ocr-sqs-exec",
             role=process_ocr_role.name,
             policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole",
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Add DynamoDB access for the process OCR Lambda
+        RolePolicy(
+            f"{name}-process-ocr-dynamo-policy",
+            role=process_ocr_role.id,
+            policy=Output.all(
+                dynamodb_table.name,
+                raw_bucket.arn,
+                site_bucket.arn,
+                image_bucket.arn,
+                self.ocr_queue.arn,
+            ).apply(
+                lambda args: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "dynamodb:DescribeTable",
+                                    "dynamodb:GetItem",
+                                    "dynamodb:BatchGetItem",
+                                    "dynamodb:Query",
+                                    "dynamodb:PutItem",
+                                    "dynamodb:UpdateItem",
+                                    "dynamodb:BatchWriteItem",
+                                ],
+                                "Resource": f"arn:aws:dynamodb:*:*:table/{args[0]}*",
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "s3:GetObject",
+                                    "s3:PutObject",
+                                    "s3:HeadObject",
+                                ],
+                                "Resource": [
+                                    args[1] + "/*",  # raw_bucket
+                                    args[2] + "/*",  # site_bucket
+                                    args[3] + "/*",  # image_bucket
+                                ],
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": "sqs:SendMessage",
+                                "Resource": args[
+                                    4
+                                ],  # ocr_queue.arn (now args[4])
+                            },
+                        ],
+                    }
+                )
+            ),
             opts=ResourceOptions(parent=self),
         )
 
@@ -293,8 +355,10 @@ class UploadImages(ComponentResource):
             ),
             environment=FunctionEnvironmentArgs(
                 variables={
-                    "BUCKET_NAME": image_bucket.bucket,
                     "DYNAMO_TABLE_NAME": dynamodb_table.name,
+                    "S3_BUCKET": image_bucket.bucket,
+                    "RAW_BUCKET": raw_bucket.bucket,
+                    "SITE_BUCKET": site_bucket.bucket,
                     "OCR_JOB_QUEUE_URL": self.ocr_queue.url,
                     "OCR_RESULTS_QUEUE_URL": self.ocr_results_queue.url,
                 }
@@ -302,6 +366,7 @@ class UploadImages(ComponentResource):
             tags={"environment": stack},
             timeout=300,  # 5 minutes
             memory_size=1024,  # 1GB
+            architectures=["arm64"],
             layers=[dynamo_layer.arn, label_layer.arn, upload_layer.arn],
             opts=ResourceOptions(parent=self, ignore_changes=["layers"]),
         )
@@ -317,7 +382,9 @@ class UploadImages(ComponentResource):
 
         log_group = aws.cloudwatch.LogGroup(
             f"{name}-api-gw-log-group",
-            name=api.id.apply(lambda id: f"API-Gateway-Execution-Logs_{id}_default"),
+            name=api.id.apply(
+                lambda id: f"API-Gateway-Execution-Logs_{id}_default"
+            ),
             retention_in_days=14,
             opts=ResourceOptions(parent=self),
         )

@@ -3,13 +3,14 @@ from typing import Dict, Optional, Tuple
 from botocore.exceptions import ClientError
 
 from receipt_dynamo import Line, itemToLine
+from receipt_dynamo.data._base import DynamoClientProtocol
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 # So let's chunk the items in groups of 25
 CHUNK_SIZE = 25
 
 
-class _Line:
+class _Line(DynamoClientProtocol):
     """
     A class used to represent a Line in the database.
 

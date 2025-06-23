@@ -2,6 +2,7 @@ from typing import Dict, List, Optional, Tuple, Union
 
 from botocore.exceptions import ClientError
 
+from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.receipt_field import (
     ReceiptField,
     itemToReceiptField,
@@ -22,7 +23,7 @@ def validate_last_evaluated_key(lek: dict) -> None:
             )
 
 
-class _ReceiptField:
+class _ReceiptField(DynamoClientProtocol):
     def addReceiptField(self, receipt_field: ReceiptField):
         """Adds a receipt field to the database
 

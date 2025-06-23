@@ -44,3 +44,31 @@ You don’t have to ever use `eject`. The curated feature set is suitable for sm
 You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
 
 To learn React, check out the [React documentation](https://reactjs.org/).
+
+## API Test
+
+A Node.js test suite lives in `tests/test_receipt.ts` and covers the API client in
+`services/api`. The test mocks network calls using a real API response stored in
+`tests/fixtures/receipts.json`.
+
+### Preparing test data
+
+When network access is available run:
+
+```bash
+node scripts/download-api-data.js
+```
+
+This downloads the latest API data and writes it to
+`tests/fixtures/receipts.json` so the suite can run in an air-gapped
+environment.
+
+### Running the test
+
+Compile the test and execute it with Node's test runner:
+
+```bash
+npx tsc tests/test_receipt.ts --outDir tests/dist
+node --test tests/dist/test_receipt.js
+```
+

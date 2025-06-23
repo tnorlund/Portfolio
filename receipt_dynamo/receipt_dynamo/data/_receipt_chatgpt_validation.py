@@ -4,10 +4,11 @@ from receipt_dynamo import (
     ReceiptChatGPTValidation,
     itemToReceiptChatGPTValidation,
 )
+from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
-class _ReceiptChatGPTValidation:
+class _ReceiptChatGPTValidation(DynamoClientProtocol):
     """
     A class used to access receipt ChatGPT validations in DynamoDB.
 

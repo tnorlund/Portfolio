@@ -2,21 +2,23 @@ from typing import Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
+from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.entities.receipt_analysis import ReceiptAnalysis
+from receipt_dynamo.entities.receipt_chatgpt_validation import (
+    ReceiptChatGPTValidation,
+    itemToReceiptChatGPTValidation,
+)
 from receipt_dynamo.entities.receipt_label_analysis import (
     ReceiptLabelAnalysis,
     itemToReceiptLabelAnalysis,
-)
-from receipt_dynamo.entities.receipt_structure_analysis import (
-    ReceiptStructureAnalysis,
-    itemToReceiptStructureAnalysis,
 )
 from receipt_dynamo.entities.receipt_line_item_analysis import (
     ReceiptLineItemAnalysis,
     itemToReceiptLineItemAnalysis,
 )
-from receipt_dynamo.entities.receipt_validation_summary import (
-    ReceiptValidationSummary,
-    itemToReceiptValidationSummary,
+from receipt_dynamo.entities.receipt_structure_analysis import (
+    ReceiptStructureAnalysis,
+    itemToReceiptStructureAnalysis,
 )
 from receipt_dynamo.entities.receipt_validation_category import (
     ReceiptValidationCategory,
@@ -26,11 +28,10 @@ from receipt_dynamo.entities.receipt_validation_result import (
     ReceiptValidationResult,
     itemToReceiptValidationResult,
 )
-from receipt_dynamo.entities.receipt_chatgpt_validation import (
-    ReceiptChatGPTValidation,
-    itemToReceiptChatGPTValidation,
+from receipt_dynamo.entities.receipt_validation_summary import (
+    ReceiptValidationSummary,
+    itemToReceiptValidationSummary,
 )
-from receipt_dynamo.entities.receipt_analysis import ReceiptAnalysis
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
@@ -47,7 +48,7 @@ def validate_last_evaluated_key(lek: dict) -> None:
             )
 
 
-class _ReceiptLabelAnalysis:
+class _ReceiptLabelAnalysis(DynamoClientProtocol):
     def addReceiptLabelAnalysis(
         self, receipt_label_analysis: ReceiptLabelAnalysis
     ):

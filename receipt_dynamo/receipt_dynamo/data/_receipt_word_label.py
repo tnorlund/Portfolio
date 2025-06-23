@@ -2,12 +2,13 @@ from typing import Dict, List, Optional, Tuple, Union
 
 from botocore.exceptions import ClientError
 
+from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.receipt_word_label import (
     ReceiptWordLabel,
     itemToReceiptWordLabel,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
-from receipt_dynamo.constants import ValidationStatus
 
 
 def validate_last_evaluated_key(lek: dict) -> None:
@@ -23,7 +24,7 @@ def validate_last_evaluated_key(lek: dict) -> None:
             )
 
 
-class _ReceiptWordLabel:
+class _ReceiptWordLabel(DynamoClientProtocol):
     def addReceiptWordLabel(self, receipt_word_label: ReceiptWordLabel):
         """Adds a receipt word label to the database
 

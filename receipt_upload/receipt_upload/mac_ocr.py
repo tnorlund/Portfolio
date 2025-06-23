@@ -21,6 +21,9 @@ def main():
     args = parser.parse_args()
     env = args.env
     pulumi_outputs = load_env(env)
+    # raise an error if the pulumi_outputs is empty
+    if not pulumi_outputs:
+        raise ValueError("Pulumi outputs are empty")
     sqs_queue_url = pulumi_outputs["ocr_job_queue_url"]
     dynamo_table_name = pulumi_outputs["dynamodb_table_name"]
     ocr_results_queue_url = pulumi_outputs["ocr_results_queue_url"]
@@ -37,7 +40,8 @@ def main():
         print("No messages in the queue")
         return
 
-    # image_details is a list of tuples, where each tuple contains the image_id and the path to the image
+    # image_details is a list of tuples, where each tuple contains the image_id
+    # and the path to the image
     image_details: list[tuple[str, Path]] = []
 
     message_contexts = []
@@ -56,20 +60,14 @@ def main():
             ocr_job = dynamo_client.getOCRJob(image_id=image_id, job_id=job_id)
             image_s3_key = ocr_job.s3_key
             image_s3_bucket = ocr_job.s3_bucket
-            ocr_job_type = ocr_job.job_type
-            if ocr_job_type == OCRJobType.REFINEMENT:
-                receipt_id = ocr_job.receipt_id
-            else:
-                receipt_id = None
 
             # Download the image from the S3 bucket
             image_path = download_image_from_s3(
-                image_s3_bucket, image_s3_key, temp_dir, image_id
+                image_s3_bucket, image_s3_key, image_id
             )
             image_details.append((image_id, image_path))
 
         # Run the OCR
-        ocr_routing_decisions: list[OCRRoutingDecision] = []
         ocr_results = apple_vision_ocr_job(
             [path for (_, path) in image_details], Path(temp_dir)
         )
@@ -82,7 +80,9 @@ def main():
             ocr_json_file_name = ocr_json_file.name
             ocr_json_file_s3_key = f"ocr_results/{ocr_json_file_name}"
             upload_file_to_s3(
-                ocr_json_file, image_s3_bucket, ocr_json_file_s3_key
+                file_path=ocr_json_file,
+                s3_bucket=image_s3_bucket,
+                s3_key=ocr_json_file_s3_key,
             )
             dynamo_client.addOCRRoutingDecision(
                 OCRRoutingDecision(

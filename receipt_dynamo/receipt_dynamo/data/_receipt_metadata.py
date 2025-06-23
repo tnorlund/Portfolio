@@ -1,6 +1,8 @@
-from botocore.exceptions import ClientError
 from typing import List, Tuple
 
+from botocore.exceptions import ClientError
+
+from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities import ReceiptMetadata, itemToReceiptMetadata
 from receipt_dynamo.entities.util import (
     _format_float,
@@ -10,7 +12,7 @@ from receipt_dynamo.entities.util import (
 )
 
 
-class _ReceiptMetadata:
+class _ReceiptMetadata(DynamoClientProtocol):
 
     def addReceiptMetadata(self, receipt_metadata: ReceiptMetadata):
         """

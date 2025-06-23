@@ -2,11 +2,12 @@ from typing import List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
+from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.completion_batch_result import (
     CompletionBatchResult,
     itemToCompletionBatchResult,
 )
-from receipt_dynamo.constants import ValidationStatus
 
 
 def validate_last_evaluated_key(lek: dict) -> None:
@@ -22,7 +23,7 @@ def validate_last_evaluated_key(lek: dict) -> None:
             )
 
 
-class _CompletionBatchResult:
+class _CompletionBatchResult(DynamoClientProtocol):
     def addCompletionBatchResult(self, result: CompletionBatchResult):
         if result is None or not isinstance(result, CompletionBatchResult):
             raise ValueError("Must provide a CompletionBatchResult instance.")

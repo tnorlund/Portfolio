@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from boto3 import client
-from PIL import Image
+from PIL import Image as PIL_Image
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import (
     Letter,
@@ -17,6 +17,7 @@ from receipt_dynamo.entities import (
     ReceiptWord,
     Word,
 )
+from receipt_dynamo.entities.receipt import Receipt
 
 
 def download_file_from_s3(s3_bucket: str, s3_key: str, temp_dir: Path) -> Path:
@@ -39,9 +40,7 @@ def download_file_from_s3(s3_bucket: str, s3_key: str, temp_dir: Path) -> Path:
     return file_path
 
 
-def download_image_from_s3(
-    s3_bucket: str, s3_key: str, temp_dir: Path, image_id: str
-) -> Path:
+def download_image_from_s3(s3_bucket: str, s3_key: str, image_id: str) -> Path:
     """
     Download an image from S3 and save it to a temporary directory.
     """
@@ -58,7 +57,9 @@ def download_image_from_s3(
     return Path(image_path)
 
 
-def upload_jpeg_to_s3(image: Image.Image, s3_bucket: str, s3_key: str) -> None:
+def upload_jpeg_to_s3(
+    image: PIL_Image.Image, s3_bucket: str, s3_key: str
+) -> None:
     """
     Upload an image to S3.
     """
@@ -74,7 +75,9 @@ def upload_jpeg_to_s3(image: Image.Image, s3_bucket: str, s3_key: str) -> None:
         )
 
 
-def upload_png_to_s3(image: Image.Image, s3_bucket: str, s3_key: str) -> None:
+def upload_png_to_s3(
+    image: PIL_Image.Image, s3_bucket: str, s3_key: str
+) -> None:
     """
     Upload a PNG image to S3.
     """
@@ -91,7 +94,7 @@ def upload_png_to_s3(image: Image.Image, s3_bucket: str, s3_key: str) -> None:
 
 
 def upload_webp_to_s3(
-    image: Image.Image, s3_bucket: str, s3_key: str, quality: int = 85
+    image: PIL_Image.Image, s3_bucket: str, s3_key: str, quality: int = 85
 ) -> None:
     """
     Upload a WebP image to S3.
@@ -110,8 +113,12 @@ def upload_webp_to_s3(
         )
 
 
+class AVIFError(Exception):
+    """Custom exception for AVIF-related errors."""
+
+
 def upload_avif_to_s3(
-    image: Image.Image, s3_bucket: str, s3_key: str, quality: int = 85
+    image: PIL_Image.Image, s3_bucket: str, s3_key: str, quality: int = 85
 ) -> None:
     """
     Upload an AVIF image to S3.
@@ -122,28 +129,26 @@ def upload_avif_to_s3(
     try:
         # Try to import and register the AVIF plugin
         try:
-            import pillow_avif
+            # pylint: disable=import-outside-toplevel,unused-import
+            import pillow_avif  # noqa: F401
 
             # The import should auto-register the plugin
         except ImportError as import_error:
-            raise Exception(
+            raise AVIFError(
                 f"pillow-avif-plugin is not installed: {import_error}"
-            )
+            ) from import_error
 
         # Check if AVIF is supported
-        from PIL import Image as PIL_Image_module
-
-        if ".avif" not in PIL_Image_module.registered_extensions():
-            available_formats = list(
-                PIL_Image_module.registered_extensions().keys()
-            )
-            raise Exception(
-                f"AVIF format is not supported. Available formats: {available_formats}"
+        if ".avif" not in PIL_Image.registered_extensions():
+            available_formats = list(PIL_Image.registered_extensions().keys())
+            raise AVIFError(
+                f"AVIF format is not supported. "
+                f"Available formats: {available_formats}"
             )
 
         with BytesIO() as buffer:
             try:
-                # Convert to RGB mode for AVIF (it doesn't support transparency)
+                # Convert to RGB mode for AVIF (no transparency support)
                 if image.mode not in ("RGB", "L"):
                     rgb_image = image.convert("RGB")
                 else:
@@ -155,12 +160,12 @@ def upload_avif_to_s3(
                     format="AVIF",
                     quality=quality,
                     # Safari AVIF compatibility: Force 8-bit 420 subset
-                    speed=6,  # Balance between encoding speed and compression
-                    chroma_subsampling="4:2:0",  # Standard chroma subsampling (420 subset)
-                    range="limited",  # Use limited range for better compatibility
-                    codec="aom",  # Use AOM codec explicitly for compatibility
+                    speed=6,  # Balance encoding speed and compression
+                    chroma_subsampling="4:2:0",  # Standard (420 subset)
+                    range="limited",  # Better compatibility
+                    codec="aom",  # Use AOM codec for compatibility
                     # Force 8-bit depth for Safari compatibility
-                    bit_depth=8,  # Explicitly force 8-bit (Safari requirement)
+                    bit_depth=8,  # Explicitly force 8-bit (Safari req)
                     # Avoid advanced features that may not be supported
                     alpha_premultiplied=False,
                     # Use baseline profile for maximum Safari compatibility
@@ -176,9 +181,9 @@ def upload_avif_to_s3(
                 avif_data = buffer.getvalue()
 
                 if len(avif_data) == 0:
-                    raise Exception("AVIF encoding produced empty data")
+                    raise AVIFError("AVIF encoding produced empty data")
 
-            except Exception as save_error:
+            except (OSError, ValueError, TypeError) as save_error:
                 # If advanced options fail, fall back to basic encoding
                 try:
                     buffer.seek(0)
@@ -189,21 +194,21 @@ def upload_avif_to_s3(
                         buffer,
                         format="AVIF",
                         quality=quality,
-                        speed=6,  # Keep speed setting for reasonable encoding time
+                        speed=6,  # Keep speed for reasonable encoding time
                     )
                     buffer.seek(0)
                     avif_data = buffer.getvalue()
 
                     if len(avif_data) == 0:
-                        raise Exception(
+                        raise AVIFError(
                             "Basic AVIF encoding also produced empty data"
-                        )
+                        ) from save_error
 
-                except Exception as fallback_error:
-                    raise Exception(
+                except (OSError, ValueError, TypeError) as fallback_error:
+                    raise AVIFError(
                         f"Both advanced and basic AVIF encoding failed. "
                         f"Advanced: {save_error}, Basic: {fallback_error}"
-                    )
+                    ) from fallback_error
 
             try:
                 # Upload to S3
@@ -214,18 +219,22 @@ def upload_avif_to_s3(
                     ContentType="image/avif",
                 )
             except Exception as s3_error:
-                raise Exception(f"Failed to upload AVIF to S3: {s3_error}")
+                raise AVIFError(
+                    f"Failed to upload AVIF to S3: {s3_error}"
+                ) from s3_error
 
+    except AVIFError:
+        raise
     except Exception as e:
         # Re-raise with more context
-        raise Exception(f"AVIF upload failed for {s3_key}: {e}")
+        raise AVIFError(f"AVIF upload failed for {s3_key}: {e}") from e
 
 
 def upload_all_cdn_formats(
-    image: Image.Image,
+    image: PIL_Image.Image,
     s3_bucket: str,
     base_key: str,
-    jpeg_quality: int = 85,
+    *,
     webp_quality: int = 85,
     avif_quality: int = 85,
 ) -> dict[str, Optional[str]]:
@@ -236,7 +245,6 @@ def upload_all_cdn_formats(
         image: PIL Image object
         s3_bucket: S3 bucket name
         base_key: Base S3 key without extension (e.g., "assets/image_id")
-        jpeg_quality: JPEG compression quality (1-100)
         webp_quality: WebP compression quality (1-100)
         avif_quality: AVIF compression quality (1-100)
 
@@ -245,7 +253,7 @@ def upload_all_cdn_formats(
     """
     keys: dict[str, Optional[str]] = {}
 
-    # Upload JPEG version
+    # Upload JPEG version (fixed quality for consistency)
     jpeg_key = f"{base_key}.jpg"
     upload_jpeg_to_s3(image, s3_bucket, jpeg_key)
     keys["jpeg"] = jpeg_key
@@ -260,7 +268,7 @@ def upload_all_cdn_formats(
         avif_key = f"{base_key}.avif"
         upload_avif_to_s3(image, s3_bucket, avif_key, avif_quality)
         keys["avif"] = avif_key
-    except Exception as e:
+    except AVIFError as e:
         print(f"Warning: Could not upload AVIF format for {base_key}: {e}")
         # Store None to indicate AVIF failed but don't crash the upload
         keys["avif"] = None
@@ -277,6 +285,7 @@ def upload_file_to_s3(file_path: Path, s3_bucket: str, s3_key: str) -> None:
 
 
 def calculate_sha256_from_bytes(data: bytes) -> str:
+    """Calculate SHA256 hash from bytes."""
     return sha256(data).hexdigest()
 
 
@@ -317,8 +326,9 @@ def image_ocr_to_receipt_ocr(
     """
     Convert image OCR to receipt OCR.
 
-    This function takes OCR results from an image and associates them with a specific
-    receipt ID by creating receipt-specific versions of the Line, Word, and Letter objects.
+    This function takes OCR results from an image and associates them with a
+    specific receipt ID by creating receipt-specific versions of the Line,
+    Word, and Letter objects.
 
     Args:
         lines: List of Line objects from image OCR

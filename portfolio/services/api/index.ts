@@ -4,6 +4,7 @@ import {
   MerchantCountsResponse,
   ReceiptApiResponse,
   ImageCountApiResponse,
+  ImagesApiResponse,
 } from "../../types/api";
 
 // Helper function to get the API URL based on environment
@@ -67,9 +68,20 @@ export const api = {
     return response.json();
   },
 
-  async fetchImageDetails(): Promise<ImageDetailsApiResponse> {
+  async fetchRandomImageDetails(
+    imageType?: string
+  ): Promise<ImageDetailsApiResponse> {
+    const params = new URLSearchParams();
+    if (imageType) {
+      params.set("image_type", imageType);
+    }
+
     const apiUrl = getAPIUrl();
-    const response = await fetch(`${apiUrl}/image_details`, fetchConfig);
+    const queryString = params.toString();
+    const url = queryString
+      ? `${apiUrl}/random_image_details?${queryString}`
+      : `${apiUrl}/random_image_details`;
+    const response = await fetch(url, fetchConfig);
     if (!response.ok) {
       throw new Error(
         `Network response was not ok (status: ${response.status})`
@@ -91,6 +103,54 @@ export const api = {
     const apiUrl = getAPIUrl();
     const response = await fetch(
       `${apiUrl}/receipts?${params.toString()}`,
+      fetchConfig
+    );
+    if (!response.ok) {
+      throw new Error(`Error: ${response.status}`);
+    }
+    return response.json();
+  },
+
+  async fetchImagesByType(
+    imageType: string,
+    limit?: number,
+    lastEvaluatedKey?: any
+  ): Promise<ImagesApiResponse> {
+    const params = new URLSearchParams();
+    params.set("image_type", imageType);
+    if (limit !== undefined) {
+      params.set("limit", limit.toString());
+    }
+    if (lastEvaluatedKey) {
+      params.set("lastEvaluatedKey", JSON.stringify(lastEvaluatedKey));
+    }
+
+    const apiUrl = getAPIUrl();
+    const response = await fetch(
+      `${apiUrl}/images?${params.toString()}`,
+      fetchConfig
+    );
+    if (!response.ok) {
+      throw new Error(`Error: ${response.status}`);
+    }
+    return response.json();
+  },
+
+  async fetchImages(
+    limit?: number,
+    lastEvaluatedKey?: any
+  ): Promise<ImagesApiResponse> {
+    const params = new URLSearchParams();
+    if (limit !== undefined) {
+      params.set("limit", limit.toString());
+    }
+    if (lastEvaluatedKey) {
+      params.set("lastEvaluatedKey", JSON.stringify(lastEvaluatedKey));
+    }
+
+    const apiUrl = getAPIUrl();
+    const response = await fetch(
+      `${apiUrl}/images?${params.toString()}`,
       fetchConfig
     );
     if (!response.ok) {

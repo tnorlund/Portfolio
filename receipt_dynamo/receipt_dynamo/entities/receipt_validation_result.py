@@ -1,7 +1,8 @@
 # receipt_dynamo/receipt_dynamo/entities/receipt_validation_result.py
-from typing import Dict, List, Optional, Any
 from datetime import datetime
-from receipt_dynamo.entities import assert_valid_uuid
+from typing import Any, Dict, Optional
+
+from receipt_dynamo.entities.util import assert_valid_uuid
 
 
 class ReceiptValidationResult:

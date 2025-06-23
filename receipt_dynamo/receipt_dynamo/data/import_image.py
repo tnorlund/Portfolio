@@ -7,6 +7,8 @@ from receipt_dynamo.entities import (
     Image,
     Letter,
     Line,
+    OCRJob,
+    OCRRoutingDecision,
     Receipt,
     ReceiptLetter,
     ReceiptLine,
@@ -65,6 +67,11 @@ def import_image(table_name: str, json_path: str) -> None:
         "receipt_letters": [
             ReceiptLetter(**item) for item in data["receipt_letters"]
         ],
+        "ocr_jobs": [OCRJob(**item) for item in data.get("ocr_jobs", [])],
+        "ocr_routing_decisions": [
+            OCRRoutingDecision(**item)
+            for item in data.get("ocr_routing_decisions", [])
+        ],
     }
 
     # Import data in batches using existing DynamoClient methods
@@ -97,3 +104,9 @@ def import_image(table_name: str, json_path: str) -> None:
 
     if entities["receipt_letters"]:
         dynamo_client.addReceiptLetters(entities["receipt_letters"])
+
+    if entities["ocr_jobs"]:
+        dynamo_client.addOCRJobs(entities["ocr_jobs"])
+
+    if entities["ocr_routing_decisions"]:
+        dynamo_client.addOCRRoutingDecisions(entities["ocr_routing_decisions"])

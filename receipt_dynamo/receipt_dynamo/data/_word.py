@@ -3,13 +3,14 @@ from typing import Dict, Optional
 from botocore.exceptions import ClientError
 
 from receipt_dynamo import Word, itemToWord
+from receipt_dynamo.data._base import DynamoClientProtocol
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 # So let's chunk the items in groups of 25
 CHUNK_SIZE = 25
 
 
-class _Word:
+class _Word(DynamoClientProtocol):
     """
     A class used to represent a Word in the database.
 

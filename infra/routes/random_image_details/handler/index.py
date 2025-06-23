@@ -17,6 +17,23 @@ def handler(event, context):
     logger.info("Received event: %s", event)
     http_method = event["requestContext"]["http"]["method"].upper()
 
+    # Determine requested image type via query parameter, defaulting to "SCAN"
+    query_params = event.get("queryStringParameters") or {}
+    image_type_str = (
+        query_params.get("image_type", ImageType.SCAN.value).upper()
+        if isinstance(query_params, dict)
+        else ImageType.SCAN.value
+    )
+
+    # Validate and convert to ImageType enum
+    try:
+        image_type = ImageType[image_type_str]
+    except KeyError:
+        return {
+            "statusCode": 400,
+            "body": f"Invalid image_type '{image_type_str}'. Must be one of {[t.value for t in ImageType]}",
+        }
+
     if http_method == "GET":
         try:
             # Use the client to list the first 50 images
@@ -34,17 +51,16 @@ def handler(event, context):
                     receipts_by_image_id[receipt.image_id] = 0
                 receipts_by_image_id[receipt.image_id] += 1
 
-            # Only use images with 2 receipts
-            receipts_by_image_id = {
-                key: value
-                for key, value in receipts_by_image_id.items()
-                if value == 2
-            }
+            # If the requested type is SCAN, only keep images that have ≥2 receipts
+            if image_type == ImageType.SCAN:
+                receipts_by_image_id = {
+                    key: value
+                    for key, value in receipts_by_image_id.items()
+                    if value >= 2
+                }
 
-            # List all images that are scans
-            images, last_evaluated_key = client.listImagesByType(
-                ImageType.SCAN
-            )
+            # List all images of the requested type
+            images, last_evaluated_key = client.listImagesByType(image_type)
             images = [
                 image
                 for image in images

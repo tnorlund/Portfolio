@@ -1,5 +1,8 @@
 from typing import Dict, List, Optional, Tuple, Union
+
 from botocore.exceptions import ClientError
+
+from receipt_dynamo.data._base import DynamoClientProtocol
 
 """
 This module provides the _BatchSummary class for managing BatchSummary
@@ -8,12 +11,12 @@ deleting, and querying batch summary data, including support for pagination
 and GSI lookups by status.
 """
 
+from receipt_dynamo.constants import BatchStatus, BatchType
 from receipt_dynamo.entities.batch_summary import (
     BatchSummary,
     itemToBatchSummary,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
-from receipt_dynamo.constants import BatchType, BatchStatus
 
 
 def validate_last_evaluated_key(lek: dict) -> None:
@@ -29,7 +32,7 @@ def validate_last_evaluated_key(lek: dict) -> None:
             )
 
 
-class _BatchSummary:
+class _BatchSummary(DynamoClientProtocol):
 
     def addBatchSummary(self, batch_summary: BatchSummary):
         """
@@ -316,9 +319,11 @@ class _BatchSummary:
                 raise ValueError("table not found")
             elif error_code == "ValidationException":
                 raise ValueError("one or more parameters given were invalid")
+            else:
+                raise ValueError(f"Error getting batch summary: {e}")
 
     def listBatchSummaries(
-        self, limit: int = None, lastEvaluatedKey: dict | None = None
+        self, limit: Optional[int] = None, lastEvaluatedKey: dict | None = None
     ) -> Tuple[List[BatchSummary], dict | None]:
         """
         Lists BatchSummary records from DynamoDB with optional pagination.
@@ -395,7 +400,7 @@ class _BatchSummary:
         self,
         status: str | BatchStatus,
         batch_type: str | BatchType = "EMBEDDING",
-        limit: int = None,
+        limit: Optional[int] = None,
         lastEvaluatedKey: dict | None = None,
     ) -> Tuple[List[BatchSummary], dict | None]:
         """

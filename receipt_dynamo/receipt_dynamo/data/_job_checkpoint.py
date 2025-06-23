@@ -2,6 +2,7 @@ from typing import Optional
 
 from botocore.exceptions import ClientError
 
+from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.job_checkpoint import (
     JobCheckpoint,
     itemToJobCheckpoint,
@@ -22,7 +23,7 @@ def validate_last_evaluated_key(lek: dict) -> None:
             )
 
 
-class _JobCheckpoint:
+class _JobCheckpoint(DynamoClientProtocol):
     def addJobCheckpoint(self, job_checkpoint: JobCheckpoint):
         """Adds a job checkpoint to the database
 

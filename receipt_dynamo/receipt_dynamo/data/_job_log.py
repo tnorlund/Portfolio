@@ -2,10 +2,11 @@ from typing import Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
+from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.job_log import JobLog, itemToJobLog
 
 
-class _JobLog:
+class _JobLog(DynamoClientProtocol):
     """
     Provides methods for accessing job log data in DynamoDB.
 
