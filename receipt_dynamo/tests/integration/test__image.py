@@ -340,9 +340,9 @@ def test_image_get_details(dynamodb_table, example_image):
         receipt_words,
         receipt_word_tags,
         receipt_letters,
+        receipt_metadatas,
         ocr_jobs,
         routing_decisions,
-        receipt_metadatas,
     ) = details
     retrieved_image = images[0]
     assert retrieved_image == image
