@@ -1,13 +1,13 @@
 import io
-import pytest
-import boto3
-from pathlib import Path
-from moto import mock_aws
 import os
-
-import receipt_label.utils.clients as clients
-from receipt_dynamo.data.dynamo_client import DynamoClient
+from pathlib import Path
 from types import SimpleNamespace
+
+import boto3
+import pytest
+import receipt_label.utils.clients as clients
+from moto import mock_aws
+from receipt_dynamo.data.dynamo_client import DynamoClient
 
 
 @pytest.fixture
@@ -77,9 +77,7 @@ def dynamodb_table_and_s3_bucket():
                 },
                 {
                     "IndexName": "GSITYPE",
-                    "KeySchema": [
-                        {"AttributeName": "TYPE", "KeyType": "HASH"}
-                    ],
+                    "KeySchema": [{"AttributeName": "TYPE", "KeyType": "HASH"}],
                     "Projection": {"ProjectionType": "ALL"},
                     "ProvisionedThroughput": {
                         "ReadCapacityUnits": 5,
@@ -90,9 +88,7 @@ def dynamodb_table_and_s3_bucket():
         )
 
         # Wait for the table to be created
-        dynamodb.meta.client.get_waiter("table_exists").wait(
-            TableName=table_name
-        )
+        dynamodb.meta.client.get_waiter("table_exists").wait(TableName=table_name)
 
         # Create a mock S3 bucket for uploads
         s3 = boto3.client("s3", region_name="us-east-1")
@@ -144,9 +140,7 @@ def patch_clients(mocker, dynamodb_table_and_s3_bucket):
     # 1) Fake Dynamo + OpenAI in get_clients()
     fake_openai = mocker.Mock()
     fake_openai.files.create.return_value = SimpleNamespace(id="fake-file-id")
-    fake_openai.batches.create.return_value = SimpleNamespace(
-        id="fake-batch-id"
-    )
+    fake_openai.batches.create.return_value = SimpleNamespace(id="fake-batch-id")
     # Stub the batch status retrieval to return "completed"
     fake_openai.batches.retrieve.return_value = SimpleNamespace(
         status="completed", output_file_id="fake-output-file-id"
@@ -164,10 +158,10 @@ def patch_clients(mocker, dynamodb_table_and_s3_bucket):
     mocker.patch.object(clients, "get_clients", fake_get_clients)
 
     # 2) Patch the module‐level openai_client in both submit and poll modules
-    import receipt_label.submit_embedding_batch.submit_batch as sb
+    import receipt_label.embedding.word.submit as sb
 
     mocker.patch.object(sb, "openai_client", fake_openai)
-    import receipt_label.poll_embedding_batch.poll_batch as poll_batch
+    import receipt_label.embedding.word.poll as poll_batch
 
     mocker.patch.object(poll_batch, "openai_client", fake_openai)
 

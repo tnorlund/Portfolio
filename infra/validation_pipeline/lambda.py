@@ -1,38 +1,36 @@
 import os
 import time
-from logging import getLogger, StreamHandler, Formatter, INFO
-from receipt_dynamo.entities import ReceiptWordLabel, BatchSummary
-from receipt_dynamo.constants import BatchStatus, BatchType
-from receipt_label.submit_completion_batch import (
-    list_labels_that_need_validation,
-    chunk_into_completion_batches,
-    serialize_labels,
-    upload_serialized_labels,
-    generate_completion_batch_id,
-    format_batch_completion_file,
-    upload_to_openai,
-    submit_openai_batch,
-    get_receipt_details,
-    download_serialized_labels,
-    deserialize_labels,
-    create_batch_summary,
-    add_batch_summary,
-    update_label_validation_status,
-    upload_completion_batch_file,
-    merge_ndjsons,
-    get_labels_from_ndjson,
-    split_first_and_second_pass,
-)
+from logging import INFO, Formatter, StreamHandler, getLogger
 
-from receipt_label.poll_completion_batch import (
-    list_pending_completion_batches,
-    get_openai_batch_status,
+from receipt_dynamo.constants import BatchStatus, BatchType
+from receipt_dynamo.entities import BatchSummary, ReceiptWordLabel
+from receipt_label.completion import (
+    add_batch_summary,
+    chunk_into_completion_batches,
+    create_batch_summary,
+    deserialize_labels,
     download_openai_batch_result,
-    update_valid_labels,
-    update_invalid_labels,
-    write_completion_batch_results,
+    download_serialized_labels,
+    format_batch_completion_file,
+    generate_completion_batch_id,
+    get_labels_from_ndjson,
+    get_openai_batch_status,
+    get_receipt_details,
+    list_labels_that_need_validation,
+    list_pending_completion_batches,
+    merge_ndjsons,
+    serialize_labels,
+    split_first_and_second_pass,
+    submit_openai_batch,
     update_batch_summary,
+    update_invalid_labels,
+    update_label_validation_status,
     update_pending_labels,
+    update_valid_labels,
+    upload_completion_batch_file,
+    upload_serialized_labels,
+    upload_to_openai,
+    write_completion_batch_results,
 )
 from receipt_label.utils import get_clients
 

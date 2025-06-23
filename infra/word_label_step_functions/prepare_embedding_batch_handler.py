@@ -1,11 +1,12 @@
 import os
-from logging import getLogger, StreamHandler, Formatter, INFO
-from receipt_label.submit_embedding_batch.submit_batch import (
-    serialize_receipt_words,
-    upload_serialized_words,
-    list_receipt_words_with_no_embeddings,
+from logging import INFO, Formatter, StreamHandler, getLogger
+
+from receipt_label.embedding.word import (
     chunk_into_embedding_batches,
     generate_batch_id,
+    list_receipt_words_with_no_embeddings,
+    serialize_receipt_words,
+    upload_serialized_words,
 )
 
 logger = getLogger()
