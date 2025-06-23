@@ -53,7 +53,6 @@ dev = [
     "mypy>=1.0",
     "isort>=5.0",
     "boto3-stubs>=1.38.41",
-    "botocore-stubs>=1.38.41",
 ]
 
 [tool.hatch.build.targets.wheel]
