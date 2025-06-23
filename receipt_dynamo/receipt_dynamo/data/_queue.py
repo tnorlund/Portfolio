@@ -1,7 +1,8 @@
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.entities.rwl_queue import Queue, itemToQueue
+from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.queue_job import QueueJob, itemToQueueJob
+from receipt_dynamo.entities.rwl_queue import Queue, itemToQueue
 
 
 def validate_last_evaluated_key(lek: dict) -> None:
@@ -29,7 +30,7 @@ def validate_last_evaluated_key(lek: dict) -> None:
         )
 
 
-class _Queue:
+class _Queue(DynamoClientProtocol):
     """Queue-related operations for the DynamoDB client."""
 
     def addQueue(self, queue: Queue) -> None:

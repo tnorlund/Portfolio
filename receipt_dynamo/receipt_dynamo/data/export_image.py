@@ -29,6 +29,8 @@ def export_image(table_name: str, image_id: str, output_dir: str) -> None:
     os.makedirs(output_dir, exist_ok=True)
 
     # Get all data from DynamoDB
+    details = dynamo_client.getImageDetails(image_id)
+
     (
         images,
         lines,
@@ -40,7 +42,9 @@ def export_image(table_name: str, image_id: str, output_dir: str) -> None:
         receipt_words,
         receipt_word_tags,
         receipt_letters,
-    ) = dynamo_client.getImageDetails(image_id)
+        ocr_jobs,
+        ocr_routing_decisions,
+    ) = details
 
     if not images:
         raise ValueError(f"No image found for image_id {image_id}")
@@ -59,6 +63,10 @@ def export_image(table_name: str, image_id: str, output_dir: str) -> None:
             dict(word_tag) for word_tag in receipt_word_tags
         ],
         "receipt_letters": [dict(letter) for letter in receipt_letters],
+        "ocr_jobs": [dict(job) for job in ocr_jobs],
+        "ocr_routing_decisions": [
+            dict(decision) for decision in ocr_routing_decisions
+        ],
     }
 
     with open(os.path.join(output_dir, f"{image_id}.json"), "w") as f:

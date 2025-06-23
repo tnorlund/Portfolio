@@ -16,7 +16,10 @@ import {
   EmbeddingCoordinate,
   ReceiptStack,
   LabelValidationCount,
-  ReceiptBoundingBox,
+  ScanReceiptBoundingBox,
+  ReceiptPhotoClustering,
+  PhotoReceiptBoundingBox,
+  ImageStack,
 } from "../components/ui/Figures";
 import AnimatedInView from "../components/ui/AnimatedInView";
 import {
@@ -268,18 +271,79 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         stitch the answers back together.
       </p>
 
+      {/* 
+      TODO: Fix OCR Section Disconnect - Show Visual Mess Before Technical Solution
+      
+      PROBLEM IDENTIFIED:
+      - Text jumps straight into technical solutions ("DBSCAN clustering, convex hull")
+      - Visuals show perfect, clean geometric processing 
+      - Missing the messy visual reality that creates the problem
+      - No clear "why" for non-technical readers about why this clustering matters
+      
+      SOLUTION STRATEGY:
+      Create a new flow that shows the mess first, then the solution:
+      
+      1. START WITH CHAOS: Show ReceiptStack (or similar) to demonstrate real-world receipt images:
+         - Crumpled and wrinkled receipts
+         - Photos taken at angles 
+         - Multiple receipts overlapping in frame
+         - Poor lighting conditions
+         - Mixed with other objects/backgrounds
+      
+      2. EXPLAIN THE CONSEQUENCE: Without proper processing, text recognition gives:
+         - Jumbled words with no grouping
+         - Text from multiple receipts mixed together  
+         - Wrong reading order
+         - Background noise included as "receipt data"
+      
+      3. PRESENT SIMPLE SOLUTION: "The challenge isn't just reading text - it's figuring 
+         out which words belong together"
+      
+      4. SHOW TECHNICAL SOLUTION WORKING: Current ScanReceiptBoundingBox and 
+         PhotoReceiptBoundingBox visualizations now make sense as the "after"
+      
+      IMPLEMENTATION NEEDED:
+      - Move ReceiptStack or create similar component showing messy input images
+      - Rewrite intro text to be accessible (avoid OCR jargon)
+      - Focus on "grouping text that belongs together" rather than geometric algorithms
+      - Position existing visualizations as the successful "clean" result
+      
+      This makes "cleanest, most organized approach" meaningful because readers see 
+      the chaotic starting point first.
+      */}
+
       <h1>From Images to Words and Coordinates</h1>
 
       <p>
-        Every receipt image arrives as either a flat scan or a photo. I treat
-        them differently because each format comes with its own shortcuts and
-        challenges.
+        Every receipt&apos;s journey begins as raw pixels, whether a crisp scan
+        or a hastily snapped photo. But hidden within those pixels is structured
+        information waiting to be extracted.
+      </p>
+
+      <ImageStack />
+
+      <p>
+        Text recognition finds words, but not context. Multiple receipts become
+        one confusing jumble. The critical step: determining{" "}
+        <strong>which words belong together</strong>.
+      </p>
+
+      <h2>Scans vs Photos</h2>
+      <p>
+        This is where the difference between <strong>scanned receipts</strong>{" "}
+        and <strong>photographed receipts</strong> becomes crucial. Scans are
+        the easy case: flat, well-lit, and aligned. But photos? They&apos;re
+        captured at odd angles, under harsh store lighting, with shadows and
+        curves that confuse even the best text recognition. Each type needs its
+        own approach to group related words and separate one receipt from
+        another.
       </p>
 
       <h2>Scans</h2>
+
       <p>
-        Scanned receipts are easiest to work with. They are as flat as the
-        sensors used to pick up the pixel data.
+        With scans being the easier of the two, we can say that the receipt is
+        parallel to the image sensor.
       </p>
 
       <ClientOnly>
@@ -287,17 +351,21 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       </ClientOnly>
 
       <p>
-        With this constraint, we can say that all the text is on the same plane.
-        This means that the text has the same depth. We can also say that the
-        receipt is taller than it is wide. With all this information, we can
-        determine which words belong to which receipt based on the X position.
+        Grouping the scanned words is straightforward. Since the scanner
+        captures everything flat and aligned, we can use simple rules: words
+        that line up horizontally likely belong to the same line item, and
+        everything on the page belongs to the same receipt. It&apos;s like
+        reading a well-organized spreadsheet.
       </p>
 
-      <ReceiptBoundingBox />
+      <ScanReceiptBoundingBox />
       <h2>Photos</h2>
       <p>
-        Photos are slightly more difficult to work with. The camera sensor is
-        not always facing the receipt.
+        Photos are trickier. When you snap a picture of a receipt on a counter,
+        the camera captures it from an angle. Words at the top might appear
+        smaller than words at the bottom. Lines that should be straight look
+        curved. And if there are multiple receipts in frame? Now you need to
+        figure out which words belong to which piece of paper.
       </p>
 
       <ClientOnly>
@@ -305,16 +373,21 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       </ClientOnly>
 
       <p>
-        This requires a more complex algorithm to determine which words belong
-        to which receipt. I used a combination of DBSCAN clustering and convex
-        hull calculations to determine a warp to get the cleanest image.
+        To solve this puzzle, I look for clusters of words that seem to move
+        together—like finding constellations in a sky full of stars. Words that
+        are close together and follow similar patterns likely belong to the same
+        receipt. Once identified, I can digitally &quot;flatten&quot; each
+        receipt, making it as clean as a scan.
       </p>
 
-      <h2>Piping It Together</h2>
+      <PhotoReceiptBoundingBox />
+
+      <h2>Making It Work at Scale</h2>
       <p>
-        My Macbook has proven to be the best at determining words and
-        coordinates. I developed a way to pipe my laptop to the cloud so that I
-        can efficiently and cost-effectively structure the data.
+        Now that we can group words correctly, we face a new challenge:
+        processing thousands of receipts efficiently. My solution? My laptop
+        handles the tricky word orientation while the cloud handles the visual
+        processing (finding and flattening receipts).
       </p>
 
       <ClientOnly>
@@ -322,10 +395,25 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       </ClientOnly>
 
       <p>
-        This architecture allows me to scale horizontally by adding another Mac.
-        I can scale vertically by paying for more cloud compute. The current
-        architecture allows me to operate for free!
+        This hybrid approach has processed hundreds of receipts, transforming
+        messy photos and scans into organized, searchable data:
       </p>
+
+      <ReceiptStack />
+
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-around",
+          marginTop: "3rem",
+          marginBottom: "3rem",
+          flexWrap: "wrap",
+          gap: "2rem",
+        }}
+      >
+        <ClientImageCounts />
+        <ClientReceiptCounts />
+      </div>
 
       <h1>Semantic Labeling</h1>
       <p>
@@ -345,7 +433,8 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       </p>
       <p>
         If someone were to ask you to embed something, what do you need? You
-        start with textual representation of the thing they're asking to embed.
+        start with textual representation of the thing they&apos;re asking to
+        embed.
       </p>
 
       <p>What do you get back? You get a structure of numbers.</p>
@@ -356,8 +445,8 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
 
       <p>
         While each input might be different, we get the same structure of
-        numbers back. Here's the magic. Because we get the same structure, we
-        have a way to mathematically compare two pieces of text together. But
+        numbers back. Here&apos;s the magic. Because we get the same structure,
+        we have a way to mathematically compare two pieces of text together. But
         what do the numbers mean?
       </p>
       <h3>How To Literally Embed</h3>
@@ -377,8 +466,8 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       </p>
       <h3>But What Do The Numbers Actually Mean?</h3>
       <p>
-        So back to the question: what do the numbers mean? Let's think about
-        coordinates on a map. Suppose I give you three points:
+        So back to the question: what do the numbers mean? Let&apos;s think
+        about coordinates on a map. Suppose I give you three points:
       </p>
       <table style={{ margin: "0 auto", borderCollapse: "collapse" }}>
         <thead>
@@ -434,18 +523,18 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
 
       <p>A is closer to B.</p>
       <p>
-        Here's the mental leap.{" "}
+        Here&apos;s the mental leap.{" "}
         <i>Embeddings are similar to points on a map.</i> Each number in the
         embedding is a coordinate in a complicated map. When OpenAI sends a list
-        of numbers, it's telling you where that text <i>semantically</i> lives
-        in that map. When we ask what the distance between two embeddings are,
-        what we're really doing is asking how semantically close or far apart
-        two pieces of text are.
+        of numbers, it&apos;s telling you where that text <i>semantically</i>{" "}
+        lives in that map. When we ask what the distance between two embeddings
+        are, what we&apos;re really doing is asking how semantically close or
+        far apart two pieces of text are.
       </p>
       <p>
         This concept of positioning items in multi-dimensional space like this,
-        where related items are clustered near each other, goes by the name of{" "}
-        <strong>latent space</strong>.
+        where related items are clustevar(--color-red) near each other, goes by
+        the name of <strong>latent space</strong>.
       </p>
       <p>
         Latent space is a powerful concept. It allows us to discover connections
@@ -453,9 +542,9 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       </p>
       <h2>Scaling and Optimizing Latent Space</h2>
       <p>
-        Writing and reading these lists of numbers get's complicated fast. After
-        some research, I found Pinecone, a vector database that allows me to
-        store and retrieve embeddings.
+        Writing and reading these lists of numbers get&apos;s complicated fast.
+        After some research, I found Pinecone, a vector database that allows me
+        to store and retrieve embeddings.
       </p>
       <ClientOnly>
         <AnimatedInView>
@@ -463,24 +552,27 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         </AnimatedInView>
       </ClientOnly>
       <p>
-        Pinecone's real strength shows when you attach <i>meaningful</i>
+        Pinecone&apos;s real strength shows when you attach <i>meaningful</i>
         information to each embedding. The embedding by itself can telling you
         which words are similar, but adding context, store name, location, or
-        even category, let's you find the semantically similar words you're
-        looking for.
+        even category, let&apos;s you find the semantically similar words
+        you&apos;re looking for.
       </p>
 
       <h2>Meaningful Metadata</h2>
       <p>
-        Imagine looking for the word "latte" across 10,000 receipts. Without
-        context, you'll get results from latte flavored cereal at grocery
-        stores, expensive drinks at coffee shops, and even brown colored paint
-        from hardware stores.
+        Imagine looking for the word &quot;latte&quot; across 10,000 receipts.
+        Without context, you&apos;ll get results from latte
+        flavovar(--color-red) cereal at grocery stores, expensive drinks at
+        coffee shops, and even brown colovar(--color-red) paint from hardware
+        stores.
       </p>
-      <p>With context, you can filter out the results that don't make sense.</p>
       <p>
-        I used OpenAI's Agents SDK with the Google Places API to get the context
-        needed for rich, semantic search.
+        With context, you can filter out the results that don&apos;t make sense.
+      </p>
+      <p>
+        I used OpenAI&apos;s Agents SDK with the Google Places API to get the
+        context needed for rich, semantic search.
       </p>
 
       <ClientOnly>
@@ -493,18 +585,18 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
 
       <h2>Turning Semantic Search into Autonomous Labeling</h2>
       <p>
-        Pinecone doesn't just help me <i>find</i> similar words, it allows me to
-        act on them. After every receipt is embedded, an OpenAI agent retrieves
-        the "nearest neighbors" of each unlabeled word, filtered by the
-        receipt's merchant-specific metadata.
+        Pinecone doesn&apos;t just help me <i>find</i> similar words, it allows
+        me to act on them. After every receipt is embedded, an OpenAI agent
+        retrieves the &quot;nearest neighbors&quot; of each unlabeled word,
+        filtevar(--color-red) by the receipt&apos;s merchant-specific metadata.
       </p>
       <p>
-        For the token "latte" on a Starbucks receipt, an agent pulls
+        For the token &quot;latte&quot; on a Starbucks receipt, an agent pulls
         semantically similar words from other Starbucks receipts and asks:
       </p>
       <blockquote>
-        "Given these examples and surrounding words, what label would best
-        describe <strong>latte</strong>?"
+        &quot;Given these examples and surrounding words, what label would best
+        describe <strong>latte</strong>?&quot;
       </blockquote>
 
       <p>
@@ -519,8 +611,8 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       <p>
         This process is repeated to continuously improve the accuracy of the
         labels. As part of this loop, I use <strong>RAGAS</strong> to evaluate
-        how faithful and relevant the model's responses are to the retrieved
-        context.
+        how faithful and relevant the model&apos;s responses are to the
+        retrieved context.
       </p>
 
       <h1>Conclusion</h1>
@@ -528,7 +620,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       <p>
         This project was a great learning experience. The best way for me to
         learn is by actually doing. Experimenting with different tools and
-        techniques allowed me to reflect on what worked and what didn't.
+        techniques allowed me to reflect on what worked and what didn&apos;t.
       </p>
       <p>I used Github and Pulumi to manage the cloud and code.</p>
       <div className={styles.logosContainer}>
@@ -549,9 +641,9 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         changes and deploy to production.
       </p>
       <p>
-        I'm using React to build the frontend. It's a great way to get started,
-        but I wanted to continue to increase my tech stack. I ended up porting
-        to NextJS.
+        I&apos;m using React to build the frontend. It&apos;s a great way to get
+        started, but I wanted to continue to increase my tech stack. I ended up
+        porting to NextJS.
       </p>
       <ClientOnly>
         <AnimatedInView replacement={<NextJSLogo />} replaceAfterMs={1000}>
@@ -560,17 +652,17 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       </ClientOnly>
       <p>
         Moving to NextJS was really easy. Using a combination of Cursor and
-        OpenAI's Codex allowed me to move this from one framework to another
-        with minimal effort.
+        OpenAI&apos;s Codex allowed me to move this from one framework to
+        another with minimal effort.
       </p>
 
       <h2>Training a Custom Model</h2>
       <p>
-        I'm currently training a custom model to improve the process of getting
-        an image and structuring the data. Having to query a database of similar
-        words works for large datasets, but there's room here for a simple model
-        that can run on my laptop. I've been playing with a few models on
-        Hugging Face.
+        I&apos;m currently training a custom model to improve the process of
+        getting an image and structuring the data. Having to query a database of
+        similar words works for large datasets, but there&apos;s room here for a
+        simple model that can run on my laptop. I&apos;ve been playing with a
+        few models on Hugging Face. Hugging Face.
       </p>
       <ClientOnly>
         <AnimatedInView>
@@ -583,8 +675,8 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         Artificial intelligence is advancing quickly and changing how we write
         software. However, no matter how smart computers become, we still need
         solid engineering practices, clever problem-solving, and expert
-        knowledge. I'm excited to see a future where people and AI work together
-        to make programming faster, smarter, and easier for everyone.
+        knowledge. I&apos;m excited to see a future where people and AI work
+        together to make programming faster, smarter, and easier for everyone.
       </p>
 
       <div style={{ marginBottom: "2rem", textAlign: "center" }}>
@@ -618,13 +710,6 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
           You can also drag and drop images anywhere on this page
         </p>
       </div>
-
-      <div className={styles.logosContainer}>
-        <ClientImageCounts />
-        <ClientReceiptCounts />
-      </div>
-
-      <ReceiptStack />
 
       {files.length > 0 && (
         <div
@@ -666,7 +751,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
                     fontSize: "0.9rem",
                     color: message.includes("successful")
                       ? "var(--color-green)"
-                      : "var(--color-red)",
+                      : "var(--color-var(--color-red))",
                   }}
                 >
                   {message}

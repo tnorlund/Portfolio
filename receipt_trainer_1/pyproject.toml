@@ -55,7 +55,7 @@ dev = [
     "black>=22.0.0",
     "isort>=5.0.0",
     "mypy>=1.0.0",
-    "flake8>=6.0.0",
+    "pylint>=3.0.0,<4.0.0",
 ]
 
 [tool.pytest.ini_options]
@@ -92,3 +92,24 @@ include = '\.pyi?$'
 profile = "black"
 multi_line_output = 3
 line_length = 79 
+[tool.pylint.format]
+max-line-length = 79
+
+[tool.pylint.messages_control]
+disable = [
+    "too-few-public-methods",
+    "too-many-arguments",
+    "too-many-locals", 
+    "too-many-instance-attributes",
+    "too-many-branches",
+    "missing-module-docstring",
+    "missing-class-docstring", 
+    "missing-function-docstring",
+]
+
+[tool.pylint.basic]
+good-names = ["i", "j", "k", "ex", "Run", "_", "id", "pk", "sk"]
+
+[tool.pylint.design]
+max-args = 10
+max-locals = 20
