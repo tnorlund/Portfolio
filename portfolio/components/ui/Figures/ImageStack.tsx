@@ -123,14 +123,16 @@ const ImageItem = React.memo<ImageItemProps>(
             shouldAnimate ? index * fadeDelay : 0
           }ms`,
           willChange: "top, opacity, transform",
+          overflow: "hidden",
         }}
       >
         {currentSrc && (
           <NextImage
             src={currentSrc}
             alt={`Image ${image.image_id}`}
-            width={150}
-            height={206}
+            width={image.width}
+            height={image.height}
+            sizes="150px"
             style={{
               width: "100%",
               height: "auto",
@@ -139,6 +141,7 @@ const ImageItem = React.memo<ImageItemProps>(
             onLoad={handleImageLoad}
             onError={handleError}
             priority={index < 5}
+            unoptimized={image.width > 3000 || image.height > 3000}
           />
         )}
       </div>
