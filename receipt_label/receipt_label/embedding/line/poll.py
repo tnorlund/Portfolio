@@ -1,6 +1,6 @@
+import json
 import re
 from typing import List
-import json
 
 """
 poll_line_batch.py
@@ -22,16 +22,17 @@ This supports scalable, event-driven processing of line embedding jobs for
 receipt section classification.
 """
 
-from receipt_dynamo.entities import (
-    EmbeddingBatchResult,
-    BatchSummary,
-    ReceiptSection,
-)
 from receipt_dynamo.constants import (
     BatchType,
     EmbeddingStatus,
     ValidationStatus,
 )
+from receipt_dynamo.entities import (
+    BatchSummary,
+    EmbeddingBatchResult,
+    ReceiptSection,
+)
+
 from receipt_label.submit_line_embedding_batch.submit_line_batch import (
     _format_line_context_embedding_input,
 )

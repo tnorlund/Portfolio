@@ -23,6 +23,7 @@ from receipt_dynamo.entities import (
     ReceiptWord,
     ReceiptWordLabel,
 )
+
 from receipt_label.completion._format_prompt import (
     _format_prompt,
     functions,
@@ -83,14 +84,18 @@ def chunk_into_completion_batches(
         }
     """
     # First pass – nest dictionaries so we can easily dedupe
-    nested: dict[str, dict[int, dict[tuple[int, int, str], ReceiptWordLabel]]] = {}
+    nested: dict[
+        str, dict[int, dict[tuple[int, int, str], ReceiptWordLabel]]
+    ] = {}
 
     for label in labels:
         image_map = nested.setdefault(label.image_id, {})
         receipt_map = image_map.setdefault(label.receipt_id, {})
         # Use (line_id, word_id, label) as key to keep each label per word
         deduplicate_key = (label.line_id, label.word_id, label.label)
-        receipt_map[deduplicate_key] = label  # later entries overwrite duplicates
+        receipt_map[deduplicate_key] = (
+            label  # later entries overwrite duplicates
+        )
 
     grouped: dict[str, dict[int, list[ReceiptWordLabel]]] = {}
     for image_id, receipt_dict in nested.items():
@@ -195,7 +200,9 @@ def _prompt_receipt_text(word: ReceiptWord, lines: list[ReceiptLine]) -> str:
         if current_line.line_id == word.line_id:
             # Replace the word in the line text with <TARGET>text</TARGET>
             line_text = current_line.text
-            line_text = line_text.replace(word.text, f"<TARGET>{word.text}</TARGET>")
+            line_text = line_text.replace(
+                word.text, f"<TARGET>{word.text}</TARGET>"
+            )
         else:
             line_text = current_line.text
         current_line_centroid = current_line.calculate_centroid()
@@ -249,7 +256,9 @@ def format_batch_completion_file(
     metadata: ReceiptMetadata,
 ) -> Path:
     """Format the batch completion file name."""
-    filepath = Path(f"/tmp/{metadata.image_id}_{metadata.receipt_id}_{uuid4()}.ndjson")
+    filepath = Path(
+        f"/tmp/{metadata.image_id}_{metadata.receipt_id}_{uuid4()}.ndjson"
+    )
     batch_lines: list[dict] = []
     if len(first_pass_labels) + len(second_pass_labels) > 0:
         batch_lines.append(
@@ -294,7 +303,9 @@ def upload_completion_batch_file(
 
 def upload_to_openai(filepath: Path) -> FileObject:
     """Upload the NDJSON file to OpenAI."""
-    return openai_client.files.create(file=filepath.open("rb"), purpose="batch")
+    return openai_client.files.create(
+        file=filepath.open("rb"), purpose="batch"
+    )
 
 
 def submit_openai_batch(file_id: str) -> Batch:
@@ -446,10 +457,15 @@ def get_labels_from_ndjson(
         line_id = int(kv["LINE"])
         word_id = int(kv["WORD"])
         label_str = kv["LABEL"]
-        label_indices.append((image_id, receipt_id, line_id, word_id, label_str))
+        label_indices.append(
+            (image_id, receipt_id, line_id, word_id, label_str)
+        )
     # Collect unique (image_id, receipt_id) pairs
     receipt_refs = list(
-        {(image_id, receipt_id) for image_id, receipt_id, _, _, _ in label_indices}
+        {
+            (image_id, receipt_id)
+            for image_id, receipt_id, _, _, _ in label_indices
+        }
     )
     # Call Dynamo to fetch labels
     labels = dynamo_client.getReceiptWordLabelsByIndices(label_indices)

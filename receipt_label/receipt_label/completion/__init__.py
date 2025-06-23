@@ -1,3 +1,5 @@
+"""Utilities for submitting and polling completion batches."""
+
 from .poll import (
     download_openai_batch_result,
     get_openai_batch_status,

@@ -29,6 +29,7 @@ by facilitating scalable embedding of labeled receipt tokens.
 """
 
 from receipt_dynamo.entities import BatchSummary, ReceiptWord
+
 from receipt_label.utils import get_clients
 
 dynamo_client, openai_client, _ = get_clients()
@@ -130,7 +131,9 @@ def chunk_into_embedding_batches(
         dict mapping image_id (str) to dict mapping receipt_id (int) to list of ReceiptWord.
     """
     # Build a mapping image_id -> receipt_id -> dict[(line_id, word_id) -> ReceiptWord] for uniqueness
-    words_by_image: dict[str, dict[int, dict[tuple[int, int], ReceiptWord]]] = {}
+    words_by_image: dict[
+        str, dict[int, dict[tuple[int, int], ReceiptWord]]
+    ] = {}
     for word in words:
         image_dict = words_by_image.setdefault(word.image_id, {})
         receipt_dict = image_dict.setdefault(word.receipt_id, {})
@@ -154,7 +157,9 @@ def generate_batch_id() -> str:
 
 def list_receipt_words_with_no_embeddings() -> list[ReceiptWord]:
     """Fetch all ReceiptWord items with embedding_status == NONE."""
-    return dynamo_client.listReceiptWordsByEmbeddingStatus(EmbeddingStatus.NONE)
+    return dynamo_client.listReceiptWordsByEmbeddingStatus(
+        EmbeddingStatus.NONE
+    )
 
 
 def _format_word_context_embedding_input(
@@ -247,7 +252,9 @@ def format_word_context_embedding(
             f"LINE#{word.line_id:05d}#"
             f"WORD#{word.word_id:05d}"
         )
-        body_input = _format_word_context_embedding_input(word, all_words_in_receipt)
+        body_input = _format_word_context_embedding_input(
+            word, all_words_in_receipt
+        )
         entry = {
             "custom_id": pinecone_id,
             "method": "POST",
@@ -272,7 +279,9 @@ def write_ndjson(batch_id: str, input_data: list[dict]) -> Path:
 
 def upload_to_openai(filepath: Path) -> FileObject:
     """Upload the NDJSON file to OpenAI."""
-    return openai_client.files.create(file=filepath.open("rb"), purpose="batch")
+    return openai_client.files.create(
+        file=filepath.open("rb"), purpose="batch"
+    )
 
 
 def submit_openai_batch(file_id: str) -> Batch:

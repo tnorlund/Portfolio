@@ -10,6 +10,7 @@ from receipt_dynamo.entities import (
     CompletionBatchResult,
     ReceiptWordLabel,
 )
+
 from receipt_label.utils import get_clients
 
 
@@ -194,13 +195,17 @@ def download_openai_batch_result(
                         for label in pending_labels
                         if not (
                             label.image_id == label_from_dynamo.image_id
-                            and label.receipt_id == label_from_dynamo.receipt_id
+                            and label.receipt_id
+                            == label_from_dynamo.receipt_id
                             and label.line_id == label_from_dynamo.line_id
                             and label.word_id == label_from_dynamo.word_id
                             and label.label == label_from_dynamo.label
                         )
                     ]
-                if label_from_dynamo.validation_status == ValidationStatus.VALID.value:
+                if (
+                    label_from_dynamo.validation_status
+                    == ValidationStatus.VALID.value
+                ):
                     continue
                 # Build other_labels for this word/line except this label
                 other_labels = [
@@ -275,7 +280,9 @@ def update_valid_labels(valid_labels_results: list[LabelResult]) -> None:
     vectors_needing_update: list[tuple[str, dict]] = []  # (id, merged_meta)
 
     for id_batch in _chunk(valid_by_vector.keys(), 100):
-        fetched = pinecone_index.fetch(ids=id_batch, namespace=PINECONE_NS).vectors
+        fetched = pinecone_index.fetch(
+            ids=id_batch, namespace=PINECONE_NS
+        ).vectors
         for vid in id_batch:
             meta = (fetched[vid].metadata if vid in fetched else {}) or {}
             existing = meta.get("valid_labels", [])
@@ -299,7 +306,9 @@ def update_valid_labels(valid_labels_results: list[LabelResult]) -> None:
         pinecone_index.update(id=vid, set_metadata=meta, namespace=PINECONE_NS)
 
     # Chunk into 25 items and update
-    for chunk in _chunk([r.label_from_dynamo for r in valid_labels_results], 25):
+    for chunk in _chunk(
+        [r.label_from_dynamo for r in valid_labels_results], 25
+    ):
         dynamo_client.updateReceiptWordLabels(chunk)
 
 
@@ -330,14 +339,18 @@ def update_invalid_labels(invalid_labels_results: list[LabelResult]) -> None:
                 ValidationStatus.NEEDS_REVIEW.value
             )
         else:
-            res.label_from_dynamo.validation_status = ValidationStatus.INVALID.value
+            res.label_from_dynamo.validation_status = (
+                ValidationStatus.INVALID.value
+            )
 
         res.label_from_dynamo.label_proposed_by = "COMPLETION_BATCH"
         labels_to_update.append(res.label_from_dynamo)
 
         # Track metadata for Pinecone
         vid = _build_vector_id(res.label_from_dynamo)
-        invalid_by_vector.setdefault(vid, []).append(res.label_from_dynamo.label)
+        invalid_by_vector.setdefault(vid, []).append(
+            res.label_from_dynamo.label
+        )
 
         # Handle a correct_label suggestion
         correct = res.result.get("correct_label")
@@ -374,7 +387,9 @@ def update_invalid_labels(invalid_labels_results: list[LabelResult]) -> None:
     vectors_needing_update: list[tuple[str, dict]] = []
 
     for id_batch in _chunk(invalid_by_vector.keys(), 100):
-        fetched = pinecone_index.fetch(ids=id_batch, namespace=PINECONE_NS).vectors
+        fetched = pinecone_index.fetch(
+            ids=id_batch, namespace=PINECONE_NS
+        ).vectors
         for vid in id_batch:
             meta = (fetched[vid].metadata if vid in fetched else {}) or {}
             existing_invalid = meta.get("invalid_labels", [])

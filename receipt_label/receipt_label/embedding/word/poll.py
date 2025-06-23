@@ -28,6 +28,7 @@ from receipt_dynamo.constants import (
     ValidationStatus,
 )
 from receipt_dynamo.entities import BatchSummary, EmbeddingBatchResult
+
 from receipt_label.embedding.word.submit import (
     _format_word_context_embedding_input,
 )
@@ -155,9 +156,11 @@ def get_receipt_descriptions(
     """
     descriptions: dict[str, dict[int, dict]] = {}
     for receipt_id, image_id in _get_unique_receipt_and_image_ids(results):
-        receipt, lines, words, letters, tags, labels = dynamo_client.getReceiptDetails(
-            image_id=image_id,
-            receipt_id=receipt_id,
+        receipt, lines, words, letters, tags, labels = (
+            dynamo_client.getReceiptDetails(
+                image_id=image_id,
+                receipt_id=receipt_id,
+            )
         )
         receipt_metadata = dynamo_client.getReceiptMetadata(
             image_id=image_id,
@@ -243,7 +246,11 @@ def upsert_embeddings_to_pinecone(
         metadata = receipt_details["metadata"]
         # Get the target word from the list of words
         target_word = next(
-            (w for w in words if w.line_id == line_id and w.word_id == word_id),
+            (
+                w
+                for w in words
+                if w.line_id == line_id and w.word_id == word_id
+            ),
             None,
         )
         if target_word is None:
@@ -263,10 +270,14 @@ def upsert_embeddings_to_pinecone(
         #    "unvalidated" if none VALID,
         #    "auto_suggested" if ANY PENDING and none VALID,
         #    "validated" if at least one VALID
-        if any(lbl.validation_status == ValidationStatus.VALID.value for lbl in labels):
+        if any(
+            lbl.validation_status == ValidationStatus.VALID.value
+            for lbl in labels
+        ):
             label_status = "validated"
         elif any(
-            lbl.validation_status == ValidationStatus.PENDING.value for lbl in labels
+            lbl.validation_status == ValidationStatus.PENDING.value
+            for lbl in labels
         ):
             label_status = "auto_suggested"
         else:
@@ -279,7 +290,9 @@ def upsert_embeddings_to_pinecone(
         # label_confidence & label_proposed_by — pick from the most recent auto‑suggestion:
         if auto_suggestions:
             # assume the last‑added pending label is the one your LLM just suggested
-            last = sorted(auto_suggestions, key=lambda l: l.timestamp_added)[-1]
+            last = sorted(auto_suggestions, key=lambda l: l.timestamp_added)[
+                -1
+            ]
             label_confidence = getattr(
                 last, "confidence", None
             )  # if you store it on the label
@@ -416,7 +429,11 @@ def write_embedding_results_to_dynamo(
         # Find the ReceiptWord object to get text
         words = descriptions[image_id][receipt_id]["words"]
         target_word = next(
-            (w for w in words if w.line_id == line_id and w.word_id == word_id),
+            (
+                w
+                for w in words
+                if w.line_id == line_id and w.word_id == word_id
+            ),
             None,
         )
         if target_word is None:
