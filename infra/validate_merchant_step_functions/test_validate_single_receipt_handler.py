@@ -9,9 +9,12 @@ from validate_single_receipt_handler import (
     extract_agent_results,
     sanitize_string,
     validate_handler,
+    extract_best_partial_match,
+    build_receipt_metadata_from_partial_result,
     AGENT_TIMEOUT_SECONDS,
     MAX_AGENT_ATTEMPTS
 )
+from receipt_dynamo.constants import ValidationMethod
 
 
 class TestSanitizeString:
@@ -202,16 +205,114 @@ class TestRunAgentWithRetries:
         assert mock_runner.run_sync.call_count == 3
 
 
+class TestPartialResultHandling:
+    """Test cases for partial result extraction and handling."""
+    
+    def test_extract_best_partial_match_phone_priority(self):
+        """Test that phone results are prioritized."""
+        partial_results = [
+            {
+                "function": "tool_search_by_text",
+                "result": {"place_id": "text123", "name": "Text Result"}
+            },
+            {
+                "function": "tool_search_by_phone",
+                "result": {"place_id": "phone123", "name": "Phone Result", "formatted_phone_number": "555-1234"}
+            },
+            {
+                "function": "tool_search_by_address",
+                "result": {"place_id": "addr123", "name": "Address Result"}
+            }
+        ]
+        
+        best_match = extract_best_partial_match(partial_results, {})
+        
+        assert best_match["place_id"] == "phone123"
+        assert best_match["source"] == "phone_lookup"
+        assert best_match["matched_fields"] == ["phone"]
+    
+    def test_extract_best_partial_match_no_valid_results(self):
+        """Test when no partial results have valid data."""
+        partial_results = [
+            {"function": "tool_search_by_phone", "result": None},
+            {"function": "tool_search_by_address", "result": {"error": "Not found"}}
+        ]
+        
+        best_match = extract_best_partial_match(partial_results, {})
+        assert best_match is None
+    
+    def test_build_receipt_metadata_from_partial_result(self):
+        """Test building metadata from partial match."""
+        partial_match = {
+            "place_id": "test123",
+            "merchant_name": "Test Store",
+            "address": "123 Test St",
+            "phone_number": "555-1234",
+            "source": "phone_lookup",
+            "matched_fields": ["phone"]
+        }
+        
+        metadata = build_receipt_metadata_from_partial_result(
+            "img123", 1, partial_match, ["line1", "line2"]
+        )
+        
+        assert metadata.place_id == "test123"
+        assert metadata.merchant_name == "Test Store"
+        assert metadata.validated_by == ValidationMethod.PHONE_LOOKUP.value
+        assert "partial phone_lookup results" in metadata.reasoning
+
+
 class TestValidateHandler:
     """Test cases for the main validate_handler function."""
     
     @patch('validate_single_receipt_handler.get_receipt_details')
     @patch('validate_single_receipt_handler.run_agent_with_retries')
     @patch('validate_single_receipt_handler.write_receipt_metadata_to_dynamo')
+    @patch('validate_single_receipt_handler.extract_best_partial_match')
+    @patch('validate_single_receipt_handler.build_receipt_metadata_from_partial_result')
+    def test_handler_agent_failure_with_partial_results(self, mock_build_partial, mock_extract_best,
+                                                       mock_write_dynamo, mock_run_agent, mock_get_details):
+        """Test handler when agent fails but partial results are available."""
+        # Setup mocks
+        mock_get_details.return_value = (
+            Mock(),  # receipt
+            [Mock(text="line1"), Mock(text="line2")],  # receipt_lines
+            [],  # receipt_words
+            [],  # receipt_letters
+            [],  # receipt_word_tags
+            []   # receipt_word_labels
+        )
+        
+        partial_results = [{"function": "tool_search_by_phone", "result": {"place_id": "123"}}]
+        mock_run_agent.return_value = (None, partial_results)  # Agent fails with partial results
+        
+        mock_extract_best.return_value = {
+            "place_id": "123",
+            "merchant_name": "Partial Match Store",
+            "source": "phone_lookup"
+        }
+        
+        mock_partial_meta = Mock()
+        mock_partial_meta.reasoning = "From partial results"
+        mock_build_partial.return_value = mock_partial_meta
+        
+        event = {"image_id": "123", "receipt_id": 1}
+        
+        result = validate_handler(event, None)
+        
+        assert result["status"] == "no_match"
+        assert result["failure_reason"] == "agent_attempts_exhausted"
+        assert result["partial_data_used"] == True
+        assert mock_build_partial.called
+        assert mock_write_dynamo.called
+    
+    @patch('validate_single_receipt_handler.get_receipt_details')
+    @patch('validate_single_receipt_handler.run_agent_with_retries')
+    @patch('validate_single_receipt_handler.write_receipt_metadata_to_dynamo')
     @patch('validate_single_receipt_handler.build_receipt_metadata_from_result_no_match')
-    def test_handler_agent_failure(self, mock_build_no_match, mock_write_dynamo, 
-                                   mock_run_agent, mock_get_details):
-        """Test handler when agent fails to return metadata."""
+    def test_handler_agent_failure_no_partial_results(self, mock_build_no_match, mock_write_dynamo, 
+                                                     mock_run_agent, mock_get_details):
+        """Test handler when agent fails with no usable partial results."""
         # Setup mocks
         mock_get_details.return_value = (
             Mock(),  # receipt
@@ -234,6 +335,7 @@ class TestValidateHandler:
         
         assert result["status"] == "no_match"
         assert result["failure_reason"] == "agent_attempts_exhausted"
+        assert result["partial_data_used"] == False
         assert "Agent validation failed" in mock_no_match_meta.reasoning
         assert mock_write_dynamo.called
     

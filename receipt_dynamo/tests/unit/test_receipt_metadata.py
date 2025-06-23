@@ -1,3 +1,4 @@
+import os
 from datetime import datetime
 
 import pytest
@@ -168,3 +169,56 @@ def test_item_to_receipt_metadata_parse_error(example_receipt_metadata):
     item["SK"]["S"] = "BADFORMAT"
     with pytest.raises(ValueError, match="Error parsing receipt metadata"):
         itemToReceiptMetadata(item)
+
+
+@pytest.mark.unit
+def test_configurable_validation_thresholds(monkeypatch):
+    """Test that validation thresholds can be configured via environment variables."""
+    # Test with custom thresholds: 3 fields for MATCHED, 2 for UNSURE
+    monkeypatch.setenv("MIN_FIELDS_FOR_MATCH", "3")
+    monkeypatch.setenv("MIN_FIELDS_FOR_UNSURE", "2")
+    
+    # 2 fields should now be UNSURE instead of MATCHED
+    m1 = ReceiptMetadata(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        receipt_id=1,
+        place_id="id",
+        merchant_name="Test Store",
+        address="123 Test St",
+        phone_number="555-1234",
+        matched_fields=["name", "phone"],
+        validated_by="PHONE_LOOKUP",
+        timestamp=datetime.now(),
+        reasoning="testing"
+    )
+    assert m1.validation_status == MerchantValidationStatus.UNSURE.value
+    
+    # 3 fields should be MATCHED
+    m2 = ReceiptMetadata(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        receipt_id=2,
+        place_id="id2",
+        merchant_name="Test Store 2",
+        address="456 Test Ave",
+        phone_number="555-5678",
+        matched_fields=["name", "phone", "address"],
+        validated_by="ADDRESS_LOOKUP",
+        timestamp=datetime.now(),
+        reasoning="testing"
+    )
+    assert m2.validation_status == MerchantValidationStatus.MATCHED.value
+    
+    # 1 field should be NO_MATCH
+    m3 = ReceiptMetadata(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        receipt_id=3,
+        place_id="id3",
+        merchant_name="Test Store 3",
+        address="",
+        phone_number="",
+        matched_fields=["name"],
+        validated_by="TEXT_SEARCH",
+        timestamp=datetime.now(),
+        reasoning="testing"
+    )
+    assert m3.validation_status == MerchantValidationStatus.NO_MATCH.value

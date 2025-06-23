@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timezone
 from typing import Any, Generator, Optional, Tuple
 
@@ -143,9 +144,13 @@ class ReceiptMetadata:
         high_quality_fields = self._get_high_quality_matched_fields()
         num_fields = len(high_quality_fields)
 
-        if num_fields >= 2:
+        # Use configurable thresholds from environment variables
+        min_fields_for_match = int(os.environ.get("MIN_FIELDS_FOR_MATCH", 2))
+        min_fields_for_unsure = int(os.environ.get("MIN_FIELDS_FOR_UNSURE", 1))
+
+        if num_fields >= min_fields_for_match:
             self.validation_status = MerchantValidationStatus.MATCHED.value
-        elif num_fields == 1:
+        elif num_fields >= min_fields_for_unsure:
             self.validation_status = MerchantValidationStatus.UNSURE.value
         else:
             self.validation_status = MerchantValidationStatus.NO_MATCH.value

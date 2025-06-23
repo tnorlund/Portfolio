@@ -336,6 +336,122 @@ def extract_agent_results(
     return metadata, partial_results
 
 
+def extract_best_partial_match(partial_results: List[Dict[str, Any]], user_input: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Extract the best match from partial results when agent fails.
+    
+    Prioritizes results in order:
+    1. Phone lookup results (most reliable)
+    2. Address lookup results  
+    3. Text search results
+    
+    Args:
+        partial_results: List of partial results from failed agent attempts
+        user_input: The original user input with extracted data
+        
+    Returns:
+        Dict with best match data or None if no usable results
+    """
+    if not partial_results:
+        return None
+    
+    # Group results by function type
+    phone_results = []
+    address_results = []
+    text_results = []
+    
+    for result in partial_results:
+        if result.get("function") == "tool_search_by_phone" and result.get("result"):
+            phone_results.append(result["result"])
+        elif result.get("function") == "tool_search_by_address" and result.get("result"):
+            address_results.append(result["result"])
+        elif result.get("function") == "tool_search_by_text" and result.get("result"):
+            text_results.append(result["result"])
+    
+    # Check phone results first (most reliable)
+    for result in phone_results:
+        if result.get("place_id") and result.get("name"):
+            return {
+                "place_id": result.get("place_id", ""),
+                "merchant_name": result.get("name", ""),
+                "address": result.get("formatted_address", ""),
+                "phone_number": result.get("formatted_phone_number", ""),
+                "source": "phone_lookup",
+                "matched_fields": ["phone"]  # We know phone matched
+            }
+    
+    # Then check address results
+    for result in address_results:
+        if result.get("place_id") and result.get("name"):
+            return {
+                "place_id": result.get("place_id", ""),
+                "merchant_name": result.get("name", ""),
+                "address": result.get("formatted_address", ""),
+                "phone_number": result.get("formatted_phone_number", ""),
+                "source": "address_lookup",
+                "matched_fields": ["address"]  # We know address matched
+            }
+    
+    # Finally check text search results
+    for result in text_results:
+        if result.get("place_id") and result.get("name"):
+            return {
+                "place_id": result.get("place_id", ""),
+                "merchant_name": result.get("name", ""),
+                "address": result.get("formatted_address", ""),
+                "phone_number": result.get("formatted_phone_number", ""),
+                "source": "text_search",
+                "matched_fields": []  # Text search is less certain
+            }
+    
+    return None
+
+
+def build_receipt_metadata_from_partial_result(
+    image_id: str,
+    receipt_id: int, 
+    partial_match: Dict[str, Any],
+    raw_text: List[str]
+) -> ReceiptMetadata:
+    """
+    Build ReceiptMetadata from a partial result when agent fails.
+    
+    Args:
+        image_id: Image UUID
+        receipt_id: Receipt ID
+        partial_match: Best partial match extracted from failed attempts
+        raw_text: Original receipt text
+        
+    Returns:
+        ReceiptMetadata object with partial data
+    """
+    # Map source to ValidationMethod
+    source_to_method = {
+        "phone_lookup": ValidationMethod.PHONE_LOOKUP,
+        "address_lookup": ValidationMethod.ADDRESS_LOOKUP,
+        "text_search": ValidationMethod.TEXT_SEARCH
+    }
+    
+    validated_by = source_to_method.get(
+        partial_match.get("source", ""), 
+        ValidationMethod.INFERENCE
+    )
+    
+    return ReceiptMetadata(
+        image_id=image_id,
+        receipt_id=receipt_id,
+        place_id=partial_match.get("place_id", ""),
+        merchant_name=partial_match.get("merchant_name", ""),
+        address=partial_match.get("address", ""),
+        phone_number=partial_match.get("phone_number", ""),
+        merchant_category="",  # Not available in partial results
+        matched_fields=partial_match.get("matched_fields", []),
+        timestamp=datetime.now(timezone.utc),
+        validated_by=validated_by,
+        reasoning=f"Extracted from partial {partial_match.get('source', 'unknown')} results after agent failure"
+    )
+
+
 def validate_handler(event, context):
     logger.info("Starting validate_single_receipt_handler")
     image_id = event["image_id"]
@@ -370,14 +486,20 @@ def validate_handler(event, context):
     if metadata is None:
         logger.error(f"All {MAX_AGENT_ATTEMPTS} agent attempts failed for receipt {image_id}#{receipt_id}")
         
-        # Log partial results for debugging
-        if partial_results:
-            logger.info(f"Partial results available: {[r['function'] for r in partial_results]}")
+        # Try to extract useful data from partial results
+        best_partial_match = extract_best_partial_match(partial_results, user_input)
         
-        # Use build_receipt_metadata_from_result_no_match as fallback
-        no_match_meta = build_receipt_metadata_from_result_no_match(
-            image_id, receipt_id, user_input["raw_text"]
-        )
+        if best_partial_match:
+            logger.info(f"Using best partial match from {best_partial_match.get('source', 'unknown')}")
+            # Build metadata from the best partial result
+            no_match_meta = build_receipt_metadata_from_partial_result(
+                image_id, receipt_id, best_partial_match, user_input["raw_text"]
+            )
+        else:
+            # Use build_receipt_metadata_from_result_no_match as fallback
+            no_match_meta = build_receipt_metadata_from_result_no_match(
+                image_id, receipt_id, user_input["raw_text"]
+            )
         
         # Add context about the failure to the reasoning
         failure_context = f"Agent validation failed after {MAX_AGENT_ATTEMPTS} attempts."
@@ -392,7 +514,8 @@ def validate_handler(event, context):
             "image_id": image_id,
             "receipt_id": receipt_id,
             "status": "no_match",
-            "failure_reason": "agent_attempts_exhausted"
+            "failure_reason": "agent_attempts_exhausted",
+            "partial_data_used": bool(best_partial_match)
         }
 
     # The validated_by field has already been validated by tool_return_metadata
