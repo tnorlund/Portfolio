@@ -43,6 +43,23 @@ def process_scan(
     ocr_job: OCRJob,
     image: PIL_Image.Image,
 ):
+    """Process a scanned image and queue OCR jobs for each receipt.
+
+    This function downloads the OCR JSON and the raw image, uploads the raw
+    image to S3, and stores the OCR data in DynamoDB. It clusters the OCR
+    lines to locate each receipt, crops the receipts, uploads them to the raw
+    and site buckets, creates new OCR refinement jobs, and updates the OCR
+    routing decision with the number of receipts detected.
+
+    Args:
+        raw_bucket: S3 bucket for raw images
+        site_bucket: S3 bucket for processed images
+        dynamo_table_name: DynamoDB table name
+        ocr_job_queue_url: SQS queue URL for OCR jobs
+        ocr_routing_decision: OCR routing decision object
+        ocr_job: OCR job object
+        image: PIL Image object
+    """
     dynamo_client = DynamoClient(dynamo_table_name)
     image_id = ocr_job.image_id
 
@@ -62,7 +79,7 @@ def process_scan(
     raw_image_s3_key = ocr_job.s3_key
     raw_image_s3_bucket = ocr_job.s3_bucket
     raw_image_path = download_image_from_s3(
-        raw_image_s3_bucket, raw_image_s3_key, Path("/tmp"), image_id
+        raw_image_s3_bucket, raw_image_s3_key, image_id
     )
     image = PIL_Image.open(raw_image_path)
 

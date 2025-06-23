@@ -2,6 +2,7 @@ from typing import Any, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
+from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.job_status import JobStatus, itemToJobStatus
 from receipt_dynamo.entities.util import assert_valid_uuid
 
@@ -19,7 +20,7 @@ def validate_last_evaluated_key(lek: dict) -> None:
             )
 
 
-class _JobStatus:
+class _JobStatus(DynamoClientProtocol):
     def addJobStatus(self, job_status: JobStatus):
         """Adds a job status update to the database
 

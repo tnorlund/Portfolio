@@ -1779,6 +1779,10 @@ def test_getReceiptDetails_success(
     client.addReceiptWordTags([sample_receipt_word_tag])
     client.addReceiptLetters([sample_receipt_letter])
 
+    details = client.getReceiptDetails(
+        sample_receipt.image_id, sample_receipt.receipt_id
+    )
+
     (
         r,
         lines,
@@ -1786,9 +1790,7 @@ def test_getReceiptDetails_success(
         letters,
         tags,
         labels,
-    ) = client.getReceiptDetails(
-        sample_receipt.image_id, sample_receipt.receipt_id
-    )
+    ) = details
 
     assert r == sample_receipt
     assert len(words) == 1 and words[0] == sample_receipt_word

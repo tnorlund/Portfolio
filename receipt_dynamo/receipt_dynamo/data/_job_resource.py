@@ -2,6 +2,7 @@ from typing import Optional
 
 from botocore.exceptions import ClientError
 
+from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.job_resource import JobResource, itemToJobResource
 from receipt_dynamo.entities.util import assert_valid_uuid
 
@@ -19,7 +20,7 @@ def validate_last_evaluated_key(lek: dict) -> None:
             )
 
 
-class _JobResource:
+class _JobResource(DynamoClientProtocol):
     def addJobResource(self, job_resource: JobResource):
         """Adds a job resource to the database
 
