@@ -7,7 +7,7 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo import DynamoClient, Image, Letter, Line, Word
 from receipt_dynamo.constants import OCRJobType, OCRStatus
-from receipt_dynamo.entities import OCRJob, OCRRoutingDecision
+from receipt_dynamo.entities import OCRJob, OCRRoutingDecision, ReceiptMetadata
 
 
 @pytest.fixture
@@ -293,6 +293,17 @@ def test_image_get_details(dynamodb_table, example_image):
     client.addLine(line)
     client.addWord(word)
     client.addLetter(letter)
+    receipt_metadata = ReceiptMetadata(
+        image_id=image.image_id,
+        receipt_id=1,
+        place_id="id",
+        merchant_name="Merchant",
+        match_confidence=0.9,
+        matched_fields=["name"],
+        validated_by="NEARBY_LOOKUP",
+        timestamp=datetime(2025, 1, 1, 0, 0, 0),
+    )
+    client.addReceiptMetadata(receipt_metadata)
     ocr_job = OCRJob(
         image_id=image.image_id,
         job_id="4f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -331,12 +342,16 @@ def test_image_get_details(dynamodb_table, example_image):
         receipt_letters,
         ocr_jobs,
         routing_decisions,
+        receipt_metadatas,
     ) = details
     retrieved_image = images[0]
     assert retrieved_image == image
     assert lines == [line]
     assert words == [word]
     assert letters == [letter]
+    retrieved_metadata = receipt_metadatas[0]
+    assert retrieved_metadata.image_id == receipt_metadata.image_id
+    assert retrieved_metadata.receipt_id == receipt_metadata.receipt_id
     assert ocr_jobs == [ocr_job]
     retrieved_decision = routing_decisions[0]
     assert retrieved_decision.image_id == routing_decision.image_id
