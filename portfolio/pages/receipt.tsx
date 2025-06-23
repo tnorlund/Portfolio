@@ -711,13 +711,6 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         </p>
       </div>
 
-      <div className={styles.logosContainer}>
-        <ClientImageCounts />
-        <ClientReceiptCounts />
-      </div>
-
-      <ReceiptStack />
-
       {files.length > 0 && (
         <div
           style={{
