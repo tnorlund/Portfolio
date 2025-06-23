@@ -38,8 +38,8 @@ VALIDATE_LABELS_SCHEMA = {
 
 
 dynamo_client, _, pinecone_index = get_clients()
-EXAMPLE_CAP = int(os.getenv("EXAMPLE_CAP", 4))
-LINE_WINDOW = int(os.getenv("LINE_WINDOW", 5))
+EXAMPLE_CAP = int(os.getenv("EXAMPLE_CAP", "4"))
+LINE_WINDOW = int(os.getenv("LINE_WINDOW", "5"))
 
 functions = [
     {
@@ -228,8 +228,8 @@ def _format_first_pass_prompt(
 
     prompt_lines.append(
         f'Validate these labels on one "{metadata.merchant_name}" receipt. '
-        "Return **only** a call to the **`validate_labels`** function with a `results` array, "
-        "and do NOT renumber the `id` field.\n"
+        "Return **only** a call to the **`validate_labels`** function with a "
+        "`results` array, and do NOT renumber the `id` field.\n"
     )
     prompt_lines.append("Each result object must include:")
     prompt_lines.append('- `"id"`: the original label identifier')
@@ -237,15 +237,20 @@ def _format_first_pass_prompt(
     prompt_lines.append('- `"correct_label"`: (only if `"is_valid": false`)')
     prompt_lines.append("### Examples (for guidance only)")
     prompt_lines.append(
-        'SPROUTS → {"results":[{"id":"IMAGE#abc123#RECEIPT#00001#LINE#00003#WORD#00001#LABEL#MERCHANT_NAME#VALIDATION_STATUS#NONE","is_valid":true}]}'
+        'SPROUTS → {"results":[{"id":"IMAGE#abc123#RECEIPT#00001#LINE#'
+        '00003#WORD#00001#LABEL#MERCHANT_NAME#VALIDATION_STATUS#NONE",'
+        '"is_valid":true}]}'
     )
     prompt_lines.append(
-        '4.99 → {"results":[{"id":"IMAGE#abc123#RECEIPT#00001#LINE#00010#WORD#00002#LABEL#LINE_TOTAL#VALIDATION_STATUS#NONE","is_valid":false,"correct_label":"UNIT_PRICE"}]}'
+        '4.99 → {"results":[{"id":"IMAGE#abc123#RECEIPT#00001#LINE#00010#'
+        'WORD#00002#LABEL#LINE_TOTAL#VALIDATION_STATUS#NONE","is_valid":'
+        'false,"correct_label":"UNIT_PRICE"}]}'
     )
     prompt_lines.append("### Allowed labels")
     prompt_lines.append(", ".join(CORE_LABELS.keys()))
     prompt_lines.append(
-        "Only labels from the above list are valid; do NOT propose any other label."
+        "Only labels from the above list are valid; do NOT propose any other "
+        "label."
     )
     prompt_lines.append("")  # blank line
     prompt_lines.append("### Targets")
@@ -254,7 +259,8 @@ def _format_first_pass_prompt(
 
     prompt_lines.append("### Receipt")
     prompt_lines.append(
-        f"Below is the receipt for context. Each line determines the range of line IDs\n"
+        "Below is the receipt for context. Each line determines the range of "
+        "line IDs\n"
     )
     prompt_lines.append("---")
     prompt_lines.append(_format_receipt_lines(lines))
@@ -264,7 +270,7 @@ def _format_first_pass_prompt(
     return "\n".join(prompt_lines)
 
 
-def _format_prompt(
+def _format_prompt(  # pylint: disable=too-many-positional-arguments
     first_pass_labels: list[ReceiptWordLabel],
     second_pass_labels: list[ReceiptWordLabel],
     words: list[ReceiptWord],
@@ -345,8 +351,8 @@ def _format_prompt(
     prompt_lines.append("### Task")
     prompt_lines.append(
         f'Revalidate these labels on one "{metadata.merchant_name}" receipt. '
-        "Return **only** a call to the **`validate_labels`** function with a `results` array, "
-        "and do NOT renumber the `id` field.\n"
+        "Return **only** a call to the **`validate_labels`** function with a "
+        "`results` array, and do NOT renumber the `id` field.\n"
     )
     prompt_lines.append("Each result object must include:")
     prompt_lines.append('- `"id"`: the original label identifier')
@@ -354,16 +360,21 @@ def _format_prompt(
     prompt_lines.append('- `"correct_label"`: (only if `"is_valid": false`)')
     prompt_lines.append("### Examples (for guidance only)")
     prompt_lines.append(
-        'SPROUTS → {"results":[{"id":"IMAGE#abc123#RECEIPT#00001#LINE#00003#WORD#00001#LABEL#MERCHANT_NAME#VALIDATION_STATUS#NONE","is_valid":true}]}'
+        'SPROUTS → {"results":[{"id":"IMAGE#abc123#RECEIPT#00001#LINE#'
+        '00003#WORD#00001#LABEL#MERCHANT_NAME#VALIDATION_STATUS#NONE",'
+        '"is_valid":true}]}'
     )
     prompt_lines.append(
-        '4.99 → {"results":[{"id":"IMAGE#abc123#RECEIPT#00001#LINE#00010#WORD#00002#LABEL#LINE_TOTAL#VALIDATION_STATUS#NONE","is_valid":false,"correct_label":"UNIT_PRICE"}]}'
+        '4.99 → {"results":[{"id":"IMAGE#abc123#RECEIPT#00001#LINE#00010#'
+        'WORD#00002#LABEL#LINE_TOTAL#VALIDATION_STATUS#NONE","is_valid":'
+        'false,"correct_label":"UNIT_PRICE"}]}'
     )
     prompt_lines.append("")  # blank line
     prompt_lines.append("### Allowed labels")
     prompt_lines.append(", ".join(CORE_LABELS.keys()))
     prompt_lines.append(
-        "Only labels from the above list are valid; do NOT propose or accept any other label."
+        "Only labels from the above list are valid; do NOT propose or accept "
+        "any other label."
     )
     prompt_lines.append("")  # blank line
     prompt_lines.append("### Targets")
@@ -373,7 +384,8 @@ def _format_prompt(
     # Receipt context once
     prompt_lines.append("### Receipt")
     prompt_lines.append(
-        f"Below is the receipt for context. Each line determines the range of line IDs\n"
+        "Below is the receipt for context. Each line determines the range of "
+        "line IDs\n"
     )
     prompt_lines.append("---")
     prompt_lines.append(_format_receipt_lines(lines))
@@ -435,8 +447,8 @@ def _format_second_pass_prompt(
     prompt_lines.append("### Task")
     prompt_lines.append(
         f'Revalidate these labels on one "{metadata.merchant_name}" receipt. '
-        "Return **only** a call to the **`validate_labels`** function with a `results` array, "
-        "and do NOT renumber the `id` field.\n"
+        "Return **only** a call to the **`validate_labels`** function with a "
+        "`results` array, and do NOT renumber the `id` field.\n"
     )
     prompt_lines.append("Each result object must include:")
     prompt_lines.append('- `"id"`: the original label identifier')
@@ -444,16 +456,21 @@ def _format_second_pass_prompt(
     prompt_lines.append('- `"correct_label"`: (only if `"is_valid": false`)')
     prompt_lines.append("### Examples (for guidance only)")
     prompt_lines.append(
-        'SPROUTS → {"results":[{"id":"IMAGE#abc123#RECEIPT#00001#LINE#00003#WORD#00001#LABEL#MERCHANT_NAME#VALIDATION_STATUS#NONE","is_valid":true}]}'
+        'SPROUTS → {"results":[{"id":"IMAGE#abc123#RECEIPT#00001#LINE#'
+        '00003#WORD#00001#LABEL#MERCHANT_NAME#VALIDATION_STATUS#NONE",'
+        '"is_valid":true}]}'
     )
     prompt_lines.append(
-        '4.99 → {"results":[{"id":"IMAGE#abc123#RECEIPT#00001#LINE#00010#WORD#00002#LABEL#LINE_TOTAL#VALIDATION_STATUS#NONE","is_valid":false,"correct_label":"UNIT_PRICE"}]}'
+        '4.99 → {"results":[{"id":"IMAGE#abc123#RECEIPT#00001#LINE#00010#'
+        'WORD#00002#LABEL#LINE_TOTAL#VALIDATION_STATUS#NONE","is_valid":'
+        'false,"correct_label":"UNIT_PRICE"}]}'
     )
     prompt_lines.append("")  # blank line
     prompt_lines.append("### Allowed labels")
     prompt_lines.append(", ".join(CORE_LABELS.keys()))
     prompt_lines.append(
-        "Only labels from the above list are valid; do NOT propose or accept any other label."
+        "Only labels from the above list are valid; do NOT propose or accept "
+        "any other label."
     )
     prompt_lines.append("")  # blank line
     prompt_lines.append("### Targets")
@@ -463,7 +480,8 @@ def _format_second_pass_prompt(
     # Receipt context once
     prompt_lines.append("### Receipt")
     prompt_lines.append(
-        f"Below is the receipt for context. Each line determines the range of line IDs\n"
+        "Below is the receipt for context. Each line determines the range of "
+        "line IDs\n"
     )
     prompt_lines.append("---")
     prompt_lines.append(_format_receipt_lines(lines))

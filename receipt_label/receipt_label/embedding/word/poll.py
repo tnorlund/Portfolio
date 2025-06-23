@@ -1,14 +1,11 @@
-import json
-import re
-from typing import List
-
 """
 poll_batch.py
 
 This module handles the polling, result retrieval, and ingestion pipeline for
-embedding batch jobs submitted to OpenAI's Batch API. It is designed to be used
-in conjunction with a Step Function that monitors the status of submitted batches
-and processes them once complete.
+embedding batch jobs submitted to OpenAI's Batch API.
+
+It is designed to be used in conjunction with a Step Function that monitors
+the status of submitted batches and processes them once complete.
 
 Functions in this module perform the following tasks:
 - List all embedding batches with status "PENDING" from DynamoDB.
@@ -21,17 +18,13 @@ Functions in this module perform the following tasks:
 This supports scalable, event-driven processing of large embedding jobs in a
 distributed receipt labeling and validation workflow.
 """
+import json
+import re
+from typing import List
 
-from receipt_dynamo.constants import (
-    BatchType,
-    EmbeddingStatus,
-    ValidationStatus,
-)
+from receipt_dynamo.constants import BatchType, ValidationStatus
 from receipt_dynamo.entities import BatchSummary, EmbeddingBatchResult
 
-from receipt_label.embedding.word.submit import (
-    _format_word_context_embedding_input,
-)
 from receipt_label.utils import get_clients
 
 dynamo_client, openai_client, pinecone_index = get_clients()
@@ -102,7 +95,8 @@ def get_openai_batch_status(openai_batch_id: str) -> str:
 def download_openai_batch_result(openai_batch_id: str) -> List[dict]:
     """
     Download and parse the results of an OpenAI embedding batch job.
-    Returns a list of embedding result objects with `custom_id` and `embedding`.
+    Returns a list of embedding result objects with `custom_id` and
+    `embedding`.
     """
     batch = openai_client.batches.retrieve(openai_batch_id)
     output_file_id = batch.output_file_id
@@ -142,10 +136,12 @@ def get_receipt_descriptions(
     results: List[dict],
 ) -> dict[str, dict[int, dict]]:
     """
-    Get the receipt descriptions from the embedding results, grouped by image and receipt.
+    Get the receipt descriptions from the embedding results, grouped by image
+    and receipt.
 
     Returns:
-        A dict mapping each image_id (str) to a dict that maps each receipt_id (int) to a dict containing:
+        A dict mapping each image_id (str) to a dict that maps each
+        receipt_id (int) to a dict containing:
             - receipt
             - lines
             - words
@@ -194,7 +190,7 @@ def _get_unique_receipt_and_image_ids(
     )
 
 
-def upsert_embeddings_to_pinecone(
+def upsert_embeddings_to_pinecone(  # pylint: disable=too-many-statements
     results: List[dict], descriptions: dict[str, dict[int, dict]]
 ):
     """
@@ -206,7 +202,8 @@ def upsert_embeddings_to_pinecone(
 
     The metadata dict for each vector includes:
       - image_id (str): the UUID of the source image.
-      - receipt_id (int): the numeric ID of the receipt within that image.
+      - receipt_id (int): the numeric ID of the receipt within that
+        image.
       - line_id (int): the line number from the OCR output.
       - word_id (int): the position of the word in the line.
       - source (str): fixed value "openai_embedding_batch" to track provenance.
@@ -214,13 +211,15 @@ def upsert_embeddings_to_pinecone(
       - confidence (float): OCR confidence score for the word.
       - left (str): the adjacent word to the left (or "<EDGE>" if none).
       - right (str): the adjacent word to the right (or "<EDGE>" if none).
-      - merchant_name (str, optional): the merchant name for this receipt, if available.
+      - merchant_name (str, optional): the merchant name for this receipt,
+        if available.
 
     Args:
         results (List[dict]): The list of embedding results, each containing:
             - custom_id (str)
             - embedding (List[float])
-        descriptions (dict): A nested dict of receipt details keyed by image_id and receipt_id.
+        descriptions (dict): A nested dict of receipt details keyed by
+            image_id and receipt_id.
 
     Returns:
         int: The total number of vectors successfully upserted to Pinecone.
@@ -237,11 +236,11 @@ def upsert_embeddings_to_pinecone(
         source = "openai_embedding_batch"
         # From the descriptions, get the receipt details for this result
         receipt_details = descriptions[image_id][receipt_id]
-        receipt = receipt_details["receipt"]
-        lines = receipt_details["lines"]
+        _ = receipt_details["receipt"]  # receipt
+        _ = receipt_details["lines"]  # lines
         words = receipt_details["words"]
-        letters = receipt_details["letters"]
-        tags = receipt_details["tags"]
+        _ = receipt_details["letters"]  # letters
+        _ = receipt_details["tags"]  # tags
         labels = receipt_details["labels"]
         metadata = receipt_details["metadata"]
         # Get the target word from the list of words
@@ -256,9 +255,10 @@ def upsert_embeddings_to_pinecone(
         if target_word is None:
             raise ValueError(
                 f"No ReceiptWord found for image_id={image_id}, "
-                f"receipt_id={receipt_id}, line_id={line_id}, word_id={word_id}"
+                f"receipt_id={receipt_id}, line_id={line_id}, "
+                f"word_id={word_id}"
             )
-        target_word_labels = [
+        _ = [  # target_word_labels
             label
             for label in labels
             if label.image_id == image_id
@@ -287,12 +287,14 @@ def upsert_embeddings_to_pinecone(
             for lbl in labels
             if lbl.validation_status == ValidationStatus.PENDING.value
         ]
-        # label_confidence & label_proposed_by — pick from the most recent auto‑suggestion:
+        # label_confidence & label_proposed_by — pick from the most recent
+        # auto‑suggestion:
         if auto_suggestions:
-            # assume the last‑added pending label is the one your LLM just suggested
-            last = sorted(auto_suggestions, key=lambda l: l.timestamp_added)[
-                -1
-            ]
+            # assume the last‑added pending label is the one your LLM just
+            # suggested
+            last = sorted(
+                auto_suggestions, key=lambda l: l.timestamp_added
+            )[-1]
             label_confidence = getattr(
                 last, "confidence", None
             )  # if you store it on the label
@@ -313,18 +315,24 @@ def upsert_embeddings_to_pinecone(
             if lbl.validation_status == ValidationStatus.VALID.value
         ]
         label_validated_at = (
-            sorted(valids, key=lambda l: l.timestamp_added)[-1].timestamp_added
+            sorted(valids, key=lambda l: l.timestamp_added)[-1]
+            .timestamp_added
             if valids
             else None
         )
 
-        # Re format the embedding to get the words left and right of the target word
+        # Re format the embedding to get the words left and right of the
+        # target word
         text = target_word.text
         _word_centroid = target_word.calculate_centroid()
         x_center, y_center = _word_centroid
         width = target_word.bounding_box["width"]
         height = target_word.bounding_box["height"]
         confidence = target_word.confidence
+        # Import locally to avoid circular import
+        from receipt_label.embedding.word.submit import (  # pylint: disable=import-outside-toplevel
+            _format_word_context_embedding_input,
+        )
         _embedding = _format_word_context_embedding_input(target_word, words)
         left_text, right_text = _parse_left_right_from_formatted(_embedding)
 

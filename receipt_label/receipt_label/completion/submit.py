@@ -1,5 +1,4 @@
 import json
-import os
 import re
 import tempfile
 from datetime import datetime, timezone
@@ -13,7 +12,6 @@ from openai.types import FileObject
 from receipt_dynamo.constants import (
     BatchStatus,
     BatchType,
-    PassNumber,
     ValidationStatus,
 )
 from receipt_dynamo.entities import (
@@ -42,6 +40,7 @@ def get_receipt_details(image_id: str, receipt_id: int) -> tuple[
     list[ReceiptLine],
     list[ReceiptWord],
     ReceiptMetadata,
+    list[ReceiptWordLabel],
 ]:
     """Get the receipt details for an image and receipt."""
     (
@@ -51,9 +50,11 @@ def get_receipt_details(image_id: str, receipt_id: int) -> tuple[
         _,
         _,
         labels,
-    ) = dynamo_client.getReceiptDetails(image_id, receipt_id)
+    ) = dynamo_client.getReceiptDetails(
+        image_id, receipt_id
+    )  # type: ignore
     metadata = dynamo_client.getReceiptMetadata(image_id, receipt_id)
-    return lines, words, metadata, labels
+    return lines, words, metadata, labels  # type: ignore
 
 
 def list_labels_that_need_validation() -> list[ReceiptWordLabel]:
@@ -121,7 +122,7 @@ def serialize_labels(
             ndjson_content = "\n".join(ndjson_lines)
             # Write to a unique NDJSON file
             filepath = Path(f"/tmp/{image_id}_{receipt_id}_{uuid4()}.ndjson")
-            with filepath.open("w") as f:
+            with filepath.open("w", encoding="utf-8") as f:
                 f.write(ndjson_content)
             # Keep metadata about which receipt this file represents
             results.append(
@@ -180,8 +181,10 @@ def query_receipt_words(image_id: str, receipt_id: int) -> list[ReceiptWord]:
         _,
         _,
         _,
-    ) = dynamo_client.getReceiptDetails(image_id, receipt_id)
-    return words
+    ) = dynamo_client.getReceiptDetails(
+        image_id, receipt_id
+    )  # type: ignore
+    return words  # type: ignore
 
 
 def _prompt_receipt_text(word: ReceiptWord, lines: list[ReceiptLine]) -> str:
@@ -253,7 +256,7 @@ def format_batch_completion_file(
     labels: list[ReceiptWordLabel],
     first_pass_labels: list[ReceiptWordLabel],
     second_pass_labels: list[ReceiptWordLabel],
-    metadata: ReceiptMetadata,
+    metadata: ReceiptMetadata,  # pylint: disable=too-many-positional-arguments
 ) -> Path:
     """Format the batch completion file name."""
     filepath = Path(
@@ -264,7 +267,10 @@ def format_batch_completion_file(
         batch_lines.append(
             {
                 "method": "POST",
-                "custom_id": f"IMAGE#{metadata.image_id}#RECEIPT#{metadata.receipt_id:05d}",
+                "custom_id": (
+                    f"IMAGE#{metadata.image_id}#"
+                    f"RECEIPT#{metadata.receipt_id:05d}"
+                ),
                 "url": "/v1/chat/completions",
                 "body": {
                     "model": "gpt-4.1-mini",
@@ -285,7 +291,7 @@ def format_batch_completion_file(
                 },
             }
         )
-    with filepath.open("w") as f:
+    with filepath.open("w", encoding="utf-8") as f:
         for batch_line in batch_lines:
             f.write(json.dumps(batch_line) + "\n")
     return filepath
@@ -445,7 +451,9 @@ def get_labels_from_ndjson(
                 for target in targets:
                     ids.append(target["id"])
             except json.JSONDecodeError as e:
-                raise ValueError(f"Failed to parse Targets JSON: {e.msg}")
+                raise ValueError(
+                    f"Failed to parse Targets JSON: {e.msg}"
+                ) from e
     for custom_id in ids:
         parts = custom_id.split("#")
         kv = {parts[i]: parts[i + 1] for i in range(0, len(parts) - 1, 2)}

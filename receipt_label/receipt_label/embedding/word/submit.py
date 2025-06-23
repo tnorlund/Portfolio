@@ -1,22 +1,10 @@
-import json
-import math
-import os
-from datetime import datetime, timezone
-from pathlib import Path
-from uuid import uuid4
-
-import boto3
-from openai.resources.batches import Batch
-from openai.types import FileObject
-from receipt_dynamo.constants import EmbeddingStatus
-from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
-
 """
 submit_batch.py
 
 This module handles the preparation, formatting, submission, and tracking of
-embedding batch jobs to OpenAI's Batch API. It includes functionality to:
+embedding batch jobs to OpenAI's Batch API.
 
+It includes functionality to:
 - Fetch ReceiptWordLabel and ReceiptWord entities from DynamoDB
 - Join and structure the data into OpenAI-compatible embedding requests
 - Write these requests to an NDJSON file
@@ -27,7 +15,15 @@ embedding batch jobs to OpenAI's Batch API. It includes functionality to:
 This script supports agentic document labeling and validation pipelines
 by facilitating scalable embedding of labeled receipt tokens.
 """
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+from uuid import uuid4
 
+import boto3
+from openai.resources.batches import Batch
+from openai.types import FileObject
+from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities import BatchSummary, ReceiptWord
 
 from receipt_label.utils import get_clients
@@ -42,7 +38,8 @@ def serialize_receipt_words(
     Serialize ReceiptWords into per-receipt NDJSON files.
 
     Args:
-        word_receipt_dict: mapping image_id -> receipt_id -> list of ReceiptWord.
+        word_receipt_dict: mapping image_id -> receipt_id -> list of
+            ReceiptWord.
 
     Returns:
         A list of dicts, each containing:
@@ -58,7 +55,7 @@ def serialize_receipt_words(
             ndjson_content = "\n".join(ndjson_lines)
             # Write to a unique NDJSON file
             filepath = Path(f"/tmp/{image_id}_{receipt_id}_{uuid4()}.ndjson")
-            with filepath.open("w") as f:
+            with filepath.open("w", encoding="utf-8") as f:
                 f.write(ndjson_content)
             # Keep metadata about which receipt this file represents
             results.append(
@@ -102,7 +99,7 @@ def download_serialized_words(serialized_word: dict) -> Path:
 def deserialize_receipt_words(filepath: Path) -> list[ReceiptWord]:
     """Deserialize an NDJSON file containing serialized ReceiptWords."""
     words = []
-    with open(filepath, "r") as f:
+    with open(filepath, "r", encoding="utf-8") as f:
         for line in f:
             word = json.loads(line)
             words.append(ReceiptWord(**word))
@@ -128,9 +125,11 @@ def chunk_into_embedding_batches(
     """Chunk the words into embedding batches by image and receipt.
 
     Returns:
-        dict mapping image_id (str) to dict mapping receipt_id (int) to list of ReceiptWord.
+        dict mapping image_id (str) to dict mapping receipt_id (int) to
+        list of ReceiptWord.
     """
-    # Build a mapping image_id -> receipt_id -> dict[(line_id, word_id) -> ReceiptWord] for uniqueness
+    # Build a mapping image_id -> receipt_id ->
+    # dict[(line_id, word_id) -> ReceiptWord] for uniqueness
     words_by_image: dict[
         str, dict[int, dict[tuple[int, int], ReceiptWord]]
     ] = {}
@@ -165,15 +164,13 @@ def list_receipt_words_with_no_embeddings() -> list[ReceiptWord]:
 def _format_word_context_embedding_input(
     word: ReceiptWord, words: list[ReceiptWord]
 ) -> str:
-    # 1) Compute the target word's vertical span (accounting for origin at bottom)
-    # Use bounding_box for consistent span
+    # 1) Compute the target word's vertical span (accounting for origin at
+    # bottom). Use bounding_box for consistent span
     target_bottom = word.bounding_box["y"]
     target_top = word.bounding_box["y"] + word.bounding_box["height"]
-    line_height = target_top - target_bottom
 
     # 2) Sort everything by X so we can walk left/right
     sorted_all = sorted(words, key=lambda w: w.calculate_centroid()[0])
-    x0, _ = word.calculate_centroid()
     idx = next(
         i
         for i, w in enumerate(sorted_all)
@@ -181,7 +178,8 @@ def _format_word_context_embedding_input(
         == (word.image_id, word.receipt_id, word.line_id, word.word_id)
     )
 
-    # 3) Filter to only those words whose vertical span lies within the same line height
+    # 3) Filter to only those words whose vertical span lies within the same
+    # line height
     candidates = []
     for w in sorted_all:
         if w is word:
@@ -208,7 +206,10 @@ def _format_word_context_embedding_input(
             right_text = w.text
             break
 
-    return f"<TARGET>{word.text}</TARGET> <POS>{_get_word_position(word)}</POS> <CONTEXT>{left_text} {right_text}</CONTEXT>"
+    return (
+        f"<TARGET>{word.text}</TARGET> <POS>{_get_word_position(word)}</POS> "
+        f"<CONTEXT>{left_text} {right_text}</CONTEXT>"
+    )
 
 
 def _get_word_position(word: ReceiptWord) -> str:
@@ -271,7 +272,7 @@ def format_word_context_embedding(
 def write_ndjson(batch_id: str, input_data: list[dict]) -> Path:
     """Write the OpenAI embedding input to an NDJSON file."""
     filepath = Path(f"/tmp/{batch_id}.ndjson")
-    with filepath.open("w") as f:
+    with filepath.open("w", encoding="utf-8") as f:
         for row in input_data:
             f.write(json.dumps(row) + "\n")
     return filepath
@@ -308,7 +309,7 @@ def create_batch_summary(
     word_count = 0
 
     # 2) Read and parse each line of the NDJSON file
-    with open(file_path, "r") as f:
+    with open(file_path, "r", encoding="utf-8") as f:
         for line in f:
             word_count += 1
             try:
@@ -319,7 +320,7 @@ def create_batch_summary(
                 image_id = parts[1]
                 receipt_id = int(parts[3])
                 receipt_refs.add((image_id, receipt_id))
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 continue
 
     # 3) Build and return the BatchSummary

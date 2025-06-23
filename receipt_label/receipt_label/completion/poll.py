@@ -1,8 +1,7 @@
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from itertools import islice
-from pathlib import Path
 
 from receipt_dynamo.constants import BatchStatus, BatchType, ValidationStatus
 from receipt_dynamo.entities import (
@@ -97,14 +96,16 @@ def _extract_results(data: dict) -> list[dict]:
         try:
             return json.loads(arguments)["results"]
         except (json.JSONDecodeError, KeyError) as e:
-            raise ValueError(f"Could not parse function_call arguments: {e}")
+            raise ValueError(
+                f"Could not parse function_call arguments: {e}"
+            ) from e
     elif message["content"] is not None:
         return json.loads(message["content"])["results"]
     else:
         raise ValueError(f"No usable result found in message: {message}")
 
 
-def download_openai_batch_result(
+def download_openai_batch_result(  # pylint: disable=too-many-locals,too-many-statements
     batch_summary: BatchSummary,
 ) -> tuple[list[ReceiptWordLabel], list[LabelResult], list[LabelResult]]:
     """
@@ -141,10 +142,10 @@ def download_openai_batch_result(
             if cache_key not in receipt_details_cache:
                 (
                     _,
-                    all_lines_from_receipt,
-                    all_words_from_receipt,
-                    all_letters_from_receipt,
-                    all_tags_from_receipt,
+                    _,
+                    _,
+                    _,
+                    _,
                     all_labels_from_receipt,
                 ) = dynamo_client.getReceiptDetails(
                     image_id=image_id, receipt_id=receipt_id
@@ -161,7 +162,7 @@ def download_openai_batch_result(
             ]
             try:
                 results = _extract_results(data)
-            except Exception as e:
+            except Exception:  # pylint: disable=broad-exception-caught
                 continue
             if results is None:
 
@@ -188,9 +189,8 @@ def download_openai_batch_result(
                 )
                 if label_from_dynamo is None:
                     continue
-                else:
-                    # Remove from pending_labels if present
-                    pending_labels = [
+                # Remove from pending_labels if present
+                pending_labels = [
                         label
                         for label in pending_labels
                         if not (
@@ -233,12 +233,13 @@ def download_openai_batch_result(
                             other_labels=other_labels,
                         )
                     )
-            # After all results, any leftover pending_labels for this receipt should be reset to NONE
+            # After all results, any leftover pending_labels for this receipt
+            # should be reset to NONE
             if pending_labels:
                 for label in pending_labels:
                     label.validation_status = ValidationStatus.NONE.value
                     pending_labels_to_update.append(label)
-        except Exception as e:
+        except Exception:  # pylint: disable=broad-exception-caught
             # Could not parse line as JSON, skip
             continue
 
@@ -314,7 +315,8 @@ def update_valid_labels(valid_labels_results: list[LabelResult]) -> None:
 
 def update_invalid_labels(invalid_labels_results: list[LabelResult]) -> None:
     """
-    Update invalid labels in DynamoDB and Pinecone index based on batch parsing results.
+    Update invalid labels in DynamoDB and Pinecone index based on batch
+    parsing results.
     """
 
     labels_to_update: list[ReceiptWordLabel] = []
@@ -453,8 +455,8 @@ def write_completion_batch_results(
         return
 
     # ------------------------------------------------------------------
-    # De‑duplicate using the DynamoDB key itself (PK+SK) so we never
-    # send two items with the same composite key in the same batch.
+    # De-duplicate using the DynamoDB key itself (PK+SK) so we never send
+    # two items with the same composite key in the same batch.
     # ------------------------------------------------------------------
     unique_by_key: dict[tuple[str, str], CompletionBatchResult] = {}
 

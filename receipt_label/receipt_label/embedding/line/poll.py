@@ -1,14 +1,11 @@
-import json
-import re
-from typing import List
-
 """
 poll_line_batch.py
 
 This module handles the polling, result retrieval, and ingestion pipeline for
-line embedding batch jobs submitted to OpenAI's Batch API. It is designed to be used
-in conjunction with a Step Function that monitors the status of submitted batches
-and processes them once complete.
+line embedding batch jobs submitted to OpenAI's Batch API.
+
+It is designed to be used in conjunction with a Step Function that monitors
+the status of submitted batches and processes them once complete.
 
 Functions in this module perform the following tasks:
 - List all line embedding batches with status "PENDING" from DynamoDB
@@ -21,21 +18,17 @@ Functions in this module perform the following tasks:
 This supports scalable, event-driven processing of line embedding jobs for
 receipt section classification.
 """
+import json
+import re
+from typing import List
 
-from receipt_dynamo.constants import (
-    BatchType,
-    EmbeddingStatus,
-    ValidationStatus,
-)
+from receipt_dynamo.constants import BatchType, EmbeddingStatus
 from receipt_dynamo.entities import (
     BatchSummary,
     EmbeddingBatchResult,
     ReceiptSection,
 )
 
-from receipt_label.submit_line_embedding_batch.submit_line_batch import (
-    _format_line_context_embedding_input,
-)
 from receipt_label.utils import get_clients
 
 dynamo_client, openai_client, pinecone_index = get_clients()
@@ -44,7 +37,8 @@ dynamo_client, openai_client, pinecone_index = get_clients()
 def _parse_prev_next_from_formatted(fmt: str) -> tuple[str, str]:
     """
     Given a string like
-      "<TARGET>LINE TEXT</TARGET> <POS>…</POS> <CONTEXT>PREV_LINE NEXT_LINE</CONTEXT>"
+      "<TARGET>LINE TEXT</TARGET> <POS>…</POS> "
+      "<CONTEXT>PREV_LINE NEXT_LINE</CONTEXT>"
     return ("PREV_LINE", "NEXT_LINE").
     """
     m = re.search(r"<CONTEXT>(.*?)</CONTEXT>", fmt)
@@ -99,7 +93,8 @@ def get_openai_batch_status(openai_batch_id: str) -> str:
 def download_openai_batch_result(openai_batch_id: str) -> List[dict]:
     """
     Download and parse the results of an OpenAI embedding batch job.
-    Returns a list of embedding result objects with `custom_id` and `embedding`.
+    Returns a list of embedding result objects with `custom_id` and
+    `embedding`.
     """
     batch = openai_client.batches.retrieve(openai_batch_id)
     output_file_id = batch.output_file_id
@@ -139,10 +134,12 @@ def get_receipt_descriptions(
     results: List[dict],
 ) -> dict[str, dict[int, dict]]:
     """
-    Get the receipt descriptions from the embedding results, grouped by image and receipt.
+    Get the receipt descriptions from the embedding results, grouped by image
+    and receipt.
 
     Returns:
-        A dict mapping each image_id (str) to a dict that maps each receipt_id (int) to a dict containing:
+        A dict mapping each image_id (str) to a dict that maps each
+        receipt_id (int) to a dict containing:
             - receipt
             - lines
             - words
@@ -225,7 +222,7 @@ def upsert_line_embeddings_to_pinecone(
 
         # From the descriptions, get the receipt details
         receipt_details = descriptions[image_id][receipt_id]
-        receipt = receipt_details["receipt"]
+        _ = receipt_details["receipt"]  # receipt
         lines = receipt_details["lines"]
         words = receipt_details["words"]
         metadata = receipt_details["metadata"]
@@ -255,7 +252,8 @@ def upsert_line_embeddings_to_pinecone(
         height = target_line.bounding_box["height"]
 
         # Format the line context to extract prev/next lines
-        from receipt_label.submit_line_embedding_batch.submit_line_batch import (
+        # Import locally to avoid circular import
+        from receipt_label.submit_line_embedding_batch.submit_line_batch import (  # pylint: disable=import-outside-toplevel,line-too-long  # noqa: E501
             _format_line_context_embedding_input,
         )
 
@@ -332,7 +330,8 @@ def write_line_embedding_results_to_dynamo(
         results (List[dict]): The list of embedding results containing:
             - custom_id (str)
             - embedding (List[float])
-        descriptions (dict): Nested dict from get_receipt_descriptions, keyed by image_id then receipt_id.
+        descriptions (dict): Nested dict from get_receipt_descriptions,
+            keyed by image_id then receipt_id.
         batch_id (str): The identifier of the batch for EmbeddingBatchResult.
 
     Returns:
