@@ -1,6 +1,6 @@
+import json
 import re
 from typing import List
-import json
 
 """
 poll_batch.py
@@ -22,13 +22,14 @@ This supports scalable, event-driven processing of large embedding jobs in a
 distributed receipt labeling and validation workflow.
 """
 
-from receipt_dynamo.entities import EmbeddingBatchResult, BatchSummary
 from receipt_dynamo.constants import (
     BatchType,
     EmbeddingStatus,
     ValidationStatus,
 )
-from receipt_label.submit_embedding_batch.submit_batch import (
+from receipt_dynamo.entities import BatchSummary, EmbeddingBatchResult
+
+from receipt_label.embedding.word.submit import (
     _format_word_context_embedding_input,
 )
 from receipt_label.utils import get_clients

@@ -1,14 +1,16 @@
-import os
 import json
-from receipt_label.utils import get_clients
+import os
+
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import (
     ReceiptLine,
+    ReceiptMetadata,
     ReceiptWord,
     ReceiptWordLabel,
-    ReceiptMetadata,
 )
+
 from receipt_label.constants import CORE_LABELS
+from receipt_label.utils import get_clients
 
 # A mini JSON schema snippet for validate_labels
 VALIDATE_LABELS_SCHEMA = {
@@ -284,7 +286,7 @@ def _format_prompt(
             and w.word_id == first_pass_label.word_id
         )
         if word is None:
-            raise ValueError(f"Word not found for label: {label}")
+            raise ValueError(f"Word not found for label: {first_pass_label}")
         targets.append(
             {
                 "id": (

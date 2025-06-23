@@ -1,15 +1,17 @@
-from pathlib import Path
 import json
-from dataclasses import dataclass, asdict
-from receipt_label.utils import get_clients
-from receipt_dynamo.constants import BatchStatus, BatchType, ValidationStatus
-from receipt_dynamo.entities import (
-    CompletionBatchResult,
-    BatchSummary,
-    ReceiptWordLabel,
-)
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from itertools import islice
+from pathlib import Path
+
+from receipt_dynamo.constants import BatchStatus, BatchType, ValidationStatus
+from receipt_dynamo.entities import (
+    BatchSummary,
+    CompletionBatchResult,
+    ReceiptWordLabel,
+)
+
+from receipt_label.utils import get_clients
 
 
 def _chunk(iterable, n):

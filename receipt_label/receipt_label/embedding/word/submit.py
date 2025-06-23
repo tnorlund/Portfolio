@@ -1,14 +1,15 @@
-from uuid import uuid4
-from datetime import datetime, timezone
 import json
-import os
 import math
+import os
+from datetime import datetime, timezone
+from pathlib import Path
+from uuid import uuid4
+
 import boto3
 from openai.resources.batches import Batch
 from openai.types import FileObject
-from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 from receipt_dynamo.constants import EmbeddingStatus
-from pathlib import Path
+from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 
 """
 submit_batch.py
@@ -27,7 +28,8 @@ This script supports agentic document labeling and validation pipelines
 by facilitating scalable embedding of labeled receipt tokens.
 """
 
-from receipt_dynamo.entities import ReceiptWord, BatchSummary
+from receipt_dynamo.entities import BatchSummary, ReceiptWord
+
 from receipt_label.utils import get_clients
 
 dynamo_client, openai_client, _ = get_clients()

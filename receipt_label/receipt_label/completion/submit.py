@@ -1,34 +1,33 @@
-import re
 import json
 import os
-from pathlib import Path
+import re
 import tempfile
-from uuid import uuid4
-import boto3
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import List, Tuple
+from uuid import uuid4
 
-
+import boto3
+from openai.resources.batches import Batch
+from openai.types import FileObject
+from receipt_dynamo.constants import (
+    BatchStatus,
+    BatchType,
+    PassNumber,
+    ValidationStatus,
+)
 from receipt_dynamo.entities import (
-    ReceiptWordLabel,
-    ReceiptWord,
+    BatchSummary,
     ReceiptLine,
     ReceiptMetadata,
-    BatchSummary,
+    ReceiptWord,
+    ReceiptWordLabel,
 )
-from openai.types import FileObject
-from openai.resources.batches import Batch
-from receipt_dynamo.constants import (
-    ValidationStatus,
-    PassNumber,
-    BatchType,
-    BatchStatus,
-)
-from receipt_label.submit_completion_batch._format_prompt import (
+
+from receipt_label.completion._format_prompt import (
     _format_prompt,
     functions,
 )
-from datetime import datetime, timezone
-
 from receipt_label.utils import get_clients
 
 dynamo_client, openai_client = get_clients()[:2]
