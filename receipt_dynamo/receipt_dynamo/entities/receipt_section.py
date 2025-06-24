@@ -1,12 +1,13 @@
 from datetime import datetime
-from typing import Generator, Optional, Tuple, Any
+from typing import Any, Generator, Optional, Tuple
 
+from receipt_dynamo.constants import EmbeddingStatus, SectionType
 from receipt_dynamo.entities.util import (
     _format_float,
     _repr_str,
     assert_valid_uuid,
+    normalize_enum,
 )
-from receipt_dynamo.constants import EmbeddingStatus, SectionType
 
 
 class ReceiptSection:
@@ -46,21 +47,7 @@ class ReceiptSection:
         assert_valid_uuid(image_id)
         self.image_id = image_id
 
-        # Normalize and validate section_type (allow enum or string)
-        if isinstance(section_type, SectionType):
-            section_type_value = section_type.value
-        elif isinstance(section_type, str):
-            section_type_value = section_type
-        else:
-            raise ValueError(
-                "section_type must be a string or SectionType enum"
-            )
-        valid_section_types = [t.value for t in SectionType]
-        if section_type_value not in valid_section_types:
-            raise ValueError(
-                f"section_type must be one of: {', '.join(valid_section_types)}\nGot: {section_type_value}"
-            )
-        self.section_type = section_type_value
+        self.section_type = normalize_enum(section_type, SectionType)
 
         if not isinstance(line_ids, list):
             raise ValueError("line_ids must be a list")

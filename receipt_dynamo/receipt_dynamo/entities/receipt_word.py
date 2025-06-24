@@ -1,13 +1,14 @@
 from math import atan2, pi
 from typing import Generator, Tuple
 
+from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities.util import (
     _format_float,
     assert_valid_bounding_box,
     assert_valid_point,
     assert_valid_uuid,
+    normalize_enum,
 )
-from receipt_dynamo.constants import EmbeddingStatus
 
 
 class ReceiptWord:
@@ -135,21 +136,9 @@ class ReceiptWord:
             raise ValueError("extracted_data must be a dict")
         self.extracted_data = extracted_data
 
-        # Normalize and validate embedding_status (allow enum or string)
-        if isinstance(embedding_status, EmbeddingStatus):
-            status_value = embedding_status.value
-        elif isinstance(embedding_status, str):
-            status_value = embedding_status
-        else:
-            raise ValueError(
-                "embedding_status must be a string or EmbeddingStatus enum"
-            )
-        valid_values = [s.value for s in EmbeddingStatus]
-        if status_value not in valid_values:
-            raise ValueError(
-                f"embedding_status must be one of: {', '.join(valid_values)}\nGot: {status_value}"
-            )
-        self.embedding_status = status_value
+        self.embedding_status = normalize_enum(
+            embedding_status, EmbeddingStatus
+        )
 
     def key(self) -> dict:
         """

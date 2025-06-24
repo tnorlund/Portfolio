@@ -8,6 +8,7 @@ from receipt_dynamo.entities.util import (
     _repr_str,
     assert_valid_point,
     assert_valid_uuid,
+    normalize_enum,
 )
 
 
@@ -100,20 +101,7 @@ class ReceiptMetadata:
             raise ValueError("matched fields must be unique")
         self.matched_fields = matched_fields
 
-        if isinstance(validated_by, ValidationMethod):
-            validated_by_value = validated_by.value
-        elif isinstance(validated_by, str):
-            validated_by_value = validated_by
-        else:
-            raise ValueError(
-                f"validated_by must be a string or ValidationMethod enum\nGot: {type(validated_by)}"
-            )
-        valid_values = [s.value for s in ValidationMethod]
-        if validated_by_value not in valid_values:
-            raise ValueError(
-                f"validated_by must be one of: {', '.join(valid_values)}\nGot: {validated_by_value}"
-            )
-        self.validated_by = validated_by_value
+        self.validated_by = normalize_enum(validated_by, ValidationMethod)
 
         if not isinstance(timestamp, datetime):
             raise ValueError("timestamp must be a datetime")
@@ -158,17 +146,17 @@ class ReceiptMetadata:
     def _get_high_quality_matched_fields(self) -> list[str]:
         """
         Validates the quality of matched fields and returns only high-quality matches.
-        
+
         This method filters out potentially false positive field matches by checking:
         - Name fields are not empty and have meaningful content
         - Phone fields have sufficient digits
         - Address fields have sufficient components
-        
+
         Returns:
             list[str]: List of high-quality matched field names
         """
         high_quality_fields = []
-        
+
         for field in self.matched_fields:
             if field == "name":
                 # Name must be non-empty and more than just whitespace/punctuation
@@ -176,7 +164,9 @@ class ReceiptMetadata:
                     high_quality_fields.append(field)
             elif field == "phone":
                 # Phone must have at least 10 digits (for US numbers)
-                phone_digits = ''.join(c for c in self.phone_number if c.isdigit())
+                phone_digits = "".join(
+                    c for c in self.phone_number if c.isdigit()
+                )
                 if len(phone_digits) >= 10:
                     high_quality_fields.append(field)
             elif field == "address":
@@ -184,13 +174,13 @@ class ReceiptMetadata:
                 tokens = self.address.split()
                 meaningful_tokens = 0
                 has_number = False
-                
+
                 for i, token in enumerate(tokens):
-                    token_clean = token.rstrip('.,;:')
-                    
+                    token_clean = token.rstrip(".,;:")
+
                     # Count as meaningful if:
                     # 1. It's a number (house/street number)
-                    if token_clean.replace('-', '').replace('/', '').isdigit():
+                    if token_clean.replace("-", "").replace("/", "").isdigit():
                         meaningful_tokens += 1
                         has_number = True
                     # 2. It contains digits (1st, 2nd, etc)
@@ -202,14 +192,14 @@ class ReceiptMetadata:
                     # 4. It's a short token (likely abbreviation) but not the only token
                     elif len(tokens) > 1 and token_clean.isalpha():
                         meaningful_tokens += 0.5  # Count as half
-                
+
                 # Require at least 2 full meaningful tokens
                 if meaningful_tokens >= 2:
                     high_quality_fields.append(field)
             else:
                 # Unknown fields are kept as-is (future-proofing)
                 high_quality_fields.append(field)
-        
+
         return high_quality_fields
 
     def key(self) -> dict:

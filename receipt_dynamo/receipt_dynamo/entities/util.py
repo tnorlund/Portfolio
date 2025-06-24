@@ -1,6 +1,7 @@
 import re
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Any, Iterable, Optional
+from enum import Enum
+from typing import Any, Iterable, Optional, Type
 
 
 def _repr_str(value: Optional[str]) -> str:
@@ -214,6 +215,35 @@ def assert_valid_uuid(uuid) -> None:
         raise ValueError("uuid must be a string")
     if not UUID_V4_REGEX.match(uuid):
         raise ValueError("uuid must be a valid UUIDv4")
+
+
+def normalize_enum(candidate: Any, enum_cls: Type[Enum]) -> str:
+    """Return the normalized ``enum_cls`` value for ``candidate``.
+
+    Args:
+        candidate: A string or Enum instance to normalize.
+        enum_cls: The Enum class to normalize against.
+
+    Returns:
+        str: The ``.value`` of the matching Enum member.
+
+    Raises:
+        ValueError: If ``candidate`` is not valid for ``enum_cls``.
+    """
+
+    if isinstance(candidate, enum_cls):
+        return candidate.value
+    if isinstance(candidate, str):
+        try:
+            return enum_cls(candidate).value
+        except ValueError as exc:
+            options = ", ".join(e.value for e in enum_cls)
+            raise ValueError(
+                f"{enum_cls.__name__} must be one of: {options}\nGot: {candidate}"
+            ) from exc
+    raise ValueError(
+        f"{enum_cls.__name__} must be a str or {enum_cls.__name__} instance"
+    )
 
 
 def shear_point(px, py, pivot_x, pivot_y, shx, shy):
