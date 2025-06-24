@@ -27,9 +27,8 @@ from openai.types import FileObject
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities import BatchSummary, ReceiptLine
 
-from receipt_label.utils import get_clients
-
-dynamo_client, openai_client, _ = get_clients()
+from receipt_label.utils import get_client_manager
+from receipt_label.utils.client_manager import ClientManager
 
 
 def generate_batch_id() -> str:
@@ -37,9 +36,11 @@ def generate_batch_id() -> str:
     return str(uuid4())
 
 
-def list_receipt_lines_with_no_embeddings() -> list[ReceiptLine]:
+def list_receipt_lines_with_no_embeddings(client_manager: ClientManager = None) -> list[ReceiptLine]:
     """Fetch all ReceiptLine items with embedding_status == NONE."""
-    return dynamo_client.listReceiptLinesByEmbeddingStatus(
+    if client_manager is None:
+        client_manager = get_client_manager()
+    return client_manager.dynamo.listReceiptLinesByEmbeddingStatus(
         EmbeddingStatus.NONE
     )
 
@@ -164,9 +165,11 @@ def deserialize_receipt_lines(filepath: Path) -> list[ReceiptLine]:
     return lines
 
 
-def query_receipt_lines(image_id: str, receipt_id: int) -> list[ReceiptLine]:
+def query_receipt_lines(image_id: str, receipt_id: int, client_manager: ClientManager = None) -> list[ReceiptLine]:
     """Query the ReceiptLines from DynamoDB."""
-    _, lines, _, _, _, _ = dynamo_client.getReceiptDetails(
+    if client_manager is None:
+        client_manager = get_client_manager()
+    _, lines, _, _, _, _ = client_manager.dynamo.getReceiptDetails(
         image_id, receipt_id
     )
     return lines
@@ -181,16 +184,20 @@ def write_ndjson(batch_id: str, input_data: list[dict]) -> Path:
     return filepath
 
 
-def upload_to_openai(filepath: Path) -> FileObject:
+def upload_to_openai(filepath: Path, client_manager: ClientManager = None) -> FileObject:
     """Upload the NDJSON file to OpenAI."""
-    return openai_client.files.create(
+    if client_manager is None:
+        client_manager = get_client_manager()
+    return client_manager.openai.files.create(
         file=filepath.open("rb"), purpose="batch"
     )
 
 
-def submit_openai_batch(file_id: str) -> Batch:
+def submit_openai_batch(file_id: str, client_manager: ClientManager = None) -> Batch:
     """Submit a batch embedding job to OpenAI using the uploaded file."""
-    return openai_client.batches.create(
+    if client_manager is None:
+        client_manager = get_client_manager()
+    return client_manager.openai.batches.create(
         input_file_id=file_id,
         endpoint="/v1/embeddings",
         completion_window="24h",
@@ -239,14 +246,18 @@ def create_batch_summary(
     )
 
 
-def add_batch_summary(summary: BatchSummary) -> None:
+def add_batch_summary(summary: BatchSummary, client_manager: ClientManager = None) -> None:
     """Write the BatchSummary entity to DynamoDB."""
-    dynamo_client.addBatchSummary(summary)
+    if client_manager is None:
+        client_manager = get_client_manager()
+    client_manager.dynamo.addBatchSummary(summary)
 
 
-def update_line_embedding_status(lines: list[ReceiptLine]) -> None:
+def update_line_embedding_status(lines: list[ReceiptLine], client_manager: ClientManager = None) -> None:
     """Update the Embedding Status of the Lines"""
+    if client_manager is None:
+        client_manager = get_client_manager()
     for line in lines:
         # Set to the string value so GSI1PK is updated correctly
         line.embedding_status = EmbeddingStatus.PENDING.value
-    dynamo_client.updateReceiptLines(lines)
+    client_manager.dynamo.updateReceiptLines(lines)

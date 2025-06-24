@@ -687,13 +687,25 @@ def receipt_and_metadata():
 def test_embedding_batch_submit(
     dynamodb_table_and_s3_bucket: tuple[str, str],
     receipt_words: list[ReceiptWord],
+    patch_clients,
     mocker,
 ):
     # Arrange: point the handler at your Moto table
     dynamo_table, s3_bucket = dynamodb_table_and_s3_bucket
     moto_client = DynamoClient(dynamo_table)
-    # Monkey‑patch the global in the submit_batch module
-    mocker.patch.object(submit_batch, "dynamo_client", moto_client)
+    fake_openai, fake_index = patch_clients
+    
+    # Create a custom mock client manager for this test
+    mock_client_manager = mocker.Mock()
+    mock_client_manager.dynamo = moto_client
+    mock_client_manager.openai = fake_openai
+    mock_client_manager.pinecone = fake_index
+    
+    # Patch get_client_manager specifically for the embedding module
+    mocker.patch(
+        "receipt_label.embedding.word.submit.get_client_manager",
+        return_value=mock_client_manager
+    )
 
     # Populate the table
     moto_client.addWords(receipt_words)
@@ -774,7 +786,7 @@ def test_embedding_batch_submit(
             assert obj["url"] == "/v1/embeddings"
             assert "input" in obj["body"] and "model" in obj["body"]
     # Verify the OpenAI client is called correctly
-    fake = submit_batch.openai_client  # get the patched OpenAI client
+    fake = fake_openai  # get the mocked OpenAI client
     fake.files.create.assert_called_once()
     fake.batches.create.assert_called_once_with(
         input_file_id="fake-file-id",
@@ -850,8 +862,18 @@ def test_embedding_batch_poll(
     fake_openai, fake_index = patch_clients
     dynamo_table, s3_bucket = dynamodb_table_and_s3_bucket
     moto_client = DynamoClient(dynamo_table)
-    # Monkey‑patch the global in the submit_batch module
-    mocker.patch.object(poll_batch, "dynamo_client", moto_client)
+    
+    # Create a custom mock client manager for this test
+    mock_client_manager = mocker.Mock()
+    mock_client_manager.dynamo = moto_client
+    mock_client_manager.openai = fake_openai
+    mock_client_manager.pinecone = fake_index
+    
+    # Patch get_client_manager specifically for the embedding module
+    mocker.patch(
+        "receipt_label.embedding.word.poll.get_client_manager",
+        return_value=mock_client_manager
+    )
 
     for word in receipt_words:
         word.embedding_status = EmbeddingStatus.PENDING
