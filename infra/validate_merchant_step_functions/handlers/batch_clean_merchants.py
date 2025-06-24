@@ -3,7 +3,6 @@
 import json
 import time
 from dataclasses import dataclass
-from logging import INFO, Formatter, StreamHandler, getLogger
 from typing import Any, Dict, List, Optional, Tuple
 
 # Import AWS exceptions
@@ -21,18 +20,9 @@ from receipt_label.merchant_validation import (
     update_items_with_canonical,
 )
 
-logger = getLogger()
-logger.setLevel(INFO)
+from .common import setup_logger
 
-if len(logger.handlers) == 0:
-    handler = StreamHandler()
-    handler.setFormatter(
-        Formatter(
-            "[%(levelname)s] %(asctime)s.%(msecs)dZ %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
-    )
-    logger.addHandler(handler)
+logger = setup_logger(__name__)
 
 
 @dataclass

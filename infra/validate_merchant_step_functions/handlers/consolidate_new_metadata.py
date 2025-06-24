@@ -1,6 +1,5 @@
 """Lambda handler for consolidating newly validated merchant metadata."""
 
-from logging import INFO, Formatter, StreamHandler, getLogger
 from typing import Any, Dict, List, Optional
 
 import botocore.exceptions
@@ -12,18 +11,9 @@ from receipt_label.merchant_validation import (
 )
 from receipt_label.utils import get_clients
 
-logger = getLogger()
-logger.setLevel(INFO)
+from .common import setup_logger
 
-if len(logger.handlers) == 0:
-    handler = StreamHandler()
-    handler.setFormatter(
-        Formatter(
-            "[%(levelname)s] %(asctime)s.%(msecs)dZ %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
-    )
-    logger.addHandler(handler)
+logger = setup_logger(__name__)
 
 dynamo_client, _, _ = get_clients()
 

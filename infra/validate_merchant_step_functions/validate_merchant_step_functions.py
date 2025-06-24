@@ -137,15 +137,30 @@ class ValidateMerchantStepFunctions(ComponentResource):
             name=f"{name}-{stack}-batch-clean-merchants",
             role=lambda_exec_role.arn,
             runtime="python3.12",
-            handler="batch_clean_merchants_handler.batch_handler",
+            handler="handlers.batch_clean_merchants.batch_handler",
             code=AssetArchive(
                 {
-                    "batch_clean_merchants_handler.py": FileAsset(
+                    "handlers/__init__.py": FileAsset(
                         os.path.join(
                             os.path.dirname(__file__),
-                            "batch_clean_merchants_handler.py",
+                            "handlers",
+                            "__init__.py",
                         )
-                    )
+                    ),
+                    "handlers/common.py": FileAsset(
+                        os.path.join(
+                            os.path.dirname(__file__),
+                            "handlers",
+                            "common.py",
+                        )
+                    ),
+                    "handlers/batch_clean_merchants.py": FileAsset(
+                        os.path.join(
+                            os.path.dirname(__file__),
+                            "handlers",
+                            "batch_clean_merchants.py",
+                        )
+                    ),
                 }
             ),
             timeout=900,
@@ -174,15 +189,30 @@ class ValidateMerchantStepFunctions(ComponentResource):
             name=f"{name}-{stack}-list-receipts",
             role=lambda_exec_role.arn,
             runtime="python3.12",
-            handler="list_receipts_handler.list_handler",
+            handler="handlers.list_receipts.list_handler",
             code=AssetArchive(
                 {
-                    "list_receipts_handler.py": FileAsset(
+                    "handlers/__init__.py": FileAsset(
                         os.path.join(
                             os.path.dirname(__file__),
-                            "list_receipts_handler.py",
+                            "handlers",
+                            "__init__.py",
                         )
-                    )
+                    ),
+                    "handlers/common.py": FileAsset(
+                        os.path.join(
+                            os.path.dirname(__file__),
+                            "handlers",
+                            "common.py",
+                        )
+                    ),
+                    "handlers/list_receipts.py": FileAsset(
+                        os.path.join(
+                            os.path.dirname(__file__),
+                            "handlers",
+                            "list_receipts.py",
+                        )
+                    ),
                 }
             ),
             timeout=900,
@@ -211,15 +241,30 @@ class ValidateMerchantStepFunctions(ComponentResource):
             name=f"{name}-{stack}-validate-receipt",
             role=lambda_exec_role.arn,
             runtime="python3.12",
-            handler="validate_single_receipt_handler_v2.validate_handler",
+            handler="handlers.validate_single_receipt_v2.validate_handler",
             code=AssetArchive(
                 {
-                    "validate_single_receipt_handler_v2.py": FileAsset(
+                    "handlers/__init__.py": FileAsset(
                         os.path.join(
                             os.path.dirname(__file__),
-                            "validate_single_receipt_handler_v2.py",
+                            "handlers",
+                            "__init__.py",
                         )
-                    )
+                    ),
+                    "handlers/common.py": FileAsset(
+                        os.path.join(
+                            os.path.dirname(__file__),
+                            "handlers",
+                            "common.py",
+                        )
+                    ),
+                    "handlers/validate_single_receipt_v2.py": FileAsset(
+                        os.path.join(
+                            os.path.dirname(__file__),
+                            "handlers",
+                            "validate_single_receipt_v2.py",
+                        )
+                    ),
                 }
             ),
             timeout=900,
@@ -248,15 +293,30 @@ class ValidateMerchantStepFunctions(ComponentResource):
             name=f"{name}-{stack}-consolidate",
             role=lambda_exec_role.arn,
             runtime="python3.12",
-            handler="consolidate_new_metadata_handler.consolidate_handler",
+            handler="handlers.consolidate_new_metadata.consolidate_handler",
             code=AssetArchive(
                 {
-                    "consolidate_new_metadata_handler.py": FileAsset(
+                    "handlers/__init__.py": FileAsset(
                         os.path.join(
                             os.path.dirname(__file__),
-                            "consolidate_new_metadata_handler.py",
+                            "handlers",
+                            "__init__.py",
                         )
-                    )
+                    ),
+                    "handlers/common.py": FileAsset(
+                        os.path.join(
+                            os.path.dirname(__file__),
+                            "handlers",
+                            "common.py",
+                        )
+                    ),
+                    "handlers/consolidate_new_metadata.py": FileAsset(
+                        os.path.join(
+                            os.path.dirname(__file__),
+                            "handlers",
+                            "consolidate_new_metadata.py",
+                        )
+                    ),
                 }
             ),
             timeout=300,

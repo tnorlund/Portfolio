@@ -6,7 +6,6 @@ components from the receipt_label package.
 """
 
 import os
-from logging import INFO, Formatter, StreamHandler, getLogger
 from typing import Any, Dict
 
 from receipt_label.merchant_validation import (
@@ -15,19 +14,10 @@ from receipt_label.merchant_validation import (
     write_receipt_metadata_to_dynamo,
 )
 
-# Set up logging
-logger = getLogger()
-logger.setLevel(INFO)
+from .common import setup_logger
 
-if len(logger.handlers) == 0:
-    handler = StreamHandler()
-    handler.setFormatter(
-        Formatter(
-            "[%(levelname)s] %(asctime)s.%(msecs)dZ %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
-    )
-    logger.addHandler(handler)
+# Set up logging
+logger = setup_logger(__name__)
 
 
 def validate_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:

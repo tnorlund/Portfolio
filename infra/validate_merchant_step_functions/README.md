@@ -124,16 +124,31 @@ Scheduled every Wednesday at midnight UTC:
 - Updates canonical representations
 - Collapses duplicate aliases
 
+## 📁 Project Structure
+
+```
+validate_merchant_step_functions/
+├── __init__.py                          # Infrastructure exports
+├── validate_merchant_step_functions.py  # Pulumi infrastructure
+├── handlers/                            # Lambda function handlers
+│   ├── __init__.py
+│   ├── common.py                        # Shared utilities
+│   ├── batch_clean_merchants.py
+│   ├── consolidate_new_metadata.py
+│   ├── list_receipts.py
+│   └── validate_single_receipt_v2.py
+└── README.md
+
 ## 🚀 Lambda Functions
 
-### 1. list_receipts_handler.py
+### 1. handlers/list_receipts.py
 **Purpose**: Queries DynamoDB for receipts needing merchant validation  
 **Trigger**: Step Function start  
 **Output**: List of receipt identifiers (image_id, receipt_id)  
 **Timeout**: 900s  
 **Memory**: 512MB  
 
-### 2. validate_single_receipt_handler_v2.py
+### 2. handlers/validate_single_receipt_v2.py
 **Purpose**: Enriches individual receipts with merchant data  
 **Trigger**: ForEachReceipt Map state  
 **Key Features**:
@@ -144,7 +159,7 @@ Scheduled every Wednesday at midnight UTC:
 **Timeout**: 900s  
 **Memory**: 512MB  
 
-### 3. consolidate_new_metadata_handler.py
+### 3. handlers/consolidate_new_metadata.py
 **Purpose**: Updates canonical merchant information  
 **Trigger**: After ForEachReceipt completion  
 **Key Features**:
@@ -153,9 +168,9 @@ Scheduled every Wednesday at midnight UTC:
 - Self-canonizes new merchants  
 **Timeout**: 300s  
 **Memory**: 512MB  
-**Code Quality**: Refactored with 10.00/10 pylint score
+**Code Quality**: 10.00/10 pylint score
 
-### 4. batch_clean_merchants_handler.py
+### 4. handlers/batch_clean_merchants.py
 **Purpose**: Comprehensive merchant data reconciliation  
 **Trigger**: CloudWatch Events (weekly)  
 **Key Features**:
@@ -165,7 +180,7 @@ Scheduled every Wednesday at midnight UTC:
 - Alias consolidation  
 **Timeout**: 900s  
 **Memory**: 512MB  
-**Code Quality**: 9.81/10 pylint score
+**Code Quality**: 10.00/10 pylint score
 
 ## ⚙️ Configuration
 
