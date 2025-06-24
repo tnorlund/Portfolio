@@ -1,6 +1,6 @@
 import os
 from datetime import datetime, timezone
-from typing import Any, Generator, Optional, Tuple
+from typing import Any, Generator, List, Optional, Tuple
 
 from receipt_dynamo.constants import MerchantValidationStatus, ValidationMethod
 from receipt_dynamo.entities.util import (
@@ -8,7 +8,15 @@ from receipt_dynamo.entities.util import (
     _repr_str,
     assert_valid_point,
     assert_valid_uuid,
+    normalize_enum,
 )
+
+# Validation thresholds
+MIN_PHONE_DIGITS = (
+    7  # Minimum digits for valid phone number (tolerates missing area code)
+)
+MIN_NAME_LENGTH = 2  # Minimum length for meaningful merchant name
+MIN_ADDRESS_TOKENS = 3  # Minimum meaningful tokens for valid address
 
 
 class ReceiptMetadata:
@@ -100,20 +108,7 @@ class ReceiptMetadata:
             raise ValueError("matched fields must be unique")
         self.matched_fields = matched_fields
 
-        if isinstance(validated_by, ValidationMethod):
-            validated_by_value = validated_by.value
-        elif isinstance(validated_by, str):
-            validated_by_value = validated_by
-        else:
-            raise ValueError(
-                f"validated_by must be a string or ValidationMethod enum\nGot: {type(validated_by)}"
-            )
-        valid_values = [s.value for s in ValidationMethod]
-        if validated_by_value not in valid_values:
-            raise ValueError(
-                f"validated_by must be one of: {', '.join(valid_values)}\nGot: {validated_by_value}"
-            )
-        self.validated_by = validated_by_value
+        self.validated_by = normalize_enum(validated_by, ValidationMethod)
 
         if not isinstance(timestamp, datetime):
             raise ValueError("timestamp must be a datetime")
@@ -155,7 +150,7 @@ class ReceiptMetadata:
         else:
             self.validation_status = MerchantValidationStatus.NO_MATCH.value
 
-    def _get_high_quality_matched_fields(self) -> list[str]:
+    def _get_high_quality_matched_fields(self) -> List[str]:
         """
         Validates the quality of matched fields and returns only high-quality matches.
 
@@ -172,14 +167,17 @@ class ReceiptMetadata:
         for field in self.matched_fields:
             if field == "name":
                 # Name must be non-empty and more than just whitespace/punctuation
-                if self.merchant_name and len(self.merchant_name.strip()) > 2:
+                if (
+                    self.merchant_name
+                    and len(self.merchant_name.strip()) > MIN_NAME_LENGTH
+                ):
                     high_quality_fields.append(field)
             elif field == "phone":
                 # Phone must have at least 7 digits (tolerate missing area code)
                 phone_digits = "".join(
                     c for c in self.phone_number if c.isdigit()
                 )
-                if len(phone_digits) >= 7:
+                if len(phone_digits) >= MIN_PHONE_DIGITS:
                     high_quality_fields.append(field)
             elif field == "address":
                 # Address must have at least 2 meaningful components
@@ -199,7 +197,10 @@ class ReceiptMetadata:
                     elif any(c.isdigit() for c in token_clean):
                         meaningful_tokens += 1
                     # 3. It's a word with 3+ letters
-                    elif len(token_clean) >= 3 and token_clean.isalpha():
+                    elif (
+                        len(token_clean) >= MIN_ADDRESS_TOKENS
+                        and token_clean.isalpha()
+                    ):
                         meaningful_tokens += 1
                     # 4. It's a short token (likely abbreviation) but not the only token
                     elif len(tokens) > 1 and token_clean.isalpha():
@@ -431,10 +432,31 @@ def itemToReceiptMetadata(item: dict) -> ReceiptMetadata:
             f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
         )
     try:
-        image_id = item["PK"]["S"].split("#")[1]
-        receipt_id = int(item["SK"]["S"].split("#")[1])
+        # Parse primary key components
+        pk_parts = item["PK"]["S"].split("#")
+        if len(pk_parts) != 2 or pk_parts[0] != "IMAGE":
+            raise ValueError(f"Invalid PK format: {item['PK']['S']}")
+        image_id = pk_parts[1]
+
+        # Parse sort key components
+        sk_parts = item["SK"]["S"].split("#")
+        if (
+            len(sk_parts) != 3
+            or sk_parts[0] != "RECEIPT"
+            or sk_parts[2] != "METADATA"
+        ):
+            raise ValueError(f"Invalid SK format: {item['SK']['S']}")
+
+        try:
+            receipt_id = int(sk_parts[1])
+        except ValueError:
+            raise ValueError(f"Invalid receipt_id in SK: {sk_parts[1]}")
+
+        # Extract required fields
         place_id = item["place_id"]["S"]
         merchant_name = item["merchant_name"]["S"]
+
+        # Extract optional fields with defaults
         matched_fields = item.get("matched_fields", {}).get("SS", [])
         merchant_category = item.get("merchant_category", {}).get("S") or ""
         address = item.get("address", {}).get("S") or ""
@@ -449,9 +471,14 @@ def itemToReceiptMetadata(item: dict) -> ReceiptMetadata:
         canonical_phone_number = (
             item.get("canonical_phone_number", {}).get("S") or ""
         )
-        # Required timestamp field
+
+        # Parse timestamp
         timestamp_str = item["timestamp"]["S"]
-        timestamp = datetime.fromisoformat(timestamp_str)
+        try:
+            timestamp = datetime.fromisoformat(timestamp_str)
+        except ValueError:
+            raise ValueError(f"Invalid timestamp format: {timestamp_str}")
+
         return ReceiptMetadata(
             image_id=image_id,
             receipt_id=receipt_id,
@@ -469,5 +496,12 @@ def itemToReceiptMetadata(item: dict) -> ReceiptMetadata:
             canonical_address=canonical_address,
             canonical_phone_number=canonical_phone_number,
         )
+    except KeyError as e:
+        raise ValueError(f"Missing required field in item: {e}")
+    except IndexError as e:
+        raise ValueError(f"Error parsing key components: {e}")
+    except ValueError:
+        # Re-raise ValueError as is
+        raise
     except Exception as e:
-        raise ValueError(f"Error parsing receipt metadata: {e}")
+        raise ValueError(f"Unexpected error parsing receipt metadata: {e}")
