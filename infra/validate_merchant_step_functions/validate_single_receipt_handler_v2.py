@@ -30,7 +30,7 @@ if len(logger.handlers) == 0:
     logger.addHandler(handler)
 
 
-def validate_handler(event: Dict[str, Any], _context: Any):
+def validate_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     """
     Lambda handler for validating a single receipt's merchant data.
 

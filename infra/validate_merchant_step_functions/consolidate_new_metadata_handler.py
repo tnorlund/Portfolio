@@ -1,3 +1,5 @@
+"""Lambda handler for consolidating newly validated merchant metadata."""
+
 from logging import INFO, Formatter, StreamHandler, getLogger
 from typing import Any, Dict, List, Optional
 
