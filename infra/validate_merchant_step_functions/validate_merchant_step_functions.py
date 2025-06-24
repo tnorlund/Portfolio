@@ -137,6 +137,7 @@ class ValidateMerchantStepFunctions(ComponentResource):
             name=f"{name}-{stack}-batch-clean-merchants",
             role=lambda_exec_role.arn,
             runtime="python3.12",
+            architectures=["arm64"],
             handler="handlers.batch_clean_merchants.batch_handler",
             code=AssetArchive(
                 {
@@ -189,6 +190,7 @@ class ValidateMerchantStepFunctions(ComponentResource):
             name=f"{name}-{stack}-list-receipts",
             role=lambda_exec_role.arn,
             runtime="python3.12",
+            architectures=["arm64"],
             handler="handlers.list_receipts.list_handler",
             code=AssetArchive(
                 {
@@ -241,6 +243,7 @@ class ValidateMerchantStepFunctions(ComponentResource):
             name=f"{name}-{stack}-validate-receipt",
             role=lambda_exec_role.arn,
             runtime="python3.12",
+            architectures=["arm64"],
             handler="handlers.validate_single_receipt_v2.validate_handler",
             code=AssetArchive(
                 {
@@ -293,6 +296,7 @@ class ValidateMerchantStepFunctions(ComponentResource):
             name=f"{name}-{stack}-consolidate",
             role=lambda_exec_role.arn,
             runtime="python3.12",
+            architectures=["arm64"],
             handler="handlers.consolidate_new_metadata.consolidate_handler",
             code=AssetArchive(
                 {

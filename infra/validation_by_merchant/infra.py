@@ -170,6 +170,7 @@ class ValidationByMerchantStepFunction(ComponentResource):
             resource_name=f"{name}-validate-label",
             role=submit_lambda_role.arn,
             runtime="python3.12",
+            architectures=["arm64"],
             handler="lambda.validate_handler",
             timeout=900,
             memory_size=512,
