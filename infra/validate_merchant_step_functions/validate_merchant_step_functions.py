@@ -17,8 +17,8 @@ from pulumi_aws.iam import Role, RolePolicy, RolePolicyAttachment
 from pulumi_aws.lambda_ import Function, FunctionEnvironmentArgs
 from pulumi_aws.sfn import StateMachine
 
-from ..dynamo_db import dynamodb_table
-from ..lambda_layer import dynamo_layer, label_layer
+from dynamo_db import dynamodb_table
+from lambda_layer import dynamo_layer, label_layer
 
 config = Config("portfolio")
 openai_api_key = config.require_secret("OPENAI_API_KEY")
