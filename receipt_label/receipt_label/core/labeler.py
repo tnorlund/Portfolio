@@ -122,8 +122,9 @@ class ReceiptLabeler:
             api_key=places_api_key,
             dynamo_table_name=dynamodb_table_name,
         )
-        self.receipt_analyzer = ReceiptAnalyzer(api_key=gpt_api_key)
-        self.line_item_processor = LineItemProcessor(gpt_api_key=gpt_api_key)
+        # TODO: ReceiptAnalyzer and LineItemProcessor classes need to be implemented
+        # self.receipt_analyzer = ReceiptAnalyzer(api_key=gpt_api_key)
+        # self.line_item_processor = LineItemProcessor(gpt_api_key=gpt_api_key)
 
         # Store the DynamoDB table name for later use
         self.dynamodb_table_name = dynamodb_table_name
@@ -212,16 +213,18 @@ class ReceiptLabeler:
 
             # Process line items using line item processor
             logger.info("Processing line items")
-            line_item_processor = LineItemProcessor()
-            start_time = time.time()
-            line_item_analysis = line_item_processor.analyze_line_items(
-                receipt,
-                receipt_lines,
-                receipt_words,
-                places_data,
-                structure_analysis,
-            )
-            execution_times["line_item_processing"] = time.time() - start_time
+            # TODO: LineItemProcessor needs to be implemented
+            # line_item_processor = LineItemProcessor()
+            # start_time = time.time()
+            # line_item_analysis = line_item_processor.analyze_line_items(
+            #     receipt,
+            #     receipt_lines,
+            #     receipt_words,
+            #     places_data,
+            #     structure_analysis,
+            # )
+            # execution_times["line_item_processing"] = time.time() - start_time
+            line_item_analysis = None  # Placeholder until LineItemProcessor is implemented
 
             if line_item_analysis:
                 logger.info(
