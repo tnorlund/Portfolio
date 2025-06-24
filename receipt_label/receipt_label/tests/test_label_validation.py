@@ -243,9 +243,14 @@ def test_validate_address(mocker):
     )
 
     fake_index = FakePineconeIndex()
+    # Create a mock client manager with our fake index
+    mock_client_manager = MagicMock()
+    mock_client_manager.pinecone = fake_index
+    
+    # Mock get_client_manager to return our mock
     mocker.patch(
-        "receipt_label.label_validation.validate_address.pinecone_index",
-        fake_index,
+        "receipt_label.label_validation.validate_address.get_client_manager",
+        return_value=mock_client_manager,
     )
 
     word = SimpleNamespace(text=TEST_ADDRESS_TEXT)
@@ -274,9 +279,14 @@ def test_validate_address_no_vector(mocker):
     )
 
     fake_index = FakePineconeIndex(has_vector=False)
+    # Create a mock client manager with our fake index
+    mock_client_manager = MagicMock()
+    mock_client_manager.pinecone = fake_index
+    
+    # Mock get_client_manager to return our mock
     mocker.patch(
-        "receipt_label.label_validation.validate_address.pinecone_index",
-        fake_index,
+        "receipt_label.label_validation.validate_address.get_client_manager",
+        return_value=mock_client_manager,
     )
 
     word = SimpleNamespace(text=TEST_ADDRESS_TEXT)
@@ -420,9 +430,14 @@ def test_validate_phone_number(mocker, text, expected_consistent):
     )
 
     fake_index = FakePineconeIndex(query_score=MEDIUM_QUERY_SCORE)
+    # Create a mock client manager with our fake index
+    mock_client_manager = MagicMock()
+    mock_client_manager.pinecone = fake_index
+    
+    # Mock get_client_manager to return our mock
     mocker.patch(
-        "receipt_label.label_validation.validate_phone_number.pinecone_index",
-        fake_index,
+        "receipt_label.label_validation.validate_phone_number.get_client_manager",
+        return_value=mock_client_manager,
     )
 
     word = SimpleNamespace(text=text)
@@ -449,9 +464,14 @@ def test_validate_phone_number_no_vector(mocker):
     )
 
     fake_index = FakePineconeIndex(has_vector=False)
+    # Create a mock client manager with our fake index
+    mock_client_manager = MagicMock()
+    mock_client_manager.pinecone = fake_index
+    
+    # Mock get_client_manager to return our mock
     mocker.patch(
-        "receipt_label.label_validation.validate_phone_number.pinecone_index",
-        fake_index,
+        "receipt_label.label_validation.validate_phone_number.get_client_manager",
+        return_value=mock_client_manager,
     )
 
     word = SimpleNamespace(text="(555) 123-4567")
@@ -470,9 +490,14 @@ def test_validate_merchant_name_pinecone(mocker):
     )
 
     fake_index = FakePineconeIndex(query_score=DEFAULT_QUERY_SCORE)
+    # Create a mock client manager with our fake index
+    mock_client_manager = MagicMock()
+    mock_client_manager.pinecone = fake_index
+    
+    # Mock get_client_manager to return our mock
     mocker.patch(
-        "receipt_label.label_validation.validate_merchant_name.pinecone_index",
-        fake_index,
+        "receipt_label.label_validation.validate_merchant_name.get_client_manager",
+        return_value=mock_client_manager,
     )
 
     word = SimpleNamespace(text=TEST_MERCHANT)
@@ -505,9 +530,14 @@ def test_validate_merchant_name_google(mocker):
     )
 
     fake_index = FakePineconeIndex(query_score=DEFAULT_QUERY_SCORE)
+    # Create a mock client manager with our fake index
+    mock_client_manager = MagicMock()
+    mock_client_manager.pinecone = fake_index
+    
+    # Mock get_client_manager to return our mock
     mocker.patch(
-        "receipt_label.label_validation.validate_merchant_name.pinecone_index",
-        fake_index,
+        "receipt_label.label_validation.validate_merchant_name.get_client_manager",
+        return_value=mock_client_manager,
     )
 
     word = SimpleNamespace(text=TEST_MERCHANT)
@@ -542,9 +572,14 @@ def test_validate_merchant_name_no_vector(mocker):
     )
 
     fake_index = FakePineconeIndex(has_vector=False)
+    # Create a mock client manager with our fake index
+    mock_client_manager = MagicMock()
+    mock_client_manager.pinecone = fake_index
+    
+    # Mock get_client_manager to return our mock
     mocker.patch(
-        "receipt_label.label_validation.validate_merchant_name.pinecone_index",
-        fake_index,
+        "receipt_label.label_validation.validate_merchant_name.get_client_manager",
+        return_value=mock_client_manager,
     )
 
     word = SimpleNamespace(text=TEST_MERCHANT)
@@ -595,9 +630,14 @@ def test_validate_date(mocker, text, expected_consistent):
     from receipt_label.label_validation.validate_date import validate_date
 
     fake_index = FakePineconeIndex(query_score=LOW_QUERY_SCORE)
+    # Create a mock client manager with our fake index
+    mock_client_manager = MagicMock()
+    mock_client_manager.pinecone = fake_index
+    
+    # Mock get_client_manager to return our mock
     mocker.patch(
-        "receipt_label.label_validation.validate_date.pinecone_index",
-        fake_index,
+        "receipt_label.label_validation.validate_date.get_client_manager",
+        return_value=mock_client_manager,
     )
 
     label = _make_label("DATE")
@@ -622,9 +662,14 @@ def test_validate_date_no_vector(mocker):
     from receipt_label.label_validation.validate_date import validate_date
 
     fake_index = FakePineconeIndex(has_vector=False)
+    # Create a mock client manager with our fake index
+    mock_client_manager = MagicMock()
+    mock_client_manager.pinecone = fake_index
+    
+    # Mock get_client_manager to return our mock
     mocker.patch(
-        "receipt_label.label_validation.validate_date.pinecone_index",
-        fake_index,
+        "receipt_label.label_validation.validate_date.get_client_manager",
+        return_value=mock_client_manager,
     )
 
     label = _make_label("DATE")
@@ -682,9 +727,14 @@ def test_validate_time(mocker, text, expected_consistent):
     from receipt_label.label_validation.validate_time import validate_time
 
     fake_index = FakePineconeIndex(query_score=LOW_QUERY_SCORE)
+    # Create a mock client manager with our fake index
+    mock_client_manager = MagicMock()
+    mock_client_manager.pinecone = fake_index
+    
+    # Mock get_client_manager to return our mock
     mocker.patch(
-        "receipt_label.label_validation.validate_time.pinecone_index",
-        fake_index,
+        "receipt_label.label_validation.validate_time.get_client_manager",
+        return_value=mock_client_manager,
     )
 
     label_time = _make_label("TIME")
@@ -709,9 +759,14 @@ def test_validate_time_no_vector(mocker):
     from receipt_label.label_validation.validate_time import validate_time
 
     fake_index = FakePineconeIndex(has_vector=False)
+    # Create a mock client manager with our fake index
+    mock_client_manager = MagicMock()
+    mock_client_manager.pinecone = fake_index
+    
+    # Mock get_client_manager to return our mock
     mocker.patch(
-        "receipt_label.label_validation.validate_time.pinecone_index",
-        fake_index,
+        "receipt_label.label_validation.validate_time.get_client_manager",
+        return_value=mock_client_manager,
     )
 
     label_time = _make_label("TIME")
@@ -734,9 +789,14 @@ class TestTextNormalizationInValidation:
         )
 
         fake_index = FakePineconeIndex()
+        # Create a mock client manager with our fake index
+        mock_client_manager = MagicMock()
+        mock_client_manager.pinecone = fake_index
+        
+        # Mock get_client_manager to return our mock
         mocker.patch(
-            "receipt_label.label_validation.validate_address.pinecone_index",
-            fake_index,
+            "receipt_label.label_validation.validate_address.get_client_manager",
+            return_value=mock_client_manager,
         )
 
         # Test with different address formats that should match after normalization
@@ -773,9 +833,14 @@ class TestTextNormalizationInValidation:
         )
 
         fake_index = FakePineconeIndex(query_score=MEDIUM_QUERY_SCORE)
+        # Create a mock client manager with our fake index
+        mock_client_manager = MagicMock()
+        mock_client_manager.pinecone = fake_index
+        
+        # Mock get_client_manager to return our mock
         mocker.patch(
-            "receipt_label.label_validation.validate_phone_number.pinecone_index",
-            fake_index,
+            "receipt_label.label_validation.validate_phone_number.get_client_manager",
+            return_value=mock_client_manager,
         )
 
         # Edge case phone formats
@@ -810,9 +875,14 @@ class TestTextNormalizationInValidation:
         )
 
         fake_index = FakePineconeIndex(query_score=HIGH_QUERY_SCORE)
+        # Create a mock client manager with our fake index
+        mock_client_manager = MagicMock()
+        mock_client_manager.pinecone = fake_index
+        
+        # Mock get_client_manager to return our mock
         mocker.patch(
-            "receipt_label.label_validation.validate_currency.pinecone_index",
-            fake_index,
+            "receipt_label.label_validation.validate_currency.get_client_manager",
+            return_value=mock_client_manager,
         )
 
         # Currency formats with different symbols
@@ -840,9 +910,14 @@ class TestTextNormalizationInValidation:
         )
 
         fake_index = FakePineconeIndex(query_score=DEFAULT_QUERY_SCORE)
+        # Create a mock client manager with our fake index
+        mock_client_manager = MagicMock()
+        mock_client_manager.pinecone = fake_index
+        
+        # Mock get_client_manager to return our mock
         mocker.patch(
-            "receipt_label.label_validation.validate_merchant_name.pinecone_index",
-            fake_index,
+            "receipt_label.label_validation.validate_merchant_name.get_client_manager",
+            return_value=mock_client_manager,
         )
 
         # Test various merchant name formats
@@ -885,9 +960,14 @@ class TestAPIErrorHandling:
             TimeoutError("Network timeout")
         )
         
+        # Create a mock client manager with our fake index
+        mock_client_manager = MagicMock()
+        mock_client_manager.pinecone = fake_index
+        
+        # Mock get_client_manager to return our mock
         mocker.patch(
-            "receipt_label.label_validation.validate_address.pinecone_index",
-            fake_index,
+            "receipt_label.label_validation.validate_address.get_client_manager",
+            return_value=mock_client_manager,
         )
 
         word = SimpleNamespace(text=TEST_ADDRESS_TEXT)
@@ -910,9 +990,14 @@ class TestAPIErrorHandling:
             Exception("Pinecone API error: Rate limit exceeded")
         )
         
+        # Create a mock client manager with our fake index
+        mock_client_manager = MagicMock()
+        mock_client_manager.pinecone = fake_index
+        
+        # Mock get_client_manager to return our mock
         mocker.patch(
-            "receipt_label.label_validation.validate_currency.pinecone_index",
-            fake_index,
+            "receipt_label.label_validation.validate_currency.get_client_manager",
+            return_value=mock_client_manager,
         )
 
         word = SimpleNamespace(text="$10.00")
@@ -934,9 +1019,14 @@ class TestAPIErrorHandling:
             ConnectionError("Failed to connect to Pinecone")
         )
         
+        # Create a mock client manager with our fake index
+        mock_client_manager = MagicMock()
+        mock_client_manager.pinecone = fake_index
+        
+        # Mock get_client_manager to return our mock
         mocker.patch(
-            "receipt_label.label_validation.validate_phone_number.pinecone_index",
-            fake_index,
+            "receipt_label.label_validation.validate_phone_number.get_client_manager",
+            return_value=mock_client_manager,
         )
 
         word = SimpleNamespace(text="555-123-4567")
@@ -961,9 +1051,14 @@ class TestAPIErrorHandling:
                 return SimpleNamespace()  # No 'vectors' field
 
         fake_index = MalformedPineconeIndex()
+        # Create a mock client manager with our fake index
+        mock_client_manager = MagicMock()
+        mock_client_manager.pinecone = fake_index
+        
+        # Mock get_client_manager to return our mock
         mocker.patch(
-            "receipt_label.label_validation.validate_date.pinecone_index",
-            fake_index,
+            "receipt_label.label_validation.validate_date.get_client_manager",
+            return_value=mock_client_manager,
         )
 
         word = SimpleNamespace(text="2024-01-01")
@@ -981,9 +1076,14 @@ class TestAPIErrorHandling:
         fake_index = FakePineconeIndex()
         fake_index.query = lambda **kwargs: SimpleNamespace(matches=[])
         
+        # Create a mock client manager with our fake index
+        mock_client_manager = MagicMock()
+        mock_client_manager.pinecone = fake_index
+        
+        # Mock get_client_manager to return our mock
         mocker.patch(
-            "receipt_label.label_validation.validate_time.pinecone_index",
-            fake_index,
+            "receipt_label.label_validation.validate_time.get_client_manager",
+            return_value=mock_client_manager,
         )
 
         word = SimpleNamespace(text="12:30 PM")
@@ -1006,9 +1106,14 @@ class TestAPIErrorHandling:
             Exception("Query failed")
         )
         
+        # Create a mock client manager with our fake index
+        mock_client_manager = MagicMock()
+        mock_client_manager.pinecone = fake_index
+        
+        # Mock get_client_manager to return our mock
         mocker.patch(
-            "receipt_label.label_validation.validate_merchant_name.pinecone_index",
-            fake_index,
+            "receipt_label.label_validation.validate_merchant_name.get_client_manager",
+            return_value=mock_client_manager,
         )
 
         word = SimpleNamespace(text=TEST_MERCHANT)
@@ -1040,9 +1145,14 @@ class TestAPIErrorHandling:
         fake_index = FakePineconeIndex()
         fake_index.fetch = flaky_fetch
         
+        # Create a mock client manager with our fake index
+        mock_client_manager = MagicMock()
+        mock_client_manager.pinecone = fake_index
+        
+        # Mock get_client_manager to return our mock
         mocker.patch(
-            "receipt_label.label_validation.validate_address.pinecone_index",
-            fake_index,
+            "receipt_label.label_validation.validate_address.get_client_manager",
+            return_value=mock_client_manager,
         )
 
         word = SimpleNamespace(text=TEST_ADDRESS_TEXT)

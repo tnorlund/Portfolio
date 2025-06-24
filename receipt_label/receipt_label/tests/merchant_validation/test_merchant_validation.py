@@ -68,7 +68,7 @@ def mock_openai(mocker):
 @pytest.fixture
 def mock_dynamo(mocker):
     return mocker.patch(
-        "receipt_label.merchant_validation.merchant_validation.dynamo_client"
+        "receipt_label.merchant_validation.data_access.dynamo_client"
     )
 
 
