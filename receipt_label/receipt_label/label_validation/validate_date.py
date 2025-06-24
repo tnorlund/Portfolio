@@ -18,11 +18,14 @@ from receipt_label.utils.client_manager import ClientManager
 
 
 def _is_date(text: str) -> bool:
-    # Match various date formats including month names
+    # Match various date formats including month names and ISO formats
     patterns = [
-        r"\b\d{1,2}[/-]\d{1,2}[/-]?\d{2,4}\b",  # MM/DD/YYYY or MM-DD-YYYY or MM/DD/YY
-        r"\b\d{4}[/-]\d{1,2}[/-]?\d{1,2}\b",  # YYYY-MM-DD or YYYY/MM/DD
-        r"\b\d{1,2}[/-]\d{4}\b",  # MM/YYYY or MM-YYYY
+        r"\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b",  # MM/DD/YYYY or MM-DD-YYYY (must include day)
+        r"\b\d{4}[/-]\d{1,2}[/-]\d{1,2}\b",  # YYYY-MM-DD or YYYY/MM/DD
+        # ISO 8601 formats with timezone
+        r"\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\b",  # ISO with Z
+        r"\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}\b",  # ISO with timezone offset
+        r"\b\d{4}-\d{2}-\d{2}\s+[A-Z]{3,4}\b",  # Date with timezone abbreviation like PST, UTC
         # Month name patterns
         r"\b\d{1,2}[/-]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[/-]?\s*\d{2,4}\b",  # DD-MMM-YYYY
         r"\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s*\d{2,4}\b",  # MMM DD, YYYY
@@ -33,19 +36,41 @@ def _is_date(text: str) -> bool:
     if not any(re.search(pattern, text.strip(), re.IGNORECASE) for pattern in patterns):
         return False
     
-    # For numeric dates, validate the month/day values
+    # Check for partial dates that should be invalid (MM/YYYY format without day)
+    if re.match(r"^\d{1,2}[/-]\d{4}$", text.strip()):
+        return False
+        
+    # For numeric dates, validate the month/day values with proper date validation
     # MM/DD/YYYY format
-    mm_dd_yyyy = re.search(r"\b(\d{1,2})[/-](\d{1,2})[/-]?(\d{2,4})\b", text.strip())
+    mm_dd_yyyy = re.search(r"\b(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b", text.strip())
     if mm_dd_yyyy:
         month, day, year = map(int, mm_dd_yyyy.groups())
         if month > 12 or month < 1 or day > 31 or day < 1:
             return False
+        # Check for February 30th and other invalid dates
+        try:
+            datetime(year, month, day)
+        except ValueError:
+            return False
     
-    # YYYY-MM-DD format
-    yyyy_mm_dd = re.search(r"\b(\d{4})[/-](\d{1,2})[/-]?(\d{1,2})\b", text.strip())
+    # YYYY-MM-DD format  
+    yyyy_mm_dd = re.search(r"\b(\d{4})[/-](\d{1,2})[/-](\d{1,2})\b", text.strip())
     if yyyy_mm_dd:
         year, month, day = map(int, yyyy_mm_dd.groups())
         if month > 12 or month < 1 or day > 31 or day < 1:
+            return False
+        try:
+            datetime(year, month, day)
+        except ValueError:
+            return False
+    
+    # ISO format validation
+    iso_match = re.search(r"\b(\d{4})-(\d{2})-(\d{2})T", text.strip())
+    if iso_match:
+        year, month, day = map(int, iso_match.groups())
+        try:
+            datetime(year, month, day)
+        except ValueError:
             return False
     
     return True

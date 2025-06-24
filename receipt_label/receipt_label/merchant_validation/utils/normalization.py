@@ -139,8 +139,8 @@ def format_canonical_merchant_name(name: str) -> str:
 
     Performs:
     - Strips whitespace
-    - Converts to title case
-    - Removes dashes surrounded by spaces
+    - Converts to title case (preserving apostrophes)
+    - Removes dashes only when surrounded by spaces
     - Normalizes whitespace
 
     Args:
@@ -152,8 +152,42 @@ def format_canonical_merchant_name(name: str) -> str:
     if not name:
         return ""
 
-    name = name.strip().title()
-    name = re.sub(r"\s*-\s*", " ", name)  # Remove dashes surrounded by space
+    # Strip whitespace
+    name = name.strip()
+    
+    # Remove dashes only when surrounded by spaces (not dashes without spaces)
+    name = re.sub(r"\s+-\s+", " ", name)  # Only remove " - " not "-"
+    
+    # Normalize whitespace first
     name = re.sub(r"\s+", " ", name)
-
-    return name
+    
+    # Apply proper title case while preserving apostrophes and handling dashes
+    words = []
+    for word in name.split():
+        if "'" in word:
+            # Handle apostrophes - only capitalize the first letter, not after apostrophe
+            parts = word.split("'")
+            formatted_parts = []
+            for i, part in enumerate(parts):
+                if i == 0:
+                    # First part - capitalize first letter only
+                    formatted_parts.append(part.capitalize())
+                else:
+                    # After apostrophe - keep lowercase (e.g., "mcdonald's" not "mcdonald'S")
+                    formatted_parts.append(part.lower())
+            words.append("'".join(formatted_parts))
+        elif "-" in word:
+            # Handle dashes - capitalize after dash too (e.g., "cvs-pharmacy" -> "Cvs-Pharmacy")
+            parts = word.split("-")
+            formatted_parts = [part.capitalize() for part in parts]
+            words.append("-".join(formatted_parts))
+        elif "/" in word:
+            # Handle forward slashes - capitalize after slash too (e.g., "cvs/pharmacy" -> "Cvs/Pharmacy")
+            parts = word.split("/")
+            formatted_parts = [part.capitalize() for part in parts]
+            words.append("/".join(formatted_parts))
+        else:
+            # No special characters - just capitalize first letter
+            words.append(word.capitalize())
+    
+    return " ".join(words)
