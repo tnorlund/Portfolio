@@ -1,3 +1,5 @@
+"""Pulumi infrastructure for validation by merchant Step Functions."""
+
 import json
 import os
 
@@ -15,8 +17,11 @@ from pulumi_aws.iam import Role, RolePolicy, RolePolicyAttachment
 from pulumi_aws.lambda_ import Function, FunctionEnvironmentArgs
 from pulumi_aws.sfn import StateMachine
 
-from dynamo_db import dynamodb_table
-from lambda_layer import dynamo_layer, label_layer
+from dynamo_db import dynamodb_table  # pylint: disable=import-error
+from lambda_layer import (  # pylint: disable=import-error
+    dynamo_layer,
+    label_layer,
+)
 
 config = Config("portfolio")
 openai_api_key = config.require_secret("OPENAI_API_KEY")
@@ -35,7 +40,25 @@ stack = pulumi.get_stack()
 
 
 class ValidationByMerchantStepFunction(ComponentResource):
-    def __init__(self, name: str, opts: ResourceOptions = None):
+    """
+    AWS Step Functions infrastructure for validation by merchant.
+
+    This component creates a Step Function that validates word labels
+    grouped by merchant. It processes receipts in batches based on their
+    canonical merchant name for efficient validation.
+
+    The workflow:
+    1. ListUniqueMerchants - Lists unique merchants and their receipts
+    2. ValidateLabel - Validates labels for each batch in parallel
+
+    Infrastructure includes:
+    - Two Lambda functions (list and validate)
+    - Step Function state machine for orchestration
+    - S3 bucket for batch processing
+    - IAM roles and policies
+    """
+
+    def __init__(self, name: str, opts: ResourceOptions | None = None):
         super().__init__(
             f"{__name__}-{name}",
             "aws:stepfunctions:ValidationByMerchantStepFunction",
@@ -43,7 +66,7 @@ class ValidationByMerchantStepFunction(ComponentResource):
             opts,
         )
 
-        stack = pulumi.get_stack()
+        stack_name = pulumi.get_stack()
 
         submit_lambda_role = Role(
             f"{name}-submit-lambda-role",
@@ -66,7 +89,8 @@ class ValidationByMerchantStepFunction(ComponentResource):
             f"{name}-lambda-basic-execution",
             role=submit_lambda_role.name,
             policy_arn=(
-                "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+                "arn:aws:iam::aws:policy/service-role/"
+                "AWSLambdaBasicExecutionRole"
             ),
         )
 
@@ -91,7 +115,7 @@ class ValidationByMerchantStepFunction(ComponentResource):
                                     "dynamodb:BatchWriteItem",
                                 ],
                                 "Resource": (
-                                    "arn:aws:dynamodb:*:*:table/"
+                                    f"arn:aws:dynamodb:*:*:table/"
                                     f"{table_name}*"
                                 ),
                             }
@@ -106,7 +130,7 @@ class ValidationByMerchantStepFunction(ComponentResource):
             f"{name}-completion-batch-bucket",
             acl="private",
             force_destroy=True,
-            tags={"environment": stack},
+            tags={"environment": stack_name},
             opts=ResourceOptions(parent=self),
         )
 
@@ -119,7 +143,7 @@ class ValidationByMerchantStepFunction(ComponentResource):
                 "PINECONE_INDEX_NAME": pinecone_index_name,
                 "PINECONE_HOST": pinecone_host,
                 "S3_BUCKET": batch_bucket.bucket,
-                "MAX_BATCH_TIMEOUT": 60,
+                "MAX_BATCH_TIMEOUT": "60",
             },
         )
 
@@ -134,7 +158,7 @@ class ValidationByMerchantStepFunction(ComponentResource):
             layers=[dynamo_layer.arn, label_layer.arn],
             code=code,
             environment=env_vars,
-            tags={"environment": stack},
+            tags={"environment": stack_name},
             opts=ResourceOptions(
                 parent=self,
                 ignore_changes=["layers"],
@@ -152,7 +176,7 @@ class ValidationByMerchantStepFunction(ComponentResource):
             layers=[dynamo_layer.arn, label_layer.arn],
             code=code,
             environment=env_vars,
-            tags={"environment": stack},
+            tags={"environment": stack_name},
             opts=ResourceOptions(
                 parent=self,
                 ignore_changes=["layers"],
