@@ -38,7 +38,7 @@ def validate_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
 
     # Extract required fields
     image_id = event["image_id"]
-    receipt_id = event["receipt_id"]
+    receipt_id = int(event["receipt_id"])
 
     # Get receipt details from DynamoDB
     (
