@@ -7,6 +7,7 @@ from receipt_dynamo.entities.util import (
     assert_type,
     assert_valid_uuid,
     format_type_error,
+    normalize_enum,
 )
 
 
@@ -75,12 +76,7 @@ class EmbeddingBatchResult:
             raise ValueError("word_id must be greater than or equal to zero")
         self.word_id = word_id
 
-        assert_type("status", status, str, ValueError)
-        if status not in [s.value for s in EmbeddingStatus]:
-            raise ValueError(
-                f"status must be one of: {', '.join(s.value for s in EmbeddingStatus)}"
-            )
-        self.status = status
+        self.status = normalize_enum(status, EmbeddingStatus)
 
         assert_type("text", text, str, ValueError)
         self.text = text
