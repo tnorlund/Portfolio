@@ -1,18 +1,17 @@
-import re
-from datetime import datetime, timezone
+"""Time label validation logic."""
 
-from rapidfuzz.fuzz import partial_ratio, ratio
+# pylint: disable=duplicate-code,line-too-long
+
+import re
+from typing import Optional
+
 from receipt_dynamo.entities import (
     ReceiptWord,
     ReceiptWordLabel,
 )
 
 from receipt_label.label_validation.data import LabelValidationResult
-from receipt_label.label_validation.utils import (
-    normalize_text,
-    pinecone_id_from_label,
-)
-from typing import Optional
+from receipt_label.label_validation.utils import pinecone_id_from_label
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
 
@@ -20,19 +19,19 @@ from receipt_label.utils.client_manager import ClientManager
 def _is_time(text: str) -> bool:
     # More comprehensive time validation including timezone support
     text = text.strip()
-    
+
     # Time with timezone patterns
     timezone_patterns = [
         r"^(\d{1,2}:\d{2}(:\d{2})?( ?[APap][Mm])?) ?([A-Z]{3,4})$",  # 12:30 PM EST
         r"^(\d{1,2}:\d{2}:\d{2})[+-]\d{2}:\d{2}$",  # 12:30:00+00:00
         r"^(\d{1,2}:\d{2}:\d{2})Z$",  # 12:30:00Z
     ]
-    
+
     # Standard time patterns
     basic_patterns = [
         r"^(\d{1,2}):(\d{2})(:\d{2})?( ?[APap][Mm])?$",  # HH:MM[:SS] [AM/PM]
     ]
-    
+
     # Check if it matches any timezone pattern first
     for pattern in timezone_patterns:
         match = re.match(pattern, text)
@@ -40,13 +39,13 @@ def _is_time(text: str) -> bool:
             # Extract the time part for validation
             time_part = match.group(1)
             return _validate_time_components(time_part)
-    
+
     # Check basic patterns
     for pattern in basic_patterns:
         match = re.match(pattern, text)
         if match:
             return _validate_time_components(text)
-    
+
     return False
 
 
@@ -55,34 +54,34 @@ def _validate_time_components(time_str: str) -> bool:
     # Extract components
     am_pm_pattern = r"^(\d{1,2}):(\d{2})(:\d{2})?( ?[APap][Mm])?$"
     match = re.match(am_pm_pattern, time_str.strip())
-    
+
     if not match:
         return False
-    
+
     hour = int(match.group(1))
     minute = int(match.group(2))
     second_part = match.group(3)
     am_pm = match.group(4)
-    
+
     second = 0
     if second_part:
         second = int(second_part[1:])  # Remove the ':'
-    
+
     # Validate ranges
     if minute >= 60 or second >= 60:
         return False
-    
+
     if am_pm:  # 12-hour format with AM/PM
         am_pm = am_pm.strip().upper()
         if hour < 1 or hour > 12:
             return False
         # Check for invalid combinations
-        if hour == 0 and am_pm in ['AM', 'PM']:  # 00:00 AM is invalid
+        if hour == 0 and am_pm in ["AM", "PM"]:  # 00:00 AM is invalid
             return False
     else:  # 24-hour format
         if hour >= 24:
             return False
-    
+
     return True
 
 
@@ -111,15 +110,15 @@ def _merged_time_candidate_from_text(
 
 
 def validate_time(
-    word: ReceiptWord, 
+    word: ReceiptWord,
     label: ReceiptWordLabel,
-    client_manager: Optional[ClientManager] = None
+    client_manager: Optional[ClientManager] = None,
 ) -> LabelValidationResult:
     # Get pinecone index from client manager
     if client_manager is None:
         client_manager = get_client_manager()
     pinecone_index = client_manager.pinecone
-    
+
     pinecone_id = pinecone_id_from_label(label)
     fetch_response = pinecone_index.fetch(ids=[pinecone_id], namespace="words")
     vector_data = fetch_response.vectors.get(pinecone_id)

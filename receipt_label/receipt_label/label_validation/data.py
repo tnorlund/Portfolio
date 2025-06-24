@@ -1,12 +1,13 @@
+"""Data utilities for label validation."""
+
+# pylint: disable=duplicate-code,line-too-long
+
 from collections import Counter
 from dataclasses import dataclass
 from typing import Literal
 
 from receipt_dynamo.constants import ValidationStatus
-from receipt_dynamo.entities import (
-    ReceiptWord,
-    ReceiptWordLabel,
-)
+from receipt_dynamo.entities import ReceiptWordLabel
 
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
@@ -27,7 +28,9 @@ class LabelValidationResult:
     pinecone_id: str
 
 
-def get_unique_merchants_and_data(client_manager: ClientManager = None) -> list[dict]:
+def get_unique_merchants_and_data(
+    client_manager: ClientManager = None,
+) -> list[dict]:
     """
     Returns a list of dictionaries, each containing:
     - merchant_name: canonical merchant name
@@ -103,7 +106,7 @@ def update_labels(
 
     if client_manager is None:
         client_manager = get_client_manager()
-        
+
     vectors_by_id = {}
     for vector in client_manager.pinecone.fetch(
         list(all_pinecone_ids),

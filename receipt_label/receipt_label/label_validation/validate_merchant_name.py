@@ -1,7 +1,11 @@
-import re
-from datetime import datetime, timezone
+"""Merchant name label validation logic."""
 
-from rapidfuzz.fuzz import partial_ratio, ratio
+# pylint: disable=duplicate-code,line-too-long
+
+import re
+from typing import Optional
+
+from rapidfuzz.fuzz import ratio
 from receipt_dynamo.entities import (
     ReceiptMetadata,
     ReceiptWord,
@@ -13,7 +17,6 @@ from receipt_label.label_validation.utils import (
     normalize_text,
     pinecone_id_from_label,
 )
-from typing import Optional
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
 
@@ -43,16 +46,16 @@ def _merged_merchant_name_candidates_from_text(
 
 
 def validate_merchant_name_pinecone(
-    word: ReceiptWord, 
-    label: ReceiptWordLabel, 
+    word: ReceiptWord,
+    label: ReceiptWordLabel,
     merchant_name: str,
-    client_manager: Optional[ClientManager] = None
+    client_manager: Optional[ClientManager] = None,
 ) -> LabelValidationResult:
     # Get pinecone index from client manager
     if client_manager is None:
         client_manager = get_client_manager()
     pinecone_index = client_manager.pinecone
-    
+
     pinecone_id = pinecone_id_from_label(label)
     fetch_response = pinecone_index.fetch(ids=[pinecone_id], namespace="words")
     vector_data = fetch_response.vectors.get(pinecone_id)
@@ -112,16 +115,16 @@ def validate_merchant_name_pinecone(
 
 
 def validate_merchant_name_google(
-    word: ReceiptWord, 
-    label: ReceiptWordLabel, 
+    word: ReceiptWord,
+    label: ReceiptWordLabel,
     metadata: ReceiptMetadata,
-    client_manager: Optional[ClientManager] = None
+    client_manager: Optional[ClientManager] = None,
 ) -> LabelValidationResult:
     # Get pinecone index from client manager
     if client_manager is None:
         client_manager = get_client_manager()
     pinecone_index = client_manager.pinecone
-    
+
     pinecone_id = pinecone_id_from_label(label)
     fetch_response = pinecone_index.fetch(ids=[pinecone_id], namespace="words")
     vector_data = fetch_response.vectors.get(pinecone_id)

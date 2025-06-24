@@ -1,18 +1,18 @@
-import re
-from datetime import datetime, timezone
+"""Date label validation logic."""
 
-from rapidfuzz.fuzz import partial_ratio, ratio
+# pylint: disable=duplicate-code,line-too-long,too-many-return-statements
+
+import re
+from datetime import datetime
+from typing import Optional
+
 from receipt_dynamo.entities import (
     ReceiptWord,
     ReceiptWordLabel,
 )
 
 from receipt_label.label_validation.data import LabelValidationResult
-from receipt_label.label_validation.utils import (
-    normalize_text,
-    pinecone_id_from_label,
-)
-from typing import Optional
+from receipt_label.label_validation.utils import pinecone_id_from_label
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
 
@@ -31,18 +31,22 @@ def _is_date(text: str) -> bool:
         r"\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s*\d{2,4}\b",  # MMM DD, YYYY
         r"\b\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4}\b",  # DD MMM YYYY
     ]
-    
+
     # First check if it matches a pattern
-    if not any(re.search(pattern, text.strip(), re.IGNORECASE) for pattern in patterns):
+    if not any(
+        re.search(pattern, text.strip(), re.IGNORECASE) for pattern in patterns
+    ):
         return False
-    
+
     # Check for partial dates that should be invalid (MM/YYYY format without day)
     if re.match(r"^\d{1,2}[/-]\d{4}$", text.strip()):
         return False
-        
+
     # For numeric dates, validate the month/day values with proper date validation
     # MM/DD/YYYY format
-    mm_dd_yyyy = re.search(r"\b(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b", text.strip())
+    mm_dd_yyyy = re.search(
+        r"\b(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b", text.strip()
+    )
     if mm_dd_yyyy:
         month, day, year = map(int, mm_dd_yyyy.groups())
         if month > 12 or month < 1 or day > 31 or day < 1:
@@ -52,9 +56,11 @@ def _is_date(text: str) -> bool:
             datetime(year, month, day)
         except ValueError:
             return False
-    
-    # YYYY-MM-DD format  
-    yyyy_mm_dd = re.search(r"\b(\d{4})[/-](\d{1,2})[/-](\d{1,2})\b", text.strip())
+
+    # YYYY-MM-DD format
+    yyyy_mm_dd = re.search(
+        r"\b(\d{4})[/-](\d{1,2})[/-](\d{1,2})\b", text.strip()
+    )
     if yyyy_mm_dd:
         year, month, day = map(int, yyyy_mm_dd.groups())
         if month > 12 or month < 1 or day > 31 or day < 1:
@@ -63,7 +69,7 @@ def _is_date(text: str) -> bool:
             datetime(year, month, day)
         except ValueError:
             return False
-    
+
     # ISO format validation
     iso_match = re.search(r"\b(\d{4})-(\d{2})-(\d{2})T", text.strip())
     if iso_match:
@@ -72,7 +78,7 @@ def _is_date(text: str) -> bool:
             datetime(year, month, day)
         except ValueError:
             return False
-    
+
     return True
 
 
@@ -99,15 +105,15 @@ def _merged_date_candidates_from_text(
 
 
 def validate_date(
-    word: ReceiptWord, 
+    word: ReceiptWord,
     label: ReceiptWordLabel,
-    client_manager: Optional[ClientManager] = None
+    client_manager: Optional[ClientManager] = None,
 ) -> LabelValidationResult:
     # Get pinecone index from client manager
     if client_manager is None:
         client_manager = get_client_manager()
     pinecone_index = client_manager.pinecone
-    
+
     pinecone_id = pinecone_id_from_label(label)
     fetch_response = pinecone_index.fetch(ids=[pinecone_id], namespace="words")
     vector_data = fetch_response.vectors.get(pinecone_id)
