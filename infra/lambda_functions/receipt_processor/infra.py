@@ -1,5 +1,6 @@
-import os
 import json
+import os
+
 import pulumi
 import pulumi_aws as aws
 from pulumi import AssetArchive, FileArchive

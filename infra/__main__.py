@@ -1,18 +1,25 @@
 """Main Pulumi program for AWS infrastructure."""
 
+import base64
+
 import pulumi
 import pulumi_aws as aws
 from pulumi import ResourceOptions
-import base64
+
+import api_gateway  # noqa: F401
 
 # Import our infrastructure components
 import s3_website  # noqa: F401
-import api_gateway  # noqa: F401
+from dynamo_db import (  # Import DynamoDB table from original code
+    dynamodb_table,
+)
+from embedding_step_functions import LineEmbeddingStepFunction
 from raw_bucket import raw_bucket  # Import the actual bucket instance
 from s3_website import site_bucket  # Import the site bucket instance
-from dynamo_db import (
-    dynamodb_table,
-)  # Import DynamoDB table from original code
+from upload_images import UploadImages
+from validate_merchant_step_functions import ValidateMerchantStepFunctions
+from validation_by_merchant import ValidationByMerchantStepFunction
+from validation_pipeline import ValidationPipeline
 
 # from spot_interruption import SpotInterruptionHandler
 # from efs_storage import EFSStorage
@@ -21,20 +28,15 @@ from dynamo_db import (
 # from ml_packages import MLPackageBuilder
 # from networking import VpcForCodeBuild  # Import the new VPC component
 from word_label_step_functions import WordLabelStepFunctions
-from validate_merchant_step_functions import ValidateMerchantStepFunctions
-from validation_pipeline import ValidationPipeline
-from embedding_step_functions import LineEmbeddingStepFunction
-from validation_by_merchant import ValidationByMerchantStepFunction
-from upload_images import UploadImages
 
 # Import other necessary components
 try:
     # import lambda_layer  # noqa: F401
     import fast_lambda_layer  # noqa: F401
-    from routes.health_check.infra import health_check_lambda  # noqa: F401
-    from lambda_functions.label_count_cache_updater.infra import (
+    from lambda_functions.label_count_cache_updater.infra import (  # noqa: F401
         label_count_cache_updater_lambda,
-    )  # noqa: F401
+    )
+    from routes.health_check.infra import health_check_lambda  # noqa: F401
 except ImportError:
     # These may not be available in all environments
     pass
