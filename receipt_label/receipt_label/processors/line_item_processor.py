@@ -488,18 +488,18 @@ class FastPatternMatcher:
             if not description:
                 description = f"Item on line {context['line_id']}"
 
-                # Create line item
-                item = LineItem(
-                    description=description,
-                    quantity=None,  # We'll need more sophisticated logic to extract quantities
-                    price=Price(
-                        unit_price=None,  # We'd need to analyze quantity patterns to determine unit price
-                        extended_price=amount,
-                    ),
-                    reasoning="Identified through currency pattern matching",
-                    line_ids=[context["line_id"]],
-                )
-                line_items.append(item)
+            # Create line item
+            item = LineItem(
+                description=description,
+                quantity=None,  # We'll need more sophisticated logic to extract quantities
+                price=Price(
+                    unit_price=None,  # We'd need to analyze quantity patterns to determine unit price
+                    extended_price=amount,
+                ),
+                reasoning="Identified through currency pattern matching",
+                line_ids=[context["line_id"]],
+            )
+            line_items.append(item)
 
         # Generate reasoning for the analysis
         reasoning = "Initial currency detection complete. These results will be refined through LLM analysis."
@@ -2196,84 +2196,3 @@ class LineItemProcessor:
             logger.error(f"Error during LLM processing: {str(e)}")
             logger.error(traceback.format_exc())
             return {}
-
-    def _process_line_items(self, line_items: List[LineItem]) -> List[LineItem]:
-        """Process line items to differentiate between regular items and summary items.
-
-        Args:
-            line_items: List of line items to process
-
-        Returns:
-            Processed list with summary items removed and marked appropriately
-        """
-        regular_items = []
-
-        for item in line_items:
-            # Skip items without descriptions or prices
-            if not hasattr(item, "description") or not item.description:
-                continue
-            if (
-                not hasattr(item, "price")
-                or not item.price
-                or not hasattr(item.price, "extended_price")
-            ):
-                continue
-
-            # Check if this is likely a summary item (total, subtotal, tax, etc.)
-            desc_lower = item.description.lower()
-
-            # Use more specific patterns for filtering
-            # Check for exact total-like items (more restrictive than the pattern matching)
-            is_total_item = any(
-                term in desc_lower
-                for term in [
-                    "total",
-                    "balance due",
-                    "amount due",
-                    "grand total",
-                    "payment total",
-                    "order total",
-                    "total amount",
-                    "total due",
-                    "payment due",
-                ]
-            )
-
-            # Check for exact subtotal-like items
-            is_subtotal_item = any(
-                term in desc_lower
-                for term in ["subtotal", "sub total", "sub-total", "net total"]
-            )
-
-            # Check for exact tax-like items
-            is_tax_item = any(
-                term in desc_lower
-                for term in ["tax", "vat", "gst", "hst", "sales tax", "tax amount"]
-            )
-
-            # Only filter out items that are clearly financial summary items
-            if is_total_item and item.price.extended_price > Decimal(0):
-                # This is likely a total item, not a regular line item
-                logger.debug(
-                    f"Identified potential total: {item.description} - {item.price.extended_price}"
-                )
-                continue
-
-            if is_subtotal_item and item.price.extended_price > Decimal(0):
-                # This is likely a subtotal item, not a regular line item
-                logger.debug(
-                    f"Identified potential subtotal: {item.description} - {item.price.extended_price}"
-                )
-                continue
-
-            if is_tax_item and item.price.extended_price > Decimal(0):
-                # This is likely a tax item, not a regular line item
-                logger.debug(
-                    f"Identified potential tax: {item.description} - {item.price.extended_price}"
-                )
-                continue
-
-            # If we get here, this is a regular line item
-            regular_items.append(item)
-
-        return regular_items
