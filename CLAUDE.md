@@ -37,3 +37,26 @@ The server exposes nine tools:
 The test and lint tools execute commands inside the package directory so
 configuration files are discovered correctly. All Pulumi tools execute in the
 infra directory.
+
+# Lambda Architecture Configuration
+
+**IMPORTANT**: All Lambda functions in this project must use ARM64 architecture to match the Lambda layers.
+
+The Lambda layers are built using ARM64 architecture (see `infra/fast_lambda_layer.py`). When creating or updating Lambda functions, always include:
+
+```python
+architectures=["arm64"],
+```
+
+This prevents architecture mismatch errors like "No module named 'pydantic_core._pydantic_core'" which occur when x86_64 Lambdas try to load ARM64-compiled C extensions.
+
+Example:
+```python
+lambda_function = Function(
+    "my-function",
+    runtime="python3.12",
+    architectures=["arm64"],  # Required for compatibility with layers
+    handler="handler.main",
+    layers=[dynamo_layer.arn, label_layer.arn],
+    # ... other configuration
+)
