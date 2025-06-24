@@ -676,9 +676,8 @@ class LineItemProcessor:
         else:
             logger.warning("No API key available from any source")
 
-        # If we have an API key, ensure it's passed to the LLMProcessor
-        if self.openai_api_key:
-            os.environ["OPENAI_API_KEY"] = self.openai_api_key
+        # The API key is passed directly to the LLMProcessor
+        # No need to modify global environment variables
 
         logger.info("---------------------------")
 
