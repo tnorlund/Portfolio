@@ -1,19 +1,17 @@
+"""Currency label validation logic."""
+
+# pylint: disable=duplicate-code,line-too-long
+
 import re
-from datetime import datetime, timezone
 from typing import Optional
 
-from pinecone import Index
-from rapidfuzz.fuzz import partial_ratio, ratio
 from receipt_dynamo.entities import (
     ReceiptWord,
     ReceiptWordLabel,
 )
 
 from receipt_label.label_validation.data import LabelValidationResult
-from receipt_label.label_validation.utils import (
-    normalize_text,
-    pinecone_id_from_label,
-)
+from receipt_label.label_validation.utils import pinecone_id_from_label
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
 
@@ -49,15 +47,15 @@ def _merged_currency_candidates_from_text(
 
 
 def validate_currency(
-    word: ReceiptWord, 
+    word: ReceiptWord,
     label: ReceiptWordLabel,
-    client_manager: Optional[ClientManager] = None
+    client_manager: Optional[ClientManager] = None,
 ) -> LabelValidationResult:
     # Get pinecone index from client manager
     if client_manager is None:
         client_manager = get_client_manager()
     pinecone_index = client_manager.pinecone
-    
+
     pinecone_id = pinecone_id_from_label(label)
     fetch_response = pinecone_index.fetch(ids=[pinecone_id], namespace="words")
     vector_data = fetch_response.vectors.get(pinecone_id)

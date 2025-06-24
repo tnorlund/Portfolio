@@ -1,12 +1,12 @@
+"""Address label validation logic."""
+
+# pylint: disable=duplicate-code,line-too-long
+
 import re
-from datetime import datetime, timezone
+from typing import Optional
 
 from rapidfuzz.fuzz import partial_ratio, ratio
-from receipt_dynamo.entities import (
-    ReceiptMetadata,
-    ReceiptWord,
-    ReceiptWordLabel,
-)
+from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 
 from receipt_label.label_validation.data import (
     LabelValidationResult,
@@ -15,7 +15,6 @@ from receipt_label.label_validation.utils import (
     normalize_text,
     pinecone_id_from_label,
 )
-from typing import Optional
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
 
@@ -33,11 +32,11 @@ SUFFIXES = {
 
 DIRECTIONAL_ABBREVIATIONS = {
     "n": "north",
-    "s": "south", 
+    "s": "south",
     "e": "east",
     "w": "west",
     "ne": "northeast",
-    "nw": "northwest", 
+    "nw": "northwest",
     "se": "southeast",
     "sw": "southwest",
 }
@@ -62,24 +61,28 @@ def _normalize_address(text: str) -> str:
     """Enhanced address normalization for better matching."""
     # Start with basic text normalization
     normalized = normalize_text(text)
-    
+
     # Remove excessive punctuation and spaces
-    normalized = re.sub(r'[.]{2,}', ' ', normalized)  # Replace multiple dots
-    normalized = re.sub(r'[!]{2,}', ' ', normalized)  # Replace multiple exclamation marks
-    normalized = re.sub(r'\s+', ' ', normalized)      # Replace multiple spaces with single space
-    
+    normalized = re.sub(r"[.]{2,}", " ", normalized)  # Replace multiple dots
+    normalized = re.sub(
+        r"[!]{2,}", " ", normalized
+    )  # Replace multiple exclamation marks
+    normalized = re.sub(
+        r"\s+", " ", normalized
+    )  # Replace multiple spaces with single space
+
     # Split into tokens for replacement
     tokens = normalized.split()
     processed_tokens = []
-    
+
     for token in tokens:
         # Remove trailing punctuation from token
-        clean_token = token.rstrip('.,!')
-        
+        clean_token = token.rstrip(".,!")
+
         # Apply suffix replacements
         if clean_token in SUFFIXES:
             processed_tokens.append(SUFFIXES[clean_token])
-        # Apply directional replacements  
+        # Apply directional replacements
         elif clean_token in DIRECTIONAL_ABBREVIATIONS:
             processed_tokens.append(DIRECTIONAL_ABBREVIATIONS[clean_token])
         # Apply unit replacements
@@ -87,8 +90,8 @@ def _normalize_address(text: str) -> str:
             processed_tokens.append(UNIT_ABBREVIATIONS[clean_token])
         else:
             processed_tokens.append(clean_token)
-    
-    return ' '.join(processed_tokens)
+
+    return " ".join(processed_tokens)
 
 
 def _fuzzy_in(text: str, target: str, threshold: int = 90) -> bool:
@@ -127,13 +130,13 @@ def validate_address(
     word: ReceiptWord,
     label: ReceiptWordLabel,
     receipt_metadata,  # Can be ReceiptMetadata or SimpleNamespace for testing
-    client_manager: Optional[ClientManager] = None
+    client_manager: Optional[ClientManager] = None,
 ) -> LabelValidationResult:
     # Get pinecone index from client manager
     if client_manager is None:
         client_manager = get_client_manager()
     pinecone_index = client_manager.pinecone
-    
+
     pinecone_id = pinecone_id_from_label(label)
     canonical_address = (
         _normalize_address(receipt_metadata.canonical_address)
