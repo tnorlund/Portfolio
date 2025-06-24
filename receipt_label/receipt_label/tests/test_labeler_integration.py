@@ -383,3 +383,331 @@ def test_label_receipt_places_api_disabled(mocker, sample_receipt_data):
     
     # No errors should have occurred
     assert len(result.errors) == 0
+
+
+@pytest.mark.integration
+def test_label_receipt_with_large_receipt(mocker):
+    """Test that ReceiptLabeler can handle extremely large receipts efficiently.
+    
+    This test ensures the labeler can process receipts with many lines and words
+    without performance degradation or memory issues.
+    """
+    # Create a large receipt with 1000 lines
+    num_lines = 1000
+    receipt_words = []
+    receipt_lines = []
+    
+    for line_id in range(num_lines):
+        line_text = f"Item {line_id}: Product Name ${(line_id % 100) + 1}.99"
+        words = line_text.split()
+        
+        # Create words for this line
+        line_words = []
+        for word_id, word_text in enumerate(words):
+            word = ReceiptWord(
+                text=word_text,
+                line_id=line_id,
+                word_id=word_id,
+                confidence=0.95
+            )
+            receipt_words.append(word)
+            line_words.append(word)
+        
+        # Create the line
+        line = ReceiptLine(
+            line_id=line_id,
+            text=line_text,
+            confidence=0.95,
+            bounding_box={"x": 0, "y": line_id * 20, "width": 200, "height": 18},
+            top_right={"x": 200, "y": line_id * 20},
+            top_left={"x": 0, "y": line_id * 20},
+            bottom_right={"x": 200, "y": line_id * 20 + 18},
+            bottom_left={"x": 0, "y": line_id * 20 + 18},
+            angle_degrees=0.0,
+            angle_radians=0.0,
+        )
+        receipt_lines.append(line)
+    
+    receipt = Receipt(
+        receipt_id="large-receipt-001",
+        image_id="large-image-001",
+        words=receipt_words,
+        lines=receipt_lines,
+    )
+    
+    # Mock the processors to return quickly
+    mock_analyzer = MagicMock()
+    mock_analyzer.analyze_structure.return_value = StructureAnalysis(
+        sections=[], overall_reasoning="Large receipt processed"
+    )
+    mock_analyzer.label_fields.return_value = LabelAnalysis(labels=[], metadata={})
+    
+    mock_line_processor = MagicMock()
+    mock_line_processor.analyze_line_items.return_value = LineItemAnalysis(
+        items=[],
+        total_found=0,
+        subtotal=Decimal("0"),
+        tax=Decimal("0"),
+        total=Decimal("0"),
+        discrepancies=[],
+        reasoning="Large receipt analysis",
+    )
+    
+    mock_places_processor = MagicMock()
+    mock_places_processor.process_receipt_batch.return_value = [{}]
+    
+    with patch.dict(os.environ, {
+        "DYNAMO_TABLE_NAME": TEST_DYNAMO_TABLE,
+        "PINECONE_API_KEY": TEST_API_KEY,
+        "OPENAI_API_KEY": TEST_API_KEY,
+        "PINECONE_INDEX_NAME": "test-index",
+        "PINECONE_HOST": "test-host.pinecone.io",
+    }):
+        labeler = ReceiptLabeler(
+            places_api_key=TEST_API_KEY,
+            gpt_api_key=TEST_API_KEY,
+            dynamodb_table_name=TEST_DYNAMO_TABLE,
+            validation_level="none",
+        )
+        # Replace the processors with mocks
+        labeler.receipt_analyzer = mock_analyzer
+        labeler.line_item_processor = mock_line_processor
+        labeler.places_processor = mock_places_processor
+        
+        # Measure execution time
+        import time
+        start_time = time.time()
+        result = labeler.label_receipt(receipt, receipt_words, receipt_lines)
+        execution_time = time.time() - start_time
+        
+    # Verify the result
+    assert isinstance(result, LabelingResult)
+    assert result.receipt_id == "large-receipt-001"
+    assert len(result.errors) == 0
+    
+    # Ensure processing completed in reasonable time (< 5 seconds with mocks)
+    assert execution_time < 5.0
+    
+    # Verify all processors were called with the large data
+    mock_analyzer.analyze_structure.assert_called_once()
+    mock_analyzer.label_fields.assert_called_once()
+    mock_line_processor.analyze_line_items.assert_called_once()
+
+
+@pytest.mark.integration
+def test_label_receipt_with_malformed_data(mocker):
+    """Test that ReceiptLabeler handles malformed/corrupted receipt data gracefully.
+    
+    This test ensures the labeler can handle edge cases like missing fields,
+    invalid data types, and corrupted structures without crashing.
+    """
+    # Create malformed receipt data
+    receipt_words = [
+        ReceiptWord(text="", line_id=0, word_id=0, confidence=0.0),  # Empty text
+        ReceiptWord(text="Test", line_id=-1, word_id=1, confidence=1.5),  # Invalid line_id and confidence
+        ReceiptWord(text=None, line_id=1, word_id=2, confidence=0.5),  # None text
+    ]
+    
+    receipt_lines = [
+        ReceiptLine(
+            line_id=0,
+            text="",  # Empty line
+            confidence=0.0,
+            bounding_box=None,  # Missing bounding box
+            top_right=None,
+            top_left=None,
+            bottom_right=None,
+            bottom_left=None,
+            angle_degrees=None,
+            angle_radians=None,
+        ),
+        ReceiptLine(
+            line_id=-1,  # Invalid line_id
+            text=None,  # None text
+            confidence=2.0,  # Invalid confidence
+            bounding_box={"x": "invalid", "y": "invalid"},  # Invalid bbox values
+            top_right={"x": 0},  # Missing y coordinate
+            top_left={},  # Empty coordinates
+            bottom_right=None,
+            bottom_left=None,
+            angle_degrees=float('inf'),  # Infinity
+            angle_radians=float('nan'),  # NaN
+        ),
+    ]
+    
+    receipt = Receipt(
+        receipt_id="malformed-001",
+        image_id="",  # Empty image_id
+        words=receipt_words,
+        lines=receipt_lines,
+    )
+    
+    # Mock processors to handle malformed data
+    mock_analyzer = MagicMock()
+    mock_analyzer.analyze_structure.return_value = StructureAnalysis(
+        sections=[], overall_reasoning="Handled malformed data"
+    )
+    mock_analyzer.label_fields.return_value = LabelAnalysis(labels=[], metadata={})
+    
+    mock_line_processor = MagicMock()
+    mock_line_processor.analyze_line_items.return_value = LineItemAnalysis(
+        items=[],
+        total_found=0,
+        subtotal=Decimal("0"),
+        tax=Decimal("0"),
+        total=Decimal("0"),
+        discrepancies=["Malformed data detected"],
+        reasoning="Processed with errors",
+    )
+    
+    mock_places_processor = MagicMock()
+    mock_places_processor.process_receipt_batch.return_value = [{}]
+    
+    with patch.dict(os.environ, {
+        "DYNAMO_TABLE_NAME": TEST_DYNAMO_TABLE,
+        "PINECONE_API_KEY": TEST_API_KEY,
+        "OPENAI_API_KEY": TEST_API_KEY,
+        "PINECONE_INDEX_NAME": "test-index",
+        "PINECONE_HOST": "test-host.pinecone.io",
+    }):
+        labeler = ReceiptLabeler(
+            places_api_key=TEST_API_KEY,
+            gpt_api_key=TEST_API_KEY,
+            dynamodb_table_name=TEST_DYNAMO_TABLE,
+            validation_level="none",
+        )
+        # Replace the processors with mocks
+        labeler.receipt_analyzer = mock_analyzer
+        labeler.line_item_processor = mock_line_processor
+        labeler.places_processor = mock_places_processor
+        
+        # Should not raise an exception
+        result = labeler.label_receipt(receipt, receipt_words, receipt_lines)
+        
+    # Verify the result
+    assert isinstance(result, LabelingResult)
+    assert result.receipt_id == "malformed-001"
+    
+    # Verify processors were still called despite malformed data
+    mock_analyzer.analyze_structure.assert_called_once()
+    mock_analyzer.label_fields.assert_called_once()
+    mock_line_processor.analyze_line_items.assert_called_once()
+
+
+@pytest.mark.integration
+def test_label_receipt_concurrent_processing(mocker):
+    """Test that ReceiptLabeler can handle concurrent processing safely.
+    
+    This test ensures thread safety when multiple receipts are processed
+    simultaneously.
+    """
+    import threading
+    import concurrent.futures
+    
+    # Create test receipts
+    def create_test_receipt(receipt_id: str):
+        words = [
+            ReceiptWord(text="Test", line_id=0, word_id=0, confidence=1.0),
+            ReceiptWord(text="$10.00", line_id=0, word_id=1, confidence=1.0),
+        ]
+        lines = [
+            ReceiptLine(
+                line_id=0,
+                text="Test $10.00",
+                confidence=1.0,
+                bounding_box={"x": 0, "y": 0, "width": 100, "height": 20},
+                top_right={"x": 100, "y": 0},
+                top_left={"x": 0, "y": 0},
+                bottom_right={"x": 100, "y": 20},
+                bottom_left={"x": 0, "y": 20},
+                angle_degrees=0.0,
+                angle_radians=0.0,
+            )
+        ]
+        return Receipt(
+            receipt_id=receipt_id,
+            image_id=f"image-{receipt_id}",
+            words=words,
+            lines=lines,
+        ), words, lines
+    
+    # Mock processors
+    def create_mocked_labeler():
+        mock_analyzer = MagicMock()
+        mock_analyzer.analyze_structure.return_value = StructureAnalysis(
+            sections=[], overall_reasoning="ok"
+        )
+        mock_analyzer.label_fields.return_value = LabelAnalysis(labels=[], metadata={})
+        
+        mock_line_processor = MagicMock()
+        mock_line_processor.analyze_line_items.return_value = LineItemAnalysis(
+            items=[],
+            total_found=0,
+            subtotal=Decimal("10.00"),
+            tax=Decimal("0"),
+            total=Decimal("10.00"),
+            discrepancies=[],
+            reasoning="ok",
+        )
+        
+        mock_places_processor = MagicMock()
+        mock_places_processor.process_receipt_batch.return_value = [
+            {"places_api_match": {"name": "Test Store"}}
+        ]
+        
+        with patch.dict(os.environ, {
+            "DYNAMO_TABLE_NAME": TEST_DYNAMO_TABLE,
+            "PINECONE_API_KEY": TEST_API_KEY,
+            "OPENAI_API_KEY": TEST_API_KEY,
+            "PINECONE_INDEX_NAME": "test-index",
+            "PINECONE_HOST": "test-host.pinecone.io",
+        }):
+            labeler = ReceiptLabeler(
+                places_api_key=TEST_API_KEY,
+                gpt_api_key=TEST_API_KEY,
+                dynamodb_table_name=TEST_DYNAMO_TABLE,
+                validation_level="none",
+            )
+            # Replace the processors with mocks
+            labeler.receipt_analyzer = mock_analyzer
+            labeler.line_item_processor = mock_line_processor
+            labeler.places_processor = mock_places_processor
+            
+        return labeler
+    
+    # Create a shared labeler instance
+    labeler = create_mocked_labeler()
+    results = []
+    errors = []
+    
+    def process_receipt(receipt_id: str):
+        try:
+            receipt, words, lines = create_test_receipt(receipt_id)
+            result = labeler.label_receipt(receipt, words, lines)
+            results.append(result)
+        except Exception as e:
+            errors.append((receipt_id, str(e)))
+    
+    # Process multiple receipts concurrently
+    num_threads = 10
+    with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
+        futures = []
+        for i in range(num_threads):
+            future = executor.submit(process_receipt, f"concurrent-{i}")
+            futures.append(future)
+        
+        # Wait for all to complete
+        concurrent.futures.wait(futures)
+    
+    # Verify results
+    assert len(errors) == 0, f"Errors occurred: {errors}"
+    assert len(results) == num_threads
+    
+    # Verify each result is valid and has unique receipt_id
+    receipt_ids = set()
+    for result in results:
+        assert isinstance(result, LabelingResult)
+        assert result.receipt_id.startswith("concurrent-")
+        assert result.receipt_id not in receipt_ids  # No duplicates
+        receipt_ids.add(result.receipt_id)
+        assert len(result.errors) == 0
