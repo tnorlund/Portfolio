@@ -95,24 +95,24 @@ def test_query_google_places_branches(
             False,
             None,
             {
-                "merchant_name": "",
-                "merchant_address": "",
-                "merchant_phone": "",
+                "name": "",
+                "address": "",
+                "phone_number": "",
                 "confidence": 0.0,
             },
         ),
         (
             True,
             {
-                "merchant_name": "X",
-                "merchant_address": "Y",
-                "merchant_phone": "Z",
+                "name": "X",
+                "address": "Y",
+                "phone_number": "Z",
                 "confidence": 0.5,
             },
             {
-                "merchant_name": "X",
-                "merchant_address": "Y",
-                "merchant_phone": "Z",
+                "name": "X",
+                "address": "Y",
+                "phone_number": "Z",
                 "confidence": 0.5,
             },
         ),
@@ -120,9 +120,9 @@ def test_query_google_places_branches(
             True,
             "badjson",
             {
-                "merchant_name": "",
-                "merchant_address": "",
-                "merchant_phone": "",
+                "name": "",
+                "address": "",
+                "phone_number": "",
                 "confidence": 0.0,
             },
         ),
@@ -330,7 +330,7 @@ def test_retry_google_search_with_inferred_data_phone(mocker):
         "receipt_label.merchant_validation.merchant_validation.is_valid_google_match",
         return_value=True,
     )
-    data = {"merchant_phone": "555-0000"}
+    data = {"phone_number": "555-0000"}
     result = mv.retry_google_search_with_inferred_data(data, "APIKEY")
     assert result is not None
     assert result["phone"] == "555-0000"
@@ -380,7 +380,7 @@ def test_retry_google_search_with_inferred_data_address(mocker):
         "receipt_label.merchant_validation.merchant_validation.is_valid_google_match",
         return_value=True,
     )
-    data = {"merchant_phone": "none", "merchant_address": "123 Example Ave"}
+    data = {"phone_number": "none", "address": "123 Example Ave"}
     result = mv.retry_google_search_with_inferred_data(data, "APIKEY")
     assert result is not None
     assert "place_id" in result
@@ -514,7 +514,7 @@ def test_validate_match_with_gpt_no_function_call(mock_openai):
     if hasattr(fake_msg, "function_call"):
         delattr(fake_msg, "function_call")
     res = mv.validate_match_with_gpt(
-        {"name": "N", "address": "A", "phone": "P"},
+        {"name": "N", "address": "A", "phone_number": "P"},
         {"name": "N", "formatted_address": "A", "formatted_phone_number": "P"},
     )
     assert res["decision"] == "UNSURE"
@@ -532,7 +532,7 @@ def test_validate_match_with_gpt_bad_json(mock_openai):
         },
     )()
     res = mv.validate_match_with_gpt(
-        {"name": "N", "address": "A", "phone": "P"},
+        {"name": "N", "address": "A", "phone_number": "P"},
         {"name": "N", "formatted_address": "A", "formatted_phone_number": "P"},
     )
     assert res["decision"] == "UNSURE"
