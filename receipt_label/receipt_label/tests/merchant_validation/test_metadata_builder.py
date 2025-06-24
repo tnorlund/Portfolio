@@ -1,14 +1,16 @@
 """Unit tests for merchant metadata builders."""
 
+# Set up test environment before imports
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from test_helpers import setup_test_environment
+setup_test_environment()
+
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
-
-# Mock the agents module before importing
-import sys
-mock_agents = MagicMock()
-sys.modules['agents'] = mock_agents
 
 from receipt_label.merchant_validation.metadata_builder import (
     build_receipt_metadata_from_result,
