@@ -10,7 +10,8 @@ from receipt_dynamo.entities import (
     ReceiptWordLabel,
 )
 
-from receipt_label.utils import get_clients
+from receipt_label.utils import get_client_manager
+from receipt_label.utils.client_manager import ClientManager
 
 
 def _chunk(iterable, n):
@@ -30,9 +31,6 @@ def _build_vector_id(label: ReceiptWordLabel) -> str:
         f"WORD#{label.word_id:05d}"
     )
 
-
-dynamo_client, openai_client, pinecone_index = get_clients()
-
 # ---- Pinecone namespace used by this pipeline ------------------------------
 PINECONE_NS = "words"
 
@@ -44,24 +42,28 @@ class LabelResult:
     other_labels: list[ReceiptWordLabel]
 
 
-def list_pending_completion_batches() -> list[BatchSummary]:
+def list_pending_completion_batches(client_manager: ClientManager = None) -> list[BatchSummary]:
     """
     List all pending completion batches that need to be processed.
     """
-    pending_completion_batches, _ = dynamo_client.getBatchSummariesByStatus(
+    if client_manager is None:
+        client_manager = get_client_manager()
+    pending_completion_batches, _ = client_manager.dynamo.getBatchSummariesByStatus(
         status=BatchStatus.PENDING, batch_type=BatchType.COMPLETION
     )
     return pending_completion_batches
 
 
-def get_openai_batch_status(openai_batch_id: str) -> str:
+def get_openai_batch_status(openai_batch_id: str, client_manager: ClientManager = None) -> str:
     """
     Retrieve the status of an OpenAI embedding batch job.
     Args:
         batch_summary (BatchSummary): The batch summary.
     Returns the current status of the batch.
     """
-    return openai_client.batches.retrieve(openai_batch_id).status
+    if client_manager is None:
+        client_manager = get_client_manager()
+    return client_manager.openai.batches.retrieve(openai_batch_id).status
 
 
 def _parse_result_id(result_id: str) -> tuple[str, int, int, int, str]:
@@ -107,6 +109,7 @@ def _extract_results(data: dict) -> list[dict]:
 
 def download_openai_batch_result(  # pylint: disable=too-many-locals,too-many-statements
     batch_summary: BatchSummary,
+    client_manager: ClientManager = None,
 ) -> tuple[list[ReceiptWordLabel], list[LabelResult], list[LabelResult]]:
     """
     Returns:
@@ -114,9 +117,11 @@ def download_openai_batch_result(  # pylint: disable=too-many-locals,too-many-st
         valid_labels:   List[LabelResult] with result.is_valid == True
         invalid_labels: List[LabelResult] with result.is_valid == False
     """
-    batch = openai_client.batches.retrieve(batch_summary.openai_batch_id)
+    if client_manager is None:
+        client_manager = get_client_manager()
+    batch = client_manager.openai.batches.retrieve(batch_summary.openai_batch_id)
     output_file_id = batch.output_file_id
-    response = openai_client.files.content(output_file_id)
+    response = client_manager.openai.files.content(output_file_id)
     if hasattr(response, "read"):
         lines = response.read().decode("utf-8").splitlines()
     elif isinstance(response, bytes):
@@ -147,7 +152,7 @@ def download_openai_batch_result(  # pylint: disable=too-many-locals,too-many-st
                     _,
                     _,
                     all_labels_from_receipt,
-                ) = dynamo_client.getReceiptDetails(
+                ) = client_manager.dynamo.getReceiptDetails(
                     image_id=image_id, receipt_id=receipt_id
                 )
                 receipt_details_cache[cache_key] = all_labels_from_receipt
@@ -247,23 +252,28 @@ def download_openai_batch_result(  # pylint: disable=too-many-locals,too-many-st
 
 def update_pending_labels(
     pending_labels_to_update: list[ReceiptWordLabel],
+    client_manager: ClientManager = None,
 ) -> None:
     """
     Update the pending labels in the database.
     """
+    if client_manager is None:
+        client_manager = get_client_manager()
     for pending_label in pending_labels_to_update:
         pending_label.validation_status = ValidationStatus.NONE.value
         pending_label.label_proposed_by = "COMPLETION_BATCH"
 
     # Chunk into 25 items and update
     for chunk in _chunk(pending_labels_to_update, 25):
-        dynamo_client.updateReceiptWordLabels(chunk)
+        client_manager.dynamo.updateReceiptWordLabels(chunk)
 
 
-def update_valid_labels(valid_labels_results: list[LabelResult]) -> None:
+def update_valid_labels(valid_labels_results: list[LabelResult], client_manager: ClientManager = None) -> None:
     """
     Update the valid labels in the database and Pinecone index.
     """
+    if client_manager is None:
+        client_manager = get_client_manager()
     # ------------------------------------------------------------------ #
     # 1. Build mapping:  vector_id -> list[str] (new valid labels)       #
     # ------------------------------------------------------------------ #
@@ -280,7 +290,7 @@ def update_valid_labels(valid_labels_results: list[LabelResult]) -> None:
     vectors_needing_update: list[tuple[str, dict]] = []  # (id, merged_meta)
 
     for id_batch in _chunk(valid_by_vector.keys(), 100):
-        fetched = pinecone_index.fetch(
+        fetched = client_manager.pinecone.fetch(
             ids=id_batch, namespace=PINECONE_NS
         ).vectors
         for vid in id_batch:
@@ -303,20 +313,22 @@ def update_valid_labels(valid_labels_results: list[LabelResult]) -> None:
     # 3. Write only vectors whose metadata changed                       #
     # ------------------------------------------------------------------ #
     for vid, meta in vectors_needing_update:
-        pinecone_index.update(id=vid, set_metadata=meta, namespace=PINECONE_NS)
+        client_manager.pinecone.update(id=vid, set_metadata=meta, namespace=PINECONE_NS)
 
     # Chunk into 25 items and update
     for chunk in _chunk(
         [r.label_from_dynamo for r in valid_labels_results], 25
     ):
-        dynamo_client.updateReceiptWordLabels(chunk)
+        client_manager.dynamo.updateReceiptWordLabels(chunk)
 
 
-def update_invalid_labels(invalid_labels_results: list[LabelResult]) -> None:
+def update_invalid_labels(invalid_labels_results: list[LabelResult], client_manager: ClientManager = None) -> None:
     """
     Update invalid labels in DynamoDB and Pinecone index based on batch
     parsing results.
     """
+    if client_manager is None:
+        client_manager = get_client_manager()
 
     labels_to_update: list[ReceiptWordLabel] = []
     labels_to_add: list[ReceiptWordLabel] = []
@@ -388,7 +400,7 @@ def update_invalid_labels(invalid_labels_results: list[LabelResult]) -> None:
     vectors_needing_update: list[tuple[str, dict]] = []
 
     for id_batch in _chunk(invalid_by_vector.keys(), 100):
-        fetched = pinecone_index.fetch(
+        fetched = client_manager.pinecone.fetch(
             ids=id_batch, namespace=PINECONE_NS
         ).vectors
         for vid in id_batch:
@@ -414,7 +426,7 @@ def update_invalid_labels(invalid_labels_results: list[LabelResult]) -> None:
                 vectors_needing_update.append((vid, meta))
 
     for vid, meta in vectors_needing_update:
-        pinecone_index.update(id=vid, set_metadata=meta, namespace=PINECONE_NS)
+        client_manager.pinecone.update(id=vid, set_metadata=meta, namespace=PINECONE_NS)
 
     # ------------------------------------------------------------------ #
     # 3.  DynamoDB writes                                                 #
@@ -426,17 +438,18 @@ def update_invalid_labels(invalid_labels_results: list[LabelResult]) -> None:
 
     labels_to_update = list(unique_labels_by_key.values())
     for chunk in _chunk(labels_to_update, 25):
-        dynamo_client.updateReceiptWordLabels(chunk)
+        client_manager.dynamo.updateReceiptWordLabels(chunk)
 
     if labels_to_add:
         for chunk in _chunk(labels_to_add, 25):
-            dynamo_client.addReceiptWordLabels(chunk)
+            client_manager.dynamo.addReceiptWordLabels(chunk)
 
 
 def write_completion_batch_results(
     batch_summary: BatchSummary,
     valid_results: list[LabelResult],
     invalid_results: list[LabelResult],
+    client_manager: ClientManager = None,
 ) -> None:
     """
     Persist the OpenAI batch outcomes to the CompletionBatchResult table.
@@ -492,12 +505,16 @@ def write_completion_batch_results(
 
     # Dynamo batch‑write (25 items per call)
     for chunk in _chunk(completion_records, 25):
-        dynamo_client.addCompletionBatchResults(chunk)
+        if client_manager is None:
+            client_manager = get_client_manager()
+        client_manager.dynamo.addCompletionBatchResults(chunk)
 
 
-def update_batch_summary(batch_summary: BatchSummary) -> None:
+def update_batch_summary(batch_summary: BatchSummary, client_manager: ClientManager = None) -> None:
     """
     Update the batch summary in DynamoDB.
     """
+    if client_manager is None:
+        client_manager = get_client_manager()
     batch_summary.status = BatchStatus.COMPLETED.value
-    dynamo_client.updateBatchSummary(batch_summary)
+    client_manager.dynamo.updateBatchSummary(batch_summary)

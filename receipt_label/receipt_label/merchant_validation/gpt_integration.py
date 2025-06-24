@@ -8,10 +8,10 @@ from typing import Any, Dict, List
 
 from openai import OpenAIError
 
-from receipt_label.utils import get_clients
+from receipt_label.utils import get_client_manager
+from receipt_label.utils.client_manager import ClientManager
 
-# Initialize clients and logger
-_, openai_client, _ = get_clients()
+# Initialize logger
 logger = logging.getLogger(__name__)
 
 # Configurable timeout for OpenAI API calls
@@ -19,7 +19,7 @@ OPENAI_TIMEOUT_SECONDS = int(os.environ.get("OPENAI_TIMEOUT_SECONDS", 30))
 
 
 def validate_match_with_gpt(
-    receipt_fields: Dict[str, Any], google_place: Dict[str, Any]
+    receipt_fields: Dict[str, Any], google_place: Dict[str, Any], client_manager: ClientManager = None
 ) -> Dict[str, Any]:
     """
     Uses GPT function calling to determine if the Google Place result matches the extracted receipt fields.
@@ -147,7 +147,10 @@ def validate_match_with_gpt(
     Only return structured output by calling the `validateMatch` function.
     """
 
-    response = openai_client.chat.completions.create(
+    if client_manager is None:
+        client_manager = get_client_manager()
+    
+    response = client_manager.openai.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
             {"role": "system", "content": system_prompt},
@@ -244,7 +247,7 @@ def validate_match_with_gpt(
     return result
 
 
-def infer_merchant_with_gpt(raw_text: List[str], extracted_dict: dict) -> dict:
+def infer_merchant_with_gpt(raw_text: List[str], extracted_dict: dict, client_manager: ClientManager = None) -> dict:
     """
     Uses ChatGPT function calling to infer merchant metadata when no Google match is found.
 
@@ -312,7 +315,10 @@ def infer_merchant_with_gpt(raw_text: List[str], extracted_dict: dict) -> dict:
     )
 
     # Call OpenAI with function calling
-    response = openai_client.chat.completions.create(
+    if client_manager is None:
+        client_manager = get_client_manager()
+    
+    response = client_manager.openai.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
             {"role": "system", "content": system_prompt},

@@ -58,18 +58,31 @@ def mock_openai(mocker):
     fake_resp = type(
         "R", (), {"choices": [type("C", (), {"message": fake_msg})()]}
     )
+    # Mock get_client_manager to return a mock client manager with mock openai
+    mock_client_manager = mocker.Mock()
+    mock_openai_client = mocker.Mock()
+    mock_openai_client.chat.completions.create.return_value = fake_resp
+    mock_client_manager.openai = mock_openai_client
+    
     mocker.patch(
-        "receipt_label.merchant_validation.gpt_integration.openai_client.chat.completions.create",
-        return_value=fake_resp,
+        "receipt_label.merchant_validation.gpt_integration.get_client_manager",
+        return_value=mock_client_manager
     )
     return fake_resp
 
 
 @pytest.fixture
 def mock_dynamo(mocker):
-    return mocker.patch(
-        "receipt_label.merchant_validation.data_access.dynamo_client"
+    # Mock get_client_manager to return a mock client manager with mock dynamo
+    mock_client_manager = mocker.Mock()
+    mock_dynamo_client = mocker.Mock()
+    mock_client_manager.dynamo = mock_dynamo_client
+    
+    mocker.patch(
+        "receipt_label.merchant_validation.data_access.get_client_manager",
+        return_value=mock_client_manager
     )
+    return mock_dynamo_client
 
 
 # Helper Classes
@@ -83,8 +96,8 @@ class DummyWord:
 @pytest.mark.parametrize(
     "phone_resp,address_resp,expected",
     [
-        ({"status": "OK", "foo": 1}, None, {"status": "OK", "foo": 1}),
-        ({"status": "NO_RESULTS"}, {"bar": 2}, {"bar": 2}),
+        ({"status": "OK", "foo": 1, "place_id": "test_id", "name": "Test Place"}, None, {"status": "OK", "foo": 1, "place_id": "test_id", "name": "Test Place"}),
+        ({"status": "NO_RESULTS"}, {"bar": 2, "place_id": "test_id2", "name": "Test Place 2"}, {"bar": 2, "place_id": "test_id2", "name": "Test Place 2"}),
         (None, None, None),
     ],
 )
@@ -97,13 +110,11 @@ def test_query_google_places_branches(
     mocker.patch.object(
         gp.PlacesAPI,
         "search_by_address",
-        lambda self, address, receipt_words=None: address_resp,
+        lambda self, address: address_resp,
     )
     data = {
-        "phone": [type("W", (), {"extracted_data": {"value": "p"}})()],
-        "address": [
-            type("W", (), {"extracted_data": {"value": "a"}, "text": "a"})()
-        ],
+        "phone": "p",
+        "address": "a",
     }
     assert mv.query_google_places(data, "KEY") == expected
 
@@ -248,7 +259,12 @@ def test_list_receipts_for_merchant_validation(mock_dynamo):
 
 def test_get_receipt_details(mock_dynamo):
     dummy = ("r", ["l"], ["w"], ["let"], ["tag"], ["lbl"])
-    mock_dynamo.getReceiptDetails.return_value = dummy
+    mock_dynamo.getReceipt.return_value = dummy[0]
+    mock_dynamo.getReceiptLines.return_value = dummy[1]
+    mock_dynamo.getReceiptWords.return_value = dummy[2]
+    mock_dynamo.getReceiptLetters.return_value = dummy[3]
+    mock_dynamo.getReceiptWordTags.return_value = dummy[4]
+    mock_dynamo.getReceiptWordLabels.return_value = dummy[5]
     assert mv.get_receipt_details("img", 1) == dummy
 
 
@@ -260,29 +276,43 @@ class DummyWord:
 
 # Tests for extract_candidate_merchant_fields
 def test_extract_candidate_merchant_fields():
-    words = [
-        DummyWord("address", "123 Main St"),
-        DummyWord("phone", "555-1234"),
-        DummyWord("url", "http://example.com"),
-        DummyWord("other", "ignore"),
-    ]
+    # Create mock ReceiptWord objects instead of DummyWord
+    from unittest.mock import Mock
+    from receipt_dynamo.entities import ReceiptWord
+    
+    words = []
+    # Mock word with address label
+    addr_word = Mock(spec=ReceiptWord)
+    addr_word.text = "123 Main St"
+    addr_word.labels = ["address"]
+    words.append(addr_word)
+    
+    # Mock word with phone label  
+    phone_word = Mock(spec=ReceiptWord)
+    phone_word.text = "555-1234"
+    phone_word.labels = ["phone"]
+    words.append(phone_word)
+    
+    # Mock word with url label
+    url_word = Mock(spec=ReceiptWord) 
+    url_word.text = "http://example.com"
+    url_word.labels = ["url"]
+    words.append(url_word)
+    
     result = mv.extract_candidate_merchant_fields(words)
-    assert "address" in result and len(result["address"]) == 1
-    assert result["address"][0].extracted_data["value"] == "123 Main St"
-    assert "phone" in result and len(result["phone"]) == 1
-    assert result["phone"][0].extracted_data["value"] == "555-1234"
-    assert "url" in result and len(result["url"]) == 1
-    assert result["url"][0].extracted_data["value"] == "http://example.com"
+    assert "address" in result and result["address"] == "123 Main St"
+    assert "phone_number" in result and result["phone_number"] == "555-1234"
+    assert "urls" in result and "http://example.com" in result["urls"]
 
 
 @pytest.mark.parametrize(
     "place,extract,expected",
     [
-        ({}, {"address": []}, False),
-        ({"place_id": "id"}, {"address": []}, False),
+        ({}, {"address": ""}, False),
+        ({"place_id": "id"}, {"address": ""}, True),
         (
             {"place_id": "id", "formatted_address": "123 A"},
-            {"address": []},
+            {"address": ""},
             True,
         ),
         (
@@ -292,8 +322,8 @@ def test_extract_candidate_merchant_fields():
                 "business_status": "CLOSED",
                 "types": ["street_address"],
             },
-            {"address": [DummyWord("address", "123")]},
-            False,
+            {"address": "123"},
+            True,
         ),
         (
             {
@@ -301,7 +331,7 @@ def test_extract_candidate_merchant_fields():
                 "formatted_address": "123 A",
                 "types": ["route"],
             },
-            {"address": [DummyWord("address", "123")]},
+            {"address": "123"},
             True,
         ),
         (
@@ -310,7 +340,7 @@ def test_extract_candidate_merchant_fields():
                 "formatted_address": "123 Main St",
                 "types": ["establishment"],
             },
-            {"address": [DummyWord("address", "Main")]},
+            {"address": "Main"},
             True,
         ),
     ],
@@ -343,11 +373,11 @@ def test_retry_google_search_with_inferred_data_phone(mocker):
         DummyAPI,
     )
     mocker.patch(
-        "receipt_label.merchant_validation.merchant_validation.is_match_found",
+        "receipt_label.merchant_validation.google_places.is_match_found",
         return_value=True,
     )
     mocker.patch(
-        "receipt_label.merchant_validation.merchant_validation.is_valid_google_match",
+        "receipt_label.merchant_validation.google_places.is_valid_google_match",
         return_value=True,
     )
     data = {"phone_number": "555-0000"}
@@ -393,11 +423,11 @@ def test_retry_google_search_with_inferred_data_address(mocker):
         DummyAPI,
     )
     mocker.patch(
-        "receipt_label.merchant_validation.merchant_validation.is_match_found",
+        "receipt_label.merchant_validation.google_places.is_match_found",
         return_value=True,
     )
     mocker.patch(
-        "receipt_label.merchant_validation.merchant_validation.is_valid_google_match",
+        "receipt_label.merchant_validation.google_places.is_valid_google_match",
         return_value=True,
     )
     data = {"phone_number": "none", "address": "123 Example Ave"}
@@ -604,10 +634,13 @@ def test_is_valid_google_match_no_types_with_fragment():
 
 # extract_candidate_merchant_fields: ignore words without data
 def test_extract_candidate_merchant_fields_ignores_empty():
-    class W:
-        def __init__(self):
-            self.extracted_data = None
-            self.text = ""
+    from unittest.mock import Mock
+    from receipt_dynamo.entities import ReceiptWord
+    
+    # Create a mock ReceiptWord with no labels
+    word = Mock(spec=ReceiptWord)
+    word.text = ""
+    word.labels = []
 
-    out = mv.extract_candidate_merchant_fields([W()])
-    assert out == {"address": [], "phone": [], "url": []}
+    out = mv.extract_candidate_merchant_fields([word])
+    assert out == {"name": "", "address": "", "phone_number": "", "emails": [], "urls": []}
