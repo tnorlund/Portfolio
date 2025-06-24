@@ -19,10 +19,11 @@ from receipt_label.utils.client_manager import ClientManager
 
 
 def _is_currency(text: str) -> bool:
-    # Accept formats like $1,234.56, 1.234,56, $10.00
+    # Accept standard US currency formats like $1,234.56 or $10.00
+    # Also accept without dollar sign like 1234.56
     return bool(
         re.match(r"^\$?\d{1,3}(,\d{3})*(\.\d{2})?$", text)
-        or re.match(r"^\$?\d+([.,]\d{2})?$", text)
+        or re.match(r"^\$?\d+(\.\d{2})?$", text)
     )
 
 

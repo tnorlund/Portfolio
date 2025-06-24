@@ -194,16 +194,13 @@ def test_labeling_result_with_base_classes(
     mock_line_item_analysis,
 ):
     """Test that LabelingResult correctly uses our base classes."""
-    # Set up mocks
+    # Set up mocks - these functions don't exist in the current implementation
+    # so we'll create the analysis objects directly
     structure_analysis = StructureAnalysis.from_gpt_response(
         mock_structure_analysis
     )
-    mock_analyze_structure.return_value = structure_analysis
 
     field_analysis = LabelAnalysis.from_gpt_response(mock_field_analysis)
-    mock_label_fields.return_value = field_analysis
-
-    mock_analyze_line_items.return_value = mock_line_item_analysis
 
     # Create a mock result
     result = LabelingResult(
