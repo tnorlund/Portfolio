@@ -116,3 +116,34 @@ The file contains useful concepts and a solid architectural foundation, but it a
 2. Fix all broken references and imports
 3. Implement a comprehensive test suite
 4. Gradually refactor the monolithic methods into smaller, testable components
+
+## Pinecone Integration Roadmap
+
+Pinecone already plays a key role in the embedding pipeline and in the
+validators:
+
+- The modules under `embedding/word/` and `embedding/line/` upsert word‑ and
+  line‑level vectors to Pinecone along with rich metadata such as bounding box
+  coordinates, confidence, and merchant name.
+- `label_validation/validate_merchant_name.py` fetches these vectors and runs
+  similarity queries to confirm labels against previously validated words.
+- `completion/poll.py` writes label outcomes back to Pinecone so future queries
+  include the latest `valid_labels` or `invalid_labels` metadata.
+
+However, `ReceiptLabeler` itself does not currently interact with Pinecone. A
+more integrated approach would be:
+
+1. **Centralize access** – Inject a `ClientManager` into `ReceiptLabeler` so it
+   can query `client_manager.pinecone` without reinitializing clients.
+2. **Context retrieval** – During labeling, fetch vectors for the current
+   receipt and query for similar examples. Use those neighbors to auto‑suggest
+   labels and fill missing fields.
+3. **Metadata updates** – After applying labels, update the corresponding
+   vectors with new `valid_labels`, `invalid_labels`, and timestamps using the
+   same routines as `completion/poll`.
+4. **Batch-driven workflow** – Continue using the Step Function pipelines to
+   submit and poll embedding batches so Pinecone always reflects the latest
+   receipts.
+
+Tightening this feedback loop will allow retrieval‑augmented labeling and ensure
+Pinecone remains a shared source of truth for validation metadata.
