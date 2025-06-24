@@ -1,14 +1,34 @@
 # stdlib
 import json
+import os
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
+from unittest.mock import Mock
+
+# Set dummy environment variable before any imports
+os.environ["DYNAMO_TABLE_NAME"] = "test-table"
 
 # third‑party
 import pytest
 from receipt_dynamo.entities import ReceiptMetadata
 
+# Mock get_clients before importing modules that use it
+pytest.register_assert_rewrite("receipt_label.utils.clients")
+from receipt_label.utils import clients
+
+# Create a mock for get_clients
+def mock_get_clients():
+    mock_dynamo = Mock()
+    mock_openai = Mock()
+    mock_pinecone = Mock()
+    return mock_dynamo, mock_openai, mock_pinecone
+
+# Patch get_clients before importing modules that use it
+clients.get_clients = mock_get_clients
+
 # local modules under test
 import receipt_label.merchant_validation.merchant_validation as mv
+import receipt_label.merchant_validation.google_places as gp
 
 
 # Fixtures
@@ -26,7 +46,7 @@ def mock_places_api(mocker):
             return None
 
     mocker.patch(
-        "receipt_label.merchant_validation.merchant_validation.PlacesAPI",
+        "receipt_label.merchant_validation.google_places.PlacesAPI",
         DummyAPI,
     )
     return DummyAPI
@@ -39,7 +59,7 @@ def mock_openai(mocker):
         "R", (), {"choices": [type("C", (), {"message": fake_msg})()]}
     )
     mocker.patch(
-        "receipt_label.merchant_validation.merchant_validation.openai_client.chat.completions.create",
+        "receipt_label.merchant_validation.gpt_integration.openai_client.chat.completions.create",
         return_value=fake_resp,
     )
     return fake_resp
@@ -48,7 +68,7 @@ def mock_openai(mocker):
 @pytest.fixture
 def mock_dynamo(mocker):
     return mocker.patch(
-        "receipt_label.merchant_validation.merchant_validation.dynamo_client"
+        "receipt_label.merchant_validation.data_access.dynamo_client"
     )
 
 
@@ -72,10 +92,10 @@ def test_query_google_places_branches(
     phone_resp, address_resp, expected, mocker
 ):
     mocker.patch.object(
-        mv.PlacesAPI, "search_by_phone", lambda self, phone: phone_resp
+        gp.PlacesAPI, "search_by_phone", lambda self, phone: phone_resp
     )
     mocker.patch.object(
-        mv.PlacesAPI,
+        gp.PlacesAPI,
         "search_by_address",
         lambda self, address, receipt_words=None: address_resp,
     )
@@ -319,7 +339,7 @@ def test_retry_google_search_with_inferred_data_phone(mocker):
             pytest.skip("Should not call address when phone match succeeds")
 
     mocker.patch(
-        "receipt_label.merchant_validation.merchant_validation.PlacesAPI",
+        "receipt_label.merchant_validation.google_places.PlacesAPI",
         DummyAPI,
     )
     mocker.patch(
@@ -369,7 +389,7 @@ def test_retry_google_search_with_inferred_data_address(mocker):
             ]
 
     mocker.patch(
-        "receipt_label.merchant_validation.merchant_validation.PlacesAPI",
+        "receipt_label.merchant_validation.google_places.PlacesAPI",
         DummyAPI,
     )
     mocker.patch(
@@ -398,7 +418,7 @@ def test_retry_google_search_no_match(mocker):
             return None
 
     mocker.patch(
-        "receipt_label.merchant_validation.merchant_validation.PlacesAPI",
+        "receipt_label.merchant_validation.google_places.PlacesAPI",
         DummyAPI,
     )
     result = mv.retry_google_search_with_inferred_data({}, "APIKEY")

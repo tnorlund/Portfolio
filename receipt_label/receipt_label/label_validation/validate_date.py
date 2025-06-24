@@ -12,9 +12,9 @@ from receipt_label.label_validation.utils import (
     normalize_text,
     pinecone_id_from_label,
 )
-from receipt_label.utils import get_clients
-
-_, _, pinecone_index = get_clients()
+from typing import Optional
+from receipt_label.utils import get_client_manager
+from receipt_label.utils.client_manager import ClientManager
 
 
 def _is_date(text: str) -> bool:
@@ -56,8 +56,15 @@ def _merged_date_candidates_from_text(
 
 
 def validate_date(
-    word: ReceiptWord, label: ReceiptWordLabel
+    word: ReceiptWord, 
+    label: ReceiptWordLabel,
+    client_manager: Optional[ClientManager] = None
 ) -> LabelValidationResult:
+    # Get pinecone index from client manager
+    if client_manager is None:
+        client_manager = get_client_manager()
+    pinecone_index = client_manager.pinecone
+    
     pinecone_id = pinecone_id_from_label(label)
     fetch_response = pinecone_index.fetch(ids=[pinecone_id], namespace="words")
     vector_data = fetch_response.vectors.get(pinecone_id)

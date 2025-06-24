@@ -230,7 +230,6 @@ def normalize_enum(candidate: Any, enum_cls: Type[Enum]) -> str:
     Raises:
         ValueError: If ``candidate`` is not valid for ``enum_cls``.
     """
-
     if isinstance(candidate, enum_cls):
         return candidate.value
     if isinstance(candidate, str):
