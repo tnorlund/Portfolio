@@ -1,6 +1,6 @@
 from datetime import datetime
-from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 from decimal import Decimal
+from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
 from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 

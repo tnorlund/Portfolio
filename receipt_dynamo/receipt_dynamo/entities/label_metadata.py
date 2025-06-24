@@ -7,7 +7,6 @@ from receipt_dynamo.entities.util import (
     assert_type,
     assert_valid_uuid,
     format_type_error,
-    normalize_enum,
 )
 
 
@@ -26,7 +25,12 @@ class LabelMetadata:
         assert_type("label", label, str, ValueError)
         self.label = label
 
-        self.status = normalize_enum(status, LabelStatus)
+        assert_type("status", status, str, ValueError)
+        if not status in [s.value for s in LabelStatus]:
+            raise ValueError(
+                f"status must be one of: {', '.join([s.value for s in LabelStatus])}"
+            )
+        self.status = status
 
         assert_type("aliases", aliases, list, ValueError)
         self.aliases = aliases

@@ -8,7 +8,6 @@ from receipt_dynamo.entities.util import (
     _repr_str,
     assert_valid_point,
     assert_valid_uuid,
-    normalize_enum,
 )
 
 
@@ -101,7 +100,20 @@ class ReceiptMetadata:
             raise ValueError("matched fields must be unique")
         self.matched_fields = matched_fields
 
-        self.validated_by = normalize_enum(validated_by, ValidationMethod)
+        if isinstance(validated_by, ValidationMethod):
+            validated_by_value = validated_by.value
+        elif isinstance(validated_by, str):
+            validated_by_value = validated_by
+        else:
+            raise ValueError(
+                f"validated_by must be a string or ValidationMethod enum\nGot: {type(validated_by)}"
+            )
+        valid_values = [s.value for s in ValidationMethod]
+        if validated_by_value not in valid_values:
+            raise ValueError(
+                f"validated_by must be one of: {', '.join(valid_values)}\nGot: {validated_by_value}"
+            )
+        self.validated_by = validated_by_value
 
         if not isinstance(timestamp, datetime):
             raise ValueError("timestamp must be a datetime")
@@ -163,11 +175,11 @@ class ReceiptMetadata:
                 if self.merchant_name and len(self.merchant_name.strip()) > 2:
                     high_quality_fields.append(field)
             elif field == "phone":
-                # Phone must have at least 10 digits (for US numbers)
+                # Phone must have at least 7 digits (tolerate missing area code)
                 phone_digits = "".join(
                     c for c in self.phone_number if c.isdigit()
                 )
-                if len(phone_digits) >= 10:
+                if len(phone_digits) >= 7:
                     high_quality_fields.append(field)
             elif field == "address":
                 # Address must have at least 2 meaningful components
@@ -193,8 +205,18 @@ class ReceiptMetadata:
                     elif len(tokens) > 1 and token_clean.isalpha():
                         meaningful_tokens += 0.5  # Count as half
 
-                # Require at least 2 full meaningful tokens
-                if meaningful_tokens >= 2:
+                # Consider valid if there are at least two meaningful tokens,
+                # a single descriptive token, or a street number with other
+                # components (e.g., "123 Main").
+                if (
+                    meaningful_tokens >= 2
+                    or (
+                        len(tokens) == 1
+                        and meaningful_tokens >= 1
+                        and not has_number
+                    )
+                    or (has_number and len(tokens) > 1)
+                ):
                     high_quality_fields.append(field)
             else:
                 # Unknown fields are kept as-is (future-proofing)

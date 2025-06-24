@@ -1,11 +1,7 @@
 from datetime import datetime
 
 from receipt_dynamo.constants import OCRStatus
-from receipt_dynamo.entities.util import (
-    _repr_str,
-    assert_valid_uuid,
-    normalize_enum,
-)
+from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
 
 class OCRRoutingDecision:
@@ -50,7 +46,17 @@ class OCRRoutingDecision:
             raise ValueError("receipt_count must be an integer")
         self.receipt_count = receipt_count
 
-        self.status = normalize_enum(status, OCRStatus)
+        if not isinstance(status, OCRStatus):
+            if not isinstance(status, str):
+                raise ValueError("status must be a OCRStatus or a string")
+            if status not in [s.value for s in OCRStatus]:
+                raise ValueError(
+                    f"status must be one of: {', '.join(s.value for s in OCRStatus)}\nGot: {status}"
+                )
+        if isinstance(status, OCRStatus):
+            self.status = status.value
+        else:
+            self.status = status
 
     def key(self) -> dict:
         return {

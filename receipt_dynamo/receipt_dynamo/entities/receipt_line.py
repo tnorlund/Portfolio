@@ -8,7 +8,6 @@ from receipt_dynamo.entities.util import (
     assert_valid_bounding_box,
     assert_valid_point,
     assert_valid_uuid,
-    normalize_enum,
 )
 
 
@@ -120,9 +119,21 @@ class ReceiptLine:
             raise ValueError("confidence must be between 0 and 1")
         self.confidence = confidence
 
-        self.embedding_status = normalize_enum(
-            embedding_status, EmbeddingStatus
-        )
+        # Normalize and validate embedding_status (allow enum or string)
+        if isinstance(embedding_status, EmbeddingStatus):
+            status_value = embedding_status.value
+        elif isinstance(embedding_status, str):
+            status_value = embedding_status
+        else:
+            raise ValueError(
+                "embedding_status must be a string or EmbeddingStatus enum"
+            )
+        valid_values = [s.value for s in EmbeddingStatus]
+        if status_value not in valid_values:
+            raise ValueError(
+                f"embedding_status must be one of: {', '.join(valid_values)}\nGot: {status_value}"
+            )
+        self.embedding_status = status_value
 
     def key(self) -> dict:
         """
