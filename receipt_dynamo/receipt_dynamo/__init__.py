@@ -1,6 +1,6 @@
-"""
-DynamoDB utility package for receipt data.
-"""
+"""DynamoDB utility package for receipt data."""
+
+# mypy: ignore-errors
 
 __version__ = "0.1.0"
 
@@ -71,65 +71,103 @@ from receipt_dynamo.entities import (
     Letter,
     Line,
     Receipt,
+    ReceiptAnalysis,
+    ReceiptChatGPTValidation,
+    ReceiptField,
+    ReceiptLabelAnalysis,
     ReceiptLetter,
     ReceiptLine,
+    ReceiptLineItemAnalysis,
+    ReceiptStructureAnalysis,
+    ReceiptValidationCategory,
+    ReceiptValidationResult,
+    ReceiptValidationSummary,
     ReceiptWord,
+    ReceiptWordLabel,
     Word,
     itemToImage,
     itemToLetter,
     itemToLine,
     itemToReceipt,
+    itemToReceiptChatGPTValidation,
+    itemToReceiptField,
+    itemToReceiptLabelAnalysis,
     itemToReceiptLetter,
     itemToReceiptLine,
-    itemToReceiptWord,
-    itemToWord,
-    ReceiptWordLabel,
-    itemToReceiptWordLabel,
-    ReceiptField,
-    itemToReceiptField,
-    ReceiptLabelAnalysis,
-    itemToReceiptLabelAnalysis,
-    ReceiptStructureAnalysis,
-    itemToReceiptStructureAnalysis,
-    ReceiptLineItemAnalysis,
     itemToReceiptLineItemAnalysis,
-    ReceiptValidationSummary,
-    itemToReceiptValidationSummary,
-    ReceiptValidationResult,
-    itemToReceiptValidationResult,
-    ReceiptValidationCategory,
+    itemToReceiptStructureAnalysis,
     itemToReceiptValidationCategory,
-    ReceiptChatGPTValidation,
-    itemToReceiptChatGPTValidation,
-    ReceiptAnalysis,
+    itemToReceiptValidationResult,
+    itemToReceiptValidationSummary,
+    itemToReceiptWord,
+    itemToReceiptWordLabel,
+    itemToWord,
+)
+from receipt_dynamo.entities.instance import Instance, itemToInstance
+from receipt_dynamo.entities.instance_job import InstanceJob, itemToInstanceJob
+from receipt_dynamo.entities.job import Job, itemToJob
+from receipt_dynamo.entities.job_metric import JobMetric, itemToJobMetric
+from receipt_dynamo.entities.job_resource import JobResource, itemToJobResource
+from receipt_dynamo.entities.job_status import JobStatus, itemToJobStatus
+from receipt_dynamo.entities.receipt_structure_analysis import (
+    ContentPattern,
+    ReceiptSection,
+    SpatialPattern,
 )
 from receipt_dynamo.entities.receipt_word_tag import (
     ReceiptWordTag,
     itemToReceiptWordTag,
 )
 from receipt_dynamo.entities.word_tag import WordTag, itemToWordTag
-from receipt_dynamo.entities.job import Job, itemToJob
-from receipt_dynamo.entities.job_metric import JobMetric, itemToJobMetric
-from receipt_dynamo.entities.job_resource import JobResource, itemToJobResource
-from receipt_dynamo.entities.job_status import JobStatus, itemToJobStatus
-from receipt_dynamo.entities.instance import Instance, itemToInstance
-from receipt_dynamo.entities.instance_job import InstanceJob, itemToInstanceJob
-from receipt_dynamo.entities.receipt_structure_analysis import (
-    ReceiptStructureAnalysis,
-    itemToReceiptStructureAnalysis,
-    SpatialPattern,
-    ContentPattern,
-    ReceiptSection,
-)
 
 # Only import what's actually used elsewhere in the package
-from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.data.export_image import export_image
-from receipt_dynamo.data.import_image import import_image
+try:  # Optional dependency
+    from receipt_dynamo.data.dynamo_client import DynamoClient
+except ModuleNotFoundError as exc:  # pragma: no cover - boto3 missing
 
-# Service layer imports
-from receipt_dynamo.services.job_service import JobService
-from receipt_dynamo.services.queue_service import QueueService
-from receipt_dynamo.services.instance_service import InstanceService
+    class DynamoClient:  # type: ignore
+        """Placeholder for DynamoClient when boto3 is unavailable."""
+
+        def __init__(self, *_, **__):
+            raise ModuleNotFoundError(
+                "boto3 is required for DynamoClient"
+            ) from exc
+
+
+try:  # Optional dependency
+    from receipt_dynamo.data.export_image import export_image
+except ModuleNotFoundError as exc:  # pragma: no cover - boto3 missing
+
+    def export_image(*_, **__):
+        raise ModuleNotFoundError(
+            "boto3 is required for export_image"
+        ) from exc
+
+
+try:
+    from receipt_dynamo.data.import_image import import_image
+except ModuleNotFoundError as exc:  # pragma: no cover - boto3 missing
+
+    def import_image(*_, **__):
+        raise ModuleNotFoundError(
+            "boto3 is required for import_image"
+        ) from exc
+
+
+try:  # Optional dependency
+    from receipt_dynamo.services.instance_service import InstanceService
+    from receipt_dynamo.services.job_service import JobService
+    from receipt_dynamo.services.queue_service import QueueService
+except ModuleNotFoundError as exc:  # pragma: no cover - boto3 missing
+
+    class _ServicePlaceholder:  # type: ignore
+        def __init__(self, *_, **__):
+            raise ModuleNotFoundError(
+                "boto3 is required for service classes"
+            ) from exc
+
+    InstanceService = _ServicePlaceholder
+    JobService = _ServicePlaceholder
+    QueueService = _ServicePlaceholder
 
 # For backward compatibility:

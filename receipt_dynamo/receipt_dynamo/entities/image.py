@@ -3,11 +3,7 @@ from datetime import datetime
 from typing import Any, Generator, Optional, Tuple
 
 from receipt_dynamo.constants import ImageType
-from receipt_dynamo.entities.util import (
-    _repr_str,
-    assert_valid_uuid,
-    normalize_enum,
-)
+from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
 
 class Image:
@@ -115,7 +111,17 @@ class Image:
             raise ValueError("cdn_avif_s3_key must be a string")
         self.cdn_avif_s3_key = cdn_avif_s3_key
 
-        self.image_type = normalize_enum(image_type, ImageType)
+        if not isinstance(image_type, ImageType):
+            if not isinstance(image_type, str):
+                raise ValueError("image_type must be a ImageType or a string")
+            if image_type not in [t.value for t in ImageType]:
+                raise ValueError(
+                    f"image_type must be one of: {', '.join(t.value for t in ImageType)}\nGot: {image_type}"
+                )
+        if isinstance(image_type, ImageType):
+            self.image_type = image_type.value
+        else:
+            self.image_type = image_type
 
     def key(self) -> dict:
         """Generates the primary key for the image.

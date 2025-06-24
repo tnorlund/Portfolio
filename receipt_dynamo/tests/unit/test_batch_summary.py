@@ -115,7 +115,7 @@ def test_batch_summary_invalid_result_file_id_type(bad_value):
 
 @pytest.mark.unit
 def test_batch_summary_invalid_batch_type():
-    with pytest.raises(ValueError, match="Invalid batch type"):
+    with pytest.raises(ValueError, match="BatchType must be one of:"):
         BatchSummary(
             batch_id="abc",
             batch_type="NOT_A_TYPE",
@@ -129,7 +129,7 @@ def test_batch_summary_invalid_batch_type():
 
 @pytest.mark.unit
 def test_batch_summary_invalid_status():
-    with pytest.raises(ValueError, match="Invalid status"):
+    with pytest.raises(ValueError, match="BatchStatus must be one of:"):
         BatchSummary(
             batch_id="abc",
             batch_type=BatchType.COMPLETION.value,
@@ -145,7 +145,7 @@ def test_batch_summary_invalid_status():
 def test_batch_summary_status_not_string():
     with pytest.raises(
         ValueError,
-        match="status must be BatchStatus, str, got int",
+        match="BatchStatus must be a str or BatchStatus instance",
     ):
         BatchSummary(
             batch_id="abc123",
