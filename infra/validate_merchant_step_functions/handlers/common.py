@@ -1,9 +1,9 @@
 """Common utilities for Lambda handlers."""
 
-from logging import INFO, Formatter, StreamHandler, getLogger
+from logging import INFO, Formatter, Logger, StreamHandler, getLogger
 
 
-def setup_logger(name: str | None = None) -> object:
+def setup_logger(name: str | None = None) -> Logger:
     """
     Set up a logger with consistent formatting for Lambda functions.
 
