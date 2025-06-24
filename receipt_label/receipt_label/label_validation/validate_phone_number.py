@@ -63,7 +63,6 @@ def validate_phone_number(
             status="NO_VECTOR",
             is_consistent=False,
             avg_similarity=0.0,
-            looks_like_phone=False,
             neighbors=[],
             pinecone_id=pinecone_id,
         )

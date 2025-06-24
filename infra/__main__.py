@@ -14,6 +14,7 @@ from dynamo_db import (  # Import DynamoDB table from original code
     dynamodb_table,
 )
 from embedding_step_functions import LineEmbeddingStepFunction
+from notifications import NotificationSystem
 from raw_bucket import raw_bucket  # Import the actual bucket instance
 from s3_website import site_bucket  # Import the site bucket instance
 from upload_images import UploadImages
@@ -41,6 +42,7 @@ except ImportError:
     # These may not be available in all environments
     pass
 import step_function
+from step_function_enhanced import create_enhanced_receipt_processor
 
 # Create the dedicated VPC network infrastructure
 # network = VpcForCodeBuild("codebuild-network")
@@ -56,6 +58,20 @@ try:
 except FileNotFoundError:
     pulumi.export("readme", "README file not found")
 
+# Create notification system
+# Get email endpoints from portfolio config
+portfolio_config = pulumi.Config("portfolio")
+notification_emails = portfolio_config.get_object("notification_emails") or []
+
+notification_system = NotificationSystem(
+    "receipt-processing",
+    email_endpoints=notification_emails,
+    tags={
+        "Environment": pulumi.get_stack(),
+        "Purpose": "Infrastructure Monitoring",
+    },
+)
+
 word_label_step_functions = WordLabelStepFunctions("word-label-step-functions")
 validate_merchant_step_functions = ValidateMerchantStepFunctions(
     "validate-merchant"
@@ -69,8 +85,25 @@ upload_images = UploadImages(
     "upload-images", raw_bucket=raw_bucket, site_bucket=site_bucket
 )
 
+# Create the enhanced receipt processor with error handling
+enhanced_receipt_processor = create_enhanced_receipt_processor(
+    notification_system
+)
+
 pulumi.export("ocr_job_queue_url", upload_images.ocr_queue.url)
 pulumi.export("ocr_results_queue_url", upload_images.ocr_results_queue.url)
+
+# Export notification topics
+pulumi.export(
+    "step_function_failure_topic_arn",
+    notification_system.step_function_topic_arn,
+)
+pulumi.export(
+    "critical_error_topic_arn", notification_system.critical_error_topic_arn
+)
+
+# Export enhanced step function ARN
+pulumi.export("enhanced_receipt_processor_arn", enhanced_receipt_processor.arn)
 # ML Training Infrastructure
 # -------------------------
 
