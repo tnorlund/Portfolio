@@ -6,16 +6,16 @@ related to jobs and provides a clean API for client applications to use.
 """
 
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities.job import Job, itemToJob
-from receipt_dynamo.entities.job_status import JobStatus, itemToJobStatus
+from receipt_dynamo.entities.job_checkpoint import JobCheckpoint
+from receipt_dynamo.entities.job_dependency import JobDependency
 from receipt_dynamo.entities.job_log import JobLog
 from receipt_dynamo.entities.job_metric import JobMetric
 from receipt_dynamo.entities.job_resource import JobResource
-from receipt_dynamo.entities.job_dependency import JobDependency
-from receipt_dynamo.entities.job_checkpoint import JobCheckpoint
+from receipt_dynamo.entities.job_status import JobStatus, itemToJobStatus
 
 
 class JobService:

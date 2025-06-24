@@ -1,10 +1,12 @@
-import pytest
 from datetime import datetime
+
+import pytest
+
+from receipt_dynamo.constants import LabelStatus
 from receipt_dynamo.entities.label_metadata import (
     LabelMetadata,
     itemToLabelMetadata,
 )
-from receipt_dynamo.constants import LabelStatus
 
 
 # Fixture
