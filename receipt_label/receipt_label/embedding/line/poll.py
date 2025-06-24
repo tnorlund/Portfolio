@@ -30,9 +30,8 @@ from receipt_dynamo.entities import (
     ReceiptSection,
 )
 
-from receipt_label.utils import get_clients
-
-dynamo_client, openai_client, pinecone_index = get_clients()
+from receipt_label.utils import get_client_manager
+from receipt_label.utils.client_manager import ClientManager
 
 
 def _parse_prev_next_from_formatted(fmt: str) -> tuple[str, str]:
@@ -64,19 +63,21 @@ def _parse_metadata_from_line_id(custom_id: str) -> dict:
     }
 
 
-def list_pending_line_embedding_batches() -> List[BatchSummary]:
+def list_pending_line_embedding_batches(client_manager: ClientManager = None) -> List[BatchSummary]:
     """
     List line embedding batches that are pending processing.
     Returns a list of pending batch identifiers.
     """
-    summaries, lek = dynamo_client.getBatchSummariesByStatus(
+    if client_manager is None:
+        client_manager = get_client_manager()
+    summaries, lek = client_manager.dynamo.getBatchSummariesByStatus(
         status="PENDING",
         batch_type=BatchType.LINE_EMBEDDING,
         limit=25,
         lastEvaluatedKey=None,
     )
     while lek:
-        next_summaries, lek = dynamo_client.getBatchSummariesByStatus(
+        next_summaries, lek = client_manager.dynamo.getBatchSummariesByStatus(
             status="PENDING",
             batch_type=BatchType.LINE_EMBEDDING,
             limit=25,
@@ -86,20 +87,24 @@ def list_pending_line_embedding_batches() -> List[BatchSummary]:
     return summaries
 
 
-def get_openai_batch_status(openai_batch_id: str) -> str:
+def get_openai_batch_status(openai_batch_id: str, client_manager: ClientManager = None) -> str:
     """Retrieve the status of an OpenAI embedding batch job."""
-    return openai_client.batches.retrieve(openai_batch_id).status
+    if client_manager is None:
+        client_manager = get_client_manager()
+    return client_manager.openai.batches.retrieve(openai_batch_id).status
 
 
-def download_openai_batch_result(openai_batch_id: str) -> List[dict]:
+def download_openai_batch_result(openai_batch_id: str, client_manager: ClientManager = None) -> List[dict]:
     """
     Download and parse the results of an OpenAI embedding batch job.
     Returns a list of embedding result objects with `custom_id` and
     `embedding`.
     """
-    batch = openai_client.batches.retrieve(openai_batch_id)
+    if client_manager is None:
+        client_manager = get_client_manager()
+    batch = client_manager.openai.batches.retrieve(openai_batch_id)
     output_file_id = batch.output_file_id
-    response = openai_client.files.content(output_file_id)
+    response = client_manager.openai.files.content(output_file_id)
 
     # If the content is raw bytes, decode it:
     if hasattr(response, "read"):
@@ -133,6 +138,7 @@ def download_openai_batch_result(openai_batch_id: str) -> List[dict]:
 
 def get_receipt_descriptions(
     results: List[dict],
+    client_manager: ClientManager = None,
 ) -> dict[str, dict[int, dict]]:
     """
     Get the receipt descriptions from the embedding results, grouped by image
@@ -149,19 +155,21 @@ def get_receipt_descriptions(
             - labels
             - metadata
     """
+    if client_manager is None:
+        client_manager = get_client_manager()
     descriptions: dict[str, dict[int, dict]] = {}
     for receipt_id, image_id in _get_unique_receipt_and_image_ids(results):
         receipt, lines, words, letters, tags, labels = (
-            dynamo_client.getReceiptDetails(
+            client_manager.dynamo.getReceiptDetails(
                 image_id=image_id,
                 receipt_id=receipt_id,
             )
         )
-        receipt_metadata = dynamo_client.getReceiptMetadata(
+        receipt_metadata = client_manager.dynamo.getReceiptMetadata(
             image_id=image_id,
             receipt_id=receipt_id,
         )
-        receipt_sections = dynamo_client.getReceiptSectionsFromReceipt(
+        receipt_sections = client_manager.dynamo.getReceiptSectionsFromReceipt(
             image_id=image_id,
             receipt_id=receipt_id,
         )
@@ -206,7 +214,8 @@ def _get_section_by_line_id(
 
 
 def upsert_line_embeddings_to_pinecone(
-    results: List[dict], descriptions: dict[str, dict[int, dict]]
+    results: List[dict], descriptions: dict[str, dict[int, dict]],
+    client_manager: ClientManager = None,
 ):
     """
     Upsert line embedding results to Pinecone with rich metadata.
@@ -310,7 +319,9 @@ def upsert_line_embeddings_to_pinecone(
     for i in range(0, len(vectors), batch_size):
         chunk = vectors[i : i + batch_size]
         try:
-            response = pinecone_index.upsert(vectors=chunk, namespace="lines")
+            if client_manager is None:
+                client_manager = get_client_manager()
+            response = client_manager.pinecone.upsert(vectors=chunk, namespace="lines")
             upserted_count += response.get("upserted_count", 0)
         except Exception as e:
             print(f"Failed to upsert chunk to Pinecone: {e}")
@@ -323,6 +334,7 @@ def write_line_embedding_results_to_dynamo(
     results: List[dict],
     descriptions: dict[str, dict[int, dict]],
     batch_id: str,
+    client_manager: ClientManager = None,
 ) -> int:
     """
     Write the line embedding results to DynamoDB using pre-fetched descriptions.
@@ -372,24 +384,29 @@ def write_line_embedding_results_to_dynamo(
     written = 0
     for i in range(0, len(embedding_results), 25):
         chunk = embedding_results[i : i + 25]
-        dynamo_client.addEmbeddingBatchResults(chunk)
+        if client_manager is None:
+            client_manager = get_client_manager()
+        client_manager.dynamo.addEmbeddingBatchResults(chunk)
         written += len(chunk)
     return written
 
 
-def mark_batch_complete(batch_id: str):
+def mark_batch_complete(batch_id: str, client_manager: ClientManager = None):
     """
     Mark the embedding batch as complete in the system.
     Args:
         batch_id (str): The identifier of the batch.
     """
-    batch_summary = dynamo_client.getBatchSummary(batch_id)
+    if client_manager is None:
+        client_manager = get_client_manager()
+    batch_summary = client_manager.dynamo.getBatchSummary(batch_id)
     batch_summary.status = "COMPLETED"
-    dynamo_client.updateBatchSummary(batch_summary)
+    client_manager.dynamo.updateBatchSummary(batch_summary)
 
 
 def update_line_embedding_status_to_success(
-    results: List[dict], descriptions: dict[str, dict[int, dict]]
+    results: List[dict], descriptions: dict[str, dict[int, dict]],
+    client_manager: ClientManager = None,
 ):
     """
     Update the embedding status of the lines to SUCCESS.
@@ -435,4 +452,6 @@ def update_line_embedding_status_to_success(
     for image_id, receipt_dict in lines_by_receipt.items():
         for receipt_id, lines in receipt_dict.items():
             if lines:
-                dynamo_client.updateReceiptLines(lines)
+                if client_manager is None:
+                    client_manager = get_client_manager()
+                client_manager.dynamo.updateReceiptLines(lines)

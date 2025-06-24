@@ -19,11 +19,25 @@ from receipt_label.utils.client_manager import ClientManager
 
 def _is_phone_number(text: str) -> bool:
     digits = re.sub(r"\D", "", text)
-    return (
-        len(digits) == 10
-        or (len(digits) == 11 and digits.startswith("1"))
-        or (len(digits) == 12 and digits.startswith("01"))  # rare edge
-    )
+    
+    # Check basic length requirements
+    if not (len(digits) == 10 or (len(digits) == 11 and digits.startswith("1")) or len(digits) == 12):
+        return False
+    
+    # Additional format validation - check common patterns
+    # Valid: 1234567890, 123-456-7890, (123) 456-7890, 1-123-456-7890, etc.
+    # Invalid: 555-12-34567 (wrong grouping)
+    common_patterns = [
+        r'^\d{10}$',  # 1234567890
+        r'^\d{3}-\d{3}-\d{4}$',  # 123-456-7890
+        r'^\(\d{3}\) \d{3}-\d{4}$',  # (123) 456-7890
+        r'^1\d{10}$',  # 11234567890
+        r'^1-\d{3}-\d{3}-\d{4}$',  # 1-123-456-7890
+        r'^\d{12}$',  # 123456789012 (international)
+        r'^\+\d{11}$',  # +11234567890
+    ]
+    
+    return any(re.match(pattern, text.strip()) for pattern in common_patterns)
 
 
 def _merged_phone_candidate_from_text(

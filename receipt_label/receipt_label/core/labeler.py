@@ -120,9 +120,14 @@ class ReceiptLabeler:
             validation_config: [Deprecated] Use validation_level instead.
                 Configuration options will be automatically set based on the validation_level.
         """
+        # For backward compatibility, if dynamodb_table_name is provided, 
+        # we'll set the environment variable
+        if dynamodb_table_name:
+            import os
+            os.environ["DYNAMO_TABLE_NAME"] = dynamodb_table_name
+        
         self.places_processor = BatchPlacesProcessor(
             api_key=places_api_key,
-            dynamo_table_name=dynamodb_table_name,
         )
         # TODO: ReceiptAnalyzer and LineItemProcessor classes need to be implemented
         # self.receipt_analyzer = ReceiptAnalyzer(api_key=gpt_api_key)

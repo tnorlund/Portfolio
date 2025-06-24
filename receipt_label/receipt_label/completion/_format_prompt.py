@@ -10,7 +10,8 @@ from receipt_dynamo.entities import (
 )
 
 from receipt_label.constants import CORE_LABELS
-from receipt_label.utils import get_clients
+from receipt_label.utils import get_client_manager
+from receipt_label.utils.client_manager import ClientManager
 
 # A mini JSON schema snippet for validate_labels
 VALIDATE_LABELS_SCHEMA = {
@@ -35,9 +36,6 @@ VALIDATE_LABELS_SCHEMA = {
     },
     "required": ["results"],
 }
-
-
-dynamo_client, _, pinecone_index = get_clients()
 EXAMPLE_CAP = int(os.getenv("EXAMPLE_CAP", "4"))
 LINE_WINDOW = int(os.getenv("LINE_WINDOW", "5"))
 
@@ -88,14 +86,16 @@ functions = [
 
 
 def _make_tagged_example(
-    word: ReceiptWord, label: ReceiptWordLabel, window=2
+    word: ReceiptWord, label: ReceiptWordLabel, window=2, client_manager: ClientManager = None
 ) -> str:
     """
     Return a short, receipt-style string with <LABEL>…</LABEL> around the
     word.
     """
+    if client_manager is None:
+        client_manager = get_client_manager()
     # Fetch ±window lines around the word
-    lines = dynamo_client.getReceiptLinesByIndices(
+    lines = client_manager.dynamo.getReceiptLinesByIndices(
         indices=[
             (word.image_id, word.receipt_id, lid)
             for lid in range(word.line_id - window, word.line_id + window + 1)
