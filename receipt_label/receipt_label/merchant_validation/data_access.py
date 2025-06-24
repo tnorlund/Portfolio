@@ -15,14 +15,14 @@ from receipt_dynamo.entities import (
     ReceiptWordTag,
 )
 
-from receipt_label.utils import get_clients
+from receipt_label.utils import get_client_manager
+from receipt_label.utils.client_manager import ClientManager
 
-# Initialize clients and logger
-dynamo_client, _, _ = get_clients()
+# Initialize logger
 logger = logging.getLogger(__name__)
 
 
-def list_receipt_metadatas() -> List[ReceiptMetadata]:
+def list_receipt_metadatas(client_manager: ClientManager = None) -> List[ReceiptMetadata]:
     """
     Lists all receipt metadata entities from the DynamoDB table.
 
@@ -36,15 +36,17 @@ def list_receipt_metadatas() -> List[ReceiptMetadata]:
         >>> metadatas = list_receipt_metadatas()
         >>> print(f"Found {len(metadatas)} metadata records")
     """
+    if client_manager is None:
+        client_manager = get_client_manager()
     try:
-        result = dynamo_client.listReceiptMetadatas()
+        result = client_manager.dynamo.listReceiptMetadatas()
         return result[0] if result else []
     except (ClientError, BotoCoreError) as e:
         logger.error(f"Failed to list receipt metadatas: {e}")
         raise
 
 
-def list_receipts_for_merchant_validation() -> List[Tuple[str, int]]:
+def list_receipts_for_merchant_validation(client_manager: ClientManager = None) -> List[Tuple[str, int]]:
     """
     Lists all receipts that do not have receipt metadata.
 
@@ -63,10 +65,12 @@ def list_receipts_for_merchant_validation() -> List[Tuple[str, int]]:
         >>> for image_id, receipt_id in pending_receipts[:5]:
         ...     print(f"Receipt {receipt_id} in image {image_id} needs validation")
     """
+    if client_manager is None:
+        client_manager = get_client_manager()
     try:
-        receipts, lek = dynamo_client.listReceipts(limit=25)
+        receipts, lek = client_manager.dynamo.listReceipts(limit=25)
         while lek:
-            next_receipts, lek = dynamo_client.listReceipts(
+            next_receipts, lek = client_manager.dynamo.listReceipts(
                 limit=25, lastEvaluatedKey=lek
             )
             receipts.extend(next_receipts)
@@ -75,7 +79,7 @@ def list_receipts_for_merchant_validation() -> List[Tuple[str, int]]:
         raise
     # Filter out receipts that have receipt metadata
     try:
-        receipt_metadatas = dynamo_client.getReceiptMetadatas(
+        receipt_metadatas = client_manager.dynamo.getReceiptMetadatas(
             [
                 {
                     "PK": {"S": f"IMAGE#{receipt.image_id}"},
@@ -101,7 +105,7 @@ def list_receipts_for_merchant_validation() -> List[Tuple[str, int]]:
     ]
 
 
-def get_receipt_details(image_id: str, receipt_id: int) -> Tuple[
+def get_receipt_details(image_id: str, receipt_id: int, client_manager: ClientManager = None) -> Tuple[
     Receipt,
     List[ReceiptLine],
     List[ReceiptWord],
@@ -143,15 +147,18 @@ def get_receipt_details(image_id: str, receipt_id: int) -> Tuple[
     if not isinstance(receipt_id, int) or receipt_id < 0:
         raise ValueError(f"Invalid receipt_id: {receipt_id}")
 
+    if client_manager is None:
+        client_manager = get_client_manager()
+
     try:
-        receipt = dynamo_client.getReceipt(image_id, receipt_id)
-        receipt_lines = dynamo_client.getReceiptLines(image_id, receipt_id)
-        receipt_words = dynamo_client.getReceiptWords(image_id, receipt_id)
-        receipt_letters = dynamo_client.getReceiptLetters(image_id, receipt_id)
-        receipt_word_tags = dynamo_client.getReceiptWordTags(
+        receipt = client_manager.dynamo.getReceipt(image_id, receipt_id)
+        receipt_lines = client_manager.dynamo.getReceiptLines(image_id, receipt_id)
+        receipt_words = client_manager.dynamo.getReceiptWords(image_id, receipt_id)
+        receipt_letters = client_manager.dynamo.getReceiptLetters(image_id, receipt_id)
+        receipt_word_tags = client_manager.dynamo.getReceiptWordTags(
             image_id, receipt_id
         )
-        receipt_word_labels = dynamo_client.getReceiptWordLabels(
+        receipt_word_labels = client_manager.dynamo.getReceiptWordLabels(
             image_id, receipt_id
         )
     except (ClientError, BotoCoreError) as e:
@@ -170,7 +177,7 @@ def get_receipt_details(image_id: str, receipt_id: int) -> Tuple[
     )
 
 
-def write_receipt_metadata_to_dynamo(metadata: ReceiptMetadata) -> None:
+def write_receipt_metadata_to_dynamo(metadata: ReceiptMetadata, client_manager: ClientManager = None) -> None:
     """
     Write receipt metadata to DynamoDB.
 
@@ -198,8 +205,11 @@ def write_receipt_metadata_to_dynamo(metadata: ReceiptMetadata) -> None:
     if not hasattr(metadata, "receipt_id") or metadata.receipt_id is None:
         raise ValueError("Metadata must have a valid receipt_id")
 
+    if client_manager is None:
+        client_manager = get_client_manager()
+
     try:
-        dynamo_client.putReceiptMetadata(metadata)
+        client_manager.dynamo.addReceiptMetadata(metadata)
         logger.debug(
             f"Successfully wrote metadata for {metadata.image_id}/{metadata.receipt_id}"
         )
@@ -210,7 +220,7 @@ def write_receipt_metadata_to_dynamo(metadata: ReceiptMetadata) -> None:
         raise
 
 
-def query_records_by_place_id(place_id: str) -> List[ReceiptMetadata]:
+def query_records_by_place_id(place_id: str, client_manager: ClientManager = None) -> List[ReceiptMetadata]:
     """
     Query DynamoDB for all ReceiptMetadata records with the given place_id.
 
@@ -234,7 +244,7 @@ def query_records_by_place_id(place_id: str) -> List[ReceiptMetadata]:
         raise ValueError(f"Invalid place_id: {place_id}")
 
     try:
-        all_records = list_receipt_metadatas()
+        all_records = list_receipt_metadatas(client_manager)
         return [
             record for record in all_records if record.place_id == place_id
         ]
@@ -243,7 +253,7 @@ def query_records_by_place_id(place_id: str) -> List[ReceiptMetadata]:
         raise
 
 
-def list_all_receipt_metadatas() -> (
+def list_all_receipt_metadatas(client_manager: ClientManager = None) -> (
     Tuple[List[ReceiptMetadata], Dict[str, List[ReceiptMetadata]]]
 ):
     """
@@ -266,7 +276,7 @@ def list_all_receipt_metadatas() -> (
         >>> print(f"Unique locations: {len(grouped)}")
     """
     try:
-        all_records = list_receipt_metadatas()
+        all_records = list_receipt_metadatas(client_manager)
         records_by_place_id: Dict[str, List[ReceiptMetadata]] = {}
 
         for record in all_records:
@@ -281,7 +291,7 @@ def list_all_receipt_metadatas() -> (
         raise
 
 
-def persist_alias_updates(records: List[ReceiptMetadata]) -> None:
+def persist_alias_updates(records: List[ReceiptMetadata], client_manager: ClientManager = None) -> None:
     """
     Persist canonical alias updates to DynamoDB in batches.
 
@@ -307,6 +317,9 @@ def persist_alias_updates(records: List[ReceiptMetadata]) -> None:
     if not isinstance(records, list):
         raise ValueError("Records must be a list")
 
+    if client_manager is None:
+        client_manager = get_client_manager()
+
     batch_size = 25  # DynamoDB batch write limit
     total_batches = (len(records) + batch_size - 1) // batch_size
 
@@ -320,7 +333,7 @@ def persist_alias_updates(records: List[ReceiptMetadata]) -> None:
 
         try:
             for record in batch:
-                dynamo_client.putReceiptMetadata(record)
+                client_manager.dynamo.updateReceiptMetadata(record)
             logger.debug(
                 f"Successfully processed batch {batch_num}/{total_batches}"
             )

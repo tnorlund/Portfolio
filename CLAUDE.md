@@ -38,6 +38,25 @@ The test and lint tools execute commands inside the package directory so
 configuration files are discovered correctly. All Pulumi tools execute in the
 infra directory.
 
+# End-to-End Tests
+
+**IMPORTANT**: The `receipt_dynamo/tests/end_to_end` directory contains end-to-end tests that connect to REAL AWS services.
+
+These tests:
+- Require AWS credentials and internet connectivity
+- Connect to actual DynamoDB tables and S3 buckets
+- May incur AWS costs
+- Should NOT be run automatically during code review or CI
+
+To run end-to-end tests:
+1. Set up AWS credentials (`aws configure` or environment variables)
+2. Use `pulumi stack select tnorlund/portfolio/dev` to access configuration
+3. Run with `pytest -m end_to_end`
+
+Always skip these tests during normal development: `pytest -m "not end_to_end"`
+
+See `receipt_dynamo/tests/end_to_end/README.md` for detailed setup instructions.
+
 # Lambda Architecture Configuration
 
 **IMPORTANT**: All Lambda functions in this project must use ARM64 architecture to match the Lambda layers.

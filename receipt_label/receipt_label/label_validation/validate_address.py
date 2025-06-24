@@ -1,12 +1,12 @@
+"""Address label validation logic."""
+
+# pylint: disable=duplicate-code,line-too-long
+
 import re
-from datetime import datetime, timezone
+from typing import Optional
 
 from rapidfuzz.fuzz import partial_ratio, ratio
-from receipt_dynamo.entities import (
-    ReceiptMetadata,
-    ReceiptWord,
-    ReceiptWordLabel,
-)
+from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 
 from receipt_label.label_validation.data import (
     LabelValidationResult,
@@ -15,9 +15,8 @@ from receipt_label.label_validation.utils import (
     normalize_text,
     pinecone_id_from_label,
 )
-from receipt_label.utils import get_clients
-
-_, _, pinecone_index = get_clients()
+from receipt_label.utils import get_client_manager
+from receipt_label.utils.client_manager import ClientManager
 
 SUFFIXES = {
     "rd": "road",
@@ -31,6 +30,24 @@ SUFFIXES = {
     "hwy": "highway",
 }
 
+DIRECTIONAL_ABBREVIATIONS = {
+    "n": "north",
+    "s": "south",
+    "e": "east",
+    "w": "west",
+    "ne": "northeast",
+    "nw": "northwest",
+    "se": "southeast",
+    "sw": "southwest",
+}
+
+UNIT_ABBREVIATIONS = {
+    "apt": "apartment",
+    "ste": "suite",
+    "unit": "unit",
+    "#": "apartment",
+}
+
 STATE_MAP = {
     "california": "ca",
     "new york": "ny",
@@ -40,6 +57,43 @@ STATE_MAP = {
 }
 
 
+def _normalize_address(text: str) -> str:
+    """Enhanced address normalization for better matching."""
+    # Start with basic text normalization
+    normalized = normalize_text(text)
+
+    # Remove excessive punctuation and spaces
+    normalized = re.sub(r"[.]{2,}", " ", normalized)  # Replace multiple dots
+    normalized = re.sub(
+        r"[!]{2,}", " ", normalized
+    )  # Replace multiple exclamation marks
+    normalized = re.sub(
+        r"\s+", " ", normalized
+    )  # Replace multiple spaces with single space
+
+    # Split into tokens for replacement
+    tokens = normalized.split()
+    processed_tokens = []
+
+    for token in tokens:
+        # Remove trailing punctuation from token
+        clean_token = token.rstrip(".,!")
+
+        # Apply suffix replacements
+        if clean_token in SUFFIXES:
+            processed_tokens.append(SUFFIXES[clean_token])
+        # Apply directional replacements
+        elif clean_token in DIRECTIONAL_ABBREVIATIONS:
+            processed_tokens.append(DIRECTIONAL_ABBREVIATIONS[clean_token])
+        # Apply unit replacements
+        elif clean_token in UNIT_ABBREVIATIONS:
+            processed_tokens.append(UNIT_ABBREVIATIONS[clean_token])
+        else:
+            processed_tokens.append(clean_token)
+
+    return " ".join(processed_tokens)
+
+
 def _fuzzy_in(text: str, target: str, threshold: int = 90) -> bool:
     return partial_ratio(text, target) >= threshold or any(
         ratio(text, token) >= threshold for token in target.split()
@@ -47,25 +101,25 @@ def _fuzzy_in(text: str, target: str, threshold: int = 90) -> bool:
 
 
 def _merged_address_variants(word: ReceiptWord, metadata: dict) -> list[str]:
-    current = normalize_text(word.text)
+    current = _normalize_address(word.text)
     variants = [current]
 
     left = metadata.get("left")
     right = metadata.get("right")
 
     if left and left != "<EDGE>":
-        left_clean = normalize_text(left)
+        left_clean = _normalize_address(left)
         variants.append(f"{left_clean} {current}")
         variants.append(f"{left_clean}{current}")
 
     if right and right != "<EDGE>":
-        right_clean = normalize_text(right)
+        right_clean = _normalize_address(right)
         variants.append(f"{current} {right_clean}")
         variants.append(f"{current}{right_clean}")
 
     if left and right and left != "<EDGE>" and right != "<EDGE>":
-        left_clean = normalize_text(left)
-        right_clean = normalize_text(right)
+        left_clean = _normalize_address(left)
+        right_clean = _normalize_address(right)
         variants.append(f"{left_clean} {current} {right_clean}")
         variants.append(f"{left_clean}{current}{right_clean}")
 
@@ -75,11 +129,17 @@ def _merged_address_variants(word: ReceiptWord, metadata: dict) -> list[str]:
 def validate_address(
     word: ReceiptWord,
     label: ReceiptWordLabel,
-    receipt_metadata: ReceiptMetadata,
+    receipt_metadata,  # Can be ReceiptMetadata or SimpleNamespace for testing
+    client_manager: Optional[ClientManager] = None,
 ) -> LabelValidationResult:
+    # Get pinecone index from client manager
+    if client_manager is None:
+        client_manager = get_client_manager()
+    pinecone_index = client_manager.pinecone
+
     pinecone_id = pinecone_id_from_label(label)
     canonical_address = (
-        normalize_text(receipt_metadata.canonical_address)
+        _normalize_address(receipt_metadata.canonical_address)
         if receipt_metadata.canonical_address
         else ""
     )

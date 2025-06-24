@@ -1,6 +1,6 @@
-import pytest
 from copy import deepcopy
 
+import pytest
 
 from receipt_dynamo import (
     ReceiptValidationCategory,

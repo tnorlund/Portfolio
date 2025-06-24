@@ -27,9 +27,8 @@ from openai.types import FileObject
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities import BatchSummary, ReceiptWord
 
-from receipt_label.utils import get_clients
-
-dynamo_client, openai_client, _ = get_clients()
+from receipt_label.utils import get_client_manager
+from receipt_label.utils.client_manager import ClientManager
 
 
 def serialize_receipt_words(
@@ -107,8 +106,10 @@ def deserialize_receipt_words(filepath: Path) -> list[ReceiptWord]:
     return words
 
 
-def query_receipt_words(image_id: str, receipt_id: int) -> list[ReceiptWord]:
+def query_receipt_words(image_id: str, receipt_id: int, client_manager: ClientManager = None) -> list[ReceiptWord]:
     """Query the ReceiptWords from DynamoDB."""
+    if client_manager is None:
+        client_manager = get_client_manager()
     (
         _,
         _,
@@ -116,7 +117,7 @@ def query_receipt_words(image_id: str, receipt_id: int) -> list[ReceiptWord]:
         _,
         _,
         _,
-    ) = dynamo_client.getReceiptDetails(image_id, receipt_id)
+    ) = client_manager.dynamo.getReceiptDetails(image_id, receipt_id)
     return words
 
 
@@ -155,9 +156,11 @@ def generate_batch_id() -> str:
     return str(uuid4())
 
 
-def list_receipt_words_with_no_embeddings() -> list[ReceiptWord]:
+def list_receipt_words_with_no_embeddings(client_manager: ClientManager = None) -> list[ReceiptWord]:
     """Fetch all ReceiptWord items with embedding_status == NONE."""
-    return dynamo_client.listReceiptWordsByEmbeddingStatus(
+    if client_manager is None:
+        client_manager = get_client_manager()
+    return client_manager.dynamo.listReceiptWordsByEmbeddingStatus(
         EmbeddingStatus.NONE
     )
 
@@ -279,16 +282,20 @@ def write_ndjson(batch_id: str, input_data: list[dict]) -> Path:
     return filepath
 
 
-def upload_to_openai(filepath: Path) -> FileObject:
+def upload_to_openai(filepath: Path, client_manager: ClientManager = None) -> FileObject:
     """Upload the NDJSON file to OpenAI."""
-    return openai_client.files.create(
+    if client_manager is None:
+        client_manager = get_client_manager()
+    return client_manager.openai.files.create(
         file=filepath.open("rb"), purpose="batch"
     )
 
 
-def submit_openai_batch(file_id: str) -> Batch:
+def submit_openai_batch(file_id: str, client_manager: ClientManager = None) -> Batch:
     """Submit a batch embedding job to OpenAI using the uploaded file."""
-    return openai_client.batches.create(
+    if client_manager is None:
+        client_manager = get_client_manager()
+    return client_manager.openai.batches.create(
         input_file_id=file_id,
         endpoint="/v1/embeddings",
         completion_window="24h",
@@ -336,14 +343,18 @@ def create_batch_summary(
     )
 
 
-def add_batch_summary(summary: BatchSummary) -> None:
+def add_batch_summary(summary: BatchSummary, client_manager: ClientManager = None) -> None:
     """Write the BatchSummary entity to DynamoDB."""
-    dynamo_client.addBatchSummary(summary)
+    if client_manager is None:
+        client_manager = get_client_manager()
+    client_manager.dynamo.addBatchSummary(summary)
 
 
-def update_word_embedding_status(words: list[ReceiptWord]) -> None:
+def update_word_embedding_status(words: list[ReceiptWord], client_manager: ClientManager = None) -> None:
     """Update the Embedding Status of the Words"""
+    if client_manager is None:
+        client_manager = get_client_manager()
     for word in words:
         # Set to the string value so GSI1PK is updated correctly
         word.embedding_status = EmbeddingStatus.PENDING.value
-    dynamo_client.updateReceiptWords(words)
+    client_manager.dynamo.updateReceiptWords(words)

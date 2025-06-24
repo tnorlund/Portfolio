@@ -26,9 +26,8 @@ from receipt_label.completion._format_prompt import (
     _format_prompt,
     functions,
 )
-from receipt_label.utils import get_clients
-
-dynamo_client, openai_client = get_clients()[:2]
+from receipt_label.utils import get_client_manager
+from receipt_label.utils.client_manager import ClientManager
 
 
 def generate_completion_batch_id() -> str:
@@ -36,13 +35,15 @@ def generate_completion_batch_id() -> str:
     return str(uuid4())
 
 
-def get_receipt_details(image_id: str, receipt_id: int) -> tuple[
+def get_receipt_details(image_id: str, receipt_id: int, client_manager: ClientManager = None) -> tuple[
     list[ReceiptLine],
     list[ReceiptWord],
     ReceiptMetadata,
     list[ReceiptWordLabel],
 ]:
     """Get the receipt details for an image and receipt."""
+    if client_manager is None:
+        client_manager = get_client_manager()
     (
         _,
         lines,
@@ -50,18 +51,20 @@ def get_receipt_details(image_id: str, receipt_id: int) -> tuple[
         _,
         _,
         labels,
-    ) = dynamo_client.getReceiptDetails(
+    ) = client_manager.dynamo.getReceiptDetails(
         image_id, receipt_id
     )  # type: ignore
-    metadata = dynamo_client.getReceiptMetadata(image_id, receipt_id)
+    metadata = client_manager.dynamo.getReceiptMetadata(image_id, receipt_id)
     return lines, words, metadata, labels  # type: ignore
 
 
-def list_labels_that_need_validation() -> list[ReceiptWordLabel]:
+def list_labels_that_need_validation(client_manager: ClientManager = None) -> list[ReceiptWordLabel]:
     """
     List all receipt word labels that need validation.
     """
-    labels, _ = dynamo_client.getReceiptWordLabelsByValidationStatus(
+    if client_manager is None:
+        client_manager = get_client_manager()
+    labels, _ = client_manager.dynamo.getReceiptWordLabelsByValidationStatus(
         validation_status=ValidationStatus.NONE.value
     )
     return labels
@@ -172,8 +175,10 @@ def deserialize_labels(filepath: Path) -> list[ReceiptWordLabel]:
         return [ReceiptWordLabel(**json.loads(line)) for line in f]
 
 
-def query_receipt_words(image_id: str, receipt_id: int) -> list[ReceiptWord]:
+def query_receipt_words(image_id: str, receipt_id: int, client_manager: ClientManager = None) -> list[ReceiptWord]:
     """Query the ReceiptWords from DynamoDB."""
+    if client_manager is None:
+        client_manager = get_client_manager()
     (
         _,
         _,
@@ -181,7 +186,7 @@ def query_receipt_words(image_id: str, receipt_id: int) -> list[ReceiptWord]:
         _,
         _,
         _,
-    ) = dynamo_client.getReceiptDetails(
+    ) = client_manager.dynamo.getReceiptDetails(
         image_id, receipt_id
     )  # type: ignore
     return words  # type: ignore
@@ -307,16 +312,20 @@ def upload_completion_batch_file(
     return s3_key
 
 
-def upload_to_openai(filepath: Path) -> FileObject:
+def upload_to_openai(filepath: Path, client_manager: ClientManager = None) -> FileObject:
     """Upload the NDJSON file to OpenAI."""
-    return openai_client.files.create(
+    if client_manager is None:
+        client_manager = get_client_manager()
+    return client_manager.openai.files.create(
         file=filepath.open("rb"), purpose="batch"
     )
 
 
-def submit_openai_batch(file_id: str) -> Batch:
+def submit_openai_batch(file_id: str, client_manager: ClientManager = None) -> Batch:
     """Submit a batch completion job to OpenAI using the uploaded file."""
-    return openai_client.batches.create(
+    if client_manager is None:
+        client_manager = get_client_manager()
+    return client_manager.openai.batches.create(
         input_file_id=file_id,
         endpoint="/v1/chat/completions",
         completion_window="24h",
@@ -338,16 +347,20 @@ def create_batch_summary(
     )
 
 
-def add_batch_summary(summary: BatchSummary) -> None:
+def add_batch_summary(summary: BatchSummary, client_manager: ClientManager = None) -> None:
     """Write the BatchSummary entity to DynamoDB."""
-    dynamo_client.addBatchSummary(summary)
+    if client_manager is None:
+        client_manager = get_client_manager()
+    client_manager.dynamo.addBatchSummary(summary)
 
 
-def update_label_validation_status(labels: list[ReceiptWordLabel]) -> None:
+def update_label_validation_status(labels: list[ReceiptWordLabel], client_manager: ClientManager = None) -> None:
     """Update the validation status of the labels."""
+    if client_manager is None:
+        client_manager = get_client_manager()
     for label in labels:
         label.validation_status = ValidationStatus.PENDING.value
-    dynamo_client.updateReceiptWordLabels(labels)
+    client_manager.dynamo.updateReceiptWordLabels(labels)
 
 
 def merge_ndjsons(
@@ -476,6 +489,7 @@ def get_labels_from_ndjson(
         }
     )
     # Call Dynamo to fetch labels
-    labels = dynamo_client.getReceiptWordLabelsByIndices(label_indices)
+    client_manager = get_client_manager()
+    labels = client_manager.dynamo.getReceiptWordLabelsByIndices(label_indices)
     # Return both labels and receipt_refs
     return labels, receipt_refs
