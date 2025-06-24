@@ -1,17 +1,23 @@
+"""Lambda handler for batch cleaning and canonicalizing merchant metadata."""
+
 import json
 import time
-from logging import getLogger, StreamHandler, Formatter, INFO
+from logging import INFO, Formatter, StreamHandler, getLogger
+from typing import Any, Dict, List
+
+# Import AWS exceptions
+import botocore.exceptions
 
 # Import the necessary functions from merchant_validation
 from receipt_label.merchant_validation import (
-    list_all_receipt_metadatas,
-    cluster_by_metadata,
     choose_canonical_metadata,
-    normalize_address,
-    update_items_with_canonical,
+    cluster_by_metadata,
     collapse_canonical_aliases,
-    persist_alias_updates,
+    list_all_receipt_metadatas,
     merge_place_id_aliases_by_address,
+    normalize_address,
+    persist_alias_updates,
+    update_items_with_canonical,
 )
 
 logger = getLogger()
@@ -28,9 +34,10 @@ if len(logger.handlers) == 0:
     logger.addHandler(handler)
 
 
-def batch_handler(event, context):
+def batch_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     """
-    Process all receipt metadata records to establish canonical representations.
+    Process all receipt metadata records to establish canonical
+    representations.
 
     This handler is designed to run in two contexts:
     1. Manual invocation for one-time cleanups
@@ -39,7 +46,8 @@ def batch_handler(event, context):
     Args:
         event: Lambda event - may contain optional parameters:
                - max_records: Maximum number of records to process (optional)
-               - geographic_validation: Whether to perform geographic validation (optional)
+               - geographic_validation: Whether to perform geographic
+                 validation (optional)
         context: Lambda context
 
     Returns:
@@ -53,7 +61,7 @@ def batch_handler(event, context):
     geographic_validation = event.get("geographic_validation", False)
 
     if max_records:
-        logger.info(f"Will process up to {max_records} records")
+        logger.info("Will process up to %s records", max_records)
 
     if geographic_validation:
         logger.info("Geographic validation is enabled")
@@ -62,11 +70,38 @@ def batch_handler(event, context):
     try:
         all_metadata = list_all_receipt_metadatas()
         logger.info(
-            f"Loaded {len(all_metadata)} total receipt metadata records from DynamoDB."
+            "Loaded %s total receipt metadata records from DynamoDB.",
+            len(all_metadata),
         )
-    except Exception as e:
-        logger.error(f"Failed to load metadata from DynamoDB: {e}")
-        return {"statusCode": 500, "body": json.dumps("Error loading metadata")}
+    except botocore.exceptions.ClientError as e:
+        logger.error("AWS service error loading metadata from DynamoDB: %s", e)
+        error_code = e.response.get("Error", {}).get("Code", "Unknown")
+        return {
+            "statusCode": (
+                503
+                if error_code
+                in [
+                    "ProvisionedThroughputExceededException",
+                    "ThrottlingException",
+                ]
+                else 500
+            ),
+            "body": json.dumps(f"DynamoDB error: {error_code}"),
+        }
+    except botocore.exceptions.BotoCoreError as e:
+        logger.error("Client-side error loading metadata: %s", e)
+        return {
+            "statusCode": 500,
+            "body": json.dumps("Client configuration error"),
+        }
+    except KeyError as e:
+        logger.error("Missing required environment variable: %s", e)
+        return {
+            "statusCode": 500,
+            "body": json.dumps(
+                "Configuration error: missing environment variable"
+            ),
+        }
 
     if not all_metadata:
         logger.info("No metadata found to clean.")
@@ -74,20 +109,29 @@ def batch_handler(event, context):
 
     # Pre-merge place IDs that have the same canonical address
     merged_count = merge_place_id_aliases_by_address(all_metadata)
-    logger.info(f"Merged {merged_count} alias place_ids based on address.")
+    logger.info("Merged %s alias place_ids based on address.", merged_count)
 
     # Apply max_records limit if specified
     if max_records and isinstance(max_records, int) and max_records > 0:
         all_metadata = all_metadata[:max_records]
-        logger.info(f"Limited processing to {len(all_metadata)} records")
+        logger.info("Limited processing to %s records", len(all_metadata))
 
     # 2. Cluster the metadata
     try:
         clusters = cluster_by_metadata(all_metadata)
-        logger.info(f"Created {len(clusters)} clusters from the metadata.")
-    except Exception as e:
-        logger.error(f"Failed during clustering: {e}")
-        return {"statusCode": 500, "body": json.dumps("Error during clustering")}
+        logger.info("Created %s clusters from the metadata.", len(clusters))
+    except (AttributeError, TypeError) as e:
+        logger.error("Invalid metadata format during clustering: %s", e)
+        return {
+            "statusCode": 500,
+            "body": json.dumps("Invalid metadata format"),
+        }
+    except ValueError as e:
+        logger.error("Invalid data values during clustering: %s", e)
+        return {
+            "statusCode": 500,
+            "body": json.dumps("Invalid data values in metadata"),
+        }
 
     total_updated_count = 0
     processed_clusters = 0
@@ -101,7 +145,10 @@ def batch_handler(event, context):
             continue
 
         logger.info(
-            f"Processing cluster {i+1}/{len(clusters)} with {len(members)} members."
+            "Processing cluster %s/%s with %s members.",
+            i + 1,
+            len(clusters),
+            len(members),
         )
 
         try:
@@ -109,30 +156,38 @@ def batch_handler(event, context):
             canonical_record = choose_canonical_metadata(members)
             if not canonical_record:
                 logger.warning(
-                    f"Could not choose canonical record for cluster {i+1}. Skipping."
+                    "Could not choose canonical record for cluster %s. "
+                    "Skipping.",
+                    i + 1,
                 )
                 skipped_clusters += 1
                 continue
 
-            # 5. Prepare canonical details (original name/phone, normalized address)
+            # 5. Prepare canonical details (original name/phone,
+            # normalized address)
             canonical_details = {
-                "canonical_place_id": getattr(canonical_record, "place_id", ""),
+                "canonical_place_id": getattr(
+                    canonical_record, "place_id", ""
+                ),
                 "canonical_merchant_name": getattr(
                     canonical_record, "merchant_name", ""
                 ),
                 "canonical_address": normalize_address(
                     getattr(canonical_record, "address", "")
                 ),  # Normalize address
-                "canonical_phone_number": getattr(canonical_record, "phone_number", ""),
+                "canonical_phone_number": getattr(
+                    canonical_record, "phone_number", ""
+                ),
                 # Optional: Add a unique cluster ID if desired
                 # "cluster_id": f"cluster-{uuid.uuid4()}"
             }
 
             # Log the canonical values
             logger.info(
-                f"Selected canonical record: place_id={canonical_details['canonical_place_id']}, "
-                f"name={canonical_details['canonical_merchant_name']}, "
-                f"address={canonical_details['canonical_address']}"
+                "Selected canonical record: place_id=%s, name=%s, address=%s",
+                canonical_details["canonical_place_id"],
+                canonical_details["canonical_merchant_name"],
+                canonical_details["canonical_address"],
             )
 
             # Optional: Check for geographic discrepancies if enabled
@@ -140,38 +195,68 @@ def batch_handler(event, context):
                 has_discrepancy = check_geographic_discrepancies(members)
                 if has_discrepancy:
                     geographic_discrepancies += 1
-                    logger.warning(f"Geographic discrepancy detected in cluster {i+1}")
+                    logger.warning(
+                        "Geographic discrepancy detected in cluster %s", i + 1
+                    )
 
             # 6. Update all members of the cluster in DynamoDB
-            updated_in_cluster = update_items_with_canonical(members, canonical_details)
+            updated_in_cluster = update_items_with_canonical(
+                members, canonical_details
+            )
             logger.info(
-                f"Updated {updated_in_cluster}/{len(members)} items for cluster {i+1} with canonical data."
+                "Updated %s/%s items for cluster %s with canonical data.",
+                updated_in_cluster,
+                len(members),
+                i + 1,
             )
             total_updated_count += updated_in_cluster
             processed_clusters += 1
 
-        except Exception as e:
-            logger.error(f"Failed processing cluster {i+1}: {e}")
+        except botocore.exceptions.ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "Unknown")
+            logger.error(
+                "DynamoDB error processing cluster %s: %s - %s",
+                i + 1,
+                error_code,
+                e,
+            )
+            skipped_clusters += 1
+            # Continue with the next cluster
+        except (AttributeError, TypeError) as e:
+            logger.error("Invalid data structure in cluster %s: %s", i + 1, e)
+            skipped_clusters += 1
+            # Continue with the next cluster
+        except ValueError as e:
+            logger.error("Invalid values in cluster %s: %s", i + 1, e)
             skipped_clusters += 1
             # Continue with the next cluster
 
     # 7. Collapse duplicate canonical names within the same place_id
     updated_aliases = collapse_canonical_aliases(all_metadata)
-    logger.info(f"Collapsed {len(updated_aliases)} canonical alias inconsistencies.")
+    logger.info(
+        "Collapsed %s canonical alias inconsistencies.", len(updated_aliases)
+    )
     # 8. Persist alias updates to DynamoDB
     persist_alias_updates(updated_aliases)
-    logger.info(f"Persisted {len(updated_aliases)} alias updates to DynamoDB.")
+    logger.info(
+        "Persisted %s alias updates to DynamoDB.", len(updated_aliases)
+    )
 
     execution_time = time.time() - start_time
     logger.info(
-        f"Batch cleanup complete in {execution_time:.2f} seconds. "
-        f"Processed {processed_clusters} clusters, skipped {skipped_clusters}. "
-        f"Updated {total_updated_count} total items."
+        "Batch cleanup complete in %.2f seconds. "
+        "Processed %s clusters, skipped %s. "
+        "Updated %s total items.",
+        execution_time,
+        processed_clusters,
+        skipped_clusters,
+        total_updated_count,
     )
 
     if geographic_validation:
         logger.info(
-            f"Detected {geographic_discrepancies} clusters with geographic discrepancies"
+            "Detected %s clusters with geographic discrepancies",
+            geographic_discrepancies,
         )
 
     return {
@@ -192,7 +277,7 @@ def batch_handler(event, context):
     }
 
 
-def check_geographic_discrepancies(cluster_members):
+def check_geographic_discrepancies(cluster_members: List[Any]) -> bool:
     """
     Check for geographic discrepancies within a cluster.
 
@@ -212,8 +297,8 @@ def check_geographic_discrepancies(cluster_members):
         if not address:
             continue
 
-        # Simple heuristic: look for 2-letter state code at the end of the address
-        # This is a placeholder - in production you might want a more robust parser
+        # Simple heuristic: look for 2-letter state code at end of address
+        # Placeholder - production might want a more robust parser
         words = address.split()
         if len(words) >= 2:
             potential_state = words[-2]
