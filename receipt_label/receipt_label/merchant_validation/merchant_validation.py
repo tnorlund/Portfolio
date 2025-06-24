@@ -81,11 +81,11 @@ def get_receipt_details(image_id: str, receipt_id: int) -> Tuple[
 ]:
     """
     Get a receipt with all its associated details from DynamoDB.
-    
+
     Args:
         image_id: The UUID of the receipt image
         receipt_id: The integer ID of the receipt
-        
+
     Returns:
         A tuple containing:
         - Receipt: The main receipt entity
@@ -94,7 +94,7 @@ def get_receipt_details(image_id: str, receipt_id: int) -> Tuple[
         - List[ReceiptLetter]: All letters in the receipt
         - List[ReceiptWordTag]: All word tags for the receipt
         - List[ReceiptWordLabel]: All word labels for the receipt
-        
+
     Raises:
         ValueError: If the receipt does not exist
         Exception: If there's an error accessing DynamoDB
@@ -118,7 +118,9 @@ def get_receipt_details(image_id: str, receipt_id: int) -> Tuple[
         )
     except Exception as e:
         # Log the error for debugging
-        print(f"Error getting receipt details for {image_id}/{receipt_id}: {e}")
+        print(
+            f"Error getting receipt details for {image_id}/{receipt_id}: {e}"
+        )
         raise
 
 
@@ -465,15 +467,16 @@ def is_valid_google_match(results, extracted_data):
     extracted_phone = extracted_data.get("phone_number")
     place_phone = place.get("formatted_phone_number")
     if extracted_phone and place_phone:
-        # You might already have a normalize_phone() helper
+        # Compare normalized phone numbers
         if normalize_phone(extracted_phone) != normalize_phone(place_phone):
             return False
 
-    # If you extracted a business name, compare it (e.g. via fuzzy matching)
+    # If you extracted a business name, compare it using fuzzy matching
     extracted_name = extracted_data.get("business_name")
     place_name = place.get("name")
     if extracted_name and place_name:
-        if not fuzzy_match(place_name, extracted_name):
+        # Use name similarity with a threshold (e.g., 80% match)
+        if get_name_similarity(place_name, extracted_name) < 80:
             return False
 
     # (Any other checks you had—address similarity, category check, etc.—go here)
@@ -865,9 +868,22 @@ def get_address_similarity(addr1, addr2):
     return fuzz.token_set_ratio(p_addr1, p_addr2)
 
 
+def normalize_phone(phone: str) -> str:
+    """
+    Normalize a phone number by removing all non-digit characters.
+    
+    Args:
+        phone: Phone number string to normalize
+        
+    Returns:
+        String containing only digits, or empty string if input is None/empty
+    """
+    return re.sub(r"\D", "", phone) if phone else ""
+
+
 def get_phone_similarity(ph1, ph2):
-    p_ph1 = re.sub(r"\D", "", ph1) if ph1 else ""
-    p_ph2 = re.sub(r"\D", "", ph2) if ph2 else ""
+    p_ph1 = normalize_phone(ph1)
+    p_ph2 = normalize_phone(ph2)
     if not p_ph1 or not p_ph2 or len(p_ph1) < 7 or len(p_ph2) < 7:
         return 0
     return 100 if p_ph1 == p_ph2 else 0
