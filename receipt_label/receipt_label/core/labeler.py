@@ -18,6 +18,8 @@ from ..models.validation import (
     ValidationResultType,
     ValidationStatus,
 )
+from ..processors.line_item_processor import LineItemProcessor
+from ..processors.receipt_analyzer import ReceiptAnalyzer
 from ..utils import get_package_version
 
 logger = logging.getLogger(__name__)
