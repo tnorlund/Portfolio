@@ -73,29 +73,53 @@ def list_receipts_for_merchant_validation() -> List[Tuple[str, int]]:
 
 def get_receipt_details(image_id: str, receipt_id: int) -> Tuple[
     Receipt,
-    list[ReceiptLine],
-    list[ReceiptWord],
-    list[ReceiptLetter],
-    list[ReceiptWordTag],
-    list[ReceiptWordLabel],
+    List[ReceiptLine],
+    List[ReceiptWord],
+    List[ReceiptLetter],
+    List[ReceiptWordTag],
+    List[ReceiptWordLabel],
 ]:
-    """Get a receipt with its details"""
-    (
-        receipt,
-        lines,
-        words,
-        letters,
-        tags,
-        labels,
-    ) = dynamo_client.getReceiptDetails(image_id, receipt_id)
-    return (
-        receipt,
-        lines,
-        words,
-        letters,
-        tags,
-        labels,
-    )
+    """
+    Get a receipt with all its associated details from DynamoDB.
+    
+    Args:
+        image_id: The UUID of the receipt image
+        receipt_id: The integer ID of the receipt
+        
+    Returns:
+        A tuple containing:
+        - Receipt: The main receipt entity
+        - List[ReceiptLine]: All lines in the receipt
+        - List[ReceiptWord]: All words in the receipt
+        - List[ReceiptLetter]: All letters in the receipt
+        - List[ReceiptWordTag]: All word tags for the receipt
+        - List[ReceiptWordLabel]: All word labels for the receipt
+        
+    Raises:
+        ValueError: If the receipt does not exist
+        Exception: If there's an error accessing DynamoDB
+    """
+    try:
+        (
+            receipt,
+            lines,
+            words,
+            letters,
+            tags,
+            labels,
+        ) = dynamo_client.getReceiptDetails(image_id, receipt_id)
+        return (
+            receipt,
+            lines,
+            words,
+            letters,
+            tags,
+            labels,
+        )
+    except Exception as e:
+        # Log the error for debugging
+        print(f"Error getting receipt details for {image_id}/{receipt_id}: {e}")
+        raise
 
 
 def extract_candidate_merchant_fields(words: List[ReceiptWord]) -> dict:
