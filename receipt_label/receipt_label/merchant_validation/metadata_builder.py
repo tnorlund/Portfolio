@@ -29,8 +29,8 @@ def build_receipt_metadata_from_result(
     merchant_name = google_place.get("name", "")
     address = google_place.get("formatted_address", "")
     # Phone from Google or fallback to GPT
-    phone = google_place.get("formatted_phone_number") or gpt_result.get(
-        "phone_number", ""
+    phone = google_place.get("formatted_phone_number") or (
+        gpt_result.get("phone_number", "") if gpt_result else ""
     )
 
     matched_fields = (
@@ -40,17 +40,18 @@ def build_receipt_metadata_from_result(
     )
 
     # Determine source of validation
-    validated_by = "GooglePlaces"
+    validated_by = "TEXT_SEARCH"  # Google Places uses text search
     if gpt_result and matched_fields:
-        validated_by = "GPT+GooglePlaces"
+        validated_by = "INFERENCE"  # Combined Google + GPT uses inference
 
     # Basic reasoning
     reasoning = f"Selected merchant based on Google Places"
-    if validated_by == "GPT+GooglePlaces":
+    if validated_by == "INFERENCE":
         reasoning += " with GPT validation"
 
     # Optional category: use first Google type if available
-    merchant_category = google_place.get("types", [None])[0] or ""
+    types = google_place.get("types", [])
+    merchant_category = types[0] if types else ""
 
     return ReceiptMetadata(
         image_id=image_id,
@@ -91,7 +92,7 @@ def build_receipt_metadata_from_result_no_match(
     matched_fields = gpt_result.get("matched_fields", []) if gpt_result else []
 
     # Determine validated_by source
-    validated_by = "GPT" if gpt_result else "None"
+    validated_by = "INFERENCE" if gpt_result else "TEXT_SEARCH"
 
     # Reasoning message
     if gpt_result:
