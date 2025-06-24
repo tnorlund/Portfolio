@@ -99,8 +99,9 @@ class ReceiptWordLabel:
                 "timestamp_added must be a datetime object or a string"
             )
 
-        status_value = validation_status or ValidationStatus.NONE
-        self.validation_status = normalize_enum(status_value, ValidationStatus)
+        # Always assign a valid enum value for validation_status
+        status = validation_status or ValidationStatus.NONE.value
+        self.validation_status = normalize_enum(status, ValidationStatus)
 
         if label_proposed_by is not None:
             if not isinstance(label_proposed_by, str):

@@ -6,11 +6,11 @@ related to queues and provides a clean API for client applications to use.
 """
 
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.entities.rwl_queue import Queue
 from receipt_dynamo.entities.queue_job import QueueJob
+from receipt_dynamo.entities.rwl_queue import Queue
 
 
 class QueueService:

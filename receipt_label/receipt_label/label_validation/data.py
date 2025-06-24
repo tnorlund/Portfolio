@@ -1,16 +1,16 @@
+"""Data utilities for label validation."""
+
+# pylint: disable=duplicate-code,line-too-long
+
 from collections import Counter
 from dataclasses import dataclass
 from typing import Literal
 
 from receipt_dynamo.constants import ValidationStatus
-from receipt_dynamo.entities import (
-    ReceiptWord,
-    ReceiptWordLabel,
-)
+from receipt_dynamo.entities import ReceiptWordLabel
 
-from receipt_label.utils import get_clients
-
-dynamo_client, _, pinecone_index = get_clients()
+from receipt_label.utils import get_client_manager
+from receipt_label.utils.client_manager import ClientManager
 
 
 # Holds the result of a label validation.
@@ -28,7 +28,9 @@ class LabelValidationResult:
     pinecone_id: str
 
 
-def get_unique_merchants_and_data() -> list[dict]:
+def get_unique_merchants_and_data(
+    client_manager: ClientManager = None,
+) -> list[dict]:
     """
     Returns a list of dictionaries, each containing:
     - merchant_name: canonical merchant name
@@ -38,7 +40,9 @@ def get_unique_merchants_and_data() -> list[dict]:
     Each receipt will have its own dictionary entry, but receipt_count will
     remain the same for all entries of the same merchant.
     """
-    receipt_metadatas, _ = dynamo_client.listReceiptMetadatas()
+    if client_manager is None:
+        client_manager = get_client_manager()
+    receipt_metadatas, _ = client_manager.dynamo.listReceiptMetadatas()
     merchant_counts = Counter(
         metadata.canonical_merchant_name for metadata in receipt_metadatas
     )
@@ -62,6 +66,7 @@ def update_labels(
     label_validation_results: list[
         tuple[LabelValidationResult, ReceiptWordLabel]
     ],
+    client_manager: ClientManager = None,
 ):
     """
     Applies validation results to both DynamoDB and Pinecone.
@@ -99,8 +104,11 @@ def update_labels(
     # Combine all pinecone ids to fetch once
     all_pinecone_ids = set(valid_by_id.keys()) | set(invalid_by_id.keys())
 
+    if client_manager is None:
+        client_manager = get_client_manager()
+
     vectors_by_id = {}
-    for vector in pinecone_index.fetch(
+    for vector in client_manager.pinecone.fetch(
         list(all_pinecone_ids),
         namespace="words",
     ).vectors.values():
@@ -127,7 +135,7 @@ def update_labels(
 
     # Instead of upsert, use update to only update metadata for each vector
     for v in vectors_by_id.values():
-        pinecone_index.update(
+        client_manager.pinecone.update(
             id=v.id,
             set_metadata=v.metadata,
             namespace="words",
@@ -141,4 +149,4 @@ def update_labels(
     for label_validation_result, label in labels_to_mark_as_invalid:
         label.validation_status = ValidationStatus.INVALID.value
         labels_to_update.append(label)
-    dynamo_client.updateReceiptWordLabels(labels_to_update)
+    client_manager.dynamo.updateReceiptWordLabels(labels_to_update)

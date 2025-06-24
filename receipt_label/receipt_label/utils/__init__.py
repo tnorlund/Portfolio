@@ -8,7 +8,8 @@ from .address import (
     normalize_address,
     parse_address,
 )
-from .clients import get_clients
+from .clients import get_clients, get_client_manager
+from .client_manager import ClientConfig, ClientManager
 from .date import (
     extract_datetime,
     format_datetime,
@@ -52,6 +53,9 @@ __all__ = [
     "validate_receipt_format",
     # Client utilities
     "get_clients",
+    "get_client_manager",
+    "ClientConfig",
+    "ClientManager",
 ]
 
 

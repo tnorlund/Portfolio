@@ -6,7 +6,7 @@ related to instances and provides a clean API for client applications to use.
 """
 
 from datetime import datetime
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities.instance import Instance

@@ -4,7 +4,6 @@ import pytest
 
 from receipt_dynamo.entities.instance import Instance, itemToInstance
 
-
 # ###############################
 # # Instance Metadata Summary
 # ###############################

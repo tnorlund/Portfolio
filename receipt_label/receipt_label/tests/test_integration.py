@@ -25,7 +25,7 @@ from receipt_label.models.line_item import (
 from receipt_label.models.receipt import Receipt, ReceiptLine, ReceiptWord
 from receipt_label.models.structure import StructureAnalysis
 from receipt_label.models.validation import ValidationAnalysis
-from receipt_label.processors.receipt_analyzer import ReceiptAnalyzer
+# from receipt_label.processors.receipt_analyzer import ReceiptAnalyzer  # Class doesn't exist
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -167,15 +167,15 @@ def mock_line_item_analysis(mock_line_items):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-@patch(
-    "receipt_label.processors.receipt_analyzer.ReceiptAnalyzer.analyze_structure"
-)
-@patch(
-    "receipt_label.processors.receipt_analyzer.ReceiptAnalyzer.label_fields"
-)
-@patch(
-    "receipt_label.processors.line_item_processor.LineItemProcessor.analyze_line_items"
-)
+# @patch(
+#     "receipt_label.processors.receipt_analyzer.ReceiptAnalyzer.analyze_structure"
+# )
+# @patch(
+#     "receipt_label.processors.receipt_analyzer.ReceiptAnalyzer.label_fields"
+# )
+# @patch(
+#     "receipt_label.processors.line_item_processor.LineItemProcessor.analyze_line_items"
+# )
 @patch("receipt_label.data.places_api.PlacesAPI")
 @patch("receipt_dynamo.data.dynamo_client.DynamoClient")
 @patch("receipt_label.core.labeler.ReceiptLabeler.label_receipt")
@@ -183,9 +183,9 @@ def test_labeling_result_with_base_classes(
     mock_label_receipt,
     mock_dynamo_client,
     mock_places_api,
-    mock_analyze_line_items,
-    mock_label_fields,
-    mock_analyze_structure,
+    # mock_analyze_line_items,  # Removed - ReceiptAnalyzer doesn't exist
+    # mock_label_fields,        # Removed - ReceiptAnalyzer doesn't exist
+    # mock_analyze_structure,   # Removed - LineItemProcessor doesn't exist
     receipt,
     receipt_words,
     receipt_lines,
@@ -194,16 +194,13 @@ def test_labeling_result_with_base_classes(
     mock_line_item_analysis,
 ):
     """Test that LabelingResult correctly uses our base classes."""
-    # Set up mocks
+    # Set up mocks - these functions don't exist in the current implementation
+    # so we'll create the analysis objects directly
     structure_analysis = StructureAnalysis.from_gpt_response(
         mock_structure_analysis
     )
-    mock_analyze_structure.return_value = structure_analysis
 
     field_analysis = LabelAnalysis.from_gpt_response(mock_field_analysis)
-    mock_label_fields.return_value = field_analysis
-
-    mock_analyze_line_items.return_value = mock_line_item_analysis
 
     # Create a mock result
     result = LabelingResult(
