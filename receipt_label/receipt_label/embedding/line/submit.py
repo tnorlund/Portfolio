@@ -15,6 +15,7 @@ It includes functionality to:
 This script supports agentic document processing by facilitating scalable
 embedding of receipt lines for section classification.
 """
+
 import json
 from datetime import datetime, timezone
 from pathlib import Path

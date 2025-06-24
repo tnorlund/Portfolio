@@ -191,17 +191,16 @@ def download_openai_batch_result(  # pylint: disable=too-many-locals,too-many-st
                     continue
                 # Remove from pending_labels if present
                 pending_labels = [
-                        label
-                        for label in pending_labels
-                        if not (
-                            label.image_id == label_from_dynamo.image_id
-                            and label.receipt_id
-                            == label_from_dynamo.receipt_id
-                            and label.line_id == label_from_dynamo.line_id
-                            and label.word_id == label_from_dynamo.word_id
-                            and label.label == label_from_dynamo.label
-                        )
-                    ]
+                    label
+                    for label in pending_labels
+                    if not (
+                        label.image_id == label_from_dynamo.image_id
+                        and label.receipt_id == label_from_dynamo.receipt_id
+                        and label.line_id == label_from_dynamo.line_id
+                        and label.word_id == label_from_dynamo.word_id
+                        and label.label == label_from_dynamo.label
+                    )
+                ]
                 if (
                     label_from_dynamo.validation_status
                     == ValidationStatus.VALID.value

@@ -1,7 +1,8 @@
 import os
-from receipt_dynamo import DynamoClient
+
 from openai import OpenAI
 from pinecone import Pinecone
+from receipt_dynamo import DynamoClient
 
 
 def get_clients():

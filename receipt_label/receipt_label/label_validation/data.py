@@ -1,12 +1,14 @@
+from collections import Counter
 from dataclasses import dataclass
 from typing import Literal
-from receipt_label.utils import get_clients
-from collections import Counter
+
+from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import (
     ReceiptWord,
     ReceiptWordLabel,
 )
-from receipt_dynamo.constants import ValidationStatus
+
+from receipt_label.utils import get_clients
 
 dynamo_client, _, pinecone_index = get_clients()
 

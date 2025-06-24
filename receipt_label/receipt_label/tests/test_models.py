@@ -1,16 +1,21 @@
-import pytest
+import uuid
 from datetime import datetime
 from typing import Dict, List
-import uuid
+
+import pytest
+from receipt_dynamo.entities.receipt_line import (
+    ReceiptLine as DynamoReceiptLine,
+)
+from receipt_dynamo.entities.receipt_word import (
+    ReceiptWord as DynamoReceiptWord,
+)
 
 from receipt_label.models.receipt import (
     Receipt,
-    ReceiptWord,
     ReceiptLine,
     ReceiptSection,
+    ReceiptWord,
 )
-from receipt_dynamo.entities.receipt_word import ReceiptWord as DynamoReceiptWord
-from receipt_dynamo.entities.receipt_line import ReceiptLine as DynamoReceiptLine
 
 
 # Test data fixtures
@@ -137,7 +142,12 @@ class TestReceiptWord:
         assert word.word_id == 1
         assert word.confidence == 0.95
         assert word.extracted_data == {"field": "test_field"}
-        assert word.bounding_box == {"x": 0, "y": 0, "width": 100, "height": 20}
+        assert word.bounding_box == {
+            "x": 0,
+            "y": 0,
+            "width": 100,
+            "height": 20,
+        }
         assert word.font_size == 12.0
         assert word.font_weight == "normal"
         assert word.font_style == "normal"
@@ -168,7 +178,9 @@ class TestReceiptWord:
         assert word.confidence == 0.95
         assert word.extracted_data == {"field": "test_field"}
 
-    def test_receipt_word_from_dynamo_dict(self, sample_dynamo_word_data: Dict):
+    def test_receipt_word_from_dynamo_dict(
+        self, sample_dynamo_word_data: Dict
+    ):
         """Test creating a ReceiptWord from raw DynamoDB data."""
         word = ReceiptWord(
             text=sample_dynamo_word_data["text"],
@@ -186,7 +198,12 @@ class TestReceiptWord:
         assert word.word_id == 1
         assert word.confidence == 0.95
         assert word.extracted_data == {"field": "test_field"}
-        assert word.bounding_box == {"x": 0, "y": 0, "width": 100, "height": 20}
+        assert word.bounding_box == {
+            "x": 0,
+            "y": 0,
+            "width": 100,
+            "height": 20,
+        }
 
     def test_receipt_word_to_dynamo_with_font_info(self):
         """Test converting ReceiptWord to DynamoReceiptWord with font information."""
@@ -220,7 +237,12 @@ class TestReceiptLine:
         assert line.text == "Sample line text"
         assert line.line_id == 1
         assert line.confidence == 0.95
-        assert line.bounding_box == {"x": 0, "y": 0, "width": 200, "height": 50}
+        assert line.bounding_box == {
+            "x": 0,
+            "y": 0,
+            "width": 200,
+            "height": 50,
+        }
         assert line.top_right == {"x": 200, "y": 0}
         assert line.top_left == {"x": 0, "y": 0}
         assert line.bottom_right == {"x": 200, "y": 50}
@@ -289,7 +311,9 @@ class TestReceipt:
             image_id=sample_receipt_data["image_id"],
             words=[ReceiptWord(**w) for w in sample_receipt_data["words"]],
             lines=[ReceiptLine(**l) for l in sample_receipt_data["lines"]],
-            sections=[ReceiptSection(**s) for s in sample_receipt_data["sections"]],
+            sections=[
+                ReceiptSection(**s) for s in sample_receipt_data["sections"]
+            ],
             metadata=sample_receipt_data["metadata"],
             created_at=sample_receipt_data["created_at"],
             updated_at=sample_receipt_data["updated_at"],
@@ -334,7 +358,9 @@ class TestReceipt:
             angle_degrees=0.0,
             angle_radians=0.0,
         )
-        receipt = Receipt.from_dynamo_data("123", image_id, [dynamo_word], [dynamo_line])
+        receipt = Receipt.from_dynamo_data(
+            "123", image_id, [dynamo_word], [dynamo_line]
+        )
         assert receipt.receipt_id == "123"
         assert receipt.image_id == image_id
         assert len(receipt.words) == 1
@@ -356,7 +382,9 @@ class TestReceipt:
                     line_id=sample_dynamo_word_data["line_id"],
                     word_id=sample_dynamo_word_data["word_id"],
                     confidence=sample_dynamo_word_data["confidence"],
-                    extracted_data=sample_dynamo_word_data.get("extracted_data"),
+                    extracted_data=sample_dynamo_word_data.get(
+                        "extracted_data"
+                    ),
                     bounding_box=sample_dynamo_word_data["bounding_box"],
                     font_size=None,
                     font_weight=None,
@@ -378,7 +406,9 @@ class TestReceipt:
                 )
             ],
         )
-        assert receipt.receipt_id == str(sample_dynamo_receipt_data["receipt_id"])
+        assert receipt.receipt_id == str(
+            sample_dynamo_receipt_data["receipt_id"]
+        )
         assert receipt.image_id == sample_dynamo_receipt_data["image_id"]
         assert len(receipt.words) == 1
         assert len(receipt.lines) == 1
@@ -390,7 +420,9 @@ class TestReceipt:
             image_id=sample_receipt_data["image_id"],
             words=[ReceiptWord(**w) for w in sample_receipt_data["words"]],
             lines=[ReceiptLine(**l) for l in sample_receipt_data["lines"]],
-            sections=[ReceiptSection(**s) for s in sample_receipt_data["sections"]],
+            sections=[
+                ReceiptSection(**s) for s in sample_receipt_data["sections"]
+            ],
             metadata=sample_receipt_data["metadata"],
             created_at=sample_receipt_data["created_at"],
             updated_at=sample_receipt_data["updated_at"],
@@ -406,7 +438,9 @@ class TestReceipt:
             image_id=sample_receipt_data["image_id"],
             words=[ReceiptWord(**w) for w in sample_receipt_data["words"]],
             lines=[ReceiptLine(**l) for l in sample_receipt_data["lines"]],
-            sections=[ReceiptSection(**s) for s in sample_receipt_data["sections"]],
+            sections=[
+                ReceiptSection(**s) for s in sample_receipt_data["sections"]
+            ],
             metadata=sample_receipt_data["metadata"],
             created_at=sample_receipt_data["created_at"],
             updated_at=sample_receipt_data["updated_at"],
@@ -422,7 +456,9 @@ class TestReceipt:
             image_id=sample_receipt_data["image_id"],
             words=[ReceiptWord(**w) for w in sample_receipt_data["words"]],
             lines=[ReceiptLine(**l) for l in sample_receipt_data["lines"]],
-            sections=[ReceiptSection(**s) for s in sample_receipt_data["sections"]],
+            sections=[
+                ReceiptSection(**s) for s in sample_receipt_data["sections"]
+            ],
             metadata=sample_receipt_data["metadata"],
             created_at=sample_receipt_data["created_at"],
             updated_at=sample_receipt_data["updated_at"],
@@ -438,7 +474,9 @@ class TestReceipt:
             image_id=sample_receipt_data["image_id"],
             words=[ReceiptWord(**w) for w in sample_receipt_data["words"]],
             lines=[ReceiptLine(**l) for l in sample_receipt_data["lines"]],
-            sections=[ReceiptSection(**s) for s in sample_receipt_data["sections"]],
+            sections=[
+                ReceiptSection(**s) for s in sample_receipt_data["sections"]
+            ],
             metadata=sample_receipt_data["metadata"],
             created_at=sample_receipt_data["created_at"],
             updated_at=sample_receipt_data["updated_at"],
@@ -455,7 +493,9 @@ class TestReceipt:
             image_id=sample_receipt_data["image_id"],
             words=[ReceiptWord(**w) for w in sample_receipt_data["words"]],
             lines=[ReceiptLine(**l) for l in sample_receipt_data["lines"]],
-            sections=[ReceiptSection(**s) for s in sample_receipt_data["sections"]],
+            sections=[
+                ReceiptSection(**s) for s in sample_receipt_data["sections"]
+            ],
             metadata=sample_receipt_data["metadata"],
             created_at=sample_receipt_data["created_at"],
             updated_at=sample_receipt_data["updated_at"],
@@ -472,7 +512,9 @@ class TestReceipt:
             image_id=sample_receipt_data["image_id"],
             words=[ReceiptWord(**w) for w in sample_receipt_data["words"]],
             lines=[ReceiptLine(**l) for l in sample_receipt_data["lines"]],
-            sections=[ReceiptSection(**s) for s in sample_receipt_data["sections"]],
+            sections=[
+                ReceiptSection(**s) for s in sample_receipt_data["sections"]
+            ],
             metadata=sample_receipt_data["metadata"],
             created_at=sample_receipt_data["created_at"],
             updated_at=sample_receipt_data["updated_at"],
@@ -488,7 +530,9 @@ class TestReceipt:
             image_id=sample_receipt_data["image_id"],
             words=[ReceiptWord(**w) for w in sample_receipt_data["words"]],
             lines=[ReceiptLine(**l) for l in sample_receipt_data["lines"]],
-            sections=[ReceiptSection(**s) for s in sample_receipt_data["sections"]],
+            sections=[
+                ReceiptSection(**s) for s in sample_receipt_data["sections"]
+            ],
             metadata=sample_receipt_data["metadata"],
             created_at=sample_receipt_data["created_at"],
             updated_at=sample_receipt_data["updated_at"],
@@ -507,7 +551,9 @@ class TestReceipt:
             image_id=sample_receipt_data["image_id"],
             words=[ReceiptWord(**w) for w in sample_receipt_data["words"]],
             lines=[ReceiptLine(**l) for l in sample_receipt_data["lines"]],
-            sections=[ReceiptSection(**s) for s in sample_receipt_data["sections"]],
+            sections=[
+                ReceiptSection(**s) for s in sample_receipt_data["sections"]
+            ],
             metadata=sample_receipt_data["metadata"],
             created_at=sample_receipt_data["created_at"],
             updated_at=sample_receipt_data["updated_at"],
@@ -522,7 +568,9 @@ class TestReceipt:
             image_id=sample_receipt_data["image_id"],
             words=[ReceiptWord(**w) for w in sample_receipt_data["words"]],
             lines=[ReceiptLine(**l) for l in sample_receipt_data["lines"]],
-            sections=[ReceiptSection(**s) for s in sample_receipt_data["sections"]],
+            sections=[
+                ReceiptSection(**s) for s in sample_receipt_data["sections"]
+            ],
             metadata=sample_receipt_data["metadata"],
             created_at=sample_receipt_data["created_at"],
             updated_at=sample_receipt_data["updated_at"],
@@ -537,7 +585,9 @@ class TestReceipt:
             image_id=sample_receipt_data["image_id"],
             words=[ReceiptWord(**w) for w in sample_receipt_data["words"]],
             lines=[ReceiptLine(**l) for l in sample_receipt_data["lines"]],
-            sections=[ReceiptSection(**s) for s in sample_receipt_data["sections"]],
+            sections=[
+                ReceiptSection(**s) for s in sample_receipt_data["sections"]
+            ],
             metadata=sample_receipt_data["metadata"],
             created_at=sample_receipt_data["created_at"],
             updated_at=sample_receipt_data["updated_at"],

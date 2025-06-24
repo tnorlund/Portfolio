@@ -15,6 +15,7 @@ It includes functionality to:
 This script supports agentic document labeling and validation pipelines
 by facilitating scalable embedding of labeled receipt tokens.
 """
+
 import json
 from datetime import datetime, timezone
 from pathlib import Path

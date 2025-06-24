@@ -1,20 +1,19 @@
 import re
-from rapidfuzz.fuzz import partial_ratio, ratio
 from datetime import datetime, timezone
 
+from rapidfuzz.fuzz import partial_ratio, ratio
+from receipt_dynamo.entities import (
+    ReceiptMetadata,
+    ReceiptWord,
+    ReceiptWordLabel,
+)
 
 from receipt_label.label_validation.data import LabelValidationResult
 from receipt_label.label_validation.utils import (
-    pinecone_id_from_label,
     normalize_text,
+    pinecone_id_from_label,
 )
 from receipt_label.utils import get_clients
-from receipt_dynamo.entities import (
-    ReceiptWord,
-    ReceiptWordLabel,
-    ReceiptMetadata,
-)
-
 
 _, _, pinecone_index = get_clients()
 

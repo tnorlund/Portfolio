@@ -243,7 +243,7 @@ def validate_match_with_gpt(receipt_fields: dict, google_place: dict) -> dict:
         ],
         functions=functions,
         function_call={"name": "validateMatch"},
-        timeout=OPENAI_TIMEOUT_SECONDS
+        timeout=OPENAI_TIMEOUT_SECONDS,
     )
 
     result = {
@@ -533,7 +533,7 @@ def infer_merchant_with_gpt(raw_text: List[str], extracted_dict: dict) -> dict:
         ],
         functions=functions,
         function_call={"name": "inferMerchant"},
-        timeout=OPENAI_TIMEOUT_SECONDS
+        timeout=OPENAI_TIMEOUT_SECONDS,
     )
 
     # Parse function call result

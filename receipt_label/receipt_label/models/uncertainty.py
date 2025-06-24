@@ -1,6 +1,7 @@
-from typing import Dict, List, Union, Literal, Any
-from decimal import Decimal, InvalidOperation
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
+from typing import Any, Dict, List, Literal, Union
+
 from .receipt import ReceiptLine
 
 
@@ -16,7 +17,9 @@ def ensure_decimal(value: Any) -> Decimal:
             clean_value = value.replace("$", "").replace(",", "").strip()
             return Decimal(clean_value)
         except InvalidOperation as e:
-            raise ValueError(f"Could not convert '{value}' to Decimal: {str(e)}")
+            raise ValueError(
+                f"Could not convert '{value}' to Decimal: {str(e)}"
+            )
     raise ValueError(f"Cannot convert type {type(value)} to Decimal")
 
 
@@ -41,7 +44,9 @@ class MultipleAmountsUncertainty:
             )
 
         if not isinstance(self.amounts, list):
-            raise ValueError(f"amounts must be a list, got {type(self.amounts)}")
+            raise ValueError(
+                f"amounts must be a list, got {type(self.amounts)}"
+            )
         try:
             self.amounts = ensure_decimal_list(self.amounts)
         except ValueError as e:
@@ -104,5 +109,7 @@ class TotalMismatchUncertainty:
 
 # Type alias for all possible uncertainty types
 UncertaintyItem = Union[
-    MultipleAmountsUncertainty, MissingComponentUncertainty, TotalMismatchUncertainty
+    MultipleAmountsUncertainty,
+    MissingComponentUncertainty,
+    TotalMismatchUncertainty,
 ]

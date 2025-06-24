@@ -4,16 +4,17 @@ It handles different combinations of available data (address, phone, url, date) 
 appropriate validation and fallback strategies.
 """
 
-from typing import List, Dict, Optional, Tuple, Set
-from dataclasses import dataclass
-from enum import Enum
 import logging
-import requests
 import re
-from receipt_dynamo.entities.places_cache import PlacesCache
-from datetime import datetime, timezone
 import time
 import traceback
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from enum import Enum
+from typing import Dict, List, Optional, Set, Tuple
+
+import requests
+from receipt_dynamo.entities.places_cache import PlacesCache
 
 from receipt_label.utils import get_clients
 

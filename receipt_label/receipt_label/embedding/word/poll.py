@@ -18,6 +18,7 @@ Functions in this module perform the following tasks:
 This supports scalable, event-driven processing of large embedding jobs in a
 distributed receipt labeling and validation workflow.
 """
+
 import json
 import re
 from typing import List
@@ -292,9 +293,9 @@ def upsert_embeddings_to_pinecone(  # pylint: disable=too-many-statements
         if auto_suggestions:
             # assume the last‑added pending label is the one your LLM just
             # suggested
-            last = sorted(
-                auto_suggestions, key=lambda l: l.timestamp_added
-            )[-1]
+            last = sorted(auto_suggestions, key=lambda l: l.timestamp_added)[
+                -1
+            ]
             label_confidence = getattr(
                 last, "confidence", None
             )  # if you store it on the label
@@ -315,8 +316,7 @@ def upsert_embeddings_to_pinecone(  # pylint: disable=too-many-statements
             if lbl.validation_status == ValidationStatus.VALID.value
         ]
         label_validated_at = (
-            sorted(valids, key=lambda l: l.timestamp_added)[-1]
-            .timestamp_added
+            sorted(valids, key=lambda l: l.timestamp_added)[-1].timestamp_added
             if valids
             else None
         )
@@ -333,6 +333,7 @@ def upsert_embeddings_to_pinecone(  # pylint: disable=too-many-statements
         from receipt_label.embedding.word.submit import (  # pylint: disable=import-outside-toplevel
             _format_word_context_embedding_input,
         )
+
         _embedding = _format_word_context_embedding_input(target_word, words)
         left_text, right_text = _parse_left_right_from_formatted(_embedding)
 

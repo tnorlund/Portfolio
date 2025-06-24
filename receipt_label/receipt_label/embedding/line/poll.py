@@ -18,6 +18,7 @@ Functions in this module perform the following tasks:
 This supports scalable, event-driven processing of line embedding jobs for
 receipt section classification.
 """
+
 import json
 import re
 from typing import List
