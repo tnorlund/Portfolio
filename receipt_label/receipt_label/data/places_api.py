@@ -52,7 +52,7 @@ class PlacesAPI:
             client_manager = get_client_manager()
         self.client_manager = client_manager
         logger.debug(
-            f"Initializing Places API with key: {api_key[:6]}..."
+            f"Initializing Places API with key: {api_key[:6] if api_key else 'None'}..."
         )  # Only show first 6 chars for security
 
     def _get_cached_place(

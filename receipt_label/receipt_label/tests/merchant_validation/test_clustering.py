@@ -1,6 +1,12 @@
 """Unit tests for merchant metadata clustering."""
 
+# Set up test environment before imports
+import sys
 import os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from test_helpers import setup_test_environment
+setup_test_environment()
+
 import uuid as uuid_module
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -8,9 +14,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from receipt_dynamo.entities import ReceiptMetadata
-
-# Set environment variable before imports
-os.environ.setdefault("DYNAMO_TABLE_NAME", "test")
 
 
 def _build_metadata(
@@ -44,10 +47,7 @@ def _build_metadata(
     )
 
 
-# Mock the agents module at module level to avoid import errors
-mock_agents = MagicMock()
-with patch.dict("sys.modules", {"agents": mock_agents}):
-    from receipt_label.merchant_validation.clustering import cluster_by_metadata
+from receipt_label.merchant_validation.clustering import cluster_by_metadata
 
 
 def test_cluster_by_metadata_groups_similar_records() -> None:
