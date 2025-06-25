@@ -1,43 +1,114 @@
+"""Date label validation logic."""
+
+# pylint: disable=duplicate-code
+
 import re
-from rapidfuzz.fuzz import partial_ratio, ratio
-from datetime import datetime, timezone
+from datetime import datetime
+from typing import Optional
 
-
-from receipt_label.label_validation.data import LabelValidationResult
-from receipt_label.label_validation.utils import (
-    pinecone_id_from_label,
-    normalize_text,
-)
-from receipt_label.utils import get_clients
-from receipt_dynamo.entities import (
+from receipt_dynamo.entities import (  # type: ignore
     ReceiptWord,
     ReceiptWordLabel,
 )
 
+from receipt_label.label_validation.data import LabelValidationResult
+from receipt_label.label_validation.utils import pinecone_id_from_label
+from receipt_label.utils import get_client_manager
+from receipt_label.utils.client_manager import ClientManager
 
-_, _, pinecone_index = get_clients()
+# Date format patterns
+DATE_SLASH_FORMAT = r"\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b"
+DATE_ISO_FORMAT = r"\b\d{4}[/-]\d{1,2}[/-]\d{1,2}\b"
+DATE_ISO_WITH_Z = r"\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\b"
+DATE_ISO_WITH_TZ = r"\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}\b"
+DATE_WITH_TZ_ABBR = r"\b\d{4}-\d{2}-\d{2}\s+[A-Z]{3,4}\b"
+DATE_DD_MMM_YYYY = (
+    r"\b\d{1,2}[/-]\s*"
+    r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*"
+    r"[/-]?\s*\d{2,4}\b"
+)
+DATE_MMM_DD_YYYY = (
+    r"\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*"
+    r"\s+\d{1,2},?\s*\d{2,4}\b"
+)
+DATE_DD_MMM_YYYY_ALT = (
+    r"\b\d{1,2}\s+"
+    r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*"
+    r"\s+\d{2,4}\b"
+)
 
 
-def _is_date(text: str) -> bool:
-    # Match MM/DD/YYYY, MM-DD-YYYY, YYYY-MM-DD, MM/YYYY, MM-YYYY
-    return bool(
-        re.search(
-            r"\b("
-            r"\d{1,2}[/-]\d{1,2}[/-]?\d{2,4}"  # MM/DD/YYYY or MM-DD-YYYY or MM/DD/YY
-            r"|"
-            r"\d{4}[/-]\d{1,2}[/-]?\d{1,2}"  # YYYY-MM-DD or YYYY/MM/DD
-            r"|"
-            r"\d{1,2}[/-]\d{4}"  # MM/YYYY or MM-YYYY
-            r")\b",
-            text.strip(),
-        )
+def _is_date(text: str) -> bool:  # pylint: disable=too-many-return-statements
+    """Return ``True`` if the text resembles a date."""
+
+    # Match various date formats including month names and ISO formats
+    patterns = [
+        DATE_SLASH_FORMAT,
+        DATE_ISO_FORMAT,
+        DATE_ISO_WITH_Z,
+        DATE_ISO_WITH_TZ,
+        DATE_WITH_TZ_ABBR,
+        DATE_DD_MMM_YYYY,
+        DATE_MMM_DD_YYYY,
+        DATE_DD_MMM_YYYY_ALT,
+    ]
+
+    # First check if it matches a pattern
+    if not any(
+        re.search(pattern, text.strip(), re.IGNORECASE) for pattern in patterns
+    ):
+        return False
+
+    # Check for partial dates that should be invalid (MM/YYYY without day)
+    if re.match(r"^\d{1,2}[/-]\d{4}$", text.strip()):
+        return False
+
+    # For numeric dates, validate the month/day values
+    # MM/DD/YYYY format
+    mm_dd_yyyy = re.search(
+        r"\b(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b", text.strip()
     )
+    if mm_dd_yyyy:
+        month, day, year = map(int, mm_dd_yyyy.groups())
+        if month > 12 or month < 1 or day > 31 or day < 1:
+            return False
+        # Check for February 30th and other invalid dates
+        try:
+            datetime(year, month, day)
+        except ValueError:
+            return False
+
+    # YYYY-MM-DD format
+    yyyy_mm_dd = re.search(
+        r"\b(\d{4})[/-](\d{1,2})[/-](\d{1,2})\b", text.strip()
+    )
+    if yyyy_mm_dd:
+        year, month, day = map(int, yyyy_mm_dd.groups())
+        if month > 12 or month < 1 or day > 31 or day < 1:
+            return False
+        try:
+            datetime(year, month, day)
+        except ValueError:
+            return False
+
+    # ISO format validation
+    iso_match = re.search(r"\b(\d{4})-(\d{2})-(\d{2})T", text.strip())
+    if iso_match:
+        year, month, day = map(int, iso_match.groups())
+        try:
+            datetime(year, month, day)
+        except ValueError:
+            return False
+
+    return True
 
 
 # Merge left and right words with current word to create date candidates
 def _merged_date_candidates_from_text(
     word: ReceiptWord, metadata: dict
 ) -> list[str]:
+    """Return possible date strings from the word and its neighbors."""
+
     current = word.text.strip()
     variants = [current]
 
@@ -57,8 +128,17 @@ def _merged_date_candidates_from_text(
 
 
 def validate_date(
-    word: ReceiptWord, label: ReceiptWordLabel
+    word: ReceiptWord,
+    label: ReceiptWordLabel,
+    client_manager: Optional[ClientManager] = None,
 ) -> LabelValidationResult:
+    """Validate that a word is a date using Pinecone neighbors."""
+
+    # Get pinecone index from client manager
+    if client_manager is None:
+        client_manager = get_client_manager()
+    pinecone_index = client_manager.pinecone
+
     pinecone_id = pinecone_id_from_label(label)
     fetch_response = pinecone_index.fetch(ids=[pinecone_id], namespace="words")
     vector_data = fetch_response.vectors.get(pinecone_id)

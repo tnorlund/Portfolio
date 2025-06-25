@@ -1,9 +1,9 @@
-import os
-import logging
 import json
-from receipt_dynamo import DynamoClient
+import logging
+import os
 import random
 
+from receipt_dynamo import DynamoClient
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)

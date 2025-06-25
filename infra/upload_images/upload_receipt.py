@@ -1,8 +1,13 @@
-import os, json, uuid, boto3, urllib.parse
+import json
+import os
+import urllib.parse
+import uuid
 from datetime import datetime
+
+import boto3
 from receipt_dynamo import DynamoClient
+from receipt_dynamo.constants import OCRJobType, OCRStatus
 from receipt_dynamo.entities import OCRJob
-from receipt_dynamo.constants import OCRStatus, OCRJobType
 from receipt_upload.utils import send_message_to_sqs
 
 BUCKET_NAME = os.environ["BUCKET_NAME"]
@@ -24,7 +29,11 @@ def handler(event, _):
     # 1. presign PUT
     url = s3.generate_presigned_url(
         "put_object",
-        Params={"Bucket": BUCKET_NAME, "Key": key, "ContentType": content_type},
+        Params={
+            "Bucket": BUCKET_NAME,
+            "Key": key,
+            "ContentType": content_type,
+        },
         ExpiresIn=900,
     )
 

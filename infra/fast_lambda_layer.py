@@ -24,8 +24,8 @@ import pulumi_aws as aws
 import pulumi_aws.codepipeline as codepipeline
 import pulumi_command as command
 from pulumi import ComponentResource, Output
-from utils import _find_project_root
 
+from utils import _find_project_root
 
 PROJECT_DIR = _find_project_root()
 config = pulumi.Config("lambda-layer")

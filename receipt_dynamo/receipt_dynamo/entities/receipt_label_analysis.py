@@ -1,6 +1,6 @@
-from datetime import datetime
-from typing import Dict, List, Optional, Any, Tuple, Generator
 import json
+from datetime import datetime
+from typing import Any, Dict, Generator, List, Optional, Tuple
 
 
 class ReceiptLabelAnalysis:

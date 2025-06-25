@@ -1,19 +1,10 @@
-from uuid import uuid4
-from datetime import datetime, timezone
-import json
-import os
-import math
-import boto3
-from openai.resources.batches import Batch
-from openai.types import FileObject
-from pathlib import Path
-
 """
 submit.py
 
 This module handles the preparation, formatting, submission, and tracking of
-embedding batch jobs for receipt lines to OpenAI's Batch API. It includes functionality to:
+embedding batch jobs for receipt lines to OpenAI's Batch API.
 
+It includes functionality to:
 - Fetch ReceiptLine entities from DynamoDB
 - Format and structure the data into OpenAI-compatible embedding requests
 - Write these requests to an NDJSON file
@@ -25,11 +16,19 @@ This script supports agentic document processing by facilitating scalable
 embedding of receipt lines for section classification.
 """
 
-from receipt_dynamo.entities import ReceiptLine, BatchSummary
-from receipt_dynamo.constants import EmbeddingStatus
-from receipt_label.utils import get_clients
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+from uuid import uuid4
 
-dynamo_client, openai_client, _ = get_clients()
+import boto3
+from openai.resources.batches import Batch
+from openai.types import FileObject
+from receipt_dynamo.constants import EmbeddingStatus
+from receipt_dynamo.entities import BatchSummary, ReceiptLine
+
+from receipt_label.utils import get_client_manager
+from receipt_label.utils.client_manager import ClientManager
 
 
 def generate_batch_id() -> str:
@@ -37,9 +36,11 @@ def generate_batch_id() -> str:
     return str(uuid4())
 
 
-def list_receipt_lines_with_no_embeddings() -> list[ReceiptLine]:
+def list_receipt_lines_with_no_embeddings(client_manager: ClientManager = None) -> list[ReceiptLine]:
     """Fetch all ReceiptLine items with embedding_status == NONE."""
-    return dynamo_client.listReceiptLinesByEmbeddingStatus(
+    if client_manager is None:
+        client_manager = get_client_manager()
+    return client_manager.dynamo.listReceiptLinesByEmbeddingStatus(
         EmbeddingStatus.NONE
     )
 
@@ -50,9 +51,11 @@ def chunk_into_line_embedding_batches(
     """Chunk the lines into embedding batches by image and receipt.
 
     Returns:
-        dict mapping image_id (str) to dict mapping receipt_id (int) to list of ReceiptLine.
+        dict mapping image_id (str) to dict mapping receipt_id (int) to
+        list of ReceiptLine.
     """
-    # Build a mapping image_id -> receipt_id -> dict[line_id -> ReceiptLine] for uniqueness
+    # Build a mapping image_id -> receipt_id -> dict[line_id -> ReceiptLine]
+    # for uniqueness
     lines_by_image: dict[str, dict[int, dict[int, ReceiptLine]]] = {}
     for line in lines:
         image_dict = lines_by_image.setdefault(line.image_id, {})
@@ -112,7 +115,7 @@ def serialize_receipt_lines(
             filepath = Path(
                 f"/tmp/{image_id}_{receipt_id}_lines_{uuid4()}.ndjson"
             )
-            with filepath.open("w") as f:
+            with filepath.open("w", encoding="utf-8") as f:
                 f.write(ndjson_content)
             # Keep metadata about which receipt this file represents
             results.append(
@@ -156,15 +159,17 @@ def download_serialized_lines(s3_bucket: str, s3_key: str) -> Path:
 def deserialize_receipt_lines(filepath: Path) -> list[ReceiptLine]:
     """Deserialize an NDJSON file containing serialized ReceiptLines."""
     lines = []
-    with open(filepath, "r") as f:
+    with open(filepath, "r", encoding="utf-8") as f:
         for line in f:
             lines.append(ReceiptLine(**json.loads(line)))
     return lines
 
 
-def query_receipt_lines(image_id: str, receipt_id: int) -> list[ReceiptLine]:
+def query_receipt_lines(image_id: str, receipt_id: int, client_manager: ClientManager = None) -> list[ReceiptLine]:
     """Query the ReceiptLines from DynamoDB."""
-    _, lines, _, _, _, _ = dynamo_client.getReceiptDetails(
+    if client_manager is None:
+        client_manager = get_client_manager()
+    _, lines, _, _, _, _ = client_manager.dynamo.getReceiptDetails(
         image_id, receipt_id
     )
     return lines
@@ -173,22 +178,26 @@ def query_receipt_lines(image_id: str, receipt_id: int) -> list[ReceiptLine]:
 def write_ndjson(batch_id: str, input_data: list[dict]) -> Path:
     """Write the OpenAI embedding input to an NDJSON file."""
     filepath = Path(f"/tmp/{batch_id}.ndjson")
-    with filepath.open("w") as f:
+    with filepath.open("w", encoding="utf-8") as f:
         for row in input_data:
             f.write(json.dumps(row) + "\n")
     return filepath
 
 
-def upload_to_openai(filepath: Path) -> FileObject:
+def upload_to_openai(filepath: Path, client_manager: ClientManager = None) -> FileObject:
     """Upload the NDJSON file to OpenAI."""
-    return openai_client.files.create(
+    if client_manager is None:
+        client_manager = get_client_manager()
+    return client_manager.openai.files.create(
         file=filepath.open("rb"), purpose="batch"
     )
 
 
-def submit_openai_batch(file_id: str) -> Batch:
+def submit_openai_batch(file_id: str, client_manager: ClientManager = None) -> Batch:
     """Submit a batch embedding job to OpenAI using the uploaded file."""
-    return openai_client.batches.create(
+    if client_manager is None:
+        client_manager = get_client_manager()
+    return client_manager.openai.batches.create(
         input_file_id=file_id,
         endpoint="/v1/embeddings",
         completion_window="24h",
@@ -210,18 +219,19 @@ def create_batch_summary(
     line_count = 0
 
     # 2) Read and parse each line of the NDJSON file
-    with open(file_path, "r") as f:
+    with open(file_path, "r", encoding="utf-8") as f:
         for line in f:
             line_count += 1
             try:
                 obj = json.loads(line)
                 custom_id = obj.get("custom_id", "")
                 parts = custom_id.split("#")
-                # parts: ["IMAGE", image_id, "RECEIPT", receipt_id, "LINE", line_id]
+                # parts: ["IMAGE", image_id, "RECEIPT", receipt_id,
+                #         "LINE", line_id]
                 image_id = parts[1]
                 receipt_id = int(parts[3])
                 receipt_refs.add((image_id, receipt_id))
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 continue
 
     # 3) Build and return the BatchSummary
@@ -236,14 +246,18 @@ def create_batch_summary(
     )
 
 
-def add_batch_summary(summary: BatchSummary) -> None:
+def add_batch_summary(summary: BatchSummary, client_manager: ClientManager = None) -> None:
     """Write the BatchSummary entity to DynamoDB."""
-    dynamo_client.addBatchSummary(summary)
+    if client_manager is None:
+        client_manager = get_client_manager()
+    client_manager.dynamo.addBatchSummary(summary)
 
 
-def update_line_embedding_status(lines: list[ReceiptLine]) -> None:
+def update_line_embedding_status(lines: list[ReceiptLine], client_manager: ClientManager = None) -> None:
     """Update the Embedding Status of the Lines"""
+    if client_manager is None:
+        client_manager = get_client_manager()
     for line in lines:
         # Set to the string value so GSI1PK is updated correctly
         line.embedding_status = EmbeddingStatus.PENDING.value
-    dynamo_client.updateReceiptLines(lines)
+    client_manager.dynamo.updateReceiptLines(lines)

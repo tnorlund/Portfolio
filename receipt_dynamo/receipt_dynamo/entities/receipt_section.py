@@ -1,12 +1,12 @@
 from datetime import datetime
-from typing import Generator, Optional, Tuple, Any
+from typing import Any, Generator, Optional, Tuple
 
+from receipt_dynamo.constants import EmbeddingStatus, SectionType
 from receipt_dynamo.entities.util import (
     _format_float,
     _repr_str,
     assert_valid_uuid,
 )
-from receipt_dynamo.constants import EmbeddingStatus, SectionType
 
 
 class ReceiptSection:
