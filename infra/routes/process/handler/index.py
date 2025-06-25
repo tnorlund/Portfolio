@@ -18,9 +18,7 @@ def handler(event, _):
         if "table_name" not in query_params:
             return {
                 "statusCode": 400,
-                "body": json.dumps(
-                    {"body": "Missing required parameter 'table_name'"}
-                ),
+                "body": json.dumps({"body": "Missing required parameter 'table_name'"}),
             }
 
         if "raw_bucket_name" not in query_params:
@@ -92,9 +90,7 @@ def handler(event, _):
 
         try:
             # You can adjust max_workers as needed
-            with concurrent.futures.ThreadPoolExecutor(
-                max_workers=5
-            ) as executor:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
                 # executor.map runs each UUID in parallel threads
                 list(executor.map(process_one_uuid, uuids))
 

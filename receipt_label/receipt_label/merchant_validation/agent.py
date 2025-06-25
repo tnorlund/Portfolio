@@ -13,6 +13,7 @@ from concurrent.futures import TimeoutError as FutureTimeoutError
 from typing import Any, Dict, List, Optional, Tuple
 
 from agents import Agent, Runner, function_tool
+
 from receipt_dynamo.constants import ValidationMethod
 
 logger = logging.getLogger(__name__)
@@ -29,9 +30,7 @@ LOG_AGENT_FUNCTION_CALLS = (
 class MerchantValidationAgent:
     """Encapsulates the merchant validation agent and its tools."""
 
-    def __init__(
-        self, google_places_api_key: str, model: str = "gpt-3.5-turbo"
-    ):
+    def __init__(self, google_places_api_key: str, model: str = "gpt-3.5-turbo"):
         """
         Initialize the merchant validation agent.
 
@@ -96,9 +95,7 @@ You may call the following tools in any order:
             """Search Google Places by address and return the full place details payload."""
             from receipt_label.data.places_api import PlacesAPI
 
-            return PlacesAPI(self.google_places_api_key).search_by_address(
-                address
-            )
+            return PlacesAPI(self.google_places_api_key).search_by_address(address)
 
         return search_by_address
 
@@ -130,9 +127,7 @@ You may call the following tools in any order:
             """Text‐search for a business name, with optional location bias."""
             from receipt_label.data.places_api import PlacesAPI
 
-            return PlacesAPI(self.google_places_api_key).search_by_text(
-                query, lat, lng
-            )
+            return PlacesAPI(self.google_places_api_key).search_by_text(query, lat, lng)
 
         return search_by_text
 
@@ -304,9 +299,7 @@ You may call the following tools in any order:
             if hasattr(raw, "name") and raw.name == "tool_return_metadata":
                 try:
                     metadata = json.loads(raw.arguments)
-                    logger.info(
-                        f"Successfully parsed metadata on attempt {attempt}"
-                    )
+                    logger.info(f"Successfully parsed metadata on attempt {attempt}")
                 except json.JSONDecodeError as e:
                     logger.error(
                         f"Failed to parse metadata JSON on attempt {attempt}: {e}"
