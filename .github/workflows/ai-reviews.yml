@@ -19,6 +19,9 @@ jobs:
     name: Fast Tests & Validation
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       tests_passed: ${{ steps.tests.outputs.passed }}
       changes_detected: ${{ steps.changes.outputs.detected }}
