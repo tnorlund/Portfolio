@@ -19,10 +19,43 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      receipt_dynamo_changed: ${{ steps.changes.outputs.receipt_dynamo }}
+      receipt_label_changed: ${{ steps.changes.outputs.receipt_label }}
+      portfolio_changed: ${{ steps.changes.outputs.portfolio }}
+      infra_changed: ${{ steps.changes.outputs.infra }}
+      any_code_changed: ${{ steps.changes.outputs.all_code }}
     steps:
       - uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0  # Need full history for change detection
+      
+      - name: Detect changed files
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            receipt_dynamo:
+              - 'receipt_dynamo/**'
+              - 'conftest.py'
+              - 'pytest*.ini'
+            receipt_label:
+              - 'receipt_label/**'
+              - 'conftest.py'
+              - 'pytest*.ini'
+            infra:
+              - 'infra/**'
+            portfolio:
+              - 'portfolio/**'
+            scripts:
+              - 'scripts/**'
+            workflows:
+              - '.github/workflows/**'
+            all_code:
+              - '**/*.py'
+              - '**/*.js'
+              - '**/*.ts'
       
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -49,6 +82,7 @@ jobs:
           isort --check-only receipt_dynamo receipt_label infra || echo "::warning::Some imports need isort formatting"
       
       - name: Set up Node.js
+        if: steps.changes.outputs.portfolio == 'true'
         uses: actions/setup-node@v3
         with:
           node-version: 20
@@ -56,6 +90,7 @@ jobs:
           cache-dependency-path: 'portfolio/package-lock.json'
       
       - name: Check TypeScript/ESLint
+        if: steps.changes.outputs.portfolio == 'true'
         working-directory: portfolio
         run: |
           npm ci --prefer-offline
@@ -67,6 +102,11 @@ jobs:
     name: Python Tests (${{ matrix.package }}-${{ matrix.test_type }}${{ matrix.test_group && format('-{0}', matrix.test_group) || '' }})
     needs: fast-checks
     runs-on: ubuntu-latest
+    if: |
+      (matrix.package == 'receipt_dynamo' && needs.fast-checks.outputs.receipt_dynamo_changed == 'true') ||
+      (matrix.package == 'receipt_label' && needs.fast-checks.outputs.receipt_label_changed == 'true') ||
+      needs.fast-checks.outputs.workflows == 'true' ||
+      github.event_name == 'schedule'
     strategy:
       matrix:
         include:
@@ -107,19 +147,21 @@ jobs:
           python-version: '3.12'
       
       - name: Cache pip packages and virtual environment
-        uses: actions/cache@v3
+        uses: actions/cache@v4  # Use latest cache action
         with:
           path: |
             ~/.cache/pip
             ${{ env.pythonLocation }}
             ~/.local/lib/python3.12/site-packages
-          key: ${{ runner.os }}-python-${{ matrix.package }}-${{ hashFiles(format('{0}/pyproject.toml', matrix.package), 'receipt_dynamo/pyproject.toml') }}
+            **/__pycache__
+            .pytest_cache/pytest-results
+          key: ${{ runner.os }}-python-v2-${{ matrix.package }}-${{ hashFiles(format('{0}/pyproject.toml', matrix.package), 'receipt_dynamo/pyproject.toml', 'conftest.py', 'pytest*.ini') }}
           restore-keys: |
-            ${{ runner.os }}-python-${{ matrix.package }}-
-            ${{ runner.os }}-python-
+            ${{ runner.os }}-python-v2-${{ matrix.package }}-
+            ${{ runner.os }}-python-v2-
       
       - name: Cache pytest results and coverage
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ${{ matrix.package }}/.pytest_cache
@@ -132,14 +174,16 @@ jobs:
       - name: Install package with optimizations
         run: |
           # Upgrade pip for faster installs
-          python -m pip install --upgrade pip wheel
+          python -m pip install --upgrade pip wheel --disable-pip-version-check
           
           # Check if packages are already cached
           if pip list | grep -q "pytest-xdist"; then
             echo "✓ Test dependencies already cached"
           else
             echo "Installing test dependencies..."
-            pip install pytest-xdist pytest-timeout psutil
+            # Use parallel installs and disable version checks for speed
+            pip install --no-deps pytest pytest-xdist pytest-timeout psutil moto boto3
+            pip install pytest pytest-xdist pytest-timeout psutil moto boto3 --disable-pip-version-check
           fi
           
           # Install receipt_dynamo first as it's a dependency for other packages
@@ -173,8 +217,19 @@ jobs:
       
       - name: Run tests (${{ matrix.test_type }}${{ matrix.test_group && format('-{0}', matrix.test_group) || '' }})
         run: |
-          # Use optimized test runner for better performance
-          # Split test_path into individual arguments using shell word splitting
+          # Use smart test runner that can skip unchanged tests
+          echo "🔍 Analyzing test dependencies and changes..."
+          
+          # First, try smart test selection (skip if no meaningful changes)
+          python scripts/smart_test_runner.py \
+            ${{ matrix.package }} \
+            ${{ matrix.test_path }} \
+            --dry-run
+          
+          # Then run with the optimized test runner
+          python scripts/smart_test_runner.py \
+            ${{ matrix.package }} \
+            ${{ matrix.test_path }} || \
           python scripts/run_tests_optimized.py \
             ${{ matrix.package }} \
             ${{ matrix.test_path }} \
