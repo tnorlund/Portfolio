@@ -147,3 +147,75 @@ more integrated approach would be:
 
 Tightening this feedback loop will allow retrieval‑augmented labeling and ensure
 Pinecone remains a shared source of truth for validation metadata.
+
+# Agentic Refactor
+
+## 1. How your refactor plan lines up with the agentic design we sketched earlier
+
+| Area                                                                                                              | Your current plan (excerpted from refactor_labeler.md) | Agent‑centric angle                                                                                                  | ✔ / ✘ |
+| ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- | ----- |
+| Recover missing components — implement ReceiptAnalyzer, LineItemProcessor, remove dead imports                    | Gives you working business logic again                 | These classes can become the tool layer that specialist agents call (analyze_structure, extract_line_items, etc.).   | ✔     |
+| Break down monolithic methods (label_receipt, process_receipt_by_id)                                              | Improves testability                                   | Each broken‑out helper naturally maps to a tool or guard‑rail function                                               | ✔     |
+| Replace print with logging                                                                                        | Production‑grade observability                         | Same logger will capture every agent tool call when you enable SDK tracing                                           | ✔     |
+| Pinecone integration roadmap — centralize client, use neighbors to suggest labels, write back validation metadata | —                                                      | Matches the WordLabelerAgent → ValidatorAgent workflow we discussed; Pinecone is the retrieval tool both agents need | ✔     |
+| Formatting & style fixes                                                                                          | Keeps linters/CICD green                               | No conflict; keep using black/ruff                                                                                   | ✔     |
+
+## 2. What could still be improved
+
+| Gap                                 | Why it matters                                      | Concrete next actions                                                                                                                                                                                                                    |
+| ----------------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Explicit agent boundaries           | ReceiptLabeler still both decides and acts.         | 1. Turn ReceiptLabeler.label_receipt() into a thin wrapper that hands off to Runner.run(TriageAgent, context).<br/>2. Move the heavy lifting (structure analysis, line‑item parsing) into separate @tool functions that the agents call. |
+| Guardrails not yet encoded          | Rule checks (totals, schema) aren't wired anywhere. | Implement them as SDK output guardrails (totals_balance_guardrail, date_range_guardrail, schema_guardrail) and attach to ValidatorAgent.                                                                                                 |
+| Second‑pass / bad‑example retrieval | Two‑pass strategy needs plumbing.                   | Add pinecone_bad_examples() tool and call it inside ValidatorAgent.on_final_output when confidence < 0.85.                                                                                                                               |
+| Streaming UX                        | Plan is code‑centric; user can't see progress.      | Re‑use the timeline component from the OpenAI demo: stream Runner.stream() events through API Gateway response‑streaming to Next.js.                                                                                                     |
+| Async & cold‑start latency          | label_receipt rebuilds clients every call.          | Make tool functions async, share clients via DI, pre‑warm the Agent Runner (or host on App Runner).                                                                                                                                      |
+| Testing & CI                        | "Comprehensive test suite" not yet fleshed out.     | Unit‑test each guard‑rail and tool; add an integration test that feeds an OCR blob into Runner.run() and asserts final Dynamo record; gate CI on these tests plus black/ruff.                                                            |
+| Security / PII handling             | Receipts may expose card numbers, addresses.        | Add an input guardrail that redacts PANs; encrypt DynamoDB labels column with KMS.                                                                                                                                                       |
+| Metrics & feedback loop             | No concrete quality measurements.                   | Log token, predicted_label, ground_truth, confidence to a lake; compute precision/recall nightly and alert when ValidatorAgent auto‑valid rate drops.                                                                                    |
+
+## 3. Updated high‑impact checklist (combines refactor + agents)
+
+| Priority | Task                                                              | Owner     | Notes    |
+| -------- | ----------------------------------------------------------------- | --------- | -------- |
+| 🔴 P0    | Split ReceiptLabeler into tools only; move routing to TriageAgent | BE        | 1‑2 days |
+| 🔴 P0    | Implement guardrails (totals_balance, schema, PII redaction)      | BE        | 0.5 day  |
+| 🟠 P1    | Add WordLabelerAgent & LabelValidatorAgent definitions            | ML        | 1 day    |
+| 🟠 P1    | Wrap Pinecone K‑NN & bad‑example queries into @tools              | ML        | 0.5 day  |
+| 🟡 P2    | Wire streaming Lambda ➜ /api/stream/[runId] in Next.js            | FE        | 1 day    |
+| 🟡 P2    | CI: pytest + black + ruff + SDK trace‑to‑X‑Ray export             | Dev‑Infra | 1 day    |
+| 🟢 P3    | Nightly fine‑tune + evaluation metrics pipeline                   | ML Ops    | 2 days   |
+
+## 4. Where to embed the new code
+
+```
+repo‑root/
+├─ agents/
+│  ├─ triage.py # TriageAgent
+│  ├─ word_labeler.py # WordLabelerAgent
+│  ├─ validator.py # LabelValidatorAgent
+│  └─ human_review.py # HumanReviewAgent
+├─ tools/
+│  ├─ receipt_structure.py # wraps new ReceiptAnalyzer
+│  ├─ line_item.py # wraps LineItemProcessor
+│  ├─ pinecone_knn.py
+│  └─ pinecone_bad_examples.py
+├─ guardrails/
+│  ├─ totals_balance.py
+│  ├─ schema.py
+│  └─ pii_redaction.py
+└─ receipt_label/
+   └─ core/
+      └─ labeler.py # now just orchestrates tools (no business logic)
+```
+
+## 5. Bottom line
+
+Your current refactor plan is stage 0 of the agentic migration.
+
+**Next steps:**
+
+1. Carve out the tool layer from ReceiptLabeler
+2. Wire Triage → WordLabeler → Validator agents around those tools
+3. Drop in guardrails for safety and schema enforcement
+
+Once these land, you'll have a robust, streaming, self‑improving labeling factory—and you'll never need another 1,400‑line file again.
