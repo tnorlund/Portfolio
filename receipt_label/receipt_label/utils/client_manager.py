@@ -7,10 +7,10 @@ This module provides a cleaner way to manage external service clients
 
 import os
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 from openai import OpenAI
-from pinecone import Index, Pinecone
+from pinecone import Pinecone
 
 from receipt_dynamo import DynamoClient
 
@@ -61,7 +61,7 @@ class ClientManager:
         self.config = config
         self._dynamo_client: Optional[DynamoClient] = None
         self._openai_client: Optional[OpenAI] = None
-        self._pinecone_index: Optional[Index] = None
+        self._pinecone_index: Optional[Any] = None  # Pinecone Index
         self._usage_tracker: Optional[AIUsageTracker] = None
 
     @property
@@ -101,7 +101,7 @@ class ClientManager:
         return self._openai_client
 
     @property
-    def pinecone(self) -> Index:
+    def pinecone(self) -> Any:  # Returns Pinecone Index
         """Get or create Pinecone index."""
         if self._pinecone_index is None:
             pc = Pinecone(api_key=self.config.pinecone_api_key)
@@ -110,7 +110,7 @@ class ClientManager:
             )
         return self._pinecone_index
 
-    def get_all_clients(self) -> tuple[DynamoClient, OpenAI, Index]:
+    def get_all_clients(self) -> tuple[DynamoClient, OpenAI, Any]:
         """
         Get all clients as a tuple (for backward compatibility).
 
