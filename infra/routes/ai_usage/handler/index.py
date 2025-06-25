@@ -130,6 +130,9 @@ def query_ai_usage_metrics(
                 ExclusiveStartKey=response["LastEvaluatedKey"],
             )
             items.extend(response.get("Items", []))
+        
+        # Add items to metrics list
+        metrics.extend(items)
     else:
         # Query all services by date range
         services = ["openai", "anthropic", "google_places"]

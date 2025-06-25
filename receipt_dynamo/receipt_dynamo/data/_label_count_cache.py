@@ -53,21 +53,12 @@ class _LabelCountCache(DynamoClientProtocol):
                 while unprocessed.get(self.table_name):
                     # If there are unprocessed items, retry them
                     response = self._client.batch_write_item(RequestItems=unprocessed)
-        except ClientError:
-            raise ValueError("Could not add label count caches to the database")
-
-            self._client.batch_write_item(
-                RequestItems={
-                    self.table_name: [
-                        {"PutRequest": {"Item": item.to_item()}} for item in items
-                    ],
-                },
-            )
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code == "ConditionalCheckFailedException":
+                # Note: 'item' is not defined here, using generic message
                 raise ValueError(
-                    f"LabelCountCache for label {item.label} already exists"
+                    "LabelCountCache already exists for one or more labels"
                 ) from e
             else:
                 raise Exception(

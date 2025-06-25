@@ -228,7 +228,9 @@ def convert_to_dynamodb_format(data: Dict) -> Dict:
     """Convert Python dict to DynamoDB format."""
     result = {}
     for key, value in data.items():
-        if isinstance(value, str):
+        if value is None:
+            result[key] = {"NULL": True}
+        elif isinstance(value, str):
             result[key] = {"S": value}
         elif isinstance(value, (int, float)):
             result[key] = {"N": str(value)}
@@ -238,6 +240,25 @@ def convert_to_dynamodb_format(data: Dict) -> Dict:
             result[key] = {"M": convert_to_dynamodb_format(value)}
         elif isinstance(value, list):
             result[key] = {
-                "L": [convert_to_dynamodb_format({"item": v})["item"] for v in value]
+                "L": [_convert_value_to_dynamodb(v) for v in value]
             }
     return result
+
+
+def _convert_value_to_dynamodb(value):
+    """Convert a single value to DynamoDB format."""
+    if value is None:
+        return {"NULL": True}
+    elif isinstance(value, str):
+        return {"S": value}
+    elif isinstance(value, (int, float)):
+        return {"N": str(value)}
+    elif isinstance(value, bool):
+        return {"BOOL": value}
+    elif isinstance(value, dict):
+        return {"M": convert_to_dynamodb_format(value)}
+    elif isinstance(value, list):
+        return {"L": [_convert_value_to_dynamodb(v) for v in value]}
+    else:
+        # Fallback to string representation
+        return {"S": str(value)}

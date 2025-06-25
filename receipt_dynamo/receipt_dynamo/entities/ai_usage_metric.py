@@ -7,10 +7,10 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Dict, List, Optional
 
-from .util import DocumentEntity, from_dynamodb_value, to_dynamodb_value
+from .util import _repr_str, assert_type
 
 
-class AIUsageMetric(DocumentEntity):
+class AIUsageMetric:
     """
     Tracks usage and costs for AI service calls (OpenAI, Anthropic, Google Places).
 
@@ -175,9 +175,48 @@ class AIUsageMetric(DocumentEntity):
         if self.error:
             item["error"] = {"S": self.error}
         if self.metadata:
-            item["metadata"] = to_dynamodb_value(self.metadata)
+            item["metadata"] = self._to_dynamodb_value(self.metadata)
 
         return item
+
+    def _to_dynamodb_value(self, value):
+        """Convert a Python value to DynamoDB format."""
+        if value is None:
+            return {"NULL": True}
+        elif isinstance(value, bool):
+            return {"BOOL": value}
+        elif isinstance(value, int) or isinstance(value, float):
+            return {"N": str(value)}
+        elif isinstance(value, str):
+            return {"S": value}
+        elif isinstance(value, dict):
+            return {"M": {k: self._to_dynamodb_value(v) for k, v in value.items()}}
+        elif isinstance(value, list):
+            return {"L": [self._to_dynamodb_value(v) for v in value]}
+        else:
+            return {"S": str(value)}
+
+    @classmethod
+    def _from_dynamodb_value(cls, value):
+        """Convert a DynamoDB value to Python format."""
+        if "NULL" in value:
+            return None
+        elif "BOOL" in value:
+            return value["BOOL"]
+        elif "N" in value:
+            num_str = value["N"]
+            if "." in num_str:
+                return float(num_str)
+            else:
+                return int(num_str)
+        elif "S" in value:
+            return value["S"]
+        elif "M" in value:
+            return {k: cls._from_dynamodb_value(v) for k, v in value["M"].items()}
+        elif "L" in value:
+            return [cls._from_dynamodb_value(v) for v in value["L"]]
+        else:
+            raise ValueError(f"Unknown DynamoDB value type: {value}")
 
     @classmethod
     def from_dynamodb_item(cls, item: Dict) -> "AIUsageMetric":
@@ -206,7 +245,7 @@ class AIUsageMetric(DocumentEntity):
             github_pr=int(item["githubPR"]["N"]) if "githubPR" in item else None,
             error=item.get("error", {}).get("S"),
             metadata=(
-                from_dynamodb_value(item["metadata"]) if "metadata" in item else {}
+                cls._from_dynamodb_value(item["metadata"]) if "metadata" in item else {}
             ),
         )
 
