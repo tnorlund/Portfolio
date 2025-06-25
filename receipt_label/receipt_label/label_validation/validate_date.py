@@ -6,8 +6,10 @@ import re
 from datetime import datetime
 from typing import Optional
 
-from receipt_dynamo.entities import (ReceiptWord,  # type: ignore
-                                     ReceiptWordLabel)
+from receipt_dynamo.entities import (
+    ReceiptWord,  # type: ignore
+    ReceiptWordLabel,
+)
 from receipt_label.label_validation.data import LabelValidationResult
 from receipt_label.label_validation.utils import pinecone_id_from_label
 from receipt_label.utils import get_client_manager
@@ -51,7 +53,9 @@ def _is_date(text: str) -> bool:  # pylint: disable=too-many-return-statements
     ]
 
     # First check if it matches a pattern
-    if not any(re.search(pattern, text.strip(), re.IGNORECASE) for pattern in patterns):
+    if not any(
+        re.search(pattern, text.strip(), re.IGNORECASE) for pattern in patterns
+    ):
         return False
 
     # Check for partial dates that should be invalid (MM/YYYY without day)
@@ -60,7 +64,9 @@ def _is_date(text: str) -> bool:  # pylint: disable=too-many-return-statements
 
     # For numeric dates, validate the month/day values
     # MM/DD/YYYY format
-    mm_dd_yyyy = re.search(r"\b(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b", text.strip())
+    mm_dd_yyyy = re.search(
+        r"\b(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b", text.strip()
+    )
     if mm_dd_yyyy:
         month, day, year = map(int, mm_dd_yyyy.groups())
         if month > 12 or month < 1 or day > 31 or day < 1:
@@ -72,7 +78,9 @@ def _is_date(text: str) -> bool:  # pylint: disable=too-many-return-statements
             return False
 
     # YYYY-MM-DD format
-    yyyy_mm_dd = re.search(r"\b(\d{4})[/-](\d{1,2})[/-](\d{1,2})\b", text.strip())
+    yyyy_mm_dd = re.search(
+        r"\b(\d{4})[/-](\d{1,2})[/-](\d{1,2})\b", text.strip()
+    )
     if yyyy_mm_dd:
         year, month, day = map(int, yyyy_mm_dd.groups())
         if month > 12 or month < 1 or day > 31 or day < 1:
@@ -95,7 +103,9 @@ def _is_date(text: str) -> bool:  # pylint: disable=too-many-return-statements
 
 
 # Merge left and right words with current word to create date candidates
-def _merged_date_candidates_from_text(word: ReceiptWord, metadata: dict) -> list[str]:
+def _merged_date_candidates_from_text(
+    word: ReceiptWord, metadata: dict
+) -> list[str]:
     """Return possible date strings from the word and its neighbors."""
 
     current = word.text.strip()
@@ -159,7 +169,9 @@ def validate_date(
 
     matches = query_response.matches
     avg_similarity = (
-        sum(match.score for match in matches) / len(matches) if matches else 0.0
+        sum(match.score for match in matches) / len(matches)
+        if matches
+        else 0.0
     )
 
     # Try merged variants for date detection
