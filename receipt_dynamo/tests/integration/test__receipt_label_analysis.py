@@ -1325,9 +1325,7 @@ def test_listReceiptLabelAnalyses_with_limit(
         client.addReceiptLabelAnalysis(analysis)
 
     # Act - get only 2 results
-    result_analyses, last_evaluated_key = client.listReceiptLabelAnalyses(
-        limit=2
-    )
+    result_analyses, last_evaluated_key = client.listReceiptLabelAnalyses(limit=2)
 
     # Assert
     assert len(result_analyses) == 2
@@ -1549,10 +1547,8 @@ def test_getReceiptLabelAnalysesByImage_with_limit(
         client.addReceiptLabelAnalysis(analysis)
 
     # Act - get only 2 results
-    result_analyses, last_evaluated_key = (
-        client.getReceiptLabelAnalysesByImage(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3", limit=2
-        )
+    result_analyses, last_evaluated_key = client.getReceiptLabelAnalysesByImage(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3", limit=2
     )
 
     # Assert

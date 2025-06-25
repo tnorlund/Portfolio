@@ -192,9 +192,7 @@ def sync_google_cloud_usage(table) -> Dict:
         # Process results and store in DynamoDB
         usage_count = 0
         for result in results:
-            usage_count += sum(
-                point.value.int64_value for point in result.points
-            )
+            usage_count += sum(point.value.int64_value for point in result.points)
 
         return {
             "status": "success",
