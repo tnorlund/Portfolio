@@ -24,6 +24,7 @@ jobs:
       receipt_label_changed: ${{ steps.changes.outputs.receipt_label }}
       portfolio_changed: ${{ steps.changes.outputs.portfolio }}
       infra_changed: ${{ steps.changes.outputs.infra }}
+      workflows_changed: ${{ steps.changes.outputs.workflows }}
       any_code_changed: ${{ steps.changes.outputs.all_code }}
     steps:
       - uses: actions/checkout@v4
@@ -105,7 +106,7 @@ jobs:
     if: |
       (matrix.package == 'receipt_dynamo' && needs.fast-checks.outputs.receipt_dynamo_changed == 'true') ||
       (matrix.package == 'receipt_label' && needs.fast-checks.outputs.receipt_label_changed == 'true') ||
-      needs.fast-checks.outputs.workflows == 'true' ||
+      needs.fast-checks.outputs.workflows_changed == 'true' ||
       github.event_name == 'schedule'
     strategy:
       matrix:

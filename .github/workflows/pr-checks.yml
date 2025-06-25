@@ -87,15 +87,15 @@ jobs:
           pip install -e .
           
           # Run only fast unit tests
-          pytest tests/unit -n auto -m "not slow" --tb=short -q || true
+          pytest tests/unit -n auto -m "not slow" --tb=short -q
 
       - name: Run TypeScript checks
         if: matrix.package == 'portfolio'
         working-directory: portfolio
         run: |
           npm ci --prefer-offline
-          npm run lint || true
-          npm run type-check || true
+          npm run lint
+          npm run type-check
 
   # Status check for branch protection
   pr-status:
