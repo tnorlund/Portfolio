@@ -43,7 +43,7 @@ python scripts/cost_optimizer.py --check-budget
 # AI reviews run automatically on PR creation
 ```
 
-**Documentation**: See [`COMPREHENSIVE_IMPLEMENTATION_SUMMARY.md`](COMPREHENSIVE_IMPLEMENTATION_SUMMARY.md) for complete details.
+**Documentation**: See [`PYTEST_OPTIMIZATIONS.md`](PYTEST_OPTIMIZATIONS.md) for optimization details.
 
 ## MCP servers
 
