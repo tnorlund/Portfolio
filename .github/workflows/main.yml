@@ -43,16 +43,10 @@ jobs:
       
       - name: Check Python formatting
         run: |
-          # For PRs, enforce formatting
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            black --check receipt_dynamo receipt_label infra
-            isort --check-only receipt_dynamo receipt_label infra
-          else
-            # For main branch, just check but don't fail
-            echo "Checking Python formatting (non-blocking)..."
-            black --check receipt_dynamo receipt_label infra || echo "Note: Some files need formatting"
-            isort --check-only receipt_dynamo receipt_label infra || echo "Note: Some imports need sorting"
-          fi
+          # Check formatting but don't block (we have auto-format on PRs)
+          echo "Checking Python formatting..."
+          black --check receipt_dynamo receipt_label infra || echo "::warning::Some files need black formatting"
+          isort --check-only receipt_dynamo receipt_label infra || echo "::warning::Some imports need isort formatting"
       
       - name: Set up Node.js
         uses: actions/setup-node@v3
