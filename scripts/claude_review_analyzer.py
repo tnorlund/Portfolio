@@ -184,6 +184,7 @@ class PRAnalyzer:
 **Analyzed**: {timestamp}
 **Changes**: +{pr_data['additions']} -{pr_data['deletions']} lines across {len(pr_data['changed_files'])} files
 **Fast Validation**: {validation_status}
+**Model Used**: {getattr(self, '_selected_model', 'haiku').title()} 💰
 
 ## ⚡ Pre-Review Validation
 
@@ -276,7 +277,8 @@ class PRAnalyzer:
 @click.option('--repository', required=True, help='Repository in format owner/repo')
 @click.option('--output-file', default='claude_review_results.md', help='Output file for results')
 @click.option('--fast-validation-passed', default='true', help='Whether fast validation passed')
-def main(pr_number: int, repository: str, output_file: str, fast_validation_passed: str):
+@click.option('--model', default='haiku', help='Claude model to use (haiku, sonnet, opus)')
+def main(pr_number: int, repository: str, output_file: str, fast_validation_passed: str, model: str):
     """Run Claude Code review analysis on a PR."""
     
     github_token = os.getenv('GITHUB_TOKEN')
@@ -302,6 +304,9 @@ def main(pr_number: int, repository: str, output_file: str, fast_validation_pass
         
         # Parse validation status
         validation_passed = fast_validation_passed.lower() in ('true', '1', 'yes')
+        
+        # Store selected model for summary
+        analyzer._selected_model = model
         
         # Generate summary
         summary = analyzer.generate_review_summary(

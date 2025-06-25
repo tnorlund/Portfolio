@@ -140,20 +140,54 @@ jobs:
           echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
           echo "📋 Analyzing PR #${PR_NUMBER}"
 
+      - name: Check Budget and Select Model
+        id: cost-check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.pr-info.outputs.pr_number }}
+        run: |
+          echo "💰 Checking budget and selecting optimal model..."
+          
+          # Check budget limits
+          python scripts/cost_optimizer.py --check-budget
+          
+          # Get model recommendation
+          python scripts/cost_optimizer.py \
+            --pr-number "$PR_NUMBER" \
+            --repository "${{ github.repository }}" \
+            --config ".github/claude-cost-config.json" > model_recommendation.txt
+          
+          # Extract recommended model
+          RECOMMENDED_MODEL=$(grep "Recommended Model:" model_recommendation.txt | cut -d' ' -f3)
+          echo "selected_model=${RECOMMENDED_MODEL,,}" >> $GITHUB_OUTPUT
+          
+          # Check if budget allows review
+          if python scripts/cost_optimizer.py --check-budget | grep -q "WITHIN BUDGET"; then
+            echo "budget_ok=true" >> $GITHUB_OUTPUT
+          else
+            echo "budget_ok=false" >> $GITHUB_OUTPUT
+            echo "⚠️ Budget limit reached - skipping Claude review"
+          fi
+          
+          cat model_recommendation.txt
+
       - name: Run Claude Review Analysis
         id: claude-analysis
+        if: steps.cost-check.outputs.budget_ok == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ steps.pr-info.outputs.pr_number }}
           FAST_VALIDATION_PASSED: ${{ needs.fast-validation.outputs.tests_passed }}
+          CLAUDE_MODEL: ${{ steps.cost-check.outputs.selected_model }}
         run: |
-          echo "🤖 Starting Claude analysis (fast validation: $FAST_VALIDATION_PASSED)"
+          echo "🤖 Starting Claude analysis with model: $CLAUDE_MODEL (fast validation: $FAST_VALIDATION_PASSED)"
           
           python scripts/claude_review_analyzer.py \
             --pr-number "$PR_NUMBER" \
             --repository "${{ github.repository }}" \
             --output-file "claude_review_results.md" \
-            --fast-validation-passed "$FAST_VALIDATION_PASSED"
+            --fast-validation-passed "$FAST_VALIDATION_PASSED" \
+            --model "$CLAUDE_MODEL"
 
       - name: Post Claude Review Comment
         if: always()
@@ -161,7 +195,24 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ steps.pr-info.outputs.pr_number }}
         run: |
-          if [ -f "claude_review_results.md" ]; then
+          if [ "${{ steps.cost-check.outputs.budget_ok }}" = "false" ]; then
+            # Post budget limit message
+            echo "# 💰 Claude Review Skipped - Budget Limit Reached" > budget_message.md
+            echo "" >> budget_message.md
+            echo "The Claude review was skipped because the monthly or daily budget limit has been reached." >> budget_message.md
+            echo "" >> budget_message.md
+            echo "$(python scripts/cost_optimizer.py --check-budget)" >> budget_message.md
+            echo "" >> budget_message.md
+            echo "To continue reviews, either:" >> budget_message.md
+            echo "- Wait for the budget to reset" >> budget_message.md  
+            echo "- Increase budget limits in \`.github/claude-cost-config.json\`" >> budget_message.md
+            echo "- Use manual trigger: \`/claude-review --force\`" >> budget_message.md
+            
+            python scripts/post_review_comment.py \
+              --pr-number "$PR_NUMBER" \
+              --repository "${{ github.repository }}" \
+              --review-file "budget_message.md"
+          elif [ -f "claude_review_results.md" ]; then
             python scripts/post_review_comment.py \
               --pr-number "$PR_NUMBER" \
               --repository "${{ github.repository }}" \
@@ -169,6 +220,20 @@ jobs:
           else
             echo "⚠️ Claude review results not found"
           fi
+
+      - name: Log Usage and Cost
+        if: steps.claude-analysis.conclusion == 'success'
+        env:
+          PR_NUMBER: ${{ steps.pr-info.outputs.pr_number }}
+          CLAUDE_MODEL: ${{ steps.cost-check.outputs.selected_model }}
+        run: |
+          echo "📊 Logging Claude usage for cost tracking..."
+          # This would integrate with actual Claude API response to get real token counts
+          # For now, we'll estimate based on PR size
+          python scripts/cost_optimizer.py \
+            --pr-number "$PR_NUMBER" \
+            --repository "${{ github.repository }}" \
+            --config ".github/claude-cost-config.json"
 
       - name: Upload Review Artifacts
         uses: actions/upload-artifact@v4
