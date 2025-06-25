@@ -682,7 +682,10 @@ class LineItemProcessor:
         self.llm_processor = LLMProcessor(self.openai_api_key)
 
     def _find_description_words(
-        self, receipt_words: List[ReceiptWord], description: str, line_ids: List[int]
+        self,
+        receipt_words: List[ReceiptWord],
+        description: str,
+        line_ids: List[int],
     ) -> List[ReceiptWord]:
         """
         Find words that correspond to an item description.
@@ -763,7 +766,10 @@ class LineItemProcessor:
             return matched_words
 
     def _find_quantity_words(
-        self, receipt_words: List[ReceiptWord], quantity: Quantity, line_ids: List[int]
+        self,
+        receipt_words: List[ReceiptWord],
+        quantity: Quantity,
+        line_ids: List[int],
     ) -> Dict[str, List[ReceiptWord]]:
         """
         Find words that correspond to quantity and unit.
@@ -809,7 +815,10 @@ class LineItemProcessor:
         return result
 
     def _find_price_words(
-        self, receipt_words: List[ReceiptWord], price: Decimal, line_ids: List[int]
+        self,
+        receipt_words: List[ReceiptWord],
+        price: Decimal,
+        line_ids: List[int],
     ) -> List[ReceiptWord]:
         """
         Find words that correspond to a price.
@@ -843,7 +852,9 @@ class LineItemProcessor:
         return matching_words
 
     def _create_word_labels(
-        self, receipt_words: List[ReceiptWord], initial_results: ProcessingResult
+        self,
+        receipt_words: List[ReceiptWord],
+        initial_results: ProcessingResult,
     ) -> Dict[Tuple[int, int], Dict]:
         """
         Create word labels based on line item analysis results.
@@ -924,7 +935,10 @@ class LineItemProcessor:
                 # Label unit words
                 for word in quantity_words["unit"]:
                     # Check if this word is already labeled as an amount (combined case)
-                    if (word.line_id, word.word_id) in word_labels and word_labels[
+                    if (
+                        word.line_id,
+                        word.word_id,
+                    ) in word_labels and word_labels[
                         (word.line_id, word.word_id)
                     ]["label"] == ITEM_QUANTITY_LABEL:
                         # Update the reasoning to indicate it's both
@@ -1293,7 +1307,9 @@ class LineItemProcessor:
         logger.info(f"{divider}\n")
 
     def _find_financial_summary_fields(
-        self, receipt_lines: List[ReceiptLine], receipt_words: List[ReceiptWord]
+        self,
+        receipt_lines: List[ReceiptLine],
+        receipt_words: List[ReceiptWord],
     ) -> Dict:
         """
         Find subtotal, tax, and total fields in the receipt.
@@ -1653,7 +1669,14 @@ class LineItemProcessor:
             # Check for exact tax-like items
             is_tax_item = any(
                 term in desc_lower
-                for term in ["tax", "vat", "gst", "hst", "sales tax", "tax amount"]
+                for term in [
+                    "tax",
+                    "vat",
+                    "gst",
+                    "hst",
+                    "sales tax",
+                    "tax amount",
+                ]
             )
 
             # Only filter out items that are clearly financial summary items

@@ -411,7 +411,10 @@ def test_label_receipt_with_large_receipt(mocker):
         line_words = []
         for word_id, word_text in enumerate(words):
             word = ReceiptWord(
-                text=word_text, line_id=line_id, word_id=word_id, confidence=0.95
+                text=word_text,
+                line_id=line_id,
+                word_id=word_id,
+                confidence=0.95,
             )
             receipt_words.append(word)
             line_words.append(word)
@@ -421,7 +424,12 @@ def test_label_receipt_with_large_receipt(mocker):
             line_id=line_id,
             text=line_text,
             confidence=0.95,
-            bounding_box={"x": 0, "y": line_id * 20, "width": 200, "height": 18},
+            bounding_box={
+                "x": 0,
+                "y": line_id * 20,
+                "width": 200,
+                "height": 18,
+            },
             top_right={"x": 200, "y": line_id * 20},
             top_left={"x": 0, "y": line_id * 20},
             bottom_right={"x": 200, "y": line_id * 20 + 18},
@@ -534,7 +542,10 @@ def test_label_receipt_with_malformed_data(mocker):
             line_id=-1,  # Invalid line_id
             text=None,  # None text
             confidence=2.0,  # Invalid confidence
-            bounding_box={"x": "invalid", "y": "invalid"},  # Invalid bbox values
+            bounding_box={
+                "x": "invalid",
+                "y": "invalid",
+            },  # Invalid bbox values
             top_right={"x": 0},  # Missing y coordinate
             top_left={},  # Empty coordinates
             bottom_right=None,

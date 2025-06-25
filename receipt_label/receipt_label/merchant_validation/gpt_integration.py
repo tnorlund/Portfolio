@@ -239,7 +239,9 @@ def validate_match_with_gpt(
 
 
 def infer_merchant_with_gpt(
-    raw_text: List[str], extracted_dict: dict, client_manager: ClientManager = None
+    raw_text: List[str],
+    extracted_dict: dict,
+    client_manager: ClientManager = None,
 ) -> dict:
     """
     Uses ChatGPT function calling to infer merchant metadata when no Google match is found.

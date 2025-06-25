@@ -95,7 +95,10 @@ def sync_openai_usage(table) -> Dict:
     # Get organization ID for usage endpoint
     # Note: This is a simplified example. The actual OpenAI usage API
     # might require different authentication or endpoints
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
 
     # Get usage for the last 24 hours
     end_date = datetime.utcnow()

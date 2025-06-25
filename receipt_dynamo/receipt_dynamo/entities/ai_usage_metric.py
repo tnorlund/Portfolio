@@ -237,12 +237,12 @@ class AIUsageMetric:
                 int(item["totalTokens"]["N"]) if "totalTokens" in item else None
             ),
             api_calls=int(item["apiCalls"]["N"]),
-            cost_usd=float(item["costUSD"]["N"]) if "costUSD" in item else None,
-            latency_ms=int(item["latencyMs"]["N"]) if "latencyMs" in item else None,
+            cost_usd=(float(item["costUSD"]["N"]) if "costUSD" in item else None),
+            latency_ms=(int(item["latencyMs"]["N"]) if "latencyMs" in item else None),
             user_id=item.get("userId", {}).get("S"),
             job_id=item.get("jobId", {}).get("S"),
             batch_id=item.get("batchId", {}).get("S"),
-            github_pr=int(item["githubPR"]["N"]) if "githubPR" in item else None,
+            github_pr=(int(item["githubPR"]["N"]) if "githubPR" in item else None),
             error=item.get("error", {}).get("S"),
             metadata=(
                 cls._from_dynamodb_value(item["metadata"]) if "metadata" in item else {}
