@@ -786,7 +786,7 @@ class TestGitHubClaudeReview:
         # Verify metadata
         metadata_map = item["metadata"]["M"]
         assert int(metadata_map["pr_number"]["N"]) == 123
-        assert metadata_map["workflow"]["S"] == "claude-code-review"
+        assert metadata_map["workflow"]["S"] == "claude-review"
 
     def test_track_github_claude_review_custom_params(self):
         """Test tracking GitHub Claude review with custom parameters."""
