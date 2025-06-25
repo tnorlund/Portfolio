@@ -60,9 +60,7 @@ class JobDependency:
         elif isinstance(created_at, str):
             self.created_at = created_at
         else:
-            raise ValueError(
-                "created_at must be a datetime object or a string"
-            )
+            raise ValueError("created_at must be a datetime object or a string")
 
         if condition is not None and not isinstance(condition, str):
             raise ValueError("condition must be a string")
