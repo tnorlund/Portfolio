@@ -3,8 +3,10 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 from receipt_dynamo.entities.receipt import Receipt as DynamoReceipt
-from receipt_dynamo.entities.receipt_line import ReceiptLine as DynamoReceiptLine
-from receipt_dynamo.entities.receipt_word import ReceiptWord as DynamoReceiptWord
+from receipt_dynamo.entities.receipt_line import \
+    ReceiptLine as DynamoReceiptLine
+from receipt_dynamo.entities.receipt_word import \
+    ReceiptWord as DynamoReceiptWord
 
 
 @dataclass
