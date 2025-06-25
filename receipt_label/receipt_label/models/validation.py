@@ -7,11 +7,8 @@ from enum import Enum
 from typing import Any, Dict, List, Literal, Optional
 
 # Import the ReceiptValidationSummary class
-from receipt_dynamo import (
-    ReceiptValidationCategory,
-    ReceiptValidationResult,
-    ReceiptValidationSummary,
-)
+from receipt_dynamo import (ReceiptValidationCategory, ReceiptValidationResult,
+                            ReceiptValidationSummary)
 
 from .metadata import MetadataMixin
 

@@ -5,9 +5,7 @@ from botocore.exceptions import ClientError
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.completion_batch_result import (
-    CompletionBatchResult,
-    itemToCompletionBatchResult,
-)
+    CompletionBatchResult, itemToCompletionBatchResult)
 
 
 def validate_last_evaluated_key(lek: dict) -> None:
