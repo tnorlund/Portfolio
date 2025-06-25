@@ -64,12 +64,23 @@ jobs:
 
   # Stage 2: Tests (parallel)
   test-python:
-    name: Python Tests
+    name: Python Tests (${{ matrix.package }}-${{ matrix.test_type }})
     needs: fast-checks
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        package: [receipt_dynamo, receipt_label]
+        include:
+          # Split receipt_dynamo (largest package) into unit and integration tests
+          - package: receipt_dynamo
+            test_type: unit
+            test_path: tests/unit
+          - package: receipt_dynamo  
+            test_type: integration
+            test_path: tests/integration
+          # receipt_label is smaller, run all tests together
+          - package: receipt_label
+            test_type: all
+            test_path: tests
     steps:
       - uses: actions/checkout@v4
       
@@ -78,67 +89,102 @@ jobs:
         with:
           python-version: '3.12'
       
-      - name: Cache pip packages
+      - name: Cache pip packages and virtual environment
         uses: actions/cache@v3
         with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ matrix.package }}-${{ hashFiles(format('{0}/pyproject.toml', matrix.package)) }}
+          path: |
+            ~/.cache/pip
+            ${{ env.pythonLocation }}
+            ~/.local/lib/python3.12/site-packages
+          key: ${{ runner.os }}-python-${{ matrix.package }}-${{ hashFiles(format('{0}/pyproject.toml', matrix.package), 'receipt_dynamo/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-python-${{ matrix.package }}-
+            ${{ runner.os }}-python-
       
-      - name: Cache pytest results
+      - name: Cache pytest results and coverage
         uses: actions/cache@v3
         with:
           path: |
             ${{ matrix.package }}/.pytest_cache
             ${{ matrix.package }}/.coverage
+            .pytest_cache
           key: ${{ runner.os }}-pytest-${{ matrix.package }}-${{ hashFiles(format('{0}/**/*.py', matrix.package)) }}
           restore-keys: |
             ${{ runner.os }}-pytest-${{ matrix.package }}-
       
-      - name: Install package
+      - name: Install package with optimizations
         run: |
+          # Upgrade pip for faster installs
+          python -m pip install --upgrade pip wheel
+          
+          # Check if packages are already cached
+          if pip list | grep -q "pytest-xdist"; then
+            echo "✓ Test dependencies already cached"
+          else
+            echo "Installing test dependencies..."
+            pip install pytest-xdist pytest-timeout
+          fi
+          
           # Install receipt_dynamo first as it's a dependency for other packages
           if [[ "${{ matrix.package }}" != "receipt_dynamo" ]]; then
-            pip install -e "receipt_dynamo[dev]"
+            if pip list | grep -q "receipt-dynamo"; then
+              echo "✓ receipt_dynamo already cached"
+            else
+              pip install -e "receipt_dynamo[dev]" --no-deps
+              pip install -e "receipt_dynamo[dev]"
+            fi
           fi
           
-          # Install the package with appropriate extras
+          # Install the target package with minimal dependencies first
           if [[ "${{ matrix.package }}" == "receipt_trainer" ]] || [[ "${{ matrix.package }}" == "receipt_trainer_1" ]]; then
-            # These packages only have [dev] extras which include test dependencies
             pip install -e "${{ matrix.package }}[dev]"
           else
-            # Other packages have separate [test] extras
-            # Install base package first, then test extras to ensure all dependencies are met
-            pip install -e "${{ matrix.package }}"
-            pip install -e "${{ matrix.package }}[test]"
+            # Check if already installed
+            PACKAGE_NAME=$(echo "${{ matrix.package }}" | tr '_' '-')
+            if pip list | grep -q "${PACKAGE_NAME}"; then
+              echo "✓ ${{ matrix.package }} already cached"
+            else
+              # Install with minimum dependencies first, then test extras
+              pip install -e "${{ matrix.package }}" --no-deps
+              pip install -e "${{ matrix.package }}[test]"
+            fi
           fi
           
-          # Install additional test optimization tools
-          pip install pytest-xdist pytest-timeout
-          
-          # Debug: Show installed packages for troubleshooting
-          echo "=== Installed packages ==="
-          pip list | grep -E "(pinecone|openai|receipt|pytest)" || true
+          # Verify installation
+          echo "=== Key packages installed ==="
+          pip list | grep -E "(pinecone|openai|receipt|pytest|moto|boto)" | head -10 || true
       
-      - name: Run tests
+      - name: Run tests (${{ matrix.test_type }})
         working-directory: ${{ matrix.package }}
         run: |
-          # Find test directory (packages have tests in different locations)
-          if [[ -d "tests" ]]; then
-            TEST_DIR="tests"
-          elif [[ -d "test" ]]; then
-            TEST_DIR="test"
-          elif [[ "${{ matrix.package }}" == "receipt_label" ]] && [[ -d "receipt_label/tests" ]]; then
+          # Use the specific test path from matrix
+          TEST_DIR="${{ matrix.test_path }}"
+          
+          # For receipt_label, check for package-specific test location
+          if [[ "${{ matrix.package }}" == "receipt_label" ]] && [[ -d "receipt_label/tests" ]]; then
             TEST_DIR="receipt_label/tests"
-          else
-            echo "No test directory found, running pytest to discover tests"
-            TEST_DIR="."
           fi
           
-          # Run tests with parallel execution and optimizations
+          # Adjust parallelization based on test type
+          if [[ "${{ matrix.test_type }}" == "unit" ]]; then
+            # Unit tests can handle more parallelization
+            WORKERS="auto"
+            TIMEOUT="120"
+          elif [[ "${{ matrix.test_type }}" == "integration" ]]; then
+            # Integration tests need fewer workers to avoid resource conflicts
+            WORKERS="2"
+            TIMEOUT="300"
+          else
+            # Default for mixed test suites
+            WORKERS="auto"
+            TIMEOUT="300"
+          fi
+          
+          # Run tests with optimized settings per test type
           python -m pytest $TEST_DIR \
-            -n auto \
+            -n $WORKERS \
             -m "not end_to_end and not slow" \
-            --timeout=300 \
+            --timeout=$TIMEOUT \
             --timeout-method=thread \
             --cov=${{ matrix.package }} \
             --cov-report=xml \
@@ -151,7 +197,7 @@ jobs:
       - name: Upload coverage
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-${{ matrix.package }}
+          name: coverage-${{ matrix.package }}-${{ matrix.test_type }}
           path: ${{ matrix.package }}/coverage.xml
           retention-days: 1
 
