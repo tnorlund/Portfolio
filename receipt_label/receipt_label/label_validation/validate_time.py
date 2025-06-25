@@ -1,11 +1,11 @@
 """Time label validation logic."""
 
-# pylint: disable=duplicate-code,line-too-long
+# pylint: disable=duplicate-code
 
 import re
 from typing import Optional
 
-from receipt_dynamo.entities import (
+from receipt_dynamo.entities import (  # type: ignore
     ReceiptWord,
     ReceiptWordLabel,
 )
@@ -15,21 +15,29 @@ from receipt_label.label_validation.utils import pinecone_id_from_label
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
 
+# Time format patterns
+TIME_WITH_TZ_ABBR = r"^(\d{1,2}:\d{2}(:\d{2})?( ?[APap][Mm])?) ?([A-Z]{3,4})$"
+TIME_WITH_TZ_OFFSET = r"^(\d{1,2}:\d{2}:\d{2})[+-]\d{2}:\d{2}$"
+TIME_WITH_Z = r"^(\d{1,2}:\d{2}:\d{2})Z$"
+TIME_BASIC = r"^(\d{1,2}):(\d{2})(:\d{2})?( ?[APap][Mm])?$"
+
 
 def _is_time(text: str) -> bool:
+    """Return ``True`` if the text resembles a valid time."""
+
     # More comprehensive time validation including timezone support
     text = text.strip()
 
     # Time with timezone patterns
     timezone_patterns = [
-        r"^(\d{1,2}:\d{2}(:\d{2})?( ?[APap][Mm])?) ?([A-Z]{3,4})$",  # 12:30 PM EST
-        r"^(\d{1,2}:\d{2}:\d{2})[+-]\d{2}:\d{2}$",  # 12:30:00+00:00
-        r"^(\d{1,2}:\d{2}:\d{2})Z$",  # 12:30:00Z
+        TIME_WITH_TZ_ABBR,
+        TIME_WITH_TZ_OFFSET,
+        TIME_WITH_Z,
     ]
 
     # Standard time patterns
     basic_patterns = [
-        r"^(\d{1,2}):(\d{2})(:\d{2})?( ?[APap][Mm])?$",  # HH:MM[:SS] [AM/PM]
+        TIME_BASIC,
     ]
 
     # Check if it matches any timezone pattern first
@@ -88,6 +96,8 @@ def _validate_time_components(time_str: str) -> bool:
 def _merged_time_candidate_from_text(
     word: ReceiptWord, metadata: dict
 ) -> list[str]:
+    """Return possible time strings from the word and its neighbors."""
+
     current = word.text.strip()
     variants = [current]
 
@@ -114,6 +124,8 @@ def validate_time(
     label: ReceiptWordLabel,
     client_manager: Optional[ClientManager] = None,
 ) -> LabelValidationResult:
+    """Validate that a word is a time using Pinecone neighbors."""
+
     # Get pinecone index from client manager
     if client_manager is None:
         client_manager = get_client_manager()

@@ -1,11 +1,11 @@
 """Phone number label validation logic."""
 
-# pylint: disable=duplicate-code,line-too-long
+# pylint: disable=duplicate-code
 
 import re
 from typing import Optional
 
-from receipt_dynamo.entities import (
+from receipt_dynamo.entities import (  # type: ignore
     ReceiptWord,
     ReceiptWordLabel,
 )
@@ -17,6 +17,8 @@ from receipt_label.utils.client_manager import ClientManager
 
 
 def _is_phone_number(text: str) -> bool:
+    """Return ``True`` if the text resembles a phone number."""
+
     digits = re.sub(r"\D", "", text)
 
     # Check basic length requirements
@@ -46,6 +48,8 @@ def _is_phone_number(text: str) -> bool:
 def _merged_phone_candidate_from_text(
     word: ReceiptWord, metadata: dict
 ) -> list[str]:
+    """Return possible phone number strings from the word and neighbors."""
+
     current = word.text.strip()
     variants = [current]
 
@@ -69,6 +73,8 @@ def validate_phone_number(
     label: ReceiptWordLabel,
     client_manager: Optional[ClientManager] = None,
 ) -> LabelValidationResult:
+    """Validate that a word is a phone number using Pinecone neighbors."""
+
     # Get pinecone index from client manager
     if client_manager is None:
         client_manager = get_client_manager()
