@@ -1,4 +1,4 @@
-name: Claude Comment Cleanup
+name: Claude Comment Management
 
 on:
   workflow_dispatch:
