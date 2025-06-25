@@ -18,10 +18,13 @@ from receipt_upload.receipt_processing.photo import process_photo
 from receipt_upload.receipt_processing.receipt import refine_receipt
 from receipt_upload.receipt_processing.scan import process_scan
 from receipt_upload.route_images import classify_image_layout
-from receipt_upload.utils import (download_file_from_s3,
-                                  download_image_from_s3, get_ocr_job,
-                                  get_ocr_routing_decision,
-                                  image_ocr_to_receipt_ocr)
+from receipt_upload.utils import (
+    download_file_from_s3,
+    download_image_from_s3,
+    get_ocr_job,
+    get_ocr_routing_decision,
+    image_ocr_to_receipt_ocr,
+)
 
 TABLE_NAME = os.environ["DYNAMO_TABLE_NAME"]
 if TABLE_NAME is None:
@@ -72,10 +75,14 @@ def _process_record(record):
     body = json.loads(record["body"])
     job_id = body["job_id"]
     image_id = body["image_id"]
-    logger.info("Processing OCR results for image %s with job %s", image_id, job_id)
+    logger.info(
+        "Processing OCR results for image %s with job %s", image_id, job_id
+    )
 
     ocr_job = get_ocr_job(TABLE_NAME, image_id, job_id)
-    ocr_routing_decision = get_ocr_routing_decision(TABLE_NAME, image_id, job_id)
+    ocr_routing_decision = get_ocr_routing_decision(
+        TABLE_NAME, image_id, job_id
+    )
     logger.info("Got OCR routing decision %s", ocr_routing_decision)
 
     # Download OCR JSON
@@ -86,27 +93,35 @@ def _process_record(record):
     )
     with open(ocr_json_path, "r", encoding="utf-8") as f:
         ocr_json = json.load(f)
-    ocr_lines, ocr_words, ocr_letters = process_ocr_dict_as_image(ocr_json, image_id)
+    ocr_lines, ocr_words, ocr_letters = process_ocr_dict_as_image(
+        ocr_json, image_id
+    )
     logger.info("Got job with type %s", ocr_job.job_type)
 
     # Create OCR data container
     ocr_data = OCRData(lines=ocr_lines, words=ocr_words, letters=ocr_letters)
 
     # Download image
-    raw_image_path = download_image_from_s3(ocr_job.s3_bucket, ocr_job.s3_key, image_id)
+    raw_image_path = download_image_from_s3(
+        ocr_job.s3_bucket, ocr_job.s3_key, image_id
+    )
     image = PIL_Image.open(raw_image_path)
 
     if ocr_job.job_type == OCRJobType.REFINEMENT.value:
         return _process_refinement_job(ocr_job, ocr_data, ocr_routing_decision)
 
-    return _process_first_pass_job(image, ocr_data, ocr_job, ocr_routing_decision)
+    return _process_first_pass_job(
+        image, ocr_data, ocr_job, ocr_routing_decision
+    )
 
 
 def _process_refinement_job(ocr_job, ocr_data, ocr_routing_decision):
     """Process a refinement OCR job."""
     logger.info("Refining receipt %s", ocr_job.image_id)
     if ocr_job.receipt_id is None:
-        logger.error("Receipt ID is None for refinement job %s", ocr_job.job_id)
+        logger.error(
+            "Receipt ID is None for refinement job %s", ocr_job.job_id
+        )
         return False
 
     receipt_lines, receipt_words, receipt_letters = image_ocr_to_receipt_ocr(

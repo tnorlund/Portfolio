@@ -5,10 +5,21 @@ from shutil import rmtree
 
 import pytest
 
-from receipt_dynamo import (DynamoClient, Image, Letter, Line, Receipt,
-                            ReceiptLetter, ReceiptLine, ReceiptWord,
-                            ReceiptWordTag, Word, WordTag, export_image,
-                            import_image)
+from receipt_dynamo import (
+    DynamoClient,
+    Image,
+    Letter,
+    Line,
+    Receipt,
+    ReceiptLetter,
+    ReceiptLine,
+    ReceiptWord,
+    ReceiptWordTag,
+    Word,
+    WordTag,
+    export_image,
+    import_image,
+)
 
 
 @pytest.fixture

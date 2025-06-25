@@ -6,10 +6,14 @@ import pytest
 import requests
 
 from receipt_dynamo.data._gpt import (
-    _llm_prompt_initial_tagging, _llm_prompt_tagging_validation,
-    _reduce_precision, _validate_gpt_response_initial_tagging,
-    _validate_gpt_response_tagging_validation, gpt_request_initial_tagging,
-    gpt_request_tagging_validation)
+    _llm_prompt_initial_tagging,
+    _llm_prompt_tagging_validation,
+    _reduce_precision,
+    _validate_gpt_response_initial_tagging,
+    _validate_gpt_response_tagging_validation,
+    gpt_request_initial_tagging,
+    gpt_request_tagging_validation,
+)
 
 # --- Dummy Classes for Testing ---
 
@@ -97,12 +101,15 @@ def test_gpt_reduce_precision():
 # --- Tests for _llm_prompt_initial_tagging ---
 @pytest.mark.unit
 def test_gpt_llm_prompt_initial_tagging():
-    dummy_receipt = DummyReceipt({"receipt_id": 123, "width": 100, "height": 50})
+    dummy_receipt = DummyReceipt(
+        {"receipt_id": 123, "width": 100, "height": 50}
+    )
     # For initial tagging, tags are not required.
     dummy_word = DummyWord("STORE", (0.1, 0.2), 0, 0, 123)
     prompt = _llm_prompt_initial_tagging(dummy_receipt, [dummy_word])
     assert prompt.startswith(
-        "\nYou are a helpful assistant that extracts structured data from a " "receipt."
+        "\nYou are a helpful assistant that extracts structured data from a "
+        "receipt."
     ), "Prompt does not start with the expected introductory text."
     assert "Output must be valid JSON" in prompt
     assert "Return only this JSON structure. Nothing else." in prompt
@@ -128,14 +135,18 @@ def test_gpt_llm_prompt_initial_tagging():
 @pytest.mark.integration
 def test_gpt_validate_missing_choices():
     resp = DummyResponse({})
-    with pytest.raises(ValueError, match="The response does not contain any choices."):
+    with pytest.raises(
+        ValueError, match="The response does not contain any choices."
+    ):
         _validate_gpt_response_initial_tagging(resp)
 
 
 @pytest.mark.integration
 def test_gpt_validate_empty_choices():
     resp = DummyResponse({"choices": []})
-    with pytest.raises(ValueError, match="The response does not contain any choices."):
+    with pytest.raises(
+        ValueError, match="The response does not contain any choices."
+    ):
         _validate_gpt_response_initial_tagging(resp)
 
 
@@ -144,7 +155,9 @@ def test_gpt_validate_non_list_choices():
     resp = DummyResponse(
         {"choices": {"role": "assistant", "message": {"content": "{}"}}}
     )
-    with pytest.raises(ValueError, match="The response choices are not a list."):
+    with pytest.raises(
+        ValueError, match="The response choices are not a list."
+    ):
         _validate_gpt_response_initial_tagging(resp)
 
 
@@ -158,7 +171,9 @@ def test_gpt_validate_missing_message():
             ]
         }
     )
-    with pytest.raises(ValueError, match="The response does not contain a message."):
+    with pytest.raises(
+        ValueError, match="The response does not contain a message."
+    ):
         _validate_gpt_response_initial_tagging(resp)
 
 
@@ -188,7 +203,9 @@ def test_gpt_validate_empty_content():
             ]
         }
     )
-    with pytest.raises(ValueError, match="The response message content is empty."):
+    with pytest.raises(
+        ValueError, match="The response message content is empty."
+    ):
         _validate_gpt_response_initial_tagging(resp)
 
 
@@ -249,7 +266,8 @@ def test_gpt_validate_missing_l_or_w():
     )
     with pytest.raises(
         ValueError,
-        match="The response message content values do not contain " "'l' and 'w'.",
+        match="The response message content values do not contain "
+        "'l' and 'w'.",
     ):
         _validate_gpt_response_initial_tagging(resp)
 
@@ -270,7 +288,8 @@ def test_gpt_validate_value_dict_missing_key():
     )
     with pytest.raises(
         ValueError,
-        match="The response message content values do not contain " "'l' and 'w'.",
+        match="The response message content values do not contain "
+        "'l' and 'w'.",
     ):
         _validate_gpt_response_initial_tagging(resp)
 
@@ -318,14 +337,18 @@ def test_gpt_validate_valid_response():
 @pytest.mark.integration
 def test_gpt_validate_tagging_validation_missing_choices():
     resp = DummyResponse({})
-    with pytest.raises(ValueError, match="The response does not contain any choices."):
+    with pytest.raises(
+        ValueError, match="The response does not contain any choices."
+    ):
         _validate_gpt_response_tagging_validation(resp)
 
 
 @pytest.mark.integration
 def test_gpt_validate_tagging_validation_empty_choices():
     resp = DummyResponse({"choices": []})
-    with pytest.raises(ValueError, match="The response does not contain any choices."):
+    with pytest.raises(
+        ValueError, match="The response does not contain any choices."
+    ):
         _validate_gpt_response_tagging_validation(resp)
 
 
@@ -334,7 +357,9 @@ def test_gpt_validate_tagging_validation_non_list_choices():
     resp = DummyResponse(
         {"choices": {"role": "assistant", "message": {"content": "[]"}}}
     )
-    with pytest.raises(ValueError, match="The response choices are not a list."):
+    with pytest.raises(
+        ValueError, match="The response choices are not a list."
+    ):
         _validate_gpt_response_tagging_validation(resp)
 
 
@@ -348,7 +373,9 @@ def test_gpt_validate_tagging_validation_missing_message():
             ]
         }
     )
-    with pytest.raises(ValueError, match="The response does not contain a message."):
+    with pytest.raises(
+        ValueError, match="The response does not contain a message."
+    ):
         _validate_gpt_response_tagging_validation(resp)
 
 
@@ -378,7 +405,9 @@ def test_gpt_validate_tagging_validation_empty_content():
             ]
         }
     )
-    with pytest.raises(ValueError, match="The response message content is empty."):
+    with pytest.raises(
+        ValueError, match="The response message content is empty."
+    ):
         _validate_gpt_response_tagging_validation(resp)
 
 
@@ -421,7 +450,9 @@ def test_gpt_validate_tagging_validation_not_list():
             ]
         }
     )
-    with pytest.raises(ValueError, match="The response message content is not a list."):
+    with pytest.raises(
+        ValueError, match="The response message content is not a list."
+    ):
         _validate_gpt_response_tagging_validation(resp)
 
 
@@ -439,7 +470,9 @@ def test_gpt_validate_tagging_validation_item_not_dict():
             ]
         }
     )
-    with pytest.raises(ValueError, match="The response items are not dictionaries."):
+    with pytest.raises(
+        ValueError, match="The response items are not dictionaries."
+    ):
         _validate_gpt_response_tagging_validation(resp)
 
 
@@ -540,14 +573,19 @@ def test_gpt_request_initial_tagging(monkeypatch):
         return DummyResponse(response_json)
 
     monkeypatch.setattr(requests, "post", fake_post)
-    dummy_receipt = DummyReceipt({"receipt_id": 123, "width": 100, "height": 50})
+    dummy_receipt = DummyReceipt(
+        {"receipt_id": 123, "width": 100, "height": 50}
+    )
     dummy_word = DummyWord("STORE", (0.1, 0.2), 0, 0, 123)
-    formatted_response, query_sent, response_text = gpt_request_initial_tagging(
-        dummy_receipt, [dummy_word], gpt_api_key="dummy_key"
+    formatted_response, query_sent, response_text = (
+        gpt_request_initial_tagging(
+            dummy_receipt, [dummy_word], gpt_api_key="dummy_key"
+        )
     )
     assert formatted_response == valid_content
     assert query_sent.startswith(
-        "\nYou are a helpful assistant that extracts structured data from a " "receipt."
+        "\nYou are a helpful assistant that extracts structured data from a "
+        "receipt."
     )
     assert response_text == "string for testing purposes"
 
@@ -556,7 +594,9 @@ def test_gpt_request_initial_tagging(monkeypatch):
 @pytest.mark.integration
 def test_gpt_request_tagging_validation_missing_api_key(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    dummy_receipt = DummyReceipt({"receipt_id": 123, "width": 100, "height": 50})
+    dummy_receipt = DummyReceipt(
+        {"receipt_id": 123, "width": 100, "height": 50}
+    )
     dummy_line = DummyLine(
         0, "Test line", {"x": 0, "y": 0, "width": 100, "height": 20}, 123
     )
@@ -596,7 +636,9 @@ def test_gpt_request_tagging_validation(monkeypatch):
         return DummyResponse(response_json)
 
     monkeypatch.setattr(requests, "post", fake_post)
-    dummy_receipt = DummyReceipt({"receipt_id": 123, "width": 100, "height": 50})
+    dummy_receipt = DummyReceipt(
+        {"receipt_id": 123, "width": 100, "height": 50}
+    )
     dummy_line = DummyLine(
         0, "Test line", {"x": 0, "y": 0, "width": 100, "height": 20}, 123
     )
@@ -611,12 +653,14 @@ def test_gpt_request_tagging_validation(monkeypatch):
         bounding_box={"x": 0, "y": 0, "width": 50, "height": 20},
     )
     dummy_word_tag = DummyWordTag("tag", True, 0, 0, 123)
-    formatted_response, query_sent, response_text = gpt_request_tagging_validation(
-        dummy_receipt,
-        [dummy_line],
-        [dummy_word],
-        [dummy_word_tag],
-        gpt_api_key="dummy_key",
+    formatted_response, query_sent, response_text = (
+        gpt_request_tagging_validation(
+            dummy_receipt,
+            [dummy_line],
+            [dummy_word],
+            [dummy_word_tag],
+            gpt_api_key="dummy_key",
+        )
     )
     assert formatted_response == valid_content
     assert (
@@ -629,7 +673,9 @@ def test_gpt_request_tagging_validation(monkeypatch):
 # --- Test for _llm_prompt_tagging_validation ---
 @pytest.mark.unit
 def test_llm_prompt_tagging_validation():
-    dummy_receipt = DummyReceipt({"receipt_id": 123, "width": 100, "height": 50})
+    dummy_receipt = DummyReceipt(
+        {"receipt_id": 123, "width": 100, "height": 50}
+    )
     dummy_line = DummyLine(
         0, "Test line", {"x": 0, "y": 0, "width": 100, "height": 20}, 123
     )

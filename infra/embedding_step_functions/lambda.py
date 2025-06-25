@@ -2,16 +2,29 @@ import os
 from logging import INFO, Formatter, StreamHandler, getLogger
 
 from receipt_label.embedding.line import (
-    add_batch_summary, chunk_into_line_embedding_batches, create_batch_summary,
-    deserialize_receipt_lines, download_openai_batch_result,
-    download_serialized_lines, format_line_context_embedding,
-    generate_batch_id, get_openai_batch_status, get_receipt_descriptions,
-    list_pending_line_embedding_batches, list_receipt_lines_with_no_embeddings,
-    mark_batch_complete, serialize_receipt_lines, submit_openai_batch,
-    update_line_embedding_status, update_line_embedding_status_to_success,
-    upload_serialized_lines, upload_to_openai,
-    upsert_line_embeddings_to_pinecone, write_line_embedding_results_to_dynamo,
-    write_ndjson)
+    add_batch_summary,
+    chunk_into_line_embedding_batches,
+    create_batch_summary,
+    deserialize_receipt_lines,
+    download_openai_batch_result,
+    download_serialized_lines,
+    format_line_context_embedding,
+    generate_batch_id,
+    get_openai_batch_status,
+    get_receipt_descriptions,
+    list_pending_line_embedding_batches,
+    list_receipt_lines_with_no_embeddings,
+    mark_batch_complete,
+    serialize_receipt_lines,
+    submit_openai_batch,
+    update_line_embedding_status,
+    update_line_embedding_status_to_success,
+    upload_serialized_lines,
+    upload_to_openai,
+    upsert_line_embeddings_to_pinecone,
+    write_line_embedding_results_to_dynamo,
+    write_ndjson,
+)
 
 logger = getLogger()
 logger.setLevel(INFO)
@@ -36,10 +49,14 @@ def embedding_submit_list_handler(event, context):
     """
     logger.info("Starting embedding_submit_list_handler")
     lines_without_embeddings = list_receipt_lines_with_no_embeddings()
-    logger.info(f"Found {len(lines_without_embeddings)} lines without embeddings")
+    logger.info(
+        f"Found {len(lines_without_embeddings)} lines without embeddings"
+    )
     batches = chunk_into_line_embedding_batches(lines_without_embeddings)
     logger.info(f"Chunked into {len(batches)} batches")
-    uploaded = upload_serialized_lines(serialize_receipt_lines(batches), bucket)
+    uploaded = upload_serialized_lines(
+        serialize_receipt_lines(batches), bucket
+    )
     logger.info(f"Uploaded {len(uploaded)} files")
     cleaned = [
         {
