@@ -92,12 +92,17 @@ jobs:
       
       - name: Install package
         run: |
+          # Install receipt_dynamo first if testing receipt_label
+          if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
+            pip install -e "receipt_dynamo"
+          fi
           pip install -e "${{ matrix.package }}[test]"
       
       - name: Run tests
         working-directory: ${{ matrix.package }}
         run: |
-          pytest -m "not end_to_end" --cov=${{ matrix.package }} --cov-report=xml
+          # Run tests with proper module discovery
+          python -m pytest tests -m "not end_to_end" --cov=${{ matrix.package }} --cov-report=xml -v
       
       - name: Upload coverage
         uses: actions/upload-artifact@v4
