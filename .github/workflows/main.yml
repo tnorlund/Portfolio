@@ -97,8 +97,14 @@ jobs:
             pip install -e "${{ matrix.package }}[dev]"
           else
             # Other packages have separate [test] extras
+            # Install base package first, then test extras to ensure all dependencies are met
+            pip install -e "${{ matrix.package }}"
             pip install -e "${{ matrix.package }}[test]"
           fi
+          
+          # Debug: Show installed packages for troubleshooting
+          echo "=== Installed packages ==="
+          pip list | grep -E "(pinecone|openai|receipt)" || true
       
       - name: Run tests
         working-directory: ${{ matrix.package }}
