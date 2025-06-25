@@ -39,7 +39,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Parse query parameters
         query_params = event.get("queryStringParameters") or {}
         start_date = query_params.get(
-            "start_date", (datetime.utcnow() - timedelta(days=30)).strftime("%Y-%m-%d")
+            "start_date",
+            (datetime.utcnow() - timedelta(days=30)).strftime("%Y-%m-%d"),
         )
         end_date = query_params.get("end_date", datetime.utcnow().strftime("%Y-%m-%d"))
         service = query_params.get("service")
@@ -241,7 +242,10 @@ def aggregate_by_service(metrics: List[Dict[str, Any]]) -> Dict[str, Any]:
         by_service[service]["operations"] = list(by_service[service]["operations"])
         by_service[service]["cost_usd"] = round(by_service[service]["cost_usd"], 4)
         by_service[service]["average_cost_per_call"] = (
-            round(by_service[service]["cost_usd"] / by_service[service]["api_calls"], 6)
+            round(
+                by_service[service]["cost_usd"] / by_service[service]["api_calls"],
+                6,
+            )
             if by_service[service]["api_calls"] > 0
             else 0
         )
