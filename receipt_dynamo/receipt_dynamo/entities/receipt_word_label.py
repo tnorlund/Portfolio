@@ -2,13 +2,9 @@ from datetime import datetime
 from typing import Any, Generator, Optional, Tuple
 
 from receipt_dynamo.constants import ValidationStatus
-from receipt_dynamo.entities.util import (
-    _format_float,
-    _repr_str,
-    assert_valid_point,
-    assert_valid_uuid,
-    normalize_enum,
-)
+from receipt_dynamo.entities.util import (_format_float, _repr_str,
+                                          assert_valid_point,
+                                          assert_valid_uuid, normalize_enum)
 
 
 class ReceiptWordLabel:

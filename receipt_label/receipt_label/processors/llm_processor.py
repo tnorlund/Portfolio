@@ -7,13 +7,10 @@ from typing import Dict, List, Optional, Tuple
 from ..data.gpt import gpt_request_line_item_analysis
 from ..models.line_item import LineItem, LineItemAnalysis, Price, Quantity
 from ..models.receipt import Receipt, ReceiptLine, ReceiptWord
-from ..models.uncertainty import (
-    MissingComponentUncertainty,
-    MultipleAmountsUncertainty,
-    TotalMismatchUncertainty,
-    UncertaintyItem,
-    ensure_decimal,
-)
+from ..models.uncertainty import (MissingComponentUncertainty,
+                                  MultipleAmountsUncertainty,
+                                  TotalMismatchUncertainty, UncertaintyItem,
+                                  ensure_decimal)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

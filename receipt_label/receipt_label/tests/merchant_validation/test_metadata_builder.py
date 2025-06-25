@@ -16,8 +16,7 @@ import pytest
 
 from receipt_label.merchant_validation.metadata_builder import (
     build_receipt_metadata_from_result,
-    build_receipt_metadata_from_result_no_match,
-)
+    build_receipt_metadata_from_result_no_match)
 
 
 @pytest.mark.unit

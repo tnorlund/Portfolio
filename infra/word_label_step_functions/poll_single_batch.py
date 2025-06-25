@@ -3,15 +3,13 @@ from logging import INFO, Formatter, StreamHandler, getLogger
 
 import pulumi
 
-from receipt_label.embedding.word import (
-    download_openai_batch_result,
-    get_openai_batch_status,
-    get_receipt_descriptions,
-    list_pending_embedding_batches,
-    mark_batch_complete,
-    upsert_embeddings_to_pinecone,
-    write_embedding_results_to_dynamo,
-)
+from receipt_label.embedding.word import (download_openai_batch_result,
+                                          get_openai_batch_status,
+                                          get_receipt_descriptions,
+                                          list_pending_embedding_batches,
+                                          mark_batch_complete,
+                                          upsert_embeddings_to_pinecone,
+                                          write_embedding_results_to_dynamo)
 
 logger = getLogger()
 logger.setLevel(INFO)

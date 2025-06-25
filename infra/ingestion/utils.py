@@ -11,19 +11,9 @@ import pulumi
 import pulumi.automation as auto
 from botocore.exceptions import ClientError
 
-from receipt_dynamo import (
-    DynamoClient,
-    Image,
-    Letter,
-    Line,
-    Receipt,
-    ReceiptLetter,
-    ReceiptLine,
-    ReceiptWord,
-    ReceiptWordTag,
-    Word,
-    WordTag,
-)
+from receipt_dynamo import (DynamoClient, Image, Letter, Line, Receipt,
+                            ReceiptLetter, ReceiptLine, ReceiptWord,
+                            ReceiptWordTag, Word, WordTag)
 
 FAILURE_DIR = Path("test_failures")
 FAILURE_DIR.mkdir(parents=True, exist_ok=True)

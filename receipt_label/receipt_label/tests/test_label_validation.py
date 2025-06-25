@@ -240,7 +240,8 @@ def assert_complete_validation_result(
 @pytest.mark.unit
 def test_validate_address(mocker):
     # Import here after mocks are set up
-    from receipt_label.label_validation.validate_address import validate_address
+    from receipt_label.label_validation.validate_address import \
+        validate_address
 
     fake_index = FakePineconeIndex()
     # Create a mock client manager with our fake index
@@ -274,7 +275,8 @@ def test_validate_address(mocker):
 @pytest.mark.unit
 def test_validate_address_no_vector(mocker):
     """Test address validation when no vector is found in Pinecone."""
-    from receipt_label.label_validation.validate_address import validate_address
+    from receipt_label.label_validation.validate_address import \
+        validate_address
 
     fake_index = FakePineconeIndex(has_vector=False)
     # Create a mock client manager with our fake index
@@ -332,7 +334,8 @@ def test_validate_address_no_vector(mocker):
     ],
 )
 def test_validate_currency(mocker, text, expected_consistent):
-    from receipt_label.label_validation.validate_currency import validate_currency
+    from receipt_label.label_validation.validate_currency import \
+        validate_currency
     from receipt_label.utils import ClientConfig, ClientManager
 
     # Create a mock client manager with our fake index
@@ -366,7 +369,8 @@ def test_validate_currency(mocker, text, expected_consistent):
 @pytest.mark.unit
 def test_validate_currency_no_vector(mocker):
     """Test currency validation when no vector is found in Pinecone."""
-    from receipt_label.label_validation.validate_currency import validate_currency
+    from receipt_label.label_validation.validate_currency import \
+        validate_currency
     from receipt_label.utils import ClientConfig, ClientManager
 
     # Create a mock client manager with our fake index
@@ -419,9 +423,8 @@ def test_validate_currency_no_vector(mocker):
     ],
 )
 def test_validate_phone_number(mocker, text, expected_consistent):
-    from receipt_label.label_validation.validate_phone_number import (
-        validate_phone_number,
-    )
+    from receipt_label.label_validation.validate_phone_number import \
+        validate_phone_number
 
     fake_index = FakePineconeIndex(query_score=MEDIUM_QUERY_SCORE)
     # Create a mock client manager with our fake index
@@ -453,9 +456,8 @@ def test_validate_phone_number(mocker, text, expected_consistent):
 @pytest.mark.unit
 def test_validate_phone_number_no_vector(mocker):
     """Test phone number validation when no vector is found in Pinecone."""
-    from receipt_label.label_validation.validate_phone_number import (
-        validate_phone_number,
-    )
+    from receipt_label.label_validation.validate_phone_number import \
+        validate_phone_number
 
     fake_index = FakePineconeIndex(has_vector=False)
     # Create a mock client manager with our fake index
@@ -479,9 +481,8 @@ def test_validate_phone_number_no_vector(mocker):
 
 @pytest.mark.unit
 def test_validate_merchant_name_pinecone(mocker):
-    from receipt_label.label_validation.validate_merchant_name import (
-        validate_merchant_name_pinecone,
-    )
+    from receipt_label.label_validation.validate_merchant_name import \
+        validate_merchant_name_pinecone
 
     fake_index = FakePineconeIndex(query_score=DEFAULT_QUERY_SCORE)
     # Create a mock client manager with our fake index
@@ -519,9 +520,8 @@ def test_validate_merchant_name_pinecone(mocker):
 
 @pytest.mark.unit
 def test_validate_merchant_name_google(mocker):
-    from receipt_label.label_validation.validate_merchant_name import (
-        validate_merchant_name_google,
-    )
+    from receipt_label.label_validation.validate_merchant_name import \
+        validate_merchant_name_google
 
     fake_index = FakePineconeIndex(query_score=DEFAULT_QUERY_SCORE)
     # Create a mock client manager with our fake index
@@ -561,9 +561,8 @@ def test_validate_merchant_name_google(mocker):
 @pytest.mark.unit
 def test_validate_merchant_name_no_vector(mocker):
     """Test merchant name validation when no vector is found in Pinecone."""
-    from receipt_label.label_validation.validate_merchant_name import (
-        validate_merchant_name_pinecone,
-    )
+    from receipt_label.label_validation.validate_merchant_name import \
+        validate_merchant_name_pinecone
 
     fake_index = FakePineconeIndex(has_vector=False)
     # Create a mock client manager with our fake index
@@ -778,7 +777,8 @@ class TestTextNormalizationInValidation:
 
     def test_validate_address_with_normalization_edge_cases(self, mocker):
         """Test address validation with various normalization scenarios."""
-        from receipt_label.label_validation.validate_address import validate_address
+        from receipt_label.label_validation.validate_address import \
+            validate_address
 
         fake_index = FakePineconeIndex()
         # Create a mock client manager with our fake index
@@ -822,9 +822,8 @@ class TestTextNormalizationInValidation:
 
     def test_validate_phone_with_edge_formats(self, mocker):
         """Test phone validation with unusual formats."""
-        from receipt_label.label_validation.validate_phone_number import (
-            validate_phone_number,
-        )
+        from receipt_label.label_validation.validate_phone_number import \
+            validate_phone_number
 
         fake_index = FakePineconeIndex(query_score=MEDIUM_QUERY_SCORE)
         # Create a mock client manager with our fake index
@@ -864,7 +863,8 @@ class TestTextNormalizationInValidation:
 
     def test_validate_currency_with_unicode_symbols(self, mocker):
         """Test currency validation with various currency symbols."""
-        from receipt_label.label_validation.validate_currency import validate_currency
+        from receipt_label.label_validation.validate_currency import \
+            validate_currency
 
         fake_index = FakePineconeIndex(query_score=HIGH_QUERY_SCORE)
         # Create a mock client manager with our fake index
@@ -897,9 +897,8 @@ class TestTextNormalizationInValidation:
 
     def test_validate_merchant_name_normalization(self, mocker):
         """Test merchant name validation with normalization edge cases."""
-        from receipt_label.label_validation.validate_merchant_name import (
-            validate_merchant_name_pinecone,
-        )
+        from receipt_label.label_validation.validate_merchant_name import \
+            validate_merchant_name_pinecone
 
         fake_index = FakePineconeIndex(query_score=DEFAULT_QUERY_SCORE)
         # Create a mock client manager with our fake index
@@ -942,7 +941,8 @@ class TestAPIErrorHandling:
 
     def test_pinecone_fetch_timeout(self, mocker):
         """Test handling of Pinecone fetch timeout."""
-        from receipt_label.label_validation.validate_address import validate_address
+        from receipt_label.label_validation.validate_address import \
+            validate_address
 
         # Create a fake index that raises timeout
         fake_index = FakePineconeIndex()
@@ -970,7 +970,8 @@ class TestAPIErrorHandling:
 
     def test_pinecone_query_error(self, mocker):
         """Test handling of Pinecone query errors."""
-        from receipt_label.label_validation.validate_currency import validate_currency
+        from receipt_label.label_validation.validate_currency import \
+            validate_currency
 
         # Create a fake index that raises API error
         fake_index = FakePineconeIndex()
@@ -997,9 +998,8 @@ class TestAPIErrorHandling:
 
     def test_pinecone_connection_error(self, mocker):
         """Test handling of connection errors."""
-        from receipt_label.label_validation.validate_phone_number import (
-            validate_phone_number,
-        )
+        from receipt_label.label_validation.validate_phone_number import \
+            validate_phone_number
 
         # Create a fake index that raises connection error
         fake_index = FakePineconeIndex()
@@ -1084,9 +1084,8 @@ class TestAPIErrorHandling:
 
     def test_pinecone_partial_failure(self, mocker):
         """Test handling when some Pinecone operations succeed and others fail."""
-        from receipt_label.label_validation.validate_merchant_name import (
-            validate_merchant_name_pinecone,
-        )
+        from receipt_label.label_validation.validate_merchant_name import \
+            validate_merchant_name_pinecone
 
         # Create a fake index where fetch works but query fails
         fake_index = FakePineconeIndex()
@@ -1113,7 +1112,8 @@ class TestAPIErrorHandling:
 
     def test_retry_logic_simulation(self, mocker):
         """Test that validation functions could support retry logic."""
-        from receipt_label.label_validation.validate_address import validate_address
+        from receipt_label.label_validation.validate_address import \
+            validate_address
 
         # Track call count
         call_count = 0
@@ -1159,16 +1159,15 @@ class TestValidationIntegrationScenarios:
     def test_complete_receipt_validation_flow(self, mocker):
         """Test validating all fields of a complete receipt."""
         # Import validation functions
-        from receipt_label.label_validation.validate_address import validate_address
-        from receipt_label.label_validation.validate_currency import validate_currency
+        from receipt_label.label_validation.validate_address import \
+            validate_address
+        from receipt_label.label_validation.validate_currency import \
+            validate_currency
         from receipt_label.label_validation.validate_date import validate_date
         from receipt_label.label_validation.validate_merchant_name import (
-            validate_merchant_name_google,
-            validate_merchant_name_pinecone,
-        )
-        from receipt_label.label_validation.validate_phone_number import (
-            validate_phone_number,
-        )
+            validate_merchant_name_google, validate_merchant_name_pinecone)
+        from receipt_label.label_validation.validate_phone_number import \
+            validate_phone_number
         from receipt_label.label_validation.validate_time import validate_time
 
         # Create a shared mock client manager for all validation functions
@@ -1299,10 +1298,10 @@ class TestValidationIntegrationScenarios:
 
     def test_partial_receipt_validation(self, mocker):
         """Test validation when some receipt fields are missing."""
-        from receipt_label.label_validation.validate_currency import validate_currency
-        from receipt_label.label_validation.validate_merchant_name import (
-            validate_merchant_name_pinecone,
-        )
+        from receipt_label.label_validation.validate_currency import \
+            validate_currency
+        from receipt_label.label_validation.validate_merchant_name import \
+            validate_merchant_name_pinecone
 
         # Create mock client managers for different scenarios
         currency_client_manager = MagicMock()

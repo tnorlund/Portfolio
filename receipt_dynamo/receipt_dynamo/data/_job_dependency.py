@@ -3,7 +3,8 @@ from typing import Dict, List, Optional, Tuple
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data._base import DynamoClientProtocol
-from receipt_dynamo.entities.job_dependency import JobDependency, itemToJobDependency
+from receipt_dynamo.entities.job_dependency import (JobDependency,
+                                                    itemToJobDependency)
 
 
 class _JobDependency(DynamoClientProtocol):

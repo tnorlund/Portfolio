@@ -2,15 +2,10 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from receipt_label.utils.date import (
-    extract_datetime,
-    format_datetime,
-    get_date_range,
-    get_time_difference,
-    is_valid_date,
-    is_valid_time,
-    parse_datetime,
-)
+from receipt_label.utils.date import (extract_datetime, format_datetime,
+                                      get_date_range, get_time_difference,
+                                      is_valid_date, is_valid_time,
+                                      parse_datetime)
 
 
 @pytest.mark.unit
