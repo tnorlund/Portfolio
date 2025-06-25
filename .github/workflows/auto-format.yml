@@ -1,4 +1,4 @@
-name: Auto-format Code
+name: Auto Format Code
 
 on:
   workflow_run:

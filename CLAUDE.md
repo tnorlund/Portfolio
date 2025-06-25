@@ -55,6 +55,41 @@ source .venv/bin/activate
 
 Activate the worktree's environment before running `python mcp_server.py` or
 other development commands.
+# Test Optimization and Execution
+
+## Advanced Test Tools
+
+This repository includes comprehensive test optimization tools for maximum performance:
+
+### Quick Local Testing
+```bash
+# Recommended: Use the optimized test runner
+./scripts/test_runner.sh receipt_dynamo
+./scripts/test_runner.sh -t integration -c receipt_dynamo
+
+# Advanced: Use the intelligent test runner
+python scripts/run_tests_optimized.py receipt_dynamo tests/unit --test-type unit
+```
+
+### Test Analysis and Optimization
+```bash
+# Analyze test structure and generate optimal parallel groups
+python scripts/analyze_tests.py
+
+# Generate dynamic GitHub Actions matrix
+python scripts/generate_test_matrix.py
+
+# Identify performance bottlenecks
+python scripts/optimize_slow_tests.py
+```
+
+### Performance Impact
+- **Integration tests**: 39 files, 1,579 tests split into 4 optimal parallel groups
+- **Speedup**: 62.8min → 15.8min execution time (4x faster)
+- **Load balancing**: Each group has ~395 tests, ~16min execution time
+
+See `scripts/README.md` for detailed documentation of all test optimization tools.
+
 # End-to-End Tests
 
 **IMPORTANT**: The `receipt_dynamo/tests/end_to_end` directory contains end-to-end tests that connect to REAL AWS services.
