@@ -8,7 +8,7 @@
 
 > **getBestImageUrl**(`image`, `formatSupport`): `string`
 
-Defined in: [utils/imageFormat.ts:93](https://github.com/tnorlund/Portfolio/blob/692122b3ff53018b591adef90b1d28791ebc873b/portfolio/utils/imageFormat.ts#L93)
+Defined in: [utils/imageFormat.ts:93](https://github.com/tnorlund/Portfolio/blob/7bbde2d9b0631dd87cd77011f13e9ee0f1951f4b/portfolio/utils/imageFormat.ts#L93)
 
 Choose the optimal image URL given supported formats and available keys.
 
