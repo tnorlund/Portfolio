@@ -4,11 +4,8 @@ from datetime import datetime, timezone
 from itertools import islice
 
 from receipt_dynamo.constants import BatchStatus, BatchType, ValidationStatus
-from receipt_dynamo.entities import (
-    BatchSummary,
-    CompletionBatchResult,
-    ReceiptWordLabel,
-)
+from receipt_dynamo.entities import (BatchSummary, CompletionBatchResult,
+                                     ReceiptWordLabel)
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
 

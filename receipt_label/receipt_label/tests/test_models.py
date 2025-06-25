@@ -4,14 +4,12 @@ from typing import Dict, List
 
 import pytest
 
-from receipt_dynamo.entities.receipt_line import ReceiptLine as DynamoReceiptLine
-from receipt_dynamo.entities.receipt_word import ReceiptWord as DynamoReceiptWord
-from receipt_label.models.receipt import (
-    Receipt,
-    ReceiptLine,
-    ReceiptSection,
-    ReceiptWord,
-)
+from receipt_dynamo.entities.receipt_line import \
+    ReceiptLine as DynamoReceiptLine
+from receipt_dynamo.entities.receipt_word import \
+    ReceiptWord as DynamoReceiptWord
+from receipt_label.models.receipt import (Receipt, ReceiptLine, ReceiptSection,
+                                          ReceiptWord)
 
 
 # Test data fixtures
