@@ -11,7 +11,7 @@ from typing import Optional
 
 from openai import OpenAI
 from pinecone import Pinecone
-from pinecone.data.index import Index
+from pinecone import Index
 from receipt_dynamo import DynamoClient
 
 
