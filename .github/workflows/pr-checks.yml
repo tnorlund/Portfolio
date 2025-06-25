@@ -84,7 +84,13 @@ jobs:
         run: |
           # Install minimal dependencies
           pip install pytest pytest-xdist
-          pip install -e .
+          
+          # Install package with test dependencies for receipt_label
+          if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
+            pip install -e ".[test]"
+          else
+            pip install -e .
+          fi
           
           # Run only fast unit tests (handle different test organization patterns)
           if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
