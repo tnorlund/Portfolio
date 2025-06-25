@@ -11,6 +11,7 @@ from routes.process.infra import process_lambda
 from routes.random_image_details.infra import random_image_details_lambda
 from routes.receipt_count.infra import receipt_count_lambda
 from routes.receipts.infra import receipts_lambda
+from routes.ai_usage.infra import ai_usage_lambda
 
 # Detect the current Pulumi stack
 stack = pulumi.get_stack()
@@ -292,6 +293,34 @@ lambda_permission_process = aws.lambda_.Permission(
     "process_lambda_permission",
     action="lambda:InvokeFunction",
     function=process_lambda.name,
+    principal="apigateway.amazonaws.com",
+    source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
+)
+
+
+# /ai_usage
+integration_ai_usage = aws.apigatewayv2.Integration(
+    "ai_usage_lambda_integration",
+    api_id=api.id,
+    integration_type="AWS_PROXY",
+    integration_uri=ai_usage_lambda.invoke_arn,
+    integration_method="POST",
+    payload_format_version="2.0",
+)
+route_ai_usage = aws.apigatewayv2.Route(
+    "ai_usage_route",
+    api_id=api.id,
+    route_key="GET /ai_usage",
+    target=integration_ai_usage.id.apply(lambda id: f"integrations/{id}"),
+    opts=pulumi.ResourceOptions(
+        replace_on_changes=["route_key", "target"],
+        delete_before_replace=True,
+    ),
+)
+lambda_permission_ai_usage = aws.lambda_.Permission(
+    "ai_usage_lambda_permission",
+    action="lambda:InvokeFunction",
+    function=ai_usage_lambda.name,
     principal="apigateway.amazonaws.com",
     source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
 )

@@ -144,3 +144,6 @@ from receipt_dynamo.entities.word_tag import (  # noqa: F401
     WordTag,
     itemToWordTag,
 )
+from receipt_dynamo.entities.ai_usage_metric import (  # noqa: F401
+    AIUsageMetric,
+)

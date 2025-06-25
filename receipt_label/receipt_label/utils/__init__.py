@@ -28,6 +28,8 @@ from .validation import (
     validate_receipt_data,
     validate_receipt_format,
 )
+from .cost_calculator import AICostCalculator
+from .ai_usage_tracker import AIUsageTracker
 
 __all__ = [
     # Address utilities
@@ -56,6 +58,9 @@ __all__ = [
     "get_client_manager",
     "ClientConfig",
     "ClientManager",
+    # AI cost tracking
+    "AICostCalculator",
+    "AIUsageTracker",
 ]
 
 
