@@ -7,8 +7,8 @@ Essential scripts for analyzing, optimizing, and running tests with maximum perf
 # Run tests locally 
 ./test_runner.sh receipt_dynamo
 
-# Analyze and optimize test structure
-python analyze_tests.py
+# Smart test selection (run only affected tests)
+python smart_test_runner.py receipt_dynamo --dry-run
 ```
 
 ## Core Tools
@@ -31,11 +31,6 @@ python smart_test_runner.py receipt_dynamo --dry-run
 ```
 Features: File change detection, dependency analysis, test caching
 
-### `analyze_tests.py` - Test optimization analysis
-Generates optimal parallel test groups and performance estimates
-
-### `optimize_slow_tests.py` - Performance bottleneck identification
-Profiles tests and suggests optimization strategies
 
 ## Performance Impact
 - **39 integration test files** optimally distributed across 4 parallel groups
