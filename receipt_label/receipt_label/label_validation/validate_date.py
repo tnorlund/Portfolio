@@ -1,12 +1,12 @@
 """Date label validation logic."""
 
-# pylint: disable=duplicate-code,line-too-long,too-many-return-statements
+# pylint: disable=duplicate-code
 
 import re
 from datetime import datetime
 from typing import Optional
 
-from receipt_dynamo.entities import (
+from receipt_dynamo.entities import (  # type: ignore
     ReceiptWord,
     ReceiptWordLabel,
 )
@@ -16,20 +16,41 @@ from receipt_label.label_validation.utils import pinecone_id_from_label
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
 
+# Date format patterns
+DATE_SLASH_FORMAT = r"\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b"
+DATE_ISO_FORMAT = r"\b\d{4}[/-]\d{1,2}[/-]\d{1,2}\b"
+DATE_ISO_WITH_Z = r"\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\b"
+DATE_ISO_WITH_TZ = r"\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}\b"
+DATE_WITH_TZ_ABBR = r"\b\d{4}-\d{2}-\d{2}\s+[A-Z]{3,4}\b"
+DATE_DD_MMM_YYYY = (
+    r"\b\d{1,2}[/-]\s*"
+    r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*"
+    r"[/-]?\s*\d{2,4}\b"
+)
+DATE_MMM_DD_YYYY = (
+    r"\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*"
+    r"\s+\d{1,2},?\s*\d{2,4}\b"
+)
+DATE_DD_MMM_YYYY_ALT = (
+    r"\b\d{1,2}\s+"
+    r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*"
+    r"\s+\d{2,4}\b"
+)
 
-def _is_date(text: str) -> bool:
+
+def _is_date(text: str) -> bool:  # pylint: disable=too-many-return-statements
+    """Return ``True`` if the text resembles a date."""
+
     # Match various date formats including month names and ISO formats
     patterns = [
-        r"\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b",  # MM/DD/YYYY or MM-DD-YYYY (must include day)
-        r"\b\d{4}[/-]\d{1,2}[/-]\d{1,2}\b",  # YYYY-MM-DD or YYYY/MM/DD
-        # ISO 8601 formats with timezone
-        r"\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\b",  # ISO with Z
-        r"\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}\b",  # ISO with timezone offset
-        r"\b\d{4}-\d{2}-\d{2}\s+[A-Z]{3,4}\b",  # Date with timezone abbreviation like PST, UTC
-        # Month name patterns
-        r"\b\d{1,2}[/-]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[/-]?\s*\d{2,4}\b",  # DD-MMM-YYYY
-        r"\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s*\d{2,4}\b",  # MMM DD, YYYY
-        r"\b\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4}\b",  # DD MMM YYYY
+        DATE_SLASH_FORMAT,
+        DATE_ISO_FORMAT,
+        DATE_ISO_WITH_Z,
+        DATE_ISO_WITH_TZ,
+        DATE_WITH_TZ_ABBR,
+        DATE_DD_MMM_YYYY,
+        DATE_MMM_DD_YYYY,
+        DATE_DD_MMM_YYYY_ALT,
     ]
 
     # First check if it matches a pattern
@@ -38,11 +59,11 @@ def _is_date(text: str) -> bool:
     ):
         return False
 
-    # Check for partial dates that should be invalid (MM/YYYY format without day)
+    # Check for partial dates that should be invalid (MM/YYYY without day)
     if re.match(r"^\d{1,2}[/-]\d{4}$", text.strip()):
         return False
 
-    # For numeric dates, validate the month/day values with proper date validation
+    # For numeric dates, validate the month/day values
     # MM/DD/YYYY format
     mm_dd_yyyy = re.search(
         r"\b(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b", text.strip()
@@ -86,6 +107,8 @@ def _is_date(text: str) -> bool:
 def _merged_date_candidates_from_text(
     word: ReceiptWord, metadata: dict
 ) -> list[str]:
+    """Return possible date strings from the word and its neighbors."""
+
     current = word.text.strip()
     variants = [current]
 
@@ -109,6 +132,8 @@ def validate_date(
     label: ReceiptWordLabel,
     client_manager: Optional[ClientManager] = None,
 ) -> LabelValidationResult:
+    """Validate that a word is a date using Pinecone neighbors."""
+
     # Get pinecone index from client manager
     if client_manager is None:
         client_manager = get_client_manager()

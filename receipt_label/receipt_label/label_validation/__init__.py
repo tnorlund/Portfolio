@@ -1,3 +1,5 @@
+"""Exports utilities for validating receipt word labels."""
+
 from .data import (
     LabelValidationResult,
     get_unique_merchants_and_data,
