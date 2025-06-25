@@ -39,9 +39,7 @@ def query_google_places(
 
     # 2. Search by address if available
     if "address" in extracted_dict and extracted_dict["address"]:
-        address_results = places_api.search_by_address(
-            extracted_dict["address"]
-        )
+        address_results = places_api.search_by_address(extracted_dict["address"])
         if address_results and is_match_found(address_results):
             return address_results
 
@@ -173,9 +171,7 @@ def is_valid_google_match(
 
     if extracted_name and place_name:
         try:
-            name_similarity = get_name_similarity(
-                str(place_name), str(extracted_name)
-            )
+            name_similarity = get_name_similarity(str(place_name), str(extracted_name))
             name_threshold = 80
             name_match = name_similarity >= name_threshold
             validation_checks.append(("name", name_match, name_similarity))
@@ -247,9 +243,7 @@ def retry_google_search_with_inferred_data(
             geo = places_api.geocode(address)
             if geo and "lat" in geo and "lng" in geo:
                 lat_lng = (geo["lat"], geo["lng"])
-                nearby_results = places_api.search_nearby(
-                    location=lat_lng, radius=50
-                )
+                nearby_results = places_api.search_nearby(location=lat_lng, radius=50)
                 for candidate in nearby_results:
                     if is_match_found(candidate) and is_valid_google_match(
                         candidate, gpt_merchant_data

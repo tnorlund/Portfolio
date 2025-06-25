@@ -6,13 +6,8 @@ from .receipt import Receipt, ReceiptSection, ReceiptWord
 from .structure import ContentPattern
 from .structure import ReceiptSection as StructureSection
 from .structure import SpatialPattern, StructureAnalysis
-from .validation import (
-    FieldValidation,
-    ValidationAnalysis,
-    ValidationResult,
-    ValidationResultType,
-    ValidationStatus,
-)
+from .validation import (FieldValidation, ValidationAnalysis, ValidationResult,
+                         ValidationResultType, ValidationStatus)
 
 __all__ = [
     "Receipt",

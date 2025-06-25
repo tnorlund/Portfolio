@@ -1,13 +1,10 @@
 from math import atan2, cos, degrees, pi, radians, sin
 from typing import Generator, Tuple
 
-from receipt_dynamo.entities.util import (
-    _format_float,
-    assert_valid_bounding_box,
-    assert_valid_point,
-    assert_valid_uuid,
-    shear_point,
-)
+from receipt_dynamo.entities.util import (_format_float,
+                                          assert_valid_bounding_box,
+                                          assert_valid_point,
+                                          assert_valid_uuid, shear_point)
 
 
 class Letter:
@@ -158,12 +155,8 @@ class Letter:
                 "M": {
                     "x": {"N": _format_float(self.bounding_box["x"], 20, 22)},
                     "y": {"N": _format_float(self.bounding_box["y"], 20, 22)},
-                    "width": {
-                        "N": _format_float(self.bounding_box["width"], 20, 22)
-                    },
-                    "height": {
-                        "N": _format_float(self.bounding_box["height"], 20, 22)
-                    },
+                    "width": {"N": _format_float(self.bounding_box["width"], 20, 22)},
+                    "height": {"N": _format_float(self.bounding_box["height"], 20, 22)},
                 }
             },
             "top_right": {
@@ -523,9 +516,7 @@ class Letter:
             # original top-left px
             denom = (g * x_warped_px) + (h * y_warped_px) + 1.0
             if abs(denom) < 1e-12:
-                raise ValueError(
-                    "Inverse warp denominator ~ 0 at corner: " + name
-                )
+                raise ValueError("Inverse warp denominator ~ 0 at corner: " + name)
 
             X_old_px = (a * x_warped_px + b * y_warped_px + c) / denom
             Y_old_px = (d * x_warped_px + e * y_warped_px + f) / denom
@@ -751,12 +742,10 @@ def itemToLetter(item: dict) -> Letter:
                 for key, value in item["bounding_box"]["M"].items()
             },
             top_right={
-                key: float(value["N"])
-                for key, value in item["top_right"]["M"].items()
+                key: float(value["N"]) for key, value in item["top_right"]["M"].items()
             },
             top_left={
-                key: float(value["N"])
-                for key, value in item["top_left"]["M"].items()
+                key: float(value["N"]) for key, value in item["top_left"]["M"].items()
             },
             bottom_right={
                 key: float(value["N"])
