@@ -91,10 +91,13 @@ jobs:
             test_type: integration
             test_group: group-4
             test_path: tests/integration/test__receipt_validation_result.py tests/integration/test__receipt_label_analysis.py tests/integration/test__job.py tests/integration/test__job_resource.py tests/integration/test__image.py tests/integration/test__job_log.py tests/integration/test__places_cache.py tests/integration/test__receipt_word_tag.py tests/integration/test__ocr.py
-          # receipt_label is smaller, run all tests together
+          # receipt_label tests split by type
           - package: receipt_label
-            test_type: all
-            test_path: tests
+            test_type: unit
+            test_path: tests/unit
+          - package: receipt_label
+            test_type: integration
+            test_path: tests/integration
     steps:
       - uses: actions/checkout@v4
       
