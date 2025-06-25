@@ -114,9 +114,26 @@ jobs:
           script: |
             const formatted = '${{ needs.format-check.outputs.formatted }}' === 'true';
             const icon = formatted ? '🎨' : '✅';
-            const message = formatted 
-              ? 'Code has been auto-formatted. Please pull the latest changes.'
-              : 'All PR checks passed!';
+            const formatCheck = '${{ needs.format-check.result }}';
+            const quickTests = '${{ needs.quick-tests.result }}';
+            
+            let message = 'All PR checks passed!';
+            let details = [];
+            
+            if (formatted) {
+              message = 'Code has been auto-formatted. Please pull the latest changes.';
+              details.push('📝 **Auto-formatting**: Applied black and isort formatting');
+            }
+            
+            if (formatCheck === 'success' && quickTests === 'success') {
+              details.push('✅ **Format check**: Passed');
+              details.push('✅ **Quick tests**: Passed');
+            } else {
+              if (formatCheck !== 'success') details.push('❌ **Format check**: Failed');
+              if (quickTests !== 'success') details.push('❌ **Quick tests**: Failed');
+            }
+            
+            const detailsText = details.length > 0 ? '\n\n' + details.join('\n') : '';
             
             // Find and update existing comment or create new
             const { data: comments } = await github.rest.issues.listComments({
@@ -125,19 +142,21 @@ jobs:
             });
             
             const botComment = comments.find(comment => 
-              comment.user.type === 'Bot' && 
-              comment.body.includes('PR Status')
+              comment.user.login === 'github-actions[bot]' && 
+              comment.body.includes('## ✅ PR Status') || comment.body.includes('## 🎨 PR Status')
             );
             
-            const body = `## ${icon} PR Status\n\n${message}\n\n<sub>Last updated: ${new Date().toISOString()}</sub>`;
+            const body = `## ${icon} PR Status\n\n${message}${detailsText}\n\n<sub>Last updated: ${new Date().toISOString()} | Run: ${context.runId}</sub>`;
             
             if (botComment) {
+              console.log(`Updating existing PR status comment (ID: ${botComment.id})`);
               await github.rest.issues.updateComment({
                 ...context.repo,
                 comment_id: botComment.id,
                 body
               });
             } else {
+              console.log('Creating new PR status comment');
               await github.rest.issues.createComment({
                 ...context.repo,
                 issue_number: context.issue.number,
