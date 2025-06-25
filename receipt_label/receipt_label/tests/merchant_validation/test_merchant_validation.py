@@ -98,9 +98,19 @@ class DummyWord:
     "phone_resp,address_resp,expected",
     [
         (
-            {"status": "OK", "foo": 1, "place_id": "test_id", "name": "Test Place"},
+            {
+                "status": "OK",
+                "foo": 1,
+                "place_id": "test_id",
+                "name": "Test Place",
+            },
             None,
-            {"status": "OK", "foo": 1, "place_id": "test_id", "name": "Test Place"},
+            {
+                "status": "OK",
+                "foo": 1,
+                "place_id": "test_id",
+                "name": "Test Place",
+            },
         ),
         (
             {"status": "NO_RESULTS"},
