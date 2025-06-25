@@ -2,9 +2,12 @@ import os
 from logging import INFO, Formatter, StreamHandler, getLogger
 
 from receipt_label.embedding.word import (
-    chunk_into_embedding_batches, generate_batch_id,
-    list_receipt_words_with_no_embeddings, serialize_receipt_words,
-    upload_serialized_words)
+    chunk_into_embedding_batches,
+    generate_batch_id,
+    list_receipt_words_with_no_embeddings,
+    serialize_receipt_words,
+    upload_serialized_words,
+)
 
 logger = getLogger()
 logger.setLevel(INFO)
