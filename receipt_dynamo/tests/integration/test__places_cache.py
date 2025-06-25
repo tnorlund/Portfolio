@@ -129,9 +129,7 @@ def test_addPlacesCache_client_errors(
     dynamo = DynamoClient(dynamodb_table)
     mock_client = mocker.patch.object(dynamo, "_client")
     mock_client.put_item.side_effect = ClientError(
-        error_response={
-            "Error": {"Code": error_code, "Message": error_message}
-        },
+        error_response={"Error": {"Code": error_code, "Message": error_message}},
         operation_name="PutItem",
     )
 
@@ -344,9 +342,7 @@ def test_listPlacesCaches_with_pagination(
 
     # Act
     items, last_key = dynamo.listPlacesCaches(limit=1)
-    second_page, final_key = dynamo.listPlacesCaches(
-        limit=1, lastEvaluatedKey=last_key
-    )
+    second_page, final_key = dynamo.listPlacesCaches(limit=1, lastEvaluatedKey=last_key)
 
     # Assert
     assert len(items) == 1

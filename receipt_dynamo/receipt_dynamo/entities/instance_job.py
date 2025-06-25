@@ -52,9 +52,7 @@ class InstanceJob:
         elif isinstance(assigned_at, str):
             self.assigned_at = assigned_at
         else:
-            raise ValueError(
-                "assigned_at must be a datetime object or a string"
-            )
+            raise ValueError("assigned_at must be a datetime object or a string")
 
         valid_statuses = [
             "assigned",
@@ -130,9 +128,7 @@ class InstanceJob:
             if isinstance(v, dict):
                 result[k] = {"M": self._dict_to_dynamodb_map(v)}
             elif isinstance(v, list):
-                result[k] = {
-                    "L": [self._to_dynamodb_value(item) for item in v]
-                }
+                result[k] = {"L": [self._to_dynamodb_value(item) for item in v]}
             elif isinstance(v, str):
                 result[k] = {"S": v}
             elif isinstance(v, (int, float)):
@@ -235,8 +231,7 @@ class InstanceJob:
                 (
                     tuple(
                         sorted(
-                            (k, str(v))
-                            for k, v in self.resource_utilization.items()
+                            (k, str(v)) for k, v in self.resource_utilization.items()
                         )
                     )
                     if self.resource_utilization
@@ -283,10 +278,7 @@ def itemToInstanceJob(item: dict) -> InstanceJob:
 
         # Parse resource_utilization from DynamoDB map if present
         resource_utilization = None
-        if (
-            "resource_utilization" in item
-            and "M" in item["resource_utilization"]
-        ):
+        if "resource_utilization" in item and "M" in item["resource_utilization"]:
             resource_utilization = _parse_dynamodb_map(
                 item["resource_utilization"]["M"]
             )

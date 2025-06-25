@@ -55,10 +55,7 @@ class JobLog:
             raise ValueError("timestamp must be a datetime object or a string")
 
         valid_log_levels = ["INFO", "WARNING", "ERROR", "DEBUG", "CRITICAL"]
-        if (
-            not isinstance(log_level, str)
-            or log_level.upper() not in valid_log_levels
-        ):
+        if not isinstance(log_level, str) or log_level.upper() not in valid_log_levels:
             raise ValueError(f"log_level must be one of {valid_log_levels}")
         self.log_level = log_level.upper()
 

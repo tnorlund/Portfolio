@@ -146,9 +146,7 @@ class QueueService:
         Returns:
             A tuple containing a list of Queue objects and the last evaluated key
         """
-        return self.dynamo_client.listQueuesByUser(
-            user_id, limit, last_evaluated_key
-        )
+        return self.dynamo_client.listQueuesByUser(user_id, limit, last_evaluated_key)
 
     # Queue job operations
     def add_job_to_queue(
@@ -263,9 +261,7 @@ class QueueService:
         Returns:
             A tuple containing a list of QueueJob objects and the last evaluated key
         """
-        return self.dynamo_client.listQueueJobsByJob(
-            job_id, limit, last_evaluated_key
-        )
+        return self.dynamo_client.listQueueJobsByJob(job_id, limit, last_evaluated_key)
 
     def get_next_job(self, queue_id: str) -> Optional[QueueJob]:
         """
@@ -278,9 +274,7 @@ class QueueService:
             The next QueueJob object, or None if the queue is empty
         """
         # Get pending jobs and sort by priority (desc) and added_at (asc)
-        jobs, _ = self.dynamo_client.listQueueJobsByQueue(
-            queue_id, status="pending"
-        )
+        jobs, _ = self.dynamo_client.listQueueJobsByQueue(queue_id, status="pending")
         if not jobs:
             return None
 
@@ -313,9 +307,7 @@ class QueueService:
 
         return next_job
 
-    def mark_job_completed(
-        self, queue_id: str, job_id: str, success: bool
-    ) -> None:
+    def mark_job_completed(self, queue_id: str, job_id: str, success: bool) -> None:
         """
         Mark a job in a queue as completed.
 

@@ -80,9 +80,7 @@ class Image:
         elif isinstance(timestamp_added, str):
             self.timestamp_added = timestamp_added
         else:
-            raise ValueError(
-                "timestamp_added must be a datetime object or a string"
-            )
+            raise ValueError("timestamp_added must be a datetime object or a string")
 
         if raw_s3_bucket and not isinstance(raw_s3_bucket, str):
             raise ValueError("raw_s3_bucket must be a string")
@@ -183,22 +181,16 @@ class Image:
             "raw_s3_key": {"S": self.raw_s3_key},
             "sha256": {"S": self.sha256} if self.sha256 else {"NULL": True},
             "cdn_s3_bucket": (
-                {"S": self.cdn_s3_bucket}
-                if self.cdn_s3_bucket
-                else {"NULL": True}
+                {"S": self.cdn_s3_bucket} if self.cdn_s3_bucket else {"NULL": True}
             ),
             "cdn_s3_key": (
                 {"S": self.cdn_s3_key} if self.cdn_s3_key else {"NULL": True}
             ),
             "cdn_webp_s3_key": (
-                {"S": self.cdn_webp_s3_key}
-                if self.cdn_webp_s3_key
-                else {"NULL": True}
+                {"S": self.cdn_webp_s3_key} if self.cdn_webp_s3_key else {"NULL": True}
             ),
             "cdn_avif_s3_key": (
-                {"S": self.cdn_avif_s3_key}
-                if self.cdn_avif_s3_key
-                else {"NULL": True}
+                {"S": self.cdn_avif_s3_key} if self.cdn_avif_s3_key else {"NULL": True}
             ),
             "image_type": {"S": self.image_type},
         }
@@ -342,9 +334,7 @@ def itemToImage(item: dict) -> Image:
             image_id=item["PK"]["S"].split("#")[1],
             width=int(item["width"]["N"]),
             height=int(item["height"]["N"]),
-            timestamp_added=datetime.fromisoformat(
-                item["timestamp_added"]["S"]
-            ),
+            timestamp_added=datetime.fromisoformat(item["timestamp_added"]["S"]),
             raw_s3_bucket=item["raw_s3_bucket"]["S"],
             raw_s3_key=item["raw_s3_key"]["S"],
             sha256=sha256 if sha256 else None,
