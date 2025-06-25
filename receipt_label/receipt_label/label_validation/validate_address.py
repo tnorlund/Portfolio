@@ -6,7 +6,10 @@ import re
 from typing import Optional
 
 from rapidfuzz.fuzz import partial_ratio, ratio
-from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
+from receipt_dynamo.entities import (  # type: ignore
+    ReceiptWord,
+    ReceiptWordLabel,
+)
 
 from receipt_label.label_validation.data import (
     LabelValidationResult,
@@ -95,12 +98,16 @@ def _normalize_address(text: str) -> str:
 
 
 def _fuzzy_in(text: str, target: str, threshold: int = 90) -> bool:
+    """Return ``True`` if ``text`` fuzzily matches ``target``."""
+
     return partial_ratio(text, target) >= threshold or any(
         ratio(text, token) >= threshold for token in target.split()
     )
 
 
 def _merged_address_variants(word: ReceiptWord, metadata: dict) -> list[str]:
+    """Return possible address strings from the word and its neighbors."""
+
     current = _normalize_address(word.text)
     variants = [current]
 
@@ -132,6 +139,8 @@ def validate_address(
     receipt_metadata,  # Can be ReceiptMetadata or SimpleNamespace for testing
     client_manager: Optional[ClientManager] = None,
 ) -> LabelValidationResult:
+    """Validate that a word is part of the receipt address."""
+
     # Get pinecone index from client manager
     if client_manager is None:
         client_manager = get_client_manager()

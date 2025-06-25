@@ -1,21 +1,22 @@
 """Data utilities for label validation."""
 
-# pylint: disable=duplicate-code,line-too-long
+# pylint: disable=duplicate-code,line-too-long,too-many-instance-attributes
 
 from collections import Counter
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, Optional
 
-from receipt_dynamo.constants import ValidationStatus
-from receipt_dynamo.entities import ReceiptWordLabel
+from receipt_dynamo.constants import ValidationStatus  # type: ignore
+from receipt_dynamo.entities import ReceiptWordLabel  # type: ignore
 
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
 
 
-# Holds the result of a label validation.
 @dataclass
 class LabelValidationResult:
+    """Result produced by a label validator."""
+
     image_id: str
     receipt_id: int
     line_id: int
@@ -29,7 +30,7 @@ class LabelValidationResult:
 
 
 def get_unique_merchants_and_data(
-    client_manager: ClientManager = None,
+    client_manager: Optional[ClientManager] = None,
 ) -> list[dict]:
     """
     Returns a list of dictionaries, each containing:
@@ -66,21 +67,20 @@ def update_labels(
     label_validation_results: list[
         tuple[LabelValidationResult, ReceiptWordLabel]
     ],
-    client_manager: ClientManager = None,
+    client_manager: Optional[ClientManager] = None,
 ):
-    """
-    Applies validation results to both DynamoDB and Pinecone.
+    """Apply validation results to DynamoDB and Pinecone."""
 
-    - Separates valid and invalid labels based on `is_consistent` flag.
-    - Updates Pinecone vector metadata:
-        * Adds the label to `valid_labels` if consistent.
-        * Moves the label to `invalid_labels` and removes it from
-          `valid_labels` if inconsistent.
-        * Ensures that each Pinecone ID is upserted once with merged
-          metadata.
-    - Updates corresponding label validation status in DynamoDB to either
-      VALIDATED or INVALID.
-    """
+    # pylint: disable=too-many-locals,too-many-branches
+    # Applies validation results to both DynamoDB and Pinecone.
+    # - Separates valid and invalid labels based on ``is_consistent`` flag.
+    # - Updates Pinecone vector metadata:
+    #   * Adds the label to ``valid_labels`` if consistent.
+    #   * Moves the label to ``invalid_labels`` and removes it from
+    #     ``valid_labels`` if inconsistent.
+    #   * Ensures that each Pinecone ID is upserted once with merged metadata.
+    # - Updates corresponding label validation status in DynamoDB to either
+    #   VALIDATED or INVALID.
     labels_to_mark_as_valid: list[
         tuple[LabelValidationResult, ReceiptWordLabel]
     ] = []
@@ -94,10 +94,10 @@ def update_labels(
             labels_to_mark_as_invalid.append((label_validation_result, label))
 
     # Group labels by pinecone_id for valid and invalid
-    valid_by_id = {}
+    valid_by_id: dict[str, list[ReceiptWordLabel]] = {}
     for label_result, label in labels_to_mark_as_valid:
         valid_by_id.setdefault(label_result.pinecone_id, []).append(label)
-    invalid_by_id = {}
+    invalid_by_id: dict[str, list[ReceiptWordLabel]] = {}
     for label_result, label in labels_to_mark_as_invalid:
         invalid_by_id.setdefault(label_result.pinecone_id, []).append(label)
 

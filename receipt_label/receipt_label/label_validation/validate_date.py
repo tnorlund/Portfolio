@@ -6,7 +6,7 @@ import re
 from datetime import datetime
 from typing import Optional
 
-from receipt_dynamo.entities import (
+from receipt_dynamo.entities import (  # type: ignore
     ReceiptWord,
     ReceiptWordLabel,
 )
@@ -18,6 +18,8 @@ from receipt_label.utils.client_manager import ClientManager
 
 
 def _is_date(text: str) -> bool:
+    """Return ``True`` if the text resembles a date."""
+
     # Match various date formats including month names and ISO formats
     patterns = [
         r"\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b",  # MM/DD/YYYY or MM-DD-YYYY (must include day)
@@ -86,6 +88,8 @@ def _is_date(text: str) -> bool:
 def _merged_date_candidates_from_text(
     word: ReceiptWord, metadata: dict
 ) -> list[str]:
+    """Return possible date strings from the word and its neighbors."""
+
     current = word.text.strip()
     variants = [current]
 
@@ -109,6 +113,8 @@ def validate_date(
     label: ReceiptWordLabel,
     client_manager: Optional[ClientManager] = None,
 ) -> LabelValidationResult:
+    """Validate that a word is a date using Pinecone neighbors."""
+
     # Get pinecone index from client manager
     if client_manager is None:
         client_manager = get_client_manager()

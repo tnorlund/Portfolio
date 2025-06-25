@@ -5,7 +5,7 @@
 import re
 from typing import Optional
 
-from receipt_dynamo.entities import (
+from receipt_dynamo.entities import (  # type: ignore
     ReceiptWord,
     ReceiptWordLabel,
 )
@@ -17,6 +17,8 @@ from receipt_label.utils.client_manager import ClientManager
 
 
 def _is_time(text: str) -> bool:
+    """Return ``True`` if the text resembles a valid time."""
+
     # More comprehensive time validation including timezone support
     text = text.strip()
 
@@ -88,6 +90,8 @@ def _validate_time_components(time_str: str) -> bool:
 def _merged_time_candidate_from_text(
     word: ReceiptWord, metadata: dict
 ) -> list[str]:
+    """Return possible time strings from the word and its neighbors."""
+
     current = word.text.strip()
     variants = [current]
 
@@ -114,6 +118,8 @@ def validate_time(
     label: ReceiptWordLabel,
     client_manager: Optional[ClientManager] = None,
 ) -> LabelValidationResult:
+    """Validate that a word is a time using Pinecone neighbors."""
+
     # Get pinecone index from client manager
     if client_manager is None:
         client_manager = get_client_manager()

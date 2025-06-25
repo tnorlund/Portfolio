@@ -6,7 +6,7 @@ import re
 from typing import Optional
 
 from rapidfuzz.fuzz import ratio
-from receipt_dynamo.entities import (
+from receipt_dynamo.entities import (  # type: ignore
     ReceiptMetadata,
     ReceiptWord,
     ReceiptWordLabel,
@@ -24,6 +24,8 @@ from receipt_label.utils.client_manager import ClientManager
 def _merged_merchant_name_candidates_from_text(
     word: ReceiptWord, metadata: dict
 ) -> list[str]:
+    """Return possible merchant name strings from the word and neighbors."""
+
     current = word.text.strip()
     variants = [current]
 
@@ -51,6 +53,8 @@ def validate_merchant_name_pinecone(
     merchant_name: str,
     client_manager: Optional[ClientManager] = None,
 ) -> LabelValidationResult:
+    """Validate merchant name using Pinecone search by merchant."""
+
     # Get pinecone index from client manager
     if client_manager is None:
         client_manager = get_client_manager()
@@ -120,6 +124,8 @@ def validate_merchant_name_google(
     metadata: ReceiptMetadata,
     client_manager: Optional[ClientManager] = None,
 ) -> LabelValidationResult:
+    """Validate merchant name using Google-retrieved canonical name."""
+
     # Get pinecone index from client manager
     if client_manager is None:
         client_manager = get_client_manager()

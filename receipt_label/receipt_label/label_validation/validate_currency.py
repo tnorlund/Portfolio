@@ -5,7 +5,7 @@
 import re
 from typing import Optional
 
-from receipt_dynamo.entities import (
+from receipt_dynamo.entities import (  # type: ignore
     ReceiptWord,
     ReceiptWordLabel,
 )
@@ -17,6 +17,8 @@ from receipt_label.utils.client_manager import ClientManager
 
 
 def _is_currency(text: str) -> bool:
+    """Return ``True`` if the text resembles a currency amount."""
+
     # Accept standard US currency formats like $1,234.56 or $10.00
     # Also accept without dollar sign like 1234.56
     return bool(
@@ -28,6 +30,8 @@ def _is_currency(text: str) -> bool:
 def _merged_currency_candidates_from_text(
     word: ReceiptWord, metadata: dict
 ) -> list[str]:
+    """Return possible currency strings from the word and its neighbors."""
+
     current = word.text.strip()
     variants = [current]
 
@@ -51,6 +55,8 @@ def validate_currency(
     label: ReceiptWordLabel,
     client_manager: Optional[ClientManager] = None,
 ) -> LabelValidationResult:
+    """Validate that a word is a currency amount using Pinecone neighbors."""
+
     # Get pinecone index from client manager
     if client_manager is None:
         client_manager = get_client_manager()
